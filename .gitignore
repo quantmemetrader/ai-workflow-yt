@@ -1,5 +1,8 @@
 node_modules
 .next
+# The site and the API are separate builds of this repo.
+.next-api
+.next-site
 out
 data
 *.db

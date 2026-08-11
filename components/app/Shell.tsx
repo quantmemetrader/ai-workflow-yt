@@ -1,7 +1,7 @@
 "use client";
 
 import type { LucideIcon } from "lucide-react";
-import { ChevronDown, ChevronsUpDown, Plus } from "lucide-react";
+import { ChevronDown, Plus, X } from "lucide-react";
 import { Mark } from "@/components/SiteHeader";
 import { clsx } from "@/lib/clsx";
 
@@ -58,12 +58,20 @@ export function Rail({
       )}
       style={{ background: "var(--rail)" }}
     >
-      {/* Workspace switcher */}
-      <button
-        type="button"
-        className="row mx-2 mt-2 flex items-center gap-2.5 px-2 py-2 text-left"
-        onClick={onClose}
-      >
+      {/*
+        Whose workspace this is. Not a switcher.
+
+        It used to be a button with a ChevronsUpDown on it, which is the
+        universal mark for "this opens a picker" — and it opened nothing. Its
+        click handler closed the mobile drawer, so on a phone it dismissed the
+        menu for reasons no one could have predicted from looking at it, and on
+        a desktop it did nothing at all. There is one workspace per session and
+        no endpoint to change it, so the honest control is no control.
+
+        The drawer keeps a dismiss of its own below `lg`, since this was the
+        only thing standing in for one.
+      */}
+      <div className="mx-2 mt-2 flex items-center gap-2.5 px-2 py-2">
         {/*
           A neutral tile carrying the product mark. This used to be a blue
           gradient, which made it the only saturated colour in the interface
@@ -93,13 +101,16 @@ export function Rail({
             {subtitle}
           </span>
         </span>
-        <ChevronsUpDown
-          className="h-4 w-4 shrink-0"
-          strokeWidth={1.75}
-          style={{ color: "var(--ink-gray-4)" }}
-          aria-hidden
-        />
-      </button>
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close menu"
+          className="-mr-1 flex size-7 shrink-0 items-center justify-center rounded-[var(--r-sm)] lg:hidden"
+          style={{ color: "var(--ink-gray-5)" }}
+        >
+          <X className="size-4" strokeWidth={1.75} aria-hidden />
+        </button>
+      </div>
 
       <nav
         aria-label="Sections"
