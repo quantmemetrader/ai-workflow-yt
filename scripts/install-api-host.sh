@@ -23,20 +23,44 @@ fi
 
 say() { printf '\n\033[1m%s\033[0m\n' "$1"; }
 
-# ── Node lives under nvm, not /usr/bin ──────────────────────────────────────
-# systemd gets no login shell, so nvm's PATH does not exist for it. Resolve the
-# interpreter now and write the absolute path into the unit. Re-run this script
-# after upgrading node, because that path moves with the version.
-NODE_BIN=$(sudo -u "$APP_USER" bash -lc 'command -v node' 2>/dev/null || true)
-if [[ -z "$NODE_BIN" || ! -x "$NODE_BIN" ]]; then
-  NODE_BIN=$(ls -d /home/"$APP_USER"/.nvm/versions/node/*/bin/node 2>/dev/null | sort -V | tail -1 || true)
-fi
-if [[ -z "$NODE_BIN" || ! -x "$NODE_BIN" ]]; then
-  echo "Could not find node for user $APP_USER." >&2
+# ── Pick a node that can actually run this app ──────────────────────────────
+# Not "what is on PATH". This machine has two: /usr/bin/node is v20, and nvm
+# has v22 — and a login shell resolves the v20 first. The app stores its state
+# through node:sqlite, which only exists from Node 22.5, so asking PATH picks
+# the one interpreter that cannot load lib/server/db.ts, and the failure lands
+# during "Collecting page data" where it reads like a Next.js problem.
+#
+# The requirement is checkable, so check it rather than guess a path. systemd
+# also gets no login shell, so whichever one wins is written in absolutely.
+# Re-run this script after a node upgrade, because that path moves.
+say "Looking for a node with node:sqlite (needs >= 22.5)"
+NODE_BIN=""
+for candidate in \
+  $(ls -d /home/"$APP_USER"/.nvm/versions/node/*/bin/node 2>/dev/null | sort -V -r) \
+  "$(sudo -u "$APP_USER" bash -lc 'command -v node' 2>/dev/null || true)" \
+  /usr/local/bin/node /usr/bin/node
+do
+  [[ -n "$candidate" && -x "$candidate" ]] || continue
+  if "$candidate" -e "require('node:sqlite')" >/dev/null 2>&1; then
+    NODE_BIN="$candidate"
+    echo "  using $candidate ($("$candidate" -v))"
+    break
+  fi
+  echo "  skipping $candidate ($("$candidate" -v 2>/dev/null || echo unknown)) — no node:sqlite"
+done
+if [[ -z "$NODE_BIN" ]]; then
+  cat >&2 <<'EOF'
+
+No installed node supports node:sqlite, which this app stores its state in.
+It needs Node 22.5 or newer. Install one, then re-run:
+
+  curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
+  nvm install 22
+
+EOF
   exit 1
 fi
 NODE_DIR=$(dirname "$NODE_BIN")
-say "node: $NODE_BIN"
 
 # ── Secrets and the database path ───────────────────────────────────────────
 if [[ ! -f "$APP_DIR/.env.api" ]]; then
@@ -61,8 +85,15 @@ install -d -o "$APP_USER" -g "$APP_USER" "$APP_DIR/data"
 # time, so a build carrying the site's API_ORIGIN would make this server
 # forward /api to itself and hang every request.
 say "Building the API target (.next-api)"
-sudo -u "$APP_USER" env PATH="$NODE_DIR:$PATH" NEXT_DIST_DIR=.next-api \
-  bash -c "cd '$APP_DIR' && npx next build" | tail -3
+# Invoked through $NODE_BIN directly, not npx: npx would resolve node from PATH
+# again and could pick the v20 back up, which is the failure this script exists
+# to avoid.
+cd "$APP_DIR"
+sudo -u "$APP_USER" env \
+  NEXT_DIST_DIR=.next-api \
+  NODE_ENV=production \
+  PATH="$NODE_DIR:/usr/local/bin:/usr/bin:/bin" \
+  "$NODE_BIN" "$APP_DIR/node_modules/next/dist/bin/next" build | tail -3
 
 # ── The service ─────────────────────────────────────────────────────────────
 say "Writing /etc/systemd/system/$SERVICE.service"

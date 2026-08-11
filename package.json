@@ -2,6 +2,10 @@
   "name": "throughline-site",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "//": "State is stored through node:sqlite, which first ships in 22.5.",
+    "node": ">=22.5"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
