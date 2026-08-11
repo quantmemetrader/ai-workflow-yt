@@ -123,6 +123,21 @@ EOF
 
 systemctl daemon-reload
 systemctl enable "$SERVICE" >/dev/null
+
+# Anything else already on the port has to go, or the service dies on
+# EADDRINUSE — and because output is redirected to the log file, the journal
+# shows only "status=1/FAILURE" with no reason in it. A hand-started server
+# from testing is the usual culprit.
+systemctl stop "$SERVICE" 2>/dev/null || true
+STRAY=$(ss -lntpH "sport = :$PORT" 2>/dev/null | grep -oP 'pid=\K[0-9]+' | sort -u || true)
+if [[ -n "$STRAY" ]]; then
+  say "Port $PORT is already held by pid(s): $STRAY — stopping them"
+  for p in $STRAY; do kill "$p" 2>/dev/null || true; done
+  sleep 2
+  for p in $STRAY; do kill -9 "$p" 2>/dev/null || true; done
+  sleep 1
+fi
+
 systemctl restart "$SERVICE"
 
 # ── Firewall ────────────────────────────────────────────────────────────────
@@ -140,8 +155,17 @@ fi
 # ── Check ───────────────────────────────────────────────────────────────────
 sleep 3
 say "Result"
-systemctl is-active --quiet "$SERVICE" && echo "  service: running" || {
-  echo "  service: FAILED — last lines:"; journalctl -u "$SERVICE" -n 20 --no-pager; exit 1; }
+if ! systemctl is-active --quiet "$SERVICE"; then
+  echo "  service: FAILED"
+  # The unit sends stdout and stderr to the log file, so the journal only ever
+  # carries the exit code. The reason is in the app log; print both.
+  echo "  --- journal ---"
+  journalctl -u "$SERVICE" -n 8 --no-pager || true
+  echo "  --- $APP_DIR/api-host.log ---"
+  tail -25 "$APP_DIR/api-host.log" 2>/dev/null || echo "  (no log yet)"
+  exit 1
+fi
+echo "  service: running"
 
 CODE=$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$PORT/api/session" || echo 000)
 echo "  local  http://127.0.0.1:$PORT/api/session -> $CODE"
