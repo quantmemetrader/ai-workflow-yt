@@ -1,0 +1,429 @@
+▲ Next.js 16.3.0
+- Local:         http://localhost:4501
+- Network:       http://0.0.0.0:4501
+✓ Ready in 175ms
+✓ Running next.config.ts took 102ms
+(node:3804651) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+⨯ Failed to start server
+Error: listen EADDRINUSE: address already in use 0.0.0.0:4501
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:4501) {
+  code: 'EADDRINUSE',
+  errno: -98,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 4501
+}
+⨯ Failed to start server
+Error: listen EADDRINUSE: address already in use 0.0.0.0:4501
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:4501) {
+  code: 'EADDRINUSE',
+  errno: -98,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 4501
+}
+⨯ Failed to start server
+Error: listen EADDRINUSE: address already in use 0.0.0.0:4501
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:4501) {
+  code: 'EADDRINUSE',
+  errno: -98,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 4501
+}
+⨯ Failed to start server
+Error: listen EADDRINUSE: address already in use 0.0.0.0:4501
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:4501) {
+  code: 'EADDRINUSE',
+  errno: -98,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 4501
+}
+⨯ Failed to start server
+Error: listen EADDRINUSE: address already in use 0.0.0.0:4501
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:4501) {
+  code: 'EADDRINUSE',
+  errno: -98,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 4501
+}
+⨯ Failed to start server
+Error: listen EADDRINUSE: address already in use 0.0.0.0:4501
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:4501) {
+  code: 'EADDRINUSE',
+  errno: -98,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 4501
+}
+⨯ Failed to start server
+Error: listen EADDRINUSE: address already in use 0.0.0.0:4501
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:4501) {
+  code: 'EADDRINUSE',
+  errno: -98,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 4501
+}
+⨯ Failed to start server
+Error: listen EADDRINUSE: address already in use 0.0.0.0:4501
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:4501) {
+  code: 'EADDRINUSE',
+  errno: -98,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 4501
+}
+⨯ Failed to start server
+Error: listen EADDRINUSE: address already in use 0.0.0.0:4501
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:4501) {
+  code: 'EADDRINUSE',
+  errno: -98,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 4501
+}
+⨯ Failed to start server
+Error: listen EADDRINUSE: address already in use 0.0.0.0:4501
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:4501) {
+  code: 'EADDRINUSE',
+  errno: -98,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 4501
+}
+⨯ Failed to start server
+Error: listen EADDRINUSE: address already in use 0.0.0.0:4501
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:4501) {
+  code: 'EADDRINUSE',
+  errno: -98,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 4501
+}
+⨯ Failed to start server
+Error: listen EADDRINUSE: address already in use 0.0.0.0:4501
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:4501) {
+  code: 'EADDRINUSE',
+  errno: -98,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 4501
+}
+⨯ Failed to start server
+Error: listen EADDRINUSE: address already in use 0.0.0.0:4501
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:4501) {
+  code: 'EADDRINUSE',
+  errno: -98,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 4501
+}
+⨯ Failed to start server
+Error: listen EADDRINUSE: address already in use 0.0.0.0:4501
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:4501) {
+  code: 'EADDRINUSE',
+  errno: -98,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 4501
+}
+⨯ Failed to start server
+Error: listen EADDRINUSE: address already in use 0.0.0.0:4501
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:4501) {
+  code: 'EADDRINUSE',
+  errno: -98,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 4501
+}
+⨯ Failed to start server
+Error: listen EADDRINUSE: address already in use 0.0.0.0:4501
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:4501) {
+  code: 'EADDRINUSE',
+  errno: -98,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 4501
+}
+⨯ Failed to start server
+Error: listen EADDRINUSE: address already in use 0.0.0.0:4501
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:4501) {
+  code: 'EADDRINUSE',
+  errno: -98,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 4501
+}
+⨯ Failed to start server
+Error: listen EADDRINUSE: address already in use 0.0.0.0:4501
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:4501) {
+  code: 'EADDRINUSE',
+  errno: -98,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 4501
+}
+⨯ Failed to start server
+Error: listen EADDRINUSE: address already in use 0.0.0.0:4501
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:4501) {
+  code: 'EADDRINUSE',
+  errno: -98,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 4501
+}
+⨯ Failed to start server
+Error: listen EADDRINUSE: address already in use 0.0.0.0:4501
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:4501) {
+  code: 'EADDRINUSE',
+  errno: -98,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 4501
+}
+⨯ Failed to start server
+Error: listen EADDRINUSE: address already in use 0.0.0.0:4501
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:4501) {
+  code: 'EADDRINUSE',
+  errno: -98,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 4501
+}
+⨯ Failed to start server
+Error: listen EADDRINUSE: address already in use 0.0.0.0:4501
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:4501) {
+  code: 'EADDRINUSE',
+  errno: -98,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 4501
+}
+⨯ Failed to start server
+Error: listen EADDRINUSE: address already in use 0.0.0.0:4501
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:4501) {
+  code: 'EADDRINUSE',
+  errno: -98,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 4501
+}
+⨯ Failed to start server
+Error: listen EADDRINUSE: address already in use 0.0.0.0:4501
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:4501) {
+  code: 'EADDRINUSE',
+  errno: -98,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 4501
+}
+⨯ Failed to start server
+Error: listen EADDRINUSE: address already in use 0.0.0.0:4501
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:4501) {
+  code: 'EADDRINUSE',
+  errno: -98,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 4501
+}
+⨯ Failed to start server
+Error: listen EADDRINUSE: address already in use 0.0.0.0:4501
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:4501) {
+  code: 'EADDRINUSE',
+  errno: -98,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 4501
+}
+⨯ Failed to start server
+Error: listen EADDRINUSE: address already in use 0.0.0.0:4501
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:4501) {
+  code: 'EADDRINUSE',
+  errno: -98,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 4501
+}
+⨯ Failed to start server
+Error: listen EADDRINUSE: address already in use 0.0.0.0:4501
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:4501) {
+  code: 'EADDRINUSE',
+  errno: -98,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 4501
+}
+⨯ Failed to start server
+Error: listen EADDRINUSE: address already in use 0.0.0.0:4501
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:4501) {
+  code: 'EADDRINUSE',
+  errno: -98,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 4501
+}
+⨯ Failed to start server
+Error: listen EADDRINUSE: address already in use 0.0.0.0:4501
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:4501) {
+  code: 'EADDRINUSE',
+  errno: -98,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 4501
+}
+⨯ Failed to start server
+Error: listen EADDRINUSE: address already in use 0.0.0.0:4501
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:4501) {
+  code: 'EADDRINUSE',
+  errno: -98,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 4501
+}
+⨯ Failed to start server
+Error: listen EADDRINUSE: address already in use 0.0.0.0:4501
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:4501) {
+  code: 'EADDRINUSE',
+  errno: -98,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 4501
+}
+⨯ Failed to start server
+Error: listen EADDRINUSE: address already in use 0.0.0.0:4501
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:4501) {
+  code: 'EADDRINUSE',
+  errno: -98,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 4501
+}
+⨯ Failed to start server
+Error: listen EADDRINUSE: address already in use 0.0.0.0:4501
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:4501) {
+  code: 'EADDRINUSE',
+  errno: -98,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 4501
+}
+⨯ Failed to start server
+Error: listen EADDRINUSE: address already in use 0.0.0.0:4501
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:4501) {
+  code: 'EADDRINUSE',
+  errno: -98,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 4501
+}
+⨯ Failed to start server
+Error: listen EADDRINUSE: address already in use 0.0.0.0:4501
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:4501) {
+  code: 'EADDRINUSE',
+  errno: -98,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 4501
+}
+⨯ Failed to start server
+Error: listen EADDRINUSE: address already in use 0.0.0.0:4501
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:4501) {
+  code: 'EADDRINUSE',
+  errno: -98,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 4501
+}
+⨯ Failed to start server
+Error: listen EADDRINUSE: address already in use 0.0.0.0:4501
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:4501) {
+  code: 'EADDRINUSE',
+  errno: -98,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 4501
+}
+⨯ Failed to start server
+Error: listen EADDRINUSE: address already in use 0.0.0.0:4501
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:4501) {
+  code: 'EADDRINUSE',
+  errno: -98,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 4501
+}
+⨯ Failed to start server
+Error: listen EADDRINUSE: address already in use 0.0.0.0:4501
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:4501) {
+  code: 'EADDRINUSE',
+  errno: -98,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 4501
+}
+⨯ Failed to start server
+Error: listen EADDRINUSE: address already in use 0.0.0.0:4501
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:4501) {
+  code: 'EADDRINUSE',
+  errno: -98,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 4501
+}
+⨯ Failed to start server
+Error: listen EADDRINUSE: address already in use 0.0.0.0:4501
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:4501) {
+  code: 'EADDRINUSE',
+  errno: -98,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 4501
+}
+⨯ Failed to start server
+Error: listen EADDRINUSE: address already in use 0.0.0.0:4501
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:4501) {
+  code: 'EADDRINUSE',
+  errno: -98,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 4501
+}
+⨯ Failed to start server
+Error: listen EADDRINUSE: address already in use 0.0.0.0:4501
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:4501) {
+  code: 'EADDRINUSE',
+  errno: -98,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 4501
+}
+▲ Next.js 16.3.0
+- Local:         http://localhost:4501
+- Network:       http://0.0.0.0:4501
+✓ Ready in 229ms
+✓ Running next.config.ts took 150ms
+▲ Next.js 16.3.0
+- Local:         http://localhost:4501
+- Network:       http://0.0.0.0:4501
+✓ Ready in 286ms
+✓ Running next.config.ts took 112ms
+(node:3838985) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+▲ Next.js 16.3.0
+- Local:         http://localhost:4501
+- Network:       http://0.0.0.0:4501
+✓ Ready in 236ms
+✓ Running next.config.ts took 101ms
+(node:3857873) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+▲ Next.js 16.3.0
+- Local:         http://localhost:4501
+- Network:       http://0.0.0.0:4501
+✓ Ready in 155ms
+✓ Running next.config.ts took 81ms
+(node:3911014) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)

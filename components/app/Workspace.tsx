@@ -19,6 +19,7 @@ import {
   ChevronUp,
   FileText,
   Handshake,
+  Library,
   History,
   Inbox,
   House,
@@ -53,6 +54,7 @@ import {
   Input,
   Meta,
   PageHead,
+  SectionLabel,
   Textarea,
   type Tone,
 } from "@/components/app/kit";
@@ -126,6 +128,7 @@ type Screen =
   | "conversations"
   | "leads"
   | "analytics"
+  | "sources"
   | "knowledge"
   | "settings"
   | "activity";
@@ -160,6 +163,10 @@ const NAV: {
   {
     group: { en: "Setup", zh: "设置" },
     items: [
+      /* The evidence base. It sits above Knowledge because nothing downstream
+         works without it: no approved source tagged for a subject means no
+         candidate, and no candidate means no script. */
+      { id: "sources", en: "Sources", zh: "来源", icon: Library },
       { id: "knowledge", en: "Knowledge", zh: "知识库", icon: BookOpen },
       { id: "settings", en: "Settings", zh: "配置", icon: Settings },
       /* This is the audit log. A heart-rate line says "live"; this is a
@@ -296,6 +303,7 @@ export function Workspace({ lang, session }: { lang: Lang; session: Session }) {
   const [taskId, setTaskId] = useState<string | null>(null);
   const [detail, setDetail] = useState<Row | null>(null);
   const [knowledge, setKnowledge] = useState<Row[]>([]);
+  const [sources, setSources] = useState<Row | null>(null);
   const [conversations, setConversations] = useState<Row[]>([]);
   const [leads, setLeads] = useState<Row[]>([]);
   const [analytics, setAnalytics] = useState<Row | null>(null);
@@ -335,6 +343,10 @@ export function Workspace({ lang, session }: { lang: Lang; session: Session }) {
       if (target === "knowledge") {
         const d = await call("knowledge");
         if (d) setKnowledge(d.documents);
+      }
+      if (target === "sources") {
+        const d = await call("sources");
+        if (d) setSources(d);
       }
       if (target === "conversations") {
         const d = await call("conversations");
@@ -619,6 +631,15 @@ export function Workspace({ lang, session }: { lang: Lang; session: Session }) {
           {screen === "leads" && <Leads lang={lang} rows={leads} act={act} />}
           {screen === "analytics" && (
             <Results lang={lang} data={analytics} act={act} />
+          )}
+          {screen === "sources" && (
+            <Sources
+              lang={lang}
+              rows={(sources?.sources as Row[]) ?? []}
+              keywords={(sources?.keywords as string[]) ?? []}
+              act={act}
+              busy={busy}
+            />
           )}
           {screen === "knowledge" && (
             <Knowledge lang={lang} rows={knowledge} act={act} busy={busy} />
@@ -3379,6 +3400,339 @@ function Results({
           ))}
         </div>
       </Card>
+    </>
+  );
+}
+
+/**
+ * The evidence base.
+ *
+ * This is the screen the rest of the workflow leans on, and the tag is the load
+ * bearing part of it: discovery only raises a topic for a subject something here
+ * is tagged for, and on accept these become the task's sources — what the script
+ * cites and what the fact check measures every claim against.
+ *
+ * So the tag field is not optional and says why, and a source that has been
+ * cited is retired rather than deleted. Removing one would orphan the claim maps
+ * of scripts that already used it and make a published video's provenance
+ * unverifiable after the fact.
+ */
+function Sources({
+  lang,
+  rows,
+  keywords,
+  act,
+  busy,
+}: {
+  lang: Lang;
+  rows: Row[];
+  keywords: string[];
+  act: ActFn;
+  busy: boolean;
+}) {
+  const zh = lang === "zh";
+  const t = (en: string, z: string) => (zh ? z : en);
+  const blank = {
+    label_en: "",
+    url: "",
+    publisher: "",
+    published_at: "",
+    trust: "high",
+    keywords: "",
+  };
+  const [draft, setDraft] = useState<Record<string, string>>(blank);
+  const [editing, setEditing] = useState<string | null>(null);
+  const set = (k: string, v: string) => setDraft((p) => ({ ...p, [k]: v }));
+
+  const live = rows.filter((r) => r.status !== "retired");
+  const retired = rows.filter((r) => r.status === "retired");
+  const tagsOf = (r: Row): string[] => {
+    try {
+      const p = JSON.parse(String(r.keywords ?? "[]"));
+      return Array.isArray(p) ? p.map(String) : [];
+    } catch {
+      return [];
+    }
+  };
+
+  // A subject discovery searches for with nothing behind it produces demand the
+  // workspace has to refuse. Naming them here is what makes that fixable.
+  const covered = new Set(live.flatMap(tagsOf));
+  const uncovered = keywords.filter((k) => !covered.has(k));
+
+  const trustTone: Record<string, Tone> = {
+    high: "green",
+    medium: "amber",
+    low: "red",
+  };
+
+  return (
+    <>
+      <PageHead
+        title={t("Sources", "来源")}
+        subtitle={t(
+          "What a script is allowed to stand on. A topic is only raised when something here can back it.",
+          "脚本能站得住脚的依据。有这里的东西撑着，选题才会被提出来。",
+        )}
+      />
+
+      {uncovered.length ? (
+        <div
+          className="relative mb-4 flex items-center gap-2.5 overflow-hidden rounded-[var(--r)] py-2 pl-3.5 pr-2.5"
+          style={{
+            background: "var(--surface-cards)",
+            boxShadow: "inset 0 0 0 1px var(--outline-gray-2)",
+          }}
+        >
+          <span
+            aria-hidden
+            className="absolute inset-y-0 left-0 w-[3px]"
+            style={{ background: "var(--ink-amber-2)" }}
+          />
+          <p className="min-w-0 flex-1 truncate text-[13px]">
+            <span className="font-medium">
+              {t("Searched, but unsourced", "在搜，但没有来源")}
+            </span>
+            <span
+              className="hidden sm:inline"
+              style={{ color: "var(--ink-gray-5)" }}
+            >
+              {" · "}
+              {uncovered.join(", ")}
+              {t(
+                " — trending topics here get reported, not raised.",
+                " —— 这些主题有热度也只会被报告，不会立候选。",
+              )}
+            </span>
+          </p>
+        </div>
+      ) : null}
+
+      <Card className="mb-5">
+        <CardHeader
+          title={
+            editing
+              ? t("Edit this source", "修改来源")
+              : t("Add a source", "添加来源")
+          }
+        />
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="sm:col-span-2">
+            <Field label={t("What is it?", "叫什么？")}>
+              <Input
+                value={draft.label_en}
+                onChange={(e) => set("label_en", e.target.value)}
+                placeholder={t(
+                  "Regulator consultation draft",
+                  "监管征求意见稿",
+                )}
+              />
+            </Field>
+          </div>
+          <Field
+            label={t("Subjects it covers", "覆盖的主题")}
+            hint={t(
+              "Comma separated. This is what lets a trending topic find it.",
+              "用逗号分隔。热门选题就是靠它找到这条来源的。",
+            )}
+          >
+            <Input
+              value={draft.keywords}
+              onChange={(e) => set("keywords", e.target.value)}
+              placeholder="disclosure, filing"
+            />
+          </Field>
+          <Field
+            label={t("How much weight does it carry?", "可信程度")}
+            hint={t(
+              "Only high-trust sources clear a candidate without a flag.",
+              "只有高可信来源才不会给候选挂上标记。",
+            )}
+          >
+            <select
+              value={draft.trust}
+              onChange={(e) => set("trust", e.target.value)}
+              className="w-full rounded-[var(--r-sm)] px-3 py-2 text-[13.5px] outline-none"
+              style={{
+                background: "var(--rail)",
+                color: "var(--ink-gray-8)",
+                boxShadow: "inset 0 0 0 1px var(--outline-gray-2)",
+              }}
+            >
+              <option value="high">
+                {t("High — primary document", "高 —— 一手文件")}
+              </option>
+              <option value="medium">
+                {t("Medium — reputable coverage", "中 —— 可靠报道")}
+              </option>
+              <option value="low">
+                {t("Low — use with care", "低 —— 谨慎使用")}
+              </option>
+            </select>
+          </Field>
+          <Field label={t("Link", "链接")}>
+            <Input
+              value={draft.url}
+              onChange={(e) => set("url", e.target.value)}
+              placeholder="https://"
+            />
+          </Field>
+          <Field label={t("Published on", "发布日期")}>
+            <Input
+              value={draft.published_at}
+              onChange={(e) => set("published_at", e.target.value)}
+              placeholder="2026-08-11"
+            />
+          </Field>
+        </div>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <Button
+            variant="solid"
+            loading={busy}
+            disabled={!draft.label_en.trim() || !draft.keywords.trim()}
+            onClick={async () => {
+              const body = JSON.stringify({
+                ...draft,
+                keywords: draft.keywords.split(","),
+              });
+              const d = await act(editing ? `sources/${editing}` : "sources", {
+                method: "POST",
+                body,
+              });
+              if (d) {
+                setDraft(blank);
+                setEditing(null);
+              }
+            }}
+          >
+            {editing ? t("Save it", "保存") : t("Add it", "添加")}
+          </Button>
+          {editing ? (
+            <Button
+              onClick={() => {
+                setDraft(blank);
+                setEditing(null);
+              }}
+            >
+              {t("Cancel", "取消")}
+            </Button>
+          ) : null}
+        </div>
+      </Card>
+
+      <div className="space-y-2">
+        {live.map((r) => {
+          const tags = tagsOf(r);
+          return (
+            <Card key={r.id}>
+              <div className="flex flex-wrap items-start gap-3">
+                <div className="min-w-0 flex-1">
+                  <p className="flex flex-wrap items-center gap-2">
+                    <span className="truncate text-[14.5px] font-medium">
+                      {zh ? r.label_zh : r.label_en}
+                    </span>
+                    <Badge tone={trustTone[String(r.trust)] ?? "gray"}>
+                      {String(r.trust)}
+                    </Badge>
+                  </p>
+                  <p
+                    className="mt-1 flex flex-wrap items-center gap-1.5 text-[12.5px]"
+                    style={{ color: "var(--ink-gray-5)" }}
+                  >
+                    {tags.map((k) => (
+                      <span
+                        key={k}
+                        className="rounded-[4px] px-1.5 py-[1px]"
+                        style={{
+                          boxShadow: "inset 0 0 0 1px var(--outline-gray-2)",
+                        }}
+                      >
+                        {k}
+                      </span>
+                    ))}
+                    <span>{String(r.published_at ?? "")}</span>
+                    {Number(r.cited_by) > 0 ? (
+                      <span>
+                        ·{" "}
+                        {zh
+                          ? `${r.cited_by} 个任务在用`
+                          : `used by ${plural(Number(r.cited_by), "task", "tasks")}`}
+                      </span>
+                    ) : null}
+                  </p>
+                </div>
+                <div className="flex shrink-0 items-center gap-2">
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      setEditing(String(r.id));
+                      setDraft({
+                        label_en: String(r.label_en ?? ""),
+                        url: String(r.url ?? ""),
+                        publisher: String(r.publisher ?? ""),
+                        published_at: String(r.published_at ?? ""),
+                        trust: String(r.trust ?? "high"),
+                        keywords: tags.join(", "),
+                      });
+                      window.scrollTo({ top: 0, behavior: "smooth" });
+                    }}
+                  >
+                    {t("Edit", "修改")}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() =>
+                      act(`sources/${r.id}/retire`, {
+                        method: "POST",
+                        body: "{}",
+                      })
+                    }
+                  >
+                    {t("Retire", "停用")}
+                  </Button>
+                </div>
+              </div>
+            </Card>
+          );
+        })}
+      </div>
+
+      {retired.length ? (
+        <div className="mt-6">
+          <SectionLabel>
+            {t(
+              "Retired — kept so old scripts stay checkable",
+              "已停用 —— 保留以便旧脚本仍可核对",
+            )}
+          </SectionLabel>
+          <div className="mt-2 space-y-2">
+            {retired.map((r) => (
+              <Card key={r.id}>
+                <div className="flex flex-wrap items-center gap-3">
+                  <span
+                    className="min-w-0 flex-1 truncate text-[14px]"
+                    style={{ color: "var(--ink-gray-5)" }}
+                  >
+                    {zh ? r.label_zh : r.label_en}
+                  </span>
+                  <Button
+                    size="sm"
+                    onClick={() =>
+                      act(`sources/${r.id}/restore`, {
+                        method: "POST",
+                        body: "{}",
+                      })
+                    }
+                  >
+                    {t("Put it back", "恢复")}
+                  </Button>
+                </div>
+              </Card>
+            ))}
+          </div>
+        </div>
+      ) : null}
     </>
   );
 }

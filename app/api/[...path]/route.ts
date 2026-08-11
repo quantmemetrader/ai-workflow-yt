@@ -195,6 +195,25 @@ export async function GET(req: NextRequest, ctx: Ctx) {
           ),
         });
 
+      case "sources":
+        return ok({
+          sources: all(
+            `SELECT s.*,
+                    (SELECT count(*) FROM task_source ts WHERE ts.source_id = s.id) AS cited_by
+               FROM source s WHERE s.workspace_id = ?
+              ORDER BY s.status, s.published_at DESC`,
+            s.workspaceId,
+          ),
+          // What discovery is searching for. A subject with no source behind it
+          // is the reason a trending topic gets reported instead of raised.
+          keywords: JSON.parse(
+            one<{ value: string }>(
+              "SELECT value FROM config WHERE workspace_id = ? AND key = 'topic.keywords'",
+              s.workspaceId,
+            )?.value ?? "[]",
+          ),
+        });
+
       case "knowledge":
         return ok({
           documents: all(
@@ -1081,6 +1100,183 @@ export async function POST(req: NextRequest, ctx: Ctx) {
         )) {
           runForward(s, t.id, "Recommendations reviewed");
         }
+        return ok({ ok: true });
+      }
+
+      /* ── Sources ────────────────────────────────────────────────────── */
+      /*
+        The evidence base. Everything downstream leans on these: a candidate is
+        only raised for a subject an approved source is tagged for, and a task's
+        sources are what the script cites and the claim map checks against.
+
+        So a source is edited rather than replaced, and retiring one leaves it in
+        place with status='retired'. Deleting would orphan the claim maps and
+        audit entries of every script that already cited it, and a published
+        video's provenance would quietly become unverifiable.
+      */
+      case "sources": {
+        await requireRole("reviewer", "admin");
+
+        const parseKeywords = (v: unknown): string[] => {
+          const list = Array.isArray(v)
+            ? v.map(String)
+            : String(v ?? "")
+                .split(",")
+                .map((x) => x.trim());
+          return [...new Set(list.map((k) => k.toLowerCase()).filter(Boolean))];
+        };
+        const TRUST = ["high", "medium", "low"];
+
+        if (!a) {
+          const labelEn = String(input.label_en ?? "").trim();
+          if (!labelEn) {
+            throw new HttpError(
+              400,
+              "label_required",
+              "Give the source a name.",
+            );
+          }
+          const trust = String(input.trust ?? "medium");
+          if (!TRUST.includes(trust)) {
+            throw new HttpError(
+              400,
+              "bad_trust",
+              "Trust must be high, medium, or low.",
+            );
+          }
+          const keywords = parseKeywords(input.keywords);
+          if (keywords.length === 0) {
+            throw new HttpError(
+              400,
+              "keywords_required",
+              "Tag it with at least one subject. That tag is what lets a trending topic find this source.",
+            );
+          }
+          const url = String(input.url ?? "").trim();
+          if (url && !/^https?:\/\/\S+\.\S+/.test(url)) {
+            throw new HttpError(
+              400,
+              "bad_url",
+              "A source link has to start with http:// or https://",
+            );
+          }
+
+          const sid = id("s");
+          const t = now();
+          run(
+            `INSERT INTO source
+             (id,workspace_id,label_en,label_zh,url,publisher,published_at,trust,keywords,last_check,created_at,updated_at,created_by,status)
+             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+            sid,
+            s.workspaceId,
+            labelEn,
+            String(input.label_zh ?? labelEn),
+            url || null,
+            String(input.publisher ?? "").trim() || null,
+            String(input.published_at ?? t.slice(0, 10)),
+            trust,
+            JSON.stringify(keywords),
+            t,
+            t,
+            t,
+            s.userId,
+            "approved",
+          );
+          audit(s, "create", "source", sid, null, {
+            label: labelEn,
+            trust,
+            keywords,
+          });
+          return ok({ source: sid });
+        }
+
+        const prior = one<{
+          label_en: string;
+          trust: string;
+          keywords: string;
+          status: string;
+        }>(
+          "SELECT label_en,trust,keywords,status FROM source WHERE id = ? AND workspace_id = ?",
+          a,
+          s.workspaceId,
+        );
+        if (!prior) throw new HttpError(404, "no_source", "No such source.");
+
+        if (action === "retire") {
+          run(
+            "UPDATE source SET status='retired',updated_at=?,revision=revision+1 WHERE id=?",
+            now(),
+            a,
+          );
+          audit(
+            s,
+            "review",
+            "source",
+            a,
+            { status: prior.status },
+            { status: "retired" },
+            String(input.reason ?? "").trim() || undefined,
+          );
+          return ok({ ok: true });
+        }
+        if (action === "restore") {
+          run(
+            "UPDATE source SET status='approved',updated_at=?,revision=revision+1 WHERE id=?",
+            now(),
+            a,
+          );
+          audit(
+            s,
+            "review",
+            "source",
+            a,
+            { status: prior.status },
+            { status: "approved" },
+          );
+          return ok({ ok: true });
+        }
+
+        const trust = String(input.trust ?? prior.trust);
+        if (!TRUST.includes(trust)) {
+          throw new HttpError(
+            400,
+            "bad_trust",
+            "Trust must be high, medium, or low.",
+          );
+        }
+        const keywords =
+          input.keywords === undefined
+            ? (JSON.parse(prior.keywords || "[]") as string[])
+            : parseKeywords(input.keywords);
+        if (keywords.length === 0) {
+          throw new HttpError(
+            400,
+            "keywords_required",
+            "A source needs at least one subject tag.",
+          );
+        }
+        run(
+          `UPDATE source SET label_en=?,label_zh=?,url=?,publisher=?,published_at=?,trust=?,keywords=?,
+                  updated_at=?,revision=revision+1 WHERE id=? AND workspace_id=?`,
+          String(input.label_en ?? prior.label_en),
+          String(input.label_zh ?? input.label_en ?? prior.label_en),
+          String(input.url ?? "").trim() || null,
+          String(input.publisher ?? "").trim() || null,
+          String(input.published_at ?? now().slice(0, 10)),
+          trust,
+          JSON.stringify(keywords),
+          now(),
+          a,
+          s.workspaceId,
+        );
+        audit(
+          s,
+          "edit",
+          "source",
+          a,
+          { trust: prior.trust, keywords: prior.keywords },
+          { trust, keywords },
+        );
         return ok({ ok: true });
       }
 
