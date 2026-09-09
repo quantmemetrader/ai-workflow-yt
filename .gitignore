@@ -1,18 +1,11 @@
 node_modules
 .next
-# The site and the API are separate builds of this repo.
-.next-api
-.next-site
 out
-data
-*.db
-*.db-journal
-*.db-wal
-*.db-shm
 .env*
 !.env.example
 .DS_Store
 .vercel
-.impeccable/review
+
+# Unsubsetted CJK font source (17MB) — kept locally for future subsetting,
+# not meant to be committed raw.
 assets/NotoSansSC.ttf
-app/fonts/.subset-charset.txt

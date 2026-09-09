@@ -1,9 +1,8 @@
 {
-  "name": "throughline-site",
+  "name": "video-agent-platform",
   "version": "0.1.0",
   "private": true,
   "engines": {
-    "//": "State is stored through node:sqlite, which first ships in 22.5.",
     "node": ">=22.5"
   },
   "scripts": {
