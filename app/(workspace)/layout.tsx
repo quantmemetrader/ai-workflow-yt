@@ -1,17 +1,17 @@
 import Link from "next/link";
 
 const NAV = [
-  { href: "/chat", label: "Chat", spec: "§4.2" },
-  { href: "/files", label: "Files", spec: "§3" },
-  { href: "/research", label: "Research", spec: "§4.3" },
-  { href: "/script", label: "Script", spec: "§4.4" },
-  { href: "/video", label: "Video", spec: "§4.5" },
-  { href: "/publish", label: "Publish", spec: "§4.6" },
-  { href: "/accounting", label: "Accounting", spec: "§4.7" },
-  { href: "/finance", label: "Finance", spec: "§4.8" },
-  { href: "/legal", label: "Legal", spec: "§4.9" },
-  { href: "/hr", label: "HR", spec: "§4.10" },
-  { href: "/admin", label: "Admin", spec: "§4.11", gated: true },
+  { href: "/chat", label: "Chat", spec: "Section 4.2" },
+  { href: "/files", label: "Files", spec: "Section 3" },
+  { href: "/research", label: "Research", spec: "Section 4.3" },
+  { href: "/script", label: "Script", spec: "Section 4.4" },
+  { href: "/video", label: "Video", spec: "Section 4.5" },
+  { href: "/publish", label: "Publish", spec: "Section 4.6" },
+  { href: "/accounting", label: "Accounting", spec: "Section 4.7" },
+  { href: "/finance", label: "Finance", spec: "Section 4.8" },
+  { href: "/legal", label: "Legal", spec: "Section 4.9" },
+  { href: "/hr", label: "HR", spec: "Section 4.10" },
+  { href: "/admin", label: "Admin", spec: "Section 4.11", gated: true },
 ];
 
 export default function WorkspaceLayout({ children }: { children: React.ReactNode }) {

@@ -13,12 +13,12 @@ wins — raise a discrepancy rather than resolving it silently in code.
 ## Status
 
 Scaffold stage. The route structure under `app/(workspace)/` mirrors the
-shell and eleven surfaces described in the spec's §4, each as a stub page
+shell and eleven surfaces described in the spec's Section 4, each as a stub page
 with no auth, no database, and no agent behind it yet. Nothing here is
-functional. See the spec's §10 Build order for the intended sequence
+functional. See the spec's Section 10 Build order for the intended sequence
 (auth/ReBAC → data model/files → job pipeline → assistant agent → modules).
 
-## Stack (per spec §1)
+## Stack (per spec Section 1)
 
 Postgres 16 · Redis (job queue) · S3-compatible object storage · OpenFGA or
 SpiceDB (ReBAC — content permissions are not a hand-rolled table) · pgvector

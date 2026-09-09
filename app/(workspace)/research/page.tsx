@@ -4,7 +4,7 @@ export default function ResearchPage() {
   return (
     <ModuleStub
       title="Market Research"
-      spec="Build-Spec §4.3"
+      spec="Build-Spec Section 4.3"
       summary="Trends, search and compare, content performance, comment inbox, and topic backlog — sourced from GDELT, YouTube mostPopular, and Google Trends."
       screens={[
         "Trends dashboard",
