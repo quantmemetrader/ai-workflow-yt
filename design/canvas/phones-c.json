@@ -1,0 +1,62 @@
+[
+ {
+  "file": "Hr-Gate-Phone.dc.html",
+  "mod": "hr",
+  "title": "Overview"
+ },
+ {
+  "file": "Hr-Leave-Phone.dc.html",
+  "mod": "hr",
+  "title": "Leave"
+ },
+ {
+  "file": "Hr-Recruit-Phone.dc.html",
+  "mod": "hr",
+  "title": "Recruitment"
+ },
+ {
+  "file": "Hr-Candidates-Phone.dc.html",
+  "mod": "hr",
+  "title": "Candidate records"
+ },
+ {
+  "file": "Hr-Employees-Phone.dc.html",
+  "mod": "hr",
+  "title": "Employee records"
+ },
+ {
+  "file": "Adm-People-Phone.dc.html",
+  "mod": "admin",
+  "title": "People"
+ },
+ {
+  "file": "Adm-Ent-Phone.dc.html",
+  "mod": "admin",
+  "title": "Entitlements"
+ },
+ {
+  "file": "Adm-Tokens-Phone.dc.html",
+  "mod": "admin",
+  "title": "Token dashboard"
+ },
+ {
+  "file": "Adm-Budgets-Phone.dc.html",
+  "mod": "admin",
+  "title": "Budgets"
+ },
+ {
+  "file": "Adm-Channels-Phone.dc.html",
+  "mod": "admin",
+  "title": "Channels and credentials"
+ },
+ {
+  "file": "Adm-Audit-Phone.dc.html",
+  "mod": "admin",
+  "title": "Audit log"
+ },
+ {
+  "file": "Adm-Know-Phone.dc.html",
+  "mod": "admin",
+  "title": "Knowledge and skills"
+ }
+]

@@ -1,0 +1,376 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<!-- hand-authored: Video Edit · Audio. Rebuild with video-screens.mjs -->
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;450;500;600&family=Noto+Sans+HK:wght@400;500&display=swap">
+  <style>
+    html, body { overflow: hidden; }
+    body { margin: 0; font-family: Inter, 'PingFang HK', 'Noto Sans HK', system-ui, sans-serif; font-weight: 420; letter-spacing: 0.02em; -webkit-font-smoothing: antialiased; }
+    * { box-sizing: border-box; }
+    a { color: #007be0; text-decoration: none; }
+    img { display: block; }
+    p { margin: 0; }
+
+    @keyframes fadeUp { from { transform: translateY(10px); opacity: 0 } to { transform: none; opacity: 1 } }
+    @keyframes rowIn  { from { transform: translateY(7px);  opacity: 0 } to { transform: none; opacity: 1 } }
+    .scr { animation: fadeUp .24s cubic-bezier(.32,.72,0,1) both; }
+    .tr  { animation: rowIn .3s cubic-bezier(.32,.72,0,1) both; }
+    .tr:nth-of-type(1){animation-delay:.01s} .tr:nth-of-type(2){animation-delay:.035s}
+    .tr:nth-of-type(3){animation-delay:.06s} .tr:nth-of-type(4){animation-delay:.085s}
+    .tr:nth-of-type(5){animation-delay:.11s} .tr:nth-of-type(6){animation-delay:.135s}
+    .tr:nth-of-type(7){animation-delay:.16s} .tr:nth-of-type(8){animation-delay:.185s}
+
+    /* rail */
+    .r { width: 34px; height: 34px; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: #7c7c7c; transition: background .16s ease, color .16s ease; }
+    .r svg { width: 17px; height: 17px; fill: currentColor; }
+    .r.on { background: #ffffff; box-shadow: 0 1px 2px rgba(0,0,0,0.1); color: #171717; }
+    .r.no { opacity: .32; }
+
+    /* sidebar */
+    .n { display: flex; align-items: center; gap: 8px; height: 28px; padding: 0 9px; border-radius: 8px; font-size: 12.5px; color: #525252; transition: background .16s ease; }
+    .n.on { background: #ffffff; box-shadow: 0 1px 2px rgba(0,0,0,0.1); color: #171717; font-weight: 500; }
+    .n b { margin-left: auto; font-size: 10.5px; font-weight: 500; color: #999999; }
+    .n i { margin-left: auto; font-style: normal; display: inline-flex; align-items: center; height: 17px; padding: 0 6px; border-radius: 9px; background: #ffe7e7; color: #e03636; font-size: 10px; font-weight: 500; }
+    .lbl { font-size: 10.5px; font-weight: 500; color: #999999; padding: 0 9px; }
+
+    /* generic */
+    .bar { height: 48px; flex-shrink: 0; border-bottom: 1px solid #ededed; display: flex; align-items: center; gap: 10px; padding: 0 20px; }
+    .h1 { font-size: 14px; font-weight: 500; }
+    .mut { font-size: 12px; color: #999999; }
+    .btn { height: 30px; padding: 0 12px; border-radius: 8px; display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; white-space: nowrap; }
+    .btn.p { background: #007be0; color: #fff; font-weight: 500; }
+    .btn.s { border: 1px solid #ededed; color: #525252; }
+    .btn svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+    .chip { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 11px; border: 1px solid #ededed; border-radius: 8px; font-size: 12px; color: #4a5763; white-space: nowrap; }
+    .chip svg { width: 10px; height: 10px; stroke: #999999; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    .bd { display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border-radius: 6px; font-size: 11px; font-weight: 500; white-space: nowrap; }
+    .gray { background: #f3f3f3; color: #525252 }
+    .blue { background: #e6f4ff; color: #007be0 }
+    .grn  { background: #e4faeb; color: #278f5e }
+    .amb  { background: #fff7d3; color: #db7706 }
+    .red  { background: #ffe7e7; color: #e03636 }
+    .card { border: 1px solid #ededed; border-radius: 12px; background: #fff; padding: 16px; }
+    .kv { display: flex; justify-content: space-between; gap: 14px; padding: 8px 0; border-bottom: 1px solid #f3f3f3; font-size: 12.5px; }
+    .kv span:first-child { color: #999999; }
+    .av { width: 20px; height: 20px; border-radius: 10px; object-fit: cover; flex-shrink: 0; }
+    .stat { border: 1px solid #ededed; border-radius: 12px; padding: 13px 15px; background: #fff; }
+    .stat i { font-style: normal; display: block; font-size: 10.5px; font-weight: 500; color: #999999; }
+    .stat b { display: block; font-size: 22px; font-weight: 500; letter-spacing: -0.01em; margin-top: 6px; font-variant-numeric: tabular-nums; }
+
+    /* table */
+    .t { width: 100%; }
+    .t .hd { height: 32px; border-bottom: 1px solid #ededed; display: grid; align-items: center; }
+    .t .hd > * { font-size: 10.5px; font-weight: 500; color: #7c7c7c; padding: 0 12px; }
+    .tr { height: 46px; border-bottom: 1px solid #f3f3f3; display: grid; align-items: center; }
+    .tr > * { font-size: 12.5px; color: #383838; padding: 0 12px; min-width: 0; display: flex; align-items: center; }
+    .num { justify-content: flex-end; font-variant-numeric: tabular-nums; }
+    .el { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
+    .body { flex-grow: 1; min-height: 0; padding: 18px 20px; overflow: hidden; }
+    .focus { box-shadow: 0 0 0 3px #EFF6FF; }
+  
+    .tabs { height: 40px; flex-shrink: 0; display: flex; align-items: stretch; gap: 20px; padding: 0 22px; border-bottom: 1px solid #ededed; }
+    .tb { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: #7c7c7c; border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap; }
+    .tb.on { color: #171717; font-weight: 500; border-color: #171717; }
+    .tb b { font-size: 10.5px; font-weight: 500; color: #999999; }
+    .tb i { font-style: normal; display: inline-flex; align-items: center; height: 16px; padding: 0 5px; border-radius: 8px; background: #e6f4ff; color: #007be0; font-size: 10px; font-weight: 500; }
+    .rtab { height: 26px; padding: 0 11px; border-radius: 7px; display: flex; align-items: center; gap: 6px; font-size: 12px; color: #7c7c7c; }
+    .rtab.on { background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.1); color: #171717; font-weight: 500; }
+    .cap { font-size: 11px; color: #999999; }
+    .seg { width: 30px; height: 26px; border-radius: 6px; display: flex; align-items: center; justify-content: center; cursor: pointer; }
+    .seg svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+    .fc { height: 26px; padding: 0 10px; border-radius: 7px; display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: #525252; border: 1px solid #ededed; background: #fff; white-space: nowrap; }
+    .fc b { font-weight: 500; color: #999999; font-size: 11px; }
+    .fc.on { background: #171717; border-color: #171717; color: #fff; }
+    .fc.on b { color: #c7c7c7; }
+    .fc svg { width: 10px; height: 10px; stroke: #999999; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    .dot { width: 7px; height: 7px; border-radius: 4px; flex-shrink: 0; }
+    .kbd { display: inline-flex; align-items: center; height: 18px; padding: 0 5px; border-radius: 4px; border: 1px solid #e2e2e2; font-size: 10.5px; color: #7c7c7c; background: #fafafa; }
+    .ck { width: 18px; height: 18px; border-radius: 9px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .ck svg { width: 11px; height: 11px; stroke: #fff; fill: none; stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; }
+    .cb { width: 16px; height: 16px; border-radius: 4px; border: 1px solid #999999; background: #fff; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
+    .cb.on { border: none; background: #171717; }
+    .cb svg { width: 11px; height: 11px; stroke: #fff; fill: none; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+    .li { display: flex; gap: 11px; padding: 11px 0; border-bottom: 1px solid #f3f3f3; }
+    .li .a { font-size: 12.5px; color: #171717; }
+    .li .b { font-size: 11.5px; color: #999999; margin-top: 2px; }
+
+    /* item switcher (left sidebar inside a document / project) */
+    .sn { display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 9px; border-radius: 8px; font-size: 12.5px; color: #525252; }
+    .sn > span:not(.dot) { flex-grow: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .sn.on { background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.1); color: #171717; font-weight: 500; }
+    .sn img.av { width: 16px; height: 16px; border-radius: 8px; }
+    .sg { display: flex; align-items: center; gap: 6px; font-size: 10.5px; font-weight: 500; color: #999999; padding: 0 9px; margin: 14px 0 4px; }
+    .sg svg { width: 10px; height: 10px; stroke: #999999; fill: none; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+    .ptog { width: 26px; height: 26px; border-radius: 7px; display: flex; align-items: center; justify-content: center; color: #7c7c7c; cursor: pointer; flex-shrink: 0; }
+    .ptog:hover { background: #ededed; }
+    .ptog svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+    .mini { width: 52px; flex-shrink: 0; background: #f8f8f8; border-right: 1px solid #ededed; display: flex; flex-direction: column; align-items: center; padding: 10px 0; gap: 4px; }
+    .mi { width: 36px; height: 36px; border-radius: 9px; display: flex; align-items: center; justify-content: center; position: relative; }
+    .mi.on { background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.1); }
+    .mi .dot { position: absolute; right: 3px; bottom: 3px; box-shadow: 0 0 0 2px #f8f8f8; }
+    .mi.on .dot { box-shadow: 0 0 0 2px #fff; }
+    .crop { background-repeat: no-repeat; background-color: #f3f3f3; }
+    .bd.vio { background: #f3f0ff; color: #6846e3; }
+    .costc { display: flex; align-items: center; gap: 7px; height: 28px; padding: 0 10px; border: 1px solid #ededed; border-radius: 8px; font-size: 12px; color: #383838; white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .costc .m { width: 40px; height: 4px; border-radius: 2px; background: #ededed; }
+    .costc .m div { height: 4px; border-radius: 2px; background: var(--ac); }
+    .sth { position: relative; aspect-ratio: 16 / 9; border-radius: 9px; overflow: hidden; }
+    .pill { position: absolute; height: 18px; padding: 0 6px; border-radius: 5px; background: rgba(255,255,255,.94); font-size: 10.5px; font-weight: 500; color: #171717; display: flex; align-items: center; gap: 4px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .pill.dk { background: rgba(23,23,23,.72); color: #fff; }
+    .stt { font-size: 12.5px; font-weight: 500; margin-top: 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .srow { display: flex; align-items: center; gap: 6px; margin-top: 5px; min-width: 0; }
+    .srow .st { margin-left: auto; display: flex; align-items: center; gap: 5px; font-size: 11px; color: #7c7c7c; white-space: nowrap; }
+    .beat { display: flex; gap: 10px; padding: 8px 10px; border-radius: 8px; }
+    .beat.on { background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+    .beat .bnum { font-size: 10.5px; color: #999999; font-weight: 500; width: 36px; flex-shrink: 0; font-variant-numeric: tabular-nums; line-height: 1.5; }
+    .beat .bnum b { display: block; font-weight: 500; color: #c7c7c7; }
+    .beat .x { font-size: 12px; line-height: 1.45; color: #383838; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; min-width: 0; flex-grow: 1; }
+    .seg2 { height: 34px; border-radius: 5px; position: relative; overflow: hidden; min-width: 0; display: flex; align-items: flex-end; padding: 0 0 3px 5px; font-size: 10px; font-weight: 600; color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,.4); }
+    .qh { display: flex; align-items: center; gap: 8px; margin: 12px 0 2px; font-size: 11px; font-weight: 500; color: #7c7c7c; }
+    .qh b { font-weight: 500; color: #c7c7c7; }
+    .qr { display: grid; grid-template-columns: 26px minmax(0, 1fr) 92px 128px 46px 150px 74px; align-items: center; height: 40px; border-bottom: 1px solid #f3f3f3; font-size: 12.5px; color: #383838; }
+    .qr > * { padding: 0 7px; min-width: 0; display: flex; align-items: center; gap: 7px; }
+    .qr .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
+    .qr .num { justify-content: flex-end; font-variant-numeric: tabular-nums; }
+    .pos { width: 18px; height: 18px; border-radius: 5px; background: #f3f3f3; color: #525252; font-size: 10.5px; font-weight: 600; display: flex; align-items: center; justify-content: center; }
+    .pbar { height: 4px; border-radius: 2px; background: #ededed; flex-grow: 1; position: relative; overflow: hidden; }
+    .pbar div { height: 4px; border-radius: 2px; background: var(--ac); }
+    .floor { background-color: #fcfcfc; background-image: linear-gradient(45deg, #f5f5f5 25%, transparent 25%, transparent 75%, #f5f5f5 75%), linear-gradient(45deg, #f5f5f5 25%, transparent 25%, transparent 75%, #f5f5f5 75%); background-size: 12px 12px; background-position: 0 0, 6px 6px; }
+    .lbl2 { font-size: 12px; font-weight: 500; color: #171717; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .lbl3 { font-size: 11px; color: #999999; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; }
+    .ctile { min-width: 0; }
+    .cth { position: relative; aspect-ratio: 16 / 9; border-radius: 8px; overflow: hidden; }
+    .cn { font-size: 12px; color: #171717; margin-top: 7px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .hov { position: absolute; inset: 0; background: rgba(23,23,23,.42); display: flex; align-items: center; justify-content: center; gap: 6px; }
+    .hb { width: 28px; height: 28px; border-radius: 8px; background: rgba(255,255,255,.95); display: flex; align-items: center; justify-content: center; }
+    .hb svg { width: 14px; height: 14px; stroke: #171717; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+    .slot { flex: 1 1 0; min-width: 0; }
+    .slot .sb { height: 44px; border-radius: 7px; position: relative; overflow: hidden; background: #f5f5f5; display: flex; align-items: center; justify-content: center; }
+    .slot .sl { font-size: 10.5px; color: #999999; margin-top: 5px; text-align: center; font-variant-numeric: tabular-nums; }
+    .lane { position: relative; height: 40px; border-radius: 7px; background: #fafafa; overflow: hidden; }
+    .tk { display: flex; align-items: center; gap: 9px; height: 34px; padding: 0 9px; border-radius: 8px; font-size: 12px; color: #383838; }
+    .tk.on { background: #f8f8f8; }
+    .play { width: 24px; height: 24px; border-radius: 12px; background: #fff; border: 1px solid #e2e2e2; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .play svg { width: 10px; height: 10px; fill: #171717; }
+    .aspb { height: 26px; padding: 0 10px; border-radius: 6px; display: flex; align-items: center; gap: 6px; font-size: 12px; cursor: pointer; }
+    .cut { flex-shrink: 0; cursor: pointer; }
+    .cut .cb2 { height: 68px; display: flex; align-items: flex-end; }
+    .cut .ci { border-radius: 6px; overflow: hidden; position: relative; }
+
+    /* pixel render floor */
+    @keyframes bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-1px); } }
+    @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+    @keyframes steam { 0% { transform: translateY(0); opacity: 1; } 100% { transform: translateY(-4px); opacity: 0; } }
+    @keyframes smoke { 0% { transform: translate(0, 0); opacity: .9; } 100% { transform: translate(2px, -6px); opacity: 0; } }
+    @keyframes zz { 0% { transform: translate(0, 0); opacity: 0; } 30% { opacity: 1; } 100% { transform: translate(3px, -5px); opacity: 0; } }
+    @keyframes belt { 0% { transform: translateX(0); } 100% { transform: translateX(14px); } }
+    @keyframes roll { to { stroke-dashoffset: -4; } }
+    @keyframes type { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(1px); } }
+    .bob { animation: bob .9s steps(1, end) infinite; }
+    .type { animation: type .3s steps(1, end) infinite; }
+    .type2 { animation: type .3s steps(1, end) infinite .15s; }
+    .blink { animation: blink 1s steps(1, end) infinite; }
+    .steam { animation: steam 1.6s steps(4) infinite; }
+    .smoke { animation: smoke 1.8s steps(6) infinite; }
+    .smoke2 { animation: smoke 1.8s steps(6) infinite .9s; }
+    .zz { animation: zz 2.4s steps(6) infinite; }
+    .zz2 { animation: zz 2.4s steps(6) infinite 1.2s; }
+    .belt { animation: belt 2.8s steps(14) infinite; }
+    .roll { animation: roll .5s steps(2) infinite; }</style>
+</helmet>
+
+<div style="--ac: {{accent}}; width: 1440px; height: 900px; display: flex; background: #ffffff; color: #171717; overflow: hidden;">
+
+  <div style="width: 52px; flex-shrink: 0; background: #f8f8f8; border-right: 1px solid #ededed; display: flex; flex-direction: column; align-items: center; padding: 10px 0; gap: 3px;">
+    <div style="width: 28px; height: 28px; border-radius: 8px; background: #171717; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 11px; font-weight: 600; margin-bottom: 10px;">AF</div>
+    <div class="r"><svg viewBox="0 0 24 24"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 9.5 9.5 0 0 1-2.8-.4L4 21l1.4-4.1A8.2 8.2 0 0 1 3.6 11.5 8.4 8.4 0 0 1 12 3.1a8.4 8.4 0 0 1 9 8.4z"/></svg></div>
+    <div class="r"><svg viewBox="0 0 24 24"><path d="M3.6 6.9a2.1 2.1 0 0 1 2.1-2.1h3.2a2.1 2.1 0 0 1 1.62.76l1.02 1.24h6.76a2.1 2.1 0 0 1 2.1 2.1v8.3a2.1 2.1 0 0 1-2.1 2.1H5.7a2.1 2.1 0 0 1-2.1-2.1z"/></svg></div>
+    <div class="r"><svg viewBox="0 0 24 24"><rect x="3.4" y="12.6" width="4.2" height="7.4" rx="1.5"/><rect x="9.9" y="8.4" width="4.2" height="11.6" rx="1.5"/><rect x="16.4" y="4" width="4.2" height="16" rx="1.5"/></svg></div>
+    <div class="r"><svg viewBox="0 0 24 24"><path d="M6.4 3.4h7.4L18.6 8v12.6H6.4z"/><path d="M9.4 12.3h6M9.4 15.6h6" stroke="#f8f8f8" stroke-width="1.5" fill="none"/></svg></div>
+    <div class="r on"><svg viewBox="0 0 24 24"><rect x="3.4" y="5.4" width="12.4" height="13.2" rx="2.1"/><path d="m16.6 13 4.6 2.8V8.2L16.6 11z"/></svg></div>
+    <div class="r"><svg viewBox="0 0 24 24"><path d="M21.86 4.14a1.1 1.1 0 0 0-1.14-.18L2.9 11.13c-.86.34-.83 1.58.05 1.87l4.46 1.5 1.68 5.06c.24.72 1.15.93 1.68.38l2.4-2.5 4.4 3.23c.6.44 1.46.12 1.63-.6z"/></svg></div>
+    <div style="width: 22px; height: 1px; background: #e2e2e2; margin: 6px 0;"></div>
+    <div class="r"><svg viewBox="0 0 24 24"><rect x="5.4" y="3.4" width="13.2" height="17.2" rx="2"/><path d="M8.4 8h7.2M8.4 12h7.2M8.4 16h4" stroke="#f8f8f8" stroke-width="1.5" fill="none"/></svg></div>
+    <div class="r"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.6"/><path d="M14.8 9.4c-.4-1-1.5-1.6-2.8-1.6-1.6 0-2.8.9-2.8 2.1 0 2.9 5.7 1.4 5.7 4.3 0 1.2-1.2 2.1-2.9 2.1-1.4 0-2.5-.6-2.9-1.6M12 6.4v1.4M12 16.3v1.4" stroke="#f8f8f8" stroke-width="1.5" fill="none"/></svg></div>
+    <div class="r"><svg viewBox="0 0 24 24"><path d="M12 3.2 4.4 6.2v5.6c0 4.4 3.1 8.3 7.6 9.3 4.5-1 7.6-4.9 7.6-9.3V6.2z"/></svg></div>
+    <div class="r no"><svg viewBox="0 0 24 24"><circle cx="12" cy="7.8" r="3.7"/><path d="M4.7 20.2a7.3 7.3 0 0 1 14.6 0z"/></svg></div>
+    <div class="r"><svg viewBox="0 0 24 24"><path d="M4 7.4h16M4 12h16M4 16.6h16" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linecap="round"/><circle cx="9" cy="7.4" r="2.2"/><circle cx="15" cy="16.6" r="2.2"/></svg></div>
+    <div style="flex-grow: 1;"></div>
+    <img class="av" src="pfp-chan.jpg" style="width: 26px; height: 26px;">
+  </div>
+
+<sc-if value="{{sideOpen}}" hint-placeholder-val="{{ true }}">
+  <div style="width: 240px; flex-shrink: 0; background: #f8f8f8; border-right: 1px solid #ededed; display: flex; flex-direction: column; padding: 8px 8px 10px;">
+    <div style="display: flex; align-items: center; gap: 6px; padding: 0 0 0 9px; font-size: 12px; color: #7c7c7c;"><svg viewBox="0 0 24 24" style="width: 12px; height: 12px; stroke: #7c7c7c; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><path d="m14.5 6-6 6 6 6"/></svg>All projects<div style="margin-left: auto;"><div class="ptog" onClick="{{ toggleSide }}" title="Hide the project list"><svg viewBox="0 0 24 24"><rect x="3.8" y="4.8" width="16.4" height="14.4" rx="2.6"/><path d="M9.6 4.8v14.4"/></svg></div></div></div>
+    <div style="padding: 8px 9px 10px; font-size: 14px; font-weight: 500;">Video Edit</div>
+    <div style="height: 30px; border-radius: 8px; background: #fff; border: 1px solid #ededed; display: flex; align-items: center; gap: 7px; padding: 0 9px; margin: 0 1px;">
+      <svg viewBox="0 0 24 24" style="width: 12px; height: 12px; stroke: #999999; fill: none; stroke-width: 1.9; stroke-linecap: round;"><circle cx="11" cy="11" r="6.4"/><path d="m15.8 15.8 4 4"/></svg><span style="font-size: 12px; color: #999999; flex-grow: 1;">Jump to a project</span><span class="kbd">⌘K</span>
+    </div>
+    <div class="sg"><svg viewBox="0 0 24 24"><path d="m6.5 9.5 5.5 5.5 5.5-5.5"/></svg>Rendering<span style="margin-left: auto; font-weight: 420;">1</span></div>
+    <div style="display: flex; flex-direction: column; gap: 1px;">
+      <div class="sn on" style="height: 34px;"><div class="crop" style="overflow: hidden; width: 30px; height: 17px; border-radius: 4px; flex-shrink: 0;"><img src="cover-history.jpg" style="width: 100%; height: 100%; object-fit: cover; object-position: 50% 50%;"></div><span>History of Greece · Ep 75</span><img class="av" src="pfp-chan.jpg" style="width: 16px; height: 16px;"></div>
+    </div>
+    <div class="sg"><svg viewBox="0 0 24 24"><path d="m6.5 9.5 5.5 5.5 5.5-5.5"/></svg>In review<span style="margin-left: auto; font-weight: 420;">1</span></div>
+    <div style="display: flex; flex-direction: column; gap: 1px;">
+      <div class="sn" style="height: 34px;"><div class="crop" style="overflow: hidden; width: 30px; height: 17px; border-radius: 4px; flex-shrink: 0;"><img src="cover-orange.jpg" style="width: 100%; height: 100%; object-fit: cover; object-position: 50% 50%;"></div><span>Orange typography cut</span><img class="av" src="pfp-leung.jpg" style="width: 16px; height: 16px;"></div>
+    </div>
+    <div class="sg"><svg viewBox="0 0 24 24"><path d="m6.5 9.5 5.5 5.5 5.5-5.5"/></svg>On hold<span style="margin-left: auto; font-weight: 420;">1</span></div>
+    <div style="display: flex; flex-direction: column; gap: 1px;">
+      <div class="sn" style="height: 34px;"><div class="crop" style="overflow: hidden; width: 30px; height: 17px; border-radius: 4px; flex-shrink: 0;"><img src="cover-goodday.jpg" style="width: 100%; height: 100%; object-fit: cover; object-position: 50% 50%;"></div><span>Good day · collage teaser</span><img class="av" src="pfp-amy.jpg" style="width: 16px; height: 16px;"></div>
+    </div>
+    <div class="sg"><svg viewBox="0 0 24 24"><path d="m6.5 9.5 5.5 5.5 5.5-5.5"/></svg>Waiting for script<span style="margin-left: auto; font-weight: 420;">1</span></div>
+    <div style="display: flex; flex-direction: column; gap: 1px;">
+      <div class="sn" style="height: 34px;"><div style="width: 30px; height: 17px; border-radius: 4px; background: #f3f3f3; display: flex; align-items: center; justify-content: center; flex-shrink: 0;"><svg viewBox="0 0 10 9" width="10" height="9" shape-rendering="crispEdges" style="display: block; flex-shrink: 0;"><rect x="0" y="0" width="10" height="1" fill="#262626"/><rect x="0" y="1" width="1" height="1" fill="#262626"/><rect x="1" y="1" width="1" height="1" fill="#ffffff"/><rect x="2" y="1" width="2" height="1" fill="#262626"/><rect x="4" y="1" width="1" height="1" fill="#ffffff"/><rect x="5" y="1" width="2" height="1" fill="#262626"/><rect x="7" y="1" width="1" height="1" fill="#ffffff"/><rect x="8" y="1" width="2" height="1" fill="#262626"/><rect x="0" y="2" width="10" height="1" fill="#262626"/><rect x="0" y="3" width="1" height="1" fill="#262626"/><rect x="1" y="3" width="8" height="1" fill="#e6e9ee"/><rect x="9" y="3" width="1" height="1" fill="#262626"/><rect x="0" y="4" width="1" height="1" fill="#262626"/><rect x="1" y="4" width="1" height="1" fill="#e6e9ee"/><rect x="2" y="4" width="5" height="1" fill="#aab3bf"/><rect x="7" y="4" width="2" height="1" fill="#e6e9ee"/><rect x="9" y="4" width="1" height="1" fill="#262626"/><rect x="0" y="5" width="1" height="1" fill="#262626"/><rect x="1" y="5" width="8" height="1" fill="#e6e9ee"/><rect x="9" y="5" width="1" height="1" fill="#262626"/><rect x="0" y="6" width="1" height="1" fill="#262626"/><rect x="1" y="6" width="1" height="1" fill="#e6e9ee"/><rect x="2" y="6" width="3" height="1" fill="#aab3bf"/><rect x="5" y="6" width="4" height="1" fill="#e6e9ee"/><rect x="9" y="6" width="1" height="1" fill="#262626"/><rect x="0" y="7" width="1" height="1" fill="#262626"/><rect x="1" y="7" width="8" height="1" fill="#e6e9ee"/><rect x="9" y="7" width="1" height="1" fill="#262626"/><rect x="0" y="8" width="10" height="1" fill="#262626"/></svg></div><span>Sham Shui Po dai pai dong revival</span><img class="av" src="pfp-amy.jpg" style="width: 16px; height: 16px;"></div>
+    </div>
+    <div class="sg"><svg viewBox="0 0 24 24"><path d="m6.5 9.5 5.5 5.5 5.5-5.5"/></svg>Exported<span style="margin-left: auto; font-weight: 420;">2</span></div>
+    <div style="display: flex; flex-direction: column; gap: 1px;">
+      <div class="sn" style="height: 34px;"><div class="crop" style="overflow: hidden; width: 30px; height: 17px; border-radius: 4px; flex-shrink: 0;"><img src="cover-porsche.jpg" style="width: 100%; height: 100%; object-fit: cover; object-position: 50% 50%;"></div><span>Porsche cat · night drive</span><img class="av" src="pfp-chan.jpg" style="width: 16px; height: 16px;"></div>
+      <div class="sn" style="height: 34px;"><div class="crop" style="overflow: hidden; width: 30px; height: 17px; border-radius: 4px; flex-shrink: 0;"><img src="cover-domore.jpg" style="width: 100%; height: 100%; object-fit: cover; object-position: 50% 50%;"></div><span>Do more · brand spot</span><img class="av" src="pfp-michelle.jpg" style="width: 16px; height: 16px;"></div>
+    </div>
+    <div style="margin-top: auto; padding: 10px 9px 2px; border-top: 1px solid #ededed;">
+      <div class="cap" style="line-height: 1.5;">A project opens when its script is locked in Script.</div>
+    </div>
+  </div>
+</sc-if>
+<sc-if value="{{sideClosed}}" hint-placeholder-val="{{ false }}">
+  <div class="mini">
+    <div class="ptog" onClick="{{ toggleSide }}" title="Show the project list"><svg viewBox="0 0 24 24"><rect x="3.8" y="4.8" width="16.4" height="14.4" rx="2.6"/><path d="M9.6 4.8v14.4"/></svg></div>
+    <div style="width: 22px; height: 1px; background: #e2e2e2; margin: 6px 0 4px;"></div>
+    <div class="mi on" title="History of Greece · Ep 75"><div class="crop" style="overflow: hidden; width: 28px; height: 16px; border-radius: 4px; flex-shrink: 0;"><img src="cover-history.jpg" style="width: 100%; height: 100%; object-fit: cover; object-position: 50% 50%;"></div><span class="dot" style="background: #007be0; width: 6px; height: 6px;"></span></div>
+    <div class="mi" title="Orange typography cut"><div class="crop" style="overflow: hidden; width: 28px; height: 16px; border-radius: 4px; flex-shrink: 0;"><img src="cover-orange.jpg" style="width: 100%; height: 100%; object-fit: cover; object-position: 50% 50%;"></div><span class="dot" style="background: #db7706; width: 6px; height: 6px;"></span></div>
+    <div class="mi" title="Good day · collage teaser"><div class="crop" style="overflow: hidden; width: 28px; height: 16px; border-radius: 4px; flex-shrink: 0;"><img src="cover-goodday.jpg" style="width: 100%; height: 100%; object-fit: cover; object-position: 50% 50%;"></div><span class="dot" style="background: #999999; width: 6px; height: 6px;"></span></div>
+    <div class="mi" title="Sham Shui Po dai pai dong revival"><div style="width: 28px; height: 16px; border-radius: 4px; background: #f3f3f3; display: flex; align-items: center; justify-content: center; flex-shrink: 0;"><svg viewBox="0 0 10 9" width="10" height="9" shape-rendering="crispEdges" style="display: block; flex-shrink: 0;"><rect x="0" y="0" width="10" height="1" fill="#262626"/><rect x="0" y="1" width="1" height="1" fill="#262626"/><rect x="1" y="1" width="1" height="1" fill="#ffffff"/><rect x="2" y="1" width="2" height="1" fill="#262626"/><rect x="4" y="1" width="1" height="1" fill="#ffffff"/><rect x="5" y="1" width="2" height="1" fill="#262626"/><rect x="7" y="1" width="1" height="1" fill="#ffffff"/><rect x="8" y="1" width="2" height="1" fill="#262626"/><rect x="0" y="2" width="10" height="1" fill="#262626"/><rect x="0" y="3" width="1" height="1" fill="#262626"/><rect x="1" y="3" width="8" height="1" fill="#e6e9ee"/><rect x="9" y="3" width="1" height="1" fill="#262626"/><rect x="0" y="4" width="1" height="1" fill="#262626"/><rect x="1" y="4" width="1" height="1" fill="#e6e9ee"/><rect x="2" y="4" width="5" height="1" fill="#aab3bf"/><rect x="7" y="4" width="2" height="1" fill="#e6e9ee"/><rect x="9" y="4" width="1" height="1" fill="#262626"/><rect x="0" y="5" width="1" height="1" fill="#262626"/><rect x="1" y="5" width="8" height="1" fill="#e6e9ee"/><rect x="9" y="5" width="1" height="1" fill="#262626"/><rect x="0" y="6" width="1" height="1" fill="#262626"/><rect x="1" y="6" width="1" height="1" fill="#e6e9ee"/><rect x="2" y="6" width="3" height="1" fill="#aab3bf"/><rect x="5" y="6" width="4" height="1" fill="#e6e9ee"/><rect x="9" y="6" width="1" height="1" fill="#262626"/><rect x="0" y="7" width="1" height="1" fill="#262626"/><rect x="1" y="7" width="8" height="1" fill="#e6e9ee"/><rect x="9" y="7" width="1" height="1" fill="#262626"/><rect x="0" y="8" width="10" height="1" fill="#262626"/></svg></div><span class="dot" style="background: #c7c7c7; width: 6px; height: 6px;"></span></div>
+    <div class="mi" title="Porsche cat · night drive"><div class="crop" style="overflow: hidden; width: 28px; height: 16px; border-radius: 4px; flex-shrink: 0;"><img src="cover-porsche.jpg" style="width: 100%; height: 100%; object-fit: cover; object-position: 50% 50%;"></div><span class="dot" style="background: #278f5e; width: 6px; height: 6px;"></span></div>
+    <div class="mi" title="Do more · brand spot"><div class="crop" style="overflow: hidden; width: 28px; height: 16px; border-radius: 4px; flex-shrink: 0;"><img src="cover-domore.jpg" style="width: 100%; height: 100%; object-fit: cover; object-position: 50% 50%;"></div><span class="dot" style="background: #278f5e; width: 6px; height: 6px;"></span></div>
+  </div>
+</sc-if>
+  <div style="flex-grow: 1; display: flex; flex-direction: column; min-width: 0;">
+
+    <div class="bar" style="height: 52px; gap: 10px;">
+      <svg viewBox="0 0 24 24" style="width: 16px; height: 16px; flex-shrink: 0; stroke: #7c7c7c; fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round;"><rect x="3.4" y="5.4" width="12.4" height="13.2" rx="2.1"/><path d="m16.6 13 4.6 2.8V8.2L16.6 11z"/></svg>
+      <span class="h1" style="white-space: nowrap;">History of Greece · Ep 75</span>
+      <span class="bd blue">003 · Rendering</span>
+      <span class="mut" style="white-space: nowrap;">Script v6 · YouTube 16:9</span>
+      <div style="flex-grow: 1;"></div>
+      <div class="costc" title="Project cost so far, against its cap">HK$412.80<div class="m"><div style="width: 46%;"></div></div><span class="cap">of 900</span></div>
+      <div style="display: flex; align-items: center;"><div style="position: relative; margin-left: 0px;"><img class="av" src="pfp-chan.jpg" style="width: 24px; height: 24px; box-shadow: 0 0 0 2px #fff;"><span style="position: absolute; right: -1px; bottom: -1px; width: 8px; height: 8px; border-radius: 4px; background: #278f5e; box-shadow: 0 0 0 2px #fff;"></span></div><div style="position: relative; margin-left: -6px;"><img class="av" src="pfp-leung.jpg" style="width: 24px; height: 24px; box-shadow: 0 0 0 2px #fff;"></div></div>
+      <div class="btn s">Play from 1:57</div><div class="btn" style="background: {{accent}}; color: #fff; font-weight: 500;">Save mix</div>
+    </div>
+    <div class="tabs">
+      <div class="tb">Shots<b>9</b></div>
+      <div class="tb">Media<b>42</b></div>
+      <div class="tb">Renders<i>2</i></div>
+      <div class="tb">Preview</div>
+      <div class="tb on">Audio</div>
+      <div class="tb">Export</div>
+      <div style="flex-grow: 1;"></div>
+      <div style="display: flex; align-items: center; gap: 10px;"><span class="cap">Loudness −14 LUFS · YouTube target</span></div>
+    </div>
+    <div style="flex-grow: 1; display: flex; min-height: 0;">
+      <div style="flex-grow: 1; min-width: 0; padding: 16px 20px 0; overflow: hidden;">
+        <div style="display: grid; grid-template-columns: 1.15fr 1fr .85fr; gap: 12px;">
+          <div class="card" style="padding: 12px;">
+            <div style="display: flex; align-items: center; margin-bottom: 6px;"><span class="lbl" style="padding: 0;">Voice</span><span class="cap" style="margin-left: auto;">English VO</span></div>
+            <div class="tk on"><div class="play"><svg viewBox="0 0 24 24"><path d="M8 5.5v13l10.5-6.5z" fill="#171717" stroke="none"/></svg></div><span style="flex-grow: 1; min-width: 0;">Azure · Ryan, en-GB</span><div class="ck" style="background: #278f5e;"><svg viewBox="0 0 16 16"><path d="M3.6 8.3 6.5 11.2 12.4 5.1"/></svg></div></div>
+            <div class="tk"><div class="play"><svg viewBox="0 0 24 24"><path d="M8 5.5v13l10.5-6.5z" fill="#171717" stroke="none"/></svg></div><span style="flex-grow: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">ElevenLabs · Chan’s clone</span><span class="cap">client account</span></div>
+            <div class="tk"><div class="play"><svg viewBox="0 0 24 24"><path d="M8 5.5v13l10.5-6.5z" fill="#171717" stroke="none"/></svg></div><span style="flex-grow: 1; min-width: 0;">Azure · WanLung, 粵語</span><span class="cap">dub</span></div>
+          </div>
+          <div class="card" style="padding: 12px;">
+            <div style="display: flex; align-items: center; margin-bottom: 6px;"><span class="lbl" style="padding: 0;">Music</span><span class="cap" style="margin-left: auto;">From beat 01</span></div>
+            <div class="tk on"><div class="play"><svg viewBox="0 0 24 24"><path d="M8 5.5v13l10.5-6.5z" fill="#171717" stroke="none"/></svg></div><span style="flex-grow: 1; min-width: 0;">Aegean Drift</span><span class="bd grn">Cleared</span></div>
+            <div class="tk"><div class="play"><svg viewBox="0 0 24 24"><path d="M8 5.5v13l10.5-6.5z" fill="#171717" stroke="none"/></svg></div><span style="flex-grow: 1; min-width: 0;">Low Strings 04</span><span class="bd grn">Cleared</span></div>
+            <div class="cap" style="padding: 7px 9px 0; line-height: 1.45;">Both licensed for commercial use.</div>
+          </div>
+          <div class="card" style="padding: 12px;">
+            <div class="lbl" style="padding: 0;">Ducking</div>
+            <div style="display: flex; align-items: baseline; gap: 6px; margin-top: 8px;"><span style="font-size: 22px; font-weight: 500;">−14</span><span class="mut">dB under voice</span></div>
+            <div style="height: 4px; border-radius: 2px; background: #ededed; margin-top: 12px; position: relative;"><div style="width: 58%; height: 4px; border-radius: 2px; background: {{accent}};"></div><div style="position: absolute; left: 58%; top: -5px; width: 14px; height: 14px; margin-left: -7px; border-radius: 7px; background: #fff; box-shadow: 0 0 0 2px {{accent}}, 0 1px 3px rgba(0,0,0,.2);"></div></div>
+            <div class="kv" style="margin-top: 12px; font-size: 12px;"><span>Fade in · out</span><span>120 · 400 ms</span></div>
+          </div>
+        </div>
+
+        <div class="card" style="padding: 12px 14px 14px; margin-top: 14px;">
+          <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;"><span class="lbl" style="padding: 0;">Mix</span><span class="cap">3:48 · 3 tracks</span><div style="flex-grow: 1;"></div><span class="cap">Blue line = music level</span></div>
+          <div style="display: grid; grid-template-columns: 116px minmax(0, 1fr); gap: 8px 12px; align-items: center;">
+            <div></div>
+            <div style="display: flex; gap: 2px;"><div style="flex: 24 1 0; min-width: 0; height: 18px; border-radius: 4px; background: #f5f5f5; font-size: 10px; font-weight: 500; color: #999999; display: flex; align-items: center; padding-left: 5px;">01</div><div style="flex: 26 1 0; min-width: 0; height: 18px; border-radius: 4px; background: #f5f5f5; font-size: 10px; font-weight: 500; color: #999999; display: flex; align-items: center; padding-left: 5px;">02</div><div style="flex: 31 1 0; min-width: 0; height: 18px; border-radius: 4px; background: #f5f5f5; font-size: 10px; font-weight: 500; color: #999999; display: flex; align-items: center; padding-left: 5px;">03</div><div style="flex: 36 1 0; min-width: 0; height: 18px; border-radius: 4px; background: #f5f5f5; font-size: 10px; font-weight: 500; color: #999999; display: flex; align-items: center; padding-left: 5px;">04</div><div style="flex: 28 1 0; min-width: 0; height: 18px; border-radius: 4px; background: #e6f4ff; font-size: 10px; font-weight: 500; color: #007be0; display: flex; align-items: center; padding-left: 5px;">05</div><div style="flex: 22 1 0; min-width: 0; height: 18px; border-radius: 4px; background: #f5f5f5; font-size: 10px; font-weight: 500; color: #999999; display: flex; align-items: center; padding-left: 5px;">06</div><div style="flex: 33 1 0; min-width: 0; height: 18px; border-radius: 4px; background: #f5f5f5; font-size: 10px; font-weight: 500; color: #999999; display: flex; align-items: center; padding-left: 5px;">07</div><div style="flex: 10 1 0; min-width: 0; height: 18px; border-radius: 4px; background: #f5f5f5; font-size: 10px; font-weight: 500; color: #999999; display: flex; align-items: center; padding-left: 5px;">08</div><div style="flex: 18 1 0; min-width: 0; height: 18px; border-radius: 4px; background: #f5f5f5; font-size: 10px; font-weight: 500; color: #999999; display: flex; align-items: center; padding-left: 5px;">09</div></div>
+            <div><div style="font-size: 12px; color: #171717;">Voice-over</div><div class="cap">Ryan · 9 takes</div></div>
+            <div class="lane" style="background: transparent;"><svg viewBox="0 0 600 40" preserveAspectRatio="none" style="width: 100%; height: 40px; display: block;"><rect x="5.263157894736842" y="4" width="50" height="32" rx="4" fill="#eef1f4"/><path d="M8.3 16.7v6.5M11.3 7.8v24.5M14.3 13.9v12.1M17.3 14.7v10.6M20.3 9.6v20.7M23.3 11.6v16.9M26.3 13.5v12.9M29.3 9.4v21.2M32.3 9.4v21.2M35.3 11.5v17.1M38.3 10.1v19.8M41.3 10.5v18.9M44.3 8.8v22.4M47.3 14.4v11.2M50.3 13.1v13.8" stroke="#525252" stroke-width="1.6" stroke-linecap="round"/><rect x="68.42105263157895" y="4" width="57.89473684210526" height="32" rx="4" fill="#eef1f4"/><path d="M71.4 9.8v20.3M74.4 9.9v20.1M77.4 16.2v7.6M80.4 10.1v19.8M83.4 12.2v15.6M86.4 7.8v24.5M89.4 8.9v22.2M92.4 15.6v8.9M95.4 11.7v16.5M98.4 7.7v24.5M101.4 10.0v19.9M104.4 10.5v19.1M107.4 11.1v17.8M110.4 7.9v24.3M113.4 7.9v24.2M116.4 13.1v13.8M119.4 13.5v13.0M122.4 8.6v22.8" stroke="#525252" stroke-width="1.6" stroke-linecap="round"/><rect x="136.8421052631579" y="4" width="68.42105263157896" height="32" rx="4" fill="#eef1f4"/><path d="M139.8 13.5v13.0M142.8 15.3v9.5M145.8 13.8v12.3M148.8 12.6v14.9M151.8 13.9v12.3M154.8 7.6v24.8M157.8 11.3v17.4M160.8 9.6v20.7M163.8 8.2v23.6M166.8 16.2v7.6M169.8 14.1v11.8M172.8 11.3v17.4M175.8 11.8v16.4M178.8 12.6v14.7M181.8 14.9v10.3M184.8 7.9v24.2M187.8 16.2v7.6M190.8 13.2v13.6M193.8 13.4v13.2M196.8 10.3v19.5M199.8 7.7v24.5" stroke="#525252" stroke-width="1.6" stroke-linecap="round"/><rect x="221.05263157894737" y="4" width="81.57894736842107" height="32" rx="4" fill="#eef1f4"/><path d="M224.1 11.7v16.5M227.1 15.1v9.7M230.1 12.8v14.4M233.1 14.0v12.0M236.1 13.2v13.6M239.1 12.6v14.8M242.1 13.5v13.0M245.1 11.6v16.9M248.1 10.8v18.5M251.1 14.5v11.0M254.1 7.9v24.2M257.1 12.3v15.4M260.1 8.3v23.3M263.1 10.6v18.9M266.1 10.6v18.9M269.1 11.7v16.6M272.1 11.8v16.3M275.1 10.0v19.9M278.1 7.6v24.8M281.1 12.9v14.2M284.1 9.8v20.3M287.1 14.3v11.4M290.1 11.0v17.9M293.1 13.3v13.3M296.1 13.5v12.9M299.1 12.9v14.1" stroke="#525252" stroke-width="1.6" stroke-linecap="round"/><rect x="310.5263157894737" y="4" width="84.21052631578948" height="32" rx="4" fill="#eef1f4"/><path d="M313.5 9.0v22.0M316.5 8.2v23.6M319.5 15.7v8.7M322.5 8.8v22.5M325.5 16.0v8.0M328.5 12.8v14.4M331.5 15.3v9.5M334.5 16.0v8.0M337.5 7.0v25.9M340.5 14.6v10.8M343.5 10.6v18.8M346.5 15.3v9.3M349.5 12.3v15.4M352.5 11.0v18.1M355.5 15.4v9.2M358.5 7.8v24.5M361.5 8.1v23.7M364.5 8.1v23.9M367.5 8.1v23.8M370.5 7.9v24.2M373.5 9.3v21.3M376.5 14.1v11.9M379.5 16.6v6.7M382.5 14.3v11.3M385.5 16.0v8.0M388.5 16.7v6.5M391.5 10.7v18.5" stroke="#525252" stroke-width="1.6" stroke-linecap="round"/><rect x="400" y="4" width="47.36842105263156" height="32" rx="4" fill="#eef1f4"/><path d="M403.0 14.5v11.0M406.0 9.5v21.0M409.0 12.0v16.0M412.0 10.0v19.9M415.0 14.4v11.1M418.0 8.1v23.7M421.0 14.5v11.1M424.0 13.1v13.8M427.0 8.0v23.9M430.0 15.6v8.8M433.0 12.0v16.0M436.0 16.7v6.6M439.0 7.8v24.3M442.0 10.5v18.9" stroke="#525252" stroke-width="1.6" stroke-linecap="round"/><rect x="452.63157894736844" y="4" width="68.42105263157896" height="32" rx="4" fill="#eef1f4"/><path d="M455.6 7.8v24.5M458.6 16.5v6.9M461.6 8.0v24.1M464.6 14.9v10.2M467.6 7.3v25.4M470.6 11.2v17.5M473.6 10.1v19.7M476.6 14.2v11.7M479.6 14.6v10.8M482.6 14.7v10.6M485.6 11.2v17.5M488.6 16.2v7.5M491.6 9.2v21.5M494.6 9.9v20.2M497.6 9.8v20.4M500.6 11.9v16.2M503.6 16.4v7.1M506.6 15.7v8.7M509.6 7.8v24.4M512.6 15.5v9.0M515.6 10.0v19.9" stroke="#525252" stroke-width="1.6" stroke-linecap="round"/><rect x="536.8421052631579" y="4" width="10.526315789473642" height="32" rx="4" fill="#eef1f4"/><path d="M539.8 8.0v23.9M542.8 16.4v7.2" stroke="#525252" stroke-width="1.6" stroke-linecap="round"/><rect x="557.8947368421053" y="4" width="31.578947368420927" height="32" rx="4" fill="#eef1f4"/><path d="M560.9 8.1v23.7M563.9 8.4v23.3M566.9 7.1v25.9M569.9 7.4v25.1M572.9 9.3v21.4M575.9 12.7v14.7M578.9 14.3v11.3M581.9 9.7v20.7M584.9 8.1v23.7" stroke="#525252" stroke-width="1.6" stroke-linecap="round"/></svg><div style="position: absolute; top: 0; bottom: 0; left: 51.3%; width: 1.5px; background: {{accent}};"></div></div>
+            <div><div style="font-size: 12px; color: #171717;">Music</div><div class="cap">Aegean Drift</div></div>
+            <div class="lane" style="background: transparent;"><svg viewBox="0 0 600 40" preserveAspectRatio="none" style="width: 100%; height: 40px; display: block;"><rect x="0" y="4" width="600" height="32" rx="4" fill="#f5f5f5"/><path d="M4.0 14.0v12.1M6.6 15.3v9.4M9.2 13.9v12.2M11.8 9.9v20.1M14.4 12.6v14.7M17.0 14.4v11.3M19.6 12.1v15.8M22.2 11.2v17.6M24.8 14.5v11.0M27.4 11.3v17.5M30.0 13.8v12.5M32.6 15.6v8.8M35.2 14.7v10.6M37.8 9.1v21.8M40.4 9.0v21.9M43.0 12.0v15.9M45.6 10.1v19.9M48.2 9.7v20.7M50.8 15.6v8.8M53.4 11.9v16.1M56.0 16.1v7.7M58.6 13.1v13.7M61.2 12.7v14.7M63.8 10.9v18.2M66.4 9.4v21.1M69.0 13.3v13.5M71.6 15.7v8.6M74.2 13.6v12.9M76.8 15.9v8.2M79.4 11.8v16.4M82.0 12.9v14.1M84.6 12.6v14.8M87.2 13.1v13.9M89.8 11.0v18.0M92.4 14.3v11.5M95.0 11.1v17.9M97.6 17.0v5.9M100.2 14.8v10.4M102.8 12.8v14.4M105.4 15.6v8.8M108.0 11.3v17.4M110.6 14.9v10.3M113.2 15.3v9.4M115.8 11.8v16.4M118.4 13.7v12.6M121.0 16.6v6.7M123.6 10.9v18.3M126.2 10.5v19.1M128.8 9.7v20.6M131.4 9.7v20.5M134.0 11.6v16.7M136.6 9.3v21.3M139.2 17.0v5.9M141.8 11.0v18.1M144.4 12.3v15.4M147.0 11.3v17.4M149.6 9.8v20.3M152.2 16.9v6.1M154.8 16.1v7.7M157.4 16.6v6.8M160.0 16.4v7.3M162.6 16.6v6.9M165.2 17.2v5.7M167.8 12.3v15.5M170.4 9.4v21.1M173.0 15.7v8.7M175.6 16.1v7.7M178.2 15.6v8.8M180.8 11.7v16.6M183.4 15.2v9.5M186.0 13.5v13.0M188.6 9.0v21.9M191.2 13.8v12.5M193.8 11.7v16.6M196.4 10.9v18.3M199.0 14.0v12.0M201.6 13.8v12.4M204.2 16.7v6.5M206.8 15.4v9.3M209.4 10.6v18.8M212.0 9.2v21.6M214.6 16.0v8.0M217.2 9.6v20.8M219.8 13.1v13.9M222.4 16.2v7.5M225.0 15.5v9.0M227.6 12.3v15.4M230.2 15.8v8.3M232.8 16.6v6.8M235.4 15.0v10.0M238.0 11.9v16.2M240.6 12.7v14.7M243.2 13.3v13.4M245.8 9.1v21.9M248.4 16.6v6.7M251.0 13.8v12.3M253.6 14.7v10.7M256.2 17.2v5.6M258.8 17.2v5.6M261.4 13.8v12.3M264.0 16.5v7.0M266.6 15.3v9.4M269.2 9.6v20.7M271.8 10.8v18.3M274.4 10.9v18.1M277.0 13.6v12.7M279.6 10.2v19.6M282.2 9.3v21.4M284.8 10.6v18.7M287.4 11.8v16.4M290.0 12.5v14.9M292.6 14.4v11.2M295.2 13.9v12.2M297.8 13.2v13.7M300.4 13.2v13.7M303.0 12.6v14.9M305.6 11.3v17.4M308.2 11.8v16.5M310.8 12.0v15.9M313.4 11.2v17.5M316.0 10.0v20.1M318.6 10.3v19.4M321.2 9.1v21.8M323.8 13.6v12.7M326.4 13.2v13.5M329.0 9.4v21.3M331.6 9.2v21.6M334.2 14.3v11.4M336.8 16.6v6.8M339.4 14.4v11.2M342.0 10.0v20.1M344.6 11.4v17.2M347.2 11.2v17.7M349.8 9.4v21.3M352.4 10.8v18.5M355.0 15.5v8.9M357.6 15.3v9.4M360.2 10.7v18.7M362.8 16.4v7.2M365.4 9.7v20.6M368.0 10.6v18.7M370.6 12.0v16.0M373.2 11.4v17.2M375.8 12.8v14.3M378.4 13.6v12.8M381.0 10.1v19.9M383.6 12.6v14.8M386.2 10.0v19.9M388.8 15.0v10.0M391.4 11.6v16.8M394.0 13.7v12.7M396.6 14.0v12.0M399.2 15.7v8.6M401.8 12.4v15.2M404.4 15.3v9.3M407.0 9.8v20.3M409.6 10.5v19.1M412.2 14.5v11.1M414.8 11.6v16.8M417.4 10.0v20.0M420.0 16.3v7.4M422.6 14.7v10.6M425.2 9.7v20.7M427.8 17.2v5.5M430.4 16.2v7.7M433.0 14.0v12.1M435.6 17.1v5.9M438.2 11.5v16.9M440.8 9.8v20.3M443.4 15.8v8.4M446.0 15.5v9.0M448.6 9.4v21.1M451.2 11.5v17.0M453.8 15.8v8.4M456.4 16.3v7.4M459.0 12.1v15.8M461.6 17.1v5.8M464.2 10.6v18.9M466.8 12.4v15.3M469.4 11.1v17.9M472.0 16.2v7.6M474.6 14.5v11.0M477.2 11.4v17.3M479.8 9.4v21.3M482.4 12.7v14.5M485.0 12.4v15.2M487.6 10.8v18.3M490.2 11.5v17.1M492.8 11.2v17.6M495.4 12.3v15.4M498.0 16.4v7.2M500.6 16.9v6.2M503.2 12.2v15.6M505.8 15.4v9.2M508.4 12.5v15.1M511.0 15.2v9.6M513.6 15.4v9.2M516.2 12.1v15.7M518.8 12.1v15.9M521.4 10.5v18.9M524.0 15.3v9.5M526.6 9.8v20.4M529.2 16.8v6.4M531.8 11.6v16.9M534.4 13.9v12.2M537.0 10.7v18.6M539.6 11.8v16.4M542.2 10.6v18.8M544.8 16.4v7.2M547.4 9.7v20.7M550.0 13.1v13.8M552.6 10.5v19.1M555.2 13.7v12.5M557.8 10.1v19.8M560.4 10.7v18.5M563.0 11.3v17.5M565.6 9.8v20.5M568.2 10.2v19.7M570.8 15.7v8.6M573.4 11.3v17.4M576.0 16.0v8.1M578.6 16.2v7.6M581.2 9.4v21.2M583.8 9.4v21.3M586.4 16.8v6.4M589.0 16.6v6.8M591.6 15.1v9.8M594.2 9.5v21.0" stroke="#c7c7c7" stroke-width="1.6" stroke-linecap="round"/><polyline points="0.0,7.0 1.3,7.0 8.3,27.0 52.3,27.0 59.3,7.0 64.4,7.0 71.4,27.0 123.3,27.0 130.3,7.0 132.8,7.0 139.8,27.0 202.3,27.0 209.3,7.0 217.1,7.0 224.1,27.0 299.6,27.0 306.6,7.0 306.5,7.0 313.5,27.0 391.7,27.0 398.7,7.0 396.0,7.0 403.0,27.0 444.4,27.0 451.4,7.0 448.6,7.0 455.6,27.0 518.1,27.0 525.1,7.0 532.8,7.0 539.8,27.0 544.4,27.0 551.4,7.0 553.9,7.0 560.9,27.0 586.5,27.0 593.5,7.0 600.0,7.0" fill="none" stroke="{{accent}}" stroke-width="1.6" stroke-linejoin="round"/></svg><div style="position: absolute; top: 0; bottom: 0; left: 51.3%; width: 1.5px; background: {{accent}};"></div></div>
+            <div><div style="font-size: 12px; color: #171717;">Effects</div><div class="cap">4 cues</div></div>
+            <div class="lane" style="background: transparent;"><svg viewBox="0 0 600 40" preserveAspectRatio="none" style="width: 100%; height: 40px; display: block;"><rect x="68.42105263157895" y="9" width="63.157894736842096" height="22" rx="5" fill="#f3f0ff"/><path d="M72.4 14.6v10.8M75.4 14.2v11.6M78.4 17.3v5.5M81.4 17.6v4.8M84.4 18.4v3.3M87.4 16.4v7.2M90.4 16.0v8.0M93.4 17.9v4.3M96.4 17.0v5.9M99.4 16.3v7.3M102.4 17.5v5.0M105.4 18.3v3.5M108.4 18.3v3.4M111.4 18.1v3.8M114.4 15.7v8.7M117.4 16.4v7.2M120.4 14.9v10.3M123.4 15.2v9.6M126.4 16.2v7.6" stroke="#a896f0" stroke-width="1.6" stroke-linecap="round"/><rect x="136.8421052631579" y="9" width="73.68421052631578" height="22" rx="5" fill="#f3f0ff"/><path d="M140.8 15.3v9.3M143.8 16.8v6.5M146.8 15.7v8.5M149.8 14.2v11.7M152.8 15.0v9.9M155.8 14.2v11.7M158.8 15.3v9.4M161.8 15.8v8.4M164.8 14.9v10.2M167.8 17.7v4.5M170.8 18.2v3.6M173.8 15.2v9.5M176.8 15.6v8.8M179.8 16.6v6.9M182.8 16.0v7.9M185.8 16.8v6.5M188.8 16.3v7.4M191.8 18.0v4.1M194.8 18.2v3.6M197.8 18.1v3.7M200.8 16.9v6.2M203.8 16.9v6.1" stroke="#a896f0" stroke-width="1.6" stroke-linecap="round"/><rect x="221.05263157894737" y="9" width="84.21052631578951" height="22" rx="5" fill="#f3f0ff"/><path d="M225.1 17.6v4.8M228.1 15.6v8.8M231.1 17.9v4.1M234.1 18.3v3.5M237.1 18.5v3.0M240.1 14.7v10.5M243.1 14.6v10.8M246.1 18.3v3.4M249.1 15.0v9.9M252.1 17.1v5.9M255.1 16.7v6.6M258.1 14.4v11.2M261.1 14.9v10.2M264.1 18.4v3.1M267.1 14.0v11.9M270.1 17.6v4.8M273.1 15.6v8.8M276.1 16.6v6.8M279.1 18.4v3.3M282.1 17.7v4.6M285.1 15.1v9.8M288.1 15.1v9.8M291.1 17.4v5.2M294.1 14.6v10.7M297.1 14.8v10.3M300.1 17.1v5.9" stroke="#a896f0" stroke-width="1.6" stroke-linecap="round"/><rect x="452.63157894736844" y="9" width="63.15789473684208" height="22" rx="5" fill="#f3f0ff"/><path d="M456.6 16.4v7.1M459.6 17.2v5.7M462.6 17.4v5.3M465.6 14.5v10.9M468.6 14.6v10.8M471.6 15.4v9.1M474.6 16.3v7.5M477.6 14.6v10.8M480.6 14.8v10.4M483.6 14.8v10.3M486.6 15.1v9.8M489.6 14.1v11.7M492.6 15.4v9.2M495.6 17.2v5.6M498.6 15.3v9.4M501.6 17.0v5.9M504.6 14.6v10.8M507.6 17.8v4.5M510.6 14.7v10.6" stroke="#a896f0" stroke-width="1.6" stroke-linecap="round"/></svg><span style="position: absolute; left: 11.4%; top: 3px; margin-left: 6px; font-size: 10px; font-weight: 500; color: #6846e3;">Oars</span><span style="position: absolute; left: 22.8%; top: 3px; margin-left: 6px; font-size: 10px; font-weight: 500; color: #6846e3;">Wind</span><span style="position: absolute; left: 36.8%; top: 3px; margin-left: 6px; font-size: 10px; font-weight: 500; color: #6846e3;">Fire</span><span style="position: absolute; left: 75.4%; top: 3px; margin-left: 6px; font-size: 10px; font-weight: 500; color: #6846e3;">Waves</span><div style="position: absolute; top: 0; bottom: 0; left: 51.3%; width: 1.5px; background: {{accent}};"></div></div>
+            <div></div>
+            <div style="display: flex; justify-content: space-between;"><span class="cap">0:00</span><span class="cap">1:00</span><span class="cap">2:00</span><span class="cap">3:00</span><span class="cap">3:48</span></div>
+          </div>
+        </div>
+
+        <div style="display: flex; align-items: center; gap: 8px; margin-top: 14px;">
+          <span class="lbl" style="padding: 0;">Beat 05 takes</span><span class="cap">“By nightfall, the Persian fleet is broken.”</span>
+        </div>
+        <div style="display: flex; gap: 8px; margin-top: 9px;">
+          <div class="fc" style="height: 32px;"><div class="play" style="width: 20px; height: 20px;"><svg viewBox="0 0 24 24"><path d="M8 5.5v13l10.5-6.5z" fill="#171717" stroke="none"/></svg></div>Take 1 · 0:27</div>
+          <div class="fc" style="height: 32px;"><div class="play" style="width: 20px; height: 20px;"><svg viewBox="0 0 24 24"><path d="M8 5.5v13l10.5-6.5z" fill="#171717" stroke="none"/></svg></div>Take 2 · 0:29</div>
+          <div class="fc on" style="height: 32px;"><div class="play" style="width: 20px; height: 20px; border: none;"><svg viewBox="0 0 24 24"><path d="M8 5.5v13l10.5-6.5z" fill="#171717" stroke="none"/></svg></div>Take 3 · 0:28 · in use</div>
+          <div class="fc" style="height: 32px; color: {{accent}};"><svg viewBox="0 0 24 24" style="width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;"><path d="m12 3.5 1.9 5.1 5.1 1.9-5.1 1.9L12 17.5l-1.9-5.1L5 10.5l5.1-1.9z"/></svg>New take</div>
+        </div>
+      </div>
+
+      <div style="width: 320px; flex-shrink: 0; border-left: 1px solid #ededed; background: #fcfcfc; display: flex; flex-direction: column;">
+        <div style="height: 44px; flex-shrink: 0; display: flex; align-items: center; gap: 2px; padding: 0 10px; border-bottom: 1px solid #ededed;">
+          <div class="rtab on"><svg viewBox="0 0 24 24" style="width: 12px; height: 12px; stroke: {{accent}}; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;"><path d="M12 4.2 19 8v8l-7 3.8L5 16V8z"/><path d="M12 11.8 19 8M12 11.8v8M12 11.8 5 8"/></svg>Agent</div>
+          <div class="rtab">Comments</div>
+          <div style="flex-grow: 1;"></div>
+          <svg viewBox="0 0 24 24" style="width: 15px; height: 15px; stroke: #999999; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;"><path d="m10 6 6 6-6 6"/></svg>
+        </div>
+
+        <div style="flex-shrink: 0; padding: 11px 13px; border-bottom: 1px solid #f3f3f3;">
+          <div style="display: inline-flex; align-items: center; gap: 7px; height: 25px; padding: 0 10px; border-radius: 7px; background: #fff; border: 1px solid #ededed; max-width: 100%;">
+            <span style="width: 6px; height: 6px; border-radius: 3px; background: {{accent}}; flex-shrink: 0;"></span><span style="font-size: 11.5px; color: #525252; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Audio · project 003</span>
+          </div>
+        </div>
+        <div style="flex-grow: 1; min-height: 0; padding: 14px 13px 0; overflow: hidden;">
+          <div style="display: flex; justify-content: flex-end; margin-bottom: 10px;"><div style="max-width: 244px; background: #f3f3f3; border-radius: 10px; padding: 8px 11px; font-size: 12px; line-height: 1.5; color: #383838;">Is the music too loud anywhere?</div></div>
+          <div style="display: inline-flex; align-items: center; gap: 7px; height: 23px; padding: 0 9px; border: 1px solid #ededed; border-radius: 7px; background: #fff; margin-bottom: 9px;">
+            <svg viewBox="0 0 24 24" style="width: 11px; height: 11px; stroke: #278f5e; fill: none; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round;"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span style="font-size: 11px; color: #525252;">Measured the mix · 1.2 s</span>
+          </div>
+          <div style="font-size: 12px; line-height: 1.6; color: #383838; text-wrap: pretty;"><p>Only once. Between <b style="font-weight: 500;">1:21 and 1:26</b> the fire effect and music together sit 3 dB over the voice, so “Themistocles” is hard to hear.</p><p style="margin-top: 8px;">Ducking the effect by 4 dB there fixes it without touching the music.</p></div>
+          <div style="display: flex; gap: 6px; margin-top: 11px;"><div class="btn" style="height: 27px; font-size: 12px; background: {{accent}}; color: #fff; font-weight: 500;">Duck the effect</div><div class="btn s" style="height: 27px; font-size: 12px;">Not now</div></div>
+        </div>
+        <div style="flex-shrink: 0; padding: 11px 13px 9px;">
+          <div style="border: 1px solid #e2e2e2; border-radius: 10px; background: #fff; padding: 9px 10px 7px; box-shadow: 0 1px 2px rgba(0,0,0,.06);">
+            <div style="font-size: 12px; color: #999999;">Ask about the mix…</div>
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 11px;"><span style="font-size: 10.5px; color: #999999;">gemini-2.5-pro</span><div style="width: 25px; height: 25px; border-radius: 7px; background: {{accent}}; display: flex; align-items: center; justify-content: center;"><svg viewBox="0 0 24 24" style="width: 12px; height: 12px; stroke: #fff; fill: none; stroke-width: 2.3; stroke-linecap: round; stroke-linejoin: round;"><path d="M12 19V5.5M6 11.5 12 5.5l6 6"/></svg></div></div>
+          </div>
+        </div>
+        <div style="flex-shrink: 0; border-top: 1px solid #f3f3f3; padding: 9px 13px 11px; display: flex; align-items: center; gap: 7px;">
+          <svg viewBox="0 0 24 24" style="width: 11px; height: 11px; flex-shrink: 0; stroke: #999999; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;"><path d="M6.8 10.5h10.4v8H6.8z"/><path d="M9.2 10.5V8a2.8 2.8 0 0 1 5.6 0v2.5"/></svg>
+          <span style="font-size: 10.5px; color: #999999;">Uses only this project</span><span style="margin-left: auto; font-size: 10.5px; color: #999999;">HK$0.02</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script data-dc-script data-props='{"accent":{"editor":"color","default":"#007BE0","options":["#007BE0","#171717","#278F5E","#6846E3"],"section":"Theme"},"sidebar":{"editor":"enum","options":["open","collapsed"],"default":"collapsed","section":"Layout"},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = {}; }
+  accent() { var raw = this.props.accent || '#007BE0'; return /^#[0-9a-fA-F]{6}$/.test(raw) ? raw : '#007BE0'; }
+  side(v) {
+    var self = this;
+    var c = this.state.c != null ? this.state.c : this.props.sidebar === 'collapsed';
+    v.sideOpen = !c; v.sideClosed = c;
+    v.toggleSide = function () { self.setState({ c: !c }); };
+    return v;
+  }
+  renderVals() { return this.side({ accent: this.accent() }); }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,300 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<!-- hand-authored: Admin · Audit log. Rebuild with admin-screens.mjs -->
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;450;500;600&family=Noto+Sans+HK:wght@400;500&display=swap">
+  <style>
+    html, body { overflow: hidden; }
+    body { margin: 0; font-family: Inter, 'PingFang HK', 'Noto Sans HK', system-ui, sans-serif; font-weight: 420; letter-spacing: 0.02em; -webkit-font-smoothing: antialiased; }
+    * { box-sizing: border-box; }
+    a { color: #007be0; text-decoration: none; }
+    img { display: block; }
+    p { margin: 0; }
+
+    @keyframes fadeUp { from { transform: translateY(10px); opacity: 0 } to { transform: none; opacity: 1 } }
+    @keyframes rowIn  { from { transform: translateY(7px);  opacity: 0 } to { transform: none; opacity: 1 } }
+    .scr { animation: fadeUp .24s cubic-bezier(.32,.72,0,1) both; }
+    .tr  { animation: rowIn .3s cubic-bezier(.32,.72,0,1) both; }
+    .tr:nth-of-type(1){animation-delay:.01s} .tr:nth-of-type(2){animation-delay:.035s}
+    .tr:nth-of-type(3){animation-delay:.06s} .tr:nth-of-type(4){animation-delay:.085s}
+    .tr:nth-of-type(5){animation-delay:.11s} .tr:nth-of-type(6){animation-delay:.135s}
+    .tr:nth-of-type(7){animation-delay:.16s} .tr:nth-of-type(8){animation-delay:.185s}
+
+    /* rail */
+    .r { width: 34px; height: 34px; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: #7c7c7c; transition: background .16s ease, color .16s ease; }
+    .r svg { width: 17px; height: 17px; fill: currentColor; }
+    .r.on { background: #ffffff; box-shadow: 0 1px 2px rgba(0,0,0,0.1); color: #171717; }
+    .r.no { opacity: .32; }
+
+    /* sidebar */
+    .n { display: flex; align-items: center; gap: 8px; height: 28px; padding: 0 9px; border-radius: 8px; font-size: 12.5px; color: #525252; transition: background .16s ease; }
+    .n.on { background: #ffffff; box-shadow: 0 1px 2px rgba(0,0,0,0.1); color: #171717; font-weight: 500; }
+    .n b { margin-left: auto; font-size: 10.5px; font-weight: 500; color: #999999; }
+    .n i { margin-left: auto; font-style: normal; display: inline-flex; align-items: center; height: 17px; padding: 0 6px; border-radius: 9px; background: #ffe7e7; color: #e03636; font-size: 10px; font-weight: 500; }
+    .lbl { font-size: 10.5px; font-weight: 500; color: #999999; padding: 0 9px; }
+
+    /* generic */
+    .bar { height: 48px; flex-shrink: 0; border-bottom: 1px solid #ededed; display: flex; align-items: center; gap: 10px; padding: 0 20px; }
+    .h1 { font-size: 14px; font-weight: 500; }
+    .mut { font-size: 12px; color: #999999; }
+    .btn { height: 30px; padding: 0 12px; border-radius: 8px; display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; white-space: nowrap; }
+    .btn.p { background: #007be0; color: #fff; font-weight: 500; }
+    .btn.s { border: 1px solid #ededed; color: #525252; }
+    .btn svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+    .chip { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 11px; border: 1px solid #ededed; border-radius: 8px; font-size: 12px; color: #4a5763; white-space: nowrap; }
+    .chip svg { width: 10px; height: 10px; stroke: #999999; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    .bd { display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border-radius: 6px; font-size: 11px; font-weight: 500; white-space: nowrap; }
+    .gray { background: #f3f3f3; color: #525252 }
+    .blue { background: #e6f4ff; color: #007be0 }
+    .grn  { background: #e4faeb; color: #278f5e }
+    .amb  { background: #fff7d3; color: #db7706 }
+    .red  { background: #ffe7e7; color: #e03636 }
+    .card { border: 1px solid #ededed; border-radius: 12px; background: #fff; padding: 16px; }
+    .kv { display: flex; justify-content: space-between; gap: 14px; padding: 8px 0; border-bottom: 1px solid #f3f3f3; font-size: 12.5px; }
+    .kv span:first-child { color: #999999; }
+    .av { width: 20px; height: 20px; border-radius: 10px; object-fit: cover; flex-shrink: 0; }
+    .stat { border: 1px solid #ededed; border-radius: 12px; padding: 13px 15px; background: #fff; }
+    .stat i { font-style: normal; display: block; font-size: 10.5px; font-weight: 500; color: #999999; }
+    .stat b { display: block; font-size: 22px; font-weight: 500; letter-spacing: -0.01em; margin-top: 6px; font-variant-numeric: tabular-nums; }
+
+    /* table */
+    .t { width: 100%; }
+    .t .hd { height: 32px; border-bottom: 1px solid #ededed; display: grid; align-items: center; }
+    .t .hd > * { font-size: 10.5px; font-weight: 500; color: #7c7c7c; padding: 0 12px; }
+    .tr { height: 46px; border-bottom: 1px solid #f3f3f3; display: grid; align-items: center; }
+    .tr > * { font-size: 12.5px; color: #383838; padding: 0 12px; min-width: 0; display: flex; align-items: center; }
+    .num { justify-content: flex-end; font-variant-numeric: tabular-nums; }
+    .el { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
+    .body { flex-grow: 1; min-height: 0; padding: 18px 20px; overflow: hidden; }
+    .focus { box-shadow: 0 0 0 3px #EFF6FF; }
+  
+    .tabs { height: 40px; flex-shrink: 0; display: flex; align-items: stretch; gap: 20px; padding: 0 22px; border-bottom: 1px solid #ededed; }
+    .tb { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: #7c7c7c; border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap; }
+    .tb.on { color: #171717; font-weight: 500; border-color: #171717; }
+    .tb b { font-size: 10.5px; font-weight: 500; color: #999999; }
+    .tb i { font-style: normal; display: inline-flex; align-items: center; height: 16px; padding: 0 5px; border-radius: 8px; background: #e6f4ff; color: #007be0; font-size: 10px; font-weight: 500; }
+    .rtab { height: 26px; padding: 0 11px; border-radius: 7px; display: flex; align-items: center; gap: 6px; font-size: 12px; color: #7c7c7c; }
+    .rtab.on { background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.1); color: #171717; font-weight: 500; }
+    .cap { font-size: 11px; color: #999999; }
+    .seg { width: 30px; height: 26px; border-radius: 6px; display: flex; align-items: center; justify-content: center; cursor: pointer; }
+    .seg svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+    .fc { height: 26px; padding: 0 10px; border-radius: 7px; display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: #525252; border: 1px solid #ededed; background: #fff; white-space: nowrap; }
+    .fc b { font-weight: 500; color: #999999; font-size: 11px; }
+    .fc.on { background: #171717; border-color: #171717; color: #fff; }
+    .fc.on b { color: #c7c7c7; }
+    .fc svg { width: 10px; height: 10px; stroke: #999999; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    .dot { width: 7px; height: 7px; border-radius: 4px; flex-shrink: 0; }
+    .kbd { display: inline-flex; align-items: center; height: 18px; padding: 0 5px; border-radius: 4px; border: 1px solid #e2e2e2; font-size: 10.5px; color: #7c7c7c; background: #fafafa; }
+    .ck { width: 18px; height: 18px; border-radius: 9px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .ck svg { width: 11px; height: 11px; stroke: #fff; fill: none; stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; }
+    .cb { width: 16px; height: 16px; border-radius: 4px; border: 1px solid #999999; background: #fff; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
+    .cb.on { border: none; background: #171717; }
+    .cb svg { width: 11px; height: 11px; stroke: #fff; fill: none; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+    .li { display: flex; gap: 11px; padding: 11px 0; border-bottom: 1px solid #f3f3f3; }
+    .li .a { font-size: 12.5px; color: #171717; }
+    .li .b { font-size: 11.5px; color: #999999; margin-top: 2px; }
+
+    /* item switcher (left sidebar inside a document / project) */
+    .sn { display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 9px; border-radius: 8px; font-size: 12.5px; color: #525252; }
+    .sn > span:not(.dot) { flex-grow: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .sn.on { background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.1); color: #171717; font-weight: 500; }
+    .sn img.av { width: 16px; height: 16px; border-radius: 8px; }
+    .sg { display: flex; align-items: center; gap: 6px; font-size: 10.5px; font-weight: 500; color: #999999; padding: 0 9px; margin: 14px 0 4px; }
+    .sg svg { width: 10px; height: 10px; stroke: #999999; fill: none; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+    .ptog { width: 26px; height: 26px; border-radius: 7px; display: flex; align-items: center; justify-content: center; color: #7c7c7c; cursor: pointer; flex-shrink: 0; }
+    .ptog:hover { background: #ededed; }
+    .ptog svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+    .mini { width: 52px; flex-shrink: 0; background: #f8f8f8; border-right: 1px solid #ededed; display: flex; flex-direction: column; align-items: center; padding: 10px 0; gap: 4px; }
+    .mi { width: 36px; height: 36px; border-radius: 9px; display: flex; align-items: center; justify-content: center; position: relative; }
+    .mi.on { background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.1); }
+    .mi .dot { position: absolute; right: 3px; bottom: 3px; box-shadow: 0 0 0 2px #f8f8f8; }
+    .mi.on .dot { box-shadow: 0 0 0 2px #fff; }
+    .kpi { border: 1px solid #ededed; border-radius: 12px; padding: 12px 14px; background: #fff; min-width: 0; }
+    .kpi i { font-style: normal; display: block; font-size: 11px; color: #999999; }
+    .kpi b { display: block; font-size: 20px; font-weight: 500; margin-top: 5px; font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
+    .kpi span { display: block; font-size: 11px; color: #7c7c7c; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .sw { width: 30px; height: 17px; border-radius: 9px; padding: 2px; display: flex; flex-shrink: 0; cursor: pointer; transition: background .15s ease; }
+    .sw div { width: 13px; height: 13px; border-radius: 7px; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.2); }
+    .kr { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid #f3f3f3; min-width: 0; }
+    .kr:last-child { border-bottom: none; }
+    .lg { width: 26px; height: 26px; border-radius: 7px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 10px; font-weight: 700; color: #fff; }
+    .segs { display: flex; gap: 2px; padding: 2px; border-radius: 8px; background: #f3f3f3; }
+    .segs div { height: 24px; padding: 0 11px; border-radius: 6px; display: flex; align-items: center; font-size: 12px; cursor: pointer; }
+    .tt2 .hd, .tt2 .tr { display: grid; align-items: center; }
+    .tt2 .hd { height: 30px; border-bottom: 1px solid #ededed; }
+    .tt2 .hd > * { font-size: 10.5px; font-weight: 500; color: #7c7c7c; padding: 0 10px; }
+    .tt2 .tr { height: 44px; border-bottom: 1px solid #f3f3f3; animation: none; }
+    .tt2 .tr > * { font-size: 12.5px; color: #383838; padding: 0 10px; min-width: 0; display: flex; align-items: center; gap: 8px; }
+    .shr { height: 4px; border-radius: 2px; background: #ededed; flex-grow: 1; min-width: 30px; }
+    .shr div { height: 4px; border-radius: 2px; }
+    .ev { display: flex; align-items: center; gap: 11px; height: 46px; padding: 0 10px; border-radius: 9px; }
+    .ev.on { background: #f5faff; box-shadow: inset 0 0 0 1px #d6eafc; }
+    .ev .t { width: 38px; flex-shrink: 0; font-size: 11.5px; color: #999999; font-variant-numeric: tabular-nums; }
+    .ev .s { flex-grow: 1; min-width: 0; font-size: 12.5px; color: #525252; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .ev .s b { font-weight: 500; color: #171717; }
+    .cat { height: 20px; padding: 0 7px; border-radius: 6px; font-size: 10.5px; font-weight: 500; display: inline-flex; align-items: center; flex-shrink: 0; }
+    .day { font-size: 11px; font-weight: 500; color: #7c7c7c; margin: 14px 10px 4px; }
+    .ic { display: flex; flex-direction: column; align-items: center; padding: 8px 4px 6px; border-radius: 10px; min-width: 0; }
+    .icn { height: 60px; width: 72px; display: flex; align-items: flex-end; justify-content: center; padding-bottom: 5px; border-radius: 9px; }
+    .ic.sel .icn { background: #f3f3f3; }
+    .icl { margin-top: 7px; text-align: center; font-size: 12px; line-height: 1.4; color: #171717; max-width: 100%; }
+    .icl span { padding: 1px 5px; border-radius: 5px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; word-break: break-word; }
+    .ic.sel .icl span { background: var(--ac); color: #fff; }
+    .icm { display: flex; align-items: center; gap: 5px; margin-top: 4px; font-size: 11px; color: #999999; white-space: nowrap; }
+    .fold { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 8px 6px; border-radius: 10px; min-width: 0; }
+    .fold.on { background: #f3f3f3; }
+    .fold .fn { font-size: 12px; color: #171717; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+    .fold .fc2 { font-size: 11px; color: #999999; margin-top: -3px; }
+    .pp { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10.5px; line-height: 1.65; color: #4a5763; }
+    .pp .h { color: #999999; margin-top: 8px; display: flex; align-items: center; gap: 6px; }
+    .pp .h:first-child { margin-top: 0; }</style>
+</helmet>
+
+<div style="--ac: {{accent}}; width: 1440px; height: 900px; display: flex; background: #ffffff; color: #171717; overflow: hidden;">
+
+  <div style="width: 52px; flex-shrink: 0; background: #f8f8f8; border-right: 1px solid #ededed; display: flex; flex-direction: column; align-items: center; padding: 10px 0; gap: 3px;">
+    <div style="width: 28px; height: 28px; border-radius: 8px; background: #171717; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 11px; font-weight: 600; margin-bottom: 10px;">AF</div>
+    <div class="r"><svg viewBox="0 0 24 24"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 9.5 9.5 0 0 1-2.8-.4L4 21l1.4-4.1A8.2 8.2 0 0 1 3.6 11.5 8.4 8.4 0 0 1 12 3.1a8.4 8.4 0 0 1 9 8.4z"/></svg></div>
+    <div class="r"><svg viewBox="0 0 24 24"><path d="M3.6 6.9a2.1 2.1 0 0 1 2.1-2.1h3.2a2.1 2.1 0 0 1 1.62.76l1.02 1.24h6.76a2.1 2.1 0 0 1 2.1 2.1v8.3a2.1 2.1 0 0 1-2.1 2.1H5.7a2.1 2.1 0 0 1-2.1-2.1z"/></svg></div>
+    <div class="r"><svg viewBox="0 0 24 24"><rect x="3.4" y="12.6" width="4.2" height="7.4" rx="1.5"/><rect x="9.9" y="8.4" width="4.2" height="11.6" rx="1.5"/><rect x="16.4" y="4" width="4.2" height="16" rx="1.5"/></svg></div>
+    <div class="r"><svg viewBox="0 0 24 24"><path d="M6.4 3.4h7.4L18.6 8v12.6H6.4z"/><path d="M9.4 12.3h6M9.4 15.6h6" stroke="#f8f8f8" stroke-width="1.5" fill="none"/></svg></div>
+    <div class="r"><svg viewBox="0 0 24 24"><rect x="3.4" y="5.4" width="12.4" height="13.2" rx="2.1"/><path d="m16.6 13 4.6 2.8V8.2L16.6 11z"/></svg></div>
+    <div class="r"><svg viewBox="0 0 24 24"><path d="M21.86 4.14a1.1 1.1 0 0 0-1.14-.18L2.9 11.13c-.86.34-.83 1.58.05 1.87l4.46 1.5 1.68 5.06c.24.72 1.15.93 1.68.38l2.4-2.5 4.4 3.23c.6.44 1.46.12 1.63-.6z"/></svg></div>
+    <div style="width: 22px; height: 1px; background: #e2e2e2; margin: 6px 0;"></div>
+    <div class="r"><svg viewBox="0 0 24 24"><rect x="5.4" y="3.4" width="13.2" height="17.2" rx="2"/><path d="M8.4 8h7.2M8.4 12h7.2M8.4 16h4" stroke="#f8f8f8" stroke-width="1.5" fill="none"/></svg></div>
+    <div class="r"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.6"/><path d="M14.8 9.4c-.4-1-1.5-1.6-2.8-1.6-1.6 0-2.8.9-2.8 2.1 0 2.9 5.7 1.4 5.7 4.3 0 1.2-1.2 2.1-2.9 2.1-1.4 0-2.5-.6-2.9-1.6M12 6.4v1.4M12 16.3v1.4" stroke="#f8f8f8" stroke-width="1.5" fill="none"/></svg></div>
+    <div class="r"><svg viewBox="0 0 24 24"><path d="M12 3.2 4.4 6.2v5.6c0 4.4 3.1 8.3 7.6 9.3 4.5-1 7.6-4.9 7.6-9.3V6.2z"/></svg></div>
+    <div class="r no"><svg viewBox="0 0 24 24"><circle cx="12" cy="7.8" r="3.7"/><path d="M4.7 20.2a7.3 7.3 0 0 1 14.6 0z"/></svg></div>
+    <div class="r on"><svg viewBox="0 0 24 24"><path d="M4 7.4h16M4 12h16M4 16.6h16" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linecap="round"/><circle cx="9" cy="7.4" r="2.2"/><circle cx="15" cy="16.6" r="2.2"/></svg></div>
+    <div style="flex-grow: 1;"></div>
+    <img class="av" src="pfp-michelle.jpg" style="width: 26px; height: 26px;">
+  </div>
+
+  <div style="width: 212px; flex-shrink: 0; background: #f8f8f8; border-right: 1px solid #ededed; display: flex; flex-direction: column; padding: 10px 8px;">
+    <div style="padding: 4px 9px 12px; font-size: 14px; font-weight: 500;">Admin</div>
+    <div class="lbl" style="margin-bottom: 5px;">Screens</div>
+    <div style="display: flex; flex-direction: column; gap: 1px;">
+      <div class="n"><span>People</span></div>
+      <div class="n"><span>Entitlements matrix</span></div>
+      <div class="n"><span>Token dashboard</span></div>
+      <div class="n"><span>Budgets</span></div>
+      <div class="n"><span>Channels &amp; credentials</span><i>1</i></div>
+      <div class="n on"><span>Audit log</span></div>
+      <div class="n"><span>Knowledge &amp; skills</span></div>
+    </div>
+    <div style="margin-top: auto; padding: 10px 9px 4px; border-top: 1px solid #ededed;">
+      <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px;"><span style="font-size: 11px; color: #999999;">Tenant spend · Sep</span><span style="font-size: 11px; color: #525252;">HK$1,284</span></div>
+      <div style="height: 4px; border-radius: 2px; background: #ededed;"><div style="width: 32%; height: 4px; border-radius: 2px; background: {{accent}};"></div></div>
+    </div>
+  </div>
+  <div style="flex-grow: 1; display: flex; flex-direction: column; min-width: 0;">
+
+    <div class="bar">
+      <span class="h1">Audit log</span>
+      <span class="mut">who did what, and when</span>
+      <div style="flex-grow: 1;"></div><div class="btn s">Export</div>
+      <div style="width: 220px; height: 28px; border: 1px solid #ededed; border-radius: 8px; background: #f8f8f8; display: flex; align-items: center; gap: 7px; padding: 0 9px;">
+        <svg viewBox="0 0 24 24" style="width: 13px; height: 13px; stroke: #999999; fill: none; stroke-width: 1.8; stroke-linecap: round;"><circle cx="11" cy="11" r="6.4"/><path d="m15.8 15.8 4 4"/></svg><span style="font-size: 12px; color: #999999;">Search</span>
+      </div>
+    </div>
+    <div style="flex-grow: 1; display: flex; min-height: 0;">
+      <div style="flex-grow: 1; min-width: 0; padding: 14px 20px 0; overflow: hidden; display: flex; flex-direction: column;">
+        <div style="display: flex; gap: 14px; align-items: center; padding: 14px 16px; border-radius: 12px; background: #fafafa;">
+          <svg viewBox="0 0 42 54" width="33.6" height="43.2" style="display: block; flex-shrink: 0; overflow: visible; filter: drop-shadow(0 .5px 1px rgba(0,0,0,.18)) drop-shadow(0 2px 5px rgba(0,0,0,.06));"><rect x=".5" y=".5" width="41" height="53" rx="3.5" fill="#fff" stroke="rgba(0,0,0,.07)"/><rect x="6" y="7" width="15" height="2.4" rx="1.2" fill="#8f8f8f"/><rect x="6" y="13.5" width="20" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="16.7" width="27" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="19.9" width="24" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="23.1" width="28" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="27.9" width="18" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="31.1" width="26" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="34.3" width="23" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="37.5" width="27" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="42.3" width="15" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="45.5" width="25" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="48.7" width="22" height="1.35" rx=".7" fill="#d6d6d6"/><g transform="translate(34.5 46.5)"><circle r="7.4" fill="#30a46c" stroke="#fff" stroke-width="1.8"/><rect x="-2.7" y="-.5" width="5.4" height="4" rx="1" fill="#fff"/><path d="M-1.6-.5v-1.2a1.6 1.6 0 0 1 3.2 0v1.2" stroke="#fff" stroke-width="1.3" fill="none"/></g></svg>
+          <div style="min-width: 0; flex-grow: 1;">
+            <div style="font-size: 13.5px; font-weight: 500;">A permanent record of everything that happens in the platform</div>
+            <div style="font-size: 12.5px; line-height: 1.55; color: #525252; margin-top: 4px;">Every access, share, approval and settings change is written here with who did it and when. Nobody can edit or delete an entry, admins included. Use it to answer “who changed this?” or “who opened that file?”</div>
+          </div>
+        </div>
+        <div style="display: flex; align-items: center; gap: 6px; margin: 14px 0 2px;">
+          <div class="fc on">All</div><div class="fc">Access</div><div class="fc">Files</div><div class="fc">Publishing</div><div class="fc">Knowledge</div><div class="fc">Money</div><div class="fc">Settings</div>
+          <div style="flex-grow: 1;"></div>
+          <div class="fc">Anyone <svg style="width: 10px; height: 10px; stroke: #999999; fill: none; stroke-width: 2;" viewBox="0 0 24 24"><path d="m6.5 9.5 5.5 5.5 5.5-5.5"/></svg></div><div class="fc">Last 7 days <svg style="width: 10px; height: 10px; stroke: #999999; fill: none; stroke-width: 2;" viewBox="0 0 24 24"><path d="m6.5 9.5 5.5 5.5 5.5-5.5"/></svg></div>
+        </div>
+        <div style="display: flex; gap: 16px; min-height: 0; flex-grow: 1;">
+          <div style="flex-grow: 1; min-width: 0;">
+            <div class="day">Today · 9 Sep</div>
+            <div class="ev"><span class="t">10:14</span><img class="av" src="pfp-michelle.jpg" style="width: 22px; height: 22px;"><span class="s"><b>Michelle Yip</b> gave <b>Priscilla Cheung</b> access to Finance</span><span class="cat" style="background: #e6f4ff; color: #007be0;">Access</span></div>
+            <div class="ev on"><span class="t">09:02</span><img class="av" src="pfp-michelle.jpg" style="width: 22px; height: 22px;"><span class="s"><b>Michelle Yip</b> opened <b>master-004.mov</b>, a file she wasn’t given</span><span class="bd amb" style="height: 20px;">Admin access</span><span class="cat" style="background: #f3f3f3; color: #525252;">Files</span></div>
+            <div class="ev"><span class="t">08:40</span><svg viewBox="0 0 12 12" width="21.6" height="21.6" shape-rendering="crispEdges" style="display: block; flex-shrink: 0;"><rect x="5" y="0" width="2" height="1" fill="#9aa5b1"/><rect x="5" y="1" width="2" height="1" fill="#262626"/><rect x="2" y="2" width="8" height="1" fill="#262626"/><rect x="1" y="3" width="1" height="1" fill="#262626"/><rect x="2" y="3" width="8" height="1" fill="#e6e9ee"/><rect x="10" y="3" width="1" height="1" fill="#262626"/><rect x="1" y="4" width="1" height="1" fill="#262626"/><rect x="2" y="4" width="1" height="1" fill="#e6e9ee"/><rect x="3" y="4" width="2" height="1" fill="#262626"/><rect x="5" y="4" width="2" height="1" fill="#e6e9ee"/><rect x="7" y="4" width="2" height="1" fill="#262626"/><rect x="9" y="4" width="1" height="1" fill="#e6e9ee"/><rect x="10" y="4" width="1" height="1" fill="#262626"/><rect x="1" y="5" width="1" height="1" fill="#262626"/><rect x="2" y="5" width="8" height="1" fill="#e6e9ee"/><rect x="10" y="5" width="1" height="1" fill="#262626"/><rect x="1" y="6" width="1" height="1" fill="#262626"/><rect x="2" y="6" width="3" height="1" fill="#e6e9ee"/><rect x="5" y="6" width="2" height="1" fill="#262626"/><rect x="7" y="6" width="3" height="1" fill="#e6e9ee"/><rect x="10" y="6" width="1" height="1" fill="#262626"/><rect x="2" y="7" width="8" height="1" fill="#262626"/><rect x="1" y="8" width="2" height="1" fill="#262626"/><rect x="3" y="8" width="6" height="1" fill="#9aa5b1"/><rect x="9" y="8" width="2" height="1" fill="#262626"/><rect x="0" y="9" width="1" height="1" fill="#262626"/><rect x="1" y="9" width="1" height="1" fill="#aab3bf"/><rect x="2" y="9" width="1" height="1" fill="#262626"/><rect x="3" y="9" width="6" height="1" fill="#9aa5b1"/><rect x="9" y="9" width="1" height="1" fill="#262626"/><rect x="10" y="9" width="1" height="1" fill="#aab3bf"/><rect x="11" y="9" width="1" height="1" fill="#262626"/><rect x="0" y="10" width="1" height="1" fill="#262626"/><rect x="1" y="10" width="1" height="1" fill="#aab3bf"/><rect x="2" y="10" width="1" height="1" fill="#262626"/><rect x="3" y="10" width="6" height="1" fill="#9aa5b1"/><rect x="9" y="10" width="1" height="1" fill="#262626"/><rect x="10" y="10" width="1" height="1" fill="#aab3bf"/><rect x="11" y="10" width="1" height="1" fill="#262626"/><rect x="1" y="11" width="1" height="1" fill="#262626"/><rect x="3" y="11" width="6" height="1" fill="#262626"/><rect x="10" y="11" width="1" height="1" fill="#262626"/></svg><span class="s"><b>System</b> warned <b>Leung Chi-hang</b> at 90% of his monthly AI cap</span><span class="cat" style="background: #fff7d3; color: #b36b00;">Money</span></div>
+            <div class="day">Yesterday · 8 Sep</div>
+            <div class="ev"><span class="t">17:41</span><img class="av" src="pfp-chan.jpg" style="width: 22px; height: 22px;"><span class="s"><b>Chan Ka-ming</b> shared <b>Renders</b> with Production as editors</span><span class="cat" style="background: #f3f3f3; color: #525252;">Files</span></div>
+            <div class="ev"><span class="t">15:20</span><img class="av" src="pfp-michelle.jpg" style="width: 22px; height: 22px;"><span class="s"><b>Michelle Yip</b> approved the X post for <b>Orange typography cut</b></span><span class="cat" style="background: #f3f0ff; color: #6846e3;">Publishing</span></div>
+            <div class="ev"><span class="t">11:20</span><img class="av" src="pfp-amy.jpg" style="width: 22px; height: 22px;"><span class="s"><b>Amy Wong</b> rolled <b>house-style</b> back from v6 to v5</span><span class="cat" style="background: #e4faeb; color: #278f5e;">Knowledge</span></div>
+            <div class="day">7 Sep</div>
+            <div class="ev"><span class="t">15:08</span><img class="av" src="pfp-leung.jpg" style="width: 22px; height: 22px;"><span class="s"><b>Leung Chi-hang</b> sent <b>Porsche cat</b> to X</span><span class="cat" style="background: #f3f0ff; color: #6846e3;">Publishing</span></div>
+            <div class="ev"><span class="t">09:30</span><img class="av" src="pfp-michelle.jpg" style="width: 22px; height: 22px;"><span class="s"><b>Michelle Yip</b> paused the <b>OpenAI</b> key</span><span class="cat" style="background: #f3f3f3; color: #525252;">Settings</span></div>
+          </div>
+          <div style="width: 262px; flex-shrink: 0; padding-top: 14px;">
+            <div class="card" style="padding: 14px;">
+              <div style="display: flex; align-items: center; gap: 8px;"><img class="av" src="pfp-michelle.jpg" style="width: 26px; height: 26px;"><div style="min-width: 0;"><div style="font-size: 12.5px; font-weight: 500;">Michelle Yip</div><div class="cap">Admin · 9 Sep 09:02</div></div></div>
+              <div style="font-size: 12.5px; line-height: 1.55; color: #383838; margin-top: 12px;">Opened <b style="font-weight: 500;">master-004.mov</b> in Renders. The file wasn’t shared with her. Admins can open any file, and every time they do it lands here.</div>
+              <div class="kv" style="margin-top: 10px; font-size: 12px;"><span>Action</span><span style="font-family: ui-monospace, monospace; font-size: 11px;">file.read</span></div>
+              <div class="kv" style="font-size: 12px;"><span>From</span><span>203.0.113.7 · Hong Kong</span></div>
+              <div class="kv" style="font-size: 12px;"><span>Device</span><span>Chrome on macOS</span></div>
+              <div class="kv" style="font-size: 12px; border: none;"><span>Entry</span><span style="display: flex; align-items: center; gap: 5px;">#48,210 <div class="ck" style="background: #278f5e;"><svg viewBox="0 0 16 16"><path d="M3.6 8.3 6.5 11.2 12.4 5.1"/></svg></div></span></div>
+              <div class="cap" style="line-height: 1.5; margin-top: 4px;">The tick means this entry still matches the chain of entries before it, so nothing has been altered.</div>
+              <div style="display: flex; gap: 6px; margin-top: 12px;"><div class="btn s" style="flex: 1; justify-content: center; height: 28px;">Open file</div><div class="btn s" style="flex: 1; justify-content: center; height: 28px;">Her activity</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div style="width: 320px; flex-shrink: 0; border-left: 1px solid #ededed; background: #fcfcfc; display: flex; flex-direction: column;">
+        <div style="height: 44px; flex-shrink: 0; display: flex; align-items: center; gap: 2px; padding: 0 10px; border-bottom: 1px solid #ededed;">
+          <div class="rtab on"><svg viewBox="0 0 24 24" style="width: 12px; height: 12px; stroke: {{accent}}; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;"><path d="M12 4.2 19 8v8l-7 3.8L5 16V8z"/><path d="M12 11.8 19 8M12 11.8v8M12 11.8 5 8"/></svg>Agent</div>
+          <div class="rtab">Saved views</div>
+          <div style="flex-grow: 1;"></div>
+          <svg viewBox="0 0 24 24" style="width: 15px; height: 15px; stroke: #999999; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;"><path d="m10 6 6 6-6 6"/></svg>
+        </div>
+
+        <div style="flex-shrink: 0; padding: 11px 13px; border-bottom: 1px solid #f3f3f3;">
+          <div style="display: inline-flex; align-items: center; gap: 7px; height: 25px; padding: 0 10px; border-radius: 7px; background: #fff; border: 1px solid #ededed; max-width: 100%;">
+            <span style="width: 6px; height: 6px; border-radius: 3px; background: {{accent}}; flex-shrink: 0;"></span><span style="font-size: 11.5px; color: #525252; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Audit log · last 30 days</span>
+          </div>
+        </div>
+        <div style="flex-grow: 1; min-height: 0; padding: 14px 13px 0; overflow: hidden;">
+          <div style="display: flex; justify-content: flex-end; margin-bottom: 10px;"><div style="max-width: 244px; background: #f3f3f3; border-radius: 10px; padding: 8px 11px; font-size: 12px; line-height: 1.5; color: #383838;">Has anyone opened files they weren’t given this month?</div></div>
+          <div style="display: inline-flex; align-items: center; gap: 7px; height: 23px; padding: 0 9px; border: 1px solid #ededed; border-radius: 7px; background: #fff; margin-bottom: 9px;">
+            <svg viewBox="0 0 24 24" style="width: 11px; height: 11px; stroke: #278f5e; fill: none; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round;"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span style="font-size: 11px; color: #525252;">Searched 48,210 entries · 0.9 s</span>
+          </div>
+          <div style="font-size: 12px; line-height: 1.6; color: #383838; text-wrap: pretty;"><p>Only Michelle Yip, twice, both as admin: <b style="font-weight: 500;">master-004.mov</b> today and <b style="font-weight: 500;">payroll-aug.xlsx</b> on 2 Sep.</p><p style="margin-top: 8px;">Admins are allowed to, but it is always recorded here, so the rest of the team can see it happened.</p></div>
+          <div style="display: flex; gap: 6px; margin-top: 11px;"><div class="btn" style="height: 27px; font-size: 12px; background: {{accent}}; color: #fff; font-weight: 500;">Show both entries</div><div class="btn s" style="height: 27px; font-size: 12px;">Not now</div></div>
+        </div>
+        <div style="flex-shrink: 0; padding: 11px 13px 9px;">
+          <div style="border: 1px solid #e2e2e2; border-radius: 10px; background: #fff; padding: 9px 10px 7px; box-shadow: 0 1px 2px rgba(0,0,0,.06);">
+            <div style="font-size: 12px; color: #999999;">Ask the audit log…</div>
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 11px;"><span style="font-size: 10.5px; color: #999999;">gemini-2.5-pro</span><div style="width: 25px; height: 25px; border-radius: 7px; background: {{accent}}; display: flex; align-items: center; justify-content: center;"><svg viewBox="0 0 24 24" style="width: 12px; height: 12px; stroke: #fff; fill: none; stroke-width: 2.3; stroke-linecap: round; stroke-linejoin: round;"><path d="M12 19V5.5M6 11.5 12 5.5l6 6"/></svg></div></div>
+          </div>
+        </div>
+        <div style="flex-shrink: 0; border-top: 1px solid #f3f3f3; padding: 9px 13px 11px; display: flex; align-items: center; gap: 7px;">
+          <svg viewBox="0 0 24 24" style="width: 11px; height: 11px; flex-shrink: 0; stroke: #999999; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;"><path d="M6.8 10.5h10.4v8H6.8z"/><path d="M9.2 10.5V8a2.8 2.8 0 0 1 5.6 0v2.5"/></svg>
+          <span style="font-size: 10.5px; color: #999999;">Entries can’t be edited or deleted</span><span style="margin-left: auto; font-size: 10.5px; color: #999999;">HK$0.01</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script data-dc-script data-props='{"accent":{"editor":"color","default":"#007BE0","options":["#007BE0","#171717","#278F5E","#6846E3"],"section":"Theme"},"sidebar":{"editor":"enum","options":["open","collapsed"],"default":"open","section":"Layout"},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = {}; }
+  accent() { var raw = this.props.accent || '#007BE0'; return /^#[0-9a-fA-F]{6}$/.test(raw) ? raw : '#007BE0'; }
+  side(v) {
+    var self = this;
+    var c = this.state.c != null ? this.state.c : this.props.sidebar === 'collapsed';
+    v.sideOpen = !c; v.sideClosed = c;
+    v.toggleSide = function () { self.setState({ c: !c }); };
+    return v;
+  }
+  renderVals() { return this.side({ accent: this.accent() }); }
+}
+</script>
+</body>
+</html>

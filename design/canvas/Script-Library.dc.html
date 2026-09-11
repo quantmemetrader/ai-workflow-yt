@@ -1,0 +1,533 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<!-- hand-authored: Script · Library. Rebuild with script-screens.mjs -->
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;450;500;600&family=Noto+Sans+HK:wght@400;500&display=swap">
+  <style>
+    html, body { overflow: hidden; }
+    body { margin: 0; font-family: Inter, 'PingFang HK', 'Noto Sans HK', system-ui, sans-serif; font-weight: 420; letter-spacing: 0.02em; -webkit-font-smoothing: antialiased; }
+    * { box-sizing: border-box; }
+    a { color: #007be0; text-decoration: none; }
+    img { display: block; }
+    p { margin: 0; }
+
+    @keyframes fadeUp { from { transform: translateY(10px); opacity: 0 } to { transform: none; opacity: 1 } }
+    @keyframes rowIn  { from { transform: translateY(7px);  opacity: 0 } to { transform: none; opacity: 1 } }
+    .scr { animation: fadeUp .24s cubic-bezier(.32,.72,0,1) both; }
+    .tr  { animation: rowIn .3s cubic-bezier(.32,.72,0,1) both; }
+    .tr:nth-of-type(1){animation-delay:.01s} .tr:nth-of-type(2){animation-delay:.035s}
+    .tr:nth-of-type(3){animation-delay:.06s} .tr:nth-of-type(4){animation-delay:.085s}
+    .tr:nth-of-type(5){animation-delay:.11s} .tr:nth-of-type(6){animation-delay:.135s}
+    .tr:nth-of-type(7){animation-delay:.16s} .tr:nth-of-type(8){animation-delay:.185s}
+
+    /* rail */
+    .r { width: 34px; height: 34px; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: #7c7c7c; transition: background .16s ease, color .16s ease; }
+    .r svg { width: 17px; height: 17px; fill: currentColor; }
+    .r.on { background: #ffffff; box-shadow: 0 1px 2px rgba(0,0,0,0.1); color: #171717; }
+    .r.no { opacity: .32; }
+
+    /* sidebar */
+    .n { display: flex; align-items: center; gap: 8px; height: 28px; padding: 0 9px; border-radius: 8px; font-size: 12.5px; color: #525252; transition: background .16s ease; }
+    .n.on { background: #ffffff; box-shadow: 0 1px 2px rgba(0,0,0,0.1); color: #171717; font-weight: 500; }
+    .n b { margin-left: auto; font-size: 10.5px; font-weight: 500; color: #999999; }
+    .n i { margin-left: auto; font-style: normal; display: inline-flex; align-items: center; height: 17px; padding: 0 6px; border-radius: 9px; background: #ffe7e7; color: #e03636; font-size: 10px; font-weight: 500; }
+    .lbl { font-size: 10.5px; font-weight: 500; color: #999999; padding: 0 9px; }
+
+    /* generic */
+    .bar { height: 48px; flex-shrink: 0; border-bottom: 1px solid #ededed; display: flex; align-items: center; gap: 10px; padding: 0 20px; }
+    .h1 { font-size: 14px; font-weight: 500; }
+    .mut { font-size: 12px; color: #999999; }
+    .btn { height: 30px; padding: 0 12px; border-radius: 8px; display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; white-space: nowrap; }
+    .btn.p { background: #007be0; color: #fff; font-weight: 500; }
+    .btn.s { border: 1px solid #ededed; color: #525252; }
+    .btn svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+    .chip { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 11px; border: 1px solid #ededed; border-radius: 8px; font-size: 12px; color: #4a5763; white-space: nowrap; }
+    .chip svg { width: 10px; height: 10px; stroke: #999999; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    .bd { display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border-radius: 6px; font-size: 11px; font-weight: 500; white-space: nowrap; }
+    .gray { background: #f3f3f3; color: #525252 }
+    .blue { background: #e6f4ff; color: #007be0 }
+    .grn  { background: #e4faeb; color: #278f5e }
+    .amb  { background: #fff7d3; color: #db7706 }
+    .red  { background: #ffe7e7; color: #e03636 }
+    .card { border: 1px solid #ededed; border-radius: 12px; background: #fff; padding: 16px; }
+    .kv { display: flex; justify-content: space-between; gap: 14px; padding: 8px 0; border-bottom: 1px solid #f3f3f3; font-size: 12.5px; }
+    .kv span:first-child { color: #999999; }
+    .av { width: 20px; height: 20px; border-radius: 10px; object-fit: cover; flex-shrink: 0; }
+    .stat { border: 1px solid #ededed; border-radius: 12px; padding: 13px 15px; background: #fff; }
+    .stat i { font-style: normal; display: block; font-size: 10.5px; font-weight: 500; color: #999999; }
+    .stat b { display: block; font-size: 22px; font-weight: 500; letter-spacing: -0.01em; margin-top: 6px; font-variant-numeric: tabular-nums; }
+
+    /* table */
+    .t { width: 100%; }
+    .t .hd { height: 32px; border-bottom: 1px solid #ededed; display: grid; align-items: center; }
+    .t .hd > * { font-size: 10.5px; font-weight: 500; color: #7c7c7c; padding: 0 12px; }
+    .tr { height: 46px; border-bottom: 1px solid #f3f3f3; display: grid; align-items: center; }
+    .tr > * { font-size: 12.5px; color: #383838; padding: 0 12px; min-width: 0; display: flex; align-items: center; }
+    .num { justify-content: flex-end; font-variant-numeric: tabular-nums; }
+    .el { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
+    .body { flex-grow: 1; min-height: 0; padding: 18px 20px; overflow: hidden; }
+    .focus { box-shadow: 0 0 0 3px #EFF6FF; }
+  
+    .tabs { height: 40px; flex-shrink: 0; display: flex; align-items: stretch; gap: 20px; padding: 0 22px; border-bottom: 1px solid #ededed; }
+    .tb { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: #7c7c7c; border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap; }
+    .tb.on { color: #171717; font-weight: 500; border-color: #171717; }
+    .tb b { font-size: 10.5px; font-weight: 500; color: #999999; }
+    .tb i { font-style: normal; display: inline-flex; align-items: center; height: 16px; padding: 0 5px; border-radius: 8px; background: #e6f4ff; color: #007be0; font-size: 10px; font-weight: 500; }
+    .rtab { height: 26px; padding: 0 11px; border-radius: 7px; display: flex; align-items: center; gap: 6px; font-size: 12px; color: #7c7c7c; }
+    .rtab.on { background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.1); color: #171717; font-weight: 500; }
+    .cap { font-size: 11px; color: #999999; }
+    .seg { width: 30px; height: 26px; border-radius: 6px; display: flex; align-items: center; justify-content: center; cursor: pointer; }
+    .seg svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+    .fc { height: 26px; padding: 0 10px; border-radius: 7px; display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: #525252; border: 1px solid #ededed; background: #fff; white-space: nowrap; }
+    .fc b { font-weight: 500; color: #999999; font-size: 11px; }
+    .fc.on { background: #171717; border-color: #171717; color: #fff; }
+    .fc.on b { color: #c7c7c7; }
+    .fc svg { width: 10px; height: 10px; stroke: #999999; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    .dot { width: 7px; height: 7px; border-radius: 4px; flex-shrink: 0; }
+    .kbd { display: inline-flex; align-items: center; height: 18px; padding: 0 5px; border-radius: 4px; border: 1px solid #e2e2e2; font-size: 10.5px; color: #7c7c7c; background: #fafafa; }
+    .ck { width: 18px; height: 18px; border-radius: 9px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .ck svg { width: 11px; height: 11px; stroke: #fff; fill: none; stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; }
+    .cb { width: 16px; height: 16px; border-radius: 4px; border: 1px solid #999999; background: #fff; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
+    .cb.on { border: none; background: #171717; }
+    .cb svg { width: 11px; height: 11px; stroke: #fff; fill: none; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+    .li { display: flex; gap: 11px; padding: 11px 0; border-bottom: 1px solid #f3f3f3; }
+    .li .a { font-size: 12.5px; color: #171717; }
+    .li .b { font-size: 11.5px; color: #999999; margin-top: 2px; }
+
+    /* item switcher (left sidebar inside a document / project) */
+    .sn { display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 9px; border-radius: 8px; font-size: 12.5px; color: #525252; }
+    .sn > span:not(.dot) { flex-grow: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .sn.on { background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.1); color: #171717; font-weight: 500; }
+    .sn img.av { width: 16px; height: 16px; border-radius: 8px; }
+    .sg { display: flex; align-items: center; gap: 6px; font-size: 10.5px; font-weight: 500; color: #999999; padding: 0 9px; margin: 14px 0 4px; }
+    .sg svg { width: 10px; height: 10px; stroke: #999999; fill: none; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+    .ptog { width: 26px; height: 26px; border-radius: 7px; display: flex; align-items: center; justify-content: center; color: #7c7c7c; cursor: pointer; flex-shrink: 0; }
+    .ptog:hover { background: #ededed; }
+    .ptog svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+    .mini { width: 52px; flex-shrink: 0; background: #f8f8f8; border-right: 1px solid #ededed; display: flex; flex-direction: column; align-items: center; padding: 10px 0; gap: 4px; }
+    .mi { width: 36px; height: 36px; border-radius: 9px; display: flex; align-items: center; justify-content: center; position: relative; }
+    .mi.on { background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.1); }
+    .mi .dot { position: absolute; right: 3px; bottom: 3px; box-shadow: 0 0 0 2px #f8f8f8; }
+    .mi.on .dot { box-shadow: 0 0 0 2px #fff; }
+    .tabs { height: 40px; flex-shrink: 0; display: flex; align-items: stretch; gap: 20px; padding: 0 22px; border-bottom: 1px solid #ededed; }
+    .tb { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: #7c7c7c; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+    .tb.on { color: #171717; font-weight: 500; border-color: #171717; }
+    .tb b { font-size: 10.5px; font-weight: 500; color: #999999; }
+    .tb svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+    .rtab { height: 26px; padding: 0 11px; border-radius: 7px; display: flex; align-items: center; gap: 6px; font-size: 12px; color: #7c7c7c; }
+    .rtab.on { background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.1); color: #171717; font-weight: 500; }
+    .cap { font-size: 11px; color: #999999; }
+    .seg { width: 30px; height: 26px; border-radius: 6px; display: flex; align-items: center; justify-content: center; cursor: pointer; }
+    .seg svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+    .fc { height: 26px; padding: 0 10px; border-radius: 7px; display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: #525252; border: 1px solid #ededed; background: #fff; white-space: nowrap; }
+    .fc b { font-weight: 500; color: #999999; font-size: 11px; }
+    .fc.on { background: #171717; border-color: #171717; color: #fff; }
+    .fc.on b { color: #c7c7c7; }
+    .dot { width: 7px; height: 7px; border-radius: 4px; flex-shrink: 0; }
+
+    /* Finder-style page previews */
+    .well { height: 176px; border-radius: 10px; background: #f5f5f5; display: flex; align-items: center; justify-content: center; position: relative; }
+    .tl.sel .well { background: #eaf4fd; box-shadow: 0 0 0 2px var(--ac); }
+    .pg { width: 120px; height: 154px; background: #fff; border-radius: 3px; overflow: hidden; box-shadow: 0 0 0 1px rgba(0,0,0,.06), 0 2px 6px rgba(0,0,0,.08); position: relative; }
+    .pgi { width: 480px; height: 616px; padding: 38px 36px; transform: scale(.25); transform-origin: 0 0; }
+    .pgi h4 { margin: 0; font-size: 23px; font-weight: 600; line-height: 1.2; color: #171717; letter-spacing: -.01em; }
+    .pgi .pm { font-size: 12px; color: #999999; margin-top: 8px; padding-bottom: 14px; border-bottom: 1.5px solid #ededed; }
+    .pgi .pb { display: grid; grid-template-columns: 34px 132px 1fr; gap: 12px; padding: 12px 0; border-bottom: 1px solid #f3f3f3; }
+    .pgi .pb i { font-style: normal; font-size: 10px; color: #999999; font-weight: 600; }
+    .pgi .pb span { font-size: 11px; line-height: 1.45; color: #7c7c7c; }
+    .pgi .pb p { font-size: 13px; line-height: 1.45; color: #383838; }
+    .pgi .pf { background: #f3f3f3; border-radius: 6px; padding: 9px 11px; margin-top: 10px; }
+    .pgi .pf i { display: block; font-style: normal; font-size: 10px; color: #999999; font-weight: 600; margin-bottom: 4px; }
+    .pgi .pf p { font-size: 13px; color: #383838; line-height: 1.4; }
+    .stamp { position: absolute; top: 8px; right: 8px; height: 17px; padding: 0 5px; border-radius: 4px; display: flex; align-items: center; gap: 3px; font-size: 9px; font-weight: 600; letter-spacing: .04em; }
+    .stamp svg { width: 9px; height: 9px; stroke: currentColor; fill: none; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+    .tt { font-size: 12.5px; font-weight: 500; line-height: 1.35; color: #171717; margin-top: 10px; height: 34px; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+    .fold { display: flex; align-items: center; gap: 10px; height: 52px; padding: 0 12px; border: 1px solid #ededed; border-radius: 10px; background: #fff; }
+    .fold svg.fi { width: 30px; height: 24px; flex-shrink: 0; }
+
+    /* icon grid (library) */
+    .ic { display: flex; flex-direction: column; align-items: center; padding: 8px 4px 6px; border-radius: 10px; min-width: 0; }
+    .icn { height: 62px; width: 76px; display: flex; align-items: flex-end; justify-content: center; padding-bottom: 6px; border-radius: 9px; }
+    .ic.sel .icn { background: #f3f3f3; }
+    .icl { margin-top: 7px; text-align: center; font-size: 12px; line-height: 1.4; color: #171717; max-width: 100%; }
+    .icl span { padding: 1px 5px; border-radius: 5px; -webkit-box-decoration-break: clone; box-decoration-break: clone; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+    .ic.sel .icl span { background: var(--ac); color: #fff; }
+    .icm { display: flex; align-items: center; gap: 5px; margin-top: 4px; font-size: 11px; color: #999999; white-space: nowrap; }
+    .icm .dot { width: 6px; height: 6px; }
+
+    /* script switcher */
+    .sn { display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 9px; border-radius: 8px; font-size: 12.5px; color: #525252; }
+    .sn span { flex-grow: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .sn span.dot { flex-grow: 0; }
+    .sn.on { background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.1); color: #171717; font-weight: 500; }
+    .sn img { width: 16px; height: 16px; border-radius: 8px; object-fit: cover; flex-shrink: 0; }
+    .sg { display: flex; align-items: center; gap: 6px; font-size: 10.5px; font-weight: 500; color: #999999; padding: 0 9px; margin: 14px 0 4px; }
+    .sg svg { width: 10px; height: 10px; stroke: #999999; fill: none; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+
+    /* editor */
+    .tool { width: 28px; height: 28px; border-radius: 7px; display: flex; align-items: center; justify-content: center; color: #525252; }
+    .tool svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+    .bt { display: grid; grid-template-columns: 58px 228px minmax(0, 1fr); gap: 0 20px; padding: 13px 0; border-bottom: 1px solid #f3f3f3; }
+    .bt .bn { font-size: 10.5px; font-weight: 500; color: #999999; line-height: 1.5; font-variant-numeric: tabular-nums; }
+    .bt .bn b { display: block; font-weight: 500; color: #c7c7c7; }
+    .bt .vi { font-size: 12.5px; line-height: 1.55; color: #7c7c7c; }
+    .bt .zh { font-size: 14px; line-height: 1.6; color: #171717; }
+    .bt .en { font-size: 12.5px; line-height: 1.55; color: #7c7c7c; margin-top: 3px; }
+    .wv { text-decoration: underline wavy #db7706; text-decoration-thickness: 1.4px; text-underline-offset: 3px; text-decoration-skip-ink: none; }
+    .sl { background: #d6eafc; border-radius: 2px; box-shadow: 0 0 0 2px #d6eafc; }
+    .ins { background: #e4faeb; color: #1f7a4d; border-radius: 2px; }
+    .del { background: #ffe7e7; color: #c53030; text-decoration: line-through; border-radius: 2px; }
+    .pop { position: absolute; background: #fff; border: 1px solid #e2e2e2; border-radius: 11px; box-shadow: 0 8px 24px rgba(0,0,0,.1), 0 1px 3px rgba(0,0,0,.06); z-index: 3; }
+    .kbd { display: inline-flex; align-items: center; height: 18px; padding: 0 5px; border-radius: 4px; border: 1px solid #e2e2e2; font-size: 10.5px; color: #7c7c7c; background: #fafafa; }
+    .qc { height: 24px; padding: 0 9px; border-radius: 7px; background: #f3f3f3; display: inline-flex; align-items: center; font-size: 11.5px; color: #525252; white-space: nowrap; }
+    .sug { border: 1px solid #ededed; border-radius: 10px; background: #fff; padding: 10px 11px; }
+    .sug .k { display: flex; align-items: center; gap: 6px; font-size: 10.5px; font-weight: 500; color: #999999; }
+    .sug .q { font-size: 12.5px; color: #171717; margin-top: 5px; line-height: 1.45; }
+    .sug .w { font-size: 11.5px; color: #7c7c7c; margin-top: 3px; line-height: 1.45; }
+    .mb { height: 4px; border-radius: 2px; background: #ededed; margin-top: 6px; position: relative; }
+    .mb div { height: 4px; border-radius: 2px; }
+    .ck { width: 18px; height: 18px; border-radius: 9px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .ck svg { width: 11px; height: 11px; stroke: #fff; fill: none; stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; }
+    .li { display: flex; gap: 11px; padding: 11px 0; border-bottom: 1px solid #f3f3f3; }
+    .li .a { font-size: 12.5px; color: #171717; }
+    .li .b { font-size: 11.5px; color: #999999; margin-top: 2px; }
+    .inp { height: 32px; border-radius: 8px; background: #f3f3f3; display: flex; align-items: center; gap: 8px; padding: 0 10px; font-size: 12.5px; color: #171717; }
+    .inp svg { width: 12px; height: 12px; stroke: #999999; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    .fl { font-size: 11px; font-weight: 500; color: #7c7c7c; margin-bottom: 6px; }
+    .df { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); border: 1px solid #ededed; border-radius: 10px; overflow: hidden; margin-bottom: 10px; }
+    .df > div { padding: 11px 13px; font-size: 13px; line-height: 1.6; color: #383838; }
+    .df > div:first-child { border-right: 1px solid #ededed; }
+    .dh { grid-column: 1 / -1; padding: 7px 13px !important; background: #f8f8f8; border-bottom: 1px solid #ededed; font-size: 11px !important; color: #7c7c7c !important; display: flex; align-items: center; gap: 8px; }
+    .vr { display: flex; gap: 10px; padding: 11px 12px; border-radius: 9px; }
+    .vr.on { background: #f8f8f8; }
+    .vr .bd { flex-grow: 0; }
+    .ab { width: 18px; height: 18px; border-radius: 5px; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 600; flex-shrink: 0; }
+    .shot { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-bottom: 1px solid #f3f3f3; }
+    .shot i { font-style: normal; width: 22px; font-size: 10.5px; color: #999999; font-weight: 500; font-variant-numeric: tabular-nums; }
+    .shot span { flex-grow: 1; min-width: 0; font-size: 12px; color: #383838; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }</style>
+</helmet>
+
+<div style="--ac: {{accent}}; width: 1440px; height: 900px; display: flex; background: #ffffff; color: #171717; overflow: hidden;">
+
+  <div style="width: 52px; flex-shrink: 0; background: #f8f8f8; border-right: 1px solid #ededed; display: flex; flex-direction: column; align-items: center; padding: 10px 0; gap: 3px;">
+    <div style="width: 28px; height: 28px; border-radius: 8px; background: #171717; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 11px; font-weight: 600; margin-bottom: 10px;">AF</div>
+    <div class="r"><svg viewBox="0 0 24 24"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 9.5 9.5 0 0 1-2.8-.4L4 21l1.4-4.1A8.2 8.2 0 0 1 3.6 11.5 8.4 8.4 0 0 1 12 3.1a8.4 8.4 0 0 1 9 8.4z"/></svg></div>
+    <div class="r"><svg viewBox="0 0 24 24"><path d="M3.6 6.9a2.1 2.1 0 0 1 2.1-2.1h3.2a2.1 2.1 0 0 1 1.62.76l1.02 1.24h6.76a2.1 2.1 0 0 1 2.1 2.1v8.3a2.1 2.1 0 0 1-2.1 2.1H5.7a2.1 2.1 0 0 1-2.1-2.1z"/></svg></div>
+    <div class="r"><svg viewBox="0 0 24 24"><rect x="3.4" y="12.6" width="4.2" height="7.4" rx="1.5"/><rect x="9.9" y="8.4" width="4.2" height="11.6" rx="1.5"/><rect x="16.4" y="4" width="4.2" height="16" rx="1.5"/></svg></div>
+    <div class="r on"><svg viewBox="0 0 24 24"><path d="M6.4 3.4h7.4L18.6 8v12.6H6.4z"/><path d="M9.4 12.3h6M9.4 15.6h6" stroke="#f8f8f8" stroke-width="1.5" fill="none"/></svg></div>
+    <div class="r"><svg viewBox="0 0 24 24"><rect x="3.4" y="5.4" width="12.4" height="13.2" rx="2.1"/><path d="m16.6 13 4.6 2.8V8.2L16.6 11z"/></svg></div>
+    <div class="r"><svg viewBox="0 0 24 24"><path d="M21.86 4.14a1.1 1.1 0 0 0-1.14-.18L2.9 11.13c-.86.34-.83 1.58.05 1.87l4.46 1.5 1.68 5.06c.24.72 1.15.93 1.68.38l2.4-2.5 4.4 3.23c.6.44 1.46.12 1.63-.6z"/></svg></div>
+    <div style="width: 22px; height: 1px; background: #e2e2e2; margin: 6px 0;"></div>
+    <div class="r"><svg viewBox="0 0 24 24"><rect x="5.4" y="3.4" width="13.2" height="17.2" rx="2"/><path d="M8.4 8h7.2M8.4 12h7.2M8.4 16h4" stroke="#f8f8f8" stroke-width="1.5" fill="none"/></svg></div>
+    <div class="r"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.6"/><path d="M14.8 9.4c-.4-1-1.5-1.6-2.8-1.6-1.6 0-2.8.9-2.8 2.1 0 2.9 5.7 1.4 5.7 4.3 0 1.2-1.2 2.1-2.9 2.1-1.4 0-2.5-.6-2.9-1.6M12 6.4v1.4M12 16.3v1.4" stroke="#f8f8f8" stroke-width="1.5" fill="none"/></svg></div>
+    <div class="r"><svg viewBox="0 0 24 24"><path d="M12 3.2 4.4 6.2v5.6c0 4.4 3.1 8.3 7.6 9.3 4.5-1 7.6-4.9 7.6-9.3V6.2z"/></svg></div>
+    <div class="r no"><svg viewBox="0 0 24 24"><circle cx="12" cy="7.8" r="3.7"/><path d="M4.7 20.2a7.3 7.3 0 0 1 14.6 0z"/></svg></div>
+    <div class="r"><svg viewBox="0 0 24 24"><path d="M4 7.4h16M4 12h16M4 16.6h16" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linecap="round"/><circle cx="9" cy="7.4" r="2.2"/><circle cx="15" cy="16.6" r="2.2"/></svg></div>
+    <div style="flex-grow: 1;"></div>
+    <img class="av" src="pfp-amy.jpg" style="width: 26px; height: 26px;">
+  </div>
+
+  <div style="width: 212px; flex-shrink: 0; background: #f8f8f8; border-right: 1px solid #ededed; display: flex; flex-direction: column; padding: 10px 8px;">
+    <div style="display: flex; align-items: center; padding: 4px 9px 12px;"><span style="font-size: 14px; font-weight: 500;">Script</span>
+      <div style="margin-left: auto; width: 24px; height: 24px; border-radius: 7px; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.1); display: flex; align-items: center; justify-content: center;"><svg viewBox="0 0 24 24" style="width: 13px; height: 13px; stroke: #171717; fill: none; stroke-width: 2; stroke-linecap: round;"><path d="M12 6v12M6 12h12"/></svg></div>
+    </div>
+    <div class="lbl" style="margin-bottom: 5px;">Library</div>
+    <div style="display: flex; flex-direction: column; gap: 1px;">
+      <div class="n"><span>All scripts</span><b>24</b></div>
+      <div class="n"><span>Assigned to me</span><b>5</b></div>
+      <div class="n"><span>Waiting on approval</span><i>2</i></div>
+      <div class="n"><span>Shared with me</span><b>3</b></div>
+    </div>
+    <div class="lbl" style="margin: 16px 0 5px;">Folders</div>
+    <div style="display: flex; flex-direction: column; gap: 1px;">
+      <div class="n on"><svg viewBox="0 0 24 24" style="width: 14px; height: 14px; fill: #8fc3f1;"><path d="M3.6 6.9a2.1 2.1 0 0 1 2.1-2.1h3.2a2.1 2.1 0 0 1 1.62.76l1.02 1.24h6.76a2.1 2.1 0 0 1 2.1 2.1v8.3a2.1 2.1 0 0 1-2.1 2.1H5.7a2.1 2.1 0 0 1-2.1-2.1z"/></svg><span>2026-Q3-campaign</span><b>11</b></div>
+      <div class="n"><svg viewBox="0 0 24 24" style="width: 14px; height: 14px; fill: #c7c7c7;"><path d="M3.6 6.9a2.1 2.1 0 0 1 2.1-2.1h3.2a2.1 2.1 0 0 1 1.62.76l1.02 1.24h6.76a2.1 2.1 0 0 1 2.1 2.1v8.3a2.1 2.1 0 0 1-2.1 2.1H5.7a2.1 2.1 0 0 1-2.1-2.1z"/></svg><span>Brand spots</span><b>6</b></div>
+      <div class="n"><svg viewBox="0 0 24 24" style="width: 14px; height: 14px; fill: #c7c7c7;"><path d="M3.6 6.9a2.1 2.1 0 0 1 2.1-2.1h3.2a2.1 2.1 0 0 1 1.62.76l1.02 1.24h6.76a2.1 2.1 0 0 1 2.1 2.1v8.3a2.1 2.1 0 0 1-2.1 2.1H5.7a2.1 2.1 0 0 1-2.1-2.1z"/></svg><span>History of Greece</span><b>5</b></div>
+      <div class="n"><svg viewBox="0 0 24 24" style="width: 14px; height: 14px; fill: #c7c7c7;"><path d="M3.6 6.9a2.1 2.1 0 0 1 2.1-2.1h3.2a2.1 2.1 0 0 1 1.62.76l1.02 1.24h6.76a2.1 2.1 0 0 1 2.1 2.1v8.3a2.1 2.1 0 0 1-2.1 2.1H5.7a2.1 2.1 0 0 1-2.1-2.1z"/></svg><span>2025 archive</span><b>2</b></div>
+    </div>
+    <div style="margin-top: auto; padding: 11px 9px 4px; border-top: 1px solid #ededed;">
+      <div class="lbl" style="padding: 0; margin-bottom: 7px;">House style</div>
+      <div style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: #383838;"><svg viewBox="0 0 24 24" style="width: 13px; height: 13px; stroke: #7c7c7c; fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round;"><path d="M6.5 3.5h7.2L18.5 8v12.5h-12z"/><path d="M13.5 3.5V8h5"/></svg>Style guide v7</div>
+      <div class="mut" style="line-height: 1.5; margin-top: 5px;">Prompt template plus 41 approved past scripts. Updated by admin, 1 Sep.</div>
+    </div>
+  </div>
+  <div style="flex-grow: 1; display: flex; flex-direction: column; min-width: 0;">
+
+    <div class="bar">
+      <span style="font-size: 13px; color: #999999;">Scripts</span>
+      <svg viewBox="0 0 24 24" style="width: 12px; height: 12px; stroke: #c7c7c7; fill: none; stroke-width: 2; stroke-linecap: round;"><path d="m9.5 5.5 6 6.5-6 6.5"/></svg>
+      <span class="h1">2026-Q3-campaign</span>
+      <div style="flex-grow: 1;"></div>
+      <div style="width: 200px; height: 28px; border: 1px solid #ededed; border-radius: 8px; background: #f8f8f8; display: flex; align-items: center; gap: 7px; padding: 0 9px;">
+        <svg viewBox="0 0 24 24" style="width: 13px; height: 13px; stroke: #999999; fill: none; stroke-width: 1.8; stroke-linecap: round;"><circle cx="11" cy="11" r="6.4"/><path d="m15.8 15.8 4 4"/></svg><span style="font-size: 12px; color: #999999;">Search scripts</span>
+      </div>
+      <div style="display: flex; gap: 2px; padding: 2px; border-radius: 8px; background: #f3f3f3;">
+        <div class="seg" onClick="{{ pickGrid }}" style="background: {{gridBg}}; color: {{gridFg}}; box-shadow: {{gridSh}};" title="Pages"><svg viewBox="0 0 24 24"><rect x="4.2" y="4.2" width="6.6" height="6.6" rx="1.6"/><rect x="13.2" y="4.2" width="6.6" height="6.6" rx="1.6"/><rect x="4.2" y="13.2" width="6.6" height="6.6" rx="1.6"/><rect x="13.2" y="13.2" width="6.6" height="6.6" rx="1.6"/></svg></div>
+        <div class="seg" onClick="{{ pickList }}" style="background: {{listBg}}; color: {{listFg}}; box-shadow: {{listSh}};" title="List"><svg viewBox="0 0 24 24"><path d="M9 6.5h11M9 12h11M9 17.5h11"/><path d="M4.6 6.5h.01M4.6 12h.01M4.6 17.5h.01"/></svg></div>
+      </div>
+      <div class="btn" style="background: {{accent}}; color: #fff; font-weight: 500;"><svg viewBox="0 0 24 24" style="width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round;"><path d="M12 6v12M6 12h12"/></svg>New script</div>
+    </div>
+    <div style="flex-grow: 1; display: flex; min-height: 0;">
+      <div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; padding: 16px 22px 0; overflow: hidden;">
+        <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 16px;">
+          <div class="fc on">All <b>11</b></div>
+          <div class="fc"><span class="dot" style="background: #c7c7c7;"></span>Briefs <b>2</b></div>
+          <div class="fc"><span class="dot" style="background: #007be0;"></span>Drafting <b>3</b></div>
+          <div class="fc"><span class="dot" style="background: #db7706;"></span>Awaiting approval <b>2</b></div>
+          <div class="fc"><span class="dot" style="background: #278f5e;"></span>Locked <b>4</b></div>
+          <div style="flex-grow: 1;"></div>
+          <span class="cap">Sort</span><div class="chip" style="height: 26px; font-size: 12px;">Last edited <svg viewBox="0 0 24 24"><path d="m6.5 9.5 5.5 5.5 5.5-5.5"/></svg></div>
+        </div>
+
+        <sc-if value="{{isGrid}}" hint-placeholder-val="{{ true }}">
+        <div class="lbl" style="padding: 0 4px;">Folders</div>
+        <div style="display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 2px 6px; margin: 4px 0 20px;">
+
+          <div class="ic"><div class="icn"><svg viewBox="0 0 60 46" width="54" height="42" style="display: block; flex-shrink: 0; filter: drop-shadow(0 1px 1.5px rgba(0,0,0,.14));"><defs><linearGradient id="mfold" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8fcdf9"/><stop offset="1" stop-color="#5eacee"/></linearGradient></defs><path d="M2 5a4 4 0 0 1 4-4h14.2a4 4 0 0 1 3.1 1.5L26.4 6H54a4 4 0 0 1 4 4v5H2z" fill="#4e9ce0"/><rect x="1" y="10.5" width="58" height="34.5" rx="4.5" fill="url(#mfold)"/><rect x="1.5" y="10.5" width="57" height="1.8" rx=".9" fill="#bfe3ff"/></svg></div><div class="icl"><span>Shot notes</span></div><div class="icm">7 docs</div></div>
+
+          <div class="ic"><div class="icn"><svg viewBox="0 0 60 46" width="54" height="42" style="display: block; flex-shrink: 0; filter: drop-shadow(0 1px 1.5px rgba(0,0,0,.14));"><defs><linearGradient id="mfold" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8fcdf9"/><stop offset="1" stop-color="#5eacee"/></linearGradient></defs><path d="M2 5a4 4 0 0 1 4-4h14.2a4 4 0 0 1 3.1 1.5L26.4 6H54a4 4 0 0 1 4 4v5H2z" fill="#4e9ce0"/><rect x="1" y="10.5" width="58" height="34.5" rx="4.5" fill="url(#mfold)"/><rect x="1.5" y="10.5" width="57" height="1.8" rx=".9" fill="#bfe3ff"/></svg></div><div class="icl"><span>Interview transcripts</span></div><div class="icm">4 docs</div></div>
+
+          <div class="ic"><div class="icn"><svg viewBox="0 0 60 46" width="54" height="42" style="display: block; flex-shrink: 0; filter: drop-shadow(0 1px 1.5px rgba(0,0,0,.14));"><defs><linearGradient id="mfold" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8fcdf9"/><stop offset="1" stop-color="#5eacee"/></linearGradient></defs><path d="M2 5a4 4 0 0 1 4-4h14.2a4 4 0 0 1 3.1 1.5L26.4 6H54a4 4 0 0 1 4 4v5H2z" fill="#4e9ce0"/><rect x="1" y="10.5" width="58" height="34.5" rx="4.5" fill="url(#mfold)"/><rect x="1.5" y="10.5" width="57" height="1.8" rx=".9" fill="#bfe3ff"/></svg></div><div class="icl"><span>Approved references</span></div><div class="icm">12 docs</div></div>
+        </div>
+        <div class="lbl" style="padding: 0 4px;">Scripts · 11</div>
+        <div style="display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 10px 6px; margin-top: 4px;">
+
+          <div class="ic sel">
+            <div class="icn"><svg viewBox="0 0 42 54" width="42" height="54" style="display: block; flex-shrink: 0; overflow: visible; filter: drop-shadow(0 .5px 1px rgba(0,0,0,.18)) drop-shadow(0 2px 5px rgba(0,0,0,.06));"><rect x=".5" y=".5" width="41" height="53" rx="3.5" fill="#fff" stroke="rgba(0,0,0,.07)"/><rect x="6" y="7" width="15" height="2.4" rx="1.2" fill="#8f8f8f"/><rect x="6" y="13.5" width="20" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="16.7" width="27" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="19.9" width="24" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="23.1" width="28" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="27.9" width="18" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="31.1" width="26" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="34.3" width="23" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="37.5" width="27" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="42.3" width="15" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="45.5" width="25" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="48.7" width="22" height="1.35" rx=".7" fill="#d6d6d6"/><g transform="translate(34.5 46.5)"><circle r="7.4" fill="#007be0" stroke="#fff" stroke-width="1.8"/><path d="M-2.6 2.6 1.9-1.9" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/><path d="M1.1-2.7l1.6 1.6" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/></g></svg></div>
+            <div class="icl"><span>Sham Shui Po dai pai dong revival</span></div>
+            <div class="icm"><span class="dot" style="background: #007be0;"></span>v4 · 2 min ago</div>
+          </div>
+          <div class="ic">
+            <div class="icn"><svg viewBox="0 0 42 54" width="42" height="54" style="display: block; flex-shrink: 0; overflow: visible; filter: drop-shadow(0 .5px 1px rgba(0,0,0,.18)) drop-shadow(0 2px 5px rgba(0,0,0,.06));"><rect x=".5" y=".5" width="41" height="53" rx="3.5" fill="#fff" stroke="rgba(0,0,0,.07)"/><rect x="6" y="7" width="15" height="2.4" rx="1.2" fill="#8f8f8f"/><rect x="6" y="13.5" width="20" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="16.7" width="27" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="19.9" width="24" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="23.1" width="28" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="27.9" width="18" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="31.1" width="26" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="34.3" width="23" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="37.5" width="27" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="42.3" width="15" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="45.5" width="25" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="48.7" width="22" height="1.35" rx=".7" fill="#d6d6d6"/><g transform="translate(34.5 46.5)"><circle r="7.4" fill="#f5a524" stroke="#fff" stroke-width="1.8"/><path d="M0-3.2V0l2.1 1.4" stroke="#fff" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></g></svg></div>
+            <div class="icl"><span>Taipei night-market crossover creators</span></div>
+            <div class="icm"><span class="dot" style="background: #db7706;"></span>v3 · 2 h ago</div>
+          </div>
+          <div class="ic">
+            <div class="icn"><svg viewBox="0 0 42 54" width="42" height="54" style="display: block; flex-shrink: 0; overflow: visible; filter: drop-shadow(0 .5px 1px rgba(0,0,0,.18)) drop-shadow(0 2px 5px rgba(0,0,0,.06));"><rect x=".5" y=".5" width="41" height="53" rx="3.5" fill="#fff" stroke="rgba(0,0,0,.07)"/><rect x="6" y="7" width="15" height="2.4" rx="1.2" fill="#8f8f8f"/><rect x="6" y="13.5" width="20" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="16.7" width="27" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="19.9" width="24" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="23.1" width="28" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="27.9" width="18" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="31.1" width="26" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="34.3" width="23" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="37.5" width="27" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="42.3" width="15" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="45.5" width="25" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="48.7" width="22" height="1.35" rx=".7" fill="#d6d6d6"/><g transform="translate(34.5 46.5)"><circle r="7.4" fill="#30a46c" stroke="#fff" stroke-width="1.8"/><rect x="-2.7" y="-.5" width="5.4" height="4" rx="1" fill="#fff"/><path d="M-1.6-.5v-1.2a1.6 1.6 0 0 1 3.2 0v1.2" stroke="#fff" stroke-width="1.3" fill="none"/></g></svg></div>
+            <div class="icl"><span>History of Greece · Ep 75</span></div>
+            <div class="icm"><span class="dot" style="background: #278f5e;"></span>v6 · 28 Aug</div>
+          </div>
+          <div class="ic">
+            <div class="icn"><svg viewBox="0 0 42 54" width="42" height="54" style="display: block; flex-shrink: 0; overflow: visible; filter: drop-shadow(0 .5px 1px rgba(0,0,0,.18)) drop-shadow(0 2px 5px rgba(0,0,0,.06));"><rect x=".5" y=".5" width="41" height="53" rx="3.5" fill="#fff" stroke="rgba(0,0,0,.07)"/><rect x="6" y="7" width="15" height="2.4" rx="1.2" fill="#8f8f8f"/><rect x="6" y="13.5" width="20" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="16.7" width="27" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="19.9" width="24" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="23.1" width="28" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="27.9" width="18" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="31.1" width="26" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="34.3" width="23" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="37.5" width="27" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="42.3" width="15" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="45.5" width="25" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="48.7" width="22" height="1.35" rx=".7" fill="#d6d6d6"/><g transform="translate(34.5 46.5)"><circle r="7.4" fill="#007be0" stroke="#fff" stroke-width="1.8"/><path d="M-2.6 2.6 1.9-1.9" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/><path d="M1.1-2.7l1.6 1.6" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/></g></svg></div>
+            <div class="icl"><span>Cantonese voice cloning backlash</span></div>
+            <div class="icm"><span class="dot" style="background: #007be0;"></span>v1 · Yesterday</div>
+          </div>
+          <div class="ic">
+            <div class="icn"><svg viewBox="0 0 42 54" width="42" height="54" style="display: block; flex-shrink: 0; overflow: visible; filter: drop-shadow(0 .5px 1px rgba(0,0,0,.18)) drop-shadow(0 2px 5px rgba(0,0,0,.06));"><rect x=".5" y=".5" width="41" height="53" rx="3.5" fill="#fff" stroke="rgba(0,0,0,.07)"/><rect x="6" y="7" width="15" height="2.4" rx="1.2" fill="#8f8f8f"/><rect x="6" y="13.5" width="20" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="16.7" width="27" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="19.9" width="24" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="23.1" width="28" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="27.9" width="18" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="31.1" width="26" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="34.3" width="23" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="37.5" width="27" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="42.3" width="15" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="45.5" width="25" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="48.7" width="22" height="1.35" rx=".7" fill="#d6d6d6"/><g transform="translate(34.5 46.5)"><circle r="7.4" fill="#f5a524" stroke="#fff" stroke-width="1.8"/><path d="M0-3.2V0l2.1 1.4" stroke="#fff" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></g></svg></div>
+            <div class="icl"><span>Good day · collage teaser</span></div>
+            <div class="icm"><span class="dot" style="background: #db7706;"></span>v2 · Yesterday</div>
+          </div>
+          <div class="ic">
+            <div class="icn"><svg viewBox="0 0 42 54" width="42" height="54" style="display: block; flex-shrink: 0; overflow: visible; filter: drop-shadow(0 .5px 1px rgba(0,0,0,.18)) drop-shadow(0 2px 5px rgba(0,0,0,.06));"><rect x=".5" y=".5" width="41" height="53" rx="3.5" fill="#fff" stroke="rgba(0,0,0,.07)"/><rect x="6" y="7" width="15" height="2.4" rx="1.2" fill="#8f8f8f"/><rect x="6" y="13.5" width="30" height="6" rx="1.6" fill="#f2f2f2"/><rect x="8.2" y="15.8" width="9" height="1.4" rx=".7" fill="#cdcdcd"/><rect x="6" y="21.9" width="30" height="6" rx="1.6" fill="#f2f2f2"/><rect x="8.2" y="24.2" width="13" height="1.4" rx=".7" fill="#cdcdcd"/><rect x="6" y="30.299999999999997" width="30" height="6" rx="1.6" fill="#f2f2f2"/><rect x="8.2" y="32.599999999999994" width="17" height="1.4" rx=".7" fill="#cdcdcd"/><rect x="6" y="38.699999999999996" width="30" height="6" rx="1.6" fill="#f2f2f2"/><rect x="8.2" y="40.99999999999999" width="21" height="1.4" rx=".7" fill="#cdcdcd"/></svg></div>
+            <div class="icl"><span>Harbourfront redevelopment hearing</span></div>
+            <div class="icm"><span class="dot" style="background: #c7c7c7;"></span>Brief · 3 Sep</div>
+          </div>
+          <div class="ic">
+            <div class="icn"><svg viewBox="0 0 42 54" width="42" height="54" style="display: block; flex-shrink: 0; overflow: visible; filter: drop-shadow(0 .5px 1px rgba(0,0,0,.18)) drop-shadow(0 2px 5px rgba(0,0,0,.06));"><rect x=".5" y=".5" width="41" height="53" rx="3.5" fill="#fff" stroke="rgba(0,0,0,.07)"/><rect x="6" y="7" width="15" height="2.4" rx="1.2" fill="#8f8f8f"/><rect x="6" y="13.5" width="20" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="16.7" width="27" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="19.9" width="24" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="23.1" width="28" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="27.9" width="18" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="31.1" width="26" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="34.3" width="23" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="37.5" width="27" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="42.3" width="15" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="45.5" width="25" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="48.7" width="22" height="1.35" rx=".7" fill="#d6d6d6"/><g transform="translate(34.5 46.5)"><circle r="7.4" fill="#30a46c" stroke="#fff" stroke-width="1.8"/><rect x="-2.7" y="-.5" width="5.4" height="4" rx="1" fill="#fff"/><path d="M-1.6-.5v-1.2a1.6 1.6 0 0 1 3.2 0v1.2" stroke="#fff" stroke-width="1.3" fill="none"/></g></svg></div>
+            <div class="icl"><span>Porsche cat · night drive</span></div>
+            <div class="icm"><span class="dot" style="background: #278f5e;"></span>v3 · 2 Sep</div>
+          </div>
+          <div class="ic">
+            <div class="icn"><svg viewBox="0 0 42 54" width="42" height="54" style="display: block; flex-shrink: 0; overflow: visible; filter: drop-shadow(0 .5px 1px rgba(0,0,0,.18)) drop-shadow(0 2px 5px rgba(0,0,0,.06));"><rect x=".5" y=".5" width="41" height="53" rx="3.5" fill="#fff" stroke="rgba(0,0,0,.07)"/><rect x="6" y="7" width="15" height="2.4" rx="1.2" fill="#8f8f8f"/><rect x="6" y="13.5" width="20" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="16.7" width="27" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="19.9" width="24" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="23.1" width="28" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="27.9" width="18" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="31.1" width="26" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="34.3" width="23" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="37.5" width="27" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="42.3" width="15" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="45.5" width="25" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="48.7" width="22" height="1.35" rx=".7" fill="#d6d6d6"/><g transform="translate(34.5 46.5)"><circle r="7.4" fill="#e5484d" stroke="#fff" stroke-width="1.8"/><path d="M0-3.3v3.5" stroke="#fff" stroke-width="1.7" stroke-linecap="round"/><circle cx="0" cy="2.7" r=".95" fill="#fff"/></g></svg></div>
+            <div class="icl"><span>Cha chaan teng menu inflation</span></div>
+            <div class="icm"><span class="dot" style="background: #e03636;"></span>v2 · 1 Sep</div>
+          </div>
+          <div class="ic">
+            <div class="icn"><svg viewBox="0 0 42 54" width="42" height="54" style="display: block; flex-shrink: 0; overflow: visible; filter: drop-shadow(0 .5px 1px rgba(0,0,0,.18)) drop-shadow(0 2px 5px rgba(0,0,0,.06));"><rect x=".5" y=".5" width="41" height="53" rx="3.5" fill="#fff" stroke="rgba(0,0,0,.07)"/><rect x="6" y="7" width="15" height="2.4" rx="1.2" fill="#8f8f8f"/><rect x="6" y="13.5" width="30" height="6" rx="1.6" fill="#f2f2f2"/><rect x="8.2" y="15.8" width="9" height="1.4" rx=".7" fill="#cdcdcd"/><rect x="6" y="21.9" width="30" height="6" rx="1.6" fill="#f2f2f2"/><rect x="8.2" y="24.2" width="13" height="1.4" rx=".7" fill="#cdcdcd"/><rect x="6" y="30.299999999999997" width="30" height="6" rx="1.6" fill="#f2f2f2"/><rect x="8.2" y="32.599999999999994" width="17" height="1.4" rx=".7" fill="#cdcdcd"/><rect x="6" y="38.699999999999996" width="30" height="6" rx="1.6" fill="#f2f2f2"/><rect x="8.2" y="40.99999999999999" width="21" height="1.4" rx=".7" fill="#cdcdcd"/></svg></div>
+            <div class="icl"><span>Singapore hawker succession</span></div>
+            <div class="icm"><span class="dot" style="background: #c7c7c7;"></span>Brief · 31 Aug</div>
+          </div>
+          <div class="ic">
+            <div class="icn"><svg viewBox="0 0 42 54" width="42" height="54" style="display: block; flex-shrink: 0; overflow: visible; filter: drop-shadow(0 .5px 1px rgba(0,0,0,.18)) drop-shadow(0 2px 5px rgba(0,0,0,.06));"><rect x=".5" y=".5" width="41" height="53" rx="3.5" fill="#fff" stroke="rgba(0,0,0,.07)"/><rect x="6" y="7" width="15" height="2.4" rx="1.2" fill="#8f8f8f"/><rect x="6" y="13.5" width="20" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="16.7" width="27" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="19.9" width="24" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="23.1" width="28" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="27.9" width="18" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="31.1" width="26" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="34.3" width="23" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="37.5" width="27" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="42.3" width="15" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="45.5" width="25" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="48.7" width="22" height="1.35" rx=".7" fill="#d6d6d6"/><g transform="translate(34.5 46.5)"><circle r="7.4" fill="#30a46c" stroke="#fff" stroke-width="1.8"/><rect x="-2.7" y="-.5" width="5.4" height="4" rx="1" fill="#fff"/><path d="M-1.6-.5v-1.2a1.6 1.6 0 0 1 3.2 0v1.2" stroke="#fff" stroke-width="1.3" fill="none"/></g></svg></div>
+            <div class="icl"><span>Do more · brand spot</span></div>
+            <div class="icm"><span class="dot" style="background: #278f5e;"></span>v2 · 31 Aug</div>
+          </div>
+          <div class="ic">
+            <div class="icn"><svg viewBox="0 0 42 54" width="42" height="54" style="display: block; flex-shrink: 0; overflow: visible; filter: drop-shadow(0 .5px 1px rgba(0,0,0,.18)) drop-shadow(0 2px 5px rgba(0,0,0,.06));"><rect x=".5" y=".5" width="41" height="53" rx="3.5" fill="#fff" stroke="rgba(0,0,0,.07)"/><rect x="6" y="7" width="15" height="2.4" rx="1.2" fill="#8f8f8f"/><rect x="6" y="13.5" width="20" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="16.7" width="27" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="19.9" width="24" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="23.1" width="28" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="27.9" width="18" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="31.1" width="26" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="34.3" width="23" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="37.5" width="27" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="42.3" width="15" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="45.5" width="25" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="48.7" width="22" height="1.35" rx=".7" fill="#d6d6d6"/><g transform="translate(34.5 46.5)"><circle r="7.4" fill="#30a46c" stroke="#fff" stroke-width="1.8"/><rect x="-2.7" y="-.5" width="5.4" height="4" rx="1" fill="#fff"/><path d="M-1.6-.5v-1.2a1.6 1.6 0 0 1 3.2 0v1.2" stroke="#fff" stroke-width="1.3" fill="none"/></g></svg></div>
+            <div class="icl"><span>Orange typography cut</span></div>
+            <div class="icm"><span class="dot" style="background: #278f5e;"></span>v2 · 30 Aug</div>
+          </div>
+        </div>
+        <div class="cap" style="margin-top: 22px; padding: 0 4px;">11 scripts · filtered to scripts you can read</div>
+        </sc-if>
+
+        <sc-if value="{{isList}}" hint-placeholder-val="{{ true }}">
+        <div class="t">
+          <div class="hd" style="grid-template-columns: minmax(0, 1fr) 150px 44px 64px 100px 132px 76px;"><div>Script</div><div>Status</div><div class="num">Ver.</div><div class="num">Length</div><div>House style</div><div>Owner</div><div>Edited</div></div>
+
+          <div class="tr" style="grid-template-columns: minmax(0, 1fr) 150px 44px 64px 100px 132px 76px; height: 54px; background: #f8f8f8;">
+            <div style="gap: 11px;"><div style="width: 26px; display: flex; justify-content: center; flex-shrink: 0;"><svg viewBox="0 0 42 54" width="21" height="27" style="display: block; flex-shrink: 0; overflow: visible; filter: drop-shadow(0 .5px 1px rgba(0,0,0,.18)) drop-shadow(0 2px 5px rgba(0,0,0,.06));"><rect x=".5" y=".5" width="41" height="53" rx="3.5" fill="#fff" stroke="rgba(0,0,0,.07)"/><rect x="6" y="7" width="15" height="2.4" rx="1.2" fill="#8f8f8f"/><rect x="6" y="13.5" width="20" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="16.7" width="27" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="19.9" width="24" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="23.1" width="28" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="27.9" width="18" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="31.1" width="26" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="34.3" width="23" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="37.5" width="27" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="42.3" width="15" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="45.5" width="25" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="48.7" width="22" height="1.35" rx=".7" fill="#d6d6d6"/><g transform="translate(34.5 46.5)"><circle r="7.4" fill="#007be0" stroke="#fff" stroke-width="1.8"/><path d="M-2.6 2.6 1.9-1.9" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/><path d="M1.1-2.7l1.6 1.6" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/></g></svg></div><div style="min-width: 0;"><span class="el" style="color: #171717; font-weight: 500;">Sham Shui Po dai pai dong revival</span><span class="el cap" style="margin-top: 2px;">YouTube · 16:9</span></div></div>
+            <div><span class="bd blue" style="gap: 4px;">Drafting</span></div>
+            <div class="num">v4</div>
+            <div class="num" style="color: #383838;">3:48</div>
+            <div><div style="display: flex; align-items: center; gap: 8px; width: 100%;"><div style="flex-grow: 1; height: 4px; border-radius: 2px; background: #ededed;"><div style="width: 82%; height: 4px; border-radius: 2px; background: {{accent}};"></div></div><span style="font-variant-numeric: tabular-nums; width: 18px; text-align: right;">82</span></div></div>
+            <div style="gap: 8px;"><img class="av" src="pfp-amy.jpg" style="width: 18px; height: 18px;"><span class="el">Amy Wong</span></div>
+            <div style="color: #7c7c7c;">2 min ago</div>
+          </div>
+          <div class="tr" style="grid-template-columns: minmax(0, 1fr) 150px 44px 64px 100px 132px 76px; height: 54px;">
+            <div style="gap: 11px;"><div style="width: 26px; display: flex; justify-content: center; flex-shrink: 0;"><svg viewBox="0 0 42 54" width="21" height="27" style="display: block; flex-shrink: 0; overflow: visible; filter: drop-shadow(0 .5px 1px rgba(0,0,0,.18)) drop-shadow(0 2px 5px rgba(0,0,0,.06));"><rect x=".5" y=".5" width="41" height="53" rx="3.5" fill="#fff" stroke="rgba(0,0,0,.07)"/><rect x="6" y="7" width="15" height="2.4" rx="1.2" fill="#8f8f8f"/><rect x="6" y="13.5" width="20" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="16.7" width="27" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="19.9" width="24" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="23.1" width="28" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="27.9" width="18" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="31.1" width="26" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="34.3" width="23" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="37.5" width="27" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="42.3" width="15" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="45.5" width="25" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="48.7" width="22" height="1.35" rx=".7" fill="#d6d6d6"/><g transform="translate(34.5 46.5)"><circle r="7.4" fill="#f5a524" stroke="#fff" stroke-width="1.8"/><path d="M0-3.2V0l2.1 1.4" stroke="#fff" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></g></svg></div><div style="min-width: 0;"><span class="el" style="color: #171717; font-weight: 500;">Taipei night-market crossover creators</span><span class="el cap" style="margin-top: 2px;">Instagram · 9:16</span></div></div>
+            <div><span class="bd amb" style="gap: 4px;">Awaiting approval</span></div>
+            <div class="num">v3</div>
+            <div class="num" style="color: #383838;">2:10</div>
+            <div><div style="display: flex; align-items: center; gap: 8px; width: 100%;"><div style="flex-grow: 1; height: 4px; border-radius: 2px; background: #ededed;"><div style="width: 91%; height: 4px; border-radius: 2px; background: {{accent}};"></div></div><span style="font-variant-numeric: tabular-nums; width: 18px; text-align: right;">91</span></div></div>
+            <div style="gap: 8px;"><img class="av" src="pfp-leung.jpg" style="width: 18px; height: 18px;"><span class="el">Leung Chi-hang</span></div>
+            <div style="color: #7c7c7c;">2 h ago</div>
+          </div>
+          <div class="tr" style="grid-template-columns: minmax(0, 1fr) 150px 44px 64px 100px 132px 76px; height: 54px;">
+            <div style="gap: 11px;"><div style="width: 26px; display: flex; justify-content: center; flex-shrink: 0;"><svg viewBox="0 0 42 54" width="21" height="27" style="display: block; flex-shrink: 0; overflow: visible; filter: drop-shadow(0 .5px 1px rgba(0,0,0,.18)) drop-shadow(0 2px 5px rgba(0,0,0,.06));"><rect x=".5" y=".5" width="41" height="53" rx="3.5" fill="#fff" stroke="rgba(0,0,0,.07)"/><rect x="6" y="7" width="15" height="2.4" rx="1.2" fill="#8f8f8f"/><rect x="6" y="13.5" width="20" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="16.7" width="27" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="19.9" width="24" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="23.1" width="28" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="27.9" width="18" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="31.1" width="26" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="34.3" width="23" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="37.5" width="27" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="42.3" width="15" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="45.5" width="25" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="48.7" width="22" height="1.35" rx=".7" fill="#d6d6d6"/><g transform="translate(34.5 46.5)"><circle r="7.4" fill="#30a46c" stroke="#fff" stroke-width="1.8"/><rect x="-2.7" y="-.5" width="5.4" height="4" rx="1" fill="#fff"/><path d="M-1.6-.5v-1.2a1.6 1.6 0 0 1 3.2 0v1.2" stroke="#fff" stroke-width="1.3" fill="none"/></g></svg></div><div style="min-width: 0;"><span class="el" style="color: #171717; font-weight: 500;">History of Greece · Ep 75</span><span class="el cap" style="margin-top: 2px;">YouTube · 16:9</span></div></div>
+            <div><span class="bd grn" style="gap: 4px;"><svg viewBox="0 0 24 24" style="width: 10px; height: 10px; stroke: currentColor; fill: none; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round;"><path d="M6.8 10.5h10.4v8H6.8z"/><path d="M9.2 10.5V8a2.8 2.8 0 0 1 5.6 0v2.5"/></svg>Locked</span></div>
+            <div class="num">v6</div>
+            <div class="num" style="color: #383838;">3:48</div>
+            <div><div style="display: flex; align-items: center; gap: 8px; width: 100%;"><div style="flex-grow: 1; height: 4px; border-radius: 2px; background: #ededed;"><div style="width: 94%; height: 4px; border-radius: 2px; background: {{accent}};"></div></div><span style="font-variant-numeric: tabular-nums; width: 18px; text-align: right;">94</span></div></div>
+            <div style="gap: 8px;"><img class="av" src="pfp-chan.jpg" style="width: 18px; height: 18px;"><span class="el">Chan Ka-ming</span></div>
+            <div style="color: #7c7c7c;">28 Aug</div>
+          </div>
+          <div class="tr" style="grid-template-columns: minmax(0, 1fr) 150px 44px 64px 100px 132px 76px; height: 54px;">
+            <div style="gap: 11px;"><div style="width: 26px; display: flex; justify-content: center; flex-shrink: 0;"><svg viewBox="0 0 42 54" width="21" height="27" style="display: block; flex-shrink: 0; overflow: visible; filter: drop-shadow(0 .5px 1px rgba(0,0,0,.18)) drop-shadow(0 2px 5px rgba(0,0,0,.06));"><rect x=".5" y=".5" width="41" height="53" rx="3.5" fill="#fff" stroke="rgba(0,0,0,.07)"/><rect x="6" y="7" width="15" height="2.4" rx="1.2" fill="#8f8f8f"/><rect x="6" y="13.5" width="20" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="16.7" width="27" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="19.9" width="24" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="23.1" width="28" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="27.9" width="18" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="31.1" width="26" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="34.3" width="23" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="37.5" width="27" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="42.3" width="15" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="45.5" width="25" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="48.7" width="22" height="1.35" rx=".7" fill="#d6d6d6"/><g transform="translate(34.5 46.5)"><circle r="7.4" fill="#007be0" stroke="#fff" stroke-width="1.8"/><path d="M-2.6 2.6 1.9-1.9" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/><path d="M1.1-2.7l1.6 1.6" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/></g></svg></div><div style="min-width: 0;"><span class="el" style="color: #171717; font-weight: 500;">Cantonese voice cloning backlash</span><span class="el cap" style="margin-top: 2px;">YouTube · 16:9</span></div></div>
+            <div><span class="bd blue" style="gap: 4px;">Drafting</span></div>
+            <div class="num">v1</div>
+            <div class="num" style="color: #383838;">2:55</div>
+            <div><div style="display: flex; align-items: center; gap: 8px; width: 100%;"><div style="flex-grow: 1; height: 4px; border-radius: 2px; background: #ededed;"><div style="width: 64%; height: 4px; border-radius: 2px; background: #db7706;"></div></div><span style="font-variant-numeric: tabular-nums; width: 18px; text-align: right;">64</span></div></div>
+            <div style="gap: 8px;"><img class="av" src="pfp-leung.jpg" style="width: 18px; height: 18px;"><span class="el">Leung Chi-hang</span></div>
+            <div style="color: #7c7c7c;">Yesterday</div>
+          </div>
+          <div class="tr" style="grid-template-columns: minmax(0, 1fr) 150px 44px 64px 100px 132px 76px; height: 54px;">
+            <div style="gap: 11px;"><div style="width: 26px; display: flex; justify-content: center; flex-shrink: 0;"><svg viewBox="0 0 42 54" width="21" height="27" style="display: block; flex-shrink: 0; overflow: visible; filter: drop-shadow(0 .5px 1px rgba(0,0,0,.18)) drop-shadow(0 2px 5px rgba(0,0,0,.06));"><rect x=".5" y=".5" width="41" height="53" rx="3.5" fill="#fff" stroke="rgba(0,0,0,.07)"/><rect x="6" y="7" width="15" height="2.4" rx="1.2" fill="#8f8f8f"/><rect x="6" y="13.5" width="20" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="16.7" width="27" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="19.9" width="24" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="23.1" width="28" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="27.9" width="18" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="31.1" width="26" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="34.3" width="23" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="37.5" width="27" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="42.3" width="15" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="45.5" width="25" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="48.7" width="22" height="1.35" rx=".7" fill="#d6d6d6"/><g transform="translate(34.5 46.5)"><circle r="7.4" fill="#f5a524" stroke="#fff" stroke-width="1.8"/><path d="M0-3.2V0l2.1 1.4" stroke="#fff" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></g></svg></div><div style="min-width: 0;"><span class="el" style="color: #171717; font-weight: 500;">Good day · collage teaser</span><span class="el cap" style="margin-top: 2px;">Instagram · 9:16</span></div></div>
+            <div><span class="bd amb" style="gap: 4px;">Awaiting approval</span></div>
+            <div class="num">v2</div>
+            <div class="num" style="color: #383838;">0:20</div>
+            <div><div style="display: flex; align-items: center; gap: 8px; width: 100%;"><div style="flex-grow: 1; height: 4px; border-radius: 2px; background: #ededed;"><div style="width: 88%; height: 4px; border-radius: 2px; background: {{accent}};"></div></div><span style="font-variant-numeric: tabular-nums; width: 18px; text-align: right;">88</span></div></div>
+            <div style="gap: 8px;"><img class="av" src="pfp-amy.jpg" style="width: 18px; height: 18px;"><span class="el">Amy Wong</span></div>
+            <div style="color: #7c7c7c;">Yesterday</div>
+          </div>
+          <div class="tr" style="grid-template-columns: minmax(0, 1fr) 150px 44px 64px 100px 132px 76px; height: 54px;">
+            <div style="gap: 11px;"><div style="width: 26px; display: flex; justify-content: center; flex-shrink: 0;"><svg viewBox="0 0 42 54" width="21" height="27" style="display: block; flex-shrink: 0; overflow: visible; filter: drop-shadow(0 .5px 1px rgba(0,0,0,.18)) drop-shadow(0 2px 5px rgba(0,0,0,.06));"><rect x=".5" y=".5" width="41" height="53" rx="3.5" fill="#fff" stroke="rgba(0,0,0,.07)"/><rect x="6" y="7" width="15" height="2.4" rx="1.2" fill="#8f8f8f"/><rect x="6" y="13.5" width="30" height="6" rx="1.6" fill="#f2f2f2"/><rect x="8.2" y="15.8" width="9" height="1.4" rx=".7" fill="#cdcdcd"/><rect x="6" y="21.9" width="30" height="6" rx="1.6" fill="#f2f2f2"/><rect x="8.2" y="24.2" width="13" height="1.4" rx=".7" fill="#cdcdcd"/><rect x="6" y="30.299999999999997" width="30" height="6" rx="1.6" fill="#f2f2f2"/><rect x="8.2" y="32.599999999999994" width="17" height="1.4" rx=".7" fill="#cdcdcd"/><rect x="6" y="38.699999999999996" width="30" height="6" rx="1.6" fill="#f2f2f2"/><rect x="8.2" y="40.99999999999999" width="21" height="1.4" rx=".7" fill="#cdcdcd"/></svg></div><div style="min-width: 0;"><span class="el" style="color: #171717; font-weight: 500;">Harbourfront redevelopment hearing</span><span class="el cap" style="margin-top: 2px;">YouTube · 16:9 · <span style="color: #db7706;">sensitive</span></span></div></div>
+            <div><span class="bd gray" style="gap: 4px;">Brief</span></div>
+            <div class="num">–</div>
+            <div class="num" style="color: #999999;">–</div>
+            <div><span style="color: #c7c7c7;">–</span></div>
+            <div style="gap: 8px;"><img class="av" src="pfp-leung.jpg" style="width: 18px; height: 18px;"><span class="el">Leung Chi-hang</span></div>
+            <div style="color: #7c7c7c;">3 Sep</div>
+          </div>
+          <div class="tr" style="grid-template-columns: minmax(0, 1fr) 150px 44px 64px 100px 132px 76px; height: 54px;">
+            <div style="gap: 11px;"><div style="width: 26px; display: flex; justify-content: center; flex-shrink: 0;"><svg viewBox="0 0 42 54" width="21" height="27" style="display: block; flex-shrink: 0; overflow: visible; filter: drop-shadow(0 .5px 1px rgba(0,0,0,.18)) drop-shadow(0 2px 5px rgba(0,0,0,.06));"><rect x=".5" y=".5" width="41" height="53" rx="3.5" fill="#fff" stroke="rgba(0,0,0,.07)"/><rect x="6" y="7" width="15" height="2.4" rx="1.2" fill="#8f8f8f"/><rect x="6" y="13.5" width="20" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="16.7" width="27" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="19.9" width="24" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="23.1" width="28" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="27.9" width="18" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="31.1" width="26" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="34.3" width="23" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="37.5" width="27" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="42.3" width="15" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="45.5" width="25" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="48.7" width="22" height="1.35" rx=".7" fill="#d6d6d6"/><g transform="translate(34.5 46.5)"><circle r="7.4" fill="#30a46c" stroke="#fff" stroke-width="1.8"/><rect x="-2.7" y="-.5" width="5.4" height="4" rx="1" fill="#fff"/><path d="M-1.6-.5v-1.2a1.6 1.6 0 0 1 3.2 0v1.2" stroke="#fff" stroke-width="1.3" fill="none"/></g></svg></div><div style="min-width: 0;"><span class="el" style="color: #171717; font-weight: 500;">Porsche cat · night drive</span><span class="el cap" style="margin-top: 2px;">Instagram · 9:16</span></div></div>
+            <div><span class="bd grn" style="gap: 4px;"><svg viewBox="0 0 24 24" style="width: 10px; height: 10px; stroke: currentColor; fill: none; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round;"><path d="M6.8 10.5h10.4v8H6.8z"/><path d="M9.2 10.5V8a2.8 2.8 0 0 1 5.6 0v2.5"/></svg>Locked</span></div>
+            <div class="num">v3</div>
+            <div class="num" style="color: #383838;">0:30</div>
+            <div><div style="display: flex; align-items: center; gap: 8px; width: 100%;"><div style="flex-grow: 1; height: 4px; border-radius: 2px; background: #ededed;"><div style="width: 88%; height: 4px; border-radius: 2px; background: {{accent}};"></div></div><span style="font-variant-numeric: tabular-nums; width: 18px; text-align: right;">88</span></div></div>
+            <div style="gap: 8px;"><img class="av" src="pfp-chan.jpg" style="width: 18px; height: 18px;"><span class="el">Chan Ka-ming</span></div>
+            <div style="color: #7c7c7c;">2 Sep</div>
+          </div>
+          <div class="tr" style="grid-template-columns: minmax(0, 1fr) 150px 44px 64px 100px 132px 76px; height: 54px;">
+            <div style="gap: 11px;"><div style="width: 26px; display: flex; justify-content: center; flex-shrink: 0;"><svg viewBox="0 0 42 54" width="21" height="27" style="display: block; flex-shrink: 0; overflow: visible; filter: drop-shadow(0 .5px 1px rgba(0,0,0,.18)) drop-shadow(0 2px 5px rgba(0,0,0,.06));"><rect x=".5" y=".5" width="41" height="53" rx="3.5" fill="#fff" stroke="rgba(0,0,0,.07)"/><rect x="6" y="7" width="15" height="2.4" rx="1.2" fill="#8f8f8f"/><rect x="6" y="13.5" width="20" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="16.7" width="27" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="19.9" width="24" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="23.1" width="28" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="27.9" width="18" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="31.1" width="26" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="34.3" width="23" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="37.5" width="27" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="42.3" width="15" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="45.5" width="25" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="48.7" width="22" height="1.35" rx=".7" fill="#d6d6d6"/><g transform="translate(34.5 46.5)"><circle r="7.4" fill="#e5484d" stroke="#fff" stroke-width="1.8"/><path d="M0-3.3v3.5" stroke="#fff" stroke-width="1.7" stroke-linecap="round"/><circle cx="0" cy="2.7" r=".95" fill="#fff"/></g></svg></div><div style="min-width: 0;"><span class="el" style="color: #171717; font-weight: 500;">Cha chaan teng menu inflation</span><span class="el cap" style="margin-top: 2px;">LinkedIn · 1:1</span></div></div>
+            <div><span class="bd red" style="gap: 4px;">Changes requested</span></div>
+            <div class="num">v2</div>
+            <div class="num" style="color: #383838;">2:40</div>
+            <div><div style="display: flex; align-items: center; gap: 8px; width: 100%;"><div style="flex-grow: 1; height: 4px; border-radius: 2px; background: #ededed;"><div style="width: 77%; height: 4px; border-radius: 2px; background: {{accent}};"></div></div><span style="font-variant-numeric: tabular-nums; width: 18px; text-align: right;">77</span></div></div>
+            <div style="gap: 8px;"><img class="av" src="pfp-amy.jpg" style="width: 18px; height: 18px;"><span class="el">Amy Wong</span></div>
+            <div style="color: #7c7c7c;">1 Sep</div>
+          </div>
+          <div class="tr" style="grid-template-columns: minmax(0, 1fr) 150px 44px 64px 100px 132px 76px; height: 54px;">
+            <div style="gap: 11px;"><div style="width: 26px; display: flex; justify-content: center; flex-shrink: 0;"><svg viewBox="0 0 42 54" width="21" height="27" style="display: block; flex-shrink: 0; overflow: visible; filter: drop-shadow(0 .5px 1px rgba(0,0,0,.18)) drop-shadow(0 2px 5px rgba(0,0,0,.06));"><rect x=".5" y=".5" width="41" height="53" rx="3.5" fill="#fff" stroke="rgba(0,0,0,.07)"/><rect x="6" y="7" width="15" height="2.4" rx="1.2" fill="#8f8f8f"/><rect x="6" y="13.5" width="30" height="6" rx="1.6" fill="#f2f2f2"/><rect x="8.2" y="15.8" width="9" height="1.4" rx=".7" fill="#cdcdcd"/><rect x="6" y="21.9" width="30" height="6" rx="1.6" fill="#f2f2f2"/><rect x="8.2" y="24.2" width="13" height="1.4" rx=".7" fill="#cdcdcd"/><rect x="6" y="30.299999999999997" width="30" height="6" rx="1.6" fill="#f2f2f2"/><rect x="8.2" y="32.599999999999994" width="17" height="1.4" rx=".7" fill="#cdcdcd"/><rect x="6" y="38.699999999999996" width="30" height="6" rx="1.6" fill="#f2f2f2"/><rect x="8.2" y="40.99999999999999" width="21" height="1.4" rx=".7" fill="#cdcdcd"/></svg></div><div style="min-width: 0;"><span class="el" style="color: #171717; font-weight: 500;">Singapore hawker succession</span><span class="el cap" style="margin-top: 2px;">LinkedIn · 1:1</span></div></div>
+            <div><span class="bd gray" style="gap: 4px;">Brief</span></div>
+            <div class="num">–</div>
+            <div class="num" style="color: #999999;">–</div>
+            <div><span style="color: #c7c7c7;">–</span></div>
+            <div style="gap: 8px;"><img class="av" src="pfp-michelle.jpg" style="width: 18px; height: 18px;"><span class="el">Michelle Yip</span></div>
+            <div style="color: #7c7c7c;">31 Aug</div>
+          </div>
+          <div class="tr" style="grid-template-columns: minmax(0, 1fr) 150px 44px 64px 100px 132px 76px; height: 54px;">
+            <div style="gap: 11px;"><div style="width: 26px; display: flex; justify-content: center; flex-shrink: 0;"><svg viewBox="0 0 42 54" width="21" height="27" style="display: block; flex-shrink: 0; overflow: visible; filter: drop-shadow(0 .5px 1px rgba(0,0,0,.18)) drop-shadow(0 2px 5px rgba(0,0,0,.06));"><rect x=".5" y=".5" width="41" height="53" rx="3.5" fill="#fff" stroke="rgba(0,0,0,.07)"/><rect x="6" y="7" width="15" height="2.4" rx="1.2" fill="#8f8f8f"/><rect x="6" y="13.5" width="20" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="16.7" width="27" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="19.9" width="24" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="23.1" width="28" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="27.9" width="18" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="31.1" width="26" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="34.3" width="23" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="37.5" width="27" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="42.3" width="15" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="45.5" width="25" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="48.7" width="22" height="1.35" rx=".7" fill="#d6d6d6"/><g transform="translate(34.5 46.5)"><circle r="7.4" fill="#30a46c" stroke="#fff" stroke-width="1.8"/><rect x="-2.7" y="-.5" width="5.4" height="4" rx="1" fill="#fff"/><path d="M-1.6-.5v-1.2a1.6 1.6 0 0 1 3.2 0v1.2" stroke="#fff" stroke-width="1.3" fill="none"/></g></svg></div><div style="min-width: 0;"><span class="el" style="color: #171717; font-weight: 500;">Do more · brand spot</span><span class="el cap" style="margin-top: 2px;">Instagram · 9:16</span></div></div>
+            <div><span class="bd grn" style="gap: 4px;"><svg viewBox="0 0 24 24" style="width: 10px; height: 10px; stroke: currentColor; fill: none; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round;"><path d="M6.8 10.5h10.4v8H6.8z"/><path d="M9.2 10.5V8a2.8 2.8 0 0 1 5.6 0v2.5"/></svg>Locked</span></div>
+            <div class="num">v2</div>
+            <div class="num" style="color: #383838;">0:45</div>
+            <div><div style="display: flex; align-items: center; gap: 8px; width: 100%;"><div style="flex-grow: 1; height: 4px; border-radius: 2px; background: #ededed;"><div style="width: 90%; height: 4px; border-radius: 2px; background: {{accent}};"></div></div><span style="font-variant-numeric: tabular-nums; width: 18px; text-align: right;">90</span></div></div>
+            <div style="gap: 8px;"><img class="av" src="pfp-michelle.jpg" style="width: 18px; height: 18px;"><span class="el">Michelle Yip</span></div>
+            <div style="color: #7c7c7c;">31 Aug</div>
+          </div>
+          <div class="tr" style="grid-template-columns: minmax(0, 1fr) 150px 44px 64px 100px 132px 76px; height: 54px;">
+            <div style="gap: 11px;"><div style="width: 26px; display: flex; justify-content: center; flex-shrink: 0;"><svg viewBox="0 0 42 54" width="21" height="27" style="display: block; flex-shrink: 0; overflow: visible; filter: drop-shadow(0 .5px 1px rgba(0,0,0,.18)) drop-shadow(0 2px 5px rgba(0,0,0,.06));"><rect x=".5" y=".5" width="41" height="53" rx="3.5" fill="#fff" stroke="rgba(0,0,0,.07)"/><rect x="6" y="7" width="15" height="2.4" rx="1.2" fill="#8f8f8f"/><rect x="6" y="13.5" width="20" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="16.7" width="27" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="19.9" width="24" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="23.1" width="28" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="27.9" width="18" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="31.1" width="26" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="34.3" width="23" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="37.5" width="27" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="42.3" width="15" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="45.5" width="25" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="48.7" width="22" height="1.35" rx=".7" fill="#d6d6d6"/><g transform="translate(34.5 46.5)"><circle r="7.4" fill="#30a46c" stroke="#fff" stroke-width="1.8"/><rect x="-2.7" y="-.5" width="5.4" height="4" rx="1" fill="#fff"/><path d="M-1.6-.5v-1.2a1.6 1.6 0 0 1 3.2 0v1.2" stroke="#fff" stroke-width="1.3" fill="none"/></g></svg></div><div style="min-width: 0;"><span class="el" style="color: #171717; font-weight: 500;">Orange typography cut</span><span class="el cap" style="margin-top: 2px;">X · 1:1</span></div></div>
+            <div><span class="bd grn" style="gap: 4px;"><svg viewBox="0 0 24 24" style="width: 10px; height: 10px; stroke: currentColor; fill: none; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round;"><path d="M6.8 10.5h10.4v8H6.8z"/><path d="M9.2 10.5V8a2.8 2.8 0 0 1 5.6 0v2.5"/></svg>Locked</span></div>
+            <div class="num">v2</div>
+            <div class="num" style="color: #383838;">0:15</div>
+            <div><div style="display: flex; align-items: center; gap: 8px; width: 100%;"><div style="flex-grow: 1; height: 4px; border-radius: 2px; background: #ededed;"><div style="width: 86%; height: 4px; border-radius: 2px; background: {{accent}};"></div></div><span style="font-variant-numeric: tabular-nums; width: 18px; text-align: right;">86</span></div></div>
+            <div style="gap: 8px;"><img class="av" src="pfp-leung.jpg" style="width: 18px; height: 18px;"><span class="el">Leung Chi-hang</span></div>
+            <div style="color: #7c7c7c;">30 Aug</div>
+          </div>
+        </div>
+        <div class="cap" style="margin-top: 14px;">11 scripts · filtered to scripts you can read · house style scored against guide v7</div>
+        </sc-if>
+      </div>
+
+      <div style="width: 320px; flex-shrink: 0; border-left: 1px solid #ededed; background: #fcfcfc; display: flex; flex-direction: column;">
+        <div style="height: 44px; flex-shrink: 0; display: flex; align-items: center; gap: 2px; padding: 0 10px; border-bottom: 1px solid #ededed;">
+          <div class="rtab on"><svg viewBox="0 0 24 24" style="width: 12px; height: 12px; stroke: {{accent}}; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;"><path d="M12 4.2 19 8v8l-7 3.8L5 16V8z"/><path d="M12 11.8 19 8M12 11.8v8M12 11.8 5 8"/></svg>Agent</div>
+          <div class="rtab">Details</div>
+          <div style="flex-grow: 1;"></div>
+          <svg viewBox="0 0 24 24" style="width: 15px; height: 15px; stroke: #999999; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;"><path d="m10 6 6 6-6 6"/></svg>
+        </div>
+
+        <div style="flex-shrink: 0; padding: 11px 13px; border-bottom: 1px solid #f3f3f3;">
+          <div style="display: inline-flex; align-items: center; gap: 7px; height: 25px; padding: 0 10px; border-radius: 7px; background: #fff; border: 1px solid #ededed; max-width: 100%;">
+            <span style="width: 6px; height: 6px; border-radius: 3px; background: {{accent}}; flex-shrink: 0;"></span><span style="font-size: 11.5px; color: #525252; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">2026-Q3-campaign · 11 scripts</span>
+          </div>
+        </div>
+        <div style="flex-grow: 1; min-height: 0; padding: 14px 13px 0; overflow: hidden;">
+          <div style="display: flex; justify-content: flex-end; margin-bottom: 10px;"><div style="max-width: 244px; background: #f3f3f3; border-radius: 10px; padding: 8px 11px; font-size: 12px; line-height: 1.5; color: #383838;">What is holding this folder up?</div></div>
+          <div style="display: inline-flex; align-items: center; gap: 7px; height: 23px; padding: 0 9px; border: 1px solid #ededed; border-radius: 7px; background: #fff; margin-bottom: 9px;">
+            <svg viewBox="0 0 24 24" style="width: 11px; height: 11px; stroke: #278f5e; fill: none; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round;"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span style="font-size: 11px; color: #525252;">Read 11 scripts, 2 approval requests · 0.9 s</span>
+          </div>
+          <div style="font-size: 12px; line-height: 1.6; color: #383838; text-wrap: pretty;"><p>Two scripts have waited on <img class="av" src="pfp-michelle.jpg" style="width: 16px; height: 16px; display: inline-block; vertical-align: -3px;"> <b style="font-weight: 500;">Michelle Yip</b> for more than a day:</p>
+            <div style="margin: 9px 0; display: flex; flex-direction: column; gap: 6px;">
+              <div style="display: flex; align-items: center; gap: 8px; padding: 7px 9px; border: 1px solid #ededed; border-radius: 8px; background: #fff;"><span class="dot" style="background: #db7706;"></span><span style="flex-grow: 1; min-width: 0; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">Taipei night-market crossover</span><span class="cap">26 h</span></div>
+              <div style="display: flex; align-items: center; gap: 8px; padding: 7px 9px; border: 1px solid #ededed; border-radius: 8px; background: #fff;"><span class="dot" style="background: #db7706;"></span><span style="flex-grow: 1; min-width: 0; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">Good day · collage teaser</span><span class="cap">31 h</span></div>
+            </div>
+            <p><b style="font-weight: 500;">Cantonese voice cloning</b> is the only draft under the house-style bar (64). Most of its flags are sound directions written into the voice-over column.</p></div>
+          <div style="display: flex; gap: 6px; margin-top: 11px;"><div class="btn" style="height: 27px; font-size: 12px; background: {{accent}}; color: #fff; font-weight: 500;">Remind Michelle</div><div class="btn s" style="height: 27px; font-size: 12px;">Not now</div></div>
+        </div>
+        <div style="flex-shrink: 0; padding: 11px 13px 9px;">
+          <div style="border: 1px solid #e2e2e2; border-radius: 10px; background: #fff; padding: 9px 10px 7px; box-shadow: 0 1px 2px rgba(0,0,0,.06);">
+            <div style="font-size: 12px; color: #999999;">Ask about these scripts…</div>
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 11px;"><span style="font-size: 10.5px; color: #999999;">gemini-2.5-pro</span><div style="width: 25px; height: 25px; border-radius: 7px; background: {{accent}}; display: flex; align-items: center; justify-content: center;"><svg viewBox="0 0 24 24" style="width: 12px; height: 12px; stroke: #fff; fill: none; stroke-width: 2.3; stroke-linecap: round; stroke-linejoin: round;"><path d="M12 19V5.5M6 11.5 12 5.5l6 6"/></svg></div></div>
+          </div>
+        </div>
+        <div style="flex-shrink: 0; border-top: 1px solid #f3f3f3; padding: 9px 13px 11px; display: flex; align-items: center; gap: 7px;">
+          <svg viewBox="0 0 24 24" style="width: 11px; height: 11px; flex-shrink: 0; stroke: #999999; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;"><path d="M6.8 10.5h10.4v8H6.8z"/><path d="M9.2 10.5V8a2.8 2.8 0 0 1 5.6 0v2.5"/></svg>
+          <span style="font-size: 10.5px; color: #999999;">Uses only scripts you can read</span><span style="margin-left: auto; font-size: 10.5px; color: #999999;">HK$0.06</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script data-dc-script data-props='{"accent":{"editor":"color","default":"#007BE0","options":["#007BE0","#171717","#278F5E","#6846E3"],"section":"Theme"},"sidebar":{"editor":"enum","options":["open","collapsed"],"default":"open","section":"Layout"},"view":{"editor":"enum","options":["grid","list"],"default":"grid","section":"View"},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = {}; }
+  accent() { var raw = this.props.accent || '#007BE0'; return /^#[0-9a-fA-F]{6}$/.test(raw) ? raw : '#007BE0'; }
+  side(v) {
+    var self = this;
+    var c = this.state.c != null ? this.state.c : this.props.sidebar === 'collapsed';
+    v.sideOpen = !c; v.sideClosed = c;
+    v.toggleSide = function () { self.setState({ c: !c }); };
+    return v;
+  }
+  renderVals() {
+    var view = this.state.view || this.props.view || 'grid';
+    var seg = function (on) { return { bg: on ? '#ffffff' : 'transparent', fg: on ? '#171717' : '#7c7c7c', sh: on ? '0px 1px 2px rgba(0, 0, 0, 0.1)' : 'none' }; };
+    var g = seg(view === 'grid'), l = seg(view === 'list'), self = this;
+    return this.side({
+      accent: this.accent(), isGrid: view === 'grid', isList: view === 'list',
+      pickGrid: function () { self.setState({ view: 'grid' }); }, pickList: function () { self.setState({ view: 'list' }); },
+      gridBg: g.bg, gridFg: g.fg, gridSh: g.sh, listBg: l.bg, listFg: l.fg, listSh: l.sh
+    });
+  }
+}
+</script>
+</body>
+</html>

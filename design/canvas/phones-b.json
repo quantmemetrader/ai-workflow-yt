@@ -1,0 +1,87 @@
+[
+ {
+  "file": "Pub-Channels-Phone.dc.html",
+  "mod": "pub",
+  "title": "Channel board"
+ },
+ {
+  "file": "Pub-Composer-Phone.dc.html",
+  "mod": "pub",
+  "title": "Composer"
+ },
+ {
+  "file": "Pub-Approvals-Phone.dc.html",
+  "mod": "pub",
+  "title": "Approval queue"
+ },
+ {
+  "file": "Pub-Log-Phone.dc.html",
+  "mod": "pub",
+  "title": "Publish log"
+ },
+ {
+  "file": "Acc-Inbox-Phone.dc.html",
+  "mod": "acc",
+  "title": "Document inbox"
+ },
+ {
+  "file": "Acc-Drafts-Phone.dc.html",
+  "mod": "acc",
+  "title": "Draft entries"
+ },
+ {
+  "file": "Acc-Period-Phone.dc.html",
+  "mod": "acc",
+  "title": "Period summary"
+ },
+ {
+  "file": "Acc-Export-Phone.dc.html",
+  "mod": "acc",
+  "title": "Export"
+ },
+ {
+  "file": "Fin-Budget-Phone.dc.html",
+  "mod": "fin",
+  "title": "Budget"
+ },
+ {
+  "file": "Fin-Cash-Phone.dc.html",
+  "mod": "fin",
+  "title": "Cash-flow projection"
+ },
+ {
+  "file": "Fin-Cost-Phone.dc.html",
+  "mod": "fin",
+  "title": "Cost dashboard"
+ },
+ {
+  "file": "Fin-Spend-Phone.dc.html",
+  "mod": "fin",
+  "title": "Spend requests"
+ },
+ {
+  "file": "Fin-Reports-Phone.dc.html",
+  "mod": "fin",
+  "title": "Report drafts"
+ },
+ {
+  "file": "Legal-Draft-Phone.dc.html",
+  "mod": "legal",
+  "title": "Document drafting"
+ },
+ {
+  "file": "Legal-Clause-Phone.dc.html",
+  "mod": "legal",
+  "title": "Clause review"
+ },
+ {
+  "file": "Legal-Repo-Phone.dc.html",
+  "mod": "legal",
+  "title": "Contract repository"
+ },
+ {
+  "file": "Legal-Compliance-Phone.dc.html",
+  "mod": "legal",
+  "title": "Compliance checklists"
+ }
+]

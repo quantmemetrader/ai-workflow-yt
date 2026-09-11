@@ -1,0 +1,283 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<!-- hand-authored: Publish · Composer. Rebuild with publish-screens.mjs -->
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;450;500;600&family=Noto+Sans+HK:wght@400;500&display=swap">
+  <style>
+    html, body { overflow: hidden; }
+    body { margin: 0; font-family: Inter, 'PingFang HK', 'Noto Sans HK', system-ui, sans-serif; font-weight: 420; letter-spacing: 0.02em; -webkit-font-smoothing: antialiased; }
+    * { box-sizing: border-box; }
+    a { color: #007be0; text-decoration: none; }
+    img { display: block; }
+    p { margin: 0; }
+
+    @keyframes fadeUp { from { transform: translateY(10px); opacity: 0 } to { transform: none; opacity: 1 } }
+    @keyframes rowIn  { from { transform: translateY(7px);  opacity: 0 } to { transform: none; opacity: 1 } }
+    .scr { animation: fadeUp .24s cubic-bezier(.32,.72,0,1) both; }
+    .tr  { animation: rowIn .3s cubic-bezier(.32,.72,0,1) both; }
+    .tr:nth-of-type(1){animation-delay:.01s} .tr:nth-of-type(2){animation-delay:.035s}
+    .tr:nth-of-type(3){animation-delay:.06s} .tr:nth-of-type(4){animation-delay:.085s}
+    .tr:nth-of-type(5){animation-delay:.11s} .tr:nth-of-type(6){animation-delay:.135s}
+    .tr:nth-of-type(7){animation-delay:.16s} .tr:nth-of-type(8){animation-delay:.185s}
+
+    /* rail */
+    .r { width: 34px; height: 34px; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: #7c7c7c; transition: background .16s ease, color .16s ease; }
+    .r svg { width: 17px; height: 17px; fill: currentColor; }
+    .r.on { background: #ffffff; box-shadow: 0 1px 2px rgba(0,0,0,0.1); color: #171717; }
+    .r.no { opacity: .32; }
+
+    /* sidebar */
+    .n { display: flex; align-items: center; gap: 8px; height: 28px; padding: 0 9px; border-radius: 8px; font-size: 12.5px; color: #525252; transition: background .16s ease; }
+    .n.on { background: #ffffff; box-shadow: 0 1px 2px rgba(0,0,0,0.1); color: #171717; font-weight: 500; }
+    .n b { margin-left: auto; font-size: 10.5px; font-weight: 500; color: #999999; }
+    .n i { margin-left: auto; font-style: normal; display: inline-flex; align-items: center; height: 17px; padding: 0 6px; border-radius: 9px; background: #ffe7e7; color: #e03636; font-size: 10px; font-weight: 500; }
+    .lbl { font-size: 10.5px; font-weight: 500; color: #999999; padding: 0 9px; }
+
+    /* generic */
+    .bar { height: 48px; flex-shrink: 0; border-bottom: 1px solid #ededed; display: flex; align-items: center; gap: 10px; padding: 0 20px; }
+    .h1 { font-size: 14px; font-weight: 500; }
+    .mut { font-size: 12px; color: #999999; }
+    .btn { height: 30px; padding: 0 12px; border-radius: 8px; display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; white-space: nowrap; }
+    .btn.p { background: #007be0; color: #fff; font-weight: 500; }
+    .btn.s { border: 1px solid #ededed; color: #525252; }
+    .btn svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+    .chip { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 11px; border: 1px solid #ededed; border-radius: 8px; font-size: 12px; color: #4a5763; white-space: nowrap; }
+    .chip svg { width: 10px; height: 10px; stroke: #999999; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    .bd { display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border-radius: 6px; font-size: 11px; font-weight: 500; white-space: nowrap; }
+    .gray { background: #f3f3f3; color: #525252 }
+    .blue { background: #e6f4ff; color: #007be0 }
+    .grn  { background: #e4faeb; color: #278f5e }
+    .amb  { background: #fff7d3; color: #db7706 }
+    .red  { background: #ffe7e7; color: #e03636 }
+    .card { border: 1px solid #ededed; border-radius: 12px; background: #fff; padding: 16px; }
+    .kv { display: flex; justify-content: space-between; gap: 14px; padding: 8px 0; border-bottom: 1px solid #f3f3f3; font-size: 12.5px; }
+    .kv span:first-child { color: #999999; }
+    .av { width: 20px; height: 20px; border-radius: 10px; object-fit: cover; flex-shrink: 0; }
+    .stat { border: 1px solid #ededed; border-radius: 12px; padding: 13px 15px; background: #fff; }
+    .stat i { font-style: normal; display: block; font-size: 10.5px; font-weight: 500; color: #999999; }
+    .stat b { display: block; font-size: 22px; font-weight: 500; letter-spacing: -0.01em; margin-top: 6px; font-variant-numeric: tabular-nums; }
+
+    /* table */
+    .t { width: 100%; }
+    .t .hd { height: 32px; border-bottom: 1px solid #ededed; display: grid; align-items: center; }
+    .t .hd > * { font-size: 10.5px; font-weight: 500; color: #7c7c7c; padding: 0 12px; }
+    .tr { height: 46px; border-bottom: 1px solid #f3f3f3; display: grid; align-items: center; }
+    .tr > * { font-size: 12.5px; color: #383838; padding: 0 12px; min-width: 0; display: flex; align-items: center; }
+    .num { justify-content: flex-end; font-variant-numeric: tabular-nums; }
+    .el { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
+    .body { flex-grow: 1; min-height: 0; padding: 18px 20px; overflow: hidden; }
+    .focus { box-shadow: 0 0 0 3px #EFF6FF; }
+  
+    .tabs { height: 40px; flex-shrink: 0; display: flex; align-items: stretch; gap: 20px; padding: 0 22px; border-bottom: 1px solid #ededed; }
+    .tb { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: #7c7c7c; border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap; }
+    .tb.on { color: #171717; font-weight: 500; border-color: #171717; }
+    .tb b { font-size: 10.5px; font-weight: 500; color: #999999; }
+    .tb i { font-style: normal; display: inline-flex; align-items: center; height: 16px; padding: 0 5px; border-radius: 8px; background: #e6f4ff; color: #007be0; font-size: 10px; font-weight: 500; }
+    .rtab { height: 26px; padding: 0 11px; border-radius: 7px; display: flex; align-items: center; gap: 6px; font-size: 12px; color: #7c7c7c; }
+    .rtab.on { background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.1); color: #171717; font-weight: 500; }
+    .cap { font-size: 11px; color: #999999; }
+    .seg { width: 30px; height: 26px; border-radius: 6px; display: flex; align-items: center; justify-content: center; cursor: pointer; }
+    .seg svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+    .fc { height: 26px; padding: 0 10px; border-radius: 7px; display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: #525252; border: 1px solid #ededed; background: #fff; white-space: nowrap; }
+    .fc b { font-weight: 500; color: #999999; font-size: 11px; }
+    .fc.on { background: #171717; border-color: #171717; color: #fff; }
+    .fc.on b { color: #c7c7c7; }
+    .fc svg { width: 10px; height: 10px; stroke: #999999; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    .dot { width: 7px; height: 7px; border-radius: 4px; flex-shrink: 0; }
+    .kbd { display: inline-flex; align-items: center; height: 18px; padding: 0 5px; border-radius: 4px; border: 1px solid #e2e2e2; font-size: 10.5px; color: #7c7c7c; background: #fafafa; }
+    .ck { width: 18px; height: 18px; border-radius: 9px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .ck svg { width: 11px; height: 11px; stroke: #fff; fill: none; stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; }
+    .cb { width: 16px; height: 16px; border-radius: 4px; border: 1px solid #999999; background: #fff; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
+    .cb.on { border: none; background: #171717; }
+    .cb svg { width: 11px; height: 11px; stroke: #fff; fill: none; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+    .li { display: flex; gap: 11px; padding: 11px 0; border-bottom: 1px solid #f3f3f3; }
+    .li .a { font-size: 12.5px; color: #171717; }
+    .li .b { font-size: 11.5px; color: #999999; margin-top: 2px; }
+
+    /* item switcher (left sidebar inside a document / project) */
+    .sn { display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 9px; border-radius: 8px; font-size: 12.5px; color: #525252; }
+    .sn > span:not(.dot) { flex-grow: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .sn.on { background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.1); color: #171717; font-weight: 500; }
+    .sn img.av { width: 16px; height: 16px; border-radius: 8px; }
+    .sg { display: flex; align-items: center; gap: 6px; font-size: 10.5px; font-weight: 500; color: #999999; padding: 0 9px; margin: 14px 0 4px; }
+    .sg svg { width: 10px; height: 10px; stroke: #999999; fill: none; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+    .ptog { width: 26px; height: 26px; border-radius: 7px; display: flex; align-items: center; justify-content: center; color: #7c7c7c; cursor: pointer; flex-shrink: 0; }
+    .ptog:hover { background: #ededed; }
+    .ptog svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+    .mini { width: 52px; flex-shrink: 0; background: #f8f8f8; border-right: 1px solid #ededed; display: flex; flex-direction: column; align-items: center; padding: 10px 0; gap: 4px; }
+    .mi { width: 36px; height: 36px; border-radius: 9px; display: flex; align-items: center; justify-content: center; position: relative; }
+    .mi.on { background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.1); }
+    .mi .dot { position: absolute; right: 3px; bottom: 3px; box-shadow: 0 0 0 2px #f8f8f8; }
+    .mi.on .dot { box-shadow: 0 0 0 2px #fff; }
+    .logo { width: 36px; height: 36px; border-radius: 10px; flex-shrink: 0; display: block; }
+    .sec { display: flex; align-items: baseline; gap: 8px; margin-bottom: 8px; }
+    .sec b { font-size: 13px; font-weight: 500; color: #171717; }
+    .grid .gh, .grid .gr { display: grid; grid-template-columns: minmax(0, 1fr) repeat(6, 76px); align-items: center; }
+    .grid .gh { height: 40px; border-bottom: 1px solid #ededed; }
+    .grid .gh > div:nth-child(n+2) { display: flex; justify-content: center; }
+    .grid .gr { height: 52px; border-bottom: 1px solid #f3f3f3; }
+    .grid .gr:last-child { border-bottom: none; }
+    .grid .gr > div:nth-child(n+2) { display: flex; flex-direction: column; align-items: center; gap: 3px; }
+    .cell { width: 26px; height: 26px; border-radius: 8px; display: flex; align-items: center; justify-content: center; }
+    .cell svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+    .cd { font-size: 10px; color: #999999; white-space: nowrap; }
+    .cl .ch2, .cl .cr { display: grid; grid-template-columns: minmax(0, 1.2fr) 150px minmax(0, 1fr) 128px 96px; align-items: center; }
+    .cl .ch2 { height: 28px; border-bottom: 1px solid #ededed; }
+    .cl .ch2 > * { font-size: 10.5px; font-weight: 500; color: #7c7c7c; padding: 0 10px; }
+    .cl .cr { height: 40px; border-bottom: 1px solid #f3f3f3; }
+    .cl .cr:last-child { border-bottom: none; }
+    .cl .cr > * { font-size: 12.5px; color: #383838; padding: 0 10px; min-width: 0; display: flex; align-items: center; gap: 8px; }
+    .el { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
+    .qm { height: 4px; border-radius: 2px; background: #ededed; flex-grow: 1; }
+    .qm div { height: 4px; border-radius: 2px; background: var(--ac); }
+    .ctab { height: 40px; display: flex; align-items: center; gap: 7px; font-size: 12.5px; color: #7c7c7c; border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap; }
+    .ctab.on { color: #171717; font-weight: 500; border-color: #171717; }
+    .ctab .od { width: 6px; height: 6px; border-radius: 3px; background: #f5a524; }
+    .fl { display: flex; align-items: center; gap: 8px; font-size: 11px; font-weight: 500; color: #7c7c7c; margin-bottom: 6px; }
+    .fl .cnt { margin-left: auto; font-weight: 420; color: #999999; font-variant-numeric: tabular-nums; }
+    .inp { min-height: 34px; border-radius: 8px; background: #f3f3f3; display: flex; align-items: center; gap: 8px; padding: 0 11px; font-size: 13px; color: #171717; }
+    .tagc { height: 24px; padding: 0 9px; border-radius: 7px; background: #fff; border: 1px solid #e2e2e2; font-size: 12px; display: inline-flex; align-items: center; }
+    .ap { border: 1px solid #ededed; border-radius: 14px; background: #fff; padding: 12px; display: flex; gap: 14px; align-items: center; }
+    .ap.on { border-color: #d6eafc; box-shadow: 0 0 0 3px #eff6ff; }
+    .ibtn { height: 30px; padding: 0 10px; border-radius: 8px; border: 1px solid #ededed; display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: #525252; white-space: nowrap; }
+    .ibtn svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+    .lg2 .lr { display: grid; grid-template-columns: 52px minmax(0, 1fr) 130px 40px minmax(0, 1.1fr); align-items: center; height: 48px; border-bottom: 1px solid #f3f3f3; font-size: 12.5px; color: #383838; }
+    .lg2 .lr > * { min-width: 0; display: flex; align-items: center; gap: 8px; padding: 0 8px; }
+    .day { font-size: 11px; font-weight: 500; color: #7c7c7c; margin: 14px 0 2px 8px; }</style>
+</helmet>
+
+<div style="--ac: {{accent}}; width: 1440px; height: 900px; display: flex; background: #ffffff; color: #171717; overflow: hidden;">
+
+  <div style="width: 52px; flex-shrink: 0; background: #f8f8f8; border-right: 1px solid #ededed; display: flex; flex-direction: column; align-items: center; padding: 10px 0; gap: 3px;">
+    <div style="width: 28px; height: 28px; border-radius: 8px; background: #171717; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 11px; font-weight: 600; margin-bottom: 10px;">AF</div>
+    <div class="r"><svg viewBox="0 0 24 24"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 9.5 9.5 0 0 1-2.8-.4L4 21l1.4-4.1A8.2 8.2 0 0 1 3.6 11.5 8.4 8.4 0 0 1 12 3.1a8.4 8.4 0 0 1 9 8.4z"/></svg></div>
+    <div class="r"><svg viewBox="0 0 24 24"><path d="M3.6 6.9a2.1 2.1 0 0 1 2.1-2.1h3.2a2.1 2.1 0 0 1 1.62.76l1.02 1.24h6.76a2.1 2.1 0 0 1 2.1 2.1v8.3a2.1 2.1 0 0 1-2.1 2.1H5.7a2.1 2.1 0 0 1-2.1-2.1z"/></svg></div>
+    <div class="r"><svg viewBox="0 0 24 24"><rect x="3.4" y="12.6" width="4.2" height="7.4" rx="1.5"/><rect x="9.9" y="8.4" width="4.2" height="11.6" rx="1.5"/><rect x="16.4" y="4" width="4.2" height="16" rx="1.5"/></svg></div>
+    <div class="r"><svg viewBox="0 0 24 24"><path d="M6.4 3.4h7.4L18.6 8v12.6H6.4z"/><path d="M9.4 12.3h6M9.4 15.6h6" stroke="#f8f8f8" stroke-width="1.5" fill="none"/></svg></div>
+    <div class="r"><svg viewBox="0 0 24 24"><rect x="3.4" y="5.4" width="12.4" height="13.2" rx="2.1"/><path d="m16.6 13 4.6 2.8V8.2L16.6 11z"/></svg></div>
+    <div class="r on"><svg viewBox="0 0 24 24"><path d="M21.86 4.14a1.1 1.1 0 0 0-1.14-.18L2.9 11.13c-.86.34-.83 1.58.05 1.87l4.46 1.5 1.68 5.06c.24.72 1.15.93 1.68.38l2.4-2.5 4.4 3.23c.6.44 1.46.12 1.63-.6z"/></svg></div>
+    <div style="width: 22px; height: 1px; background: #e2e2e2; margin: 6px 0;"></div>
+    <div class="r"><svg viewBox="0 0 24 24"><rect x="5.4" y="3.4" width="13.2" height="17.2" rx="2"/><path d="M8.4 8h7.2M8.4 12h7.2M8.4 16h4" stroke="#f8f8f8" stroke-width="1.5" fill="none"/></svg></div>
+    <div class="r"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.6"/><path d="M14.8 9.4c-.4-1-1.5-1.6-2.8-1.6-1.6 0-2.8.9-2.8 2.1 0 2.9 5.7 1.4 5.7 4.3 0 1.2-1.2 2.1-2.9 2.1-1.4 0-2.5-.6-2.9-1.6M12 6.4v1.4M12 16.3v1.4" stroke="#f8f8f8" stroke-width="1.5" fill="none"/></svg></div>
+    <div class="r"><svg viewBox="0 0 24 24"><path d="M12 3.2 4.4 6.2v5.6c0 4.4 3.1 8.3 7.6 9.3 4.5-1 7.6-4.9 7.6-9.3V6.2z"/></svg></div>
+    <div class="r no"><svg viewBox="0 0 24 24"><circle cx="12" cy="7.8" r="3.7"/><path d="M4.7 20.2a7.3 7.3 0 0 1 14.6 0z"/></svg></div>
+    <div class="r"><svg viewBox="0 0 24 24"><path d="M4 7.4h16M4 12h16M4 16.6h16" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linecap="round"/><circle cx="9" cy="7.4" r="2.2"/><circle cx="15" cy="16.6" r="2.2"/></svg></div>
+    <div style="flex-grow: 1;"></div>
+    <img class="av" src="pfp-chan.jpg" style="width: 26px; height: 26px;">
+  </div>
+
+<sc-if value="{{sideOpen}}" hint-placeholder-val="{{ true }}">
+  <div style="width: 240px; flex-shrink: 0; background: #f8f8f8; border-right: 1px solid #ededed; display: flex; flex-direction: column; padding: 8px 8px 10px;">
+    <div style="display: flex; align-items: center; padding: 0 0 0 9px;"><span style="font-size: 14px; font-weight: 500;">Posts</span><div style="margin-left: auto;"><div class="ptog" onClick="{{ toggleSide }}" title="Hide the post list"><svg viewBox="0 0 24 24"><rect x="3.8" y="4.8" width="16.4" height="14.4" rx="2.6"/><path d="M9.6 4.8v14.4"/></svg></div></div></div>
+    <div class="btn" style="justify-content: center; margin: 10px 1px 2px; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.1); color: #171717;"><svg viewBox="0 0 24 24"><path d="M12 6v12M6 12h12"/></svg>New post from a video</div>
+    <div class="sg"><svg viewBox="0 0 24 24"><path d="m6.5 9.5 5.5 5.5 5.5-5.5"/></svg>Composing<span style="margin-left: auto; font-weight: 420;">1</span></div>
+    <div class="sn on" style="height: 44px; align-items: center;"><div style="overflow: hidden; position: relative; flex-shrink: 0; background: #f3f3f3; width: 36px; height: 20px; border-radius: 4px;"><img src="cover-history.jpg" style="width: 100%; height: 100%; object-fit: cover; object-position: 50% 50%;"></div><span style="display: flex; flex-direction: column; min-width: 0;"><span class="el">History of Greece · Ep 75</span><span class="cap el" style="font-weight: 420;">Draft · 3 channels</span></span></div>
+    <div class="sg"><svg viewBox="0 0 24 24"><path d="m6.5 9.5 5.5 5.5 5.5-5.5"/></svg>Waiting for approval<span style="margin-left: auto; font-weight: 420;">1</span></div>
+    <div class="sn" style="height: 44px; align-items: center;"><div style="overflow: hidden; position: relative; flex-shrink: 0; background: #f3f3f3; width: 36px; height: 20px; border-radius: 4px;"><img src="cover-orange.jpg" style="width: 100%; height: 100%; object-fit: cover; object-position: 50% 50%;"></div><span style="display: flex; flex-direction: column; min-width: 0;"><span class="el">Orange typography cut</span><span class="cap el" style="font-weight: 420;">YouTube public version</span></span></div>
+    <div class="sg"><svg viewBox="0 0 24 24"><path d="m6.5 9.5 5.5 5.5 5.5-5.5"/></svg>Needs a fix<span style="margin-left: auto; font-weight: 420;">1</span></div>
+    <div class="sn" style="height: 44px; align-items: center;"><div style="overflow: hidden; position: relative; flex-shrink: 0; background: #f3f3f3; width: 36px; height: 20px; border-radius: 4px;"><img src="cover-goodday.jpg" style="width: 100%; height: 100%; object-fit: cover; object-position: 50% 50%;"></div><span style="display: flex; flex-direction: column; min-width: 0;"><span class="el">Good day · collage teaser</span><span class="cap el" style="font-weight: 420;">LinkedIn · file too large</span></span></div>
+    <div class="sg"><svg viewBox="0 0 24 24"><path d="m6.5 9.5 5.5 5.5 5.5-5.5"/></svg>Posted<span style="margin-left: auto; font-weight: 420;">2</span></div>
+    <div class="sn" style="height: 44px; align-items: center;"><div style="overflow: hidden; position: relative; flex-shrink: 0; background: #f3f3f3; width: 36px; height: 20px; border-radius: 4px;"><img src="cover-porsche.jpg" style="width: 100%; height: 100%; object-fit: cover; object-position: 50% 50%;"></div><span style="display: flex; flex-direction: column; min-width: 0;"><span class="el">Porsche cat · night drive</span><span class="cap el" style="font-weight: 420;">Instagram</span></span></div>
+    <div class="sn" style="height: 44px; align-items: center;"><div style="overflow: hidden; position: relative; flex-shrink: 0; background: #f3f3f3; width: 36px; height: 20px; border-radius: 4px;"><img src="cover-domore.jpg" style="width: 100%; height: 100%; object-fit: cover; object-position: 50% 50%;"></div><span style="display: flex; flex-direction: column; min-width: 0;"><span class="el">Do more · brand spot</span><span class="cap el" style="font-weight: 420;">Instagram, WeChat</span></span></div>
+    <div class="sg"><svg viewBox="0 0 24 24"><path d="m6.5 9.5 5.5 5.5 5.5-5.5"/></svg>Not ready yet<span style="margin-left: auto; font-weight: 420;">1</span></div>
+    <div class="sn" style="height: 44px; opacity: .55;"><div style="width: 36px; height: 20px; border-radius: 4px; background: #ededed; flex-shrink: 0;"></div><span style="display: flex; flex-direction: column; min-width: 0;"><span class="el">Sham Shui Po revival</span><span class="cap el" style="font-weight: 420;">Still in Video Edit</span></span></div>
+  </div>
+</sc-if>
+<sc-if value="{{sideClosed}}" hint-placeholder-val="{{ false }}">
+  <div class="mini">
+    <div class="ptog" onClick="{{ toggleSide }}" title="Show the post list"><svg viewBox="0 0 24 24"><rect x="3.8" y="4.8" width="16.4" height="14.4" rx="2.6"/><path d="M9.6 4.8v14.4"/></svg></div>
+    <div style="width: 22px; height: 1px; background: #e2e2e2; margin: 6px 0 4px;"></div>
+    <div class="mi on" title="History of Greece · Ep 75"><div style="overflow: hidden; position: relative; flex-shrink: 0; background: #f3f3f3; width: 28px; height: 16px; border-radius: 3px;"><img src="cover-history.jpg" style="width: 100%; height: 100%; object-fit: cover; object-position: 50% 50%;"></div></div>
+    <div class="mi" title="Orange typography cut"><div style="overflow: hidden; position: relative; flex-shrink: 0; background: #f3f3f3; width: 28px; height: 16px; border-radius: 3px;"><img src="cover-orange.jpg" style="width: 100%; height: 100%; object-fit: cover; object-position: 50% 50%;"></div></div>
+    <div class="mi" title="Good day · collage teaser"><div style="overflow: hidden; position: relative; flex-shrink: 0; background: #f3f3f3; width: 28px; height: 16px; border-radius: 3px;"><img src="cover-goodday.jpg" style="width: 100%; height: 100%; object-fit: cover; object-position: 50% 50%;"></div></div>
+    <div class="mi" title="Porsche cat · night drive"><div style="overflow: hidden; position: relative; flex-shrink: 0; background: #f3f3f3; width: 28px; height: 16px; border-radius: 3px;"><img src="cover-porsche.jpg" style="width: 100%; height: 100%; object-fit: cover; object-position: 50% 50%;"></div></div>
+    <div class="mi" title="Do more · brand spot"><div style="overflow: hidden; position: relative; flex-shrink: 0; background: #f3f3f3; width: 28px; height: 16px; border-radius: 3px;"><img src="cover-domore.jpg" style="width: 100%; height: 100%; object-fit: cover; object-position: 50% 50%;"></div></div>
+  </div>
+</sc-if>
+  <div style="flex-grow: 1; display: flex; flex-direction: column; min-width: 0;">
+<div style="flex-grow: 1; display: flex; min-height: 0;"><div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; overflow: hidden;">
+    <div style="height: 64px; flex-shrink: 0; display: flex; align-items: center; gap: 12px; padding: 0 20px; border-bottom: 1px solid #ededed;">
+      <div style="overflow: hidden; position: relative; flex-shrink: 0; background: #f3f3f3; width: 72px; height: 40px; border-radius: 7px;"><img src="cover-history.jpg" style="width: 100%; height: 100%; object-fit: cover; object-position: 50% 50%;"></div>
+      <div style="min-width: 0;"><div style="display: flex; align-items: center; gap: 8px;"><span style="font-size: 14.5px; font-weight: 500;">History of Greece · Ep 75</span><span class="bd gray">Draft</span></div><div class="cap" style="margin-top: 3px;">Export v3 from Video Edit · 16:9 and 9:16 · 3:48</div></div>
+      <div style="flex-grow: 1;"></div>
+      <span class="cap" style="white-space: nowrap;">Saved 1 min ago</span>
+      <div class="btn s">Preview all</div>
+      <div class="btn" style="background: {{accent}}; color: #fff; font-weight: 500;">Send for approval</div>
+    </div>
+    <div style="height: 40px; flex-shrink: 0; display: flex; align-items: stretch; gap: 20px; padding: 0 20px; border-bottom: 1px solid #ededed;">
+      <div class="ctab"><svg viewBox="0 0 24 24" style="width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 1.8;"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M8 9h8M8 13h8M8 17h5"/></svg>Master<span class="cap">shared text</span></div>
+      <div class="ctab on"><svg class="logo" style="width: 16px; height: 16px; border-radius: 4px;" viewBox="0 0 36 36"><rect width="36" height="36" rx="10" fill="#ff0000"/><path d="M14.5 12.2v11.6l9.6-5.8z" fill="#fff"/></svg>YouTube<span class="od" title="Changed for YouTube"></span></div>
+      <div class="ctab"><svg class="logo" style="width: 16px; height: 16px; border-radius: 4px;" viewBox="0 0 36 36"><defs><linearGradient id="igg" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="#feda75"/><stop offset=".35" stop-color="#fa7e1e"/><stop offset=".6" stop-color="#d62976"/><stop offset="1" stop-color="#4f5bd5"/></linearGradient></defs><rect width="36" height="36" rx="10" fill="url(#igg)"/><rect x="9.5" y="9.5" width="17" height="17" rx="5" fill="none" stroke="#fff" stroke-width="2.2"/><circle cx="18" cy="18" r="4" fill="none" stroke="#fff" stroke-width="2.2"/><circle cx="23.2" cy="12.8" r="1.3" fill="#fff"/></svg>Instagram<span class="od"></span></div>
+      <div class="ctab"><svg class="logo" style="width: 16px; height: 16px; border-radius: 4px;" viewBox="0 0 36 36"><rect width="36" height="36" rx="10" fill="#0a66c2"/><rect x="10" y="15" width="3.6" height="11" fill="#fff"/><circle cx="11.8" cy="11.2" r="2.1" fill="#fff"/><path d="M16.6 15h3.4v1.6c.6-1.1 2-1.9 3.6-1.9 3 0 3.8 1.9 3.8 4.6V26h-3.6v-5.9c0-1.4-.3-2.4-1.7-2.4s-1.9 1-1.9 2.4V26h-3.6z" fill="#fff"/></svg>LinkedIn</div>
+      <div class="ctab" style="color: {{accent}};">+ Add channel</div>
+    </div>
+    <div style="flex-grow: 1; min-height: 0; overflow: hidden; padding: 14px 20px 0;">
+      <div style="display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 10px; background: #fafafa; margin-bottom: 14px;"><span style="font-size: 12.5px; color: #525252;">You’re editing the <b style="font-weight: 500; color: #171717;">YouTube</b> version. Anything you leave alone follows Master.</span><span class="cap" style="margin-left: auto; color: {{accent}}; white-space: nowrap;">Reset to Master</span></div>
+      <div class="fl">Title<span class="bd amb" style="height: 18px; font-size: 10.5px;">Changed for YouTube</span><span class="cnt">58 / 100</span></div>
+      <div class="inp">The Battle of Salamis in 4 minutes | History of Greece Ep 75</div>
+      <div class="fl" style="margin-top: 14px;">Description<span class="cnt">612 / 5,000</span></div>
+      <div class="inp" style="min-height: 74px; align-items: flex-start; padding-top: 9px; line-height: 1.55; font-size: 12.5px;">In 480 BC a Persian fleet gathers off Attica. How did the Greeks win in a strait barely a mile wide? Chapters: 0:00 The fleet · 0:50 The narrows · 1:57 Nightfall.</div>
+      <div style="display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; margin-top: 14px;">
+        <div><div class="fl">Tags<span class="cnt">6 / 15</span></div><div style="display: flex; gap: 5px; flex-wrap: wrap;"><span class="tagc">history</span><span class="tagc">greece</span><span class="tagc">salamis</span><span class="tagc">粵語字幕</span><span class="tagc" style="border-style: solid; color: #999999;">+ Tag</span></div></div>
+        <div><div class="fl">Video file</div><div class="inp" style="font-size: 12.5px;"><div style="overflow: hidden; position: relative; flex-shrink: 0; background: #f3f3f3; width: 32px; height: 18px; border-radius: 3px;"><img src="cover-history.jpg" style="width: 100%; height: 100%; object-fit: cover; object-position: 50% 50%;"></div>16:9 · 3:48<span class="cap" style="margin-left: auto;">繁中 + EN subtitles</span></div></div>
+      </div>
+      <div class="fl" style="margin-top: 14px;">Thumbnail<span class="cnt">1280 × 720</span></div>
+      <div style="display: flex; gap: 10px;">
+        <div style="box-shadow: 0 0 0 2px #fff, 0 0 0 4px var(--ac); border-radius: 7px;"><div style="overflow: hidden; position: relative; flex-shrink: 0; background: #f3f3f3; width: 112px; height: 63px; border-radius: 7px;"><img src="cover-history.jpg" style="width: 100%; height: 100%; object-fit: cover; object-position: 6% 42%; transform: scale(1.4); transform-origin: 6% 42%;"></div></div>
+        <div style="overflow: hidden; position: relative; flex-shrink: 0; background: #f3f3f3; width: 112px; height: 63px; border-radius: 7px;"><img src="cover-history.jpg" style="width: 100%; height: 100%; object-fit: cover; object-position: 57% 24%; transform: scale(1.4); transform-origin: 57% 24%;"></div>
+        <div style="overflow: hidden; position: relative; flex-shrink: 0; background: #f3f3f3; width: 112px; height: 63px; border-radius: 7px;"><img src="cover-history.jpg" style="width: 100%; height: 100%; object-fit: cover; object-position: 50% 50%;"></div>
+        <div style="width: 112px; height: 63px; border-radius: 7px; background: #f8f8f8; display: flex; align-items: center; justify-content: center; font-size: 12px; color: #525252;">Upload</div>
+      </div>
+      <div style="display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; margin-top: 14px;">
+        <div><div class="fl">Who can see it</div><div class="inp" style="background: #fffbf0; box-shadow: inset 0 0 0 1px #f7dcb0; font-size: 12.5px;">Private until YouTube’s audit passes</div></div>
+        <div><div class="fl">When</div><div class="inp" style="font-size: 12.5px;">Sat 12 Sep · 19:30 HKT<span class="cap" style="margin-left: auto;">busiest hour</span></div></div>
+      </div>
+    </div></div>
+      <div style="width: 320px; flex-shrink: 0; border-left: 1px solid #ededed; background: #fcfcfc; display: flex; flex-direction: column;">
+        <div style="height: 44px; flex-shrink: 0; display: flex; align-items: center; gap: 2px; padding: 0 10px; border-bottom: 1px solid #ededed;">
+          <div class="rtab on">Preview</div>
+          <div class="rtab"><svg viewBox="0 0 24 24" style="width: 12px; height: 12px; stroke: {{accent}}; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;"><path d="M12 4.2 19 8v8l-7 3.8L5 16V8z"/><path d="M12 11.8 19 8M12 11.8v8M12 11.8 5 8"/></svg>Agent</div>
+          <div style="flex-grow: 1;"></div>
+          <svg viewBox="0 0 24 24" style="width: 15px; height: 15px; stroke: #999999; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;"><path d="m10 6 6 6-6 6"/></svg>
+        </div>
+
+        <div style="flex-grow: 1; min-height: 0; overflow: hidden; padding: 14px;">
+          <div class="cap" style="display: flex; align-items: center; gap: 6px; margin-bottom: 8px;"><svg class="logo" style="width: 14px; height: 14px; border-radius: 4px;" viewBox="0 0 36 36"><rect width="36" height="36" rx="10" fill="#ff0000"/><path d="M14.5 12.2v11.6l9.6-5.8z" fill="#fff"/></svg>How it will look on YouTube</div>
+          <div style="position: relative;"><div style="overflow: hidden; position: relative; flex-shrink: 0; background: #f3f3f3; width: 100%; aspect-ratio: 16 / 9; border-radius: 10px;"><img src="cover-history.jpg" style="width: 100%; height: 100%; object-fit: cover; object-position: 6% 42%; transform: scale(1.4); transform-origin: 6% 42%;"></div><span style="position: absolute; right: 6px; bottom: 6px; background: rgba(0,0,0,.8); color: #fff; font-size: 10.5px; padding: 1px 5px; border-radius: 4px;">3:48</span></div>
+          <div style="display: flex; gap: 9px; margin-top: 10px;"><div style="width: 30px; height: 30px; border-radius: 15px; background: #171717; color: #fff; font-size: 10px; font-weight: 600; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">AF</div><div style="min-width: 0;"><div style="font-size: 13px; font-weight: 500; line-height: 1.35;">The Battle of Salamis in 4 minutes | History of Greece Ep 75</div><div class="cap" style="margin-top: 3px;">Aura Farmers · 48.2k subscribers · Sat 12 Sep</div></div></div>
+          <div class="lbl" style="padding: 0; margin: 16px 0 4px;">Checks for YouTube</div>
+          <div class="li" style="padding: 7px 0;"><div class="ck" style="background: #278f5e;"><svg viewBox="0 0 16 16"><path d="M3.6 8.3 6.5 11.2 12.4 5.1"/></svg></div><div class="a" style="font-size: 12px;">Title and description within limits</div></div>
+          <div class="li" style="padding: 7px 0;"><div class="ck" style="background: #278f5e;"><svg viewBox="0 0 16 16"><path d="M3.6 8.3 6.5 11.2 12.4 5.1"/></svg></div><div class="a" style="font-size: 12px;">Thumbnail is 1280 × 720</div></div>
+          <div class="li" style="padding: 7px 0;"><div class="ck" style="background: #278f5e;"><svg viewBox="0 0 16 16"><path d="M3.6 8.3 6.5 11.2 12.4 5.1"/></svg></div><div class="a" style="font-size: 12px;">Subtitles attached</div></div>
+          <div class="li" style="padding: 7px 0; border: none;"><div class="ck" style="background: #db7706;"><svg viewBox="0 0 16 16"><path d="M8 4.2v4.6M8 11.4v.2"/></svg></div><div class="a" style="font-size: 12px;">Goes up private until the audit passes</div></div>
+          <div class="lbl" style="padding: 0; margin: 12px 0 6px;">Also in this post</div>
+          <div style="display: flex; align-items: center; gap: 8px; font-size: 12px; margin-bottom: 6px;"><svg class="logo" style="width: 18px; height: 18px; border-radius: 5px;" viewBox="0 0 36 36"><defs><linearGradient id="igg" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="#feda75"/><stop offset=".35" stop-color="#fa7e1e"/><stop offset=".6" stop-color="#d62976"/><stop offset="1" stop-color="#4f5bd5"/></linearGradient></defs><rect width="36" height="36" rx="10" fill="url(#igg)"/><rect x="9.5" y="9.5" width="17" height="17" rx="5" fill="none" stroke="#fff" stroke-width="2.2"/><circle cx="18" cy="18" r="4" fill="none" stroke="#fff" stroke-width="2.2"/><circle cx="23.2" cy="12.8" r="1.3" fill="#fff"/></svg>Instagram Reel · 9:16<span class="cap" style="margin-left: auto;">caption changed</span></div>
+          <div style="display: flex; align-items: center; gap: 8px; font-size: 12px;"><svg class="logo" style="width: 18px; height: 18px; border-radius: 5px;" viewBox="0 0 36 36"><rect width="36" height="36" rx="10" fill="#0a66c2"/><rect x="10" y="15" width="3.6" height="11" fill="#fff"/><circle cx="11.8" cy="11.2" r="2.1" fill="#fff"/><path d="M16.6 15h3.4v1.6c.6-1.1 2-1.9 3.6-1.9 3 0 3.8 1.9 3.8 4.6V26h-3.6v-5.9c0-1.4-.3-2.4-1.7-2.4s-1.9 1-1.9 2.4V26h-3.6z" fill="#fff"/></svg>LinkedIn · 16:9<span class="cap" style="margin-left: auto;">follows Master</span></div>
+        </div>
+        <div style="flex-shrink: 0; border-top: 1px solid #f3f3f3; padding: 10px 14px 12px;" class="cap">Nothing is posted until Michelle Yip approves it.</div>
+      </div></div>
+  </div>
+</div>
+</x-dc>
+<script data-dc-script data-props='{"accent":{"editor":"color","default":"#007BE0","options":["#007BE0","#171717","#278F5E","#6846E3"],"section":"Theme"},"sidebar":{"editor":"enum","options":["open","collapsed"],"default":"open","section":"Layout"},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = {}; }
+  accent() { var raw = this.props.accent || '#007BE0'; return /^#[0-9a-fA-F]{6}$/.test(raw) ? raw : '#007BE0'; }
+  side(v) {
+    var self = this;
+    var c = this.state.c != null ? this.state.c : this.props.sidebar === 'collapsed';
+    v.sideOpen = !c; v.sideClosed = c;
+    v.toggleSide = function () { self.setState({ c: !c }); };
+    return v;
+  }
+  renderVals() { return this.side({ accent: this.accent() }); }
+}
+</script>
+</body>
+</html>

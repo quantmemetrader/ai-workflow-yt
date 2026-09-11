@@ -1,0 +1,27 @@
+[
+ {
+  "file": "Nav-Idea-A-Phone.dc.html",
+  "mod": "nav",
+  "title": "A · Bar + briefcase (current)"
+ },
+ {
+  "file": "Nav-Idea-B-Phone.dc.html",
+  "mod": "nav",
+  "title": "B · Fan out"
+ },
+ {
+  "file": "Nav-Idea-C-Phone.dc.html",
+  "mod": "nav",
+  "title": "C · Module + its screens"
+ },
+ {
+  "file": "Nav-Idea-D-Phone.dc.html",
+  "mod": "nav",
+  "title": "D · App grid"
+ },
+ {
+  "file": "Nav-Idea-E-Phone.dc.html",
+  "mod": "nav",
+  "title": "E · Swipe island"
+ }
+]

@@ -1,0 +1,133 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<!-- hand-authored: Sign in · two-step. Rebuild with chat-screens.mjs -->
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;450;500;600&display=swap">
+  <style>
+    html, body { overflow: hidden; }
+    body { margin: 0; font-family: Inter, system-ui, sans-serif; font-weight: 420; letter-spacing: 0.02em; -webkit-font-smoothing: antialiased; }
+    * { box-sizing: border-box; }
+    a { color: #007be0; text-decoration: none; }
+    img { display: block; }
+    p { margin: 0; }
+
+    @keyframes fadeUp { from { transform: translateY(10px); opacity: 0 } to { transform: none; opacity: 1 } }
+    @keyframes rowIn  { from { transform: translateY(7px);  opacity: 0 } to { transform: none; opacity: 1 } }
+    .scr { animation: fadeUp .24s cubic-bezier(.32,.72,0,1) both; }
+    .tr  { animation: rowIn .3s cubic-bezier(.32,.72,0,1) both; }
+    .tr:nth-of-type(1){animation-delay:.01s} .tr:nth-of-type(2){animation-delay:.035s}
+    .tr:nth-of-type(3){animation-delay:.06s} .tr:nth-of-type(4){animation-delay:.085s}
+    .tr:nth-of-type(5){animation-delay:.11s} .tr:nth-of-type(6){animation-delay:.135s}
+    .tr:nth-of-type(7){animation-delay:.16s} .tr:nth-of-type(8){animation-delay:.185s}
+
+    /* rail */
+    .r { width: 34px; height: 34px; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: #7c7c7c; transition: background .16s ease, color .16s ease; }
+    .r svg { width: 17px; height: 17px; fill: currentColor; }
+    .r.on { background: #ffffff; box-shadow: 0 1px 2px rgba(0,0,0,0.1); color: #171717; }
+    .r.no { opacity: .32; }
+
+    /* sidebar */
+    .n { display: flex; align-items: center; gap: 8px; height: 28px; padding: 0 9px; border-radius: 8px; font-size: 12.5px; color: #525252; transition: background .16s ease; }
+    .n.on { background: #ffffff; box-shadow: 0 1px 2px rgba(0,0,0,0.1); color: #171717; font-weight: 500; }
+    .n b { margin-left: auto; font-size: 10.5px; font-weight: 500; color: #999999; }
+    .n i { margin-left: auto; font-style: normal; display: inline-flex; align-items: center; height: 17px; padding: 0 6px; border-radius: 9px; background: #ffe7e7; color: #e03636; font-size: 10px; font-weight: 500; }
+    .lbl { font-size: 10.5px; font-weight: 500; color: #999999; padding: 0 9px; }
+
+    /* generic */
+    .bar { height: 48px; flex-shrink: 0; border-bottom: 1px solid #ededed; display: flex; align-items: center; gap: 10px; padding: 0 20px; }
+    .h1 { font-size: 14px; font-weight: 500; }
+    .mut { font-size: 12px; color: #999999; }
+    .btn { height: 30px; padding: 0 12px; border-radius: 8px; display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; white-space: nowrap; }
+    .btn.p { background: #007be0; color: #fff; font-weight: 500; }
+    .btn.s { border: 1px solid #ededed; color: #525252; }
+    .btn svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+    .chip { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 11px; border: 1px solid #ededed; border-radius: 8px; font-size: 12px; color: #4a5763; white-space: nowrap; }
+    .chip svg { width: 10px; height: 10px; stroke: #999999; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    .bd { display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border-radius: 6px; font-size: 11px; font-weight: 500; white-space: nowrap; }
+    .gray { background: #f3f3f3; color: #525252 }
+    .blue { background: #e6f4ff; color: #007be0 }
+    .grn  { background: #e4faeb; color: #278f5e }
+    .amb  { background: #fff7d3; color: #db7706 }
+    .red  { background: #ffe7e7; color: #e03636 }
+    .card { border: 1px solid #ededed; border-radius: 12px; background: #fff; padding: 16px; }
+    .kv { display: flex; justify-content: space-between; gap: 14px; padding: 8px 0; border-bottom: 1px solid #f3f3f3; font-size: 12.5px; }
+    .kv span:first-child { color: #999999; }
+    .av { width: 20px; height: 20px; border-radius: 10px; object-fit: cover; flex-shrink: 0; }
+    .stat { border: 1px solid #ededed; border-radius: 12px; padding: 13px 15px; background: #fff; }
+    .stat i { font-style: normal; display: block; font-size: 10.5px; font-weight: 500; color: #999999; }
+    .stat b { display: block; font-size: 22px; font-weight: 500; letter-spacing: -0.01em; margin-top: 6px; font-variant-numeric: tabular-nums; }
+
+    /* table */
+    .t { width: 100%; }
+    .t .hd { height: 32px; border-bottom: 1px solid #ededed; display: grid; align-items: center; }
+    .t .hd > * { font-size: 10.5px; font-weight: 500; color: #7c7c7c; padding: 0 12px; }
+    .tr { height: 46px; border-bottom: 1px solid #f3f3f3; display: grid; align-items: center; }
+    .tr > * { font-size: 12.5px; color: #383838; padding: 0 12px; min-width: 0; display: flex; align-items: center; }
+    .num { justify-content: flex-end; font-variant-numeric: tabular-nums; }
+    .el { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
+    .body { flex-grow: 1; min-height: 0; padding: 18px 20px; overflow: hidden; }
+    .focus { box-shadow: 0 0 0 3px #EFF6FF; }
+  
+    .fld { height: 44px; border: 1px solid #d9d9d9; border-radius: 10px; background: #fff; display: flex; align-items: center; padding: 0 13px; font-size: 14px; color: #171717; }
+    .fld.focus { border-color: #2b7fff; box-shadow: 0 0 0 3px #EFF6FF; }
+    .flbl { font-size: 12.5px; font-weight: 500; color: #383838; margin-bottom: 7px; display: flex; justify-content: space-between; }
+    .otp { width: 52px; height: 60px; border: 1px solid #d9d9d9; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 24px; font-weight: 500; font-variant-numeric: tabular-nums; }
+  </style>
+</helmet>
+
+<div style="width: 1440px; height: 900px; display: flex; background: #ffffff; color: #171717; overflow: hidden;">
+  <div style="width: 660px; flex-shrink: 0; background: #f8f8f8; border-right: 1px solid #ededed; display: flex; flex-direction: column; padding: 44px 52px;">
+    <div style="display: flex; align-items: center; gap: 10px;">
+      <div style="width: 32px; height: 32px; border-radius: 9px; background: #171717; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 12px; font-weight: 600;">AF</div>
+      <span style="font-size: 15px; font-weight: 600;">Aura Farmers</span>
+    </div>
+    <div style="margin-top: auto;">
+      <div style="display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 10px; transform: rotate(-3deg); margin: 0 -8px 44px;">
+        <img src="cover-history.jpg" style="width: 100%; aspect-ratio: 16/10; object-fit: cover; border-radius: 12px; box-shadow: 0 2px 8px 1px rgba(5,5,6,.07);">
+        <img src="cover-porsche.jpg" style="width: 100%; aspect-ratio: 16/10; object-fit: cover; border-radius: 12px; box-shadow: 0 2px 8px 1px rgba(5,5,6,.07); margin-top: 22px;">
+        <img src="cover-orange.jpg" style="width: 100%; aspect-ratio: 16/10; object-fit: cover; border-radius: 12px; box-shadow: 0 2px 8px 1px rgba(5,5,6,.07);">
+        <img src="cover-goodday.jpg" style="width: 100%; aspect-ratio: 16/10; object-fit: cover; border-radius: 12px; box-shadow: 0 2px 8px 1px rgba(5,5,6,.07); margin-top: -22px;">
+        <img src="cover-domore.jpg" style="width: 100%; aspect-ratio: 16/10; object-fit: cover; border-radius: 12px; box-shadow: 0 2px 8px 1px rgba(5,5,6,.07);">
+        <div style="width: 100%; aspect-ratio: 16/10; border-radius: 12px; background: #fff; border: 1px solid #ededed; margin-top: -22px; display: flex; flex-direction: column; justify-content: center; padding: 0 16px;"><div style="font-size: 22px; font-weight: 500; letter-spacing: -0.02em;">1.28M</div><div style="font-size: 11px; color: #999999; margin-top: 2px;">views · last 28 days</div></div>
+      </div>
+      <div style="font-size: 30px; font-weight: 500; letter-spacing: -0.02em; line-height: 1.2; max-width: 460px; text-wrap: pretty;">One workspace for every video, every script, and every agent.</div>
+      <p style="font-size: 14px; line-height: 1.6; color: #7c7c7c; margin-top: 12px; max-width: 440px; text-wrap: pretty;">Your agent works with exactly your permissions, nothing it reads, cites or posts is anything you couldn’t open yourself.</p>
+    </div>
+  </div>
+
+  <div style="flex-grow: 1; display: flex; flex-direction: column; padding: 32px 44px;">
+    <div style="display: flex; justify-content: flex-end;">
+      <div style="display: flex; gap: 2px; padding: 3px; border-radius: 9px; background: #f3f3f3; font-size: 12px;"><span style="padding: 4px 11px; border-radius: 6px; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.1); font-weight: 500;">繁體中文</span><span style="padding: 4px 11px; color: #7c7c7c;">English</span></div>
+    </div>
+    <div style="flex-grow: 1; display: flex; align-items: center; justify-content: center;">
+      <div style="width: 380px;">
+        <a href="#" style="font-size: 12.5px; display: inline-flex; align-items: center; gap: 5px; color: #525252;"><svg viewBox="0 0 24 24" style="width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round;"><path d="m14.5 5.5-7 6.5 7 6.5"/></svg>Back</a>
+        <div style="width: 52px; height: 52px; border-radius: 15px; background: #f3f3f3; display: flex; align-items: center; justify-content: center; margin-top: 22px;"><svg viewBox="0 0 24 24" style="width: 24px; height: 24px; stroke: #383838; fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round;"><rect x="6.5" y="3" width="11" height="18" rx="2.2"/><path d="M11 17.5h2"/></svg></div>
+        <div style="font-size: 26px; font-weight: 500; letter-spacing: -0.02em; margin-top: 18px;">Two-step verification</div>
+        <p style="font-size: 14px; line-height: 1.55; color: #7c7c7c; margin-top: 8px;">Enter the 6-digit code from your authenticator app for <b style="font-weight: 500; color: #383838;">chan.kaming@aurafarmers.hk</b>.</p>
+        <div style="display: flex; gap: 9px; margin-top: 26px; align-items: center;">
+          <div class="otp">4</div><div class="otp">8</div><div class="otp">1</div>
+          <span style="width: 10px; height: 2px; background: #c7c7c7; border-radius: 1px;"></span>
+          <div class="otp">9</div><div class="otp">2</div><div class="otp">6</div>
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px; margin-top: 16px;"><div style="width: 16px; height: 16px; border-radius: 4px; background: #171717; display: flex; align-items: center; justify-content: center;"><svg viewBox="0 0 16 16" style="width: 11px; height: 11px; stroke: #fff; fill: none; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round;"><path d="M3.6 8.3 6.5 11.2 12.4 5.1"/></svg></div><span style="font-size: 13px; color: #525252;">Trust this browser for 30 days</span></div>
+        <div style="height: 46px; margin-top: 22px; border-radius: 11px; background: #007be0; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 500;">Verify</div>
+        <div style="display: flex; justify-content: space-between; margin-top: 16px; font-size: 12.5px;"><span style="color: #999999;">Code refreshes in 18 s</span><a href="#">Use a recovery code</a></div></div>
+    </div>
+    <div style="display: flex; justify-content: space-between; font-size: 11.5px; color: #999999;">
+      <span>Sessions expire after 12 hours of inactivity</span><span>Protected by your organisation’s identity provider</span>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {}
+</script>
+</body>
+</html>

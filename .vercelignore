@@ -1,0 +1,12 @@
+# Keep the upload to what the site needs.
+.env*
+!.env.example
+design/
+01_Build-Spec 2.pdf
+image.png
+assets/NotoSansSC.ttf
+node_modules
+.next
+.vercel
+out
+tsconfig.tsbuildinfo

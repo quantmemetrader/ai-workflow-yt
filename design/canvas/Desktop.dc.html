@@ -1,0 +1,1133 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;450;500;600&display=swap">
+  <style>
+    html, body { overflow: hidden; }
+    body { margin: 0; font-family: Inter, system-ui, sans-serif; font-weight: 420; letter-spacing: 0.02em; -webkit-font-smoothing: antialiased; }
+    * { box-sizing: border-box; }
+    a { color: #007be0; text-decoration: none; }
+    img { display: block; }
+    p { margin: 0; }
+
+    @keyframes fadeUp { from { transform: translateY(10px); opacity: 0 } to { transform: none; opacity: 1 } }
+    @keyframes rowIn  { from { transform: translateY(7px);  opacity: 0 } to { transform: none; opacity: 1 } }
+    .scr { animation: fadeUp .24s cubic-bezier(.32,.72,0,1) both; }
+    .tr  { animation: rowIn .3s cubic-bezier(.32,.72,0,1) both; }
+    .tr:nth-of-type(1){animation-delay:.01s} .tr:nth-of-type(2){animation-delay:.035s}
+    .tr:nth-of-type(3){animation-delay:.06s} .tr:nth-of-type(4){animation-delay:.085s}
+    .tr:nth-of-type(5){animation-delay:.11s} .tr:nth-of-type(6){animation-delay:.135s}
+    .tr:nth-of-type(7){animation-delay:.16s} .tr:nth-of-type(8){animation-delay:.185s}
+
+    /* rail */
+    .r { width: 34px; height: 34px; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: #7c7c7c; transition: background .16s ease, color .16s ease; }
+    .r svg { width: 17px; height: 17px; fill: currentColor; }
+    .r.on { background: #ffffff; box-shadow: 0 1px 2px rgba(0,0,0,0.1); color: #171717; }
+    .r.no { opacity: .32; }
+
+    /* sidebar */
+    .n { display: flex; align-items: center; gap: 8px; height: 28px; padding: 0 9px; border-radius: 8px; font-size: 12.5px; color: #525252; transition: background .16s ease; }
+    .n.on { background: #ffffff; box-shadow: 0 1px 2px rgba(0,0,0,0.1); color: #171717; font-weight: 500; }
+    .n b { margin-left: auto; font-size: 10.5px; font-weight: 500; color: #999999; }
+    .n i { margin-left: auto; font-style: normal; display: inline-flex; align-items: center; height: 17px; padding: 0 6px; border-radius: 9px; background: #ffe7e7; color: #e03636; font-size: 10px; font-weight: 500; }
+    .lbl { font-size: 10.5px; font-weight: 500; color: #999999; padding: 0 9px; }
+
+    /* generic */
+    .bar { height: 48px; flex-shrink: 0; border-bottom: 1px solid #ededed; display: flex; align-items: center; gap: 10px; padding: 0 20px; }
+    .h1 { font-size: 14px; font-weight: 500; }
+    .mut { font-size: 12px; color: #999999; }
+    .btn { height: 30px; padding: 0 12px; border-radius: 8px; display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; white-space: nowrap; }
+    .btn.p { background: #007be0; color: #fff; font-weight: 500; }
+    .btn.s { border: 1px solid #ededed; color: #525252; }
+    .btn svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+    .chip { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 11px; border: 1px solid #ededed; border-radius: 8px; font-size: 12px; color: #4a5763; white-space: nowrap; }
+    .chip svg { width: 10px; height: 10px; stroke: #999999; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    .bd { display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border-radius: 6px; font-size: 11px; font-weight: 500; white-space: nowrap; }
+    .gray { background: #f3f3f3; color: #525252 }
+    .blue { background: #e6f4ff; color: #007be0 }
+    .grn  { background: #e4faeb; color: #278f5e }
+    .amb  { background: #fff7d3; color: #db7706 }
+    .red  { background: #ffe7e7; color: #e03636 }
+    .card { border: 1px solid #ededed; border-radius: 12px; background: #fff; padding: 16px; }
+    .kv { display: flex; justify-content: space-between; gap: 14px; padding: 8px 0; border-bottom: 1px solid #f3f3f3; font-size: 12.5px; }
+    .kv span:first-child { color: #999999; }
+    .av { width: 20px; height: 20px; border-radius: 10px; object-fit: cover; flex-shrink: 0; }
+    .stat { border: 1px solid #ededed; border-radius: 12px; padding: 13px 15px; background: #fff; }
+    .stat i { font-style: normal; display: block; font-size: 10.5px; font-weight: 500; color: #999999; }
+    .stat b { display: block; font-size: 22px; font-weight: 500; letter-spacing: -0.01em; margin-top: 6px; font-variant-numeric: tabular-nums; }
+
+    /* table */
+    .t { width: 100%; }
+    .t .hd { height: 32px; border-bottom: 1px solid #ededed; display: grid; align-items: center; }
+    .t .hd > * { font-size: 10.5px; font-weight: 500; color: #7c7c7c; padding: 0 12px; }
+    .tr { height: 46px; border-bottom: 1px solid #f3f3f3; display: grid; align-items: center; }
+    .tr > * { font-size: 12.5px; color: #383838; padding: 0 12px; min-width: 0; display: flex; align-items: center; }
+    .num { justify-content: flex-end; font-variant-numeric: tabular-nums; }
+    .el { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
+    .body { flex-grow: 1; min-height: 0; padding: 18px 20px; overflow: hidden; }
+    .focus { box-shadow: 0 0 0 3px #EFF6FF; }
+  </style>
+</helmet>
+
+<div style="width: 1440px; height: 900px; display: flex; background: #ffffff; color: #171717; overflow: hidden;">
+
+  <!-- ============ RAIL ============ -->
+  <div style="width: 52px; flex-shrink: 0; background: #f8f8f8; border-right: 1px solid #ededed; display: flex; flex-direction: column; align-items: center; padding: 10px 0; gap: 3px;">
+    <div style="width: 28px; height: 28px; border-radius: 8px; background: #171717; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 11px; font-weight: 600; margin-bottom: 10px;">AF</div>
+    <div class="r{{onChat}}" onClick="{{ goChat }}" title="Chat"><svg viewBox="0 0 24 24"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 9.5 9.5 0 0 1-2.8-.4L4 21l1.4-4.1A8.2 8.2 0 0 1 3.6 11.5 8.4 8.4 0 0 1 12 3.1a8.4 8.4 0 0 1 9 8.4z"/></svg></div>
+    <div class="r{{onFiles}}" onClick="{{ goFiles }}" title="Database"><svg viewBox="0 0 24 24"><path d="M3.6 6.9a2.1 2.1 0 0 1 2.1-2.1h3.2a2.1 2.1 0 0 1 1.62.76l1.02 1.24h6.76a2.1 2.1 0 0 1 2.1 2.1v8.3a2.1 2.1 0 0 1-2.1 2.1H5.7a2.1 2.1 0 0 1-2.1-2.1z"/></svg></div>
+    <div class="r{{onRes}}" onClick="{{ goRes }}" title="Market Research"><svg viewBox="0 0 24 24"><rect x="3.4" y="12.6" width="4.2" height="7.4" rx="1.5"/><rect x="9.9" y="8.4" width="4.2" height="11.6" rx="1.5"/><rect x="16.4" y="4" width="4.2" height="16" rx="1.5"/></svg></div>
+    <div class="r{{onScript}}" onClick="{{ goScript }}" title="Script"><svg viewBox="0 0 24 24"><path d="M6.4 3.4h7.4L18.6 8v12.6H6.4z"/><path d="M9.4 12.3h6M9.4 15.6h6" stroke="#f8f8f8" stroke-width="1.5" fill="none"/></svg></div>
+    <div class="r{{onVideo}}" onClick="{{ goVideo }}" title="Video Edit"><svg viewBox="0 0 24 24"><rect x="3.4" y="5.4" width="12.4" height="13.2" rx="2.1"/><path d="m16.6 13 4.6 2.8V8.2L16.6 11z"/></svg></div>
+    <div class="r{{onPub}}" onClick="{{ goPub }}" title="Publish"><svg viewBox="0 0 24 24"><path d="M21.86 4.14a1.1 1.1 0 0 0-1.14-.18L2.9 11.13c-.86.34-.83 1.58.05 1.87l4.46 1.5 1.68 5.06c.24.72 1.15.93 1.68.38l2.4-2.5 4.4 3.23c.6.44 1.46.12 1.63-.6z"/></svg></div>
+    <div style="width: 22px; height: 1px; background: #e2e2e2; margin: 6px 0;"></div>
+    <div class="r{{onAcc}}" onClick="{{ goAcc }}" title="Accounting"><svg viewBox="0 0 24 24"><rect x="5.4" y="3.4" width="13.2" height="17.2" rx="2"/><path d="M8.4 8h7.2M8.4 12h7.2M8.4 16h4" stroke="#f8f8f8" stroke-width="1.5" fill="none"/></svg></div>
+    <div class="r{{onFin}}" onClick="{{ goFin }}" title="Finance"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.6"/><path d="M14.8 9.4c-.4-1-1.5-1.6-2.8-1.6-1.6 0-2.8.9-2.8 2.1 0 2.9 5.7 1.4 5.7 4.3 0 1.2-1.2 2.1-2.9 2.1-1.4 0-2.5-.6-2.9-1.6M12 6.4v1.4M12 16.3v1.4" stroke="#f8f8f8" stroke-width="1.5" fill="none"/></svg></div>
+    <div class="r{{onLegal}}" onClick="{{ goLegal }}" title="Legal"><svg viewBox="0 0 24 24"><path d="M12 3.2 4.4 6.2v5.6c0 4.4 3.1 8.3 7.6 9.3 4.5-1 7.6-4.9 7.6-9.3V6.2z"/></svg></div>
+    <div class="r{{onHr}} no" onClick="{{ goHr }}" title="HR · no access"><svg viewBox="0 0 24 24"><circle cx="12" cy="7.8" r="3.7"/><path d="M4.7 20.2a7.3 7.3 0 0 1 14.6 0z"/></svg></div>
+    <div class="r{{onAdmin}}" onClick="{{ goAdmin }}" title="Admin"><svg viewBox="0 0 24 24"><path d="M4 7.4h16M4 12h16M4 16.6h16" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linecap="round"/><circle cx="9" cy="7.4" r="2.2"/><circle cx="15" cy="16.6" r="2.2"/></svg></div>
+    <div style="flex-grow: 1;"></div>
+    <img class="av" src="pfp-chan.jpg" style="width: 26px; height: 26px; border-radius: 13px;">
+  </div>
+
+  <!-- ============ SIDEBAR ============ -->
+  <div style="width: 212px; flex-shrink: 0; background: #f8f8f8; border-right: 1px solid #ededed; display: flex; flex-direction: column; padding: 10px 8px;">
+    <div style="padding: 4px 9px 12px; font-size: 14px; font-weight: 500;">{{modName}}</div>
+    <div class="lbl" style="margin-bottom: 5px;">Screens</div>
+    <div style="display: flex; flex-direction: column; gap: 1px;">
+      <sc-for list="{{subs}}" as="s" hint-placeholder-count="4">
+        <div class="n{{s.on}}" onClick="{{ s.go }}"><span>{{s.label}}</span></div>
+      </sc-for>
+    </div>
+    <div style="margin-top: auto; padding: 10px 9px 4px; border-top: 1px solid #ededed;">
+      <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px;">
+        <span style="font-size: 11px; color: #999999;">Your usage</span>
+        <span style="font-size: 11px; color: #525252;">62%</span>
+      </div>
+      <div style="height: 4px; border-radius: 2px; background: #ededed;"><div style="width: 62%; height: 4px; border-radius: 2px; background: {{accent}};"></div></div>
+    </div>
+  </div>
+
+  <!-- ============ MAIN ============ -->
+  <div style="flex-grow: 1; display: flex; flex-direction: column; min-width: 0;">
+    <div class="bar">
+      <span class="h1">{{subName}}</span>
+      <span class="mut">{{subHint}}</span>
+      <div style="flex-grow: 1;"></div>
+      <div style="width: 260px; height: 28px; border: 1px solid #ededed; border-radius: 8px; background: #f8f8f8; display: flex; align-items: center; gap: 7px; padding: 0 9px;">
+        <svg viewBox="0 0 24 24" style="width: 13px; height: 13px; stroke: #999999; fill: none; stroke-width: 1.8; stroke-linecap: round;"><circle cx="11" cy="11" r="6.4"/><path d="m15.8 15.8 4 4"/></svg>
+        <span style="font-size: 12px; color: #999999;">Search</span>
+      </div>
+      <div style="position: relative; display: flex;">
+        <svg viewBox="0 0 24 24" style="width: 16px; height: 16px; stroke: #525252; fill: none; stroke-width: 1.7; stroke-linecap: round;"><path d="M18 9a6 6 0 1 0-12 0c0 5-2 6.5-2 6.5h16S18 14 18 9z"/><path d="M13.7 19a2 2 0 0 1-3.4 0"/></svg>
+        <div style="position: absolute; top: 0; right: 0; width: 5px; height: 5px; border-radius: 3px; background: #e03636;"></div>
+      </div>
+    </div>
+
+    <div style="flex-grow: 1; display: flex; min-height: 0;">
+      <div style="flex-grow: 1; display: flex; flex-direction: column; min-width: 0;">
+        <sc-if value="{{isChat}}" hint-placeholder-val="{{ true }}"><div class="scr body" style="display:flex;flex-direction:column;">
+          <div style="max-width: 700px; margin: 0 auto; width: 100%; flex-grow: 1;">
+            <div style="display: flex; justify-content: flex-end; margin-bottom: 20px;"><div style="max-width: 480px; background: #f3f3f3; border-radius: 12px; padding: 10px 14px; font-size: 13.5px; line-height: 1.55;">Compare last month's Cantonese shorts against the 16:9 cuts.</div></div>
+            <div style="display: inline-flex; align-items: center; gap: 8px; height: 26px; padding: 0 10px; border: 1px solid #ededed; border-radius: 8px; background: #f8f8f8; margin-bottom: 14px;">
+              <svg viewBox="0 0 24 24" style="width: 12px; height: 12px; stroke: #278f5e; fill: none; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round;"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>
+              <span style="font-size: 12px; color: #525252;">Ran Market Research · read 3 files · 4.2 s</span>
+            </div>
+            <p style="font-size: 13.5px; line-height: 1.62; color: #2b343d; text-wrap: pretty;">The 9:16 cuts hold attention better but convert engagement worse. Shorts averaged <b style="font-weight:500">52.4%</b> watch-through against <b style="font-weight:500">41.2%</b> for the 16:9 versions of the same six scripts.</p>
+            <div style="display: flex; gap: 7px; margin-top: 16px;">
+              <span class="chip">Q3-performance.csv</span><span class="chip">shorts-brief-v4.md</span>
+            </div>
+          </div>
+          <div style="max-width: 700px; margin: 0 auto; width: 100%;">
+            <div style="border: 1px solid #e2e2e2; border-radius: 11px; padding: 11px 13px 9px; box-shadow: 0 1px 2px rgba(0,0,0,.08);">
+              <div style="font-size: 13.5px; color: #999999;">Ask your agent, or name a module to run…</div>
+              <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 14px;">
+                <span style="font-size: 11px; color: #999999;">gemini-2.5-pro</span>
+                <div style="width: 28px; height: 28px; border-radius: 8px; background: {{accent}}; display: flex; align-items: center; justify-content: center;"><svg viewBox="0 0 24 24" style="width:14px;height:14px;stroke:#fff;fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round"><path d="M12 19V5.5M6 11.5 12 5.5l6 6"/></svg></div>
+              </div>
+            </div>
+          </div>
+        </div></sc-if>
+
+        <sc-if value="{{isFiles}}" hint-placeholder-val="{{ true }}"><div class="scr body">
+          <div style="display: flex; gap: 8px; margin-bottom: 14px;">
+            <div class="chip">Type: Video <svg viewBox="0 0 24 24"><path d="m6.5 9.5 5.5 5.5 5.5-5.5"/></svg></div>
+            <div class="chip">Owner: Anyone <svg viewBox="0 0 24 24"><path d="m6.5 9.5 5.5 5.5 5.5-5.5"/></svg></div>
+            <div style="flex-grow:1"></div><div class="btn p">Upload</div>
+          </div>
+          <div class="t">
+            <div class="hd" style="grid-template-columns: minmax(0,2.6fr) 80px 76px 60px 120px 84px 76px;"><div>Name</div><div>Kind</div><div class="num">Size</div><div class="num">Ver</div><div>Owner</div><div>Modified</div><div>Access</div></div>
+            <div class="tr" style="grid-template-columns: minmax(0,2.6fr) 80px 76px 60px 120px 84px 76px;"><div style="gap:10px"><img src="cover-history.jpg" style="width:56px;height:32px;border-radius:5px;object-fit:cover;flex-shrink:0"><span class="el">history-of-greece_ep75.mp4</span></div><div><span class="bd gray">video</span></div><div class="num">1.8 GB</div><div class="num">v3</div><div style="gap:8px"><img class="av" src="pfp-chan.jpg" style="width:18px;height:18px"><span class="el">Chan Ka-ming</span></div><div style="color:#7c7c7c">2 Sep</div><div><span class="bd blue">Owner</span></div></div>
+            <div class="tr" style="grid-template-columns: minmax(0,2.6fr) 80px 76px 60px 120px 84px 76px;"><div style="gap:10px"><img src="cover-porsche.jpg" style="width:56px;height:32px;border-radius:5px;object-fit:cover;flex-shrink:0"><span class="el">porsche-cat_night.mp4</span></div><div><span class="bd gray">video</span></div><div class="num">944 MB</div><div class="num">v3</div><div style="gap:8px"><img class="av" src="pfp-chan.jpg" style="width:18px;height:18px"><span class="el">Chan Ka-ming</span></div><div style="color:#7c7c7c">2 Sep</div><div><span class="bd blue">Owner</span></div></div>
+            <div class="tr" style="grid-template-columns: minmax(0,2.6fr) 80px 76px 60px 120px 84px 76px;"><div style="gap:10px"><img src="cover-orange.jpg" style="width:56px;height:32px;border-radius:5px;object-fit:cover;flex-shrink:0"><span class="el">orange_typography_cut.mp4</span></div><div><span class="bd gray">video</span></div><div class="num">812 MB</div><div class="num">v2</div><div style="gap:8px"><img class="av" src="pfp-leung.jpg" style="width:18px;height:18px"><span class="el">Leung Chi-hang</span></div><div style="color:#7c7c7c">2 Sep</div><div><span class="bd grn">Editor</span></div></div>
+            <div class="tr" style="grid-template-columns: minmax(0,2.6fr) 80px 76px 60px 120px 84px 76px;"><div style="gap:10px"><img src="cover-goodday.jpg" style="width:56px;height:32px;border-radius:5px;object-fit:cover;flex-shrink:0"><span class="el">good-day_collage_teaser.mp4</span></div><div><span class="bd gray">video</span></div><div class="num">402 MB</div><div class="num">v2</div><div style="gap:8px"><img class="av" src="pfp-amy.jpg" style="width:18px;height:18px"><span class="el">Amy Wong</span></div><div style="color:#7c7c7c">1 Sep</div><div><span class="bd grn">Editor</span></div></div>
+            <div class="tr" style="grid-template-columns: minmax(0,2.6fr) 80px 76px 60px 120px 84px 76px;"><div style="gap:10px"><img src="cover-domore.jpg" style="width:56px;height:32px;border-radius:5px;object-fit:cover;flex-shrink:0"><span class="el">do-more_brandspot_9x16.mp4</span></div><div><span class="bd gray">video</span></div><div class="num">512 MB</div><div class="num">v2</div><div style="gap:8px"><img class="av" src="pfp-michelle.jpg" style="width:18px;height:18px"><span class="el">Michelle Yip</span></div><div style="color:#7c7c7c">31 Aug</div><div><span class="bd grn">Editor</span></div></div>
+            <div class="tr" style="grid-template-columns: minmax(0,2.6fr) 80px 76px 60px 120px 84px 76px;"><div style="gap:10px"><span class="el">subtitles_zh-HK.srt</span></div><div><span class="bd gray">asset</span></div><div class="num">14 KB</div><div class="num">v2</div><div style="gap:8px"><img class="av" src="pfp-leung.jpg" style="width:18px;height:18px"><span class="el">Leung Chi-hang</span></div><div style="color:#7c7c7c">2 Sep</div><div><span class="bd grn">Editor</span></div></div>
+          </div>
+          <div class="mut" style="margin-top: 14px;">18 files · 4.2 GB · filtered to what you can read</div>
+        </div></sc-if>
+
+        <sc-if value="{{isResTrends}}" hint-placeholder-val="{{ true }}"><div class="scr body">
+          <div style="display: flex; gap: 8px; margin-bottom: 16px;">
+            <div class="chip">Sources: GDELT, YouTube <svg viewBox="0 0 24 24"><path d="m6.5 9.5 5.5 5.5 5.5-5.5"/></svg></div>
+            <div class="chip">HK / TW / SG <svg viewBox="0 0 24 24"><path d="m6.5 9.5 5.5 5.5 5.5-5.5"/></svg></div>
+            <div class="chip">Last 14 days <svg viewBox="0 0 24 24"><path d="m6.5 9.5 5.5 5.5 5.5-5.5"/></svg></div>
+            <div style="flex-grow:1"></div><span class="mut">Ranked 09:15 HKT</span>
+          </div>
+          <div style="display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 14px;">
+            <div class="card"><div style="display:flex;align-items:baseline;justify-content:space-between"><span style="font-size:11px;color:#c7c7c7">01</span><span style="font-size:24px;font-weight:500">94</span></div><div style="font-size:14px;font-weight:500;line-height:1.35;margin-top:7px;text-wrap:pretty">Sham Shui Po dai pai dong revival</div><svg viewBox="0 0 120 24" style="width:100%;height:24px;margin-top:12px;fill:none;stroke:{{accent}};stroke-width:1.6;stroke-linecap:round"><path d="M2 20 16 18l14 4 14-8 14 2 14-10 14 4 14-10 14 3"/></svg><p style="font-size:12.5px;line-height:1.5;color:#7c7c7c;margin-top:11px;text-wrap:pretty">Licence renewals drew 2,100 mentions in nine days.</p><div style="display:flex;gap:7px;margin-top:13px"><div class="btn p" style="flex-grow:1;justify-content:center">Adopt</div><div class="btn s" style="flex-grow:1;justify-content:center">Reject</div></div></div>
+            <div class="card"><div style="display:flex;align-items:baseline;justify-content:space-between"><span style="font-size:11px;color:#c7c7c7">02</span><span style="font-size:24px;font-weight:500">88</span></div><div style="font-size:14px;font-weight:500;line-height:1.35;margin-top:7px;text-wrap:pretty">Taipei night-market crossover creators</div><svg viewBox="0 0 120 24" style="width:100%;height:24px;margin-top:12px;fill:none;stroke:{{accent}};stroke-width:1.6;stroke-linecap:round"><path d="M2 15 16 16l14-3 14 4 14-8 14 5 14-11 14 4 14-7"/></svg><p style="font-size:12.5px;line-height:1.5;color:#7c7c7c;margin-top:11px;text-wrap:pretty">Three HK food channels published TW collaborations.</p><div style="display:flex;gap:7px;margin-top:13px"><div class="btn p" style="flex-grow:1;justify-content:center">Adopt</div><div class="btn s" style="flex-grow:1;justify-content:center">Reject</div></div></div>
+            <div class="card"><span class="bd amb" style="margin-bottom:9px">Sensitive · named official</span><div style="display:flex;align-items:baseline;justify-content:space-between"><span style="font-size:11px;color:#c7c7c7">03</span><span style="font-size:24px;font-weight:500">81</span></div><div style="font-size:14px;font-weight:500;line-height:1.35;margin-top:7px;text-wrap:pretty">Harbourfront redevelopment hearing</div><p style="font-size:12.5px;line-height:1.5;color:#7c7c7c;margin-top:11px;text-wrap:pretty">High volume, but coverage centres on a planning dispute.</p><div style="display:flex;gap:7px;margin-top:13px"><div class="btn p" style="flex-grow:1;justify-content:center">Adopt</div><div class="btn s" style="flex-grow:1;justify-content:center">Reject</div></div></div>
+          </div>
+        </div></sc-if>
+
+        <sc-if value="{{isResCompare}}" hint-placeholder-val="{{ true }}"><div class="scr body">
+          <div style="display:flex;gap:8px;margin-bottom:16px"><div class="chip">dai pai dong <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></div><div class="chip">night market <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></div><div class="chip">hawker <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></div><div class="btn s">+ Add series</div><div style="flex-grow:1"></div><div class="btn s">Export as report</div></div>
+          <div class="card" style="padding:20px">
+            <svg viewBox="0 0 900 240" style="width:100%;height:250px;fill:none;stroke-linecap:round;stroke-linejoin:round">
+              <g stroke="#f3f3f3" stroke-width="1"><path d="M0 40h900M0 90h900M0 140h900M0 190h900M0 240h900"/></g>
+              <path d="M0 200 100 186 200 150 300 158 400 108 500 120 600 66 700 84 800 40 900 52" stroke="{{accent}}" stroke-width="2"/>
+              <path d="M0 214 100 208 200 196 300 188 400 176 500 182 600 158 700 164 800 146 900 152" stroke="#8d99a6" stroke-width="2"/>
+              <path d="M0 226 100 224 200 220 300 222 400 214 500 218 600 206 700 210 800 200 900 204" stroke="#c7c7c7" stroke-width="2"/>
+            </svg>
+            <div style="display:flex;gap:18px;margin-top:14px"><span class="mut"><b style="display: inline-block; width: 12px; height: 2px; border-radius: 1px; background: {{accent}}; vertical-align: 3px; margin-right: 2px;"></b> dai pai dong</span><span class="mut"><b style="display: inline-block; width: 12px; height: 2px; border-radius: 1px; background: #8d99a6; vertical-align: 3px; margin-right: 2px;"></b> night market</span><span class="mut"><b style="display: inline-block; width: 12px; height: 2px; border-radius: 1px; background: #c7c7c7; vertical-align: 3px; margin-right: 2px;"></b> hawker</span></div>
+            <div class="mut" style="margin-top:10px">11 Aug – 24 Aug 2026 · source: GDELT, Google Trends</div>
+          </div>
+        </div></sc-if>
+
+        <sc-if value="{{isResPerf}}" hint-placeholder-val="{{ true }}"><div class="scr body">
+          <div style="display:flex;gap:8px;margin-bottom:16px"><div class="chip">Channel: All <svg viewBox="0 0 24 24"><path d="m6.5 9.5 5.5 5.5 5.5-5.5"/></svg></div><div class="chip">Last 28 days <svg viewBox="0 0 24 24"><path d="m6.5 9.5 5.5 5.5 5.5-5.5"/></svg></div><div class="chip">Campaign: 2026-Q3 <svg viewBox="0 0 24 24"><path d="m6.5 9.5 5.5 5.5 5.5-5.5"/></svg></div><div style="flex-grow:1"></div><div class="btn s">Export CSV</div></div>
+          <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:16px">
+            <div class="stat"><i>VIEWS</i><b>1,284,300</b></div><div class="stat"><i>WATCH-THROUGH</i><b>41.2%</b></div><div class="stat"><i>ENGAGEMENT</i><b>6.8%</b></div><div class="stat"><i>COMMENTS</i><b>3,912</b></div>
+          </div>
+          <div class="t">
+            <div class="hd" style="grid-template-columns:minmax(0,2.4fr) 110px 90px 90px 110px 100px"><div>Video</div><div>Channel</div><div>Published</div><div class="num">Views</div><div class="num">Watch-thru</div><div class="num">Comments</div></div>
+            <div class="tr" style="grid-template-columns:minmax(0,2.4fr) 110px 90px 90px 110px 100px"><div style="gap:10px"><img src="cover-history.jpg" style="width:48px;height:27px;border-radius:4px;object-fit:cover"><span class="el">history-of-greece_ep75</span></div><div><span class="bd gray">YouTube</span></div><div style="color:#7c7c7c">28 Aug</div><div class="num">642,100</div><div class="num" style="color:#278f5e">52.4%</div><div class="num">1,840</div></div>
+            <div class="tr" style="grid-template-columns:minmax(0,2.4fr) 110px 90px 90px 110px 100px"><div style="gap:10px"><img src="cover-porsche.jpg" style="width:48px;height:27px;border-radius:4px;object-fit:cover"><span class="el">porsche-cat_night</span></div><div><span class="bd gray">Instagram</span></div><div style="color:#7c7c7c">24 Aug</div><div class="num">310,400</div><div class="num">44.1%</div><div class="num">902</div></div>
+            <div class="tr" style="grid-template-columns:minmax(0,2.4fr) 110px 90px 90px 110px 100px"><div style="gap:10px"><img src="cover-orange.jpg" style="width:48px;height:27px;border-radius:4px;object-fit:cover"><span class="el">orange_typography_cut</span></div><div><span class="bd gray">YouTube</span></div><div style="color:#7c7c7c">18 Aug</div><div class="num">201,600</div><div class="num">38.9%</div><div class="num">640</div></div>
+            <div class="tr" style="grid-template-columns:minmax(0,2.4fr) 110px 90px 90px 110px 100px"><div style="gap:10px"><img src="cover-goodday.jpg" style="width:48px;height:27px;border-radius:4px;object-fit:cover"><span class="el">good-day_collage_teaser</span></div><div><span class="bd gray">LinkedIn</span></div><div style="color:#7c7c7c">11 Aug</div><div class="num">130,200</div><div class="num" style="color:#e03636">28.4%</div><div class="num">530</div></div>
+          </div>
+        </div></sc-if>
+
+        <sc-if value="{{isResInbox}}" hint-placeholder-val="{{ true }}"><div class="scr" style="flex-grow:1;min-height:0;display:flex">
+          <div style="width: 360px; flex-shrink: 0; border-right: 1px solid #ededed; display: flex; flex-direction: column;">
+            <div style="padding: 12px 14px; display: flex; gap: 6px; flex-wrap: wrap; border-bottom: 1px solid #ededed;"><div class="chip">Sentiment</div><div class="chip">Flagged</div><div class="chip">Leads</div></div>
+            <div style="padding: 10px 8px;">
+              <div class="lbl" style="margin: 4px 0 6px;">history-of-greece_ep75</div>
+              <div style="padding: 9px 10px; border-radius: 8px; background: #f8f8f8;"><div style="display:flex;align-items:center;gap:8px"><img class="av" src="pfp-amy.jpg" style="width:18px;height:18px"><span style="font-size:12.5px;font-weight:500">@kk_wong</span><span class="bd grn" style="margin-left:auto">Positive</span></div><div class="mut" style="margin-top:5px">呢集真係好正,幾時出下一集?</div></div>
+              <div style="padding: 9px 10px; border-radius: 8px;"><div style="display:flex;align-items:center;gap:8px"><img class="av" src="pfp-leung.jpg" style="width:18px;height:18px"><span style="font-size:12.5px">@brandpartner</span><span class="bd blue" style="margin-left:auto">Lead</span></div><div class="mut" style="margin-top:5px">Do you take sponsorship enquiries?</div></div>
+              <div style="padding: 9px 10px; border-radius: 8px;"><div style="display:flex;align-items:center;gap:8px"><img class="av" src="pfp-michelle.jpg" style="width:18px;height:18px"><span style="font-size:12.5px">@anon_4471</span><span class="bd amb" style="margin-left:auto">Flagged</span></div><div class="mut" style="margin-top:5px">Contains a flagged keyword</div></div>
+            </div>
+          </div>
+          <div style="flex-grow: 1; min-width: 0; padding: 18px 20px;">
+            <div class="card" style="background:#f8f8f8;border:none"><div style="display:flex;align-items:center;gap:9px"><img class="av" src="pfp-amy.jpg"><span style="font-size:13px;font-weight:500">@kk_wong</span><span class="mut">YouTube · 2 Sep</span></div><p style="font-size:13.5px;line-height:1.55;margin-top:10px">呢集真係好正,幾時出下一集?</p></div>
+            <div class="lbl" style="margin: 18px 0 8px;">AI-suggested reply</div>
+            <div style="border: 1px solid #ededed; border-radius: 10px; padding: 13px 14px; font-size: 13.5px; line-height: 1.55; color: #383838;">多謝支持!下一集會喺下星期三上載,記得開通知 🔔</div>
+            <div style="display: flex; align-items: center; gap: 9px; margin-top: 12px;">
+              <div class="btn p">Approve &amp; send</div><div class="btn s">Edit</div><div class="btn s">Hide</div>
+              <span class="mut" style="margin-left:auto">Draft · requires approval before sending</span>
+            </div>
+          </div>
+        </div></sc-if>
+
+        <sc-if value="{{isResBacklog}}" hint-placeholder-val="{{ true }}"><div class="scr body">
+          <div style="display:flex;gap:8px;margin-bottom:14px"><span class="mut">9 adopted topics queued for scripting</span><div style="flex-grow:1"></div><div class="btn p">Send to Script</div></div>
+          <div class="t">
+            <div class="hd" style="grid-template-columns:minmax(0,2.6fr) 130px 130px 100px 110px"><div>Topic</div><div>Owner</div><div>Target channel</div><div>Due</div><div>State</div></div>
+            <div class="tr" style="grid-template-columns:minmax(0,2.6fr) 130px 130px 100px 110px"><div><span class="el">Sham Shui Po dai pai dong revival</span></div><div style="gap:8px"><img class="av" src="pfp-amy.jpg" style="width:18px;height:18px"><span class="el">Amy Wong</span></div><div>YouTube</div><div style="color:#7c7c7c">12 Sep</div><div><span class="bd blue">Scripting</span></div></div>
+            <div class="tr" style="grid-template-columns:minmax(0,2.6fr) 130px 130px 100px 110px"><div><span class="el">Taipei night-market crossover</span></div><div style="gap:8px"><img class="av" src="pfp-chan.jpg" style="width:18px;height:18px"><span class="el">Chan Ka-ming</span></div><div>Instagram</div><div style="color:#7c7c7c">19 Sep</div><div><span class="bd gray">Queued</span></div></div>
+            <div class="tr" style="grid-template-columns:minmax(0,2.6fr) 130px 130px 100px 110px"><div><span class="el">Cantonese voice cloning backlash</span></div><div style="gap:8px"><img class="av" src="pfp-leung.jpg" style="width:18px;height:18px"><span class="el">Leung Chi-hang</span></div><div>YouTube</div><div style="color:#7c7c7c">26 Sep</div><div><span class="bd gray">Queued</span></div></div>
+            <div class="tr" style="grid-template-columns:minmax(0,2.6fr) 130px 130px 100px 110px"><div><span class="el">Singapore hawker succession</span></div><div style="gap:8px"><img class="av" src="pfp-michelle.jpg" style="width:18px;height:18px"><span class="el">Michelle Yip</span></div><div>LinkedIn</div><div style="color:#7c7c7c">3 Oct</div><div><span class="bd amb">Blocked</span></div></div>
+          </div>
+        </div></sc-if>
+
+        <!-- ===================== SCRIPT ===================== -->
+        <sc-if value="{{isScriptBrief}}" hint-placeholder-val="{{ true }}"><div class="scr body">
+          <div style="max-width: 720px;">
+            <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px">
+              <div><div class="lbl" style="padding:0;margin-bottom:6px">Topic</div><div class="chip" style="width:100%;height:34px;background:#f8f8f8">Sham Shui Po dai pai dong revival</div></div>
+              <div><div class="lbl" style="padding:0;margin-bottom:6px">Angle</div><div class="chip" style="width:100%;height:34px;background:#f8f8f8">Operator interview</div></div>
+              <div><div class="lbl" style="padding:0;margin-bottom:6px">Target channel</div><div class="chip" style="width:100%;height:34px;background:#f8f8f8">YouTube · 16:9</div></div>
+              <div><div class="lbl" style="padding:0;margin-bottom:6px">Target duration</div><div class="chip" style="width:100%;height:34px;background:#f8f8f8">3 min 45 s</div></div>
+              <div><div class="lbl" style="padding:0;margin-bottom:6px">Tone</div><div class="chip" style="width:100%;height:34px;background:#f8f8f8">Warm, documentary</div></div>
+              <div><div class="lbl" style="padding:0;margin-bottom:6px">Pulled from</div><div class="chip" style="width:100%;height:34px;background:#f8f8f8">Topic backlog · adopted 2 Sep</div></div>
+            </div>
+            <div style="margin-top:16px"><div class="lbl" style="padding:0;margin-bottom:6px">Mandatory points</div><div style="border:1px solid #ededed;border-radius:10px;padding:12px 13px;font-size:13px;line-height:1.6;color:#383838">Name the four stalls. Quote the licence board decision verbatim. Credit the HK Film Archive for the 1998 plate.</div></div>
+            <div style="margin-top:14px"><div class="lbl" style="padding:0;margin-bottom:6px">Things to avoid</div><div style="border:1px solid #ededed;border-radius:10px;padding:12px 13px;font-size:13px;line-height:1.6;color:#383838">No speculation about the planning dispute. No named officials.</div></div>
+            <div style="display:flex;gap:9px;margin-top:18px"><div class="btn p">Generate draft</div><div class="btn s">Save brief</div></div>
+          </div>
+        </div></sc-if>
+
+        <sc-if value="{{isScriptEditor}}" hint-placeholder-val="{{ true }}"><div class="scr" style="flex-grow:1;min-height:0;display:flex">
+          <div style="flex-grow:1;min-width:0;padding:18px 22px;overflow:hidden">
+            <div style="display:flex;align-items:center;gap:9px;margin-bottom:14px"><span class="bd gray">v4 · Draft</span><div style="flex-grow:1"></div><div class="btn s">Compare versions</div><div class="btn p">Approve &amp; lock</div></div>
+            <div style="font-size:13.5px;line-height:1.75;color:#2b343d;max-width:640px">
+              <p style="margin-bottom:13px"><b style="font-weight:500;color:#999999;font-size:11px">BEAT 01 · 0:00</b><br>Cold open on the stall shutters going up. No narration for the first four seconds.</p>
+              <p style="margin-bottom:13px"><b style="font-weight:500;color:#999999;font-size:11px">BEAT 02 · 0:12</b><br>Establish the street. Wide, handheld, <span style="border-bottom:2px wavy #db7706">morning light before the crowds arrive</span>.</p>
+              <p style="margin-bottom:13px"><b style="font-weight:500;color:#999999;font-size:11px">BEAT 03 · 0:31</b><br>Mrs Ho explains the licence renewal in her own words. Keep the <span style="background:#fff7d3">ambient market noise</span> under her.</p>
+              <p style="margin-bottom:13px"><b style="font-weight:500;color:#999999;font-size:11px">BEAT 04 · 1:04</b><br>Cutaway to the paperwork on the counter. Tight, shallow depth of field.</p>
+              <p><b style="font-weight:500;color:#999999;font-size:11px">BEAT 05 · 1:22</b><br>Archive footage of the same street in 1998, licensed from the HK Film Archive.</p>
+            </div>
+          </div>
+          <div style="width:320px;flex-shrink:0;border-left:1px solid #ededed;padding:18px 16px;background:#fcfcfc">
+            <div class="lbl" style="padding:0">House style</div>
+            <div style="display:flex;align-items:baseline;gap:7px;margin-top:9px"><span style="font-size:28px;font-weight:500">82</span><span class="mut">/ 100 conformance</span></div>
+            <div style="height:5px;border-radius:3px;background:#ededed;margin-top:9px"><div style="width:82%;height:5px;border-radius:3px;background:{{accent}}"></div></div>
+            <div class="kv" style="margin-top:16px"><span>Spoken duration</span><span>3 min 48 s</span></div>
+            <div class="kv"><span>Reading level</span><span>Grade 8</span></div>
+            <div class="kv" style="border:none"><span>Flagged terms</span><span>4</span></div>
+            <div class="lbl" style="padding:0;margin:16px 0 9px">Flagged</div>
+            <div style="display:flex;flex-direction:column;gap:9px">
+              <div style="border:1px solid #ededed;border-radius:9px;padding:10px 11px"><div style="font-size:12.5px;font-weight:500">"morning light"</div><div class="mut" style="margin-top:3px;line-height:1.5">House style prefers a concrete time of day.</div><div style="display:flex;gap:6px;margin-top:8px"><div class="btn p" style="height:26px">Accept</div><div class="btn s" style="height:26px">Reject</div></div></div>
+              <div style="border:1px solid #ededed;border-radius:9px;padding:10px 11px"><div style="font-size:12.5px;font-weight:500">"ambient market noise"</div><div class="mut" style="margin-top:3px;line-height:1.5">Sound direction belongs in the shot list, not the script.</div></div>
+            </div>
+          </div>
+        </div></sc-if>
+
+        <sc-if value="{{isScriptVersions}}" hint-placeholder-val="{{ true }}"><div class="scr body">
+          <div style="display:flex;gap:8px;margin-bottom:14px"><div class="chip">v3 <svg viewBox="0 0 24 24"><path d="m6.5 9.5 5.5 5.5 5.5-5.5"/></svg></div><span class="mut" style="align-self:center">compared with</span><div class="chip">v4 <svg viewBox="0 0 24 24"><path d="m6.5 9.5 5.5 5.5 5.5-5.5"/></svg></div></div>
+          <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px">
+            <div class="card"><div class="lbl" style="padding:0;margin-bottom:9px">v3 · Leung Chi-hang · 1 Sep 18:20</div><p style="font-size:13px;line-height:1.7;color:#383838">Establish the street. Wide, handheld, <span style="background:#ffe7e7;text-decoration:line-through">at dawn</span>.</p></div>
+            <div class="card"><div class="lbl" style="padding:0;margin-bottom:9px">v4 · Amy Wong · 2 Sep 09:40</div><p style="font-size:13px;line-height:1.7;color:#383838">Establish the street. Wide, handheld, <span style="background:#e4faeb">morning light before the crowds arrive</span>.</p></div>
+          </div>
+          <div class="t" style="margin-top:18px">
+            <div class="hd" style="grid-template-columns:70px minmax(0,2fr) 150px 130px 100px"><div>Version</div><div>Note</div><div>Author</div><div>When</div><div>State</div></div>
+            <div class="tr" style="grid-template-columns:70px minmax(0,2fr) 150px 130px 100px"><div>v4</div><div><span class="el">Tone pass on beats 2–5</span></div><div style="gap:8px"><img class="av" src="pfp-amy.jpg" style="width:18px;height:18px"><span class="el">Amy Wong</span></div><div style="color:#7c7c7c">2 Sep 09:40</div><div><span class="bd blue">Draft</span></div></div>
+            <div class="tr" style="grid-template-columns:70px minmax(0,2fr) 150px 130px 100px"><div>v3</div><div><span class="el">Added archive credit</span></div><div style="gap:8px"><img class="av" src="pfp-leung.jpg" style="width:18px;height:18px"><span class="el">Leung Chi-hang</span></div><div style="color:#7c7c7c">1 Sep 18:20</div><div><span class="bd gray">Superseded</span></div></div>
+            <div class="tr" style="grid-template-columns:70px minmax(0,2fr) 150px 130px 100px"><div>v2</div><div><span class="el">First agent draft from brief</span></div><div style="gap:8px"><img class="av" src="pfp-chan.jpg" style="width:18px;height:18px"><span class="el">Agent · Chan K.</span></div><div style="color:#7c7c7c">1 Sep 14:02</div><div><span class="bd gray">Superseded</span></div></div>
+          </div>
+        </div></sc-if>
+
+        <sc-if value="{{isScriptLock}}" hint-placeholder-val="{{ true }}"><div class="scr body">
+          <div style="max-width:640px">
+            <div class="card" style="border-color:#f7dcb0;background:#fdfaf3"><div style="display:flex;gap:10px"><svg viewBox="0 0 24 24" style="width:17px;height:17px;flex-shrink:0;stroke:#db7706;fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round;margin-top:1px"><path d="M12 4.8 21 19.2H3z"/><path d="M12 10.4v3.4M12 16.4v.2"/></svg><div><div style="font-size:13.5px;font-weight:500;color:#8a5a0d">Locking produces the single authorised version</div><p style="font-size:12.5px;line-height:1.6;color:#8a5a0d;margin-top:5px">It hands v4 to Video Edit and makes it read-only. Later changes create a new version and need re-approval.</p></div></div></div>
+            <div class="lbl" style="padding:0;margin:20px 0 9px">Approver</div>
+            <div style="display:flex;align-items:center;gap:10px;border:1px solid #ededed;border-radius:10px;padding:12px 13px"><img class="av" src="pfp-michelle.jpg" style="width:28px;height:28px"><div style="flex-grow:1"><div style="font-size:13px;font-weight:500">Michelle Yip</div><div class="mut">Designated publication approver</div></div><span class="bd amb">Awaiting</span></div>
+            <div class="kv" style="margin-top:18px"><span>Version to lock</span><span>v4 · 2 Sep 09:40</span></div>
+            <div class="kv"><span>House-style conformance</span><span>82 / 100</span></div>
+            <div class="kv"><span>Unresolved flags</span><span>4</span></div>
+            <div class="kv" style="border:none"><span>Hands off to</span><span>Video Edit · project 004</span></div>
+            <div style="display:flex;gap:9px;margin-top:18px"><div class="btn p">Approve &amp; lock v4</div><div class="btn s">Request changes</div></div>
+          </div>
+        </div></sc-if>
+
+        <!-- ===================== VIDEO EDIT ===================== -->
+        <sc-if value="{{isVidProject}}" hint-placeholder-val="{{ true }}"><div class="scr" style="flex-grow:1;min-height:0;display:flex">
+          <div style="width:264px;flex-shrink:0;border-right:1px solid #ededed;background:#fcfcfc;padding:14px">
+            <div style="display:flex;align-items:center;gap:8px"><span class="lbl" style="padding:0">Locked script</span><span class="bd gray" style="margin-left:auto">v4</span></div>
+            <div style="margin-top:12px;display:flex;flex-direction:column;gap:11px;font-size:11.5px;line-height:1.55;color:#55626f">
+              <div><b style="font-weight:500;color:#999999;font-size:10px">BEAT 01 · 0:00</b><br>Cold open on the shutters going up.</div>
+              <div><b style="font-weight:500;color:#999999;font-size:10px">BEAT 02 · 0:12</b><br>Establish the street, morning.</div>
+              <div style="background:#f1f8ff;border-left:2px solid {{accent}};margin:0 -14px;padding:7px 14px 7px 12px;color:#2b343d"><b style="font-weight:500;color:{{accent}};font-size:10px">BEAT 03 · 0:31</b><br>Mrs Ho explains the licence renewal.</div>
+              <div><b style="font-weight:500;color:#999999;font-size:10px">BEAT 04 · 1:04</b><br>Paperwork cutaway, shallow DOF.</div>
+              <div><b style="font-weight:500;color:#999999;font-size:10px">BEAT 05 · 1:22</b><br>1998 archive plate.</div>
+            </div>
+          </div>
+          <div style="flex-grow:1;min-width:0;padding:16px 18px;overflow:hidden">
+            <div style="display:flex;align-items:center;gap:9px;margin-bottom:12px"><span class="h1">Shot list</span><span class="mut">8 shots · 6 assigned · 3:48</span><div style="flex-grow:1"></div><div class="btn s">Add shot</div></div>
+            <div style="display:flex;flex-direction:column;gap:8px">
+              <div class="tr" style="display:flex;gap:11px;height:auto;padding:8px;border:1px solid #ededed;border-radius:9px"><img src="cover-history.jpg" style="width:74px;height:42px;border-radius:5px;object-fit:cover;flex-shrink:0"><div style="flex-grow:1;min-width:0;padding:0"><div style="font-size:12.5px;font-weight:500">01 · Shutters going up</div><div style="display:flex;gap:7px;margin-top:5px"><span class="bd grn">Existing footage</span><span class="mut">0:12</span></div></div><span style="width:7px;height:7px;border-radius:4px;background:#48bb74;flex-shrink:0;margin-right:4px"></span></div>
+              <div class="tr" style="display:flex;gap:11px;height:auto;padding:8px;border:1px solid #ededed;border-radius:9px"><img src="cover-orange.jpg" style="width:74px;height:42px;border-radius:5px;object-fit:cover;flex-shrink:0"><div style="flex-grow:1;min-width:0;padding:0"><div style="font-size:12.5px;font-weight:500">02 · Street establish, morning</div><div style="display:flex;gap:7px;margin-top:5px"><span class="bd grn">Existing footage</span><span class="mut">0:19</span></div></div><span style="width:7px;height:7px;border-radius:4px;background:#48bb74;flex-shrink:0;margin-right:4px"></span></div>
+              <div class="tr" style="display:flex;gap:11px;height:auto;padding:8px;border:2px dashed {{accent}};border-radius:9px;background:#f5faff"><div style="width:74px;height:42px;border-radius:5px;background:#dde3e8;flex-shrink:0"></div><div style="flex-grow:1;min-width:0;padding:0"><div style="font-size:12.5px;font-weight:500">03 · Mrs Ho, licence interview</div><div style="display:flex;gap:7px;margin-top:5px"><span class="bd blue">Drop to assign</span><span class="mut">0:33</span></div></div><span style="width:7px;height:7px;border-radius:4px;background:#f5a623;flex-shrink:0;margin-right:4px"></span></div>
+              <div class="tr" style="display:flex;gap:11px;height:auto;padding:8px;border:1px solid #ededed;border-radius:9px"><img src="cover-goodday.jpg" style="width:74px;height:42px;border-radius:5px;object-fit:cover;flex-shrink:0"><div style="flex-grow:1;min-width:0;padding:0"><div style="font-size:12.5px;font-weight:500">04 · Paperwork cutaway</div><div style="display:flex;gap:7px;margin-top:5px"><span class="bd gray">Still</span><span class="mut">0:08</span></div></div><span style="width:7px;height:7px;border-radius:4px;background:#48bb74;flex-shrink:0;margin-right:4px"></span></div>
+              <div class="tr" style="display:flex;gap:11px;height:auto;padding:8px;border:1px solid #ededed;border-radius:9px"><img src="cover-domore.jpg" style="width:74px;height:42px;border-radius:5px;object-fit:cover;flex-shrink:0"><div style="flex-grow:1;min-width:0;padding:0"><div style="font-size:12.5px;font-weight:500">05 · 1998 archive plate</div><div style="display:flex;gap:7px;margin-top:5px"><span class="bd" style="background:#f2edfb;color:#6244a8">B-roll · licensed</span><span class="mut">0:24</span></div></div><span style="width:7px;height:7px;border-radius:4px;background:#48bb74;flex-shrink:0;margin-right:4px"></span></div>
+            </div>
+          </div>
+          <div style="width:250px;flex-shrink:0;border-left:1px solid #ededed;padding:14px;background:#fcfcfc">
+            <div class="lbl" style="padding:0;margin-bottom:10px">Project cost</div>
+            <div style="font-size:22px;font-weight:500">HK$412.80</div>
+            <div style="height:4px;border-radius:2px;background:#ededed;margin-top:9px"><div style="width:46%;height:4px;border-radius:2px;background:{{accent}}"></div></div>
+            <div class="mut" style="margin-top:7px">46% of the HK$900 cap</div>
+            <div class="kv" style="margin-top:16px"><span>Generation</span><span>HK$248.00</span></div>
+            <div class="kv"><span>Transcription</span><span>HK$36.40</span></div>
+            <div class="kv"><span>Voice</span><span>HK$88.20</span></div>
+            <div class="kv" style="border:none"><span>Assembly</span><span>HK$40.20</span></div>
+          </div>
+        </div></sc-if>
+
+        <sc-if value="{{isVidBin}}" hint-placeholder-val="{{ true }}"><div class="scr body">
+          <div style="display:flex;gap:8px;margin-bottom:14px"><div class="chip">Type: Video <svg viewBox="0 0 24 24"><path d="m6.5 9.5 5.5 5.5 5.5-5.5"/></svg></div><div class="chip">Any duration <svg viewBox="0 0 24 24"><path d="m6.5 9.5 5.5 5.5 5.5-5.5"/></svg></div><div class="chip">Tag: interview <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></div><div style="flex-grow:1"></div><span class="mut">42 accessible to you</span></div>
+          <div style="display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px">
+            <div><img src="cover-history.jpg" style="width:100%;aspect-ratio:16/9;object-fit:cover;border-radius:9px"><div style="font-size:12px;margin-top:7px" class="el">ho-interview_take2.mov</div><div class="mut">3840×2160 · 4:12</div></div>
+            <div><img src="cover-porsche.jpg" style="width:100%;aspect-ratio:16/9;object-fit:cover;border-radius:9px"><div style="font-size:12px;margin-top:7px" class="el">stall-owner-b_wide.mov</div><div class="mut">3840×2160 · 2:31</div></div>
+            <div><img src="cover-orange.jpg" style="width:100%;aspect-ratio:16/9;object-fit:cover;border-radius:9px"><div style="font-size:12px;margin-top:7px" class="el">broll_temple-street.mov</div><div class="mut">3840×2160 · 8:04</div></div>
+            <div><img src="cover-goodday.jpg" style="width:100%;aspect-ratio:16/9;object-fit:cover;border-radius:9px"><div style="font-size:12px;margin-top:7px" class="el">archive_1998.mp4</div><div class="mut">1440×1080 · 0:52</div></div>
+            <div><img src="cover-domore.jpg" style="width:100%;aspect-ratio:16/9;object-fit:cover;border-radius:9px"><div style="font-size:12px;margin-top:7px" class="el">shutters_open_close.mov</div><div class="mut">3840×2160 · 0:44</div></div>
+          </div>
+          <div class="mut" style="margin-top:16px">Filtered to files you can access. Drag a clip onto a shot card to assign it.</div>
+        </div></sc-if>
+
+        <sc-if value="{{isVidQueue}}" hint-placeholder-val="{{ true }}"><div class="scr body">
+          <div style="display:flex;gap:8px;margin-bottom:14px"><div class="chip">State: All <svg viewBox="0 0 24 24"><path d="m6.5 9.5 5.5 5.5 5.5-5.5"/></svg></div><div class="chip">Provider: All <svg viewBox="0 0 24 24"><path d="m6.5 9.5 5.5 5.5 5.5-5.5"/></svg></div><div style="flex-grow:1"></div><span class="mut">Project cost to date: HK$412.80</span></div>
+          <div class="t">
+            <div class="hd" style="grid-template-columns:minmax(0,1.6fr) 120px 110px 130px 140px 80px 90px"><div>Job</div><div>Type</div><div>State</div><div>Progress</div><div>Provider</div><div class="num">Tries</div><div class="num">Cost</div></div>
+            <div class="tr" style="grid-template-columns:minmax(0,1.6fr) 120px 110px 130px 140px 80px 90px"><div><span class="el">gen_beat07_evening</span></div><div><span class="bd gray">Generation</span></div><div><span class="bd blue">Running</span></div><div><div style="width:100%;height:4px;border-radius:2px;background:#ededed"><div style="width:62%;height:4px;border-radius:2px;background:{{accent}}"></div></div></div><div style="color:#7c7c7c">Veo 3.1 Fast</div><div class="num">1</div><div class="num">HK$18.40</div></div>
+            <div class="tr" style="grid-template-columns:minmax(0,1.6fr) 120px 110px 130px 140px 80px 90px"><div><span class="el">transcribe_ho_take2</span></div><div><span class="bd gray">Transcription</span></div><div><span class="bd grn">Succeeded</span></div><div class="mut">done</div><div style="color:#7c7c7c">Azure zh-HK</div><div class="num">1</div><div class="num">HK$4.20</div></div>
+            <div class="tr" style="grid-template-columns:minmax(0,1.6fr) 120px 110px 130px 140px 80px 90px"><div><span class="el">render_master_16x9</span></div><div><span class="bd gray">Render</span></div><div><span class="bd gray">Queued</span></div><div class="mut">–</div><div style="color:#7c7c7c">FFmpeg</div><div class="num">0</div><div class="num">–</div></div>
+            <div class="tr" style="grid-template-columns:minmax(0,1.6fr) 120px 110px 130px 140px 80px 90px"><div><span class="el">gen_beat05_archive_upscale</span></div><div><span class="bd gray">Generation</span></div><div><span class="bd red">Failed</span></div><div class="mut">attempt 3 of 3</div><div style="color:#7c7c7c">Veo 3.1 Lite</div><div class="num">3</div><div class="num">HK$0.00</div></div>
+            <div class="tr" style="display:block;height:auto;padding:12px 14px;background:#fff7f7;border:1px solid #ffd8d8;border-radius:9px;margin-top:8px"><div style="font-family:ui-monospace,monospace;font-size:11.5px;color:#941f1f">RESOURCE_EXHAUSTED: quota exceeded for model veo-3.1-lite in region asia-east2</div><div style="display:flex;gap:8px;margin-top:10px"><div class="btn s">Retry</div><div class="btn s">Open provider status</div></div></div>
+          </div>
+        </div></sc-if>
+
+        <sc-if value="{{isVidPreview}}" hint-placeholder-val="{{ true }}"><div class="scr body">
+          <div style="display:flex;gap:18px">
+            <div style="flex-grow:1;min-width:0">
+              <div style="position:relative"><img src="cover-history.jpg" style="width:100%;aspect-ratio:16/9;object-fit:cover;border-radius:12px"><div style="position:absolute;bottom:14px;left:0;right:0;display:flex;justify-content:center"><span style="background:rgba(23,23,23,.8);color:#fff;font-size:13px;padding:4px 10px;border-radius:5px">呢度啲牌照終於批返落嚟</span></div></div>
+              <div style="display:flex;align-items:center;gap:10px;margin-top:14px"><span class="mut">0:31</span><div style="flex-grow:1;height:4px;border-radius:2px;background:#ededed;position:relative"><div style="width:14%;height:4px;border-radius:2px;background:{{accent}}"></div><div style="position:absolute;left:14%;top:-3px;width:10px;height:10px;border-radius:5px;background:#fff;border:2px solid {{accent}}"></div></div><span class="mut">3:48</span></div>
+              <div style="display:flex;align-items:center;gap:8px;margin-top:14px"><span class="lbl" style="padding:0">Aspect</span><div class="chip" style="background:{{accent}};border-color:{{accent}};color:#fff">16:9</div><div class="chip">9:16</div><div class="chip">1:1</div><div style="flex-grow:1"></div><div class="chip">Subtitles zh-HK</div><div class="chip">Compare with v1 <svg viewBox="0 0 24 24"><path d="m6.5 9.5 5.5 5.5 5.5-5.5"/></svg></div></div>
+            </div>
+            <div style="width:280px;flex-shrink:0">
+              <div class="lbl" style="padding:0;margin-bottom:10px">Version comparison</div>
+              <div class="card" style="padding:12px"><img src="cover-porsche.jpg" style="width:100%;aspect-ratio:16/9;object-fit:cover;border-radius:8px"><div style="font-size:12.5px;font-weight:500;margin-top:9px">Previous cut · v1</div><div class="mut" style="margin-top:3px">1 Sep 22:44 · 3:52</div></div>
+              <div class="kv" style="margin-top:16px"><span>Duration delta</span><span>−4 s</span></div>
+              <div class="kv"><span>Shots changed</span><span>3</span></div>
+              <div class="kv" style="border:none"><span>Audio</span><span>Re-mixed</span></div>
+            </div>
+          </div>
+        </div></sc-if>
+
+        <sc-if value="{{isVidAudio}}" hint-placeholder-val="{{ true }}"><div class="scr body">
+          <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;max-width:900px">
+            <div class="card"><div class="lbl" style="padding:0;margin-bottom:11px">Voice</div>
+              <div style="display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:9px;background:#f8f8f8"><span style="font-size:12.5px;font-weight:500;flex-grow:1">Azure zh-HK · HiuMaan</span><span class="bd grn">Selected</span></div>
+              <div style="display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:9px"><span style="font-size:12.5px;flex-grow:1">ElevenLabs · custom clone</span><span class="mut">client account</span></div>
+              <div class="mut" style="margin-top:10px;line-height:1.55">Voice clones are registered under the client's own account, never held by us.</div>
+            </div>
+            <div class="card"><div class="lbl" style="padding:0;margin-bottom:11px">Alternate takes</div>
+              <div style="display:flex;flex-direction:column;gap:8px">
+                <div style="display:flex;align-items:center;gap:10px"><span class="bd blue">take 3</span><div style="flex-grow:1"><svg viewBox="0 0 200 20" style="width:100%;height:20px;fill:{{accent}}"><rect x="0" y="7" width="2" height="6" rx="1"/><rect x="6" y="4" width="2" height="12" rx="1"/><rect x="12" y="1" width="2" height="18" rx="1"/><rect x="18" y="6" width="2" height="8" rx="1"/><rect x="24" y="3" width="2" height="14" rx="1"/><rect x="30" y="8" width="2" height="4" rx="1"/><rect x="36" y="2" width="2" height="16" rx="1"/><rect x="42" y="6" width="2" height="8" rx="1"/><rect x="48" y="4" width="2" height="12" rx="1"/><rect x="54" y="7" width="2" height="6" rx="1"/><rect x="60" y="3" width="2" height="14" rx="1"/><rect x="66" y="8" width="2" height="4" rx="1"/></svg></div><span class="mut">0:42</span></div>
+                <div style="display:flex;align-items:center;gap:10px"><span class="bd gray">take 2</span><div style="flex-grow:1;height:20px"></div><span class="mut">0:44</span></div>
+              </div>
+            </div>
+            <div class="card"><div class="lbl" style="padding:0;margin-bottom:11px">Music</div>
+              <div style="display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:9px;background:#f8f8f8"><span style="font-size:12.5px;font-weight:500;flex-grow:1">ElevenLabs Music · "Street Morning"</span><span class="bd grn">Cleared</span></div>
+              <div class="mut" style="margin-top:10px;line-height:1.55">Commercial use cleared. Enters at beat 07.</div>
+            </div>
+            <div class="card"><div class="lbl" style="padding:0;margin-bottom:11px">Ducking</div>
+              <div style="display:flex;align-items:baseline;gap:8px"><span style="font-size:22px;font-weight:500">−14</span><span class="mut">dB under voice-over</span></div>
+              <div style="height:5px;border-radius:3px;background:#ededed;margin-top:12px;position:relative"><div style="width:58%;height:5px;border-radius:3px;background:{{accent}}"></div><div style="position:absolute;left:58%;top:-4px;width:13px;height:13px;border-radius:7px;background:#fff;border:2px solid {{accent}}"></div></div>
+              <div style="display:flex;justify-content:space-between;margin-top:8px"><span class="mut">−24 dB</span><span class="mut">0 dB</span></div>
+            </div>
+          </div>
+        </div></sc-if>
+
+        <sc-if value="{{isVidExport}}" hint-placeholder-val="{{ true }}"><div class="scr body">
+          <div style="max-width:760px">
+            <div class="lbl" style="padding:0;margin-bottom:11px">Formats</div>
+            <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px">
+              <div class="card" style="padding:13px"><div style="display:flex;align-items:center;gap:8px"><div style="width:16px;height:16px;border-radius:4px;background:#171717;display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 16 16" style="width:11px;height:11px;stroke:#fff;fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round"><path d="M3.6 8.3 6.5 11.2 12.4 5.1"/></svg></div><span style="font-size:13px;font-weight:500">16:9</span></div><div class="mut" style="margin-top:8px">3840×2160 · H.264</div></div>
+              <div class="card" style="padding:13px"><div style="display:flex;align-items:center;gap:8px"><div style="width:16px;height:16px;border-radius:4px;background:#171717;display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 16 16" style="width:11px;height:11px;stroke:#fff;fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round"><path d="M3.6 8.3 6.5 11.2 12.4 5.1"/></svg></div><span style="font-size:13px;font-weight:500">9:16</span></div><div class="mut" style="margin-top:8px">2160×3840 · H.264</div></div>
+              <div class="card" style="padding:13px"><div style="display:flex;align-items:center;gap:8px"><div style="width:16px;height:16px;border:1px solid #999999;border-radius:4px;background:#fff"></div><span style="font-size:13px;font-weight:500">1:1</span></div><div class="mut" style="margin-top:8px">2160×2160 · H.264</div></div>
+            </div>
+            <div class="lbl" style="padding:0;margin:20px 0 11px">Also produce</div>
+            <div class="kv"><span>Subtitle file</span><span>subtitles_zh-HK.srt</span></div>
+            <div class="kv"><span>Audio stem</span><span>voiceover_zh-HK_take3.wav</span></div>
+            <div class="kv"><span>Cover images</span><span>3 sizes</span></div>
+            <div class="kv" style="border:none"><span>Archive to</span><span>2026-Q3-campaign / Renders</span></div>
+            <div style="display:flex;gap:9px;margin-top:18px"><div class="btn p">Start export</div><div class="btn s">Estimate cost</div></div>
+          </div>
+        </div></sc-if>
+
+        <!-- ===================== PUBLISH ===================== -->
+        <sc-if value="{{isPubChannels}}" hint-placeholder-val="{{ true }}"><div class="scr body">
+          <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:13px">
+            <div class="card"><div style="display:flex;align-items:center;gap:8px"><span style="font-size:13px;font-weight:500;flex-grow:1">YouTube</span><span class="bd amb">Audit pending</span></div><div class="mut" style="margin-top:9px;line-height:1.5">upload · readonly</div><div style="height:4px;border-radius:2px;background:#ededed;margin-top:11px"><div style="width:82%;height:4px;border-radius:2px;background:{{accent}}"></div></div><div class="mut" style="margin-top:6px">Quota 82% left</div><div style="margin-top:10px;padding:8px 9px;border-radius:7px;background:#fdf3e3;font-size:11px;color:#8a5a0d;line-height:1.45">Publishes to draft only until audit passes</div></div>
+            <div class="card"><div style="display:flex;align-items:center;gap:8px"><span style="font-size:13px;font-weight:500;flex-grow:1">Instagram</span><span class="bd grn">Connected</span></div><div class="mut" style="margin-top:9px;line-height:1.5">content_publish · insights</div><div style="height:4px;border-radius:2px;background:#ededed;margin-top:11px"><div style="width:64%;height:4px;border-radius:2px;background:{{accent}}"></div></div><div class="mut" style="margin-top:6px">Quota 64% left</div><div class="mut" style="margin-top:10px">Last publish 28 Aug</div></div>
+            <div class="card"><div style="display:flex;align-items:center;gap:8px"><span style="font-size:13px;font-weight:500;flex-grow:1">LinkedIn</span><span class="bd grn">Connected</span></div><div class="mut" style="margin-top:9px;line-height:1.5">w_member_social</div><div style="height:4px;border-radius:2px;background:#ededed;margin-top:11px"><div style="width:91%;height:4px;border-radius:2px;background:{{accent}}"></div></div><div class="mut" style="margin-top:6px">Quota 91% left</div><div class="mut" style="margin-top:10px">Last publish 11 Aug</div></div>
+            <div class="card"><div style="display:flex;align-items:center;gap:8px"><span style="font-size:13px;font-weight:500;flex-grow:1">TikTok</span><span class="bd amb">Audit pending</span></div><div class="mut" style="margin-top:9px;line-height:1.5">video.upload</div><div style="height:4px;border-radius:2px;background:#ededed;margin-top:11px"><div style="width:100%;height:4px;border-radius:2px;background:{{accent}}"></div></div><div class="mut" style="margin-top:6px">Quota 100% left</div><div style="margin-top:10px;padding:8px 9px;border-radius:7px;background:#fdf3e3;font-size:11px;color:#8a5a0d;line-height:1.45">Upload-to-inbox only until audit passes</div></div>
+            <div class="card"><div style="display:flex;align-items:center;gap:8px"><span style="font-size:13px;font-weight:500;flex-grow:1">X</span><span class="bd grn">Connected</span></div><div class="mut" style="margin-top:9px;line-height:1.5">tweet.write · media.write</div><div class="mut" style="margin-top:10px">Last publish 2 Sep</div></div>
+            <div class="card"><div style="display:flex;align-items:center;gap:8px"><span style="font-size:13px;font-weight:500;flex-grow:1">WeChat OA</span><span class="bd grn">Connected</span></div><div class="mut" style="margin-top:9px;line-height:1.5">draft · comment read</div><div class="mut" style="margin-top:10px">Last publish 24 Aug</div></div>
+            <div class="card" style="opacity:.6"><div style="display:flex;align-items:center;gap:8px"><span style="font-size:13px;font-weight:500;flex-grow:1">Xiaohongshu</span><span class="bd gray">No API</span></div><div class="mut" style="margin-top:9px;line-height:1.5">Exported asset pack for manual posting</div></div>
+            <div class="card" style="opacity:.6"><div style="display:flex;align-items:center;gap:8px"><span style="font-size:13px;font-weight:500;flex-grow:1">Bilibili</span><span class="bd gray">No API</span></div><div class="mut" style="margin-top:9px;line-height:1.5">Exported asset pack for manual posting</div></div>
+          </div>
+        </div></sc-if>
+
+        <sc-if value="{{isPubComposer}}" hint-placeholder-val="{{ true }}"><div class="scr" style="flex-grow:1;min-height:0;display:flex">
+          <div style="flex-grow:1;min-width:0;padding:18px 20px">
+            <div style="display:flex;gap:8px;margin-bottom:14px"><div class="chip" style="background:{{accent}};border-color:{{accent}};color:#fff">Master</div><div class="chip">YouTube</div><div class="chip">Instagram</div><div class="chip">LinkedIn</div></div>
+            <div class="lbl" style="padding:0;margin-bottom:6px">Title</div>
+            <div style="border:1px solid #ededed;border-radius:9px;padding:10px 12px;font-size:13.5px">深水埗大牌檔重生:四檔牌照終於批出</div>
+            <div style="display:flex;justify-content:space-between;margin-top:5px"><span class="mut">Overridden on 2 channels</span><span class="mut">24 / 100</span></div>
+            <div class="lbl" style="padding:0;margin:16px 0 6px">Caption</div>
+            <div style="border:1px solid #ededed;border-radius:9px;padding:11px 12px;font-size:13px;line-height:1.6;color:#383838">四檔大牌檔等咗三年,終於等到牌照批出。我哋同何太傾咗一個下晝,講吓呢條街點樣捱過嚟。</div>
+            <div style="display:flex;justify-content:space-between;margin-top:5px"><span class="mut">Within limits on all channels</span><span class="mut">78 / 2200</span></div>
+            <div class="lbl" style="padding:0;margin:16px 0 6px">Schedule</div>
+            <div style="display:flex;gap:9px"><div class="chip">12 Sep 2026</div><div class="chip">19:30 HKT</div><span class="mut" style="align-self:center">Peak window for HK audience</span></div>
+          </div>
+          <div style="width:300px;flex-shrink:0;border-left:1px solid #ededed;padding:18px 16px;background:#fcfcfc">
+            <div class="lbl" style="padding:0;margin-bottom:10px">Thumbnail</div>
+            <img src="cover-history.jpg" style="width:100%;aspect-ratio:16/9;object-fit:cover;border-radius:9px">
+            <div class="lbl" style="padding:0;margin:18px 0 9px">Per-channel rules</div>
+            <div class="kv"><span>YouTube title</span><span>≤ 100 ✓</span></div>
+            <div class="kv"><span>Instagram caption</span><span>≤ 2200 ✓</span></div>
+            <div class="kv"><span>LinkedIn</span><span>≤ 3000 ✓</span></div>
+            <div class="kv" style="border:none"><span>X</span><span>≤ 280 ⚠︎</span></div>
+            <div style="display:flex;gap:9px;margin-top:18px"><div class="btn p" style="flex-grow:1;justify-content:center">Send for approval</div></div>
+          </div>
+        </div></sc-if>
+
+        <sc-if value="{{isPubApprovals}}" hint-placeholder-val="{{ true }}"><div class="scr body">
+          <div style="padding:11px 13px;border-radius:9px;background:#f8f8f8;margin-bottom:16px;font-size:12.5px;color:#525252">Nothing leaves the platform without an approval record.</div>
+          <div class="t">
+            <div class="hd" style="grid-template-columns:minmax(0,2fr) 170px 150px 110px 190px"><div>Item</div><div>Channels</div><div>Approver</div><div>Requested</div><div>Decision</div></div>
+            <div class="tr" style="grid-template-columns:minmax(0,2fr) 170px 150px 110px 190px"><div style="gap:10px"><img src="cover-history.jpg" style="width:48px;height:27px;border-radius:4px;object-fit:cover"><span class="el">history-of-greece_ep75</span></div><div style="gap:5px"><span class="bd gray">YT</span><span class="bd gray">IG</span><span class="bd gray">LI</span></div><div style="gap:8px"><img class="av" src="pfp-michelle.jpg" style="width:18px;height:18px"><span class="el">Michelle Yip</span></div><div style="color:#7c7c7c">2 Sep</div><div style="gap:6px"><div class="btn p" style="height:26px">Approve</div><div class="btn s" style="height:26px">Reject</div></div></div>
+            <div class="tr" style="grid-template-columns:minmax(0,2fr) 170px 150px 110px 190px"><div style="gap:10px"><img src="cover-porsche.jpg" style="width:48px;height:27px;border-radius:4px;object-fit:cover"><span class="el">porsche-cat_night</span></div><div style="gap:5px"><span class="bd gray">IG</span></div><div style="gap:8px"><img class="av" src="pfp-michelle.jpg" style="width:18px;height:18px"><span class="el">Michelle Yip</span></div><div style="color:#7c7c7c">1 Sep</div><div><span class="bd amb">Changes requested</span></div></div>
+            <div class="tr" style="grid-template-columns:minmax(0,2fr) 170px 150px 110px 190px"><div style="gap:10px"><img src="cover-orange.jpg" style="width:48px;height:27px;border-radius:4px;object-fit:cover"><span class="el">orange_typography_cut</span></div><div style="gap:5px"><span class="bd gray">YT</span><span class="bd gray">X</span></div><div style="gap:8px"><img class="av" src="pfp-michelle.jpg" style="width:18px;height:18px"><span class="el">Michelle Yip</span></div><div style="color:#7c7c7c">31 Aug</div><div><span class="bd grn">Approved</span></div></div>
+          </div>
+        </div></sc-if>
+
+        <sc-if value="{{isPubLog}}" hint-placeholder-val="{{ true }}"><div class="scr body">
+          <div class="t">
+            <div class="hd" style="grid-template-columns:minmax(0,1.8fr) 110px 130px 110px 110px minmax(0,1.2fr)"><div>Item</div><div>Channel</div><div>Approved by</div><div>Sent</div><div>State</div><div>Result</div></div>
+            <div class="tr" style="grid-template-columns:minmax(0,1.8fr) 110px 130px 110px 110px minmax(0,1.2fr)"><div><span class="el">orange_typography_cut</span></div><div><span class="bd gray">YouTube</span></div><div style="gap:8px"><img class="av" src="pfp-michelle.jpg" style="width:18px;height:18px"><span class="el">M. Yip</span></div><div style="color:#7c7c7c">31 Aug</div><div><span class="bd amb">Draft</span></div><div><a href="#" class="el">youtu.be/8kQ2…</a></div></div>
+            <div class="tr" style="grid-template-columns:minmax(0,1.8fr) 110px 130px 110px 110px minmax(0,1.2fr)"><div><span class="el">orange_typography_cut</span></div><div><span class="bd gray">X</span></div><div style="gap:8px"><img class="av" src="pfp-michelle.jpg" style="width:18px;height:18px"><span class="el">M. Yip</span></div><div style="color:#7c7c7c">31 Aug</div><div><span class="bd grn">Published</span></div><div><a href="#" class="el">x.com/aurafarmers/…</a></div></div>
+            <div class="tr" style="grid-template-columns:minmax(0,1.8fr) 110px 130px 110px 110px minmax(0,1.2fr)"><div><span class="el">good-day_collage_teaser</span></div><div><span class="bd gray">LinkedIn</span></div><div style="gap:8px"><img class="av" src="pfp-michelle.jpg" style="width:18px;height:18px"><span class="el">M. Yip</span></div><div style="color:#7c7c7c">11 Aug</div><div><span class="bd red">Failed</span></div><div><span class="el" style="color:#941f1f">422 media too large</span></div></div>
+            <div class="tr" style="display:block;height:auto;padding:12px 14px;background:#fff7f7;border:1px solid #ffd8d8;border-radius:9px;margin-top:8px"><div style="font-family:ui-monospace,monospace;font-size:11.5px;color:#941f1f">LinkedIn: asset exceeds 200MB limit for video/mp4</div><div class="mut" style="margin-top:7px">Retry is safe: no partial post was created.</div><div style="display:flex;gap:8px;margin-top:10px"><div class="btn s">Retry with 1:1 render</div></div></div>
+          </div>
+        </div></sc-if>
+
+        <!-- ===================== ACCOUNTING ===================== -->
+        <sc-if value="{{isAccInbox}}" hint-placeholder-val="{{ true }}"><div class="scr" style="flex-grow:1;min-height:0;display:flex">
+          <div style="width:330px;flex-shrink:0;border-right:1px solid #ededed;padding:12px 10px">
+            <div class="lbl" style="margin-bottom:8px">Unprocessed · 9</div>
+            <div style="padding:10px 11px;border-radius:9px;background:#f8f8f8"><div style="display:flex;align-items:center;gap:8px"><span style="font-size:12.5px;font-weight:500;flex-grow:1">Broadway Photo Supply</span><span class="bd grn">High</span></div><div style="display:flex;justify-content:space-between;margin-top:5px"><span class="mut">31 Aug 2026</span><span style="font-size:12.5px;font-variant-numeric:tabular-nums">HK$4,280.00</span></div></div>
+            <div style="padding:10px 11px;border-radius:9px"><div style="display:flex;align-items:center;gap:8px"><span style="font-size:12.5px;flex-grow:1">Cathay Pacific</span><span class="bd amb">Review</span></div><div style="display:flex;justify-content:space-between;margin-top:5px"><span class="mut">28 Aug 2026</span><span style="font-size:12.5px;font-variant-numeric:tabular-nums">HK$9,640.00</span></div></div>
+            <div style="padding:10px 11px;border-radius:9px"><div style="display:flex;align-items:center;gap:8px"><span style="font-size:12.5px;flex-grow:1">HK Film Archive</span><span class="bd grn">High</span></div><div style="display:flex;justify-content:space-between;margin-top:5px"><span class="mut">24 Aug 2026</span><span style="font-size:12.5px;font-variant-numeric:tabular-nums">HK$1,200.00</span></div></div>
+          </div>
+          <div style="flex-grow:1;min-width:0;padding:16px 18px;display:flex;gap:18px">
+            <div style="width:280px;flex-shrink:0;background:#f3f3f3;border-radius:10px;position:relative;height:340px">
+              <div style="position:absolute;left:22px;right:22px;top:34px;height:8px;background:#dde3e8;border-radius:2px"></div>
+              <div style="position:absolute;left:22px;right:80px;top:56px;height:6px;background:#e6ebef;border-radius:2px"></div>
+              <div style="position:absolute;left:22px;width:150px;top:106px;height:24px;border:1.5px solid {{accent}};border-radius:4px"></div>
+              <div style="position:absolute;right:22px;width:88px;top:150px;height:24px;border:1.5px solid {{accent}};border-radius:4px"></div>
+              <div style="position:absolute;left:22px;right:22px;top:200px;height:6px;background:#e6ebef;border-radius:2px"></div>
+              <div style="position:absolute;left:22px;right:120px;top:218px;height:6px;background:#e6ebef;border-radius:2px"></div>
+            </div>
+            <div style="flex-grow:1;min-width:0">
+              <div style="padding:9px 11px;border-radius:8px;background:#f8f8f8;font-size:12px;color:#525252;margin-bottom:14px">Drafts only. Nothing posts without confirmation</div>
+              <div class="kv"><span>Date</span><span>31 Aug 2026 <b style="color:#999999;font-weight:400">98%</b></span></div>
+              <div class="kv"><span>Counterparty</span><span>Broadway Photo Supply <b style="color:#999999;font-weight:400">96%</b></span></div>
+              <div class="kv"><span>Amount</span><span>HK$4,280.00 <b style="color:#999999;font-weight:400">99%</b></span></div>
+              <div class="kv"><span>Tax</span><span>HK$0.00 <b style="color:#999999;font-weight:400">91%</b></span></div>
+              <div class="kv" style="border:none"><span>Suggested account</span><span>6120 · Production equipment <span class="bd amb">82%</span></span></div>
+              <div class="lbl" style="padding:0;margin:16px 0 9px">Line items</div>
+              <div class="t"><div class="hd" style="grid-template-columns:minmax(0,2fr) 70px 110px"><div>Description</div><div class="num">Qty</div><div class="num">Amount</div></div>
+                <div class="tr" style="grid-template-columns:minmax(0,2fr) 70px 110px;height:36px"><div><span class="el">Rode NTG5 shotgun mic</span></div><div class="num">1</div><div class="num">HK$3,480.00</div></div>
+                <div class="tr" style="grid-template-columns:minmax(0,2fr) 70px 110px;height:36px"><div><span class="el">Windshield kit</span></div><div class="num">2</div><div class="num">HK$800.00</div></div>
+              </div>
+              <div style="display:flex;gap:9px;margin-top:16px"><div class="btn p">Confirm</div><div class="btn s">Correct</div></div>
+            </div>
+          </div>
+        </div></sc-if>
+
+        <sc-if value="{{isAccDrafts}}" hint-placeholder-val="{{ true }}"><div class="scr body">
+          <div style="padding:9px 11px;border-radius:8px;background:#f8f8f8;font-size:12px;color:#525252;margin-bottom:14px">Draft journal lines. A human accountant confirms before anything posts</div>
+          <div class="t">
+            <div class="hd" style="grid-template-columns:100px minmax(0,2fr) 150px 110px 110px 110px"><div>Date</div><div>Description</div><div>Account</div><div class="num">Debit</div><div class="num">Credit</div><div>State</div></div>
+            <div class="tr" style="grid-template-columns:100px minmax(0,2fr) 150px 110px 110px 110px"><div style="color:#7c7c7c">31 Aug</div><div><span class="el">Broadway Photo Supply</span></div><div><span class="el">6120 Equipment</span></div><div class="num">4,280.00</div><div class="num">–</div><div><span class="bd blue">Draft</span></div></div>
+            <div class="tr" style="grid-template-columns:100px minmax(0,2fr) 150px 110px 110px 110px"><div style="color:#7c7c7c">31 Aug</div><div><span class="el">Broadway Photo Supply</span></div><div><span class="el">1010 Bank</span></div><div class="num">–</div><div class="num">4,280.00</div><div><span class="bd blue">Draft</span></div></div>
+            <div class="tr" style="grid-template-columns:100px minmax(0,2fr) 150px 110px 110px 110px"><div style="color:#7c7c7c">24 Aug</div><div><span class="el">HK Film Archive licence</span></div><div><span class="el">6210 Licensing</span></div><div class="num">1,200.00</div><div class="num">–</div><div><span class="bd grn">Confirmed</span></div></div>
+          </div>
+          <div class="lbl" style="padding:0;margin:20px 0 10px">Reconciliation</div>
+          <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:13px">
+            <div class="card" style="border-color:#f7dcb0;background:#fdfaf3"><div style="font-size:12.5px;font-weight:500;color:#8a5a0d">3 bank lines with no matching document</div><p class="mut" style="margin-top:6px;line-height:1.5;color:#8a5a0d">HK$12,410.00 total, 18–29 Aug</p></div>
+            <div class="card" style="border-color:#f7dcb0;background:#fdfaf3"><div style="font-size:12.5px;font-weight:500;color:#8a5a0d">1 document with no matching payment</div><p class="mut" style="margin-top:6px;line-height:1.5;color:#8a5a0d">Cathay Pacific · HK$9,640.00</p></div>
+          </div>
+        </div></sc-if>
+
+        <sc-if value="{{isAccPeriod}}" hint-placeholder-val="{{ true }}"><div class="scr body">
+          <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:18px">
+            <div class="stat"><i>INCOME</i><b>HK$1,840,200</b></div><div class="stat"><i>EXPENSE</i><b>HK$1,204,500</b></div><div class="stat"><i>RECEIVABLES</i><b>HK$318,400</b></div><div class="stat"><i>UNPROCESSED</i><b>9</b></div>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px">
+            <div class="card"><div class="lbl" style="padding:0;margin-bottom:12px">Expense by account</div>
+              <div class="kv"><span>6120 Production equipment</span><span>HK$284,100</span></div>
+              <div class="kv"><span>6210 Licensing</span><span>HK$196,400</span></div>
+              <div class="kv"><span>6310 Contractors</span><span>HK$412,800</span></div>
+              <div class="kv"><span>6400 AI consumption</span><span>HK$88,600</span></div>
+              <div class="kv" style="border:none"><span>6500 Travel</span><span>HK$62,300</span></div>
+            </div>
+            <div class="card"><div class="lbl" style="padding:0;margin-bottom:12px">Receivables ageing</div>
+              <div style="display:flex;align-items:flex-end;gap:12px;height:150px">
+                <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:7px"><div style="width:100%;height:118px;background:{{accent}};border-radius:5px"></div><span class="mut">0–30</span></div>
+                <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:7px"><div style="width:100%;height:64px;background:#c9dff5;border-radius:5px"></div><span class="mut">31–60</span></div>
+                <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:7px"><div style="width:100%;height:30px;background:#e2e2e2;border-radius:5px"></div><span class="mut">61–90</span></div>
+                <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:7px"><div style="width:100%;height:14px;background:#ffd8d8;border-radius:5px"></div><span class="mut">90+</span></div>
+              </div>
+            </div>
+          </div>
+        </div></sc-if>
+
+        <sc-if value="{{isAccExport}}" hint-placeholder-val="{{ true }}"><div class="scr body">
+          <div style="max-width:640px">
+            <div class="lbl" style="padding:0;margin-bottom:9px">Destination format</div>
+            <div style="display:flex;flex-direction:column;gap:8px">
+              <div style="display:flex;align-items:center;gap:11px;border:1px solid {{accent}};border-radius:10px;padding:12px 13px;background:#f5faff"><div style="width:15px;height:15px;border-radius:8px;border:4.5px solid {{accent}};flex-shrink:0"></div><div style="flex-grow:1"><div style="font-size:13px;font-weight:500">Xero · CSV import</div><div class="mut" style="margin-top:2px">The client's designated accounting software</div></div></div>
+              <div style="display:flex;align-items:center;gap:11px;border:1px solid #ededed;border-radius:10px;padding:12px 13px"><div style="width:15px;height:15px;border-radius:8px;border:1.5px solid #c7c7c7;flex-shrink:0"></div><div style="flex-grow:1"><div style="font-size:13px">Generic journal CSV</div><div class="mut" style="margin-top:2px">One exporter behind an interface, more formats expected</div></div></div>
+            </div>
+            <div class="kv" style="margin-top:20px"><span>Period</span><span>1 – 31 Aug 2026</span></div>
+            <div class="kv"><span>Confirmed entries</span><span>34</span></div>
+            <div class="kv"><span>Excluded (still draft)</span><span>12</span></div>
+            <div class="kv" style="border:none"><span>Batch reference</span><span>EXP-2026-08-001</span></div>
+            <div style="display:flex;gap:9px;margin-top:18px"><div class="btn p">Export 34 entries</div><div class="btn s">Preview file</div></div>
+          </div>
+        </div></sc-if>
+
+        <!-- ===================== FINANCE ===================== -->
+        <sc-if value="{{isFinBudget}}" hint-placeholder-val="{{ true }}"><div class="scr body">
+          <div class="t">
+            <div class="hd" style="grid-template-columns:minmax(0,1.8fr) 130px 130px 130px 110px 120px"><div>Budget line</div><div>Department</div><div class="num">Budget</div><div class="num">Actual</div><div class="num">Variance</div><div>Period</div></div>
+            <div class="tr" style="grid-template-columns:minmax(0,1.8fr) 130px 130px 130px 110px 120px"><div><span class="el">Production · equipment</span></div><div>Production</div><div class="num">HK$320,000</div><div class="num">HK$284,100</div><div class="num" style="color:#278f5e">−11.2%</div><div style="color:#7c7c7c">2026 Q3</div></div>
+            <div class="tr" style="grid-template-columns:minmax(0,1.8fr) 130px 130px 130px 110px 120px"><div><span class="el">Production · contractors</span></div><div>Production</div><div class="num">HK$380,000</div><div class="num">HK$412,800</div><div class="num" style="color:#e03636">+8.6%</div><div style="color:#7c7c7c">2026 Q3</div></div>
+            <div class="tr" style="grid-template-columns:minmax(0,1.8fr) 130px 130px 130px 110px 120px"><div><span class="el">AI consumption</span></div><div>Platform</div><div class="num">HK$120,000</div><div class="num">HK$88,600</div><div class="num" style="color:#278f5e">−26.2%</div><div style="color:#7c7c7c">2026 Q3</div></div>
+            <div class="tr" style="grid-template-columns:minmax(0,1.8fr) 130px 130px 130px 110px 120px"><div><span class="el">Licensing &amp; archive</span></div><div>Production</div><div class="num">HK$180,000</div><div class="num">HK$196,400</div><div class="num" style="color:#e03636">+9.1%</div><div style="color:#7c7c7c">2026 Q3</div></div>
+          </div>
+          <div class="mut" style="margin-top:14px">Actuals come from confirmed accounting entries only.</div>
+        </div></sc-if>
+
+        <sc-if value="{{isFinCash}}" hint-placeholder-val="{{ true }}"><div class="scr body">
+          <div style="padding:9px 11px;border-radius:8px;background:#fdf3e3;font-size:12px;color:#8a5a0d;margin-bottom:16px">Indicative only, projections are built from client-entered inflows and outflows.</div>
+          <div class="card" style="padding:20px">
+            <svg viewBox="0 0 900 230" style="width:100%;height:240px;fill:none;stroke-linecap:round;stroke-linejoin:round">
+              <g stroke="#f3f3f3" stroke-width="1"><path d="M0 40h900M0 88h900M0 136h900M0 184h900"/></g>
+              <path d="M0 150 128 142 257 158 385 130 514 138 642 106 771 118 900 86" stroke="{{accent}}" stroke-width="2"/>
+              <path d="M514 138 642 106 771 118 900 86" stroke="{{accent}}" stroke-width="2" stroke-dasharray="5 5"/>
+              <path d="M0 186 128 190 257 178 385 194 514 182 642 196 771 188 900 200" stroke="#e03636" stroke-width="2"/>
+            </svg>
+            <div style="display:flex;gap:18px;margin-top:12px"><span class="mut"><b style="display: inline-block; width: 12px; height: 2px; border-radius: 1px; background: {{accent}}; vertical-align: 3px; margin-right: 2px;"></b> inflow</span><span class="mut"><b style="display: inline-block; width: 12px; height: 2px; border-radius: 1px; background: #e03636; vertical-align: 3px; margin-right: 2px;"></b> outflow</span><span class="mut">· · · projected from 1 Oct</span></div>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:16px">
+            <div class="stat"><i>CASH ON HAND</i><b>HK$2,140,800</b></div><div class="stat"><i>PROJECTED 90 D</i><b>HK$2,610,400</b></div><div class="stat"><i>RUNWAY</i><b>14 mo</b></div>
+          </div>
+        </div></sc-if>
+
+        <sc-if value="{{isFinCost}}" hint-placeholder-val="{{ true }}"><div class="scr body">
+          <div class="card" style="padding:20px">
+            <div class="lbl" style="padding:0;margin-bottom:16px">Cost by category · 8 months</div>
+            <div style="display:flex;align-items:flex-end;gap:14px;height:220px">
+              <div style="flex:1;display:flex;flex-direction:column-reverse;gap:2px"><div style="height:56px;background:{{accent}};border-radius:0 0 4px 4px"></div><div style="height:38px;background:#8d99a6"></div><div style="height:22px;background:#c7c7c7"></div><div style="height:14px;background:#e2e2e2;border-radius:4px 4px 0 0"></div></div>
+              <div style="flex:1;display:flex;flex-direction-column-reverse;flex-direction:column-reverse;gap:2px"><div style="height:62px;background:{{accent}};border-radius:0 0 4px 4px"></div><div style="height:44px;background:#8d99a6"></div><div style="height:26px;background:#c7c7c7"></div><div style="height:16px;background:#e2e2e2;border-radius:4px 4px 0 0"></div></div>
+              <div style="flex:1;display:flex;flex-direction:column-reverse;gap:2px"><div style="height:70px;background:{{accent}};border-radius:0 0 4px 4px"></div><div style="height:40px;background:#8d99a6"></div><div style="height:30px;background:#c7c7c7"></div><div style="height:18px;background:#e2e2e2;border-radius:4px 4px 0 0"></div></div>
+              <div style="flex:1;display:flex;flex-direction:column-reverse;gap:2px"><div style="height:84px;background:{{accent}};border-radius:0 0 4px 4px"></div><div style="height:52px;background:#8d99a6"></div><div style="height:28px;background:#c7c7c7"></div><div style="height:22px;background:#e2e2e2;border-radius:4px 4px 0 0"></div></div>
+              <div style="flex:1;display:flex;flex-direction:column-reverse;gap:2px"><div style="height:92px;background:{{accent}};border-radius:0 0 4px 4px"></div><div style="height:48px;background:#8d99a6"></div><div style="height:34px;background:#c7c7c7"></div><div style="height:26px;background:#e2e2e2;border-radius:4px 4px 0 0"></div></div>
+              <div style="flex:1;display:flex;flex-direction:column-reverse;gap:2px"><div style="height:104px;background:{{accent}};border-radius:0 0 4px 4px"></div><div style="height:56px;background:#8d99a6"></div><div style="height:30px;background:#c7c7c7"></div><div style="height:24px;background:#e2e2e2;border-radius:4px 4px 0 0"></div></div>
+              <div style="flex:1;display:flex;flex-direction:column-reverse;gap:2px"><div style="height:118px;background:{{accent}};border-radius:0 0 4px 4px"></div><div style="height:60px;background:#8d99a6"></div><div style="height:36px;background:#c7c7c7"></div><div style="height:28px;background:#e2e2e2;border-radius:4px 4px 0 0"></div></div>
+              <div style="flex:1;display:flex;flex-direction:column-reverse;gap:2px"><div style="height:96px;background:{{accent}};border-radius:0 0 4px 4px"></div><div style="height:66px;background:#8d99a6"></div><div style="height:40px;background:#c7c7c7"></div><div style="height:30px;background:#e2e2e2;border-radius:4px 4px 0 0"></div></div>
+            </div>
+            <div style="display:flex;gap:18px;margin-top:14px"><span class="mut"><b style="color:{{accent}}">▪</b> Contractors</span><span class="mut"><b style="color:#8d99a6">▪</b> Equipment</span><span class="mut"><b style="color:#c7c7c7">▪</b> Licensing</span><span class="mut"><b style="color:#e2e2e2">▪</b> AI consumption</span></div>
+            <div class="mut" style="margin-top:10px">Jan – Aug 2026 · source: confirmed entries + token ledger</div>
+          </div>
+        </div></sc-if>
+
+        <sc-if value="{{isFinSpend}}" hint-placeholder-val="{{ true }}"><div class="scr body">
+          <div class="t">
+            <div class="hd" style="grid-template-columns:minmax(0,1.8fr) 120px 120px minmax(0,1.4fr) 150px"><div>Request</div><div>Department</div><div class="num">Amount</div><div>Approver chain</div><div>State</div></div>
+            <div class="tr" style="grid-template-columns:minmax(0,1.8fr) 120px 120px minmax(0,1.4fr) 150px"><div><span class="el">Second camera body</span></div><div>Production</div><div class="num">HK$46,800</div><div style="gap:5px"><img class="av" src="pfp-chan.jpg" style="width:20px;height:20px"><span class="mut">→</span><img class="av" src="pfp-michelle.jpg" style="width:20px;height:20px;box-shadow:0 0 0 2px #007be0"><span class="mut">→</span><img class="av" src="pfp-amy.jpg" style="width:20px;height:20px;opacity:.4"></div><div><span class="bd amb">Awaiting CFO</span></div></div>
+            <div class="tr" style="grid-template-columns:minmax(0,1.8fr) 120px 120px minmax(0,1.4fr) 150px"><div><span class="el">Stock footage licence pack</span></div><div>Production</div><div class="num">HK$12,400</div><div style="gap:5px"><img class="av" src="pfp-leung.jpg" style="width:20px;height:20px"><span class="mut">→</span><img class="av" src="pfp-michelle.jpg" style="width:20px;height:20px"></div><div><span class="bd grn">Approved</span></div></div>
+            <div class="tr" style="grid-template-columns:minmax(0,1.8fr) 120px 120px minmax(0,1.4fr) 150px"><div><span class="el">Additional AI credit top-up</span></div><div>Platform</div><div class="num">HK$30,000</div><div style="gap:5px"><img class="av" src="pfp-amy.jpg" style="width:20px;height:20px"><span class="mut">→</span><img class="av" src="pfp-michelle.jpg" style="width:20px;height:20px;box-shadow:0 0 0 2px #007be0"></div><div><span class="bd gray">More info requested</span></div></div>
+          </div>
+          <div class="card" style="margin-top:18px;max-width:620px"><div style="display:flex;align-items:center;gap:9px"><img class="av" src="pfp-chan.jpg" style="width:26px;height:26px"><div style="flex-grow:1"><div style="font-size:13px;font-weight:500">Second camera body</div><div class="mut">Requested by Chan Ka-ming · 30 Aug</div></div><span class="bd amb">Above HK$40,000 threshold</span></div>
+            <p style="font-size:12.5px;line-height:1.6;color:#525252;margin-top:12px">Second body so interviews and B-roll can run in parallel on two-camera shoots.</p>
+            <div class="mut" style="margin-top:12px">A requester cannot approve their own request.</div>
+          </div>
+        </div></sc-if>
+
+        <sc-if value="{{isFinReports}}" hint-placeholder-val="{{ true }}"><div class="scr body">
+          <div style="max-width:720px">
+            <div style="padding:9px 11px;border-radius:8px;background:#f8f8f8;font-size:12px;color:#525252;margin-bottom:16px">Generated from budget, cash-flow and cost data for a human to edit before circulation.</div>
+            <div class="card">
+              <div class="lbl" style="padding:0;margin-bottom:11px">Draft · Management report, August 2026</div>
+              <p style="font-size:13.5px;line-height:1.75;color:#2b343d;text-wrap:pretty">August closed HK$35,900 under budget on equipment, offset by an 8.6% overrun on contractors driven by the two-camera night shoots. AI consumption remains 26% below plan at HK$88,600, the Video module's move to Veo Fast for B-roll accounts for most of the saving.</p>
+              <p style="font-size:13.5px;line-height:1.75;color:#2b343d;margin-top:12px;text-wrap:pretty">Receivables ageing is healthy with 78% inside 30 days. One outstanding item at 90+ days (HK$46,200) should be escalated.</p>
+              <div style="display:flex;gap:9px;margin-top:16px"><div class="btn p">Open in editor</div><div class="btn s">Regenerate</div></div>
+            </div>
+          </div>
+        </div></sc-if>
+
+        <!-- ===================== LEGAL ===================== -->
+        <sc-if value="{{isLegalDraft}}" hint-placeholder-val="{{ true }}"><div class="scr body">
+          <div style="padding:9px 11px;border-radius:8px;background:#f3f3f3;font-size:12px;color:#525252;margin-bottom:16px">This module does not provide legal advice.</div>
+          <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:13px;max-width:900px">
+            <div class="card"><div style="font-size:13px;font-weight:500">Freelance contributor agreement</div><div class="mut" style="margin-top:6px">Client template · v4 · approved</div><div class="btn s" style="margin-top:12px;width:100%;justify-content:center">Draft from template</div></div>
+            <div class="card"><div style="font-size:13px;font-weight:500">Location release</div><div class="mut" style="margin-top:6px">Client template · v2 · approved</div><div class="btn s" style="margin-top:12px;width:100%;justify-content:center">Draft from template</div></div>
+            <div class="card"><div style="font-size:13px;font-weight:500">Music licence addendum</div><div class="mut" style="margin-top:6px">Client template · v1 · approved</div><div class="btn s" style="margin-top:12px;width:100%;justify-content:center">Draft from template</div></div>
+          </div>
+          <div class="lbl" style="padding:0;margin:22px 0 10px">Guided intake · Freelance contributor agreement</div>
+          <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:13px;max-width:900px">
+            <div><div class="lbl" style="padding:0;margin-bottom:6px">Counterparty</div><div class="chip" style="width:100%;height:34px;background:#f8f8f8">Vincent Chow</div></div>
+            <div><div class="lbl" style="padding:0;margin-bottom:6px">Engagement</div><div class="chip" style="width:100%;height:34px;background:#f8f8f8">Colour grading, 2026-Q3</div></div>
+            <div><div class="lbl" style="padding:0;margin-bottom:6px">Fee</div><div class="chip" style="width:100%;height:34px;background:#f8f8f8">HK$28,000</div></div>
+          </div>
+        </div></sc-if>
+
+        <sc-if value="{{isLegalClause}}" hint-placeholder-val="{{ true }}"><div class="scr" style="flex-grow:1;min-height:0;display:flex;flex-direction:column">
+          <div style="padding:9px 20px;background:#f3f3f3;font-size:12px;color:#525252;flex-shrink:0">This module does not provide legal advice.</div>
+          <div style="flex-grow:1;min-height:0;display:flex">
+            <div style="flex-grow:1;min-width:0;padding:18px 22px;font-size:13px;line-height:1.85;color:#2b343d;overflow:hidden">
+              <p><b style="font-weight:500">4. Intellectual property.</b> All footage, stills and derivative works created under this engagement <span style="background:#fdf3e3">vest in the Contributor until final payment is received in full</span>.</p>
+              <p style="margin-top:14px"><b style="font-weight:500">7. Termination.</b> Either party may terminate on <span style="background:#fdf3e3">seven (7) days'</span> written notice.</p>
+              <p style="margin-top:14px"><b style="font-weight:500">9. Confidentiality.</b> <span style="background:#ffe7e7">[No clause present]</span></p>
+              <p style="margin-top:14px"><b style="font-weight:500">12. Governing law.</b> This agreement is governed by the laws of <span style="background:#f3f3f3">Singapore</span>.</p>
+            </div>
+            <div style="width:340px;flex-shrink:0;border-left:1px solid #ededed;padding:16px 15px;background:#fcfcfc">
+              <div class="lbl" style="padding:0;margin-bottom:11px">Departures from template · 4</div>
+              <div style="display:flex;flex-direction:column;gap:9px">
+                <div class="card" style="padding:11px 12px"><div style="display:flex;align-items:center;gap:7px"><span class="bd amb">Deviation</span><span style="font-size:12.5px;font-weight:500">4. IP vesting</span></div><p class="mut" style="margin-top:6px;line-height:1.55">Template vests IP in the company on creation, not on payment.</p></div>
+                <div class="card" style="padding:11px 12px"><div style="display:flex;align-items:center;gap:7px"><span class="bd amb">Deviation</span><span style="font-size:12.5px;font-weight:500">7. Notice period</span></div><p class="mut" style="margin-top:6px;line-height:1.55">Template requires 30 days; this document says 7.</p></div>
+                <div class="card" style="padding:11px 12px"><div style="display:flex;align-items:center;gap:7px"><span class="bd red">Missing</span><span style="font-size:12.5px;font-weight:500">9. Confidentiality</span></div><p class="mut" style="margin-top:6px;line-height:1.55">Template clause 9 has no counterpart here.</p></div>
+                <div class="card" style="padding:11px 12px"><div style="display:flex;align-items:center;gap:7px"><span class="bd gray">Additional</span><span style="font-size:12.5px;font-weight:500">12. Governing law</span></div><p class="mut" style="margin-top:6px;line-height:1.55">Configured position is Hong Kong SAR.</p></div>
+              </div>
+              <div class="mut" style="margin-top:14px;line-height:1.55">Marked and explained, the judgement is yours.</div>
+            </div>
+          </div>
+        </div></sc-if>
+
+        <sc-if value="{{isLegalRepo}}" hint-placeholder-val="{{ true }}"><div class="scr body">
+          <div class="t">
+            <div class="hd" style="grid-template-columns:minmax(0,1.9fr) 150px 110px 110px 130px 120px"><div>Document</div><div>Counterparty</div><div>Signed</div><div>Renews</div><div>Owner</div><div>Reminder</div></div>
+            <div class="tr" style="grid-template-columns:minmax(0,1.9fr) 150px 110px 110px 130px 120px"><div><span class="el">Freelance contributor agreement</span></div><div><span class="el">Vincent Chow</span></div><div style="color:#7c7c7c">12 Jun 2026</div><div style="color:#7c7c7c">12 Jun 2027</div><div style="gap:8px"><img class="av" src="pfp-michelle.jpg" style="width:18px;height:18px"><span class="el">M. Yip</span></div><div><span class="bd gray">90 d before</span></div></div>
+            <div class="tr" style="grid-template-columns:minmax(0,1.9fr) 150px 110px 110px 130px 120px"><div><span class="el">Archive footage licence</span></div><div><span class="el">HK Film Archive</span></div><div style="color:#7c7c7c">24 Aug 2026</div><div style="color:#7c7c7c">24 Nov 2026</div><div style="gap:8px"><img class="av" src="pfp-amy.jpg" style="width:18px;height:18px"><span class="el">A. Wong</span></div><div><span class="bd amb">In 21 days</span></div></div>
+            <div class="tr" style="grid-template-columns:minmax(0,1.9fr) 150px 110px 110px 130px 120px"><div><span class="el">Music catalogue subscription</span></div><div><span class="el">ElevenLabs</span></div><div style="color:#7c7c7c">1 Jan 2026</div><div style="color:#7c7c7c">1 Jan 2027</div><div style="gap:8px"><img class="av" src="pfp-chan.jpg" style="width:18px;height:18px"><span class="el">C. Ka-ming</span></div><div><span class="bd gray">60 d before</span></div></div>
+            <div class="tr" style="grid-template-columns:minmax(0,1.9fr) 150px 110px 110px 130px 120px"><div><span class="el">Studio lease</span></div><div><span class="el">Kwun Tong Industrial</span></div><div style="color:#7c7c7c">1 Apr 2024</div><div style="color:#7c7c7c">31 Mar 2027</div><div style="gap:8px"><img class="av" src="pfp-michelle.jpg" style="width:18px;height:18px"><span class="el">M. Yip</span></div><div><span class="bd gray">120 d before</span></div></div>
+          </div>
+        </div></sc-if>
+
+        <sc-if value="{{isLegalCompliance}}" hint-placeholder-val="{{ true }}"><div class="scr body">
+          <div style="max-width:800px">
+            <div class="lbl" style="padding:0;margin-bottom:11px">Recurring items · configured by the client</div>
+            <div style="display:flex;flex-direction:column;gap:9px">
+              <div style="display:flex;align-items:center;gap:12px;border:1px solid #ededed;border-radius:10px;padding:12px 13px"><div style="width:16px;height:16px;border-radius:4px;background:#171717;display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg viewBox="0 0 16 16" style="width:11px;height:11px;stroke:#fff;fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round"><path d="M3.6 8.3 6.5 11.2 12.4 5.1"/></svg></div><div style="flex-grow:1"><div style="font-size:13px">PDPO data inventory review</div><div class="mut" style="margin-top:2px">Quarterly · comment data retention</div></div><img class="av" src="pfp-michelle.jpg"><span class="bd grn">Done 1 Sep</span></div>
+              <div style="display:flex;align-items:center;gap:12px;border:1px solid #ededed;border-radius:10px;padding:12px 13px"><div style="width:16px;height:16px;border:1px solid #999999;border-radius:4px;background:#fff;flex-shrink:0"></div><div style="flex-grow:1"><div style="font-size:13px">Platform audit renewals: YouTube, TikTok</div><div class="mut" style="margin-top:2px">Blocking public publishing until passed</div></div><img class="av" src="pfp-amy.jpg"><span class="bd amb">Due 30 Sep</span></div>
+              <div style="display:flex;align-items:center;gap:12px;border:1px solid #ededed;border-radius:10px;padding:12px 13px"><div style="width:16px;height:16px;border:1px solid #999999;border-radius:4px;background:#fff;flex-shrink:0"></div><div style="flex-grow:1"><div style="font-size:13px">Contributor consent &amp; retention audit</div><div class="mut" style="margin-top:2px">Candidate records with expiring consent</div></div><img class="av" src="pfp-michelle.jpg"><span class="bd gray">Due 31 Oct</span></div>
+              <div style="display:flex;align-items:center;gap:12px;border:1px solid #ededed;border-radius:10px;padding:12px 13px"><div style="width:16px;height:16px;border:1px solid #999999;border-radius:4px;background:#fff;flex-shrink:0"></div><div style="flex-grow:1"><div style="font-size:13px">API key rotation</div><div class="mut" style="margin-top:2px">All connected channels + model provider</div></div><img class="av" src="pfp-chan.jpg"><span class="bd red">Overdue 14 d</span></div>
+            </div>
+          </div>
+        </div></sc-if>
+
+        <!-- ===================== HR ===================== -->
+        <sc-if value="{{isHrGate}}" hint-placeholder-val="{{ true }}"><div class="scr body">
+          <div style="max-width:560px;margin:80px auto 0;text-align:center">
+            <div style="width:52px;height:52px;border-radius:16px;background:#f3f3f3;display:flex;align-items:center;justify-content:center;margin:0 auto"><svg viewBox="0 0 24 24" style="width:24px;height:24px;stroke:#999999;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round"><path d="M6.8 10.5h10.4v8H6.8z"/><path d="M9.2 10.5V8a2.8 2.8 0 0 1 5.6 0v2.5"/></svg></div>
+            <div style="font-size:17px;font-weight:500;margin-top:16px">Human Resources is a separate permission scope</div>
+            <p style="font-size:13.5px;line-height:1.7;color:#7c7c7c;margin-top:10px;text-wrap:pretty">Every screen here holds personal data, so it sits behind a dedicated <b style="font-weight:500;color:#383838">hr</b> scope. Your agent reads HR records only when invoked by someone who holds it, and your account does not.</p>
+            <div class="mut" style="margin-top:14px">Ask an admin to grant the scope, or view the screens below as an example.</div>
+            <div style="display:flex;gap:9px;justify-content:center;margin-top:18px"><div class="btn s">Request access</div><div class="btn p" onClick="{{ hrPeek }}">Preview screens</div></div>
+          </div>
+        </div></sc-if>
+
+        <sc-if value="{{isHrLeave}}" hint-placeholder-val="{{ true }}"><div class="scr body">
+          <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-bottom:18px">
+            <div class="stat"><i>ANNUAL LEAVE LEFT</i><b>11.5 days</b></div><div class="stat"><i>PENDING APPROVALS</i><b>4</b></div><div class="stat"><i>OUT TODAY</i><b>2</b></div>
+          </div>
+          <div class="card" style="padding:16px">
+            <div class="lbl" style="padding:0;margin-bottom:14px">Team calendar · September 2026</div>
+            <div style="display:flex;flex-direction:column;gap:7px">
+              <div style="display:flex;align-items:center;gap:10px"><span style="width:110px;font-size:12px;flex-shrink:0" class="el">Chan Ka-ming</span><div style="flex-grow:1;height:20px;background:#f8f8f8;border-radius:4px;position:relative"><div style="position:absolute;left:12%;width:14%;top:0;height:20px;background:{{accent}};border-radius:4px"></div></div></div>
+              <div style="display:flex;align-items:center;gap:10px"><span style="width:110px;font-size:12px;flex-shrink:0" class="el">Leung Chi-hang</span><div style="flex-grow:1;height:20px;background:#f8f8f8;border-radius:4px;position:relative"><div style="position:absolute;left:38%;width:9%;top:0;height:20px;background:#f5a623;border-radius:4px"></div></div></div>
+              <div style="display:flex;align-items:center;gap:10px"><span style="width:110px;font-size:12px;flex-shrink:0" class="el">Amy Wong</span><div style="flex-grow:1;height:20px;background:#f8f8f8;border-radius:4px;position:relative"><div style="position:absolute;left:60%;width:18%;top:0;height:20px;background:{{accent}};border-radius:4px"></div></div></div>
+              <div style="display:flex;align-items:center;gap:10px"><span style="width:110px;font-size:12px;flex-shrink:0" class="el">Michelle Yip</span><div style="flex-grow:1;height:20px;background:#f8f8f8;border-radius:4px;position:relative"><div style="position:absolute;left:4%;width:5%;top:0;height:20px;background:#c7c7c7;border-radius:4px"></div></div></div>
+            </div>
+            <div style="display:flex;gap:16px;margin-top:14px"><span class="mut"><b style="color:{{accent}}">▪</b> Annual</span><span class="mut"><b style="color:#f5a623">▪</b> Pending</span><span class="mut"><b style="color:#c7c7c7">▪</b> Public holiday</span></div>
+          </div>
+          <div class="t" style="margin-top:18px">
+            <div class="hd" style="grid-template-columns:minmax(0,1.4fr) 120px 160px 80px 140px 110px"><div>Employee</div><div>Type</div><div>Dates</div><div class="num">Days</div><div>Approver</div><div>State</div></div>
+            <div class="tr" style="grid-template-columns:minmax(0,1.4fr) 120px 160px 80px 140px 110px"><div style="gap:8px"><img class="av" src="pfp-leung.jpg" style="width:18px;height:18px"><span class="el">Leung Chi-hang</span></div><div>Annual</div><div style="color:#7c7c7c">14 – 16 Sep</div><div class="num">3</div><div style="gap:8px"><img class="av" src="pfp-michelle.jpg" style="width:18px;height:18px"><span class="el">M. Yip</span></div><div><span class="bd amb">Pending</span></div></div>
+            <div class="tr" style="grid-template-columns:minmax(0,1.4fr) 120px 160px 80px 140px 110px"><div style="gap:8px"><img class="av" src="pfp-chan.jpg" style="width:18px;height:18px"><span class="el">Chan Ka-ming</span></div><div>Annual</div><div style="color:#7c7c7c">4 – 8 Sep</div><div class="num">5</div><div style="gap:8px"><img class="av" src="pfp-michelle.jpg" style="width:18px;height:18px"><span class="el">M. Yip</span></div><div><span class="bd grn">Approved</span></div></div>
+            <div class="tr" style="grid-template-columns:minmax(0,1.4fr) 120px 160px 80px 140px 110px"><div style="gap:8px"><img class="av" src="pfp-amy.jpg" style="width:18px;height:18px"><span class="el">Amy Wong</span></div><div>Unpaid</div><div style="color:#7c7c7c">21 – 25 Sep</div><div class="num">5</div><div style="gap:8px"><img class="av" src="pfp-michelle.jpg" style="width:18px;height:18px"><span class="el">M. Yip</span></div><div><span class="bd amb">Pending</span></div></div>
+          </div>
+        </div></sc-if>
+
+        <sc-if value="{{isHrRecruit}}" hint-placeholder-val="{{ true }}"><div class="scr body">
+          <div style="padding:9px 11px;border-radius:8px;background:#f3f3f3;font-size:12px;color:#525252;margin-bottom:16px">Works only with applications the client receives and channels the client owns. No sourcing, scraping or enrichment from external platforms.</div>
+          <div style="display:flex;gap:16px">
+            <div style="flex-grow:1;min-width:0">
+              <div class="lbl" style="padding:0;margin-bottom:10px">Requisition · Junior video editor</div>
+              <div class="t">
+                <div class="hd" style="grid-template-columns:minmax(0,1.6fr) 110px 130px 120px 110px"><div>Candidate</div><div class="num">Rank</div><div>Source</div><div>Interview</div><div>State</div></div>
+                <div class="tr" style="grid-template-columns:minmax(0,1.6fr) 110px 130px 120px 110px"><div style="gap:8px"><img class="av" src="pfp-amy.jpg" style="width:18px;height:18px"><span class="el">Applicant 0142</span></div><div class="num">92</div><div style="color:#7c7c7c">Careers page</div><div style="color:#7c7c7c">12 Sep 14:00</div><div><span class="bd grn">Shortlist</span></div></div>
+                <div class="tr" style="grid-template-columns:minmax(0,1.6fr) 110px 130px 120px 110px"><div style="gap:8px"><img class="av" src="pfp-leung.jpg" style="width:18px;height:18px"><span class="el">Applicant 0138</span></div><div class="num">86</div><div style="color:#7c7c7c">Referral</div><div style="color:#7c7c7c">12 Sep 16:00</div><div><span class="bd grn">Shortlist</span></div></div>
+                <div class="tr" style="grid-template-columns:minmax(0,1.6fr) 110px 130px 120px 110px"><div style="gap:8px"><img class="av" src="pfp-chan.jpg" style="width:18px;height:18px"><span class="el">Applicant 0151</span></div><div class="num">71</div><div style="color:#7c7c7c">Careers page</div><div style="color:#7c7c7c">–</div><div><span class="bd gray">Screening</span></div></div>
+              </div>
+            </div>
+            <div style="width:280px;flex-shrink:0">
+              <div class="lbl" style="padding:0;margin-bottom:10px">Approval chain</div>
+              <div class="card" style="padding:13px"><div style="display:flex;align-items:center;gap:9px"><img class="av" src="pfp-michelle.jpg" style="width:24px;height:24px"><div style="flex-grow:1"><div style="font-size:12.5px;font-weight:500">Michelle Yip</div><div class="mut">Head of production</div></div><span class="bd grn">Approved</span></div></div>
+              <div class="lbl" style="padding:0;margin:16px 0 9px">Job description</div>
+              <div class="card" style="padding:13px"><p class="mut" style="line-height:1.6">Drafted from the role brief. Awaiting review before posting to the client's own channels.</p><div class="btn s" style="margin-top:11px;width:100%;justify-content:center">Open draft</div></div>
+            </div>
+          </div>
+        </div></sc-if>
+
+        <sc-if value="{{isHrCandidates}}" hint-placeholder-val="{{ true }}"><div class="scr body">
+          <div style="padding:9px 11px;border-radius:8px;background:#f3f3f3;font-size:12px;color:#525252;margin-bottom:16px">Consent and retention dates are tracked per record. Nothing here is fetched from LinkedIn or any external platform.</div>
+          <div class="t">
+            <div class="hd" style="grid-template-columns:minmax(0,1.5fr) 150px 130px 130px 130px"><div>Candidate</div><div>Applied for</div><div>Received</div><div>Consent until</div><div>Retention</div></div>
+            <div class="tr" style="grid-template-columns:minmax(0,1.5fr) 150px 130px 130px 130px"><div style="gap:8px"><img class="av" src="pfp-amy.jpg" style="width:18px;height:18px"><span class="el">Applicant 0142</span></div><div><span class="el">Junior video editor</span></div><div style="color:#7c7c7c">28 Aug 2026</div><div style="color:#7c7c7c">28 Aug 2027</div><div><span class="bd grn">Active</span></div></div>
+            <div class="tr" style="grid-template-columns:minmax(0,1.5fr) 150px 130px 130px 130px"><div style="gap:8px"><img class="av" src="pfp-leung.jpg" style="width:18px;height:18px"><span class="el">Applicant 0138</span></div><div><span class="el">Junior video editor</span></div><div style="color:#7c7c7c">26 Aug 2026</div><div style="color:#7c7c7c">26 Aug 2027</div><div><span class="bd grn">Active</span></div></div>
+            <div class="tr" style="grid-template-columns:minmax(0,1.5fr) 150px 130px 130px 130px"><div style="gap:8px"><img class="av" src="pfp-michelle.jpg" style="width:18px;height:18px"><span class="el">Applicant 0087</span></div><div><span class="el">Motion designer</span></div><div style="color:#7c7c7c">2 Oct 2025</div><div style="color:#7c7c7c">2 Oct 2026</div><div><span class="bd amb">Expires in 22 d</span></div></div>
+            <div class="tr" style="grid-template-columns:minmax(0,1.5fr) 150px 130px 130px 130px"><div style="gap:8px"><img class="av" src="pfp-chan.jpg" style="width:18px;height:18px"><span class="el">Applicant 0061</span></div><div><span class="el">Producer</span></div><div style="color:#7c7c7c">14 Jul 2025</div><div style="color:#7c7c7c">14 Jul 2026</div><div><span class="bd red">Delete due</span></div></div>
+          </div>
+        </div></sc-if>
+
+        <sc-if value="{{isHrEmployees}}" hint-placeholder-val="{{ true }}"><div class="scr body">
+          <div class="t">
+            <div class="hd" style="grid-template-columns:minmax(0,1.4fr) 140px 130px 130px minmax(0,1fr)"><div>Employee</div><div>Role</div><div>Contract ref</div><div>Started</div><div>Checklists</div></div>
+            <div class="tr" style="grid-template-columns:minmax(0,1.4fr) 140px 130px 130px minmax(0,1fr)"><div style="gap:8px"><img class="av" src="pfp-chan.jpg" style="width:20px;height:20px"><span class="el">Chan Ka-ming</span></div><div>Senior editor</div><div style="color:#7c7c7c">EMP-0004</div><div style="color:#7c7c7c">3 Feb 2024</div><div><span class="bd grn">Onboarding done</span></div></div>
+            <div class="tr" style="grid-template-columns:minmax(0,1.4fr) 140px 130px 130px minmax(0,1fr)"><div style="gap:8px"><img class="av" src="pfp-leung.jpg" style="width:20px;height:20px"><span class="el">Leung Chi-hang</span></div><div>Editor</div><div style="color:#7c7c7c">EMP-0009</div><div style="color:#7c7c7c">18 Sep 2025</div><div><span class="bd grn">Onboarding done</span></div></div>
+            <div class="tr" style="grid-template-columns:minmax(0,1.4fr) 140px 130px 130px minmax(0,1fr)"><div style="gap:8px"><img class="av" src="pfp-amy.jpg" style="width:20px;height:20px"><span class="el">Amy Wong</span></div><div>Researcher</div><div style="color:#7c7c7c">EMP-0011</div><div style="color:#7c7c7c">6 Jan 2026</div><div><span class="bd amb">2 items open</span></div></div>
+            <div class="tr" style="grid-template-columns:minmax(0,1.4fr) 140px 130px 130px minmax(0,1fr)"><div style="gap:8px"><img class="av" src="pfp-michelle.jpg" style="width:20px;height:20px"><span class="el">Michelle Yip</span></div><div>Head of production</div><div style="color:#7c7c7c">EMP-0002</div><div style="color:#7c7c7c">11 Nov 2023</div><div><span class="bd grn">Onboarding done</span></div></div>
+          </div>
+        </div></sc-if>
+
+        <!-- ===================== ADMIN ===================== -->
+        <sc-if value="{{isAdmPeople}}" hint-placeholder-val="{{ true }}"><div class="scr body">
+          <div style="display:flex;gap:8px;margin-bottom:14px"><div class="chip">Team: All <svg viewBox="0 0 24 24"><path d="m6.5 9.5 5.5 5.5 5.5-5.5"/></svg></div><div class="chip">Role: All <svg viewBox="0 0 24 24"><path d="m6.5 9.5 5.5 5.5 5.5-5.5"/></svg></div><div style="flex-grow:1"></div><div class="btn p">Add employee</div></div>
+          <div class="t">
+            <div class="hd" style="grid-template-columns:minmax(0,1.5fr) 110px 140px 110px 130px 130px"><div>Employee</div><div>Role</div><div>Team</div><div>Status</div><div>Last active</div><div>Actions</div></div>
+            <div class="tr" style="grid-template-columns:minmax(0,1.5fr) 110px 140px 110px 130px 130px"><div style="gap:9px"><img class="av" src="pfp-michelle.jpg"><span class="el">Michelle Yip</span></div><div><span class="bd blue">admin</span></div><div>Production</div><div><span class="bd grn">Active</span></div><div style="color:#7c7c7c">2 min ago</div><div style="gap:6px"><div class="btn s" style="height:26px">Edit</div></div></div>
+            <div class="tr" style="grid-template-columns:minmax(0,1.5fr) 110px 140px 110px 130px 130px"><div style="gap:9px"><img class="av" src="pfp-chan.jpg"><span class="el">Chan Ka-ming</span></div><div><span class="bd gray">builder</span></div><div>Production</div><div><span class="bd grn">Active</span></div><div style="color:#7c7c7c">14 min ago</div><div style="gap:6px"><div class="btn s" style="height:26px">Edit</div></div></div>
+            <div class="tr" style="grid-template-columns:minmax(0,1.5fr) 110px 140px 110px 130px 130px"><div style="gap:9px"><img class="av" src="pfp-amy.jpg"><span class="el">Amy Wong</span></div><div><span class="bd gray">builder</span></div><div>Research</div><div><span class="bd grn">Active</span></div><div style="color:#7c7c7c">1 h ago</div><div style="gap:6px"><div class="btn s" style="height:26px">Edit</div></div></div>
+            <div class="tr" style="grid-template-columns:minmax(0,1.5fr) 110px 140px 110px 130px 130px"><div style="gap:9px"><img class="av" src="pfp-leung.jpg"><span class="el">Leung Chi-hang</span></div><div><span class="bd gray">member</span></div><div>Production</div><div><span class="bd grn">Active</span></div><div style="color:#7c7c7c">3 h ago</div><div style="gap:6px"><div class="btn s" style="height:26px">Edit</div></div></div>
+            <div class="tr" style="grid-template-columns:minmax(0,1.5fr) 110px 140px 110px 130px 130px"><div style="gap:9px;opacity:.65"><img class="av" src="pfp-chan.jpg"><span class="el">Vincent Chow</span></div><div><span class="bd gray">guest</span></div><div>Freelance</div><div><span class="bd amb">Expires 30 Sep</span></div><div style="color:#7c7c7c">4 d ago</div><div style="gap:6px"><div class="btn s" style="height:26px">Edit</div></div></div>
+          </div>
+        </div></sc-if>
+
+        <sc-if value="{{isAdmEnt}}" hint-placeholder-val="{{ true }}"><div class="scr body">
+          <div style="display:flex;gap:8px;margin-bottom:14px"><span class="mut" style="align-self:center">Top-level screen. This is the onboarding path</span><div style="flex-grow:1"></div><span class="mut">Unsaved: 1 change</span><div class="btn s">Discard</div><div class="btn p">Save</div></div>
+          <div class="t">
+            <div style="display:grid;grid-template-columns:190px repeat(8,minmax(0,1fr)) repeat(3,minmax(0,1fr));height:26px;background:#f3f3f3;border-radius:7px 7px 0 0;align-items:center">
+              <div></div><div style="grid-column:span 8;text-align:center;font-size:10px;font-weight:500;letter-spacing:.1em;color:#7c7c7c">MODULES</div><div style="grid-column:span 3;text-align:center;font-size:10px;font-weight:500;letter-spacing:.1em;color:#7c7c7c">FILE GROUPS</div>
+            </div>
+            <div class="hd" style="grid-template-columns:190px repeat(8,minmax(0,1fr)) repeat(3,minmax(0,1fr))"><div>Employee</div><div style="justify-content:center">Res</div><div style="justify-content:center">Scr</div><div style="justify-content:center">Vid</div><div style="justify-content:center">Pub</div><div style="justify-content:center">Acc</div><div style="justify-content:center">Fin</div><div style="justify-content:center">Leg</div><div style="justify-content:center;color:#b47512">HR</div><div style="justify-content:center">Prod</div><div style="justify-content:center">Q3</div><div style="justify-content:center">Conf</div></div>
+            <div class="tr" style="grid-template-columns:190px repeat(8,minmax(0,1fr)) repeat(3,minmax(0,1fr))"><div style="gap:9px"><img class="av" src="pfp-michelle.jpg" style="width:18px;height:18px"><span class="el">Michelle Yip</span><span style="font-size:10px;color:#999999">admin</span></div><div style="justify-content:center"><div style="width:15px;height:15px;border-radius:4px;background:#171717;display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 16 16" style="width:10px;height:10px;stroke:#fff;fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round"><path d="M3.6 8.3 6.5 11.2 12.4 5.1"/></svg></div></div><div style="justify-content:center"><div style="width:15px;height:15px;border-radius:4px;background:#171717;display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 16 16" style="width:10px;height:10px;stroke:#fff;fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round"><path d="M3.6 8.3 6.5 11.2 12.4 5.1"/></svg></div></div><div style="justify-content:center"><div style="width:15px;height:15px;border-radius:4px;background:#171717;display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 16 16" style="width:10px;height:10px;stroke:#fff;fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round"><path d="M3.6 8.3 6.5 11.2 12.4 5.1"/></svg></div></div><div style="justify-content:center"><div style="width:15px;height:15px;border-radius:4px;background:#171717;display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 16 16" style="width:10px;height:10px;stroke:#fff;fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round"><path d="M3.6 8.3 6.5 11.2 12.4 5.1"/></svg></div></div><div style="justify-content:center"><div style="width:15px;height:15px;border-radius:4px;background:#171717;display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 16 16" style="width:10px;height:10px;stroke:#fff;fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round"><path d="M3.6 8.3 6.5 11.2 12.4 5.1"/></svg></div></div><div style="justify-content:center"><div style="width:15px;height:15px;border-radius:4px;background:#171717;display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 16 16" style="width:10px;height:10px;stroke:#fff;fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round"><path d="M3.6 8.3 6.5 11.2 12.4 5.1"/></svg></div></div><div style="justify-content:center"><div style="width:15px;height:15px;border-radius:4px;background:#171717;display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 16 16" style="width:10px;height:10px;stroke:#fff;fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round"><path d="M3.6 8.3 6.5 11.2 12.4 5.1"/></svg></div></div><div style="justify-content:center"><div style="width:15px;height:15px;border-radius:4px;background:#171717;display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 16 16" style="width:10px;height:10px;stroke:#fff;fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round"><path d="M3.6 8.3 6.5 11.2 12.4 5.1"/></svg></div></div><div style="justify-content:center"><div style="width:15px;height:15px;border-radius:4px;background:#171717;display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 16 16" style="width:10px;height:10px;stroke:#fff;fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round"><path d="M3.6 8.3 6.5 11.2 12.4 5.1"/></svg></div></div><div style="justify-content:center"><div style="width:15px;height:15px;border-radius:4px;background:#171717;display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 16 16" style="width:10px;height:10px;stroke:#fff;fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round"><path d="M3.6 8.3 6.5 11.2 12.4 5.1"/></svg></div></div><div style="justify-content:center"><div style="width:15px;height:15px;border-radius:4px;background:#171717;display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 16 16" style="width:10px;height:10px;stroke:#fff;fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round"><path d="M3.6 8.3 6.5 11.2 12.4 5.1"/></svg></div></div></div>
+            <div class="tr" style="grid-template-columns:190px repeat(8,minmax(0,1fr)) repeat(3,minmax(0,1fr))"><div style="gap:9px"><img class="av" src="pfp-chan.jpg" style="width:18px;height:18px"><span class="el">Chan Ka-ming</span><span style="font-size:10px;color:#999999">builder</span></div><div style="justify-content:center"><div style="width:15px;height:15px;border-radius:4px;background:#171717;display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 16 16" style="width:10px;height:10px;stroke:#fff;fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round"><path d="M3.6 8.3 6.5 11.2 12.4 5.1"/></svg></div></div><div style="justify-content:center"><div style="width:15px;height:15px;border-radius:4px;background:#171717;display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 16 16" style="width:10px;height:10px;stroke:#fff;fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round"><path d="M3.6 8.3 6.5 11.2 12.4 5.1"/></svg></div></div><div style="justify-content:center"><div style="width:15px;height:15px;border-radius:4px;background:#171717;display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 16 16" style="width:10px;height:10px;stroke:#fff;fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round"><path d="M3.6 8.3 6.5 11.2 12.4 5.1"/></svg></div></div><div style="justify-content:center"><div style="width:15px;height:15px;border-radius:4px;background:#171717;display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 16 16" style="width:10px;height:10px;stroke:#fff;fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round"><path d="M3.6 8.3 6.5 11.2 12.4 5.1"/></svg></div></div><div style="justify-content:center"><div style="width:15px;height:15px;border:1px solid #999999;border-radius:4px;background:#fff"></div></div><div style="justify-content:center"><div style="width:15px;height:15px;border:1px solid #999999;border-radius:4px;background:#fff"></div></div><div style="justify-content:center"><div style="width:15px;height:15px;border:1px solid #999999;border-radius:4px;background:#fff"></div></div><div style="justify-content:center"><div style="width:15px;height:15px;border:1px solid #999999;border-radius:4px;background:#fff"></div></div><div style="justify-content:center"><div style="width:15px;height:15px;border-radius:4px;background:#171717;display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 16 16" style="width:10px;height:10px;stroke:#fff;fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round"><path d="M3.6 8.3 6.5 11.2 12.4 5.1"/></svg></div></div><div style="justify-content:center"><div style="width:15px;height:15px;border-radius:4px;background:#171717;display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 16 16" style="width:10px;height:10px;stroke:#fff;fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round"><path d="M3.6 8.3 6.5 11.2 12.4 5.1"/></svg></div></div><div style="justify-content:center"><div style="width:15px;height:15px;border:1px solid #999999;border-radius:4px;background:#fff"></div></div></div>
+            <div class="tr" style="grid-template-columns:190px repeat(8,minmax(0,1fr)) repeat(3,minmax(0,1fr));background:#f5faff"><div style="gap:9px"><img class="av" src="pfp-amy.jpg" style="width:18px;height:18px"><span class="el">Amy Wong</span><span style="font-size:10px;color:#999999">builder</span></div><div style="justify-content:center"><div style="width:15px;height:15px;border-radius:4px;background:#171717;display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 16 16" style="width:10px;height:10px;stroke:#fff;fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round"><path d="M3.6 8.3 6.5 11.2 12.4 5.1"/></svg></div></div><div style="justify-content:center"><div style="width:15px;height:15px;border-radius:4px;background:#171717;display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 16 16" style="width:10px;height:10px;stroke:#fff;fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round"><path d="M3.6 8.3 6.5 11.2 12.4 5.1"/></svg></div></div><div style="justify-content:center"><div style="width:15px;height:15px;border:1px solid #999999;border-radius:4px;background:#fff"></div></div><div style="justify-content:center;box-shadow:inset 0 0 0 2px #007be0"><div style="width:15px;height:15px;border-radius:4px;background:#171717;display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 16 16" style="width:10px;height:10px;stroke:#fff;fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round"><path d="M3.6 8.3 6.5 11.2 12.4 5.1"/></svg></div></div><div style="justify-content:center"><div style="width:15px;height:15px;border:1px solid #999999;border-radius:4px;background:#fff"></div></div><div style="justify-content:center"><div style="width:15px;height:15px;border:1px solid #999999;border-radius:4px;background:#fff"></div></div><div style="justify-content:center"><div style="width:15px;height:15px;border:1px solid #999999;border-radius:4px;background:#fff"></div></div><div style="justify-content:center"><div style="width:15px;height:15px;border:1px solid #999999;border-radius:4px;background:#fff"></div></div><div style="justify-content:center"><div style="width:15px;height:15px;border-radius:4px;background:#171717;display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 16 16" style="width:10px;height:10px;stroke:#fff;fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round"><path d="M3.6 8.3 6.5 11.2 12.4 5.1"/></svg></div></div><div style="justify-content:center"><div style="width:15px;height:15px;border-radius:4px;background:#171717;display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 16 16" style="width:10px;height:10px;stroke:#fff;fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round"><path d="M3.6 8.3 6.5 11.2 12.4 5.1"/></svg></div></div><div style="justify-content:center"><div style="width:15px;height:15px;border:1px solid #999999;border-radius:4px;background:#fff"></div></div></div>
+            <div class="tr" style="grid-template-columns:190px repeat(8,minmax(0,1fr)) repeat(3,minmax(0,1fr));opacity:.62"><div style="gap:9px"><img class="av" src="pfp-chan.jpg" style="width:18px;height:18px"><span class="el">Vincent Chow</span><span class="bd amb">Expires 30 Sep</span></div><div style="justify-content:center"><div style="width:15px;height:15px;border:1px solid #d5dce2;border-radius:4px;background:#f8f8f8"></div></div><div style="justify-content:center"><div style="width:15px;height:15px;border:1px solid #d5dce2;border-radius:4px;background:#f8f8f8"></div></div><div style="justify-content:center"><div style="width:15px;height:15px;border:1px solid #d5dce2;border-radius:4px;background:#f8f8f8"></div></div><div style="justify-content:center"><div style="width:15px;height:15px;border:1px solid #d5dce2;border-radius:4px;background:#f8f8f8"></div></div><div style="justify-content:center"><div style="width:15px;height:15px;border:1px solid #d5dce2;border-radius:4px;background:#f8f8f8"></div></div><div style="justify-content:center"><div style="width:15px;height:15px;border:1px solid #d5dce2;border-radius:4px;background:#f8f8f8"></div></div><div style="justify-content:center"><div style="width:15px;height:15px;border:1px solid #d5dce2;border-radius:4px;background:#f8f8f8"></div></div><div style="justify-content:center"><div style="width:15px;height:15px;border:1px solid #d5dce2;border-radius:4px;background:#f8f8f8"></div></div><div style="justify-content:center"><div style="width:15px;height:15px;border:1px solid #999999;border-radius:4px;background:#fff"></div></div><div style="justify-content:center"><div style="width:15px;height:15px;border-radius:4px;background:#171717;display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 16 16" style="width:10px;height:10px;stroke:#fff;fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round"><path d="M3.6 8.3 6.5 11.2 12.4 5.1"/></svg></div></div><div style="justify-content:center"><div style="width:15px;height:15px;border:1px solid #999999;border-radius:4px;background:#fff"></div></div></div>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;margin-top:14px"><span class="mut">12 employees · 8 modules · 4 file groups</span><span class="mut" style="color:#8a5a0d">HR is a dedicated scope, 2 people hold it</span><div style="flex-grow:1"></div><span class="mut">Every change lands in the audit log</span></div>
+        </div></sc-if>
+
+        <sc-if value="{{isAdmTokens}}" hint-placeholder-val="{{ true }}"><div class="scr body">
+          <div style="display:flex;gap:8px;margin-bottom:14px"><div class="chip">Person: All <svg viewBox="0 0 24 24"><path d="m6.5 9.5 5.5 5.5 5.5-5.5"/></svg></div><div class="chip">1 – 31 Aug 2026 <svg viewBox="0 0 24 24"><path d="m6.5 9.5 5.5 5.5 5.5-5.5"/></svg></div><div style="flex-grow:1"></div><span class="mut">Updated 4 min ago · aggregation lag under 5 min</span><div class="btn s">Export CSV</div></div>
+          <div class="card" style="padding:18px;margin-bottom:16px">
+            <svg viewBox="0 0 900 170" style="width:100%;height:180px;fill:none;stroke-linecap:round;stroke-linejoin:round">
+              <g stroke="#f3f3f3" stroke-width="1"><path d="M0 34h900M0 68h900M0 102h900M0 136h900"/></g>
+              <path d="M0 140 128 128 257 132 385 96 514 104 642 70 771 84 900 52" stroke="{{accent}}" stroke-width="2"/>
+              <path d="M0 152 128 148 257 150 385 138 514 142 642 128 771 134 900 120" stroke="#8d99a6" stroke-width="1.6"/>
+              <path d="M0 158 128 156 257 158 385 150 514 154 642 146 771 150 900 140" stroke="#c7c7c7" stroke-width="1.6"/>
+            </svg>
+            <div style="display:flex;gap:18px;margin-top:10px"><span class="mut"><b style="display: inline-block; width: 12px; height: 2px; border-radius: 1px; background: {{accent}}; vertical-align: 3px; margin-right: 2px;"></b> Video Edit</span><span class="mut"><b style="display: inline-block; width: 12px; height: 2px; border-radius: 1px; background: #8d99a6; vertical-align: 3px; margin-right: 2px;"></b> Script</span><span class="mut"><b style="display: inline-block; width: 12px; height: 2px; border-radius: 1px; background: #c7c7c7; vertical-align: 3px; margin-right: 2px;"></b> Research</span></div>
+          </div>
+          <div style="display:flex;gap:16px">
+            <div style="flex-grow:1;min-width:0">
+              <div class="t">
+                <div class="hd" style="grid-template-columns:minmax(0,1.4fr) 100px 130px 130px 110px"><div>Employee</div><div class="num">Requests</div><div class="num">Prompt</div><div class="num">Completion</div><div class="num">Cost</div></div>
+                <div class="tr" style="grid-template-columns:minmax(0,1.4fr) 100px 130px 130px 110px"><div style="gap:9px"><img class="av" src="pfp-chan.jpg" style="width:18px;height:18px"><span class="el">Chan Ka-ming</span></div><div class="num">1,842</div><div class="num">4.21 M</div><div class="num">0.88 M</div><div class="num">HK$412.80</div></div>
+                <div class="tr" style="grid-template-columns:minmax(0,1.4fr) 100px 130px 130px 110px"><div style="gap:9px"><img class="av" src="pfp-amy.jpg" style="width:18px;height:18px"><span class="el">Amy Wong</span></div><div class="num">1,204</div><div class="num">3.06 M</div><div class="num">0.61 M</div><div class="num">HK$286.40</div></div>
+                <div class="tr" style="grid-template-columns:minmax(0,1.4fr) 100px 130px 130px 110px"><div style="gap:9px"><img class="av" src="pfp-leung.jpg" style="width:18px;height:18px"><span class="el">Leung Chi-hang</span><span class="bd red">94% of cap</span></div><div class="num">988</div><div class="num">2.44 M</div><div class="num">0.52 M</div><div class="num">HK$188.10</div></div>
+                <div class="tr" style="grid-template-columns:minmax(0,1.4fr) 100px 130px 130px 110px"><div style="gap:9px"><img class="av" src="pfp-michelle.jpg" style="width:18px;height:18px"><span class="el">Michelle Yip</span></div><div class="num">412</div><div class="num">0.92 M</div><div class="num">0.18 M</div><div class="num">HK$64.20</div></div>
+              </div>
+            </div>
+            <div style="width:280px;flex-shrink:0">
+              <div class="lbl" style="padding:0;margin-bottom:11px">By model</div>
+              <div style="display:flex;flex-direction:column;gap:9px">
+                <div><div style="display:flex;justify-content:space-between;font-size:12px"><span style="font-family:ui-monospace,monospace">gemini-2.5-pro</span><span>48%</span></div><div style="height:4px;border-radius:2px;background:#ededed;margin-top:5px"><div style="width:48%;height:4px;border-radius:2px;background:{{accent}}"></div></div></div>
+                <div><div style="display:flex;justify-content:space-between;font-size:12px"><span style="font-family:ui-monospace,monospace">deepseek-v3</span><span>22%</span></div><div style="height:4px;border-radius:2px;background:#ededed;margin-top:5px"><div style="width:22%;height:4px;border-radius:2px;background:#8d99a6"></div></div></div>
+                <div><div style="display:flex;justify-content:space-between;font-size:12px"><span style="font-family:ui-monospace,monospace">qwen-max</span><span>16%</span></div><div style="height:4px;border-radius:2px;background:#ededed;margin-top:5px"><div style="width:16%;height:4px;border-radius:2px;background:#c7c7c7"></div></div></div>
+                <div><div style="display:flex;justify-content:space-between;font-size:12px"><span style="font-family:ui-monospace,monospace">glm-4.6</span><span>14%</span></div><div style="height:4px;border-radius:2px;background:#ededed;margin-top:5px"><div style="width:14%;height:4px;border-radius:2px;background:#e2e2e2"></div></div></div>
+              </div>
+            </div>
+          </div>
+        </div></sc-if>
+
+        <sc-if value="{{isAdmBudgets}}" hint-placeholder-val="{{ true }}"><div class="scr body">
+          <div style="padding:9px 11px;border-radius:8px;background:#fdf3e3;font-size:12px;color:#8a5a0d;margin-bottom:16px">On reaching a cap the platform stops further consumption and notifies both the admin and the employee.</div>
+          <div class="t">
+            <div class="hd" style="grid-template-columns:minmax(0,1.4fr) 110px 130px 130px 160px 140px"><div>Scope</div><div>Period</div><div class="num">Cap</div><div class="num">Spent</div><div>Usage</div><div>On cap</div></div>
+            <div class="tr" style="grid-template-columns:minmax(0,1.4fr) 110px 130px 130px 160px 140px"><div>Team · Production</div><div>Monthly</div><div class="num">HK$800.00</div><div class="num">HK$687.10</div><div><div style="width:100%;height:5px;border-radius:3px;background:#ededed"><div style="width:86%;height:5px;border-radius:3px;background:#f5a623"></div></div></div><div><span class="bd gray">Stop &amp; notify</span></div></div>
+            <div class="tr" style="grid-template-columns:minmax(0,1.4fr) 110px 130px 130px 160px 140px"><div style="gap:9px"><img class="av" src="pfp-leung.jpg" style="width:18px;height:18px"><span class="el">Leung Chi-hang</span></div><div>Monthly</div><div class="num">HK$200.00</div><div class="num">HK$188.10</div><div><div style="width:100%;height:5px;border-radius:3px;background:#ededed"><div style="width:94%;height:5px;border-radius:3px;background:#e03636"></div></div></div><div><span class="bd red">Stop &amp; notify</span></div></div>
+            <div class="tr" style="grid-template-columns:minmax(0,1.4fr) 110px 130px 130px 160px 140px"><div style="gap:9px"><img class="av" src="pfp-chan.jpg" style="width:18px;height:18px"><span class="el">Chan Ka-ming</span></div><div>Monthly</div><div class="num">HK$600.00</div><div class="num">HK$412.80</div><div><div style="width:100%;height:5px;border-radius:3px;background:#ededed"><div style="width:69%;height:5px;border-radius:3px;background:{{accent}}"></div></div></div><div><span class="bd gray">Stop &amp; notify</span></div></div>
+            <div class="tr" style="grid-template-columns:minmax(0,1.4fr) 110px 130px 130px 160px 140px"><div style="gap:9px"><img class="av" src="pfp-amy.jpg" style="width:18px;height:18px"><span class="el">Amy Wong</span></div><div>Monthly</div><div class="num">HK$400.00</div><div class="num">HK$286.40</div><div><div style="width:100%;height:5px;border-radius:3px;background:#ededed"><div style="width:72%;height:5px;border-radius:3px;background:{{accent}}"></div></div></div><div><span class="bd gray">Stop &amp; notify</span></div></div>
+          </div>
+        </div></sc-if>
+
+        <sc-if value="{{isAdmChannels}}" hint-placeholder-val="{{ true }}"><div class="scr body">
+          <div style="padding:9px 11px;border-radius:8px;background:#f8f8f8;font-size:12px;color:#525252;margin-bottom:16px">Keys are referenced, never displayed.</div>
+          <div class="t">
+            <div class="hd" style="grid-template-columns:minmax(0,1.2fr) 130px minmax(0,1.4fr) 140px 150px 130px"><div>Connection</div><div>Status</div><div>Granted scopes</div><div>Audit state</div><div>Key reference</div><div>Rotated</div></div>
+            <div class="tr" style="grid-template-columns:minmax(0,1.2fr) 130px minmax(0,1.4fr) 140px 150px 130px"><div>YouTube</div><div><span class="bd grn">Connected</span></div><div><span class="el">upload · readonly</span></div><div><span class="bd amb">Pending</span></div><div><span class="el" style="font-family:ui-monospace,monospace;font-size:11px">sm://yt/oauth#4a1</span></div><div style="color:#7c7c7c">12 Jun 2026</div></div>
+            <div class="tr" style="grid-template-columns:minmax(0,1.2fr) 130px minmax(0,1.4fr) 140px 150px 130px"><div>Instagram</div><div><span class="bd grn">Connected</span></div><div><span class="el">content_publish · insights</span></div><div><span class="bd grn">Passed</span></div><div><span class="el" style="font-family:ui-monospace,monospace;font-size:11px">sm://ig/oauth#77c</span></div><div style="color:#7c7c7c">2 Aug 2026</div></div>
+            <div class="tr" style="grid-template-columns:minmax(0,1.2fr) 130px minmax(0,1.4fr) 140px 150px 130px"><div>OpenRouter</div><div><span class="bd grn">Connected</span></div><div><span class="el">chat.completions · zdr on</span></div><div><span class="bd gray">n/a</span></div><div><span class="el" style="font-family:ui-monospace,monospace;font-size:11px">sm://or/key#01f</span></div><div style="color:#7c7c7c">1 Jul 2026</div></div>
+            <div class="tr" style="grid-template-columns:minmax(0,1.2fr) 130px minmax(0,1.4fr) 140px 150px 130px"><div>Vertex · Veo</div><div><span class="bd red">Credit exhausted</span></div><div><span class="el">generate · asia-east2</span></div><div><span class="bd gray">n/a</span></div><div><span class="el" style="font-family:ui-monospace,monospace;font-size:11px">sm://gcp/sa#9b2</span></div><div style="color:#7c7c7c">14 Mar 2026</div></div>
+            <div class="tr" style="display:block;height:auto;padding:12px 14px;background:#fff7f7;border:1px solid #ffd8d8;border-radius:9px;margin-top:8px"><div style="font-size:12.5px;font-weight:500;color:#941f1f">Vertex AI: the client's Google Cloud account has run out of credit</div><div class="mut" style="margin-top:6px;line-height:1.55;color:#941f1f">Generation jobs are failing and retries have stopped. This is not a platform fault. The account holder tops up and it resumes.</div></div>
+          </div>
+        </div></sc-if>
+
+        <sc-if value="{{isAdmAudit}}" hint-placeholder-val="{{ true }}"><div class="scr body">
+          <div style="display:flex;gap:8px;margin-bottom:14px"><div class="chip">Actor: All <svg viewBox="0 0 24 24"><path d="m6.5 9.5 5.5 5.5 5.5-5.5"/></svg></div><div class="chip">Action: All <svg viewBox="0 0 24 24"><path d="m6.5 9.5 5.5 5.5 5.5-5.5"/></svg></div><div class="chip">Last 7 days <svg viewBox="0 0 24 24"><path d="m6.5 9.5 5.5 5.5 5.5-5.5"/></svg></div><div style="flex-grow:1"></div><span class="mut">Retained for the life of the engagement</span></div>
+          <div class="t">
+            <div class="hd" style="grid-template-columns:150px 170px minmax(0,1.6fr) 130px 130px"><div>When</div><div>Actor</div><div>Action</div><div>Resource</div><div>IP</div></div>
+            <div class="tr" style="grid-template-columns:150px 170px minmax(0,1.6fr) 130px 130px"><div style="color:#7c7c7c">9 Sep 10:14</div><div style="gap:8px"><img class="av" src="pfp-michelle.jpg" style="width:18px;height:18px"><span class="el">Michelle Yip</span></div><div><span class="el">entitlement.grant · finance → Priscilla Cheung</span></div><div><span class="el">user:0012</span></div><div style="color:#7c7c7c">203.0.113.7</div></div>
+            <div class="tr" style="grid-template-columns:150px 170px minmax(0,1.6fr) 130px 130px;background:#fdfaf3"><div style="color:#7c7c7c">9 Sep 09:02</div><div style="gap:8px"><img class="av" src="pfp-michelle.jpg" style="width:18px;height:18px"><span class="el">Michelle Yip</span><span class="bd amb">admin</span></div><div><span class="el">file.read · not explicitly granted</span></div><div><span class="el">file:master-004</span></div><div style="color:#7c7c7c">203.0.113.7</div></div>
+            <div class="tr" style="grid-template-columns:150px 170px minmax(0,1.6fr) 130px 130px"><div style="color:#7c7c7c">8 Sep 17:41</div><div style="gap:8px"><img class="av" src="pfp-chan.jpg" style="width:18px;height:18px"><span class="el">Chan Ka-ming</span></div><div><span class="el">folder.share · editor → group:production</span></div><div><span class="el">folder:renders</span></div><div style="color:#7c7c7c">203.0.113.19</div></div>
+            <div class="tr" style="grid-template-columns:150px 170px minmax(0,1.6fr) 130px 130px"><div style="color:#7c7c7c">8 Sep 11:20</div><div style="gap:8px"><img class="av" src="pfp-amy.jpg" style="width:18px;height:18px"><span class="el">Amy Wong</span></div><div><span class="el">knowledge.rollback · house-style v6 → v5</span></div><div><span class="el">knowledge:0031</span></div><div style="color:#7c7c7c">203.0.113.22</div></div>
+            <div class="tr" style="grid-template-columns:150px 170px minmax(0,1.6fr) 130px 130px"><div style="color:#7c7c7c">7 Sep 15:08</div><div style="gap:8px"><img class="av" src="pfp-leung.jpg" style="width:18px;height:18px"><span class="el">Leung Chi-hang</span></div><div><span class="el">publish.transmit · X</span></div><div><span class="el">publish:0088</span></div><div style="color:#7c7c7c">203.0.113.31</div></div>
+          </div>
+          <div class="mut" style="margin-top:12px">Admin file access appears here like any other access.</div>
+        </div></sc-if>
+
+        <sc-if value="{{isAdmKnow}}" hint-placeholder-val="{{ true }}"><div class="scr" style="flex-grow:1;min-height:0;display:flex">
+          <div style="flex-grow:1;min-width:0;padding:18px 20px">
+            <div style="display:flex;gap:8px;margin-bottom:14px"><div class="chip">Kind: All <svg viewBox="0 0 24 24"><path d="m6.5 9.5 5.5 5.5 5.5-5.5"/></svg></div><div class="chip">Scope: All <svg viewBox="0 0 24 24"><path d="m6.5 9.5 5.5 5.5 5.5-5.5"/></svg></div><div style="flex-grow:1"></div><div class="btn p">Upload Markdown</div></div>
+            <div class="t">
+              <div class="hd" style="grid-template-columns:minmax(0,1.8fr) 110px 150px 70px 80px 110px"><div>File</div><div>Kind</div><div>Scope</div><div class="num">Ver</div><div>Active</div><div>Updated</div></div>
+              <div class="tr" style="grid-template-columns:minmax(0,1.8fr) 110px 150px 70px 80px 110px"><div><span class="el">house-style-v6.md</span></div><div><span class="bd gray">Style</span></div><div>Tenant</div><div class="num">v6</div><div><div style="width:30px;height:17px;border-radius:9px;background:#171717;padding:2px;display:flex;justify-content:flex-end"><div style="width:13px;height:13px;border-radius:7px;background:#fff"></div></div></div><div style="color:#7c7c7c">8 Sep</div></div>
+              <div class="tr" style="grid-template-columns:minmax(0,1.8fr) 110px 150px 70px 80px 110px"><div><span class="el">script-beats-procedure.md</span></div><div><span class="bd gray">Skill</span></div><div>Module · Script</div><div class="num">v2</div><div><div style="width:30px;height:17px;border-radius:9px;background:#171717;padding:2px;display:flex;justify-content:flex-end"><div style="width:13px;height:13px;border-radius:7px;background:#fff"></div></div></div><div style="color:#7c7c7c">2 Sep</div></div>
+              <div class="tr" style="grid-template-columns:minmax(0,1.8fr) 110px 150px 70px 80px 110px"><div><span class="el">cantonese-tone-examples.md</span></div><div><span class="bd gray">Example</span></div><div>Role · Editor</div><div class="num">v4</div><div><div style="width:30px;height:17px;border-radius:9px;background:#171717;padding:2px;display:flex;justify-content:flex-end"><div style="width:13px;height:13px;border-radius:7px;background:#fff"></div></div></div><div style="color:#7c7c7c">28 Aug</div></div>
+              <div class="tr" style="grid-template-columns:minmax(0,1.8fr) 110px 150px 70px 80px 110px;opacity:.55"><div><span class="el">legacy-tone-guide.md</span></div><div><span class="bd gray">Instruction</span></div><div>Tenant</div><div class="num">v1</div><div><div style="width:30px;height:17px;border-radius:9px;background:#e2e2e2;padding:2px"><div style="width:13px;height:13px;border-radius:7px;background:#fff"></div></div></div><div style="color:#7c7c7c">2 Jul</div></div>
+            </div>
+            <div style="display:flex;gap:8px;margin-top:14px"><div class="btn s">Diff</div><div class="btn s">Roll back</div><div class="btn s">View audit entry</div></div>
+            <div class="mut" style="margin-top:14px;line-height:1.55">Plain upload, plain toggle, plain rollback. This area has to be usable by a non-engineer.</div>
+          </div>
+          <div style="width:360px;flex-shrink:0;border-left:1px solid #ededed;background:#fcfcfc;padding:16px 15px;display:flex;flex-direction:column">
+            <div class="lbl" style="padding:0;margin-bottom:11px">Assembled system prompt · Script module</div>
+            <div style="flex-grow:1;min-height:0;background:#f8f8f8;border-radius:9px;padding:13px;font-family:ui-monospace,monospace;font-size:10.5px;line-height:1.7;color:#4a5763;overflow:hidden">
+              <div style="color:#999999">— instructions —</div>
+              You write for Aura Farmers, a Hong Kong video studio.<br>Output Traditional Chinese, Hong Kong usage.<br><br>
+              <div style="color:#999999">— style —</div>
+              Prefer concrete time of day over mood words.<br>Sound direction belongs in the shot list.<br>Never exceed the target duration by more than 8%.<br><br>
+              <div style="color:#999999">— skills (retrieved) —</div>
+              script-beats-procedure.md · 6 steps<br><br>
+              <div style="color:#999999">— examples (retrieved) —</div>
+              cantonese-tone-examples.md · 4 excerpts
+            </div>
+            <div style="margin-top:11px"><div style="display:flex;justify-content:space-between"><span class="mut">4,180 of 8,000 token budget</span><span class="mut">52%</span></div><div style="height:4px;border-radius:2px;background:#ededed;margin-top:6px"><div style="width:52%;height:4px;border-radius:2px;background:{{accent}}"></div></div></div>
+          </div>
+        </div></sc-if>
+
+      </div>
+
+      <!-- ============ AGENT PANEL ============ -->
+      <div style="width: 316px; flex-shrink: 0; border-left: 1px solid #ededed; background: #fcfcfc; display: flex; flex-direction: column;">
+        <div style="height: 42px; flex-shrink: 0; display: flex; align-items: center; gap: 2px; padding: 0 10px; border-bottom: 1px solid #ededed;">
+          <div style="height: 25px; padding: 0 10px; border-radius: 7px; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.1); display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 500;">
+            <svg viewBox="0 0 24 24" style="width: 12px; height: 12px; stroke: {{accent}}; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;"><path d="M12 4.2 19 8v8l-7 3.8L5 16V8z"/><path d="M12 11.8 19 8M12 11.8v8M12 11.8 5 8"/></svg>Agent
+          </div>
+          <div style="height: 25px; padding: 0 10px; border-radius: 7px; display: flex; align-items: center; font-size: 12px; color: #7c7c7c;">Sources</div>
+          <div style="flex-grow: 1;"></div>
+          <svg viewBox="0 0 24 24" style="width: 14px; height: 14px; stroke: #999999; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;"><path d="m10 6 6 6-6 6"/></svg>
+        </div>
+
+        <div style="flex-shrink: 0; padding: 11px 13px; border-bottom: 1px solid #f3f3f3;">
+          <div style="display: inline-flex; align-items: center; gap: 7px; height: 25px; padding: 0 10px; border-radius: 7px; background: #fff; border: 1px solid #ededed;">
+            <span style="width: 6px; height: 6px; border-radius: 3px; background: {{accent}};"></span>
+            <span style="font-size: 11.5px; color: #525252;">{{scope}}</span>
+          </div>
+        </div>
+
+        <div style="flex-shrink: 0; padding: 13px 13px 3px;">
+          <div class="lbl" style="padding: 0; margin-bottom: 8px;">Try here</div>
+          <div style="display: flex; flex-direction: column; gap: 6px;">
+            <sc-for list="{{tips}}" as="t" hint-placeholder-count="3">
+              <div style="min-height: 30px; padding: 7px 10px; border: 1px solid #ededed; border-radius: 8px; background: #fff; font-size: 12px; line-height: 1.45; color: #383838;">{{t.text}}</div>
+            </sc-for>
+          </div>
+        </div>
+
+        <div style="flex-grow: 1; min-height: 0; padding: 14px 13px 0; overflow: hidden;">
+          <div style="display: flex; justify-content: flex-end; margin-bottom: 10px;">
+            <div style="max-width: 240px; background: #f3f3f3; border-radius: 10px; padding: 8px 11px; font-size: 12px; line-height: 1.5; color: #383838;">{{agentQ}}</div>
+          </div>
+          <div style="display: inline-flex; align-items: center; gap: 7px; height: 23px; padding: 0 9px; border: 1px solid #ededed; border-radius: 7px; background: #fff; margin-bottom: 9px;">
+            <svg viewBox="0 0 24 24" style="width: 11px; height: 11px; stroke: #278f5e; fill: none; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round;"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>
+            <span style="font-size: 11px; color: #525252;">{{agentTool}}</span>
+          </div>
+          <p style="font-size: 12px; line-height: 1.6; color: #383838; text-wrap: pretty;">{{agentA}}</p>
+          <div style="display: flex; gap: 6px; margin-top: 11px;">
+            <div class="btn p" style="height: 27px; font-size: 12px;">{{agentAct}}</div>
+            <div class="btn s" style="height: 27px; font-size: 12px;">Not now</div>
+          </div>
+        </div>
+
+        <div style="flex-shrink: 0; padding: 11px 13px 9px;">
+          <div style="border: 1px solid #e2e2e2; border-radius: 10px; background: #fff; padding: 9px 10px 7px; box-shadow: 0 1px 1px rgba(5,5,6,.04);">
+            <div style="font-size: 12px; color: #999999;">{{ask}}</div>
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 11px;">
+              <span style="font-size: 10.5px; color: #999999;">gemini-2.5-pro</span>
+              <div style="width: 25px; height: 25px; border-radius: 7px; background: {{accent}}; display: flex; align-items: center; justify-content: center;"><svg viewBox="0 0 24 24" style="width: 12px; height: 12px; stroke: #fff; fill: none; stroke-width: 2.3; stroke-linecap: round; stroke-linejoin: round;"><path d="M12 19V5.5M6 11.5 12 5.5l6 6"/></svg></div>
+            </div>
+          </div>
+        </div>
+
+        <div style="flex-shrink: 0; border-top: 1px solid #f3f3f3; padding: 9px 13px 11px; display: flex; align-items: center; gap: 7px;">
+          <svg viewBox="0 0 24 24" style="width: 11px; height: 11px; flex-shrink: 0; stroke: #999999; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;"><path d="M6.8 10.5h10.4v8H6.8z"/><path d="M9.2 10.5V8a2.8 2.8 0 0 1 5.6 0v2.5"/></svg>
+          <span style="font-size: 10.5px; color: #999999; line-height: 1.4;">{{guard}}</span>
+          <span style="margin-left: auto; font-size: 10.5px; color: #999999; white-space: nowrap;">{{cost}}</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script data-dc-script data-props='{"accent":{"editor":"color","default":"#007BE0","options":["#007BE0","#171717","#278F5E","#6846E3"],"section":"Theme"},"$preview":{"width":1440,"height":900}}'>
+
+const AGENT = {
+  chat:   ['this conversation','Ask your agent…','Answers use only files you can read','HK$.08',
+           'What did you read for that?','Listed 3 sources · 0.4 s',
+           'The two files cited plus a live YouTube Analytics query. Two further files matched and were withheld, you do not have access to them.','Open sources',
+           ['Summarise this thread into a brief','Which files were withheld and why?','Send the comparison to Script']],
+  files:  ['Renders · 18 files','Ask about this folder…','Answers use only files you can read','HK$.42',
+           'Which renders are missing subtitles?','Read 18 files · 1.2 s',
+           'Two of the five masters have no matching .srt in this folder: orange_typography_cut and good-day_collage_teaser.','Queue transcription',
+           ['Summarise what changed this week','Who can open the selected file?','Send the 9:16 cut to Publish']],
+  res:    ['Trends · HK/TW/SG · 14 d','Ask about these trends…','Scoped to your entitled sources','HK$.18',
+           'Anything here we already covered?','Searched 214 past scripts · 2.1 s',
+           '#02 Taipei crossover overlaps a February piece that under-performed at 31% watch-through. #03 is flagged sensitive and needs the approver before scripting.','Open the Feb cut',
+           ['Why did #1 spike this week?','Draft a brief from the top topic','Which of these did we already cover?']],
+  script: ['Script 004 · v4 draft','Ask about this script…','House style comes from approved past scripts','HK$.26',
+           'Is this within the target duration?','Read house-style-v6.md · 0.9 s',
+           'Estimated 3 min 48 s against a 3 min 45 s target, within the 8% tolerance in house style. Four flagged terms remain unresolved.','Fix flagged terms',
+           ['Rewrite beat 3 more conversationally','Check against house style','What changed since v3?']],
+  video:  ['Project 004 · 8 shots','Ask about this project…','Media filtered to what you can access','HK$.64',
+           'Why did the archive upscale fail?','Read 4 job records · 0.6 s',
+           'Vertex returned RESOURCE_EXHAUSTED on all three attempts: the client’s Google Cloud account is out of credit. Not a platform fault; retries have stopped.','Open credentials',
+           ['Which beats still have no footage?','What has this project cost so far?','Re-render 9:16 with subtitles']],
+  pub:    ['4 items awaiting approval','Ask about publishing…','Nothing transmits without an approval record','HK$.12',
+           'Which channels can actually publish today?','Read 8 channel records · 0.5 s',
+           'Instagram, LinkedIn, X and WeChat OA can publish live. YouTube and TikTok are audit-pending, they will only reach draft and inbox respectively.','Show audit status',
+           ['What is blocking the TikTok audit?','Draft captions for all channels','Who approved the last publish?']],
+  acc:    ['9 unprocessed documents','Ask about the books…','Drafts only. Nothing posts without confirmation','HK$.09',
+           'What is unreconciled this month?','Read 46 documents · 1.4 s',
+           'Three bank lines totalling HK$12,410 have no matching document, and the Cathay Pacific invoice has no matching payment.','Show the three lines',
+           ['Why is this account suggested?','Show unmatched bank lines','Prepare the Xero export']],
+  fin:    ['2026 Q3 · 4 budget lines','Ask about finance…','Projections are indicative','HK$.11',
+           'Are we over anywhere?','Read budget + confirmed entries · 0.8 s',
+           'Contractors is 8.6% over and licensing 9.1% over. Equipment and AI consumption are both under, so the department nets 3.2% under plan.','Draft the variance note',
+           ['Explain the contractor overrun','Project Q4 at this run rate','Who must approve HK$46,800?']],
+  legal:  ['1 document under review','Ask about this document…','This module does not give legal advice','HK$.15',
+           'What are the departures here?','Aligned against template v4 · 1.1 s',
+           'Four: IP vests on payment rather than creation, notice is 7 days against 30, confidentiality is missing entirely, and governing law is Singapore rather than Hong Kong.','Export marked-up copy',
+           ['Compare with our template','When does this renew?','Which clauses are missing?']],
+  hr:     ['HR scope required','Ask about HR…','Personal data, so a dedicated hr scope applies','HK$0.00',
+           'Can I see the leave balances?','Permission check · denied',
+           'No. HR sits behind its own scope and your account does not hold it, so I cannot read or summarise any record here, not even indirectly.','Request access',
+           ['Request the hr scope','Who holds the hr scope?','What is in scope for me?']],
+  admin:  ['12 employees · 8 modules','Ask about the tenant…','Every change lands in the audit log','HK$.21',
+           'Who is close to their cap?','Read token ledger · 0.7 s',
+           'Leung Chi-hang is at 94% of a HK$200 monthly cap. At the current rate he stops in about two days, and both of you are notified when he does.','Raise his cap',
+           ['Who is near their cap?','Preview the Script system prompt','Show admin file access this week']],
+};
+
+const M = {
+  chat:   ['Chat', [['thread','Conversation','streaming · tool-call transparency · citations']]],
+  files:  ['Database', [['browse','Renders','2026-Q3-campaign · 18 files · per-file permissions']]],
+  res:    ['Market Research', [
+    ['trends','Trends dashboard','ranked topics · adopt feeds ranking weights'],
+    ['compare','Search & compare','up to five series on one time axis'],
+    ['perf','Content performance','loads without a chat prompt · last 28 days'],
+    ['inbox','Comment inbox','replies require human approval'],
+    ['backlog','Topic backlog','hands off directly to Script']]],
+  script: ['Script', [
+    ['brief','Brief intake','structured form · pulled from the backlog'],
+    ['editor','Split editor','draft left · house style right'],
+    ['versions','Version history','diff any two versions'],
+    ['lock','Approve & lock','produces the single authorised version']]],
+  video:  ['Video Edit', [
+    ['project','Project workspace','locked script · shot list'],
+    ['bin','Media bin','filtered to what you can access'],
+    ['queue','Render queue','state · provider · attempts · cost'],
+    ['preview','Preview','subtitles · aspect ratios · version compare'],
+    ['audio','Audio panel','voice · takes · music · ducking'],
+    ['export','Export','multi-format render, archived to the database']]],
+  pub:    ['Publish', [
+    ['channels','Channel board','connection · scopes · audit · quota'],
+    ['composer','Composer','master version with per-channel overrides'],
+    ['approvals','Approval queue','nothing leaves without an approval record'],
+    ['log','Publish log','what went where, and the platform response']]],
+  acc:    ['Accounting', [
+    ['inbox','Document inbox','OCR · extraction · confidence · suggested account'],
+    ['drafts','Draft entries','journal lines + reconciliation prompts'],
+    ['period','Period summary','income, expense, ageing, unprocessed'],
+    ['export','Export','the client\'s designated import format']]],
+  fin:    ['Finance', [
+    ['budget','Budget','lines by department against actuals'],
+    ['cash','Cash-flow projection','labelled indicative'],
+    ['cost','Cost dashboard','includes AI consumption from the ledger'],
+    ['spend','Spend requests','threshold-driven approver chain'],
+    ['reports','Report drafts','generated for a human to edit']]],
+  legal:  ['Legal', [
+    ['draft','Document drafting','client templates · guided intake'],
+    ['clause','Clause review','marked departures, never a verdict'],
+    ['repo','Contract repository','dates, renewals, reminders'],
+    ['compliance','Compliance checklists','recurring items with owners']]],
+  hr:     ['Human Resources', [
+    ['gate','Overview','who can see HR, and what needs you'],
+    ['leave','Leave','balances, routing, team calendar'],
+    ['recruit','Recruitment','requisition · parsed applications · ranking'],
+    ['candidates','Candidate records','consent and retention dates'],
+    ['employees','Employee records','role, contract, checklists']]],
+  admin:  ['Admin', [
+    ['people','People','role · team · status · last active'],
+    ['ent','Entitlements matrix','the onboarding path'],
+    ['tokens','Token dashboard','by employee, module and model'],
+    ['budgets','Budgets','on cap: stop and notify'],
+    ['channels','Channels & credentials','keys referenced, never displayed'],
+    ['audit','Audit log','admin access appears here too'],
+    ['know','Knowledge & skills','the client\'s own tuning surface']]],
+};
+class Component extends DCLogic {
+  constructor(p){ super(p); this.state = { mod: 'res', sub: 'trends' }; }
+  go(mod){ const m = M[mod]; this.setState({ mod, sub: m[1][0][0] }); }
+  renderVals(){
+    const raw = this.props.accent ?? '#007BE0';
+    const accent = /^#[0-9a-fA-F]{6}$/.test(raw) ? raw : '#007BE0';
+    const mod = this.state.mod, sub = this.state.sub;
+    const m = M[mod] || M.chat;
+    const cur = m[1].find(x => x[0] === sub) || m[1][0];
+    const at = (k, t) => mod === k && sub === t;
+    const v = {
+      accent, modName: m[0], subName: cur[1], subHint: cur[2],
+      scope: (AGENT[mod]||AGENT.chat)[0], ask: (AGENT[mod]||AGENT.chat)[1],
+      guard: (AGENT[mod]||AGENT.chat)[2], cost: (AGENT[mod]||AGENT.chat)[3],
+      agentQ: (AGENT[mod]||AGENT.chat)[4], agentTool: (AGENT[mod]||AGENT.chat)[5],
+      agentA: (AGENT[mod]||AGENT.chat)[6], agentAct: (AGENT[mod]||AGENT.chat)[7],
+      tips: ((AGENT[mod]||AGENT.chat)[8]).map(t => ({ text: t })),
+      subs: m[1].map(x => ({ label: x[1], on: x[0] === sub ? ' on' : '', go: () => this.setState({ sub: x[0] }) })),
+      hrPeek: () => this.setState({ mod: 'hr', sub: 'leave' }),
+      isChat: mod === 'chat', isFiles: mod === 'files',
+      isResTrends: at('res','trends'), isResCompare: at('res','compare'), isResPerf: at('res','perf'),
+      isResInbox: at('res','inbox'), isResBacklog: at('res','backlog'),
+      isScriptBrief: at('script','brief'), isScriptEditor: at('script','editor'),
+      isScriptVersions: at('script','versions'), isScriptLock: at('script','lock'),
+      isVidProject: at('video','project'), isVidBin: at('video','bin'), isVidQueue: at('video','queue'),
+      isVidPreview: at('video','preview'), isVidAudio: at('video','audio'), isVidExport: at('video','export'),
+      isPubChannels: at('pub','channels'), isPubComposer: at('pub','composer'),
+      isPubApprovals: at('pub','approvals'), isPubLog: at('pub','log'),
+      isAccInbox: at('acc','inbox'), isAccDrafts: at('acc','drafts'),
+      isAccPeriod: at('acc','period'), isAccExport: at('acc','export'),
+      isFinBudget: at('fin','budget'), isFinCash: at('fin','cash'), isFinCost: at('fin','cost'),
+      isFinSpend: at('fin','spend'), isFinReports: at('fin','reports'),
+      isLegalDraft: at('legal','draft'), isLegalClause: at('legal','clause'),
+      isLegalRepo: at('legal','repo'), isLegalCompliance: at('legal','compliance'),
+      isHrGate: at('hr','gate'), isHrLeave: at('hr','leave'), isHrRecruit: at('hr','recruit'),
+      isHrCandidates: at('hr','candidates'), isHrEmployees: at('hr','employees'),
+      isAdmPeople: at('admin','people'), isAdmEnt: at('admin','ent'), isAdmTokens: at('admin','tokens'),
+      isAdmBudgets: at('admin','budgets'), isAdmChannels: at('admin','channels'),
+      isAdmAudit: at('admin','audit'), isAdmKnow: at('admin','know'),
+    };
+    for (const k of Object.keys(M)) {
+      v['on' + k[0].toUpperCase() + k.slice(1)] = mod === k ? ' on' : '';
+      v['go' + k[0].toUpperCase() + k.slice(1)] = () => this.go(k);
+    }
+    return v;
+  }
+}
+</script>
+</body>
+</html>

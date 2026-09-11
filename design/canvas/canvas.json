@@ -1,0 +1,1080 @@
+{
+  "artboards": [
+    {
+      "file": "Main.dc.html",
+      "title": "Chat · Conversation",
+      "x": 0,
+      "y": 0,
+      "w": 1440,
+      "h": 900,
+      "is_interactive": true
+    },
+    {
+      "file": "FilesDesktop.dc.html",
+      "title": "Database · list / grid / gallery",
+      "x": 0,
+      "y": 1020,
+      "w": 1440,
+      "h": 900,
+      "is_interactive": true
+    },
+    {
+      "file": "FilesPhone.dc.html",
+      "title": "Database · phone",
+      "x": 1540,
+      "y": 1020,
+      "w": 390,
+      "h": 844,
+      "is_interactive": true
+    },
+    {
+      "file": "Res-Trends.dc.html",
+      "title": "Market Research · Trends dashboard",
+      "x": 0,
+      "y": 2040,
+      "w": 1440,
+      "h": 900,
+      "is_interactive": true
+    },
+    {
+      "file": "Res-Compare.dc.html",
+      "title": "Market Research · Search & compare",
+      "x": 1540,
+      "y": 2040,
+      "w": 1440,
+      "h": 900,
+      "is_interactive": true
+    },
+    {
+      "file": "Res-Perf.dc.html",
+      "title": "Market Research · Content performance",
+      "x": 3080,
+      "y": 2040,
+      "w": 1440,
+      "h": 900,
+      "is_interactive": true
+    },
+    {
+      "file": "Res-Inbox.dc.html",
+      "title": "Market Research · Comment inbox",
+      "x": 4620,
+      "y": 2040,
+      "w": 1440,
+      "h": 900,
+      "is_interactive": true
+    },
+    {
+      "file": "Res-Backlog.dc.html",
+      "title": "Market Research · Topic backlog",
+      "x": 6160,
+      "y": 2040,
+      "w": 1440,
+      "h": 900,
+      "is_interactive": true
+    },
+    {
+      "file": "Script-Library.dc.html",
+      "title": "Script · Library (all scripts)",
+      "x": 0,
+      "y": 3060,
+      "w": 1440,
+      "h": 900,
+      "is_interactive": true
+    },
+    {
+      "file": "Script-Brief.dc.html",
+      "title": "Script · one script · Brief tab",
+      "x": 1540,
+      "y": 3060,
+      "w": 1440,
+      "h": 900,
+      "is_interactive": true
+    },
+    {
+      "file": "Script-Editor.dc.html",
+      "title": "Script · one script · Draft tab",
+      "x": 3080,
+      "y": 3060,
+      "w": 1440,
+      "h": 900,
+      "is_interactive": true
+    },
+    {
+      "file": "Script-Versions.dc.html",
+      "title": "Script · one script · Versions tab",
+      "x": 4620,
+      "y": 3060,
+      "w": 1440,
+      "h": 900,
+      "is_interactive": true
+    },
+    {
+      "file": "Script-Lock.dc.html",
+      "title": "Script · one script · Approval (approver)",
+      "x": 6160,
+      "y": 3060,
+      "w": 1440,
+      "h": 900,
+      "is_interactive": true
+    },
+    {
+      "file": "Script-Locked.dc.html",
+      "title": "Script · a locked script (read-only)",
+      "x": 7700,
+      "y": 3060,
+      "w": 1440,
+      "h": 900,
+      "is_interactive": true
+    },
+    {
+      "file": "Video-Library.dc.html",
+      "title": "Video Edit · Library (all projects)",
+      "x": 0,
+      "y": 4080,
+      "w": 1440,
+      "h": 900,
+      "is_interactive": true
+    },
+    {
+      "file": "Video-Project.dc.html",
+      "title": "Video Edit · one project · Shots (sidebar collapsed)",
+      "x": 1540,
+      "y": 4080,
+      "w": 1440,
+      "h": 900,
+      "is_interactive": true
+    },
+    {
+      "file": "Video-Bin.dc.html",
+      "title": "Video Edit · one project · Media",
+      "x": 3080,
+      "y": 4080,
+      "w": 1440,
+      "h": 900,
+      "is_interactive": true
+    },
+    {
+      "file": "Video-Queue.dc.html",
+      "title": "Video Edit · one project · Renders",
+      "x": 4620,
+      "y": 4080,
+      "w": 1440,
+      "h": 900,
+      "is_interactive": true
+    },
+    {
+      "file": "Video-Preview.dc.html",
+      "title": "Video Edit · one project · Preview",
+      "x": 6160,
+      "y": 4080,
+      "w": 1440,
+      "h": 900,
+      "is_interactive": true
+    },
+    {
+      "file": "Video-Audio.dc.html",
+      "title": "Video Edit · one project · Audio",
+      "x": 7700,
+      "y": 4080,
+      "w": 1440,
+      "h": 900,
+      "is_interactive": true
+    },
+    {
+      "file": "Video-Export.dc.html",
+      "title": "Video Edit · one project · Export",
+      "x": 9240,
+      "y": 4080,
+      "w": 1440,
+      "h": 900,
+      "is_interactive": true
+    },
+    {
+      "file": "Pub-Channels.dc.html",
+      "title": "Publish · Channel board",
+      "x": 0,
+      "y": 5100,
+      "w": 1440,
+      "h": 900,
+      "is_interactive": true
+    },
+    {
+      "file": "Pub-Composer.dc.html",
+      "title": "Publish · Composer",
+      "x": 1540,
+      "y": 5100,
+      "w": 1440,
+      "h": 900,
+      "is_interactive": true
+    },
+    {
+      "file": "Pub-Approvals.dc.html",
+      "title": "Publish · Approval queue",
+      "x": 3080,
+      "y": 5100,
+      "w": 1440,
+      "h": 900,
+      "is_interactive": true
+    },
+    {
+      "file": "Pub-Log.dc.html",
+      "title": "Publish · Publish log",
+      "x": 4620,
+      "y": 5100,
+      "w": 1440,
+      "h": 900,
+      "is_interactive": true
+    },
+    {
+      "file": "Acc-Inbox.dc.html",
+      "title": "Accounting · Document inbox",
+      "x": 0,
+      "y": 6120,
+      "w": 1440,
+      "h": 900,
+      "is_interactive": true
+    },
+    {
+      "file": "Acc-Drafts.dc.html",
+      "title": "Accounting · Draft entries",
+      "x": 1540,
+      "y": 6120,
+      "w": 1440,
+      "h": 900,
+      "is_interactive": true
+    },
+    {
+      "file": "Acc-Period.dc.html",
+      "title": "Accounting · Period summary",
+      "x": 3080,
+      "y": 6120,
+      "w": 1440,
+      "h": 900,
+      "is_interactive": true
+    },
+    {
+      "file": "Acc-Export.dc.html",
+      "title": "Accounting · Export",
+      "x": 4620,
+      "y": 6120,
+      "w": 1440,
+      "h": 900,
+      "is_interactive": true
+    },
+    {
+      "file": "Fin-Budget.dc.html",
+      "title": "Finance · Budget",
+      "x": 0,
+      "y": 7140,
+      "w": 1440,
+      "h": 900,
+      "is_interactive": true
+    },
+    {
+      "file": "Fin-Cash.dc.html",
+      "title": "Finance · Cash-flow projection",
+      "x": 1540,
+      "y": 7140,
+      "w": 1440,
+      "h": 900,
+      "is_interactive": true
+    },
+    {
+      "file": "Fin-Cost.dc.html",
+      "title": "Finance · Cost dashboard",
+      "x": 3080,
+      "y": 7140,
+      "w": 1440,
+      "h": 900
+    },
+    {
+      "file": "Fin-Spend.dc.html",
+      "title": "Finance · Spend requests",
+      "x": 4620,
+      "y": 7140,
+      "w": 1440,
+      "h": 900,
+      "is_interactive": true
+    },
+    {
+      "file": "Fin-Reports.dc.html",
+      "title": "Finance · Report drafts",
+      "x": 6160,
+      "y": 7140,
+      "w": 1440,
+      "h": 900,
+      "is_interactive": true
+    },
+    {
+      "file": "Legal-Draft.dc.html",
+      "title": "Legal · Document drafting",
+      "x": 0,
+      "y": 8160,
+      "w": 1440,
+      "h": 900
+    },
+    {
+      "file": "Legal-Clause.dc.html",
+      "title": "Legal · Clause review",
+      "x": 1540,
+      "y": 8160,
+      "w": 1440,
+      "h": 900,
+      "is_interactive": true
+    },
+    {
+      "file": "Legal-Repo.dc.html",
+      "title": "Legal · Contract repository",
+      "x": 3080,
+      "y": 8160,
+      "w": 1440,
+      "h": 900
+    },
+    {
+      "file": "Legal-Compliance.dc.html",
+      "title": "Legal · Compliance checklists",
+      "x": 4620,
+      "y": 8160,
+      "w": 1440,
+      "h": 900
+    },
+    {
+      "file": "Hr-Gate.dc.html",
+      "title": "Human Resources · Overview",
+      "x": 0,
+      "y": 9180,
+      "w": 1440,
+      "h": 900,
+      "is_interactive": true
+    },
+    {
+      "file": "Hr-Leave.dc.html",
+      "title": "Human Resources · Leave",
+      "x": 1540,
+      "y": 9180,
+      "w": 1440,
+      "h": 900,
+      "is_interactive": true
+    },
+    {
+      "file": "Hr-Recruit.dc.html",
+      "title": "Human Resources · Recruitment",
+      "x": 3080,
+      "y": 9180,
+      "w": 1440,
+      "h": 900,
+      "is_interactive": true
+    },
+    {
+      "file": "Hr-Candidates.dc.html",
+      "title": "Human Resources · Candidate records",
+      "x": 4620,
+      "y": 9180,
+      "w": 1440,
+      "h": 900,
+      "is_interactive": true
+    },
+    {
+      "file": "Hr-Employees.dc.html",
+      "title": "Human Resources · Employee records",
+      "x": 6160,
+      "y": 9180,
+      "w": 1440,
+      "h": 900,
+      "is_interactive": true
+    },
+    {
+      "file": "Adm-People.dc.html",
+      "title": "Admin · People",
+      "x": 0,
+      "y": 10200,
+      "w": 1440,
+      "h": 900
+    },
+    {
+      "file": "Adm-Ent.dc.html",
+      "title": "Admin · Entitlements matrix",
+      "x": 1540,
+      "y": 10200,
+      "w": 1440,
+      "h": 900
+    },
+    {
+      "file": "Adm-Tokens.dc.html",
+      "title": "Admin · Token dashboard",
+      "x": 3080,
+      "y": 10200,
+      "w": 1440,
+      "h": 900,
+      "is_interactive": true
+    },
+    {
+      "file": "Adm-Budgets.dc.html",
+      "title": "Admin · Budgets",
+      "x": 4620,
+      "y": 10200,
+      "w": 1440,
+      "h": 900
+    },
+    {
+      "file": "Adm-Channels.dc.html",
+      "title": "Admin · Channels & credentials",
+      "x": 6160,
+      "y": 10200,
+      "w": 1440,
+      "h": 900
+    },
+    {
+      "file": "Adm-Audit.dc.html",
+      "title": "Admin · Audit log",
+      "x": 7700,
+      "y": 10200,
+      "w": 1440,
+      "h": 900,
+      "is_interactive": true
+    },
+    {
+      "file": "Adm-Know.dc.html",
+      "title": "Admin · Knowledge & skills",
+      "x": 9240,
+      "y": 10200,
+      "w": 1440,
+      "h": 900,
+      "is_interactive": true
+    },
+    {
+      "file": "Chat-Channel.dc.html",
+      "title": "Chat · #production",
+      "x": 1540,
+      "y": 0,
+      "w": 1440,
+      "h": 900
+    },
+    {
+      "file": "Chat-Announce.dc.html",
+      "title": "Chat · #announcements",
+      "x": 3080,
+      "y": 0,
+      "w": 1440,
+      "h": 900
+    },
+    {
+      "file": "Login.dc.html",
+      "title": "Sign in",
+      "x": 4620,
+      "y": 0,
+      "w": 1440,
+      "h": 900
+    },
+    {
+      "file": "Login-Totp.dc.html",
+      "title": "Sign in · two-step",
+      "x": 6160,
+      "y": 0,
+      "w": 1440,
+      "h": 900
+    },
+    {
+      "file": "ChatPhone.dc.html",
+      "title": "Chat · Your agent · phone",
+      "x": 11000,
+      "y": 0,
+      "w": 390,
+      "h": 844,
+      "is_interactive": true
+    },
+    {
+      "file": "Chat-Channel-Phone.dc.html",
+      "title": "Chat · #production · phone",
+      "x": 11470,
+      "y": 0,
+      "w": 390,
+      "h": 844,
+      "is_interactive": true
+    },
+    {
+      "file": "Chat-Announce-Phone.dc.html",
+      "title": "Chat · #announcements · phone",
+      "x": 11940,
+      "y": 0,
+      "w": 390,
+      "h": 844,
+      "is_interactive": true
+    },
+    {
+      "file": "Login-Phone.dc.html",
+      "title": "Chat · Sign in · phone",
+      "x": 12410,
+      "y": 0,
+      "w": 390,
+      "h": 844,
+      "is_interactive": true
+    },
+    {
+      "file": "Login-Totp-Phone.dc.html",
+      "title": "Chat · Sign in · two-step · phone",
+      "x": 12880,
+      "y": 0,
+      "w": 390,
+      "h": 844,
+      "is_interactive": true
+    },
+    {
+      "file": "Res-Compare-Phone.dc.html",
+      "title": "Market Research · Search & compare · phone",
+      "x": 11000,
+      "y": 2040,
+      "w": 390,
+      "h": 844,
+      "is_interactive": true
+    },
+    {
+      "file": "Res-Perf-Phone.dc.html",
+      "title": "Market Research · Content performance · phone",
+      "x": 11470,
+      "y": 2040,
+      "w": 390,
+      "h": 844,
+      "is_interactive": true
+    },
+    {
+      "file": "Res-Inbox-Phone.dc.html",
+      "title": "Market Research · Comment inbox · phone",
+      "x": 11940,
+      "y": 2040,
+      "w": 390,
+      "h": 844,
+      "is_interactive": true
+    },
+    {
+      "file": "Res-Backlog-Phone.dc.html",
+      "title": "Market Research · Topic backlog · phone",
+      "x": 12410,
+      "y": 2040,
+      "w": 390,
+      "h": 844,
+      "is_interactive": true
+    },
+    {
+      "file": "Script-Library-Phone.dc.html",
+      "title": "Script · Library · phone",
+      "x": 11000,
+      "y": 3060,
+      "w": 390,
+      "h": 844,
+      "is_interactive": true
+    },
+    {
+      "file": "Script-Brief-Phone.dc.html",
+      "title": "Script · Brief · phone",
+      "x": 11470,
+      "y": 3060,
+      "w": 390,
+      "h": 844,
+      "is_interactive": true
+    },
+    {
+      "file": "Script-Editor-Phone.dc.html",
+      "title": "Script · Draft · phone",
+      "x": 11940,
+      "y": 3060,
+      "w": 390,
+      "h": 844,
+      "is_interactive": true
+    },
+    {
+      "file": "Script-Versions-Phone.dc.html",
+      "title": "Script · Versions · phone",
+      "x": 12410,
+      "y": 3060,
+      "w": 390,
+      "h": 844,
+      "is_interactive": true
+    },
+    {
+      "file": "Script-Lock-Phone.dc.html",
+      "title": "Script · Approval · phone",
+      "x": 12880,
+      "y": 3060,
+      "w": 390,
+      "h": 844,
+      "is_interactive": true
+    },
+    {
+      "file": "Script-Locked-Phone.dc.html",
+      "title": "Script · Locked script · phone",
+      "x": 13350,
+      "y": 3060,
+      "w": 390,
+      "h": 844,
+      "is_interactive": true
+    },
+    {
+      "file": "Video-Library-Phone.dc.html",
+      "title": "Video Edit · Library · phone",
+      "x": 11000,
+      "y": 4080,
+      "w": 390,
+      "h": 844,
+      "is_interactive": true
+    },
+    {
+      "file": "Video-Project-Phone.dc.html",
+      "title": "Video Edit · Shots · phone",
+      "x": 11470,
+      "y": 4080,
+      "w": 390,
+      "h": 844,
+      "is_interactive": true
+    },
+    {
+      "file": "Video-Bin-Phone.dc.html",
+      "title": "Video Edit · Media · phone",
+      "x": 11940,
+      "y": 4080,
+      "w": 390,
+      "h": 844,
+      "is_interactive": true
+    },
+    {
+      "file": "Video-Queue-Phone.dc.html",
+      "title": "Video Edit · Renders · phone",
+      "x": 12410,
+      "y": 4080,
+      "w": 390,
+      "h": 844,
+      "is_interactive": true
+    },
+    {
+      "file": "Video-Preview-Phone.dc.html",
+      "title": "Video Edit · Preview · phone",
+      "x": 12880,
+      "y": 4080,
+      "w": 390,
+      "h": 844,
+      "is_interactive": true
+    },
+    {
+      "file": "Video-Audio-Phone.dc.html",
+      "title": "Video Edit · Audio · phone",
+      "x": 13350,
+      "y": 4080,
+      "w": 390,
+      "h": 844,
+      "is_interactive": true
+    },
+    {
+      "file": "Video-Export-Phone.dc.html",
+      "title": "Video Edit · Export · phone",
+      "x": 13820,
+      "y": 4080,
+      "w": 390,
+      "h": 844,
+      "is_interactive": true
+    },
+    {
+      "file": "Script-Library-Nav-Phone.dc.html",
+      "title": "Script · Library · More open · phone",
+      "x": 13820,
+      "y": 3060,
+      "w": 390,
+      "h": 844,
+      "is_interactive": true
+    },
+    {
+      "file": "Pub-Channels-Phone.dc.html",
+      "title": "Publish · Channel board · phone",
+      "x": 11000,
+      "y": 5100,
+      "w": 390,
+      "h": 844,
+      "is_interactive": true
+    },
+    {
+      "file": "Pub-Composer-Phone.dc.html",
+      "title": "Publish · Composer · phone",
+      "x": 11470,
+      "y": 5100,
+      "w": 390,
+      "h": 844,
+      "is_interactive": true
+    },
+    {
+      "file": "Pub-Approvals-Phone.dc.html",
+      "title": "Publish · Approval queue · phone",
+      "x": 11940,
+      "y": 5100,
+      "w": 390,
+      "h": 844,
+      "is_interactive": true
+    },
+    {
+      "file": "Pub-Log-Phone.dc.html",
+      "title": "Publish · Publish log · phone",
+      "x": 12410,
+      "y": 5100,
+      "w": 390,
+      "h": 844,
+      "is_interactive": true
+    },
+    {
+      "file": "Acc-Inbox-Phone.dc.html",
+      "title": "Accounting · Document inbox · phone",
+      "x": 11000,
+      "y": 6120,
+      "w": 390,
+      "h": 844,
+      "is_interactive": true
+    },
+    {
+      "file": "Acc-Drafts-Phone.dc.html",
+      "title": "Accounting · Draft entries · phone",
+      "x": 11470,
+      "y": 6120,
+      "w": 390,
+      "h": 844,
+      "is_interactive": true
+    },
+    {
+      "file": "Acc-Period-Phone.dc.html",
+      "title": "Accounting · Period summary · phone",
+      "x": 11940,
+      "y": 6120,
+      "w": 390,
+      "h": 844,
+      "is_interactive": true
+    },
+    {
+      "file": "Acc-Export-Phone.dc.html",
+      "title": "Accounting · Export · phone",
+      "x": 12410,
+      "y": 6120,
+      "w": 390,
+      "h": 844,
+      "is_interactive": true
+    },
+    {
+      "file": "Fin-Budget-Phone.dc.html",
+      "title": "Finance · Budget · phone",
+      "x": 11000,
+      "y": 7140,
+      "w": 390,
+      "h": 844,
+      "is_interactive": true
+    },
+    {
+      "file": "Fin-Cash-Phone.dc.html",
+      "title": "Finance · Cash-flow projection · phone",
+      "x": 11470,
+      "y": 7140,
+      "w": 390,
+      "h": 844,
+      "is_interactive": true
+    },
+    {
+      "file": "Fin-Cost-Phone.dc.html",
+      "title": "Finance · Cost dashboard · phone",
+      "x": 11940,
+      "y": 7140,
+      "w": 390,
+      "h": 844,
+      "is_interactive": true
+    },
+    {
+      "file": "Fin-Spend-Phone.dc.html",
+      "title": "Finance · Spend requests · phone",
+      "x": 12410,
+      "y": 7140,
+      "w": 390,
+      "h": 844,
+      "is_interactive": true
+    },
+    {
+      "file": "Fin-Reports-Phone.dc.html",
+      "title": "Finance · Report drafts · phone",
+      "x": 12880,
+      "y": 7140,
+      "w": 390,
+      "h": 844,
+      "is_interactive": true
+    },
+    {
+      "file": "Legal-Draft-Phone.dc.html",
+      "title": "Legal · Document drafting · phone",
+      "x": 11000,
+      "y": 8160,
+      "w": 390,
+      "h": 844,
+      "is_interactive": true
+    },
+    {
+      "file": "Legal-Clause-Phone.dc.html",
+      "title": "Legal · Clause review · phone",
+      "x": 11470,
+      "y": 8160,
+      "w": 390,
+      "h": 844,
+      "is_interactive": true
+    },
+    {
+      "file": "Legal-Repo-Phone.dc.html",
+      "title": "Legal · Contract repository · phone",
+      "x": 11940,
+      "y": 8160,
+      "w": 390,
+      "h": 844,
+      "is_interactive": true
+    },
+    {
+      "file": "Legal-Compliance-Phone.dc.html",
+      "title": "Legal · Compliance checklists · phone",
+      "x": 12410,
+      "y": 8160,
+      "w": 390,
+      "h": 844,
+      "is_interactive": true
+    },
+    {
+      "file": "Hr-Gate-Phone.dc.html",
+      "title": "Human Resources · Overview · phone",
+      "x": 11000,
+      "y": 9180,
+      "w": 390,
+      "h": 844,
+      "is_interactive": true
+    },
+    {
+      "file": "Hr-Leave-Phone.dc.html",
+      "title": "Human Resources · Leave · phone",
+      "x": 11470,
+      "y": 9180,
+      "w": 390,
+      "h": 844,
+      "is_interactive": true
+    },
+    {
+      "file": "Hr-Recruit-Phone.dc.html",
+      "title": "Human Resources · Recruitment · phone",
+      "x": 11940,
+      "y": 9180,
+      "w": 390,
+      "h": 844,
+      "is_interactive": true
+    },
+    {
+      "file": "Hr-Candidates-Phone.dc.html",
+      "title": "Human Resources · Candidate records · phone",
+      "x": 12410,
+      "y": 9180,
+      "w": 390,
+      "h": 844,
+      "is_interactive": true
+    },
+    {
+      "file": "Hr-Employees-Phone.dc.html",
+      "title": "Human Resources · Employee records · phone",
+      "x": 12880,
+      "y": 9180,
+      "w": 390,
+      "h": 844,
+      "is_interactive": true
+    },
+    {
+      "file": "Adm-People-Phone.dc.html",
+      "title": "Admin · People · phone",
+      "x": 11000,
+      "y": 10200,
+      "w": 390,
+      "h": 844,
+      "is_interactive": true
+    },
+    {
+      "file": "Adm-Ent-Phone.dc.html",
+      "title": "Admin · Entitlements · phone",
+      "x": 11470,
+      "y": 10200,
+      "w": 390,
+      "h": 844,
+      "is_interactive": true
+    },
+    {
+      "file": "Adm-Tokens-Phone.dc.html",
+      "title": "Admin · Token dashboard · phone",
+      "x": 11940,
+      "y": 10200,
+      "w": 390,
+      "h": 844,
+      "is_interactive": true
+    },
+    {
+      "file": "Adm-Budgets-Phone.dc.html",
+      "title": "Admin · Budgets · phone",
+      "x": 12410,
+      "y": 10200,
+      "w": 390,
+      "h": 844,
+      "is_interactive": true
+    },
+    {
+      "file": "Adm-Channels-Phone.dc.html",
+      "title": "Admin · Channels and credentials · phone",
+      "x": 12880,
+      "y": 10200,
+      "w": 390,
+      "h": 844,
+      "is_interactive": true
+    },
+    {
+      "file": "Adm-Audit-Phone.dc.html",
+      "title": "Admin · Audit log · phone",
+      "x": 13350,
+      "y": 10200,
+      "w": 390,
+      "h": 844,
+      "is_interactive": true
+    },
+    {
+      "file": "Adm-Know-Phone.dc.html",
+      "title": "Admin · Knowledge and skills · phone",
+      "x": 13820,
+      "y": 10200,
+      "w": 390,
+      "h": 844,
+      "is_interactive": true
+    },
+    {
+      "file": "Nav-Idea-A-Phone.dc.html",
+      "title": "Navbar idea A · Bar + briefcase (current)",
+      "x": 0,
+      "y": -1020,
+      "w": 390,
+      "h": 844,
+      "is_interactive": true
+    },
+    {
+      "file": "Nav-Idea-B-Phone.dc.html",
+      "title": "Navbar idea B · Fan out",
+      "x": 470,
+      "y": -1020,
+      "w": 390,
+      "h": 844,
+      "is_interactive": true
+    },
+    {
+      "file": "Nav-Idea-C-Phone.dc.html",
+      "title": "Navbar idea C · Module + its screens",
+      "x": 940,
+      "y": -1020,
+      "w": 390,
+      "h": 844,
+      "is_interactive": true
+    },
+    {
+      "file": "Nav-Idea-D-Phone.dc.html",
+      "title": "Navbar idea D · App grid",
+      "x": 1410,
+      "y": -1020,
+      "w": 390,
+      "h": 844,
+      "is_interactive": true
+    },
+    {
+      "file": "Nav-Idea-E-Phone.dc.html",
+      "title": "Navbar idea E · Swipe island",
+      "x": 1880,
+      "y": -1020,
+      "w": 390,
+      "h": 844,
+      "is_interactive": true
+    }
+  ],
+  "annotations": [
+    {
+      "id": "nav-ideas",
+      "x": -430,
+      "y": -1000,
+      "w": 360,
+      "text": "Phone navbar ideas A to E: the same Script screen with five different bottom bars. Pick one and every phone screen gets it."
+    },
+    {
+      "id": "mod-chat",
+      "x": -430,
+      "y": 20,
+      "w": 360,
+      "text": "Chat · your agent, #production, #announcements, sign-in"
+    },
+    {
+      "id": "mod-files",
+      "x": -430,
+      "y": 1040,
+      "w": 360,
+      "text": "Database · 1 screen"
+    },
+    {
+      "id": "mod-res",
+      "x": -430,
+      "y": 2060,
+      "w": 360,
+      "text": "Market Research · 5 screens"
+    },
+    {
+      "id": "mod-script",
+      "x": -430,
+      "y": 3080,
+      "w": 360,
+      "text": "Script · a library of every script; open one and Brief · Draft · Versions · Approval are its tabs. The left list switches scripts."
+    },
+    {
+      "id": "mod-video",
+      "x": -430,
+      "y": 4100,
+      "w": 360,
+      "text": "Video Edit: a library of projects; open one and Shots · Media · Renders · Preview · Audio · Export are its tabs."
+    },
+    {
+      "id": "mod-pub",
+      "x": -430,
+      "y": 5120,
+      "w": 360,
+      "text": "Publish · 4 screens"
+    },
+    {
+      "id": "mod-acc",
+      "x": -430,
+      "y": 6140,
+      "w": 360,
+      "text": "Accounting · 4 screens"
+    },
+    {
+      "id": "mod-fin",
+      "x": -430,
+      "y": 7160,
+      "w": 360,
+      "text": "Finance · 5 screens"
+    },
+    {
+      "id": "mod-legal",
+      "x": -430,
+      "y": 8180,
+      "w": 360,
+      "text": "Legal · 4 screens"
+    },
+    {
+      "id": "mod-hr",
+      "x": -430,
+      "y": 9200,
+      "w": 360,
+      "text": "Human Resources · 5 screens"
+    },
+    {
+      "id": "mod-admin",
+      "x": -430,
+      "y": 10220,
+      "w": 360,
+      "text": "Admin · 7 screens"
+    }
+  ],
+  "launch": {
+    "view": "canvas"
+  }
+}

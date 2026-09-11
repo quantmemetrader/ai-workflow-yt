@@ -1,4 +1,9 @@
 @import "tailwindcss";
+@import "./espresso.css";
+
+@theme inline {
+  --font-sans: "InterVar", "Inter", system-ui, sans-serif;
+}
 
 html,
 body {
@@ -6,6 +11,9 @@ body {
 }
 
 body {
-  background: #fafafa;
-  color: #171717;
+  background: var(--surface-white);
+  color: var(--ink-gray-8);
+  font-family: var(--font-sans);
+  font-feature-settings: "cv10" 1, "ss03" 1;
+  -webkit-font-smoothing: antialiased;
 }

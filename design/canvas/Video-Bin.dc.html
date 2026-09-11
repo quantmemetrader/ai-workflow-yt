@@ -1,0 +1,455 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<!-- hand-authored: Video Edit · Media. Rebuild with video-screens.mjs -->
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;450;500;600&family=Noto+Sans+HK:wght@400;500&display=swap">
+  <style>
+    html, body { overflow: hidden; }
+    body { margin: 0; font-family: Inter, 'PingFang HK', 'Noto Sans HK', system-ui, sans-serif; font-weight: 420; letter-spacing: 0.02em; -webkit-font-smoothing: antialiased; }
+    * { box-sizing: border-box; }
+    a { color: #007be0; text-decoration: none; }
+    img { display: block; }
+    p { margin: 0; }
+
+    @keyframes fadeUp { from { transform: translateY(10px); opacity: 0 } to { transform: none; opacity: 1 } }
+    @keyframes rowIn  { from { transform: translateY(7px);  opacity: 0 } to { transform: none; opacity: 1 } }
+    .scr { animation: fadeUp .24s cubic-bezier(.32,.72,0,1) both; }
+    .tr  { animation: rowIn .3s cubic-bezier(.32,.72,0,1) both; }
+    .tr:nth-of-type(1){animation-delay:.01s} .tr:nth-of-type(2){animation-delay:.035s}
+    .tr:nth-of-type(3){animation-delay:.06s} .tr:nth-of-type(4){animation-delay:.085s}
+    .tr:nth-of-type(5){animation-delay:.11s} .tr:nth-of-type(6){animation-delay:.135s}
+    .tr:nth-of-type(7){animation-delay:.16s} .tr:nth-of-type(8){animation-delay:.185s}
+
+    /* rail */
+    .r { width: 34px; height: 34px; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: #7c7c7c; transition: background .16s ease, color .16s ease; }
+    .r svg { width: 17px; height: 17px; fill: currentColor; }
+    .r.on { background: #ffffff; box-shadow: 0 1px 2px rgba(0,0,0,0.1); color: #171717; }
+    .r.no { opacity: .32; }
+
+    /* sidebar */
+    .n { display: flex; align-items: center; gap: 8px; height: 28px; padding: 0 9px; border-radius: 8px; font-size: 12.5px; color: #525252; transition: background .16s ease; }
+    .n.on { background: #ffffff; box-shadow: 0 1px 2px rgba(0,0,0,0.1); color: #171717; font-weight: 500; }
+    .n b { margin-left: auto; font-size: 10.5px; font-weight: 500; color: #999999; }
+    .n i { margin-left: auto; font-style: normal; display: inline-flex; align-items: center; height: 17px; padding: 0 6px; border-radius: 9px; background: #ffe7e7; color: #e03636; font-size: 10px; font-weight: 500; }
+    .lbl { font-size: 10.5px; font-weight: 500; color: #999999; padding: 0 9px; }
+
+    /* generic */
+    .bar { height: 48px; flex-shrink: 0; border-bottom: 1px solid #ededed; display: flex; align-items: center; gap: 10px; padding: 0 20px; }
+    .h1 { font-size: 14px; font-weight: 500; }
+    .mut { font-size: 12px; color: #999999; }
+    .btn { height: 30px; padding: 0 12px; border-radius: 8px; display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; white-space: nowrap; }
+    .btn.p { background: #007be0; color: #fff; font-weight: 500; }
+    .btn.s { border: 1px solid #ededed; color: #525252; }
+    .btn svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+    .chip { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 11px; border: 1px solid #ededed; border-radius: 8px; font-size: 12px; color: #4a5763; white-space: nowrap; }
+    .chip svg { width: 10px; height: 10px; stroke: #999999; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    .bd { display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border-radius: 6px; font-size: 11px; font-weight: 500; white-space: nowrap; }
+    .gray { background: #f3f3f3; color: #525252 }
+    .blue { background: #e6f4ff; color: #007be0 }
+    .grn  { background: #e4faeb; color: #278f5e }
+    .amb  { background: #fff7d3; color: #db7706 }
+    .red  { background: #ffe7e7; color: #e03636 }
+    .card { border: 1px solid #ededed; border-radius: 12px; background: #fff; padding: 16px; }
+    .kv { display: flex; justify-content: space-between; gap: 14px; padding: 8px 0; border-bottom: 1px solid #f3f3f3; font-size: 12.5px; }
+    .kv span:first-child { color: #999999; }
+    .av { width: 20px; height: 20px; border-radius: 10px; object-fit: cover; flex-shrink: 0; }
+    .stat { border: 1px solid #ededed; border-radius: 12px; padding: 13px 15px; background: #fff; }
+    .stat i { font-style: normal; display: block; font-size: 10.5px; font-weight: 500; color: #999999; }
+    .stat b { display: block; font-size: 22px; font-weight: 500; letter-spacing: -0.01em; margin-top: 6px; font-variant-numeric: tabular-nums; }
+
+    /* table */
+    .t { width: 100%; }
+    .t .hd { height: 32px; border-bottom: 1px solid #ededed; display: grid; align-items: center; }
+    .t .hd > * { font-size: 10.5px; font-weight: 500; color: #7c7c7c; padding: 0 12px; }
+    .tr { height: 46px; border-bottom: 1px solid #f3f3f3; display: grid; align-items: center; }
+    .tr > * { font-size: 12.5px; color: #383838; padding: 0 12px; min-width: 0; display: flex; align-items: center; }
+    .num { justify-content: flex-end; font-variant-numeric: tabular-nums; }
+    .el { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
+    .body { flex-grow: 1; min-height: 0; padding: 18px 20px; overflow: hidden; }
+    .focus { box-shadow: 0 0 0 3px #EFF6FF; }
+  
+    .tabs { height: 40px; flex-shrink: 0; display: flex; align-items: stretch; gap: 20px; padding: 0 22px; border-bottom: 1px solid #ededed; }
+    .tb { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: #7c7c7c; border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap; }
+    .tb.on { color: #171717; font-weight: 500; border-color: #171717; }
+    .tb b { font-size: 10.5px; font-weight: 500; color: #999999; }
+    .tb i { font-style: normal; display: inline-flex; align-items: center; height: 16px; padding: 0 5px; border-radius: 8px; background: #e6f4ff; color: #007be0; font-size: 10px; font-weight: 500; }
+    .rtab { height: 26px; padding: 0 11px; border-radius: 7px; display: flex; align-items: center; gap: 6px; font-size: 12px; color: #7c7c7c; }
+    .rtab.on { background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.1); color: #171717; font-weight: 500; }
+    .cap { font-size: 11px; color: #999999; }
+    .seg { width: 30px; height: 26px; border-radius: 6px; display: flex; align-items: center; justify-content: center; cursor: pointer; }
+    .seg svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+    .fc { height: 26px; padding: 0 10px; border-radius: 7px; display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: #525252; border: 1px solid #ededed; background: #fff; white-space: nowrap; }
+    .fc b { font-weight: 500; color: #999999; font-size: 11px; }
+    .fc.on { background: #171717; border-color: #171717; color: #fff; }
+    .fc.on b { color: #c7c7c7; }
+    .fc svg { width: 10px; height: 10px; stroke: #999999; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    .dot { width: 7px; height: 7px; border-radius: 4px; flex-shrink: 0; }
+    .kbd { display: inline-flex; align-items: center; height: 18px; padding: 0 5px; border-radius: 4px; border: 1px solid #e2e2e2; font-size: 10.5px; color: #7c7c7c; background: #fafafa; }
+    .ck { width: 18px; height: 18px; border-radius: 9px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .ck svg { width: 11px; height: 11px; stroke: #fff; fill: none; stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; }
+    .cb { width: 16px; height: 16px; border-radius: 4px; border: 1px solid #999999; background: #fff; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
+    .cb.on { border: none; background: #171717; }
+    .cb svg { width: 11px; height: 11px; stroke: #fff; fill: none; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+    .li { display: flex; gap: 11px; padding: 11px 0; border-bottom: 1px solid #f3f3f3; }
+    .li .a { font-size: 12.5px; color: #171717; }
+    .li .b { font-size: 11.5px; color: #999999; margin-top: 2px; }
+
+    /* item switcher (left sidebar inside a document / project) */
+    .sn { display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 9px; border-radius: 8px; font-size: 12.5px; color: #525252; }
+    .sn > span:not(.dot) { flex-grow: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .sn.on { background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.1); color: #171717; font-weight: 500; }
+    .sn img.av { width: 16px; height: 16px; border-radius: 8px; }
+    .sg { display: flex; align-items: center; gap: 6px; font-size: 10.5px; font-weight: 500; color: #999999; padding: 0 9px; margin: 14px 0 4px; }
+    .sg svg { width: 10px; height: 10px; stroke: #999999; fill: none; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+    .ptog { width: 26px; height: 26px; border-radius: 7px; display: flex; align-items: center; justify-content: center; color: #7c7c7c; cursor: pointer; flex-shrink: 0; }
+    .ptog:hover { background: #ededed; }
+    .ptog svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+    .mini { width: 52px; flex-shrink: 0; background: #f8f8f8; border-right: 1px solid #ededed; display: flex; flex-direction: column; align-items: center; padding: 10px 0; gap: 4px; }
+    .mi { width: 36px; height: 36px; border-radius: 9px; display: flex; align-items: center; justify-content: center; position: relative; }
+    .mi.on { background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.1); }
+    .mi .dot { position: absolute; right: 3px; bottom: 3px; box-shadow: 0 0 0 2px #f8f8f8; }
+    .mi.on .dot { box-shadow: 0 0 0 2px #fff; }
+    .crop { background-repeat: no-repeat; background-color: #f3f3f3; }
+    .bd.vio { background: #f3f0ff; color: #6846e3; }
+    .costc { display: flex; align-items: center; gap: 7px; height: 28px; padding: 0 10px; border: 1px solid #ededed; border-radius: 8px; font-size: 12px; color: #383838; white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .costc .m { width: 40px; height: 4px; border-radius: 2px; background: #ededed; }
+    .costc .m div { height: 4px; border-radius: 2px; background: var(--ac); }
+    .sth { position: relative; aspect-ratio: 16 / 9; border-radius: 9px; overflow: hidden; }
+    .pill { position: absolute; height: 18px; padding: 0 6px; border-radius: 5px; background: rgba(255,255,255,.94); font-size: 10.5px; font-weight: 500; color: #171717; display: flex; align-items: center; gap: 4px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .pill.dk { background: rgba(23,23,23,.72); color: #fff; }
+    .stt { font-size: 12.5px; font-weight: 500; margin-top: 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .srow { display: flex; align-items: center; gap: 6px; margin-top: 5px; min-width: 0; }
+    .srow .st { margin-left: auto; display: flex; align-items: center; gap: 5px; font-size: 11px; color: #7c7c7c; white-space: nowrap; }
+    .beat { display: flex; gap: 10px; padding: 8px 10px; border-radius: 8px; }
+    .beat.on { background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+    .beat .bnum { font-size: 10.5px; color: #999999; font-weight: 500; width: 36px; flex-shrink: 0; font-variant-numeric: tabular-nums; line-height: 1.5; }
+    .beat .bnum b { display: block; font-weight: 500; color: #c7c7c7; }
+    .beat .x { font-size: 12px; line-height: 1.45; color: #383838; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; min-width: 0; flex-grow: 1; }
+    .seg2 { height: 34px; border-radius: 5px; position: relative; overflow: hidden; min-width: 0; display: flex; align-items: flex-end; padding: 0 0 3px 5px; font-size: 10px; font-weight: 600; color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,.4); }
+    .qh { display: flex; align-items: center; gap: 8px; margin: 12px 0 2px; font-size: 11px; font-weight: 500; color: #7c7c7c; }
+    .qh b { font-weight: 500; color: #c7c7c7; }
+    .qr { display: grid; grid-template-columns: 26px minmax(0, 1fr) 92px 128px 46px 150px 74px; align-items: center; height: 40px; border-bottom: 1px solid #f3f3f3; font-size: 12.5px; color: #383838; }
+    .qr > * { padding: 0 7px; min-width: 0; display: flex; align-items: center; gap: 7px; }
+    .qr .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
+    .qr .num { justify-content: flex-end; font-variant-numeric: tabular-nums; }
+    .pos { width: 18px; height: 18px; border-radius: 5px; background: #f3f3f3; color: #525252; font-size: 10.5px; font-weight: 600; display: flex; align-items: center; justify-content: center; }
+    .pbar { height: 4px; border-radius: 2px; background: #ededed; flex-grow: 1; position: relative; overflow: hidden; }
+    .pbar div { height: 4px; border-radius: 2px; background: var(--ac); }
+    .floor { background-color: #fcfcfc; background-image: linear-gradient(45deg, #f5f5f5 25%, transparent 25%, transparent 75%, #f5f5f5 75%), linear-gradient(45deg, #f5f5f5 25%, transparent 25%, transparent 75%, #f5f5f5 75%); background-size: 12px 12px; background-position: 0 0, 6px 6px; }
+    .lbl2 { font-size: 12px; font-weight: 500; color: #171717; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .lbl3 { font-size: 11px; color: #999999; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; }
+    .ctile { min-width: 0; }
+    .cth { position: relative; aspect-ratio: 16 / 9; border-radius: 8px; overflow: hidden; }
+    .cn { font-size: 12px; color: #171717; margin-top: 7px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .hov { position: absolute; inset: 0; background: rgba(23,23,23,.42); display: flex; align-items: center; justify-content: center; gap: 6px; }
+    .hb { width: 28px; height: 28px; border-radius: 8px; background: rgba(255,255,255,.95); display: flex; align-items: center; justify-content: center; }
+    .hb svg { width: 14px; height: 14px; stroke: #171717; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+    .slot { flex: 1 1 0; min-width: 0; }
+    .slot .sb { height: 44px; border-radius: 7px; position: relative; overflow: hidden; background: #f5f5f5; display: flex; align-items: center; justify-content: center; }
+    .slot .sl { font-size: 10.5px; color: #999999; margin-top: 5px; text-align: center; font-variant-numeric: tabular-nums; }
+    .lane { position: relative; height: 40px; border-radius: 7px; background: #fafafa; overflow: hidden; }
+    .tk { display: flex; align-items: center; gap: 9px; height: 34px; padding: 0 9px; border-radius: 8px; font-size: 12px; color: #383838; }
+    .tk.on { background: #f8f8f8; }
+    .play { width: 24px; height: 24px; border-radius: 12px; background: #fff; border: 1px solid #e2e2e2; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .play svg { width: 10px; height: 10px; fill: #171717; }
+    .aspb { height: 26px; padding: 0 10px; border-radius: 6px; display: flex; align-items: center; gap: 6px; font-size: 12px; cursor: pointer; }
+    .cut { flex-shrink: 0; cursor: pointer; }
+    .cut .cb2 { height: 68px; display: flex; align-items: flex-end; }
+    .cut .ci { border-radius: 6px; overflow: hidden; position: relative; }
+
+    /* pixel render floor */
+    @keyframes bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-1px); } }
+    @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+    @keyframes steam { 0% { transform: translateY(0); opacity: 1; } 100% { transform: translateY(-4px); opacity: 0; } }
+    @keyframes smoke { 0% { transform: translate(0, 0); opacity: .9; } 100% { transform: translate(2px, -6px); opacity: 0; } }
+    @keyframes zz { 0% { transform: translate(0, 0); opacity: 0; } 30% { opacity: 1; } 100% { transform: translate(3px, -5px); opacity: 0; } }
+    @keyframes belt { 0% { transform: translateX(0); } 100% { transform: translateX(14px); } }
+    @keyframes roll { to { stroke-dashoffset: -4; } }
+    @keyframes type { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(1px); } }
+    .bob { animation: bob .9s steps(1, end) infinite; }
+    .type { animation: type .3s steps(1, end) infinite; }
+    .type2 { animation: type .3s steps(1, end) infinite .15s; }
+    .blink { animation: blink 1s steps(1, end) infinite; }
+    .steam { animation: steam 1.6s steps(4) infinite; }
+    .smoke { animation: smoke 1.8s steps(6) infinite; }
+    .smoke2 { animation: smoke 1.8s steps(6) infinite .9s; }
+    .zz { animation: zz 2.4s steps(6) infinite; }
+    .zz2 { animation: zz 2.4s steps(6) infinite 1.2s; }
+    .belt { animation: belt 2.8s steps(14) infinite; }
+    .roll { animation: roll .5s steps(2) infinite; }</style>
+</helmet>
+
+<div style="--ac: {{accent}}; width: 1440px; height: 900px; display: flex; background: #ffffff; color: #171717; overflow: hidden;">
+
+  <div style="width: 52px; flex-shrink: 0; background: #f8f8f8; border-right: 1px solid #ededed; display: flex; flex-direction: column; align-items: center; padding: 10px 0; gap: 3px;">
+    <div style="width: 28px; height: 28px; border-radius: 8px; background: #171717; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 11px; font-weight: 600; margin-bottom: 10px;">AF</div>
+    <div class="r"><svg viewBox="0 0 24 24"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 9.5 9.5 0 0 1-2.8-.4L4 21l1.4-4.1A8.2 8.2 0 0 1 3.6 11.5 8.4 8.4 0 0 1 12 3.1a8.4 8.4 0 0 1 9 8.4z"/></svg></div>
+    <div class="r"><svg viewBox="0 0 24 24"><path d="M3.6 6.9a2.1 2.1 0 0 1 2.1-2.1h3.2a2.1 2.1 0 0 1 1.62.76l1.02 1.24h6.76a2.1 2.1 0 0 1 2.1 2.1v8.3a2.1 2.1 0 0 1-2.1 2.1H5.7a2.1 2.1 0 0 1-2.1-2.1z"/></svg></div>
+    <div class="r"><svg viewBox="0 0 24 24"><rect x="3.4" y="12.6" width="4.2" height="7.4" rx="1.5"/><rect x="9.9" y="8.4" width="4.2" height="11.6" rx="1.5"/><rect x="16.4" y="4" width="4.2" height="16" rx="1.5"/></svg></div>
+    <div class="r"><svg viewBox="0 0 24 24"><path d="M6.4 3.4h7.4L18.6 8v12.6H6.4z"/><path d="M9.4 12.3h6M9.4 15.6h6" stroke="#f8f8f8" stroke-width="1.5" fill="none"/></svg></div>
+    <div class="r on"><svg viewBox="0 0 24 24"><rect x="3.4" y="5.4" width="12.4" height="13.2" rx="2.1"/><path d="m16.6 13 4.6 2.8V8.2L16.6 11z"/></svg></div>
+    <div class="r"><svg viewBox="0 0 24 24"><path d="M21.86 4.14a1.1 1.1 0 0 0-1.14-.18L2.9 11.13c-.86.34-.83 1.58.05 1.87l4.46 1.5 1.68 5.06c.24.72 1.15.93 1.68.38l2.4-2.5 4.4 3.23c.6.44 1.46.12 1.63-.6z"/></svg></div>
+    <div style="width: 22px; height: 1px; background: #e2e2e2; margin: 6px 0;"></div>
+    <div class="r"><svg viewBox="0 0 24 24"><rect x="5.4" y="3.4" width="13.2" height="17.2" rx="2"/><path d="M8.4 8h7.2M8.4 12h7.2M8.4 16h4" stroke="#f8f8f8" stroke-width="1.5" fill="none"/></svg></div>
+    <div class="r"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.6"/><path d="M14.8 9.4c-.4-1-1.5-1.6-2.8-1.6-1.6 0-2.8.9-2.8 2.1 0 2.9 5.7 1.4 5.7 4.3 0 1.2-1.2 2.1-2.9 2.1-1.4 0-2.5-.6-2.9-1.6M12 6.4v1.4M12 16.3v1.4" stroke="#f8f8f8" stroke-width="1.5" fill="none"/></svg></div>
+    <div class="r"><svg viewBox="0 0 24 24"><path d="M12 3.2 4.4 6.2v5.6c0 4.4 3.1 8.3 7.6 9.3 4.5-1 7.6-4.9 7.6-9.3V6.2z"/></svg></div>
+    <div class="r no"><svg viewBox="0 0 24 24"><circle cx="12" cy="7.8" r="3.7"/><path d="M4.7 20.2a7.3 7.3 0 0 1 14.6 0z"/></svg></div>
+    <div class="r"><svg viewBox="0 0 24 24"><path d="M4 7.4h16M4 12h16M4 16.6h16" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linecap="round"/><circle cx="9" cy="7.4" r="2.2"/><circle cx="15" cy="16.6" r="2.2"/></svg></div>
+    <div style="flex-grow: 1;"></div>
+    <img class="av" src="pfp-chan.jpg" style="width: 26px; height: 26px;">
+  </div>
+
+<sc-if value="{{sideOpen}}" hint-placeholder-val="{{ true }}">
+  <div style="width: 240px; flex-shrink: 0; background: #f8f8f8; border-right: 1px solid #ededed; display: flex; flex-direction: column; padding: 8px 8px 10px;">
+    <div style="display: flex; align-items: center; gap: 6px; padding: 0 0 0 9px; font-size: 12px; color: #7c7c7c;"><svg viewBox="0 0 24 24" style="width: 12px; height: 12px; stroke: #7c7c7c; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><path d="m14.5 6-6 6 6 6"/></svg>All projects<div style="margin-left: auto;"><div class="ptog" onClick="{{ toggleSide }}" title="Hide the project list"><svg viewBox="0 0 24 24"><rect x="3.8" y="4.8" width="16.4" height="14.4" rx="2.6"/><path d="M9.6 4.8v14.4"/></svg></div></div></div>
+    <div style="padding: 8px 9px 10px; font-size: 14px; font-weight: 500;">Video Edit</div>
+    <div style="height: 30px; border-radius: 8px; background: #fff; border: 1px solid #ededed; display: flex; align-items: center; gap: 7px; padding: 0 9px; margin: 0 1px;">
+      <svg viewBox="0 0 24 24" style="width: 12px; height: 12px; stroke: #999999; fill: none; stroke-width: 1.9; stroke-linecap: round;"><circle cx="11" cy="11" r="6.4"/><path d="m15.8 15.8 4 4"/></svg><span style="font-size: 12px; color: #999999; flex-grow: 1;">Jump to a project</span><span class="kbd">⌘K</span>
+    </div>
+    <div class="sg"><svg viewBox="0 0 24 24"><path d="m6.5 9.5 5.5 5.5 5.5-5.5"/></svg>Rendering<span style="margin-left: auto; font-weight: 420;">1</span></div>
+    <div style="display: flex; flex-direction: column; gap: 1px;">
+      <div class="sn on" style="height: 34px;"><div class="crop" style="overflow: hidden; width: 30px; height: 17px; border-radius: 4px; flex-shrink: 0;"><img src="cover-history.jpg" style="width: 100%; height: 100%; object-fit: cover; object-position: 50% 50%;"></div><span>History of Greece · Ep 75</span><img class="av" src="pfp-chan.jpg" style="width: 16px; height: 16px;"></div>
+    </div>
+    <div class="sg"><svg viewBox="0 0 24 24"><path d="m6.5 9.5 5.5 5.5 5.5-5.5"/></svg>In review<span style="margin-left: auto; font-weight: 420;">1</span></div>
+    <div style="display: flex; flex-direction: column; gap: 1px;">
+      <div class="sn" style="height: 34px;"><div class="crop" style="overflow: hidden; width: 30px; height: 17px; border-radius: 4px; flex-shrink: 0;"><img src="cover-orange.jpg" style="width: 100%; height: 100%; object-fit: cover; object-position: 50% 50%;"></div><span>Orange typography cut</span><img class="av" src="pfp-leung.jpg" style="width: 16px; height: 16px;"></div>
+    </div>
+    <div class="sg"><svg viewBox="0 0 24 24"><path d="m6.5 9.5 5.5 5.5 5.5-5.5"/></svg>On hold<span style="margin-left: auto; font-weight: 420;">1</span></div>
+    <div style="display: flex; flex-direction: column; gap: 1px;">
+      <div class="sn" style="height: 34px;"><div class="crop" style="overflow: hidden; width: 30px; height: 17px; border-radius: 4px; flex-shrink: 0;"><img src="cover-goodday.jpg" style="width: 100%; height: 100%; object-fit: cover; object-position: 50% 50%;"></div><span>Good day · collage teaser</span><img class="av" src="pfp-amy.jpg" style="width: 16px; height: 16px;"></div>
+    </div>
+    <div class="sg"><svg viewBox="0 0 24 24"><path d="m6.5 9.5 5.5 5.5 5.5-5.5"/></svg>Waiting for script<span style="margin-left: auto; font-weight: 420;">1</span></div>
+    <div style="display: flex; flex-direction: column; gap: 1px;">
+      <div class="sn" style="height: 34px;"><div style="width: 30px; height: 17px; border-radius: 4px; background: #f3f3f3; display: flex; align-items: center; justify-content: center; flex-shrink: 0;"><svg viewBox="0 0 10 9" width="10" height="9" shape-rendering="crispEdges" style="display: block; flex-shrink: 0;"><rect x="0" y="0" width="10" height="1" fill="#262626"/><rect x="0" y="1" width="1" height="1" fill="#262626"/><rect x="1" y="1" width="1" height="1" fill="#ffffff"/><rect x="2" y="1" width="2" height="1" fill="#262626"/><rect x="4" y="1" width="1" height="1" fill="#ffffff"/><rect x="5" y="1" width="2" height="1" fill="#262626"/><rect x="7" y="1" width="1" height="1" fill="#ffffff"/><rect x="8" y="1" width="2" height="1" fill="#262626"/><rect x="0" y="2" width="10" height="1" fill="#262626"/><rect x="0" y="3" width="1" height="1" fill="#262626"/><rect x="1" y="3" width="8" height="1" fill="#e6e9ee"/><rect x="9" y="3" width="1" height="1" fill="#262626"/><rect x="0" y="4" width="1" height="1" fill="#262626"/><rect x="1" y="4" width="1" height="1" fill="#e6e9ee"/><rect x="2" y="4" width="5" height="1" fill="#aab3bf"/><rect x="7" y="4" width="2" height="1" fill="#e6e9ee"/><rect x="9" y="4" width="1" height="1" fill="#262626"/><rect x="0" y="5" width="1" height="1" fill="#262626"/><rect x="1" y="5" width="8" height="1" fill="#e6e9ee"/><rect x="9" y="5" width="1" height="1" fill="#262626"/><rect x="0" y="6" width="1" height="1" fill="#262626"/><rect x="1" y="6" width="1" height="1" fill="#e6e9ee"/><rect x="2" y="6" width="3" height="1" fill="#aab3bf"/><rect x="5" y="6" width="4" height="1" fill="#e6e9ee"/><rect x="9" y="6" width="1" height="1" fill="#262626"/><rect x="0" y="7" width="1" height="1" fill="#262626"/><rect x="1" y="7" width="8" height="1" fill="#e6e9ee"/><rect x="9" y="7" width="1" height="1" fill="#262626"/><rect x="0" y="8" width="10" height="1" fill="#262626"/></svg></div><span>Sham Shui Po dai pai dong revival</span><img class="av" src="pfp-amy.jpg" style="width: 16px; height: 16px;"></div>
+    </div>
+    <div class="sg"><svg viewBox="0 0 24 24"><path d="m6.5 9.5 5.5 5.5 5.5-5.5"/></svg>Exported<span style="margin-left: auto; font-weight: 420;">2</span></div>
+    <div style="display: flex; flex-direction: column; gap: 1px;">
+      <div class="sn" style="height: 34px;"><div class="crop" style="overflow: hidden; width: 30px; height: 17px; border-radius: 4px; flex-shrink: 0;"><img src="cover-porsche.jpg" style="width: 100%; height: 100%; object-fit: cover; object-position: 50% 50%;"></div><span>Porsche cat · night drive</span><img class="av" src="pfp-chan.jpg" style="width: 16px; height: 16px;"></div>
+      <div class="sn" style="height: 34px;"><div class="crop" style="overflow: hidden; width: 30px; height: 17px; border-radius: 4px; flex-shrink: 0;"><img src="cover-domore.jpg" style="width: 100%; height: 100%; object-fit: cover; object-position: 50% 50%;"></div><span>Do more · brand spot</span><img class="av" src="pfp-michelle.jpg" style="width: 16px; height: 16px;"></div>
+    </div>
+    <div style="margin-top: auto; padding: 10px 9px 2px; border-top: 1px solid #ededed;">
+      <div class="cap" style="line-height: 1.5;">A project opens when its script is locked in Script.</div>
+    </div>
+  </div>
+</sc-if>
+<sc-if value="{{sideClosed}}" hint-placeholder-val="{{ false }}">
+  <div class="mini">
+    <div class="ptog" onClick="{{ toggleSide }}" title="Show the project list"><svg viewBox="0 0 24 24"><rect x="3.8" y="4.8" width="16.4" height="14.4" rx="2.6"/><path d="M9.6 4.8v14.4"/></svg></div>
+    <div style="width: 22px; height: 1px; background: #e2e2e2; margin: 6px 0 4px;"></div>
+    <div class="mi on" title="History of Greece · Ep 75"><div class="crop" style="overflow: hidden; width: 28px; height: 16px; border-radius: 4px; flex-shrink: 0;"><img src="cover-history.jpg" style="width: 100%; height: 100%; object-fit: cover; object-position: 50% 50%;"></div><span class="dot" style="background: #007be0; width: 6px; height: 6px;"></span></div>
+    <div class="mi" title="Orange typography cut"><div class="crop" style="overflow: hidden; width: 28px; height: 16px; border-radius: 4px; flex-shrink: 0;"><img src="cover-orange.jpg" style="width: 100%; height: 100%; object-fit: cover; object-position: 50% 50%;"></div><span class="dot" style="background: #db7706; width: 6px; height: 6px;"></span></div>
+    <div class="mi" title="Good day · collage teaser"><div class="crop" style="overflow: hidden; width: 28px; height: 16px; border-radius: 4px; flex-shrink: 0;"><img src="cover-goodday.jpg" style="width: 100%; height: 100%; object-fit: cover; object-position: 50% 50%;"></div><span class="dot" style="background: #999999; width: 6px; height: 6px;"></span></div>
+    <div class="mi" title="Sham Shui Po dai pai dong revival"><div style="width: 28px; height: 16px; border-radius: 4px; background: #f3f3f3; display: flex; align-items: center; justify-content: center; flex-shrink: 0;"><svg viewBox="0 0 10 9" width="10" height="9" shape-rendering="crispEdges" style="display: block; flex-shrink: 0;"><rect x="0" y="0" width="10" height="1" fill="#262626"/><rect x="0" y="1" width="1" height="1" fill="#262626"/><rect x="1" y="1" width="1" height="1" fill="#ffffff"/><rect x="2" y="1" width="2" height="1" fill="#262626"/><rect x="4" y="1" width="1" height="1" fill="#ffffff"/><rect x="5" y="1" width="2" height="1" fill="#262626"/><rect x="7" y="1" width="1" height="1" fill="#ffffff"/><rect x="8" y="1" width="2" height="1" fill="#262626"/><rect x="0" y="2" width="10" height="1" fill="#262626"/><rect x="0" y="3" width="1" height="1" fill="#262626"/><rect x="1" y="3" width="8" height="1" fill="#e6e9ee"/><rect x="9" y="3" width="1" height="1" fill="#262626"/><rect x="0" y="4" width="1" height="1" fill="#262626"/><rect x="1" y="4" width="1" height="1" fill="#e6e9ee"/><rect x="2" y="4" width="5" height="1" fill="#aab3bf"/><rect x="7" y="4" width="2" height="1" fill="#e6e9ee"/><rect x="9" y="4" width="1" height="1" fill="#262626"/><rect x="0" y="5" width="1" height="1" fill="#262626"/><rect x="1" y="5" width="8" height="1" fill="#e6e9ee"/><rect x="9" y="5" width="1" height="1" fill="#262626"/><rect x="0" y="6" width="1" height="1" fill="#262626"/><rect x="1" y="6" width="1" height="1" fill="#e6e9ee"/><rect x="2" y="6" width="3" height="1" fill="#aab3bf"/><rect x="5" y="6" width="4" height="1" fill="#e6e9ee"/><rect x="9" y="6" width="1" height="1" fill="#262626"/><rect x="0" y="7" width="1" height="1" fill="#262626"/><rect x="1" y="7" width="8" height="1" fill="#e6e9ee"/><rect x="9" y="7" width="1" height="1" fill="#262626"/><rect x="0" y="8" width="10" height="1" fill="#262626"/></svg></div><span class="dot" style="background: #c7c7c7; width: 6px; height: 6px;"></span></div>
+    <div class="mi" title="Porsche cat · night drive"><div class="crop" style="overflow: hidden; width: 28px; height: 16px; border-radius: 4px; flex-shrink: 0;"><img src="cover-porsche.jpg" style="width: 100%; height: 100%; object-fit: cover; object-position: 50% 50%;"></div><span class="dot" style="background: #278f5e; width: 6px; height: 6px;"></span></div>
+    <div class="mi" title="Do more · brand spot"><div class="crop" style="overflow: hidden; width: 28px; height: 16px; border-radius: 4px; flex-shrink: 0;"><img src="cover-domore.jpg" style="width: 100%; height: 100%; object-fit: cover; object-position: 50% 50%;"></div><span class="dot" style="background: #278f5e; width: 6px; height: 6px;"></span></div>
+  </div>
+</sc-if>
+  <div style="flex-grow: 1; display: flex; flex-direction: column; min-width: 0;">
+
+    <div class="bar" style="height: 52px; gap: 10px;">
+      <svg viewBox="0 0 24 24" style="width: 16px; height: 16px; flex-shrink: 0; stroke: #7c7c7c; fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round;"><rect x="3.4" y="5.4" width="12.4" height="13.2" rx="2.1"/><path d="m16.6 13 4.6 2.8V8.2L16.6 11z"/></svg>
+      <span class="h1" style="white-space: nowrap;">History of Greece · Ep 75</span>
+      <span class="bd blue">003 · Rendering</span>
+      <span class="mut" style="white-space: nowrap;">Script v6 · YouTube 16:9</span>
+      <div style="flex-grow: 1;"></div>
+      <div class="costc" title="Project cost so far, against its cap">HK$412.80<div class="m"><div style="width: 46%;"></div></div><span class="cap">of 900</span></div>
+      <div style="display: flex; align-items: center;"><div style="position: relative; margin-left: 0px;"><img class="av" src="pfp-chan.jpg" style="width: 24px; height: 24px; box-shadow: 0 0 0 2px #fff;"><span style="position: absolute; right: -1px; bottom: -1px; width: 8px; height: 8px; border-radius: 4px; background: #278f5e; box-shadow: 0 0 0 2px #fff;"></span></div><div style="position: relative; margin-left: -6px;"><img class="av" src="pfp-leung.jpg" style="width: 24px; height: 24px; box-shadow: 0 0 0 2px #fff;"></div></div>
+      <div class="btn s"><svg viewBox="0 0 24 24" style="width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;"><path d="M12 17V6.5M7.5 11 12 6.5l4.5 4.5M5 18.5h14"/></svg>Upload to Database</div>
+    </div>
+    <div class="tabs">
+      <div class="tb">Shots<b>9</b></div>
+      <div class="tb on">Media<b>42</b></div>
+      <div class="tb">Renders<i>2</i></div>
+      <div class="tb">Preview</div>
+      <div class="tb">Audio</div>
+      <div class="tb">Export</div>
+      <div style="flex-grow: 1;"></div>
+      <div style="display: flex; align-items: center; gap: 10px;"><span class="cap">42 of 57 files visible to you</span></div>
+    </div>
+    <div style="flex-grow: 1; display: flex; min-height: 0;">
+      <div style="flex-grow: 1; min-width: 0; padding: 14px 20px 0; overflow: hidden; display: flex; flex-direction: column;">
+        <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 14px;">
+          <div style="width: 190px; height: 28px; border: 1px solid #ededed; border-radius: 8px; background: #f8f8f8; display: flex; align-items: center; gap: 7px; padding: 0 9px;"><svg viewBox="0 0 24 24" style="width: 13px; height: 13px; stroke: #999999; fill: none; stroke-width: 1.8; stroke-linecap: round;"><circle cx="11" cy="11" r="6.4"/><path d="m15.8 15.8 4 4"/></svg><span style="font-size: 12px; color: #999999;">Search clips</span></div>
+          <div class="fc">Type: All <svg viewBox="0 0 24 24"><path d="m6.5 9.5 5.5 5.5 5.5-5.5"/></svg></div><div class="fc">Duration <svg viewBox="0 0 24 24"><path d="m6.5 9.5 5.5 5.5 5.5-5.5"/></svg></div><div class="fc">Resolution: 4K <svg viewBox="0 0 24 24"><path d="m6.5 9.5 5.5 5.5 5.5-5.5"/></svg></div>
+          <div class="fc on">marble <svg viewBox="0 0 24 24" style="stroke: #c7c7c7;"><path d="M6 6l12 12M18 6 6 18"/></svg></div>
+          <div style="flex-grow: 1;"></div>
+          <div class="fc" style="color: #7c7c7c;"><svg viewBox="0 0 24 24" style="width: 13px; height: 13px; stroke: #7c7c7c; fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round;"><path d="M4.5 12a7.5 7.5 0 1 0 2.2-5.3"/><path d="M4.5 4.5v3.8h3.8"/></svg>Removed <b>3</b></div>
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 18px 14px;">
+
+          <div class="ctile">
+            <div class="cth" style="box-shadow: 0 0 0 2px #fff, 0 0 0 4px {{accent}};"><div class="crop" style="overflow: hidden; position: absolute; inset: 0;"><img src="cover-history.jpg" style="width: 100%; height: 100%; object-fit: cover; object-position: 50% 84%; transform: scale(1.4); transform-origin: 50% 84%;"></div>
+              
+              <div class="pill dk" style="bottom: 6px; right: 6px;">0:48</div>
+              
+              <div style="position: absolute; top: 6px; right: 6px;"><div class="cb on"><svg viewBox="0 0 16 16"><path d="M3.6 8.3 6.5 11.2 12.4 5.1"/></svg></div></div>
+            </div>
+            <div class="cn">marble_relief_rowers.mov</div>
+            <div class="cap" style="margin-top: 2px;">4K · unused</div>
+          </div>
+          <div class="ctile">
+            <div class="cth"><div class="crop" style="overflow: hidden; position: absolute; inset: 0;"><img src="cover-history.jpg" style="width: 100%; height: 100%; object-fit: cover; object-position: 57% 24%; transform: scale(1.4); transform-origin: 57% 24%;"></div>
+              <div class="pill" style="top: 6px; left: 6px;">In 05</div>
+              <div class="pill dk" style="bottom: 6px; right: 6px;">1:12</div>
+              <div class="hov"><div class="hb" title="Play"><svg viewBox="0 0 24 24"><path d="M8 5.5v13l10.5-6.5z" fill="#171717" stroke="none"/></svg></div><div class="hb" title="Assign to a shot"><svg viewBox="0 0 24 24"><path d="M12 6v12M6 12h12"/></svg></div><div class="hb" title="Remove from project"><svg viewBox="0 0 24 24"><path d="M5.5 7.5h13M9.5 7.5V5.8a1.3 1.3 0 0 1 1.3-1.3h2.4a1.3 1.3 0 0 1 1.3 1.3v1.7M7 7.5l.8 11.2h8.4L17 7.5"/></svg></div></div><div style="position: absolute; top: 6px; right: 6px;"><div class="cb"></div></div>
+              
+            </div>
+            <div class="cn">winged_victory_tilt.mov</div>
+            <div class="cap" style="margin-top: 2px;">4K</div>
+          </div>
+          <div class="ctile">
+            <div class="cth"><div class="crop" style="overflow: hidden; position: absolute; inset: 0;"><img src="cover-history.jpg" style="width: 100%; height: 100%; object-fit: cover; object-position: 40% 45%; transform: scale(1.4); transform-origin: 40% 45%;"></div>
+              <div class="pill" style="top: 6px; left: 6px;">In 06</div>
+              <div class="pill dk" style="bottom: 6px; right: 6px;">0:31</div>
+              
+              
+            </div>
+            <div class="cn">wing_detail_macro.mov</div>
+            <div class="cap" style="margin-top: 2px;">4K</div>
+          </div>
+          <div class="ctile">
+            <div class="cth"><div class="crop" style="overflow: hidden; position: absolute; inset: 0;"><img src="cover-history.jpg" style="width: 100%; height: 100%; object-fit: cover; object-position: 6% 42%; transform: scale(1.4); transform-origin: 6% 42%;"></div>
+              <div class="pill" style="top: 6px; left: 6px;">In 08</div>
+              
+              
+              
+            </div>
+            <div class="cn">title_card_history.png</div>
+            <div class="cap" style="margin-top: 2px;">4K still</div>
+          </div>
+          <div class="ctile">
+            <div class="cth"><div class="crop" style="overflow: hidden; position: absolute; inset: 0;"><img src="cover-history.jpg" style="width: 100%; height: 100%; object-fit: cover; object-position: 50% 50%;"></div>
+              <div class="pill" style="top: 6px; left: 6px;">In 09</div>
+              
+              
+              
+            </div>
+            <div class="cn">end_card_subscribe.png</div>
+            <div class="cap" style="margin-top: 2px;">4K still</div>
+          </div>
+          <div class="ctile">
+            <div class="cth"><div class="crop" style="overflow: hidden; position: absolute; inset: 0;"><img src="cover-domore.jpg" style="width: 100%; height: 100%; object-fit: cover; object-position: 38% 62%; transform: scale(1.4); transform-origin: 38% 62%;"></div>
+              <div class="pill" style="top: 6px; left: 6px;">In 01</div>
+              <div class="pill dk" style="bottom: 6px; right: 6px;">0:24</div>
+              
+              
+            </div>
+            <div class="cn">aegean_map_push.mp4</div>
+            <div class="cap" style="margin-top: 2px;">Generated</div>
+          </div>
+          <div class="ctile">
+            <div class="cth"><div class="crop" style="overflow: hidden; position: absolute; inset: 0;"><img src="cover-domore.jpg" style="width: 100%; height: 100%; object-fit: cover; object-position: 74% 52%; transform: scale(1.4); transform-origin: 74% 52%;"></div>
+              
+              <div class="pill dk" style="bottom: 6px; right: 6px;">0:31</div>
+              
+              
+            </div>
+            <div class="cn">strait_dusk_v2.mp4</div>
+            <div class="cap" style="margin-top: 2px;">Generated · unused</div>
+          </div>
+          <div class="ctile">
+            <div class="cth"><div class="crop" style="overflow: hidden; position: absolute; inset: 0;"><img src="cover-domore.jpg" style="width: 100%; height: 100%; object-fit: cover; object-position: 96% 16%; transform: scale(1.4); transform-origin: 96% 16%;"></div>
+              <div class="pill" style="top: 6px; left: 6px;">In 04</div>
+              <div class="pill dk" style="bottom: 6px; right: 6px;">0:36</div>
+              
+              
+            </div>
+            <div class="cn">fire_over_strait.mp4</div>
+            <div class="cap" style="margin-top: 2px;">Generated</div>
+          </div>
+          <div class="ctile">
+            <div class="cth"><div class="crop" style="overflow: hidden; position: absolute; inset: 0;"><img src="cover-history.jpg" style="width: 100%; height: 100%; object-fit: cover; object-position: 94% 92%; transform: scale(1.4); transform-origin: 94% 92%;"></div>
+              
+              <div class="pill dk" style="bottom: 6px; right: 6px;">0:20</div>
+              
+              
+            </div>
+            <div class="cn">marble_texture_loop.mov</div>
+            <div class="cap" style="margin-top: 2px;">4K · unused</div>
+          </div>
+          <div class="ctile">
+            <div class="cth"><div class="crop" style="overflow: hidden; position: absolute; inset: 0;"><img src="cover-goodday.jpg" style="width: 100%; height: 100%; object-fit: cover; object-position: 50% 50%;"></div>
+              
+              
+              
+              
+            </div>
+            <div class="cn">museum_postcards_scan.jpg</div>
+            <div class="cap" style="margin-top: 2px;">2400×1600 · unused</div>
+          </div>
+        </div>
+        <div style="margin-top: 22px; padding: 14px 14px 12px; border-radius: 12px; background: #fafafa;">
+          <div style="display: flex; align-items: center; margin-bottom: 10px;"><span class="lbl" style="padding: 0;">Drop onto a shot</span><span class="cap" style="margin-left: 8px;">2 shots have no clip</span><span class="cap" style="margin-left: auto;">or select a clip and press A</span></div>
+          <div style="display: flex; gap: 6px; position: relative;">
+            <div class="slot"><div class="sb" style=""><div class="crop" style="overflow: hidden; position: absolute; inset: 0;"><img src="cover-domore.jpg" style="width: 100%; height: 100%; object-fit: cover; object-position: 38% 62%; transform: scale(1.4); transform-origin: 38% 62%;"></div></div><div class="sl">01</div></div>
+            <div class="slot"><div class="sb" style="background: #eaf4fd; box-shadow: inset 0 0 0 2px {{accent}};"><span style="font-size: 11px; font-weight: 500; color: {{accent}};">Drop here</span></div><div class="sl">02</div></div>
+            <div class="slot"><div class="sb" style=""><div class="crop" style="overflow: hidden; position: absolute; inset: 0;"><img src="cover-domore.jpg" style="width: 100%; height: 100%; object-fit: cover; object-position: 74% 52%; transform: scale(1.4); transform-origin: 74% 52%;"></div></div><div class="sl">03</div></div>
+            <div class="slot"><div class="sb" style=""><div class="crop" style="overflow: hidden; position: absolute; inset: 0;"><img src="cover-domore.jpg" style="width: 100%; height: 100%; object-fit: cover; object-position: 96% 16%; transform: scale(1.4); transform-origin: 96% 16%;"></div></div><div class="sl">04</div></div>
+            <div class="slot"><div class="sb" style=""><div class="crop" style="overflow: hidden; position: absolute; inset: 0;"><img src="cover-history.jpg" style="width: 100%; height: 100%; object-fit: cover; object-position: 57% 24%; transform: scale(1.4); transform-origin: 57% 24%;"></div></div><div class="sl">05</div></div>
+            <div class="slot"><div class="sb" style=""><div class="crop" style="overflow: hidden; position: absolute; inset: 0;"><img src="cover-history.jpg" style="width: 100%; height: 100%; object-fit: cover; object-position: 40% 45%; transform: scale(1.4); transform-origin: 40% 45%;"></div></div><div class="sl">06</div></div>
+            <div class="slot"><div class="sb" style="background: #fff0f0;"><span style="font-size: 10.5px; color: #c53030;">Failed</span></div><div class="sl">07</div></div>
+            <div class="slot"><div class="sb" style=""><div class="crop" style="overflow: hidden; position: absolute; inset: 0;"><img src="cover-history.jpg" style="width: 100%; height: 100%; object-fit: cover; object-position: 6% 42%; transform: scale(1.4); transform-origin: 6% 42%;"></div></div><div class="sl">08</div></div>
+            <div class="slot"><div class="sb" style=""><div class="crop" style="overflow: hidden; position: absolute; inset: 0;"><img src="cover-history.jpg" style="width: 100%; height: 100%; object-fit: cover; object-position: 50% 50%;"></div></div><div class="sl">09</div></div>
+            <div style="position: absolute; left: 104px; top: 12px; width: 64px; height: 36px; border-radius: 6px; overflow: hidden; transform: rotate(-4deg); box-shadow: 0 10px 22px rgba(0,0,0,.22); opacity: .92;"><div class="crop" style="overflow: hidden; width: 100%; height: 100%;"><img src="cover-history.jpg" style="width: 100%; height: 100%; object-fit: cover; object-position: 50% 84%; transform: scale(1.4); transform-origin: 50% 84%;"></div></div>
+            <svg viewBox="0 0 24 24" style="position: absolute; left: 156px; top: 34px; width: 18px; height: 18px;"><path d="M5 3l12 8-5.5 1.2L15 19l-2.5 1.2-3.4-6.7L5 17z" fill="#171717" stroke="#fff" stroke-width="1.2" stroke-linejoin="round"/></svg>
+          </div>
+        </div>
+        <div style="display: flex; align-items: center; gap: 10px; margin-top: 14px; padding: 10px 12px; border-radius: 10px; border: 1px solid #f3f3f3;">
+          <svg viewBox="0 0 10 8" width="20" height="16" shape-rendering="crispEdges" style="display: block; flex-shrink: 0;"><rect x="3" y="0" width="4" height="1" fill="#262626"/><rect x="0" y="1" width="10" height="1" fill="#262626"/><rect x="1" y="2" width="1" height="1" fill="#262626"/><rect x="2" y="2" width="6" height="1" fill="#aab3bf"/><rect x="8" y="2" width="1" height="1" fill="#262626"/><rect x="1" y="3" width="1" height="1" fill="#262626"/><rect x="2" y="3" width="1" height="1" fill="#aab3bf"/><rect x="3" y="3" width="1" height="1" fill="#262626"/><rect x="4" y="3" width="1" height="1" fill="#aab3bf"/><rect x="5" y="3" width="1" height="1" fill="#262626"/><rect x="6" y="3" width="2" height="1" fill="#aab3bf"/><rect x="8" y="3" width="1" height="1" fill="#262626"/><rect x="1" y="4" width="1" height="1" fill="#262626"/><rect x="2" y="4" width="1" height="1" fill="#aab3bf"/><rect x="3" y="4" width="1" height="1" fill="#262626"/><rect x="4" y="4" width="1" height="1" fill="#aab3bf"/><rect x="5" y="4" width="1" height="1" fill="#262626"/><rect x="6" y="4" width="2" height="1" fill="#aab3bf"/><rect x="8" y="4" width="1" height="1" fill="#262626"/><rect x="1" y="5" width="1" height="1" fill="#262626"/><rect x="2" y="5" width="1" height="1" fill="#aab3bf"/><rect x="3" y="5" width="1" height="1" fill="#262626"/><rect x="4" y="5" width="1" height="1" fill="#aab3bf"/><rect x="5" y="5" width="1" height="1" fill="#262626"/><rect x="6" y="5" width="2" height="1" fill="#aab3bf"/><rect x="8" y="5" width="1" height="1" fill="#262626"/><rect x="1" y="6" width="1" height="1" fill="#262626"/><rect x="2" y="6" width="6" height="1" fill="#aab3bf"/><rect x="8" y="6" width="1" height="1" fill="#262626"/><rect x="2" y="7" width="6" height="1" fill="#262626"/></svg>
+          <div style="flex-grow: 1; min-width: 0;"><div style="font-size: 12.5px; color: #171717;">3 clips removed from this project</div><div class="cap" style="margin-top: 1px;">Kept in the Database. Restore them here for 30 days.</div></div>
+          <div class="btn s" style="height: 27px;"><svg viewBox="0 0 24 24" style="width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round;"><path d="M4.5 12a7.5 7.5 0 1 0 2.2-5.3"/><path d="M4.5 4.5v3.8h3.8"/></svg>Restore</div>
+        </div>
+      </div>
+
+      <div style="width: 320px; flex-shrink: 0; border-left: 1px solid #ededed; background: #fcfcfc; display: flex; flex-direction: column;">
+        <div style="height: 44px; flex-shrink: 0; display: flex; align-items: center; gap: 2px; padding: 0 10px; border-bottom: 1px solid #ededed;">
+          <div class="rtab on">Clip</div>
+          <div class="rtab"><svg viewBox="0 0 24 24" style="width: 12px; height: 12px; stroke: {{accent}}; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;"><path d="M12 4.2 19 8v8l-7 3.8L5 16V8z"/><path d="M12 11.8 19 8M12 11.8v8M12 11.8 5 8"/></svg>Agent</div>
+          <div style="flex-grow: 1;"></div>
+          <svg viewBox="0 0 24 24" style="width: 15px; height: 15px; stroke: #999999; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;"><path d="m10 6 6 6-6 6"/></svg>
+        </div>
+
+        <div style="flex-grow: 1; min-height: 0; overflow: hidden; padding: 14px;">
+          <div style="position: relative; aspect-ratio: 16 / 9; border-radius: 10px; overflow: hidden;"><div class="crop" style="overflow: hidden; position: absolute; inset: 0;"><img src="cover-history.jpg" style="width: 100%; height: 100%; object-fit: cover; object-position: 50% 84%; transform: scale(1.4); transform-origin: 50% 84%;"></div><div style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;"><div style="width: 38px; height: 38px; border-radius: 19px; background: rgba(255,255,255,.94); display: flex; align-items: center; justify-content: center;"><svg viewBox="0 0 24 24" style="width: 14px; height: 14px;"><path d="M8 5.5v13l10.5-6.5z" fill="#171717"/></svg></div></div><div class="pill dk" style="bottom: 8px; right: 8px;">0:48</div></div>
+          <div style="font-size: 13px; font-weight: 500; margin-top: 12px;">marble_relief_rowers.mov</div>
+          <div style="display: flex; gap: 5px; margin-top: 8px;"><span class="bd gray">marble</span><span class="bd gray">relief</span><span class="bd gray">rowers</span></div>
+          <div class="kv" style="margin-top: 10px;"><span>Resolution</span><span>3840 × 2160 · 25 fps</span></div>
+          <div class="kv"><span>Codec · size</span><span>ProRes 422 · 2.1 GB</span></div>
+          <div class="kv"><span>Owner</span><span>Leung Chi-hang</span></div>
+          <div class="kv"><span>Your access</span><span>Can use in projects</span></div>
+          <div class="kv" style="border: none;"><span>Used in</span><span>Not used yet</span></div>
+          <div style="display: flex; gap: 9px; margin-top: 10px; padding: 10px 11px; border-radius: 10px; background: #f5faff;">
+            <span style="color: {{accent}}; margin-top: 1px;"><svg viewBox="0 0 24 24" style="width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;"><path d="m12 3.5 1.9 5.1 5.1 1.9-5.1 1.9L12 17.5l-1.9-5.1L5 10.5l5.1-1.9z"/></svg></span>
+            <div style="font-size: 12px; line-height: 1.5; color: #383838;">Matches shot 02, <b style="font-weight: 500;">Marble relief of rowers</b>. Trim 0:12 to 0:38 to fit 0:26.</div>
+          </div>
+          <div class="btn" style="width: 100%; justify-content: center; height: 32px; margin-top: 12px; background: {{accent}}; color: #fff; font-weight: 500;">Assign to shot 02</div>
+          <div style="display: flex; gap: 6px; margin-top: 7px;"><div class="btn s" style="flex: 1; justify-content: center;">Open in Database</div><div class="btn s" style="flex: 1; justify-content: center; color: #e03636;"><svg viewBox="0 0 24 24" style="width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round;"><path d="M5.5 7.5h13M9.5 7.5V5.8a1.3 1.3 0 0 1 1.3-1.3h2.4a1.3 1.3 0 0 1 1.3 1.3v1.7M7 7.5l.8 11.2h8.4L17 7.5"/></svg>Remove</div></div>
+        </div>
+        <div style="flex-shrink: 0; border-top: 1px solid #f3f3f3; padding: 10px 14px 12px;" class="cap">15 files in this folder are restricted and hidden from you.</div>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script data-dc-script data-props='{"accent":{"editor":"color","default":"#007BE0","options":["#007BE0","#171717","#278F5E","#6846E3"],"section":"Theme"},"sidebar":{"editor":"enum","options":["open","collapsed"],"default":"open","section":"Layout"},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = {}; }
+  accent() { var raw = this.props.accent || '#007BE0'; return /^#[0-9a-fA-F]{6}$/.test(raw) ? raw : '#007BE0'; }
+  side(v) {
+    var self = this;
+    var c = this.state.c != null ? this.state.c : this.props.sidebar === 'collapsed';
+    v.sideOpen = !c; v.sideClosed = c;
+    v.toggleSide = function () { self.setState({ c: !c }); };
+    return v;
+  }
+  renderVals() { return this.side({ accent: this.accent() }); }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,283 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<!-- hand-authored: Market Research · Comment inbox. Rebuild with research-screens.mjs -->
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;450;500;600&display=swap">
+  <style>
+    html, body { overflow: hidden; }
+    body { margin: 0; font-family: Inter, system-ui, sans-serif; font-weight: 420; letter-spacing: 0.02em; -webkit-font-smoothing: antialiased; }
+    * { box-sizing: border-box; }
+    a { color: #007be0; text-decoration: none; }
+    img { display: block; }
+    p { margin: 0; }
+
+    @keyframes fadeUp { from { transform: translateY(10px); opacity: 0 } to { transform: none; opacity: 1 } }
+    @keyframes rowIn  { from { transform: translateY(7px);  opacity: 0 } to { transform: none; opacity: 1 } }
+    .scr { animation: fadeUp .24s cubic-bezier(.32,.72,0,1) both; }
+    .tr  { animation: rowIn .3s cubic-bezier(.32,.72,0,1) both; }
+    .tr:nth-of-type(1){animation-delay:.01s} .tr:nth-of-type(2){animation-delay:.035s}
+    .tr:nth-of-type(3){animation-delay:.06s} .tr:nth-of-type(4){animation-delay:.085s}
+    .tr:nth-of-type(5){animation-delay:.11s} .tr:nth-of-type(6){animation-delay:.135s}
+    .tr:nth-of-type(7){animation-delay:.16s} .tr:nth-of-type(8){animation-delay:.185s}
+
+    /* rail */
+    .r { width: 34px; height: 34px; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: #7c7c7c; transition: background .16s ease, color .16s ease; }
+    .r svg { width: 17px; height: 17px; fill: currentColor; }
+    .r.on { background: #ffffff; box-shadow: 0 1px 2px rgba(0,0,0,0.1); color: #171717; }
+    .r.no { opacity: .32; }
+
+    /* sidebar */
+    .n { display: flex; align-items: center; gap: 8px; height: 28px; padding: 0 9px; border-radius: 8px; font-size: 12.5px; color: #525252; transition: background .16s ease; }
+    .n.on { background: #ffffff; box-shadow: 0 1px 2px rgba(0,0,0,0.1); color: #171717; font-weight: 500; }
+    .n b { margin-left: auto; font-size: 10.5px; font-weight: 500; color: #999999; }
+    .n i { margin-left: auto; font-style: normal; display: inline-flex; align-items: center; height: 17px; padding: 0 6px; border-radius: 9px; background: #ffe7e7; color: #e03636; font-size: 10px; font-weight: 500; }
+    .lbl { font-size: 10.5px; font-weight: 500; color: #999999; padding: 0 9px; }
+
+    /* generic */
+    .bar { height: 48px; flex-shrink: 0; border-bottom: 1px solid #ededed; display: flex; align-items: center; gap: 10px; padding: 0 20px; }
+    .h1 { font-size: 14px; font-weight: 500; }
+    .mut { font-size: 12px; color: #999999; }
+    .btn { height: 30px; padding: 0 12px; border-radius: 8px; display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; white-space: nowrap; }
+    .btn.p { background: #007be0; color: #fff; font-weight: 500; }
+    .btn.s { border: 1px solid #ededed; color: #525252; }
+    .btn svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+    .chip { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 11px; border: 1px solid #ededed; border-radius: 8px; font-size: 12px; color: #4a5763; white-space: nowrap; }
+    .chip svg { width: 10px; height: 10px; stroke: #999999; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    .bd { display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border-radius: 6px; font-size: 11px; font-weight: 500; white-space: nowrap; }
+    .gray { background: #f3f3f3; color: #525252 }
+    .blue { background: #e6f4ff; color: #007be0 }
+    .grn  { background: #e4faeb; color: #278f5e }
+    .amb  { background: #fff7d3; color: #db7706 }
+    .red  { background: #ffe7e7; color: #e03636 }
+    .card { border: 1px solid #ededed; border-radius: 12px; background: #fff; padding: 16px; }
+    .kv { display: flex; justify-content: space-between; gap: 14px; padding: 8px 0; border-bottom: 1px solid #f3f3f3; font-size: 12.5px; }
+    .kv span:first-child { color: #999999; }
+    .av { width: 20px; height: 20px; border-radius: 10px; object-fit: cover; flex-shrink: 0; }
+    .stat { border: 1px solid #ededed; border-radius: 12px; padding: 13px 15px; background: #fff; }
+    .stat i { font-style: normal; display: block; font-size: 10.5px; font-weight: 500; color: #999999; }
+    .stat b { display: block; font-size: 22px; font-weight: 500; letter-spacing: -0.01em; margin-top: 6px; font-variant-numeric: tabular-nums; }
+
+    /* table */
+    .t { width: 100%; }
+    .t .hd { height: 32px; border-bottom: 1px solid #ededed; display: grid; align-items: center; }
+    .t .hd > * { font-size: 10.5px; font-weight: 500; color: #7c7c7c; padding: 0 12px; }
+    .tr { height: 46px; border-bottom: 1px solid #f3f3f3; display: grid; align-items: center; }
+    .tr > * { font-size: 12.5px; color: #383838; padding: 0 12px; min-width: 0; display: flex; align-items: center; }
+    .num { justify-content: flex-end; font-variant-numeric: tabular-nums; }
+    .el { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
+    .body { flex-grow: 1; min-height: 0; padding: 18px 20px; overflow: hidden; }
+    .focus { box-shadow: 0 0 0 3px #EFF6FF; }
+  
+    .wl { display: flex; align-items: center; gap: 10px; height: 46px; padding: 0 12px; border-bottom: 1px solid #f3f3f3; }
+    .wl.on { background: #f5faff; box-shadow: inset 2px 0 0 var(--ac); }
+    .wl .rk { width: 16px; font-size: 10.5px; color: #c7c7c7; font-variant-numeric: tabular-nums; flex-shrink: 0; }
+    .wl .nm { flex-grow: 1; min-width: 0; font-size: 12.5px; color: #171717; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .wl .ht { width: 26px; text-align: right; font-size: 12.5px; font-weight: 500; font-variant-numeric: tabular-nums; flex-shrink: 0; }
+    .wl .ch { width: 54px; text-align: right; font-size: 11.5px; font-variant-numeric: tabular-nums; flex-shrink: 0; }
+    .up { color: #278f5e; } .dn { color: #e03636; }
+    .tf { display: flex; gap: 2px; padding: 2px; border-radius: 8px; background: #f3f3f3; }
+    .tf div { height: 24px; padding: 0 10px; border-radius: 6px; display: flex; align-items: center; font-size: 11.5px; color: #7c7c7c; font-weight: 500; }
+    .tf div.on { background: #fff; color: #171717; box-shadow: 0 1px 2px rgba(0,0,0,.1); }
+    .rtab { height: 26px; padding: 0 11px; border-radius: 7px; display: flex; align-items: center; font-size: 12px; color: #7c7c7c; }
+    .rtab.on { background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.1); color: #171717; font-weight: 500; }
+    .cap { font-size: 11px; color: #999999; }
+    .lwbox { position: relative; }
+    .lwload { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 11px; color: #c7c7c7; }
+    .src { display: flex; gap: 10px; padding: 10px 0; border-bottom: 1px solid #f3f3f3; }
+    .src:last-child { border-bottom: none; }
+    .src b { font-size: 10.5px; font-weight: 500; color: #999999; width: 52px; flex-shrink: 0; padding-top: 1px; }
+    .src span { font-size: 12.5px; line-height: 1.45; color: #383838; }
+    .sw { width: 9px; height: 9px; border-radius: 3px; flex-shrink: 0; }</style>
+</helmet>
+
+<div style="--ac: {{accent}}; width: 1440px; height: 900px; display: flex; background: #ffffff; color: #171717; overflow: hidden;">
+  <div style="width: 52px; flex-shrink: 0; background: #f8f8f8; border-right: 1px solid #ededed; display: flex; flex-direction: column; align-items: center; padding: 10px 0; gap: 3px;">
+    <div style="width: 28px; height: 28px; border-radius: 8px; background: #171717; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 11px; font-weight: 600; margin-bottom: 10px;">AF</div>
+    <div class="r"><svg viewBox="0 0 24 24"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 9.5 9.5 0 0 1-2.8-.4L4 21l1.4-4.1A8.2 8.2 0 0 1 3.6 11.5 8.4 8.4 0 0 1 12 3.1a8.4 8.4 0 0 1 9 8.4z"/></svg></div>
+    <div class="r"><svg viewBox="0 0 24 24"><path d="M3.6 6.9a2.1 2.1 0 0 1 2.1-2.1h3.2a2.1 2.1 0 0 1 1.62.76l1.02 1.24h6.76a2.1 2.1 0 0 1 2.1 2.1v8.3a2.1 2.1 0 0 1-2.1 2.1H5.7a2.1 2.1 0 0 1-2.1-2.1z"/></svg></div>
+    <div class="r on"><svg viewBox="0 0 24 24"><rect x="3.4" y="12.6" width="4.2" height="7.4" rx="1.5"/><rect x="9.9" y="8.4" width="4.2" height="11.6" rx="1.5"/><rect x="16.4" y="4" width="4.2" height="16" rx="1.5"/></svg></div>
+    <div class="r"><svg viewBox="0 0 24 24"><path d="M6.4 3.4h7.4L18.6 8v12.6H6.4z"/><path d="M9.4 12.3h6M9.4 15.6h6" stroke="#f8f8f8" stroke-width="1.5" fill="none"/></svg></div>
+    <div class="r"><svg viewBox="0 0 24 24"><rect x="3.4" y="5.4" width="12.4" height="13.2" rx="2.1"/><path d="m16.6 13 4.6 2.8V8.2L16.6 11z"/></svg></div>
+    <div class="r"><svg viewBox="0 0 24 24"><path d="M21.86 4.14a1.1 1.1 0 0 0-1.14-.18L2.9 11.13c-.86.34-.83 1.58.05 1.87l4.46 1.5 1.68 5.06c.24.72 1.15.93 1.68.38l2.4-2.5 4.4 3.23c.6.44 1.46.12 1.63-.6z"/></svg></div>
+    <div style="width: 22px; height: 1px; background: #e2e2e2; margin: 6px 0;"></div>
+    <div class="r"><svg viewBox="0 0 24 24"><rect x="5.4" y="3.4" width="13.2" height="17.2" rx="2"/><path d="M8.4 8h7.2M8.4 12h7.2M8.4 16h4" stroke="#f8f8f8" stroke-width="1.5" fill="none"/></svg></div>
+    <div class="r"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.6"/><path d="M14.8 9.4c-.4-1-1.5-1.6-2.8-1.6-1.6 0-2.8.9-2.8 2.1 0 2.9 5.7 1.4 5.7 4.3 0 1.2-1.2 2.1-2.9 2.1-1.4 0-2.5-.6-2.9-1.6M12 6.4v1.4M12 16.3v1.4" stroke="#f8f8f8" stroke-width="1.5" fill="none"/></svg></div>
+    <div class="r"><svg viewBox="0 0 24 24"><path d="M12 3.2 4.4 6.2v5.6c0 4.4 3.1 8.3 7.6 9.3 4.5-1 7.6-4.9 7.6-9.3V6.2z"/></svg></div>
+    <div class="r no"><svg viewBox="0 0 24 24"><circle cx="12" cy="7.8" r="3.7"/><path d="M4.7 20.2a7.3 7.3 0 0 1 14.6 0z"/></svg></div>
+    <div class="r"><svg viewBox="0 0 24 24"><path d="M4 7.4h16M4 12h16M4 16.6h16" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linecap="round"/><circle cx="9" cy="7.4" r="2.2"/><circle cx="15" cy="16.6" r="2.2"/></svg></div>
+    <div style="flex-grow: 1;"></div>
+    <img class="av" src="pfp-amy.jpg" style="width: 26px; height: 26px; border-radius: 13px;">
+  </div>
+
+  <div style="width: 212px; flex-shrink: 0; background: #f8f8f8; border-right: 1px solid #ededed; display: flex; flex-direction: column; padding: 10px 8px;">
+    <div style="padding: 4px 9px 12px; font-size: 14px; font-weight: 500;">Market Research</div>
+    <div class="lbl" style="margin-bottom: 5px;">Screens</div>
+    <div style="display: flex; flex-direction: column; gap: 1px;">
+      <div class="n"><span>Trends dashboard</span></div>
+      <div class="n"><span>Search &amp; compare</span></div>
+      <div class="n"><span>Content performance</span></div>
+      <div class="n on"><span>Comment inbox</span><i>27</i></div>
+      <div class="n"><span>Topic backlog</span><b>9</b></div>
+    </div>
+    <div class="lbl" style="margin: 18px 0 5px;">Connected sources</div>
+    <div style="display: flex; flex-direction: column; gap: 1px;">
+      <div class="n"><span>GDELT</span><span style="margin-left: auto; width: 6px; height: 6px; border-radius: 3px; background: #278f5e;"></span></div>
+      <div class="n"><span>YouTube mostPopular</span><span style="margin-left: auto; width: 6px; height: 6px; border-radius: 3px; background: #278f5e;"></span></div>
+      <div class="n"><span>Google Trends</span><span style="margin-left: auto; width: 6px; height: 6px; border-radius: 3px; background: #278f5e;"></span></div>
+      <div class="n" style="color: #999999;"><span>Instagram Graph</span><span style="margin-left: auto; width: 6px; height: 6px; border-radius: 3px; background: #db7706;"></span></div>
+    </div>
+    <div style="margin-top: auto; padding: 11px 9px 4px; border-top: 1px solid #ededed;">
+      <div class="lbl" style="padding: 0; margin-bottom: 5px;">Ranking weights</div>
+      <div class="mut" style="line-height: 1.5;">Adopt and reject feed back into ranking. 34 decisions this month.</div>
+    </div>
+  </div>
+  <div style="flex-grow: 1; display: flex; flex-direction: column; min-width: 0;">
+    <div class="bar">
+      <span class="h1">Comment inbox</span>
+      <span class="mut">replies require human approval</span>
+      <div style="flex-grow: 1;"></div>
+      <div style="width: 240px; height: 28px; border: 1px solid #ededed; border-radius: 8px; background: #f8f8f8; display: flex; align-items: center; gap: 7px; padding: 0 9px;">
+        <svg viewBox="0 0 24 24" style="width: 13px; height: 13px; stroke: #999999; fill: none; stroke-width: 1.8; stroke-linecap: round;"><circle cx="11" cy="11" r="6.4"/><path d="m15.8 15.8 4 4"/></svg>
+        <span style="font-size: 12px; color: #999999;">Search topics, sources</span>
+      </div>
+      <div style="position: relative; display: flex;">
+        <svg viewBox="0 0 24 24" style="width: 16px; height: 16px; stroke: #525252; fill: none; stroke-width: 1.7; stroke-linecap: round;"><path d="M18 9a6 6 0 1 0-12 0c0 5-2 6.5-2 6.5h16S18 14 18 9z"/><path d="M13.7 19a2 2 0 0 1-3.4 0"/></svg>
+        <div style="position: absolute; top: 0; right: 0; width: 5px; height: 5px; border-radius: 3px; background: #e03636;"></div>
+      </div>
+    </div>
+    <div style="flex-grow: 1; display: flex; min-height: 0;">
+      <div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; overflow: hidden;">
+
+        <div style="flex-shrink: 0; height: 50px; display: flex; align-items: center; gap: 8px; padding: 0 20px; border-bottom: 1px solid #ededed;">
+          <div class="chip">Sentiment: All <svg viewBox="0 0 24 24"><path d="m6.5 9.5 5.5 5.5 5.5-5.5"/></svg></div><div class="chip">Language: All <svg viewBox="0 0 24 24"><path d="m6.5 9.5 5.5 5.5 5.5-5.5"/></svg></div><div class="chip">Flagged</div><div class="chip">Business leads</div>
+          <div style="flex-grow: 1;"></div>
+          <span class="cap">Bulk:</span><div class="btn s">Hide</div><div class="btn s">Mark as spam</div>
+        </div>
+        <div style="flex-shrink: 0; display: grid; grid-template-columns: minmax(0,1fr) 250px; gap: 18px; padding: 14px 20px; border-bottom: 1px solid #ededed;">
+          <div>
+            <div style="display: flex; align-items: baseline; gap: 9px; margin-bottom: 10px;"><span style="font-size: 13.5px; font-weight: 500;">Sentiment distribution</span><span class="cap">27 new comments · 3 channels</span></div>
+            <div style="display: flex; align-items: flex-end; gap: 8px; height: 64px;">
+              <div style="flex: 1; display: flex; flex-direction: column; align-items: center; gap: 5px;"><span style="font-size: 11px; font-variant-numeric: tabular-nums; color: #525252;">2</span><div style="width: 100%; height: 9px; background: #e03636; border-radius: 4px 4px 1px 1px;"></div></div>
+              <div style="flex: 1; display: flex; flex-direction: column; align-items: center; gap: 5px;"><span style="font-size: 11px; font-variant-numeric: tabular-nums; color: #525252;">4</span><div style="width: 100%; height: 18px; background: #f79596; border-radius: 4px 4px 1px 1px;"></div></div>
+              <div style="flex: 1; display: flex; flex-direction: column; align-items: center; gap: 5px;"><span style="font-size: 11px; font-variant-numeric: tabular-nums; color: #525252;">7</span><div style="width: 100%; height: 31px; background: #c7c7c7; border-radius: 4px 4px 1px 1px;"></div></div>
+              <div style="flex: 1; display: flex; flex-direction: column; align-items: center; gap: 5px;"><span style="font-size: 11px; font-variant-numeric: tabular-nums; color: #525252;">10</span><div style="width: 100%; height: 44px; background: #86e0a8; border-radius: 4px 4px 1px 1px;"></div></div>
+              <div style="flex: 1; display: flex; flex-direction: column; align-items: center; gap: 5px;"><span style="font-size: 11px; font-variant-numeric: tabular-nums; color: #525252;">4</span><div style="width: 100%; height: 18px; background: #278f5e; border-radius: 4px 4px 1px 1px;"></div></div>
+            </div>
+            <div style="display: flex; gap: 8px; margin-top: 5px;"><span style="flex: 1; text-align: center; font-size: 10.5px; color: #999999;">Very negative</span><span style="flex: 1; text-align: center; font-size: 10.5px; color: #999999;">Negative</span><span style="flex: 1; text-align: center; font-size: 10.5px; color: #999999;">Neutral</span><span style="flex: 1; text-align: center; font-size: 10.5px; color: #999999;">Positive</span><span style="flex: 1; text-align: center; font-size: 10.5px; color: #999999;">Very positive</span></div>
+          </div>
+          <div style="border-left: 1px solid #ededed; padding-left: 18px;">
+            <div class="lbl" style="padding: 0; margin-bottom: 10px;">Language</div>
+            <div class="kv" style="padding: 5px 0;"><span>粵語 Cantonese</span><span>18</span></div>
+            <div class="kv" style="padding: 5px 0;"><span>English</span><span>7</span></div>
+            <div class="kv" style="padding: 5px 0; border: none;"><span>普通話 Mandarin</span><span>2</span></div>
+            <div class="cap" style="margin-top: 6px;">TikTok has no comment interface</div>
+          </div>
+        </div>
+        <div style="flex-grow: 1; min-height: 0; display: flex;">
+          <div style="width: 330px; flex-shrink: 0; border-right: 1px solid #ededed; overflow: hidden; padding: 6px 0;">
+            <div style="display: flex; align-items: center; gap: 9px; padding: 9px 14px 6px;"><img src="cover-history.jpg" style="width: 34px; height: 19px; border-radius: 3px; object-fit: cover;"><span style="font-size: 11.5px; font-weight: 500; color: #525252;">history-of-greece_ep75</span><span class="cap" style="margin-left: auto;">3</span></div>
+            <div style="display: flex; gap: 10px; padding: 9px 14px; background: #f5faff; box-shadow: inset 2px 0 0 {{accent}};"><img src="pfp-amy.jpg" style="width: 26px; height: 26px; border-radius: 13px; object-fit: cover; flex-shrink: 0;"><div style="min-width: 0; flex-grow: 1;"><div style="display: flex; align-items: center; gap: 6px;"><span style="font-size: 12.5px; font-weight: 600;">@kk_wong</span><span class="cap">2 h</span><span class="bd grn" style="margin-left: auto;">Positive</span></div><div style="font-size: 12.5px; color: #525252; margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">呢集真係好正,幾時出下一集?</div></div></div>
+            <div style="display: flex; gap: 10px; padding: 9px 14px; "><img src="pfp-leung.jpg" style="width: 26px; height: 26px; border-radius: 13px; object-fit: cover; flex-shrink: 0;"><div style="min-width: 0; flex-grow: 1;"><div style="display: flex; align-items: center; gap: 6px;"><span style="font-size: 12.5px; font-weight: 500;">@brandpartner_hk</span><span class="cap">3 h</span><span class="bd blue" style="margin-left: auto;">Lead</span></div><div style="font-size: 12.5px; color: #525252; margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">Do you take sponsorship enquiries for the night-market series?</div></div></div>
+            <div style="display: flex; gap: 10px; padding: 9px 14px; "><img src="pfp-michelle.jpg" style="width: 26px; height: 26px; border-radius: 13px; object-fit: cover; flex-shrink: 0;"><div style="min-width: 0; flex-grow: 1;"><div style="display: flex; align-items: center; gap: 6px;"><span style="font-size: 12.5px; font-weight: 500;">@anon_4471</span><span class="cap">4 h</span><span class="bd amb" style="margin-left: auto;">Flagged</span></div><div style="font-size: 12.5px; color: #525252; margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">Contains a flagged keyword</div></div></div>
+            <div style="display: flex; align-items: center; gap: 9px; padding: 9px 14px 6px;"><img src="cover-porsche.jpg" style="width: 34px; height: 19px; border-radius: 3px; object-fit: cover;"><span style="font-size: 11.5px; font-weight: 500; color: #525252;">porsche-cat_night</span><span class="cap" style="margin-left: auto;">2</span></div>
+            <div style="display: flex; gap: 10px; padding: 9px 14px; "><img src="pfp-chan.jpg" style="width: 26px; height: 26px; border-radius: 13px; object-fit: cover; flex-shrink: 0;"><div style="min-width: 0; flex-grow: 1;"><div style="display: flex; align-items: center; gap: 6px;"><span style="font-size: 12.5px; font-weight: 500;">@lensbyleo</span><span class="cap">5 h</span><span class="bd grn" style="margin-left: auto;">Positive</span></div><div style="font-size: 12.5px; color: #525252; margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">Colour grade on this is unreal. What LUT?</div></div></div>
+            <div style="display: flex; gap: 10px; padding: 9px 14px; "><img src="pfp-amy.jpg" style="width: 26px; height: 26px; border-radius: 13px; object-fit: cover; flex-shrink: 0;"><div style="min-width: 0; flex-grow: 1;"><div style="display: flex; align-items: center; gap: 6px;"><span style="font-size: 12.5px; font-weight: 500;">@mei_eats</span><span class="cap">6 h</span><span class="bd gray" style="margin-left: auto;">Neutral</span></div><div style="font-size: 12.5px; color: #525252; margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">好想知間舖喺邊</div></div></div>
+          </div>
+          <div style="flex-grow: 1; min-width: 0; padding: 16px 20px; overflow: hidden;">
+            <div style="display: flex; align-items: center; gap: 10px;"><img src="pfp-amy.jpg" style="width: 36px; height: 36px; border-radius: 18px; object-fit: cover;"><div><div style="font-size: 13.5px; font-weight: 600;">@kk_wong</div><div class="cap">YouTube · on history-of-greece_ep75 · 2 h ago · 14 prior comments</div></div><span class="bd grn" style="margin-left: auto;">Positive</span></div>
+            <div style="margin-top: 14px; padding: 14px 16px; border-radius: 12px; background: #f8f8f8; font-size: 15px; line-height: 1.6;">呢集真係好正,幾時出下一集?</div>
+            <div class="cap" style="margin-top: 7px;">“This episode is great, when’s the next one?” · machine translation</div>
+            <div style="display: flex; align-items: center; gap: 8px; margin: 20px 0 8px;"><span class="lbl" style="padding: 0;">AI-suggested reply</span><span class="bd amb">Draft</span></div>
+            <div style="border: 1px solid #d9d9d9; border-radius: 12px; padding: 13px 15px; font-size: 14px; line-height: 1.6; color: #2b343d; box-shadow: 0 0 0 3px #EFF6FF;">多謝支持!下一集會喺下星期三上載,記得開通知 🔔</div>
+            <div style="display: flex; align-items: center; gap: 8px; margin-top: 12px;">
+              <div class="btn p" style="height: 32px;">Approve &amp; send</div><div class="btn s" style="height: 32px;">Edit</div><div class="btn s" style="height: 32px;">Regenerate</div>
+              <div style="flex-grow: 1;"></div><span class="cap">Nothing sends without approval</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div style="width: 312px; flex-shrink: 0; border-left: 1px solid #ededed; background: #fcfcfc; display: flex; flex-direction: column;">
+        <div style="height: 42px; flex-shrink: 0; display: flex; align-items: center; gap: 2px; padding: 0 10px; border-bottom: 1px solid #ededed;">
+          <div class="rtab">Watchlist</div>
+          <div class="rtab on" style="gap: 6px;"><svg viewBox="0 0 24 24" style="width: 12px; height: 12px; stroke: {{accent}}; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;"><path d="M12 4.2 19 8v8l-7 3.8L5 16V8z"/><path d="M12 11.8 19 8M12 11.8v8M12 11.8 5 8"/></svg>Agent</div>
+          <div style="flex-grow: 1;"></div>
+          <span class="cap">HK/TW/SG</span>
+        </div>
+
+        <div style="flex-shrink: 0; padding: 11px 13px; border-bottom: 1px solid #f3f3f3;">
+          <div style="display: inline-flex; align-items: center; gap: 7px; height: 25px; padding: 0 10px; border-radius: 7px; background: #fff; border: 1px solid #ededed;">
+            <span style="width: 6px; height: 6px; border-radius: 3px; background: {{accent}};"></span><span style="font-size: 11.5px; color: #525252;">27 comments · 3 channels</span>
+          </div>
+        </div>
+        <div style="flex-grow: 1; min-height: 0; padding: 14px 13px 0; overflow: hidden;">
+          <div style="display: flex; justify-content: flex-end; margin-bottom: 10px;"><div style="max-width: 240px; background: #f3f3f3; border-radius: 10px; padding: 8px 11px; font-size: 12px; line-height: 1.5; color: #383838;">Any business leads today?</div></div>
+          <div style="display: inline-flex; align-items: center; gap: 7px; height: 23px; padding: 0 9px; border: 1px solid #ededed; border-radius: 7px; background: #fff; margin-bottom: 9px;">
+            <svg viewBox="0 0 24 24" style="width: 11px; height: 11px; stroke: #278f5e; fill: none; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round;"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span style="font-size: 11px; color: #525252;">Read 27 comments · 0.6 s</span>
+          </div>
+          <p style="font-size: 12px; line-height: 1.6; color: #383838; text-wrap: pretty;">One: @brandpartner_hk asked about sponsorship on ep75. Their account links to a Causeway Bay F&amp;B group. I’ve drafted a reply that routes them to your sales inbox, it still needs your approval.</p>
+          <div style="display: flex; gap: 6px; margin-top: 11px;"><div class="btn p" style="height: 27px; font-size: 12px;">Open the lead</div><div class="btn s" style="height: 27px; font-size: 12px;">Not now</div></div>
+        </div>
+        <div style="flex-shrink: 0; padding: 11px 13px 9px;">
+          <div style="border: 1px solid #e2e2e2; border-radius: 10px; background: #fff; padding: 9px 10px 7px;">
+            <div style="font-size: 12px; color: #999999;">Ask about these trends…</div>
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 11px;"><span style="font-size: 10.5px; color: #999999;">gemini-2.5-pro</span><div style="width: 25px; height: 25px; border-radius: 7px; background: {{accent}}; display: flex; align-items: center; justify-content: center;"><svg viewBox="0 0 24 24" style="width: 12px; height: 12px; stroke: #fff; fill: none; stroke-width: 2.3; stroke-linecap: round; stroke-linejoin: round;"><path d="M12 19V5.5M6 11.5 12 5.5l6 6"/></svg></div></div>
+          </div>
+        </div>
+        <div style="flex-shrink: 0; border-top: 1px solid #f3f3f3; padding: 9px 13px 11px; display: flex; align-items: center; gap: 7px;">
+          <span style="font-size: 10.5px; color: #999999;">Comment data is personal data, HK PDPO applies</span><span style="margin-left: auto; font-size: 10.5px; color: #999999;">HK$0.06</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script data-dc-script data-props='{"accent":{"editor":"color","default":"#007BE0","options":["#007BE0","#171717","#278F5E","#6846E3"],"section":"Theme"},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  componentDidMount() {
+    if (!document.querySelector('[id^="lw-"]')) return;
+    var self = this;
+    var go = function () { try { self.draw(); } catch (e) { var el = document.querySelector('.lwload'); if (el) el.textContent = 'chart error: ' + e.message; } };
+    if (window.LightweightCharts) return go();
+    var s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js';
+    s.onload = go;
+    s.onerror = function () { var el = document.querySelector('.lwload'); if (el) el.textContent = 'chart library blocked'; };
+    document.head.appendChild(s);
+  }
+  accent() { var raw = this.props.accent || '#007BE0'; return /^#[0-9a-fA-F]{6}$/.test(raw) ? raw : '#007BE0'; }
+  base(el, h) {
+    return LightweightCharts.createChart(el, {
+      width: el.clientWidth, height: h,
+      layout: { background: { type: 'solid', color: '#ffffff' }, textColor: '#999999', fontFamily: 'Inter, system-ui, sans-serif', fontSize: 11 },
+      grid: { vertLines: { color: '#f5f5f5' }, horzLines: { color: '#f3f3f3' } },
+      rightPriceScale: { borderColor: '#ededed' },
+      timeScale: { borderColor: '#ededed', rightOffset: 2, fixLeftEdge: true, fixRightEdge: true },
+      crosshair: { mode: 0, vertLine: { color: '#c7c7c7', width: 1, style: 2, labelBackgroundColor: '#171717' }, horzLine: { color: '#c7c7c7', width: 1, style: 2, labelBackgroundColor: '#171717' } },
+      handleScroll: false, handleScale: false
+    });
+  }
+  gen(seed, n, base, lift, liftAt, noise) {
+    var s = seed, rnd = function () { s = (s * 16807) % 2147483647; return s / 2147483647; };
+    var out = [], v = base, t0 = Date.UTC(2026, 5, 12);
+    for (var i = 0; i < n; i++) {
+      v = Math.max(4, v + (rnd() - 0.48) * noise);
+      var bump = i >= liftAt ? lift * (1 - Math.exp(-(i - liftAt) / 5)) : 0;
+      var d = new Date(t0 + i * 86400000).toISOString().slice(0, 10);
+      out.push({ time: d, value: Math.round(v + bump) });
+    }
+    return out;
+  }
+  done(el) { var l = el.parentNode.querySelector('.lwload'); if (l) l.remove(); }
+  renderVals() { return { accent: this.accent() }; }
+  draw() {
+  }
+}
+</script>
+</body>
+</html>

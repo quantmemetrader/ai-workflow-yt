@@ -1,0 +1,353 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<!-- hand-authored: Script · Harbourfront redevelopment hearing. Rebuild with script-screens.mjs -->
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;450;500;600&family=Noto+Sans+HK:wght@400;500&display=swap">
+  <style>
+    html, body { overflow: hidden; }
+    body { margin: 0; font-family: Inter, 'PingFang HK', 'Noto Sans HK', system-ui, sans-serif; font-weight: 420; letter-spacing: 0.02em; -webkit-font-smoothing: antialiased; }
+    * { box-sizing: border-box; }
+    a { color: #007be0; text-decoration: none; }
+    img { display: block; }
+    p { margin: 0; }
+
+    @keyframes fadeUp { from { transform: translateY(10px); opacity: 0 } to { transform: none; opacity: 1 } }
+    @keyframes rowIn  { from { transform: translateY(7px);  opacity: 0 } to { transform: none; opacity: 1 } }
+    .scr { animation: fadeUp .24s cubic-bezier(.32,.72,0,1) both; }
+    .tr  { animation: rowIn .3s cubic-bezier(.32,.72,0,1) both; }
+    .tr:nth-of-type(1){animation-delay:.01s} .tr:nth-of-type(2){animation-delay:.035s}
+    .tr:nth-of-type(3){animation-delay:.06s} .tr:nth-of-type(4){animation-delay:.085s}
+    .tr:nth-of-type(5){animation-delay:.11s} .tr:nth-of-type(6){animation-delay:.135s}
+    .tr:nth-of-type(7){animation-delay:.16s} .tr:nth-of-type(8){animation-delay:.185s}
+
+    /* rail */
+    .r { width: 34px; height: 34px; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: #7c7c7c; transition: background .16s ease, color .16s ease; }
+    .r svg { width: 17px; height: 17px; fill: currentColor; }
+    .r.on { background: #ffffff; box-shadow: 0 1px 2px rgba(0,0,0,0.1); color: #171717; }
+    .r.no { opacity: .32; }
+
+    /* sidebar */
+    .n { display: flex; align-items: center; gap: 8px; height: 28px; padding: 0 9px; border-radius: 8px; font-size: 12.5px; color: #525252; transition: background .16s ease; }
+    .n.on { background: #ffffff; box-shadow: 0 1px 2px rgba(0,0,0,0.1); color: #171717; font-weight: 500; }
+    .n b { margin-left: auto; font-size: 10.5px; font-weight: 500; color: #999999; }
+    .n i { margin-left: auto; font-style: normal; display: inline-flex; align-items: center; height: 17px; padding: 0 6px; border-radius: 9px; background: #ffe7e7; color: #e03636; font-size: 10px; font-weight: 500; }
+    .lbl { font-size: 10.5px; font-weight: 500; color: #999999; padding: 0 9px; }
+
+    /* generic */
+    .bar { height: 48px; flex-shrink: 0; border-bottom: 1px solid #ededed; display: flex; align-items: center; gap: 10px; padding: 0 20px; }
+    .h1 { font-size: 14px; font-weight: 500; }
+    .mut { font-size: 12px; color: #999999; }
+    .btn { height: 30px; padding: 0 12px; border-radius: 8px; display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; white-space: nowrap; }
+    .btn.p { background: #007be0; color: #fff; font-weight: 500; }
+    .btn.s { border: 1px solid #ededed; color: #525252; }
+    .btn svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+    .chip { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 11px; border: 1px solid #ededed; border-radius: 8px; font-size: 12px; color: #4a5763; white-space: nowrap; }
+    .chip svg { width: 10px; height: 10px; stroke: #999999; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    .bd { display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border-radius: 6px; font-size: 11px; font-weight: 500; white-space: nowrap; }
+    .gray { background: #f3f3f3; color: #525252 }
+    .blue { background: #e6f4ff; color: #007be0 }
+    .grn  { background: #e4faeb; color: #278f5e }
+    .amb  { background: #fff7d3; color: #db7706 }
+    .red  { background: #ffe7e7; color: #e03636 }
+    .card { border: 1px solid #ededed; border-radius: 12px; background: #fff; padding: 16px; }
+    .kv { display: flex; justify-content: space-between; gap: 14px; padding: 8px 0; border-bottom: 1px solid #f3f3f3; font-size: 12.5px; }
+    .kv span:first-child { color: #999999; }
+    .av { width: 20px; height: 20px; border-radius: 10px; object-fit: cover; flex-shrink: 0; }
+    .stat { border: 1px solid #ededed; border-radius: 12px; padding: 13px 15px; background: #fff; }
+    .stat i { font-style: normal; display: block; font-size: 10.5px; font-weight: 500; color: #999999; }
+    .stat b { display: block; font-size: 22px; font-weight: 500; letter-spacing: -0.01em; margin-top: 6px; font-variant-numeric: tabular-nums; }
+
+    /* table */
+    .t { width: 100%; }
+    .t .hd { height: 32px; border-bottom: 1px solid #ededed; display: grid; align-items: center; }
+    .t .hd > * { font-size: 10.5px; font-weight: 500; color: #7c7c7c; padding: 0 12px; }
+    .tr { height: 46px; border-bottom: 1px solid #f3f3f3; display: grid; align-items: center; }
+    .tr > * { font-size: 12.5px; color: #383838; padding: 0 12px; min-width: 0; display: flex; align-items: center; }
+    .num { justify-content: flex-end; font-variant-numeric: tabular-nums; }
+    .el { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
+    .body { flex-grow: 1; min-height: 0; padding: 18px 20px; overflow: hidden; }
+    .focus { box-shadow: 0 0 0 3px #EFF6FF; }
+  
+    .tabs { height: 40px; flex-shrink: 0; display: flex; align-items: stretch; gap: 20px; padding: 0 22px; border-bottom: 1px solid #ededed; }
+    .tb { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: #7c7c7c; border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap; }
+    .tb.on { color: #171717; font-weight: 500; border-color: #171717; }
+    .tb b { font-size: 10.5px; font-weight: 500; color: #999999; }
+    .tb i { font-style: normal; display: inline-flex; align-items: center; height: 16px; padding: 0 5px; border-radius: 8px; background: #e6f4ff; color: #007be0; font-size: 10px; font-weight: 500; }
+    .rtab { height: 26px; padding: 0 11px; border-radius: 7px; display: flex; align-items: center; gap: 6px; font-size: 12px; color: #7c7c7c; }
+    .rtab.on { background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.1); color: #171717; font-weight: 500; }
+    .cap { font-size: 11px; color: #999999; }
+    .seg { width: 30px; height: 26px; border-radius: 6px; display: flex; align-items: center; justify-content: center; cursor: pointer; }
+    .seg svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+    .fc { height: 26px; padding: 0 10px; border-radius: 7px; display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: #525252; border: 1px solid #ededed; background: #fff; white-space: nowrap; }
+    .fc b { font-weight: 500; color: #999999; font-size: 11px; }
+    .fc.on { background: #171717; border-color: #171717; color: #fff; }
+    .fc.on b { color: #c7c7c7; }
+    .fc svg { width: 10px; height: 10px; stroke: #999999; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    .dot { width: 7px; height: 7px; border-radius: 4px; flex-shrink: 0; }
+    .kbd { display: inline-flex; align-items: center; height: 18px; padding: 0 5px; border-radius: 4px; border: 1px solid #e2e2e2; font-size: 10.5px; color: #7c7c7c; background: #fafafa; }
+    .ck { width: 18px; height: 18px; border-radius: 9px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .ck svg { width: 11px; height: 11px; stroke: #fff; fill: none; stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; }
+    .cb { width: 16px; height: 16px; border-radius: 4px; border: 1px solid #999999; background: #fff; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
+    .cb.on { border: none; background: #171717; }
+    .cb svg { width: 11px; height: 11px; stroke: #fff; fill: none; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+    .li { display: flex; gap: 11px; padding: 11px 0; border-bottom: 1px solid #f3f3f3; }
+    .li .a { font-size: 12.5px; color: #171717; }
+    .li .b { font-size: 11.5px; color: #999999; margin-top: 2px; }
+
+    /* item switcher (left sidebar inside a document / project) */
+    .sn { display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 9px; border-radius: 8px; font-size: 12.5px; color: #525252; }
+    .sn > span:not(.dot) { flex-grow: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .sn.on { background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.1); color: #171717; font-weight: 500; }
+    .sn img.av { width: 16px; height: 16px; border-radius: 8px; }
+    .sg { display: flex; align-items: center; gap: 6px; font-size: 10.5px; font-weight: 500; color: #999999; padding: 0 9px; margin: 14px 0 4px; }
+    .sg svg { width: 10px; height: 10px; stroke: #999999; fill: none; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+    .ptog { width: 26px; height: 26px; border-radius: 7px; display: flex; align-items: center; justify-content: center; color: #7c7c7c; cursor: pointer; flex-shrink: 0; }
+    .ptog:hover { background: #ededed; }
+    .ptog svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+    .mini { width: 52px; flex-shrink: 0; background: #f8f8f8; border-right: 1px solid #ededed; display: flex; flex-direction: column; align-items: center; padding: 10px 0; gap: 4px; }
+    .mi { width: 36px; height: 36px; border-radius: 9px; display: flex; align-items: center; justify-content: center; position: relative; }
+    .mi.on { background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.1); }
+    .mi .dot { position: absolute; right: 3px; bottom: 3px; box-shadow: 0 0 0 2px #f8f8f8; }
+    .mi.on .dot { box-shadow: 0 0 0 2px #fff; }
+    .tabs { height: 40px; flex-shrink: 0; display: flex; align-items: stretch; gap: 20px; padding: 0 22px; border-bottom: 1px solid #ededed; }
+    .tb { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: #7c7c7c; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+    .tb.on { color: #171717; font-weight: 500; border-color: #171717; }
+    .tb b { font-size: 10.5px; font-weight: 500; color: #999999; }
+    .tb svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+    .rtab { height: 26px; padding: 0 11px; border-radius: 7px; display: flex; align-items: center; gap: 6px; font-size: 12px; color: #7c7c7c; }
+    .rtab.on { background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.1); color: #171717; font-weight: 500; }
+    .cap { font-size: 11px; color: #999999; }
+    .seg { width: 30px; height: 26px; border-radius: 6px; display: flex; align-items: center; justify-content: center; cursor: pointer; }
+    .seg svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+    .fc { height: 26px; padding: 0 10px; border-radius: 7px; display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: #525252; border: 1px solid #ededed; background: #fff; white-space: nowrap; }
+    .fc b { font-weight: 500; color: #999999; font-size: 11px; }
+    .fc.on { background: #171717; border-color: #171717; color: #fff; }
+    .fc.on b { color: #c7c7c7; }
+    .dot { width: 7px; height: 7px; border-radius: 4px; flex-shrink: 0; }
+
+    /* Finder-style page previews */
+    .well { height: 176px; border-radius: 10px; background: #f5f5f5; display: flex; align-items: center; justify-content: center; position: relative; }
+    .tl.sel .well { background: #eaf4fd; box-shadow: 0 0 0 2px var(--ac); }
+    .pg { width: 120px; height: 154px; background: #fff; border-radius: 3px; overflow: hidden; box-shadow: 0 0 0 1px rgba(0,0,0,.06), 0 2px 6px rgba(0,0,0,.08); position: relative; }
+    .pgi { width: 480px; height: 616px; padding: 38px 36px; transform: scale(.25); transform-origin: 0 0; }
+    .pgi h4 { margin: 0; font-size: 23px; font-weight: 600; line-height: 1.2; color: #171717; letter-spacing: -.01em; }
+    .pgi .pm { font-size: 12px; color: #999999; margin-top: 8px; padding-bottom: 14px; border-bottom: 1.5px solid #ededed; }
+    .pgi .pb { display: grid; grid-template-columns: 34px 132px 1fr; gap: 12px; padding: 12px 0; border-bottom: 1px solid #f3f3f3; }
+    .pgi .pb i { font-style: normal; font-size: 10px; color: #999999; font-weight: 600; }
+    .pgi .pb span { font-size: 11px; line-height: 1.45; color: #7c7c7c; }
+    .pgi .pb p { font-size: 13px; line-height: 1.45; color: #383838; }
+    .pgi .pf { background: #f3f3f3; border-radius: 6px; padding: 9px 11px; margin-top: 10px; }
+    .pgi .pf i { display: block; font-style: normal; font-size: 10px; color: #999999; font-weight: 600; margin-bottom: 4px; }
+    .pgi .pf p { font-size: 13px; color: #383838; line-height: 1.4; }
+    .stamp { position: absolute; top: 8px; right: 8px; height: 17px; padding: 0 5px; border-radius: 4px; display: flex; align-items: center; gap: 3px; font-size: 9px; font-weight: 600; letter-spacing: .04em; }
+    .stamp svg { width: 9px; height: 9px; stroke: currentColor; fill: none; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+    .tt { font-size: 12.5px; font-weight: 500; line-height: 1.35; color: #171717; margin-top: 10px; height: 34px; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+    .fold { display: flex; align-items: center; gap: 10px; height: 52px; padding: 0 12px; border: 1px solid #ededed; border-radius: 10px; background: #fff; }
+    .fold svg.fi { width: 30px; height: 24px; flex-shrink: 0; }
+
+    /* icon grid (library) */
+    .ic { display: flex; flex-direction: column; align-items: center; padding: 8px 4px 6px; border-radius: 10px; min-width: 0; }
+    .icn { height: 62px; width: 76px; display: flex; align-items: flex-end; justify-content: center; padding-bottom: 6px; border-radius: 9px; }
+    .ic.sel .icn { background: #f3f3f3; }
+    .icl { margin-top: 7px; text-align: center; font-size: 12px; line-height: 1.4; color: #171717; max-width: 100%; }
+    .icl span { padding: 1px 5px; border-radius: 5px; -webkit-box-decoration-break: clone; box-decoration-break: clone; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+    .ic.sel .icl span { background: var(--ac); color: #fff; }
+    .icm { display: flex; align-items: center; gap: 5px; margin-top: 4px; font-size: 11px; color: #999999; white-space: nowrap; }
+    .icm .dot { width: 6px; height: 6px; }
+
+    /* script switcher */
+    .sn { display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 9px; border-radius: 8px; font-size: 12.5px; color: #525252; }
+    .sn span { flex-grow: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .sn span.dot { flex-grow: 0; }
+    .sn.on { background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.1); color: #171717; font-weight: 500; }
+    .sn img { width: 16px; height: 16px; border-radius: 8px; object-fit: cover; flex-shrink: 0; }
+    .sg { display: flex; align-items: center; gap: 6px; font-size: 10.5px; font-weight: 500; color: #999999; padding: 0 9px; margin: 14px 0 4px; }
+    .sg svg { width: 10px; height: 10px; stroke: #999999; fill: none; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+
+    /* editor */
+    .tool { width: 28px; height: 28px; border-radius: 7px; display: flex; align-items: center; justify-content: center; color: #525252; }
+    .tool svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+    .bt { display: grid; grid-template-columns: 58px 228px minmax(0, 1fr); gap: 0 20px; padding: 13px 0; border-bottom: 1px solid #f3f3f3; }
+    .bt .bn { font-size: 10.5px; font-weight: 500; color: #999999; line-height: 1.5; font-variant-numeric: tabular-nums; }
+    .bt .bn b { display: block; font-weight: 500; color: #c7c7c7; }
+    .bt .vi { font-size: 12.5px; line-height: 1.55; color: #7c7c7c; }
+    .bt .zh { font-size: 14px; line-height: 1.6; color: #171717; }
+    .bt .en { font-size: 12.5px; line-height: 1.55; color: #7c7c7c; margin-top: 3px; }
+    .wv { text-decoration: underline wavy #db7706; text-decoration-thickness: 1.4px; text-underline-offset: 3px; text-decoration-skip-ink: none; }
+    .sl { background: #d6eafc; border-radius: 2px; box-shadow: 0 0 0 2px #d6eafc; }
+    .ins { background: #e4faeb; color: #1f7a4d; border-radius: 2px; }
+    .del { background: #ffe7e7; color: #c53030; text-decoration: line-through; border-radius: 2px; }
+    .pop { position: absolute; background: #fff; border: 1px solid #e2e2e2; border-radius: 11px; box-shadow: 0 8px 24px rgba(0,0,0,.1), 0 1px 3px rgba(0,0,0,.06); z-index: 3; }
+    .kbd { display: inline-flex; align-items: center; height: 18px; padding: 0 5px; border-radius: 4px; border: 1px solid #e2e2e2; font-size: 10.5px; color: #7c7c7c; background: #fafafa; }
+    .qc { height: 24px; padding: 0 9px; border-radius: 7px; background: #f3f3f3; display: inline-flex; align-items: center; font-size: 11.5px; color: #525252; white-space: nowrap; }
+    .sug { border: 1px solid #ededed; border-radius: 10px; background: #fff; padding: 10px 11px; }
+    .sug .k { display: flex; align-items: center; gap: 6px; font-size: 10.5px; font-weight: 500; color: #999999; }
+    .sug .q { font-size: 12.5px; color: #171717; margin-top: 5px; line-height: 1.45; }
+    .sug .w { font-size: 11.5px; color: #7c7c7c; margin-top: 3px; line-height: 1.45; }
+    .mb { height: 4px; border-radius: 2px; background: #ededed; margin-top: 6px; position: relative; }
+    .mb div { height: 4px; border-radius: 2px; }
+    .ck { width: 18px; height: 18px; border-radius: 9px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .ck svg { width: 11px; height: 11px; stroke: #fff; fill: none; stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; }
+    .li { display: flex; gap: 11px; padding: 11px 0; border-bottom: 1px solid #f3f3f3; }
+    .li .a { font-size: 12.5px; color: #171717; }
+    .li .b { font-size: 11.5px; color: #999999; margin-top: 2px; }
+    .inp { height: 32px; border-radius: 8px; background: #f3f3f3; display: flex; align-items: center; gap: 8px; padding: 0 10px; font-size: 12.5px; color: #171717; }
+    .inp svg { width: 12px; height: 12px; stroke: #999999; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    .fl { font-size: 11px; font-weight: 500; color: #7c7c7c; margin-bottom: 6px; }
+    .df { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); border: 1px solid #ededed; border-radius: 10px; overflow: hidden; margin-bottom: 10px; }
+    .df > div { padding: 11px 13px; font-size: 13px; line-height: 1.6; color: #383838; }
+    .df > div:first-child { border-right: 1px solid #ededed; }
+    .dh { grid-column: 1 / -1; padding: 7px 13px !important; background: #f8f8f8; border-bottom: 1px solid #ededed; font-size: 11px !important; color: #7c7c7c !important; display: flex; align-items: center; gap: 8px; }
+    .vr { display: flex; gap: 10px; padding: 11px 12px; border-radius: 9px; }
+    .vr.on { background: #f8f8f8; }
+    .vr .bd { flex-grow: 0; }
+    .ab { width: 18px; height: 18px; border-radius: 5px; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 600; flex-shrink: 0; }
+    .shot { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-bottom: 1px solid #f3f3f3; }
+    .shot i { font-style: normal; width: 22px; font-size: 10.5px; color: #999999; font-weight: 500; font-variant-numeric: tabular-nums; }
+    .shot span { flex-grow: 1; min-width: 0; font-size: 12px; color: #383838; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }</style>
+</helmet>
+
+<div style="--ac: {{accent}}; width: 1440px; height: 900px; display: flex; background: #ffffff; color: #171717; overflow: hidden;">
+
+  <div style="width: 52px; flex-shrink: 0; background: #f8f8f8; border-right: 1px solid #ededed; display: flex; flex-direction: column; align-items: center; padding: 10px 0; gap: 3px;">
+    <div style="width: 28px; height: 28px; border-radius: 8px; background: #171717; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 11px; font-weight: 600; margin-bottom: 10px;">AF</div>
+    <div class="r"><svg viewBox="0 0 24 24"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 9.5 9.5 0 0 1-2.8-.4L4 21l1.4-4.1A8.2 8.2 0 0 1 3.6 11.5 8.4 8.4 0 0 1 12 3.1a8.4 8.4 0 0 1 9 8.4z"/></svg></div>
+    <div class="r"><svg viewBox="0 0 24 24"><path d="M3.6 6.9a2.1 2.1 0 0 1 2.1-2.1h3.2a2.1 2.1 0 0 1 1.62.76l1.02 1.24h6.76a2.1 2.1 0 0 1 2.1 2.1v8.3a2.1 2.1 0 0 1-2.1 2.1H5.7a2.1 2.1 0 0 1-2.1-2.1z"/></svg></div>
+    <div class="r"><svg viewBox="0 0 24 24"><rect x="3.4" y="12.6" width="4.2" height="7.4" rx="1.5"/><rect x="9.9" y="8.4" width="4.2" height="11.6" rx="1.5"/><rect x="16.4" y="4" width="4.2" height="16" rx="1.5"/></svg></div>
+    <div class="r on"><svg viewBox="0 0 24 24"><path d="M6.4 3.4h7.4L18.6 8v12.6H6.4z"/><path d="M9.4 12.3h6M9.4 15.6h6" stroke="#f8f8f8" stroke-width="1.5" fill="none"/></svg></div>
+    <div class="r"><svg viewBox="0 0 24 24"><rect x="3.4" y="5.4" width="12.4" height="13.2" rx="2.1"/><path d="m16.6 13 4.6 2.8V8.2L16.6 11z"/></svg></div>
+    <div class="r"><svg viewBox="0 0 24 24"><path d="M21.86 4.14a1.1 1.1 0 0 0-1.14-.18L2.9 11.13c-.86.34-.83 1.58.05 1.87l4.46 1.5 1.68 5.06c.24.72 1.15.93 1.68.38l2.4-2.5 4.4 3.23c.6.44 1.46.12 1.63-.6z"/></svg></div>
+    <div style="width: 22px; height: 1px; background: #e2e2e2; margin: 6px 0;"></div>
+    <div class="r"><svg viewBox="0 0 24 24"><rect x="5.4" y="3.4" width="13.2" height="17.2" rx="2"/><path d="M8.4 8h7.2M8.4 12h7.2M8.4 16h4" stroke="#f8f8f8" stroke-width="1.5" fill="none"/></svg></div>
+    <div class="r"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.6"/><path d="M14.8 9.4c-.4-1-1.5-1.6-2.8-1.6-1.6 0-2.8.9-2.8 2.1 0 2.9 5.7 1.4 5.7 4.3 0 1.2-1.2 2.1-2.9 2.1-1.4 0-2.5-.6-2.9-1.6M12 6.4v1.4M12 16.3v1.4" stroke="#f8f8f8" stroke-width="1.5" fill="none"/></svg></div>
+    <div class="r"><svg viewBox="0 0 24 24"><path d="M12 3.2 4.4 6.2v5.6c0 4.4 3.1 8.3 7.6 9.3 4.5-1 7.6-4.9 7.6-9.3V6.2z"/></svg></div>
+    <div class="r no"><svg viewBox="0 0 24 24"><circle cx="12" cy="7.8" r="3.7"/><path d="M4.7 20.2a7.3 7.3 0 0 1 14.6 0z"/></svg></div>
+    <div class="r"><svg viewBox="0 0 24 24"><path d="M4 7.4h16M4 12h16M4 16.6h16" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linecap="round"/><circle cx="9" cy="7.4" r="2.2"/><circle cx="15" cy="16.6" r="2.2"/></svg></div>
+    <div style="flex-grow: 1;"></div>
+    <img class="av" src="pfp-amy.jpg" style="width: 26px; height: 26px;">
+  </div>
+
+<sc-if value="{{sideOpen}}" hint-placeholder-val="{{ true }}">
+  <div style="width: 240px; flex-shrink: 0; background: #f8f8f8; border-right: 1px solid #ededed; display: flex; flex-direction: column; padding: 8px 8px 10px;">
+    <div style="display: flex; align-items: center; gap: 6px; padding: 0 0 0 9px; font-size: 12px; color: #7c7c7c;"><svg viewBox="0 0 24 24" style="width: 12px; height: 12px; stroke: #7c7c7c; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><path d="m14.5 6-6 6 6 6"/></svg>All scripts<div style="margin-left: auto;"><div class="ptog" onClick="{{ toggleSide }}" title="Hide the script list"><svg viewBox="0 0 24 24"><rect x="3.8" y="4.8" width="16.4" height="14.4" rx="2.6"/><path d="M9.6 4.8v14.4"/></svg></div></div></div>
+    <div style="display: flex; align-items: center; gap: 7px; padding: 8px 9px 10px;"><svg viewBox="0 0 24 24" style="width: 15px; height: 15px; fill: #8fc3f1;"><path d="M3.6 6.9a2.1 2.1 0 0 1 2.1-2.1h3.2a2.1 2.1 0 0 1 1.62.76l1.02 1.24h6.76a2.1 2.1 0 0 1 2.1 2.1v8.3a2.1 2.1 0 0 1-2.1 2.1H5.7a2.1 2.1 0 0 1-2.1-2.1z"/></svg><span style="font-size: 14px; font-weight: 500;">2026-Q3-campaign</span><span class="mut" style="margin-left: auto;">11</span></div>
+    <div style="height: 30px; border-radius: 8px; background: #fff; border: 1px solid #ededed; display: flex; align-items: center; gap: 7px; padding: 0 9px; margin: 0 1px;">
+      <svg viewBox="0 0 24 24" style="width: 12px; height: 12px; stroke: #999999; fill: none; stroke-width: 1.9; stroke-linecap: round;"><circle cx="11" cy="11" r="6.4"/><path d="m15.8 15.8 4 4"/></svg><span style="font-size: 12px; color: #999999; flex-grow: 1;">Jump to a script</span><span class="kbd">⌘K</span>
+    </div>
+    <div class="sg"><svg viewBox="0 0 24 24"><path d="m6.5 9.5 5.5 5.5 5.5-5.5"/></svg>Drafting<span style="margin-left: auto; font-weight: 420;">3</span></div>
+    <div style="display: flex; flex-direction: column; gap: 1px;">
+      <div class="sn"><span class="dot" style="background: #007be0;"></span><span>Sham Shui Po dai pai dong revival</span><img src="pfp-amy.jpg"></div>
+      <div class="sn"><span class="dot" style="background: #007be0;"></span><span>Cantonese voice cloning backlash</span><img src="pfp-leung.jpg"></div>
+      <div class="sn"><span class="dot" style="background: #e03636;"></span><span>Cha chaan teng menu inflation</span><img src="pfp-amy.jpg"></div>
+    </div>
+    <div class="sg"><svg viewBox="0 0 24 24"><path d="m6.5 9.5 5.5 5.5 5.5-5.5"/></svg>Awaiting approval<span style="margin-left: auto; font-weight: 420;">2</span></div>
+    <div style="display: flex; flex-direction: column; gap: 1px;">
+      <div class="sn"><span class="dot" style="background: #db7706;"></span><span>Taipei night-market crossover creators</span><img src="pfp-leung.jpg"></div>
+      <div class="sn"><span class="dot" style="background: #db7706;"></span><span>Good day · collage teaser</span><img src="pfp-amy.jpg"></div>
+    </div>
+    <div class="sg"><svg viewBox="0 0 24 24"><path d="m6.5 9.5 5.5 5.5 5.5-5.5"/></svg>Briefs<span style="margin-left: auto; font-weight: 420;">2</span></div>
+    <div style="display: flex; flex-direction: column; gap: 1px;">
+      <div class="sn on"><span class="dot" style="background: #c7c7c7;"></span><span>Harbourfront redevelopment hearing</span><span class="dot" style="width: 6px; height: 6px; background: #db7706; flex-grow: 0;" title="Sensitive"></span><img src="pfp-leung.jpg"></div>
+      <div class="sn"><span class="dot" style="background: #c7c7c7;"></span><span>Singapore hawker succession</span><img src="pfp-michelle.jpg"></div>
+    </div>
+    <div class="sg"><svg viewBox="0 0 24 24"><path d="m6.5 9.5 5.5 5.5 5.5-5.5"/></svg>Locked<span style="margin-left: auto; font-weight: 420;">4</span></div>
+    <div style="display: flex; flex-direction: column; gap: 1px;">
+      <div class="sn"><span class="dot" style="background: #278f5e;"></span><span>History of Greece · Ep 75</span><img src="pfp-chan.jpg"></div>
+      <div class="sn"><span class="dot" style="background: #278f5e;"></span><span>Porsche cat · night drive</span><img src="pfp-chan.jpg"></div>
+      <div class="sn"><span class="dot" style="background: #278f5e;"></span><span>Do more · brand spot</span><img src="pfp-michelle.jpg"></div>
+      <div class="sn"><span class="dot" style="background: #278f5e;"></span><span>Orange typography cut</span><img src="pfp-leung.jpg"></div>
+    </div>
+    <div style="margin-top: auto; padding: 10px 9px 2px; border-top: 1px solid #ededed; display: flex; align-items: center; gap: 8px;">
+      <svg viewBox="0 0 24 24" style="width: 13px; height: 13px; stroke: #7c7c7c; fill: none; stroke-width: 1.8; stroke-linecap: round;"><path d="M12 6v12M6 12h12"/></svg><span style="font-size: 12.5px; color: #525252; white-space: nowrap;">New script</span><span class="kbd" style="margin-left: auto;">N</span>
+    </div>
+  </div>
+</sc-if>
+<sc-if value="{{sideClosed}}" hint-placeholder-val="{{ false }}">
+  <div class="mini">
+    <div class="ptog" onClick="{{ toggleSide }}" title="Show the script list"><svg viewBox="0 0 24 24"><rect x="3.8" y="4.8" width="16.4" height="14.4" rx="2.6"/><path d="M9.6 4.8v14.4"/></svg></div>
+    <div style="width: 22px; height: 1px; background: #e2e2e2; margin: 6px 0 4px;"></div>
+    <div class="mi" title="Sham Shui Po dai pai dong revival"><svg viewBox="0 0 42 54" width="21" height="27" style="display: block; flex-shrink: 0; overflow: visible; filter: drop-shadow(0 .5px 1px rgba(0,0,0,.18)) drop-shadow(0 2px 5px rgba(0,0,0,.06));"><rect x=".5" y=".5" width="41" height="53" rx="3.5" fill="#fff" stroke="rgba(0,0,0,.07)"/><rect x="6" y="7" width="15" height="2.4" rx="1.2" fill="#8f8f8f"/><rect x="6" y="13.5" width="20" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="16.7" width="27" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="19.9" width="24" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="23.1" width="28" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="27.9" width="18" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="31.1" width="26" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="34.3" width="23" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="37.5" width="27" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="42.3" width="15" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="45.5" width="25" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="48.7" width="22" height="1.35" rx=".7" fill="#d6d6d6"/><g transform="translate(34.5 46.5)"><circle r="7.4" fill="#007be0" stroke="#fff" stroke-width="1.8"/><path d="M-2.6 2.6 1.9-1.9" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/><path d="M1.1-2.7l1.6 1.6" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/></g></svg></div>
+    <div class="mi" title="Cantonese voice cloning backlash"><svg viewBox="0 0 42 54" width="21" height="27" style="display: block; flex-shrink: 0; overflow: visible; filter: drop-shadow(0 .5px 1px rgba(0,0,0,.18)) drop-shadow(0 2px 5px rgba(0,0,0,.06));"><rect x=".5" y=".5" width="41" height="53" rx="3.5" fill="#fff" stroke="rgba(0,0,0,.07)"/><rect x="6" y="7" width="15" height="2.4" rx="1.2" fill="#8f8f8f"/><rect x="6" y="13.5" width="20" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="16.7" width="27" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="19.9" width="24" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="23.1" width="28" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="27.9" width="18" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="31.1" width="26" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="34.3" width="23" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="37.5" width="27" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="42.3" width="15" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="45.5" width="25" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="48.7" width="22" height="1.35" rx=".7" fill="#d6d6d6"/><g transform="translate(34.5 46.5)"><circle r="7.4" fill="#007be0" stroke="#fff" stroke-width="1.8"/><path d="M-2.6 2.6 1.9-1.9" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/><path d="M1.1-2.7l1.6 1.6" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/></g></svg></div>
+    <div class="mi" title="Cha chaan teng menu inflation"><svg viewBox="0 0 42 54" width="21" height="27" style="display: block; flex-shrink: 0; overflow: visible; filter: drop-shadow(0 .5px 1px rgba(0,0,0,.18)) drop-shadow(0 2px 5px rgba(0,0,0,.06));"><rect x=".5" y=".5" width="41" height="53" rx="3.5" fill="#fff" stroke="rgba(0,0,0,.07)"/><rect x="6" y="7" width="15" height="2.4" rx="1.2" fill="#8f8f8f"/><rect x="6" y="13.5" width="20" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="16.7" width="27" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="19.9" width="24" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="23.1" width="28" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="27.9" width="18" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="31.1" width="26" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="34.3" width="23" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="37.5" width="27" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="42.3" width="15" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="45.5" width="25" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="48.7" width="22" height="1.35" rx=".7" fill="#d6d6d6"/><g transform="translate(34.5 46.5)"><circle r="7.4" fill="#e5484d" stroke="#fff" stroke-width="1.8"/><path d="M0-3.3v3.5" stroke="#fff" stroke-width="1.7" stroke-linecap="round"/><circle cx="0" cy="2.7" r=".95" fill="#fff"/></g></svg></div>
+    <div class="mi" title="Taipei night-market crossover creators"><svg viewBox="0 0 42 54" width="21" height="27" style="display: block; flex-shrink: 0; overflow: visible; filter: drop-shadow(0 .5px 1px rgba(0,0,0,.18)) drop-shadow(0 2px 5px rgba(0,0,0,.06));"><rect x=".5" y=".5" width="41" height="53" rx="3.5" fill="#fff" stroke="rgba(0,0,0,.07)"/><rect x="6" y="7" width="15" height="2.4" rx="1.2" fill="#8f8f8f"/><rect x="6" y="13.5" width="20" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="16.7" width="27" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="19.9" width="24" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="23.1" width="28" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="27.9" width="18" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="31.1" width="26" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="34.3" width="23" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="37.5" width="27" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="42.3" width="15" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="45.5" width="25" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="48.7" width="22" height="1.35" rx=".7" fill="#d6d6d6"/><g transform="translate(34.5 46.5)"><circle r="7.4" fill="#f5a524" stroke="#fff" stroke-width="1.8"/><path d="M0-3.2V0l2.1 1.4" stroke="#fff" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></g></svg></div>
+    <div class="mi" title="Good day · collage teaser"><svg viewBox="0 0 42 54" width="21" height="27" style="display: block; flex-shrink: 0; overflow: visible; filter: drop-shadow(0 .5px 1px rgba(0,0,0,.18)) drop-shadow(0 2px 5px rgba(0,0,0,.06));"><rect x=".5" y=".5" width="41" height="53" rx="3.5" fill="#fff" stroke="rgba(0,0,0,.07)"/><rect x="6" y="7" width="15" height="2.4" rx="1.2" fill="#8f8f8f"/><rect x="6" y="13.5" width="20" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="16.7" width="27" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="19.9" width="24" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="23.1" width="28" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="27.9" width="18" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="31.1" width="26" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="34.3" width="23" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="37.5" width="27" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="42.3" width="15" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="45.5" width="25" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="48.7" width="22" height="1.35" rx=".7" fill="#d6d6d6"/><g transform="translate(34.5 46.5)"><circle r="7.4" fill="#f5a524" stroke="#fff" stroke-width="1.8"/><path d="M0-3.2V0l2.1 1.4" stroke="#fff" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></g></svg></div>
+    <div class="mi on" title="Harbourfront redevelopment hearing"><svg viewBox="0 0 42 54" width="21" height="27" style="display: block; flex-shrink: 0; overflow: visible; filter: drop-shadow(0 .5px 1px rgba(0,0,0,.18)) drop-shadow(0 2px 5px rgba(0,0,0,.06));"><rect x=".5" y=".5" width="41" height="53" rx="3.5" fill="#fff" stroke="rgba(0,0,0,.07)"/><rect x="6" y="7" width="15" height="2.4" rx="1.2" fill="#8f8f8f"/><rect x="6" y="13.5" width="30" height="6" rx="1.6" fill="#f2f2f2"/><rect x="8.2" y="15.8" width="9" height="1.4" rx=".7" fill="#cdcdcd"/><rect x="6" y="21.9" width="30" height="6" rx="1.6" fill="#f2f2f2"/><rect x="8.2" y="24.2" width="13" height="1.4" rx=".7" fill="#cdcdcd"/><rect x="6" y="30.299999999999997" width="30" height="6" rx="1.6" fill="#f2f2f2"/><rect x="8.2" y="32.599999999999994" width="17" height="1.4" rx=".7" fill="#cdcdcd"/><rect x="6" y="38.699999999999996" width="30" height="6" rx="1.6" fill="#f2f2f2"/><rect x="8.2" y="40.99999999999999" width="21" height="1.4" rx=".7" fill="#cdcdcd"/></svg></div>
+    <div class="mi" title="Singapore hawker succession"><svg viewBox="0 0 42 54" width="21" height="27" style="display: block; flex-shrink: 0; overflow: visible; filter: drop-shadow(0 .5px 1px rgba(0,0,0,.18)) drop-shadow(0 2px 5px rgba(0,0,0,.06));"><rect x=".5" y=".5" width="41" height="53" rx="3.5" fill="#fff" stroke="rgba(0,0,0,.07)"/><rect x="6" y="7" width="15" height="2.4" rx="1.2" fill="#8f8f8f"/><rect x="6" y="13.5" width="30" height="6" rx="1.6" fill="#f2f2f2"/><rect x="8.2" y="15.8" width="9" height="1.4" rx=".7" fill="#cdcdcd"/><rect x="6" y="21.9" width="30" height="6" rx="1.6" fill="#f2f2f2"/><rect x="8.2" y="24.2" width="13" height="1.4" rx=".7" fill="#cdcdcd"/><rect x="6" y="30.299999999999997" width="30" height="6" rx="1.6" fill="#f2f2f2"/><rect x="8.2" y="32.599999999999994" width="17" height="1.4" rx=".7" fill="#cdcdcd"/><rect x="6" y="38.699999999999996" width="30" height="6" rx="1.6" fill="#f2f2f2"/><rect x="8.2" y="40.99999999999999" width="21" height="1.4" rx=".7" fill="#cdcdcd"/></svg></div>
+    <div class="mi" title="History of Greece · Ep 75"><svg viewBox="0 0 42 54" width="21" height="27" style="display: block; flex-shrink: 0; overflow: visible; filter: drop-shadow(0 .5px 1px rgba(0,0,0,.18)) drop-shadow(0 2px 5px rgba(0,0,0,.06));"><rect x=".5" y=".5" width="41" height="53" rx="3.5" fill="#fff" stroke="rgba(0,0,0,.07)"/><rect x="6" y="7" width="15" height="2.4" rx="1.2" fill="#8f8f8f"/><rect x="6" y="13.5" width="20" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="16.7" width="27" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="19.9" width="24" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="23.1" width="28" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="27.9" width="18" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="31.1" width="26" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="34.3" width="23" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="37.5" width="27" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="42.3" width="15" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="45.5" width="25" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="48.7" width="22" height="1.35" rx=".7" fill="#d6d6d6"/><g transform="translate(34.5 46.5)"><circle r="7.4" fill="#30a46c" stroke="#fff" stroke-width="1.8"/><rect x="-2.7" y="-.5" width="5.4" height="4" rx="1" fill="#fff"/><path d="M-1.6-.5v-1.2a1.6 1.6 0 0 1 3.2 0v1.2" stroke="#fff" stroke-width="1.3" fill="none"/></g></svg></div>
+    <div class="mi" title="Porsche cat · night drive"><svg viewBox="0 0 42 54" width="21" height="27" style="display: block; flex-shrink: 0; overflow: visible; filter: drop-shadow(0 .5px 1px rgba(0,0,0,.18)) drop-shadow(0 2px 5px rgba(0,0,0,.06));"><rect x=".5" y=".5" width="41" height="53" rx="3.5" fill="#fff" stroke="rgba(0,0,0,.07)"/><rect x="6" y="7" width="15" height="2.4" rx="1.2" fill="#8f8f8f"/><rect x="6" y="13.5" width="20" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="16.7" width="27" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="19.9" width="24" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="23.1" width="28" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="27.9" width="18" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="31.1" width="26" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="34.3" width="23" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="37.5" width="27" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="42.3" width="15" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="45.5" width="25" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="48.7" width="22" height="1.35" rx=".7" fill="#d6d6d6"/><g transform="translate(34.5 46.5)"><circle r="7.4" fill="#30a46c" stroke="#fff" stroke-width="1.8"/><rect x="-2.7" y="-.5" width="5.4" height="4" rx="1" fill="#fff"/><path d="M-1.6-.5v-1.2a1.6 1.6 0 0 1 3.2 0v1.2" stroke="#fff" stroke-width="1.3" fill="none"/></g></svg></div>
+    <div class="mi" title="Do more · brand spot"><svg viewBox="0 0 42 54" width="21" height="27" style="display: block; flex-shrink: 0; overflow: visible; filter: drop-shadow(0 .5px 1px rgba(0,0,0,.18)) drop-shadow(0 2px 5px rgba(0,0,0,.06));"><rect x=".5" y=".5" width="41" height="53" rx="3.5" fill="#fff" stroke="rgba(0,0,0,.07)"/><rect x="6" y="7" width="15" height="2.4" rx="1.2" fill="#8f8f8f"/><rect x="6" y="13.5" width="20" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="16.7" width="27" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="19.9" width="24" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="23.1" width="28" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="27.9" width="18" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="31.1" width="26" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="34.3" width="23" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="37.5" width="27" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="42.3" width="15" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="45.5" width="25" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="48.7" width="22" height="1.35" rx=".7" fill="#d6d6d6"/><g transform="translate(34.5 46.5)"><circle r="7.4" fill="#30a46c" stroke="#fff" stroke-width="1.8"/><rect x="-2.7" y="-.5" width="5.4" height="4" rx="1" fill="#fff"/><path d="M-1.6-.5v-1.2a1.6 1.6 0 0 1 3.2 0v1.2" stroke="#fff" stroke-width="1.3" fill="none"/></g></svg></div>
+    <div class="mi" title="Orange typography cut"><svg viewBox="0 0 42 54" width="21" height="27" style="display: block; flex-shrink: 0; overflow: visible; filter: drop-shadow(0 .5px 1px rgba(0,0,0,.18)) drop-shadow(0 2px 5px rgba(0,0,0,.06));"><rect x=".5" y=".5" width="41" height="53" rx="3.5" fill="#fff" stroke="rgba(0,0,0,.07)"/><rect x="6" y="7" width="15" height="2.4" rx="1.2" fill="#8f8f8f"/><rect x="6" y="13.5" width="20" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="16.7" width="27" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="19.9" width="24" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="23.1" width="28" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="27.9" width="18" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="31.1" width="26" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="34.3" width="23" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="37.5" width="27" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="42.3" width="15" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="45.5" width="25" height="1.35" rx=".7" fill="#d6d6d6"/><rect x="6" y="48.7" width="22" height="1.35" rx=".7" fill="#d6d6d6"/><g transform="translate(34.5 46.5)"><circle r="7.4" fill="#30a46c" stroke="#fff" stroke-width="1.8"/><rect x="-2.7" y="-.5" width="5.4" height="4" rx="1" fill="#fff"/><path d="M-1.6-.5v-1.2a1.6 1.6 0 0 1 3.2 0v1.2" stroke="#fff" stroke-width="1.3" fill="none"/></g></svg></div>
+    <div style="flex-grow: 1;"></div>
+    <div class="ptog" title="New script"><svg viewBox="0 0 24 24"><path d="M12 6v12M6 12h12"/></svg></div>
+  </div>
+</sc-if>
+  <div style="flex-grow: 1; display: flex; flex-direction: column; min-width: 0;">
+
+    <div class="bar" style="height: 52px; gap: 10px;">
+      <svg viewBox="0 0 24 24" style="width: 16px; height: 16px; flex-shrink: 0; stroke: #7c7c7c; fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round;"><path d="M6.5 3.5h7.2L18.5 8v12.5h-12z"/><path d="M13.5 3.5V8h5"/><path d="M9.2 12.4h6.1M9.2 15.6h6.1"/></svg>
+      <span class="h1" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;">Harbourfront redevelopment hearing</span>
+      <span class="bd gray" style="gap: 4px;">Brief</span>
+      <span class="mut" style="white-space: nowrap;">YouTube · 16:9</span>
+      <div style="flex-grow: 1;"></div>
+      <div style="display: flex; align-items: center;"><div style="position: relative; margin-left: 0px;"><img class="av" src="pfp-leung.jpg" style="width: 24px; height: 24px; box-shadow: 0 0 0 2px #fff;"><span style="position: absolute; right: -1px; bottom: -1px; width: 8px; height: 8px; border-radius: 4px; background: #278f5e; box-shadow: 0 0 0 2px #fff;"></span></div></div>
+      <div class="btn" style="background: {{accent}}; color: #fff; font-weight: 500;">Generate first draft</div>
+    </div>
+    <div class="tabs">
+      <div class="tb on">Brief</div>
+      <div class="tb">Draft</div>
+      <div class="tb">Versions<b>4</b></div>
+      <div class="tb">Approval</div>
+      <div style="flex-grow: 1;"></div>
+      <div style="display: flex; align-items: center; gap: 10px;"><span class="cap">Updated 3 Sep</span></div>
+    </div>
+    <div style="flex-grow: 1; display: flex; min-height: 0;">
+      <div style="flex-grow: 1; min-width: 0; overflow: hidden; padding: 18px 30px 0;">
+        <div style="padding: 11px 13px; border-radius: 11px; background: #fafafa; border: 1px solid #ededed; margin-bottom: 18px; font-size: 12.5px; line-height: 1.5; color: #525252;"><b style="font-weight: 500;">Brief only.</b> Generate the first draft when the brief is ready.</div>
+        <div style="font-size: 20px; font-weight: 600; letter-spacing: -.01em;">Harbourfront redevelopment hearing</div>
+        <div style="display: flex; align-items: center; gap: 12px; margin-top: 8px; padding-bottom: 12px; font-size: 12px; color: #7c7c7c;"><span style="display: flex; align-items: center; gap: 6px;"><img class="av" src="pfp-leung.jpg" style="width: 16px; height: 16px;">Leung Chi-hang</span><span style="color: #e2e2e2;">|</span><span>YouTube · 16:9</span><span style="color: #e2e2e2;">|</span><span>target 4:00</span></div>
+        <div style="max-width: 560px;"><div class="kv" style="font-size: 13px;"><span>Topic</span><span>Harbourfront redevelopment hearing</span></div><div class="kv" style="font-size: 13px;"><span>Angle</span><span>What residents actually asked for</span></div><div class="kv" style="font-size: 13px;"><span>Channel</span><span>YouTube · 16:9 · 4 min</span></div><div class="kv" style="font-size: 13px;"><span>Mandatory points</span><span>Quote the hearing record. Show both sides.</span></div></div>
+      </div>
+
+      <div style="width: 320px; flex-shrink: 0; border-left: 1px solid #ededed; background: #fcfcfc; display: flex; flex-direction: column;">
+        <div style="height: 44px; flex-shrink: 0; display: flex; align-items: center; gap: 2px; padding: 0 10px; border-bottom: 1px solid #ededed;">
+          <div class="rtab on">Details</div>
+          <div class="rtab"><svg viewBox="0 0 24 24" style="width: 12px; height: 12px; stroke: {{accent}}; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;"><path d="M12 4.2 19 8v8l-7 3.8L5 16V8z"/><path d="M12 11.8 19 8M12 11.8v8M12 11.8 5 8"/></svg>Agent</div>
+          <div style="flex-grow: 1;"></div>
+          <svg viewBox="0 0 24 24" style="width: 15px; height: 15px; stroke: #999999; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;"><path d="m10 6 6 6-6 6"/></svg>
+        </div>
+
+        <div style="flex-grow: 1; min-height: 0; overflow: hidden; padding: 14px;">
+          <div class="kv"><span>Status</span><span>Brief</span></div>
+          <div class="kv"><span>Version</span><span>Brief</span></div>
+          <div class="kv"><span>Owner</span><span>Leung Chi-hang</span></div>
+          <div class="kv"><span>Channel</span><span>YouTube · 16:9</span></div>
+          <div class="kv"><span>Length</span><span>target 4:00</span></div>
+          <div class="kv" style="border: none;"><span>House style</span><span>Not scored yet</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script data-dc-script data-props='{"accent":{"editor":"color","default":"#007BE0","options":["#007BE0","#171717","#278F5E","#6846E3"],"section":"Theme"},"sidebar":{"editor":"enum","options":["open","collapsed"],"default":"open","section":"Layout"},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = {}; }
+  accent() { var raw = this.props.accent || '#007BE0'; return /^#[0-9a-fA-F]{6}$/.test(raw) ? raw : '#007BE0'; }
+  side(v) {
+    var self = this;
+    var c = this.state.c != null ? this.state.c : this.props.sidebar === 'collapsed';
+    v.sideOpen = !c; v.sideClosed = c;
+    v.toggleSide = function () { self.setState({ c: !c }); };
+    return v;
+  }
+  renderVals() { return this.side({ accent: this.accent() }); }
+}
+</script>
+</body>
+</html>
