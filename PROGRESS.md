@@ -166,3 +166,38 @@ Confirmed shipped-design state for Publish and Research modules. Launched
 4 research agents on third-party social APIs / analytics APIs / UX
 patterns / Chinese platform APIs — all failed on session rate limit before
 producing output. Created this progress doc.
+
+**2026-09-13 (later)** — All 4 research agents completed (rate limit had
+reset). Wrote \`02_Integration-Reference.md\` — the file the spec already
+references for endpoints/auth/limits but which didn't exist. Key findings:
+- **Western publish: use Ayrshare** as the aggregator for IG/FB/TikTok/
+  YouTube/LinkedIn/X/Threads instead of 7 direct integrations.
+- **Chinese publish: no aggregator covers any of it.** WeChat Official
+  Account (服务号) is the only Chinese channel with a real, HK-entity-
+  eligible API — build that one directly. Xiaohongshu and WeChat Channels
+  confirmed to have **no publish API for anyone**, not just HK entities.
+  Bilibili HK-eligibility is unconfirmed (open item: email Bilibili
+  directly). Weibo video and Douyin enterprise features confirmed dead
+  ends without a mainland entity, matching the spec.
+- **Reaction analysis**: full per-platform metric availability matrix
+  done. Biggest blocker: TikTok comment text has no legal commercial API
+  (Research API is academic-only) — recommend leaving TikTok's comment
+  inbox empty by default (matches spec's own "TikTok exposes no comment
+  interface" line) rather than adding a scraper. X reads are now metered
+  ($0.005/read) — needs a budget gate like the token ledger.
+- **UX research**: compiled a platform-limits table (caption/video/aspect/
+  size per platform) for the composer's inline linter, and a prioritized
+  feature list (live per-platform preview with no separate preview mode,
+  closed-loop manual-publish assist ending in "mark as posted + paste back
+  URL", cover-frame picker) — full detail in \`02_Integration-Reference.md\`.
+
+Updated \`SETUP.md\` §9 to point at the new reference doc and reflect the
+Ayrshare decision. 4 open items logged at the end of
+\`02_Integration-Reference.md\` needing a client answer before building
+(Google Trends source, Bilibili eligibility, TikTok comment inbox
+acceptance, whether a minimal Weibo text presence is wanted).
+
+**Next step:** decide whether to update the Publish/Research design canvas
+(\`design/canvas/publish-screens.mjs\`, \`research-screens.mjs\`) to reflect
+the Ayrshare-backed channel list and the reaction-analysis page structure,
+or leave the design as-is until the client confirms the open items above.

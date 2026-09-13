@@ -157,17 +157,27 @@ provider accounts" clause holds:
 
 ## 9. Publishing channels (§7, §11)
 
+**See `02_Integration-Reference.md`** for the full research pass on this
+(vendor pricing, exact API names, HK-entity eligibility per Chinese
+platform) — this table is the short version.
+
+**Aggregator decision:** build the seven Western channels against one
+aggregator ([Ayrshare](https://www.ayrshare.com/)) rather than seven
+direct integrations — flat pricing, real analytics + comment read on all
+seven. No aggregator covers the Chinese platforms at all; those are
+channel-by-channel, see below.
+
 | Channel | What's needed | Notes |
 |---|---|---|
-| YouTube | Google Cloud OAuth client (reuse §8 above) | Ships in draft mode until client's compliance audit passes |
-| Instagram + Facebook | Meta for Developers app, Graph API, App Review for publishing permissions | Client's Business/Page account, client completes verification |
-| LinkedIn | LinkedIn Developer app | Marketing/Community Management API needs approval |
-| WeChat Official Account | Tencent Open Platform account | **Client dependency** — needs a China-registered entity |
-| TikTok | TikTok for Developers app | Upload-to-inbox only until client's compliance audit passes |
-| X | X Developer account + keys | **Explicit client dependency (§11)** |
-| Xiaohongshu, WeChat Channels, Bilibili | None — no official publish API | Exported asset pack for manual posting instead |
-| Douyin | Mainland China entity required | Out of scope unless client has one |
-| Weibo | — | Doesn't work at all — see §4.1 of `02_Integration-Reference.md` reasoning in the spec; not pursued |
+| YouTube | Ayrshare, or Google Cloud OAuth client direct (reuse §8 above) | Ships in draft mode until client's compliance audit passes |
+| Instagram + Facebook | Ayrshare, or Meta for Developers app direct | Client's Business/Page account, client completes verification |
+| LinkedIn | Ayrshare, or LinkedIn Developer app direct | Marketing/Community Management API needs approval |
+| WeChat Official Account | Tencent Open Platform account, **service account (服务号) only** | **Client dependency** — needs a China-registered entity; the one Chinese channel worth a direct integration, real draft/publish/media API exists |
+| TikTok | Ayrshare, or TikTok for Developers app direct | Upload-to-inbox only until client's compliance audit passes; TikTok exposes **no comment API at all**, on any tier |
+| X | Ayrshare, or X Developer account + keys direct | **Explicit client dependency (§11)**; reads are now pay-per-use (bash.005/read) — budget comment sync accordingly |
+| Xiaohongshu, WeChat Channels, Bilibili | None — no official publish API exists for any entity, not just HK ones | Exported asset pack for manual posting instead; see `02_Integration-Reference.md` §2 for the closed-loop "mark as posted" pattern to build |
+| Douyin | Mainland China entity required for enterprise features | Out of scope unless client sets one up |
+| Weibo | — | Video doesn't work at all, confirmed — text+image via `statuses/share` is technically usable if ever wanted, but not pursued for this use case |
 
 ## 10. Auth (§8)
 
