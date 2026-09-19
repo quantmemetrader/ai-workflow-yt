@@ -12,7 +12,7 @@
   var PHONE_MAX = 760;
 
   /* ------------------------------ language ------------------------------ */
-  /* Traditional Chinese is the default; the login switch changes it and it is remembered. */
+  /* Simplified Chinese is the default; the login switch changes it and it is remembered. */
   var ZH = window.__ZH || {};
   var LANG = 'zh';
   try { LANG = localStorage.getItem('af-lang') || 'zh'; } catch (e) {}
@@ -24,14 +24,14 @@
     var m;
     if ((m = c.match(/^(?:(Mon|Tue|Wed|Thu|Fri|Sat|Sun) )?(\d{1,2}) (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)( \d{4})?,?( \d{1,2}:\d{2})?$/)))
       return (m[4] ? m[4].trim() + ' 年 ' : '') + MON[m[3]] + ' 月 ' + m[2] + ' 日' + (m[1] ? '（' + WD[m[1]] + '）' : '') + (m[5] || '');
-    if ((m = c.match(/^(\d+) (min|h|d) ago$/))) return m[1] + { min: ' 分鐘前', h: ' 小時前', d: ' 日前' }[m[2]];
-    if ((m = c.match(/^(\d+) (min|h|d)$/))) return m[1] + { min: ' 分鐘', h: ' 小時', d: ' 日' }[m[2]];
+    if ((m = c.match(/^(\d+) (min|h|d) ago$/))) return m[1] + { min: ' 分钟前', h: ' 小时前', d: ' 天前' }[m[2]];
+    if ((m = c.match(/^(\d+) (min|h|d)$/))) return m[1] + { min: ' 分钟', h: ' 小时', d: ' 天' }[m[2]];
     if ((m = c.match(/^([\d.,]+) s$/))) return m[1] + ' 秒';
-    if ((m = c.match(/^Updated (.+)$/))) return '更新於 ' + (trCore(m[1]) || m[1]);
+    if ((m = c.match(/^Updated (.+)$/))) return '更新于 ' + (trCore(m[1]) || m[1]);
     if ((m = c.match(/^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)$/))) return MON[m[1]] + ' 月';
-    if ((m = c.match(/^In (\d{2})$/))) return '用於 ' + m[1];
+    if ((m = c.match(/^In (\d{2})$/))) return '用于 ' + m[1];
     if ((m = c.match(/^(\d+) (files|entries|people|scripts|projects|comments|docs|shots|versions|days|months|channels|videos|topics|beats|posts|drafts|clips|jobs)$/)))
-      return m[1] + ' ' + { files: '個檔案', entries: '筆分錄', people: '人', scripts: '份劇本', projects: '個項目', comments: '則留言', docs: '份文件', shots: '個鏡頭', versions: '個版本', days: '日', months: '個月', channels: '個頻道', videos: '條影片', topics: '個題目', beats: '段', posts: '個帖子', drafts: '份草稿', clips: '個片段', jobs: '個工作' }[m[2]];
+      return m[1] + ' ' + { files: '个文件', entries: '笔分录', people: '人', scripts: '份剧本', projects: '个项目', comments: '条评论', docs: '份文档', shots: '个镜头', versions: '个版本', days: '天', months: '个月', channels: '个频道', videos: '条视频', topics: '个题目', beats: '段', posts: '个帖子', drafts: '份草稿', clips: '个片段', jobs: '个任务' }[m[2]];
     if ((m = c.match(/^v(\d+) · (.+)$/))) { var t = trCore(m[2]); if (t) return 'v' + m[1] + ' · ' + t; }
     return null;
   }
@@ -62,7 +62,7 @@
       trNode(el.tagName === 'TEMPLATE' ? el.content : el);
     }
   }
-  if (LANG === 'zh') document.documentElement.lang = 'zh-HK';
+  if (LANG === 'zh') document.documentElement.lang = 'zh-CN';
 
 
   function DCLogic(props) { this.props = props || {}; this.state = {}; }
@@ -70,8 +70,37 @@
     var next = typeof p === 'function' ? p(this.state, this.props) : p;
     for (var k in next) this.state[k] = next[k];
     render();
+    /* a redraw replaces the DOM, so screens with charts draw them again */
+    if (typeof this.componentDidUpdate === 'function') { var self = this; setTimeout(function () { self.componentDidUpdate(); }, 0); }
   };
   window.DCLogic = DCLogic;
+
+  /* rail icons name their module on hover: Espresso tooltip, one line, short delay, instant while moving along the rail */
+  var RAILTIP = { chat: 'Chat', files: 'Files', research: 'Market Research', script: 'Script', video: 'Video Edit', publish: 'Publish', accounting: 'Accounting', finance: 'Finance', legal: 'Legal', hr: 'HR', admin: 'Admin' };
+  var tipEl = null, tipFor = null, tipTimer = null, tipWarm = 0;
+  function hideTip() { clearTimeout(tipTimer); tipFor = null; if (tipEl) { tipEl.remove(); tipEl = null; tipWarm = Date.now(); } }
+  function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;'); }
+  document.addEventListener('mouseover', function (e) {
+    var r = e.target.closest && e.target.closest('.r');
+    if (!r || !r.parentNode) return hideTip();
+    if (tipFor === r) return;
+    var rs = Array.prototype.filter.call(r.parentNode.children, function (x) { return x.classList && x.classList.contains('r'); });
+    var name = RAILTIP[MODS[rs.indexOf(r)]];
+    hideTip();
+    if (!name) return;
+    tipFor = r;
+    tipTimer = setTimeout(function () {
+      var b = r.getBoundingClientRect();
+      tipEl = document.createElement('div');
+      tipEl.style.cssText = 'position:fixed;z-index:10000;pointer-events:none;left:' + Math.round(b.right + 8) + 'px;top:' + Math.round(b.top + b.height / 2) + 'px;transform:translateY(-50%);' +
+        'display:flex;align-items:center;gap:6px;background:#171717;color:#fff;border-radius:6px;padding:4px 8px;font:500 12px/16px Inter,system-ui,sans-serif;white-space:nowrap;box-shadow:0 2px 6px rgba(0,0,0,.14);';
+      tipEl.innerHTML = esc(trText(name)) + (r.classList.contains('no') ? '<span style="color:#999999;font-weight:400">' + esc(trText('HR access only')) + '</span>' : '');
+      document.body.appendChild(tipEl);
+      if (tipEl.animate) tipEl.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 100, easing: 'ease-out' });
+    }, Date.now() - tipWarm < 400 ? 0 : 350);
+  });
+  document.addEventListener('mousedown', hideTip);
+  window.addEventListener('scroll', hideTip, true);
 
   var root = document.getElementById('dc-root'), stage = document.getElementById('stage');
   var comp = null, variant = null, tpl = null;
@@ -154,12 +183,12 @@
     })(els[i]);
   }
 
-  /* the login's 繁體中文 / English switch, and the EN pill in chat, change the language */
+  /* the login's 简体中文 / English switch, and the EN pill in chat, change the language */
   function langSwitch() {
     var zh = null, en = null, spans = root.querySelectorAll('span');
     for (var i = 0; i < spans.length; i++) {
       var t = spans[i].textContent.trim();
-      if (t === '繁體中文') zh = spans[i]; else if (t === 'English') en = spans[i];
+      if (t === '简体中文') zh = spans[i]; else if (t === 'English') en = spans[i];
     }
     if (zh && en && zh.parentNode === en.parentNode) {
       if (LANG !== 'zh') { var onStyle = zh.getAttribute('style'); zh.setAttribute('style', en.getAttribute('style')); en.setAttribute('style', onStyle); }
@@ -174,7 +203,7 @@
       if (n.nodeValue.trim() !== 'EN' || !n.parentElement) continue;
       var pill = n.parentElement;
       n.nodeValue = LANG === 'zh' ? '中' : 'EN';
-      pill.style.cursor = 'pointer'; pill.setAttribute('data-hot', '1'); pill.title = LANG === 'zh' ? 'Switch to English' : '切換至繁體中文';
+      pill.style.cursor = 'pointer'; pill.setAttribute('data-hot', '1'); pill.title = LANG === 'zh' ? 'Switch to English' : '切换至简体中文';
       pill.addEventListener('click', function (e) { e.stopPropagation(); setLang(LANG === 'zh' ? 'en' : 'zh'); });
     }
   }
@@ -238,8 +267,12 @@
     }
     var nav = t.closest('[data-nav]');
     if (nav) { e.preventDefault(); return go(nav.getAttribute('data-nav')); }
-    /* clicked something that does nothing: show what does, like a Figma prototype */
-    if (!t.closest('[data-hot]')) flashHints();
+    /* A prototype flashed blue rings over everything clickable when you hit a
+       dead spot. This is a product now: a screen that is not built yet should
+       look unfinished, not like a demo asking to be poked. Kept behind a flag
+       so the canvas itself can still be walked through when reviewing designs:
+       add ?hints=1 to the URL. */
+    if (!t.closest('[data-hot]') && /[?&]hints=1/.test(location.search)) flashHints();
   });
 
   /* phone "More" tab: module sheet */

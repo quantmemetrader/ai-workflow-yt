@@ -1,0 +1,124 @@
+import "server-only";
+import { env } from "@/lib/env";
+
+/**
+ * TikHub — everybody else's accounts, read only.
+ *
+ * The division of labour with `zernio.ts` is deliberate and worth stating,
+ * because getting it wrong would be a privacy problem rather than a bug:
+ *
+ *   Zernio  → our own channels. Authorised by the studio. Reads *and* writes.
+ *   TikHub  → public numbers on anyone's channel. Reads, and only reads.
+ *
+ * So competitor research comes from here, and nothing that touches the
+ * studio's own accounts ever does. There is no write surface in this file and
+ * there should never be one.
+ *
+ * TikHub bills per request and every response is explicit about it
+ * ("This request will incur a charge"), so callers are jobs, results are
+ * cached, and a screen never reaches this module directly.
+ */
+
+export class TikHubError extends Error {
+  constructor(message: string, readonly status: number) {
+    super(message);
+    this.name = "TikHubError";
+  }
+}
+
+export class TikHubUnconfigured extends Error {
+  constructor() {
+    super("No TIKHUB_TOKEN is set, so outside-platform research is unavailable.");
+    this.name = "TikHubUnconfigured";
+  }
+}
+
+const TIMEOUT_MS = Number(process.env.TIKHUB_TIMEOUT_MS ?? 30_000);
+
+type Query = Record<string, string | number | boolean | undefined | null>;
+
+async function get<T>(path: string, query: Query = {}): Promise<T> {
+  if (!env.tikhub.configured) throw new TikHubUnconfigured();
+
+  const url = new URL(env.tikhub.baseUrl + path);
+  for (const [k, v] of Object.entries(query)) {
+    if (v !== undefined && v !== null && v !== "") url.searchParams.set(k, String(v));
+  }
+
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+      headers: { authorization: `Bearer ${env.tikhub.token}`, accept: "application/json" },
+      cache: "no-store",
+    });
+  } catch (err) {
+    const why = err instanceof Error && err.name === "TimeoutError" ? `did not answer within ${TIMEOUT_MS}ms` : String(err);
+    throw new TikHubError(`TikHub GET ${path} ${why}`, 0);
+  }
+
+  const text = await res.text();
+  let parsed: { code?: number; data?: unknown; detail?: unknown };
+  try {
+    parsed = text ? JSON.parse(text) : {};
+  } catch {
+    throw new TikHubError(`TikHub GET ${path} returned non-JSON (${res.status}): ${text.slice(0, 200)}`, res.status);
+  }
+
+  // TikHub answers 200 with a non-200 `code` for application-level failures,
+  // so the HTTP status alone is not the outcome.
+  if (!res.ok || (parsed.code !== undefined && parsed.code !== 200)) {
+    const detail = typeof parsed.detail === "string" ? parsed.detail : JSON.stringify(parsed.detail ?? {}).slice(0, 200);
+    throw new TikHubError(`TikHub GET ${path} failed (${res.status}/${parsed.code ?? "?"}): ${detail}`, res.status);
+  }
+
+  return (parsed.data ?? parsed) as T;
+}
+
+/** Whoever the key belongs to, and what it is allowed to reach. Used by the
+ * Admin "channels & credentials" screen to show a key's state without ever
+ * showing the key. */
+export const keyInfo = () =>
+  get<never>("/api/v1/tikhub/user/get_user_info").catch((err) => {
+    throw err;
+  });
+
+// ------------------------------------------------------------------ YouTube
+
+export type TikHubYouTubeVideo = {
+  video_id: string;
+  title?: string | null;
+  description?: string | null;
+  url?: string | null;
+  thumbnail?: string | null;
+  duration?: string | null;
+  published_time?: string | null;
+  view_count?: string | null;
+  short_view_count?: string | null;
+};
+
+export const youtubeChannelVideos = (channelId: string) =>
+  get<{ videos?: TikHubYouTubeVideo[] }>("/api/v1/youtube/web_v2/get_channel_videos", { channel_id: channelId });
+
+export const youtubeChannelInfo = (channelId: string) =>
+  get<Record<string, unknown>>("/api/v1/youtube/web/get_channel_info", { channel_id: channelId });
+
+export const youtubeSearch = (query: string) =>
+  get<Record<string, unknown>>("/api/v1/youtube/web_v2/get_general_search", { search_query: query });
+
+// ------------------------------------------------------------------- others
+
+export const tiktokUserVideos = (secUserId: string) =>
+  get<Record<string, unknown>>("/api/v1/tiktok/app/v3/fetch_user_post_videos", { secUid: secUserId });
+
+export const instagramUserPosts = (username: string) =>
+  get<Record<string, unknown>>("/api/v1/instagram/v3/get_user_posts", { username });
+
+export const xiaohongshuUser = (userId: string) =>
+  get<Record<string, unknown>>("/api/v1/xiaohongshu/web_v3/fetch_user_info", { user_id: userId });
+
+export const wechatChannelVideos = (username: string) =>
+  get<Record<string, unknown>>("/api/v1/wechat_channels/v2/fetch_user_videos", { username });
+
+export const bilibiliVideoComments = (bvid: string) =>
+  get<Record<string, unknown>>("/api/v1/bilibili/web/fetch_video_comments", { bv_id: bvid });

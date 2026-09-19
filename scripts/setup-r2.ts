@@ -1,0 +1,37 @@
+/**
+ * Allows the browser to PUT straight into the bucket from the origins we
+ * actually serve. Without this, direct uploads fail the preflight and every
+ * byte would have to be proxied through a function instead.
+ *
+ *   npm run setup:r2
+ */
+import { putBucketCors } from "../lib/storage/r2";
+
+/**
+ * Every origin the app is served from. Uploads go browser → R2 directly, so an
+ * origin missing here is an origin where uploading silently fails: the row is
+ * created, the PUT is refused by the browser, and the file is left unconfirmed.
+ * Add the TLS hostname here the day one exists.
+ */
+const ORIGINS = [
+  // The Cherry box, where the product actually runs today.
+  "http://84.32.176.16:3300",
+  "http://127.0.0.1:3300",
+  "http://localhost:3300",
+  // The Vercel copy, kept as a fallback.
+  "https://ai-workspace-video.vercel.app",
+  "https://ai-workflow-for-video-creators.vercel.app",
+  // Local development.
+  "http://localhost:3000",
+  "http://localhost:3101",
+];
+
+async function main() {
+  await putBucketCors(ORIGINS);
+  console.log("R2 CORS set for:\n  " + ORIGINS.join("\n  "));
+}
+
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});

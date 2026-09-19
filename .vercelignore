@@ -10,3 +10,9 @@ node_modules
 .vercel
 out
 tsconfig.tsbuildinfo
+# Credential documents.
+*_API.docx
+*_API.pdf
+腾亚_API.docx
+# Database dumps.
+backups/

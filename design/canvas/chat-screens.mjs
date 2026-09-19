@@ -101,7 +101,7 @@ ${DMS.map(([img, n, pres, unread, tag]) => `      <div class="ws${unread ? ' unr
     <div style="margin-top: auto; display: flex; align-items: center; gap: 9px; padding: 10px 8px 2px; border-top: 1px solid #ededed;">
       <span class="pr"><img src="pfp-chan.jpg" style="width: 30px; height: 30px; border-radius: 9px; object-fit: cover;"><i class="on-g"></i></span>
       <div style="min-width: 0; flex-grow: 1;"><div style="font-size: 12.5px; font-weight: 500;">Chan Ka-ming</div><div style="font-size: 11px; color: #999999;">On set · Temple St</div></div>
-      <div style="display: flex; gap: 2px; padding: 2px; border-radius: 7px; background: #ededed; font-size: 10.5px;"><span style="padding: 2px 6px; border-radius: 5px; background: #fff; font-weight: 500;">繁</span><span style="padding: 2px 6px; color: #7c7c7c;">EN</span></div>
+      <div style="display: flex; gap: 2px; padding: 2px; border-radius: 7px; background: #ededed; font-size: 10.5px;"><span style="padding: 2px 6px; border-radius: 5px; background: #fff; font-weight: 500;">简</span><span style="padding: 2px 6px; color: #7c7c7c;">EN</span></div>
     </div>
   </div>`;
 
@@ -353,7 +353,7 @@ const loginShell = (title, form) => `<!doctype html>
 
   <div style="flex-grow: 1; display: flex; flex-direction: column; padding: 32px 44px;">
     <div style="display: flex; justify-content: flex-end;">
-      <div style="display: flex; gap: 2px; padding: 3px; border-radius: 9px; background: #f3f3f3; font-size: 12px;"><span style="padding: 4px 11px; border-radius: 6px; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.1); font-weight: 500;">繁體中文</span><span style="padding: 4px 11px; color: #7c7c7c;">English</span></div>
+      <div style="display: flex; gap: 2px; padding: 3px; border-radius: 9px; background: #f3f3f3; font-size: 12px;"><span style="padding: 4px 11px; border-radius: 6px; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.1); font-weight: 500;">简体中文</span><span style="padding: 4px 11px; color: #7c7c7c;">English</span></div>
     </div>
     <div style="flex-grow: 1; display: flex; align-items: center; justify-content: center;">
       <div style="width: 380px;">${form}</div>

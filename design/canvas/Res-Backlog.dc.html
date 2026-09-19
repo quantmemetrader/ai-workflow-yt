@@ -93,7 +93,31 @@
     .src:last-child { border-bottom: none; }
     .src b { font-size: 10.5px; font-weight: 500; color: #999999; width: 52px; flex-shrink: 0; padding-top: 1px; }
     .src span { font-size: 12.5px; line-height: 1.45; color: #383838; }
-    .sw { width: 9px; height: 9px; border-radius: 3px; flex-shrink: 0; }</style>
+    .sw { width: 9px; height: 9px; border-radius: 3px; flex-shrink: 0; }
+    .wl .nmw { flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+    .wl .nmw .nm { display: block; }
+    .wl .wc { font-size: 10.5px; color: #a3a3a3; }
+    .pkw { position: relative; }
+    .pkv { color: #171717; font-weight: 500; margin-left: 5px; }
+    .pkb { margin-left: 6px; min-width: 17px; height: 17px; padding: 0 5px; box-sizing: border-box; border-radius: 9px; background: var(--ac); color: #fff; font-size: 11px; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; }
+    .chip.pkon { border-color: var(--ac); }
+    .pkbg { position: fixed; inset: 0; z-index: 40; }
+    .pkp { position: absolute; top: calc(100% + 6px); left: 0; z-index: 41; background: #fff; border: 1px solid #e2e2e2; border-radius: 12px; box-shadow: 0 12px 32px rgba(23,23,23,.14), 0 2px 6px rgba(23,23,23,.06); padding: 6px; }
+    .pkh { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 8px 8px 6px; }
+    .pkh b { font-size: 13px; font-weight: 500; } .pkh span { font-size: 11.5px; color: #999999; font-variant-numeric: tabular-nums; }
+    .pkq { display: flex; align-items: center; gap: 7px; height: 30px; margin: 2px 4px 4px; padding: 0 9px; border: 1px solid #ededed; border-radius: 8px; background: #f8f8f8; font-size: 12px; color: #999999; }
+    .pkq svg { width: 13px; height: 13px; stroke: #999999; fill: none; stroke-width: 1.8; stroke-linecap: round; flex-shrink: 0; }
+    .pkg { padding: 9px 8px 4px; font-size: 10.5px; font-weight: 500; color: #999999; letter-spacing: .04em; text-transform: uppercase; }
+    .pk { display: flex; align-items: center; gap: 9px; height: 31px; padding: 0 8px; border-radius: 7px; font-size: 12.5px; color: #383838; }
+    .pk:hover { background: #f5f5f5; }
+    .pk .cb, .ppk .cb { border: 1.5px solid #c7c7c7; box-sizing: border-box; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .pk .cb { width: 15px; height: 15px; border-radius: 4px; }
+    .pk .cb svg, .ppk .cb svg { stroke: #fff; fill: none; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; opacity: 0; }
+    .pk .cb svg { width: 11px; height: 11px; }
+    .pk.on .cb, .ppk.on .cb { background: var(--ac); border-color: var(--ac); } .pk.on .cb svg, .ppk.on .cb svg { opacity: 1; }
+    .pk .n { flex-grow: 1; } .pk .d { font-size: 11px; color: #a3a3a3; }
+    .pkf { display: flex; align-items: center; gap: 14px; margin-top: 6px; padding: 9px 8px 5px; border-top: 1px solid #f0f0f0; font-size: 12px; color: #7c7c7c; }
+    .pkf .pka { color: var(--ac); margin-left: auto; }</style>
 </helmet>
 
 <div style="--ac: {{accent}}; width: 1440px; height: 900px; display: flex; background: #ffffff; color: #171717; overflow: hidden;">
@@ -127,6 +151,7 @@
     </div>
     <div class="lbl" style="margin: 18px 0 5px;">Connected sources</div>
     <div style="display: flex; flex-direction: column; gap: 1px;">
+      <div class="n"><span>News sites</span><span style="margin-left: auto; font-size: 11px; color: #999999;">10</span></div>
       <div class="n"><span>GDELT</span><span style="margin-left: auto; width: 6px; height: 6px; border-radius: 3px; background: #278f5e;"></span></div>
       <div class="n"><span>YouTube mostPopular</span><span style="margin-left: auto; width: 6px; height: 6px; border-radius: 3px; background: #278f5e;"></span></div>
       <div class="n"><span>Google Trends</span><span style="margin-left: auto; width: 6px; height: 6px; border-radius: 3px; background: #278f5e;"></span></div>
@@ -298,7 +323,34 @@ class Component extends DCLogic {
     return out;
   }
   done(el) { var l = el.parentNode.querySelector('.lwload'); if (l) l.remove(); }
-  renderVals() { return { accent: this.accent() }; }
+  /* the Sources / Category pickers re-render the screen, so the chart is drawn again */
+  componentDidUpdate() { this.componentDidMount(); }
+  renderVals() {
+    return {
+      ...(function (c) {
+      var st = c.state || {}, src = st.src || ["bloomberg","reuters","scmp","techcrunch","gdelt","youtube"], cat = st.cat || [], pop = st.pop || '', o = {};
+      var ALL = ["bloomberg","reuters","ft","wsj","scmp","nikkei","techcrunch","verge","coindesk","digitimes","gdelt","gtrends","youtube"], NM = {"bloomberg":"Bloomberg","reuters":"Reuters","ft":"Financial Times","wsj":"The Wall Street Journal","scmp":"SCMP","nikkei":"Nikkei Asia","techcrunch":"TechCrunch","verge":"The Verge","coindesk":"CoinDesk","digitimes":"DigiTimes","gdelt":"GDELT","gtrends":"Google Trends","youtube":"YouTube"}, R = [];
+      var set = function (p) { c.setState(p); }, drop = function (a, k) { return a.filter(function (x) { return x !== k; }); };
+      o.popSrc = pop === 'src'; o.popCat = pop === 'cat';
+      o.togSrc = function () { set({ pop: pop === 'src' ? '' : 'src' }); };
+      o.togCat = function () { set({ pop: pop === 'cat' ? '' : 'cat' }); };
+      o.closePop = function () { set({ pop: '' }); };
+      ALL.forEach(function (k) { var on = src.indexOf(k) > -1; o['s_' + k] = on ? ' on' : ''; o['ts_' + k] = function () { set({ src: on ? drop(src, k) : src.concat([k]) }); }; });
+      ["ai","chain","semi","devices","fintech","ev","startups","culture"].forEach(function (k) { var on = cat.indexOf(k) > -1; o['c_' + k] = on ? ' on' : ''; o['tc_' + k] = function () { set({ cat: on ? drop(cat, k) : cat.concat([k]) }); }; });
+      o.srcAll = function () { set({ src: ALL.slice() }); };
+      o.srcNone = function () { set({ src: [] }); };
+      o.catNone = function () { set({ cat: [] }); };
+      var picked = ALL.filter(function (k) { return src.indexOf(k) > -1; });
+      o.srcN = String(picked.length); o.srcZero = !picked.length;
+      o.srcNames = picked.slice(0, 2).map(function (k) { return NM[k]; }).join(', ') + (picked.length > 2 ? ' +' + (picked.length - 2) : '');
+      o.catAll = !cat.length; o.catSome = cat.length > 0; o.catN = String(cat.length); o.catOn = cat.length ? ' pkon' : '';
+      var shown = 0; R.forEach(function (k, i) { var v = !cat.length || cat.indexOf(k) > -1; o['w_' + i] = v; if (v) shown++; });
+      o.wNone = R.length > 0 && !shown;
+      return o;
+    })(this),
+      accent: this.accent()
+    };
+  }
   draw() {
   }
 }

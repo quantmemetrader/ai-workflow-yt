@@ -9,3 +9,17 @@ out
 # Unsubsetted CJK font source (17MB) — kept locally for future subsetting,
 # not meant to be committed raw.
 assets/NotoSansSC.ttf
+
+# Credential documents. The client sends keys as files; they must never be
+# committed and never reach a deployment.
+*_API.docx
+*_API.pdf
+腾亚_API.docx
+
+# Database dumps. They contain every row of the studio's data, including
+# password hashes and session tokens — never in git, never in a deployment.
+backups/
+*.sql.gz
+
+# Runtime logs from pm2 and the background workers. Regenerated on every run.
+logs/

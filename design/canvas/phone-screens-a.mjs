@@ -8,6 +8,7 @@ import fs from 'fs';
 import path from 'path';
 import { P, docIcon, folderIcon, px, SPRITE } from './shell.mjs';
 import { phonePage, row, sec, kpis, bd, dot, pbar, btns, fld, chev, tick, warn, cbx, cover, pav, ini } from './phone-shell.mjs';
+import { TOPICS, catName, pickLogic, phoneFilters, phoneSheets, PHONE_PICK_CSS } from './research-filters.mjs';
 
 const DIR = path.dirname(new URL(import.meta.url).pathname);
 const out = [];
@@ -51,7 +52,7 @@ ${msg('michelle', 'Michelle Yip', '21 Aug', 'Office closed on 26 Sep for the day
   ask: 'Only admins can post here',
   sheet: sheet('#announcements', 'Anything here I need to act on?', 'Read 6 posts · 0.2 s', 'One thing: scripts now need approval before Video Edit. Your two drafts will go through Michelle.', 'Open my drafts'),
 });
-const brandTop = `<div style="display: flex; align-items: center; justify-content: space-between; padding: 22px 20px 0;"><div style="width: 36px; height: 36px; border-radius: 10px; background: #171717; color: #fff; font-size: 13px; font-weight: 600; display: flex; align-items: center; justify-content: center;">AF</div><div style="display: flex; gap: 2px; padding: 2px; border-radius: 9px; background: #f3f3f3;"><span style="height: 30px; padding: 0 11px; border-radius: 7px; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.1); font-size: 13px; display: flex; align-items: center;">繁體中文</span><span style="height: 30px; padding: 0 11px; font-size: 13px; color: #7c7c7c; display: flex; align-items: center;">English</span></div></div>`;
+const brandTop = `<div style="display: flex; align-items: center; justify-content: space-between; padding: 22px 20px 0;"><div style="width: 36px; height: 36px; border-radius: 10px; background: #171717; color: #fff; font-size: 13px; font-weight: 600; display: flex; align-items: center; justify-content: center;">AF</div><div style="display: flex; gap: 2px; padding: 2px; border-radius: 9px; background: #f3f3f3;"><span style="height: 30px; padding: 0 11px; border-radius: 7px; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.1); font-size: 13px; display: flex; align-items: center;">简体中文</span><span style="height: 30px; padding: 0 11px; font-size: 13px; color: #7c7c7c; display: flex; align-items: center;">English</span></div></div>`;
 /* sign-in: the desktop login's left panel (tilted collage of our own videos + headline), then the form */
 const tile = (k, mt = 0) => `<div style="aspect-ratio: 16 / 10; border-radius: 10px; overflow: hidden; box-shadow: 0 2px 8px 1px rgba(5,5,6,0.08);${mt ? ` margin-top: ${mt}px;` : ''}"><img src="cover-${k}.jpg" style="width: 100%; height: 100%; object-fit: cover;"></div>`;
 add('Login-Phone.dc.html', 'chat', 'Sign in', { bare: true, body: `
@@ -90,17 +91,24 @@ const RCH = ['Compare', 'Performance', 'Inbox', 'Backlog'];
 const line = (seed, base, lift, liftAt, W = 358, H = 150) => { let s = seed, v = base, pts = []; for (let i = 0; i < 40; i++) { s = (s * 16807) % 2147483647; v = Math.max(8, v + ((s / 2147483647) - .47) * 9); const b = i >= liftAt ? lift * (1 - Math.exp(-(i - liftAt) / 4)) : 0; pts.push([(i / 39 * W).toFixed(1), (H - 8 - (v + b) * (H - 16) / 130).toFixed(1)]); } return pts; };
 const path2 = pts => pts.map((p, i) => `${i ? 'L' : 'M'}${p[0]} ${p[1]}`).join(' ');
 const SER = [['Dai pai dong', 'var(--ac)', 11, 40, 55, 24, '+38%'], ['Night market', '#383838', 5, 36, 30, 26, '+21%'], ['Hawker succession', '#8d99a6', 23, 34, 8, 20, '+3%'], ['Cha chaan teng', '#c7c7c7', 41, 42, -10, 18, '−7%']];
+/* phones have no Trends screen, so the ranked topics sit under Compare; the Category picker hides the rest */
+const trending = `
+${sec('Trending now', 'ranked by heat')}
+${TOPICS.map(([n, h, ch, up, , cat], i) => `<sc-if value="{{w_${i}}}" hint-placeholder-val="{{ true }}">${row({ lead: `<span style="width: 22px; font-size: 13px; color: #c7c7c7; font-variant-numeric: tabular-nums; flex-shrink: 0;">${String(i + 1).padStart(2, '0')}</span>`, title: n, sub: `<span>${catName(cat)}</span>`, trail: `<div style="display: flex; flex-direction: column; align-items: flex-end; gap: 2px;"><span style="font-size: 15px; font-weight: 500;">${h}</span><span style="font-size: 12.5px; color: ${up ? '#278f5e' : '#e03636'};">${ch}</span></div>` })}</sc-if>`).join('')}
+<sc-if value="{{wNone}}" hint-placeholder-val="{{ false }}"><div style="padding: 28px 16px; text-align: center; font-size: 14px; color: #999999;">No topics in these categories yet</div></sc-if>`;
 add('Res-Compare-Phone.dc.html', 'res', 'Search & compare', {
   tab: 'res', crumb: 'Market Research', heading: 'Compare', sub: '4 topics · HK · last 40 days', chips: RCH, chipOn: 0,
-  body: `
+  body: `${phoneFilters}
       <div style="padding: 14px 16px 0;"><div class="card" style="padding: 12px 12px 8px;">
         <div class="cap" style="margin-bottom: 6px;">Search interest, indexed to 100 · Google Trends, GDELT</div>
         <svg viewBox="0 0 334 150" style="width: 100%; height: 150px; display: block; fill: none; stroke-linecap: round; stroke-linejoin: round;"><g stroke="#f3f3f3"><path d="M0 40h334M0 80h334M0 120h334"/></g>${SER.map(([, c, sd, b, l, at]) => `<path d="${path2(line(sd, b, l, at, 334, 150))}" stroke="${c}" stroke-width="${c === 'var(--ac)' ? 2.2 : 1.6}"/>`).join('')}<line x1="200" y1="10" x2="200" y2="146" stroke="#c7c7c7" stroke-dasharray="3 3"/></svg>
         <div style="display: flex; justify-content: space-between;" class="cap"><span>2 Aug</span><span>27 Aug · licence ruling</span><span>10 Sep</span></div>
       </div></div>
 ${sec('Topics', 'change over 14 days', '+ Add')}
-${SER.map(([n, c, , , , , ch], i) => row({ lead: `<span style="width: 14px; height: 4px; border-radius: 2px; background: ${c}; flex-shrink: 0;"></span>`, title: n, sub: `<span>Index ${[184, 142, 108, 91][i]} · peak ${['29 Aug', '3 Sep', '1 Sep', '12 Aug'][i]}</span>`, trail: `<span style="font-size: 14px; font-weight: 500; color: ${ch.startsWith('−') ? '#e03636' : '#278f5e'};">${ch}</span>`, sep: i < 3 ? 'n' : '' })).join('')}`,
+${SER.map(([n, c, , , , , ch], i) => row({ lead: `<span style="width: 14px; height: 4px; border-radius: 2px; background: ${c}; flex-shrink: 0;"></span>`, title: n, sub: `<span>Index ${[184, 142, 108, 91][i]} · peak ${['29 Aug', '3 Sep', '1 Sep', '12 Aug'][i]}</span>`, trail: `<span style="font-size: 14px; font-weight: 500; color: ${ch.startsWith('−') ? '#e03636' : '#278f5e'};">${ch}</span>`, sep: i < 3 ? 'n' : '' })).join('')}
+${trending}`,
   ask: 'Ask about these topics…',
+  extraCss: PHONE_PICK_CSS, overlay: phoneSheets, logic: pickLogic(TOPICS.map(t => t[5])),
   sheet: sheet('4 topics · 40 days', 'Why did dai pai dong jump?', 'Read 212 articles · 0.9 s', 'It broke from its baseline on 27 Aug, the day the licensing board ruled licences can pass to family. Night market rose with it.', 'Add to backlog'),
 });
 const PV = [['history', 'History of Greece · Ep 74', '412k views · 52% watched', '+24%'], ['porsche', 'Porsche cat · night drive', '288k views · 61% watched', '+18%'], ['goodday', 'Good day · teaser', '96k views · 38% watched', '−6%']];
@@ -342,7 +350,7 @@ ${[['Subtitles, 繁中 and English', 1], ['Voice-over stem', 1], ['Cover images,
       <div class="note" style="margin-top: 12px; background: #fffbf0; color: #8a5a0d;">Shots 03 and 07 aren’t ready. The export starts by itself when they are. About HK$6.40.</div>
 ${btns('Export when ready')}`,
   ask: 'Ask about this export…',
-  sheet: sheet('Export · project 003', 'Which formats does Publish need?', 'Read the composer · 0.4 s', 'YouTube needs 16:9 and Instagram Reels 9:16, both ticked. Nothing asks for 1:1.', 'Open the composer'),
+  sheet: sheet('Export · project 003', 'Which formats does Publish need?', 'Read the caption · 0.4 s', 'YouTube needs 16:9 and Instagram Reels 9:16, both ticked. Nothing asks for 1:1.', 'Open the caption'),
 });
 
 /* the dock's "More", open: the business modules pop up above it */

@@ -93,7 +93,31 @@
     .src:last-child { border-bottom: none; }
     .src b { font-size: 10.5px; font-weight: 500; color: #999999; width: 52px; flex-shrink: 0; padding-top: 1px; }
     .src span { font-size: 12.5px; line-height: 1.45; color: #383838; }
-    .sw { width: 9px; height: 9px; border-radius: 3px; flex-shrink: 0; }</style>
+    .sw { width: 9px; height: 9px; border-radius: 3px; flex-shrink: 0; }
+    .wl .nmw { flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+    .wl .nmw .nm { display: block; }
+    .wl .wc { font-size: 10.5px; color: #a3a3a3; }
+    .pkw { position: relative; }
+    .pkv { color: #171717; font-weight: 500; margin-left: 5px; }
+    .pkb { margin-left: 6px; min-width: 17px; height: 17px; padding: 0 5px; box-sizing: border-box; border-radius: 9px; background: var(--ac); color: #fff; font-size: 11px; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; }
+    .chip.pkon { border-color: var(--ac); }
+    .pkbg { position: fixed; inset: 0; z-index: 40; }
+    .pkp { position: absolute; top: calc(100% + 6px); left: 0; z-index: 41; background: #fff; border: 1px solid #e2e2e2; border-radius: 12px; box-shadow: 0 12px 32px rgba(23,23,23,.14), 0 2px 6px rgba(23,23,23,.06); padding: 6px; }
+    .pkh { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 8px 8px 6px; }
+    .pkh b { font-size: 13px; font-weight: 500; } .pkh span { font-size: 11.5px; color: #999999; font-variant-numeric: tabular-nums; }
+    .pkq { display: flex; align-items: center; gap: 7px; height: 30px; margin: 2px 4px 4px; padding: 0 9px; border: 1px solid #ededed; border-radius: 8px; background: #f8f8f8; font-size: 12px; color: #999999; }
+    .pkq svg { width: 13px; height: 13px; stroke: #999999; fill: none; stroke-width: 1.8; stroke-linecap: round; flex-shrink: 0; }
+    .pkg { padding: 9px 8px 4px; font-size: 10.5px; font-weight: 500; color: #999999; letter-spacing: .04em; text-transform: uppercase; }
+    .pk { display: flex; align-items: center; gap: 9px; height: 31px; padding: 0 8px; border-radius: 7px; font-size: 12.5px; color: #383838; }
+    .pk:hover { background: #f5f5f5; }
+    .pk .cb, .ppk .cb { border: 1.5px solid #c7c7c7; box-sizing: border-box; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .pk .cb { width: 15px; height: 15px; border-radius: 4px; }
+    .pk .cb svg, .ppk .cb svg { stroke: #fff; fill: none; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; opacity: 0; }
+    .pk .cb svg { width: 11px; height: 11px; }
+    .pk.on .cb, .ppk.on .cb { background: var(--ac); border-color: var(--ac); } .pk.on .cb svg, .ppk.on .cb svg { opacity: 1; }
+    .pk .n { flex-grow: 1; } .pk .d { font-size: 11px; color: #a3a3a3; }
+    .pkf { display: flex; align-items: center; gap: 14px; margin-top: 6px; padding: 9px 8px 5px; border-top: 1px solid #f0f0f0; font-size: 12px; color: #7c7c7c; }
+    .pkf .pka { color: var(--ac); margin-left: auto; }</style>
 </helmet>
 
 <div style="--ac: {{accent}}; width: 1440px; height: 900px; display: flex; background: #ffffff; color: #171717; overflow: hidden;">
@@ -127,6 +151,7 @@
     </div>
     <div class="lbl" style="margin: 18px 0 5px;">Connected sources</div>
     <div style="display: flex; flex-direction: column; gap: 1px;">
+      <div class="n"><span>News sites</span><span style="margin-left: auto; font-size: 11px; color: #999999;">10</span></div>
       <div class="n"><span>GDELT</span><span style="margin-left: auto; width: 6px; height: 6px; border-radius: 3px; background: #278f5e;"></span></div>
       <div class="n"><span>YouTube mostPopular</span><span style="margin-left: auto; width: 6px; height: 6px; border-radius: 3px; background: #278f5e;"></span></div>
       <div class="n"><span>Google Trends</span><span style="margin-left: auto; width: 6px; height: 6px; border-radius: 3px; background: #278f5e;"></span></div>
@@ -155,7 +180,29 @@
       <div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; overflow: hidden;">
 
         <div style="flex-shrink: 0; height: 50px; display: flex; align-items: center; gap: 8px; padding: 0 20px; border-bottom: 1px solid #ededed;">
-          <div class="chip">Sources: GDELT, YouTube <svg viewBox="0 0 24 24"><path d="m6.5 9.5 5.5 5.5 5.5-5.5"/></svg></div>
+          <div class="pkw">
+            <div class="chip" onClick="{{ togSrc }}">Sources<span class="pkv">{{srcNames}}</span><sc-if value="{{srcZero}}" hint-placeholder-val="{{ false }}"><span class="pkv">None</span></sc-if><svg viewBox="0 0 24 24"><path d="m6.5 9.5 5.5 5.5 5.5-5.5"/></svg></div>
+            <sc-if value="{{popSrc}}" hint-placeholder-val="{{ false }}">
+            <div class="pkbg" onClick="{{ closePop }}"></div>
+            <div class="pkp" style="width: 312px;">
+              <div class="pkh"><b>Sources the agent reads</b><span>{{srcN}} / 13</span></div>
+              <div class="pkq"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.4"/><path d="m15.8 15.8 4 4"/></svg><span>Search or paste a site, e.g. nikkei.com</span></div>
+              <div class="pkg">News sites</div><div class="pk{{s_bloomberg}}" onClick="{{ ts_bloomberg }}"><span class="cb"><svg viewBox="0 0 16 16"><path d="M3.6 8.3 6.5 11.2 12.4 5.1"/></svg></span><span class="n">Bloomberg</span><span class="d">bloomberg.com</span></div><div class="pk{{s_reuters}}" onClick="{{ ts_reuters }}"><span class="cb"><svg viewBox="0 0 16 16"><path d="M3.6 8.3 6.5 11.2 12.4 5.1"/></svg></span><span class="n">Reuters</span><span class="d">reuters.com</span></div><div class="pk{{s_ft}}" onClick="{{ ts_ft }}"><span class="cb"><svg viewBox="0 0 16 16"><path d="M3.6 8.3 6.5 11.2 12.4 5.1"/></svg></span><span class="n">Financial Times</span><span class="d">ft.com</span></div><div class="pk{{s_wsj}}" onClick="{{ ts_wsj }}"><span class="cb"><svg viewBox="0 0 16 16"><path d="M3.6 8.3 6.5 11.2 12.4 5.1"/></svg></span><span class="n">The Wall Street Journal</span><span class="d">wsj.com</span></div><div class="pk{{s_scmp}}" onClick="{{ ts_scmp }}"><span class="cb"><svg viewBox="0 0 16 16"><path d="M3.6 8.3 6.5 11.2 12.4 5.1"/></svg></span><span class="n">SCMP</span><span class="d">scmp.com</span></div><div class="pk{{s_nikkei}}" onClick="{{ ts_nikkei }}"><span class="cb"><svg viewBox="0 0 16 16"><path d="M3.6 8.3 6.5 11.2 12.4 5.1"/></svg></span><span class="n">Nikkei Asia</span><span class="d">asia.nikkei.com</span></div><div class="pk{{s_techcrunch}}" onClick="{{ ts_techcrunch }}"><span class="cb"><svg viewBox="0 0 16 16"><path d="M3.6 8.3 6.5 11.2 12.4 5.1"/></svg></span><span class="n">TechCrunch</span><span class="d">techcrunch.com</span></div><div class="pk{{s_verge}}" onClick="{{ ts_verge }}"><span class="cb"><svg viewBox="0 0 16 16"><path d="M3.6 8.3 6.5 11.2 12.4 5.1"/></svg></span><span class="n">The Verge</span><span class="d">theverge.com</span></div><div class="pk{{s_coindesk}}" onClick="{{ ts_coindesk }}"><span class="cb"><svg viewBox="0 0 16 16"><path d="M3.6 8.3 6.5 11.2 12.4 5.1"/></svg></span><span class="n">CoinDesk</span><span class="d">coindesk.com</span></div><div class="pk{{s_digitimes}}" onClick="{{ ts_digitimes }}"><span class="cb"><svg viewBox="0 0 16 16"><path d="M3.6 8.3 6.5 11.2 12.4 5.1"/></svg></span><span class="n">DigiTimes</span><span class="d">digitimes.com</span></div><div class="pkg">Signals</div><div class="pk{{s_gdelt}}" onClick="{{ ts_gdelt }}"><span class="cb"><svg viewBox="0 0 16 16"><path d="M3.6 8.3 6.5 11.2 12.4 5.1"/></svg></span><span class="n">GDELT</span><span class="d">news events</span></div><div class="pk{{s_gtrends}}" onClick="{{ ts_gtrends }}"><span class="cb"><svg viewBox="0 0 16 16"><path d="M3.6 8.3 6.5 11.2 12.4 5.1"/></svg></span><span class="n">Google Trends</span><span class="d">search interest</span></div><div class="pk{{s_youtube}}" onClick="{{ ts_youtube }}"><span class="cb"><svg viewBox="0 0 16 16"><path d="M3.6 8.3 6.5 11.2 12.4 5.1"/></svg></span><span class="n">YouTube</span><span class="d">mostPopular</span></div>
+              <div class="pkf"><span onClick="{{ srcAll }}">Select all</span><span onClick="{{ srcNone }}">Clear</span><span class="pka">+ Add a site</span></div>
+            </div>
+            </sc-if>
+          </div>
+          <div class="pkw">
+            <div class="chip{{catOn}}" onClick="{{ togCat }}">Category<sc-if value="{{catAll}}" hint-placeholder-val="{{ true }}"><span class="pkv">All</span></sc-if><sc-if value="{{catSome}}" hint-placeholder-val="{{ false }}"><span class="pkb">{{catN}}</span></sc-if><svg viewBox="0 0 24 24"><path d="m6.5 9.5 5.5 5.5 5.5-5.5"/></svg></div>
+            <sc-if value="{{popCat}}" hint-placeholder-val="{{ false }}">
+            <div class="pkbg" onClick="{{ closePop }}"></div>
+            <div class="pkp" style="width: 270px;">
+              <div class="pkh"><b>Rank only these beats</b></div>
+              <div class="pkg">Tech beats</div><div class="pk{{c_ai}}" onClick="{{ tc_ai }}"><span class="cb"><svg viewBox="0 0 16 16"><path d="M3.6 8.3 6.5 11.2 12.4 5.1"/></svg></span><span class="n">AI</span><span class="d">2 topics</span></div><div class="pk{{c_chain}}" onClick="{{ tc_chain }}"><span class="cb"><svg viewBox="0 0 16 16"><path d="M3.6 8.3 6.5 11.2 12.4 5.1"/></svg></span><span class="n">Blockchain & crypto</span><span class="d">2 topics</span></div><div class="pk{{c_semi}}" onClick="{{ tc_semi }}"><span class="cb"><svg viewBox="0 0 16 16"><path d="M3.6 8.3 6.5 11.2 12.4 5.1"/></svg></span><span class="n">Semiconductors</span><span class="d">2 topics</span></div><div class="pk{{c_devices}}" onClick="{{ tc_devices }}"><span class="cb"><svg viewBox="0 0 16 16"><path d="M3.6 8.3 6.5 11.2 12.4 5.1"/></svg></span><span class="n">Consumer tech</span><span class="d">1 topics</span></div><div class="pk{{c_fintech}}" onClick="{{ tc_fintech }}"><span class="cb"><svg viewBox="0 0 16 16"><path d="M3.6 8.3 6.5 11.2 12.4 5.1"/></svg></span><span class="n">Fintech</span><span class="d">1 topics</span></div><div class="pk{{c_ev}}" onClick="{{ tc_ev }}"><span class="cb"><svg viewBox="0 0 16 16"><path d="M3.6 8.3 6.5 11.2 12.4 5.1"/></svg></span><span class="n">EV & mobility</span><span class="d">1 topics</span></div><div class="pk{{c_startups}}" onClick="{{ tc_startups }}"><span class="cb"><svg viewBox="0 0 16 16"><path d="M3.6 8.3 6.5 11.2 12.4 5.1"/></svg></span><span class="n">Startups & VC</span><span class="d">1 topics</span></div><div class="pkg">Other</div><div class="pk{{c_culture}}" onClick="{{ tc_culture }}"><span class="cb"><svg viewBox="0 0 16 16"><path d="M3.6 8.3 6.5 11.2 12.4 5.1"/></svg></span><span class="n">Culture & lifestyle</span><span class="d">5 topics</span></div>
+              <div class="pkf"><span onClick="{{ catNone }}">Clear</span><span class="pka" onClick="{{ closePop }}">Done</span></div>
+            </div>
+            </sc-if>
+          </div>
           <div class="chip">Region: HK / TW / SG <svg viewBox="0 0 24 24"><path d="m6.5 9.5 5.5 5.5 5.5-5.5"/></svg></div>
           <div style="flex-grow: 1;"></div>
           <span class="cap">Ranked 09:15 HKT · next refresh 13:15</span>
@@ -226,62 +273,112 @@
           <span class="lbl" style="padding: 0; width: 48px;">14 d</span><span class="lbl" style="padding: 0; width: 26px; text-align: right;">Heat</span><span class="lbl" style="padding: 0; width: 54px; text-align: right;">Change</span>
         </div>
         <div style="flex-grow: 1; min-height: 0; overflow: hidden;">
-          <div class="wl on">
+          <sc-if value="{{w_0}}" hint-placeholder-val="{{ true }}"><div class="wl on">
             <span class="rk">01</span>
-            <span class="nm">Sham Shui Po dai pai dong revival</span>
+            <div class="nmw"><span class="nm">Sham Shui Po dai pai dong revival</span><span class="wc">Culture & lifestyle</span></div>
             <svg viewBox="0 0 48 18" style="width: 48px; height: 18px; flex-shrink: 0; fill: none; stroke: {{accent}}; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round;"><path d="M1 16 7 15l6 1 6-4 6 1 6-6 6 2 6-6 4-2"/></svg>
             <span class="ht">94</span>
             <span class="ch up">+38.2%</span>
-          </div>
-          <div class="wl">
+          </div></sc-if>
+          <sc-if value="{{w_1}}" hint-placeholder-val="{{ true }}"><div class="wl">
             <span class="rk">02</span>
-            <span class="nm">Taipei night-market crossover creators</span>
+            <div class="nmw"><span class="nm">HKMA stablecoin licences: first issuers</span><span class="wc">Blockchain & crypto</span></div>
+            <svg viewBox="0 0 48 18" style="width: 48px; height: 18px; flex-shrink: 0; fill: none; stroke: {{accent}}; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round;"><path d="M1 15 7 14l6 1 6-5 6 2 6-6 6 1 6-5 4-3"/></svg>
+            <span class="ht">91</span>
+            <span class="ch up">+33.5%</span>
+          </div></sc-if>
+          <sc-if value="{{w_2}}" hint-placeholder-val="{{ true }}"><div class="wl">
+            <span class="rk">03</span>
+            <div class="nmw"><span class="nm">On-device AI in new flagship phones</span><span class="wc">AI</span></div>
+            <svg viewBox="0 0 48 18" style="width: 48px; height: 18px; flex-shrink: 0; fill: none; stroke: {{accent}}; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round;"><path d="M1 16 7 14l6 0 6-3 6 1 6-5 6 1 6-6 4-2"/></svg>
+            <span class="ht">89</span>
+            <span class="ch up">+29.1%</span>
+          </div></sc-if>
+          <sc-if value="{{w_3}}" hint-placeholder-val="{{ true }}"><div class="wl">
+            <span class="rk">04</span>
+            <div class="nmw"><span class="nm">Taipei night-market crossover creators</span><span class="wc">Culture & lifestyle</span></div>
             <svg viewBox="0 0 48 18" style="width: 48px; height: 18px; flex-shrink: 0; fill: none; stroke: {{accent}}; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round;"><path d="M1 13 7 14l6-2 6 3 6-5 6 3 6-7 6 3 4-5"/></svg>
             <span class="ht">88</span>
             <span class="ch up">+21.4%</span>
-          </div>
-          <div class="wl">
-            <span class="rk">03</span>
-            <span class="nm">Harbourfront redevelopment hearing <span style="display:inline-block;width:6px;height:6px;border-radius:3px;background:#db7706;vertical-align:1px;margin-left:3px"></span></span>
+          </div></sc-if>
+          <sc-if value="{{w_4}}" hint-placeholder-val="{{ true }}"><div class="wl">
+            <span class="rk">05</span>
+            <div class="nmw"><span class="nm">TSMC 2 nm ramp and Asia’s chip supply</span><span class="wc">Semiconductors</span></div>
+            <svg viewBox="0 0 48 18" style="width: 48px; height: 18px; flex-shrink: 0; fill: none; stroke: {{accent}}; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round;"><path d="M1 14 7 13l6 1 6-3 6 0 6-4 6 1 6-4 4-1"/></svg>
+            <span class="ht">84</span>
+            <span class="ch up">+18.7%</span>
+          </div></sc-if>
+          <sc-if value="{{w_5}}" hint-placeholder-val="{{ true }}"><div class="wl">
+            <span class="rk">06</span>
+            <div class="nmw"><span class="nm">Harbourfront redevelopment hearing <span style="display:inline-block;width:6px;height:6px;border-radius:3px;background:#db7706;vertical-align:1px;margin-left:3px"></span></span><span class="wc">Culture & lifestyle</span></div>
             <svg viewBox="0 0 48 18" style="width: 48px; height: 18px; flex-shrink: 0; fill: none; stroke: {{accent}}; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round;"><path d="M1 15 7 13l6 1 6-4 6 2 6-5 6 1 6-4 4 1"/></svg>
             <span class="ht">81</span>
             <span class="ch up">+12.9%</span>
-          </div>
-          <div class="wl">
-            <span class="rk">04</span>
-            <span class="nm">Cantonese voice cloning backlash</span>
+          </div></sc-if>
+          <sc-if value="{{w_6}}" hint-placeholder-val="{{ true }}"><div class="wl">
+            <span class="rk">07</span>
+            <div class="nmw"><span class="nm">Cantonese voice cloning backlash</span><span class="wc">AI</span></div>
             <svg viewBox="0 0 48 18" style="width: 48px; height: 18px; flex-shrink: 0; fill: none; stroke: {{accent}}; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round;"><path d="M1 16 7 16l6-2 6 1 6-3 6 1 6-5 6 1 4-3"/></svg>
             <span class="ht">76</span>
             <span class="ch up">+9.8%</span>
-          </div>
-          <div class="wl">
-            <span class="rk">05</span>
-            <span class="nm">Singapore hawker succession</span>
+          </div></sc-if>
+          <sc-if value="{{w_7}}" hint-placeholder-val="{{ true }}"><div class="wl">
+            <span class="rk">08</span>
+            <div class="nmw"><span class="nm">Hong Kong spot bitcoin ETF flows</span><span class="wc">Blockchain & crypto</span></div>
+            <svg viewBox="0 0 48 18" style="width: 48px; height: 18px; flex-shrink: 0; fill: none; stroke: {{accent}}; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round;"><path d="M1 12 7 13l6-2 6 2 6-3 6 1 6-3 6 1 4-2"/></svg>
+            <span class="ht">73</span>
+            <span class="ch up">+6.2%</span>
+          </div></sc-if>
+          <sc-if value="{{w_8}}" hint-placeholder-val="{{ true }}"><div class="wl">
+            <span class="rk">09</span>
+            <div class="nmw"><span class="nm">Singapore hawker succession</span><span class="wc">Culture & lifestyle</span></div>
             <svg viewBox="0 0 48 18" style="width: 48px; height: 18px; flex-shrink: 0; fill: none; stroke: {{accent}}; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round;"><path d="M1 10 7 11l6 1 6-2 6 3 6-1 6-4 6 2 4-2"/></svg>
             <span class="ht">71</span>
             <span class="ch up">+3.1%</span>
-          </div>
-          <div class="wl">
-            <span class="rk">06</span>
-            <span class="nm">Cha chaan teng menu inflation</span>
+          </div></sc-if>
+          <sc-if value="{{w_9}}" hint-placeholder-val="{{ true }}"><div class="wl">
+            <span class="rk">10</span>
+            <div class="nmw"><span class="nm">Virtual banks turn a profit</span><span class="wc">Fintech</span></div>
+            <svg viewBox="0 0 48 18" style="width: 48px; height: 18px; flex-shrink: 0; fill: none; stroke: {{accent}}; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round;"><path d="M1 11 7 11l6 1 6-2 6 1 6-1 6-2 6 1 4-1"/></svg>
+            <span class="ht">68</span>
+            <span class="ch up">+2.6%</span>
+          </div></sc-if>
+          <sc-if value="{{w_10}}" hint-placeholder-val="{{ true }}"><div class="wl">
+            <span class="rk">11</span>
+            <div class="nmw"><span class="nm">HBM memory shortage</span><span class="wc">Semiconductors</span></div>
+            <svg viewBox="0 0 48 18" style="width: 48px; height: 18px; flex-shrink: 0; fill: none; stroke: {{accent}}; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round;"><path d="M1 12 7 12l6-1 6 1 6-1 6 0 6-2 6 1 4-1"/></svg>
+            <span class="ht">66</span>
+            <span class="ch up">+2.4%</span>
+          </div></sc-if>
+          <sc-if value="{{w_11}}" hint-placeholder-val="{{ true }}"><div class="wl">
+            <span class="rk">12</span>
+            <div class="nmw"><span class="nm">Cha chaan teng menu inflation</span><span class="wc">Culture & lifestyle</span></div>
             <svg viewBox="0 0 48 18" style="width: 48px; height: 18px; flex-shrink: 0; fill: none; stroke: #c7c7c7; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round;"><path d="M1 5 7 7l6-1 6 3 6-2 6 4 6-2 6 3 4 1"/></svg>
             <span class="ht">64</span>
             <span class="ch dn">−6.7%</span>
-          </div>
-          <div class="wl">
-            <span class="rk">07</span>
-            <span class="nm">MTR after-hours maintenance crews</span>
+          </div></sc-if>
+          <sc-if value="{{w_12}}" hint-placeholder-val="{{ true }}"><div class="wl">
+            <span class="rk">13</span>
+            <div class="nmw"><span class="nm">AI video start-ups raise in Asia</span><span class="wc">Startups & VC</span></div>
+            <svg viewBox="0 0 48 18" style="width: 48px; height: 18px; flex-shrink: 0; fill: none; stroke: {{accent}}; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round;"><path d="M1 12 7 11l6 1 6-1 6 0 6-2 6 1 6-2 4 0"/></svg>
+            <span class="ht">61</span>
+            <span class="ch up">+1.8%</span>
+          </div></sc-if>
+          <sc-if value="{{w_13}}" hint-placeholder-val="{{ true }}"><div class="wl">
+            <span class="rk">14</span>
+            <div class="nmw"><span class="nm">Foldables cut prices before 11.11</span><span class="wc">Consumer tech</span></div>
+            <svg viewBox="0 0 48 18" style="width: 48px; height: 18px; flex-shrink: 0; fill: none; stroke: #c7c7c7; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round;"><path d="M1 8 7 8l6 1 6-1 6 2 6-1 6 1 6 1 4 0"/></svg>
+            <span class="ht">59</span>
+            <span class="ch dn">−1.2%</span>
+          </div></sc-if>
+          <sc-if value="{{w_14}}" hint-placeholder-val="{{ true }}"><div class="wl">
+            <span class="rk">15</span>
+            <div class="nmw"><span class="nm">EV price war reaches Hong Kong</span><span class="wc">EV & mobility</span></div>
             <svg viewBox="0 0 48 18" style="width: 48px; height: 18px; flex-shrink: 0; fill: none; stroke: #c7c7c7; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round;"><path d="M1 9 7 8l6 2 6-1 6 2 6-1 6 2 6-1 4 1"/></svg>
-            <span class="ht">58</span>
+            <span class="ht">57</span>
             <span class="ch dn">−2.2%</span>
-          </div>
-          <div class="wl">
-            <span class="rk">08</span>
-            <span class="nm">Tai O stilt houses restoration</span>
-            <svg viewBox="0 0 48 18" style="width: 48px; height: 18px; flex-shrink: 0; fill: none; stroke: {{accent}}; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round;"><path d="M1 12 7 12l6-1 6 1 6-1 6 0 6-2 6 1 4-1"/></svg>
-            <span class="ht">52</span>
-            <span class="ch up">+1.4%</span>
-          </div>
+          </div></sc-if>
+          <sc-if value="{{wNone}}" hint-placeholder-val="{{ false }}"><div class="cap" style="padding: 28px 16px; text-align: center;">No topics in these categories yet</div></sc-if>
         </div>
         <div style="flex-shrink: 0; padding: 10px 12px; border-top: 1px solid #ededed; display: flex; align-items: center; gap: 7px;">
           <span style="width: 6px; height: 6px; border-radius: 3px; background: #db7706;"></span>
@@ -329,7 +426,34 @@ class Component extends DCLogic {
     return out;
   }
   done(el) { var l = el.parentNode.querySelector('.lwload'); if (l) l.remove(); }
-  renderVals() { return { accent: this.accent() }; }
+  /* the Sources / Category pickers re-render the screen, so the chart is drawn again */
+  componentDidUpdate() { this.componentDidMount(); }
+  renderVals() {
+    return {
+      ...(function (c) {
+      var st = c.state || {}, src = st.src || ["bloomberg","reuters","scmp","techcrunch","gdelt","youtube"], cat = st.cat || [], pop = st.pop || '', o = {};
+      var ALL = ["bloomberg","reuters","ft","wsj","scmp","nikkei","techcrunch","verge","coindesk","digitimes","gdelt","gtrends","youtube"], NM = {"bloomberg":"Bloomberg","reuters":"Reuters","ft":"Financial Times","wsj":"The Wall Street Journal","scmp":"SCMP","nikkei":"Nikkei Asia","techcrunch":"TechCrunch","verge":"The Verge","coindesk":"CoinDesk","digitimes":"DigiTimes","gdelt":"GDELT","gtrends":"Google Trends","youtube":"YouTube"}, R = ["culture","chain","ai","culture","semi","culture","ai","chain","culture","fintech","semi","culture","startups","devices","ev"];
+      var set = function (p) { c.setState(p); }, drop = function (a, k) { return a.filter(function (x) { return x !== k; }); };
+      o.popSrc = pop === 'src'; o.popCat = pop === 'cat';
+      o.togSrc = function () { set({ pop: pop === 'src' ? '' : 'src' }); };
+      o.togCat = function () { set({ pop: pop === 'cat' ? '' : 'cat' }); };
+      o.closePop = function () { set({ pop: '' }); };
+      ALL.forEach(function (k) { var on = src.indexOf(k) > -1; o['s_' + k] = on ? ' on' : ''; o['ts_' + k] = function () { set({ src: on ? drop(src, k) : src.concat([k]) }); }; });
+      ["ai","chain","semi","devices","fintech","ev","startups","culture"].forEach(function (k) { var on = cat.indexOf(k) > -1; o['c_' + k] = on ? ' on' : ''; o['tc_' + k] = function () { set({ cat: on ? drop(cat, k) : cat.concat([k]) }); }; });
+      o.srcAll = function () { set({ src: ALL.slice() }); };
+      o.srcNone = function () { set({ src: [] }); };
+      o.catNone = function () { set({ cat: [] }); };
+      var picked = ALL.filter(function (k) { return src.indexOf(k) > -1; });
+      o.srcN = String(picked.length); o.srcZero = !picked.length;
+      o.srcNames = picked.slice(0, 2).map(function (k) { return NM[k]; }).join(', ') + (picked.length > 2 ? ' +' + (picked.length - 2) : '');
+      o.catAll = !cat.length; o.catSome = cat.length > 0; o.catN = String(cat.length); o.catOn = cat.length ? ' pkon' : '';
+      var shown = 0; R.forEach(function (k, i) { var v = !cat.length || cat.indexOf(k) > -1; o['w_' + i] = v; if (v) shown++; });
+      o.wNone = R.length > 0 && !shown;
+      return o;
+    })(this),
+      accent: this.accent()
+    };
+  }
   draw() {
     var el = document.getElementById('lw-main'); if (!el || el.getAttribute('data-drawn')) return; el.setAttribute('data-drawn', '1');
     var A = this.accent(), c = this.base(el, 318);

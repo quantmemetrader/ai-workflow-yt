@@ -48,7 +48,7 @@ const R = [
   ['/video/audio', 'video', 'Video-Audio', 'Video-Audio-Phone', ['Audio', 'Audio panel'], []],
   ['/video/export', 'video', 'Video-Export', 'Video-Export-Phone', ['Export'], []],
   ['/publish', 'publish', 'Pub-Channels', 'Pub-Channels-Phone', ['Channel board', 'Board'], []],
-  ['/publish/composer', 'publish', 'Pub-Composer', 'Pub-Composer-Phone', ['Composer', 'New post from a video'], ['Edit in composer', '✎ Edit in composer', 'Open Composer', 'Open the composer']],
+  ['/publish/caption', 'publish', 'Pub-Composer', 'Pub-Composer-Phone', ['Caption', 'New post from a video'], ['Edit caption', '✎ Edit caption', 'Open Caption', 'Open the caption']],
   ['/publish/approvals', 'publish', 'Pub-Approvals', 'Pub-Approvals-Phone', ['Approval queue', 'Approvals', 'Open the approval'], []],
   ['/publish/log', 'publish', 'Pub-Log', 'Pub-Log-Phone', ['Publish log', 'Log'], []],
   ['/accounting', 'accounting', 'Acc-Inbox', 'Acc-Inbox-Phone', ['Document inbox', 'Inbox'], []],

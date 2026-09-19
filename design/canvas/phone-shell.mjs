@@ -198,7 +198,7 @@ ${body}
 `;
 }
 
-export function phonePage({ module, gen, title, crumb, heading, sub = '', right = '', chips = [], chipOn = 0, body, ask, sheet, me = 'chan', headerIcons = ['search', 'more'], back = true, extraCss = '', bare = false, nav = 'closed' }) {
+export function phonePage({ module, gen, title, crumb, heading, sub = '', right = '', chips = [], chipOn = 0, body, ask, sheet, me = 'chan', headerIcons = ['search', 'more'], back = true, extraCss = '', bare = false, nav = 'closed', overlay = '', logic = '' }) {
   if (bare) return bareDoc({ module, gen, title, body, extraCss });
   const s = sheet;
   return `<!doctype html>
@@ -271,7 +271,7 @@ ${body}
     </div>
     <div style="height: 26px;"></div>
   </div>
-${launcher(module, title)}
+${launcher(module, title)}${overlay}
 </div>
 </x-dc>
 <script data-dc-script data-props='{"accent":{"editor":"color","default":"#007BE0","options":["#007BE0","#171717","#278F5E","#6846E3"],"section":"Theme"},"agent":{"editor":"enum","options":["closed","open"],"default":"closed","section":"View"},"nav":{"editor":"enum","options":["closed","open"],"default":"${nav}","section":"View"},"$preview":{"width":390,"height":844}}'>
@@ -284,7 +284,7 @@ class Component extends DCLogic {
     var agent = this.state.agent || this.props.agent || 'closed';
     var nav = this.state.nav || this.props.nav || 'closed';
     return {
-      ${dockLogic(module)}
+      ${dockLogic(module)}${logic}
       accent: /^#[0-9a-fA-F]{6}$/.test(raw) ? raw : '#007BE0',
       sheetOpen: agent === 'open' && nav !== 'open',
       openSheet: function () { self.setState({ agent: 'open', nav: 'closed' }); },

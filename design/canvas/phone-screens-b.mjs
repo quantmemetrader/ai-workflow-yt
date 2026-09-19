@@ -29,7 +29,7 @@ const CHN = { yt: 'YouTube', ig: 'Instagram', li: 'LinkedIn', tt: 'TikTok', x: '
 /* =================================================================== */
 /* PUBLISH                                                             */
 /* =================================================================== */
-const PCH = ['Board', 'Composer', 'Approvals', 'Log'];
+const PCH = ['Board', 'Caption', 'Approvals', 'Log'];
 const MK = { posted: ['#e4faeb', '#278f5e', '✓'], wait: ['#fff7d3', '#b36b00', '⧗'], priv: ['#f3f3f3', '#7c7c7c', '🔒'], fail: ['#ffe7e7', '#e03636', '!'] };
 const mark = (k, st) => `<span style="display: inline-flex; align-items: center; gap: 5px; height: 28px; padding: 0 8px 0 4px; border-radius: 9px; background: ${MK[st][0]};">${lg(k, 20)}<span style="font-size: 12px; font-weight: 600; color: ${MK[st][1]};">${MK[st][2]}</span></span>`;
 const VIDS = [['history', 'History of Greece · Ep 75', 'Waiting for Michelle · 12 Sep', [['yt', 'wait'], ['ig', 'wait'], ['li', 'wait']]], ['orange', 'Orange typography cut', 'Posted 31 Aug', [['x', 'posted'], ['yt', 'priv']]], ['goodday', 'Good day · collage teaser', 'LinkedIn needs a fix', [['ig', 'posted'], ['li', 'fail']]], ['porsche', 'Porsche cat · night drive', 'Posted 2 Sep', [['ig', 'posted']]], ['domore', 'Do more · brand spot', 'Posted 24 Aug', [['ig', 'posted'], ['wc', 'posted']]]];
@@ -43,8 +43,8 @@ ${[['yt', 'Waiting on audit', '#f5a524', 82], ['ig', 'Connected', '#30a46c', 64]
   ask: 'Ask about posting…',
   sheet: sheet('5 videos · 6 channels', 'What’s ready but not posted yet?', 'Checked 5 videos · 0.4 s', 'History of Greece Ep 75 is ready for YouTube, Instagram and LinkedIn on 12 Sep and waits for Michelle. Good day failed on LinkedIn because the file was too big.', 'Open the approval'),
 });
-add('Pub-Composer-Phone.dc.html', 'pub', 'Composer', {
-  tabLabel: 'Publish', crumb: 'Publish · Composer', heading: 'History of Greece', sub: 'Ep 75 · export v3 · 16:9 and 9:16', chips: ['Master', 'YouTube •', 'Instagram •', 'LinkedIn'], chipOn: 1,
+add('Pub-Composer-Phone.dc.html', 'pub', 'Caption', {
+  tabLabel: 'Publish', crumb: 'Publish · Caption', heading: 'History of Greece', sub: 'Ep 75 · export v3 · 16:9 and 9:16', chips: ['Master', 'YouTube •', 'Instagram •', 'LinkedIn'], chipOn: 1,
   body: `
       <div style="display: flex; align-items: center; gap: 10px; margin: 14px 16px 12px; padding: 10px 12px; border-radius: 14px; background: #fafafa;">${lg('yt', 22)}<span style="font-size: 13.5px; color: #525252; flex-grow: 1;">Editing the YouTube version</span><span style="font-size: 13px; color: var(--ac);">Reset</span></div>
 ${fld('Title <span style="margin-left: auto; font-weight: 420; color: #999999;">58 / 100</span>', 'The Battle of Salamis in 4 minutes | Ep 75', 'font-size: 14.5px;')}
@@ -60,7 +60,7 @@ const ap = (c, t, chans, who, note, actions = true) => `
         <div style="display: flex; gap: 12px;">${cover(c, ' width: 88px; height: 50px; border-radius: 9px;')}<div style="min-width: 0; flex-grow: 1;"><div class="nm" style="font-weight: 500;">${t}</div><div style="display: flex; gap: 5px; margin-top: 6px;">${chans.map(k => lg(k, 18)).join('')}<span class="cap" style="margin-left: 4px;">Sat 12 Sep</span></div></div></div>
         <div style="display: flex; align-items: center; gap: 8px; margin-top: 10px;">${pav(who, 20)}<span style="font-size: 13px; color: #525252; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${note}</span></div>
         ${actions ? '<div style="display: flex; gap: 8px; margin-top: 12px;"><div class="bs" style="height: 40px; font-size: 14px;">Changes</div><div class="bp" style="height: 40px; font-size: 14px;">Approve</div></div>' : ''}
-        <div style="display: flex; justify-content: space-between; margin-top: 10px;"><span style="font-size: 13px; color: ${actions ? '#e03636' : '#999999'};">${actions ? 'Reject' : 'Waiting for Amy'}</span><span style="font-size: 13px; color: var(--ac);">✎ Edit in composer</span></div>
+        <div style="display: flex; justify-content: space-between; margin-top: 10px;"><span style="font-size: 13px; color: ${actions ? '#e03636' : '#999999'};">${actions ? 'Reject' : 'Waiting for Amy'}</span><span style="font-size: 13px; color: var(--ac);">✎ Edit caption</span></div>
       </div>`;
 add('Pub-Approvals-Phone.dc.html', 'pub', 'Approval queue', {
   tabLabel: 'Publish', crumb: 'Publish', heading: 'Approvals', sub: '2 waiting for you', chips: PCH, chipOn: 2, me: 'michelle',

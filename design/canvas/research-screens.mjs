@@ -11,6 +11,7 @@
  */
 import fs from 'fs';
 import path from 'path';
+import { TOPICS, catName, pickLogic, PICK_CSS, srcChip, catChip } from './research-filters.mjs';
 
 const DIR = path.dirname(new URL(import.meta.url).pathname);
 const src = fs.readFileSync(path.join(DIR, 'Desktop.dc.html'), 'utf8');
@@ -36,7 +37,10 @@ const EXTRA_CSS = `
     .src:last-child { border-bottom: none; }
     .src b { font-size: 10.5px; font-weight: 500; color: #999999; width: 52px; flex-shrink: 0; padding-top: 1px; }
     .src span { font-size: 12.5px; line-height: 1.45; color: #383838; }
-    .sw { width: 9px; height: 9px; border-radius: 3px; flex-shrink: 0; }`;
+    .sw { width: 9px; height: 9px; border-radius: 3px; flex-shrink: 0; }
+    .wl .nmw { flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+    .wl .nmw .nm { display: block; }
+    .wl .wc { font-size: 10.5px; color: #a3a3a3; }` + PICK_CSS;
 
 const RAIL = [
   ['chat', '<path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 9.5 9.5 0 0 1-2.8-.4L4 21l1.4-4.1A8.2 8.2 0 0 1 3.6 11.5 8.4 8.4 0 0 1 12 3.1a8.4 8.4 0 0 1 9 8.4z"/>'],
@@ -65,6 +69,7 @@ ${SUBS.map(([k, l]) => `      <div class="n${k === cur ? ' on' : ''}"><span>${l.
     </div>
     <div class="lbl" style="margin: 18px 0 5px;">Connected sources</div>
     <div style="display: flex; flex-direction: column; gap: 1px;">
+      <div class="n"><span>News sites</span><span style="margin-left: auto; font-size: 11px; color: #999999;">10</span></div>
       <div class="n"><span>GDELT</span><span style="margin-left: auto; width: 6px; height: 6px; border-radius: 3px; background: #278f5e;"></span></div>
       <div class="n"><span>YouTube mostPopular</span><span style="margin-left: auto; width: 6px; height: 6px; border-radius: 3px; background: #278f5e;"></span></div>
       <div class="n"><span>Google Trends</span><span style="margin-left: auto; width: 6px; height: 6px; border-radius: 3px; background: #278f5e;"></span></div>
@@ -94,25 +99,16 @@ const topbar = (title, hint) => `
 const chev = '<svg viewBox="0 0 24 24"><path d="m6.5 9.5 5.5 5.5 5.5-5.5"/></svg>';
 const spark = (pts, up) => `<svg viewBox="0 0 48 18" style="width: 48px; height: 18px; flex-shrink: 0; fill: none; stroke: ${up ? '{{accent}}' : '#c7c7c7'}; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round;"><path d="${pts}"/></svg>`;
 
-const WATCH = [
-  ['Sham Shui Po dai pai dong revival', 94, '+38.2%', 1, 'M1 16 7 15l6 1 6-4 6 1 6-6 6 2 6-6 4-2'],
-  ['Taipei night-market crossover creators', 88, '+21.4%', 1, 'M1 13 7 14l6-2 6 3 6-5 6 3 6-7 6 3 4-5'],
-  ['Harbourfront redevelopment hearing', 81, '+12.9%', 1, 'M1 15 7 13l6 1 6-4 6 2 6-5 6 1 6-4 4 1', 'amber'],
-  ['Cantonese voice cloning backlash', 76, '+9.8%', 1, 'M1 16 7 16l6-2 6 1 6-3 6 1 6-5 6 1 4-3'],
-  ['Singapore hawker succession', 71, '+3.1%', 1, 'M1 10 7 11l6 1 6-2 6 3 6-1 6-4 6 2 4-2'],
-  ['Cha chaan teng menu inflation', 64, '−6.7%', 0, 'M1 5 7 7l6-1 6 3 6-2 6 4 6-2 6 3 4 1'],
-  ['MTR after-hours maintenance crews', 58, '−2.2%', 0, 'M1 9 7 8l6 2 6-1 6 2 6-1 6 2 6-1 4 1'],
-  ['Tai O stilt houses restoration', 52, '+1.4%', 1, 'M1 12 7 12l6-1 6 1 6-1 6 0 6-2 6 1 4-1'],
-];
-
-const watchlist = sel => WATCH.map(([nm, ht, ch, up, pts, flag], i) => `
-          <div class="wl${i === sel ? ' on' : ''}">
+/* ranked topics live in research-filters.mjs; the Category picker hides the rows outside the picked beats */
+const watchlist = sel => TOPICS.map(([nm, ht, ch, up, pts, cat, flag], i) => `
+          <sc-if value="{{w_${i}}}" hint-placeholder-val="{{ true }}"><div class="wl${i === sel ? ' on' : ''}">
             <span class="rk">${String(i + 1).padStart(2, '0')}</span>
-            <span class="nm">${nm}${flag ? ' <span style="display:inline-block;width:6px;height:6px;border-radius:3px;background:#db7706;vertical-align:1px;margin-left:3px"></span>' : ''}</span>
+            <div class="nmw"><span class="nm">${nm}${flag ? ' <span style="display:inline-block;width:6px;height:6px;border-radius:3px;background:#db7706;vertical-align:1px;margin-left:3px"></span>' : ''}</span><span class="wc">${catName(cat)}</span></div>
             ${spark(pts, up)}
             <span class="ht">${ht}</span>
             <span class="ch ${up ? 'up' : 'dn'}">${ch}</span>
-          </div>`).join('');
+          </div></sc-if>`).join('') + `
+          <sc-if value="{{wNone}}" hint-placeholder-val="{{ false }}"><div class="cap" style="padding: 28px 16px; text-align: center;">No topics in these categories yet</div></sc-if>`;
 
 const rightPanel = (mode, agentBody) => `
       <div style="width: 312px; flex-shrink: 0; border-left: 1px solid #ededed; background: #fcfcfc; display: flex; flex-direction: column;">
@@ -160,7 +156,7 @@ const agentBlock = (scope, q, tool, a, act, guard, cost) => `
         </div>`;
 
 /* ---------- chart runtime, emitted into each artboard's logic class ---------- */
-const RUNTIME = `
+const RUNTIME = rows => `
   componentDidMount() {
     var self = this;
     var go = function () { try { self.draw(); } catch (e) { var el = document.querySelector('.lwload'); if (el) el.textContent = 'chart error: ' + e.message; } };
@@ -195,9 +191,16 @@ const RUNTIME = `
     return out;
   }
   done(el) { var l = el.parentNode.querySelector('.lwload'); if (l) l.remove(); }
-  renderVals() { return { accent: this.accent() }; }`;
+  /* the Sources / Category pickers re-render the screen, so the chart is drawn again */
+  componentDidUpdate() { this.componentDidMount(); }
+  renderVals() {
+    return {
+      ${pickLogic(rows)}
+      accent: this.accent()
+    };
+  }`;
 
-function page({ file, cur, title, hint, body, rightMode, agent, draw }) {
+function page({ file, cur, title, hint, body, rightMode, agent, draw, rows = [] }) {
   return `<!doctype html>
 <html>
 <head>
@@ -229,7 +232,7 @@ ${body}
 </div>
 </x-dc>
 <script data-dc-script data-props='{"accent":{"editor":"color","default":"#007BE0","options":["#007BE0","#171717","#278F5E","#6846E3"],"section":"Theme"},"$preview":{"width":1440,"height":900}}'>
-class Component extends DCLogic {${RUNTIME}
+class Component extends DCLogic {${RUNTIME(rows)}
   draw() {${draw}
   }
 }
@@ -244,7 +247,8 @@ class Component extends DCLogic {${RUNTIME}
 /* =================================================================== */
 const trendsBody = `
         <div style="flex-shrink: 0; height: 50px; display: flex; align-items: center; gap: 8px; padding: 0 20px; border-bottom: 1px solid #ededed;">
-          <div class="chip">Sources: GDELT, YouTube ${chev}</div>
+          ${srcChip(chev)}
+          ${catChip(chev)}
           <div class="chip">Region: HK / TW / SG ${chev}</div>
           <div style="flex-grow: 1;"></div>
           <span class="cap">Ranked 09:15 HKT · next refresh 13:15</span>
@@ -330,6 +334,13 @@ const SERIES = [
   ['cha chaan teng', '#c7c7c7', '640', '11.9', '−6.7%', '0.18', 'Trends'],
 ];
 const compareBody = `
+        <div style="flex-shrink: 0; height: 46px; display: flex; align-items: center; gap: 8px; padding: 0 20px; border-bottom: 1px solid #ededed;">
+          ${srcChip(chev)}
+          ${catChip(chev)}
+          <div class="chip">Region: HK / TW / SG ${chev}</div>
+          <div style="flex-grow: 1;"></div>
+          <span class="cap">Reads only the sources you pick</span>
+        </div>
         <div style="flex-shrink: 0; min-height: 56px; display: flex; align-items: center; gap: 8px; padding: 10px 20px; border-bottom: 1px solid #ededed; flex-wrap: wrap;">
 ${SERIES.map(([n, col]) => `          <div class="chip" style="background: #fff;"><span class="sw" style="background: ${col};"></span>${n}<svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></div>`).join('\n')}
           <div class="chip" style="border-style: dashed; color: #999999;">+ Add series · 4 of 5</div>
@@ -343,7 +354,7 @@ ${SERIES.map(([n, col]) => `          <div class="chip" style="background: #fff;
             <span style="font-size: 15px; font-weight: 500;">Mention volume, indexed</span>
             <span class="cap">Day 1 = 100 for each series, so shape compares rather than absolute size</span>
           </div>
-          <div class="lwbox"><div id="lw-cmp" style="width: 100%; height: 360px;"></div><div class="lwload">loading chart…</div></div>
+          <div class="lwbox"><div id="lw-cmp" style="width: 100%; height: 316px;"></div><div class="lwload">loading chart…</div></div>
           <div style="display: flex; justify-content: flex-end; margin-top: 7px;"><span class="cap">12 Jun – 9 Sep 2026 · source: GDELT, Google Trends, YouTube mostPopular</span></div>
         </div>
 
@@ -356,7 +367,7 @@ ${SERIES.map(([n, col, pk, av, ch, co, srcs]) => `            <div class="tr" st
 
 const compareDraw = `
     var el = document.getElementById('lw-cmp'); if (!el || el.getAttribute('data-drawn')) return; el.setAttribute('data-drawn', '1');
-    var A = this.accent(), c = this.base(el, 360), self = this;
+    var A = this.accent(), c = this.base(el, 316), self = this;
     var idx = function (d) { var b = d[0].value; return d.map(function (p) { return { time: p.time, value: Math.round(p.value / b * 1000) / 10 }; }); };
     var defs = [[7, 48, 118, 74, 11, A, 2.4], [19, 40, 62, 70, 9, '#383838', 1.8], [31, 36, 14, 60, 7, '#8d99a6', 1.6], [43, 42, -12, 40, 7, '#c7c7c7', 1.6]];
     defs.forEach(function (d) {
@@ -428,7 +439,7 @@ const perfDraw = `
 
 /* ---------- write ---------- */
 const out = [
-  { file: 'Res-Trends.dc.html', cur: 'trends', title: 'Trends dashboard', hint: 'ranked topics · adopt feeds ranking weights', body: trendsBody, rightMode: 'watch', agent: '', draw: trendsDraw },
+  { file: 'Res-Trends.dc.html', cur: 'trends', title: 'Trends dashboard', hint: 'ranked topics · adopt feeds ranking weights', body: trendsBody, rightMode: 'watch', agent: '', draw: trendsDraw, rows: TOPICS.map(t => t[5]) },
   { file: 'Res-Compare.dc.html', cur: 'compare', title: 'Search &amp; compare', hint: 'up to five series on one time axis', body: compareBody, rightMode: 'agent',
     agent: agentBlock('4 series · 3 months', 'Which of these is actually new?', 'Correlated 4 series · 0.8 s',
       'Only “dai pai dong” broke from its baseline, it tracks the 27 Aug licence decision. “Night market” rose with it (r = 0.71) but was already climbing. “Cha chaan teng” is fading.', 'Brief on dai pai dong', 'Scoped to your entitled sources', 'HK$0.14'),

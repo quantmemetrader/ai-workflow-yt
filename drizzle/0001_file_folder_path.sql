@@ -1,0 +1,1 @@
+ALTER TABLE "files" ADD COLUMN "folder_path" text[] DEFAULT '{}' NOT NULL;

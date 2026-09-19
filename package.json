@@ -9,24 +9,47 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "typecheck": "tsc --noEmit",
+    "db:generate": "node --env-file=.env.local --dns-result-order=ipv4first ./node_modules/drizzle-kit/bin.cjs generate",
+    "db:migrate": "node --env-file=.env.local --dns-result-order=ipv4first ./node_modules/drizzle-kit/bin.cjs migrate",
+    "db:studio": "node --env-file=.env.local --dns-result-order=ipv4first ./node_modules/drizzle-kit/bin.cjs studio",
+    "db:seed": "node --env-file=.env.local --dns-result-order=ipv4first --conditions=react-server --import tsx scripts/seed.ts",
+    "setup:r2": "node --env-file=.env.local --dns-result-order=ipv4first --conditions=react-server --import tsx scripts/setup-r2.ts",
+    "worker": "node --env-file=.env.local --dns-result-order=ipv4first --conditions=react-server --import tsx scripts/worker.ts",
+    "smoke": "node --env-file=.env.local --dns-result-order=ipv4first --conditions=react-server --import tsx scripts/smoke.ts",
+    "deploy": "bash scripts/deploy.sh",
+    "db:reset": "node --env-file=.env.local --dns-result-order=ipv4first --conditions=react-server --import tsx scripts/reset-tenant.ts",
+    "db:add-user": "node --env-file=.env.local --dns-result-order=ipv4first --conditions=react-server --import tsx scripts/add-user.ts",
+    "db:backup": "bash -c 'set -a; . ./.env.local; set +a; mkdir -p backups; f=backups/$(date +%Y%m%d-%H%M%S).sql; pg_dump \"$DATABASE_URL\" > $f; ls -lh $f'",
+    "postbuild": "test -d .next/standalone && rm -rf .next/standalone/public .next/standalone/.next/static && cp -r public .next/standalone/public && cp -r .next/static .next/standalone/.next/static || echo 'no standalone output (Vercel builds its own); nothing to stage'"
   },
   "dependencies": {
+    "@neondatabase/serverless": "^1.1.0",
+    "aws4fetch": "^1.0.20",
+    "drizzle-orm": "^0.45.2",
+    "fast-xml-parser": "^5.11.1",
     "lucide-react": "^1.31.0",
     "motion": "^13.1.0",
     "next": "16.3.0",
+    "pg": "^8.23.0",
     "react": "19.2.8",
-    "react-dom": "19.2.8"
+    "react-dom": "19.2.8",
+    "server-only": "^0.0.1",
+    "zod": "^4.6.5"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
+    "@types/pg": "^8.23.1",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "drizzle-kit": "^0.31.10",
     "eslint": "^9",
     "eslint-config-next": "16.3.0",
     "playwright": "^1.62.1",
     "tailwindcss": "^4",
+    "tsx": "^4.23.13",
     "typescript": "^5"
   }
 }

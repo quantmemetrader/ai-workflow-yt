@@ -7,7 +7,7 @@
  *   Pub-Composer   one video's post: which export, master + per-channel
  *                  versions, preview; list of other videos to switch to
  *   Pub-Approvals  requests as cards with approve / request changes /
- *                  reject and a small "Edit in composer" button
+ *                  reject and a small "Edit caption" button
  *   Pub-Log        what went where, the platform's answer, safe retries
  *
  * Run:  node publish-screens.mjs
@@ -81,7 +81,7 @@ const VID = {
   dmo: ['Do more · brand spot', 'domore', '0:45', 'Export v2 · 9:16'],
 };
 
-const NAV = [['channels', 'Channel board'], ['composer', 'Composer'], ['approvals', 'Approval queue'], ['log', 'Publish log']];
+const NAV = [['channels', 'Channel board'], ['composer', 'Caption'], ['approvals', 'Approval queue'], ['log', 'Publish log']];
 const side = cur => moduleSidebar('Publish', NAV, cur, {
   badges: { approvals: '<i>2</i>' },
   footer: '<div class="cap" style="line-height: 1.5;">Nothing leaves the platform without an approval record.</div>',
@@ -131,7 +131,7 @@ const channelsBody = `
           <div class="gh"><div class="cap" style="padding-left: 6px;">Video</div>${COLS.map(k => `<div title="${CHN[k]}">${logo(k, 22)}</div>`).join('')}</div>
 ${ROWS.map(([id, st, cells], i) => { const [t, cov, dur, ex] = VID[id]; return `          <div class="gr"><div style="display: flex; align-items: center; gap: 10px; min-width: 0; padding-left: 6px;">${crop(cov, ' width: 64px; height: 36px; border-radius: 6px;')}<div style="min-width: 0;"><div class="el" style="font-size: 12.5px; font-weight: 500;">${t}</div><div class="cap el" style="margin-top: 2px;">${ex} · <span style="color: ${i === 0 ? '#b36b00' : i === 2 ? '#e03636' : '#7c7c7c'};">${st}</span></div></div></div>${COLS.map(k => `<div>${cellHtml(cells[k])}</div>`).join('')}</div>`; }).join('\n')}
         </div>
-        <div style="display: flex; align-items: center; gap: 8px; margin-top: 8px;"><span class="cap">Not ready yet: Sham Shui Po dai pai dong revival, still in Video Edit.</span><span class="cap" style="margin-left: auto; color: {{accent}};">Open Composer</span></div>
+        <div style="display: flex; align-items: center; gap: 8px; margin-top: 8px;"><span class="cap">Not ready yet: Sham Shui Po dai pai dong revival, still in Video Edit.</span><span class="cap" style="margin-left: auto; color: {{accent}};">Open Caption</span></div>
 
         <div class="sec" style="margin-top: 20px;"><b>Channels</b><span class="cap">8 accounts, all registered in the client’s name</span></div>
         <div class="cl" style="border: 1px solid #ededed; border-radius: 12px; overflow: hidden;">
@@ -144,10 +144,10 @@ const channelsTop = topbar('Channel board', 'which video is going to which chann
 /* =================================================================== */
 /* COMPOSER                                                            */
 /* =================================================================== */
-const POSTS = [['Composing', [['grc', 'Draft · 3 channels', 1]]], ['Waiting for approval', [['org', 'YouTube public version']]], ['Needs a fix', [['gdy', 'LinkedIn · file too large']]], ['Posted', [['prs', 'Instagram'], ['dmo', 'Instagram, WeChat']]]];
+const POSTS = [['Drafting', [['grc', 'Draft · 3 channels', 1]]], ['Waiting for approval', [['org', 'YouTube public version']]], ['Needs a fix', [['gdy', 'LinkedIn · file too large']]], ['Posted', [['prs', 'Instagram'], ['dmo', 'Instagram, WeChat']]]];
 const switcher = collapsible(`
   <div style="width: 240px; flex-shrink: 0; background: #f8f8f8; border-right: 1px solid #ededed; display: flex; flex-direction: column; padding: 8px 8px 10px;">
-    <div style="display: flex; align-items: center; padding: 0 0 0 9px;"><span style="font-size: 14px; font-weight: 500;">Posts</span><div style="margin-left: auto;">${toggleBtn('Hide the post list')}</div></div>
+    <div style="display: flex; align-items: center; padding: 0 0 0 9px;"><span style="font-size: 14px; font-weight: 500;">Captions</span><div style="margin-left: auto;">${toggleBtn('Hide the post list')}</div></div>
     <div class="btn" style="justify-content: center; margin: 10px 1px 2px; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.1); color: #171717;"><svg viewBox="0 0 24 24"><path d="M12 6v12M6 12h12"/></svg>New post from a video</div>
 ${POSTS.map(([g, items]) => `    <div class="sg"><svg viewBox="0 0 24 24"><path d="m6.5 9.5 5.5 5.5 5.5-5.5"/></svg>${g}<span style="margin-left: auto; font-weight: 420;">${items.length}</span></div>
 ${items.map(([id, sub, on]) => `    <div class="sn${on ? ' on' : ''}" style="height: 44px; align-items: center;">${crop(VID[id][1], ' width: 36px; height: 20px; border-radius: 4px;')}<span style="display: flex; flex-direction: column; min-width: 0;"><span class="el">${VID[id][0]}</span><span class="cap el" style="font-weight: 420;">${sub}</span></span></div>`).join('\n')}`).join('\n')}
@@ -226,7 +226,7 @@ const apCard = ({ id, chans, when, who, ago, note, on, actions = true }) => { co
           </div>
           <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 8px; flex-shrink: 0;">
             ${actions ? `<div style="display: flex; gap: 6px;"><div class="btn" style="background: {{accent}}; color: #fff; font-weight: 500;">Approve</div><div class="btn s">Request changes</div></div>` : ''}
-            <div style="display: flex; gap: 10px; align-items: center;">${actions ? '<span style="font-size: 12px; color: #e03636;">Reject</span>' : ''}<div class="ibtn">${EDIT}Edit in composer</div></div>
+            <div style="display: flex; gap: 10px; align-items: center;">${actions ? '<span style="font-size: 12px; color: #e03636;">Reject</span>' : ''}<div class="ibtn">${EDIT}Edit caption</div></div>
           </div>
         </div>`; };
 const approvalsBody = `
@@ -279,8 +279,8 @@ ${rows.map(([t, id, k, who, [tone, st], res]) => `          <div class="lr"><div
 const agent = (scope, q, tool, a, act, place) => rightPanel(['Agent'], 'Agent', agentBlock({ scope, q, tool, a, act, place, guard: 'Uses only posts you can see', cost: 'HK$0.01' }));
 const out = [
   { file: 'Pub-Channels.dc.html', title: 'Channel board', me: 'leung', side: side('channels'),
-    main: layout(channelsTop, channelsBody, agent('Publish · 5 videos, 8 channels', 'What’s ready but not posted yet?', 'Checked 5 videos, 8 channels · 0.4 s', '<p><b style="font-weight: 500;">History of Greece Ep 75</b> is composed for YouTube, Instagram and LinkedIn on 12 Sep and waits for Michelle’s approval.</p><p style="margin-top: 8px;">Good day failed on LinkedIn because the file was too big. Amy is making a smaller one. Nothing else is ready; Sham Shui Po is still in Video Edit.</p>', 'Open the approval', 'Ask about posting…')) },
-  { file: 'Pub-Composer.dc.html', title: 'Composer', me: 'chan', side: switcher, main: `<div style="flex-grow: 1; display: flex; min-height: 0;"><div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; overflow: hidden;">${composerBody}</div>${composerPanel}</div>` },
+    main: layout(channelsTop, channelsBody, agent('Publish · 5 videos, 8 channels', 'What’s ready but not posted yet?', 'Checked 5 videos, 8 channels · 0.4 s', '<p><b style="font-weight: 500;">History of Greece Ep 75</b> has captions ready for YouTube, Instagram and LinkedIn on 12 Sep and waits for Michelle’s approval.</p><p style="margin-top: 8px;">Good day failed on LinkedIn because the file was too big. Amy is making a smaller one. Nothing else is ready; Sham Shui Po is still in Video Edit.</p>', 'Open the approval', 'Ask about posting…')) },
+  { file: 'Pub-Composer.dc.html', title: 'Caption', me: 'chan', side: switcher, main: `<div style="flex-grow: 1; display: flex; min-height: 0;"><div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; overflow: hidden;">${composerBody}</div>${composerPanel}</div>` },
   { file: 'Pub-Approvals.dc.html', title: 'Approval queue', me: 'michelle', side: side('approvals'), main: layout(topbar('Approval queue', 'posts waiting for a decision'), approvalsBody, approvalsPanel) },
   { file: 'Pub-Log.dc.html', title: 'Publish log', me: 'leung', side: side('log'), main: layout(topbar('Publish log', 'what went where, and what the platform said'), logBody, agent('Publish log · last 30 days', 'Why did Good day fail on LinkedIn?', 'Read the platform response · 0.2 s', '<p>LinkedIn only accepts videos under 200 MB, and the 9:16 file was 312 MB.</p><p style="margin-top: 8px;">Nothing was posted, so retrying is safe. I can ask Video Edit for a 1:1 version at a lower bitrate, which comes in around 90 MB.</p>', 'Ask for a smaller file', 'Ask about the log…')) },
 ];

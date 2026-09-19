@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @import "./espresso.css";
+@import "./canvas.css";
 
 @theme inline {
   --font-sans: "InterVar", "Inter", system-ui, sans-serif;
