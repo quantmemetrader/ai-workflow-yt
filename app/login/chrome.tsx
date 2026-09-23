@@ -72,7 +72,7 @@ export function LoginChrome({
         display: "flex",
         background: "#ffffff",
         color: "#171717",
-        fontFamily: "Inter, system-ui, sans-serif",
+        fontFamily: "Inter, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Noto Sans SC', 'Source Han Sans SC', system-ui, sans-serif",
         fontWeight: 420,
         letterSpacing: "0.02em",
       }}
@@ -106,7 +106,7 @@ export function LoginChrome({
           >
             AF
           </div>
-          <span style={{ fontSize: 15, fontWeight: 600 }}>Aura Farmers</span>
+          <span style={{ fontSize: 15, fontWeight: 600 }}>腾亚创变</span>
         </div>
 
         <div style={{ marginTop: "auto" }}>

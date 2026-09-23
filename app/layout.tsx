@@ -13,10 +13,10 @@ const SITE = process.env.APP_URL?.startsWith("http") ? process.env.APP_URL : "ht
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE),
-  applicationName: "亚芳·创变派 工作台",
+  applicationName: "腾亚创变 工作台",
   title: {
-    default: "亚芳·创变派 工作台 · Aura's Inno Lab",
-    template: "%s · 亚芳·创变派",
+    default: "腾亚创变 工作台",
+    template: "%s · 腾亚创变",
   },
   description:
     "选题研究、剧本、剪辑、发布，一个助理全程跟进。Research, script, cut and publish, with one assistant that knows the channel.",
@@ -24,15 +24,15 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false, nocache: true },
   openGraph: {
     type: "website",
-    siteName: "亚芳·创变派 工作台",
-    title: "亚芳·创变派 工作台 · Aura's Inno Lab",
+    siteName: "腾亚创变 工作台",
+    title: "腾亚创变 工作台",
     description: "选题研究、剧本、剪辑、发布，一个助理全程跟进。",
     locale: "zh_CN",
     url: "/",
   },
   twitter: {
     card: "summary_large_image",
-    title: "亚芳·创变派 工作台",
+    title: "腾亚创变 工作台",
     description: "选题研究、剧本、剪辑、发布，一个助理全程跟进。",
   },
   manifest: "/manifest.webmanifest",

@@ -38,7 +38,7 @@ function clean(points: { d: string; v: number }[]): Point[] {
   return out;
 }
 
-const UA = "AuraFarmersWorkspace/1.0 (+https://aurafarmers.hk)";
+const UA = "TengyaWorkspace/1.0 (+https://yt.okbro.xyz)";
 
 const parser = new XMLParser({
   ignoreAttributes: false,

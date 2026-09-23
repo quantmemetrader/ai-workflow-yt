@@ -76,7 +76,7 @@ export function ShareSheet({
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             aria-label={t("Work email")}
-            placeholder="name@aurafarmers.hk"
+            placeholder="name@okbro.xyz"
             className="h-8 min-w-0 flex-1 basis-40 rounded-lg border border-outline-gray-2 px-2.5 text-sm outline-none focus:border-outline-gray-4"
           />
           <select

@@ -20,7 +20,7 @@ export default function AppleIcon() {
         }}
       >
         <div style={{ width: 56, height: 12, background: "#d6e64f", borderRadius: 4 }} />
-        <div style={{ color: "#fff", fontSize: 72, fontWeight: 700, fontFamily: "sans-serif", lineHeight: 1 }}>亚芳</div>
+        <div style={{ color: "#fff", fontSize: 72, fontWeight: 700, fontFamily: "sans-serif", lineHeight: 1 }}>腾亚</div>
       </div>
     ),
     size,

@@ -5,7 +5,7 @@ import { users } from "@/lib/db/schema";
 import { readChallenge } from "@/lib/auth/second-factor";
 import { VerifyForm } from "./verify-form";
 
-export const metadata = { title: "Two-step verification — Aura Farmers" };
+export const metadata = { title: "两步验证" };
 
 /**
  * The second step, transcribed from design/canvas/Login-Totp.dc.html.

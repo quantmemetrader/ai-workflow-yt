@@ -45,7 +45,7 @@ const ZH_CN: Record<string, string> = {
   "Work email": "工作邮箱",
   "That email and password do not match.": "邮箱或密码不正确。",
   "Your account is not active. Ask an admin.": "账号未启用，请联系管理员。",
-  "Aura Farmers workspace": "光环农夫工作台",
+  "腾亚创变 工作台": "腾亚创变 工作台",
   "One agent per person. Everything you can see, and nothing you cannot.":
     "每人一个助理。只看你有权看的内容。",
 

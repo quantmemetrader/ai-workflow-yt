@@ -135,7 +135,7 @@ export function verifyCode(
 }
 
 /** What goes in the QR code, and what a person types in by hand. */
-export function otpauthUrl(secret: string, account: string, issuer = "Aura Farmers"): string {
+export function otpauthUrl(secret: string, account: string, issuer = "腾亚创变"): string {
   const label = `${encodeURIComponent(issuer)}:${encodeURIComponent(account)}`;
   const params = new URLSearchParams({
     secret,

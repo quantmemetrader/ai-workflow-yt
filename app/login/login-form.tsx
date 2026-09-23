@@ -31,7 +31,7 @@ export function LoginForm({ locale }: { locale?: Locale | null }) {
         <form action={action} style={{ width: 380 }}>
           <div style={{ fontSize: 26, fontWeight: 500, letterSpacing: "-0.02em" }}>{t("Sign in")}</div>
           <p style={{ fontSize: 14, color: "#7c7c7c", marginTop: 7 }}>
-            {zh ? "使用你的光环农夫工作账号。" : "Use your Aura Farmers work account."}
+            {zh ? "使用你的腾亚创变工作账号。" : "Use your 腾亚创变 work account."}
           </p>
 
           <div className="flbl" style={{ marginTop: 28 }}>
@@ -49,7 +49,7 @@ export function LoginForm({ locale }: { locale?: Locale | null }) {
               onChange={(e) => setEmail(e.target.value)}
               onFocus={() => setFocused("email")}
               onBlur={() => setFocused(null)}
-              placeholder="name@aurafarmers.hk"
+              placeholder="name@okbro.xyz"
               style={{
                 width: "100%",
                 border: 0,

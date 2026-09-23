@@ -99,7 +99,7 @@ export function backendFor(model: string): Backend {
     model,
     headers: {
       "HTTP-Referer": env.appUrl,
-      "X-Title": "Aura Farmers Workspace",
+      "X-Title": "Tengya Workspace",
     },
     reportsCost: true,
   };

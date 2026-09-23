@@ -6,7 +6,7 @@ import { getViewer } from "@/lib/auth/dal";
 import { inviteByToken } from "@/lib/invites/service";
 import { AcceptForm } from "./accept-form";
 
-export const metadata = { title: "Join the studio — Aura Farmers" };
+export const metadata = { title: "加入工作台" };
 
 /**
  * Accepting an invitation.
@@ -87,7 +87,7 @@ function Shell({ children }: { children: React.ReactNode }) {
         justifyContent: "center",
         padding: 22,
         background: "#f8f8f8",
-        fontFamily: "Inter, system-ui, sans-serif",
+        fontFamily: "Inter, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Noto Sans SC', 'Source Han Sans SC', system-ui, sans-serif",
         fontWeight: 420,
         letterSpacing: "0.02em",
         color: "#171717",

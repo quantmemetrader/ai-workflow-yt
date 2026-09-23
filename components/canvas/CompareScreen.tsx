@@ -98,7 +98,7 @@ const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "
  * screens and the other screens cannot overwrite these.                */
 /* ------------------------------------------------------------------ */
 const CSS = `
-[data-compare-screen] { font-family: Inter, system-ui, sans-serif; font-weight: 420; letter-spacing: 0.02em; -webkit-font-smoothing: antialiased; }
+[data-compare-screen] { font-family: Inter, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Noto Sans SC', 'Source Han Sans SC', system-ui, sans-serif; font-weight: 420; letter-spacing: 0.02em; -webkit-font-smoothing: antialiased; }
 [data-compare-screen], [data-compare-screen] * { box-sizing: border-box; }
 [data-compare-screen] p { margin: 0; }
 [data-compare-screen] img { display: block; }
@@ -636,7 +636,7 @@ export function CompareScreen(props: {
                     width={boxW}
                     height={CH}
                     viewBox={`0 0 ${boxW} ${CH}`}
-                    style={{ display: "block", fontFamily: "Inter, system-ui, sans-serif" }}
+                    style={{ display: "block", fontFamily: "Inter, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Noto Sans SC', 'Source Han Sans SC', system-ui, sans-serif" }}
                   >
                     {yTicks.map((v) => (
                       <line key={`h${v}`} x1={0} x2={plotW} y1={y(v)} y2={y(v)} stroke="#f3f3f3" strokeWidth={1} />

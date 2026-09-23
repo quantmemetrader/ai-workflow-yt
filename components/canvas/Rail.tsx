@@ -170,7 +170,7 @@ export function Rail({
             padding: "4px 8px",
             background: "#171717",
             color: "#fff",
-            font: "500 12px/16px Inter, system-ui, sans-serif",
+            font: "500 12px/16px Inter, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Noto Sans SC', 'Source Han Sans SC', system-ui, sans-serif",
             boxShadow: "0 2px 6px rgba(0,0,0,.14)",
             pointerEvents: "none",
             whiteSpace: "nowrap",

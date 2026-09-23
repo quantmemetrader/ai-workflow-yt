@@ -21,7 +21,7 @@ export default async function ChatLayout({ children }: { children: React.ReactNo
   return (
     <>
       <WorkspaceSidebar
-        studio={(zh && tenant[0]?.nameLocal) || tenant[0]?.name || "Aura Farmers"}
+        studio={(zh && tenant[0]?.nameLocal) || tenant[0]?.name || "腾亚创变"}
         locale={viewer.locale ?? "zh-CN"}
         channels={channels
           .filter((c): c is typeof c & { slug: string } => Boolean(c.slug))

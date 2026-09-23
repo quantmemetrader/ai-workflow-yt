@@ -4,7 +4,7 @@ import { getViewer } from "@/lib/auth/dal";
 import { LANG_COOKIE, type Locale } from "@/lib/i18n";
 import { LoginForm } from "./login-form";
 
-export const metadata = { title: "Sign in — Aura Farmers" };
+export const metadata = { title: "登录" };
 
 const LOCALES: Locale[] = ["zh-CN", "zh-HK", "en"];
 

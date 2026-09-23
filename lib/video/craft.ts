@@ -188,7 +188,7 @@ What is on screen, and when:
   the accent colour ("一枚【智能】戒指 / 在中国【代工厂】里 / 加工费不到【一块钱】").
 - From ~10s to the end, the HEADER top left: an accent dash, the video's title in bold
   ("一枚戒指撕开的商业真相") and a one-line subtitle under it ("加工费不到一块，估值却要上百亿").
-- The whole video: the WATERMARK bottom centre ("亚芳·创变派" with "Aura's Inno Lab" under it),
+- The whole video: the WATERMARK bottom centre ("腾亚创变"),
   and the FOOTNOTE along the very bottom in small grey ("注：视频信息来自公开资料整理，仅作为观点分析，不构成任何投资建议。").
 - Captions, every line: BILINGUAL. The Chinese line bold at about two-thirds height, its
   keywords (a product, a number, the verb the sentence turns on) in the accent colour and a

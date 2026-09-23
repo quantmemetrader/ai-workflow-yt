@@ -125,7 +125,7 @@ const PICKER: React.CSSProperties = {
  * artboard's, so the cascade inside is unchanged.
  */
 const CSS = `
-[data-inbox-screen] { font-family: Inter, system-ui, sans-serif; font-weight: 420; letter-spacing: 0.02em; -webkit-font-smoothing: antialiased; color: #171717; }
+[data-inbox-screen] { font-family: Inter, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Noto Sans SC', 'Source Han Sans SC', system-ui, sans-serif; font-weight: 420; letter-spacing: 0.02em; -webkit-font-smoothing: antialiased; color: #171717; }
 [data-inbox-screen] * { box-sizing: border-box; }
 [data-inbox-screen] a { color: #007be0; text-decoration: none; }
 [data-inbox-screen] img { display: block; }

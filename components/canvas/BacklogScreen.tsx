@@ -80,7 +80,7 @@ const PICKER: React.CSSProperties = {
  * .btn. Source order is the artboard's, so the cascade inside is unchanged.
  */
 const CSS = `
-[data-backlog-screen] { font-family: Inter, system-ui, sans-serif; font-weight: 420; letter-spacing: 0.02em; -webkit-font-smoothing: antialiased; color: #171717; }
+[data-backlog-screen] { font-family: Inter, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Noto Sans SC', 'Source Han Sans SC', system-ui, sans-serif; font-weight: 420; letter-spacing: 0.02em; -webkit-font-smoothing: antialiased; color: #171717; }
 [data-backlog-screen] * { box-sizing: border-box; }
 [data-backlog-screen] a { color: #007be0; text-decoration: none; }
 [data-backlog-screen] img { display: block; }

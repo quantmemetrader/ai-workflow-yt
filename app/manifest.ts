@@ -2,8 +2,8 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "亚芳·创变派 工作台",
-    short_name: "创变派",
+    name: "腾亚创变 工作台",
+    short_name: "腾亚创变",
     description: "选题研究、剧本、剪辑、发布，一个助理全程跟进。",
     start_url: "/chat",
     display: "standalone",
