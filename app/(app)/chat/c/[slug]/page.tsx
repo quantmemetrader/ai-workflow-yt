@@ -6,7 +6,12 @@ import { ChannelView } from "@/components/chat/ChannelView";
 import { answeringModel } from "@/lib/ai/models";
 
 export default async function ChannelPage({ params }: { params: Promise<{ slug: string }> }) {
-  const { slug } = await params;
+  /* The segment can arrive still percent-encoded: a channel named 研究日报
+     reached this page as "%E7%A0%94…" and matched no slug, so every channel
+     with a Chinese name was a 404. Slugs are only ever letters, digits and
+     hyphens (`createChannel`), so a "%" can only mean an encoded one. */
+  const { slug: raw } = await params;
+  const slug = decodeSlug(raw);
   const viewer = await requireModule("chat");
 
   // One query for the channel and its messages, and the people list alongside
@@ -61,4 +66,13 @@ export default async function ChannelPage({ params }: { params: Promise<{ slug: 
       }))}
     />
   );
+}
+
+function decodeSlug(raw: string): string {
+  if (!raw.includes("%")) return raw;
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    return raw;
+  }
 }
