@@ -435,3 +435,21 @@ export function cardBehindPicture(mime: string | null | undefined, placement: st
 /** The card's padding and corner, as shares of the frame's height. */
 export const CARD_PAD = 0.011;
 export const CARD_RADIUS = 0.012;
+
+/**
+ * The widest a picture in a corner may be, as a share of the frame's width.
+ *
+ * A logo is often nine times wider than it is tall, so a box sized from the
+ * frame's *height* comes out half the frame across and runs into whatever is
+ * in the opposite corner — here, the header, which the Anthropic card sat on
+ * top of the moment the card made it visible. A corner is only a corner if
+ * something else can have the other one.
+ */
+export const CORNER_MAX_W = 0.4;
+
+/** True for the four corner placements, which is where that cap applies. */
+export function inCorner(placement: string | null | undefined): boolean {
+  return (
+    placement === "top-left" || placement === "top-right" || placement === "bottom-left" || placement === "bottom-right"
+  );
+}

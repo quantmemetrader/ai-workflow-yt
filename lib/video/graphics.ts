@@ -3,7 +3,7 @@ import { spawn } from "node:child_process";
 import { copyFile, mkdir, readdir, stat, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import path from "node:path";
-import { CARD_PAD, CARD_RADIUS, cardBehindPicture } from "@/lib/video/presets";
+import { CARD_PAD, CARD_RADIUS, CORNER_MAX_W, cardBehindPicture, inCorner } from "@/lib/video/presets";
 
 /**
  * Titles, lower thirds and end cards, drawn by Remotion as stills.
@@ -207,7 +207,13 @@ async function placeImage(
   const margin = Math.round(opts.height * 0.05);
 
   const boxH = spec.placement === "full" ? opts.height : Math.round(opts.height * share);
-  const boxW = spec.placement === "full" ? opts.width : Math.round(opts.width * share * 1.2);
+  const boxW =
+    spec.placement === "full"
+      ? opts.width
+      : Math.min(
+          Math.round(opts.width * share * 1.2),
+          inCorner(spec.placement) ? Math.round(opts.width * CORNER_MAX_W) : opts.width,
+        );
 
   /* A logo is a shape with holes in it: the studio's Anthropic wordmark is
      near-black on nothing, so over a dark cutaway it was black on black. A

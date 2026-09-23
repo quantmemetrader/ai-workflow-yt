@@ -3,7 +3,7 @@
 import { useEffect, useRef } from "react";
 import type { ClipRow, GraphicRow } from "@/lib/video/service";
 import { ICONS } from "@/lib/video/icons";
-import { CARD_PAD, CARD_RADIUS, cardBehindPicture } from "@/lib/video/presets";
+import { CARD_PAD, CARD_RADIUS, CORNER_MAX_W, cardBehindPicture, inCorner } from "@/lib/video/presets";
 
 /**
  * What the render will look like, drawn over the preview.
@@ -579,7 +579,10 @@ function Still({ graphic: g, accent, r, type, w }: StillProps) {
       const share = Math.min(0.95, Math.max(0.05, (g.scale || 40) / 100));
       const full = g.placement === "full";
       const margin = r(0.05);
-      const boxW = Math.round(w * share * 1.2);
+      const boxW = Math.min(
+        Math.round(w * share * 1.2),
+        inCorner(g.placement) ? Math.round(w * CORNER_MAX_W) : w,
+      );
       const boxH = r(share);
       /* A logo carries transparency and often carries black type with it, so
          it goes on a white card that hugs it — the same rule, from the same
