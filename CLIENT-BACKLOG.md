@@ -53,6 +53,17 @@ pm2 logs aura          # or logs/aura.err.log, logs/worker.log
 
 ---
 
+## BLOCKER — ElevenLabs refuses this server (found 2026-09-23)
+
+Every ElevenLabs request from this box (84.32.64.46, Cherry Servers,
+Amsterdam) is redirected to their "restricted countries" help page, or a
+Cloudflare 403. So **transcription and voice-over do not work here**, whether
+started by hand or automatically; the last success was 2026-09-20, from the
+old host. NL is not a restricted country, so this is ElevenLabs' view of the
+IP range, not a code bug. Options: ask ElevenLabs support to clear the IP, or
+route only ElevenLabs through another egress (`ELEVENLABS_BASE_URL` is already
+configurable). Needs a decision from the owner.
+
 ## P1 — "most important" (the Friday ask)
 
 ryanchi said this twice and called it "the key thing they want".
