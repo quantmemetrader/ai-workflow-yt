@@ -6,7 +6,7 @@ import * as React from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useResizable } from "@/components/ui/Resizer";
-import { Poster } from "@/components/files/Poster";
+import { Poster, Waiting } from "@/components/files/Poster";
 import { EyeOffGlyph, GlobeGlyph, PeopleGlyph, PersonGlyph, visibilityLabel } from "@/components/files/AccessPicker";
 /**
  * FilesScreen — a transcription of design/canvas/FilesDesktop.dc.html.
@@ -34,6 +34,10 @@ export type FileRow = {
   updatedAt: string; // ISO
   durationMs?: number | null;
   posterUrl?: string | null; // thumbnail for media, if the artboard shows one
+  /** 0–1 while this file's bytes are still on their way up from this
+   * browser. The card then shows the progress where the poster will be,
+   * rather than a broken picture. */
+  uploading?: number | null;
   /** What this person holds on this file. Null when it was not read — the
    * badge then falls back to the screen-wide "can you edit here". */
   access?: "owner" | "editor" | "commenter" | "viewer" | null;
@@ -55,6 +59,8 @@ const ACCENT = "#007be0";
 
 /** zh-CN is the default locale (spec §4.1); English is the toggle. */
 const ZH: Record<string, string> = {
+  Uploading: "上传中",
+  Processing: "处理中",
   Database: "数据库",
   Folders: "文件夹",
   Views: "视图",
@@ -1013,7 +1019,11 @@ export function FilesScreen(props: {
                         {folders.length + index + 1}
                       </div>
                       <div className="c" style={{ gap: 11 }}>
-                        {f.posterUrl ? (
+                        {f.uploading != null ? (
+                          <div style={{ position: "relative", width: 68, height: 38, borderRadius: 6, background: "#f3f3f3", flexShrink: 0 }}>
+                            <Waiting progress={f.uploading} />
+                          </div>
+                        ) : f.posterUrl ? (
                           <Poster
                             src={f.posterUrl}
                             style={{
@@ -1597,10 +1607,17 @@ function Tiles({
               overflow: "hidden",
             }}
           >
-            {f.posterUrl ? (
+            {f.uploading != null ? (
+              /* Still coming up from this browser: the ring fills where the
+                 poster will be. A broken picture here read as a failed file. */
+              <div style={{ position: "relative", width: "100%", height: "100%" }}>
+                <Waiting progress={f.uploading} label={`${t("Uploading")} ${Math.round(f.uploading * 100)}%`} />
+              </div>
+            ) : f.posterUrl ? (
               <Poster
                 src={f.posterUrl}
                 style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                pending={t("Processing")}
                 fallback={
                   <div style={{ transform: "scale(2.1)" }}>
                     <FileGlyph kind={f.kind} />

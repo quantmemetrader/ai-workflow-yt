@@ -33,12 +33,14 @@ export function UploadTray({ locale }: { locale: string }) {
   const router = useRouter();
   const jobs = useSyncExternalStore(subscribeUploads, readUploads, serverUploads);
 
-  // Refresh once per landing, not once per progress tick.
+  // Refresh once per outcome, not once per progress tick. A failed or
+  // cancelled upload has had its row removed on the server, and the list
+  // should stop showing it just as promptly as it starts showing a landed one.
   const landed = useRef(new Set<string>());
   useEffect(() => {
     let fresh = false;
     for (const j of jobs) {
-      if (j.status === "done" && !landed.current.has(j.key)) {
+      if (j.status !== "uploading" && !landed.current.has(j.key)) {
         landed.current.add(j.key);
         fresh = true;
       }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { AccessPicker, type AccessChoice } from "@/components/files/AccessPicker";
 import { FilesScreen, type FileRow, type FolderRow } from "@/components/canvas/FilesScreen";
@@ -22,6 +22,7 @@ import {
 } from "@/app/(app)/files/actions";
 import { notify } from "@/lib/client/notify";
 import { uploadFiles } from "@/lib/client/upload";
+import { readUploads, serverUploads, subscribeUploads } from "@/lib/client/uploads";
 
 /**
  * Live wiring for the Files artboard.
@@ -90,7 +91,13 @@ export function FilesView({
 
   /* Progress is drawn by the upload tray in the app layout, not here: the
      transfer outlives this screen, so its picture has to as well. Leaving the
-     folder mid-upload used to kill the upload. */
+     folder mid-upload used to kill the upload. The row itself exists from the
+     first byte, so the card it makes in the list below is told how far the
+     bytes have got and draws that instead of a broken poster. */
+  const jobs = useSyncExternalStore(subscribeUploads, readUploads, serverUploads);
+  const progress = new Map(jobs.filter((j) => j.fileId && j.status === "uploading").map((j) => [j.fileId as string, j.pct]));
+  const rows = progress.size ? files.map((f) => (progress.has(f.id) ? { ...f, uploading: progress.get(f.id) } : f)) : files;
+
   async function send(files: File[], access: AccessChoice) {
     const { uploaded } = await uploadFiles(files, { folderId, access, onDone: () => router.refresh() });
     if (uploaded) notify(zh ? `已上传 ${uploaded} 个文件` : `Uploaded ${uploaded} ${uploaded === 1 ? "file" : "files"}`, "ok");
@@ -123,7 +130,7 @@ export function FilesView({
       <FilesScreen
         breadcrumbs={breadcrumbs}
         folders={folders}
-        files={files}
+        files={rows}
         sidebarFolders={sidebarFolders}
         currentFolderId={folderId}
         canEdit={canEdit}
