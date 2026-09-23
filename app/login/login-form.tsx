@@ -49,7 +49,7 @@ export function LoginForm({ locale }: { locale?: Locale | null }) {
               onChange={(e) => setEmail(e.target.value)}
               onFocus={() => setFocused("email")}
               onBlur={() => setFocused(null)}
-              placeholder="name@okbro.xyz"
+              placeholder="name@tengya.media"
               style={{
                 width: "100%",
                 border: 0,

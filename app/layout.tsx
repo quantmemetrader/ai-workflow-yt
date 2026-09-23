@@ -9,7 +9,7 @@ import "./globals.css";
  * still matters, because a link to a cut or a script gets pasted into chats
  * all day and should unfurl as the studio rather than as a bare URL.
  */
-const SITE = process.env.APP_URL?.startsWith("http") ? process.env.APP_URL : "https://yt.okbro.xyz";
+const SITE = process.env.APP_URL?.startsWith("http") ? process.env.APP_URL : "https://tengya.media";
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE),

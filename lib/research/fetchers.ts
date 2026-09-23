@@ -38,7 +38,7 @@ function clean(points: { d: string; v: number }[]): Point[] {
   return out;
 }
 
-const UA = "TengyaWorkspace/1.0 (+https://yt.okbro.xyz)";
+const UA = "TengyaWorkspace/1.0 (+https://tengya.media)";
 
 const parser = new XMLParser({
   ignoreAttributes: false,
