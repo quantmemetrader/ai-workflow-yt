@@ -98,15 +98,35 @@ module.exports = {
       /**
        * Queues the daily research refresh: every stale topic, and the source
        * feeds. Three times a day, because a trends dashboard that is a day old
-       * is not a trends dashboard.
+       * is not a trends dashboard — and a fourth at 23:00 UTC, so what the
+       * morning digest reads an hour later is fresh rather than six hours old.
        */
       name: "aura-research",
       ...runTs("scripts/refresh-research.ts"),
       cwd: root,
       autorestart: false,
-      cron_restart: "0 1,9,17 * * *",
+      cron_restart: "0 1,9,17,23 * * *",
       out_file: path.join(root, "logs/research.log"),
       error_file: path.join(root, "logs/research.log"),
+      merge_logs: true,
+      time: true,
+    },
+
+    {
+      /**
+       * The Research agent's morning digest, into #研究日报 (scripts/digest.ts).
+       *
+       * pm2 cron is UTC: "0 0 * * *" is 08:00 in Hong Kong, which is when the
+       * client asked for it. pm2 also runs it once whenever it is (re)started;
+       * the script posts at most once per Hong Kong day, so that is harmless.
+       */
+      name: "aura-digest",
+      ...runTs("scripts/digest.ts"),
+      cwd: root,
+      autorestart: false,
+      cron_restart: "0 0 * * *",
+      out_file: path.join(root, "logs/digest.log"),
+      error_file: path.join(root, "logs/digest.log"),
       merge_logs: true,
       time: true,
     },

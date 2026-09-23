@@ -507,6 +507,17 @@ export async function requestApproval(
     );
   }
 
+  // Nothing leaves without a named *person* saying so (§4.6): an approver id
+  // is checked, and an AI employee is never one — it cannot sign in to decide.
+  if (approverId) {
+    const [approver] = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(and(eq(users.id, approverId), eq(users.tenantId, viewer.tenantId), eq(users.status, "active"), eq(users.isAgent, false), isNull(users.deletedAt)))
+      .limit(1);
+    if (!approver) throw new Error("Choose a person in this studio to approve it");
+  }
+
   const id = newId("apr");
   await db.insert(approvals).values({
     id,

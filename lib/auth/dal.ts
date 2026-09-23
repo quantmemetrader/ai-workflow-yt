@@ -31,6 +31,7 @@ type Row = {
   role: Viewer["role"];
   locale: Viewer["locale"];
   status: string;
+  is_agent: boolean;
   deleted_at: Date | null;
   modules: unknown;
   team_ids: unknown;
@@ -43,7 +44,7 @@ export const getViewer = cache(async (): Promise<Viewer | null> => {
 
   const { rows } = await db.execute<Row>(sql`
     select u.id, u.tenant_id, u.email, u.name, u.name_local, u.avatar_url, u.title,
-           u.role, u.locale, u.status, u.deleted_at, s.last_seen_at,
+           u.role, u.locale, u.status, u.is_agent, u.deleted_at, s.last_seen_at,
            coalesce((select array_agg(e.module) from entitlements e where e.user_id = u.id), '{}') as modules,
            coalesce((select array_agg(tm.team_id) from team_members tm where tm.user_id = u.id), '{}') as team_ids
       from sessions s
@@ -58,6 +59,9 @@ export const getViewer = cache(async (): Promise<Viewer | null> => {
   // and an allow-list is the only version of this check that stays correct
   // when a status is added to the enum.
   if (!row || row.deleted_at || row.status !== "active") return null;
+  // An agent acts through jobs (`viewer-by-id.ts`), never through a browser.
+  // A session row for one can only have been made by mistake or on purpose.
+  if (row.is_agent) return null;
 
   const teamIds = toArray(row.team_ids);
   const lastSeen = toDate(row.last_seen_at);

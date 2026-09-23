@@ -167,7 +167,7 @@ export async function seedBalances(viewer: Viewer, year: number) {
     .select({ id: users.id, startedOn: employeeRecords.startedOn })
     .from(users)
     .leftJoin(employeeRecords, eq(employeeRecords.userId, users.id))
-    .where(and(eq(users.tenantId, viewer.tenantId), isNull(users.deletedAt)));
+    .where(and(eq(users.tenantId, viewer.tenantId), isNull(users.deletedAt), eq(users.isAgent, false)));
 
   if (!people.length) return 0;
 

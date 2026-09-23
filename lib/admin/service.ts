@@ -77,7 +77,7 @@ export async function listPeople(viewer: Viewer): Promise<PersonRow[]> {
     db
       .select()
       .from(users)
-      .where(and(eq(users.tenantId, viewer.tenantId), isNull(users.deletedAt)))
+      .where(and(eq(users.tenantId, viewer.tenantId), isNull(users.deletedAt), eq(users.isAgent, false)))
       .orderBy(users.name),
     db
       .select({ userId: entitlements.userId, module: entitlements.module })

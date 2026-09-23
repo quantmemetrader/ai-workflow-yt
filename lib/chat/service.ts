@@ -129,7 +129,14 @@ export async function channelMessages(channelId: string, limit = 80) {
   return rows.reverse();
 }
 
-export async function postMessage(viewer: Viewer, channelId: string, body: string) {
+export async function postMessage(
+  viewer: Viewer,
+  channelId: string,
+  body: string,
+  /** Machine-readable context — an agent's mentions and hand-off ids — kept
+   * beside the text rather than parsed back out of it (`lib/agents`). */
+  meta?: Record<string, unknown>,
+) {
   const text = body.trim();
   if (!text) return null;
 
@@ -153,7 +160,7 @@ export async function postMessage(viewer: Viewer, channelId: string, body: strin
   }
 
   const id = newId("msg");
-  await db.insert(chatMessages).values({ id, channelId, authorId: viewer.id, body: text });
+  await db.insert(chatMessages).values({ id, channelId, authorId: viewer.id, body: text, meta: meta ?? {} });
 
   // The channel's clock and the sender's own read mark touch different rows and
   // neither gates the other. Sent together they cost one crossing of the planet
@@ -275,7 +282,7 @@ export const listPeople = cache(async function listPeople(viewer: Viewer) {
       lastActiveAt: users.lastActiveAt,
     })
     .from(users)
-    .where(and(eq(users.tenantId, viewer.tenantId), isNull(users.deletedAt)))
+    .where(and(eq(users.tenantId, viewer.tenantId), isNull(users.deletedAt), eq(users.isAgent, false)))
     .orderBy(users.name);
 
   /* Unread per person: their messages in the one-to-one room since this

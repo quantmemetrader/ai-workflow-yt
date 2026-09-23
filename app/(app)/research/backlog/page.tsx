@@ -28,7 +28,7 @@ export default async function BacklogPage() {
     db
       .select({ id: users.id, name: users.name, nameLocal: users.nameLocal })
       .from(users)
-      .where(eq(users.tenantId, viewer.tenantId))
+      .where(and(eq(users.tenantId, viewer.tenantId), eq(users.isAgent, false)))
       .orderBy(users.name),
     connectedSources(),
     decisionCount(viewer),

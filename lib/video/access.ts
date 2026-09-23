@@ -137,7 +137,7 @@ export async function projectAccess(viewer: Viewer, projectId: string) {
   const people = await db
     .select({ id: users.id, name: users.name, email: users.email })
     .from(users)
-    .where(and(eq(users.tenantId, viewer.tenantId), sql`${users.deletedAt} is null`, sql`${users.status} = 'active'`, sql`${users.id} <> ${viewer.id}`));
+    .where(and(eq(users.tenantId, viewer.tenantId), sql`${users.deletedAt} is null`, sql`${users.status} = 'active'`, eq(users.isAgent, false), sql`${users.id} <> ${viewer.id}`));
 
   return { canManage: held === "owner", relation: held, entries, people };
 }

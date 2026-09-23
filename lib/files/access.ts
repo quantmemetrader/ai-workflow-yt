@@ -186,6 +186,6 @@ export async function studioPeople(viewer: Viewer) {
   return db
     .select({ id: users.id, name: users.name, email: users.email })
     .from(users)
-    .where(and(eq(users.tenantId, viewer.tenantId), isNull(users.deletedAt), eq(users.status, "active"), sql`${users.id} <> ${viewer.id}`))
+    .where(and(eq(users.tenantId, viewer.tenantId), isNull(users.deletedAt), eq(users.status, "active"), eq(users.isAgent, false), sql`${users.id} <> ${viewer.id}`))
     .orderBy(users.name);
 }

@@ -183,6 +183,13 @@
       "when": 1789932883181,
       "tag": "0025_milky_scarecrow",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1790173543676,
+      "tag": "0026_brown_psynapse",
+      "breakpoints": true
     }
   ]
 }

@@ -336,7 +336,7 @@ export async function requestApprovalAction(scriptId: unknown, approverId: unkno
   const [approver] = await db
     .select({ id: users.id })
     .from(users)
-    .where(and(eq(users.id, approverId), eq(users.tenantId, viewer.tenantId), eq(users.status, "active")))
+    .where(and(eq(users.id, approverId), eq(users.tenantId, viewer.tenantId), eq(users.status, "active"), eq(users.isAgent, false)))
     .limit(1);
   if (!approver) return { error: "That person is not in this studio." };
 

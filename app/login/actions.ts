@@ -70,6 +70,12 @@ export async function signIn(_prev: LoginState, formData: FormData): Promise<Log
   if (user.status !== "active") {
     return { error: "Your account is not active. Ask an admin." };
   }
+  // An AI employee has no password to begin with; this holds even if somebody
+  // gives it one. Same words as a wrong password — it is not a login.
+  if (user.isAgent) {
+    await audit(null, "auth.fail", { meta: { email, agent: true } });
+    return { error: "That email and password do not match." };
+  }
 
   /* Two-step verification, if this person has finished enrolling and this
      browser has not already been trusted. The password is right — but a
@@ -134,7 +140,7 @@ export async function verifySecondFactor(_prev: VerifyState, formData: FormData)
   const ip = h.get("x-forwarded-for")?.split(",")[0]?.trim();
 
   const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
-  if (!user || user.deletedAt || user.status !== "active" || !user.totpConfirmedAt) {
+  if (!user || user.deletedAt || user.status !== "active" || user.isAgent || !user.totpConfirmedAt) {
     await endChallenge();
     return { error: "Sign in again." };
   }

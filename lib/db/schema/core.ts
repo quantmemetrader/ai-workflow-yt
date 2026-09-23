@@ -58,6 +58,18 @@ export const users = pgTable(
     title: text(),
     role: userRoleEnum().notNull().default("member"),
     status: userStatusEnum().notNull().default("invited"),
+    /**
+     * An AI employee — the research, script or video agent — not a person.
+     *
+     * A user row, because every tool already runs with a signed-in person's
+     * rights: an agent that is a user gets bounded access, an audit trail and
+     * its own line in the AI ledger for free. But its own flag, never a
+     * `status`: "suspended" means a disabled human, and the day an admin
+     * re-enables one is the day a bot becomes a login. Agents never sign in
+     * (`app/login/actions.ts`, `lib/auth/dal.ts`), never approve, and are left
+     * out of member pickers, invite checks and head counts.
+     */
+    isAgent: boolean().notNull().default(false),
     locale: localeEnum(),
     passwordHash: text(),
     /* Two-step verification. The seed is sealed (AES-256-GCM) rather than

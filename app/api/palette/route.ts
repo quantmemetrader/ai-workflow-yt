@@ -83,6 +83,7 @@ export async function GET(request: Request) {
             and(
               eq(users.tenantId, viewer.tenantId),
               isNull(users.deletedAt),
+              eq(users.isAgent, false),
               or(ilike(users.name, like), ilike(users.nameLocal, like)),
             ),
           )
