@@ -17,6 +17,7 @@ import {
 import { newId } from "@/lib/ids";
 import { grantOwner } from "@/lib/authz/rebac";
 import type { Viewer } from "@/lib/auth/dal";
+import { handOffToVideo } from "@/lib/agents/handoff";
 
 /**
  * Script (spec §4.4).
@@ -725,6 +726,15 @@ export async function decideApproval(
       )
       .where(eq(scripts.id, row.objectId));
   });
+
+  /* The hand-off to the Video agent. After the commit, because an approval is
+     the record and the hand-off is what follows from it: a chat or project
+     write failing must never un-approve a script somebody signed off. */
+  if (decision === "approved") {
+    await handOffToVideo(viewer, row.objectId, version.versionNo, approvalId).catch((err) =>
+      console.error("[script] hand-off to video failed", err),
+    );
+  }
 
   return { ok: true, versionNo: version.versionNo, locked: decision === "approved" };
 }

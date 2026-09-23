@@ -125,10 +125,15 @@ function blocks(src: string): React.ReactNode[] {
   return out;
 }
 
-/** Bold, italic, inline code and links, in one pass. */
+/** Bold, italic, inline code, links and @mentions, in one pass.
+ *
+ * A mention only counts at the start or after a space, so an email address
+ * stays an email address. It gets the chat's `.ment` pill, which is what an
+ * agent's hand-off ("@视频助理 …") needs to read as addressed to someone
+ * while its links stay clickable. */
 function inline(src: string): React.ReactNode[] {
   const nodes: React.ReactNode[] = [];
-  const pattern = /(\*\*[^*]+\*\*|`[^`]+`|\*[^*]+\*|\[[^\]]+\]\([^)]+\))/g;
+  const pattern = /(\*\*[^*]+\*\*|`[^`]+`|\*[^*]+\*|\[[^\]]+\]\([^)]+\)|(?<=^|\s)@[A-Za-z0-9_\u4e00-\u9fff-]+)/g;
   let last = 0;
   let match: RegExpExecArray | null;
   let key = 0;
@@ -148,6 +153,12 @@ function inline(src: string): React.ReactNode[] {
         <code key={key++} className="rounded bg-surface-gray-2 px-1 py-0.5 text-[12px] text-ink-gray-8">
           {token.slice(1, -1)}
         </code>,
+      );
+    } else if (token.startsWith("@")) {
+      nodes.push(
+        <span key={key++} className="ment">
+          {token}
+        </span>,
       );
     } else if (token.startsWith("[")) {
       const link = /\[([^\]]+)\]\(([^)]+)\)/.exec(token)!;
