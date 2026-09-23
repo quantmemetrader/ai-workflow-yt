@@ -24,6 +24,12 @@ const ORIGINS = [
   // The custom domain on the Vercel copy. Missing here on 20 September, so
   // every upload from it was refused by the browser and left a phantom file.
   "https://yt.okbro.xyz",
+  // The studio's own domain, which the site is moving to. Listed before the
+  // DNS flips rather than after: an origin missing here does not fail loudly,
+  // it fails as an upload that never starts — and a multipart upload loses
+  // every one of its part PUTs the same way.
+  "https://tengya.media",
+  "https://www.tengya.media",
   // Local development.
   "http://localhost:3000",
   "http://localhost:3101",

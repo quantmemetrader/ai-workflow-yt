@@ -61,6 +61,28 @@ export const env = {
    * say plainly that no channel is connected rather than crashing the app.
    */
   /**
+   * Which backend turns speech into text. Voice-over is not affected by this
+   * and is always ElevenLabs.
+   *
+   *   local       the venv at /opt/whisper, and only that. A failure fails the
+   *               job. This is the default.
+   *   auto        local first, ElevenLabs if local fails.
+   *   elevenlabs  ElevenLabs only — how it worked before local existed.
+   *
+   * `local` by default on purpose. ElevenLabs refuses this box's IP, so its
+   * traffic only leaves through an SSH tunnel to the old host, and the account
+   * is a free tier. A quiet fallback would go on spending that quota with
+   * nobody noticing, which is the exact thing local transcription replaces; if
+   * the local path breaks, the studio should be told so, not billed.
+   *
+   * An unrecognised value reads as `local` rather than throwing: a typo in this
+   * variable must not stop the site booting.
+   */
+  transcribeBackend: ((v) => (v === "auto" || v === "elevenlabs" ? v : "local"))(
+    opt("TRANSCRIBE_BACKEND", "local").trim().toLowerCase(),
+  ) as "local" | "auto" | "elevenlabs",
+
+  /**
    * ElevenLabs. Speech to text for video captions, and voice-over.
    *
    * The account is on the free tier: 10,000 text-to-speech characters a month

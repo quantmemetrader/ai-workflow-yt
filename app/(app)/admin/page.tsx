@@ -10,6 +10,8 @@ import {
   listPeople,
   usage,
 } from "@/lib/admin/service";
+import { listInvites } from "@/lib/invites/service";
+import { listTeams } from "@/lib/teams/service";
 import { AdminScreen } from "@/components/admin/AdminScreen";
 import { answeringModel } from "@/lib/ai/models";
 
@@ -48,20 +50,36 @@ export default async function AdminPage() {
     );
   }
 
-  const [people, tokens, budgets, connections, audit, actions, knowledge] = await Promise.all([
-    listPeople(viewer),
-    usage(viewer, 30),
-    listBudgets(viewer),
-    listConnections(viewer),
-    listAudit(viewer, { limit: 500 }),
-    auditActions(viewer),
-    listKnowledge(viewer),
-  ]);
+  const [people, tokens, budgets, connections, audit, actions, knowledge, teams, invites] =
+    await Promise.all([
+      listPeople(viewer),
+      usage(viewer, 30),
+      listBudgets(viewer),
+      listConnections(viewer),
+      listAudit(viewer, { limit: 500 }),
+      auditActions(viewer),
+      listKnowledge(viewer),
+      listTeams(viewer),
+      listInvites(viewer),
+    ]);
 
   return (
     <AdminScreen
       model={answeringModel()}
       people={people}
+      teams={teams}
+      /* Somebody invited is not in `users` until they accept, so without this
+         the roster looks unchanged straight after adding them. Only the ones
+         still outstanding, and never the token — that is hashed and was shown
+         once, to the person who made it. */
+      invites={invites
+        .filter((i) => !i.acceptedAt)
+        .map((i) => ({
+          id: i.id,
+          email: i.email,
+          role: i.role,
+          expiresAt: i.expiresAt.toISOString(),
+        }))}
       usage={tokens}
       budgets={budgets}
       keys={keyInventory()}
@@ -70,6 +88,7 @@ export default async function AdminPage() {
       auditActions={actions}
       knowledge={knowledge}
       viewerId={viewer.id}
+      viewerRole={viewer.role}
       locale={viewer.locale ?? "zh-CN"}
     />
   );

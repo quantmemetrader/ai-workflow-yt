@@ -15,7 +15,11 @@ import type {
   PersonRow,
   UsageSlice,
 } from "@/lib/admin/service";
+import type { TeamRow } from "@/lib/teams/service";
 import {
+  addPersonAction,
+  createTeamAction,
+  deleteTeamAction,
   previewPromptAction,
   removeBudgetAction,
   rollbackKnowledgeAction,
@@ -23,9 +27,12 @@ import {
   setBudgetAction,
   setEntitlementAction,
   setKnowledgeActiveAction,
+  setProfileAction,
   setRoleAction,
   setStatusAction,
+  setTeamMemberAction,
   knowledgeHistoryAction,
+  type AddedPerson,
 } from "@/app/(app)/admin/actions";
 import { notify } from "@/lib/client/notify";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
@@ -49,8 +56,12 @@ import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
  */
 type Tab = "people" | "ent" | "tokens" | "budgets" | "credentials" | "audit" | "knowledge" | "prompt";
 
+export type PendingInvite = { id: string; email: string; role: string; expiresAt: string };
+
 export function AdminScreen({
   people,
+  teams,
+  invites,
   usage,
   budgets,
   keys,
@@ -59,10 +70,14 @@ export function AdminScreen({
   auditActions,
   knowledge,
   viewerId,
+  viewerRole,
   locale,
   model,
 }: {
   people: PersonRow[];
+  teams: TeamRow[];
+  /** Invited and not yet joined — they have no `users` row to appear in. */
+  invites: PendingInvite[];
   usage: {
     days: number;
     byModule: UsageSlice[];
@@ -87,6 +102,8 @@ export function AdminScreen({
   auditActions: string[];
   knowledge: KnowledgeRow[];
   viewerId: string;
+  /** The owner's own row is not administered by an administrator. */
+  viewerRole: "owner" | "admin" | "member" | "guest";
   locale: string;
   /** Which model answers in the panel down the right edge. */
   model: string;
@@ -180,11 +197,28 @@ export function AdminScreen({
         {tab === "people" && (
           <People
             people={people}
+            teams={teams}
+            invites={invites}
             zh={zh}
             busy={busy}
             viewerId={viewerId}
+            viewerRole={viewerRole}
             onRole={(userId, role) => run(() => setRoleAction(userId, role))}
             onStatus={(userId, status) => run(() => setStatusAction(userId, status))}
+            onProfile={(userId, profile, after) => run(() => setProfileAction(userId, profile), after)}
+            onCreateTeam={(input, after) => run(() => createTeamAction(input), after)}
+            onTeamMember={(teamId, userId, member) =>
+              run(() => setTeamMemberAction(teamId, userId, member))
+            }
+            onDeleteTeam={(teamId) => run(() => deleteTeamAction(teamId))}
+            /* The invitation is the one call whose *result* is the point — the
+               link has to come back to the screen — so it is awaited here
+               rather than handed to `run`, which only reports failures. */
+            onAdd={async (input) => {
+              const res = await addPersonAction(input);
+              if (res.ok) router.refresh();
+              return res;
+            }}
             onOpenEntitlements={() => setTab("ent")}
           />
         )}
@@ -268,6 +302,10 @@ function TAB_SCOPE(tab: string, zh: boolean): string {
 
 /* ---------------------------------------------------------------- people */
 
+/** The roster's column widths, in one place because the header row and every
+ * person's row have to agree on them. */
+const COLUMNS = "minmax(0,1.6fr) 110px minmax(0,1fr) 120px 120px 140px";
+
 /**
  * Who is here — the design's own People screen.
  *
@@ -279,33 +317,73 @@ function TAB_SCOPE(tab: string, zh: boolean): string {
  *
  * Filters on team and role, because the studio it is designed for has twelve
  * people and the studio it will have has forty.
+ *
+ * It is also where people are *added*, put on teams and renamed. Until now
+ * the only way to do any of the three was a shell on the box: `db:add-user`
+ * for a colleague, an `insert` for a team, an `update` for a job title. A
+ * screen that can see who is here and cannot add anybody is a reference card,
+ * not an admin screen.
  */
 function People({
   people,
+  teams,
+  invites,
   zh,
   busy,
   viewerId,
+  viewerRole,
   onRole,
   onStatus,
+  onProfile,
+  onAdd,
+  onCreateTeam,
+  onTeamMember,
+  onDeleteTeam,
   onOpenEntitlements,
 }: {
   people: PersonRow[];
+  teams: TeamRow[];
+  invites: PendingInvite[];
   zh: boolean;
   busy: boolean;
   viewerId: string;
+  viewerRole: "owner" | "admin" | "member" | "guest";
   onRole: (userId: string, role: string) => void;
   onStatus: (userId: string, status: string) => void;
+  onProfile: (
+    userId: string,
+    profile: { name: string; nameLocal: string; title: string },
+    after: () => void,
+  ) => void;
+  onAdd: (input: {
+    email: string;
+    name: string;
+    role: string;
+    modules: Module[];
+  }) => Promise<AddedPerson>;
+  onCreateTeam: (input: { name: string; nameLocal: string }, after: () => void) => void;
+  onTeamMember: (teamId: string, userId: string, member: boolean) => void;
+  onDeleteTeam: (teamId: string) => void;
   onOpenEntitlements: () => void;
 }) {
   const t = (en: string, cn: string) => (zh ? cn : en);
   const [team, setTeam] = useState("all");
   const [role, setRole] = useState("all");
   const [suspending, setSuspending] = useState<PersonRow | null>(null);
+  /* One panel open at a time, and neither open by default: the first thing
+     this screen answers is still "who is here". */
+  const [panel, setPanel] = useState<"add" | "teams" | null>(null);
+  const [editing, setEditing] = useState<string | null>(null);
 
+  /* The filter still reads the names on the people, not the team list, so a
+     team nobody is on does not appear as an option that shows nothing. */
   const allTeams = [...new Set(people.flatMap((p) => p.teams))].sort();
   const shown = people.filter(
     (p) => (team === "all" || p.teams.includes(team)) && (role === "all" || p.role === role),
   );
+
+  /** The owner's row is the owner's. Everything else on this screen is admin. */
+  const mayEdit = (p: PersonRow) => p.role !== "owner" || viewerRole === "owner";
 
   return (
     <>
@@ -329,16 +407,45 @@ function People({
         <span style={{ fontSize: 11.5, color: "#999999" }}>
           {shown.length} {shown.length === 1 ? t("person", "人") : t("people", "人")}
         </span>
-        <button type="button" onClick={onOpenEntitlements} style={{ ...ghost, marginLeft: "auto" }}>
+        <button
+          type="button"
+          onClick={() => setPanel((p) => (p === "teams" ? null : "teams"))}
+          style={{ ...ghost, marginLeft: "auto" }}
+        >
+          {t("Teams", "团队")}
+          {teams.length ? <span style={{ color: "#999999" }}> · {teams.length}</span> : null}
+        </button>
+        <button type="button" onClick={onOpenEntitlements} style={ghost}>
           {t("Entitlements matrix", "权限矩阵")}
         </button>
+        <button
+          type="button"
+          onClick={() => setPanel((p) => (p === "add" ? null : "add"))}
+          style={solid}
+        >
+          {t("Add person", "添加成员")}
+        </button>
       </div>
+
+      {panel === "add" ? <AddPerson zh={zh} onAdd={onAdd} onClose={() => setPanel(null)} /> : null}
+
+      {panel === "teams" ? (
+        <Teams
+          teams={teams}
+          people={people}
+          zh={zh}
+          busy={busy}
+          onCreate={onCreateTeam}
+          onMember={onTeamMember}
+          onDelete={onDeleteTeam}
+        />
+      ) : null}
 
       <div style={{ display: "flex", flexDirection: "column" }}>
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "minmax(0,1.6fr) 110px minmax(0,1fr) 120px 120px 90px",
+            gridTemplateColumns: COLUMNS,
             gap: 10,
             padding: "0 10px 8px",
             fontSize: 10.5,
@@ -356,12 +463,29 @@ function People({
 
         {shown.map((p) => {
           const self = p.id === viewerId;
+
+          /* Editing takes the whole row rather than squeezing three fields
+             into the name column: the row is 1.6fr wide and a job title is
+             not. */
+          if (editing === p.id) {
+            return (
+              <PersonEditor
+                key={p.id}
+                person={p}
+                zh={zh}
+                busy={busy}
+                onSave={(profile) => onProfile(p.id, profile, () => setEditing(null))}
+                onCancel={() => setEditing(null)}
+              />
+            );
+          }
+
           return (
             <div
               key={p.id}
               style={{
                 display: "grid",
-                gridTemplateColumns: "minmax(0,1.6fr) 110px minmax(0,1fr) 120px 120px 90px",
+                gridTemplateColumns: COLUMNS,
                 gap: 10,
                 alignItems: "center",
                 padding: "9px 10px",
@@ -399,6 +523,10 @@ function People({
                 <span style={{ minWidth: 0 }}>
                   <span style={{ display: "block", fontWeight: 500, ...clip }}>
                     {(zh && p.nameLocal) || p.name}
+                    {/* The title is edited on this row, so it is shown on it. */}
+                    {p.title ? (
+                      <span style={{ fontWeight: 400, color: "#7c7c7c" }}> · {p.title}</span>
+                    ) : null}
                   </span>
                   <span style={{ display: "block", fontSize: 11, color: "#999999", ...clip }}>{p.email}</span>
                 </span>
@@ -437,6 +565,16 @@ function People({
 
               <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
                 <span style={{ fontSize: 11.5, color: "#7c7c7c" }}>{p.modules.length}</span>
+                {mayEdit(p) ? (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => setEditing(p.id)}
+                    style={{ ...ghost, height: 24, fontSize: 11, padding: "0 8px" }}
+                  >
+                    {t("Edit", "编辑")}
+                  </button>
+                ) : null}
                 {!self && p.role !== "owner" ? (
                   <button
                     type="button"
@@ -462,6 +600,37 @@ function People({
         ) : null}
       </div>
 
+      {/* Somebody who has been sent a link has no row above until they use it,
+          so without this the roster looks unchanged the moment after you add
+          them. The link itself is not here: the token is hashed the second it
+          is made and shown once, to whoever made it. */}
+      {invites.length ? (
+        <div style={{ marginTop: 16, borderTop: "1px solid #ededed", paddingTop: 10 }}>
+          <div style={{ fontSize: 10.5, color: "#999999", marginBottom: 5 }}>
+            {t("Invited, not joined yet", "已邀请，尚未加入")}
+          </div>
+          {invites.map((i) => (
+            <div
+              key={i.id}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                padding: "4px 0",
+                fontSize: 11.5,
+                color: "#7c7c7c",
+              }}
+            >
+              <span style={{ ...clip }}>{i.email}</span>
+              <span style={{ color: "#999999" }}>{i.role}</span>
+              <span style={{ marginLeft: "auto", color: "#999999" }}>
+                {t(`expires ${i.expiresAt.slice(0, 10)}`, `有效期至 ${i.expiresAt.slice(0, 10)}`)}
+              </span>
+            </div>
+          ))}
+        </div>
+      ) : null}
+
       {suspending ? (
         <ConfirmDialog
           danger
@@ -480,6 +649,435 @@ function People({
         />
       ) : null}
     </>
+  );
+}
+
+/**
+ * A colleague's name and job title, in place of their row.
+ *
+ * Three fields, because the studio works in two languages and the table shows
+ * whichever one matches the reader's: a person with no `nameLocal` is a person
+ * whose Chinese colleagues read a Latin name. The Settings screen has had this
+ * form for your own row since the start; this is the same one for somebody
+ * else's, and it is audited as `admin.user.profile`.
+ */
+function PersonEditor({
+  person,
+  zh,
+  busy,
+  onSave,
+  onCancel,
+}: {
+  person: PersonRow;
+  zh: boolean;
+  busy: boolean;
+  onSave: (profile: { name: string; nameLocal: string; title: string }) => void;
+  onCancel: () => void;
+}) {
+  const t = (en: string, cn: string) => (zh ? cn : en);
+  const [name, setName] = useState(person.name);
+  const [nameLocal, setNameLocal] = useState(person.nameLocal ?? "");
+  const [title, setTitle] = useState(person.title ?? "");
+
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
+        flexWrap: "wrap",
+        padding: "9px 10px",
+        borderBottom: "1px solid #f3f3f3",
+        background: "#fafafa",
+      }}
+    >
+      <span style={{ fontSize: 11, color: "#999999", width: 150, ...clip }}>{person.email}</span>
+      <input
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        placeholder={t("Name", "英文名")}
+        style={{ ...field, height: 28, width: 150, fontSize: 12 }}
+      />
+      <input
+        value={nameLocal}
+        onChange={(e) => setNameLocal(e.target.value)}
+        placeholder={t("Chinese name", "中文名")}
+        style={{ ...field, height: 28, width: 130, fontSize: 12 }}
+      />
+      <input
+        value={title}
+        onChange={(e) => setTitle(e.target.value)}
+        placeholder={t("Job title", "职位")}
+        style={{ ...field, height: 28, width: 170, fontSize: 12 }}
+      />
+      <button
+        type="button"
+        disabled={busy || !name.trim()}
+        onClick={() => onSave({ name: name.trim(), nameLocal: nameLocal.trim(), title: title.trim() })}
+        style={{ ...solid, height: 28, marginLeft: "auto", opacity: name.trim() ? 1 : 0.45 }}
+      >
+        {t("Save", "保存")}
+      </button>
+      <button type="button" onClick={onCancel} style={{ ...ghost, height: 28 }}>
+        {t("Cancel", "取消")}
+      </button>
+    </div>
+  );
+}
+
+/**
+ * Adding somebody.
+ *
+ * It creates an invitation, not an account: a password is the one thing an
+ * administrator must not choose on somebody else's behalf. No mail provider
+ * is configured on this deployment, so the link comes back here to be passed
+ * on — the same bargain Settings makes, said in the same words, because a
+ * screen that claimed to have sent an email would be a screen telling a lie.
+ */
+function AddPerson({
+  zh,
+  onAdd,
+  onClose,
+}: {
+  zh: boolean;
+  onAdd: (input: { email: string; name: string; role: string; modules: Module[] }) => Promise<AddedPerson>;
+  onClose: () => void;
+}) {
+  const t = (en: string, cn: string) => (zh ? cn : en);
+  const [busy, start] = useTransition();
+  const [email, setEmail] = useState("");
+  const [name, setName] = useState("");
+  const [role, setRole] = useState<"admin" | "member" | "guest">("member");
+  /* What almost everybody needs on day one, and nothing that costs money. */
+  const [modules, setModules] = useState<Module[]>(["chat", "files"]);
+  const [error, setError] = useState<string | null>(null);
+  const [sent, setSent] = useState<{ email: string; link: string; expiresAt: string } | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  const submit = () =>
+    start(async () => {
+      setError(null);
+      const res = await onAdd({ email: email.trim(), name: name.trim(), role, modules });
+      if (!res.ok) {
+        setError(res.error);
+        return;
+      }
+      setSent({ email: res.email, link: res.link, expiresAt: res.expiresAt });
+      setCopied(false);
+      setEmail("");
+      setName("");
+    });
+
+  const chip = (on: boolean): React.CSSProperties => ({
+    height: 26,
+    padding: "0 10px",
+    borderRadius: 8,
+    border: on ? "1px solid #171717" : "1px solid #ededed",
+    background: on ? "#171717" : "#fff",
+    color: on ? "#fff" : "#525252",
+    fontSize: 11.5,
+    fontFamily: "inherit",
+    letterSpacing: "inherit",
+    cursor: "pointer",
+  });
+
+  return (
+    <div
+      style={{
+        border: "1px solid #ededed",
+        borderRadius: 10,
+        padding: 14,
+        marginBottom: 14,
+        display: "flex",
+        flexDirection: "column",
+        gap: 9,
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <span style={{ fontSize: 13, fontWeight: 600 }}>{t("Add person", "添加成员")}</span>
+        <button type="button" onClick={onClose} style={{ ...ghost, height: 26, marginLeft: "auto" }}>
+          {t("Close", "收起")}
+        </button>
+      </div>
+
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <input
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder={t("Their email address", "邮箱地址")}
+          style={{ ...field, height: 30, width: 240 }}
+        />
+        <input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder={t("Their name (optional)", "姓名（可留空）")}
+          style={{ ...field, height: 30, width: 190 }}
+        />
+        <span style={{ display: "flex", gap: 6 }}>
+          {(["admin", "member", "guest"] as const).map((r) => (
+            <button key={r} type="button" onClick={() => setRole(r)} style={chip(role === r)}>
+              {r}
+            </button>
+          ))}
+        </span>
+      </div>
+
+      <span style={{ fontSize: 11.5, color: "#999999" }}>
+        {t("What they may open", "他们可以打开的模块")}
+      </span>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+        {MODULES.map((m) => {
+          const on = modules.includes(m);
+          return (
+            <button
+              key={m}
+              type="button"
+              onClick={() => setModules((cur) => (on ? cur.filter((x) => x !== m) : [...cur, m]))}
+              style={chip(on)}
+            >
+              {m}
+            </button>
+          );
+        })}
+      </div>
+
+      {error ? <span style={{ fontSize: 11.5, color: "#e03636" }}>{error}</span> : null}
+
+      <button
+        type="button"
+        disabled={busy || !email.trim() || modules.length === 0}
+        onClick={submit}
+        style={{
+          ...solid,
+          alignSelf: "flex-start",
+          opacity: busy || !email.trim() || modules.length === 0 ? 0.45 : 1,
+        }}
+      >
+        {busy ? t("Creating…", "创建中…") : t("Create the invitation", "创建邀请链接")}
+      </button>
+
+      {sent ? (
+        <div style={{ border: "1px solid #ffe0b2", background: "#fff8ec", borderRadius: 8, padding: 10 }}>
+          <p style={{ fontSize: 11.5, color: "#a35f00", lineHeight: 1.6, margin: 0 }}>
+            {t(
+              `No mail provider is configured on this deployment, so nothing was sent to ${sent.email}. Pass this link on yourself: they open it, type their name, choose their own password and are signed in. It works once and expires on ${sent.expiresAt.slice(0, 10)}.`,
+              `这个部署还没有配置邮件服务，所以系统没有向 ${sent.email} 发送任何邮件。请把下面的链接发给对方：打开链接后，他们自己填写姓名并设置密码，随后直接登录。链接只能用一次，有效期至 ${sent.expiresAt.slice(0, 10)}。`,
+            )}
+          </p>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8 }}>
+            <code
+              style={{
+                flex: 1,
+                minWidth: 0,
+                background: "#fff",
+                borderRadius: 6,
+                padding: "5px 8px",
+                fontSize: 11,
+                color: "#525252",
+                ...clip,
+              }}
+            >
+              {sent.link}
+            </code>
+            <button
+              type="button"
+              onClick={() => {
+                void navigator.clipboard?.writeText(sent.link);
+                setCopied(true);
+              }}
+              style={{ ...ghost, height: 26, flexShrink: 0 }}
+            >
+              {copied ? t("Copied", "已复制") : t("Copy", "复制")}
+            </button>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * Teams, and who is on them.
+ *
+ * `teams` and `team_members` were in the schema from the first migration and
+ * empty, so the Team column read "—" for the whole studio and the filter above
+ * it had one option. Membership is the join table, never `users.team_id`: a
+ * producer is on the shoot crew *and* the language desk, and the old column
+ * could only hold one answer.
+ *
+ * A person is added or removed one click at a time, like a cell of the
+ * entitlement matrix, so two administrators with the screen open do not undo
+ * each other.
+ */
+function Teams({
+  teams,
+  people,
+  zh,
+  busy,
+  onCreate,
+  onMember,
+  onDelete,
+}: {
+  teams: TeamRow[];
+  people: PersonRow[];
+  zh: boolean;
+  busy: boolean;
+  onCreate: (input: { name: string; nameLocal: string }, after: () => void) => void;
+  onMember: (teamId: string, userId: string, member: boolean) => void;
+  onDelete: (teamId: string) => void;
+}) {
+  const t = (en: string, cn: string) => (zh ? cn : en);
+  const [name, setName] = useState("");
+  const [nameLocal, setNameLocal] = useState("");
+  const [open, setOpen] = useState<string | null>(null);
+  const [dissolving, setDissolving] = useState<TeamRow | null>(null);
+
+  return (
+    <div
+      style={{
+        border: "1px solid #ededed",
+        borderRadius: 10,
+        padding: 14,
+        marginBottom: 14,
+        display: "flex",
+        flexDirection: "column",
+        gap: 10,
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+        <span style={{ fontSize: 13, fontWeight: 600 }}>{t("Teams", "团队")}</span>
+        <input
+          value={nameLocal}
+          onChange={(e) => setNameLocal(e.target.value)}
+          placeholder={t("Chinese name", "中文名")}
+          style={{ ...field, height: 30, width: 140, marginLeft: "auto" }}
+        />
+        <input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder={t("Name", "英文名")}
+          style={{ ...field, height: 30, width: 160 }}
+        />
+        <button
+          type="button"
+          disabled={busy || !name.trim()}
+          onClick={() =>
+            onCreate({ name: name.trim(), nameLocal: nameLocal.trim() }, () => {
+              setName("");
+              setNameLocal("");
+            })
+          }
+          style={{ ...solid, opacity: busy || !name.trim() ? 0.45 : 1 }}
+        >
+          {t("Create team", "新建团队")}
+        </button>
+      </div>
+
+      {teams.length === 0 ? (
+        <p style={{ fontSize: 11.5, color: "#999999", lineHeight: 1.6, margin: 0 }}>
+          {t(
+            "There are no teams yet. Make one above, then open it to put people on it — the Team column and the filter at the top of this screen read the result.",
+            "还没有任何团队。请在上方新建一个，然后展开它来添加成员——本页的“团队”列和上方的筛选都会读取结果。",
+          )}
+        </p>
+      ) : null}
+
+      {teams.map((team) => {
+        const members = new Set(team.memberIds);
+        const expanded = open === team.id;
+        return (
+          <div key={team.id} style={{ borderTop: "1px solid #f3f3f3", paddingTop: 9 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <button
+                type="button"
+                onClick={() => setOpen(expanded ? null : team.id)}
+                style={{
+                  ...ghost,
+                  height: 26,
+                  border: 0,
+                  padding: 0,
+                  fontSize: 12.5,
+                  fontWeight: 500,
+                  color: "#171717",
+                }}
+              >
+                {(zh && team.nameLocal) || team.name}
+                {team.nameLocal && !zh ? (
+                  <span style={{ color: "#999999", fontWeight: 400 }}> {team.nameLocal}</span>
+                ) : null}
+              </button>
+              <span style={{ fontSize: 11.5, color: "#999999" }}>
+                {team.memberIds.length} {t("on it", "人")}
+              </span>
+              <button
+                type="button"
+                onClick={() => setOpen(expanded ? null : team.id)}
+                style={{ ...ghost, height: 24, fontSize: 11, marginLeft: "auto" }}
+              >
+                {expanded ? t("Done", "收起") : t("Members", "成员")}
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => setDissolving(team)}
+                style={{ ...ghost, height: 24, fontSize: 11 }}
+              >
+                {t("Dissolve", "解散")}
+              </button>
+            </div>
+
+            {expanded ? (
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", padding: "9px 0 3px" }}>
+                {people.map((p) => {
+                  const on = members.has(p.id);
+                  return (
+                    <button
+                      key={p.id}
+                      type="button"
+                      disabled={busy}
+                      aria-pressed={on}
+                      onClick={() => onMember(team.id, p.id, !on)}
+                      style={{
+                        height: 26,
+                        padding: "0 10px",
+                        borderRadius: 8,
+                        border: on ? "1px solid #171717" : "1px solid #ededed",
+                        background: on ? "#171717" : "#fff",
+                        color: on ? "#fff" : "#525252",
+                        fontSize: 11.5,
+                        fontFamily: "inherit",
+                        letterSpacing: "inherit",
+                        cursor: busy ? "default" : "pointer",
+                      }}
+                    >
+                      {(zh && p.nameLocal) || p.name}
+                    </button>
+                  );
+                })}
+              </div>
+            ) : null}
+          </div>
+        );
+      })}
+
+      {dissolving ? (
+        <ConfirmDialog
+          danger
+          title={t(`Dissolve ${dissolving.name}?`, `解散 ${(zh && dissolving.nameLocal) || dissolving.name}？`)}
+          body={t(
+            "The team disappears and everybody on it stops being on it. Nobody loses their account, their files or a single module — only the grouping goes.",
+            "该团队会被删除，成员关系随之解除。没有人会因此失去账号、文件或任何模块权限，消失的只是这个分组。",
+          )}
+          confirm={t("Dissolve", "解散")}
+          cancel={t("Cancel", "取消")}
+          onClose={() => setDissolving(null)}
+          onConfirm={() => {
+            onDelete(dissolving.id);
+            setDissolving(null);
+          }}
+        />
+      ) : null}
+    </div>
   );
 }
 

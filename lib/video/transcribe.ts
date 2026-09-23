@@ -13,6 +13,9 @@ import { getObject } from "@/lib/storage/r2";
 import { newId } from "@/lib/ids";
 import { probe } from "@/lib/files/poster";
 import { ElevenLabsUnconfigured, toCaptionLines, transcribe } from "@/lib/video/elevenlabs";
+import type { Transcript } from "@/lib/video/elevenlabs";
+import { transcribeLocal } from "@/lib/video/whisper";
+import { env } from "@/lib/env";
 
 /**
  * Captions from the footage itself.
@@ -36,6 +39,11 @@ import { ElevenLabsUnconfigured, toCaptionLines, transcribe } from "@/lib/video/
  *      Mandarin and English, sometimes within one interview, and declaring a
  *      language would quietly mistranscribe the others. What came back is
  *      recorded so a person can see what it decided.
+ *   4. **It runs on this box.** Whisper large-v3-turbo through
+ *      `lib/video/whisper.ts`, not ElevenLabs — whose API refuses this
+ *      server\'s IP and whose free-tier quota transcription would eat on its
+ *      own. `TRANSCRIBE_BACKEND` chooses; see `lib/env.ts` for the three
+ *      values and why the default does not fall back.
  */
 
 /** A transcript that has not come back in forty minutes is not coming back. */
@@ -138,7 +146,7 @@ export async function transcribeProject(
     }
 
     if (!segments.length) throw new Error("Nothing on the timeline produced any audio");
-    // Not worth paying ElevenLabs to listen to silence.
+    // Not worth a transcription pass over silence, on this box or ElevenLabs\'.
     if (!anySound) throw new Error("None of the footage on the timeline has any sound to transcribe");
 
     const listPath = path.join(dir, "list.txt");
@@ -159,11 +167,7 @@ export async function transcribeProject(
     if (size < 1000) throw new Error("The cut has no audible audio");
 
     const audio = new Blob([await readFile(combined)], { type: "audio/mpeg" });
-    const transcript = await transcribe(audio, "cut.mp3", {
-      diarize: options.diarize ?? true,
-      // Detected, not declared. See the note at the top.
-      languageCode: null,
-    });
+    const transcript = await runTranscription(projectId, audio, options.diarize ?? true);
 
     const lines = toCaptionLines(transcript);
     if (!lines.length) throw new Error("Nothing was said, or nothing could be made out");
@@ -212,6 +216,63 @@ export async function transcribeProject(
     // A failed transcription must not leave a master in /tmp: this box is also
     // the web server.
     await rm(dir, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
+/**
+ * Whichever backend `TRANSCRIBE_BACKEND` names, and one line in the log saying
+ * which one actually served the job.
+ *
+ * The default is `local` and it deliberately does **not** fall back. A silent
+ * fallback is how the studio ends up paying an ElevenLabs quota it thought it
+ * had stopped using: the captions would still appear, nobody would look, and
+ * the free tier would drain. If the local transcriber is broken, that is a
+ * thing to fix, and the job says so by failing.
+ *
+ * `auto` is the old belt-and-braces behaviour, kept one env change away.
+ */
+async function runTranscription(
+  projectId: string,
+  audio: Blob,
+  diarize: boolean,
+): Promise<Transcript> {
+  const backend = env.transcribeBackend;
+  // Detected, not declared. See the note at the top.
+  const options = { diarize, languageCode: null };
+  const log = (line: string) => console.log(`[transcribe ${projectId}] ${line}`);
+  const describe = (t: Transcript) =>
+    `${t.languageCode} p=${t.languageProbability.toFixed(3)}, ${t.words.length} words, ${Math.round(t.durationSecs)}s of audio`;
+
+  if (backend === "elevenlabs") {
+    const transcript = await transcribe(audio, "cut.mp3", options);
+    log(`served by elevenlabs (TRANSCRIBE_BACKEND=elevenlabs): ${describe(transcript)}`);
+    return transcript;
+  }
+
+  const startedAt = Date.now();
+  try {
+    const transcript = await transcribeLocal(audio, "cut.mp3", options);
+    const secs = ((Date.now() - startedAt) / 1000).toFixed(1);
+    log(`served by local whisper in ${secs}s: ${describe(transcript)}`);
+    return transcript;
+  } catch (err) {
+    const why = err instanceof Error ? err.message : String(err);
+
+    if (backend === "local") {
+      console.error(`[transcribe ${projectId}] local whisper failed, and TRANSCRIBE_BACKEND=local so there is no fallback: ${why}`);
+      /* Named plainly, because this is what the studio reads on the screen.
+         The remedy is nearly always on the box — the venv, the model cache or
+         a killed process — not in the project. */
+      throw new Error(
+        `Local transcription failed: ${why}. Transcription runs on this server ` +
+          `(/opt/whisper); set TRANSCRIBE_BACKEND=auto to let it fall back to ElevenLabs.`,
+      );
+    }
+
+    console.warn(`[transcribe ${projectId}] local whisper failed (${why}); falling back to elevenlabs`);
+    const transcript = await transcribe(audio, "cut.mp3", options);
+    log(`served by elevenlabs after local failed: ${describe(transcript)}`);
+    return transcript;
   }
 }
 

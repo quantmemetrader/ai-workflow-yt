@@ -298,3 +298,119 @@ Two more faults, both invisible in the logs because nothing errored.
 - `scripts/director-smoke.ts` runs the whole director on a 75s cut of any
   stored master in a couple of minutes. Use it before claiming a pipeline
   change works.
+
+---
+
+## Transcription moved onto this box — 2026-09-24
+
+Speech-to-text no longer goes to ElevenLabs. **Voice-over still does**; nothing
+in `lib/video/voiceover.ts` or `lib/video/elevenlabs.ts` changed.
+
+Why: ElevenLabs refuses this server's IP, so transcription only ever left
+through the SSH tunnel to the old box, and the account is a free tier that
+transcription — much the higher-volume path — drains first. This machine has 16
+cores and sits at load ~0 between renders.
+
+### What runs
+
+- **`/opt/whisper/`** — outside the repo on purpose (1.6GB of weights and a
+  Python tree have no business in a public repo or in `next build`).
+  - `venv/` — `faster-whisper` on the CTranslate2 backend. **No PyTorch**;
+    the whole install is a few hundred MB.
+  - `models/` — the HuggingFace cache (`HF_HOME`), holding **large-v3-turbo**.
+  - `transcribe.py` — the CLI. Prints one JSON object on stdout in exactly the
+    shape `lib/video/elevenlabs.ts` `transcribe()` returns, so nothing
+    downstream can tell the difference. Diagnostics go to stderr.
+- **`lib/video/whisper.ts`** — writes the Blob to a temp file, `spawn`s the CLI
+  (argv array, never a shell string), validates the JSON, cleans up.
+- **`lib/video/transcribe.ts`** — `runTranscription()` picks the backend and
+  logs one line naming which one served the job.
+
+### The switch
+
+`TRANSCRIBE_BACKEND` in `.env.local`, read through `lib/env.ts`. Change it and
+`pm2 restart all --update-env`; no deploy, no build.
+
+| value | behaviour |
+| --- | --- |
+| `local` | **the default, and what is set.** /opt/whisper only. A failure fails the job. |
+| `auto` | local first, ElevenLabs if local fails. |
+| `elevenlabs` | ElevenLabs only — how it worked before. |
+
+**`local` does not fall back, deliberately.** A silent fallback is how the
+studio ends up spending an ElevenLabs quota it believed it had stopped using:
+the captions would still appear, nobody would look, and the free tier would
+drain anyway. If the local path breaks, the job fails saying so.
+
+A failure reads, on screen and in `logs/worker.log`:
+`Local transcription failed: <the actual cause>. Transcription runs on this
+server (/opt/whisper); set TRANSCRIBE_BACKEND=auto to let it fall back to
+ElevenLabs.` The cause is specific — venv missing, bad model id, the CLI's
+exit code and stderr, or `did not finish within 1200s`.
+
+Other env, all optional, all with the same defaults in the CLI and the wrapper:
+`WHISPER_MODEL` (`large-v3-turbo`), `WHISPER_THREADS` (`6`),
+`WHISPER_TIMEOUT_MS` (`1200000`), `WHISPER_PYTHON`, `WHISPER_SCRIPT`,
+`WHISPER_CACHE`, `WHISPER_MULTILINGUAL`.
+
+### Why turbo and not large-v3
+
+Measured head to head on 90s of the studio's own Mandarin master
+(`蒸馏之战 · 原片.mp4`), both at six threads:
+
+| | large-v3 | **large-v3-turbo** |
+| --- | --- | --- |
+| wall clock | 36.9s | **17.1s** |
+| peak RSS | 3.13GB | **1.70GB** |
+| language | zh, p=0.9979 | zh, p=0.9976 |
+| words | 311 | 312 |
+| weights on disk | 2.9GB | 1.6GB |
+
+Word start times agree to a median of **0.08s** — invisible in a caption. The
+large-v3 weights have been deleted from the cache. If you ever want them back:
+`HF_HOME=/opt/whisper/models /opt/whisper/venv/bin/python -c "from
+huggingface_hub import snapshot_download;
+snapshot_download('Systran/faster-whisper-large-v3')"`, then set
+`WHISPER_MODEL=large-v3`.
+
+### Six threads, not sixteen
+
+`cpu_threads=6` and `OMP_NUM_THREADS=6`, set in the CLI **before**
+`faster_whisper` is imported — CTranslate2's OpenMP runtime reads the ceiling
+once, at load, so setting it later does nothing. A transcription is never what
+the studio is waiting on; a render is, and one starting alongside still gets
+ten cores.
+
+### Two things that are deliberately absent
+
+- **Diarization.** faster-whisper does not do it (it needs pyannote and a
+  PyTorch install, which is the weight this backend exists to avoid). `speaker`
+  is always null. It costs nothing: `toCaptionLines` only uses `speaker` to
+  break a line when it changes, so it simply never breaks on it, and no other
+  caller reads it. The `diarize` option is still accepted so the call site
+  reads the same as the ElevenLabs one.
+- **A hand-tuned language list.** Detection is automatic and per window
+  (`multilingual=True`), because the studio mixes Mandarin, Cantonese and
+  English inside one video; pinning one language turns an English answer in a
+  Chinese interview into plausible-looking nonsense. It is not free: on the
+  benchmark clip **large-v3** with per-window detection decided a stretch of
+  trailing near-silence was Vietnamese and invented a YouTube sign-off. Turbo
+  did not, either way — but if a caption ever comes back in a language nobody
+  spoke, `WHISPER_MULTILINGUAL=0` pins detection to one pass.
+
+### Updating the model
+
+```bash
+HF_HOME=/opt/whisper/models /opt/whisper/venv/bin/pip install -U faster-whisper
+# then pre-pull whatever you want to run, so the first real job does not pay for it:
+HF_HOME=/opt/whisper/models /opt/whisper/venv/bin/python -c \
+  "from faster_whisper import WhisperModel; WhisperModel('large-v3-turbo', device='cpu', compute_type='int8')"
+```
+
+Set `WHISPER_MODEL` if it is not the default, then
+`pm2 restart all --update-env`. Check it by hand first — the CLI runs
+standalone and prints the JSON:
+
+```bash
+/opt/whisper/venv/bin/python /opt/whisper/transcribe.py /path/to/audio.mp3 | head -c 400
+```
