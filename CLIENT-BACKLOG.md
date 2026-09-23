@@ -261,3 +261,40 @@ would bypass it entirely.
 The stored choice in `settings` (key `ai.models`) said `claude-sonnet-5` while
 the fallback chain quietly answered with DeepSeek, so the model picker named a
 model that never replied. Now set to DeepSeek so the UI is honest.
+
+---
+
+## Why the design came back empty, and why captions were boxes (2026-09-23, later)
+
+Two more faults, both invisible in the logs because nothing errored.
+
+- **Captions rendered as white and blue boxes.** `remotion/public/fonts/` held
+  only `InterVariable.ttf` (0 Han glyphs), no CJK font was installed on the
+  box, and every caption preset in `lib/video/presets.ts` asked libass for
+  "Inter". Every Chinese character became tofu. Fix: `fonts-noto-cjk` on the
+  box, `NotoSansSC.ttf` in the fonts dir libass is pointed at, and all six
+  presets now name `Noto Sans CJK SC` (covers Latin too). Proven with a burned
+  frame. Whatever family a preset names must exist in BOTH places or this
+  comes back silently.
+- **"0 graphics" with no error.** `ai_usage.completion_tokens` was exactly
+  `4200` — the design call's `maxTokens`. The whole-video JSON plan overflowed,
+  came back truncated, and the tolerant parser produced nothing; the call had
+  "succeeded" so nothing was logged. Raised to 16000/8000, and — the real fix —
+  **the design is now windowed**: one call per 60s of timeline, in parallel,
+  each with the full brief and only its own transcript, merged. Part 1 owns
+  the opening furniture, the last part the end card. A single call over six
+  minutes was rich for minute one and empty by minute five; that is where
+  "only 3 graphics" came from.
+- **Model.** Anthropic/Google are refused on this OpenRouter org. Of what does
+  answer, `qwen/qwen3-max` is the strongest for Chinese and structured JSON;
+  it is the assistant/drafting model now, `kimi-k2` then `deepseek-v4-flash`
+  as fallbacks, Flash for cheap utility work.
+- **Preview proxies.** Every render now also writes a 480p proxy
+  (`video_exports.proxy_file_id`, ~10x smaller, 2s keyframes) and the player
+  streams that, falling back to the master. The master is still what
+  downloads. Uploads from a browser go browser→R2 direct with an 8GB cap, but
+  a 590MB upload from Hong Kong timed out on the 15-minute presign; for big
+  masters use `scripts/upload-local.ts` on the box.
+- `scripts/director-smoke.ts` runs the whole director on a 75s cut of any
+  stored master in a couple of minutes. Use it before claiming a pipeline
+  change works.

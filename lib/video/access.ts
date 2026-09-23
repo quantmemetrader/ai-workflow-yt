@@ -74,6 +74,7 @@ export async function fileInVisibleProject(viewer: Viewer, fileId: string): Prom
            or exists (select 1 from video_graphics g where g.project_id = ${videoProjects.id} and g.file_id = ${fileId})
            or exists (select 1 from audio_tracks a where a.project_id = ${videoProjects.id} and a.file_id = ${fileId})
            or exists (select 1 from video_exports e where e.project_id = ${videoProjects.id} and e.file_id = ${fileId})
+           or exists (select 1 from video_exports e where e.project_id = ${videoProjects.id} and e.proxy_file_id = ${fileId})
          )
     ) as ok
   `);

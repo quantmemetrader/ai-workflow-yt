@@ -1,6 +1,6 @@
 import "server-only";
 import { spawn } from "node:child_process";
-import { mkdtemp, rm, stat, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { createWriteStream } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -545,6 +545,35 @@ export async function renderExport(exportId: string): Promise<{ fileId: string; 
       .then((posterKey) => rememberPoster(fileId, posterKey))
       .catch((err) => console.warn(`[render] no poster for ${fileId}:`, err instanceof Error ? err.message : err));
 
+    /*
+     * A small copy to watch, beside the master.
+     *
+     * The preview player streams the rendered file itself: ~4 Mbps, 111MB for
+     * a four-minute 9:16 cut, pulled out of R2 by a browser in Hong Kong. The
+     * bytes are fine; the seeks are not. Every scrub is a fresh range request
+     * over that round trip, and a studio watching its own cut felt it as the
+     * picture "stopping sometimes". This is the same film at 480p, about a
+     * twentieth of the bytes, which the browser can hold and seek inside.
+     *
+     * It is a convenience and the master is the deliverable, so it is wrapped
+     * the way the poster above is: a proxy that will not encode leaves the
+     * export finished and the screen playing the master, which is exactly
+     * where this started.
+     */
+    const proxyFileId = await makeProxy({
+      master,
+      dir,
+      name: `${project.title} · ${e.aspect} · 预览 480p.mp4`,
+      tenantId: e.tenantId,
+      ownerId,
+      folderId: home?.id ?? null,
+      folderPath: home?.path ?? [],
+      durationMs: totalMs || null,
+    }).catch((err) => {
+      console.warn(`[render] no preview proxy for ${fileId}:`, err instanceof Error ? err.message : err);
+      return null;
+    });
+
     /* A sidecar only when the captions were not burned in: two copies of the
        same words, one of them already on the picture, is a file nobody wants
        and a caption track YouTube would show on top of the burned one. */
@@ -578,6 +607,7 @@ export async function renderExport(exportId: string): Promise<{ fileId: string; 
         progress: 100,
         fileId,
         subtitleFileId,
+        proxyFileId,
         durationMs: totalMs || null,
         sizeBytes: stats.size,
         finishedAt: new Date(),
@@ -885,6 +915,104 @@ function runFfmpeg(args: string[], onProgress?: (doneMs: number) => Promise<void
       else reject(new Error(`FFmpeg exited ${code}: ${stderr.trim().slice(0, 1500)}`));
     });
   });
+}
+
+/**
+ * The 480p copy of a finished master, stored as a file of its own.
+ *
+ * A second, cheap pass over the master **already on local disk**: no filter
+ * graph, no download, no fonts — a straight transcode, measured at 2.2s for
+ * 66s of 1080x1920 film on this box, against minutes for the render that made
+ * it. The short edge goes to 480 whichever edge that is, so 16:9, 9:16 and 1:1
+ * all keep their shape, and `-2` holds the other edge to the source's ratio
+ * and to an even number, which H.264 requires.
+ *
+ * It returns the new file's id, and throws rather than reporting a failure:
+ * the one caller decides what a missing proxy means, and the answer is
+ * nothing.
+ */
+async function makeProxy(input: {
+  /** The finished master, still in the render's temp directory. */
+  master: string;
+  dir: string;
+  name: string;
+  tenantId: string;
+  ownerId: string;
+  folderId: string | null;
+  folderPath: string[];
+  durationMs: number | null;
+}): Promise<string> {
+  const { master, dir, name, tenantId, ownerId, folderId, folderPath, durationMs } = input;
+  const out = path.join(dir, "proxy.mp4");
+
+  await runFfmpeg([
+    "-y",
+    "-i",
+    master,
+    // Quoted because the ratio test contains the commas and colons the filter
+    // parser splits on. The master is 1080 on its long edge in every aspect
+    // this renders, so this only ever scales down.
+    "-vf",
+    "scale='if(gt(iw,ih),-2,480)':'if(gt(iw,ih),480,-2)'",
+    "-c:v",
+    "libx264",
+    "-preset",
+    "veryfast",
+    "-crf",
+    "28",
+    "-pix_fmt",
+    "yuv420p",
+    // A keyframe every two seconds. x264 would place one every 250 frames —
+    // over eight — and a player can only resume at one, so that is how far a
+    // dropped scrubber can land from where it was dropped. Measured cost: 6%
+    // of the file, on the one thing this proxy exists to make good.
+    "-g",
+    String(FPS * 2),
+    "-c:a",
+    "aac",
+    "-b:a",
+    "96k",
+    "-ac",
+    "2",
+    "-ar",
+    "48000",
+    // The index at the front, so the browser can play and seek from the first
+    // range request instead of fetching the tail to find out how.
+    "-movflags",
+    "+faststart",
+    out,
+  ]);
+
+  const stats = await stat(out);
+  const fileId = newId("fil");
+  const key = storageKey(tenantId, fileId, name);
+  const stored = await putObjectConfirmed(key, await readFile(out), "video/mp4");
+
+  await db.insert(files).values({
+    id: fileId,
+    tenantId,
+    folderId,
+    folderPath,
+    name,
+    kind: "video",
+    mime: "video/mp4",
+    sizeBytes: stats.size,
+    storageKey: key,
+    checksum: stored.etag,
+    durationMs,
+    ownerId,
+    updatedBy: ownerId,
+  });
+  await grantOwner(ownerId, { type: "file", id: fileId });
+  /* Its own still, from the master rather than from the proxy: the frame is
+     cheaper to take at full size than the difference is worth arguing about,
+     and a video in Files with no poster makes the thumbnail route queue a job
+     that downloads this file again to draw one. */
+  await posterFromLocal(master, key)
+    .then((posterKey) => rememberPoster(fileId, posterKey))
+    .catch((err) => console.warn(`[render] no poster for proxy ${fileId}:`, err instanceof Error ? err.message : err));
+
+  return fileId;
 }
 
 /** Streamed to disk, not buffered: a master is measured in gigabytes. */

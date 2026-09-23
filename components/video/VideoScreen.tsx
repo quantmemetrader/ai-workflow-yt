@@ -88,6 +88,17 @@ import { Badge, Empty, Label, ModuleHeader, Row, Tabs, clip, field, ghost, solid
  */
 type Tab = "library" | "edit" | "bin" | "timeline" | "audio" | "graphics" | "preview" | "exports";
 
+/**
+ * A render, plus the small copy of it that exists to be watched.
+ *
+ * The proxy is carried next to the master rather than in place of it, because
+ * the two are for different things: the preview plays the proxy, and every
+ * link that hands somebody the file — Files, Publish, a download — points at
+ * the master. It is null on a render whose proxy failed, and on every render
+ * made before proxies existed.
+ */
+type Render = ExportRow & { proxyFileId: string | null };
+
 export function VideoScreen({
   projects,
   project,
@@ -116,7 +127,7 @@ export function VideoScreen({
   graphics: GraphicRow[];
   /** A first cut is being made right now. */
   autoEditing: boolean;
-  exports: ExportRow[];
+  exports: Render[];
   footage: { id: string; name: string; kind: string; durationMs: number | null }[];
   /** Pictures that can go on a graphic. */
   pictures?: { id: string; name: string }[];
@@ -1999,7 +2010,7 @@ function AudioTracks({
  * time. Two at once because the question is almost always "is this one better
  * than that one".
  */
-function Preview({ renders, zh }: { renders: ExportRow[]; zh: boolean }) {
+function Preview({ renders, zh }: { renders: Render[]; zh: boolean }) {
   const t = (en: string, cn: string) => (zh ? cn : en);
   const [left, setLeft] = useState(renders[0]?.id ?? "");
   const [right, setRight] = useState("");
@@ -2040,15 +2051,33 @@ function Preview({ renders, zh }: { renders: ExportRow[]; zh: boolean }) {
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: b ? "1fr 1fr" : "1fr", gap: 16, maxWidth: b ? 980 : 640 }}>
-        <Player render={a} zh={zh} />
-        {b && <Player render={b} zh={zh} />}
+        {/* Keyed by the render, so picking a different one in the dropdown
+            starts a fresh player rather than one carrying the last one's
+            "the proxy would not play" over to a render it was never about. */}
+        <Player key={a.id} render={a} zh={zh} />
+        {b && <Player key={b.id} render={b} zh={zh} />}
       </div>
     </>
   );
 }
 
-function Player({ render, zh }: { render: ExportRow; zh: boolean }) {
+function Player({ render, zh }: { render: Render; zh: boolean }) {
   const t = (en: string, cn: string) => (zh ? cn : en);
+  /* What is played, which is not what is delivered. The proxy is a twentieth
+     of the master's bytes at the same length and shape, so a seek is a range
+     request over a few megabytes instead of over a hundred; on the studio's
+     connection to the bucket that is the difference between scrubbing and
+     waiting. No proxy — an older render, or one whose second pass failed —
+     and the master plays, exactly as it used to.
+
+     The second half of that rule is `onError` below. A proxy can exist in the
+     row and still not play: somebody deleted it out of Files, or this viewer
+     was shared the project but holds no grant on that particular file, and
+     `/api/files` answers 404 to both alike. A black rectangle would be a worse
+     bug than the one this fixes, so the player drops to the master and the
+     person watching never learns there was a question. */
+  const [proxyFailed, setProxyFailed] = useState(false);
+  const watching = proxyFailed ? render.fileId : (render.proxyFileId ?? render.fileId);
   return (
     <div>
       <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 7 }}>
@@ -2061,6 +2090,12 @@ function Player({ render, zh }: { render: ExportRow; zh: boolean }) {
             {clock(render.durationMs)}
           </span>
         )}
+        {/* Said out loud, because it is visible: this picture is softer than
+            the file. Whoever is judging the cut should know they are judging
+            a 480p copy, and that the master is behind the link beside it. */}
+        {render.proxyFileId && !proxyFailed && (
+          <span style={{ fontSize: 11.5, color: "#999999" }}>{t("preview quality", "预览画质")}</span>
+        )}
         {render.fileId && (
           <Link href={`/files/${render.fileId}`} style={{ marginLeft: "auto", fontSize: 11.5, color: "#007be0" }}>
             {t("open the file", "打开文件库")}
@@ -2068,10 +2103,13 @@ function Player({ render, zh }: { render: ExportRow; zh: boolean }) {
         )}
       </div>
       {/* The download route issues a signed, short-lived redirect after the
-          same permission check every other read makes. */}
+          same permission check every other read makes — for the proxy as much
+          as for the master, since both are ordinary files with the same owner
+          on them. */}
       <video
-        key={render.id}
-        src={`/api/files/${render.fileId}/download`}
+        key={watching}
+        src={`/api/files/${watching}/download`}
+        onError={() => setProxyFailed(true)}
         controls
         preload="metadata"
         style={{

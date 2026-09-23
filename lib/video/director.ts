@@ -331,12 +331,10 @@ export async function direct(viewer: Viewer, projectId: string, jobId?: string):
       : [];
 
     const voice = await creatorVoiceText(viewer.tenantId);
-    const transcript = cues
-      .map((c) => `[${c.startMs}–${c.endMs}ms] ${c.text}`)
-      .join("\n")
-      .slice(0, 26_000);
+    const line = (c: (typeof cues)[number]) => `[${c.startMs}–${c.endMs}ms] ${c.text}`;
+    const transcript = cues.map(line).join("\n").slice(0, 26_000);
 
-    const user = [
+    const context = [
       `Brief from the producer:\n${brief || "(none given: make the best video the footage allows)"}`,
       P.prompt,
       `Aspect: ${aspect}. Language of the captions: ${language}.`,
@@ -353,24 +351,54 @@ export async function direct(viewer: Viewer, projectId: string, jobId?: string):
             .join("\n")
             .slice(0, 6000)}`
         : "",
-      `Transcript on the finished timeline:\n${transcript || "(nothing was said, or nothing could be made out)"}`,
     ]
       .filter(Boolean)
       .join("\n\n");
 
-    let plan: Plan = empty();
-    let designNote: string | null = null;
-    try {
+    /*
+     * Designed a minute at a time, not the whole video in one answer.
+     *
+     * One call over a six-minute transcript came back with a rich first
+     * minute and almost nothing after it: attention spreads thin over a
+     * hundred captions, and the studio saw "3 graphics" on a video that
+     * named twenty companies. Each part now gets the whole brief, the whole
+     * bin and only its own stretch of transcript, so the fifth minute is
+     * designed as carefully as the first. Part 1 places the opening
+     * furniture and the last part the end card; the rest are told not to,
+     * so nothing is set twice. The parts run together, so six of them cost
+     * the wall-clock of one. A part that fails loses its own minute and
+     * nothing else.
+     */
+    const WINDOW_MS = 60_000;
+    const windowCount = Math.max(1, Math.ceil(totalMs / WINDOW_MS));
+    const windows = Array.from({ length: windowCount }, (_, i) => {
+      const from = i * WINDOW_MS;
+      const to = i === windowCount - 1 ? totalMs : (i + 1) * WINDOW_MS;
+      return { i, from, to, text: cues.filter((c) => c.startMs >= from && c.startMs < to).map(line).join("\n") };
+    }).filter((w, _, all) => w.text.length > 0 || all.length === 1);
+
+    const system = `${VIDEO_CRAFT}\n\n---\n\n${HOUSE_FORMAT}\n\n---\n\n${voice ? `The creator whose channel this is for, in their own numbers and words. Make it look and sound like theirs:\n${voice}\n\n---\n\n` : ""}${DESIGN_PROMPT}`;
+
+    const designWindow = async (w: (typeof windows)[number]): Promise<Plan> => {
+      const last = windows.length - 1;
+      const note = [
+        `You are designing part ${w.i + 1} of ${windows.length}: the stretch from ${w.from}ms to ${w.to}ms of a video that runs to ${totalMs}ms.`,
+        `Place graphics, punch-ins, cutaways, pictures and footage ONLY between ${w.from}ms and ${w.to}ms, as densely as the pace asks: every named thing, every number, every claim in this stretch gets something on screen.`,
+        w.i === 0
+          ? "This is the opening: the hook, the title, the header, the watermark and the footnote are yours to place."
+          : 'The opening hook, title, header, watermark and footnote were placed in part 1. Do not repeat them: leave "title", "header", "watermark" and "footnote" null.',
+        w.i === last ? "This is the ending: the end card is yours to place." : "The end card belongs to the last part, not to this one.",
+      ].join(" ");
       const out = await complete({
         model: modelFor.assistant(),
         temperature: 0.5,
-        maxTokens: 4200,
+        // A minute's plan fits easily; the old whole-video call did not, and
+        // came back truncated with no error. Check completion_tokens in
+        // ai_usage against this if a part ever comes back empty.
+        maxTokens: 8000,
         messages: [
-          {
-            role: "system",
-            content: `${VIDEO_CRAFT}\n\n---\n\n${HOUSE_FORMAT}\n\n---\n\n${voice ? `The creator whose channel this is for, in their own numbers and words. Make it look and sound like theirs:\n${voice}\n\n---\n\n` : ""}${DESIGN_PROMPT}`,
-          },
-          { role: "user", content: user },
+          { role: "system", content: system },
+          { role: "user", content: `${context}\n\n${note}\n\nTranscript for this part:\n${w.text || "(nothing was said in this stretch)"}` },
         ],
       });
       await recordUsage({
@@ -383,10 +411,41 @@ export async function direct(viewer: Viewer, projectId: string, jobId?: string):
         costMicros: out.costMicros,
         requestId: out.requestId,
       });
-      plan = parsePlan(out.text, totalMs);
-      if (!plan.graphics.length && !plan.title) designNote = "The model returned no usable design; the cut and the captions are here without titles.";
-    } catch (err) {
-      designNote = `The model could not be reached (${err instanceof Error ? err.message.slice(0, 120) : "unknown"}); the cut and the captions are here without titles.`;
+      const part = parsePlan(out.text, totalMs);
+      // A part that wanders outside its own minute would double up with its
+      // neighbour, so anything placed elsewhere is dropped.
+      const within = <T extends { startMs: number }>(xs: T[]) => xs.filter((x) => x.startMs >= w.from - 500 && x.startMs < w.to + 500);
+      return { ...part, graphics: within(part.graphics), punches: within(part.punches), broll: within(part.broll), footage: within(part.footage), pictures: within(part.pictures) };
+    };
+
+    let plan: Plan = empty();
+    let designNote: string | null = null;
+    const settled = await Promise.allSettled(windows.map(designWindow));
+    const failed: string[] = [];
+    settled.forEach((r, i) => {
+      if (r.status === "rejected") {
+        failed.push(`part ${i + 1}: ${r.reason instanceof Error ? r.reason.message.slice(0, 80) : "unknown"}`);
+        return;
+      }
+      const part = r.value;
+      plan.title ??= part.title;
+      plan.header ??= part.header;
+      plan.watermark ??= part.watermark;
+      plan.footnote ??= part.footnote;
+      if (!plan.look.captionPreset && part.look.captionPreset) plan.look = part.look;
+      plan.graphics.push(...part.graphics);
+      plan.punches.push(...part.punches);
+      plan.broll.push(...part.broll);
+      plan.footage.push(...part.footage);
+      plan.pictures.push(...part.pictures);
+      if (part.notes) plan.notes = plan.notes ? `${plan.notes} ${part.notes}` : part.notes;
+    });
+    if (!plan.graphics.length && !plan.title) {
+      designNote = failed.length
+        ? `The model could not be reached (${failed[0]}); the cut and the captions are here without titles.`
+        : "The model returned no usable design; the cut and the captions are here without titles.";
+    } else if (failed.length) {
+      designNote = `${failed.length} of ${windows.length} parts could not be designed (${failed[0]}); the rest are on the timeline.`;
     }
 
     /* ---- 5. check and write ----------------------------------------- */
@@ -769,7 +828,7 @@ async function translateCues(
       const res = await complete({
         model: modelFor.utility(),
         temperature: 0.2,
-        maxTokens: 3500,
+        maxTokens: 8000,
         messages: [
           { role: "system", content: TRANSLATE_PROMPT },
           { role: "user", content: batch.map((c, j) => `${at + j}. ${c.text}`).join("\n") },

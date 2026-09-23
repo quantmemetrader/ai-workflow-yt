@@ -197,6 +197,13 @@
       "when": 1790179350490,
       "tag": "0027_article",
       "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1790186863890,
+      "tag": "0028_faulty_sharon_carter",
+      "breakpoints": true
     }
   ]
 }

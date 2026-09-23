@@ -1,0 +1,1 @@
+ALTER TABLE "video_exports" ADD COLUMN "proxy_file_id" text;

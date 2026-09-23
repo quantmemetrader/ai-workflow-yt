@@ -19,6 +19,16 @@ export type CaptionPreset = {
   /** When this one is right, in the studio's own words. */
   note: string;
   noteZh: string;
+/*
+ * Every caption family must carry Han glyphs.
+ *
+ * These presets asked for Inter, which has none: a burned-in Chinese caption
+ * came out as a row of empty boxes, and the studio saw it before we did. Noto
+ * Sans CJK SC covers Latin too, so one family serves a bilingual caption
+ * without a second face. Whatever is named here has to exist on the box AND in
+ * remotion/public/fonts (libass is pointed at that directory), or the glyphs
+ * silently fall back to boxes again.
+ */
   style: {
     family: string;
     weight: number;
@@ -55,7 +65,7 @@ export const CAPTION_PRESETS: CaptionPreset[] = [
     note: "Two lines, a quiet plate, no animation. Right for an interview, and right by default.",
     noteZh: "两行，浅色底板，无动画。访谈首选，也是默认。",
     style: {
-      family: "Inter",
+      family: "Noto Sans CJK SC",
       weight: 600,
       sizeRatio: 0.044,
       fill: "#ffffff",
@@ -74,7 +84,7 @@ export const CAPTION_PRESETS: CaptionPreset[] = [
     note: "One line, word by word as it is said. For a piece to camera with energy. Wrong for a considered answer.",
     noteZh: "单行，逐词跟读。适合有节奏的口播，不适合需要思考的回答。",
     style: {
-      family: "Inter",
+      family: "Noto Sans CJK SC",
       weight: 700,
       sizeRatio: 0.052,
       fill: "#ffffff",
@@ -102,7 +112,7 @@ export const CAPTION_PRESETS: CaptionPreset[] = [
       karaoke: false,
       uppercase: false,
       keywords: true,
-      second: { family: "Inter", sizeRatio: 0.021 },
+      second: { family: "Noto Sans CJK SC", sizeRatio: 0.021 },
     },
   },
   {
@@ -112,7 +122,7 @@ export const CAPTION_PRESETS: CaptionPreset[] = [
     note: "One to three words at a time, big and centred, each group popping in as it is said. For a short with pace. Needs word timings.",
     noteZh: "每次只显示一到三个词，居中放大，随语音逐组弹出。适合有节奏的短片，需要逐词时间轴。",
     style: {
-      family: "Inter",
+      family: "Noto Sans CJK SC",
       weight: 800,
       sizeRatio: 0.07,
       fill: "#ffffff",
@@ -131,7 +141,7 @@ export const CAPTION_PRESETS: CaptionPreset[] = [
     note: "Small, bottom-safe, outlined. For footage that is busy behind the type.",
     noteZh: "小字号，贴近安全边，描边。适合画面较杂的素材。",
     style: {
-      family: "Inter",
+      family: "Noto Sans CJK SC",
       weight: 500,
       sizeRatio: 0.036,
       fill: "#ffffff",
@@ -149,7 +159,7 @@ export const CAPTION_PRESETS: CaptionPreset[] = [
     note: "One short line, centred, no plate. For a line that is the whole shot. Under six words or pick another.",
     noteZh: "居中单行，无底板。整段只讲一句话时用，超过六个词请换一种。",
     style: {
-      family: "Inter",
+      family: "Noto Sans CJK SC",
       weight: 700,
       sizeRatio: 0.072,
       fill: "#ffffff",

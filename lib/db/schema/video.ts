@@ -252,6 +252,16 @@ export const videoExports = pgTable(
     /** The finished file, and its subtitle sidecar when there is one. */
     fileId: text(),
     subtitleFileId: text(),
+    /**
+     * The small copy people actually watch: 480p on the short edge, made from
+     * the master by a second pass and stored as its own file.
+     *
+     * Nullable and allowed to stay that way. A proxy is a convenience — the
+     * preview falls back to the master when it is missing — so a render whose
+     * second pass failed, and every render made before this column existed,
+     * is still a finished render and not a broken row.
+     */
+    proxyFileId: text(),
     durationMs: integer(),
     sizeBytes: bigint({ mode: "number" }),
     command: text(),

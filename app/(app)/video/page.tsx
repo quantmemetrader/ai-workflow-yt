@@ -1,3 +1,6 @@
+import { and, eq } from "drizzle-orm";
+import { db } from "@/lib/db/client";
+import { videoExports } from "@/lib/db/schema";
 import { requireModule } from "@/lib/auth/dal";
 import { answeringModel } from "@/lib/ai/models";
 import {
@@ -54,7 +57,7 @@ export default async function VideoPage({
      read, lands on the library rather than on an error. */
   const project = (wanted ? projects.find((p) => p.id === wanted) : undefined) ?? null;
 
-  const [clips, items, captions, graphics, exports, audio, transcribing, autoEditing] = project
+  const [clips, items, captions, graphics, exports, audio, transcribing, autoEditing, proxies] = project
     ? await Promise.all([
         listClips(viewer, project.id),
         listTimeline(viewer, project.id),
@@ -64,8 +67,24 @@ export default async function VideoPage({
         listAudio(viewer, project.id),
         transcriptionRunning(viewer, project.id),
         autoEditRunning(viewer, project.id),
+        /*
+         * Which small preview copy belongs to which render.
+         *
+         * Read beside `listExports` rather than widened into it: that row is
+         * the *deliverable*, and it is read by callers with no player in them.
+         * The proxy only matters to the one screen that watches the cut, and
+         * it rides along here for free — the query goes out with the other
+         * eight and is scoped to this studio the same way they are.
+         */
+        db
+          .select({ exportId: videoExports.id, proxyFileId: videoExports.proxyFileId })
+          .from(videoExports)
+          .where(and(eq(videoExports.projectId, project.id), eq(videoExports.tenantId, viewer.tenantId))),
       ])
-    : [[], [], [], [], [], [], false, false];
+    : [[], [], [], [], [], [], false, false, []];
+
+  const proxyByExport = new Map(proxies.map((p) => [p.exportId, p.proxyFileId]));
+  const renders = exports.map((e) => ({ ...e, proxyFileId: proxyByExport.get(e.id) ?? null }));
 
   /*
    * The voices the studio can use. Read here rather than in the browser: the
@@ -84,7 +103,7 @@ export default async function VideoPage({
       captions={captions}
       graphics={graphics}
       autoEditing={autoEditing}
-      exports={exports}
+      exports={renders}
       footage={footage}
       pictures={pictures}
       scripts={scripts}
