@@ -349,6 +349,10 @@ export function VideoScreen({
 
   /* The render being queued, held while the question below is answered. */
   const [asking, setAsking] = useState<{ aspect: string; burnCaptions: boolean; captionLanguage: string } | null>(null);
+  /* "Later" means later, not never: the bar goes until the next edit, which
+     is a new answer to the same question. */
+  const [later, setLater] = useState<number | null>(null);
+  const askToRender = stale && later !== (project?.updatedAt.getTime() ?? 0);
 
   const fireRender = (
     input: { aspect: string; burnCaptions: boolean; captionLanguage: string },
@@ -559,11 +563,12 @@ export function VideoScreen({
           onUpload={(files) => void uploadIntoProject(files)}
         />
 
-        {stale && !rendering ? (
+        {askToRender && !rendering ? (
           <StaleBar
             zh={zh}
             busy={busy}
             at={lastRender ? lastRender.createdAt : null}
+            onLater={() => setLater(project.updatedAt.getTime())}
             onRender={() =>
               startRender({
                 aspect: lastRender?.aspect ?? project.director?.aspect ?? "16:9",
@@ -886,14 +891,21 @@ function StaleBar({
   busy,
   at,
   onRender,
+  onLater,
 }: {
   zh: boolean;
   busy: boolean;
   /** When the last render was asked for. */
   at: Date | null;
   onRender: () => void;
+  onLater: () => void;
 }) {
   const t = (en: string, cn: string) => (zh ? cn : en);
+  /* A timestamp is not an answer to "so what?". It was "Edited since the
+     last render · 2026-09-23 21:45", and the studio'"'"'s reply was that nobody
+     can tell anything from a stamp. So the bar asks the question it wants
+     answered, and the small line underneath says what is at stake in the
+     only terms that matter: what somebody downloading it right now gets. */
   return (
     <div
       style={{
@@ -902,24 +914,46 @@ function StaleBar({
         alignItems: "center",
         flexWrap: "wrap",
         margin: "0 0 10px",
-        padding: "9px 12px",
+        padding: "10px 13px",
         borderRadius: 8,
         background: "#fff8e6",
         border: "1px solid #f3e3bb",
       }}
     >
-      <span style={{ fontSize: 12.5, color: "#7a5b12", lineHeight: 1.5 }}>
-        {t(
-          "Edited since the last render. The finished file is still the old cut.",
-          "上次渲染之后又改过了，成片文件仍然是旧版本。",
-        )}
-        {at ? ` · ${at.toISOString().slice(0, 16).replace("T", " ")}` : ""}
+      <span style={{ minWidth: 220, flex: 1 }}>
+        <span style={{ display: "block", fontSize: 13, fontWeight: 600, color: "#5f4708", lineHeight: 1.45 }}>
+          {t("You have new changes. Render them into the video?", "有新的改动还没做进成片，现在渲染吗？")}
+        </span>
+        <span style={{ display: "block", fontSize: 12, color: "#8a6a17", lineHeight: 1.5, marginTop: 2 }}>
+          {at
+            ? t(
+                `Until you do, the file anyone opens is the version from ${sinceThen(at, false)}.`,
+                `在此之前，别人打开的仍然是${sinceThen(at, true)}渲染的那一版。`,
+              )
+            : t("Nothing has been rendered yet.", "还没有渲染过成片。")}
+        </span>
       </span>
-      <button type="button" disabled={busy} onClick={onRender} style={{ ...solid, marginLeft: "auto", opacity: busy ? 0.45 : 1 }}>
-        {t("Render again", "重新渲染")}
-      </button>
+      <span style={{ display: "flex", gap: 8, marginLeft: "auto" }}>
+        <button type="button" disabled={busy} onClick={onLater} style={{ ...ghost, opacity: busy ? 0.45 : 1 }}>
+          {t("Later", "稍后")}
+        </button>
+        <button type="button" disabled={busy} onClick={onRender} style={{ ...solid, opacity: busy ? 0.45 : 1 }}>
+          {t("Render now", "现在渲染")}
+        </button>
+      </span>
     </div>
   );
+}
+
+/** "5 minutes ago", for a line that has to mean something at a glance. */
+function sinceThen(at: Date, zh: boolean): string {
+  const mins = Math.max(0, Math.round((Date.now() - at.getTime()) / 60_000));
+  if (mins < 2) return zh ? "刚刚" : "a moment ago";
+  if (mins < 60) return zh ? `${mins} 分钟前` : `${mins} minutes ago`;
+  const hours = Math.round(mins / 60);
+  if (hours < 24) return zh ? `${hours} 小时前` : hours === 1 ? "an hour ago" : `${hours} hours ago`;
+  const days = Math.round(hours / 24);
+  return zh ? `${days} 天前` : days === 1 ? "yesterday" : `${days} days ago`;
 }
 
 /**
@@ -1643,10 +1677,9 @@ function Exports({
           }}
         >
           {t(
-            "The cut has changed since the last render. What is below is the old file until you render again.",
-            "上次渲染之后剪辑又改过了。在重新渲染之前，下面这个文件仍然是旧版本。",
+            "You have new changes that are not in any of these files yet. Render again to put them in.",
+            "有新的改动还没做进下面这些成片里。重新渲染一次才会更新。",
           )}
-          {lastRenderAt ? ` · ${lastRenderAt.toISOString().slice(0, 16).replace("T", " ")}` : ""}
         </p>
       ) : null}
       <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 8 }}>
