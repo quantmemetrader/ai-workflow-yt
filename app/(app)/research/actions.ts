@@ -140,9 +140,24 @@ export async function exportComparisonAction(queries: string[], window: Window, 
   }
 }
 
-/** Watch a new topic. The dashboard is empty until the studio says what it
- * cares about — this is how they say it. */
-export async function addTopicAction(query: string, name?: string, category?: string | null) {
+/**
+ * Watch a new topic. The dashboard is empty until the studio says what it
+ * cares about — this is how they say it.
+ *
+ * `place` is where the new topic should land, because the two screens that ask
+ * for one mean different things. The Trends dashboard means "watch this
+ * phrase": a `new` topic on the watchlist, waiting to be ranked and adopted.
+ * The backlog means "here is a topic we might make" — and a `new` topic never
+ * appears there, because the backlog reads `adopted` and `saved` only. That is
+ * exactly the complaint: somebody typed a topic in and it landed on a screen
+ * they were not looking at.
+ */
+export async function addTopicAction(
+  query: string,
+  name?: string,
+  category?: string | null,
+  place: "watchlist" | "backlog" = "watchlist",
+) {
   const viewer = await researcher();
   if (!viewer) return { error: "Not allowed" };
   if (typeof query !== "string") return { error: "A topic needs a phrase to watch" };
@@ -152,11 +167,28 @@ export async function addTopicAction(query: string, name?: string, category?: st
   if (category != null && (typeof category !== "string" || category.length > 60)) {
     return { error: "That category is too long" };
   }
+  // A place off the wire is a string until it is one of the two.
+  const where = place === "backlog" ? "backlog" : "watchlist";
 
   try {
     const topic = await createTopic(viewer, { query, name, category });
+
+    /*
+     * Only a topic nobody has decided on is parked. `createTopic` hands back
+     * the row that is already there when the phrase is watched under the same
+     * spelling, and writing `saved` over an `adopted` one would quietly undo
+     * somebody's decision and pull a card out of its lane.
+     */
+    if (where === "backlog" && topic.status === "new") {
+      await decide(viewer, topic.id, "save");
+    }
+
     revalidatePath("/research");
-    return { id: topic.id };
+    revalidatePath("/research/backlog");
+    // `topic.name` rather than the phrase typed: a phrase already watched under
+    // another spelling comes back under the name it is filed as, and the
+    // confirmation should name the row the person will actually find.
+    return { id: topic.id, name: topic.name };
   } catch (err) {
     return { error: err instanceof Error ? err.message : "Could not add that topic" };
   }

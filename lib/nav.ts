@@ -18,6 +18,15 @@ export type NavItem = {
   /** A divider sits after this item: above is making the video, below is
    * running the business. */
   dividerAfter?: boolean;
+  /**
+   * Another surface of a module that already has a rail entry — Articles is
+   * the writing module's second screen, not a twelfth entitlement.
+   *
+   * It is a rail icon and a jump target like any other; what it is not is the
+   * thing `NAV_BY_MODULE` returns, because that map answers "what is this
+   * module called" and a module has one name.
+   */
+  secondary?: boolean;
 };
 
 export const NAV: NavItem[] = [
@@ -52,6 +61,23 @@ export const NAV: NavItem[] = [
     labelZh: "脚本",
     live: true,
     icon: '<path d="M6.4 3.4h7.4L18.6 8v12.6H6.4z"/><path d="M9.4 12.3h6M9.4 15.6h6" stroke="#f8f8f8" stroke-width="1.5" fill="none"/>',
+  },
+  {
+    /*
+     * Articles (P3): "the article generation page apart from the video page".
+     *
+     * Gated on Script, because it is the writing module's other surface — a
+     * person who may write a script may write an article — and a twelfth
+     * entitlement would be one an admin has to discover and grant before
+     * anybody could see the screen at all.
+     */
+    module: "script",
+    secondary: true,
+    href: "/article",
+    label: "Articles",
+    labelZh: "文章",
+    live: true,
+    icon: '<rect x="3.4" y="4.8" width="13.2" height="14.4" rx="2"/><path d="M6.4 8.6h7.2M6.4 12h7.2M6.4 15.4h4.6" stroke="#f8f8f8" stroke-width="1.5" fill="none"/><path d="M16.6 8.6h2.1a1.9 1.9 0 0 1 1.9 1.9v6.8a1.9 1.9 0 0 1-1.9 1.9h-2.1z"/>',
   },
   {
     module: "video",
@@ -112,4 +138,65 @@ export const NAV: NavItem[] = [
   },
 ];
 
-export const NAV_BY_MODULE = new Map(NAV.map((n) => [n.module, n]));
+export const NAV_BY_MODULE = new Map(NAV.filter((n) => !n.secondary).map((n) => [n.module, n]));
+
+/* ------------------------------------------------------------------ crumbs */
+
+/**
+ * The screens *inside* a module, for the one line at the top that says where
+ * you are.
+ *
+ * Only the routes a person can arrive at and then wonder about. A script's own
+ * page (`/script/<id>`) is not here: the screen already puts the script's title
+ * in its header, and repeating it above would be the same words twice.
+ *
+ * These labels are copied from the sidebars that already name these screens
+ * (`ResearchSidebar.SCREENS`, the Files views) rather than written afresh —
+ * the same screen must not have two names.
+ */
+export type CrumbItem = { href: string; label: string; labelZh: string };
+
+const SCREENS: CrumbItem[] = [
+  { href: "/research/compare", label: "Search & compare", labelZh: "搜索与对比" },
+  { href: "/research/performance", label: "Content performance", labelZh: "内容表现" },
+  { href: "/research/inbox", label: "Comment inbox", labelZh: "评论收件箱" },
+  { href: "/research/backlog", label: "Topic backlog", labelZh: "选题储备" },
+  { href: "/files/recent", label: "Recent", labelZh: "最近" },
+  { href: "/files/shared", label: "Shared with me", labelZh: "共享给我" },
+  { href: "/files/trash", label: "Trash", labelZh: "回收站" },
+];
+
+/**
+ * The pages that are not a module at all.
+ *
+ * Settings and Search sit outside the rail's list, so without this the top bar
+ * would have nothing to say on two of the screens people reach most often.
+ */
+const LOOSE: CrumbItem[] = [
+  { href: "/settings", label: "Settings", labelZh: "设置" },
+  { href: "/search", label: "Search", labelZh: "搜索" },
+];
+
+/** `/research/backlog` is under `/research`; `/researchxyz` is not. */
+function covers(href: string, pathname: string): boolean {
+  return pathname === href || pathname.startsWith(`${href}/`);
+}
+
+/**
+ * Where this path is, said in at most two steps: the module, then the screen.
+ *
+ * Longest match wins, so `/article` resolves to Articles rather than to the
+ * Script module it is gated on, and `/files/trash` to Trash rather than to the
+ * `/files` it hangs off.
+ */
+export function locate(pathname: string): { module: CrumbItem | null; screen: CrumbItem | null } {
+  const longest = (items: CrumbItem[]) =>
+    items
+      .filter((i) => covers(i.href, pathname))
+      .sort((a, b) => b.href.length - a.href.length)[0] ?? null;
+
+  const loose = longest(LOOSE);
+  if (loose) return { module: loose, screen: null };
+
+  return { module: longest(NAV), screen: longest(SCREENS) };
+}

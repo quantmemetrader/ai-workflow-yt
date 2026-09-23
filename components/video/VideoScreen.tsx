@@ -62,6 +62,8 @@ import { beginWork } from "@/lib/client/busy";
 import { notify } from "@/lib/client/notify";
 import { writeRendering } from "@/lib/client/rendering";
 import { languagesInOrder, primaryLanguage } from "@/lib/video/languages";
+import { timeAgo } from "@/lib/time";
+import type { Locale } from "@/lib/i18n";
 import { Poster } from "@/components/files/Poster";
 import { Badge, Empty, Label, ModuleHeader, Row, Tabs, clip, field, ghost, solid, useAction } from "@/components/ui/kit";
 
@@ -73,15 +75,18 @@ import { Badge, Empty, Label, ModuleHeader, Row, Tabs, clip, field, ghost, solid
  * this screen waits on Vertex AI, ElevenLabs or Azure; FFmpeg on the box does
  * the work, queued as a job.
  *
- * Four tabs, which is the order somebody actually works in: put the footage in
- * the bin, cut it on the timeline, caption it, render it.
+ * Tabs in the order somebody actually works in: pick the project, cut it, put
+ * the footage in the bin, caption it, render it.
  */
 /*
  * The seven `Video-*` artboards, as tabs: Library, Project and Bin, Queue,
  * Preview, Audio and Export. Tabs rather than routes because they are seven
  * views of one cut, and seven routes would be seven copies of the same header.
+ *
+ * `library` is one of them and is listed first: choosing the project is a step
+ * in this module, not a different screen you arrive from.
  */
-type Tab = "edit" | "library" | "bin" | "timeline" | "audio" | "graphics" | "preview" | "exports";
+type Tab = "library" | "edit" | "bin" | "timeline" | "audio" | "graphics" | "preview" | "exports";
 
 export function VideoScreen({
   projects,
@@ -125,7 +130,7 @@ export function VideoScreen({
   transcriptionConfigured: boolean;
   /** Rendering and auto-edit are paused on this server (lib/jobs/heavy.ts). */
   heavyPaused?: boolean;
-  locale: string;
+  locale: Locale;
   model: string;
 }) {
   const zh = locale.startsWith("zh");
@@ -236,9 +241,29 @@ export function VideoScreen({
   /* One thread per project, picked up again when the project is reopened. */
   const agent = useInlineAgent({ module: "video", projectId: project?.id }, { key: project ? `video:${project.id}` : undefined });
   const history = <AgentHistory zh={zh} current={agent.conversationId} onPick={(id) => void agent.load(id)} onNew={agent.reset} />;
-  /* The editor, not the media bin. This module is one job — cutting a video —
-     and opening on a list of files asked people to go and find it. */
-  const [tab, setTab] = useState<Tab>("edit");
+  /*
+   * Which tab is showing.
+   *
+   * 项目 is a tab like the rest rather than a screen of its own. The studio's
+   * words were "change the position of tab to choose video first then edit not
+   * like just replacing everything": picking a cut used to swap the entire
+   * page — header, tab bar and all — so the navigation disappeared underneath
+   * them at the one moment they were navigating. Now there is one screen, and
+   * choosing a project moves along the same bar.
+   *
+   * With a cut named in the URL this opens on 剪辑, which is the job; with
+   * none it opens on the list, which is the choice.
+   */
+  const [tab, setTab] = useState<Tab>(project ? "edit" : "library");
+  /* Opening or closing a cut takes the tab with it: into 剪辑 when one opens,
+     back to the list when the URL names none — the rail's Video, or a cut
+     somebody just deleted. Derived during render, like the undo stack above,
+     so the tab is never a frame behind the project. */
+  const [tabFor, setTabFor] = useState(projectId);
+  if (tabFor !== projectId) {
+    setTabFor(projectId);
+    setTab(projectId ? "edit" : "library");
+  }
   const [naming, setNaming] = useState(false);
 
   /*
@@ -307,62 +332,33 @@ export function VideoScreen({
     return () => clearInterval(id);
   }, [rendering, transcribing, speaking, autoEditing, directing, measuring, router]);
 
-  if (!project) {
-    return (
-      <div style={{ flexGrow: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
-        <ModuleHeader
-          title={t("Video Edit", "视频剪辑")}
-          note={t("cut, caption and export real footage", "剪辑、加字幕并导出实拍素材")}
-          right={
-            <button type="button" onClick={() => setNaming(true)} style={solid}>
-              {t("New project", "新建项目")}
-            </button>
-          }
-        />
-        <div style={{ padding: "18px 22px" }}>
-          <Empty
-            title={t("No projects yet", "还没有项目")}
-            body={t(
-              "A project is a cut: footage from the file store, a timeline, captions and the exports the channels need. Nothing here generates video, so nothing here is waiting on a credential.",
-              "一个项目就是一次剪辑：来自文件库的素材、时间线、字幕，以及各渠道需要的导出版本。本模块不生成视频，因此不依赖任何外部凭证。",
-            )}
-          />
-        </div>
-        {naming && (
-          <NameDialog
-            title={t("New project", "新建项目")}
-            placeholder={t("What is it called?", "项目名称")}
-            confirm={t("Create", "创建")}
-            cancel={t("Cancel", "取消")}
-            onClose={() => setNaming(false)}
-            onSubmit={(name) =>
-              run(async () => {
-                const res = await createProjectAction(name, null);
-                if ("error" in res && res.error) return res;
-                /* Straight into the new cut's editor, whichever tab this was
-                   pressed from: a project you just named is a project you
-                   are about to work on. */
-                if ("id" in res && res.id) {
-                  setTab("edit");
-                  router.push(`/video?project=${res.id}`);
-                }
-                return {};
-              })
-            }
-          />
-        )}
-      </div>
-    );
-  }
+  /*
+   * The project list is a tab, not a screen.
+   *
+   * Everything below draws in both states: the header names the module or the
+   * cut, the tab bar is always there, and only the pane under it changes. With
+   * no cut in the URL — or with 项目 picked while one is open — that pane is
+   * the list.
+   */
+  const onLibrary = !project || tab === "library";
 
   return (
     <div style={{ flexGrow: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
       <ModuleHeader
-        title={project.title}
-        note={t(`${clock(totalMs)} on the timeline · ${clips.length} in the bin`, `时间线 ${clock(totalMs)} · 素材 ${clips.length} 个`)}
+        title={project ? project.title : t("Video Edit", "视频剪辑")}
+        note={
+          project
+            ? t(`${clock(totalMs)} on the timeline · ${clips.length} in the bin`, `时间线 ${clock(totalMs)} · 素材 ${clips.length} 个`)
+            : t(
+                `${projects.length} project${projects.length === 1 ? "" : "s"} · cut, caption and export real footage`,
+                `${projects.length} 个项目 · 剪辑、加字幕并导出实拍素材`,
+              )
+        }
         right={
           <>
-            {projects.length > 1 && (
+            {/* The quick switcher, for jumping between cuts without leaving the
+                timeline. Not on the list, which is a better picker than it. */}
+            {project && !onLibrary && projects.length > 1 && (
               <select
                 value={project.id}
                 onChange={(e) => router.push(`/video?project=${e.target.value}`)}
@@ -375,18 +371,25 @@ export function VideoScreen({
                 ))}
               </select>
             )}
-            <button
-              type="button"
-              onClick={() => setNaming(true)}
-              style={ghost}
-            >
-              {t("New project", "新建项目")}
-            </button>
+            {/* One New-project button per view, which is what the studio saw
+                two of: the list draws its own beside the sort control, so the
+                header keeps out of its way there and takes the button back
+                everywhere the list is not — including the empty studio, which
+                has no list to draw one. */}
+            {(!onLibrary || projects.length === 0) && (
+              <button
+                type="button"
+                onClick={() => setNaming(true)}
+                style={project ? ghost : solid}
+              >
+                {t("New project", "新建项目")}
+              </button>
+            )}
           </>
         }
       />
 
-      {heavyPaused && (
+      {heavyPaused && project && (
         <div
           role="status"
           style={{ margin: "10px 22px 0", padding: "9px 12px", borderRadius: 9, background: "#fff7e6", border: "1px solid #f5d9a3", color: "#7a4b00", fontSize: 12.5, lineHeight: 1.55 }}
@@ -422,10 +425,21 @@ export function VideoScreen({
 
       <Tabs
         active={tab}
-        onChange={setTab}
+        /* 项目 stays put rather than navigating to `/video`: leaving the URL
+           alone is what keeps the cut open and 剪辑 one tab away. The editing
+           tabs have nothing to edit until a cut is chosen, and the bar cannot
+           grey a tab out, so they say so instead of opening an empty timeline. */
+        onChange={(key) => {
+          if (!project && key !== "library") {
+            notify(t("Choose a project first.", "请先选择一个项目。"));
+            return;
+          }
+          setTab(key);
+        }}
         tabs={[
-          { key: "edit", label: t("Edit", "剪辑"), badge: items.length },
+          /* First, because it is the first thing somebody does here. */
           { key: "library", label: t("Projects", "项目"), badge: projects.length },
+          { key: "edit", label: t("Edit", "剪辑"), badge: items.length },
           { key: "bin", label: t("Media bin", "素材库"), badge: clips.length },
           { key: "timeline", label: t("Cut list", "片段列表"), badge: items.length },
           { key: "audio", label: t("Audio", "音频"), badge: audio.length + captions.length },
@@ -435,7 +449,40 @@ export function VideoScreen({
         ]}
       />
 
-      {tab === "edit" ? (
+      {onLibrary ? (
+        <div style={{ flexGrow: 1, minHeight: 0, overflowY: "auto", padding: "18px 22px 40px" }}>
+          {projects.length === 0 ? (
+            <Empty
+              title={t("No projects yet", "还没有项目")}
+              body={t(
+                "A project is a cut: footage from the file store, a timeline, captions and the exports the channels need. Nothing here generates video, so nothing here is waiting on a credential.",
+                "一个项目就是一次剪辑：来自文件库的素材、时间线、字幕，以及各渠道需要的导出版本。本模块不生成视频，因此不依赖任何外部凭证。",
+              )}
+            />
+          ) : (
+            <Library
+              projects={projects}
+              /* The cut that is open, marked 当前 in the list: the list is a
+                 tab now, so it is read with the editor still one tab away. */
+              current={project}
+              zh={zh}
+              locale={locale}
+              onOpen={(id) => {
+                /* Picking a cut moves along the tab bar into 剪辑 — the point
+                   of opening one is to work on it — and the URL still names
+                   it, so the link somebody pastes into the chat is unchanged.
+                   Reopening the cut already loaded needs no navigation. */
+                setTab("edit");
+                if (id !== project?.id) router.push(`/video?project=${id}`);
+              }}
+              onNew={() => setNaming(true)}
+              onRename={(id, title) => run(() => updateProjectAction(id, { title }))}
+              onDelete={(id) => run(() => deleteProjectAction(id))}
+            />
+          )}
+        </div>
+      ) : tab === "edit" ? (
+        <>
         <Director
           key={`director-${project.id}`}
           director={project.director ?? {}}
@@ -462,9 +509,7 @@ export function VideoScreen({
           onLinkScript={(scriptId) => run(() => linkScriptAction(project.id, scriptId))}
           onUpload={(files) => void uploadIntoProject(files)}
         />
-      ) : null}
 
-      {tab === "edit" ? (
         <Editor
           key={`editor-${project.id}`}
           items={items}
@@ -579,38 +624,10 @@ export function VideoScreen({
             />
           )}
         />
+        </>
       ) : (
       <div style={{ flexGrow: 1, minHeight: 0, display: "flex" }}>
         <div style={{ flexGrow: 1, minWidth: 0, overflowY: "auto", padding: "18px 22px 40px" }}>
-          {tab === "library" && (
-            <Library
-              projects={projects}
-              current={project}
-              zh={zh}
-              /* Opening a project used to swap which one was selected and
-                 leave you on the Projects tab, so the only thing that changed
-                 was which card had a border — it read as a dead click. The
-                 point of opening a cut is to work on it, and the editor is
-                 where that happens: not the cut list. */
-              onOpen={(id) => {
-                router.push(`/video?project=${id}`);
-                setTab("edit");
-              }}
-              onNew={() => setNaming(true)}
-              onRename={(id, title) => run(() => updateProjectAction(id, { title }))}
-              /* Gone from the list, and if it was the one open, the screen
-                 moves to whichever is left. */
-              onDelete={(id) =>
-                run(async () => {
-                  const res = await deleteProjectAction(id);
-                  if ("error" in res && res.error) return res;
-                  if (id === project.id) router.push("/video");
-                  return {};
-                })
-              }
-            />
-          )}
-
           {tab === "bin" && (
             <Bin
               clips={clips}
@@ -769,13 +786,10 @@ export function VideoScreen({
               run(async () => {
                 const res = await createProjectAction(name, null);
                 if ("error" in res && res.error) return res;
-                /* Straight into the new cut's editor, whichever tab this was
-                   pressed from: a project you just named is a project you
-                   are about to work on. */
-                if ("id" in res && res.id) {
-                  setTab("edit");
-                  router.push(`/video?project=${res.id}`);
-                }
+                /* Straight into the new cut, whichever tab this was pressed
+                   from: a project you just named is a project you are about to
+                   work on. Opening it is what moves the tab to 剪辑. */
+                if ("id" in res && res.id) router.push(`/video?project=${res.id}`);
                 return {};
               })
             }
@@ -1545,20 +1559,25 @@ function parseClock(value: string): number | null {
  * Every cut in the studio.
  *
  * `Video-Library` on the canvas: the project is the unit of work, and the
- * library is where somebody picks up what they were doing yesterday.
+ * library is where somebody picks up what they were doing yesterday. It is the
+ * first tab and what `/video` opens on, so it is the first thing this module
+ * says — and the one place with a New-project button while it is showing.
  */
 function Library({
   projects,
   current,
   zh,
+  locale,
   onOpen,
   onNew,
   onRename,
   onDelete,
 }: {
   projects: ProjectRow[];
-  current: ProjectRow;
+  /** The cut already open, when the library is shown from inside the editor. */
+  current: ProjectRow | null;
   zh: boolean;
+  locale: Locale;
   onOpen: (id: string) => void;
   onNew: () => void;
   onRename: (id: string, title: string) => void;
@@ -1594,17 +1613,15 @@ function Library({
     if (sort === "rendered") return Number(Boolean(b.masterFileId)) - Number(Boolean(a.masterFileId)) || b.updatedAt.getTime() - a.updatedAt.getTime();
     return b.updatedAt.getTime() - a.updatedAt.getTime();
   });
-  /* Times are shown in the viewer's own zone, which the server cannot know:
-     rendered after mount so the server's copy and the browser's agree. */
+  /* "2 小时前" is measured against the viewer's own clock and zone, neither of
+     which the server knows: rendered after mount so the server's copy and the
+     browser's agree, with the plain date until then. */
   const mounted = useSyncExternalStore(
     () => () => {},
     () => true,
     () => false,
   );
-  const when = (d: Date) =>
-    mounted
-      ? new Intl.DateTimeFormat(zh ? "zh-CN" : "en-GB", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(d)
-      : d.toISOString().slice(0, 10);
+  const when = (d: Date) => (mounted ? timeAgo(d, locale) : d.toISOString().slice(0, 10));
 
   return (
     <>
@@ -1623,7 +1640,9 @@ function Library({
             <option value="rendered">{t("Rendered first", "已渲染优先")}</option>
           </select>
         </label>
-        <button type="button" onClick={onNew} style={{ ...solid, marginLeft: "auto" }}>
+        {/* The module's only New-project button while the list is showing —
+            the header hides its own rather than stack a second one under it. */}
+        <button type="button" onClick={onNew} style={solid}>
           {t("New project", "新建项目")}
         </button>
       </div>
@@ -1640,7 +1659,7 @@ function Library({
             }}
             style={{
               textAlign: "left",
-              border: p.id === current.id ? "1px solid #171717" : "1px solid #ededed",
+              border: p.id === current?.id ? "1px solid #171717" : "1px solid #ededed",
               borderRadius: 11,
               padding: 13,
               background: "#fff",
@@ -1701,7 +1720,7 @@ function Library({
               ) : (
                 <Badge tone="quiet">{t("not rendered", "未渲染")}</Badge>
               )}
-              {p.id === current.id && <Badge tone="info">{t("open", "当前")}</Badge>}
+              {p.id === current?.id && <Badge tone="info">{t("open", "当前")}</Badge>}
               <Badge tone="quiet">
                 {p.visibility === "everyone"
                   ? t("everyone", "所有人")

@@ -6,6 +6,7 @@ import { newId } from "@/lib/ids";
 import { viewerById } from "@/lib/auth/viewer-by-id";
 import type { Viewer } from "@/lib/auth/types";
 import { createChannel, postMessage } from "@/lib/chat/service";
+import { AGENT_LABELS, agentTag, type AgentKey } from "./catalog";
 
 /**
  * The studio's AI employees.
@@ -17,8 +18,12 @@ import { createChannel, postMessage } from "@/lib/chat/service";
  *
  * They are created on first use, so a fresh database, a new studio or a reset
  * tenant never needs a separate seeding step to get them back.
+ *
+ * Their *names* live in `./catalog`, which the browser may import: the
+ * composer's @-picker has to list them and the message list has to label them,
+ * and neither can pull this file into a bundle.
  */
-export type AgentKey = "research" | "script" | "video";
+export type { AgentKey } from "./catalog";
 
 type AgentDef = {
   /** `.invalid` (RFC 2606): an address that can never receive mail, so no
@@ -33,26 +38,26 @@ type AgentDef = {
 export const AGENTS: Record<AgentKey, AgentDef> = {
   research: {
     email: "research@agents.invalid",
-    name: "Research agent",
-    nameLocal: "研究助理",
-    title: "AI 员工 · 研究",
+    ...labels("research"),
     modules: ["chat", "research"],
   },
   script: {
     email: "script@agents.invalid",
-    name: "Script agent",
-    nameLocal: "脚本助理",
-    title: "AI 员工 · 脚本",
+    ...labels("script"),
     modules: ["chat", "script", "research"],
   },
   video: {
     email: "video@agents.invalid",
-    name: "Video agent",
-    nameLocal: "视频助理",
-    title: "AI 员工 · 视频",
+    ...labels("video"),
     modules: ["chat", "video", "script", "files"],
   },
 };
+
+/** The three fields a user row takes from the catalog. */
+function labels(key: AgentKey): Pick<AgentDef, "name" | "nameLocal" | "title"> {
+  const { name, nameLocal, title } = AGENT_LABELS[key];
+  return { name, nameLocal, title };
+}
 
 /** Where the agents talk. Public channels, so everyone in the studio sees
  * the work happen without being added to anything. */
@@ -162,5 +167,6 @@ export async function postAsAgent(
   });
 }
 
-/** How an agent is written when it is tagged in a message. */
-export const tag = (key: AgentKey) => `@${AGENTS[key].nameLocal}`;
+/** How an agent is written when it is tagged in a message. Defined in the
+ * catalog, because the composer writes the same string. */
+export const tag = agentTag;

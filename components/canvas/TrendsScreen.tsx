@@ -3,6 +3,7 @@
 import * as React from "react";
 import { useResizable, useResizableHeight } from "@/components/ui/Resizer";
 import { PhrasePicker, type Suggestion } from "@/components/research/PhrasePicker";
+import { StatusStrip } from "@/components/ui/kit";
 
 /**
  * TrendsScreen — a transcription of design/canvas/Res-Trends.dc.html.
@@ -102,6 +103,8 @@ const ZH: Record<string, string> = {
   Rising: "升温中",
   "Why it’s moving": "为什么在升温",
   Adopted: "已采纳",
+  Collecting: "收集中",
+  Undecided: "待决定",
   Rejected: "已拒绝",
   Saved: "稍后再看",
   Sensitive: "敏感",
@@ -142,21 +145,21 @@ const CSS = `
 /* sidebar */
 [data-trends-screen] .n { display: flex; align-items: center; gap: 8px; height: 28px; padding: 0 9px; border-radius: 8px; font-size: 12.5px; color: #525252; transition: background .16s ease; }
 [data-trends-screen] .n.on { background: #ffffff; box-shadow: 0 1px 2px rgba(0,0,0,0.1); color: #171717; font-weight: 500; }
-[data-trends-screen] .n b { margin-left: auto; font-size: 10.5px; font-weight: 500; color: #999999; }
-[data-trends-screen] .n i { margin-left: auto; font-style: normal; display: inline-flex; align-items: center; height: 17px; padding: 0 6px; border-radius: 9px; background: #ffe7e7; color: #e03636; font-size: 10px; font-weight: 500; }
-[data-trends-screen] .lbl { font-size: 10.5px; font-weight: 500; color: #999999; padding: 0 9px; }
+[data-trends-screen] .n b { margin-left: auto; font-size: 11.5px; font-weight: 500; color: #999999; }
+[data-trends-screen] .n i { margin-left: auto; font-style: normal; display: inline-flex; align-items: center; height: 17px; padding: 0 6px; border-radius: 9px; background: #ffe7e7; color: #e03636; font-size: 11px; font-weight: 500; }
+[data-trends-screen] .lbl { font-size: 11.5px; font-weight: 500; color: #999999; padding: 0 9px; }
 
 /* generic */
 [data-trends-screen] .bar { height: 48px; flex-shrink: 0; border-bottom: 1px solid #ededed; display: flex; align-items: center; gap: 10px; padding: 0 20px; }
-[data-trends-screen] .h1 { font-size: 14px; font-weight: 500; }
-[data-trends-screen] .mut { font-size: 12px; color: #999999; }
+[data-trends-screen] .h1 { font-size: 15px; font-weight: 500; }
+[data-trends-screen] .mut { font-size: 12.5px; color: #999999; }
 [data-trends-screen] .btn { height: 30px; padding: 0 12px; border-radius: 8px; display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; white-space: nowrap; }
 [data-trends-screen] .btn.p { background: #007be0; color: #fff; font-weight: 500; }
 [data-trends-screen] .btn.s { border: 1px solid #ededed; color: #525252; }
 [data-trends-screen] .btn svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-[data-trends-screen] .chip { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 11px; border: 1px solid #ededed; border-radius: 8px; font-size: 12px; color: #4a5763; white-space: nowrap; }
+[data-trends-screen] .chip { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 11px; border: 1px solid #ededed; border-radius: 8px; font-size: 12.5px; color: #4a5763; white-space: nowrap; }
 [data-trends-screen] .chip svg { width: 10px; height: 10px; stroke: #999999; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-[data-trends-screen] .bd { display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border-radius: 6px; font-size: 11px; font-weight: 500; white-space: nowrap; }
+[data-trends-screen] .bd { display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border-radius: 6px; font-size: 11.5px; font-weight: 500; white-space: nowrap; }
 [data-trends-screen] .gray { background: #f3f3f3; color: #525252 }
 [data-trends-screen] .blue { background: #e6f4ff; color: #007be0 }
 [data-trends-screen] .grn  { background: #e4faeb; color: #278f5e }
@@ -168,7 +171,7 @@ const CSS = `
 [data-trends-screen] .wl { display: flex; align-items: center; gap: 10px; height: 46px; padding: 0 12px; border-bottom: 1px solid #f3f3f3; }
 [data-trends-screen] .wl { cursor: pointer; }
 [data-trends-screen] .wl.on { background: #f5faff; box-shadow: inset 2px 0 0 var(--ac); }
-[data-trends-screen] .wl .rk { width: 16px; font-size: 10.5px; color: #c7c7c7; font-variant-numeric: tabular-nums; flex-shrink: 0; }
+[data-trends-screen] .wl .rk { width: 16px; font-size: 11.5px; color: #c7c7c7; font-variant-numeric: tabular-nums; flex-shrink: 0; }
 [data-trends-screen] .wl .nm { flex-grow: 1; min-width: 0; font-size: 12.5px; color: #171717; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 [data-trends-screen] .wl .ht { width: 26px; text-align: right; font-size: 12.5px; font-weight: 500; font-variant-numeric: tabular-nums; flex-shrink: 0; }
 [data-trends-screen] .wl .ch { width: 54px; text-align: right; font-size: 11.5px; font-variant-numeric: tabular-nums; flex-shrink: 0; }
@@ -176,31 +179,31 @@ const CSS = `
 [data-trends-screen] .tf { display: flex; gap: 2px; padding: 2px; border-radius: 8px; background: #f3f3f3; }
 [data-trends-screen] .tf div { height: 24px; padding: 0 10px; border-radius: 6px; display: flex; align-items: center; font-size: 11.5px; color: #7c7c7c; font-weight: 500; }
 [data-trends-screen] .tf div.on { background: #fff; color: #171717; box-shadow: 0 1px 2px rgba(0,0,0,.1); }
-[data-trends-screen] .rtab { height: 26px; padding: 0 11px; border-radius: 7px; display: flex; align-items: center; font-size: 12px; color: #7c7c7c; }
+[data-trends-screen] .rtab { height: 26px; padding: 0 11px; border-radius: 7px; display: flex; align-items: center; font-size: 12.5px; color: #7c7c7c; }
 [data-trends-screen] .rtab { white-space: nowrap; }
 [data-trends-screen] .rtab.on { background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.1); color: #171717; font-weight: 500; }
-[data-trends-screen] .cap { font-size: 11px; color: #999999; }
+[data-trends-screen] .cap { font-size: 11.5px; color: #999999; }
 [data-trends-screen] .lwbox { position: relative; }
-[data-trends-screen] .lwload { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 11px; color: #c7c7c7; }
+[data-trends-screen] .lwload { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 11.5px; color: #c7c7c7; }
 [data-trends-screen] .src { display: flex; gap: 10px; padding: 10px 0; border-bottom: 1px solid #f3f3f3; }
 [data-trends-screen] .src:last-child { border-bottom: none; }
-[data-trends-screen] .src b { font-size: 10.5px; font-weight: 500; color: #999999; width: 52px; flex-shrink: 0; padding-top: 1px; }
+[data-trends-screen] .src b { font-size: 11.5px; font-weight: 500; color: #999999; width: 52px; flex-shrink: 0; padding-top: 1px; }
 [data-trends-screen] .src span { font-size: 12.5px; line-height: 1.45; color: #383838; }
 [data-trends-screen] .sw { width: 9px; height: 9px; border-radius: 3px; flex-shrink: 0; }
 [data-trends-screen] .wl .nmw { flex-grow: 1; min-width: 0; overflow: hidden; display: flex; flex-direction: column; gap: 1px; }
 [data-trends-screen] .wl .nmw .nm { display: block; }
-[data-trends-screen] .wl .wc { font-size: 10.5px; color: #a3a3a3; }
+[data-trends-screen] .wl .wc { font-size: 11.5px; color: #a3a3a3; }
 [data-trends-screen] .pkw { position: relative; }
 [data-trends-screen] .pkv { color: #171717; font-weight: 500; margin-left: 5px; }
-[data-trends-screen] .pkb { margin-left: 6px; min-width: 17px; height: 17px; padding: 0 5px; box-sizing: border-box; border-radius: 9px; background: var(--ac); color: #fff; font-size: 11px; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; }
+[data-trends-screen] .pkb { margin-left: 6px; min-width: 17px; height: 17px; padding: 0 5px; box-sizing: border-box; border-radius: 9px; background: var(--ac); color: #fff; font-size: 11.5px; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; }
 [data-trends-screen] .chip.pkon { border-color: var(--ac); }
 [data-trends-screen] .pkbg { position: fixed; inset: 0; z-index: 40; }
 [data-trends-screen] .pkp { position: absolute; top: calc(100% + 6px); left: 0; z-index: 41; background: #fff; border: 1px solid #e2e2e2; border-radius: 12px; box-shadow: 0 12px 32px rgba(23,23,23,.14), 0 2px 6px rgba(23,23,23,.06); padding: 6px; }
 [data-trends-screen] .pkh { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 8px 8px 6px; }
 [data-trends-screen] .pkh b { font-size: 13px; font-weight: 500; } [data-trends-screen] .pkh span { font-size: 11.5px; color: #999999; font-variant-numeric: tabular-nums; }
-[data-trends-screen] .pkq { display: flex; align-items: center; gap: 7px; height: 30px; margin: 2px 4px 4px; padding: 0 9px; border: 1px solid #ededed; border-radius: 8px; background: #f8f8f8; font-size: 12px; color: #999999; }
+[data-trends-screen] .pkq { display: flex; align-items: center; gap: 7px; height: 30px; margin: 2px 4px 4px; padding: 0 9px; border: 1px solid #ededed; border-radius: 8px; background: #f8f8f8; font-size: 12.5px; color: #999999; }
 [data-trends-screen] .pkq svg { width: 13px; height: 13px; stroke: #999999; fill: none; stroke-width: 1.8; stroke-linecap: round; flex-shrink: 0; }
-[data-trends-screen] .pkg { padding: 9px 8px 4px; font-size: 10.5px; font-weight: 500; color: #999999; letter-spacing: .04em; text-transform: uppercase; }
+[data-trends-screen] .pkg { padding: 9px 8px 4px; font-size: 11.5px; font-weight: 500; color: #999999; letter-spacing: .04em; text-transform: uppercase; }
 [data-trends-screen] .pk { display: flex; align-items: center; gap: 9px; height: 31px; padding: 0 8px; border-radius: 7px; font-size: 12.5px; color: #383838; }
 [data-trends-screen] .pk:hover { background: #f5f5f5; }
 [data-trends-screen] .pk .cb, [data-trends-screen] .ppk .cb { border: 1.5px solid #c7c7c7; box-sizing: border-box; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
@@ -208,8 +211,8 @@ const CSS = `
 [data-trends-screen] .pk .cb svg, [data-trends-screen] .ppk .cb svg { stroke: #fff; fill: none; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; opacity: 0; }
 [data-trends-screen] .pk .cb svg { width: 11px; height: 11px; }
 [data-trends-screen] .pk.on .cb, [data-trends-screen] .ppk.on .cb { background: var(--ac); border-color: var(--ac); } [data-trends-screen] .pk.on .cb svg, [data-trends-screen] .ppk.on .cb svg { opacity: 1; }
-[data-trends-screen] .pk .n { flex-grow: 1; } [data-trends-screen] .pk .d { font-size: 11px; color: #a3a3a3; }
-[data-trends-screen] .pkf { display: flex; align-items: center; gap: 14px; margin-top: 6px; padding: 9px 8px 5px; border-top: 1px solid #f0f0f0; font-size: 12px; color: #7c7c7c; }
+[data-trends-screen] .pk .n { flex-grow: 1; } [data-trends-screen] .pk .d { font-size: 11.5px; color: #a3a3a3; }
+[data-trends-screen] .pkf { display: flex; align-items: center; gap: 14px; margin-top: 6px; padding: 9px 8px 5px; border-top: 1px solid #f0f0f0; font-size: 12.5px; color: #7c7c7c; }
 [data-trends-screen] .pkf .pka { color: var(--ac); margin-left: auto; }
 `;
 
@@ -420,6 +423,13 @@ export function TrendsScreen(props: {
     return [...watched, ...hot];
   }, [topics, trending, zhLocale]);
 
+  /*
+   * "Search or watch a topic…" read as a search box, so the one control on
+   * this screen that adds anything was taken for one — hence the client's
+   * "for potential topics, cant find where to add". It only ever watches, so
+   * it now says so. Putting a topic straight into the backlog is a different
+   * verb and a different destination: that is 添加选题, in the module sidebar.
+   */
   const watchField = (
     <PhrasePicker
       value={newTopic}
@@ -428,17 +438,31 @@ export function TrendsScreen(props: {
       suggestions={picks}
       busy={adding}
       zh={zhLocale}
-      placeholder={zhLocale ? "搜索或关注一个选题…" : "Search or watch a topic…"}
+      placeholder={zhLocale ? "＋ 关注一个新选题…" : "+ Watch a new topic…"}
       emptyNote={
         zhLocale
-          ? "输入一个词，工作室就开始收集它被讨论的频率。"
-          : "Type a phrase and the studio starts collecting how often it is written about."
+          ? "输入一个词，工作室就开始收集它被讨论的频率；采纳后会进入选题储备。"
+          : "Type a phrase and the studio starts collecting how often it is written about. Adopting it puts it in the backlog."
       }
     />
   );
 
   const zh = zhLocale;
   const t = (key: string) => (zh ? (ZH[key] ?? key) : key);
+
+  /** The four states a topic can be in, plus how many sources answered. Every
+   * one of these is already on the screen somewhere; none is computed twice. */
+  const pulse = React.useMemo(
+    () => ({
+      collecting: topics.filter((x) => x.collecting === true).length,
+      undecided: topics.filter((x) => x.status === "new").length,
+      adopted: topics.filter((x) => x.status === "adopted").length,
+      rejected: topics.filter((x) => x.status === "rejected").length,
+      liveSources: sources.filter((x) => x.status === "live").length,
+      degraded: sources.filter((x) => x.status !== "live").length,
+    }),
+    [topics, sources],
+  );
 
   /** The artboard's `pop` state: '' | 'cat'. 'src' has no handler to drive it. */
   const [popCat, setPopCat] = React.useState(false);
@@ -574,6 +598,29 @@ export function TrendsScreen(props: {
               /search. */}
           <div style={{ flexGrow: 1 }} />
         </div>
+
+        {/* What the ranking is doing right now. "Undecided" is the only number
+            here that is asking for a person: adopting or rejecting a topic is
+            what re-weights everything below it, and until somebody does it the
+            board is a list the machine wrote and nobody read. */}
+        <StatusStrip
+          items={[
+            { label: t("Collecting"), value: pulse.collecting, tone: "running" },
+            { label: t("Undecided"), value: pulse.undecided, tone: "you" },
+            { label: t("Adopted"), value: pulse.adopted, tone: "done" },
+            { label: t("Rejected"), value: pulse.rejected, tone: "quiet" },
+          ]}
+          right={
+            pulse.degraded > 0
+              ? zh
+                ? `${count(pulse.liveSources, locale)}/${count(sources.length, locale)} 个来源正常`
+                : `${count(pulse.liveSources, locale)} of ${count(sources.length, locale)} sources healthy`
+              : zh
+                ? `${count(pulse.liveSources, locale)} 个来源正常`
+                : `${count(pulse.liveSources, locale)} sources healthy`
+          }
+        />
+
         <div style={{ flexGrow: 1, display: "flex", minHeight: 0 }}>
           <div style={{ flexGrow: 1, minWidth: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
             {live}
@@ -727,7 +774,7 @@ export function TrendsScreen(props: {
                 >
                   <div style={{ minWidth: 0, flexGrow: 1 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <span style={{ fontSize: 11, color: "#c7c7c7", fontVariantNumeric: "tabular-nums" }}>
+                      <span style={{ fontSize: 11.5, color: "#c7c7c7", fontVariantNumeric: "tabular-nums" }}>
                         #01
                       </span>
                       <span className={`bd ${selected.rising ? "grn" : "gray"}`}>

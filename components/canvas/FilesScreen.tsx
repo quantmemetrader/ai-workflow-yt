@@ -364,7 +364,7 @@ export function FilesScreen(props: {
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
           {sidebarFolders.length === 0 ? (
-            <p style={{ fontSize: 11.5, color: "#999999", lineHeight: 1.5, padding: "2px 8px 0" }}>
+            <p style={{ fontSize: 12.5, color: "#999999", lineHeight: 1.5, padding: "2px 8px 0" }}>
               {t("No folders yet")}
             </p>
           ) : null}
@@ -401,7 +401,7 @@ export function FilesScreen(props: {
                 </svg>
                 <span>{f.name}</span>
                 {f.count != null ? (
-                  <span style={{ marginLeft: "auto", fontSize: 11, color: "#999999" }}>{f.count}</span>
+                  <span style={{ marginLeft: "auto", fontSize: 11.5, color: "#999999" }}>{f.count}</span>
                 ) : null}
               </div>,
             ];
@@ -467,8 +467,8 @@ export function FilesScreen(props: {
               marginBottom: 6,
             }}
           >
-            <span style={{ fontSize: 11, color: "#999999" }}>{t("Storage")}</span>
-            <span style={{ fontSize: 11, color: "#525252" }}>{formatBytes(totalBytes, locale)}</span>
+            <span style={{ fontSize: 11.5, color: "#999999" }}>{t("Storage")}</span>
+            <span style={{ fontSize: 11.5, color: "#525252" }}>{formatBytes(totalBytes, locale)}</span>
           </div>
           {/* The artboard draws a fill against a quota. Object storage here has
               no quota, so the figure above is the whole truth and a bar would
@@ -760,7 +760,7 @@ export function FilesScreen(props: {
                           </div>
                           <span
                             style={{
-                              fontSize: 11,
+                              fontSize: 11.5,
                               color: "#999999",
                               fontVariantNumeric: "tabular-nums",
                               flexShrink: 0,
@@ -897,7 +897,7 @@ export function FilesScreen(props: {
                       }}
                       style={{ height: 56, borderBottom: "1px solid #f3f3f3", cursor: "pointer" }}
                     >
-                      <div className="c" style={{ justifyContent: "center", color: "#c7c7c7", fontSize: 11, fontVariantNumeric: "tabular-nums" }}>
+                      <div className="c" style={{ justifyContent: "center", color: "#c7c7c7", fontSize: 11.5, fontVariantNumeric: "tabular-nums" }}>
                         {index + 1}
                       </div>
                       <div className="c" style={{ gap: 11 }}>
@@ -1009,7 +1009,7 @@ export function FilesScreen(props: {
                       }}
                       style={{ height: 56, borderBottom: "1px solid #f3f3f3", cursor: "pointer" }}
                     >
-                      <div className="c" style={{ justifyContent: "center", color: "#c7c7c7", fontSize: 11, fontVariantNumeric: "tabular-nums" }}>
+                      <div className="c" style={{ justifyContent: "center", color: "#c7c7c7", fontSize: 11.5, fontVariantNumeric: "tabular-nums" }}>
                         {folders.length + index + 1}
                       </div>
                       <div className="c" style={{ gap: 11 }}>
@@ -1389,7 +1389,7 @@ export function FilesScreen(props: {
                 <path d="M6.8 10.5h10.4v8H6.8z" />
                 <path d="M9.2 10.5V8a2.8 2.8 0 0 1 5.6 0v2.5" />
               </svg>
-              <span style={{ fontSize: 11, color: "#999999", lineHeight: 1.4 }}>
+              <span style={{ fontSize: 12.5, color: "#999999", lineHeight: 1.4 }}>
                 {t("Answers use only files you can read")}
               </span>
             </div>
@@ -1626,7 +1626,7 @@ function Tiles({
             >
               {f.name}
             </span>
-            <span style={{ fontSize: 11, color: "#999999", display: "flex", alignItems: "center", gap: 6, marginTop: 2 }}>
+            <span style={{ fontSize: 11.5, color: "#999999", display: "flex", alignItems: "center", gap: 6, marginTop: 2 }}>
               <span>
                 {f.version && f.version > 1 ? `v${f.version} · ` : ""}
                 {formatBytes(f.sizeBytes, locale)}
@@ -1949,25 +1949,25 @@ function AccessCard({
         {t("Owner", "所有者")}: <span style={{ color: "#171717" }}>{file.ownerName}</span>
       </div>
       {file.visibility === "people" || file.visibility === "groups" ? (
-        <div style={{ fontSize: 11, color: "#999999", marginBottom: 3 }}>{t("Can also see it:", "还可以查看：")}</div>
+        <div style={{ fontSize: 11.5, color: "#999999", marginBottom: 3 }}>{t("Can also see it:", "还可以查看：")}</div>
       ) : null}
       <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
         {lines.slice(0, 8).map((l, i) => (
           <div key={i} style={{ minWidth: 0 }}>
             <span style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{l.main}</span>
             {l.sub ? (
-              <span style={{ display: "block", fontSize: 11, color: "#999999", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              <span style={{ display: "block", fontSize: 11.5, color: "#999999", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                 {l.sub}
               </span>
             ) : null}
           </div>
         ))}
         {lines.length > 8 ? (
-          <div style={{ fontSize: 11, color: "#999999" }}>{t(`and ${lines.length - 8} more`, `还有 ${lines.length - 8} 人`)}</div>
+          <div style={{ fontSize: 11.5, color: "#999999" }}>{t(`and ${lines.length - 8} more`, `还有 ${lines.length - 8} 人`)}</div>
         ) : null}
       </div>
       {can ? (
-        <div style={{ fontSize: 11, color: "#007be0", marginTop: 8 }}>{t("Click to change", "点击更改")}</div>
+        <div style={{ fontSize: 11.5, color: "#007be0", marginTop: 8 }}>{t("Click to change", "点击更改")}</div>
       ) : null}
     </div>
   );

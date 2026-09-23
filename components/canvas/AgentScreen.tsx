@@ -8,6 +8,7 @@ import { useRouter } from "next/navigation";
 import { Markdown } from "@/components/ui/Markdown";
 import { formatTextarea, type Format } from "./composer-format";
 import { FormattedPreview } from "@/components/ui/FormattedPreview";
+import { useResizable } from "@/components/ui/Resizer";
 import type { Locale } from "@/lib/i18n";
 
 /**
@@ -249,6 +250,15 @@ export function AgentScreen({
 
   const last = [...messages].reverse().find((m) => m.role === "assistant" && m.citations.length);
   const sources = last?.citations ?? [];
+  /* The Sources column. A citation is a file name and a line of quoted
+   * text, and how much of either you want to see is not something the
+   * artboard could decide for you. */
+  const { width: sourcesWidth, handle: sourcesHandle } = useResizable("agent-sources", {
+    min: 220,
+    max: 520,
+    initial: 300,
+    edge: "left",
+  });
 
   return (
     <div style={{ flexGrow: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
@@ -340,9 +350,12 @@ export function AgentScreen({
               display: "flex",
               flexDirection: "column",
               // With a conversation, messages run from the top and the pane
-              // scrolls; with none, the opening state sits where the first
-              // message will appear rather than stranded at the bottom.
-              justifyContent: "flex-start",
+              // scrolls. With none, the opening state sits *just above the
+              // composer*: pinned to the top of a tall pane it left a screen
+              // of nothing between the greeting and the box you type in —
+              // "ui looks bad since its so up from input bar" — which reads as
+              // a page that failed to load rather than one waiting for you.
+              justifyContent: messages.length === 0 ? "flex-end" : "flex-start",
               paddingBottom: 4,
             }}
           >
@@ -538,14 +551,16 @@ export function AgentScreen({
         {sources.length > 0 ? (
           <div
             style={{
-              width: 300,
+              width: sourcesWidth,
               flexShrink: 0,
+              position: "relative",
               borderLeft: "1px solid #ededed",
               background: "#fcfcfc",
               display: "flex",
               flexDirection: "column",
             }}
           >
+            {sourcesHandle}
             <div
               style={{
                 height: 44,
@@ -587,7 +602,7 @@ export function AgentScreen({
                   >
                     {s.name}
                   </div>
-                  <div style={{ fontSize: 11, color: "#999999", marginTop: 2 }}>{s.folder ?? "—"}</div>
+                  <div style={{ fontSize: 11.5, color: "#999999", marginTop: 2 }}>{s.folder ?? "—"}</div>
                   <span
                     className={`bd ${s.relation === "owner" || s.relation === "editor" ? "blue" : "gray"}`}
                     style={{ marginTop: 8 }}

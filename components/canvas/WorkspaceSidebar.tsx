@@ -207,7 +207,7 @@ export function WorkspaceSidebar({
           <path d="m15.8 15.8 4 4" />
         </svg>
         <span style={{ fontSize: 12, color: "#999999", flexGrow: 1 }}>{zh ? "跳转到…" : "Jump to…"}</span>
-        <span style={{ fontSize: 10.5, color: "#c7c7c7" }}>⌘K</span>
+        <span style={{ fontSize: 11.5, color: "#c7c7c7" }}>⌘K</span>
       </button>
 
       <Link href="/chat" className={`ws${onAgent ? " on" : ""}`} style={{ gap: 9 }}>
@@ -226,7 +226,7 @@ export function WorkspaceSidebar({
           {AGENT_MARK}
         </div>
         <span>{zh ? "你的助理" : "Your agent"}</span>
-        <span style={{ marginLeft: "auto", fontSize: 10.5, color: "#999999" }}>
+        <span style={{ marginLeft: "auto", fontSize: 11.5, color: "#999999" }}>
           {zh ? "私密" : "private"}
         </span>
       <NavSpinner /></Link>
@@ -243,7 +243,7 @@ export function WorkspaceSidebar({
         <>
           <div className="lbl" style={{ margin: "16px 0 5px", display: "flex", alignItems: "center", gap: 6 }}>
             <span style={{ flexGrow: 1 }}>{zh ? "最近对话" : "Recent chats"}</span>
-            <span style={{ fontSize: 10.5, color: "#c7c7c7" }}>{zh ? "仅你可见" : "only you"}</span>
+            <span style={{ fontSize: 11.5, color: "#c7c7c7" }}>{zh ? "仅你可见" : "only you"}</span>
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
             {(historyOpen ? conversations : conversations.slice(0, 3)).map((c) => {
@@ -256,7 +256,7 @@ export function WorkspaceSidebar({
                   <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {c.title}
                   </span>
-                  <span style={{ marginLeft: "auto", fontSize: 10, color: "#c7c7c7", flexShrink: 0 }}>
+                  <span style={{ marginLeft: "auto", fontSize: 11.5, color: "#c7c7c7", flexShrink: 0 }}>
                     {shortDay(c.updatedAt, locale)}
                   </span>
                 <NavSpinner /></Link>
@@ -307,7 +307,7 @@ export function WorkspaceSidebar({
       <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
         {channels.length === 0 ? (
           <p
-            style={{ fontSize: 11.5, color: "#999999", lineHeight: 1.5, padding: "2px 9px 0" }}
+            style={{ fontSize: 12.5, color: "#999999", lineHeight: 1.5, padding: "2px 9px 0" }}
           >
             {zh ? "还没有频道。" : "No channels yet."}
           </p>
@@ -336,7 +336,7 @@ export function WorkspaceSidebar({
       <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
         {people.length === 0 ? (
           <p
-            style={{ fontSize: 11.5, color: "#999999", lineHeight: 1.5, padding: "2px 9px 0" }}
+            style={{ fontSize: 12.5, color: "#999999", lineHeight: 1.5, padding: "2px 9px 0" }}
           >
             {zh
               ? "工作室里还没有其他人。管理员添加成员后，他们会出现在这里。"
@@ -391,7 +391,7 @@ export function WorkspaceSidebar({
               </span>
               {p.unread > 0 && <span className="ct">{p.unread}</span>}
               {p.isGuest && !p.unread && (
-                <span style={{ marginLeft: "auto", fontSize: 10, color: "#999999" }}>
+                <span style={{ marginLeft: "auto", fontSize: 11.5, color: "#999999" }}>
                   {zh ? "访客" : "guest"}
                 </span>
               )}
@@ -428,7 +428,7 @@ export function WorkspaceSidebar({
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                fontSize: 10,
+                fontSize: 11.5,
                 fontWeight: 600,
                 color: "#525252",
               }}
@@ -445,7 +445,7 @@ export function WorkspaceSidebar({
         <NavSpinner /></Link>
         <div style={{ minWidth: 0, flexGrow: 1 }}>
           <div style={{ fontSize: 12.5, fontWeight: 500 }}>{me.name}</div>
-          <div style={{ fontSize: 11, color: "#999999" }}>{me.status}</div>
+          <div style={{ fontSize: 11.5, color: "#999999" }}>{me.status}</div>
         </div>
         <div
           style={{
@@ -454,7 +454,7 @@ export function WorkspaceSidebar({
             padding: 2,
             borderRadius: 7,
             background: "#ededed",
-            fontSize: 10.5,
+            fontSize: 11.5,
           }}
         >
           <button

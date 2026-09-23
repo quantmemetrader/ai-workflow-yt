@@ -89,7 +89,7 @@ export function CommandPalette({ modules, locale }: { modules: Module[]; locale:
   const places = useMemo<Row[]>(() => {
     const items: Row[] = NAV.filter((n) => modules.includes(n.module)).map((n) => ({
       kind: "module" as const,
-      id: n.module,
+      id: n.href,
       href: n.href,
       title: zh ? n.labelZh : n.label,
       subtitle: null,
@@ -280,7 +280,7 @@ export function CommandPalette({ modules, locale }: { modules: Module[]; locale:
             }}
           />
           {busy && (
-            <span style={{ fontSize: 11, color: "#c7c7c7", flexShrink: 0 }}>
+            <span style={{ fontSize: 11.5, color: "#c7c7c7", flexShrink: 0 }}>
               {zh ? "查找中" : "looking"}
             </span>
           )}
@@ -295,7 +295,7 @@ export function CommandPalette({ modules, locale }: { modules: Module[]; locale:
               border: "1px solid #ededed",
               background: "#fff",
               color: "#999999",
-              fontSize: 10.5,
+              fontSize: 11.5,
               fontFamily: "inherit",
               letterSpacing: "inherit",
               fontWeight: 500,
@@ -365,7 +365,7 @@ export function CommandPalette({ modules, locale }: { modules: Module[]; locale:
                       {row.subtitle}
                     </span>
                   )}
-                  <span style={{ marginLeft: "auto", flexShrink: 0, fontSize: 10.5, color: "#c7c7c7" }}>
+                  <span style={{ marginLeft: "auto", flexShrink: 0, fontSize: 11.5, color: "#c7c7c7" }}>
                     {row.kind === "module"
                       ? zh
                         ? "模块"
@@ -400,7 +400,7 @@ export function CommandPalette({ modules, locale }: { modules: Module[]; locale:
           )}
 
           {withheld > 0 && (
-            <p style={{ fontSize: 11, color: "#c7c7c7", padding: "4px 17px 10px", margin: 0 }}>
+            <p style={{ fontSize: 11.5, color: "#c7c7c7", padding: "4px 17px 10px", margin: 0 }}>
               {zh
                 ? `另有 ${withheld} 条结果你无权查看，已隐藏。`
                 : `${withheld} more matches are not shown, because you may not read them.`}
@@ -414,7 +414,7 @@ export function CommandPalette({ modules, locale }: { modules: Module[]; locale:
 
 function Label({ text }: { text: string }) {
   return (
-    <div style={{ fontSize: 10.5, fontWeight: 500, color: "#999999", padding: "9px 10px 4px" }}>
+    <div style={{ fontSize: 11.5, fontWeight: 500, color: "#999999", padding: "9px 10px 4px" }}>
       {text}
     </div>
   );

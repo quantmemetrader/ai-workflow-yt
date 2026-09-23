@@ -39,6 +39,7 @@ export type IdPrefix =
   | "top" | "rep" | "cmt"
   | "chn" | "pm" | "cd"
   | "brf" | "scr" | "sv" | "sug"
+  | "art" | "arv" | "apb"
   | "prj" | "beat" | "shot" | "rnd" | "gfx" | "cv"
   | "pch" | "post" | "tgt" | "trx" | "apr"
   | "doc" | "acct" | "bank" | "exp"

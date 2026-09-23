@@ -1,10 +1,15 @@
 "use server";
 
+import { after } from "next/server";
 import { revalidatePath } from "next/cache";
 import { getViewer } from "@/lib/auth/dal";
+import { parseAgentMentions } from "@/lib/agents/catalog";
+import { dispatchAgentMentions } from "@/lib/agents/mentions";
+import { setFileAccess } from "@/lib/files/access";
 import { conversationDetail } from "@/lib/chat/service";
 import {
   addChannelMembers,
+  attachmentsFor,
   channelById,
   channelBySlug,
   channelMembers,
@@ -30,21 +35,95 @@ const MAX_BODY = 16_000;
  * longest slug the app itself makes.
  */
 const MAX_SLUG = 200;
+/** More than this on one message is a folder, not a message. */
+const MAX_ATTACHMENTS = 10;
 
-export async function sendChannelMessage(slug: string, body: string) {
+/**
+ * Sending a message, now that a message can do two more things.
+ *
+ *   — **files.** "the current AI you can not update file in the chat box" —
+ *     the composer had no attach button at all. The bytes still go straight to
+ *     R2 through `/api/files/presign` and `/api/files/[id]/complete`, exactly
+ *     as the rest of the product uploads; this records which files the message
+ *     carries, and opens them to the people in the room.
+ *   — **tags.** `@视频助理` now reaches the video agent (`lib/agents/mentions`),
+ *     which answers in the channel under its own name and its own permissions.
+ *     Handed to `after()` because it is a model call: the person's own message
+ *     must appear at once, and the channel's poll picks the answer up when it
+ *     lands.
+ */
+export async function sendChannelMessage(
+  slug: string,
+  body: string,
+  /** Files already uploaded and confirmed, in the order they were attached. */
+  attachmentIds: string[] = [],
+) {
   const viewer = await getViewer();
   if (!viewer || !viewer.modules.includes("chat")) return { error: "Not allowed" };
   if (typeof slug !== "string" || !slug || slug.length > MAX_SLUG) {
     return { error: "Channel not found" };
   }
-  if (typeof body !== "string" || !body.trim()) return { error: "Nothing to send" };
+  if (typeof body !== "string") return { error: "Nothing to send" };
   if (body.length > MAX_BODY) return { error: "That message is too long" };
+
+  const wanted = Array.isArray(attachmentIds)
+    ? [
+        ...new Set(attachmentIds.filter((id): id is string => typeof id === "string" && id.length <= 64)),
+      ].slice(0, MAX_ATTACHMENTS)
+    : [];
+  // A message with a file on it and nothing typed is an ordinary thing to
+  // send; an empty one with nothing attached is not.
+  if (!body.trim() && !wanted.length) return { error: "Nothing to send" };
 
   const channel = await channelBySlug(viewer, slug);
   if (!channel) return { error: "Channel not found" };
 
-  await postMessage(viewer, channel.id, body);
+  /* Ids off the wire are a claim. Only files this person can actually read
+     become attachments; anything else is dropped rather than refused, so a
+     stale id does not cost them the message they typed. */
+  const readable = wanted.length ? await attachmentsFor(viewer, wanted) : new Map();
+  const attachments = wanted.filter((id) => readable.has(id));
+
+  /*
+   * A file nobody else can open is not an attachment.
+   *
+   * Uploads are private to the uploader by default, so attaching one without
+   * this would post a chip only its owner can click. The channel decides how
+   * far it opens: a public channel is the studio, a private one is exactly the
+   * people in it. `setFileAccess` refuses anything this person does not own,
+   * which is what stops a message re-sharing somebody else's file.
+   */
+  if (attachments.length) {
+    try {
+      if (channel.isPrivate) {
+        const members = await channelMembers(viewer, channel.id);
+        await setFileAccess(viewer, attachments, { mode: "people", userIds: members.map((m) => m.id) });
+      } else {
+        await setFileAccess(viewer, attachments, { mode: "everyone" });
+      }
+    } catch (err) {
+      // Sharing is not the message. If it fails the message still goes, and
+      // the owner can open the file from its own sharing sheet.
+      console.error("[chat] could not open an attachment to the channel", err);
+    }
+  }
+
+  await postMessage(viewer, channel.id, body, {}, attachments);
   revalidatePath(`/chat/c/${slug}`);
+
+  /* The agents that were tagged, if any. After the response: each one is a
+     model call with tool use behind it, and nobody pressing enter should wait
+     for that. */
+  if (parseAgentMentions(body).length) {
+    after(async () => {
+      try {
+        await dispatchAgentMentions({ viewer, channelId: channel.id, body });
+      } catch (err) {
+        console.error("[chat] a tagged agent could not be reached", err);
+      }
+    });
+  }
+
   return {};
 }
 

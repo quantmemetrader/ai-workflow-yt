@@ -99,13 +99,13 @@ export function BackgroundWork({ locale }: { locale: string }) {
         <span style={{ fontSize: 12.5, fontWeight: 500, display: "block" }}>
           {zh ? "正在后台收集" : "Collecting in the background"}
         </span>
-        <span style={{ fontSize: 11.5, color: "#999999", display: "block", marginTop: 2, lineHeight: 1.55 }}>
+        <span style={{ fontSize: 12.5, color: "#999999", display: "block", marginTop: 2, lineHeight: 1.55 }}>
           {job.queries.join(zh ? "、" : ", ")}
           {" · "}
           {zh ? `${total} 个中已完成 ${done} 个` : `${done} of ${total} done`}
         </span>
         {problem && (
-          <span style={{ fontSize: 11, color: "#a35f00", display: "block", marginTop: 4, lineHeight: 1.5 }}>
+          <span style={{ fontSize: 12.5, color: "#a35f00", display: "block", marginTop: 4, lineHeight: 1.5 }}>
             {problem}
           </span>
         )}

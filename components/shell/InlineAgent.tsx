@@ -336,7 +336,7 @@ export function InlineAgentThread({
                       display: "flex",
                       alignItems: "center",
                       gap: 6,
-                      fontSize: 11,
+                      fontSize: 12.5,
                       color: x.status === "error" ? "#e03636" : x.status === "running" ? "#7c7c7c" : "#525252",
                       lineHeight: 1.4,
                     }}
@@ -371,7 +371,7 @@ export function InlineAgentThread({
             ) : null}
 
             {m.status === "failed" && (
-              <p style={{ margin: "6px 0 0", fontSize: 11.5, color: "#e03636", lineHeight: 1.5 }}>
+              <p style={{ margin: "6px 0 0", fontSize: 12.5, color: "#e03636", lineHeight: 1.5 }}>
                 {m.error}
               </p>
             )}
@@ -401,7 +401,7 @@ export function InlineAgentThread({
               </div>
             )}
             {m.withheld && (
-              <p style={{ margin: "5px 0 0", fontSize: 11, color: "#c7c7c7", lineHeight: 1.5 }}>
+              <p style={{ margin: "5px 0 0", fontSize: 12.5, color: "#c7c7c7", lineHeight: 1.5 }}>
                 {zh ? "还有一些结果你无权查看，已隐藏。" : "Some matches are not shown, because you may not read them."}
               </p>
             )}
@@ -410,13 +410,13 @@ export function InlineAgentThread({
       )}
 
       {notice && (
-        <p style={{ fontSize: 11, color: "#999999", lineHeight: 1.5, margin: 0 }}>{notice}</p>
+        <p style={{ fontSize: 12.5, color: "#999999", lineHeight: 1.5, margin: 0 }}>{notice}</p>
       )}
 
       {conversationId && (
         <Link
           href={`/chat/t/${conversationId}`}
-          style={{ fontSize: 11, color: "#999999", margin: "2px 0 12px", flexShrink: 0 }}
+          style={{ fontSize: 11.5, color: "#999999", margin: "2px 0 12px", flexShrink: 0 }}
         >
           {zh ? "在聊天中继续 →" : "Continue in Chat →"}
         </Link>

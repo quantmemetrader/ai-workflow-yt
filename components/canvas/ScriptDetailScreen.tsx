@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import type { Measurement, ScriptDetail, ScriptListItem } from "@/lib/script/service";
+import { useResizable } from "@/components/ui/Resizer";
 
 /**
  * ScriptDetailScreen — a transcription of the five Script document artboards,
@@ -111,20 +112,20 @@ const CSS = `
 /* sidebar */
 [data-script-screen] .n { display: flex; align-items: center; gap: 8px; height: 28px; padding: 0 9px; border-radius: 8px; font-size: 12.5px; color: #525252; transition: background .16s ease; }
 [data-script-screen] .n.on { background: #ffffff; box-shadow: 0 1px 2px rgba(0,0,0,0.1); color: #171717; font-weight: 500; }
-[data-script-screen] .n b { margin-left: auto; font-size: 10.5px; font-weight: 500; color: #999999; }
-[data-script-screen] .lbl { font-size: 10.5px; font-weight: 500; color: #999999; padding: 0 9px; }
+[data-script-screen] .n b { margin-left: auto; font-size: 11.5px; font-weight: 500; color: #999999; }
+[data-script-screen] .lbl { font-size: 11.5px; font-weight: 500; color: #999999; padding: 0 9px; }
 
 /* generic */
 [data-script-screen] .bar { height: 48px; flex-shrink: 0; border-bottom: 1px solid #ededed; display: flex; align-items: center; gap: 10px; padding: 0 20px; }
-[data-script-screen] .h1 { font-size: 14px; font-weight: 500; }
-[data-script-screen] .mut { font-size: 12px; color: #999999; }
+[data-script-screen] .h1 { font-size: 15px; font-weight: 500; }
+[data-script-screen] .mut { font-size: 12.5px; color: #999999; }
 [data-script-screen] .btn { height: 30px; padding: 0 12px; border-radius: 8px; display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; white-space: nowrap; }
 [data-script-screen] .btn.p { background: #007be0; color: #fff; font-weight: 500; }
 [data-script-screen] .btn.s { border: 1px solid #ededed; color: #525252; }
 [data-script-screen] .btn svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-[data-script-screen] .chip { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 11px; border: 1px solid #ededed; border-radius: 8px; font-size: 12px; color: #4a5763; white-space: nowrap; }
+[data-script-screen] .chip { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 11px; border: 1px solid #ededed; border-radius: 8px; font-size: 12.5px; color: #4a5763; white-space: nowrap; }
 [data-script-screen] .chip svg { width: 10px; height: 10px; stroke: #999999; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-[data-script-screen] .bd { display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border-radius: 6px; font-size: 11px; font-weight: 500; white-space: nowrap; }
+[data-script-screen] .bd { display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border-radius: 6px; font-size: 11.5px; font-weight: 500; white-space: nowrap; }
 [data-script-screen] .gray { background: #f3f3f3; color: #525252 }
 [data-script-screen] .blue { background: #e6f4ff; color: #007be0 }
 [data-script-screen] .grn  { background: #e4faeb; color: #278f5e }
@@ -135,7 +136,7 @@ const CSS = `
 [data-script-screen] .kv span:first-child { color: #999999; }
 [data-script-screen] .av { width: 20px; height: 20px; border-radius: 10px; object-fit: cover; flex-shrink: 0; }
 [data-script-screen] .stat { border: 1px solid #ededed; border-radius: 12px; padding: 13px 15px; background: #fff; }
-[data-script-screen] .stat i { font-style: normal; display: block; font-size: 10.5px; font-weight: 500; color: #999999; }
+[data-script-screen] .stat i { font-style: normal; display: block; font-size: 11.5px; font-weight: 500; color: #999999; }
 [data-script-screen] .stat b { display: block; font-size: 22px; font-weight: 500; letter-spacing: -0.01em; margin-top: 6px; font-variant-numeric: tabular-nums; }
 
 [data-script-screen] .num { justify-content: flex-end; font-variant-numeric: tabular-nums; }
@@ -146,18 +147,18 @@ const CSS = `
 [data-script-screen] .tabs { height: 40px; flex-shrink: 0; display: flex; align-items: stretch; gap: 20px; padding: 0 22px; border-bottom: 1px solid #ededed; }
 [data-script-screen] .tb { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: #7c7c7c; border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap; }
 [data-script-screen] .tb.on { color: #171717; font-weight: 500; border-color: #171717; }
-[data-script-screen] .tb b { font-size: 10.5px; font-weight: 500; color: #999999; }
-[data-script-screen] .tb i { font-style: normal; display: inline-flex; align-items: center; height: 16px; padding: 0 5px; border-radius: 8px; background: #e6f4ff; color: #007be0; font-size: 10px; font-weight: 500; }
-[data-script-screen] .rtab { height: 26px; padding: 0 11px; border-radius: 7px; display: flex; align-items: center; gap: 6px; font-size: 12px; color: #7c7c7c; }
+[data-script-screen] .tb b { font-size: 11.5px; font-weight: 500; color: #999999; }
+[data-script-screen] .tb i { font-style: normal; display: inline-flex; align-items: center; height: 16px; padding: 0 5px; border-radius: 8px; background: #e6f4ff; color: #007be0; font-size: 11px; font-weight: 500; }
+[data-script-screen] .rtab { height: 26px; padding: 0 11px; border-radius: 7px; display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: #7c7c7c; }
 [data-script-screen] .rtab.on { background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.1); color: #171717; font-weight: 500; }
-[data-script-screen] .cap { font-size: 11px; color: #999999; }
-[data-script-screen] .fc { height: 26px; padding: 0 10px; border-radius: 7px; display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: #525252; border: 1px solid #ededed; background: #fff; white-space: nowrap; }
-[data-script-screen] .fc b { font-weight: 500; color: #999999; font-size: 11px; }
+[data-script-screen] .cap { font-size: 11.5px; color: #999999; }
+[data-script-screen] .fc { height: 26px; padding: 0 10px; border-radius: 7px; display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: #525252; border: 1px solid #ededed; background: #fff; white-space: nowrap; }
+[data-script-screen] .fc b { font-weight: 500; color: #999999; font-size: 11.5px; }
 [data-script-screen] .fc.on { background: #171717; border-color: #171717; color: #fff; }
 [data-script-screen] .fc.on b { color: #c7c7c7; }
 [data-script-screen] .fc svg { width: 10px; height: 10px; stroke: #999999; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 [data-script-screen] .dot { width: 7px; height: 7px; border-radius: 4px; flex-shrink: 0; }
-[data-script-screen] .kbd { display: inline-flex; align-items: center; height: 18px; padding: 0 5px; border-radius: 4px; border: 1px solid #e2e2e2; font-size: 10.5px; color: #7c7c7c; background: #fafafa; }
+[data-script-screen] .kbd { display: inline-flex; align-items: center; height: 18px; padding: 0 5px; border-radius: 4px; border: 1px solid #e2e2e2; font-size: 11.5px; color: #7c7c7c; background: #fafafa; }
 [data-script-screen] .ck { width: 18px; height: 18px; border-radius: 9px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 [data-script-screen] .ck svg { width: 11px; height: 11px; stroke: #fff; fill: none; stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; }
 [data-script-screen] .cb { width: 16px; height: 16px; border-radius: 4px; border: 1px solid #999999; background: #fff; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
@@ -172,13 +173,13 @@ const CSS = `
 [data-script-screen] .pg { width: 120px; height: 154px; background: #fff; border-radius: 3px; overflow: hidden; box-shadow: 0 0 0 1px rgba(0,0,0,.06), 0 2px 6px rgba(0,0,0,.08); position: relative; }
 [data-script-screen] .pgi { width: 480px; height: 616px; padding: 38px 36px; transform: scale(.25); transform-origin: 0 0; }
 [data-script-screen] .pgi h4 { margin: 0; font-size: 23px; font-weight: 600; line-height: 1.2; color: #171717; letter-spacing: -.01em; }
-[data-script-screen] .pgi .pm { font-size: 12px; color: #999999; margin-top: 8px; padding-bottom: 14px; border-bottom: 1.5px solid #ededed; }
+[data-script-screen] .pgi .pm { font-size: 12.5px; color: #999999; margin-top: 8px; padding-bottom: 14px; border-bottom: 1.5px solid #ededed; }
 [data-script-screen] .pgi .pb { display: grid; grid-template-columns: 34px 132px 1fr; gap: 12px; padding: 12px 0; border-bottom: 1px solid #f3f3f3; }
-[data-script-screen] .pgi .pb i { font-style: normal; font-size: 10px; color: #999999; font-weight: 600; }
-[data-script-screen] .pgi .pb span { font-size: 11px; line-height: 1.45; color: #7c7c7c; }
+[data-script-screen] .pgi .pb i { font-style: normal; font-size: 11px; color: #999999; font-weight: 600; }
+[data-script-screen] .pgi .pb span { font-size: 11.5px; line-height: 1.45; color: #7c7c7c; }
 [data-script-screen] .pgi .pb p { font-size: 13px; line-height: 1.45; color: #383838; }
 [data-script-screen] .pgi .pf { background: #f3f3f3; border-radius: 6px; padding: 9px 11px; margin-top: 10px; }
-[data-script-screen] .pgi .pf i { display: block; font-style: normal; font-size: 10px; color: #999999; font-weight: 600; margin-bottom: 4px; }
+[data-script-screen] .pgi .pf i { display: block; font-style: normal; font-size: 11px; color: #999999; font-weight: 600; margin-bottom: 4px; }
 [data-script-screen] .pgi .pf p { font-size: 13px; color: #383838; line-height: 1.4; }
 
 /* script switcher */
@@ -186,12 +187,12 @@ const CSS = `
 [data-script-screen] .sn span { flex-grow: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 [data-script-screen] .sn span.dot { flex-grow: 0; }
 [data-script-screen] .sn.on { background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.1); color: #171717; font-weight: 500; }
-[data-script-screen] .sg { display: flex; align-items: center; gap: 6px; font-size: 10.5px; font-weight: 500; color: #999999; padding: 0 9px; margin: 14px 0 4px; }
+[data-script-screen] .sg { display: flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 500; color: #999999; padding: 0 9px; margin: 14px 0 4px; }
 [data-script-screen] .sg svg { width: 10px; height: 10px; stroke: #999999; fill: none; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
 
 /* editor */
 [data-script-screen] .bt { display: grid; grid-template-columns: 58px 228px minmax(0, 1fr); gap: 0 20px; padding: 13px 0; border-bottom: 1px solid #f3f3f3; }
-[data-script-screen] .bt .bn { font-size: 10.5px; font-weight: 500; color: #999999; line-height: 1.5; font-variant-numeric: tabular-nums; }
+[data-script-screen] .bt .bn { font-size: 11.5px; font-weight: 500; color: #999999; line-height: 1.5; font-variant-numeric: tabular-nums; }
 [data-script-screen] .bt .bn b { display: block; font-weight: 500; color: #c7c7c7; }
 [data-script-screen] .bt .vi { font-size: 12.5px; line-height: 1.55; color: #7c7c7c; }
 [data-script-screen] .bt .zh { font-size: 14px; line-height: 1.6; color: #171717; }
@@ -201,21 +202,21 @@ const CSS = `
 [data-script-screen] .pop { position: absolute; background: #fff; border: 1px solid #e2e2e2; border-radius: 11px; box-shadow: 0 8px 24px rgba(0,0,0,.1), 0 1px 3px rgba(0,0,0,.06); z-index: 3; }
 [data-script-screen] .qc { height: 24px; padding: 0 9px; border-radius: 7px; background: #f3f3f3; display: inline-flex; align-items: center; font-size: 11.5px; color: #525252; white-space: nowrap; }
 [data-script-screen] .sug { border: 1px solid #ededed; border-radius: 10px; background: #fff; padding: 10px 11px; }
-[data-script-screen] .sug .k { display: flex; align-items: center; gap: 6px; font-size: 10.5px; font-weight: 500; color: #999999; }
+[data-script-screen] .sug .k { display: flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 500; color: #999999; }
 [data-script-screen] .sug .q { font-size: 12.5px; color: #171717; margin-top: 5px; line-height: 1.45; }
 [data-script-screen] .sug .w { font-size: 11.5px; color: #7c7c7c; margin-top: 3px; line-height: 1.45; }
 [data-script-screen] .mb { height: 4px; border-radius: 2px; background: #ededed; margin-top: 6px; position: relative; }
 [data-script-screen] .mb div { height: 4px; border-radius: 2px; }
 [data-script-screen] .inp { min-height: 32px; border-radius: 8px; background: #f3f3f3; display: flex; align-items: center; gap: 8px; padding: 0 10px; font-size: 12.5px; color: #171717; }
 [data-script-screen] .inp svg { width: 12px; height: 12px; stroke: #999999; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-[data-script-screen] .fl { font-size: 11px; font-weight: 500; color: #7c7c7c; margin-bottom: 6px; display: block; }
+[data-script-screen] .fl { font-size: 11.5px; font-weight: 500; color: #7c7c7c; margin-bottom: 6px; display: block; }
 [data-script-screen] .vr { display: flex; gap: 10px; padding: 11px 12px; border-radius: 9px; width: 100%; text-align: left; }
 [data-script-screen] .vr.on { background: #f8f8f8; }
 [data-script-screen] .vr .bd { flex-grow: 0; }
-[data-script-screen] .ab { width: 18px; height: 18px; border-radius: 5px; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 600; flex-shrink: 0; }
+[data-script-screen] .ab { width: 18px; height: 18px; border-radius: 5px; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; flex-shrink: 0; }
 [data-script-screen] .shot { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-bottom: 1px solid #f3f3f3; }
-[data-script-screen] .shot i { font-style: normal; width: 22px; font-size: 10.5px; color: #999999; font-weight: 500; font-variant-numeric: tabular-nums; }
-[data-script-screen] .shot span { flex-grow: 1; min-width: 0; font-size: 12px; color: #383838; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+[data-script-screen] .shot i { font-style: normal; width: 22px; font-size: 11.5px; color: #999999; font-weight: 500; font-variant-numeric: tabular-nums; }
+[data-script-screen] .shot span { flex-grow: 1; min-width: 0; font-size: 12.5px; color: #383838; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* the product needs a pointer on what it made clickable; the artboard is static */
 [data-script-screen] .btn, [data-script-screen] .chip, [data-script-screen] .rtab, [data-script-screen] .tb, [data-script-screen] .sn, [data-script-screen] .qc, [data-script-screen] .vr { cursor: pointer; }
@@ -640,7 +641,7 @@ function Composer(props: {
           style={{ width: "100%", fontSize: 12 }}
         />
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 11 }}>
-          <span style={{ fontSize: 10.5, color: "#999999" }}>{note}</span>
+          <span style={{ fontSize: 11.5, color: "#999999" }}>{note}</span>
           <button
             type="button"
             aria-label={sendLabel}
@@ -707,6 +708,15 @@ export function ScriptDetailScreen(props: ScriptDetailScreenProps): React.JSX.El
 
   const zh = locale.startsWith("zh");
   const t = (key: string): string => (zh ? (ZH[key] ?? key) : key);
+
+  /* "Jump to a script" — a list of titles, and a title is as long as the
+   * writer made it. Draggable, and remembered, like every other column. */
+  const { width: jumpWidth, handle: jumpHandle } = useResizable("script-jump", {
+    min: 180,
+    max: 420,
+    initial: 240,
+    edge: "right",
+  });
   const ids = React.useId();
 
   /* ---------------------------------------------------------- local state */
@@ -1261,8 +1271,9 @@ export function ScriptDetailScreen(props: ScriptDetailScreenProps): React.JSX.El
     <div
       data-script-screen=""
       style={{
-        width: 240,
+        width: jumpWidth,
         flexShrink: 0,
+        position: "relative",
         background: "#f8f8f8",
         borderRight: "1px solid #ededed",
         display: "flex",
@@ -1271,6 +1282,7 @@ export function ScriptDetailScreen(props: ScriptDetailScreenProps): React.JSX.El
         overflowY: "auto",
       }}
     >
+      {jumpHandle}
       <div
         style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 0 0 9px", fontSize: 12, color: "#7c7c7c" }}
       >
@@ -1616,7 +1628,7 @@ export function ScriptDetailScreen(props: ScriptDetailScreenProps): React.JSX.El
           <div className="pop" style={{ left: 60, top: 58, width: 318, padding: "11px 12px" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
               <span className="dot" style={{ background: kindDot(shownSuggestion.kind) }}></span>
-              <span style={{ fontSize: 11, fontWeight: 500, color: "#7c7c7c" }}>
+              <span style={{ fontSize: 11.5, fontWeight: 500, color: "#7c7c7c" }}>
                 {`${kindLabel(shownSuggestion.kind)} · ${shownSuggestion.label}`}
               </span>
               <span className="cap" style={{ marginLeft: "auto" }}>
@@ -1924,17 +1936,17 @@ export function ScriptDetailScreen(props: ScriptDetailScreenProps): React.JSX.El
               <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                 <span style={{ fontSize: 12.5, fontWeight: 500 }}>{`v${v.versionNo}`}</span>
                 {v.versionNo === script.version ? (
-                  <span className="bd blue" style={{ height: 18, fontSize: 10.5 }}>
+                  <span className="bd blue" style={{ height: 18, fontSize: 11.5 }}>
                     {t("Current")}
                   </span>
                 ) : null}
                 {v.versionNo === lockedVersion ? (
-                  <span className="bd grn" style={{ height: 18, fontSize: 10.5 }}>
+                  <span className="bd grn" style={{ height: 18, fontSize: 11.5 }}>
                     {t("Locked")}
                   </span>
                 ) : null}
                 {v.model === null ? null : (
-                  <span className="bd gray" style={{ height: 18, fontSize: 10.5 }}>
+                  <span className="bd gray" style={{ height: 18, fontSize: 11.5 }}>
                     {t("Agent")}
                   </span>
                 )}
@@ -2240,7 +2252,7 @@ export function ScriptDetailScreen(props: ScriptDetailScreenProps): React.JSX.El
                 borderRadius: 14,
                 background: "#f3f3f3",
                 color: "#7c7c7c",
-                fontSize: 10,
+                fontSize: 11.5,
                 fontWeight: 500,
                 letterSpacing: 0,
                 display: "flex",
@@ -2327,7 +2339,7 @@ export function ScriptDetailScreen(props: ScriptDetailScreenProps): React.JSX.El
                 <i>{ord2(b.ord)}</i>
                 <span title={b.visual}>{b.visual}</span>
                 {b.naturalSound ? (
-                  <span className="bd gray" style={{ height: 18, fontSize: 10.5, flexGrow: 0 }}>
+                  <span className="bd gray" style={{ height: 18, fontSize: 11.5, flexGrow: 0 }}>
                     {t("Natural sound")}
                   </span>
                 ) : null}
@@ -2430,7 +2442,7 @@ export function ScriptDetailScreen(props: ScriptDetailScreenProps): React.JSX.El
           <div style={{ display: "flex", alignItems: "baseline", flexWrap: "wrap", gap: 5, fontSize: 14, fontWeight: 500, marginTop: 4, fontVariantNumeric: "tabular-nums" }}>
             <span>{clock(live.spokenSeconds)}</span>
             {live.drift === null ? null : (
-              <span style={{ fontSize: 11, fontWeight: 420, whiteSpace: "nowrap", color: live.onTarget === true ? "#278f5e" : "#db7706" }}>
+              <span style={{ fontSize: 11.5, fontWeight: 420, whiteSpace: "nowrap", color: live.onTarget === true ? "#278f5e" : "#db7706" }}>
                 {driftLabel(live.drift)}
               </span>
             )}
@@ -2462,7 +2474,7 @@ export function ScriptDetailScreen(props: ScriptDetailScreenProps): React.JSX.El
         <div style={{ minWidth: 0, border: "1px solid #ededed", borderRadius: 9, padding: "9px 10px", background: "#fff" }}>
           <div className="cap">{t("Flagged terms")}</div>
           <div style={{ fontSize: 14, fontWeight: 500, marginTop: 4 }}>
-            {openFlags} <span style={{ fontSize: 11, fontWeight: 420, color: "#999999" }}>{t("open")}</span>
+            {openFlags} <span style={{ fontSize: 11.5, fontWeight: 420, color: "#999999" }}>{t("open")}</span>
           </div>
         </div>
         <div style={{ minWidth: 0, border: "1px solid #ededed", borderRadius: 9, padding: "9px 10px", background: "#fff" }}>
@@ -2475,7 +2487,7 @@ export function ScriptDetailScreen(props: ScriptDetailScreenProps): React.JSX.El
                 {`${pointsCovered} / ${mandatoryTotal}`}{" "}
                 <span
                   style={{
-                    fontSize: 11,
+                    fontSize: 11.5,
                     fontWeight: 420,
                     color: pointsCovered >= mandatoryTotal ? "#278f5e" : "#db7706",
                   }}
@@ -2620,7 +2632,7 @@ export function ScriptDetailScreen(props: ScriptDetailScreenProps): React.JSX.El
               borderRadius: 14,
               background: "#f3f3f3",
               color: "#7c7c7c",
-              fontSize: 10,
+              fontSize: 11.5,
               fontWeight: 500,
               letterSpacing: 0,
               display: "flex",
@@ -2872,7 +2884,7 @@ export function ScriptDetailScreen(props: ScriptDetailScreenProps): React.JSX.El
         }}
       >
         <LockIcon size={12} color="#999999" width={1.7} />
-        <span style={{ fontSize: 10.5, color: "#999999", lineHeight: 1.4 }}>
+        <span style={{ fontSize: 12.5, color: "#999999", lineHeight: 1.4 }}>
           {locked ? t("Records are permanent · in the audit log") : t("Answers use only sources you can read")}
         </span>
       </div>

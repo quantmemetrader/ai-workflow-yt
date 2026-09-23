@@ -15,6 +15,7 @@ import { researchPack } from "./tools/research";
 import { videoPack } from "./tools/video";
 import { creatorPack } from "./tools/creator";
 import { scriptPack } from "./tools/script";
+import { articlePack } from "./tools/article";
 
 /**
  * What the agent can do. Each tool is a thin wrapper over the same service the
@@ -36,7 +37,7 @@ import type { ToolContext, ToolResult } from "./tools/types";
  * the packs they hold, and `runTool` re-checks — a model is perfectly capable
  * of calling something it was never shown.
  */
-const PACKS: ToolPack[] = [chatPack, researchPack, scriptPack, videoPack, creatorPack];
+const PACKS: ToolPack[] = [chatPack, researchPack, scriptPack, articlePack, videoPack, creatorPack];
 
 export const TOOL_DEFS: ToolDef[] = [
   {

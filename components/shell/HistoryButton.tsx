@@ -93,7 +93,7 @@ export function HistoryButton({ locale }: { locale: string }) {
               alignItems: "baseline",
               gap: 8,
               padding: "4px 8px 8px",
-              fontSize: 11,
+              fontSize: 11.5,
               color: "#999999",
             }}
           >
@@ -129,7 +129,7 @@ export function HistoryButton({ locale }: { locale: string }) {
                   <span style={{ flexGrow: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {c.title}
                   </span>
-                  <span style={{ fontSize: 10.5, color: "#c7c7c7", flexShrink: 0 }}>{c.when}</span>
+                  <span style={{ fontSize: 11.5, color: "#c7c7c7", flexShrink: 0 }}>{c.when}</span>
                 </Link>
               ))}
             </div>

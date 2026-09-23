@@ -5,6 +5,8 @@ import { ModelPicker } from "@/components/shell/ModelPicker";
 import * as React from "react";
 import Link from "next/link";
 import { useResizable } from "@/components/ui/Resizer";
+import { AddTopicButton } from "./AddTopicButton";
+import { StatusStrip } from "@/components/ui/kit";
 
 /**
  * BacklogScreen — a transcription of design/canvas/Res-Backlog.dc.html.
@@ -89,21 +91,21 @@ const CSS = `
 /* sidebar */
 [data-backlog-screen] .n { display: flex; align-items: center; gap: 8px; height: 28px; padding: 0 9px; border-radius: 8px; font-size: 12.5px; color: #525252; transition: background .16s ease; }
 [data-backlog-screen] .n.on { background: #ffffff; box-shadow: 0 1px 2px rgba(0,0,0,0.1); color: #171717; font-weight: 500; }
-[data-backlog-screen] .n b { margin-left: auto; font-size: 10.5px; font-weight: 500; color: #999999; }
-[data-backlog-screen] .n i { margin-left: auto; font-style: normal; display: inline-flex; align-items: center; height: 17px; padding: 0 6px; border-radius: 9px; background: #ffe7e7; color: #e03636; font-size: 10px; font-weight: 500; }
-[data-backlog-screen] .lbl { font-size: 10.5px; font-weight: 500; color: #999999; padding: 0 9px; }
+[data-backlog-screen] .n b { margin-left: auto; font-size: 11.5px; font-weight: 500; color: #999999; }
+[data-backlog-screen] .n i { margin-left: auto; font-style: normal; display: inline-flex; align-items: center; height: 17px; padding: 0 6px; border-radius: 9px; background: #ffe7e7; color: #e03636; font-size: 11px; font-weight: 500; }
+[data-backlog-screen] .lbl { font-size: 11.5px; font-weight: 500; color: #999999; padding: 0 9px; }
 
 /* generic */
 [data-backlog-screen] .bar { height: 48px; flex-shrink: 0; border-bottom: 1px solid #ededed; display: flex; align-items: center; gap: 10px; padding: 0 20px; }
-[data-backlog-screen] .h1 { font-size: 14px; font-weight: 500; }
-[data-backlog-screen] .mut { font-size: 12px; color: #999999; }
+[data-backlog-screen] .h1 { font-size: 15px; font-weight: 500; }
+[data-backlog-screen] .mut { font-size: 12.5px; color: #999999; }
 [data-backlog-screen] .btn { height: 30px; padding: 0 12px; border-radius: 8px; display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; white-space: nowrap; }
 [data-backlog-screen] .btn.p { background: #007be0; color: #fff; font-weight: 500; }
 [data-backlog-screen] .btn.s { border: 1px solid #ededed; color: #525252; }
 [data-backlog-screen] .btn svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-[data-backlog-screen] .chip { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 11px; border: 1px solid #ededed; border-radius: 8px; font-size: 12px; color: #4a5763; white-space: nowrap; }
+[data-backlog-screen] .chip { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 11px; border: 1px solid #ededed; border-radius: 8px; font-size: 12.5px; color: #4a5763; white-space: nowrap; }
 [data-backlog-screen] .chip svg { width: 10px; height: 10px; stroke: #999999; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-[data-backlog-screen] .bd { display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border-radius: 6px; font-size: 11px; font-weight: 500; white-space: nowrap; }
+[data-backlog-screen] .bd { display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border-radius: 6px; font-size: 11.5px; font-weight: 500; white-space: nowrap; }
 [data-backlog-screen] .gray { background: #f3f3f3; color: #525252 }
 [data-backlog-screen] .blue { background: #e6f4ff; color: #007be0 }
 [data-backlog-screen] .grn  { background: #e4faeb; color: #278f5e }
@@ -114,7 +116,7 @@ const CSS = `
 [data-backlog-screen] .kv span:first-child { color: #999999; }
 [data-backlog-screen] .av { width: 20px; height: 20px; border-radius: 10px; object-fit: cover; flex-shrink: 0; }
 [data-backlog-screen] .stat { border: 1px solid #ededed; border-radius: 12px; padding: 13px 15px; background: #fff; }
-[data-backlog-screen] .stat i { font-style: normal; display: block; font-size: 10.5px; font-weight: 500; color: #999999; }
+[data-backlog-screen] .stat i { font-style: normal; display: block; font-size: 11.5px; font-weight: 500; color: #999999; }
 [data-backlog-screen] .stat b { display: block; font-size: 22px; font-weight: 500; letter-spacing: -0.01em; margin-top: 6px; font-variant-numeric: tabular-nums; }
 
 [data-backlog-screen] .num { justify-content: flex-end; font-variant-numeric: tabular-nums; }
@@ -126,9 +128,9 @@ const CSS = `
 [data-backlog-screen] .tf { display: flex; gap: 2px; padding: 2px; border-radius: 8px; background: #f3f3f3; }
 [data-backlog-screen] .tf div { height: 24px; padding: 0 10px; border-radius: 6px; display: flex; align-items: center; font-size: 11.5px; color: #7c7c7c; font-weight: 500; }
 [data-backlog-screen] .tf div.on { background: #fff; color: #171717; box-shadow: 0 1px 2px rgba(0,0,0,.1); }
-[data-backlog-screen] .rtab { height: 26px; padding: 0 11px; border-radius: 7px; display: flex; align-items: center; font-size: 12px; color: #7c7c7c; }
+[data-backlog-screen] .rtab { height: 26px; padding: 0 11px; border-radius: 7px; display: flex; align-items: center; font-size: 12.5px; color: #7c7c7c; }
 [data-backlog-screen] .rtab.on { background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.1); color: #171717; font-weight: 500; }
-[data-backlog-screen] .cap { font-size: 11px; color: #999999; }
+[data-backlog-screen] .cap { font-size: 11.5px; color: #999999; }
 [data-backlog-screen] .sw { width: 9px; height: 9px; border-radius: 3px; flex-shrink: 0; }
 
 /* the product needs a pointer on what it made clickable; the artboard is static */
@@ -147,7 +149,10 @@ const ZH: Record<string, string> = {
   "Search & compare": "搜索与对比",
   "Content performance": "内容表现",
   "Comment inbox": "评论收件箱",
-  "Topic backlog": "选题待办",
+  // 选题储备, as the sidebar's own nav row and the page title both call it.
+  // This screen said 选题待办 for the same thing, so the label you press and the
+  // heading you land on were two different words.
+  "Topic backlog": "选题储备",
   "Connected sources": "已连接来源",
   "News sites": "新闻站点",
   "Ranking weights": "排序权重",
@@ -164,15 +169,15 @@ const ZH: Record<string, string> = {
   "in Script": "在脚本模块",
   "read-only": "只读",
   "Nothing has been adopted yet.": "还没有采纳任何选题。",
+  "Add a topic here, or adopt one on the Trends dashboard and it lands here, ready to plan.":
+    "可以直接在这里添加选题，也可以在趋势看板采纳一个，它就会出现在这里，等待排期。",
   Unassigned: "未指派",
   "No channel": "未选渠道",
   "Set date": "设置日期",
   Agent: "助理",
   "Nothing is dated, so nothing can slip yet.": "还没有任何截止日期，暂时不会延期。",
-  "Ask about the backlog…": "询问选题待办…",
+  "Ask about the backlog…": "询问选题储备…",
   "Scoped to your entitled sources": "仅限你有权限的来源",
-  "Adopt a topic on the Trends dashboard and it lands here, ready to plan.":
-    "在趋势面板采纳一个选题，它就会出现在这里，等待排期。",
   "Go to the Trends dashboard": "前往趋势面板",
   "Due date": "截止日期",
   Flagged: "已标记",
@@ -358,7 +363,29 @@ export function BacklogScreen(props: {
           <span className="h1">{t("Topic backlog")}</span>
           <span className="mut">{t("hands off directly to Script")}</span>
           <div style={{ flexGrow: 1 }}></div>
+          {/* The board filled up two ways — adopt on Trends, or drag a card —
+              and neither of them is "I have an idea, put it in". This is the
+              third way, and it is on the screen the idea belongs to. */}
+          <AddTopicButton zh={zh} className="btn s" />
         </div>
+
+        {/* The four lanes as four numbers. The board below says the same thing
+            in full, but only once you have scrolled all four columns; this is
+            the shape of the pipeline before you read any of it. */}
+        <StatusStrip
+          items={lanes.map((lane) => ({
+            label: lane.name,
+            value: lane.rows.length,
+            tone:
+              lane.key === "adopted"
+                ? ("waiting" as const)
+                : lane.key === "handed"
+                  ? ("done" as const)
+                  : ("running" as const),
+          }))}
+          right={zh ? `${count(dueThisWeek, locale)} 个本周到期` : `${count(dueThisWeek, locale)} due this week`}
+        />
+
         <div style={{ flexGrow: 1, display: "flex", minHeight: 0 }}>
           <div style={{ flexGrow: 1, minWidth: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
             <div
@@ -407,8 +434,8 @@ export function BacklogScreen(props: {
               <div style={{ flexGrow: 1 }}></div>
               <span className="cap">
                 {zh
-                  ? `${count(shown.length, locale)} 个已采纳选题 · ${count(dueThisWeek, locale)} 个本周到期`
-                  : `${count(shown.length, locale)} adopted topics · ${count(dueThisWeek, locale)} due this week`}
+                  ? `${count(shown.length, locale)} 个已采纳选题`
+                  : `${count(shown.length, locale)} adopted topics`}
               </span>
               <button
                 type="button"
@@ -437,16 +464,22 @@ export function BacklogScreen(props: {
               {shown.length === 0 ? (
                 <div style={{ gridColumn: "1 / -1", maxWidth: 460 }}>
                   <div style={{ fontSize: 15, fontWeight: 600 }}>{t("Nothing has been adopted yet.")}</div>
+                  {/* The empty state used to name one way in, and it was the
+                      one on another screen. Both ways are here now, and the
+                      one that works without leaving is first. */}
                   <p className="mut" style={{ lineHeight: 1.55, marginTop: 6 }}>
-                    {t("Adopt a topic on the Trends dashboard and it lands here, ready to plan.")}
+                    {t("Add a topic here, or adopt one on the Trends dashboard and it lands here, ready to plan.")}
                   </p>
-                  <Link
-                    href="/research"
-                    className="btn s"
-                    style={{ marginTop: 12, textDecoration: "none", border: "1px solid #ededed" }}
-                  >
-                    {t("Go to the Trends dashboard")}
-                  </Link>
+                  <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+                    <AddTopicButton zh={zh} className="btn p" />
+                    <Link
+                      href="/research"
+                      className="btn s"
+                      style={{ textDecoration: "none", border: "1px solid #ededed" }}
+                    >
+                      {t("Go to the Trends dashboard")}
+                    </Link>
+                  </div>
                 </div>
               ) : (
                 lanes.map((lane) => (
@@ -549,7 +582,7 @@ export function BacklogScreen(props: {
                               <span
                                 title={`${zh ? "热度" : "Heat"} ${count(item.heat, locale)} · ${pct(item.change, locale)}`}
                                 style={{
-                                  fontSize: 11,
+                                  fontSize: 11.5,
                                   fontWeight: 600,
                                   color: ACCENT,
                                   fontVariantNumeric: "tabular-nums",
@@ -659,7 +692,7 @@ export function BacklogScreen(props: {
                                   border: 0,
                                   cursor: "pointer",
                                   fontFamily: "inherit",
-                                  fontSize: 10.5,
+                                  fontSize: 11.5,
                                   marginRight: 6,
                                 }}
                               >
@@ -745,7 +778,7 @@ export function BacklogScreen(props: {
                                     margin: 0,
                                     background: "transparent",
                                     fontFamily: "inherit",
-                                    fontSize: 11,
+                                    fontSize: 11.5,
                                     cursor: "pointer",
                                   }}
                                 />
@@ -919,7 +952,7 @@ export function BacklogScreen(props: {
               {/* The artboard put a running cost here. Nothing on this screen
                   has spent anything, so the figure would be invented; spend is
                   shown against the real ledger in Settings. */}
-              <span style={{ fontSize: 10.5, color: "#999999" }}>{t("Scoped to your entitled sources")}</span>
+              <span style={{ fontSize: 11.5, color: "#999999" }}>{t("Scoped to your entitled sources")}</span>
             </div>
           </div>
         </div>

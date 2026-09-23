@@ -110,22 +110,22 @@ const CSS = `
 [data-compare-screen] .tr:nth-of-type(7){animation-delay:.16s} [data-compare-screen] .tr:nth-of-type(8){animation-delay:.185s}
 [data-compare-screen] .n { display: flex; align-items: center; gap: 8px; height: 28px; padding: 0 9px; border-radius: 8px; font-size: 12.5px; color: #525252; transition: background .16s ease; }
 [data-compare-screen] .n.on { background: #ffffff; box-shadow: 0 1px 2px rgba(0,0,0,0.1); color: #171717; font-weight: 500; }
-[data-compare-screen] .n b { margin-left: auto; font-size: 10.5px; font-weight: 500; color: #999999; }
-[data-compare-screen] .n i { margin-left: auto; font-style: normal; display: inline-flex; align-items: center; height: 17px; padding: 0 6px; border-radius: 9px; background: #ffe7e7; color: #e03636; font-size: 10px; font-weight: 500; }
-[data-compare-screen] .lbl { font-size: 10.5px; font-weight: 500; color: #999999; padding: 0 9px; }
+[data-compare-screen] .n b { margin-left: auto; font-size: 11.5px; font-weight: 500; color: #999999; }
+[data-compare-screen] .n i { margin-left: auto; font-style: normal; display: inline-flex; align-items: center; height: 17px; padding: 0 6px; border-radius: 9px; background: #ffe7e7; color: #e03636; font-size: 11px; font-weight: 500; }
+[data-compare-screen] .lbl { font-size: 11.5px; font-weight: 500; color: #999999; padding: 0 9px; }
 [data-compare-screen] .bar { height: 48px; flex-shrink: 0; border-bottom: 1px solid #ededed; display: flex; align-items: center; gap: 10px; padding: 0 20px; }
-[data-compare-screen] .h1 { font-size: 14px; font-weight: 500; }
-[data-compare-screen] .mut { font-size: 12px; color: #999999; }
+[data-compare-screen] .h1 { font-size: 15px; font-weight: 500; }
+[data-compare-screen] .mut { font-size: 12.5px; color: #999999; }
 [data-compare-screen] .btn { height: 30px; padding: 0 12px; border-radius: 8px; display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; white-space: nowrap; }
 [data-compare-screen] .btn.p { background: #007be0; color: #fff; font-weight: 500; }
 [data-compare-screen] .btn.s { border: 1px solid #ededed; color: #525252; }
 [data-compare-screen] .btn svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-[data-compare-screen] .chip { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 11px; border: 1px solid #ededed; border-radius: 8px; font-size: 12px; color: #4a5763; white-space: nowrap; }
+[data-compare-screen] .chip { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 11px; border: 1px solid #ededed; border-radius: 8px; font-size: 12.5px; color: #4a5763; white-space: nowrap; }
 [data-compare-screen] .chip svg { width: 10px; height: 10px; stroke: #999999; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 [data-compare-screen] .av { width: 20px; height: 20px; border-radius: 10px; object-fit: cover; flex-shrink: 0; }
 [data-compare-screen] .t { width: 100%; }
 [data-compare-screen] .t .hd { height: 32px; border-bottom: 1px solid #ededed; display: grid; align-items: center; }
-[data-compare-screen] .t .hd > * { font-size: 10.5px; font-weight: 500; color: #7c7c7c; padding: 0 12px; }
+[data-compare-screen] .t .hd > * { font-size: 11.5px; font-weight: 500; color: #7c7c7c; padding: 0 12px; }
 /* A floor, not a fixed height. The Sources cell wraps to three lines on a
    narrow window, and a fixed 46px meant those lines were drawn over the row
    beneath — "BBC" sitting on top of the next series' sources. */
@@ -137,15 +137,15 @@ const CSS = `
 [data-compare-screen] .tf { display: flex; gap: 2px; padding: 2px; border-radius: 8px; background: #f3f3f3; }
 [data-compare-screen] .tf div { height: 24px; padding: 0 10px; border-radius: 6px; display: flex; align-items: center; font-size: 11.5px; color: #7c7c7c; font-weight: 500; }
 [data-compare-screen] .tf div.on { background: #fff; color: #171717; box-shadow: 0 1px 2px rgba(0,0,0,.1); }
-[data-compare-screen] .rtab { height: 26px; padding: 0 11px; border-radius: 7px; display: flex; align-items: center; font-size: 12px; color: #7c7c7c; }
+[data-compare-screen] .rtab { height: 26px; padding: 0 11px; border-radius: 7px; display: flex; align-items: center; font-size: 12.5px; color: #7c7c7c; }
 [data-compare-screen] .rtab.on { background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.1); color: #171717; font-weight: 500; }
-[data-compare-screen] .cap { font-size: 11px; color: #999999; }
+[data-compare-screen] .cap { font-size: 11.5px; color: #999999; }
 [data-compare-screen] .lwbox { position: relative; }
-[data-compare-screen] .lwload { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 11px; color: #c7c7c7; }
+[data-compare-screen] .lwload { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 11.5px; color: #c7c7c7; }
 [data-compare-screen] .sw { width: 9px; height: 9px; border-radius: 3px; flex-shrink: 0; }
 [data-compare-screen] .pkw { position: relative; }
 [data-compare-screen] .pkv { color: #171717; font-weight: 500; margin-left: 5px; }
-[data-compare-screen] .pkb { margin-left: 6px; min-width: 17px; height: 17px; padding: 0 5px; box-sizing: border-box; border-radius: 9px; background: var(--ac); color: #fff; font-size: 11px; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; }
+[data-compare-screen] .pkb { margin-left: 6px; min-width: 17px; height: 17px; padding: 0 5px; box-sizing: border-box; border-radius: 9px; background: var(--ac); color: #fff; font-size: 11.5px; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; }
 [data-compare-screen] .chip.pkon { border-color: var(--ac); }
 
 /* Additions the product needs and a static artboard did not: pointers on the
@@ -602,7 +602,7 @@ export function CompareScreen(props: {
                   .map((s) => (
                     <div key={s.query} style={{ display: "flex", gap: 8, alignItems: "baseline" }}>
                       <span className="sw" style={{ background: s.colour, flexShrink: 0 }}></span>
-                      <span style={{ fontSize: 11.5, color: "#5c4420", lineHeight: 1.55 }}>
+                      <span style={{ fontSize: 12.5, color: "#5c4420", lineHeight: 1.55 }}>
                         <b style={{ fontWeight: 500 }}>{s.query}</b>
                         {" · "}
                         {s.error}
@@ -950,7 +950,7 @@ export function CompareScreen(props: {
                 gap: 7,
               }}
             >
-              <span style={{ fontSize: 10.5, color: "#999999" }}>{t("Scoped to your entitled sources")}</span>
+              <span style={{ fontSize: 11.5, color: "#999999" }}>{t("Scoped to your entitled sources")}</span>
             </div>
           </div>
         </div>

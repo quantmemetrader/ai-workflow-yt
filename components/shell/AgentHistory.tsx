@@ -61,7 +61,7 @@ export function AgentHistory({
     border: "1px solid #ededed",
     background: "#fff",
     color: "#525252",
-    fontSize: 11,
+    fontSize: 11.5,
     fontFamily: "inherit",
     cursor: "pointer",
     display: "inline-flex",
@@ -132,7 +132,7 @@ export function AgentHistory({
                 }}
               >
                 <span style={{ flexGrow: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.title}</span>
-                <span style={{ fontSize: 10.5, color: "#999999", flexShrink: 0 }}>{r.when}</span>
+                <span style={{ fontSize: 11.5, color: "#999999", flexShrink: 0 }}>{r.when}</span>
               </button>
             ))
           )}

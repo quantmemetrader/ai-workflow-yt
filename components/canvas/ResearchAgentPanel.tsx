@@ -33,9 +33,9 @@ import { useResizable } from "@/components/ui/Resizer";
  */
 
 const CSS = `
-[data-agent-panel] .rtab { height: 26px; padding: 0 11px; border-radius: 7px; display: flex; align-items: center; font-size: 12px; color: #7c7c7c; }
+[data-agent-panel] .rtab { height: 26px; padding: 0 11px; border-radius: 7px; display: flex; align-items: center; font-size: 12.5px; color: #7c7c7c; }
 [data-agent-panel] .rtab.on { background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.1); color: #171717; font-weight: 500; }
-[data-agent-panel] .cap { font-size: 11px; color: #999999; }
+[data-agent-panel] .cap { font-size: 11.5px; color: #999999; }
 `;
 export function ResearchAgentPanel({
   accent,
@@ -244,7 +244,7 @@ export function ResearchAgentPanel({
             gap: 7,
           }}
         >
-          <span style={{ fontSize: 10.5, color: "#999999" }}>{footnote}</span>
+          <span style={{ fontSize: 11.5, color: "#999999" }}>{footnote}</span>
         </div>
       ) : null}
     </div>

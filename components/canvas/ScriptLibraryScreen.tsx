@@ -4,6 +4,7 @@ import * as React from "react";
 import { ResearchAgentPanel } from "./ResearchAgentPanel";
 import type { ScriptListItem } from "@/lib/script/service";
 import { useResizable } from "@/components/ui/Resizer";
+import { StatusStrip } from "@/components/ui/kit";
 
 /**
  * ScriptLibraryScreen — a transcription of design/canvas/Script-Library.dc.html.
@@ -113,20 +114,20 @@ const CSS = `
 /* sidebar */
 [data-script-library-screen] .n { display: flex; align-items: center; gap: 8px; height: 28px; padding: 0 9px; border-radius: 8px; font-size: 12.5px; color: #525252; transition: background .16s ease; }
 [data-script-library-screen] .n.on { background: #ffffff; box-shadow: 0 1px 2px rgba(0,0,0,0.1); color: #171717; font-weight: 500; }
-[data-script-library-screen] .n b { margin-left: auto; font-size: 10.5px; font-weight: 500; color: #999999; }
-[data-script-library-screen] .n i { margin-left: auto; font-style: normal; display: inline-flex; align-items: center; height: 17px; padding: 0 6px; border-radius: 9px; background: #ffe7e7; color: #e03636; font-size: 10px; font-weight: 500; }
-[data-script-library-screen] .lbl { font-size: 10.5px; font-weight: 500; color: #999999; padding: 0 9px; }
+[data-script-library-screen] .n b { margin-left: auto; font-size: 11.5px; font-weight: 500; color: #999999; }
+[data-script-library-screen] .n i { margin-left: auto; font-style: normal; display: inline-flex; align-items: center; height: 17px; padding: 0 6px; border-radius: 9px; background: #ffe7e7; color: #e03636; font-size: 11px; font-weight: 500; }
+[data-script-library-screen] .lbl { font-size: 11.5px; font-weight: 500; color: #999999; padding: 0 9px; }
 
 /* generic */
 [data-script-library-screen] .bar { height: 48px; flex-shrink: 0; border-bottom: 1px solid #ededed; display: flex; align-items: center; gap: 10px; padding: 0 20px; }
-[data-script-library-screen] .h1 { font-size: 14px; font-weight: 500; }
-[data-script-library-screen] .mut { font-size: 12px; color: #999999; }
+[data-script-library-screen] .h1 { font-size: 15px; font-weight: 500; }
+[data-script-library-screen] .mut { font-size: 12.5px; color: #999999; }
 [data-script-library-screen] .btn { height: 30px; padding: 0 12px; border-radius: 8px; display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; white-space: nowrap; }
 [data-script-library-screen] .btn.p { background: #007be0; color: #fff; font-weight: 500; }
 [data-script-library-screen] .btn.s { border: 1px solid #ededed; color: #525252; }
 [data-script-library-screen] .btn svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-[data-script-library-screen] .chip { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 11px; border: 1px solid #ededed; border-radius: 8px; font-size: 12px; color: #4a5763; white-space: nowrap; }
-[data-script-library-screen] .bd { display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border-radius: 6px; font-size: 11px; font-weight: 500; white-space: nowrap; }
+[data-script-library-screen] .chip { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 11px; border: 1px solid #ededed; border-radius: 8px; font-size: 12.5px; color: #4a5763; white-space: nowrap; }
+[data-script-library-screen] .bd { display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border-radius: 6px; font-size: 11.5px; font-weight: 500; white-space: nowrap; }
 [data-script-library-screen] .gray { background: #f3f3f3; color: #525252 }
 [data-script-library-screen] .blue { background: #e6f4ff; color: #007be0 }
 [data-script-library-screen] .grn  { background: #e4faeb; color: #278f5e }
@@ -137,17 +138,17 @@ const CSS = `
 /* table */
 [data-script-library-screen] .t { width: 100%; }
 [data-script-library-screen] .t .hd { height: 32px; border-bottom: 1px solid #ededed; display: grid; align-items: center; }
-[data-script-library-screen] .t .hd > * { font-size: 10.5px; font-weight: 500; color: #7c7c7c; padding: 0 12px; }
+[data-script-library-screen] .t .hd > * { font-size: 11.5px; font-weight: 500; color: #7c7c7c; padding: 0 12px; }
 [data-script-library-screen] .tr { height: 46px; border-bottom: 1px solid #f3f3f3; display: grid; align-items: center; }
 [data-script-library-screen] .tr > * { font-size: 12.5px; color: #383838; padding: 0 12px; min-width: 0; display: flex; align-items: center; }
 [data-script-library-screen] .num { justify-content: flex-end; font-variant-numeric: tabular-nums; }
 [data-script-library-screen] .el { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
 
-[data-script-library-screen] .cap { font-size: 11px; color: #999999; }
+[data-script-library-screen] .cap { font-size: 11.5px; color: #999999; }
 [data-script-library-screen] .seg { width: 30px; height: 26px; border-radius: 6px; display: flex; align-items: center; justify-content: center; cursor: pointer; }
 [data-script-library-screen] .seg svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-[data-script-library-screen] .fc { height: 26px; padding: 0 10px; border-radius: 7px; display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: #525252; border: 1px solid #ededed; background: #fff; white-space: nowrap; }
-[data-script-library-screen] .fc b { font-weight: 500; color: #999999; font-size: 11px; }
+[data-script-library-screen] .fc { height: 26px; padding: 0 10px; border-radius: 7px; display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: #525252; border: 1px solid #ededed; background: #fff; white-space: nowrap; }
+[data-script-library-screen] .fc b { font-weight: 500; color: #999999; font-size: 11.5px; }
 [data-script-library-screen] .fc.on { background: #171717; border-color: #171717; color: #fff; }
 [data-script-library-screen] .fc.on b { color: #c7c7c7; }
 [data-script-library-screen] .dot { width: 7px; height: 7px; border-radius: 4px; flex-shrink: 0; }
@@ -158,9 +159,9 @@ const CSS = `
 /* icon grid (library) */
 [data-script-library-screen] .ic { display: flex; flex-direction: column; align-items: center; padding: 8px 4px 6px; border-radius: 10px; min-width: 0; }
 [data-script-library-screen] .icn { height: 62px; width: 76px; display: flex; align-items: flex-end; justify-content: center; padding-bottom: 6px; border-radius: 9px; }
-[data-script-library-screen] .icl { margin-top: 7px; text-align: center; font-size: 12px; line-height: 1.4; color: #171717; max-width: 100%; }
+[data-script-library-screen] .icl { margin-top: 7px; text-align: center; font-size: 12.5px; line-height: 1.4; color: #171717; max-width: 100%; }
 [data-script-library-screen] .icl span { padding: 1px 5px; border-radius: 5px; -webkit-box-decoration-break: clone; box-decoration-break: clone; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-[data-script-library-screen] .icm { display: flex; align-items: center; gap: 5px; margin-top: 4px; font-size: 11px; color: #999999; white-space: nowrap; }
+[data-script-library-screen] .icm { display: flex; align-items: center; gap: 5px; margin-top: 4px; font-size: 11.5px; color: #999999; white-space: nowrap; }
 [data-script-library-screen] .icm .dot { width: 6px; height: 6px; }
 
 /* the product needs a pointer on what it made clickable; the artboard is static */
@@ -677,7 +678,7 @@ export function ScriptLibraryScreen(props: ScriptLibraryScreenProps): React.JSX.
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
           {folders.length === 0 ? (
-            <p style={{ fontSize: 11.5, color: "#999999", lineHeight: 1.5, padding: "2px 9px 0" }}>
+            <p style={{ fontSize: 12.5, color: "#999999", lineHeight: 1.5, padding: "2px 9px 0" }}>
               {t("No folders yet")}
             </p>
           ) : (
@@ -877,6 +878,19 @@ export function ScriptLibraryScreen(props: ScriptLibraryScreenProps): React.JSX.
             {t("New script")}
           </button>
         </div>
+
+        {/* The same four counts the filter chips carry, read as a state of the
+            module rather than as four things to click: what is being written,
+            what is waiting on somebody, what is finished. */}
+        <StatusStrip
+          items={[
+            { label: t("Drafting"), value: counts.drafting, tone: "running" },
+            { label: t("Awaiting approval"), value: counts.awaiting, tone: "you" },
+            { label: t("Briefs"), value: counts.brief, tone: "waiting" },
+            { label: t("Locked"), value: counts.locked, tone: "done" },
+          ]}
+          right={zh ? `共 ${count(counts.all, locale)} 个脚本` : `${count(counts.all, locale)} scripts in all`}
+        />
 
         <div style={{ flexGrow: 1, display: "flex", minHeight: 0 }}>
           <div

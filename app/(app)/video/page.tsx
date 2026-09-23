@@ -27,6 +27,14 @@ export const metadata = { title: "视频剪辑 · Video Edit" };
  * The project is in the URL so a cut is a link somebody can send. Everything
  * else is derived: the bin, the timeline, the captions and the renders all
  * belong to whichever project that names.
+ *
+ * With no project named, the screen opens on its 项目 tab, which is the list.
+ * It used to fall through to whichever cut was edited last, so pressing Video
+ * in the rail dropped you into somebody else's timeline and the studio's other
+ * projects were a tab away — the wrong way round for a shop that has one going
+ * per client. The list is a tab rather than a screen of its own, so the tab bar
+ * is the same in both states; the props below are simply empty until a cut is
+ * named, and the editing tabs wait for one.
  */
 export default async function VideoPage({
   searchParams,
@@ -42,7 +50,9 @@ export default async function VideoPage({
     availablePictures(viewer),
     scriptsForPicker(viewer),
   ]);
-  const project = projects.find((p) => p.id === wanted) ?? projects[0] ?? null;
+  /* A link to a cut that has since been deleted, or that this person cannot
+     read, lands on the library rather than on an error. */
+  const project = (wanted ? projects.find((p) => p.id === wanted) : undefined) ?? null;
 
   const [clips, items, captions, graphics, exports, audio, transcribing, autoEditing] = project
     ? await Promise.all([
@@ -60,9 +70,10 @@ export default async function VideoPage({
   /*
    * The voices the studio can use. Read here rather than in the browser: the
    * key never leaves the server, and a list that is the same for everybody
-   * should not be fetched once per person who opens the tab.
+   * should not be fetched once per person who opens the tab. The library has
+   * no audio on it, so it does not pay for this at all.
    */
-  const voices = env.elevenlabs.configured ? await cachedVoices() : [];
+  const voices = project && env.elevenlabs.configured ? await cachedVoices() : [];
 
   return (
     <VideoScreen

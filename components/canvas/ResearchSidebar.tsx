@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useLocalPreference } from "@/lib/client/preference";
 import { useResizable } from "@/components/ui/Resizer";
+import { AddTopicButton } from "./AddTopicButton";
 
 /**
  * The Market Research sidebar, shared by every screen in the module.
@@ -78,6 +79,22 @@ export function ResearchSidebar({
         {zh ? "市场调研" : "Market Research"}
       </div>
 
+      {/*
+        * Adding a topic by hand, from any screen in the module.
+        *
+        * The client could not find where to do it — the only control was the
+        * phrase field on the Trends dashboard, which reads as a search box and
+        * files what it makes on the watchlist rather than in the backlog. This
+        * sits above the screen list, in the one column every Research screen
+        * draws, so the answer to "where do I add a topic" is the same wherever
+        * you happen to be standing.
+        */}
+      <AddTopicButton
+        zh={zh}
+        className="btn s"
+        style={{ width: "100%", justifyContent: "center", marginBottom: 14, background: "#fff" }}
+      />
+
       <div className="lbl" style={{ marginBottom: 5 }}>
         {zh ? "页面" : "Screens"}
       </div>
@@ -118,7 +135,7 @@ export function ResearchSidebar({
           cursor: "pointer",
           fontFamily: "inherit",
           letterSpacing: "inherit",
-          fontSize: 10.5,
+          fontSize: 11.5,
           fontWeight: 500,
           color: "#999999",
           height: 22,
@@ -126,7 +143,7 @@ export function ResearchSidebar({
       >
         <span>{zh ? "已连接的来源" : "Connected sources"}</span>
         <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6 }}>
-          <span style={{ fontSize: 10.5, color: live === sources.length ? "#278f5e" : "#999999" }}>
+          <span style={{ fontSize: 11.5, color: live === sources.length ? "#278f5e" : "#999999" }}>
             {live}/{sources.length}
           </span>
           <svg
@@ -185,7 +202,7 @@ export function ResearchSidebar({
           ))}
         </div>
       ) : (
-        <p style={{ fontSize: 11, color: "#c7c7c7", lineHeight: 1.5, padding: "0 9px", margin: 0 }}>
+        <p style={{ fontSize: 12.5, color: "#c7c7c7", lineHeight: 1.5, padding: "0 9px", margin: 0 }}>
           {degraded > 0
             ? zh
               ? `${degraded} 个来源连接不稳定`

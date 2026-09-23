@@ -131,28 +131,28 @@ const CSS = `
 [data-perf-screen] .tr:nth-of-type(5){animation-delay:.11s} [data-perf-screen] .tr:nth-of-type(6){animation-delay:.135s}
 [data-perf-screen] .tr:nth-of-type(7){animation-delay:.16s} [data-perf-screen] .tr:nth-of-type(8){animation-delay:.185s}
 
-[data-perf-screen] .lbl { font-size: 10.5px; font-weight: 500; color: #999999; padding: 0 9px; }
+[data-perf-screen] .lbl { font-size: 11.5px; font-weight: 500; color: #999999; padding: 0 9px; }
 [data-perf-screen] .bar { height: 48px; flex-shrink: 0; border-bottom: 1px solid #ededed; display: flex; align-items: center; gap: 10px; padding: 0 20px; }
-[data-perf-screen] .h1 { font-size: 14px; font-weight: 500; }
-[data-perf-screen] .mut { font-size: 12px; color: #999999; }
+[data-perf-screen] .h1 { font-size: 15px; font-weight: 500; }
+[data-perf-screen] .mut { font-size: 12.5px; color: #999999; }
 [data-perf-screen] .btn { height: 30px; padding: 0 12px; border-radius: 8px; display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; white-space: nowrap; }
 [data-perf-screen] .btn.p { background: #007be0; color: #fff; font-weight: 500; }
 [data-perf-screen] .btn.s { border: 1px solid #ededed; color: #525252; }
 [data-perf-screen] .btn svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-[data-perf-screen] .chip { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 11px; border: 1px solid #ededed; border-radius: 8px; font-size: 12px; color: #4a5763; white-space: nowrap; }
+[data-perf-screen] .chip { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 11px; border: 1px solid #ededed; border-radius: 8px; font-size: 12.5px; color: #4a5763; white-space: nowrap; }
 [data-perf-screen] .chip svg { width: 10px; height: 10px; stroke: #999999; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-[data-perf-screen] .bd { display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border-radius: 6px; font-size: 11px; font-weight: 500; white-space: nowrap; }
+[data-perf-screen] .bd { display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border-radius: 6px; font-size: 11.5px; font-weight: 500; white-space: nowrap; }
 [data-perf-screen] .gray { background: #f3f3f3; color: #525252 }
 [data-perf-screen] .stat { border: 1px solid #ededed; border-radius: 12px; padding: 13px 14px; background: #fff; min-width: 0; }
 /* Six of these share the row now, so the label is allowed two lines and the
    number shrinks with the column rather than pushing a tile wider than its
    share. */
-[data-perf-screen] .stat i { font-style: normal; display: block; font-size: 10.5px; font-weight: 500; color: #999999; line-height: 1.35; }
+[data-perf-screen] .stat i { font-style: normal; display: block; font-size: 11.5px; font-weight: 500; color: #999999; line-height: 1.35; }
 [data-perf-screen] .stat b { display: block; font-size: clamp(16px, 1.45vw, 22px); font-weight: 500; letter-spacing: -0.01em; margin-top: 6px; font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 [data-perf-screen] .t { width: 100%; }
 [data-perf-screen] .t .hd { height: 32px; border-bottom: 1px solid #ededed; display: grid; align-items: center; }
-[data-perf-screen] .t .hd > * { font-size: 10.5px; font-weight: 500; color: #7c7c7c; padding: 0 12px; }
+[data-perf-screen] .t .hd > * { font-size: 11.5px; font-weight: 500; color: #7c7c7c; padding: 0 12px; }
 [data-perf-screen] .tr { height: 46px; border-bottom: 1px solid #f3f3f3; display: grid; align-items: center; }
 [data-perf-screen] .tr > * { font-size: 12.5px; color: #383838; padding: 0 12px; min-width: 0; display: flex; align-items: center; }
 [data-perf-screen] .num { justify-content: flex-end; font-variant-numeric: tabular-nums; }
@@ -161,9 +161,9 @@ const CSS = `
 [data-perf-screen] .tf { display: flex; gap: 2px; padding: 2px; border-radius: 8px; background: #f3f3f3; }
 [data-perf-screen] .tf div { height: 24px; padding: 0 10px; border-radius: 6px; display: flex; align-items: center; font-size: 11.5px; color: #7c7c7c; font-weight: 500; }
 [data-perf-screen] .tf div.on { background: #fff; color: #171717; box-shadow: 0 1px 2px rgba(0,0,0,.1); }
-[data-perf-screen] .cap { font-size: 11px; color: #999999; }
+[data-perf-screen] .cap { font-size: 11.5px; color: #999999; }
 [data-perf-screen] .lwbox { position: relative; }
-[data-perf-screen] .lwload { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 11px; color: #c7c7c7; }
+[data-perf-screen] .lwload { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 11.5px; color: #c7c7c7; }
 [data-perf-screen] .sw { width: 9px; height: 9px; border-radius: 3px; flex-shrink: 0; }
 [data-perf-screen] .pkv { color: #171717; font-weight: 500; margin-left: 5px; }
 [data-perf-screen] .chip.pkon { border-color: var(--ac); color: #171717; font-weight: 500; }

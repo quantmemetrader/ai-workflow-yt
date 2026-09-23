@@ -48,6 +48,10 @@ export default async function ChannelPage({ params }: { params: Promise<{ slug: 
       topic={channel.topic}
       isPrivate={channel.isPrivate}
       canPost={channel.kind !== "announce" || viewer.isAdmin}
+      /* The composer's paperclip goes through /api/files/presign, which
+         refuses anybody without the Files module. Better not drawn than
+         drawn and refused. */
+      canAttach={viewer.modules.includes("files")}
       me={{ name: (zh && viewer.nameLocal) || viewer.name, avatarUrl: viewer.avatarUrl }}
       locale={viewer.locale ?? "zh-CN"}
       memberCount={members.length}
@@ -56,11 +60,17 @@ export default async function ChannelPage({ params }: { params: Promise<{ slug: 
         id: p.id,
         name: (zh && p.nameLocal) || p.name,
         avatarUrl: p.avatarUrl,
+        title: p.title,
       }))}
       messages={thread.messages.map((m) => ({
         id: m.id,
         authorName: (zh && m.authorNameLocal) || m.authorName || "—",
         authorAvatar: m.authorAvatar,
+        /* An AI employee's messages say so, and say which one. Without this
+           the studio's three agents read as three colleagues. */
+        isAgent: m.authorIsAgent,
+        roleLabel: m.authorTitle,
+        attachments: m.attachments,
         body: m.body,
         createdAt: m.createdAt.toISOString(),
       }))}

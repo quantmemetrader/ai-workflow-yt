@@ -2,6 +2,9 @@
 
 import * as React from "react";
 import { ResearchAgentPanel } from "./ResearchAgentPanel";
+import { PlatformMark, platformLabel } from "@/components/ui/PlatformMark";
+import { StatusStrip } from "@/components/ui/kit";
+import { useResizable } from "@/components/ui/Resizer";
 import type { InboxComment, InboxGroup } from "@/lib/social/service";
 
 /**
@@ -131,19 +134,19 @@ const CSS = `
 [data-inbox-screen] img { display: block; }
 [data-inbox-screen] p { margin: 0; }
 
-[data-inbox-screen] .lbl { font-size: 10.5px; font-weight: 500; color: #999999; padding: 0 9px; }
+[data-inbox-screen] .lbl { font-size: 11.5px; font-weight: 500; color: #999999; padding: 0 9px; }
 
 /* generic */
 [data-inbox-screen] .bar { height: 48px; flex-shrink: 0; border-bottom: 1px solid #ededed; display: flex; align-items: center; gap: 10px; padding: 0 20px; }
-[data-inbox-screen] .h1 { font-size: 14px; font-weight: 500; }
-[data-inbox-screen] .mut { font-size: 12px; color: #999999; }
+[data-inbox-screen] .h1 { font-size: 15px; font-weight: 500; }
+[data-inbox-screen] .mut { font-size: 12.5px; color: #999999; }
 [data-inbox-screen] .btn { height: 30px; padding: 0 12px; border-radius: 8px; display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; white-space: nowrap; }
 [data-inbox-screen] .btn.p { background: #007be0; color: #fff; font-weight: 500; }
 [data-inbox-screen] .btn.s { border: 1px solid #ededed; color: #525252; }
 [data-inbox-screen] .btn svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-[data-inbox-screen] .chip { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 11px; border: 1px solid #ededed; border-radius: 8px; font-size: 12px; color: #4a5763; white-space: nowrap; }
+[data-inbox-screen] .chip { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 11px; border: 1px solid #ededed; border-radius: 8px; font-size: 12.5px; color: #4a5763; white-space: nowrap; }
 [data-inbox-screen] .chip svg { width: 10px; height: 10px; stroke: #999999; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-[data-inbox-screen] .bd { display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border-radius: 6px; font-size: 11px; font-weight: 500; white-space: nowrap; }
+[data-inbox-screen] .bd { display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border-radius: 6px; font-size: 11.5px; font-weight: 500; white-space: nowrap; }
 [data-inbox-screen] .gray { background: #f3f3f3; color: #525252 }
 [data-inbox-screen] .blue { background: #e6f4ff; color: #007be0 }
 [data-inbox-screen] .grn  { background: #e4faeb; color: #278f5e }
@@ -154,7 +157,7 @@ const CSS = `
 [data-inbox-screen] .av { width: 20px; height: 20px; border-radius: 10px; object-fit: cover; flex-shrink: 0; }
 [data-inbox-screen] .el { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
 [data-inbox-screen] .focus { box-shadow: 0 0 0 3px #EFF6FF; }
-[data-inbox-screen] .cap { font-size: 11px; color: #999999; }
+[data-inbox-screen] .cap { font-size: 11.5px; color: #999999; }
 
 /* a list row (the artboard's selected row, and the rest) */
 [data-inbox-screen] .cmt { display: flex; gap: 10px; padding: 9px 14px; cursor: pointer; }
@@ -175,6 +178,13 @@ const CSS = `
 /* the draft box: the artboard drew its focus ring permanently, because it had
    nothing to focus */
 [data-inbox-screen] .dr:focus { box-shadow: 0 0 0 3px #EFF6FF; }
+
+/* the segmented control, copied from the Trends and Backlog artboards rather
+   than invented: this one had nothing to switch, so its <style> never carried
+   these rules, and grouping the list needs exactly the control they draw */
+[data-inbox-screen] .tf { display: flex; gap: 2px; padding: 2px; border-radius: 8px; background: #f3f3f3; }
+[data-inbox-screen] .tf button { height: 24px; padding: 0 10px; border: 0; border-radius: 6px; background: transparent; display: flex; align-items: center; font-size: 11.5px; font-weight: 500; font-family: inherit; letter-spacing: inherit; color: #7c7c7c; cursor: pointer; }
+[data-inbox-screen] .tf button.on { background: #fff; color: #171717; box-shadow: 0 1px 2px rgba(0,0,0,.1); }
 `;
 
 /* ---------------------------------------------------------------- language */
@@ -188,6 +198,13 @@ const ZH: Record<string, string> = {
   "Search comments and authors": "搜索评论与作者",
   Sentiment: "情绪",
   Language: "语言",
+  /* A publishing destination is 渠道; a chat or YouTube channel is 频道. These
+     comments come from the studio's own accounts on the platforms, so 渠道. */
+  Platform: "渠道",
+  "Group by": "分组",
+  "By video": "按视频",
+  "By platform": "按渠道",
+  "Comments by platform": "各渠道评论",
   All: "全部",
   Flagged: "已标记",
   "Business leads": "商业线索",
@@ -210,6 +227,9 @@ const ZH: Record<string, string> = {
   Save: "保存",
   Regenerate: "重新生成",
   "Draft a reply": "起草回复",
+  // Shown above a draft the platform refused; it had no zh-CN string, so a
+  // Chinese-first screen printed the one line it most needed read in English.
+  "The last attempt was refused": "上次发送被拒绝",
   "Nothing sends without approval": "未经批准不会发送",
   "machine translation": "机器翻译",
   Working: "处理中",
@@ -228,6 +248,11 @@ const ZH: Record<string, string> = {
     "在“发布”里连接一个频道，视频下的评论就会按视频分组出现在这里，并为每条评论准备一份回复草稿。",
   "no title": "无标题",
   "Ask about these comments…": "询问这些评论…",
+  // The status strip above the list.
+  "Waiting for a reply": "待回复",
+  "Drafts to approve": "待批准草稿",
+  "No draft yet": "尚无草稿",
+  Unclassified: "未分类",
   "Comment data is personal data, HK PDPO applies": "评论数据属于个人资料，适用香港《个人资料（私隐）条例》",
 };
 
@@ -278,22 +303,10 @@ function clock(at: Date, locale: string): string {
   return new Intl.DateTimeFormat(locale, { hour: "2-digit", minute: "2-digit" }).format(at);
 }
 
-/** The platforms write their own names; anything else keeps the stored key. */
-const PLATFORM: Record<string, string> = {
-  youtube: "YouTube",
-  instagram: "Instagram",
-  tiktok: "TikTok",
-  facebook: "Facebook",
-  linkedin: "LinkedIn",
-  wechat: "WeChat",
-  weibo: "Weibo",
-  x: "X",
-  twitter: "X",
-};
-
-function platformLabel(key: string): string {
-  return PLATFORM[key.toLowerCase()] ?? key;
-}
+/* The platform's own name and its own mark come from components/ui/PlatformMark,
+   which the channel board already uses. This file kept a second, shorter list
+   of nine names, so a comment from a channel the board drew a Bilibili logo for
+   read here as the bare string "bilibili". */
 
 /** A BCP-47 tag as a person would read it; unknown tags keep the tag. */
 function languageLabel(tag: string): string {
@@ -414,6 +427,24 @@ export function InboxScreen(props: InboxScreenProps): React.JSX.Element {
 
   /** The artboard's search box, which searched nothing. */
   const [query, setQuery] = React.useState("");
+  /*
+   * Which platform, and how the list is stacked.
+   *
+   * The client: *"for analysis -> comment part, will need to differentiate by
+   * platform"*. The rows already carry the platform — `channel_posts.platform`,
+   * written at ingest and selected into `InboxComment.platform` — so nothing
+   * new is stored or fetched; the inbox simply never showed it outside one word
+   * in the detail caption.
+   *
+   * Local state rather than the URL, unlike sentiment and language. Those two
+   * are the server's filters: they narrow the query before it runs. This one
+   * narrows rows already in hand, exactly as the search box above does, and
+   * putting it in the URL would mean a round trip and a prop the page does not
+   * pass. The consequence is the same as the search box's: it sifts the 300
+   * rows the query returned, not the whole table.
+   */
+  const [platform, setPlatform] = React.useState("");
+  const [groupBy, setGroupBy] = React.useState<"post" | "platform">("post");
   /** The draft as it stands in the textarea, before it is saved or sent. */
   const [edit, setEdit] = React.useState<{ draftId: string; body: string } | null>(null);
   const draftRef = React.useRef<HTMLTextAreaElement | null>(null);
@@ -434,16 +465,64 @@ export function InboxScreen(props: InboxScreenProps): React.JSX.Element {
 
   const q = query.trim().toLowerCase();
   const shown = React.useMemo<InboxGroup[]>(() => {
-    if (q === "") return groups;
+    if (q === "" && platform === "") return groups;
     const hit = (c: InboxComment): boolean =>
-      c.body.toLowerCase().includes(q) ||
-      (c.translation ?? "").toLowerCase().includes(q) ||
-      (c.authorName ?? "").toLowerCase().includes(q) ||
-      (c.authorHandle ?? "").toLowerCase().includes(q);
+      (platform === "" || c.platform === platform) &&
+      (q === "" ||
+        c.body.toLowerCase().includes(q) ||
+        (c.translation ?? "").toLowerCase().includes(q) ||
+        (c.authorName ?? "").toLowerCase().includes(q) ||
+        (c.authorHandle ?? "").toLowerCase().includes(q));
     return groups
       .map((g) => ({ ...g, comments: g.comments.filter(hit) }))
       .filter((g) => g.comments.length > 0);
-  }, [groups, q]);
+  }, [groups, q, platform]);
+
+  /**
+   * How many comments came from each platform, commonest first.
+   *
+   * Counted over `groups` — the rows this inbox is holding — rather than taken
+   * from `summary`, which is a tenant-wide count the page computes in SQL and
+   * has no platform breakdown in. So this agrees with the list beside it, which
+   * is what a person reading the two together needs, and it moves when the
+   * sentiment or language filter does.
+   */
+  const platforms = React.useMemo<[string, number][]>(() => {
+    const n = new Map<string, number>();
+    for (const g of groups) for (const c of g.comments) n.set(c.platform, (n.get(c.platform) ?? 0) + 1);
+    return [...n.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  }, [groups]);
+
+  /**
+   * The list, stacked the way the toolbar asks for.
+   *
+   * By video is the artboard's own grouping and stays the default — a reply
+   * reads differently under a different video. By platform is the other
+   * question the same rows answer: what is TikTok saying today. One shape for
+   * both, so the row markup below is written once.
+   */
+  const sections = React.useMemo<{ key: string; platform: string; title: string | null; thumbnailUrl: string | null; comments: InboxComment[] }[]>(() => {
+    if (groupBy === "post") {
+      return shown.map((g) => ({
+        key: g.postId,
+        platform: g.platform,
+        title: g.title,
+        thumbnailUrl: g.thumbnailUrl,
+        comments: g.comments,
+      }));
+    }
+    const byPlatform = new Map<string, InboxComment[]>();
+    for (const g of shown) {
+      for (const c of g.comments) {
+        const bucket = byPlatform.get(c.platform);
+        if (bucket === undefined) byPlatform.set(c.platform, [c]);
+        else bucket.push(c);
+      }
+    }
+    return [...byPlatform.entries()]
+      .sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0]))
+      .map(([key, comments]) => ({ key, platform: key, title: null, thumbnailUrl: null, comments }));
+  }, [shown, groupBy]);
 
   /** The open comment is looked up across every group, not just the searched
    * ones, so typing in the search box never empties the detail pane. */
@@ -501,6 +580,34 @@ export function InboxScreen(props: InboxScreenProps): React.JSX.Element {
       : zh
         ? `上次检查 ${clock(syncedAt, locale)}`
         : `Last checked ${clock(syncedAt, locale)}`;
+
+  /**
+   * The inbox as a state rather than as a list.
+   *
+   * Every one of these was already on the screen — `summary.open` in the agent
+   * note, the drafts as a block of text inside each row, the flagged ones as
+   * an amber pill you had to scroll to find. A person opening this screen
+   * wants to know whether anything is waiting on *them* before they start
+   * reading, and "N drafts to approve" is that answer.
+   */
+  /* The artboard's 330px comment list. A Cantonese comment and its English
+   * translation both live in this column, so the width somebody wants depends
+   * on what their audience writes in. */
+  const { width: listWidth, handle: listHandle } = useResizable("inbox-list", {
+    min: 240,
+    max: 560,
+    initial: 330,
+    edge: "right",
+  });
+
+  const waiting = React.useMemo(() => {
+    const all = groups.flatMap((g) => g.comments);
+    return {
+      drafts: all.filter((c) => c.draft !== null).length,
+      undrafted: all.filter((c) => c.draft === null).length,
+      flagged: all.filter((c) => c.flagged).length,
+    };
+  }, [groups]);
 
   /* ------------------------------------------------------------ the header */
 
@@ -600,8 +707,14 @@ export function InboxScreen(props: InboxScreenProps): React.JSX.Element {
           : `${count(summary.unclassified, locale)} have not been read yet.`,
       );
     }
+    // Where they came from, once there is more than one answer. Saying
+    // "YouTube 42" when YouTube is the only channel connected is noise.
+    if (platforms.length > 1) {
+      const split = platforms.map(([k, n]) => `${platformLabel(k)} ${count(n, locale)}`).join(zh ? "、" : ", ");
+      parts.push(zh ? `按渠道：${split}。` : `By platform: ${split}.`);
+    }
     return parts.join(zh ? "" : " ");
-  }, [groups, summary.unclassified, zh, locale]);
+  }, [groups, summary.unclassified, platforms, zh, locale]);
 
   if (channelCount === 0) {
     return (
@@ -643,6 +756,34 @@ export function InboxScreen(props: InboxScreenProps): React.JSX.Element {
         borderBottom: "1px solid #ededed",
       }}
     >
+      {/* Platform first, because it is the coarsest cut and the one the studio
+          asked for: a reply to a YouTube comment and a reply to a TikTok
+          comment are written by different people in a different register. */}
+      <div className={`chip${platform === "" ? "" : " pkon"}`}>
+        {platform === "" ? null : <PlatformMark platform={platform} size={12} />}
+        {t("Platform")}:
+        <select
+          aria-label={t("Platform")}
+          value={platform}
+          onChange={(e) => setPlatform(e.target.value)}
+          style={PICKER}
+        >
+          <option value="">{t("All")}</option>
+          {/* A filter that is on stays selectable even once nothing carries it,
+              otherwise the screen cannot be got out of its own filter. */}
+          {platform !== "" && !platforms.some(([k]) => k === platform) ? (
+            <option value={platform}>{platformLabel(platform)}</option>
+          ) : null}
+          {platforms.map(([key, n]) => (
+            <option key={key} value={key}>
+              {platformLabel(key)} ({count(n, locale)})
+            </option>
+          ))}
+        </select>
+        <svg viewBox="0 0 24 24">
+          <path d="m6.5 9.5 5.5 5.5 5.5-5.5" />
+        </svg>
+      </div>
       <div className={`chip${currentSentiment === "" ? "" : " pkon"}`}>
         {t("Sentiment")}:
         <select
@@ -742,7 +883,9 @@ export function InboxScreen(props: InboxScreenProps): React.JSX.Element {
       style={{
         flexShrink: 0,
         display: "grid",
-        gridTemplateColumns: "minmax(0,1fr) 250px",
+        // The artboard's two columns, plus the one the studio asked for. The
+        // sentiment chart keeps whatever is left.
+        gridTemplateColumns: "minmax(0,1fr) 170px 230px",
         gap: 18,
         padding: "14px 20px",
         borderBottom: "1px solid #ededed",
@@ -752,8 +895,11 @@ export function InboxScreen(props: InboxScreenProps): React.JSX.Element {
         <div style={{ display: "flex", alignItems: "baseline", gap: 9, marginBottom: 10 }}>
           <span style={{ fontSize: 13.5, fontWeight: 500 }}>{t("Sentiment distribution")}</span>
           <span className="cap">
+            {/* 渠道, not 频道: these are the studio's publishing destinations,
+                not chat or YouTube channels. The agent panel below already
+                said 渠道 and this line said 频道 for the same number. */}
             {zh
-              ? `${count(summary.open, locale)} 条新评论 · ${count(channelCount, locale)} 个频道`
+              ? `${count(summary.open, locale)} 条新评论 · ${count(channelCount, locale)} 个渠道`
               : `${count(summary.open, locale)} new comments · ${count(channelCount, locale)} channels`}
           </span>
         </div>
@@ -766,7 +912,7 @@ export function InboxScreen(props: InboxScreenProps): React.JSX.Element {
                 key={k}
                 style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 5 }}
               >
-                <span style={{ fontSize: 11, fontVariantNumeric: "tabular-nums", color: "#525252" }}>
+                <span style={{ fontSize: 11.5, fontVariantNumeric: "tabular-nums", color: "#525252" }}>
                   {count(n, locale)}
                 </span>
                 <div
@@ -778,11 +924,63 @@ export function InboxScreen(props: InboxScreenProps): React.JSX.Element {
         </div>
         <div style={{ display: "flex", gap: 8, marginTop: 5 }}>
           {SENTIMENTS.map((k) => (
-            <span key={k} style={{ flex: 1, textAlign: "center", fontSize: 10.5, color: "#999999" }}>
+            <span key={k} style={{ flex: 1, textAlign: "center", fontSize: 11.5, color: "#999999" }}>
               {sentimentLabel(k)}
             </span>
           ))}
         </div>
+      </div>
+      {/*
+        * Comments by platform.
+        *
+        * The analysis band had sentiment and language and nothing that said
+        * where any of it came from, which is the gap the client named. Each row
+        * is also the filter: reading "TikTok 14" and wanting to see those
+        * fourteen is the next thought, and it should not need the picker above.
+        */}
+      <div style={{ borderLeft: "1px solid #ededed", paddingLeft: 18, minWidth: 0 }}>
+        <div className="lbl" style={{ padding: 0, marginBottom: 10 }}>
+          {t("Comments by platform")}
+        </div>
+        {platforms.length === 0 ? (
+          <div className="cap">{zh ? "还没有评论。" : "No comments yet."}</div>
+        ) : null}
+        {platforms.map(([key, n], i) => {
+          const on = platform === key;
+          return (
+            <button
+              type="button"
+              className="kv"
+              key={key}
+              aria-pressed={on}
+              title={on ? (zh ? "取消筛选" : "Clear the filter") : (zh ? `只看 ${platformLabel(key)}` : `Only ${platformLabel(key)}`)}
+              onClick={() => setPlatform(on ? "" : key)}
+              style={{
+                width: "calc(100% + 12px)",
+                margin: "0 -6px",
+                padding: "5px 6px",
+                alignItems: "center",
+                border: "none",
+                borderBottom: i === platforms.length - 1 ? "none" : "1px solid #f3f3f3",
+                borderRadius: 6,
+                background: on ? "#f5faff" : "transparent",
+                // `.kv`'s own metrics, spelled out: a <button> does not inherit
+                // the screen's face, and the shorthand would undo the class.
+                fontFamily: "inherit",
+                fontSize: 12.5,
+                letterSpacing: "inherit",
+                textAlign: "left",
+                cursor: "pointer",
+              }}
+            >
+              <span style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0 }}>
+                <PlatformMark platform={key} size={13} />
+                <span className="el">{platformLabel(key)}</span>
+              </span>
+              <span style={{ fontVariantNumeric: "tabular-nums" }}>{count(n, locale)}</span>
+            </button>
+          );
+        })}
       </div>
       <div style={{ borderLeft: "1px solid #ededed", paddingLeft: 18 }}>
         <div className="lbl" style={{ padding: 0, marginBottom: 10 }}>
@@ -820,23 +1018,75 @@ export function InboxScreen(props: InboxScreenProps): React.JSX.Element {
   const list = (
     <div
       style={{
-        width: 330,
+        width: listWidth,
         flexShrink: 0,
+        position: "relative",
         borderRight: "1px solid #ededed",
-        overflowY: "auto",
-        padding: "6px 0",
+        display: "flex",
+        flexDirection: "column",
+        minHeight: 0,
       }}
     >
-      {shown.map((g) => (
-        <div key={g.postId}>
+      {listHandle}
+      {/*
+        * How the list is stacked, above the list rather than in the filter row.
+        *
+        * Filtering to one platform answers "what is TikTok saying"; grouping by
+        * platform answers "how do the two compare" without throwing the rest of
+        * the inbox away. Both were asked for, so both are here — but the filter
+        * row is already six controls wide at 1440, and a seventh pushed the
+        * bulk buttons off the end of it. This one belongs over the thing it
+        * rearranges anyway.
+        */}
+      <div
+        style={{
+          flexShrink: 0,
+          height: 34,
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          padding: "0 14px",
+          borderBottom: "1px solid #f3f3f3",
+        }}
+      >
+        <span className="lbl" style={{ padding: 0 }}>
+          {t("Group by")}
+        </span>
+        <div className="tf" role="group" aria-label={t("Group by")}>
+          <button
+            type="button"
+            className={groupBy === "post" ? "on" : ""}
+            aria-pressed={groupBy === "post"}
+            onClick={() => setGroupBy("post")}
+          >
+            {t("By video")}
+          </button>
+          <button
+            type="button"
+            className={groupBy === "platform" ? "on" : ""}
+            aria-pressed={groupBy === "platform"}
+            onClick={() => setGroupBy("platform")}
+          >
+            {t("By platform")}
+          </button>
+        </div>
+      </div>
+      <div style={{ flexGrow: 1, minHeight: 0, overflowY: "auto", padding: "6px 0" }}>
+      {sections.map((g) => (
+        <div key={g.key}>
+          {/* The group heading. By video it is the artboard's thumbnail and
+              title, with the platform's mark in front of it — the artboard left
+              that out, so a list of eight videos never said which channel any
+              of them went out on. By platform the platform *is* the heading. */}
           <div style={{ display: "flex", alignItems: "center", gap: 9, padding: "9px 14px 6px" }}>
-            <Thumb url={g.thumbnailUrl} />
+            {groupBy === "post" ? <Thumb url={g.thumbnailUrl} /> : null}
+            <PlatformMark platform={g.platform} size={groupBy === "post" ? 12 : 14} />
             <span
               className="el"
-              title={g.title ?? undefined}
+              title={(groupBy === "post" ? g.title : platformLabel(g.platform)) ?? undefined}
               style={{ fontSize: 11.5, fontWeight: 500, color: "#525252", minWidth: 0 }}
             >
-              {g.title ?? t("no title")}
+              {groupBy === "post" ? (g.title ?? t("no title")) : platformLabel(g.platform)}
             </span>
             <span className="cap" style={{ marginLeft: "auto" }}>
               {count(g.comments.length, locale)}
@@ -886,6 +1136,11 @@ export function InboxScreen(props: InboxScreenProps): React.JSX.Element {
                     <span className="el" style={{ fontSize: 12.5, fontWeight: on ? 600 : 500, minWidth: 0 }}>
                       {name}
                     </span>
+                    {/* On the row as well as on the heading: the heading
+                        scrolls away, and a comment a person is deciding how to
+                        answer should say where it was said without being
+                        opened. */}
+                    <PlatformMark platform={c.platform} size={11} />
                     <span className="cap" style={{ flexShrink: 0 }}>
                       {shortAgo(c.postedAt, zh)}
                     </span>
@@ -913,11 +1168,12 @@ export function InboxScreen(props: InboxScreenProps): React.JSX.Element {
           })}
         </div>
       ))}
-      {shown.length === 0 ? (
+      {sections.length === 0 ? (
         <div className="cap" style={{ padding: "28px 16px", textAlign: "center" }}>
           {t("Nothing matches these filters")}
         </div>
       ) : null}
+      </div>
     </div>
   );
 
@@ -1041,7 +1297,7 @@ export function InboxScreen(props: InboxScreenProps): React.JSX.Element {
                   borderRadius: 9,
                   background: "#fff7f7",
                   border: "1px solid #ffd6d6",
-                  fontSize: 11.5,
+                  fontSize: 12.5,
                   lineHeight: 1.55,
                   color: "#8a2b2b",
                 }}
@@ -1175,6 +1431,16 @@ export function InboxScreen(props: InboxScreenProps): React.JSX.Element {
         style={{ ...frameStyle, flexGrow: 1, display: "flex", flexDirection: "column", minWidth: 0, minHeight: 0 }}
       >
         {header}
+        <StatusStrip
+          items={[
+            { label: t("Drafts to approve"), value: waiting.drafts, tone: "you" },
+            { label: t("No draft yet"), value: waiting.undrafted, tone: "waiting" },
+            { label: t("Flagged"), value: waiting.flagged, tone: "waiting" },
+            { label: t("Waiting for a reply"), value: summary.open, tone: "quiet" },
+            { label: t("Unclassified"), value: summary.unclassified, tone: "quiet" },
+          ]}
+          right={syncLine}
+        />
         <div style={{ flexGrow: 1, display: "flex", minHeight: 0 }}>
           <div style={{ flexGrow: 1, minWidth: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
             {filterRow}

@@ -18,7 +18,11 @@ export async function GET(request: Request) {
   if (!viewer.modules.includes("chat")) return new Response("Not found", { status: 404 });
 
   const slug = new URL(request.url).searchParams.get("slug");
-  if (!slug || slug.length > 60) return new Response("Bad request", { status: 400 });
+  /* 200, not 60. A direct message's slug is `dm-` plus both user ids — 64
+     characters — so every poll from a DM was a 400 and no DM ever updated
+     itself; the same off-by-a-format that used to swallow DM sends. The limit
+     is a guard against an absurd string, not a format. */
+  if (!slug || slug.length > 200) return new Response("Bad request", { status: 400 });
 
   const { rows } = await db.execute<{ id: string | null }>(sql`
     select m.id

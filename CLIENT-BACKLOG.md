@@ -152,6 +152,10 @@ Reference he liked: **https://ai-agent-tau-two.vercel.app/**
 - **Translations / wording.**
   > "they complaint a bit on words and stuff" → confirmed to mean translations.
   `lib/i18n.ts` holds the map.
+- **`social.syncDailyViews` — RESOLVED 2026-09-23 by the move.** All 25 failures
+  are dated 2026-09-20 or earlier with `did not finish within 600s`; they were
+  timeouts on the overloaded old box (load average ~81). Zero failures since the
+  migration, 16 successes. Nothing to fix.
 - **`social.syncDailyViews` times out.** *Logged 2026-09-23, not fixed.* 25
   failures vs 13 successes in `jobs`; 24 of the 25 are `did not finish within
   600s` (the worker's default `JOB_TIMEOUT_MS`), the last on 2026-09-20, and

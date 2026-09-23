@@ -74,7 +74,7 @@ export function ModuleSidebar<T extends string>({
 
       <div
         style={{
-          fontSize: 10.5,
+          fontSize: 11.5,
           fontWeight: 500,
           color: "#999999",
           padding: "0 9px",
@@ -128,7 +128,7 @@ export function ModuleSidebar<T extends string>({
                 <i
                   style={{
                     fontStyle: "normal",
-                    fontSize: 10,
+                    fontSize: 11.5,
                     fontWeight: 600,
                     color: "#ffffff",
                     background: "#e03636",
@@ -139,7 +139,7 @@ export function ModuleSidebar<T extends string>({
                   {s.alert}
                 </i>
               ) : s.badge ? (
-                <b style={{ fontSize: 10.5, fontWeight: 500, color: "#999999" }}>{s.badge}</b>
+                <b style={{ fontSize: 11.5, fontWeight: 500, color: "#999999" }}>{s.badge}</b>
               ) : null}
             </button>
           );

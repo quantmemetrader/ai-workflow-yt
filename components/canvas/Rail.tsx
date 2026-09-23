@@ -16,17 +16,7 @@ import type { Module } from "@/lib/db/schema";
  *
  * Keep in step with design/canvas/shell.mjs `rail()`.
  */
-export function Rail({
-  modules,
-  locale,
-  avatarUrl,
-  name,
-}: {
-  modules: Module[];
-  locale: string;
-  avatarUrl: string | null;
-  name: string;
-}) {
+export function Rail({ modules, locale }: { modules: Module[]; locale: string }) {
   const pathname = usePathname();
   const zh = locale.startsWith("zh");
   const [tip, setTip] = useState<{ text: string; top: number } | null>(null);
@@ -112,34 +102,10 @@ export function Rail({
       {/* Your own history with the assistant, from any screen. */}
       <HistoryButton locale={locale} />
 
-      <Link href="/settings" aria-label={name} onMouseEnter={(e) => show(e, name)} onMouseLeave={hide}>
-        {avatarUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            className="av"
-            src={avatarUrl}
-            alt=""
-            style={{ width: 26, height: 26, borderRadius: 13, objectFit: "cover" }}
-          />
-        ) : (
-          <div
-            style={{
-              width: 26,
-              height: 26,
-              borderRadius: 13,
-              background: "#e2e2e2",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontSize: 9,
-              fontWeight: 600,
-              color: "#525252",
-            }}
-          >
-            {initials(name)}
-          </div>
-        )}
-      </Link>
+      {/* The signed-in person used to be a bare avatar at the foot of this
+        * column, which said who you were and never what you were. Both now
+        * live in the top bar (components/shell/TopBar.tsx), named and with the
+        * role beside them; two avatars on one screen was one too many. */}
 
       {tip && (
         <span
@@ -167,13 +133,4 @@ export function Rail({
       )}
     </nav>
   );
-}
-
-function initials(name: string): string {
-  return name
-    .split(/\s+/)
-    .map((p) => p[0])
-    .slice(0, 2)
-    .join("")
-    .toUpperCase();
 }

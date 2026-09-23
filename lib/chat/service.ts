@@ -16,7 +16,7 @@ import {
 } from "@/lib/db/schema";
 import type { Viewer } from "@/lib/auth/dal";
 import { audit } from "@/lib/audit";
-import { relationOn } from "@/lib/authz/rebac";
+import { canReadFiles, relationOn } from "@/lib/authz/rebac";
 import { newId } from "@/lib/ids";
 
 /** Channels this person is in, plus the public ones they could join. A private
@@ -119,6 +119,10 @@ export async function channelMessages(channelId: string, limit = 80) {
       authorName: users.name,
       authorNameLocal: users.nameLocal,
       authorAvatar: users.avatarUrl,
+      /** So the message list can say "this is an AI employee" rather than
+       * leaving it to be mistaken for a colleague. */
+      authorIsAgent: users.isAgent,
+      authorTitle: users.title,
     })
     .from(chatMessages)
     .leftJoin(users, eq(users.id, chatMessages.authorId))
@@ -136,9 +140,16 @@ export async function postMessage(
   /** Machine-readable context — an agent's mentions and hand-off ids — kept
    * beside the text rather than parsed back out of it (`lib/agents`). */
   meta?: Record<string, unknown>,
+  /** File ids already uploaded and confirmed. Stored as ids, never as URLs:
+   * what a reader may open is decided when the message is drawn, for that
+   * reader, not when it was sent. */
+  attachments?: string[],
 ) {
   const text = body.trim();
-  if (!text) return null;
+  const files = attachments?.length ? [...new Set(attachments)].slice(0, 10) : [];
+  // A message with a file on it and nothing typed is a perfectly ordinary
+  // thing to send; an empty one with nothing attached is not.
+  if (!text && !files.length) return null;
 
   const [channel] = await db.select().from(chatChannels).where(eq(chatChannels.id, channelId)).limit(1);
   if (!channel || channel.tenantId !== viewer.tenantId) throw new Error("Channel not found");
@@ -160,7 +171,9 @@ export async function postMessage(
   }
 
   const id = newId("msg");
-  await db.insert(chatMessages).values({ id, channelId, authorId: viewer.id, body: text, meta: meta ?? {} });
+  await db
+    .insert(chatMessages)
+    .values({ id, channelId, authorId: viewer.id, body: text, meta: meta ?? {}, attachments: files });
 
   // The channel's clock and the sender's own read mark touch different rows and
   // neither gates the other. Sent together they cost one crossing of the planet
@@ -278,6 +291,8 @@ export const listPeople = cache(async function listPeople(viewer: Viewer) {
       name: users.name,
       nameLocal: users.nameLocal,
       avatarUrl: users.avatarUrl,
+      /** The role line under a name in the composer's @-picker. */
+      title: users.title,
       role: users.role,
       lastActiveAt: users.lastActiveAt,
     })
@@ -311,6 +326,7 @@ export const listPeople = cache(async function listPeople(viewer: Viewer) {
         name: r.name,
         nameLocal: r.nameLocal,
         avatarUrl: r.avatarUrl,
+        title: r.title,
         presence,
         isGuest: r.role === "guest",
         unread: unreadBy.get(r.id) ?? 0,
@@ -405,6 +421,9 @@ export async function channelThread(viewer: Viewer, slug: string, limit = 80) {
     author_name: string | null;
     author_name_local: string | null;
     author_avatar: string | null;
+    author_is_agent: boolean | null;
+    author_title: string | null;
+    attachments: unknown;
   }>(sql`
     with ch as (
       select c.id, c.name, c.topic, c.is_private, c.kind
@@ -415,9 +434,13 @@ export async function channelThread(viewer: Viewer, slug: string, limit = 80) {
                where m.channel_id = c.id and m.user_id = ${viewer.id}))
        limit 1
     )
-    select ch.id as channel_id, ch.name as channel_name, ch.topic, ch.is_private,
-           m.id as message_id, m.body, m.created_at, m.author_id,
-           u.name as author_name, u.name_local as author_name_local, u.avatar_url as author_avatar
+    /* ch.kind was in the CTE and missing from this list, so every caller read
+       it as undefined -- which is why the announcements channel drew a
+       composer for everybody. */
+    select ch.id as channel_id, ch.name as channel_name, ch.topic, ch.is_private, ch.kind,
+           m.id as message_id, m.body, m.created_at, m.author_id, m.attachments,
+           u.name as author_name, u.name_local as author_name_local, u.avatar_url as author_avatar,
+           u.is_agent as author_is_agent, u.title as author_title
       from ch
       left join lateral (
         select * from ${chatMessages} msg
@@ -432,6 +455,17 @@ export async function channelThread(viewer: Viewer, slug: string, limit = 80) {
   if (!rows.length) return null;
 
   const first = rows[0];
+  const withMessages = rows.filter((r) => r.message_id);
+
+  // One lookup for every file attached anywhere in the thread, checked against
+  // *this* reader. A file shared with the channel yesterday and unshared today
+  // drops out here, which is the correct behaviour — the poster's access is
+  // not the reader's.
+  const attachments = await attachmentsFor(
+    viewer,
+    withMessages.flatMap((r) => toIds(r.attachments)),
+  );
+
   return {
     channel: {
       id: first.channel_id,
@@ -440,18 +474,59 @@ export async function channelThread(viewer: Viewer, slug: string, limit = 80) {
       isPrivate: first.is_private,
       kind: first.kind,
     },
-    messages: rows
-      .filter((r) => r.message_id)
-      .map((r) => ({
-        id: r.message_id!,
-        body: r.body ?? "",
-        authorId: r.author_id,
-        authorName: r.author_name,
-        authorNameLocal: r.author_name_local,
-        authorAvatar: r.author_avatar,
-        createdAt: toDate(r.created_at) ?? new Date(),
-      })),
+    messages: withMessages.map((r) => ({
+      id: r.message_id!,
+      body: r.body ?? "",
+      authorId: r.author_id,
+      authorName: r.author_name,
+      authorNameLocal: r.author_name_local,
+      authorAvatar: r.author_avatar,
+      authorIsAgent: r.author_is_agent === true,
+      authorTitle: r.author_title,
+      attachments: toIds(r.attachments).flatMap((id) => attachments.get(id) ?? []),
+      createdAt: toDate(r.created_at) ?? new Date(),
+    })),
   };
+}
+
+/** A jsonb column that should hold file ids, treated as if it might not. */
+function toIds(raw: unknown): string[] {
+  return Array.isArray(raw) ? raw.filter((v): v is string => typeof v === "string" && v.length <= 64) : [];
+}
+
+export type Attachment = { id: string; name: string; kind: string; mime: string | null; sizeBytes: number | null };
+
+/**
+ * The files behind a message's attachment ids, for one reader.
+ *
+ * The ids on a message are a claim, not a grant: `canReadFiles` is what
+ * decides, and it is asked every time the thread is drawn. An id the reader
+ * may not open simply is not in the answer, so the message renders with one
+ * fewer chip rather than a broken link or a denial.
+ */
+export async function attachmentsFor(viewer: Viewer, fileIds: string[]): Promise<Map<string, Attachment>> {
+  const ids = [...new Set(fileIds)].slice(0, 200);
+  if (!ids.length) return new Map();
+
+  const rows = await db
+    .select({
+      id: files.id,
+      name: files.name,
+      kind: files.kind,
+      mime: files.mime,
+      sizeBytes: files.sizeBytes,
+    })
+    .from(files)
+    .where(
+      and(
+        inArray(files.id, ids),
+        eq(files.tenantId, viewer.tenantId),
+        isNull(files.deletedAt),
+        canReadFiles(viewer),
+      ),
+    );
+
+  return new Map(rows.map((r) => [r.id, r]));
 }
 
 /**

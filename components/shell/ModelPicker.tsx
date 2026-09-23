@@ -102,7 +102,7 @@ export function ModelPicker({ current, zh }: { current: string; zh: boolean }) {
           padding: 0,
           cursor: "pointer",
           font: "inherit",
-          fontSize: 10.5,
+          fontSize: 11.5,
           color: "#999999",
           display: "inline-flex",
           alignItems: "center",
@@ -161,17 +161,17 @@ export function ModelPicker({ current, zh }: { current: string; zh: boolean }) {
                 >
                   <span style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
                     <b style={{ fontSize: 12, fontWeight: m.current ? 600 : 500, color: "#171717" }}>{m.label}</b>
-                    <span style={{ marginLeft: "auto", fontSize: 10, color: "#999999", flexShrink: 0 }}>
+                    <span style={{ marginLeft: "auto", fontSize: 11.5, color: "#999999", flexShrink: 0 }}>
                       {price(m)}
                     </span>
                   </span>
-                  <span style={{ display: "block", fontSize: 10.5, color: "#7c7c7c", lineHeight: 1.45, marginTop: 2 }}>
+                  <span style={{ display: "block", fontSize: 12.5, color: "#7c7c7c", lineHeight: 1.45, marginTop: 2 }}>
                     {m.use}
                   </span>
                 </button>
               ))}
 
-              <p style={{ fontSize: 10.5, color: "#999999", lineHeight: 1.5, margin: 0, padding: "6px 9px 2px" }}>
+              <p style={{ fontSize: 12.5, color: "#999999", lineHeight: 1.5, margin: 0, padding: "6px 9px 2px" }}>
                 {canChoose
                   ? zh
                     ? "整个工作室共用一个模型。改动几秒内生效。"

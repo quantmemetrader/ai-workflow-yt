@@ -6,6 +6,7 @@ export * from "./jobs";
 export * from "./research";
 export * from "./social";
 export * from "./script";
+export * from "./article";
 export * from "./publish";
 export * from "./finance";
 export * from "./accounting";

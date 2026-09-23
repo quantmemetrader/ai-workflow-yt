@@ -2,6 +2,7 @@ import { after } from "next/server";
 import { requireViewer } from "@/lib/auth/dal";
 import { readSessionToken, touchSession } from "@/lib/auth/session";
 import { Rail } from "@/components/canvas/Rail";
+import { TopBar } from "@/components/shell/TopBar";
 import { CommandPalette } from "@/components/shell/CommandPalette";
 import { BackgroundWork } from "@/components/shell/BackgroundWork";
 import { RenderWatch } from "@/components/shell/RenderWatch";
@@ -18,7 +19,6 @@ import { BusyBar } from "@/components/shell/BusyBar";
  */
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const viewer = await requireViewer();
-  const zh = (viewer.locale ?? "zh-CN").startsWith("zh");
 
   // "Last active" drives the presence dots and the Admin list. It is worth a
   // write at most once an hour, and never one the reader waits for — `after`
@@ -51,13 +51,29 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         letterSpacing: "0.02em",
       }}
     >
-      <Rail
-        modules={viewer.modules}
-        locale={viewer.locale ?? "zh-CN"}
-        avatarUrl={viewer.avatarUrl}
-        name={zh && viewer.nameLocal ? viewer.nameLocal : viewer.name}
-      />
-      {children}
+      <Rail modules={viewer.modules} locale={viewer.locale ?? "zh-CN"} />
+
+      {/*
+        * Everything right of the rail is a column now, not the page itself.
+        *
+        * The rail stays full height — it is the artboards' 52px edge and the
+        * brand sits at the top of it — and the top bar spans only the working
+        * area, the way the reference the studio picked does it. `minWidth: 0`
+        * and `minHeight: 0` because every module screen inside is a flex child
+        * that expects to be allowed to shrink; without them a wide table
+        * pushes the whole shell sideways.
+        */}
+      <div style={{ flexGrow: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
+        <TopBar
+          name={viewer.name}
+          nameLocal={viewer.nameLocal}
+          title={viewer.title}
+          role={viewer.role}
+          avatarUrl={viewer.avatarUrl}
+          locale={viewer.locale ?? "zh-CN"}
+        />
+        <div style={{ flexGrow: 1, minHeight: 0, display: "flex" }}>{children}</div>
+      </div>
 
       {/* Above the page, not inside it: ⌘K has to work on every module, and
         * the palette has to survive the navigation it causes. */}

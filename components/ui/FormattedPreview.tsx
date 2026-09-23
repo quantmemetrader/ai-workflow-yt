@@ -32,7 +32,7 @@ export function FormattedPreview({ text, zh }: { text: string; zh: boolean }) {
         overflowY: "auto",
       }}
     >
-      <div style={{ fontSize: 10, fontWeight: 500, color: "#c7c7c7", marginBottom: 4 }}>
+      <div style={{ fontSize: 11.5, fontWeight: 500, color: "#c7c7c7", marginBottom: 4 }}>
         {zh ? "预览" : "Preview"}
       </div>
       <div style={{ fontSize: 13, lineHeight: 1.55, color: "#383838" }}>

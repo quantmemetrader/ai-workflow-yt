@@ -137,13 +137,23 @@ export async function renderExport(exportId: string): Promise<{ fileId: string; 
      * other services, was eighteen minutes for a fourteen-cut minute of
      * video before a single title had been drawn.
      *
-     * Now each source is an input once, every cut is a `trim` on it inside
-     * one filter graph, the cuts are joined by `concat` (or `xfade` where a
-     * transition was asked for), and the punch-ins, graphics, cutaways and
-     * captions go on the same graph. The picture is encoded exactly once.
+     * Now every cut is its own input, opened with `-ss`/`-t` so the demuxer
+     * reads only that cut's window, the cuts are joined by `concat` (or
+     * `xfade` where a transition was asked for), and the punch-ins, graphics,
+     * cutaways and captions go on the same graph. The picture is encoded
+     * exactly once.
+     *
+     * The cuts are NOT `trim` filters on one shared input. `concat` consumes
+     * its inputs in order, so while it reads the first cut the split feeding
+     * the others has to buffer every frame they will eventually need: a
+     * 4-minute 1080x1920 timeline is ~25GB of raw frames, and a 22-cut export
+     * took 63GB and was killed by the kernel. Seeking per input costs one
+     * demuxer per cut and holds nothing.
      */
-    const sourceIndex = new Map<string, number>();
-    const inputs: string[] = [];
+    /** Local path per source file: downloaded once, seeked into many times. */
+    const sourcePath = new Map<string, string>();
+    /** One entry per cut — the same file appears once for each cut taken from it. */
+    const inputs: { path: string; ss: number; t: number }[] = [];
     const sourceHasAudio = new Map<string, boolean>();
     const cuts: { v: string; a: string; lengthMs: number; join: Join }[] = [];
     const pre: string[] = [];
@@ -176,13 +186,11 @@ export async function renderExport(exportId: string): Promise<{ fileId: string; 
         continue;
       }
 
-      let k = sourceIndex.get(entry.file.storageKey);
-      if (k === undefined) {
-        const local = path.join(dir, `src-${sourceIndex.size}${path.extname(entry.file.name) || ".mp4"}`);
+      let local = sourcePath.get(entry.file.storageKey);
+      if (local === undefined) {
+        local = path.join(dir, `src-${sourcePath.size}${path.extname(entry.file.name) || ".mp4"}`);
         await download(entry.file.storageKey, local);
-        k = inputs.length;
-        inputs.push(local);
-        sourceIndex.set(entry.file.storageKey, k);
+        sourcePath.set(entry.file.storageKey, local);
         sourceHasAudio.set(entry.file.storageKey, await hasAudio(local));
       }
 
@@ -206,12 +214,18 @@ export async function renderExport(exportId: string): Promise<{ fileId: string; 
       const outSec = Math.max(inSec + 0.05, outMs / 1000);
       const lengthMs = Math.round((outSec - inSec) * 1000);
 
+      // The window is cut at the demuxer by `-ss`/`-t` in buildArgs, so this
+      // input carries only the cut's own frames and starts near zero; the
+      // setpts still zeroes the residue left by seeking to a keyframe.
+      const k = inputs.length;
+      inputs.push({ path: local, ss: inSec, t: outSec - inSec });
+
       pre.push(
-        `[${k}:v]trim=start=${inSec.toFixed(3)}:end=${outSec.toFixed(3)},setpts=PTS-STARTPTS,` +
+        `[${k}:v]setpts=PTS-STARTPTS,` +
           `scale=${size.w}:${size.h}:force_original_aspect_ratio=decrease,pad=${size.w}:${size.h}:(ow-iw)/2:(oh-ih)/2:color=black,` +
           `fps=${FPS},setsar=1,format=yuv420p[c${n}v]`,
         sourceHasAudio.get(entry.file.storageKey)
-          ? `[${k}:a]atrim=start=${inSec.toFixed(3)}:end=${outSec.toFixed(3)},asetpts=PTS-STARTPTS,` +
+          ? `[${k}:a]asetpts=PTS-STARTPTS,` +
               `aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo[c${n}a]`
           : `anullsrc=channel_layout=stereo:sample_rate=48000,atrim=0:${(lengthMs / 1000).toFixed(3)},asetpts=PTS-STARTPTS[c${n}a]`,
       );
@@ -684,8 +698,9 @@ function joinCuts(cuts: { v: string; a: string; lengthMs: number; join: Join }[]
  * those, then the captions. Captions last means captions on top.
  */
 function buildArgs(input: {
-  inputs: string[];
-  /** Per-cut trims and the join, already written. */
+  /** One per cut: the source file and the window to read from it. */
+  inputs: { path: string; ss: number; t: number }[];
+  /** Per-cut normalisation and the join, already written. */
   pre: string[];
   joinedV: string;
   joinedA: string;
@@ -704,7 +719,10 @@ function buildArgs(input: {
   const { inputs, pre, joinedV, joinedA, assPath, graphicFiles, graphicSpecs, brolls, punches, tracks, size, out } = input;
 
   const args: string[] = ["-y"];
-  for (const file of inputs) args.push("-i", file);
+  // `-ss`/`-t` ahead of `-i` cuts at the demuxer, so each input decodes only
+  // its own window. Doing it here rather than with `trim` in the graph is what
+  // keeps memory flat as the cut count climbs.
+  for (const inp of inputs) args.push("-ss", inp.ss.toFixed(3), "-t", inp.t.toFixed(3), "-i", inp.path);
   // A still has no duration of its own: it is looped for exactly its window
   // and not a frame longer, and the filter moves it to its place on the film.
   for (const [i, file] of graphicFiles.entries()) {
@@ -807,6 +825,22 @@ function buildArgs(input: {
  */
 function runFfmpeg(args: string[], onProgress?: (doneMs: number) => Promise<void> | void): Promise<void> {
   return new Promise((resolve, reject) => {
+    /*
+     * No `ulimit -v` here, deliberately.
+     *
+     * A ceiling was tried and it broke rendering outright. `ulimit -v` caps
+     * the virtual address space, and a graph with twenty-odd decoders reserves
+     * far more address space than it ever touches — 3.7GB resident against
+     * well over 12GB reserved. The allocation failed and ffmpeg wedged at zero
+     * CPU instead of erroring, which is worse than no ceiling at all.
+     *
+     * What actually bounds memory is the graph: cuts are seeked at the demuxer
+     * (`-ss`/`-t` per input) instead of trimmed off one shared input, so
+     * nothing has to be buffered while `concat` works through its inputs, and
+     * usage stays flat whatever the length or cut count. If a hard cap is
+     * wanted later it has to be a cgroup limit on resident memory
+     * (`systemd-run -p MemoryMax=`), not an address-space limit.
+     */
     const child = spawn(
       "ffmpeg",
       ["-hide_banner", "-loglevel", "error", "-nostats", ...(onProgress ? ["-progress", "pipe:1"] : []), ...args],
