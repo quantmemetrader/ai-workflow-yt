@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { LANG_COOKIE, makeT, type Locale } from "@/lib/i18n";
+import { BrandMark } from "@/components/brand/BrandMark";
 
 /**
  * Everything around the sign-in form: the 660px cover panel, the language
@@ -90,22 +91,7 @@ export function LoginChrome({
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <div
-            style={{
-              width: 32,
-              height: 32,
-              borderRadius: 9,
-              background: "#171717",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              color: "#fff",
-              fontSize: 12,
-              fontWeight: 600,
-            }}
-          >
-            AF
-          </div>
+          <BrandMark size={32} />
           <span style={{ fontSize: 15, fontWeight: 600 }}>腾亚创变</span>
         </div>
 

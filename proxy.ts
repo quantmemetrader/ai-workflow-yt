@@ -27,6 +27,11 @@ const PUBLIC = [
   /^\/demo(\/|$)/,
   /^\/invite\/[^/]+$/,
   /^\/api\/health$/,
+  /* The favicon, the home-screen icon and the link preview. Drawn by routes
+     rather than served as files, so the asset exclusion in `matcher` misses
+     them — and a signed-out visitor, the login page included, got a redirect
+     where the icon should be. */
+  /^\/(icon|apple-icon|opengraph-image)$/,
   /*
    * A platform calling back has no session and never will. The route does its
    * own checking — an HMAC over the raw body when a secret is configured, and

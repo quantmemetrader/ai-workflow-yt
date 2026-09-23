@@ -118,9 +118,11 @@ article *page*.
 
 Reference he liked: **https://ai-agent-tau-two.vercel.app/**
 
-- Logo top-left: **wordmark only** (styled 腾亚创变 text). Decided 2026-09-23 —
-  their YouTube avatar is a *headshot of the founder*, not a company mark, so it
-  is deliberately not used. If ryanchi supplies a real logo, swap it in.
+- Logo top-left: **DONE 2026-09-23.** The word 腾亚 as a white label with heavy
+  black type and a sparkle, on the gold-to-steel light of their YouTube picture
+  (`lib/brand/mark.ts`) — the picture's look, never the founder's face. Used in
+  the rail, on the login screen, as the favicon and the home-screen icon. If
+  ryanchi supplies a real logo, swap it in there.
 - Show the user's role in the top bar:
   > "better show the character - so we can see users' role on the up part"
 - Resizable panels:

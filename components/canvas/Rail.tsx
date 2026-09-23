@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { HistoryButton } from "@/components/shell/HistoryButton";
+import { BrandMark } from "@/components/brand/BrandMark";
 import { NAV } from "@/lib/nav";
 import type { Module } from "@/lib/db/schema";
 
@@ -76,23 +77,8 @@ export function Rail({
         gap: 3,
       }}
     >
-      <Link
-        href="/chat"
-        style={{
-          width: 28,
-          height: 28,
-          borderRadius: 8,
-          background: "#171717",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          color: "#fff",
-          fontSize: 11,
-          fontWeight: 600,
-          marginBottom: 10,
-        }}
-      >
-        AF
+      <Link href="/chat" aria-label="腾亚创变" style={{ display: "flex", marginBottom: 10 }}>
+        <BrandMark size={28} />
       </Link>
 
       {items.map((item) => {
