@@ -414,3 +414,22 @@ standalone and prints the JSON:
 ```bash
 /opt/whisper/venv/bin/python /opt/whisper/transcribe.py /path/to/audio.mp3 | head -c 400
 ```
+
+---
+
+## Shipped and proven 2026-09-24 (night)
+
+Everything below was exercised in production, not just built.
+
+- **Transcription runs on the box.** `/opt/whisper` (faster-whisper, `large-v3-turbo`, int8, 6 threads). Live job: `served by local whisper in 14.7s: zh p=0.997, 266 words, 75s of audio`; the ElevenLabs tunnel saw 0 speech-to-text calls. `TRANSCRIBE_BACKEND=local` is the default and does NOT fall back — a broken `/opt/whisper` fails the job loudly. ElevenLabs remains for voice-over only (free tier, ~6k/10k chars used).
+- **Design is windowed** (one call per 60s, parallel, merged). Two 75s smoke runs: 10 graphics each; the first full-length run before the fix had 0.
+- **Preview proxy** is written beside every master (`video_exports.proxy_file_id`): 13.9 MB master → 1.6 MB 480p, faststart, 2s keyframes. The player streams the proxy and downloads the master.
+- **Multipart uploads** for files > 64 MB: 16 MiB parts, 4 in flight, per-part signing and retry. Proven server-side with a 200 MB object (13 parts, sha256 match). R2 CORS already allows it for yt.okbro.xyz, tengya.media and www.tengya.media. **Not yet exercised from a browser** — the studio's next big upload is the real test.
+- **People page**: add a person (invite), teams (create / assign / dissolve), inline name + title edit. No migration needed.
+- **Share card** (`/opengraph-image`) carries the 腾亚 mark, no English. WhatsApp caches cards for weeks: share `https://yt.okbro.xyz/?v=2` or use Facebook's Sharing Debugger → Scrape Again.
+- **Cloudflare orange** on yt.okbro.xyz, SSL Full (strict). Honest measurement from Mumbai: handshakes 7–35 ms vs 280–330 ms direct, worst cases much better, medians only modestly better. Not a cure for Amsterdam↔HK distance.
+- Service account renamed to `service@tengya.internal`; owner account `avon@tengya.media` created (Avon / 谢亚芳, 创始人, all modules).
+
+**Still on the studio:** point `tengya.media` A records (Porkbun) at 84.32.64.46 or move the zone to Cloudflare — Caddy already serves the name; then set `APP_URL`, add the 301 from yt.okbro.xyz. Retry the 590 MB browser upload. Rotate the credentials that were pasted into chat. Watch the ElevenLabs voice-over quota.
+
+`scripts/director-smoke.ts <userId> <fileId> [startSec] [len]` proves the whole pipeline on a short cut in ~2 minutes. Run it before believing any pipeline change.
