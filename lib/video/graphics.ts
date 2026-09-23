@@ -3,7 +3,7 @@ import { spawn } from "node:child_process";
 import { copyFile, mkdir, readdir, stat, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import path from "node:path";
-import { CARD_PAD, CARD_RADIUS, CORNER_MAX_W, cardBehindPicture, inCorner } from "@/lib/video/presets";
+import { CARD_PAD, CARD_RADIUS, CORNER_MAX_W, HEADER_BAND, cardBehindPicture, inCorner } from "@/lib/video/presets";
 
 /**
  * Titles, lower thirds and end cards, drawn by Remotion as stills.
@@ -257,7 +257,7 @@ async function placeImage(
     spec.placement === "full"
       ? "(H-h)/2"
       : spec.placement === "top-left" || spec.placement === "top-right"
-        ? String(margin)
+        ? String(Math.round(opts.height * HEADER_BAND))
         : spec.placement === "bottom-left" || spec.placement === "bottom-right" || spec.placement === "bottom-center"
           ? "H-h-" + Math.round(opts.height * 0.12)
           : "(H-h)/2";

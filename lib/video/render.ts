@@ -646,10 +646,16 @@ export async function renderExport(exportId: string): Promise<{ fileId: string; 
       })
       .where(eq(videoExports.id, exportId));
 
+    /* A render is not an edit of the cut, so `updatedAt` is left alone —
+       the screen reads it against the last render to know whether what is on
+       the timeline has been rendered yet, and a render that touched it would
+       report itself out of date the moment it finished. */
     await db
       .update(videoProjects)
-      .set({ masterFileId: fileId, updatedAt: new Date() })
+      .set({ masterFileId: fileId })
       .where(eq(videoProjects.id, e.projectId));
+
+    if (e.replaces) await supersede(e.replaces, e.tenantId, ownerId);
 
     return { fileId, durationMs: totalMs };
   } catch (err) {
@@ -876,6 +882,40 @@ function buildArgs(input: {
   args.push("-c:a", "aac", "-b:a", "192k", "-ar", "48000");
   args.push("-movflags", "+faststart", out);
   return args;
+}
+
+/**
+ * Put the render this one replaced in the bin.
+ *
+ * Asked for when the render was queued and carried out here, when there is
+ * something to replace it with: the old master, its proxy and its subtitle
+ * sidecar are soft-deleted (the sweep clears the bytes after thirty days, so
+ * a mistake is recoverable for a month) and the row goes, because a render
+ * row pointing at a deleted file is a broken line in a list.
+ *
+ * Never fatal. The new file is already made and the studio is waiting for it;
+ * a tidy-up that fails is a line in the log, not a failed render.
+ */
+async function supersede(exportId: string, tenantId: string, byUserId: string): Promise<void> {
+  try {
+    const [old] = await db
+      .select()
+      .from(videoExports)
+      .where(and(eq(videoExports.id, exportId), eq(videoExports.tenantId, tenantId)))
+      .limit(1);
+    if (!old) return;
+
+    const ids = [old.fileId, old.proxyFileId, old.subtitleFileId].filter((v): v is string => Boolean(v));
+    if (ids.length) {
+      await db
+        .update(files)
+        .set({ deletedAt: new Date(), deletedBy: byUserId })
+        .where(and(inArray(files.id, ids), eq(files.tenantId, tenantId)));
+    }
+    await db.delete(videoExports).where(eq(videoExports.id, exportId));
+  } catch (err) {
+    console.warn(`[render] could not replace ${exportId}:`, err instanceof Error ? err.message : err);
+  }
 }
 
 /**

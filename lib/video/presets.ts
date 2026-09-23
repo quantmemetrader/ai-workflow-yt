@@ -453,3 +453,14 @@ export function inCorner(placement: string | null | undefined): boolean {
     placement === "top-left" || placement === "top-right" || placement === "bottom-left" || placement === "bottom-right"
   );
 }
+
+/**
+ * Where the header stops, as a share of the frame's height.
+ *
+ * Added up from the composition's own header: 0.05 of padding, the accent
+ * dash and its margin, a 0.03 line at 1.2, and the small line under it. A
+ * picture in a top corner starts below this rather than at the usual margin,
+ * because the two were sharing the same band and the title lost — which is
+ * the same complaint as the black wordmark, one layer up.
+ */
+export const HEADER_BAND = 0.135;

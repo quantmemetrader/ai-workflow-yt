@@ -514,7 +514,7 @@ export async function splitCaptionsAction(projectId: string, text: string, langu
 
 export async function exportAction(
   projectId: string,
-  input: { aspect: string; burnCaptions: boolean; captionLanguage: string },
+  input: { aspect: string; burnCaptions: boolean; captionLanguage: string; replaces?: string | null },
 ) {
   const viewer = await editor();
   if (!viewer) return { error: "Not allowed" };
@@ -526,6 +526,7 @@ export async function exportAction(
       aspect: input.aspect,
       burnCaptions: Boolean(input.burnCaptions),
       captionLanguage: String(input.captionLanguage ?? "zh-HK").slice(0, 16),
+      replaces: input.replaces && id(input.replaces) ? input.replaces : null,
     });
     refresh();
     return {};

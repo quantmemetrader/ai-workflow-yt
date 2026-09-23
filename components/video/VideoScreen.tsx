@@ -333,6 +333,44 @@ export function VideoScreen({
   const done = renders.filter((r) => r.state === "done" && r.fileId);
 
   /*
+   * Whether the cut on the timeline has been rendered yet.
+   *
+   * Every edit bumps the project's `updatedAt` (`touch` in the service) and
+   * the render deliberately does not, so "changed since the last render" is
+   * one comparison. It matters because a render is a file: the studio moves
+   * a caption, looks at the preview, and the thing they hand over is still
+   * the old file until they say so. A second of slack keeps a render from
+   * calling itself out of date over the clock skew of its own two writes.
+   */
+  const lastRender = done[0] ?? null;
+  const stale = Boolean(
+    project && lastRender && project.updatedAt.getTime() > lastRender.createdAt.getTime() + 1000,
+  );
+
+  /* The render being queued, held while the question below is answered. */
+  const [asking, setAsking] = useState<{ aspect: string; burnCaptions: boolean; captionLanguage: string } | null>(null);
+
+  const fireRender = (
+    input: { aspect: string; burnCaptions: boolean; captionLanguage: string },
+    replaces: string | null,
+  ) =>
+    run(async () => {
+      if (!project) return {};
+      const res = await exportAction(project.id, { ...input, replaces });
+      if (!("error" in res && res.error)) {
+        writeRendering({ projectId: project.id, title: project.title });
+        if (heavyPaused) notify(t("Render queued. It starts once the new server is live.", "渲染已排队，新服务器上线后自动开始。"), "ok");
+      }
+      return res;
+    });
+
+  /* With a finished render already in hand, replacing it or keeping both is
+     the person's call and nobody can guess it — a draft being iterated on
+     wants one file; a set of cuts to choose between wants all of them. */
+  const startRender = (input: { aspect: string; burnCaptions: boolean; captionLanguage: string }) =>
+    lastRender ? setAsking(input) : void fireRender(input, null);
+
+  /*
    * A render takes minutes and happens on the worker, so the page asks for the
    * state again while one is running. It stops as soon as nothing is in hand:
    * there is nothing to poll for on a screen of finished renders.
@@ -520,6 +558,21 @@ export function VideoScreen({
           onLinkScript={(scriptId) => run(() => linkScriptAction(project.id, scriptId))}
           onUpload={(files) => void uploadIntoProject(files)}
         />
+
+        {stale && !rendering ? (
+          <StaleBar
+            zh={zh}
+            busy={busy}
+            at={lastRender ? lastRender.createdAt : null}
+            onRender={() =>
+              startRender({
+                aspect: lastRender?.aspect ?? project.director?.aspect ?? "16:9",
+                burnCaptions: (lastRender?.burnCaptions ?? "burn") === "burn",
+                captionLanguage: lastRender?.captionLanguage ?? project.director?.language ?? "zh-HK",
+              })
+            }
+          />
+        ) : null}
 
         <Editor
           key={`editor-${project.id}`}
@@ -740,19 +793,12 @@ export function VideoScreen({
               renders={renders}
               captionLanguages={languagesInOrder(captions, project.director?.language ?? null)}
               hasCaptions={captions.length > 0}
+              lastRenderAt={lastRender ? lastRender.createdAt : null}
               canRender={items.length > 0}
               zh={zh}
               busy={busy}
-              onExport={(input) =>
-                run(async () => {
-                  const res = await exportAction(project.id, input);
-                  if (!("error" in res && res.error)) {
-                    writeRendering({ projectId: project.id, title: project.title });
-                    if (heavyPaused) notify(t("Render queued. It starts once the new server is live.", "渲染已排队，新服务器上线后自动开始。"), "ok");
-                  }
-                  return res;
-                })
-              }
+              stale={stale}
+              onExport={(input) => startRender(input)}
               onPublish={(exportId) =>
                 run(async () => {
                   const res = await sendToPublishAction(exportId);
@@ -808,6 +854,144 @@ export function VideoScreen({
             }
         />
       )}
+
+      {asking ? (
+        <RenderChoice
+          zh={zh}
+          busy={busy}
+          onCancel={() => setAsking(null)}
+          onChoose={(replace) => {
+            const input = asking;
+            setAsking(null);
+            void fireRender(input, replace ? (lastRender?.id ?? null) : null);
+          }}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * "You have changed the cut since you rendered it."
+ *
+ * A render is a file, and the file is what leaves the building. Between an
+ * edit and a render the editor shows the new cut while every link, every
+ * download and every scheduled post still points at the old one — the studio
+ * asked for this because that gap is invisible and expensive. So the bar sits
+ * over the timeline until the two agree again, and carries the button rather
+ * than sending anyone to another tab to find it.
+ */
+function StaleBar({
+  zh,
+  busy,
+  at,
+  onRender,
+}: {
+  zh: boolean;
+  busy: boolean;
+  /** When the last render was asked for. */
+  at: Date | null;
+  onRender: () => void;
+}) {
+  const t = (en: string, cn: string) => (zh ? cn : en);
+  return (
+    <div
+      style={{
+        display: "flex",
+        gap: 12,
+        alignItems: "center",
+        flexWrap: "wrap",
+        margin: "0 0 10px",
+        padding: "9px 12px",
+        borderRadius: 8,
+        background: "#fff8e6",
+        border: "1px solid #f3e3bb",
+      }}
+    >
+      <span style={{ fontSize: 12.5, color: "#7a5b12", lineHeight: 1.5 }}>
+        {t(
+          "Edited since the last render. The finished file is still the old cut.",
+          "上次渲染之后又改过了，成片文件仍然是旧版本。",
+        )}
+        {at ? ` · ${at.toISOString().slice(0, 16).replace("T", " ")}` : ""}
+      </span>
+      <button type="button" disabled={busy} onClick={onRender} style={{ ...solid, marginLeft: "auto", opacity: busy ? 0.45 : 1 }}>
+        {t("Render again", "重新渲染")}
+      </button>
+    </div>
+  );
+}
+
+/**
+ * Replace the last render, or keep both?
+ *
+ * Nobody can guess this. A cut being worked on wants one file that keeps
+ * getting better — every extra copy is another thing in Files with the same
+ * name and a different length, and the studio has to remember which link it
+ * sent. A set of variants wants all of them. So it is asked once, at the
+ * moment of rendering, and acted on when the new file lands: the old master,
+ * its preview copy and its subtitles go to the bin, where the sweep clears
+ * them after thirty days, so a wrong answer is recoverable for a month.
+ */
+function RenderChoice({
+  zh,
+  busy,
+  onChoose,
+  onCancel,
+}: {
+  zh: boolean;
+  busy: boolean;
+  onChoose: (replace: boolean) => void;
+  onCancel: () => void;
+}) {
+  const t = (en: string, cn: string) => (zh ? cn : en);
+  return (
+    <div
+      onClick={onCancel}
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 240,
+        background: "rgba(0,0,0,0.28)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 20,
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          width: 420,
+          maxWidth: "100%",
+          background: "#fff",
+          borderRadius: 12,
+          border: "1px solid #ededed",
+          boxShadow: "0 18px 48px rgba(0,0,0,0.18)",
+          padding: 18,
+        }}
+      >
+        <h2 style={{ fontSize: 15, fontWeight: 650, margin: "0 0 6px", color: "#171717" }}>
+          {t("There is already a render", "已经有一个成片了")}
+        </h2>
+        <p style={{ fontSize: 12.5, color: "#7c7c7c", lineHeight: 1.6, margin: "0 0 16px" }}>
+          {t(
+            "Put this one in its place, or keep both? Replacing puts the old file in the bin when the new one is finished; it can be recovered for thirty days.",
+            "这次要替换掉它，还是两个都留着？选择替换后，新成片完成时旧文件会移入回收站，三十天内仍可恢复。",
+          )}
+        </p>
+        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", flexWrap: "wrap" }}>
+          <button type="button" onClick={onCancel} style={ghost} disabled={busy}>
+            {t("Cancel", "取消")}
+          </button>
+          <button type="button" onClick={() => onChoose(false)} style={ghost} disabled={busy}>
+            {t("Keep both", "两个都留着")}
+          </button>
+          <button type="button" onClick={() => onChoose(true)} style={{ ...solid, opacity: busy ? 0.45 : 1 }} disabled={busy}>
+            {t("Replace the last one", "替换上一个")}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -1414,6 +1598,8 @@ function Exports({
   captionLanguages,
   hasCaptions,
   canRender,
+  stale,
+  lastRenderAt,
   zh,
   busy,
   onExport,
@@ -1424,6 +1610,10 @@ function Exports({
   captionLanguages: string[];
   hasCaptions: boolean;
   canRender: boolean;
+  /** True when the timeline has moved on from the last finished render. */
+  stale?: boolean;
+  /** When that render was asked for, for the line that says so. */
+  lastRenderAt?: Date | null;
   zh: boolean;
   busy: boolean;
   onExport: (input: { aspect: string; burnCaptions: boolean; captionLanguage: string }) => void;
@@ -1439,6 +1629,26 @@ function Exports({
 
   return (
     <>
+      {stale ? (
+        <p
+          style={{
+            margin: "0 0 12px",
+            padding: "9px 12px",
+            borderRadius: 8,
+            background: "#fff8e6",
+            border: "1px solid #f3e3bb",
+            fontSize: 12.5,
+            color: "#7a5b12",
+            lineHeight: 1.5,
+          }}
+        >
+          {t(
+            "The cut has changed since the last render. What is below is the old file until you render again.",
+            "上次渲染之后剪辑又改过了。在重新渲染之前，下面这个文件仍然是旧版本。",
+          )}
+          {lastRenderAt ? ` · ${lastRenderAt.toISOString().slice(0, 16).replace("T", " ")}` : ""}
+        </p>
+      ) : null}
       <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 8 }}>
         <div style={{ display: "flex", gap: 4 }}>
           {["16:9", "9:16", "1:1"].map((a) => (

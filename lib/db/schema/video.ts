@@ -244,6 +244,16 @@ export const videoExports = pgTable(
       .references(() => videoProjects.id, { onDelete: "cascade" }),
     /** 16:9, 9:16, 1:1. */
     aspect: text().notNull().default("16:9"),
+    /**
+     * The render this one is meant to take the place of.
+     *
+     * Asked at the moment the render is queued, because that is when the
+     * person knows the answer: is this the same video again, or another one
+     * to keep beside it? When the new file lands, the named render's files
+     * are put in the bin and its row goes. Null means keep both, which is
+     * what every render did before the question was asked.
+     */
+    replaces: text(),
     /** Burn the captions into the picture, or ship an SRT beside it. */
     burnCaptions: text().notNull().default("burn"),
     captionLanguage: text().notNull().default("zh-HK"),

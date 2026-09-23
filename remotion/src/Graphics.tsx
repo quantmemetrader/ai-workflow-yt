@@ -229,8 +229,19 @@ export const Graphic: React.FC<GraphicProps> = ({
   }
 
   if (kind === "chapter") {
+    /* Under the header, not on top of it. Both sit top left and both are on
+       screen at once (the header for the whole video, the chapter for the
+       section), so at the same padding the section title printed across the
+       video's own title and neither could be read. This clears the header
+       band that `HEADER_BAND` in the presets measures. */
     return (
-      <AbsoluteFill style={{ justifyContent: "flex-start", alignItems: "flex-start", padding: ratio(height, 0.07) }}>
+      <AbsoluteFill
+        style={{
+          justifyContent: "flex-start",
+          alignItems: "flex-start",
+          padding: `${ratio(height, 0.155)}px ${ratio(height, 0.07)}px`,
+        }}
+      >
         <div
           style={{
             opacity: on,

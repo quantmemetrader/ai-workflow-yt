@@ -1175,7 +1175,7 @@ export async function listExports(viewer: Viewer, projectId: string): Promise<Ex
 export async function requestExport(
   viewer: Viewer,
   projectId: string,
-  input: { aspect: Aspect; burnCaptions: boolean; captionLanguage: string },
+  input: { aspect: Aspect; burnCaptions: boolean; captionLanguage: string; replaces?: string | null },
 ) {
   const project = await projectById(viewer, projectId);
   if (!project) throw new Error("That project does not exist");
@@ -1183,11 +1183,32 @@ export async function requestExport(
   const items = await listTimeline(viewer, projectId);
   if (!items.length) throw new Error("There is nothing on the timeline to render");
 
+  /* Only a finished render of this same cut may be replaced, and it is
+     checked here rather than trusted from the screen: the id travels from a
+     browser, and "replace" means "delete a file when this one lands". */
+  let replaces: string | null = null;
+  if (input.replaces) {
+    const [old] = await db
+      .select({ id: videoExports.id })
+      .from(videoExports)
+      .where(
+        and(
+          eq(videoExports.id, input.replaces),
+          eq(videoExports.projectId, projectId),
+          eq(videoExports.tenantId, viewer.tenantId),
+          eq(videoExports.state, "done"),
+        ),
+      )
+      .limit(1);
+    replaces = old?.id ?? null;
+  }
+
   const id = newId("rnd");
   await db.insert(videoExports).values({
     id,
     tenantId: viewer.tenantId,
     projectId,
+    replaces,
     aspect: input.aspect,
     burnCaptions: input.burnCaptions ? "burn" : "sidecar",
     captionLanguage: input.captionLanguage,

@@ -3,7 +3,7 @@
 import { useEffect, useRef } from "react";
 import type { ClipRow, GraphicRow } from "@/lib/video/service";
 import { ICONS } from "@/lib/video/icons";
-import { CARD_PAD, CARD_RADIUS, CORNER_MAX_W, cardBehindPicture, inCorner } from "@/lib/video/presets";
+import { CARD_PAD, CARD_RADIUS, CORNER_MAX_W, HEADER_BAND, cardBehindPicture, inCorner } from "@/lib/video/presets";
 
 /**
  * What the render will look like, drawn over the preview.
@@ -592,7 +592,7 @@ function Still({ graphic: g, accent, r, type, w }: StillProps) {
       const place: React.CSSProperties = full
         ? { inset: 0, background: "#000" }
         : {
-            top: g.placement === "top-left" || g.placement === "top-right" ? margin : undefined,
+            top: g.placement === "top-left" || g.placement === "top-right" ? r(HEADER_BAND) : undefined,
             bottom:
               g.placement === "bottom-left" || g.placement === "bottom-right" || g.placement === "bottom-center"
                 ? r(0.12)
