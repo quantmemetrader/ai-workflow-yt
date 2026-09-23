@@ -506,7 +506,65 @@ export async function addTimelineItem(
     ord: (last?.ord ?? 0) + 10,
   });
   await touch(viewer, projectId);
+
+  if (input.kind === "clip") {
+    // Never lets a failure here cost the person the clip they just placed.
+    await autoTranscribe(viewer, project, "timeline").catch((err) =>
+      console.error("[video] auto-transcribe not queued", err),
+    );
+  }
   return id;
+}
+
+/**
+ * Captions start themselves when the first footage lands.
+ *
+ * Nobody should have to press Transcribe for the obvious first step. But a
+ * transcription *replaces* the language's captions, so it is only ever started
+ * automatically on a cut that has none: the second clip dropped on a cut
+ * somebody has already corrected must not throw their corrections away. After
+ * that the button is how it runs again.
+ *
+ * Held back ninety seconds, so a handful of clips dropped one after another
+ * is one transcription of all of them rather than one of the first. The key is
+ * the button's own, so pressing it meanwhile does not queue a second.
+ * `auto` tells the worker to look again before it starts (`scripts/worker.ts`).
+ */
+const AUTO_TRANSCRIBE_DELAY_MS = 90_000;
+
+async function autoTranscribe(
+  viewer: Viewer,
+  project: { id: string; director: unknown },
+  reason: string,
+) {
+  const [anyCaption] = await db
+    .select({ id: captions.id })
+    .from(captions)
+    .where(eq(captions.projectId, project.id))
+    .limit(1);
+  if (anyCaption) return null;
+
+  const language = (project.director as DirectorState | null)?.language || "zh-HK";
+  const job = await enqueue({
+    tenantId: viewer.tenantId,
+    type: "video.transcribe",
+    module: "video",
+    payload: { projectId: project.id, language, diarize: true, auto: true },
+    objectType: "video_project",
+    objectId: project.id,
+    createdBy: viewer.id,
+    dedupeKey: `transcribe:${project.id}:${language}`,
+    priority: 2,
+    runAfter: new Date(Date.now() + AUTO_TRANSCRIBE_DELAY_MS),
+  });
+
+  await audit(viewer, "video.transcribe.auto", {
+    module: "video",
+    objectType: "video_project",
+    objectId: project.id,
+    meta: { language, reason, jobId: job.id },
+  });
+  return job.id;
 }
 
 /**

@@ -111,7 +111,7 @@ export async function makePoster(fileId: string): Promise<{ made: boolean; reaso
 /** Length, and the picture's size when there is a picture. */
 export async function probe(
   file: string,
-): Promise<{ durationMs: number; width: number | null; height: number | null }> {
+): Promise<{ durationMs: number; width: number | null; height: number | null; hasAudio: boolean }> {
   const text = await new Promise<string>((resolve, reject) => {
     const child = spawn("ffprobe", [
       "-v", "error",
@@ -136,6 +136,9 @@ export async function probe(
     durationMs: Math.round(seconds * 1000),
     width: picture?.width ?? null,
     height: picture?.height ?? null,
+    // Stock footage often has no sound at all, and "extract the audio" from
+    // a file with none is an FFmpeg error, not an empty result.
+    hasAudio: Boolean(parsed.streams?.some((s) => s.codec_type === "audio")),
   };
 }
 

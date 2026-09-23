@@ -28,6 +28,9 @@ import { autoEdit } from "../lib/video/autoedit";
 import { direct } from "../lib/video/director";
 import { refreshCreatorMemory } from "../lib/creator/service";
 import { viewerById } from "../lib/auth/viewer-by-id";
+import { eq } from "drizzle-orm";
+import { db } from "../lib/db/client";
+import { captions } from "../lib/db/schema";
 
 const WORKER_ID = `${process.env.pm_id ?? "0"}@${process.pid}`;
 const IDLE_MS = Number(process.env.WORKER_IDLE_MS ?? 3_000);
@@ -149,12 +152,17 @@ const HANDLERS: Record<string, Handler> = {
   /* The creator's own channel, mirrored, and the voice note rewritten. */
   "creator.sync": (job) => refreshCreatorMemory(job.tenantId),
 
-  "video.transcribe": (job) => {
-    const { projectId, language, diarize } = job.payload as {
+  "video.transcribe": async (job) => {
+    const { projectId, language, diarize, auto } = job.payload as {
       projectId: string;
       language: string;
       diarize?: boolean;
+      auto?: boolean;
     };
+    /* Queued by footage landing, not by a person (lib/video/service.ts). It
+       waited ninety seconds; if captions arrived meanwhile — typed, or from the
+       button — this would replace them, so it stands down instead. */
+    if (auto && (await hasCaptions(projectId))) return { skipped: "the cut already has captions" };
     return transcribeProject(projectId, { language, diarize });
   },
 };
@@ -239,6 +247,11 @@ async function main() {
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+async function hasCaptions(projectId: string): Promise<boolean> {
+  const [row] = await db.select({ id: captions.id }).from(captions).where(eq(captions.projectId, projectId)).limit(1);
+  return Boolean(row);
+}
 
 /** Whichever finishes first. The handler is left to its own devices rather
  * than cancelled — nothing here can cancel it — but the worker stops waiting,

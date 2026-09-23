@@ -11,6 +11,7 @@ import { db } from "@/lib/db/client";
 import { captions, files, timelineItems, videoClips, videoProjects } from "@/lib/db/schema";
 import { getObject } from "@/lib/storage/r2";
 import { newId } from "@/lib/ids";
+import { probe } from "@/lib/files/poster";
 import { ElevenLabsUnconfigured, toCaptionLines, transcribe } from "@/lib/video/elevenlabs";
 
 /**
@@ -80,6 +81,7 @@ export async function transcribeProject(
      * a caption after a title card still lands where the words are.
      */
     const segments: string[] = [];
+    let anySound = false;
     for (const [index, entry] of items.entries()) {
       const out = path.join(dir, `a-${String(index).padStart(3, "0")}.wav`);
 
@@ -100,8 +102,26 @@ export async function transcribeProject(
       await download(entry.file.storageKey, source);
 
       const inSec = entry.i.inMs / 1000;
-      const outMs = entry.i.outMs ?? entry.clip?.durationMs ?? null;
+      const measured = await probe(source).catch(() => null);
+      const outMs = entry.i.outMs ?? entry.clip?.durationMs ?? measured?.durationMs ?? null;
       const lengthSec = outMs === null ? null : Math.max(0.05, (outMs - entry.i.inMs) / 1000);
+
+      /* A clip with no sound — b-roll, most stock footage — is silence of its
+         own length, as a title card is. Asking FFmpeg for its audio failed the
+         whole cut's transcription, which since transcription starts by itself
+         when footage lands would have been the first thing anybody saw. */
+      if (measured && !measured.hasAudio) {
+        await run("ffmpeg", [
+          "-hide_banner", "-loglevel", "error", "-y",
+          "-f", "lavfi",
+          "-i", `anullsrc=channel_layout=mono:sample_rate=16000:d=${lengthSec ?? 0.2}`,
+          out,
+        ]);
+        segments.push(out);
+        await rm(source, { force: true });
+        continue;
+      }
+      anySound = true;
 
       await run("ffmpeg", [
         "-hide_banner", "-loglevel", "error", "-y",
@@ -118,6 +138,8 @@ export async function transcribeProject(
     }
 
     if (!segments.length) throw new Error("Nothing on the timeline produced any audio");
+    // Not worth paying ElevenLabs to listen to silence.
+    if (!anySound) throw new Error("None of the footage on the timeline has any sound to transcribe");
 
     const listPath = path.join(dir, "list.txt");
     const { writeFile } = await import("node:fs/promises");
