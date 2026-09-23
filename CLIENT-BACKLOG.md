@@ -433,3 +433,5 @@ Everything below was exercised in production, not just built.
 **Still on the studio:** point `tengya.media` A records (Porkbun) at 84.32.64.46 or move the zone to Cloudflare — Caddy already serves the name; then set `APP_URL`, add the 301 from yt.okbro.xyz. Retry the 590 MB browser upload. Rotate the credentials that were pasted into chat. Watch the ElevenLabs voice-over quota.
 
 `scripts/director-smoke.ts <userId> <fileId> [startSec] [len]` proves the whole pipeline on a short cut in ~2 minutes. Run it before believing any pipeline change.
+
+**Domain cutover done 2026-09-24:** the site is `https://tengya.media` (Cloudflare, orange, SSL Full strict). `APP_URL` flipped; `yt.okbro.xyz` 301s to it (kept on purpose — old links and cached chat previews still land). `server.okbro.xyz` (code-server) untouched. Rollback is one line, printed by `/root/cutover-tengya.sh`. Pending on the studio: an A record for `www` (→ 84.32.64.46, proxied). Sessions are per-host, so everyone signs in once more on the new domain.
