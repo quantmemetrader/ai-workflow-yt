@@ -184,7 +184,7 @@ export function Editor(props: EditorProps) {
         label:
           i.kind === "title"
             ? (i.text ?? (zh ? "标题卡" : "Title"))
-            : `${i.clipLabel ?? "—"}${unmeasurable ? (zh ? " · 无法读取时长" : " · length unknown") : unmeasured ? (zh ? " · 测量中…" : " · measuring…") : ""}`,
+            : `${i.clipLabel ?? "—"}${unmeasurable ? (zh ? " · 无法读取时长" : " · length unknown") : unmeasured ? (zh ? " · 读取中…" : " · measuring…") : ""}`,
         atMs: previous ? previous.atMs + previous.lengthMs : 0,
         lengthMs,
         inMs: i.inMs,
@@ -646,7 +646,7 @@ export function Editor(props: EditorProps) {
               padding: "0 12px",
             }}
           >
-            <Key onClick={() => seek(0)} label={t("Start", "开头")}>
+            <Key onClick={() => seek(0)} label={t("Start", "回到开头")}>
               ⏮
             </Key>
             <Key onClick={() => seek(atMs - 100)} label={t("Back", "后退")}>
@@ -667,7 +667,7 @@ export function Editor(props: EditorProps) {
                 const at = sourceAt(atMs);
                 if (at?.fileId) props.onSplit(at.row.id, at.sourceMs);
               }}
-              label={t("Split here (S)", "在此切开（S）")}
+              label={t("Split here (S)", "在此分割（S）")}
             >
               ✂
             </Key>
@@ -735,7 +735,7 @@ export function Editor(props: EditorProps) {
           <RailPane
             title={
               selected === null
-                ? t("Nothing selected", "未选中")
+                ? t("Nothing selected", "未选中任何内容")
                 : selected.kind === "item"
                   ? t("Cut", "片段")
                   : selected.kind === "caption"

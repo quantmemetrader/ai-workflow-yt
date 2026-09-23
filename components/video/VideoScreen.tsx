@@ -854,7 +854,7 @@ function Bin({
                 "没有你有权打开的视频或音频文件。在“文件”中上传后会出现在这里。",
               )}{" "}
           <Link href="/files" style={{ color: "#007be0" }}>
-            {t("Open Files", "打开文件")}
+            {t("Open Files", "打开文件库")}
           </Link>
         </p>
       ) : (
@@ -873,7 +873,7 @@ function Bin({
             </span>
             <span style={{ width: 80, textAlign: "right" }}>
               <button type="button" disabled={busy} onClick={() => onAdd(f.id)} style={{ ...ghost, height: 24, fontSize: 11 }}>
-                {t("add", "添加")}
+                {t("add", "关注")}
               </button>
             </span>
           </Row>
@@ -1025,9 +1025,9 @@ function Timeline({
                 </>
               ) : (
                 <>
-                  <span style={{ flexGrow: 1, minWidth: 90, fontSize: 12.5, ...clip }} title={i.clipLabel ?? ""}>{i.clipLabel ?? t("(missing clip)", "（素材已删除）")}</span>
+                  <span style={{ flexGrow: 1, minWidth: 90, fontSize: 12.5, ...clip }} title={i.clipLabel ?? ""}>{i.clipLabel ?? t("(missing clip)", "（素材丢失）")}</span>
                   <label style={{ display: "flex", gap: 5, alignItems: "center", fontSize: 11.5, color: "#7c7c7c" }}>
-                    {t("in", "起")}
+                    {t("in", "入点")}
                     <input
                       key={`${i.id}-in`}
                       defaultValue={clock(i.inMs)}
@@ -1039,7 +1039,7 @@ function Timeline({
                     />
                   </label>
                   <label style={{ display: "flex", gap: 5, alignItems: "center", fontSize: 11.5, color: "#7c7c7c" }}>
-                    {t("out", "止")}
+                    {t("out", "出点")}
                     <input
                       key={`${i.id}-out`}
                       defaultValue={i.outMs === null ? "" : clock(i.outMs)}
@@ -1107,7 +1107,7 @@ function Timeline({
                   >
                     <path d="m9 5 7 7-7 7" />
                   </svg>
-                  {openTrim === i.id ? t("Close", "收起") : t("Trim by eye", "可视化剪辑")}
+                  {openTrim === i.id ? t("Close", "收起") : t("Trim by eye", "可视化修剪")}
                 </button>
 
                 {openTrim === i.id ? (
@@ -1307,7 +1307,7 @@ function Captions({
       <Label>{t("Add one", "新增一条")}</Label>
       <AddCaption zh={zh} busy={busy} language={language} onAdd={onAdd} />
 
-      <Label>{t("Or paste the script and split it", "或粘贴文稿自动切分")}</Label>
+      <Label>{t("Or paste the script and split it", "或粘贴脚本自动切分")}</Label>
       <p style={{ fontSize: 11.5, color: "#999999", margin: "0 0 8px", lineHeight: 1.6, maxWidth: 560 }}>
         {t(
           "One line becomes one caption, spread evenly across the cut. That is a starting point, not a transcript: the timings are a guess until somebody watches it, and this replaces every caption in the chosen language.",
@@ -1373,7 +1373,7 @@ function AddCaption({
         }}
         style={{ ...ghost, opacity: busy || !form.text.trim() ? 0.5 : 1 }}
       >
-        {t("Add", "添加")}
+        {t("Add", "关注")}
       </button>
     </div>
   );
@@ -1436,7 +1436,7 @@ function Exports({
         </select>
         <label style={{ display: "flex", gap: 7, alignItems: "center", fontSize: 12, cursor: hasCaptions ? "pointer" : "default", opacity: hasCaptions ? 1 : 0.5 }}>
           <input type="checkbox" checked={burn} disabled={!hasCaptions} onChange={(e) => setBurn(e.target.checked)} />
-          {t("burn the captions in", "把字幕烧录进画面")}
+          {t("burn the captions in", "把字幕压制进画面")}
         </label>
         <button
           type="button"
@@ -1450,7 +1450,7 @@ function Exports({
       <p style={{ fontSize: 11.5, color: "#999999", margin: "0 0 20px", lineHeight: 1.6, maxWidth: 560 }}>
         {t(
           "FFmpeg on this machine, queued as a job. A long master takes minutes; the finished file lands in the file store with your permissions on it, and an unburnt caption track comes out beside it as an SRT.",
-          "由本机 FFmpeg 处理，以后台任务排队执行。较长的成片需要数分钟；完成的文件会保存到文件库并带上你的权限，未烧录的字幕会以 SRT 形式一并输出。",
+          "由本机 FFmpeg 处理，以后台任务排队执行。较长的成片需要数分钟；完成的文件会保存到文件库并带上你的权限，未压制的字幕会以 SRT 形式一并输出。",
         )}
       </p>
 
@@ -1467,7 +1467,7 @@ function Exports({
                 {r.state === "rendering" ? `${t("rendering", "渲染中")} ${Math.round(r.progress)}%` : stateLabel(r.state)}
               </Badge>
               <span style={{ fontSize: 11.5, color: "#7c7c7c" }}>
-                {r.burnCaptions === "burn" ? t("captions burnt in", "字幕已烧录") : t("captions beside it", "字幕单独输出")}
+                {r.burnCaptions === "burn" ? t("captions burnt in", "字幕已压制") : t("captions beside it", "字幕单独输出")}
                 {" · "}
                 {r.captionLanguage}
               </span>
@@ -1486,7 +1486,7 @@ function Exports({
                     onClick={() => onPublish(r.id)}
                     style={{ ...ghost, height: 26, fontSize: 11.5 }}
                   >
-                    {t("Send to Publish", "送去发布")}
+                    {t("Send to Publish", "发送到发布")}
                   </button>
                 )}
                 {r.fileId && (
@@ -1611,14 +1611,14 @@ function Library({
       <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 14 }}>
         <span style={{ fontSize: 15, fontWeight: 500 }}>{t("Projects", "项目")}</span>
         <span style={{ fontSize: 11.5, color: "#999999" }}>
-          {t("yours, and the ones shared with you", "你的剪辑，以及分享给你的")}
+          {t("yours, and the ones shared with you", "你的项目，以及分享给你的")}
         </span>
         <label style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6, fontSize: 11.5, color: "#7c7c7c" }}>
           {t("Sort", "排序")}
           <select value={sort} onChange={(e) => pickSort(e.target.value as SortKey)} style={{ ...field, height: 26, fontSize: 11.5, width: 150 }}>
             <option value="updated">{t("Recently edited", "最近编辑")}</option>
             <option value="created">{t("Newest first", "最新创建")}</option>
-            <option value="title">{t("Title A–Z", "按标题")}</option>
+            <option value="title">{t("Title A–Z", "按标题 A–Z")}</option>
             <option value="length">{t("Longest first", "最长优先")}</option>
             <option value="rendered">{t("Rendered first", "已渲染优先")}</option>
           </select>
@@ -1889,7 +1889,7 @@ function AudioTracks({
         <p style={{ fontSize: 12, color: "#999999", margin: 0, lineHeight: 1.6 }}>
           {t("No audio files you can open. Upload some in Files.", "没有你有权打开的音频文件，请先在“文件”中上传。")}{" "}
           <Link href="/files" style={{ color: "#007be0" }}>
-            {t("Open Files", "打开文件")}
+            {t("Open Files", "打开文件库")}
           </Link>
         </p>
       ) : (
@@ -2035,7 +2035,7 @@ function Player({ render, zh }: { render: ExportRow; zh: boolean }) {
       <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 7 }}>
         <Badge tone="quiet">{render.aspect}</Badge>
         <span style={{ fontSize: 11.5, color: "#7c7c7c" }}>
-          {render.burnCaptions === "burn" ? t("captions burnt in", "字幕已烧录") : t("captions beside it", "字幕单独输出")}
+          {render.burnCaptions === "burn" ? t("captions burnt in", "字幕已压制") : t("captions beside it", "字幕单独输出")}
         </span>
         {render.durationMs && (
           <span style={{ fontSize: 11.5, color: "#999999", fontVariantNumeric: "tabular-nums" }}>
@@ -2044,7 +2044,7 @@ function Player({ render, zh }: { render: ExportRow; zh: boolean }) {
         )}
         {render.fileId && (
           <Link href={`/files/${render.fileId}`} style={{ marginLeft: "auto", fontSize: 11.5, color: "#007be0" }}>
-            {t("open the file", "打开文件")}
+            {t("open the file", "打开文件库")}
           </Link>
         )}
       </div>

@@ -789,7 +789,7 @@ export function InboxScreen(props: InboxScreenProps): React.JSX.Element {
           {t("Language")}
         </div>
         {languages.length === 0 ? (
-          <div className="cap">{zh ? "还没有判读出语言。" : "No language read yet."}</div>
+          <div className="cap">{zh ? "尚未识别出语言。" : "No language read yet."}</div>
         ) : null}
         {languages.map(([tag, n], i) => (
           <div

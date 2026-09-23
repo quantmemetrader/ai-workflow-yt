@@ -133,7 +133,7 @@ export function MembersSheet({
                 ? `${state.members.length} 位成员`
                 : `${state.members.length} ${state.members.length === 1 ? "member" : "members"}`
               : zh
-                ? "读取中…"
+                ? "加载中…"
                 : "loading…"}
             {isPrivate
               ? zh
@@ -205,7 +205,7 @@ export function MembersSheet({
             {zh ? "关闭" : "Close"}
           </button>
           <button type="button" onClick={() => setAdding((a) => !a)} style={ghost}>
-            {adding ? (zh ? "完成" : "Done") : zh ? "加人" : "Add people"}
+            {adding ? (zh ? "完成" : "Done") : zh ? "添加成员" : "Add people"}
           </button>
         </div>
       </div>

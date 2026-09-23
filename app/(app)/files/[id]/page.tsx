@@ -154,7 +154,7 @@ export default async function FilePage({ params }: { params: Promise<{ id: strin
             <Row label={t("Owner")} value={row.ownerName} />
             <Row label={t("Size")} value={formatBytes(file.sizeBytes)} />
             <Row label={t("Modified")} value={formatDate(file.updatedAt, locale)} />
-            {file.durationMs ? <Row label={zh ? "时长" : "Duration"} value={`${Math.round(file.durationMs / 1000)}s`} /> : null}
+            {file.durationMs ? <Row label={zh ? "过渡时长" : "Duration"} value={`${Math.round(file.durationMs / 1000)}s`} /> : null}
             {file.width ? <Row label={zh ? "分辨率" : "Resolution"} value={`${file.width}×${file.height}`} /> : null}
             {file.checksum ? <Row label={zh ? "校验和" : "Checksum"} value={file.checksum.slice(0, 16)} /> : null}
           </section>

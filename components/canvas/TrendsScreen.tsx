@@ -709,7 +709,7 @@ export function TrendsScreen(props: {
                 </div>
                 <p className="mut" style={{ lineHeight: 1.55, marginTop: 6 }}>
                   {zh
-                    ? "输入一个短语，助理会开始追踪它在新闻与科技社群里的热度，并把相关报道列出来。"
+                    ? "输入一个短语，工作室会开始追踪它被报道的热度，并列出相关文章。"
                     : "Name a phrase and the studio starts tracking how much it is being written about, with the articles behind it."}
                 </p>
                 <div style={{ marginTop: 12, maxWidth: 280 }}>{watchField}</div>

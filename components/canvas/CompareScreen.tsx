@@ -357,8 +357,8 @@ export function CompareScreen(props: {
     ? `${fmtDay(tMin, zh)} – ${fmtDay(tMax, zh)} ${new Date(tMax).getUTCFullYear()} · ${
         zh ? "来源" : "source"
       }: ${sourceKeys.map(sourceName).join(", ")}`
-    : `${zh ? "尚无数据" : "no data yet"} · ${zh ? "来源" : "source"}: ${
-        sourceKeys.length ? sourceKeys.map(sourceName).join(", ") : zh ? "待定" : "pending"
+    : `${zh ? "暂无数据" : "no data yet"} · ${zh ? "来源" : "source"}: ${
+        sourceKeys.length ? sourceKeys.map(sourceName).join(", ") : zh ? "等待中" : "pending"
       }`;
 
   const windowWords = zh ? WINDOW_WORDS_ZH[props.window] : WINDOW_WORDS[props.window];

@@ -242,7 +242,7 @@ export function WorkspaceSidebar({
       {conversations.length > 0 ? (
         <>
           <div className="lbl" style={{ margin: "16px 0 5px", display: "flex", alignItems: "center", gap: 6 }}>
-            <span style={{ flexGrow: 1 }}>{zh ? "最近问过" : "Recent chats"}</span>
+            <span style={{ flexGrow: 1 }}>{zh ? "最近对话" : "Recent chats"}</span>
             <span style={{ fontSize: 10.5, color: "#c7c7c7" }}>{zh ? "仅你可见" : "only you"}</span>
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
@@ -331,7 +331,7 @@ export function WorkspaceSidebar({
       </div>
 
       <div className="lbl" style={{ margin: "16px 0 5px" }}>
-        {zh ? "私信" : "Direct messages"}
+        {zh ? "消息" : "Direct messages"}
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
         {people.length === 0 ? (
@@ -339,7 +339,7 @@ export function WorkspaceSidebar({
             style={{ fontSize: 11.5, color: "#999999", lineHeight: 1.5, padding: "2px 9px 0" }}
           >
             {zh
-              ? "工作室里还没有其他人。管理员加入同事后，他们会出现在这里。"
+              ? "工作室里还没有其他人。管理员添加成员后，他们会出现在这里。"
               : "Nobody else in the studio yet. People appear here once an admin adds them."}
           </p>
         ) : null}

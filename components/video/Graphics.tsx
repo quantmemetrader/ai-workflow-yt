@@ -332,7 +332,7 @@ export function Graphics({
             onClick={submit}
             style={{ ...solid, opacity: busy || !canSubmit ? 0.45 : 1 }}
           >
-            {t("Add", "添加")}
+            {t("Add", "关注")}
           </button>
           <div style={{ flexBasis: "100%", fontSize: 11, color: "#999999", lineHeight: 1.5 }}>
             {zh ? chosen.noteZh : chosen.note}

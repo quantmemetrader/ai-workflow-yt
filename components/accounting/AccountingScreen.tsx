@@ -102,7 +102,7 @@ export function AccountingScreen({
     <div style={{ flexGrow: 1, minWidth: 0, display: "flex", minHeight: 0 }}>
     <ModuleSidebar
       title="Accounting"
-      titleZh="会计"
+      titleZh="账务"
       screens={SCREENS}
       active={tab}
       onChange={setTab}
@@ -111,7 +111,7 @@ export function AccountingScreen({
     />
     <div style={{ flexGrow: 1, minWidth: 0, display: "flex", flexDirection: "column", minHeight: 0 }}>
       <ModuleHeader
-        title={t("Accounting", "会计")}
+        title={t("Accounting", "账务")}
         note={t("manual entry, nothing posts without a confirmation", "手工记账，未确认不过账")}
         right={
           <button type="button" onClick={() => newEntry()} style={solid}>
@@ -209,7 +209,7 @@ export function AccountingScreen({
         <ResearchAgentPanel
           accent="#007be0"
           zh={zh}
-          scope={t("Accounting", "会计")}
+          scope={t("Accounting", "账务")}
           note={t(
             `${pending.length} document${pending.length === 1 ? "" : "s"} waiting to be entered, ${summary.draftCount} draft entr${summary.draftCount === 1 ? "y" : "ies"} in ${period}.`,
             `${pending.length} 份单据待录入，${period} 有 ${summary.draftCount} 条草稿分录。`,
@@ -291,7 +291,7 @@ function Inbox({
           }}
           style={{ ...solid, opacity: busy || !form.title.trim() ? 0.45 : 1 }}
         >
-          {t("Add", "添加")}
+          {t("Add", "关注")}
         </button>
       </div>
 
@@ -688,7 +688,7 @@ function Accounts({
           }}
           style={{ ...solid, opacity: busy || !form.code.trim() ? 0.45 : 1 }}
         >
-          {t("Add", "添加")}
+          {t("Add", "关注")}
         </button>
       </div>
     </>

@@ -282,7 +282,7 @@ function Drafting({
       </select>
 
       <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
-        <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder={t("Title for this one", "本份合同标题")} style={{ ...field, width: 330 }} />
+        <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder={t("Title for this one", "这份合同的标题")} style={{ ...field, width: 330 }} />
         <input value={counterparty} onChange={(e) => setCounterparty(e.target.value)} placeholder={t("Who it is with", "对方")} style={{ ...field, width: 240 }} />
       </div>
 
@@ -311,7 +311,7 @@ function Drafting({
         onClick={() => template && onDraft({ templateId: template.id, title, counterparty, values })}
         style={{ ...solid, marginTop: 18 }}
       >
-        {busy ? t("Drafting…", "生成中…") : t("Draft it", "生成草稿")}
+        {busy ? t("Drafting…", "起草中…") : t("Draft it", "生成草稿")}
       </button>
 
       {template && (
@@ -418,7 +418,7 @@ function Review({
               <div key={f.id} style={{ border: "1px solid #ededed", borderRadius: 11, padding: 13, marginBottom: 10 }}>
                 <div style={{ display: "flex", gap: 9, alignItems: "baseline" }}>
                   <span style={{ fontSize: 12.5, fontWeight: 500 }}>
-                    {t("Clause", "第")} {f.clause}
+                    {t("Clause", "条款")} {f.clause}
                   </span>
                   <Badge tone={f.departure === "missing" ? "bad" : f.departure === "reworded" ? "quiet" : "warn"}>
                     {f.departure}

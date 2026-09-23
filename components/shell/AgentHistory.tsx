@@ -103,7 +103,7 @@ export function AgentHistory({
           }}
         >
           {loading || rows === null ? (
-            <div style={{ padding: 10, fontSize: 11.5, color: "#999999" }}>{zh ? "读取中…" : "Loading…"}</div>
+            <div style={{ padding: 10, fontSize: 11.5, color: "#999999" }}>{zh ? "加载中…" : "Loading…"}</div>
           ) : rows.length === 0 ? (
             <div style={{ padding: 10, fontSize: 11.5, color: "#999999" }}>{zh ? "还没有对话。" : "Nothing yet."}</div>
           ) : (

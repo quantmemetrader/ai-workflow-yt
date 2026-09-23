@@ -155,7 +155,7 @@ export function Inspector({
         ) : null}
 
         <p style={{ fontSize: 10.5, color: "#999999", lineHeight: 1.6, margin: 0 }}>
-          {t("Space plays · arrows step · S splits at the playhead", "空格播放 · 方向键微调 · S 在播放头处切开")}
+          {t("Space plays · arrows step · S splits at the playhead", "空格播放 · 方向键逐帧移动 · S 在播放头处分割")}
         </p>
       </div>
     );
@@ -203,7 +203,7 @@ export function Inspector({
               />
             </Field>
             <div style={{ fontSize: 11, color: "#999999" }}>
-              {t("Length", "时长")} {(item.lengthMs / 1000).toFixed(1)}s
+              {t("Length", "过渡时长")} {(item.lengthMs / 1000).toFixed(1)}s
               {clip?.durationMs ? ` ${t("of", "／")} ${(clip.durationMs / 1000).toFixed(1)}s` : ""}
             </div>
           </>
@@ -230,7 +230,7 @@ export function Inspector({
               </select>
             </Field>
             {item.transition !== "cut" ? (
-              <Field label={t("Over", "时长")}>
+              <Field label={t("Over", "过渡时长")}>
                 <input
                   key={`${item.id}-tms`}
                   defaultValue={(item.transitionMs / 1000).toFixed(2)}
@@ -295,7 +295,7 @@ export function Inspector({
           />
         </Field>
         <div style={{ display: "flex", gap: 8 }}>
-          <Field label={t("From", "起")}>
+          <Field label={t("From", "入点")}>
             <input
               key={`${cue.id}-from`}
               defaultValue={stamp(cue.startMs)}
@@ -306,7 +306,7 @@ export function Inspector({
               style={box}
             />
           </Field>
-          <Field label={t("To", "止")}>
+          <Field label={t("To", "出点")}>
             <input
               key={`${cue.id}-to`}
               defaultValue={stamp(cue.endMs)}
@@ -377,7 +377,7 @@ export function Inspector({
 
       {!isPunch && !isBroll ? (
         <>
-          <Field label={isPicture ? t("Caption", "说明") : t("The line", "文字")}>
+          <Field label={isPicture ? t("Caption", "字幕") : t("The line", "文字")}>
             <input
               key={`${g.id}-text`}
               defaultValue={g.text}
@@ -424,7 +424,7 @@ export function Inspector({
         </Field>
       ) : null}
       <div style={{ display: "flex", gap: 8 }}>
-        <Field label={t("From", "起")}>
+        <Field label={t("From", "入点")}>
           <input
             key={`${g.id}-from`}
             defaultValue={stamp(g.startMs)}
@@ -475,7 +475,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 function Gone({ zh }: { zh: boolean }) {
   return (
     <p style={{ fontSize: 11.5, color: "#999999", margin: 0 }}>
-      {zh ? "这个元素已经不在了。" : "That is no longer on the timeline."}
+      {zh ? "该元素已不在时间线上。" : "That is no longer on the timeline."}
     </p>
   );
 }

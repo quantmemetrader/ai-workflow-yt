@@ -83,7 +83,7 @@ export function ScriptSheet({
         <div style={{ padding: "14px 18px 6px" }}>
           <div style={{ fontSize: 14, fontWeight: 600 }}>{t("Write the script", "写脚本")}</div>
           <div style={{ fontSize: 12, color: "#999999", marginTop: 3 }}>
-            {topic.name} · {t("the headlines collected for it are the facts it may use", "已收集的报道会作为可用的事实")}
+            {topic.name} · {t("the headlines collected for it are the facts it may use", "已收集的报道就是它可以引用的事实依据")}
           </div>
         </div>
 
@@ -95,7 +95,7 @@ export function ScriptSheet({
                 <span style={{ fontSize: 12, color: "#999999" }}>{t("No angles yet.", "还没有角度。")}</span>
                 {onSuggestAngles ? (
                   <button type="button" onClick={onSuggestAngles} disabled={busy} style={{ ...ghost, height: 26, fontSize: 11.5 }}>
-                    {t("Suggest some", "让助理给出")}
+                    {t("Suggest some", "让助理推荐几个")}
                   </button>
                 ) : null}
               </div>
@@ -147,7 +147,7 @@ export function ScriptSheet({
               </div>
             </div>
             <div>
-              <div style={{ fontSize: 10.5, fontWeight: 500, color: "#999999", marginBottom: 7 }}>{t("How long", "时长")}</div>
+              <div style={{ fontSize: 10.5, fontWeight: 500, color: "#999999", marginBottom: 7 }}>{t("How long", "过渡时长")}</div>
               <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
                 {LENGTHS.map((l) => (
                   <button key={l.seconds} type="button" onClick={() => setSeconds(l.seconds)} style={on(seconds === l.seconds)}>
@@ -194,7 +194,7 @@ export function ScriptSheet({
             }
             style={{ ...solid, opacity: busy ? 0.55 : 1 }}
           >
-            {busy ? t("Writing…", "正在写…") : t("Write it", "开始写")}
+            {busy ? t("Writing…", "撰写中…") : t("Write it", "开始写")}
           </button>
         </div>
       </div>

@@ -534,12 +534,12 @@ export function PerfScreen(props: PerfScreenProps): React.JSX.Element {
    */
   const agentNote = React.useMemo(() => {
     if (rows.length === 0) {
-      return zh ? "这个时段内没有贴文。" : "Nothing was published in this window.";
+      return zh ? "这个时段内没有发布任何内容。" : "Nothing was published in this window.";
     }
     const withViews = rows.filter((r) => r.views !== null);
     if (withViews.length === 0) {
       return zh
-        ? "这些贴文还没有可读的数据，平台通常会延迟两三天。"
+        ? "这些帖子还没有可用的数据，平台通常会延迟两三天。"
         : "None of these posts has readable numbers yet. Platforms usually run two to three days behind.";
     }
     const best = withViews.reduce((a, b) => ((b.views ?? 0) > (a.views ?? 0) ? b : a));

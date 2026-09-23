@@ -113,7 +113,7 @@ export function BriefComposer({
         >
           <span style={{ fontSize: 12.5, fontWeight: 600 }}>{t("New script", "新建脚本")}</span>
           <span style={{ fontSize: 11, color: "#c7c7c7" }}>
-            {t("the brief the editor and the agent will read", "编辑器和助理都会读这份简报")}
+            {t("the brief the editor and the agent will read", "剪辑师和助理都会读这份简报")}
           </span>
           <button
             type="button"
@@ -240,7 +240,7 @@ export function BriefComposer({
           ) : null}
 
           <div className="lbl" style={{ padding: 0, margin: "22px 0 8px" }}>
-            {t("Points it has to make", "必须讲到的点")}
+            {t("Points it has to make", "必讲要点")}
           </div>
           <textarea
             value={draft.mandatoryPoints}
@@ -250,7 +250,7 @@ export function BriefComposer({
           />
 
           <div className="lbl" style={{ padding: 0, margin: "20px 0 8px" }}>
-            {t("Where it goes", "投放设置")}
+            {t("Where it goes", "发布渠道")}
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 9 }}>
             <Labelled label={t("Channel", "渠道")}>
@@ -270,7 +270,7 @@ export function BriefComposer({
                 style={field}
               />
             </Labelled>
-            <Labelled label={t("Spoken language", "口语语言")}>
+            <Labelled label={t("Spoken language", "口播语言")}>
               <input
                 value={draft.language}
                 onChange={(e) => set("language", e.target.value)}

@@ -162,10 +162,10 @@ export default async function SettingsPage() {
       scope={zh ? "你的账号" : "Your account"}
       note={
         zh
-          ? "可以问它你能打开哪些模块、这个月花了多少，或者怎么换语言。"
+          ? "可以问它你能打开哪些模块、这个月花了多少，或者这里的设置怎么改。"
           : "Ask what you can open, what you have spent this month, or how to change anything here."
       }
-      placeholder={zh ? "问你的账号…" : "Ask about your account…"}
+      placeholder={zh ? "询问你的账号…" : "Ask about your account…"}
     />
     </div>
   );

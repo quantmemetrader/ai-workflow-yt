@@ -62,7 +62,7 @@ export function PeopleCard({ zh, initialInvites }: { zh: boolean; initialInvites
   return (
     <section className="rounded-xl border border-outline-gray-1 p-4">
       <div className="flex items-center gap-3">
-        <h2 className="text-sm font-semibold text-ink-gray-9">{zh ? "同事" : "People"}</h2>
+        <h2 className="text-sm font-semibold text-ink-gray-9">{zh ? "成员" : "People"}</h2>
         <button
           type="button"
           onClick={() => setOpen((o) => !o)}

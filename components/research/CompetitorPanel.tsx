@@ -55,7 +55,7 @@ export function CompetitorPanel({
             </button>
           )}
           <button type="button" onClick={() => setAdding((a) => !a)} style={ghost}>
-            {adding ? t("Close", "收起") : t("Watch a channel", "添加频道")}
+            {adding ? t("Close", "收起") : t("Watch a channel", "关注频道")}
           </button>
         </span>
       </div>
@@ -105,7 +105,7 @@ export function CompetitorPanel({
             }
             style={{ ...solid, opacity: busy || !form.externalId.trim() ? 0.45 : 1 }}
           >
-            {t("Watch", "添加")}
+            {t("Watch", "关注")}
           </button>
           <span style={{ fontSize: 11, color: "#c7c7c7" }}>
             {t(

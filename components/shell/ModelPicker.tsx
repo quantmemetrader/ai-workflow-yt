@@ -137,7 +137,7 @@ export function ModelPicker({ current, zh }: { current: string; zh: boolean }) {
         >
           {options === null ? (
             <p style={{ fontSize: 11.5, color: "#999999", margin: 0, padding: 8 }}>
-              {zh ? "读取中…" : "Reading…"}
+              {zh ? "加载中…" : "Reading…"}
             </p>
           ) : (
             <>

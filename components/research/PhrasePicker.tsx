@@ -197,7 +197,7 @@ export function PhrasePicker({
                       padding: "8px 8px 4px",
                     }}
                   >
-                    {t("Trending now", "正在热搜")}
+                    {t("Trending now", "当前热搜")}
                   </div>
                 ) : null}
                 <div

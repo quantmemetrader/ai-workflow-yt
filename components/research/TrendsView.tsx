@@ -251,7 +251,7 @@ export function TrendsView({
       onSuggestAngles={(topicId) =>
         start(async () => {
           setAnglesBusy(topicId);
-          const done = beginWork(zh ? "正在想切入角度" : "Thinking of angles");
+          const done = beginWork(zh ? "正在构思切入角度" : "Thinking of angles");
           try {
             const res = await suggestAnglesAction(topicId);
             if ("error" in res && res.error) {
@@ -284,7 +284,7 @@ export function TrendsView({
               ? "可以问它这些选题里哪些值得做，或者为什么某个词突然涨了。"
               : "Ask which of these is worth making, or why one of them moved."
           }
-          placeholder={zh ? "问这块看板…" : "Ask about this board…"}
+          placeholder={zh ? "询问这个看板…" : "Ask about this board…"}
           model={model}
           onAsk={(prompt) => void agent.send(prompt)}
           tools={<AgentHistory zh={zh} current={agent.conversationId} onPick={(id) => void agent.load(id)} onNew={agent.reset} />}
@@ -315,7 +315,7 @@ export function TrendsView({
         onSuggestAngles={() =>
           start(async () => {
             setAnglesBusy(scriptingTopic.id);
-            const done = beginWork(zh ? "正在想切入角度" : "Thinking of angles");
+            const done = beginWork(zh ? "正在构思切入角度" : "Thinking of angles");
             try {
               const res = await suggestAnglesAction(scriptingTopic.id);
               if ("error" in res && res.error) notify(res.error);

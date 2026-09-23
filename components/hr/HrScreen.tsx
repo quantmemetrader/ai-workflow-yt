@@ -97,7 +97,7 @@ export function HrScreen({
     <div style={{ flexGrow: 1, minWidth: 0, display: "flex", flexDirection: "column", minHeight: 0 }}>
       <ModuleHeader
         title={t("Human Resources", "人事")}
-        note={t("leave, hiring and employee records", "假期、招聘与员工档案")}
+        note={t("leave, hiring and employee records", "请假、招聘与员工档案")}
       />
 
       <div style={{ flexGrow: 1, minHeight: 0, display: "flex" }}>
@@ -164,8 +164,8 @@ export function HrScreen({
             `${waiting.length} leave request${waiting.length === 1 ? "" : "s"} waiting. ${requisitions.filter((r) => r.state === "open").length} role${requisitions.filter((r) => r.state === "open").length === 1 ? "" : "s"} open.`,
             `${waiting.length} 条请假待批，${requisitions.filter((r) => r.state === "open").length} 个岗位在招。`,
           )}
-          placeholder={t("Ask about leave or hiring…", "询问假期或招聘…")}
-          footnote={t("No external sourcing. Schedule A3(8).", "不做任何外部搜寻。附表 A3(8)。")}
+          placeholder={t("Ask about leave or hiring…", "询问请假或招聘…")}
+          footnote={t("No external sourcing. Schedule A3(8).", "不做任何外部招聘寻访。附表 A3(8)。")}
           model={model}
           onAsk={(prompt) => void agent.send(prompt)}
           thread={
@@ -232,7 +232,7 @@ function Leave({
 
   return (
     <>
-      <Label style={{ margin: "0 0 8px" }}>{t("Ask for leave", "申请假期")}</Label>
+      <Label style={{ margin: "0 0 8px" }}>{t("Ask for leave", "请假申请")}</Label>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 20 }}>
         <select value={form.kind} onChange={(e) => setForm({ ...form, kind: e.target.value })} style={{ ...field, width: 140, height: 32 }}>
           <option value="annual">{t("annual", "年假")}</option>
@@ -393,7 +393,7 @@ function Roles({
     <>
       {canManage && (
         <>
-          <Label style={{ margin: "0 0 8px" }}>{t("Open a role", "开设岗位")}</Label>
+          <Label style={{ margin: "0 0 8px" }}>{t("Open a role", "发布岗位")}</Label>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 20 }}>
             <input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder={t("Job title", "岗位名称")} style={{ ...field, width: 240, height: 32 }} />
             <input value={form.department} onChange={(e) => setForm({ ...form, department: e.target.value })} placeholder={t("Department", "部门")} style={{ ...field, width: 170, height: 32 }} />
@@ -407,7 +407,7 @@ function Roles({
               }}
               style={{ ...solid, opacity: busy || !form.title.trim() ? 0.45 : 1 }}
             >
-              {t("Open", "开设")}
+              {t("Open", "发布中")}
             </button>
           </div>
         </>
@@ -554,7 +554,7 @@ function Candidates({
           }}
           style={{ ...solid, opacity: busy || !form.name.trim() ? 0.45 : 1 }}
         >
-          {t("Add", "添加")}
+          {t("Add", "关注")}
         </button>
       </div>
 
@@ -718,7 +718,7 @@ function People({
                 }}
                 style={{ ...ghost, height: 28 }}
               >
-                {t("add", "添加")}
+                {t("add", "关注")}
               </button>
             </div>
           )}

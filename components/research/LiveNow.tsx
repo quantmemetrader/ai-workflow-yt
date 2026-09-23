@@ -203,7 +203,7 @@ export function LiveNow({
                 }}
               >
                 <PlatformMark platform="youtube" size={12} />
-                {t("Most watched", "最多观看")}
+                {t("Most watched", "播放最多")}
               </div>
               <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 2 }}>
                 {videos.slice(0, 20).map((v) => (

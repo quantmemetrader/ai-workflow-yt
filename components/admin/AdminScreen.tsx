@@ -235,7 +235,7 @@ export function AdminScreen({
           ? "可以问它谁能打开什么、这个月花在哪里，或某条审计记录是什么意思。"
           : "Ask who can open what, where this month went, or what an audit line means."
       }
-      placeholder={zh ? "问管理相关…" : "Ask about admin…"}
+      placeholder={zh ? "问管理相关的问题…" : "Ask about admin…"}
       model={model}
       onAsk={(prompt) => void agent.send(prompt)}
       thread={
@@ -886,7 +886,7 @@ function Credentials({
   return (
     <>
       <div className="lbl" style={{ padding: 0, marginBottom: 6 }}>
-        {t("Keys this deployment holds", "本部署持有的密钥")}
+        {t("Keys this deployment holds", "本部署已配置的密钥")}
       </div>
       <p style={{ fontSize: 11.5, color: "#999999", margin: "0 0 12px", lineHeight: 1.6 }}>
         {t(
@@ -971,7 +971,7 @@ function Audit({ rows, actions, zh }: { rows: AuditRow[]; actions: string[]; zh:
         </select>
         <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11.5, color: "#7c7c7c" }}>
           <input type="checkbox" checked={thumbs} onChange={(e) => setThumbs(e.target.checked)} />
-          {t("Show thumbnail views", "显示缩略图浏览")}
+          {t("Show thumbnail views", "显示缩略图查看记录")}
         </label>
         <span style={{ fontSize: 11.5, color: "#999999" }}>
           {t(
@@ -1305,7 +1305,7 @@ function PromptPreview({ zh }: { zh: boolean }) {
           }
           style={solid}
         >
-          {busy ? t("Assembling…", "拼装中…") : t("Show it", "显示")}
+          {busy ? t("Assembling…", "组装中…") : t("Show it", "显示")}
         </button>
       </div>
 

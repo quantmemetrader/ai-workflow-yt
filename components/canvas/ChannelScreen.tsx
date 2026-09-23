@@ -279,7 +279,7 @@ export function ChannelScreen(props: {
                 </div>
                 <p className="mut" style={{ marginTop: 4, lineHeight: 1.55, maxWidth: 460 }}>
                   {zh
-                    ? "写下第一条消息，它会对这个频道里的所有人可见。"
+                    ? "写下第一条消息，这个频道里的所有人都能看到。"
                     : "Write the first message; everyone in this channel will see it."}
                 </p>
               </div>
@@ -410,7 +410,7 @@ export function ChannelScreen(props: {
                 }}
               >
                 <span style={{ flexGrow: 1, minWidth: 0 }}>
-                  {zh ? "没有发送出去：" : "Not sent: "}
+                  {zh ? "发送失败：" : "Not sent: "}
                   {props.failed.error}
                 </span>
                 <button

@@ -67,7 +67,7 @@ export function DiscoverChannels({
   return (
     <section style={{ padding: "16px 20px 20px", borderTop: "1px solid #ededed" }}>
       <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
-        <span style={{ fontSize: 15, fontWeight: 500 }}>{t("Who is making this", "谁在做这个题")}</span>
+        <span style={{ fontSize: 15, fontWeight: 500 }}>{t("Who is making this", "谁在做这个选题")}</span>
         <span style={{ fontSize: 11.5, color: "#999999" }}>
           {t(
             "the last 30 days on YouTube, ranked by what those videos earned",
@@ -205,7 +205,7 @@ export function DiscoverChannels({
                       {c.title}
                     </a>
                     <span style={{ fontSize: 11, color: "#999999" }}>
-                      {compact(c.subscribers)} {t("subscribers", "订阅")}
+                      {compact(c.subscribers)} {t("subscribers", "订阅数")}
                       {c.country ? ` · ${c.country}` : ""}
                     </span>
                   </span>

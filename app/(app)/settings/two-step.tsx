@@ -252,7 +252,7 @@ export function TwoStepCard({
               }
               className="h-7 rounded-lg border border-outline-gray-2 px-2.5 text-[11px] text-ink-gray-7 disabled:opacity-50"
             >
-              {reissuing ? t("Making…", "生成中…") : t("New codes", "重新生成")}
+              {reissuing ? t("Making…", "起草中…") : t("New codes", "重新生成")}
             </button>
           </div>
 

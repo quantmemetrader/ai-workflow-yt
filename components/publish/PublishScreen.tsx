@@ -101,7 +101,7 @@ export function PublishScreen({
     <div style={{ flexGrow: 1, minWidth: 0, display: "flex", minHeight: 0 }}>
     <ModuleSidebar
       title="Publish"
-      titleZh="发布"
+      titleZh="发布中"
       screens={SCREENS}
       active={tab}
       onChange={setTab}
@@ -120,7 +120,7 @@ export function PublishScreen({
           padding: "0 22px",
         }}
       >
-        <span style={{ fontSize: 15, fontWeight: 600 }}>{t("Publish", "发布")}</span>
+        <span style={{ fontSize: 15, fontWeight: 600 }}>{t("Publish", "发布中")}</span>
         <span style={{ fontSize: 11.5, color: "#999999" }}>
           {t("nothing goes out without a named approval", "没有具名批准，任何内容都不会发出")}
         </span>
@@ -198,7 +198,7 @@ export function PublishScreen({
         <ResearchAgentPanel
           accent={ACCENT}
           zh={zh}
-          scope={t("Publishing", "发布")}
+          scope={t("Publishing", "发布中")}
           note={agentNote(channels, posts, waiting.length, zh)}
           placeholder={t("Ask about what is going out…", "询问即将发布的内容…")}
           model={model}
@@ -416,7 +416,7 @@ function ChannelBoard({
                 {c.tokenExpiresAt && (
                   <Badge
                     tone={c.tokenExpiresSoon ? "warn" : "quiet"}
-                    text={`${t("token to", "令牌至")} ${c.tokenExpiresAt.toISOString().slice(0, 10)}`}
+                    text={`${t("token to", "令牌有效期至")} ${c.tokenExpiresAt.toISOString().slice(0, 10)}`}
                   />
                 )}
               </div>
@@ -864,7 +864,7 @@ function Caption({
           {selected.targets.length > 0 && (
             <>
               <div className="lbl" style={{ padding: 0, margin: "20px 0 8px" }}>
-                {t("Per-channel wording", "按渠道覆写")}
+                {t("Per-channel wording", "各渠道文案")}
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                 {selected.targets.map((tg) => (
@@ -1142,7 +1142,7 @@ function LogTable({
     <div style={{ display: "flex", flexDirection: "column" }}>
       <div style={{ ...row, borderBottom: "1px solid #ededed", color: "#999999", fontSize: 10.5, fontWeight: 500, height: 30 }}>
         <span style={{ width: 130 }}>{t("When", "时间")}</span>
-        <span style={{ flexGrow: 1 }}>{t("Post", "内容")}</span>
+        <span style={{ flexGrow: 1 }}>{t("Post", "帖子")}</span>
         <span style={{ width: 140 }}>{t("Channel", "渠道")}</span>
         <span style={{ width: 90 }}>{t("Result", "结果")}</span>
         <span style={{ width: 70 }} />

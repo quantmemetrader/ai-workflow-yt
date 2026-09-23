@@ -138,7 +138,7 @@ export default async function SearchPage({
           ? "助理和你搜到的是同一批内容：它也只能读你有权查看的文件。"
           : "The agent searches the same set you do: it can only read what you can read."
       }
-      placeholder={zh ? "问这些结果…" : "Ask about these results…"}
+      placeholder={zh ? "询问这些结果…" : "Ask about these results…"}
       corner={withheld > 0 ? (zh ? `${withheld} 项未显示` : `${withheld} withheld`) : undefined}
     />
     </div>

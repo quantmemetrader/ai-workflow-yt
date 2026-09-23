@@ -140,7 +140,7 @@ export function LoginChrome({
               }}
             >
               <div style={{ fontSize: 13, fontWeight: 500, lineHeight: 1.4, textWrap: "pretty" }}>
-                {zh ? "工作室的片、脚本与素材，都在一处。" : "Every video, script and asset, in one place."}
+                {zh ? "工作室的视频、脚本与素材，都在一处。" : "Every video, script and asset, in one place."}
               </div>
             </div>
           </div>
@@ -156,7 +156,7 @@ export function LoginChrome({
             }}
           >
             {zh
-              ? "一个工作台，管好每一条片、每一份脚本、每一个助理。"
+              ? "一个工作台，管好每一条视频、每一份脚本、每一个助理。"
               : "One workspace for every video, every script, and every agent."}
           </div>
           <p
@@ -225,7 +225,7 @@ export function LoginChrome({
         </div>
 
         <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11.5, color: "#999999" }}>
-          <span>{footerLeft ? footerLeft(zh) : zh ? "30 天不活动后自动退出" : "Sessions expire after 30 days of inactivity"}</span>
+          <span>{footerLeft ? footerLeft(zh) : zh ? "30 天无操作后自动退出登录" : "Sessions expire after 30 days of inactivity"}</span>
           <span>{zh ? "每次读取都按你的权限过滤" : "Every read is filtered to your own permissions"}</span>
         </div>
       </div>

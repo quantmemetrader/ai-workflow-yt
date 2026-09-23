@@ -381,7 +381,7 @@ const ZH: Record<string, string> = {
   "Editing starts a new version, which needs approval again.": "继续编辑会开始新版本，需要重新审批。",
   "Records are permanent · in the audit log": "记录永久保存 · 存于审计日志",
   "Written by": "作者",
-  "Length": "时长",
+  "Length": "过渡时长",
   "Earlier versions": "更早的版本",
   "Nothing to approve": "没有待审批的内容",
 };
@@ -845,7 +845,7 @@ export function ScriptDetailScreen(props: ScriptDetailScreenProps): React.JSX.El
   const kindLabel = (kind: string): string => {
     const map: Record<string, [string, string]> = {
       house_style: ["House style", "风格规范"],
-      length: ["Length", "时长"],
+      length: ["Length", "过渡时长"],
       register: ["Register", "语体"],
       clarity: ["Clarity", "清晰度"],
       sound_direction: ["Sound direction", "声音指示"],
@@ -2153,7 +2153,7 @@ export function ScriptDetailScreen(props: ScriptDetailScreenProps): React.JSX.El
           onClick={() => onTab("draft")}
           style={{ height: 26, fontSize: 12, alignSelf: "center" }}
         >
-          {zh ? "查看" : "Review"}
+          {zh ? "审阅" : "Review"}
         </button>
       ),
   });

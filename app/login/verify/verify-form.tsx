@@ -60,7 +60,7 @@ export function VerifyForm({ email, recoveryLeft }: { email: string; recoveryLef
   const cells = Array.from({ length: 6 }, (_, i) => code[i] ?? "");
 
   return (
-    <LoginChrome footerLeft={(zh) => (zh ? "30 天不活动后自动退出" : "Sessions expire after 30 days of inactivity")}>
+    <LoginChrome footerLeft={(zh) => (zh ? "30 天无操作后自动退出登录" : "Sessions expire after 30 days of inactivity")}>
       {({ zh, t }) => (
         <form ref={form} action={action} style={{ width: 380 }}>
           <button

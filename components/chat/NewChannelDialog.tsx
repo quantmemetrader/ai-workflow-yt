@@ -129,7 +129,7 @@ export function NewChannelDialog({
               </span>
               <span style={{ fontSize: 11.5, color: "#999999", display: "block", marginTop: 2, lineHeight: 1.55 }}>
                 {zh
-                  ? "只有被加入的人能看到它和它的消息。"
+                  ? "只有被加入的成员才能看到该群组及其中的消息。"
                   : "Only the people added to it can see it, or anything said in it."}
               </span>
             </span>

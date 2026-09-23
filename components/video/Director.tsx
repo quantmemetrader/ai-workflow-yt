@@ -92,7 +92,7 @@ export function Director({
           <svg viewBox="0 0 24 24" style={{ width: 10, height: 10, fill: "none", stroke: "#999", strokeWidth: 2.6, strokeLinecap: "round", strokeLinejoin: "round", transform: open ? "rotate(90deg)" : "none" }}>
             <path d="m9 5 7 7-7 7" />
           </svg>
-          <span style={{ fontSize: 12.5, fontWeight: 600 }}>{t("Make the video", "一键成片")}</span>
+          <span style={{ fontSize: 12.5, fontWeight: 600 }}>{t("Make the video", "开始制作")}</span>
         </button>
 
         {running ? (

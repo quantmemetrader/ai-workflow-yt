@@ -266,7 +266,7 @@ export function CommandPalette({ modules, locale }: { modules: Module[]; locale:
             ref={input}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder={zh ? "跳转到频道、同事、文件夹或文件" : "Jump to a channel, a person, a folder or a file"}
+            placeholder={zh ? "跳转到频道、成员、文件夹或文件" : "Jump to a channel, a person, a folder or a file"}
             style={{
               flexGrow: 1,
               minWidth: 0,
@@ -313,7 +313,7 @@ export function CommandPalette({ modules, locale }: { modules: Module[]; locale:
             const firstThing = i === placeCount && placeCount > 0;
             return (
               <div key={`${row.kind}:${row.id}`}>
-                {first && placeCount > 0 && <Label text={zh ? "去哪里" : "Places"} />}
+                {first && placeCount > 0 && <Label text={zh ? "位置" : "Places"} />}
                 {firstThing && <Label text={zh ? "找到的内容" : "Found"} />}
                 <button
                   type="button"
@@ -376,7 +376,7 @@ export function CommandPalette({ modules, locale }: { modules: Module[]; locale:
                           : "channel"
                         : row.kind === "person"
                           ? zh
-                            ? "私信"
+                            ? "消息"
                             : "message"
                           : row.kind === "folder"
                             ? zh

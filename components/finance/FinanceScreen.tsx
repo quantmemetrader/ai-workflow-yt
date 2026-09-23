@@ -370,7 +370,7 @@ function AddCentre({
         }}
         style={{ ...solid, opacity: busy || !name.trim() ? 0.45 : 1 }}
       >
-        {t("Add", "添加")}
+        {t("Add", "关注")}
       </button>
     </div>
   );
@@ -470,7 +470,7 @@ function Cash({
           style={{ ...field, width: 260, height: 32 }}
         />
         <select value={centreId} onChange={(e) => setCentreId(e.target.value)} style={{ ...field, width: 180, height: 32 }}>
-          <option value="">{t("Not filed", "不归类")}</option>
+          <option value="">{t("Not filed", "未归类")}</option>
           {centres.map((c) => (
             <option key={c.id} value={c.id}>
               {c.name}
@@ -593,7 +593,7 @@ function Spend({
           background: "#fcfcfc",
         }}
       >
-        <div style={{ fontSize: 12.5, fontWeight: 500, marginBottom: 6 }}>{t("Who has to sign", "谁需要签批")}</div>
+        <div style={{ fontSize: 12.5, fontWeight: 500, marginBottom: 6 }}>{t("Who has to sign", "谁需要审批")}</div>
         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", fontSize: 12 }}>
           <span>{t("Under", "低于")}</span>
           <input value={a} onChange={(e) => setA(e.target.value.replace(/[^\d.]/g, ""))} style={{ ...field, width: 90, height: 28, textAlign: "right" }} />
@@ -615,7 +615,7 @@ function Spend({
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 20 }}>
         <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder={t("What is it for?", "用途")} style={{ ...field, width: 250, height: 32 }} />
         <select value={centreId} onChange={(e) => setCentreId(e.target.value)} style={{ ...field, width: 170, height: 32 }}>
-          <option value="">{t("Not filed", "不归类")}</option>
+          <option value="">{t("Not filed", "未归类")}</option>
           {centres.map((c) => (
             <option key={c.id} value={c.id}>
               {c.name}
@@ -679,7 +679,7 @@ function Spend({
                 </Badge>
                 <span style={{ marginLeft: "auto", fontSize: 11, color: "#999999" }}>
                   {t("by", "提交人")} {s.requestedByName ?? "—"} · {approvals}/{s.approvalsNeeded}{" "}
-                  {t("approvals", "个批准")}
+                  {t("approvals", "人已批准")}
                 </span>
               </div>
 
