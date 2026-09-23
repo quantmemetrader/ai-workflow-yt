@@ -1,6 +1,6 @@
 import "server-only";
 import { createHash } from "node:crypto";
-import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, isNull, or, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import {
   approvals,
@@ -8,12 +8,14 @@ import {
   scriptComments,
   scriptFolders,
   scriptSuggestions,
+  relationTuples,
   scriptVersions,
   scripts,
   topics,
   users,
 } from "@/lib/db/schema";
 import { newId } from "@/lib/ids";
+import { grantOwner } from "@/lib/authz/rebac";
 import type { Viewer } from "@/lib/auth/dal";
 
 /**
@@ -396,7 +398,36 @@ export async function createScript(
     briefUpdatedAt: new Date(),
     status: "brief",
   });
+
+  /* The writer owns it, as a relation rather than only as a column.
+     `ownerId` says who made it; the tuple is what lets them share it, and what
+     "Shared with me" reads. Files has worked this way from the start; scripts
+     carried the column and not the tuple, which is why that scope returned
+     nothing by construction. */
+  await grantOwner(viewer.id, { type: "script", id });
   return id;
+}
+
+/**
+ * Scripts somebody else has shared with this person.
+ *
+ * Read from the same `relation_tuples` the Files module uses, matched against
+ * the viewer's subjects — themselves, their teams, and the tenant. Their own
+ * scripts are excluded: "shared with me" that includes everything you wrote is
+ * a list nobody can use.
+ */
+export async function sharedScriptIds(viewer: Viewer): Promise<string[]> {
+  const rows = await db
+    .select({ objectId: relationTuples.objectId })
+    .from(relationTuples)
+    .where(
+      and(
+        eq(relationTuples.objectType, "script"),
+        inArray(relationTuples.subjectId, viewer.subjects),
+        or(isNull(relationTuples.expiresAt), gt(relationTuples.expiresAt, new Date())),
+      ),
+    );
+  return [...new Set(rows.map((r) => r.objectId))];
 }
 
 /**
@@ -923,14 +954,4 @@ export async function removeScript(viewer: Viewer, scriptId: string) {
     .set({ deletedAt: new Date() })
     .where(and(eq(scripts.id, scriptId), eq(scripts.tenantId, viewer.tenantId)));
   return { ok: true };
-}
-
-/** Used by the library's folder counts and by the rail badge. */
-export async function scriptIdsIn(viewer: Viewer, ids: string[]) {
-  if (!ids.length) return [];
-  return db
-    .select({ id: scripts.id })
-    .from(scripts)
-    .where(and(eq(scripts.tenantId, viewer.tenantId), inArray(scripts.id, ids)))
-    .then((r) => r.map((x) => x.id));
 }

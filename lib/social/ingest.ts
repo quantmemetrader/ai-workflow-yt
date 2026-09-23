@@ -1,11 +1,20 @@
 import "server-only";
-import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { channelPosts, channels, commentDrafts, comments, postMetrics, researchSources } from "@/lib/db/schema";
+import {
+  channelPosts,
+  channels,
+  commentDrafts,
+  comments,
+  competitorPosts,
+  competitors,
+  postMetrics,
+  researchSources,
+} from "@/lib/db/schema";
 import { newId } from "@/lib/ids";
 import { complete } from "@/lib/ai/openrouter";
 import { modelFor } from "@/lib/ai/models";
-import { recordUsage } from "@/lib/ai/ledger";
+import { assertBudget, BudgetStop, recordUsage } from "@/lib/ai/ledger";
 import { servicePrincipal } from "@/lib/authz/service-principal";
 import { env } from "@/lib/env";
 import * as zernio from "./zernio";
@@ -95,12 +104,18 @@ export async function syncChannels() {
       issues: h?.issues ?? [],
       enabled: a.enabled !== false,
       syncedAt: now,
-      lastError: null as string | null,
     };
 
     await db
       .insert(channels)
-      .values({ id: newId("chn"), ...values })
+      .values({ id: newId("chn"), ...values, lastError: null })
+      /*
+       * `lastError` is deliberately not in the `set`. Clearing it on every
+       * channel refresh erased the per-channel reason written when a post's
+       * comments could not be read, so the board said a connection was fine
+       * moments after something on it had failed. Only the thing that fixes a
+       * connection clears its error.
+       */
       .onConflictDoUpdate({ target: [channels.tenantId, channels.externalId], set: values });
     written++;
   }
@@ -145,8 +160,31 @@ export async function syncPosts() {
 
     for (const t of targets) {
       const channel = (t.accountId && byExternal.get(t.accountId)) || byPlatform.get(t.platform);
-      const externalId = t.platformPostId ?? p._id;
+      /*
+       * Key on the platform's own id, and only on the platform's own id
+       * (REVIEW.md #9).
+       *
+       * Falling back to Zernio's id meant a post ingested while it was still
+       * publishing got Zernio's id, and the next round got the platform's:
+       * two rows, two metric series, one video appearing twice on the table.
+       * A post with no platform id has not been published yet, and skipping it
+       * is the honest reading of that.
+       */
+      const externalId = t.platformPostId;
       if (!channel || !t.platform || !externalId) continue;
+
+      /*
+       * Zernio's own word for where this post got to (REVIEW.md #8).
+       *
+       * `status` was read off the response and never used, and `publishedAt`
+       * fell back to `scheduledFor`, so a post scheduled for next Tuesday
+       * sorted to the top of Content performance with a future date and a dash
+       * in every column. Only something the platform actually took carries a
+       * published date.
+       */
+      const state = String(t.status ?? p.status ?? "").toLowerCase();
+      const isPublished = state === "published" || state === "posted" || state === "" ;
+      const publishedAt = isPublished ? toDateOrNull(p.publishedAt) : null;
 
       const values = {
         tenantId: tenant,
@@ -159,7 +197,9 @@ export async function syncPosts() {
         permalink: t.platformPostUrl ?? p.platformPostUrl ?? null,
         thumbnailUrl: p.thumbnailUrl ?? null,
         isExternal: Boolean(p.isExternal),
-        publishedAt: toDateOrNull(p.publishedAt ?? p.scheduledFor),
+        publishedAt,
+        status: state || "published",
+        scheduledFor: toDateOrNull(p.scheduledFor),
         commentCount: num(t.analytics?.comments ?? p.analytics?.comments) ?? 0,
         syncedAt: new Date(),
       };
@@ -194,16 +234,38 @@ export async function syncPosts() {
          * exactly the invented number the brief forbids. Zero becomes absent,
          * and the screen shows "not reported".
          */
-        completionRate: num(a.completionRate) || null,
+        /*
+         * A fraction, like the column says (REVIEW.md #5).
+         *
+         * Zernio reports this as a percentage and the daily job writes
+         * `averageViewPercentage / 100`, so this column held two different
+         * quantities and `PerfScreen` multiplied both by 100. That was masked
+         * only by the empirical fact that Zernio reports 0 for YouTube — a
+         * coincidence the code relied on and never asserted.
+         */
+        completionRate: (num(a.completionRate) || null) === null ? null : num(a.completionRate)! / 100,
         // Zernio reports this as a percentage; the column is a fraction, so
         // one place converts and every reader gets the same unit.
         engagementRate: a.engagementRate === null || a.engagementRate === undefined ? null : Number(a.engagementRate) / 100,
       };
 
+      /*
+       * Running it twice is the same as running it once (REVIEW.md #9).
+       *
+       * The `set` used to include `completionRate`, which meant the hourly
+       * round wrote null over the watch-through the daily job had measured
+       * from YouTube Analytics an hour earlier. "Sync now" reproduced it on
+       * demand. A null here is "Zernio did not say", which is not a reason to
+       * forget what somebody else did say.
+       */
+      const { completionRate, ...alwaysSet } = metrics;
       await db
         .insert(postMetrics)
         .values({ id: newId("pm"), postId: row.id, asOf, ...metrics })
-        .onConflictDoUpdate({ target: [postMetrics.postId, postMetrics.asOf], set: metrics });
+        .onConflictDoUpdate({
+          target: [postMetrics.postId, postMetrics.asOf],
+          set: completionRate === null ? alwaysSet : metrics,
+        });
       metricCount++;
     }
   }
@@ -223,9 +285,17 @@ export async function syncPosts() {
  * Watch-through comes from the same response. `/analytics` reports it as 0
  * for YouTube, which is not a measurement; `averageViewPercentage` is.
  */
+async function inBatches<T, R>(items: T[], size: number, work: (item: T) => Promise<R>): Promise<R[]> {
+  const out: R[] = [];
+  for (let at = 0; at < items.length; at += size) {
+    out.push(...(await Promise.all(items.slice(at, at + size).map(work))));
+  }
+  return out;
+}
+
 export async function syncDailyViews(opts: { days?: number; maxPosts?: number } = {}) {
   const days = opts.days ?? 90;
-  const maxPosts = opts.maxPosts ?? 60;
+  const maxPosts = opts.maxPosts ?? 40;
   const tenant = await tenantId();
 
   const rows = await db
@@ -256,17 +326,25 @@ export async function syncDailyViews(opts: { days?: number; maxPosts?: number } 
   let posts = 0;
   let points = 0;
 
-  for (const p of rows) {
-    let daily: zernio.ZernioDailyView[] = [];
+  // Five questions in the air at once rather than one after another: at
+  // twenty seconds a call this was the one job that never finished inside its
+  // ten minutes, and a sync that always times out is a sync that never ran.
+  const fetched = await inBatches(rows, 5, async (p) => {
     try {
       const res = await zernio.youtubeDailyViews(p.channelExternalId, p.externalId, { startDate, endDate });
-      daily = res.dailyViews ?? [];
+      return { p, daily: res.dailyViews ?? [] };
     } catch {
       // One video's analytics being unavailable is normal, not a failure of
       // the round: YouTube returns nothing for a video with very few views.
-      continue;
+      return null;
     }
+  });
+
+  for (const got of fetched) {
+    if (!got) continue;
+    const { p, daily } = got;
     posts++;
+    const rows90: (typeof postMetrics.$inferInsert)[] = [];
 
     for (const d of daily) {
       const asOf = new Date(`${d.date}T00:00:00.000Z`);
@@ -286,18 +364,38 @@ export async function syncDailyViews(opts: { days?: number; maxPosts?: number } 
       const raw = num(d.averageViewPercentage);
       const pct = views > 0 && raw !== null && raw > 0 ? raw : null;
 
-      const values = {
+      rows90.push({
+        id: newId("pm"),
+        postId: p.id,
+        asOf,
         viewsDay: views,
         minutesWatchedDay: num(d.estimatedMinutesWatched),
         subscribersGainedDay: num(d.subscribersGained),
-        ...(pct === null ? {} : { completionRate: pct / 100 }),
-      };
+        completionRate: pct === null ? null : pct / 100,
+      });
+    }
 
+    /*
+     * One statement per video, not one per day. Three and a half thousand
+     * single-row upserts against a database in another country was the
+     * fourteen minutes this job took, not the vendor. A null watch-through
+     * keeps whatever was stored before, as the single-row version did.
+     */
+    for (let at = 0; at < rows90.length; at += 200) {
+      const chunk = rows90.slice(at, at + 200);
       await db
         .insert(postMetrics)
-        .values({ id: newId("pm"), postId: p.id, asOf, ...values })
-        .onConflictDoUpdate({ target: [postMetrics.postId, postMetrics.asOf], set: values });
-      points++;
+        .values(chunk)
+        .onConflictDoUpdate({
+          target: [postMetrics.postId, postMetrics.asOf],
+          set: {
+            viewsDay: sql`excluded.views_day`,
+            minutesWatchedDay: sql`excluded.minutes_watched_day`,
+            subscribersGainedDay: sql`excluded.subscribers_gained_day`,
+            completionRate: sql`coalesce(excluded.completion_rate, ${postMetrics.completionRate})`,
+          },
+        });
+      points += chunk.length;
     }
   }
 
@@ -335,7 +433,14 @@ export async function syncComments(limitPosts = 100) {
   let written = 0;
 
   for (const p of inbox ?? []) {
-    if (!num(p.commentCount)) continue;
+    /*
+     * Zernio has already filtered this list by `minComments`, so re-checking
+     * the field is redundant — and if it is ever absent, this skipped every
+     * post and the round reported success with zero comments, which is the
+     * silent-empty-inbox failure this module has already hit once. Only an
+     * explicit zero is a reason to skip.
+     */
+    if (num(p.commentCount) === 0) continue;
 
     // `syncPosts` only reaches back as far as the analytics window, and the
     // posts people are still commenting on are often older than that. Rather
@@ -375,11 +480,26 @@ export async function syncComments(limitPosts = 100) {
 
     let batch: zernio.ZernioComment[] = [];
     try {
-      const res = await zernio.postComments(p.id, { accountId: p.accountId, limit: 100 });
-      // Replies arrive nested inside their parent. Flattened to one row each
-      // with `parentExternalId` set, so a reply is a comment the inbox can
-      // show, filter and act on like any other.
-      batch = flatten(res.comments ?? []);
+      /*
+       * Every page, not the first hundred (REVIEW.md #12).
+       *
+       * `pagination.hasMore` and `cursor` were typed in `zernio.ts` and never
+       * read, so a video with four hundred comments contributed a hundred and
+       * the inbox reported that as the whole of it. Bounded at ten pages: a
+       * thousand comments on one video is already more than a person will work
+       * through in a sitting, and an unbounded loop against a metered vendor
+       * is a bill nobody approved.
+       */
+      let cursor: string | undefined;
+      for (let page = 0; page < 10; page++) {
+        const res = await zernio.postComments(p.id, { accountId: p.accountId, limit: 100, cursor });
+        // Replies arrive nested inside their parent. Flattened to one row each
+        // with `parentExternalId` set, so a reply is a comment the inbox can
+        // show, filter and act on like any other.
+        batch = batch.concat(flatten(res.comments ?? []));
+        cursor = res.pagination?.hasMore ? (res.pagination.cursor ?? undefined) : undefined;
+        if (!cursor) break;
+      }
     } catch (err) {
       // One unreadable post must not abandon the round. The reason is kept on
       // the channel so the screen can say which connection is unhappy.
@@ -504,6 +624,26 @@ export async function classifyComments(batchSize = 20) {
   // Scheduled work is charged to the service principal, not to whoever
   // happens to open the inbox afterwards (spec §2).
   const principal = await servicePrincipal(tenant);
+
+  /*
+   * The cap stops scheduled work too (REVIEW.md #10).
+   *
+   * This loop recorded its spend and never checked it, so with the cap
+   * exhausted `regenerateDraftAction` correctly refused every person while
+   * this kept billing twenty calls an hour, unattended. Checked once before
+   * the batch and again between comments, because a batch of fifty can cross
+   * the cap halfway through.
+   */
+  try {
+    await assertBudget(principal);
+  } catch (err) {
+    if (err instanceof BudgetStop) {
+      console.warn("[social] classification stopped: the studio is at its cap");
+      return { classified: 0, drafted: 0, stopped: "budget" as const };
+    }
+    throw err;
+  }
+
   let classified = 0;
   let drafted = 0;
 
@@ -511,6 +651,17 @@ export async function classifyComments(batchSize = 20) {
     if (!c.body.trim()) {
       await db.update(comments).set({ classifiedAt: new Date() }).where(eq(comments.id, c.id));
       continue;
+    }
+
+    // Re-checked between comments: a long batch can cross the cap partway.
+    try {
+      await assertBudget(principal);
+    } catch (err) {
+      if (err instanceof BudgetStop) {
+        console.warn("[social] classification stopped partway: the studio reached its cap");
+        return { classified, drafted, stopped: "budget" as const };
+      }
+      throw err;
     }
 
     let parsed: Classification | null = null;
@@ -661,4 +812,131 @@ async function checkTikHub() {
   } catch (err) {
     await markSource("tikhub", false, err instanceof Error ? err.message : String(err));
   }
+}
+
+// -------------------------------------------------------- 4. competitors
+
+/**
+ * Somebody else's channel, read from the outside.
+ *
+ * The one thing Zernio cannot do and TikHub can: the studio's own accounts are
+ * mirrored by `syncChannels`, and this is everybody else. Public figures only,
+ * exactly what the platform shows anybody.
+ *
+ * Each competitor is fetched independently and a failure is kept on that row:
+ * one channel that has been renamed must not abandon the round for the rest.
+ */
+export async function syncCompetitors(limit = 25) {
+  if (!env.tikhub.configured) return { competitors: 0, posts: 0, skipped: "no TikHub key" as const };
+
+  const tenant = await tenantId();
+  if (!tenant) return { competitors: 0, posts: 0 };
+
+  const rows = await db
+    .select()
+    .from(competitors)
+    .where(eq(competitors.tenantId, tenant))
+    .orderBy(asc(competitors.syncedAt))
+    .limit(limit);
+
+  let synced = 0;
+  let posts = 0;
+
+  for (const c of rows) {
+    try {
+      // Only YouTube today. The client has TikTok, Instagram, Xiaohongshu and
+      // WeChat helpers ready; each returns a differently shaped payload and
+      // gets its own branch when the studio actually watches one.
+      if (c.platform !== "youtube") {
+        await db
+          .update(competitors)
+          .set({ syncedAt: new Date(), lastError: `No reader for ${c.platform} yet` })
+          .where(eq(competitors.id, c.id));
+        continue;
+      }
+
+      /*
+       * A competitor may have been entered as `@handle` or as a URL, because
+       * that is what a person has. `get_channel_videos` answers an empty list
+       * for anything but a `UC…` id — no error, just nothing — so it is
+       * resolved once and the id written back, and every later round is one
+       * request instead of two.
+       */
+      let channelId = c.externalId;
+      if (!/^UC[\w-]{20,}$/.test(channelId)) {
+        const resolved = await tikhub.resolveYouTubeChannel(c.externalId);
+        if (!resolved) {
+          await db
+            .update(competitors)
+            .set({ syncedAt: new Date(), lastError: `No YouTube channel found for ${c.externalId}` })
+            .where(eq(competitors.id, c.id));
+          continue;
+        }
+        channelId = resolved;
+        await db.update(competitors).set({ externalId: resolved }).where(eq(competitors.id, c.id));
+      }
+
+      const res = await tikhub.youtubeChannelVideos(channelId);
+      const videos = res.videos ?? [];
+
+      for (const v of videos.slice(0, 30)) {
+        if (!v.video_id) continue;
+        const values = {
+          tenantId: tenant,
+          competitorId: c.id,
+          externalId: v.video_id,
+          title: v.title ?? null,
+          permalink: v.url ?? `https://www.youtube.com/watch?v=${v.video_id}`,
+          thumbnailUrl: v.thumbnail ?? null,
+          views: parseCount(v.view_count ?? v.short_view_count),
+          durationSecs: parseDuration(v.duration),
+          // The platform often gives "3 weeks ago" rather than a date. Kept as
+          // it was said rather than turned into a date we invented.
+          publishedLabel: v.published_time ?? null,
+          syncedAt: new Date(),
+        };
+
+        await db
+          .insert(competitorPosts)
+          .values({ id: newId("post"), ...values })
+          .onConflictDoUpdate({ target: [competitorPosts.competitorId, competitorPosts.externalId], set: values });
+        posts++;
+      }
+
+      await db
+        .update(competitors)
+        .set({ syncedAt: new Date(), lastError: null })
+        .where(eq(competitors.id, c.id));
+      synced++;
+    } catch (err) {
+      await db
+        .update(competitors)
+        .set({
+          syncedAt: new Date(),
+          lastError: err instanceof Error ? err.message.slice(0, 500) : String(err),
+        })
+        .where(eq(competitors.id, c.id));
+    }
+  }
+
+  return { competitors: synced, posts };
+}
+
+/** "1.2M views", "48,120", "3.4K" — whatever the platform felt like sending. */
+function parseCount(value: string | null | undefined): number | null {
+  if (!value) return null;
+  const m = String(value).replace(/,/g, "").match(/([\d.]+)\s*([KMB])?/i);
+  if (!m) return null;
+  const n = Number(m[1]);
+  if (!Number.isFinite(n)) return null;
+  const scale = { k: 1_000, m: 1_000_000, b: 1_000_000_000 }[(m[2] ?? "").toLowerCase()] ?? 1;
+  return Math.round(n * scale);
+}
+
+/** "12:34" or "1:02:03". */
+function parseDuration(value: string | null | undefined): number | null {
+  if (!value) return null;
+  const parts = String(value).split(":").map(Number);
+  if (!parts.length || parts.some((p) => !Number.isFinite(p))) return null;
+  return parts.reduce((acc, p) => acc * 60 + p, 0);
 }

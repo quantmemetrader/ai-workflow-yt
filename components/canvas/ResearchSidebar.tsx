@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useLocalPreference } from "@/lib/client/preference";
+import { useResizable } from "@/components/ui/Resizer";
 
 /**
  * The Market Research sidebar, shared by every screen in the module.
@@ -49,14 +51,21 @@ export function ResearchSidebar({
   locale: string;
 }) {
   const pathname = usePathname();
+  const { width, handle } = useResizable("research-sidebar", { min: 170, max: 380, initial: 212, edge: "right" });
+  // Folded by default, and the choice is remembered: somebody who wants the
+  // list open every morning should not have to open it every morning.
+  const [open, setOpen] = useLocalPreference("aura:research-sources", ["open", "shut"] as const, "shut");
+  const live = sources.filter((s) => s.status === "live").length;
+  const degraded = sources.filter((s) => s.status === "degraded").length;
   const zh = locale.startsWith("zh");
 
   return (
     <div
       data-trends-screen=""
       style={{
-        width: 212,
+        width,
         flexShrink: 0,
+        position: "relative",
         background: "#f8f8f8",
         borderRight: "1px solid #ededed",
         display: "flex",
@@ -64,6 +73,7 @@ export function ResearchSidebar({
         padding: "10px 8px",
       }}
     >
+      {handle}
       <div style={{ padding: "4px 9px 12px", fontSize: 14, fontWeight: 500 }}>
         {zh ? "市场调研" : "Market Research"}
       </div>
@@ -86,46 +96,105 @@ export function ResearchSidebar({
         ))}
       </div>
 
-      <div className="lbl" style={{ margin: "18px 0 5px" }}>
-        {zh ? "已连接的来源" : "Connected sources"}
-      </div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
-        {/* These used to link to /research/sources, a screen that does not
-            exist — every one of them was a 404. A source is a status line, not
-            a destination, so it is a row with its state on it. */}
-        {sources.map((s) => (
-          <div
-            className="n"
-            key={s.key}
-            style={s.status === "live" ? {} : { color: "#999999" }}
-            title={
-              s.note ??
-              (s.status === "live"
-                ? zh
-                  ? "已连接"
-                  : "Connected"
-                : s.status === "degraded"
-                  ? zh
-                    ? "连接不稳定"
-                    : "Degraded"
-                  : zh
-                    ? "尚未配置"
-                    : "Not configured yet")
-            }
+      {/*
+        * A folded summary, not eleven dead rows.
+        *
+        * A source is a status line, never a destination — these used to link
+        * to `/research/sources`, a screen that does not exist, so every one of
+        * them was a 404 — and eleven rows that do nothing read as a column of
+        * broken buttons. The header is the pressable thing, it carries the
+        * count that matters, and the detail is one click away and remembered.
+        */}
+      <button
+        type="button"
+        onClick={() => setOpen(open === "open" ? "shut" : "open")}
+        aria-expanded={open === "open"}
+        className="n"
+        style={{
+          margin: "18px 0 3px",
+          width: "100%",
+          border: 0,
+          background: "transparent",
+          cursor: "pointer",
+          fontFamily: "inherit",
+          letterSpacing: "inherit",
+          fontSize: 10.5,
+          fontWeight: 500,
+          color: "#999999",
+          height: 22,
+        }}
+      >
+        <span>{zh ? "已连接的来源" : "Connected sources"}</span>
+        <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6 }}>
+          <span style={{ fontSize: 10.5, color: live === sources.length ? "#278f5e" : "#999999" }}>
+            {live}/{sources.length}
+          </span>
+          <svg
+            viewBox="0 0 24 24"
+            style={{
+              width: 11,
+              height: 11,
+              stroke: "#c7c7c7",
+              fill: "none",
+              strokeWidth: 2.2,
+              strokeLinecap: "round",
+              strokeLinejoin: "round",
+              transform: open === "open" ? "rotate(180deg)" : "none",
+              transition: "transform .16s ease",
+            }}
           >
-            <span>{s.name}</span>
-            <span
-              style={{
-                marginLeft: "auto",
-                width: 6,
-                height: 6,
-                borderRadius: 3,
-                background: s.status === "live" ? "#278f5e" : s.status === "degraded" ? "#db7706" : "#c7c7c7",
-              }}
-            />
-          </div>
-        ))}
-      </div>
+            <path d="m6 9.5 6 6 6-6" />
+          </svg>
+        </span>
+      </button>
+
+      {open === "open" ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
+          {sources.map((s) => (
+            <div
+              className="n"
+              key={s.key}
+              style={s.status === "live" ? {} : { color: "#999999" }}
+              title={
+                s.note ??
+                (s.status === "live"
+                  ? zh
+                    ? "已连接"
+                    : "Connected"
+                  : s.status === "degraded"
+                    ? zh
+                      ? "连接不稳定"
+                      : "Degraded"
+                    : zh
+                      ? "尚未配置"
+                      : "Not configured yet")
+              }
+            >
+              <span>{s.name}</span>
+              <span
+                style={{
+                  marginLeft: "auto",
+                  width: 6,
+                  height: 6,
+                  borderRadius: 3,
+                  background:
+                    s.status === "live" ? "#278f5e" : s.status === "degraded" ? "#db7706" : "#c7c7c7",
+                }}
+              />
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p style={{ fontSize: 11, color: "#c7c7c7", lineHeight: 1.5, padding: "0 9px", margin: 0 }}>
+          {degraded > 0
+            ? zh
+              ? `${degraded} 个来源连接不稳定`
+              : `${degraded} answering badly`
+            : zh
+              ? "全部正常"
+              : "all answering"}
+        </p>
+      )}
 
       <div style={{ marginTop: "auto", padding: "11px 9px 4px", borderTop: "1px solid #ededed" }}>
         <div className="lbl" style={{ padding: 0, marginBottom: 5 }}>

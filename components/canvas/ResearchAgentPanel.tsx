@@ -1,6 +1,9 @@
 "use client";
 
+import { ModelPicker } from "@/components/shell/ModelPicker";
+
 import { useState } from "react";
+import { useResizable } from "@/components/ui/Resizer";
 
 /**
  * The 312px Agent panel every Market Research artboard draws down its right
@@ -48,6 +51,9 @@ export function ResearchAgentPanel({
   /** Footer left. The Comment inbox uses it for the PDPO notice. */
   footnote,
   onAsk,
+  thread,
+  tools,
+  dock = false,
 }: {
   accent: string;
   zh: boolean;
@@ -58,8 +64,29 @@ export function ResearchAgentPanel({
   model: string;
   footnote?: string;
   onAsk: (prompt: string) => void;
+  /** The conversation so far. Asking used to navigate to /chat, which took the
+   * screen you were reading away to answer a question about it. */
+  thread?: React.ReactNode;
+  /** Controls in the header: history, a new thread. */
+  tools?: React.ReactNode;
+  /**
+   * Fill the space given instead of claiming a column of its own.
+   *
+   * The Trends dashboard already spends its right edge on the watchlist, so
+   * the agent goes underneath it rather than beside it — same panel, same
+   * conversation, no second vertical seam on a screen that has three already.
+   */
+  dock?: boolean;
 }) {
   const [ask, setAsk] = useState("");
+  // One stored width for the agent column, shared by every screen that draws
+  // it: narrowing it on Compare and finding it wide again on Inbox would be
+  // the same panel disagreeing with itself.
+  const { width, handle } = useResizable("agent-panel", { min: 220, max: 620, initial: 272, edge: "left" });
+  // Docked, the host owns the size and draws the seam.
+  const frame: React.CSSProperties = dock
+    ? { flexGrow: 1, minHeight: 0, borderTop: "1px solid #ededed" }
+    : { width, flexShrink: 0, borderLeft: "1px solid #ededed" };
 
   const send = () => {
     if (!ask.trim()) return;
@@ -71,14 +98,14 @@ export function ResearchAgentPanel({
     <div
       data-agent-panel=""
       style={{
-        width: 312,
-        flexShrink: 0,
-        borderLeft: "1px solid #ededed",
+        position: "relative",
         background: "#fcfcfc",
         display: "flex",
         flexDirection: "column",
+        ...frame,
       }}
     >
+      {dock ? null : handle}
       <style>{CSS}</style>
       <div
         style={{
@@ -131,11 +158,16 @@ export function ResearchAgentPanel({
         </div>
       </div>
 
-      <div style={{ flexGrow: 1, minHeight: 0, padding: "14px 13px 0", overflow: "hidden" }}>
-        <p style={{ fontSize: 12, lineHeight: 1.6, color: "#383838", textWrap: "pretty", margin: 0 }}>{note}</p>
-      </div>
+      {thread ?? (
+        <div style={{ flexGrow: 1, minHeight: 0, padding: "14px 13px 0", overflow: "hidden" }}>
+          <p style={{ fontSize: 12, lineHeight: 1.6, color: "#383838", textWrap: "pretty", margin: 0 }}>{note}</p>
+        </div>
+      )}
 
       <div style={{ flexShrink: 0, padding: "11px 13px 9px" }}>
+        {/* History and a new thread sit right above the composer, where the
+            hand already is, rather than in the header two panes away. */}
+        {tools ? <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 7 }}>{tools}</div> : null}
         <div style={{ border: "1px solid #e2e2e2", borderRadius: 10, background: "#fff", padding: "9px 10px 7px" }}>
           <input
             value={ask}
@@ -160,9 +192,11 @@ export function ResearchAgentPanel({
             }}
           />
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 11 }}>
-            {/* The vendor prefix is noise to a reader who only wants to know
-                which model answered. */}
-            <span style={{ fontSize: 10.5, color: "#999999" }}>{model.replace(/^[^/]+\//, "")}</span>
+            {/* Which model answers — and, for an owner or an administrator,
+                the control that changes it. It was a caption for months while
+                the only way to change the model was an environment variable
+                on a box. */}
+            <ModelPicker current={model} zh={zh} />
             <button
               type="button"
               aria-label={zh ? "发送" : "Send"}

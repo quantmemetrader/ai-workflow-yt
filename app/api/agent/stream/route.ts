@@ -3,6 +3,7 @@ import { and, eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { conversations } from "@/lib/db/schema";
 import { getViewer } from "@/lib/auth/dal";
+import type { Module } from "@/lib/db/schema";
 import { runAgent, titleConversation } from "@/lib/ai/agent";
 import { newId } from "@/lib/ids";
 
@@ -20,9 +21,13 @@ export const maxDuration = 300;
 export async function POST(request: Request) {
   const viewer = await getViewer();
   if (!viewer) return new Response("Unauthorized", { status: 401 });
-  if (!viewer.modules.includes("chat")) return new Response("Forbidden", { status: 403 });
 
-  let body: { conversationId?: string; content?: string };
+  let body: {
+    conversationId?: string;
+    content?: string;
+    /** What is open on screen. Every field is re-checked where it is used. */
+    context?: Record<string, unknown>;
+  };
   try {
     body = await request.json();
   } catch {
@@ -36,7 +41,42 @@ export async function POST(request: Request) {
   // than anything anyone types and far short of a deliberate bill.
   if (content.length > 32_000) return new Response("That message is too long", { status: 413 });
 
-  const conversationIdInput = body.conversationId;
+  /*
+   * `null` means the same thing as absent: start a new conversation. It used
+   * to be neither, and a client that sent it — which every inline agent panel
+   * did — got a 400 for a perfectly well-formed request.
+   */
+  /*
+   * What the person is looking at.
+   *
+   * Taken as hints, never as authority: each id is checked against the viewer
+   * inside the tool that uses it, so a client that names a channel it cannot
+   * read gets exactly what a client that names nothing gets. Whitelisted by
+   * key so an unknown field cannot reach a tool at all.
+   */
+  const raw = (body.context ?? {}) as Record<string, unknown>;
+  const pick = (k: string) => (typeof raw[k] === "string" ? (raw[k] as string).slice(0, 64) : undefined);
+  const context = {
+    module: typeof raw.module === "string" ? (raw.module as Module) : undefined,
+    channelId: pick("channelId"),
+    projectId: pick("projectId"),
+    topicId: pick("topicId"),
+    fileId: pick("fileId"),
+    scriptId: pick("scriptId"),
+  };
+
+  /*
+   * Who may ask. The Chat module, or the module whose screen the question
+   * came from: the assistant panel sits on every Research, Script and Video
+   * screen, and a person who holds those but not Chat used to get "Forbidden"
+   * from a panel that was drawn for them.
+   */
+  const allowed =
+    viewer.modules.includes("chat") ||
+    (context.module !== undefined && context.module !== "chat" && viewer.modules.includes(context.module));
+  if (!allowed) return new Response("Forbidden", { status: 403 });
+
+  const conversationIdInput = body.conversationId ?? undefined;
   if (conversationIdInput !== undefined && typeof conversationIdInput !== "string") {
     return new Response("Bad request", { status: 400 });
   }
@@ -72,7 +112,10 @@ export async function POST(request: Request) {
           viewer,
           conversationId: conversationId!,
           content,
-          module: "chat",
+          // The screen the question came from, when it came from one: it
+          // decides which module's tuning the prompt carries.
+          module: context.module ?? "chat",
+          context,
           signal: request.signal,
         })) {
           send(event);

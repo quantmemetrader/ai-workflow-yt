@@ -5,6 +5,18 @@ import { NAV_BY_MODULE } from "@/lib/nav";
 import { signOut } from "@/app/login/actions";
 import { LocaleSwitch } from "./locale-switch";
 import { PasswordCard } from "./password";
+import { ProfileCard } from "./profile";
+import { TwoStepCard } from "./two-step";
+import { PeopleCard } from "./people";
+import { canInvite, listInvites } from "@/lib/invites/service";
+import { listTrustedDevices } from "@/lib/auth/second-factor";
+import { db } from "@/lib/db/client";
+import { users } from "@/lib/db/schema";
+import { eq } from "drizzle-orm";
+import { AgentDock } from "@/components/shell/AgentDock";
+import { answeringModel } from "@/lib/ai/models";
+
+export const metadata = { title: "设置 · Settings" };
 
 /** The person's own account: what they hold, what they have spent, and the way
  * out. Spend is shown to the employee, not only to an admin (spec §5). */
@@ -14,8 +26,21 @@ export default async function SettingsPage() {
   const t = makeT(locale);
   const budget = await budgetState(viewer);
   const zh = locale.startsWith("zh");
+  // Until Admin ships, this is where an owner adds their own staff.
+  const invites = canInvite(viewer) ? await listInvites(viewer) : [];
+
+  /* Two-step verification, read here rather than in the card so the card can
+     stay a client component without a round trip of its own. */
+  const [account] = await db
+    .select({ confirmedAt: users.totpConfirmedAt, recovery: users.totpRecovery })
+    .from(users)
+    .where(eq(users.id, viewer.id))
+    .limit(1);
+  const devices = account?.confirmedAt ? await listTrustedDevices(viewer.id) : [];
+  const day = (d: Date) => d.toISOString().slice(0, 10);
 
   return (
+    <div style={{ flexGrow: 1, minWidth: 0, display: "flex" }}>
     <div style={{ flexGrow: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
       <header
         style={{
@@ -34,26 +59,14 @@ export default async function SettingsPage() {
 
       <div style={{ flexGrow: 1, minHeight: 0, overflowY: "auto", padding: "22px 26px" }}>
         <div className="flex max-w-[720px] flex-col gap-4">
-          <section className="rounded-xl border border-outline-gray-1 p-4">
-            <div className="flex items-center gap-3">
-              {viewer.avatarUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={viewer.avatarUrl} alt="" className="h-11 w-11 rounded-full object-cover" />
-              ) : (
-                <span className="flex h-11 w-11 items-center justify-center rounded-full bg-surface-gray-3 text-sm text-ink-gray-7">
-                  {viewer.name.slice(0, 2).toUpperCase()}
-                </span>
-              )}
-              <div>
-                <p className="text-sm font-semibold text-ink-gray-9">
-                  {zh && viewer.nameLocal ? viewer.nameLocal : viewer.name}
-                </p>
-                <p className="text-xs text-ink-gray-5">
-                  {viewer.email} · {viewer.title ?? t(viewer.role)}
-                </p>
-              </div>
-            </div>
-          </section>
+          <ProfileCard
+            zh={zh}
+            name={viewer.name}
+            nameLocal={viewer.nameLocal}
+            title={viewer.title}
+            email={viewer.email}
+            avatarUrl={viewer.avatarUrl}
+          />
 
           <section className="rounded-xl border border-outline-gray-1 p-4">
             <h2 className="mb-3 text-sm font-semibold text-ink-gray-9">{t("AI spend")}</h2>
@@ -97,9 +110,37 @@ export default async function SettingsPage() {
             </div>
           </section>
 
+          {canInvite(viewer) && (
+            <PeopleCard
+              zh={zh}
+              initialInvites={invites.map((i) => ({
+                id: i.id,
+                email: i.email,
+                role: i.role,
+                modules: i.modules,
+                expiresAt: i.expiresAt.toISOString(),
+                acceptedAt: i.acceptedAt?.toISOString() ?? null,
+              }))}
+            />
+          )}
+
           <LocaleSwitch current={locale} />
 
           <PasswordCard zh={zh} />
+
+          <TwoStepCard
+            zh={zh}
+            enabled={Boolean(account?.confirmedAt)}
+            enrolledAt={account?.confirmedAt ? day(account.confirmedAt) : null}
+            recoveryLeft={(account?.recovery ?? []).length}
+            devices={devices.map((d) => ({
+              id: d.id,
+              label: d.label,
+              ip: d.ip,
+              lastSeenAt: day(d.lastSeenAt),
+              expiresAt: day(d.expiresAt),
+            }))}
+          />
 
           <form action={signOut}>
             <button
@@ -111,6 +152,21 @@ export default async function SettingsPage() {
           </form>
         </div>
       </div>
+    </div>
+
+    {/* "What am I allowed to open, and what have I spent" is a question in
+        words, on a screen made of numbers. */}
+    <AgentDock
+      zh={zh}
+      model={answeringModel()}
+      scope={zh ? "你的账号" : "Your account"}
+      note={
+        zh
+          ? "可以问它你能打开哪些模块、这个月花了多少，或者怎么换语言。"
+          : "Ask what you can open, what you have spent this month, or how to change anything here."
+      }
+      placeholder={zh ? "问你的账号…" : "Ask about your account…"}
+    />
     </div>
   );
 }

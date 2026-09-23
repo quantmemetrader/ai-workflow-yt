@@ -29,6 +29,9 @@ mkdir -p logs
 echo "==> reload"
 if pm2 describe aura >/dev/null 2>&1; then
   pm2 reload ecosystem.config.cjs --update-env
+  # A reload keeps the instance count it already had; the ecosystem file asks
+  # for two workers so a render never holds up the small jobs behind it.
+  pm2 scale aura-worker 2 >/dev/null 2>&1 || true
 else
   pm2 start ecosystem.config.cjs
 fi

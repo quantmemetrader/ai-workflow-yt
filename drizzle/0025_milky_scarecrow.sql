@@ -1,0 +1,1 @@
+ALTER TABLE "captions" ADD COLUMN "keywords" text[] DEFAULT '{}' NOT NULL;

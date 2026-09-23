@@ -6,6 +6,7 @@ import { complete } from "@/lib/ai/openrouter";
 import { modelFor } from "@/lib/ai/models";
 import { recordUsage, assertBudget } from "@/lib/ai/ledger";
 import { searchFiles, type Hit } from "@/lib/ai/retrieval";
+import { creatorVoiceText } from "@/lib/creator/service";
 import type { Viewer } from "@/lib/auth/dal";
 import { measure, replaceSuggestions, saveBeats, spokenSeconds } from "./service";
 
@@ -88,7 +89,16 @@ type DraftBeat = { visual: string; voiceover: string; subtitle: string; naturalS
  * on the artboard means. The version that was there is not lost: the caller
  * cuts a version first, and every version is immutable.
  */
-export async function draftFromBrief(viewer: Viewer, scriptId: string) {
+export async function draftFromBrief(
+  viewer: Viewer,
+  scriptId: string,
+  /**
+   * What the writer has in front of them beyond the brief: the headlines a
+   * research topic collected, a note somebody pasted. Facts the model may
+   * use, listed so it does not have to invent any.
+   */
+  opts: { sources?: string } = {},
+) {
   await assertBudget(viewer);
 
   const [script] = await db
@@ -99,14 +109,20 @@ export async function draftFromBrief(viewer: Viewer, scriptId: string) {
   if (!script) return { error: "Not allowed" };
   if (script.lockedVersion !== null) return { error: "That script is locked." };
 
-  const [style, refs] = await Promise.all([houseStyle(viewer), examples(viewer, script.title)]);
+  const [style, refs, voice] = await Promise.all([
+    houseStyle(viewer),
+    examples(viewer, script.title),
+    creatorVoiceText(viewer.tenantId),
+  ]);
   const model = modelFor.drafting();
 
   const brief = [
     `Title: ${script.title}`,
     script.angle ? `Angle: ${script.angle}` : null,
     script.targetChannel ? `Channel: ${script.targetChannel}${script.aspect ? ` (${script.aspect})` : ""}` : null,
-    script.targetSeconds ? `Target duration: ${formatDuration(script.targetSeconds)} (±${script.tolerancePercent}%)` : null,
+    script.targetSeconds
+      ? `Target duration: ${formatDuration(script.targetSeconds)} (±${script.tolerancePercent}%) — about ${Math.round(script.targetSeconds * 4.5)} Chinese characters or ${Math.round(script.targetSeconds * 2.6)} English words of voice-over in total, across enough beats to carry it`
+      : null,
     script.language ? `Spoken language: ${script.language}` : null,
     script.subtitleLanguage ? `Subtitle language: ${script.subtitleLanguage}` : null,
     script.mandatoryPoints.length ? `Must cover:\n${script.mandatoryPoints.map((p) => `- ${p}`).join("\n")}` : null,
@@ -119,10 +135,22 @@ export async function draftFromBrief(viewer: Viewer, scriptId: string) {
     temperature: 0.7,
     maxTokens: 4000,
     messages: [
-      { role: "system", content: DRAFT_PROMPT + (style.text ? `\n\nThe studio's house style:\n${style.text}` : "") },
+      {
+        role: "system",
+        content:
+          DRAFT_PROMPT +
+          (voice ? `\n\nThe creator this is written for, from their own channel. Sound like them:\n${voice}` : "") +
+          (style.text ? `\n\nThe studio's house style:\n${style.text}` : ""),
+      },
       {
         role: "user",
-        content: [brief, refs ? `Approved scripts to match in tone:\n${refs}` : null].filter(Boolean).join("\n\n"),
+        content: [
+          brief,
+          opts.sources ? `Facts and headlines you may draw on (cite the outlet in the visual field when you use one; do not go beyond them):\n${opts.sources}` : null,
+          refs ? `Approved scripts to match in tone:\n${refs}` : null,
+        ]
+          .filter(Boolean)
+          .join("\n\n"),
       },
     ],
   });
@@ -138,8 +166,60 @@ export async function draftFromBrief(viewer: Viewer, scriptId: string) {
     requestId: out.requestId,
   });
 
-  const beats = parseBeats(out.text);
+  let beats = parseBeats(out.text);
   if (!beats.length) return { error: "The model did not return a script we could read." };
+
+  /*
+   * Measured, not trusted. A three-minute brief came back as forty-five
+   * seconds of voice-over more often than not: the model writes to the number
+   * of beats it likes and stops. When the draft is well short of the target,
+   * one more pass asks for the rest — the same facts, more of them said —
+   * rather than handing over a script that the header at once marks −135 s.
+   */
+  const target = script.targetSeconds;
+  const spoken = (list: DraftBeat[]) => list.reduce((sum, b) => sum + (b.naturalSound ? 0 : spokenSeconds(b.voiceover)), 0);
+  if (target && target >= 45 && spoken(beats) < target * 0.6) {
+    const have = Math.round(spoken(beats));
+    const more = await complete({
+      model,
+      temperature: 0.7,
+      maxTokens: 6000,
+      messages: [
+        {
+          role: "system",
+          content:
+            DRAFT_PROMPT +
+            (voice ? `\n\nThe creator this is written for, from their own channel. Sound like them:\n${voice}` : "") +
+            (style.text ? `\n\nThe studio's house style:\n${style.text}` : ""),
+        },
+        {
+          role: "user",
+          content: [
+            brief,
+            opts.sources ? `Facts and headlines you may draw on (do not go beyond them):\n${opts.sources}` : null,
+            `Here is a first draft. Its voice-over runs about ${formatDuration(have)}, and the target is ${formatDuration(target)}. Rewrite it to the full length: keep every fact and the order, say more about each — the detail, the number, the consequence, the example — and add beats where the story has room. Answer with the complete script as the same JSON shape.`,
+            JSON.stringify({ beats }),
+          ]
+            .filter(Boolean)
+            .join("\n\n"),
+        },
+      ],
+    });
+    await recordUsage({
+      viewer,
+      module: "script",
+      provider: more.provider ?? "openrouter",
+      model: more.model,
+      promptTokens: more.promptTokens,
+      completionTokens: more.completionTokens,
+      costMicros: more.costMicros,
+      requestId: more.requestId,
+    });
+    const longer = parseBeats(more.text);
+    // Only a genuinely longer draft replaces the first; a refusal or a
+    // truncated answer leaves the short one, which is at least complete.
+    if (longer.length && spoken(longer) > spoken(beats) * 1.2) beats = longer;
+  }
 
   await saveBeats(viewer, scriptId, beats);
   return { ok: true, beats: beats.length, model: out.model };

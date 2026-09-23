@@ -44,22 +44,30 @@ export const listChannels = cache(async function listChannels(viewer: Viewer) {
       and(
         eq(chatChannels.tenantId, viewer.tenantId),
         isNull(chatChannels.archivedAt),
-        // Direct messages have their own list in the sidebar.
-        eq(chatChannels.kind, "channel"),
+        /* Direct messages have their own list in the sidebar. Announcements
+           belongs in the channel list — it is a channel you read — and sorts
+           to the top below, because that is the one people are looking for
+           when something has been announced. */
+        inArray(chatChannels.kind, ["channel", "announce"]),
         or(eq(chatChannels.isPrivate, false), sql`${chatMembers.userId} is not null`),
       ),
     )
     .orderBy(chatChannels.name);
 
-  return rows.map((r) => ({
-    id: r.channel.id,
-    slug: r.channel.slug,
-    name: r.channel.name,
-    topic: r.channel.topic,
-    isPrivate: r.channel.isPrivate,
-    isMember: Boolean(r.member),
-    unread: Number(r.unread ?? 0),
-  }));
+  return rows
+    .map((r) => ({
+      id: r.channel.id,
+      slug: r.channel.slug,
+      name: r.channel.name,
+      topic: r.channel.topic,
+      isPrivate: r.channel.isPrivate,
+      kind: r.channel.kind,
+      isMember: Boolean(r.member),
+      unread: Number(r.unread ?? 0),
+    }))
+    .sort((a, b) =>
+      a.kind === b.kind ? a.name.localeCompare(b.name) : a.kind === "announce" ? -1 : 1,
+    );
 });
 
 export async function channelBySlug(viewer: Viewer, slug: string) {
@@ -67,6 +75,29 @@ export async function channelBySlug(viewer: Viewer, slug: string) {
     .select()
     .from(chatChannels)
     .where(and(eq(chatChannels.tenantId, viewer.tenantId), eq(chatChannels.slug, slug)))
+    .limit(1);
+  if (!row) return null;
+
+  if (row.isPrivate) {
+    const [member] = await db
+      .select()
+      .from(chatMembers)
+      .where(and(eq(chatMembers.channelId, row.id), eq(chatMembers.userId, viewer.id)))
+      .limit(1);
+    if (!member) return null;
+  }
+  return row;
+}
+
+/** The same visibility rule as `channelBySlug`, by id: a private channel does
+ * not exist for somebody who is not in it. */
+export async function channelById(viewer: Viewer, channelId: string) {
+  if (typeof channelId !== "string" || !channelId || channelId.length > 64) return null;
+
+  const [row] = await db
+    .select()
+    .from(chatChannels)
+    .where(and(eq(chatChannels.tenantId, viewer.tenantId), eq(chatChannels.id, channelId)))
     .limit(1);
   if (!row) return null;
 
@@ -104,6 +135,14 @@ export async function postMessage(viewer: Viewer, channelId: string, body: strin
 
   const [channel] = await db.select().from(chatChannels).where(eq(chatChannels.id, channelId)).limit(1);
   if (!channel || channel.tenantId !== viewer.tenantId) throw new Error("Channel not found");
+
+  /* An announcements channel is read-only to everybody but an administrator.
+     Enforced here rather than by hiding the composer: a composer that is not
+     drawn is a UI decision, and this is a rule. */
+  if (channel.kind === "announce" && !viewer.isAdmin) {
+    throw new Error("Only an administrator posts in announcements.");
+  }
+
   if (channel.isPrivate) {
     const [member] = await db
       .select()
@@ -222,13 +261,6 @@ export async function conversationDetail(viewer: Viewer, conversationId: string)
   };
 }
 
-export async function startConversation(viewer: Viewer) {
-  const id = newId("cnv");
-  await db.insert(conversations).values({ id, userId: viewer.id, module: "chat" });
-  await audit(viewer, "agent.conversation.create", { objectType: "conversation", objectId: id, module: "chat" });
-  return id;
-}
-
 /** Everyone else in the studio, for the direct-message list. Presence is
  * derived from when they were last actually seen — the artboard has three dot
  * states and this is what they mean here. */
@@ -246,6 +278,20 @@ export const listPeople = cache(async function listPeople(viewer: Viewer) {
     .where(and(eq(users.tenantId, viewer.tenantId), isNull(users.deletedAt)))
     .orderBy(users.name);
 
+  /* Unread per person: their messages in the one-to-one room since this
+     viewer last read it. One query for everyone rather than one per row. */
+  const unreadRows = await db.execute<{ other: string; unread: number }>(sql`
+    select m.author_id as other, count(*)::int as unread
+      from chat_messages m
+      join chat_channels c on c.id = m.channel_id and c.kind = 'dm' and c.tenant_id = ${viewer.tenantId}
+      join chat_members me on me.channel_id = c.id and me.user_id = ${viewer.id}
+     where m.deleted_at is null
+       and m.author_id <> ${viewer.id}
+       and (me.last_read_at is null or m.created_at > me.last_read_at)
+     group by m.author_id
+  `);
+  const unreadBy = new Map(unreadRows.rows.map((r) => [r.other, Number(r.unread)]));
+
   const now = Date.now();
   return rows
     .filter((r) => r.id !== viewer.id)
@@ -260,7 +306,7 @@ export const listPeople = cache(async function listPeople(viewer: Viewer) {
         avatarUrl: r.avatarUrl,
         presence,
         isGuest: r.role === "guest",
-        unread: 0,
+        unread: unreadBy.get(r.id) ?? 0,
       };
     });
 });
@@ -344,6 +390,7 @@ export async function channelThread(viewer: Viewer, slug: string, limit = 80) {
     channel_name: string;
     topic: string | null;
     is_private: boolean;
+    kind: string;
     message_id: string | null;
     body: string | null;
     created_at: unknown;
@@ -353,7 +400,7 @@ export async function channelThread(viewer: Viewer, slug: string, limit = 80) {
     author_avatar: string | null;
   }>(sql`
     with ch as (
-      select c.id, c.name, c.topic, c.is_private
+      select c.id, c.name, c.topic, c.is_private, c.kind
         from ${chatChannels} c
        where c.tenant_id = ${viewer.tenantId} and c.slug = ${slug}
          and (c.is_private = false or exists (
@@ -384,6 +431,7 @@ export async function channelThread(viewer: Viewer, slug: string, limit = 80) {
       name: first.channel_name,
       topic: first.topic,
       isPrivate: first.is_private,
+      kind: first.kind,
     },
     messages: rows
       .filter((r) => r.message_id)
@@ -404,6 +452,49 @@ export async function channelThread(viewer: Viewer, slug: string, limit = 80) {
  * (#night-market from "Night market"), and the creator joins it — a channel
  * you made but are not in would be a strange thing to own.
  */
+/**
+ * The announcements channel: everyone is a member, only admins post.
+ *
+ * Created on demand rather than seeded, so a studio that never uses it never
+ * has an empty one — and joined by everybody each time it is opened, so
+ * somebody who started last week is in it without anybody adding them. That is
+ * what "company-wide" has to mean; a channel you can be left out of is not one.
+ */
+export async function announcementsChannel(viewer: Viewer) {
+  const [existing] = await db
+    .select()
+    .from(chatChannels)
+    .where(and(eq(chatChannels.tenantId, viewer.tenantId), eq(chatChannels.kind, "announce")))
+    .limit(1);
+
+  const channel =
+    existing ??
+    (
+      await db
+        .insert(chatChannels)
+        .values({
+          id: newId("ch"),
+          tenantId: viewer.tenantId,
+          kind: "announce",
+          slug: "announcements",
+          name: "announcements",
+          topic: "Company-wide updates",
+          isPrivate: false,
+          createdBy: viewer.id,
+        })
+        .returning()
+    )[0];
+
+  // Membership is automatic and is re-asserted on every open, which is how
+  // somebody who joined the studio yesterday is already in it.
+  await db
+    .insert(chatMembers)
+    .values({ channelId: channel.id, userId: viewer.id })
+    .onConflictDoNothing();
+
+  return channel;
+}
+
 export async function createChannel(
   viewer: Viewer,
   input: { name: string; topic?: string | null; isPrivate?: boolean },
@@ -460,4 +551,97 @@ export async function createChannel(
   });
 
   return created;
+}
+
+/**
+ * Who is in a channel.
+ *
+ * A private channel is a group: its membership is the thing that makes it
+ * private, and until now membership could only be created (by whoever made the
+ * channel, for themselves) and never read or changed. So a private channel was
+ * a room with one person in it and no door.
+ */
+export async function channelMembers(viewer: Viewer, channelId: string) {
+  const channel = await channelById(viewer, channelId);
+  if (!channel) return [];
+
+  const rows = await db
+    .select({
+      id: users.id,
+      name: users.name,
+      nameLocal: users.nameLocal,
+      avatarUrl: users.avatarUrl,
+      title: users.title,
+      joinedAt: chatMembers.joinedAt,
+    })
+    .from(chatMembers)
+    .innerJoin(users, eq(users.id, chatMembers.userId))
+    .where(and(eq(chatMembers.channelId, channelId), isNull(users.deletedAt)))
+    .orderBy(users.name);
+
+  return rows;
+}
+
+/** Add people to a channel. Only somebody already in it may do so, which is
+ * what keeps a private channel private. */
+export async function addChannelMembers(viewer: Viewer, channelId: string, userIds: string[]) {
+  const channel = await channelById(viewer, channelId);
+  if (!channel) throw new Error("Channel not found");
+
+  if (channel.isPrivate) {
+    const [mine] = await db
+      .select({ userId: chatMembers.userId })
+      .from(chatMembers)
+      .where(and(eq(chatMembers.channelId, channelId), eq(chatMembers.userId, viewer.id)))
+      .limit(1);
+    if (!mine) throw new Error("Only someone already in this channel can add people to it");
+  }
+
+  // Ids off the wire are not people. Each one has to be a live account in this
+  // studio before it becomes a row.
+  const valid = userIds.length
+    ? await db
+        .select({ id: users.id })
+        .from(users)
+        .where(and(eq(users.tenantId, viewer.tenantId), isNull(users.deletedAt), inArray(users.id, userIds)))
+    : [];
+  if (!valid.length) return 0;
+
+  await db
+    .insert(chatMembers)
+    .values(valid.map((u) => ({ channelId, userId: u.id })))
+    .onConflictDoNothing();
+
+  await audit(viewer, "chat.channel.members.add", {
+    objectType: "channel",
+    objectId: channelId,
+    module: "chat",
+    meta: { added: valid.length },
+  });
+
+  return valid.length;
+}
+
+/** Remove somebody, or leave yourself. */
+export async function removeChannelMember(viewer: Viewer, channelId: string, userId: string) {
+  const channel = await channelById(viewer, channelId);
+  if (!channel) throw new Error("Channel not found");
+
+  // Anyone in the channel may leave it; removing somebody else is for the
+  // person who created it, or an administrator.
+  const self = userId === viewer.id;
+  if (!self && channel.createdBy !== viewer.id && viewer.role !== "owner" && viewer.role !== "admin") {
+    throw new Error("Only whoever started this channel can remove people from it");
+  }
+
+  await db
+    .delete(chatMembers)
+    .where(and(eq(chatMembers.channelId, channelId), eq(chatMembers.userId, userId)));
+
+  await audit(viewer, self ? "chat.channel.leave" : "chat.channel.members.remove", {
+    objectType: "channel",
+    objectId: channelId,
+    module: "chat",
+    meta: { userId },
+  });
 }

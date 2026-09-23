@@ -11,10 +11,10 @@ import {
   exportComparison,
   planTopic,
   moveTopicStage,
-  removeTopic,
   seriesFor,
   type Window,
 } from "@/lib/research/service";
+import { suggestAngles } from "@/lib/research/angles";
 import { enqueue } from "@/lib/jobs/queue";
 
 /** Every action re-reads the viewer and re-checks the module: a server action
@@ -110,28 +110,6 @@ export async function addSeriesAction(query: string, window: Window) {
   return {};
 }
 
-export async function refreshTopicAction(topicId: string) {
-  const viewer = await researcher();
-  if (!viewer) return { error: "Not allowed" };
-  // The worker's `refreshTopic` looks the topic up by id with no tenant filter
-  // and writes back to it, so an unchecked id here let anyone with the research
-  // module drive refreshes of another studio's topics.
-  if (!(await ownTopic(viewer.tenantId, topicId))) return { error: "Topic not found" };
-
-  await enqueue({
-    tenantId: viewer.tenantId,
-    type: "research.refreshTopic",
-    module: "research",
-    payload: { topicId },
-    objectType: "topic",
-    objectId: topicId,
-    createdBy: viewer.id,
-    dedupeKey: `topic:${topicId}`,
-    priority: 10,
-  });
-  return {};
-}
-
 /** "Export the comparison to the database as a research report" (brief §4.3). */
 export async function exportComparisonAction(queries: string[], window: Window, region: string) {
   const viewer = await researcher();
@@ -184,15 +162,26 @@ export async function addTopicAction(query: string, name?: string, category?: st
   }
 }
 
-export async function removeTopicAction(topicId: string) {
+/**
+ * Ask the model for angles on a topic, from the headlines already collected.
+ *
+ * The detail pane has always said to ask the agent for these; now the button
+ * that says so does it, and what comes back is written to the topic so the
+ * next person to open it sees the same list.
+ */
+export async function suggestAnglesAction(topicId: string) {
   const viewer = await researcher();
   if (!viewer) return { error: "Not allowed" };
-  if (typeof topicId !== "string" || !topicId || topicId.length > 64) {
-    return { error: "Not allowed" };
+  if (!(await ownTopic(viewer.tenantId, topicId))) return { error: "Topic not found" };
+
+  try {
+    const res = await suggestAngles(viewer, topicId);
+    if ("error" in res) return res;
+    revalidatePath("/research");
+    return { angles: res.angles };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "The model could not be reached." };
   }
-  await removeTopic(viewer, topicId);
-  revalidatePath("/research");
-  return {};
 }
 
 const STAGES = ["adopted", "briefing", "scripting", "handed"] as const;
@@ -211,4 +200,25 @@ export async function moveStageAction(topicId: string, stage: string) {
   } catch (err) {
     return { error: err instanceof Error ? err.message : "Could not move that" };
   }
+}
+
+/**
+ * Re-read the creator's own channel and rewrite the voice note.
+ *
+ * Queued: the channel is a few hundred videos and a model call, and the
+ * screen says "syncing" while the worker is at it.
+ */
+export async function syncCreatorAction() {
+  const viewer = await researcher();
+  if (!viewer) return { error: "Not allowed" };
+  await enqueue({
+    tenantId: viewer.tenantId,
+    type: "creator.sync",
+    module: "research",
+    createdBy: viewer.id,
+    dedupeKey: "creator.sync",
+    priority: 8,
+  });
+  revalidatePath("/research");
+  return {};
 }

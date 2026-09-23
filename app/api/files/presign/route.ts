@@ -1,4 +1,5 @@
 import { getViewer } from "@/lib/auth/dal";
+import { parseChoice } from "@/lib/files/access";
 import { beginUpload } from "@/lib/files/service";
 import { presignUpload } from "@/lib/storage/r2";
 
@@ -15,7 +16,7 @@ export async function POST(request: Request) {
   if (!viewer) return new Response("Unauthorized", { status: 401 });
   if (!viewer.modules.includes("files")) return new Response("Forbidden", { status: 403 });
 
-  let body: { name?: string; mime?: string; size?: number; folderId?: string | null };
+  let body: { name?: string; mime?: string; size?: number; folderId?: string | null; access?: unknown };
   try {
     body = (await request.json()) as typeof body;
   } catch {
@@ -49,6 +50,7 @@ export async function POST(request: Request) {
       mime,
       sizeBytes: size,
       folderId,
+      access: parseChoice(body.access),
     });
 
     const upload = await presignUpload(storageKey, mime);

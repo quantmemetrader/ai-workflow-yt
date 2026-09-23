@@ -3,6 +3,7 @@ import { and, eq, or } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { knowledge, type Module } from "@/lib/db/schema";
 import type { Viewer } from "@/lib/auth/dal";
+import { VIDEO_CRAFT } from "@/lib/video/craft";
 
 /**
  * System prompt assembly.
@@ -62,13 +63,31 @@ You are assisting ${viewer.name}${viewer.title ? `, ${viewer.title}` : ""}. Toda
     (r) => `\n\n--- ${r.kind.toUpperCase()}: ${r.title} (v${r.version}) ---\n${r.body}`,
   );
 
+  /*
+   * The video craft rules are built in rather than seeded.
+   *
+   * They are the studio's own, distilled from its reference work, and they are
+   * mostly a list of things not to do — which is exactly the part of a prompt
+   * that must not be able to go missing because somebody tidied a knowledge
+   * row. Anything written in Admin under the `video` module is added on top and
+   * can override it, which is the right way round: a person's instruction beats
+   * a default, and the default is never absent.
+   */
+  const builtIn =
+    scoped === "video" ? `\n\n--- HOUSE: Cutting video (built in) ---\n${VIDEO_CRAFT}` : "";
+
   return {
-    text: header + sections.join(""),
-    parts: rows.map((r) => ({
-      id: r.id,
-      title: r.title,
-      kind: r.kind,
-      scope: r.scopeValue ? `${r.scope}: ${r.scopeValue}` : r.scope,
-    })),
+    text: header + builtIn + sections.join(""),
+    parts: [
+      ...(scoped === "video"
+        ? [{ id: "builtin:video-craft", title: "Cutting video", kind: "house", scope: "module: video" }]
+        : []),
+      ...rows.map((r) => ({
+        id: r.id,
+        title: r.title,
+        kind: r.kind,
+        scope: r.scopeValue ? `${r.scope}: ${r.scopeValue}` : r.scope,
+      })),
+    ],
   };
 }

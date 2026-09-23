@@ -75,7 +75,16 @@ export type ScriptDetailScreenProps = {
   onDecideApproval: (approvalId: string, decision: "approved" | "rejected", note?: string) => void;
   onUnlock: () => void;
   onComment: (body: string, beatOrd: number | null) => void;
+  /** A cut for this script in Video Edit, made or found. Absent for somebody without Video. */
+  onMakeVideo?: () => void;
   onAsk: (prompt: string) => void;
+  /** The conversation so far, in the panel. It used to hand the question to
+   * /chat, which took the script off the screen to discuss the script. */
+  thread?: React.ReactNode;
+  /** The sharing dialog, dropped under the header's Share button. Omitted for
+   * somebody who holds nothing to share with, in which case the button says
+   * so rather than opening a sheet that can do nothing. */
+  shareSheet?: React.ReactNode;
 };
 
 /** The artboards' `accent` prop, at its default (#007BE0). */
@@ -689,6 +698,9 @@ export function ScriptDetailScreen(props: ScriptDetailScreenProps): React.JSX.El
     onUnlock,
     onComment,
     onAsk,
+    thread,
+    shareSheet,
+    onMakeVideo,
   } = props;
 
   const { script, beats, versions, suggestions, approvals, comments, owner, live, locked } = detail;
@@ -716,6 +728,28 @@ export function ScriptDetailScreen(props: ScriptDetailScreenProps): React.JSX.El
   const signature = beats
     .map((b) => [b.id, b.visual, b.voiceover, b.subtitle, b.naturalSound].join(" "))
     .join("");
+
+  /* The sharing sheet is a popover, so it closes on Escape and on a click
+     anywhere else — a panel that can only be dismissed by the button that
+     opened it is the sort of thing people end up navigating away from. */
+  const [shareOpen, setShareOpen] = React.useState(false);
+  React.useEffect(() => {
+    if (!shareOpen) return;
+    const away = (e: Event) => {
+      const el = e.target as HTMLElement | null;
+      if (el?.closest?.("[data-share-anchor]")) return;
+      setShareOpen(false);
+    };
+    const key = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setShareOpen(false);
+    };
+    document.addEventListener("pointerdown", away);
+    document.addEventListener("keydown", key);
+    return () => {
+      document.removeEventListener("pointerdown", away);
+      document.removeEventListener("keydown", key);
+    };
+  }, [shareOpen]);
 
   const [rows, setRows] = React.useState<DraftBeat[]>(fromProps);
   const [applied, setApplied] = React.useState(signature);
@@ -1017,12 +1051,59 @@ export function ScriptDetailScreen(props: ScriptDetailScreenProps): React.JSX.El
           {initials(ownerName)}
         </div>
       )}
-      {/* The artboards' Share button. Per-script sharing rides the same tuples
-          Files uses; until that is wired, the button is drawn and says so
-          rather than pretending to open a dialog that does nothing. */}
-      <span className="btn s" role="note" title={zh ? "共享设置即将开放" : "Sharing settings are not open yet"}>
-        {t("Share")}
-      </span>
+      {onMakeVideo ? (
+        /* The other end of the pipeline: a cut in Video Edit tied to this
+           script, so the director reads the beats as the shape the footage
+           was shot to. */
+        <button type="button" className="btn p" onClick={onMakeVideo} disabled={busy} style={{ background: "#171717" }}>
+          {zh ? "去剪辑 →" : "Make the video →"}
+        </button>
+      ) : null}
+      {/* The artboards' Share button. Per-script sharing rides the same
+          `relation_tuples` Files uses, so a script shared with somebody shows
+          up under "Shared with me" in their library. */}
+      {shareSheet ? (
+        <span data-share-anchor="" style={{ position: "relative" }}>
+          <button
+            type="button"
+            className="btn s"
+            aria-expanded={shareOpen}
+            onClick={() => setShareOpen((v) => !v)}
+          >
+            {t("Share")}
+          </button>
+          {shareOpen ? (
+            <div
+              /* Anchored to the button and above everything else, because the
+                 header sits in a scrolling column: rendered in flow it would
+                 shove the tab strip down every time it opened. */
+              style={{
+                position: "absolute",
+                top: "calc(100% + 7px)",
+                right: 0,
+                zIndex: 40,
+                width: 368,
+                maxWidth: "min(368px, 84vw)",
+                background: "#ffffff",
+                /* No border of its own: the sheet inside draws one, and two
+                   rings 4px apart look like a mistake. */
+                borderRadius: 12,
+                boxShadow: "0 12px 34px rgba(0,0,0,0.13)",
+              }}
+            >
+              {shareSheet}
+            </div>
+          ) : null}
+        </span>
+      ) : (
+        <span
+          className="btn s"
+          role="note"
+          title={zh ? "你无权共享这份脚本" : "You cannot share this script"}
+        >
+          {t("Share")}
+        </span>
+      )}
       {secondaryAction}
       {primaryAction}
     </div>
@@ -2343,13 +2424,13 @@ export function ScriptDetailScreen(props: ScriptDetailScreenProps): React.JSX.El
         </button>
       )}
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 14 }}>
-        <div style={{ border: "1px solid #ededed", borderRadius: 9, padding: "9px 10px", background: "#fff" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(118px, 1fr))", gap: 8, marginTop: 14 }}>
+        <div style={{ minWidth: 0, border: "1px solid #ededed", borderRadius: 9, padding: "9px 10px", background: "#fff" }}>
           <div className="cap">{t("Spoken duration")}</div>
-          <div style={{ fontSize: 14, fontWeight: 500, marginTop: 4, fontVariantNumeric: "tabular-nums" }}>
-            {clock(live.spokenSeconds)}{" "}
+          <div style={{ display: "flex", alignItems: "baseline", flexWrap: "wrap", gap: 5, fontSize: 14, fontWeight: 500, marginTop: 4, fontVariantNumeric: "tabular-nums" }}>
+            <span>{clock(live.spokenSeconds)}</span>
             {live.drift === null ? null : (
-              <span style={{ fontSize: 11, fontWeight: 420, color: live.onTarget === true ? "#278f5e" : "#db7706" }}>
+              <span style={{ fontSize: 11, fontWeight: 420, whiteSpace: "nowrap", color: live.onTarget === true ? "#278f5e" : "#db7706" }}>
                 {driftLabel(live.drift)}
               </span>
             )}
@@ -2372,19 +2453,19 @@ export function ScriptDetailScreen(props: ScriptDetailScreenProps): React.JSX.El
             </div>
           )}
         </div>
-        <div style={{ border: "1px solid #ededed", borderRadius: 9, padding: "9px 10px", background: "#fff" }}>
+        <div style={{ minWidth: 0, border: "1px solid #ededed", borderRadius: 9, padding: "9px 10px", background: "#fff" }}>
           <div className="cap">{t("Reading level")}</div>
           <div style={{ fontSize: 14, fontWeight: 500, marginTop: 4 }}>
             {readingLevel === null ? <span className="cap">{t("not checked yet")}</span> : readingLevel}
           </div>
         </div>
-        <div style={{ border: "1px solid #ededed", borderRadius: 9, padding: "9px 10px", background: "#fff" }}>
+        <div style={{ minWidth: 0, border: "1px solid #ededed", borderRadius: 9, padding: "9px 10px", background: "#fff" }}>
           <div className="cap">{t("Flagged terms")}</div>
           <div style={{ fontSize: 14, fontWeight: 500, marginTop: 4 }}>
             {openFlags} <span style={{ fontSize: 11, fontWeight: 420, color: "#999999" }}>{t("open")}</span>
           </div>
         </div>
-        <div style={{ border: "1px solid #ededed", borderRadius: 9, padding: "9px 10px", background: "#fff" }}>
+        <div style={{ minWidth: 0, border: "1px solid #ededed", borderRadius: 9, padding: "9px 10px", background: "#fff" }}>
           <div className="cap">{t("Mandatory points")}</div>
           <div style={{ fontSize: 14, fontWeight: 500, marginTop: 4 }}>
             {pointsCovered === null ? (
@@ -2652,10 +2733,11 @@ export function ScriptDetailScreen(props: ScriptDetailScreenProps): React.JSX.El
           </span>
         </div>
       </div>
-      {/* The artboards play a scripted exchange here. A thread of real answers
-          belongs to the agent, which answers on /chat where it can cite what
-          the asker is allowed to read; this panel hands the question over. */}
-      <div style={{ flexGrow: 1, minHeight: 0, padding: "14px 13px 0", overflow: "hidden" }}></div>
+      {/* The artboards play a scripted exchange here. This is the real one,
+          answered in place rather than on /chat. */}
+      {thread ?? (
+        <div style={{ flexGrow: 1, minHeight: 0, padding: "14px 13px 0", overflow: "hidden" }}></div>
+      )}
       <Composer
         placeholder={t("Ask about this script…")}
         sendLabel={t("Send")}

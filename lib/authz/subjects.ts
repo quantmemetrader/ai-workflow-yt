@@ -13,5 +13,7 @@
 export function subjectsFor(user: { id: string; tenantId: string; role: string }, teamIds: string[]): string[] {
   const subjects = [`user:${user.id}`, ...teamIds.map((id) => `team:${id}`)];
   if (user.role !== "guest") subjects.push(`tenant:${user.tenantId}`);
+  // Shared "with all members" (or guests): the account role, per studio.
+  subjects.push(`role:${user.tenantId}:${user.role}`);
   return subjects;
 }

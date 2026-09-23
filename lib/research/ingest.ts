@@ -7,11 +7,13 @@ import {
   dailyCounts,
   gdeltTimeline,
   hackerNewsSeries,
+  youtubeSeries,
   newsSearch,
   sourceFeed,
   type Article,
   type Point,
 } from "./fetchers";
+import { env } from "@/lib/env";
 import { SOURCES, unavailableReason, usableSources } from "./sources";
 import { changeOver, WINDOW_DAYS, type Window } from "./service";
 
@@ -93,22 +95,48 @@ async function markSource(key: string, ok: boolean, error?: string) {
 }
 
 /**
- * One series: the volume line from GDELT, and the articles behind it from
- * Google News. If GDELT is rate-limiting, the article counts still give a
- * usable shape, and the row records which source the numbers came from — the
- * brief insists every chart states its source.
+ * One series, and the sources behind it.
+ *
+ * **YouTube first, now.** The chain used to start at GDELT, which rate-limits
+ * this address, and fall through Hacker News to counting Google News
+ * headlines — three proxies for attention, none of them about video. The
+ * studio makes videos, and the platform's own API answers in under a second
+ * with what was published about a phrase and what it was watched. That is the
+ * signal; the rest are the fallback now, in that order, and the row records
+ * which one drew the line because the brief insists every chart states its
+ * source.
  */
 export async function refreshSeries(query: string, window: Window) {
   let points: Point[] = [];
-  let sourceKey = "gdelt";
+  let sourceKey = "youtube";
   let error: string | null = null;
+  let youtubeArticleRows: Article[] = [];
 
-  try {
-    points = await gdeltTimeline(query, window);
-    await markSource("gdelt", true);
-  } catch (err) {
-    error = err instanceof Error ? err.message : String(err);
-    await markSource("gdelt", false, error);
+  if (env.youtube.configured) {
+    try {
+      const yt = await youtubeSeries(query, WINDOW_DAYS[window]);
+      // One video is a fact, not a line. Below a week of days the shape says
+      // nothing and the older sources are worth asking.
+      if (yt.points.length >= 7) points = yt.points;
+      youtubeArticleRows = yt.articles;
+      await markSource("youtube", true);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      await markSource("youtube", false, message);
+      error = message;
+    }
+  }
+
+  if (!points.length) {
+    sourceKey = "gdelt";
+    try {
+      points = await gdeltTimeline(query, window);
+      await markSource("gdelt", true);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      error = error ? `${error}; ${message}` : message;
+      await markSource("gdelt", false, message);
+    }
   }
 
   // Hacker News answers every time, which is what keeps the charts real while
@@ -134,6 +162,17 @@ export async function refreshSeries(query: string, window: Window) {
     const message = err instanceof Error ? err.message : String(err);
     await markSource("googlenews", false, message);
     error = error ? `${error}; ${message}` : message;
+  }
+
+  /*
+   * The videos are sources too. "Why it's moving" listed newspaper headlines
+   * only, on a dashboard for a video studio — the thing most worth seeing was
+   * the video somebody else already made about it.
+   */
+  if (youtubeArticleRows.length) {
+    articles = [...youtubeArticleRows, ...articles]
+      .sort((a, b) => b.at.localeCompare(a.at))
+      .slice(0, 40);
   }
 
   const signalIsFlat = points.length > 0 && points.every((p) => p.v === 0);
@@ -200,7 +239,15 @@ export async function refreshTopic(topicId: string) {
   const [topic] = await db.select().from(topics).where(eq(topics.id, topicId)).limit(1);
   if (!topic) throw new Error(`No topic ${topicId}`);
 
-  const result = await refreshSeries(topic.query, "3m");
+  let result: Awaited<ReturnType<typeof refreshSeries>>;
+  try {
+    result = await refreshSeries(topic.query, "3m");
+  } catch (err) {
+    // The round failed outright. The topic still records that it was tried,
+    // so the dashboard stops saying "collecting…" and shows what it has.
+    await db.update(topics).set({ lastFetchedAt: new Date(), updatedAt: new Date() }).where(eq(topics.id, topicId));
+    throw err;
+  }
 
   const [cached] = await db
     .select()

@@ -1,5 +1,6 @@
 import "server-only";
 import { and, eq, sql } from "drizzle-orm";
+import { HEAVY_JOBS_PAUSED, HEAVY_JOB_TYPES } from "./heavy";
 import { db, toDate } from "@/lib/db/client";
 import { jobEvents, jobs, type Module } from "@/lib/db/schema";
 import { newId } from "@/lib/ids";
@@ -23,7 +24,32 @@ export type JobType =
   | "social.syncPosts"
   | "social.syncDailyViews"
   | "social.syncComments"
-  | "social.classifyComments";
+  | "social.classifyComments"
+  /** Somebody else's channel, read from the outside through TikHub. */
+  | "social.syncCompetitors"
+  /** Sending a post to its channels. Queued rather than done on the approval
+   * request, so a slow platform cannot hold a page open and a retry cannot
+   * become a second post (`lib/publish/dispatch.ts`). */
+  | "publish.send"
+  /** Assembling a cut with FFmpeg on this box. Minutes of CPU on a long
+   * master, so it is never a request (`lib/video/render.ts`). */
+  | "video.export"
+  /** Captions from the cut's own audio, through ElevenLabs Scribe. Minutes of
+   * extraction and upload, so never a request (`lib/video/transcribe.ts`). */
+  | "video.transcribe"
+  /** A voice-over spoken by ElevenLabs and written into the file store. */
+  | "video.voiceover"
+  /** A still out of a video, for the file lists. FFmpeg is on the box and not
+   * on Vercel, which is why this is a job and not a request. */
+  | "files.poster"
+  | "video.peaks"
+  | "video.autoedit"
+  /** Transcribe, cut, design, render: the whole video from a brief
+   * (`lib/video/director.ts`). Minutes on the worker. */
+  | "video.direct"
+  /** Mirror the creator's own channel and rewrite the voice note
+   * (`lib/creator/service.ts`). */
+  | "creator.sync";
 
 export type JobRow = typeof jobs.$inferSelect;
 
@@ -181,6 +207,7 @@ export async function claim(workerId: string): Promise<JobRow | null> {
      where id = (
        select id from jobs
         where status = 'queued' and run_after <= now()
+          and (${!HEAVY_JOBS_PAUSED} or not (type = any(${sql.raw(`array[${HEAVY_JOB_TYPES.map((t) => `'${t}'`).join(",")}]`)})))
         order by priority desc, run_after asc, id asc
         for update skip locked
         limit 1
@@ -224,6 +251,31 @@ export async function fail(job: JobRow, error: unknown) {
   await note(job.id, exhausted ? "failed" : "queued", job.attempts, message);
 }
 
+/**
+ * Put a job back as if it had never been claimed: the worker was told to
+ * stop under it, and that is not the job's fault, so it keeps its attempts.
+ */
+export async function requeue(job: JobRow, why: string) {
+  await db
+    .update(jobs)
+    .set({
+      status: "queued",
+      attempts: Math.max(0, job.attempts - 1),
+      error: null,
+      runAfter: new Date(Date.now() + 5_000),
+      lockedBy: null,
+      lockedAt: null,
+      startedAt: null,
+    })
+    .where(eq(jobs.id, job.id));
+  await note(job.id, "queued", job.attempts, why);
+}
+
+/** The worker is still on it: `locked_at` is what the stalled sweep reads. */
+export async function heartbeat(jobId: string) {
+  await db.update(jobs).set({ lockedAt: new Date() }).where(and(eq(jobs.id, jobId), eq(jobs.status, "running")));
+}
+
 export async function progress(jobId: string, fraction: number) {
   await db.update(jobs).set({ progress: Math.max(0, Math.min(1, fraction)) }).where(eq(jobs.id, jobId));
 }
@@ -233,16 +285,6 @@ async function note(jobId: string, status: JobRow["status"], attempt: number, me
     .insert(jobEvents)
     .values({ id: newId("job"), jobId, status, attempt, note: message?.slice(0, 500) })
     .catch(() => {});
-}
-
-/** Jobs a screen wants to show: the ones about this object, newest first. */
-export async function jobsFor(objectType: string, objectId: string) {
-  return db
-    .select()
-    .from(jobs)
-    .where(and(eq(jobs.objectType, objectType), eq(jobs.objectId, objectId)))
-    .orderBy(sql`created_at desc`)
-    .limit(10);
 }
 
 /**

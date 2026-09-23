@@ -5,6 +5,7 @@ import { getViewer } from "@/lib/auth/dal";
 import { relationOn } from "@/lib/authz/rebac";
 import { audit } from "@/lib/audit";
 import { presignDownload } from "@/lib/storage/r2";
+import { fileInVisibleProject } from "@/lib/video/access";
 
 /**
  * Opens a file. Permission is checked here, then a short-lived signed URL is
@@ -21,7 +22,9 @@ export async function GET(request: Request, ctx: { params: Promise<{ id: string 
   // The module entitlement is re-checked alongside the relation, the same way
   // /api/files/presign does it: a route handler is a public endpoint and must
   // not assume the rail hid the link (§4.1).
-  if (!viewer.modules.includes("files")) return new Response("Not found", { status: 404 });
+  if (!viewer.modules.includes("files") && !viewer.modules.includes("video")) {
+    return new Response("Not found", { status: 404 });
+  }
 
   // Both reads are issued together, and the row is scoped to the viewer's own
   // tenant. Two reasons. Sequentially, "no such file" answered after one round
@@ -30,17 +33,20 @@ export async function GET(request: Request, ctx: { params: Promise<{ id: string 
   // a file you cannot read exists (§2.2.4). And the admin override below is a
   // break-glass over *this studio's* files (§2.1); unscoped, an admin of one
   // tenant could pull any object out of another by guessing an id.
-  const [rows, held] = await Promise.all([
+  const [rows, held, inProject] = await Promise.all([
     db
       .select()
       .from(files)
       .where(and(eq(files.id, id), eq(files.tenantId, viewer.tenantId)))
       .limit(1),
-    relationOn(viewer, "file", id),
+    viewer.modules.includes("files") ? relationOn(viewer, "file", id) : Promise.resolve(null),
+    // Footage in a project the viewer can see plays for them, whoever uploaded
+    // it (lib/video/access.ts).
+    fileInVisibleProject(viewer, id),
   ]);
 
   const file = rows[0];
-  const granted = held !== null;
+  const granted = held !== null || inProject;
 
   if (!file || file.deletedAt) return new Response("Not found", { status: 404 });
 
@@ -51,7 +57,7 @@ export async function GET(request: Request, ctx: { params: Promise<{ id: string 
     objectType: "file",
     objectId: id,
     module: "files",
-    meta: { name: file.name, relation: held },
+    meta: { name: file.name, relation: held ?? (inProject ? "video_project" : null) },
   });
 
   if (!file.storageKey) {
@@ -74,8 +80,12 @@ export async function GET(request: Request, ctx: { params: Promise<{ id: string 
   }
 
   const download = new URL(request.url).searchParams.get("download") === "1";
+  // A <video> keeps asking the same signed URL for byte ranges for as long as
+  // the page is open; five minutes was enough for a download and not for a
+  // player somebody paused and came back to (the next seek hit an expired
+  // link and the player spun). Playback links live for six hours.
   const url = await presignDownload(file.storageKey, {
-    expiresIn: 300,
+    expiresIn: download ? 300 : 6 * 3600,
     filename: download ? file.name : undefined,
   });
 

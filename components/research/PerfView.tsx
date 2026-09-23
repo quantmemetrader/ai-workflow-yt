@@ -3,8 +3,12 @@
 import { useCallback, useMemo, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { PerfScreen } from "@/components/canvas/PerfScreen";
+import { InlineAgentThread, useInlineAgent } from "@/components/shell/InlineAgent";
+import { AgentHistory } from "@/components/shell/AgentHistory";
 import type { ChannelRow, PerformanceRow, Window } from "@/lib/social/service";
 import { syncNowAction } from "@/app/(app)/research/inbox-actions";
+import { notify } from "@/lib/client/notify";
+import { beginWork } from "@/lib/client/busy";
 
 /**
  * Live wiring for Content performance.
@@ -25,7 +29,14 @@ export function PerfView({
   model,
 }: {
   rows: PerformanceRow[];
-  totals: { posts: number; views: number; likes: number; comments: number; engagementRate: number | null };
+  totals: {
+    posts: number;
+    views: number;
+    viewsInWindow: number;
+    likes: number;
+    comments: number;
+    engagementRate: number | null;
+  };
   series: { d: string; v: number }[];
   window: Window;
   platform: string | null;
@@ -36,6 +47,9 @@ export function PerfView({
   model: string;
 }) {
   const router = useRouter();
+  /* The agent answers here. Asking used to push to /chat, which took the
+   * screen you were asking about off the screen. */
+  const agent = useInlineAgent({ module: "research" }, { key: "research:performance" });
   const params = useSearchParams();
   const [isPending, start] = useTransition();
   const [sort, setSort] = useState<{ key: "views" | "likes" | "comments" | "engagementRate" | "publishedAt"; dir: "asc" | "desc" }>({
@@ -90,9 +104,39 @@ export function PerfView({
       onWindow={(w) => push({ window: w })}
       onPlatform={(p) => push({ platform: p })}
       onSort={(key) => setSort((prev) => ({ key, dir: prev.key === key && prev.dir === "desc" ? "asc" : "desc" }))}
-      onSyncNow={() => start(async () => { await syncNowAction(); router.refresh(); })}
+      /* "Check now" used to discard the action's `{ error }` entirely, so a
+         refused sync looked exactly like a successful one (REVIEW.md #15).
+         `InboxView` has always handled the same action correctly. */
+      onSyncNow={() =>
+        start(async () => {
+          const done = beginWork();
+          try {
+            const res = await syncNowAction();
+            if (res && "error" in res && res.error) {
+              notify(res.error);
+              return;
+            }
+            notify(
+              locale.startsWith("zh") ? "已排入队列，稍后刷新。" : "Queued. The numbers refresh when it lands.",
+              "ok",
+            );
+            router.refresh();
+          } finally {
+            done();
+          }
+        })
+      }
       model={model}
-      onAsk={(prompt) => router.push(`/chat?q=${encodeURIComponent(prompt)}`)}
+      onAsk={(prompt) => void agent.send(prompt)}
+      tools={<AgentHistory zh={locale.startsWith("zh")} current={agent.conversationId} onPick={(id) => void agent.load(id)} onNew={agent.reset} />}
+      thread={
+        <InlineAgentThread
+          messages={agent.messages}
+          notice={agent.notice}
+          conversationId={agent.conversationId}
+          zh={locale.startsWith("zh")}
+        />
+      }
     />
   );
 }

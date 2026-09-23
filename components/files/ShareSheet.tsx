@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { makeT, type Locale } from "@/lib/i18n";
 import { revokeAction, shareAction } from "@/app/(app)/files/actions";
 import type { Relation } from "@/lib/db/schema";
+import type { SharedObject } from "@/lib/authz/rebac";
 
 const LABEL: Record<Relation, string> = {
   owner: "Owner",
@@ -25,7 +26,7 @@ export function ShareSheet({
   shares,
   locale,
 }: {
-  objectType: "file" | "folder";
+  objectType: SharedObject;
   objectId: string;
   ceiling: Relation | null;
   shares: { subjectId: string; subjectType: string; relation: Relation; name: string | null; expiresAt: string | null }[];
@@ -53,7 +54,12 @@ export function ShareSheet({
 
       {allowed.length > 0 && (
         <form
-          className="mb-3 flex gap-2"
+          /* Wrapping, and an input that may shrink.
+             `flex-1` alone does not: a flex item's default `min-width: auto`
+             refuses to go below its content, so on a narrow panel the email
+             box held its width, pushed the role picker and the button past the
+             edge, and gave the whole page a horizontal scrollbar. */
+          className="mb-3 flex flex-wrap items-center gap-2"
           onSubmit={(e) => {
             e.preventDefault();
             start(async () => {
@@ -71,13 +77,13 @@ export function ShareSheet({
             onChange={(e) => setEmail(e.target.value)}
             aria-label={t("Work email")}
             placeholder="name@aurafarmers.hk"
-            className="h-8 flex-1 rounded-lg border border-outline-gray-2 px-2.5 text-sm outline-none focus:border-outline-gray-4"
+            className="h-8 min-w-0 flex-1 basis-40 rounded-lg border border-outline-gray-2 px-2.5 text-sm outline-none focus:border-outline-gray-4"
           />
           <select
             value={relation}
             aria-label={t("Share")}
             onChange={(e) => setRelation(e.target.value as Relation)}
-            className="h-8 rounded-lg border border-outline-gray-2 px-2 text-sm text-ink-gray-8"
+            className="h-8 shrink-0 rounded-lg border border-outline-gray-2 px-2 text-sm text-ink-gray-8"
           >
             {allowed.map((r) => (
               <option key={r} value={r}>
@@ -88,7 +94,7 @@ export function ShareSheet({
           <button
             type="submit"
             disabled={pending}
-            className="h-8 rounded-lg bg-surface-gray-7 px-3 text-xs font-medium text-white disabled:opacity-50"
+            className="h-8 shrink-0 rounded-lg bg-surface-gray-7 px-3 text-xs font-medium text-white disabled:opacity-50"
           >
             {t("Share")}
           </button>

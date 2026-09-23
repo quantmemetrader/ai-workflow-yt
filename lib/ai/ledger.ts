@@ -39,7 +39,17 @@ export type BudgetState = {
 };
 
 /** What the shell shows and what every AI entry point checks first. */
-export async function budgetState(viewer: Viewer): Promise<BudgetState> {
+/**
+ * What this account has spent this period, and against which cap.
+ *
+ * Takes only the three fields it reads rather than a whole `Viewer`. Scheduled
+ * work is charged to the service principal, which is an id and a tenant and
+ * not a person, and the cap has to stop that too (REVIEW.md #10) — widening
+ * the parameter is what lets the job ask the same question a page asks.
+ */
+export type BudgetSubject = Pick<Viewer, "id" | "tenantId"> & { teamIds?: readonly string[] };
+
+export async function budgetState(viewer: BudgetSubject): Promise<BudgetState> {
   const since = periodStart();
   const period = currentPeriod();
 
@@ -48,7 +58,7 @@ export async function budgetState(viewer: Viewer): Promise<BudgetState> {
     .from(aiUsage)
     .where(and(eq(aiUsage.userId, viewer.id), gte(aiUsage.createdAt, since)));
 
-  const scopeIds = [viewer.id, ...viewer.teamIds, viewer.tenantId];
+  const scopeIds = [viewer.id, ...(viewer.teamIds ?? []), viewer.tenantId];
   const caps = await db
     .select()
     .from(budgets)
@@ -64,7 +74,8 @@ export async function budgetState(viewer: Viewer): Promise<BudgetState> {
   let scope: BudgetState["scope"] = userCap ? "user" : null;
   let usedForScope = used;
 
-  const teamCap = caps.find((c) => c.scope === "team" && viewer.teamIds.includes(c.scopeId) && (!c.period || c.period === period));
+  const teamIds = viewer.teamIds ?? [];
+  const teamCap = caps.find((c) => c.scope === "team" && teamIds.includes(c.scopeId) && (!c.period || c.period === period));
   if (teamCap) {
     const [row] = await db
       .select({ total: sql<number>`coalesce(sum(${aiUsage.costMicros}), 0)::bigint` })
@@ -122,7 +133,7 @@ export class BudgetStop extends Error {
 }
 
 /** Call before any model request. Throws `BudgetStop` at the cap. */
-export async function assertBudget(viewer: Viewer): Promise<BudgetState> {
+export async function assertBudget(viewer: BudgetSubject): Promise<BudgetState> {
   const state = await budgetState(viewer);
   if (state.stopped) throw new BudgetStop(state);
   return state;
@@ -206,24 +217,6 @@ export async function notifyBudgetStop(viewer: Viewer, state: BudgetState) {
   ];
 
   await db.insert(notifications).values(rows).onConflictDoNothing();
-}
-
-/** Per-person totals for the Admin token dashboard. */
-export async function usageByUser(tenantId: string, since: Date) {
-  return db
-    .select({
-      userId: aiUsage.userId,
-      name: users.name,
-      requests: sql<number>`count(*)::int`,
-      promptTokens: sql<number>`coalesce(sum(${aiUsage.promptTokens}),0)::int`,
-      completionTokens: sql<number>`coalesce(sum(${aiUsage.completionTokens}),0)::int`,
-      costMicros: sql<number>`coalesce(sum(${aiUsage.costMicros}),0)::bigint`,
-    })
-    .from(aiUsage)
-    .innerJoin(users, eq(users.id, aiUsage.userId))
-    .where(and(eq(aiUsage.tenantId, tenantId), gte(aiUsage.createdAt, since)))
-    .groupBy(aiUsage.userId, users.name)
-    .orderBy(sql`5 desc`);
 }
 
 export function formatUsd(micros: number): string {

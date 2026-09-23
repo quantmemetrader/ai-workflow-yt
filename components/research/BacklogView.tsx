@@ -3,8 +3,10 @@
 import { useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { BacklogScreen, type BacklogItem, type Person, type Stage } from "@/components/canvas/BacklogScreen";
+import { InlineAgentThread, useInlineAgent } from "@/components/shell/InlineAgent";
 import { decideAction, moveStageAction, planAction } from "@/app/(app)/research/actions";
 import { scriptFromTopicAction } from "@/app/(app)/script/actions";
+import { notify } from "@/lib/client/notify";
 
 /**
  * Live wiring for the Topic backlog.
@@ -29,6 +31,9 @@ export function BacklogView({
   model: string;
 }) {
   const router = useRouter();
+  /* The agent answers here. Asking used to push to /chat, which took the
+   * screen you were asking about off the screen. */
+  const agent = useInlineAgent({ module: "research" });
   const [, start] = useTransition();
 
   return (
@@ -39,18 +44,26 @@ export function BacklogView({
       locale={locale}
       region={region}
       model={model}
-      onAsk={(prompt) => router.push(`/chat?q=${encodeURIComponent(prompt)}`)}
+      onAsk={(prompt) => void agent.send(prompt)}
+      thread={
+        <InlineAgentThread
+          messages={agent.messages}
+          notice={agent.notice}
+          conversationId={agent.conversationId}
+          zh={locale.startsWith("zh")}
+        />
+      }
       onAssign={(topicId, patch) =>
         start(async () => {
           const res = await planAction(topicId, patch);
-          if (res.error) globalThis.alert(res.error);
+          if (res.error) notify(res.error);
           router.refresh();
         })
       }
       onMoveStage={(topicId, stage: Stage) =>
         start(async () => {
           const res = await moveStageAction(topicId, stage);
-          if (res.error) globalThis.alert(res.error);
+          if (res.error) notify(res.error);
           router.refresh();
         })
       }
@@ -66,7 +79,7 @@ export function BacklogView({
         start(async () => {
           const res = await scriptFromTopicAction(topicId);
           if ("error" in res && res.error) {
-            globalThis.alert(res.error);
+            notify(res.error);
             return;
           }
           if ("id" in res && res.id) router.push(`/script/${res.id}`);

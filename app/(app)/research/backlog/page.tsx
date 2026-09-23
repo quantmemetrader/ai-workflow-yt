@@ -2,11 +2,13 @@ import { and, eq, inArray } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { topics, users } from "@/lib/db/schema";
 import { requireModule } from "@/lib/auth/dal";
-import { modelFor } from "@/lib/ai/models";
+import { answeringModel } from "@/lib/ai/models";
 import { ResearchSidebar } from "@/components/canvas/ResearchSidebar";
 import { BacklogView } from "@/components/research/BacklogView";
 import { connectedSources, decisionCount } from "@/lib/research/service";
 import { openCommentCount } from "@/lib/social/service";
+
+export const metadata = { title: "选题储备 · Backlog" };
 
 /** Adopted topics, with owner, target channel and due date — what Script needs
  * before it can start (brief §4.3, Topic backlog). */
@@ -51,7 +53,7 @@ export default async function BacklogPage() {
       <BacklogView
       locale={viewer.locale ?? "zh-CN"}
       region="HK / TW / SG"
-      model={modelFor.assistant()}
+      model={answeringModel()}
       channels={CHANNELS}
       people={people.map((p) => ({ id: p.id, name: (zh && p.nameLocal) || p.name }))}
       items={rows.map((r) => ({

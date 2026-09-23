@@ -44,7 +44,21 @@ export type RankedTopic = {
   status: "new" | "adopted" | "rejected" | "saved";
   sourceKeys: string[];
   points: Point[];
+  /** The stories behind the number. The dashboard renders these and the query
+   * never returned them, so the panel was always empty. */
+  articles: { title: string; url: string; domain: string; at: string }[];
   freshness: Date | null;
+  /**
+   * Nothing has been collected for this phrase yet.
+   *
+   * Watching a phrase queues a fetch across sources that answer in their own
+   * time — a first collection takes about a minute — and until now the topic
+   * simply appeared with a heat of zero and no explanation, which reads as a
+   * button that did not work.
+   */
+  collecting: boolean;
+  /** What the sources said, if anything went wrong. */
+  error: string | null;
   ownerName: string | null;
   targetChannel: string | null;
   dueDate: string | null;
@@ -106,7 +120,13 @@ export async function rankedTopics(
         status: r.topic.status,
         sourceKeys: r.topic.sourceKeys,
         points: cached?.points ?? [],
+        articles: cached?.articles ?? [],
         freshness: cached?.fetchedAt ?? r.topic.lastFetchedAt,
+        // Never fetched. A phrase the sources came back empty for has been
+        // fetched, and saying "collecting…" over it was a spinner that never
+        // stopped (and a page that refreshed every six seconds for ever).
+        collecting: r.topic.lastFetchedAt === null,
+        error: cached?.error ?? null,
         ownerName: r.ownerName,
         targetChannel: r.topic.targetChannel,
         dueDate: r.topic.dueDate,
@@ -232,19 +252,38 @@ export async function seriesFor(
     .where(and(eq(seriesCache.window, window), inArray(seriesCache.query, wanted)));
 
   const byQuery = new Map(cached.map((c) => [c.query, c]));
-  const stale = Date.now() - maxAgeHours * 3_600_000;
+  const now = Date.now();
+  const stale = now - maxAgeHours * 3_600_000;
+  /*
+   * A round that fell back to Hacker News or to article counts, because GDELT
+   * was rate-limiting this address, is not worth keeping for twelve hours: the
+   * cooldown is ten minutes and the chart it produced is the thin one. It was
+   * kept, though, because the row looked fresh — so a phrase asked for during
+   * a rate limit stayed on the fallback source until the next morning.
+   */
+  const degradedStale = now - 3_600_000;
 
-  const out: SeriesResult[] = wanted.map((query) => {
+  const out: (SeriesResult & { refresh: boolean })[] = wanted.map((query) => {
     const hit = byQuery.get(query);
-    const fresh = Boolean(hit && hit.fetchedAt.getTime() > stale && hit.points.length > 0);
+    const has = Boolean(hit && hit.points.length > 0);
+    const degraded = Boolean(hit && (hit.error || hit.sourceKey !== "gdelt"));
+    const fresh = Boolean(
+      hit &&
+        has &&
+        hit.fetchedAt.getTime() > (degraded ? degradedStale : stale),
+    );
     return {
       query,
       points: hit?.points ?? [],
       articles: hit?.articles ?? [],
       sourceKey: hit?.sourceKey ?? "gdelt",
       fetchedAt: hit?.fetchedAt ?? null,
-      pending: !fresh,
+      // "Collecting" means there is nothing to draw yet. A thin chart from a
+      // fallback source is something, and saying "collecting" over it would be
+      // a spinner that never stops.
+      pending: !has,
       error: hit?.error ?? null,
+      refresh: !fresh,
     };
   });
 
@@ -253,7 +292,7 @@ export async function seriesFor(
   // before anybody sees a chart.
   await Promise.all(
     out
-      .filter((s) => s.pending)
+      .filter((s) => s.refresh)
       .map((s) =>
         enqueue({
           tenantId: viewer.tenantId,
@@ -267,7 +306,17 @@ export async function seriesFor(
       ),
   );
 
-  return out;
+  // `refresh` is how this function decided what to queue; it is not part of
+  // what a screen renders.
+  return out.map((s) => ({
+    query: s.query,
+    points: s.points,
+    articles: s.articles,
+    sourceKey: s.sourceKey,
+    fetchedAt: s.fetchedAt,
+    pending: s.pending,
+    error: s.error,
+  }));
 }
 
 /** "Export the comparison to the database as a research report" (brief). */
@@ -362,6 +411,40 @@ export async function connectedSources() {
  * set. Creating one queues its first refresh straight away, so the dashboard
  * fills in within a minute or two rather than at the next scheduled run.
  */
+/**
+ * Which beat a phrase belongs to, when nobody said.
+ *
+ * A stated keyword map rather than a model call. Three reasons: it is free and
+ * instant on a path somebody is waiting on, it is the same answer every time,
+ * and it is a guess a person can read and correct — a model's guess looks
+ * authoritative and is not.
+ *
+ * Anything it does not recognise is left unfiled, which is honest. The beats
+ * panel shows unfiled topics under "All" and they are still watched, ranked
+ * and collected exactly the same.
+ */
+const BEAT_WORDS: Record<string, string[]> = {
+  ai: ["ai", "artificial intelligence", "llm", "gpt", "openai", "anthropic", "gemini", "大模型", "agent", "machine learning", "人工智能", "copilot", "inference"],
+  chain: ["crypto", "blockchain", "bitcoin", "btc", "ethereum", "eth", "solana", "web3", "token", "defi", "stablecoin", "binance", "加密", "区块链"],
+  semi: ["nvidia", "semiconductor", "chip", "tsmc", "amd", "intel", "arm", "wafer", "foundry", "hbm", "lithography", "asml", "芯片", "半导体"],
+  devices: ["iphone", "apple", "android", "samsung", "laptop", "headset", "wearable", "vision pro", "consumer tech", "手机", "耳机"],
+  fintech: ["fintech", "payments", "bank", "banking", "neobank", "stripe", "wise", "remittance", "支付", "金融科技"],
+  ev: ["ev", "electric vehicle", "tesla", "byd", "battery", "charging", "autonomous", "self-driving", "电动车", "电池"],
+  startups: ["startup", "venture", "vc", "seed round", "series a", "funding", "founder", "accelerator", "创业", "融资"],
+};
+
+export function guessBeat(phrase: string): string | null {
+  const q = phrase.toLowerCase();
+  for (const [key, words] of Object.entries(BEAT_WORDS)) {
+    // Whole words for the short Latin ones, so "ev" does not match "seven"
+    // and "ai" does not match "email".
+    if (words.some((w) => (/^[a-z]{1,3}$/.test(w) ? new RegExp(`\\b${w}\\b`).test(q) : q.includes(w)))) {
+      return key;
+    }
+  }
+  return null;
+}
+
 export async function createTopic(
   viewer: Viewer,
   input: { query: string; name?: string; category?: string | null; region?: string },
@@ -382,7 +465,9 @@ export async function createTopic(
       tenantId: viewer.tenantId,
       query,
       name: (input.name ?? query).slice(0, 120),
-      category: input.category ?? null,
+      // What the person filtering to a beat plainly meant, then a guess from
+      // the phrase, then nothing.
+      category: input.category ?? guessBeat(query),
       region,
     })
     .onConflictDoNothing({ target: [topics.tenantId, topics.query, topics.region] })

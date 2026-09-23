@@ -1,4 +1,5 @@
 import "server-only";
+import { modelChoice } from "@/lib/ai/choice";
 
 /**
  * The model catalogue. Ids are OpenRouter ids; prices are per million tokens
@@ -76,12 +77,18 @@ export const MODELS: ModelSpec[] = [
 
 export const MODEL_BY_ID = new Map(MODELS.map((m) => [m.id, m]));
 
-/** Roles the product asks for, resolved to ids. Overridable per deployment so
- * the client can move to a different model without a code change. */
+/**
+ * Roles the product asks for, resolved to ids.
+ *
+ * Three layers, in order: what the studio chose in Admin, then the
+ * deployment's environment, then a sensible default. The studio's own choice
+ * wins because it is the studio's money — the environment stays as the way to
+ * pin a model for a deployment that has no administrator to ask.
+ */
 export const modelFor = {
-  assistant: () => process.env.AI_MODEL_ASSISTANT || "anthropic/claude-sonnet-5",
-  drafting: () => process.env.AI_MODEL_DRAFTING || "anthropic/claude-opus-5",
-  utility: () => process.env.AI_MODEL_UTILITY || "google/gemini-3.1-flash-lite",
+  assistant: () => modelChoice().assistant || process.env.AI_MODEL_ASSISTANT || "anthropic/claude-sonnet-5",
+  drafting: () => modelChoice().drafting || process.env.AI_MODEL_DRAFTING || "anthropic/claude-opus-5",
+  utility: () => modelChoice().utility || process.env.AI_MODEL_UTILITY || "google/gemini-3.1-flash-lite",
   /**
    * Tried in order when the account is out of credit or a provider is
    * rate-limiting. Free models share an upstream pool and refuse often, so one
@@ -96,4 +103,23 @@ export const modelFor = {
 
 export function labelFor(id: string): string {
   return MODEL_BY_ID.get(id)?.label ?? id;
+}
+
+/**
+ * The model that will actually answer, for the composer's caption.
+ *
+ * The panel printed whatever `AI_MODEL_ASSISTANT` said, which stopped being
+ * true the moment calls started going to DeepSeek instead — so the product
+ * told people a free Nemotron was answering while DeepSeek was. A label that
+ * is wrong about the thing it names is worse than no label.
+ */
+export function answeringModel(): string {
+  if (!process.env.DEEPSEEK_API_KEY) return modelFor.assistant();
+  const configured = modelFor.assistant();
+  const chosen = modelChoice().preferDeepseek;
+  const flag = process.env.AI_PREFER_DEEPSEEK;
+  const deepseek =
+    chosen === true ||
+    (chosen !== false && (flag === "true" || (flag !== "false" && configured.endsWith(":free"))));
+  return deepseek ? (process.env.DEEPSEEK_MODEL || "deepseek-chat") : configured;
 }

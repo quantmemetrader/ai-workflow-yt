@@ -1,5 +1,5 @@
 import { requireModule } from "@/lib/auth/dal";
-import { modelFor } from "@/lib/ai/models";
+import { answeringModel } from "@/lib/ai/models";
 import { ResearchSidebar } from "@/components/canvas/ResearchSidebar";
 import { PerfView } from "@/components/research/PerfView";
 import { connectedSources, decisionCount } from "@/lib/research/service";
@@ -12,6 +12,8 @@ import {
   viewsSeries,
   type Window,
 } from "@/lib/social/service";
+
+export const metadata = { title: "内容表现 · Performance" };
 
 /**
  * Content performance (spec §4.3).
@@ -70,7 +72,7 @@ export default async function PerformancePage({
         platform={platform}
         channels={state.channels}
         syncedAt={state.syncedAt}
-        model={modelFor.assistant()}
+        model={answeringModel()}
       />
     </>
   );

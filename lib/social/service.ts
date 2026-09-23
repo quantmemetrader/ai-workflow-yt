@@ -1,8 +1,17 @@
 import "server-only";
-import { and, asc, desc, eq, gte, inArray, isNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { channelPosts, channels, commentDrafts, comments, postMetrics } from "@/lib/db/schema";
+import {
+  channelPosts,
+  channels,
+  commentDrafts,
+  comments,
+  competitorPosts,
+  competitors,
+} from "@/lib/db/schema";
 import type { Viewer } from "@/lib/auth/dal";
+import { audit } from "@/lib/audit";
+import { newId } from "@/lib/ids";
 
 /**
  * What the Content performance and Comment inbox screens read.
@@ -140,6 +149,11 @@ export async function performance(
            and pm.views_day > 0
       ) w on true
      where p.tenant_id = ${viewer.tenantId}
+       -- Published, and published inside the window. A scheduled or failed
+       -- post has no published_at at all now, so it cannot sort to the top of
+       -- this table with a dash in every column (REVIEW.md #8).
+       and p.status = 'published'
+       and p.published_at is not null
        and p.published_at >= ${since}
        ${opts.platform ? sql`and p.platform = ${opts.platform}` : sql``}
      order by m.views desc nulls last, p.published_at desc
@@ -194,22 +208,68 @@ export async function viewsSeries(
 
 /** Headline numbers for the window, and how many posts they cover. */
 export async function performanceTotals(viewer: Viewer, opts: { window?: Window; platform?: string } = {}) {
-  const rows = await performance(viewer, opts);
-  const sum = (pick: (r: PerformanceRow) => number | null) =>
-    rows.reduce((t, r) => t + (pick(r) ?? 0), 0);
+  /*
+   * Totals over every post in the window, not over the two hundred the table
+   * shows (REVIEW.md #7).
+   *
+   * This used to call `performance()` and add up what came back. That query
+   * caps at 200 rows ordered by views, so a channel with 260 posts in a 90-day
+   * window reported "Posts: 200" and totals missing the sixty smallest — and
+   * it ran the same expensive query twice per render. One aggregate, over
+   * everything.
+   */
+  const since = windowStart(opts.window ?? DEFAULT_WINDOW);
 
-  const withEngagement = rows.filter((r) => r.engagementRate !== null);
+  const { rows } = await db.execute<Record<string, unknown>>(sql`
+    select count(*)::int                                     as posts,
+           coalesce(sum(m.views), 0)::bigint                  as views,
+           coalesce(sum(m.likes), 0)::bigint                  as likes,
+           coalesce(sum(m.comments), 0)::bigint               as comments,
+           avg(m.engagement_rate) filter (where m.engagement_rate is not null) as engagement_rate
+      from channel_posts p
+      join channels c on c.id = p.channel_id
+      left join lateral (
+        select * from post_metrics pm
+         where pm.post_id = p.id and pm.views is not null
+         order by pm.as_of desc
+         limit 1
+      ) m on true
+     where p.tenant_id = ${viewer.tenantId}
+       and p.status = 'published'
+       and p.published_at is not null
+       and p.published_at >= ${since}
+       ${opts.platform ? sql`and p.platform = ${opts.platform}` : sql``}
+  `);
 
+  /*
+   * Two different quantities, named as two (REVIEW.md #6).
+   *
+   * `views` is the lifetime total of the posts published in this window.
+   * `viewsInWindow` is what was gained during it, across every post however
+   * old. Both are legitimate; under one "Last 28 days" chip they read as a
+   * contradiction, because on a channel with history the tile said 1.4M and
+   * the chart underneath summed to 40k. The screen now labels each.
+   */
+  const { rows: gained } = await db.execute<Record<string, unknown>>(sql`
+    select coalesce(sum(m.views_day), 0)::bigint as v
+      from post_metrics m
+      join channel_posts p on p.id = m.post_id
+     where p.tenant_id = ${viewer.tenantId}
+       and m.as_of >= ${since}
+       and m.views_day is not null
+       ${opts.platform ? sql`and p.platform = ${opts.platform}` : sql``}
+  `);
+
+  const r = rows[0] ?? {};
   return {
-    posts: rows.length,
-    views: sum((r) => r.views),
-    likes: sum((r) => r.likes),
-    comments: sum((r) => r.comments),
+    posts: Number(r.posts ?? 0),
+    views: Number(r.views ?? 0),
+    viewsInWindow: Number(gained[0]?.v ?? 0),
+    likes: Number(r.likes ?? 0),
+    comments: Number(r.comments ?? 0),
     /** Averaged over the posts that actually report it, so one platform's
      * silence does not drag the number to zero. */
-    engagementRate: withEngagement.length
-      ? withEngagement.reduce((t, r) => t + (r.engagementRate ?? 0), 0) / withEngagement.length
-      : null,
+    engagementRate: r.engagement_rate === null || r.engagement_rate === undefined ? null : Number(r.engagement_rate),
   };
 }
 
@@ -245,7 +305,16 @@ export type InboxComment = {
   platform: string;
   /** The current draft, if one is waiting. Never includes a sent one —
    * a sent reply is not a draft and must not render as one. */
-  draft: { id: string; body: string; model: string | null; editedAt: Date | null } | null;
+  draft: {
+    id: string;
+    body: string;
+    model: string | null;
+    editedAt: Date | null;
+    /** What the platform said the last time this was tried (REVIEW.md #14).
+     * It was written onto the row and nothing ever selected it, so three
+     * overnight failures left three drafts that looked untouched. */
+    error: string | null;
+  } | null;
 };
 
 export type InboxGroup = {
@@ -265,11 +334,26 @@ export type InboxGroup = {
  * order — two orderings of one list, which is a shape SQL returns awkwardly
  * and TypeScript returns plainly.
  */
+export const SENTIMENTS = ["very_negative", "negative", "neutral", "positive", "very_positive"] as const;
+export type Sentiment = (typeof SENTIMENTS)[number];
+
+export function isSentiment(v: unknown): v is Sentiment {
+  return typeof v === "string" && (SENTIMENTS as readonly string[]).includes(v);
+}
+
 export async function inbox(viewer: Viewer, filters: InboxFilters = {}): Promise<InboxGroup[]> {
   const where = [eq(comments.tenantId, viewer.tenantId)];
 
   where.push(eq(comments.state, filters.state ?? "open"));
-  if (filters.sentiment) where.push(eq(comments.sentiment, filters.sentiment as never));
+  /*
+   * A sentiment off the wire is a string until it is one of these five
+   * (REVIEW.md #4). Binding an unvalidated URL parameter against a `pgEnum`
+   * column — `as never` being the cast that silenced the type error — meant a
+   * typo or a stale bookmark crashed the route with a Postgres 22P02. An
+   * unknown value now narrows nothing, which is what a filter nobody asked for
+   * should do.
+   */
+  if (isSentiment(filters.sentiment)) where.push(eq(comments.sentiment, filters.sentiment));
   if (filters.language) where.push(eq(comments.language, filters.language));
   if (filters.flagged) where.push(eq(comments.flagged, true));
   if (filters.leads) where.push(eq(comments.isLead, true));
@@ -316,6 +400,7 @@ export async function inbox(viewer: Viewer, filters: InboxFilters = {}): Promise
       body: commentDrafts.body,
       model: commentDrafts.model,
       editedAt: commentDrafts.editedAt,
+      error: commentDrafts.error,
       createdAt: commentDrafts.createdAt,
     })
     .from(commentDrafts)
@@ -366,7 +451,7 @@ export async function inbox(viewer: Viewer, filters: InboxFilters = {}): Promise
       postedAt: r.postedAt,
       permalink: r.permalink,
       platform: r.platform,
-      draft: d ? { id: d.id, body: d.body, model: d.model, editedAt: d.editedAt } : null,
+      draft: d ? { id: d.id, body: d.body, model: d.model, editedAt: d.editedAt, error: d.error } : null,
     });
   }
 
@@ -431,41 +516,6 @@ function numOrNull(v: unknown): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-/** One comment with everything the detail pane shows. */
-export async function commentDetail(viewer: Viewer, commentId: string) {
-  const [row] = await db
-    .select({
-      id: comments.id,
-      postId: comments.postId,
-      channelId: comments.channelId,
-      externalId: comments.externalId,
-      authorName: comments.authorName,
-      authorHandle: comments.authorHandle,
-      authorAvatarUrl: comments.authorAvatarUrl,
-      authorExternalId: comments.authorExternalId,
-      body: comments.body,
-      translation: comments.translation,
-      language: comments.language,
-      sentiment: comments.sentiment,
-      flagged: comments.flagged,
-      flagReason: comments.flagReason,
-      isLead: comments.isLead,
-      leadReason: comments.leadReason,
-      state: comments.state,
-      postedAt: comments.postedAt,
-      permalink: comments.permalink,
-      postTitle: channelPosts.title,
-      postExternalId: channelPosts.externalId,
-      platform: channelPosts.platform,
-    })
-    .from(comments)
-    .innerJoin(channelPosts, eq(channelPosts.id, comments.postId))
-    .where(and(eq(comments.id, commentId), eq(comments.tenantId, viewer.tenantId)))
-    .limit(1);
-
-  return row ?? null;
-}
-
 /**
  * Earlier comments by the same person, which is what "14 prior comments" on
  * the artboard means.
@@ -486,6 +536,42 @@ export async function priorComments(viewer: Viewer, authorHandle: string | null,
   return Number(rows[0]?.n ?? 0);
 }
 
+/**
+ * How many other comments each of these commenters has left, in one query.
+ *
+ * The inbox used to call `priorComments` once per distinct handle. Its comment
+ * said "four queries, not forty", but the map is keyed per commenter over up to
+ * three hundred comments, so 260 commenters meant 260 concurrent round trips to
+ * Singapore against a pool of eight (REVIEW.md #13). One `group by` returns the
+ * same data.
+ *
+ * The count excludes the comment being displayed, which is why the caller
+ * passes the ids it is showing rather than only the handles.
+ */
+export async function priorCommentCounts(
+  viewer: Viewer,
+  shown: { id: string; authorHandle: string | null }[],
+): Promise<Record<string, number>> {
+  const handles = [...new Set(shown.map((c) => c.authorHandle).filter((h): h is string => Boolean(h)))];
+  if (!handles.length) return {};
+
+  const rows = await db
+    .select({ handle: comments.authorHandle, n: sql<number>`count(*)::int` })
+    .from(comments)
+    .where(and(eq(comments.tenantId, viewer.tenantId), inArray(comments.authorHandle, handles)))
+    .groupBy(comments.authorHandle);
+
+  const total = new Map(rows.map((r) => [r.handle ?? "", r.n]));
+
+  const out: Record<string, number> = {};
+  for (const c of shown) {
+    if (!c.authorHandle) continue;
+    // Everything this person has said, less the one on screen.
+    out[c.id] = Math.max(0, (total.get(c.authorHandle) ?? 0) - 1);
+  }
+  return out;
+}
+
 /** Whether there is anything to show at all, and if not, why not. The screens
  * use this instead of rendering an empty table with no explanation. */
 export async function connectionState(viewer: Viewer) {
@@ -504,21 +590,133 @@ export async function connectionState(viewer: Viewer) {
   };
 }
 
-/** Views per day for one post, when someone opens it. */
-export async function postSeries(viewer: Viewer, postId: string, w: Window = DEFAULT_WINDOW) {
-  const since = windowStart(w);
-  const rows = await db
-    .select({ asOf: postMetrics.asOf, views: postMetrics.viewsDay })
-    .from(postMetrics)
-    .innerJoin(channelPosts, eq(channelPosts.id, postMetrics.postId))
-    .where(
-      and(
-        eq(postMetrics.postId, postId),
-        eq(channelPosts.tenantId, viewer.tenantId),
-        gte(postMetrics.asOf, since),
-      ),
-    )
-    .orderBy(asc(postMetrics.asOf));
+// --------------------------------------------------------- competitors
 
-  return rows.map((r) => ({ d: r.asOf.toISOString().slice(0, 10), v: r.views ?? 0 }));
+export type CompetitorRow = {
+  id: string;
+  platform: string;
+  /** The platform's own id — a `UC…` for YouTube. Carried so a discovery
+   * panel can tell which of the channels it found are already watched. */
+  externalId: string;
+  handle: string | null;
+  displayName: string | null;
+  note: string | null;
+  syncedAt: Date | null;
+  lastError: string | null;
+  postCount: number;
+  /** Median views over what they published recently. A median rather than a
+   * mean: one video that went far should not describe a channel. */
+  medianViews: number | null;
+  topPost: { title: string | null; permalink: string | null; views: number | null } | null;
+};
+
+export async function listCompetitors(viewer: Viewer): Promise<CompetitorRow[]> {
+  const rows = await db
+    .select()
+    .from(competitors)
+    .where(eq(competitors.tenantId, viewer.tenantId))
+    .orderBy(competitors.displayName);
+
+  if (!rows.length) return [];
+
+  const posts = await db
+    .select({
+      competitorId: competitorPosts.competitorId,
+      title: competitorPosts.title,
+      permalink: competitorPosts.permalink,
+      views: competitorPosts.views,
+    })
+    .from(competitorPosts)
+    .where(inArray(competitorPosts.competitorId, rows.map((r) => r.id)));
+
+  const byCompetitor = new Map<string, typeof posts>();
+  for (const p of posts) {
+    byCompetitor.set(p.competitorId, [...(byCompetitor.get(p.competitorId) ?? []), p]);
+  }
+
+  return rows.map((c) => {
+    const own = byCompetitor.get(c.id) ?? [];
+    const views = own.map((p) => p.views).filter((v): v is number => typeof v === "number").sort((a, b) => a - b);
+    const top = own.reduce<(typeof own)[number] | null>(
+      (best, p) => ((p.views ?? 0) > (best?.views ?? -1) ? p : best),
+      null,
+    );
+
+    return {
+      id: c.id,
+      platform: c.platform,
+      externalId: c.externalId,
+      handle: c.handle,
+      displayName: c.displayName,
+      note: c.note,
+      syncedAt: c.syncedAt,
+      lastError: c.lastError,
+      postCount: own.length,
+      medianViews: views.length ? views[Math.floor(views.length / 2)] : null,
+      topPost: top ? { title: top.title, permalink: top.permalink, views: top.views } : null,
+    };
+  });
+}
+
+/**
+ * The studio's own median, for the same comparison.
+ *
+ * A competitor table with no "us" row is a table of other people's numbers.
+ * Median for the same reason: one video that went far is not the channel.
+ */
+export async function ourMedianViews(viewer: Viewer, opts: { window?: Window } = {}): Promise<number | null> {
+  const since = windowStart(opts.window ?? DEFAULT_WINDOW);
+  const { rows } = await db.execute<{ v: string | number }>(sql`
+    select percentile_cont(0.5) within group (order by m.views)::bigint as v
+      from channel_posts p
+      join lateral (
+        select * from post_metrics pm
+         where pm.post_id = p.id and pm.views is not null
+         order by pm.as_of desc limit 1
+      ) m on true
+     where p.tenant_id = ${viewer.tenantId}
+       and p.status = 'published'
+       and p.published_at is not null
+       and p.published_at >= ${since}
+  `);
+  const v = rows[0]?.v;
+  return v === null || v === undefined ? null : Number(v);
+}
+
+export async function addCompetitor(
+  viewer: Viewer,
+  input: { platform: string; externalId: string; handle: string | null; displayName: string | null; note: string | null },
+) {
+  const externalId = input.externalId.trim();
+  if (!externalId) throw new Error("A channel id is needed");
+
+  const id = newId("chn");
+  await db
+    .insert(competitors)
+    .values({
+      id,
+      tenantId: viewer.tenantId,
+      platform: input.platform,
+      externalId,
+      handle: input.handle?.trim() || null,
+      displayName: input.displayName?.trim() || input.handle?.trim() || externalId,
+      note: input.note?.slice(0, 500) || null,
+      addedBy: viewer.id,
+    })
+    .onConflictDoNothing();
+
+  await audit(viewer, "research.competitor.add", {
+    module: "research",
+    objectType: "competitor",
+    objectId: id,
+    meta: { platform: input.platform, externalId },
+  });
+  return id;
+}
+
+export async function removeCompetitor(viewer: Viewer, competitorId: string) {
+  await db
+    .delete(competitors)
+    .where(and(eq(competitors.id, competitorId), eq(competitors.tenantId, viewer.tenantId)));
+  await audit(viewer, "research.competitor.remove", { module: "research", objectId: competitorId });
 }

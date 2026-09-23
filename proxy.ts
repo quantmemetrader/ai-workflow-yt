@@ -11,11 +11,30 @@ import { NextResponse, type NextRequest } from "next/server";
  * data — it would only be uglier.
  *
  * `/demo/*` stays open: that is the approved design canvas, published for
- * review, with no live data behind it.
+ * review, with no live data behind it. `/invite/*` stays open for the obvious
+ * reason: it is where somebody who has no account yet gets one, and bouncing
+ * them to a sign-in they cannot pass would make every invitation a dead end.
  */
 const SESSION_COOKIE = "af_session";
 
-const PUBLIC = [/^\/login$/, /^\/demo(\/|$)/, /^\/api\/health$/];
+const PUBLIC = [
+  /^\/login$/,
+  /* The 6-digit code screen. Somebody halfway through signing in holds a
+     challenge cookie, not a session, so bouncing this to /login would make
+     two-step verification impossible to finish. The page itself refuses
+     anyone without a valid challenge. */
+  /^\/login\/verify$/,
+  /^\/demo(\/|$)/,
+  /^\/invite\/[^/]+$/,
+  /^\/api\/health$/,
+  /*
+   * A platform calling back has no session and never will. The route does its
+   * own checking — an HMAC over the raw body when a secret is configured, and
+   * a lookup by the platform's own post id either way — so what it needs from
+   * here is only not to be redirected to a login page it cannot read.
+   */
+  /^\/api\/webhooks\/[^/]+$/,
+];
 
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;

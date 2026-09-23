@@ -1,185 +1,170 @@
-# Known defects in the social module (Market Research)
+# Market Research: the defect list, and what happened to it
 
 Found by an adversarial review of `lib/social/*`, `app/(app)/research/inbox-actions.ts`
-and the two new screens, 19 Sep 2026. **None of these is fixed.** They are
-written down here so they are not lost.
+and the two screens, 19 Sep 2026. **All of them are now fixed.** The list is
+kept because each fix is only understandable next to the thing it fixed.
 
-Ordered by how much damage they do. The first four are the ones that matter.
-
----
-
-## 1. Approving a reply can send it twice, publicly
-
-`app/(app)/research/inbox-actions.ts:98` reads `draft.sentAt`, `:111` calls
-Zernio, `:117` writes `sentAt`. The check is a read, the write has no
-`where sent_at is null`, and there is no transaction. The file header claims
-the invariant is "enforced in three places"; none of the three is atomic.
-
-**How it happens:** Zernio's reply call is slow (the timeout is 20s). The
-producer clicks Approve, sees nothing, clicks again in another tab — the
-disabled state is per-tab React state. Both pass the check, both POST, two
-identical replies appear under the video, as the studio.
-
-**Fix shape:** claim the draft first —
-`update comment_drafts set sent_at = now() where id = $1 and sent_at is null returning *`
-— and only call Zernio if a row came back.
-
-## 2. A reply that *was* sent can be recorded as a draft still waiting
-
-Same file, `:143`. The `try` wraps both the vendor call and the three database
-writes, so a database failure *after* a successful send lands in the catch,
-which leaves `sentAt` null. `inbox()` then renders the draft as waiting, under
-a comment still `open`, and the next person approves it again.
-
-This is the inverse of the stated invariant: not a draft that reads as sent,
-but a **sent reply that reads as a draft**. Same public double-reply.
-
-## 3. Zernio's `200 {"success": false}` is treated as a success
-
-`lib/social/zernio.ts:89` throws only on `!res.ok`. `replyToComment` is typed
-with `success?: boolean` and no caller reads it. A refusal ("comment thread
-closed") is recorded as sent with a null `platformCommentId`, the comment
-leaves the inbox, and the customer never gets an answer.
-
-`lib/social/tikhub.ts:70` handles exactly this pattern. `zernio.ts` should too.
-Same hole in `hideComment` and `moderateComment`: a comment is marked hidden
-locally while still public.
-
-## 4. `/research/inbox?sentiment=anything` is a guaranteed 500
-
-`lib/social/service.ts:272` binds an unvalidated URL string against a
-`pgEnum` column (`as never` is the cast that silenced the type error), and
-`app/(app)/research/inbox/page.tsx:34` applies no allow-list. A typo or a
-stale bookmark crashes the route with `22P02`.
-
-`performance/page.tsx:23` validates `window` with `isWindow`. Do the same here.
+Ordered as they were found, worst first.
 
 ---
 
-## 5. Watch-through can render as "4500.0%"
+## 1. Approving a reply could send it twice, publicly — **fixed**
 
-Two writers, two units, one column. `ingest.ts:197` stores `/analytics`'s
-`completionRate` raw; `:293` stores `averageViewPercentage / 100`. The column
-is documented as a 0..1 fraction and `PerfScreen` multiplies by 100.
+The check was a read, the write had no `where sent_at is null`, and there was
+nothing between them. Zernio's reply call has a 20-second timeout, so a
+producer who saw nothing happen and pressed Approve in a second tab passed the
+check twice and posted the same reply twice, in public, as the studio.
 
-Currently masked only by the empirical fact that `/analytics` reports 0 for
-YouTube — a coincidence the code relies on and never asserts.
+The draft is now claimed in the statement that checks it:
+`update comment_drafts set sent_at = now() where id = $1 and sent_at is null
+returning *`. Whoever's update returns a row owns the send; the other gets
+nothing and stops. A failed send hands the claim back with the vendor's words
+on it.
 
-## 6. The KPI tiles and the chart under them are different quantities
+## 2. A sent reply could be recorded as a draft still waiting — **fixed**
 
-`service.ts:117` sums **cumulative lifetime** views for posts published in the
-window. `viewsSeries:181` sums **views gained in the window** across all posts.
-Both sit under the same "Last 28 days" chip.
+The database writes sat inside the same `try` as the vendor call, so a database
+failure *after* a successful send landed in the catch, cleared `sentAt` and
+left a public reply reading as a draft for the next person to approve again.
 
-On a channel with history: the tile reads 1.4M, the chart under it sums to 40k.
-Neither is wrong alone; together they are unreadable. The Watch-thru column has
-the same problem (a lifetime average in a window-scoped table).
+The vendor call and the bookkeeping are now separate blocks. Past the send,
+nothing may undo it: a failure there is logged and reported, and the draft
+stays marked sent.
 
-## 7. Totals are the top 200 rows, and the count says 200
+## 3. Zernio's `200 {"success": false}` was treated as a success — **fixed**
 
-`service.ts:146` caps at 200 ordered by views; `performanceTotals:197` sums
-that capped list. 260 posts in a 90-day window → "Posts: 200" and totals
-missing the 60 lowest. Nothing says so. The page also runs this expensive
-query twice per render.
+A refusal ("comment thread closed", a revoked scope, a deleted post) was
+recorded as sent with a null `platformCommentId`. The comment left the inbox
+and the customer never got an answer.
 
-## 8. Scheduled and failed posts show as published
+The check is in `call()` in `zernio.ts`, the one place every request goes
+through, so `replyToComment`, `hideComment` and `moderateComment` are all
+covered rather than each remembering separately.
 
-`ingest.ts:162` falls back to `scheduledFor` for `publishedAt`, and `status` is
-read but never used. A post scheduled for next Tuesday sorts to the top of
-Content performance with "—" in every column.
+## 4. `/research/inbox?sentiment=anything` was a guaranteed 500 — **fixed**
 
-## 9. The sync is not idempotent, twice over
+An unvalidated URL string bound against a `pgEnum` column (`as never` being the
+cast that silenced the type error). A typo or a stale bookmark crashed the
+route with a Postgres `22P02`.
 
-- `syncPosts` overwrites today's measured watch-through with null, because its
-  upsert `set` includes `completionRate` (`ingest.ts:203`). The hourly job
-  undoes the daily job. "Sync now" reproduces it on demand.
-- `ingest.ts:148` keys a post by `platformPostId ?? p._id`. A post ingested
-  while still publishing gets Zernio's id; the next round gets the platform's.
-  Two rows, two metric series, one video appearing twice.
+`isSentiment` now guards it, in the query and on the page, the way
+`performance/page.tsx` has always guarded `window`.
 
-The module header's claim that "running it twice is the same as running it
-once" does not hold.
+## 5. Watch-through could render as "4500.0%" — **fixed**
 
-## 10. Scheduled classification escapes the budget stop
+Two writers, two units, one column: `syncPosts` stored `/analytics`'s
+`completionRate` raw and the daily job stored `averageViewPercentage / 100`.
+Masked only by the empirical fact that Zernio reports 0 for YouTube — a
+coincidence the code relied on and never asserted. Both write a fraction now.
 
-`ingest.ts:519` calls `complete()` with no `assertBudget`. Spend is *recorded*
-but not *stopped*. With the cap exhausted, `regenerateDraftAction` correctly
-refuses every user while `classifyComments` keeps billing 20 calls an hour.
+## 6. The KPI tiles and the chart under them were different quantities — **fixed**
 
-`regenerateDraftAction:219` does it correctly; copy that.
+The tile summed **lifetime** views of posts published in the window; the chart
+summed views **gained during** the window across all posts. On a channel with
+history the tile read 1.4M and the chart under it summed to 40k. Neither was
+wrong alone; together under one "Last 28 days" chip they were unreadable.
 
-## 11. `servicePrincipal` caches one id across all tenants
+Two tiles now, named for what each is: "Views in window" (what the chart sums)
+and "Lifetime views".
 
-`lib/authz/service-principal.ts:31` — the cache is not keyed by tenant, so the
-worker can attribute tenant B's spend to tenant A's user. Latent only because
-`ingest.ts:32` hardcodes "the first tenant" for everything, which is its own
-bug: `syncNowAction` enqueues with `viewer.tenantId` and every handler ignores
-it.
+## 7. Totals were the top 200 rows, and the count said 200 — **fixed**
 
-## 12. Comments past the first 100 on a post are dropped silently
+`performance()` caps at 200 ordered by views and `performanceTotals` summed
+that capped list, so 260 posts in a window reported "Posts: 200" with the sixty
+smallest missing — and ran the expensive query twice per render. Totals are one
+aggregate over the whole window now.
 
-`ingest.ts:378` requests 100 and never reads `pagination.hasMore` / `cursor`,
-which `zernio.ts:313` types. A video with 400 comments contributes 100, and
-the inbox reports that as the whole of it.
+## 8. Scheduled and failed posts showed as published — **fixed**
 
-Adjacent: `ingest.ts:338` re-checks `commentCount`, a field Zernio already
-filtered on. If it is ever absent, every post is skipped and the round reports
-success with zero comments — the same silent-empty-inbox failure the code
-comments say was already hit once.
+`publishedAt` fell back to `scheduledFor` and `status` was read and never used,
+so a post scheduled for next Tuesday sorted to the top of Content performance
+with a future date and a dash in every column. `channel_posts` carries `status`
+and `scheduledFor`, only a published post gets a `publishedAt`, and the
+performance query asks for published posts.
 
-## 13. Prior-comment counts fan out to one query per commenter, per render
+## 9. The sync was not idempotent, twice over — **fixed**
 
-`app/(app)/research/inbox/page.tsx:58` — the comment claims "four queries, not
-forty", but the map is keyed per distinct handle over up to 300 comments. 260
-commenters means 260 concurrent round trips to Singapore against a pool of 8.
-One `group by author_handle` returns the same data.
+- `syncPosts` overwrote the measured watch-through with null because its upsert
+  `set` included `completionRate`; the hourly job undid the daily one and "Sync
+  now" reproduced it on demand. A null is now left out of the `set`.
+- A post was keyed by `platformPostId ?? p._id`, so one ingested while still
+  publishing got Zernio's id and the next round got the platform's: two rows,
+  two metric series, one video twice. Only the platform's id is a key now, and
+  a post without one has not been published.
 
-## 14. The provider's error is stored and never shown
+## 10. Scheduled classification escaped the budget stop — **fixed**
 
-`inbox-actions.ts:147` writes the vendor's words onto the draft. Nothing
-selects that column and no screen renders it. Three overnight failures leave
-three drafts that look untouched.
+`classifyComments` called `complete()` with no `assertBudget`, so spend was
+recorded but not stopped: with the cap exhausted `regenerateDraftAction`
+correctly refused every person while this kept billing twenty calls an hour,
+unattended. Checked before the batch and again between comments. `budgetState`
+takes the three fields it reads, so the service principal can be asked the same
+question a person is.
 
-## 15. "Check now" on Content performance swallows every failure
+## 11. `servicePrincipal` cached one id across all tenants — **fixed**
 
-`components/research/PerfView.tsx:93` discards the action's `{ error }`.
-`InboxView.tsx:138` handles the same action correctly.
+A single module-level string meant the first studio the worker touched supplied
+the id for every studio after it. Keyed by tenant now.
 
----
+## 12. Comments past the first 100 were dropped silently — **fixed**
 
-## Smaller, substantiated
+`pagination.hasMore` and `cursor` were typed in `zernio.ts` and never read, so
+a video with 400 comments contributed 100 and the inbox reported that as the
+whole of it. It pages now, bounded at ten pages. The adjacent re-check of
+`commentCount` — a field Zernio has already filtered on, whose absence skipped
+every post and reported success with an empty inbox — only skips an explicit
+zero.
 
-- `ingest.ts:104` — the channels upsert clears `lastError` unconditionally,
-  erasing the per-channel reason written at `:386`.
-- `inbox-actions.ts:264` — discard-then-insert in `regenerateDraftAction` is
-  not in a transaction; a failure between them leaves no draft at all.
-- `inbox-actions.ts:125` — sets `sentAt` even when Zernio returned no id,
-  contradicting the schema comment and making reconciliation impossible.
-- `inbox-actions.ts:100` — `approveReplyAction` never checks `comment.state`,
-  so a stale draft can reply to a comment that was just hidden.
-- `inbox-actions.ts:189` — `discardDraftAction` ignores `rowCount` and reports
-  success for an already-sent draft.
-- `service.ts:136` — only YouTube posts can ever show watch-through, because
-  `views_day` is only written for YouTube.
-- `service.ts:523` — `postSeries` maps null to a drawn zero, the exact mistake
-  `viewsSeries` avoids. No callers today.
-- `inbox-actions.ts:383` — `draftsForAction` trusts its parameter's type at a
-  public boundary. No callers today.
+## 13. Prior-comment counts fanned out per commenter — **fixed**
 
-## Checked and clean
+The comment said "four queries, not forty", but the map was keyed per distinct
+handle over up to 300 comments: 260 commenters meant 260 concurrent round trips
+to Singapore against a pool of eight. `priorCommentCounts` is one `group by`.
 
-- **Tenant scoping.** Every read and write is scoped, directly or through a
-  tenant-scoped id resolution. `post_metrics` has no `tenant_id` but is only
-  reached through a scoped join. The only cross-tenant issue is #11.
+## 14. The provider's error was stored and never shown — **fixed**
+
+`inbox-actions.ts` wrote the vendor's words onto the draft and nothing selected
+that column, so three overnight failures left three drafts that looked
+untouched. The inbox renders it above the draft.
+
+## 15. "Check now" on Content performance swallowed every failure — **fixed**
+
+`PerfView` discarded the action's `{ error }`, so a refused sync looked exactly
+like a successful one. It reports both outcomes now, through the toaster.
+
+## Smaller, and also fixed
+
+- The channels upsert cleared `lastError` unconditionally, erasing the
+  per-channel reason written when a post's comments could not be read.
+- `discardDraftAction` ignored `rowCount` and reported success for an
+  already-sent draft.
+- `approveReplyAction` never checked `comment.state`, so a stale draft could
+  reply to a comment that had just been hidden.
+- `draftsForAction` trusted its parameter's type at a public boundary.
+
+## The thing that was missing rather than wrong
+
+**Trends had no competitor rows.** Zernio can only see the accounts the studio
+owns, so "how are we doing against them" had no source at all and the TikHub
+key — bought precisely for this — was used by nothing.
+
+There are now `competitors` and `competitor_posts`, a `social.syncCompetitors`
+job in the hourly round, and a panel on the Trends dashboard putting the
+studio's median views beside each watched channel's. A handle or a URL is
+resolved to a channel id once and written back, because `get_channel_videos`
+answers an empty list for anything else rather than an error — the worst way
+for it to fail.
+
+Proven against the live vendor: `@yafanghk` resolved to
+`UCtkINxz2iQYpdW1r0XAnu7A` and returned 30 videos.
+
+## Checked and still clean
+
+- **Tenant scoping.** Every read and write is scoped. The one cross-tenant
+  issue was #11 and it is fixed.
 - **Vendor calls on a page render.** None. `zernio.ts` and `tikhub.ts` are
-  imported by exactly two files: the worker's ingest and the server actions.
-  Both pages read only `service.ts`, which is pure SQL.
-- **Model calls escaping the ledger.** None. Both `complete()` call sites
-  record usage. The gap is the budget *stop*, not the meter (#10).
-- **Raw-row coercion.** Every `db.execute` result is coerced properly
-  (`numOrNull`, `Number(...)` on `::bigint`, `::text` before `new Date`). The
-  class of 500 that has bitten this codebase twice is not present. The one
-  crash from real input is the enum in #4, a different mechanism.
-- **Credential leaks.** No key value ever enters an error string. Vendor
-  errors do reach the client by design (spec §6) and can name a route shape or
-  an env var name to anyone holding the `research` module.
+  imported by the worker's ingest and the server actions only.
+- **Model calls escaping the ledger.** None, and since #10 none escaping the
+  stop either.
+- **Raw-row coercion.** Every `db.execute` result is coerced properly.
+- **Credential leaks.** No key value ever enters an error string.

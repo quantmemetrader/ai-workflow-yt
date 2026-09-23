@@ -60,6 +60,22 @@ export const env = {
    * Optional: without it the Comment inbox, Content performance and Publish
    * say plainly that no channel is connected rather than crashing the app.
    */
+  /**
+   * ElevenLabs. Speech to text for video captions, and voice-over.
+   *
+   * The account is on the free tier: 10,000 text-to-speech characters a month
+   * and transcription billed by audio length. The Video module states the
+   * remaining quota on screen rather than discovering it halfway through a
+   * two-hour master.
+   */
+  elevenlabs: {
+    apiKey: opt("ELEVENLABS_API_KEY"),
+    baseUrl: opt("ELEVENLABS_BASE_URL", "https://api.elevenlabs.io/v1"),
+    get configured() {
+      return Boolean(process.env.ELEVENLABS_API_KEY);
+    },
+  },
+
   zernio: {
     apiKey: opt("ZERNIO_API_KEY"),
     baseUrl: opt("ZERNIO_BASE_URL", "https://api.zernio.com/v1"),
@@ -84,6 +100,65 @@ export const env = {
     baseUrl: opt("TIKHUB_BASE_URL", "https://api.tikhub.io"),
     get configured() {
       return Boolean(process.env.TIKHUB_TOKEN || process.env.TICKHUB_TOKEN);
+    },
+  },
+
+  /**
+   * DeepSeek, direct.
+   *
+   * A stopgap with a reason: the OpenRouter account has no credit, so every
+   * call falls to a free endpoint, and the free endpoints here are reasoning
+   * models that spend their whole token budget thinking before they answer.
+   * DeepSeek's API is OpenAI-compatible, the studio has a key with money on
+   * it, and it answers a request for JSON with JSON.
+   *
+   * `lib/ai/backend.ts` decides when to use it. Put credit on OpenRouter and
+   * this goes quiet on its own.
+   */
+  deepseek: {
+    apiKey: opt("DEEPSEEK_API_KEY"),
+    baseUrl: opt("DEEPSEEK_BASE_URL", "https://api.deepseek.com"),
+    get configured() {
+      return Boolean(process.env.DEEPSEEK_API_KEY);
+    },
+  },
+
+  /**
+   * YouTube's own Data API.
+   *
+   * Separate from `tikhub` on purpose: TikHub is read-everything-else, this is
+   * the platform speaking for itself. Trending by region and search by view
+   * count come from here because TikHub's equivalents answer with empty lists.
+   *
+   * The free quota is 10,000 units a day and a search costs 100 of them, so
+   * everything built on this caches.
+   */
+  youtube: {
+    apiKey: opt("YOUTUBE_API_KEY"),
+    get configured() {
+      return Boolean(process.env.YOUTUBE_API_KEY);
+    },
+  },
+
+  /**
+   * Stock footage and photographs, from the two libraries that license them
+   * for commercial use through an official API: Pexels (photos and video
+   * clips, free, attribution welcome but not required) and Unsplash (photos,
+   * free, credit required by their guidelines). Both keys are free to make.
+   * Without them the director has the Creative Commons index and the
+   * studio's own files; with them it can cut to a factory floor or a stock
+   * chart the studio never shot.
+   */
+  pexels: {
+    apiKey: opt("PEXELS_API_KEY"),
+    get configured() {
+      return Boolean(process.env.PEXELS_API_KEY);
+    },
+  },
+  unsplash: {
+    accessKey: opt("UNSPLASH_ACCESS_KEY"),
+    get configured() {
+      return Boolean(process.env.UNSPLASH_ACCESS_KEY);
     },
   },
 

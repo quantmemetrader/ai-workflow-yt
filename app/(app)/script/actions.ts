@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { scripts, users } from "@/lib/db/schema";
+import { scriptFolders, scripts, users } from "@/lib/db/schema";
 import { getViewer, type Viewer } from "@/lib/auth/dal";
 import { audit } from "@/lib/audit";
 import { BudgetStop } from "@/lib/ai/ledger";
@@ -23,6 +23,7 @@ import {
   unlock,
 } from "@/lib/script/service";
 import { checkConformance, draftFromBrief, rewriteSelection } from "@/lib/script/ai";
+import { writeScript } from "@/lib/script/from-research";
 
 /**
  * Everything the Script screens can do.
@@ -74,13 +75,13 @@ export async function createScriptAction(form: FormData) {
 
   const folderId = String(form.get("folderId") ?? "") || null;
   if (folderId) {
+    // The folder itself, not a script already in it: a folder made a moment
+    // ago is empty, and the check used to refuse the first script in it.
     const [folder] = await db
-      .select({ id: scripts.id })
-      .from(scripts)
-      .where(and(eq(scripts.tenantId, viewer.tenantId), eq(scripts.folderId, folderId)))
+      .select({ id: scriptFolders.id })
+      .from(scriptFolders)
+      .where(and(eq(scriptFolders.id, folderId), eq(scriptFolders.tenantId, viewer.tenantId)))
       .limit(1);
-    // A folder id that names nothing in this studio is simply dropped rather
-    // than failing the whole creation.
     if (!folder) return done({ error: "That folder does not exist." });
   }
 
@@ -120,6 +121,45 @@ export async function scriptFromTopicAction(topicId: unknown) {
   await audit(viewer, "script.fromTopic", { objectType: "script", objectId: id, module: "script", meta: { topicId } });
   revalidatePath("/research/backlog");
   return done({ ok: true, id }, id);
+}
+
+/**
+ * Research to a written script in one press: the brief from the topic and
+ * the chips, the draft from the brief with the collected headlines as facts.
+ */
+export async function writeScriptAction(input: {
+  topicId?: string | null;
+  subject?: string | null;
+  angle?: string | null;
+  channel?: string | null;
+  aspect?: string | null;
+  seconds?: number | null;
+  language?: string | null;
+  subtitleLanguage?: string | null;
+}) {
+  const viewer = await writer();
+  if (!viewer) return { error: "You do not hold the Script module." };
+  const str = (v: unknown, max: number) => (typeof v === "string" ? v.trim().slice(0, max) : "");
+  const topicId = str(input.topicId, 64) || null;
+  try {
+    const res = await writeScript(viewer, {
+      topicId,
+      subject: str(input.subject, 300) || null,
+      angle: str(input.angle, 400) || null,
+      channel: str(input.channel, 60) || null,
+      aspect: str(input.aspect, 5) || null,
+      seconds: Number.isFinite(Number(input.seconds)) && Number(input.seconds) > 0 ? Number(input.seconds) : null,
+      language: str(input.language, 40) || null,
+      subtitleLanguage: str(input.subtitleLanguage, 40) || null,
+    });
+    if (!res.ok) return { error: res.error };
+    // `writeScript` writes the audit line itself.
+    revalidatePath("/research");
+    revalidatePath("/research/backlog");
+    return done({ ok: true, id: res.id, beats: res.beats, note: res.note }, res.id);
+  } catch (err) {
+    return { error: asMessage(err) };
+  }
 }
 
 export async function deleteScriptAction(scriptId: unknown) {

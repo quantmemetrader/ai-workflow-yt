@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { requireModule } from "@/lib/auth/dal";
 import { conversationDetail } from "@/lib/chat/service";
-import { modelFor } from "@/lib/ai/models";
+import { answeringModel } from "@/lib/ai/models";
 import { AgentScreen, type ThreadMessage } from "@/components/canvas/AgentScreen";
 
 export default async function ConversationPage({ params }: { params: Promise<{ id: string }> }) {
@@ -52,7 +52,7 @@ export default async function ConversationPage({ params }: { params: Promise<{ i
       conversationId={id}
       initialMessages={messages}
       locale={viewer.locale ?? "zh-CN"}
-      model={lastModel ?? modelFor.assistant()}
+      model={lastModel ?? answeringModel()}
       me={{
         name: zh && viewer.nameLocal ? viewer.nameLocal : viewer.name,
         avatarUrl: viewer.avatarUrl,

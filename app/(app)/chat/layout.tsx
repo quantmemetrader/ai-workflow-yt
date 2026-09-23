@@ -2,15 +2,18 @@ import { eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { tenants } from "@/lib/db/schema";
 import { requireModule } from "@/lib/auth/dal";
-import { listChannels, listPeople } from "@/lib/chat/service";
+import { listChannels, listConversations, listPeople } from "@/lib/chat/service";
 import { WorkspaceSidebar } from "@/components/canvas/WorkspaceSidebar";
 
 export default async function ChatLayout({ children }: { children: React.ReactNode }) {
   const viewer = await requireModule("chat");
   const zh = (viewer.locale ?? "zh-CN").startsWith("zh");
-  const [channels, people, tenant] = await Promise.all([
+  const [channels, people, conversations, tenant] = await Promise.all([
     listChannels(viewer),
     listPeople(viewer),
+    /* This person's own agent history. It was written from the first day and
+       listed nowhere, so every thread was one closed panel away from gone. */
+    listConversations(viewer, 40),
     // The studio's name belongs to the studio, not to a string in the layout.
     db.select({ name: tenants.name, nameLocal: tenants.nameLocal }).from(tenants).where(eq(tenants.id, viewer.tenantId)).limit(1),
   ]);
@@ -29,6 +32,11 @@ export default async function ChatLayout({ children }: { children: React.ReactNo
             isPrivate: c.isPrivate,
             unread: c.unread,
           }))}
+        conversations={conversations.map((c) => ({
+          id: c.id,
+          title: c.title,
+          updatedAt: c.updatedAt.toISOString(),
+        }))}
         people={people.map((p) => ({
           id: p.id,
           name: zh && p.nameLocal ? p.nameLocal : p.name,

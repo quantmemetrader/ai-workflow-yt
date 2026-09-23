@@ -31,7 +31,15 @@ async function main() {
   // In order: a post needs its channel, a comment needs its post, and the
   // reading needs the comment. The queue runs one job at a time per worker,
   // and the dedupe keys stop a slow round from stacking on the next one.
-  for (const type of ["social.syncChannels", "social.syncPosts", "social.syncComments", "social.classifyComments"] as const) {
+  for (const type of [
+    "social.syncChannels",
+    "social.syncPosts",
+    "social.syncComments",
+    // Somebody else's channels, through TikHub. The one thing Zernio cannot
+    // see, and the reason the outside-world key exists.
+    "social.syncCompetitors",
+    "social.classifyComments",
+  ] as const) {
     await enqueue({ tenantId: TENANT, type, module: "research", dedupeKey: type });
   }
 
@@ -39,6 +47,8 @@ async function main() {
   // hourly. `--daily` is what the daily cron passes.
   if (process.argv.includes("--daily")) {
     await enqueue({ tenantId: TENANT, type: "social.syncDailyViews", module: "research", dedupeKey: "social.syncDailyViews" });
+    // The creator's own uploads, and the voice note the assistant carries.
+    await enqueue({ tenantId: TENANT, type: "creator.sync", module: "research", dedupeKey: "creator.sync", priority: 1 });
   }
 
   console.log("queued the social sync");

@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { HistoryButton } from "@/components/shell/HistoryButton";
 import { NAV } from "@/lib/nav";
 import type { Module } from "@/lib/db/schema";
 
@@ -32,6 +33,11 @@ export function Rail({
   const warm = useRef(0);
 
   const items = NAV.filter((n) => modules.includes(n.module));
+
+  // A tooltip due after the rail has gone would set state on nothing.
+  useEffect(() => () => {
+    if (timer.current) clearTimeout(timer.current);
+  }, []);
 
   // The clock is read inside the timer callback rather than in the handler
   // body: these run on pointer events, never during render, and reading it
@@ -116,6 +122,9 @@ export function Rail({
       })}
 
       <div style={{ flexGrow: 1 }} />
+
+      {/* Your own history with the assistant, from any screen. */}
+      <HistoryButton locale={locale} />
 
       <Link href="/settings" aria-label={name} onMouseEnter={(e) => show(e, name)} onMouseLeave={hide}>
         {avatarUrl ? (

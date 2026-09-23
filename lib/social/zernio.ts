@@ -91,6 +91,27 @@ async function call<T>(
     throw new ZernioError(e.error ?? e.message ?? `Zernio ${method} ${path} failed with ${res.status}`, res.status, e.code, e.param);
   }
 
+  /*
+   * A 200 is not necessarily a yes (REVIEW.md #3).
+   *
+   * Zernio answers `{"success": false}` with a 200 when a platform refuses —
+   * "comment thread closed", a revoked scope, a post that has been taken down.
+   * Read as a success, that turned a refusal into a reply recorded as sent
+   * with a null platform id: the comment left the inbox and the customer never
+   * got an answer. `tikhub.ts:70` has handled exactly this pattern since it was
+   * written; this is the same check, in the one place every call goes through,
+   * so `replyToComment`, `hideComment` and `moderateComment` are all covered
+   * rather than each remembering separately.
+   */
+  const envelope = parsed as { success?: boolean; error?: string; message?: string; code?: string };
+  if (envelope && typeof envelope === "object" && envelope.success === false) {
+    throw new ZernioError(
+      envelope.error ?? envelope.message ?? `Zernio ${method} ${path} refused the request`,
+      res.status,
+      envelope.code,
+    );
+  }
+
   return parsed as T;
 }
 
@@ -240,16 +261,6 @@ export const youtubeDailyViews = (
     { query: { accountId, videoId, ...query } },
   );
 
-export const youtubeChannelInsights = (accountId: string) =>
-  call<{
-    dateRange?: { since?: string; until?: string };
-    metrics?: Record<string, { total?: number }>;
-    dataDelay?: string;
-  }>("GET", "/analytics/youtube/channel-insights", { query: { accountId } });
-
-export const youtubeRetention = (accountId: string, videoId: string) =>
-  call<Record<string, unknown>>("GET", "/analytics/youtube/video-retention", { query: { accountId, videoId } });
-
 // ---------------------------------------------------------------- comments
 
 /** A post as the comment inbox lists it: the thing comments hang off. */
@@ -332,11 +343,6 @@ export const hideComment = (postId: string, commentId: string, accountId?: strin
     body: { accountId },
   });
 
-export const unhideComment = (postId: string, commentId: string, accountId?: string) =>
-  call<{ success?: boolean }>("DELETE", `/inbox/comments/${encodeURIComponent(postId)}/${encodeURIComponent(commentId)}/hide`, {
-    body: { accountId },
-  });
-
 /** Mark as spam / report. Zernio routes this per platform. */
 export const moderateComment = (
   postId: string,
@@ -351,17 +357,19 @@ export const moderateComment = (
 
 // ------------------------------------------------------------- publishing
 
-export const validatePostLength = (body: { text: string; platforms: string[] }) =>
-  call<Record<string, unknown>>("POST", "/tools/validate/post-length", { body });
-
 export const createPost = (body: Record<string, unknown>) =>
   call<{ post?: { _id: string }; _id?: string }>("POST", "/posts", { body });
 
-export const getPost = (postId: string) =>
-  call<ZernioPost>("GET", `/posts/${encodeURIComponent(postId)}`);
+export type ZernioProfile = {
+  _id: string;
+  name: string;
+  isDefault?: boolean;
+  accountUsernames?: string[];
+};
 
-export const retryPost = (postId: string) =>
-  call<Record<string, unknown>>("POST", `/posts/${encodeURIComponent(postId)}/retry`);
+/** The workspaces Zernio holds for this key. A connection is made into one of
+ * them, which is why `connectUrl` cannot be called without asking first. */
+export const listProfiles = () => call<{ profiles?: ZernioProfile[] }>("GET", "/profiles");
 
 /** The URL a person visits to connect another platform. Nothing about this is
  * secret, but it is minted server-side so the key never leaves this module. */

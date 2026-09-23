@@ -1,5 +1,6 @@
 import "server-only";
 import { env } from "@/lib/env";
+import { backendFor, estimateCostMicros } from "@/lib/ai/backend";
 
 /**
  * OpenRouter client (spec §5: one aggregator, the client's own account, every
@@ -187,14 +188,18 @@ export type StreamOptions = {
  * model asked for, then exactly one usage event with OpenRouter's own costing.
  */
 export async function* streamChat(opts: StreamOptions): AsyncGenerator<StreamEvent> {
-  const provider = providerPolicy(Boolean(opts.tools?.length));
+  // Which service answers. See `ai/backend.ts`: DeepSeek while OpenRouter has
+  // no credit, OpenRouter the moment it does.
+  const backend = backendFor(opts.model);
+  const provider = backend.key === "openrouter" ? providerPolicy(Boolean(opts.tools?.length)) : undefined;
   const body = {
-    model: opts.model,
+    model: backend.model,
     messages: opts.messages,
     stream: true,
     // Ask OpenRouter to append a usage block to the final chunk — this is the
-    // number the token ledger records, not an estimate of ours.
-    usage: { include: true },
+    // number the token ledger records, not an estimate of ours. DeepSeek has
+    // no such option and ignores it; its cost is estimated from tokens.
+    ...(backend.reportsCost ? { usage: { include: true } } : {}),
     ...(opts.tools?.length ? { tools: opts.tools, tool_choice: "auto" } : {}),
     ...(opts.temperature !== undefined ? { temperature: opts.temperature } : {}),
     ...(opts.maxTokens ? { max_tokens: opts.maxTokens } : {}),
@@ -210,36 +215,37 @@ export async function* streamChat(opts: StreamOptions): AsyncGenerator<StreamEve
    * help — cheaper than stepping down to a weaker model. Tried once, only for
    * refusals that are about the key rather than about the request.
    */
-  const keys = [env.openrouter.apiKey, env.openrouter.backupKey].filter(Boolean);
+  /*
+   * Two keys on OpenRouter, because rate limits there are per key: when the
+   * first is being refused the second is the cheapest thing that can help,
+   * cheaper than stepping down to a weaker model. DeepSeek has one key and no
+   * such limit, so there is nothing to retry with.
+   */
+  const keys =
+    backend.key === "openrouter"
+      ? [env.openrouter.apiKey, env.openrouter.backupKey].filter(Boolean)
+      : [backend.apiKey];
 
-  let res: Response;
-  let attempt = 0;
-  try {
-    res = await fetch(`${env.openrouter.baseUrl}/chat/completions`, {
+  const send = (key: string) =>
+    fetch(`${backend.baseUrl}/chat/completions`, {
       method: "POST",
       signal,
       headers: {
-        Authorization: `Bearer ${keys[attempt]}`,
+        Authorization: `Bearer ${key}`,
         "Content-Type": "application/json",
-        "HTTP-Referer": env.appUrl,
-        "X-Title": "Aura Farmers Workspace",
+        ...backend.headers,
       },
       body: JSON.stringify(body),
     });
 
+  let res: Response;
+  let attempt = 0;
+  try {
+    res = await send(keys[attempt]);
+
     if ((res.status === 429 || res.status === 402) && keys.length > 1) {
       attempt = 1;
-      res = await fetch(`${env.openrouter.baseUrl}/chat/completions`, {
-        method: "POST",
-        signal,
-        headers: {
-          Authorization: `Bearer ${keys[attempt]}`,
-          "Content-Type": "application/json",
-          "HTTP-Referer": env.appUrl,
-          "X-Title": "Aura Farmers Workspace",
-        },
-        body: JSON.stringify(body),
-      });
+      res = await send(keys[attempt]);
     }
   } catch (err) {
     // A deadline that fired is a provider that never answered; treat it like a
@@ -436,25 +442,31 @@ export async function complete(opts: Omit<StreamOptions, "tools">): Promise<{
   provider?: string;
   requestId?: string;
 }> {
-  const provider = providerPolicy(false);
+  /*
+   * Which service answers. OpenRouter normally; DeepSeek while the OpenRouter
+   * account has no credit and every call would otherwise fall to a free
+   * reasoning endpoint that never reaches its answer. See `ai/backend.ts`.
+   */
+  const backend = backendFor(opts.model);
+  const provider = backend.key === "openrouter" ? providerPolicy(false) : undefined;
 
   let res: Response;
   try {
-    res = await fetch(`${env.openrouter.baseUrl}/chat/completions`, {
+    res = await fetch(`${backend.baseUrl}/chat/completions`, {
       method: "POST",
       // Without a deadline a free endpoint that never answers holds this call
       // open for as long as the runtime allows.
       signal: withDeadline(opts.signal),
       headers: {
-        Authorization: `Bearer ${env.openrouter.apiKey}`,
+        Authorization: `Bearer ${backend.apiKey}`,
         "Content-Type": "application/json",
-        "HTTP-Referer": env.appUrl,
-        "X-Title": "Aura Farmers Workspace",
+        ...backend.headers,
       },
       body: JSON.stringify({
-        model: opts.model,
+        model: backend.model,
         messages: opts.messages,
-        usage: { include: true },
+        // OpenRouter's own costing. DeepSeek has no such field and ignores it.
+        ...(backend.reportsCost ? { usage: { include: true } } : {}),
         ...(opts.temperature !== undefined ? { temperature: opts.temperature } : {}),
         ...(opts.maxTokens ? { max_tokens: opts.maxTokens } : {}),
         ...(provider ? { provider } : {}),
@@ -462,7 +474,7 @@ export async function complete(opts: Omit<StreamOptions, "tools">): Promise<{
     });
   } catch (err) {
     if (err instanceof Error && err.name === "TimeoutError") {
-      throw new AiError("rate_limit", `${opts.model} did not respond within ${ATTEMPT_TIMEOUT_MS / 1000}s`);
+      throw new AiError("rate_limit", `${backend.model} did not respond within ${ATTEMPT_TIMEOUT_MS / 1000}s`);
     }
     if (opts.signal?.aborted) throw err;
     throw new AiError("network", err instanceof Error ? err.message : String(err));
@@ -481,30 +493,22 @@ export async function complete(opts: Omit<StreamOptions, "tools">): Promise<{
   // unchecked it reads as a successful call that produced nothing.
   if (json?.error) throw classify(Number(json.error.code) || 200, raw);
 
+  const promptTokens = Number(json.usage?.prompt_tokens ?? 0);
+  const completionTokens = Number(json.usage?.completion_tokens ?? 0);
+
   return {
     text: typeof json.choices?.[0]?.message?.content === "string" ? json.choices[0].message.content : "",
-    promptTokens: Number(json.usage?.prompt_tokens ?? 0),
-    completionTokens: Number(json.usage?.completion_tokens ?? 0),
-    costMicros: usdToMicros(json.usage?.cost),
-    model: json.model ?? opts.model,
-    provider: json.provider,
+    promptTokens,
+    completionTokens,
+    /* OpenRouter bills us and says what it charged, so that figure is the
+       truth. DeepSeek returns tokens only, so this is our own arithmetic at
+       its published rates — an estimate, and the ledger records which
+       provider answered so the difference is visible. */
+    costMicros: backend.reportsCost
+      ? usdToMicros(json.usage?.cost)
+      : estimateCostMicros(promptTokens, completionTokens),
+    model: json.model ?? backend.model,
+    provider: json.provider ?? backend.key,
     requestId: json.id,
-  };
-}
-
-/** Live account state, for the Admin credentials screen. Returns a
- * *reference* to the key, never the key (spec §8). */
-export async function accountStatus() {
-  const res = await fetch(`${env.openrouter.baseUrl}/key`, {
-    headers: { Authorization: `Bearer ${env.openrouter.apiKey}` },
-    cache: "no-store",
-  });
-  if (!res.ok) return null;
-  const { data } = await res.json();
-  return {
-    label: data?.label as string | undefined,
-    usageUsd: Number(data?.usage ?? 0),
-    limitUsd: data?.limit === null ? null : Number(data?.limit),
-    freeTier: Boolean(data?.is_free_tier),
   };
 }

@@ -10,6 +10,9 @@ import { audit } from "@/lib/audit";
 import { formatBytes, formatDate, makeT } from "@/lib/i18n";
 import { Markdown } from "@/components/ui/Markdown";
 import { ShareSheet } from "@/components/files/ShareSheet";
+import { FileAccessControl } from "@/components/files/FileAccessControl";
+import { visibilityForFiles } from "@/lib/files/access";
+import { RenameFile } from "@/components/files/RenameFile";
 
 /**
  * One file: the thing itself, who can open it, and every version of it.
@@ -38,11 +41,13 @@ export default async function FilePage({ params }: { params: Promise<{ id: strin
 
   await audit(viewer, "file.view", { objectType: "file", objectId: id, module: "files" });
 
-  const [versions, shares, ceiling] = await Promise.all([
+  const [versions, shares, ceiling, vis] = await Promise.all([
     listVersions(viewer, id),
     sharesWithNames("file", id),
     shareCeiling(viewer, "file", id),
+    visibilityForFiles([id]),
   ]);
+  const seen = vis.get(id) ?? { visibility: "private" as const, groups: [], userIds: [] };
 
   const file = row.file;
   const isMedia = ["image", "video", "audio"].includes(file.kind);
@@ -75,6 +80,11 @@ export default async function FilePage({ params }: { params: Promise<{ id: strin
         >
           {file.name}
         </span>
+        {/* The one screen certain to be showing the right file was the one
+            screen with no way to fix its name. */}
+        {held === "owner" || held === "editor" ? (
+          <RenameFile id={file.id} name={file.name} zh={zh} />
+        ) : null}
         <div style={{ flexGrow: 1 }} />
         <a
           href={`/api/files/${file.id}/download?download=1`}
@@ -149,12 +159,25 @@ export default async function FilePage({ params }: { params: Promise<{ id: strin
             {file.checksum ? <Row label={zh ? "校验和" : "Checksum"} value={file.checksum.slice(0, 16)} /> : null}
           </section>
 
+          <FileAccessControl
+            fileId={file.id}
+            fileName={file.name}
+            visibility={seen.visibility}
+            groups={seen.groups}
+            userIds={seen.userIds}
+            canChange={viewer.isAdmin || file.ownerId === viewer.id}
+            zh={zh}
+          />
+
           <ShareSheet
             objectType="file"
             objectId={file.id}
             ceiling={ceiling}
             locale={locale}
-            shares={shares.map((s) => ({
+            /* Everyone and group grants are set in "Who can see this" above. */
+            shares={shares
+              .filter((s) => s.tuple.subjectType !== "tenant" && s.tuple.subjectType !== "role" && s.tuple.relation !== "viewer")
+              .map((s) => ({
               subjectId: s.tuple.subjectId,
               subjectType: s.tuple.subjectType,
               relation: s.tuple.relation,

@@ -119,27 +119,6 @@ export function formatDate(d: Date, locale: Locale): string {
   }).format(d);
 }
 
-export function formatTime(d: Date, locale: Locale): string {
-  return new Intl.DateTimeFormat(locale === "en" ? "en-GB" : locale, {
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(d);
-}
-
-/** "3 分钟前" / "3 min ago" — the shell and chat both need it. */
-export function timeAgo(d: Date, locale: Locale, now = Date.now()): string {
-  const secs = Math.round((now - d.getTime()) / 1000);
-  const zh = locale !== "en";
-  if (secs < 60) return zh ? "刚刚" : "just now";
-  const mins = Math.round(secs / 60);
-  if (mins < 60) return zh ? `${mins} 分钟前` : `${mins} min ago`;
-  const hours = Math.round(mins / 60);
-  if (hours < 24) return zh ? `${hours} 小时前` : `${hours}h ago`;
-  const days = Math.round(hours / 24);
-  if (days < 30) return zh ? `${days} 天前` : `${days}d ago`;
-  return formatDate(d, locale);
-}
-
 export function formatBytes(n: number, locale: Locale = "en"): string {
   if (!n) return locale === "en" ? "—" : "—";
   const units = ["B", "KB", "MB", "GB", "TB"];
@@ -151,3 +130,15 @@ export function formatBytes(n: number, locale: Locale = "en"): string {
   }
   return `${v < 10 && i > 0 ? v.toFixed(1) : Math.round(v)} ${units[i]}`;
 }
+
+/**
+ * Where a person's language is remembered *before* they are signed in.
+ *
+ * The account's own `locale` is the truth once there is a session — but the
+ * sign-in screen has no session, so it fell back to Chinese for everybody and
+ * an English-speaking employee had to switch it on every visit. Signing in
+ * writes this cookie from the account, so the screen matches the person the
+ * next time they see it.
+ */
+export const LANG_COOKIE = "af-lang";
+export const LANG_COOKIE_MAX_AGE = 365 * 24 * 60 * 60;

@@ -7,6 +7,7 @@
  */
 import { pool } from "../lib/db/client";
 import { purgeExpiredSessions } from "../lib/auth/session";
+import { purgeExpiredTrust } from "../lib/auth/second-factor";
 import { purgeDeleted } from "../lib/files/service";
 import { audit } from "../lib/audit";
 
@@ -14,6 +15,9 @@ async function main() {
   const started = Date.now();
   const purgedFiles = await purgeDeleted(30);
   await purgeExpiredSessions();
+  // Expired "trust this browser" rows: dead weight, and a row that still
+  // names a browser after its 30 days are up reads as access that is not there.
+  await purgeExpiredTrust();
   await audit(null, "cron.sweep", { meta: { purgedFiles }, tenantId: "system" });
 
   console.log(

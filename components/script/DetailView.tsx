@@ -3,6 +3,7 @@
 import { useCallback, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ScriptDetailScreen } from "@/components/canvas/ScriptDetailScreen";
+import { InlineAgentThread, useInlineAgent } from "@/components/shell/InlineAgent";
 import type { ScriptDetail, ScriptListItem } from "@/lib/script/service";
 import {
   checkConformanceAction,
@@ -18,6 +19,8 @@ import {
   suggestionAction,
   unlockAction,
 } from "@/app/(app)/script/actions";
+import { projectFromScriptAction } from "@/app/(app)/video/actions";
+import { notify } from "@/lib/client/notify";
 
 /**
  * Live wiring for one script.
@@ -40,6 +43,8 @@ export function DetailView({
   viewerId,
   locale,
   model,
+  shareSheet,
+  canMakeVideo = false,
 }: {
   detail: ScriptDetail;
   siblings: Record<string, ScriptListItem[]>;
@@ -47,8 +52,16 @@ export function DetailView({
   viewerId: string;
   locale: string;
   model: string;
+  /** Holds the Video module, so the script can be handed to a cut. */
+  canMakeVideo?: boolean;
+  /** The sharing sheet, rendered on the server so it arrives with who this
+   * script is already shared with. */
+  shareSheet?: React.ReactNode;
 }) {
   const router = useRouter();
+  /* The agent answers here. Asking used to push to /chat, which took the
+   * screen you were asking about off the screen. */
+  const agent = useInlineAgent({ module: "script", scriptId: detail?.script?.id });
   const params = useSearchParams();
   const [, start] = useTransition();
   const [pending, setPending] = useState<string | null>(null);
@@ -89,6 +102,7 @@ export function DetailView({
       siblings={siblings}
       approvers={approvers}
       viewerId={viewerId}
+      shareSheet={shareSheet}
       tab={tab}
       compareVersion={compareVersion}
       model={model}
@@ -126,7 +140,28 @@ export function DetailView({
       }
       onUnlock={() => run("unlock", () => unlockAction(id))}
       onComment={(body, beatOrd) => run("comment", () => commentAction(id, body, beatOrd))}
-      onAsk={(prompt) => router.push(`/chat?q=${encodeURIComponent(prompt)}`)}
+      onMakeVideo={
+        canMakeVideo
+          ? () =>
+              start(async () => {
+                const res = await projectFromScriptAction(id);
+                if ("error" in res && res.error) {
+                  notify(res.error);
+                  return;
+                }
+                if ("id" in res && res.id) router.push(`/video?project=${res.id}`);
+              })
+          : undefined
+      }
+      onAsk={(prompt) => void agent.send(prompt)}
+      thread={
+        <InlineAgentThread
+          messages={agent.messages}
+          notice={agent.notice}
+          conversationId={agent.conversationId}
+          zh={locale.startsWith("zh")}
+        />
+      }
     />
   );
 }

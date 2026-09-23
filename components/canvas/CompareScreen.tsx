@@ -1,6 +1,10 @@
 "use client";
 
+import { ModelPicker } from "@/components/shell/ModelPicker";
+
 import * as React from "react";
+import { useResizable } from "@/components/ui/Resizer";
+import { PhrasePicker, type Suggestion } from "@/components/research/PhrasePicker";
 
 /**
  * Search & compare, transcribed from design/canvas/Res-Compare.dc.html
@@ -122,7 +126,10 @@ const CSS = `
 [data-compare-screen] .t { width: 100%; }
 [data-compare-screen] .t .hd { height: 32px; border-bottom: 1px solid #ededed; display: grid; align-items: center; }
 [data-compare-screen] .t .hd > * { font-size: 10.5px; font-weight: 500; color: #7c7c7c; padding: 0 12px; }
-[data-compare-screen] .tr { height: 46px; border-bottom: 1px solid #f3f3f3; display: grid; align-items: center; }
+/* A floor, not a fixed height. The Sources cell wraps to three lines on a
+   narrow window, and a fixed 46px meant those lines were drawn over the row
+   beneath — "BBC" sitting on top of the next series' sources. */
+[data-compare-screen] .tr { min-height: 46px; border-bottom: 1px solid #f3f3f3; display: grid; align-items: center; }
 [data-compare-screen] .tr > * { font-size: 12.5px; color: #383838; padding: 0 12px; min-width: 0; display: flex; align-items: center; }
 [data-compare-screen] .num { justify-content: flex-end; font-variant-numeric: tabular-nums; }
 [data-compare-screen] .el { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
@@ -269,17 +276,35 @@ export function CompareScreen(props: {
   /** The model actually answering, for the line under the panel composer. */
   model: string;
   onAddSeries: (query: string) => void;
+  /**
+   * Phrases worth offering: what is already watched, and what the region is
+   * searching for. The box used to be empty and unhelped, so the only way to
+   * compare a topic the studio already collects was to remember its exact
+   * wording and type it again.
+   */
+  suggestions?: Suggestion[];
   onRemoveSeries: (query: string) => void;
   onWindowChange: (window: "1m" | "3m" | "6m") => void;
   onExport: () => void;
   /** Hands a question to the employee's agent. */
   onAsk: (prompt: string) => void;
+  /** The conversation so far, in the agent panel. Asking used to navigate to
+   * /chat, which took the chart away in order to discuss the chart. */
+  thread?: React.ReactNode;
+  /** A phrase is being queued. The screen says so, so nobody presses Enter
+   * four times waiting for something to happen. */
+  adding?: boolean;
 }): React.JSX.Element {
   const zh = props.locale.startsWith("zh");
   const t = (key: string) => (zh ? (ZH[key] ?? key) : key);
   const collecting = zh ? "收集中" : "collecting";
 
   const [draft, setDraft] = React.useState("");
+  // The agent column shares one stored width across every screen that
+  // draws it, so narrowing it here does not leave it wide over there.
+  const { width: agentWidth, handle: agentHandle } = useResizable("agent-panel", {
+    min: 220, max: 620, initial: 272, edge: "left",
+  });
   const [ask, setAsk] = React.useState("");
   const boxRef = React.useRef<HTMLDivElement | null>(null);
   const [boxW, setBoxW] = React.useState(824); // 1440 − 52 rail − 212 sidebar − 312 panel − 40 padding
@@ -405,13 +430,6 @@ export function CompareScreen(props: {
     if (endLabels[i].y - endLabels[i - 1].y < 17) endLabels[i].y = endLabels[i - 1].y + 17;
   }
 
-  const submitDraft = () => {
-    const value = draft.trim();
-    if (!value || props.series.length >= 5) return;
-    props.onAddSeries(value);
-    setDraft("");
-  };
-
   return (
     <div
       data-compare-screen=""
@@ -428,7 +446,7 @@ export function CompareScreen(props: {
       <style>{CSS}</style>
 
       {/* The module sidebar is a shared component now: see ResearchSidebar. */}
-            <div style={{ flexGrow: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
+            <div style={{ flexGrow: 1, display: "flex", flexDirection: "column", minWidth: 0, minHeight: 0 }}>
         {/* The artboard also drew a search box and a notification bell here.
             Neither had anything behind it — there is no topic search and no
             notification feed — so they are not drawn: global search lives on
@@ -501,27 +519,40 @@ export function CompareScreen(props: {
                   </svg>
                 </div>
               ))}
-              <div className="chip" style={{ borderStyle: "dashed", color: "#999999" }}>
-                +
-                <input
-                  className="addq"
-                  value={draft}
-                  disabled={props.series.length >= 5}
-                  aria-label={zh ? "添加序列" : "Add series"}
-                  placeholder={
-                    zh
-                      ? `添加序列 · ${props.series.length} / 5`
-                      : `Add series · ${props.series.length} of 5`
-                  }
-                  onChange={(e) => setDraft(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      submitDraft();
-                    }
-                  }}
-                />
-              </div>
+              <PhrasePicker
+                value={draft}
+                onChange={setDraft}
+                onPick={(phrase) => {
+                  if (props.adding || props.series.length >= 5) return;
+                  props.onAddSeries(phrase);
+                  setDraft("");
+                }}
+                suggestions={(props.suggestions ?? []).filter(
+                  (s) => !props.series.some((x) => x.query.toLowerCase() === s.phrase.toLowerCase()),
+                )}
+                busy={props.adding}
+                disabled={props.series.length >= 5}
+                zh={zh}
+                style={{ width: 250 }}
+                placeholder={
+                  props.adding
+                    ? zh
+                      ? "正在排队收集…"
+                      : "queuing it…"
+                    : props.series.length >= 5
+                      ? zh
+                        ? "已满 5 条"
+                        : "five is the limit"
+                      : zh
+                        ? `添加序列 · ${props.series.length} / 5`
+                        : `Add series · ${props.series.length} of 5`
+                }
+                emptyNote={
+                  zh
+                    ? "输入一个词开始收集它。"
+                    : "Type a phrase and the studio starts collecting it."
+                }
+              />
               <div style={{ flexGrow: 1 }}></div>
               <div className="tf">
                 {(["1m", "3m", "6m"] as const).map((w) => (
@@ -545,6 +576,41 @@ export function CompareScreen(props: {
                 {t("Export as report")}
               </button>
             </div>
+
+            {/*
+              * What the sources actually said.
+              *
+              * This was on the chip's `title` and nowhere else, so a source
+              * that is rate-limiting us looked exactly like a phrase nobody
+              * writes about: a thin chart and no explanation. A person cannot
+              * act on a tooltip they do not know to hover.
+              */}
+            {props.series.some((s) => s.error) && (
+              <div
+                style={{
+                  flexShrink: 0,
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 4,
+                  padding: "10px 20px",
+                  borderBottom: "1px solid #ededed",
+                  background: "#fffaf3",
+                }}
+              >
+                {props.series
+                  .filter((s) => s.error)
+                  .map((s) => (
+                    <div key={s.query} style={{ display: "flex", gap: 8, alignItems: "baseline" }}>
+                      <span className="sw" style={{ background: s.colour, flexShrink: 0 }}></span>
+                      <span style={{ fontSize: 11.5, color: "#5c4420", lineHeight: 1.55 }}>
+                        <b style={{ fontWeight: 500 }}>{s.query}</b>
+                        {" · "}
+                        {s.error}
+                      </span>
+                    </div>
+                  ))}
+              </div>
+            )}
 
             {props.series.length === 0 ? (
               /* Nothing is being compared: an empty axis would read as a chart
@@ -655,7 +721,7 @@ export function CompareScreen(props: {
                     <div
                       key={r.series.query}
                       className="tr"
-                      style={{ gridTemplateColumns: GRID, height: 42 }}
+                      style={{ gridTemplateColumns: GRID }}
                       title={r.series.error ?? undefined}
                     >
                       <div style={{ gap: 9 }}>
@@ -700,8 +766,24 @@ export function CompareScreen(props: {
                           </div>
                         </>
                       )}
-                      <div style={{ color: "#7c7c7c" }}>
-                        {[sourceName(r.series.sourceKey), ...r.domains.slice(0, 2)].join(" · ")}
+                      {/* Two lines at most, and the rest on hover: a series
+                          read from six places should not make its row three
+                          times the height of its neighbours. */}
+                      <div
+                        style={{ color: "#7c7c7c", paddingTop: 9, paddingBottom: 9, alignItems: "flex-start" }}
+                        title={[sourceName(r.series.sourceKey), ...r.domains].join(" · ")}
+                      >
+                        <span
+                          style={{
+                            display: "-webkit-box",
+                            WebkitLineClamp: 2,
+                            WebkitBoxOrient: "vertical",
+                            overflow: "hidden",
+                            lineHeight: 1.35,
+                          }}
+                        >
+                          {[sourceName(r.series.sourceKey), ...r.domains.slice(0, 2)].join(" · ")}
+                        </span>
                       </div>
                     </div>
                   );
@@ -714,7 +796,8 @@ export function CompareScreen(props: {
 
           <div
             style={{
-              width: 312,
+              width: agentWidth,
+              position: "relative",
               flexShrink: 0,
               borderLeft: "1px solid #ededed",
               background: "#fcfcfc",
@@ -722,6 +805,7 @@ export function CompareScreen(props: {
               flexDirection: "column",
             }}
           >
+            {agentHandle}
             <div
               style={{
                 height: 42,
@@ -781,9 +865,11 @@ export function CompareScreen(props: {
             {/* The artboard scripted a conversation here — a question nobody
                 asked and a tool result nobody ran. What is left is the one
                 thing this screen can say from its own numbers. */}
-            <div style={{ flexGrow: 1, minHeight: 0, padding: "14px 13px 0", overflow: "hidden" }}>
-              <p style={{ fontSize: 12, lineHeight: 1.6, color: "#383838", textWrap: "pretty" }}>{agentNote}</p>
-            </div>
+            {props.thread ?? (
+              <div style={{ flexGrow: 1, minHeight: 0, padding: "14px 13px 0", overflow: "hidden" }}>
+                <p style={{ fontSize: 12, lineHeight: 1.6, color: "#383838", textWrap: "pretty" }}>{agentNote}</p>
+              </div>
+            )}
             <div style={{ flexShrink: 0, padding: "11px 13px 9px" }}>
               <div style={{ border: "1px solid #e2e2e2", borderRadius: 10, background: "#fff", padding: "9px 10px 7px" }}>
                 <input
@@ -810,7 +896,7 @@ export function CompareScreen(props: {
                   }}
                 />
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 11 }}>
-                  <span style={{ fontSize: 10.5, color: "#999999" }}>{props.model.replace(/^[^/]+\//, "")}</span>
+                  <ModelPicker current={props.model} zh={zh} />
                   <button
                     type="button"
                     aria-label={zh ? "发送" : "Send"}

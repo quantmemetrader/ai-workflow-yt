@@ -1,10 +1,13 @@
 "use client";
 
+import { ModelPicker } from "@/components/shell/ModelPicker";
+
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Markdown } from "@/components/ui/Markdown";
 import { formatTextarea, type Format } from "./composer-format";
+import { FormattedPreview } from "@/components/ui/FormattedPreview";
 import type { Locale } from "@/lib/i18n";
 
 /**
@@ -103,6 +106,8 @@ export function AgentScreen({
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [liveModel, setLiveModel] = useState(model);
+  /** The sources rail lists three; this opens the rest. */
+  const [allSources, setAllSources] = useState(false);
   const abort = useRef<AbortController | null>(null);
   const scroller = useRef<HTMLDivElement>(null);
   const box = useRef<HTMLTextAreaElement>(null);
@@ -175,7 +180,15 @@ export function AgentScreen({
           const frame = buffer.slice(0, nl).trim();
           buffer = buffer.slice(nl + 2);
           if (!frame.startsWith("data:")) continue;
-          const event = JSON.parse(frame.slice(5).trim());
+          // The wire shape is the stream route's; `JSON.parse` is untyped and
+          // the switch below narrows each event the way it always did.
+          let event: ReturnType<typeof JSON.parse>;
+          try {
+            event = JSON.parse(frame.slice(5).trim());
+          } catch {
+            // One unreadable frame is not the answer failing; the next one is.
+            continue;
+          }
 
           switch (event.type) {
             case "conversation":
@@ -288,8 +301,11 @@ export function AgentScreen({
           </div>
         </div>
         <div style={{ flexGrow: 1 }} />
-        <span className="chip" style={{ height: 28, fontSize: 11.5, fontFamily: "ui-monospace, monospace" }}>
-          {liveModel.replace(/^[^/]+\//, "")}
+        {/* Which model is answering — and the control that changes it. It was
+            a bare chip printing a model id with nothing to say why it was
+            there; it is the same picker the composer carries everywhere else. */}
+        <span className="chip" style={{ height: 28, fontSize: 11.5 }}>
+          <ModelPicker current={liveModel} zh={zh} />
         </span>
         <Link href="/search" className="ico2" aria-label={zh ? "搜索" : "Search"}>
           {ICON2.search}
@@ -331,7 +347,7 @@ export function AgentScreen({
             }}
           >
             {messages.length === 0 ? (
-              <div style={{ margin: "auto 0", paddingTop: 40 }}>
+              <div style={{ paddingTop: 22 }}>
                 <Empty zh={zh} />
               </div>
             ) : (
@@ -413,6 +429,10 @@ export function AgentScreen({
                   </svg>
                 </button>
               </div>
+
+              {/* The formatting buttons write Markdown; this is what it will
+                  look like once sent. */}
+              <FormattedPreview text={input} zh={zh} />
 
               <textarea
                 ref={box}
@@ -507,80 +527,111 @@ export function AgentScreen({
         </div>
 
         {/* sources panel */}
-        <div
-          style={{
-            width: 300,
-            flexShrink: 0,
-            borderLeft: "1px solid #ededed",
-            background: "#fcfcfc",
-            display: "flex",
-            flexDirection: "column",
-          }}
-        >
+        {/*
+          The sources rail, and only when there are sources.
+          It used to hold 300px of the window open to say "Sources used · 0"
+          with a paragraph explaining what would go there one day. A panel
+          that is empty on every screen anybody actually looks at is a panel
+          that should not be drawn: it appears the moment an answer rests on a
+          file, and takes the width back when it does not.
+        */}
+        {sources.length > 0 ? (
           <div
             style={{
-              height: 44,
+              width: 300,
               flexShrink: 0,
+              borderLeft: "1px solid #ededed",
+              background: "#fcfcfc",
               display: "flex",
-              alignItems: "center",
-              padding: "0 16px",
-              borderBottom: "1px solid #ededed",
+              flexDirection: "column",
             }}
           >
-            <span className="lbl" style={{ padding: 0 }}>
-              {zh ? "已使用的来源" : "Sources used"} · {sources.length}
-            </span>
-          </div>
-          <div style={{ padding: 13, display: "flex", flexDirection: "column", gap: 8, overflowY: "auto" }}>
-            {sources.length === 0 && (
-              <p className="mut" style={{ lineHeight: 1.55 }}>
-                {zh
-                  ? "助理读取的文件会列在这里，并标明你对每个文件的权限。"
-                  : "Files this answer rests on appear here, with the access you hold on each."}
-              </p>
-            )}
-            {sources.map((s) => (
-              <Link
-                key={s.fileId}
-                href={`/files/${s.fileId}`}
-                style={{
-                  border: "1px solid #ededed",
-                  borderRadius: 9,
-                  background: "#fff",
-                  padding: "10px 11px",
-                  color: "#171717",
-                  display: "block",
-                }}
-              >
-                <div
+            <div
+              style={{
+                height: 44,
+                flexShrink: 0,
+                display: "flex",
+                alignItems: "center",
+                padding: "0 16px",
+                borderBottom: "1px solid #ededed",
+              }}
+            >
+              <span className="lbl" style={{ padding: 0 }}>
+                {zh ? "已使用的来源" : "Sources used"} · {sources.length}
+              </span>
+            </div>
+            <div style={{ padding: 13, display: "flex", flexDirection: "column", gap: 8, overflowY: "auto" }}>
+              {/* Three, then the rest on request: an answer that read forty
+                  files should not push its own text off the screen. */}
+              {(allSources ? sources : sources.slice(0, 3)).map((s) => (
+                <Link
+                  key={s.fileId}
+                  href={`/files/${s.fileId}`}
                   style={{
-                    fontSize: 12.5,
-                    fontWeight: 500,
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
+                    border: "1px solid #ededed",
+                    borderRadius: 9,
+                    background: "#fff",
+                    padding: "10px 11px",
+                    color: "#171717",
+                    display: "block",
                   }}
                 >
-                  {s.name}
-                </div>
-                <div style={{ fontSize: 11, color: "#999999", marginTop: 2 }}>{s.folder ?? "—"}</div>
-                <span
-                  className={`bd ${s.relation === "owner" || s.relation === "editor" ? "blue" : "gray"}`}
-                  style={{ marginTop: 8 }}
+                  <div
+                    style={{
+                      fontSize: 12.5,
+                      fontWeight: 500,
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {s.name}
+                  </div>
+                  <div style={{ fontSize: 11, color: "#999999", marginTop: 2 }}>{s.folder ?? "—"}</div>
+                  <span
+                    className={`bd ${s.relation === "owner" || s.relation === "editor" ? "blue" : "gray"}`}
+                    style={{ marginTop: 8 }}
+                  >
+                    {relationLabel(s.relation, zh)}
+                  </span>
+                </Link>
+              ))}
+
+              {sources.length > 3 ? (
+                <button
+                  type="button"
+                  onClick={() => setAllSources((v) => !v)}
+                  style={{
+                    border: 0,
+                    background: "transparent",
+                    padding: "2px 2px 0",
+                    textAlign: "left",
+                    cursor: "pointer",
+                    font: "inherit",
+                    fontSize: 11.5,
+                    color: "#007be0",
+                  }}
                 >
-                  {relationLabel(s.relation, zh)}
-                </span>
-              </Link>
-            ))}
-            {last?.withheld && (
-              <p className="mut" style={{ lineHeight: 1.55, marginTop: 4 }}>
-                {zh
-                  ? "已按你的权限过滤。另有文件匹配但未显示。"
-                  : "Filtered to what you can read. Further files matched and were withheld."}
-              </p>
-            )}
+                  {allSources
+                    ? zh
+                      ? "收起"
+                      : "Show fewer"
+                    : zh
+                      ? `+ 再看 ${sources.length - 3} 个`
+                      : `+ ${sources.length - 3} more`}
+                </button>
+              ) : null}
+
+              {last?.withheld && (
+                <p className="mut" style={{ lineHeight: 1.55, marginTop: 4 }}>
+                  {zh
+                    ? "已按你的权限过滤。另有文件匹配但未显示。"
+                    : "Filtered to what you can read. Further files matched and were withheld."}
+                </p>
+              )}
+            </div>
           </div>
-        </div>
+        ) : null}
       </div>
     </div>
   );

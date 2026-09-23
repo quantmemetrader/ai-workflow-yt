@@ -57,9 +57,12 @@ module.exports = {
       max_memory_restart: "700M",
       // A crash loop should back off rather than hammer the database.
       exp_backoff_restart_delay: 200,
-      kill_timeout: 10_000,
+      // A reload is rolling: the new instance must be listening before the
+      // old one goes, and the old one gets long enough to finish whatever
+      // request it has (a video page opened during a deploy used to hang).
+      kill_timeout: 30_000,
       wait_ready: false,
-      listen_timeout: 15_000,
+      listen_timeout: 60_000,
 
       out_file: path.join(root, "logs/aura.out.log"),
       error_file: path.join(root, "logs/aura.err.log"),
@@ -77,8 +80,12 @@ module.exports = {
       name: "aura-worker",
       ...runTs("scripts/worker.ts"),
       cwd: root,
-      instances: 1,
-      max_memory_restart: "500M",
+      // Two, so a render that takes minutes never holds up the small jobs
+      // behind it (a poster, a sync); the claim query keeps them apart.
+      instances: 2,
+      // A 16:9 render holds the master, the stills and Chrome; half a gig
+      // was the ceiling pm2 killed a worker at, mid-render, with no cleanup.
+      max_memory_restart: "3G",
       exp_backoff_restart_delay: 500,
       kill_timeout: 30_000,
       out_file: path.join(root, "logs/worker.log"),
@@ -160,6 +167,30 @@ module.exports = {
       cron_restart: "0 19 * * *",
       out_file: path.join(root, "logs/sweep.log"),
       error_file: path.join(root, "logs/sweep.log"),
+      merge_logs: true,
+      time: true,
+    },
+
+    {
+      /**
+       * A copy of the database, somewhere that is not the database.
+       *
+       * Neon takes its own snapshots and they live in the account that holds
+       * the only copy of the data. This one goes to R2 — a different company —
+       * so that losing the account, or a `drop table` nobody notices for a
+       * week, is survivable.
+       *
+       * 18:30 UTC, 02:30 in Hong Kong: before the sweep, so a dump is taken of
+       * the state that housekeeping is about to change.
+       */
+      name: "aura-backup",
+      script: "bash",
+      args: ["scripts/backup-db.sh"],
+      cwd: root,
+      autorestart: false,
+      cron_restart: "30 18 * * *",
+      out_file: path.join(root, "logs/backup.log"),
+      error_file: path.join(root, "logs/backup.log"),
       merge_logs: true,
       time: true,
     },

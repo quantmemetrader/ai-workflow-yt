@@ -28,6 +28,15 @@ const eslintConfig = defineConfig([
     // A standalone Tailwind sandbox for trying the design tokens; it has its
     // own toolchain and is not part of the app.
     "design/espresso-preview/**",
+    /**
+     * The Remotion workspace's own output: the webpack bundle the stills
+     * renderer caches beside the sources, and the fonts it serves. Generated
+     * and vendored, not written here.
+     */
+    "remotion/.bundle/**",
+    "remotion/public/**",
+    "remotion/node_modules/**",
+    "remotion/out/**",
   ]),
 
   {

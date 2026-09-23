@@ -100,25 +100,25 @@ export type TikHubYouTubeVideo = {
 export const youtubeChannelVideos = (channelId: string) =>
   get<{ videos?: TikHubYouTubeVideo[] }>("/api/v1/youtube/web_v2/get_channel_videos", { channel_id: channelId });
 
-export const youtubeChannelInfo = (channelId: string) =>
-  get<Record<string, unknown>>("/api/v1/youtube/web/get_channel_info", { channel_id: channelId });
+/**
+ * A handle or a URL into the channel id everything else needs.
+ *
+ * `get_channel_videos` takes a `UC…` id and returns an empty list for anything
+ * else — no error, just nothing, which is the worst way for this to fail. So a
+ * competitor entered as `@handle` or as a URL is resolved here first, and
+ * `UC…` is passed straight through rather than spending a metered request on
+ * something that is already an id.
+ */
+export async function resolveYouTubeChannel(input: string): Promise<string | null> {
+  const value = input.trim();
+  if (/^UC[\w-]{20,}$/.test(value)) return value;
 
-export const youtubeSearch = (query: string) =>
-  get<Record<string, unknown>>("/api/v1/youtube/web_v2/get_general_search", { search_query: query });
+  const url = value.startsWith("http")
+    ? value
+    : `https://www.youtube.com/${value.startsWith("@") ? value : `@${value}`}`;
 
-// ------------------------------------------------------------------- others
-
-export const tiktokUserVideos = (secUserId: string) =>
-  get<Record<string, unknown>>("/api/v1/tiktok/app/v3/fetch_user_post_videos", { secUid: secUserId });
-
-export const instagramUserPosts = (username: string) =>
-  get<Record<string, unknown>>("/api/v1/instagram/v3/get_user_posts", { username });
-
-export const xiaohongshuUser = (userId: string) =>
-  get<Record<string, unknown>>("/api/v1/xiaohongshu/web_v3/fetch_user_info", { user_id: userId });
-
-export const wechatChannelVideos = (username: string) =>
-  get<Record<string, unknown>>("/api/v1/wechat_channels/v2/fetch_user_videos", { username });
-
-export const bilibiliVideoComments = (bvid: string) =>
-  get<Record<string, unknown>>("/api/v1/bilibili/web/fetch_video_comments", { bv_id: bvid });
+  const res = await get<{ channel_id?: string | null }>("/api/v1/youtube/web_v2/get_channel_id", {
+    channel_url: url,
+  });
+  return res.channel_id ?? null;
+}

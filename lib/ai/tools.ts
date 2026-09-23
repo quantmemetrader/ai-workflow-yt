@@ -9,6 +9,12 @@ import { createDocument } from "@/lib/files/service";
 import { budgetState, formatUsd } from "./ledger";
 import { readFileText, searchFiles } from "./retrieval";
 import type { ToolDef } from "./openrouter";
+import { holdsPack, type ToolPack } from "./tools/types";
+import { chatPack } from "./tools/chat";
+import { researchPack } from "./tools/research";
+import { videoPack } from "./tools/video";
+import { creatorPack } from "./tools/creator";
+import { scriptPack } from "./tools/script";
 
 /**
  * What the agent can do. Each tool is a thin wrapper over the same service the
@@ -19,7 +25,18 @@ import type { ToolDef } from "./openrouter";
  * ids become the citation list beside the answer, which is how a reader
  * checks the work.
  */
-export type ToolResult = { text: string; citations?: string[]; withheld?: number };
+export type { ToolResult, ToolContext } from "./tools/types";
+import type { ToolContext, ToolResult } from "./tools/types";
+
+/**
+ * Every module's pack, in the order they are offered.
+ *
+ * Files first because almost everything refers to a document eventually, then
+ * the modules in the order the rail lists them. A person is offered exactly
+ * the packs they hold, and `runTool` re-checks — a model is perfectly capable
+ * of calling something it was never shown.
+ */
+const PACKS: ToolPack[] = [chatPack, researchPack, scriptPack, videoPack, creatorPack];
 
 export const TOOL_DEFS: ToolDef[] = [
   {
@@ -92,6 +109,8 @@ export async function runTool(
   viewer: Viewer,
   name: string,
   rawArgs: string,
+  /** What is on screen, so "this channel" and "this video" mean something. */
+  context: Omit<ToolContext, "viewer"> = {},
 ): Promise<ToolResult> {
   // `toolsFor` decides what is *offered*; a model is perfectly capable of
   // calling something it was never offered, and nothing downstream would have
@@ -107,6 +126,23 @@ export async function runTool(
     args = rawArgs ? JSON.parse(rawArgs) : {};
   } catch {
     return { text: "The arguments were not valid JSON. Try again with a single JSON object." };
+  }
+
+  /*
+   * A module's pack, if this is one of its tools. The entitlement was checked
+   * above against the offered set; this finds who owns the name.
+   */
+  const pack = PACKS.find(
+    (p) => holdsPack(viewer.modules, p) && p.defs.some((d) => d.function.name === name),
+  );
+  if (pack) {
+    try {
+      return await pack.run({ ...context, viewer }, name, args);
+    } catch (err) {
+      // Returned, not thrown: a tool that refused is something the model can
+      // work around, and a turn that dies takes the conversation with it.
+      return { text: `That failed: ${err instanceof Error ? err.message : "unknown error"}` };
+    }
   }
 
   switch (name) {
@@ -205,11 +241,22 @@ export async function runTool(
   }
 }
 
-/** Tool names a person actually holds. Nothing is offered that their
- * entitlements would refuse. */
+/**
+ * What this person's agent can do.
+ *
+ * The base tools minus the file ones if they do not hold `files`, plus one
+ * pack per module they do hold. The result is that the *same* agent, on any
+ * screen, can summarise a channel, watch a topic or cut a video — and that a
+ * person without the Video module is not offered a single video tool.
+ */
 export function toolsFor(viewer: Viewer): ToolDef[] {
-  if (!viewer.modules.includes("files")) {
-    return TOOL_DEFS.filter((t) => !["search_files", "read_file", "list_recent_files", "create_document"].includes(t.function.name));
-  }
-  return TOOL_DEFS;
+  const base = viewer.modules.includes("files")
+    ? TOOL_DEFS
+    : TOOL_DEFS.filter(
+        (t) =>
+          !["search_files", "read_file", "list_recent_files", "create_document"].includes(t.function.name),
+      );
+
+  const packs = PACKS.filter((p) => holdsPack(viewer.modules, p)).flatMap((p) => p.defs);
+  return [...base, ...packs];
 }

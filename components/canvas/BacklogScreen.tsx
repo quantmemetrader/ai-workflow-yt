@@ -1,7 +1,10 @@
 "use client";
 
+import { ModelPicker } from "@/components/shell/ModelPicker";
+
 import * as React from "react";
 import Link from "next/link";
+import { useResizable } from "@/components/ui/Resizer";
 
 /**
  * BacklogScreen — a transcription of design/canvas/Res-Backlog.dc.html.
@@ -244,19 +247,34 @@ export function BacklogScreen(props: {
   onDrop: (topicId: string) => void; // back out of the backlog
   /** Hands a question to the employee's agent. */
   onAsk: (prompt: string) => void;
+  /** The conversation so far, in the agent panel. */
+  thread?: React.ReactNode;
 }): React.JSX.Element {
-  const { items, people, channels, locale, region, model, onAssign, onHandOff, onMoveStage, onDrop, onAsk } =
+  const { items, people, channels, locale, region, model, onAssign, onHandOff, onMoveStage, onDrop, onAsk, thread } =
     props;
 
   const zh = locale.startsWith("zh");
   const t = (key: string): string => (zh ? (ZH[key] ?? key) : key);
   const [ask, setAsk] = React.useState("");
+  // The agent column shares one stored width across every screen that
+  // draws it, so narrowing it here does not leave it wide over there.
+  const { width: agentWidth, handle: agentHandle } = useResizable("agent-panel", {
+    min: 220, max: 620, initial: 272, edge: "left",
+  });
 
   /** The card the primary button acts on; the artboard's .focus ring marks it. */
   const [selected, setSelected] = React.useState<string | null>(null);
 
   /** The artboard drew these two as chips with a chevron and no picker behind
    * them. They are real filters here rather than decoration. */
+  /* Dragging: which card is in the air, the lane it left, and the lane under
+     the pointer. Three pieces rather than one because the card it left must
+     not light up as a target, and a drop on its own lane must do nothing
+     rather than write the same stage back to the database. */
+  const [dragging, setDragging] = React.useState<string | null>(null);
+  const [dragStage, setDragStage] = React.useState<string | null>(null);
+  const [overLane, setOverLane] = React.useState<string | null>(null);
+
   const [ownerFilter, setOwnerFilter] = React.useState("");
   const [channelFilter, setChannelFilter] = React.useState("");
   const shown = items.filter(
@@ -330,7 +348,7 @@ export function BacklogScreen(props: {
       {/* The module sidebar is a shared component now: see ResearchSidebar. */}
       <div
         data-backlog-screen=""
-        style={{ ...frameStyle, flexGrow: 1, display: "flex", flexDirection: "column", minWidth: 0 }}
+        style={{ ...frameStyle, flexGrow: 1, display: "flex", flexDirection: "column", minWidth: 0, minHeight: 0 }}
       >
         {/* The artboard also drew a search box and a notification bell here.
             Neither had anything behind it — there is no topic search and no
@@ -434,13 +452,43 @@ export function BacklogScreen(props: {
                 lanes.map((lane) => (
                   <div
                     key={lane.key}
+                    /* A kanban board you cannot drag on is a list with
+                       headings. The stage dropdown on each card stays — it is
+                       the keyboard path and the one screen readers announce —
+                       but the obvious gesture now works. */
+                    onDragOver={(e) => {
+                      if (dragging === null || dragStage === lane.key) return;
+                      // Preventing the default is what marks this a valid drop
+                      // target; without it the browser refuses the drop and
+                      // the card springs back for no visible reason.
+                      e.preventDefault();
+                      e.dataTransfer.dropEffect = "move";
+                      if (overLane !== lane.key) setOverLane(lane.key);
+                    }}
+                    onDragLeave={(e) => {
+                      // Only when the pointer has actually left the lane, not
+                      // when it crosses a card inside it.
+                      if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
+                      if (overLane === lane.key) setOverLane(null);
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      const id = dragging ?? e.dataTransfer.getData("text/plain");
+                      setOverLane(null);
+                      setDragging(null);
+                      setDragStage(null);
+                      if (id && lane.key !== dragStage) onMoveStage(id, lane.key as Stage);
+                    }}
                     style={{
                       display: "flex",
                       flexDirection: "column",
                       minWidth: 0,
-                      background: "#f8f8f8",
+                      background: overLane === lane.key ? "#f0f6ff" : "#f8f8f8",
                       borderRadius: 12,
                       padding: 10,
+                      outline: overLane === lane.key ? `1.5px dashed ${ACCENT}` : "1.5px dashed transparent",
+                      outlineOffset: -2,
+                      transition: "background .12s linear",
                     }}
                   >
                     <div style={{ display: "flex", alignItems: "center", gap: 7, padding: "2px 4px 10px" }}>
@@ -470,11 +518,26 @@ export function BacklogScreen(props: {
                             onClick={(e) => cardClick(e, item.id)}
                             onKeyDown={(e) => cardKeyDown(e, item.id)}
                             data-stage={item.stage}
+                            draggable={item.stage !== "handed"}
+                            onDragStart={(e) => {
+                              setDragging(item.id);
+                              setDragStage(item.stage);
+                              e.dataTransfer.effectAllowed = "move";
+                              // Text too, so a card dragged into a notes app
+                              // or another window arrives as something legible.
+                              e.dataTransfer.setData("text/plain", item.id);
+                            }}
+                            onDragEnd={() => {
+                              setDragging(null);
+                              setDragStage(null);
+                              setOverLane(null);
+                            }}
                             style={{
                               border: "1px solid #ededed",
                               borderRadius: 11,
                               background: "#fff",
                               padding: 12,
+                              opacity: dragging === item.id ? 0.45 : 1,
                               // the artboard's card shadow; .focus's ring rides in front of it
                               boxShadow: on
                                 ? "0 0 0 3px #EFF6FF, 0 1px 1px rgba(5,5,6,.04)"
@@ -568,7 +631,7 @@ export function BacklogScreen(props: {
                             >
                               {item.name}
                             </div>
-                            <div style={{ display: "flex", alignItems: "center", gap: 7, marginTop: 11 }}>
+                            <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 7, rowGap: 4, marginTop: 11 }}>
                               <div
                                 className="av"
                                 title={item.ownerName ?? t("Unassigned")}
@@ -654,6 +717,11 @@ export function BacklogScreen(props: {
                                   flexShrink: 0,
                                   display: "inline-flex",
                                   alignItems: "center",
+                                  /* The native date input underneath has a
+                                     wide intrinsic size; clipped to the
+                                     label, it stopped pushing past the card. */
+                                  overflow: "hidden",
+                                  maxWidth: "100%",
                                 }}
                               >
                                 <span className="cap" style={{ whiteSpace: "nowrap" }}>
@@ -694,7 +762,8 @@ export function BacklogScreen(props: {
           </div>
           <div
             style={{
-              width: 312,
+              width: agentWidth,
+              position: "relative",
               flexShrink: 0,
               borderLeft: "1px solid #ededed",
               background: "#fcfcfc",
@@ -702,6 +771,7 @@ export function BacklogScreen(props: {
               flexDirection: "column",
             }}
           >
+            {agentHandle}
             <div
               style={{
                 height: 42,
@@ -764,9 +834,11 @@ export function BacklogScreen(props: {
                 asked, a tool result nobody ran ("0.5 s"), and a "Start the
                 brief" / "Not now" pair wired to nothing. What is left is the
                 one thing this screen can say from its own dates. */}
-            <div style={{ flexGrow: 1, minHeight: 0, padding: "14px 13px 0", overflow: "hidden" }}>
-              <p style={{ fontSize: 12, lineHeight: 1.6, color: "#383838", textWrap: "pretty" }}>{agentNote}</p>
-            </div>
+            {thread ?? (
+              <div style={{ flexGrow: 1, minHeight: 0, padding: "14px 13px 0", overflow: "hidden" }}>
+                <p style={{ fontSize: 12, lineHeight: 1.6, color: "#383838", textWrap: "pretty" }}>{agentNote}</p>
+              </div>
+            )}
             <div style={{ flexShrink: 0, padding: "11px 13px 9px" }}>
               <div style={{ border: "1px solid #e2e2e2", borderRadius: 10, background: "#fff", padding: "9px 10px 7px" }}>
                 <input
@@ -793,7 +865,7 @@ export function BacklogScreen(props: {
                   }}
                 />
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 11 }}>
-                  <span style={{ fontSize: 10.5, color: "#999999" }}>{model.replace(/^[^/]+\//, "")}</span>
+                  <ModelPicker current={model} zh={zh} />
                   <button
                     type="button"
                     aria-label={zh ? "发送" : "Send"}

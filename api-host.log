@@ -1,0 +1,114 @@
+▲ Next.js 16.3.0
+- Local:         http://localhost:4501
+- Network:       http://0.0.0.0:4501
+✓ Ready in 101ms
+⨯ Failed to load env from .env.local Error: EACCES: permission denied, open '/home/ubuntu/aiVideoFreeLance/.env.local'
+    at ignore-listed frames {
+  errno: -13,
+  code: 'EACCES',
+  syscall: 'open',
+  path: '/home/ubuntu/aiVideoFreeLance/.env.local'
+}
+✓ Running next.config.ts took 80ms
+⚠ "next start" does not work with "output: standalone" configuration. Use "node .next/standalone/server.js" instead.
+▲ Next.js 16.3.0
+- Local:         http://localhost:4501
+- Network:       http://0.0.0.0:4501
+✓ Ready in 108ms
+⨯ Failed to load env from .env.local Error: EACCES: permission denied, open '/home/ubuntu/aiVideoFreeLance/.env.local'
+    at ignore-listed frames {
+  errno: -13,
+  code: 'EACCES',
+  syscall: 'open',
+  path: '/home/ubuntu/aiVideoFreeLance/.env.local'
+}
+✓ Running next.config.ts took 93ms
+⚠ "next start" does not work with "output: standalone" configuration. Use "node .next/standalone/server.js" instead.
+⨯ Error: Missing required env var DATABASE_URL. Copy .env.example to .env.local and fill it in.
+    at b (.next/server/chunks/ssr/_1ciomhk._.js:1:60192)
+    at module evaluation (.next/server/chunks/ssr/_1ciomhk._.js:1:60352)
+    at instantiateModule (.next/server/chunks/ssr/[turbopack]_runtime.js:889:9)
+    at getOrInstantiateModuleFromParent (.next/server/chunks/ssr/[turbopack]_runtime.js:913:12)
+    at Context.esmImport [as i] (.next/server/chunks/ssr/[turbopack]_runtime.js:352:20)
+    at <unknown> (.next/server/chunks/ssr/_1ciomhk._.js:1:31646)
+    at Context.asyncModule [as a] (.next/server/chunks/ssr/[turbopack]_runtime.js:668:5)
+    at module evaluation (.next/server/chunks/ssr/_1ciomhk._.js:1:31593)
+    at instantiateModule (.next/server/chunks/ssr/[turbopack]_runtime.js:889:9)
+    at getOrInstantiateModuleFromParent (.next/server/chunks/ssr/[turbopack]_runtime.js:913:12)
+⨯ Error: Missing required env var DATABASE_URL. Copy .env.example to .env.local and fill it in.
+    at b (.next/server/chunks/ssr/_1ciomhk._.js:1:60192)
+    at module evaluation (.next/server/chunks/ssr/_1ciomhk._.js:1:60352)
+    at instantiateModule (.next/server/chunks/ssr/[turbopack]_runtime.js:889:9)
+    at getOrInstantiateModuleFromParent (.next/server/chunks/ssr/[turbopack]_runtime.js:913:12)
+    at Context.esmImport [as i] (.next/server/chunks/ssr/[turbopack]_runtime.js:352:20)
+    at <unknown> (.next/server/chunks/ssr/_1ciomhk._.js:1:31646)
+    at Context.asyncModule [as a] (.next/server/chunks/ssr/[turbopack]_runtime.js:668:5)
+    at module evaluation (.next/server/chunks/ssr/_1ciomhk._.js:1:31593)
+    at instantiateModule (.next/server/chunks/ssr/[turbopack]_runtime.js:889:9)
+    at getOrInstantiateModuleFromParent (.next/server/chunks/ssr/[turbopack]_runtime.js:913:12)
+⨯ Error: Missing required env var DATABASE_URL. Copy .env.example to .env.local and fill it in.
+    at b (.next/server/chunks/ssr/_1ciomhk._.js:1:60192)
+    at module evaluation (.next/server/chunks/ssr/_1ciomhk._.js:1:60352)
+    at instantiateModule (.next/server/chunks/ssr/[turbopack]_runtime.js:889:9)
+    at getOrInstantiateModuleFromParent (.next/server/chunks/ssr/[turbopack]_runtime.js:913:12)
+    at Context.esmImport [as i] (.next/server/chunks/ssr/[turbopack]_runtime.js:352:20)
+    at <unknown> (.next/server/chunks/ssr/_1ciomhk._.js:1:31646)
+    at Context.asyncModule [as a] (.next/server/chunks/ssr/[turbopack]_runtime.js:668:5)
+    at module evaluation (.next/server/chunks/ssr/_1ciomhk._.js:1:31593)
+    at instantiateModule (.next/server/chunks/ssr/[turbopack]_runtime.js:889:9)
+    at getOrInstantiateModuleFromParent (.next/server/chunks/ssr/[turbopack]_runtime.js:913:12)
+⨯ Error: Missing required env var DATABASE_URL. Copy .env.example to .env.local and fill it in.
+    at b (.next/server/chunks/ssr/_1ciomhk._.js:1:60192)
+    at module evaluation (.next/server/chunks/ssr/_1ciomhk._.js:1:60352)
+    at instantiateModule (.next/server/chunks/ssr/[turbopack]_runtime.js:889:9)
+    at getOrInstantiateModuleFromParent (.next/server/chunks/ssr/[turbopack]_runtime.js:913:12)
+    at Context.esmImport [as i] (.next/server/chunks/ssr/[turbopack]_runtime.js:352:20)
+    at <unknown> (.next/server/chunks/ssr/_1ciomhk._.js:1:31646)
+    at Context.asyncModule [as a] (.next/server/chunks/ssr/[turbopack]_runtime.js:668:5)
+    at module evaluation (.next/server/chunks/ssr/_1ciomhk._.js:1:31593)
+    at instantiateModule (.next/server/chunks/ssr/[turbopack]_runtime.js:889:9)
+    at getOrInstantiateModuleFromParent (.next/server/chunks/ssr/[turbopack]_runtime.js:913:12)
+⨯ Error: Missing required env var DATABASE_URL. Copy .env.example to .env.local and fill it in.
+    at b (.next/server/chunks/ssr/_1ciomhk._.js:1:60192)
+    at module evaluation (.next/server/chunks/ssr/_1ciomhk._.js:1:60352)
+    at instantiateModule (.next/server/chunks/ssr/[turbopack]_runtime.js:889:9)
+    at getOrInstantiateModuleFromParent (.next/server/chunks/ssr/[turbopack]_runtime.js:913:12)
+    at Context.esmImport [as i] (.next/server/chunks/ssr/[turbopack]_runtime.js:352:20)
+    at <unknown> (.next/server/chunks/ssr/_1ciomhk._.js:1:31646)
+    at Context.asyncModule [as a] (.next/server/chunks/ssr/[turbopack]_runtime.js:668:5)
+    at module evaluation (.next/server/chunks/ssr/_1ciomhk._.js:1:31593)
+    at instantiateModule (.next/server/chunks/ssr/[turbopack]_runtime.js:889:9)
+    at getOrInstantiateModuleFromParent (.next/server/chunks/ssr/[turbopack]_runtime.js:913:12)
+⨯ Error: Missing required env var DATABASE_URL. Copy .env.example to .env.local and fill it in.
+    at b (.next/server/chunks/ssr/_1ciomhk._.js:1:60192)
+    at module evaluation (.next/server/chunks/ssr/_1ciomhk._.js:1:60352)
+    at instantiateModule (.next/server/chunks/ssr/[turbopack]_runtime.js:889:9)
+    at getOrInstantiateModuleFromParent (.next/server/chunks/ssr/[turbopack]_runtime.js:913:12)
+    at Context.esmImport [as i] (.next/server/chunks/ssr/[turbopack]_runtime.js:352:20)
+    at <unknown> (.next/server/chunks/ssr/_1ciomhk._.js:1:31646)
+    at Context.asyncModule [as a] (.next/server/chunks/ssr/[turbopack]_runtime.js:668:5)
+    at module evaluation (.next/server/chunks/ssr/_1ciomhk._.js:1:31593)
+    at instantiateModule (.next/server/chunks/ssr/[turbopack]_runtime.js:889:9)
+    at getOrInstantiateModuleFromParent (.next/server/chunks/ssr/[turbopack]_runtime.js:913:12)
+⨯ Error: Missing required env var DATABASE_URL. Copy .env.example to .env.local and fill it in.
+    at b (.next/server/chunks/ssr/_1ciomhk._.js:1:60192)
+    at module evaluation (.next/server/chunks/ssr/_1ciomhk._.js:1:60352)
+    at instantiateModule (.next/server/chunks/ssr/[turbopack]_runtime.js:889:9)
+    at getOrInstantiateModuleFromParent (.next/server/chunks/ssr/[turbopack]_runtime.js:913:12)
+    at Context.esmImport [as i] (.next/server/chunks/ssr/[turbopack]_runtime.js:352:20)
+    at <unknown> (.next/server/chunks/ssr/_1ciomhk._.js:1:31646)
+    at Context.asyncModule [as a] (.next/server/chunks/ssr/[turbopack]_runtime.js:668:5)
+    at module evaluation (.next/server/chunks/ssr/_1ciomhk._.js:1:31593)
+    at instantiateModule (.next/server/chunks/ssr/[turbopack]_runtime.js:889:9)
+    at getOrInstantiateModuleFromParent (.next/server/chunks/ssr/[turbopack]_runtime.js:913:12)
+⨯ Error: Missing required env var DATABASE_URL. Copy .env.example to .env.local and fill it in.
+    at b (.next/server/chunks/ssr/_1ciomhk._.js:1:60192)
+    at module evaluation (.next/server/chunks/ssr/_1ciomhk._.js:1:60352)
+    at instantiateModule (.next/server/chunks/ssr/[turbopack]_runtime.js:889:9)
+    at getOrInstantiateModuleFromParent (.next/server/chunks/ssr/[turbopack]_runtime.js:913:12)
+    at Context.esmImport [as i] (.next/server/chunks/ssr/[turbopack]_runtime.js:352:20)
+    at <unknown> (.next/server/chunks/ssr/_1ciomhk._.js:1:31646)
+    at Context.asyncModule [as a] (.next/server/chunks/ssr/[turbopack]_runtime.js:668:5)
+    at module evaluation (.next/server/chunks/ssr/_1ciomhk._.js:1:31593)
+    at instantiateModule (.next/server/chunks/ssr/[turbopack]_runtime.js:889:9)
+    at getOrInstantiateModuleFromParent (.next/server/chunks/ssr/[turbopack]_runtime.js:913:12)

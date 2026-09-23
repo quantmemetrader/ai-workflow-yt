@@ -16,28 +16,8 @@ import { readSessionToken, sessionId } from "./session";
  * thing a page here does; `cache()` then makes it one query per request no
  * matter how many components ask.
  */
-export type Viewer = {
-  id: string;
-  tenantId: string;
-  email: string;
-  name: string;
-  nameLocal: string | null;
-  avatarUrl: string | null;
-  title: string | null;
-  role: "owner" | "admin" | "member" | "guest";
-  locale: "zh-CN" | "zh-HK" | "en" | null;
-  /** Exactly the modules this person holds. The rail renders this list and
-   * nothing else (spec §4.1). */
-  modules: Module[];
-  teamIds: string[];
-  /** Subjects to match ReBAC tuples against: self, teams, and — unless they
-   * are a guest — the tenant. */
-  subjects: string[];
-  isAdmin: boolean;
-  /** Set when this request should refresh "last seen"; done after the response
-   * rather than in the middle of rendering. */
-  staleSeen: boolean;
-};
+export type { Viewer } from "./types";
+import type { Viewer } from "./types";
 
 /** Raw rows are untyped: see `toDate` / `toArray` in lib/db/client. */
 type Row = {
@@ -114,14 +94,4 @@ export async function requireModule(module: Module): Promise<Viewer> {
   const viewer = await requireViewer();
   if (!viewer.modules.includes(module)) redirect("/");
   return viewer;
-}
-
-export function hasModule(viewer: Viewer, module: Module): boolean {
-  return viewer.modules.includes(module);
-}
-
-/** Use in route handlers, where a redirect is wrong and a 401 is right. */
-export async function viewerOr401(): Promise<Viewer | Response> {
-  const viewer = await getViewer();
-  return viewer ?? new Response("Unauthorized", { status: 401 });
 }

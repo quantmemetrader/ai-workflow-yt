@@ -1,0 +1,16 @@
+{
+  "name": "aura-graphics",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Captions and graphics for the Video Edit module, rendered on the box.",
+  "scripts": {
+    "studio": "remotion studio src/index.ts",
+    "render": "remotion render src/index.ts"
+  },
+  "dependencies": {
+    "@remotion/cli": "4.0.408",
+    "remotion": "4.0.408",
+    "react": "19.2.0",
+    "react-dom": "19.2.0"
+  }
+}

@@ -1,6 +1,7 @@
 import "server-only";
 import { XMLParser } from "fast-xml-parser";
 import { SOURCE_BY_KEY } from "./sources";
+import { searchVideos } from "./youtube";
 
 /**
  * Reading the outside world.
@@ -227,6 +228,56 @@ export async function hackerNewsSeries(query: string, days: number): Promise<Poi
 }
 
 /** Seven-day rolling total: the shape a weekly cadence actually has. */
+/**
+ * How much was published about a phrase on YouTube, day by day.
+ *
+ * This is the signal the studio actually cares about, and it took a key they
+ * already had to get it. GDELT rate-limits this address and Hacker News
+ * measures what programmers discuss; neither says whether anybody is making
+ * — or watching — video about a subject. This does.
+ *
+ * Each day is scored by the videos published that day, weighted by what they
+ * were watched. A day with one video that got two million views mattered more
+ * than a day with six that got two thousand, and counting rows alone says the
+ * opposite.
+ *
+ * `search` costs 100 of the key's 10,000 daily units, which is why this is
+ * called by the refresh job and never by a render.
+ */
+export async function youtubeSeries(
+  query: string,
+  days: number,
+): Promise<{ points: Point[]; videos: number; articles: Article[] }> {
+  // One search, both answers. Two calls would be 200 of the key's 10,000
+  // daily units for one topic, and they would be reading the same list.
+  const videos = await searchVideos(query, { days: Math.min(days, 365), limit: 50 });
+  if (videos.length === 0) return { points: [], videos: 0, articles: [] };
+
+  const byDay = new Map<string, number>();
+  for (const v of videos) {
+    const day = v.publishedAt.slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) continue;
+    // log1p, so one runaway video lifts its day without flattening every
+    // other day into the axis.
+    byDay.set(day, (byDay.get(day) ?? 0) + Math.log1p(v.views));
+  }
+
+  const points = [...byDay.entries()]
+    .map(([d, v]) => ({ d, v: Math.round(v * 10) / 10 }))
+    .sort((a, b) => a.d.localeCompare(b.d));
+
+  /* The videos are sources too, and on a dashboard for a video studio the
+     most useful one: the video somebody else already made about this. */
+  const articles: Article[] = videos.slice(0, 25).map((v) => ({
+    title: `${v.title} — ${v.channelTitle}`,
+    url: `https://www.youtube.com/watch?v=${v.id}`,
+    domain: "youtube.com",
+    at: v.publishedAt,
+  }));
+
+  return { points: clean(points), videos: videos.length, articles };
+}
+
 export function rollingSum(points: Point[], window: number): Point[] {
   return points.map((p, i) => {
     const slice = points.slice(Math.max(0, i - window + 1), i + 1);

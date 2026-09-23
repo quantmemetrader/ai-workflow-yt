@@ -1,9 +1,12 @@
 import { requireModule } from "@/lib/auth/dal";
-import { modelFor } from "@/lib/ai/models";
+import { answeringModel } from "@/lib/ai/models";
 import { ResearchSidebar } from "@/components/canvas/ResearchSidebar";
 import { InboxView } from "@/components/research/InboxView";
 import { connectedSources, decisionCount } from "@/lib/research/service";
-import { connectionState, inbox, inboxSummary, priorComments, type InboxFilters } from "@/lib/social/service";
+import { connectionState, inbox, inboxSummary, type InboxFilters } from "@/lib/social/service";
+import { isSentiment, priorCommentCounts } from "@/lib/social/service";
+
+export const metadata = { title: "评论收件箱 · Comment inbox" };
 
 /**
  * Comment inbox (spec §4.3).
@@ -31,7 +34,9 @@ export default async function InboxPage({
   };
 
   const filters: InboxFilters = {
-    sentiment: one("sentiment"),
+    // Validated here as well as in the query: `performance/page.tsx` already
+    // does this for `window`, and this is the same class of input.
+    sentiment: isSentiment(one("sentiment")) ? one("sentiment") : undefined,
     language: one("language"),
     flagged: one("flagged") === "1" || undefined,
     leads: one("leads") === "1" || undefined,
@@ -45,23 +50,13 @@ export default async function InboxPage({
     decisionCount(viewer),
   ]);
 
-  // "14 prior comments" on the artboard. Counted per distinct commenter rather
-  // than per comment, so a post with forty comments from four people is four
-  // queries, not forty.
-  const priorCounts: Record<string, number> = {};
-  const flat = groups.flatMap((g) => g.comments);
-  const byAuthor = new Map<string, string[]>();
-  for (const c of flat) {
-    if (!c.authorHandle) continue;
-    byAuthor.set(c.authorHandle, [...(byAuthor.get(c.authorHandle) ?? []), c.id]);
-  }
-  await Promise.all(
-    [...byAuthor.entries()].map(async ([, ids]) => {
-      const detail = flat.find((c) => c.id === ids[0]);
-      if (!detail) return;
-      const n = await priorComments(viewer, detail.authorHandle, detail.id);
-      for (const id of ids) priorCounts[id] = n;
-    }),
+  /*
+   * "14 prior comments" on the artboard, in one query rather than one per
+   * commenter (REVIEW.md #13).
+   */
+  const priorCounts = await priorCommentCounts(
+    viewer,
+    groups.flatMap((g) => g.comments).map((c) => ({ id: c.id, authorHandle: c.authorHandle })),
   );
 
   return (
@@ -85,7 +80,7 @@ export default async function InboxPage({
         channelCount={state.channels.length}
         syncedAt={state.syncedAt}
         priorCounts={priorCounts}
-        model={modelFor.assistant()}
+        model={answeringModel()}
       />
     </>
   );

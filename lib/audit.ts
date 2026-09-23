@@ -1,8 +1,7 @@
 import "server-only";
 import { headers } from "next/headers";
-import { and, desc, eq, gte, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { auditLog, users, type Module } from "@/lib/db/schema";
+import { auditLog, type Module } from "@/lib/db/schema";
 import type { Viewer } from "@/lib/auth/dal";
 import { newId } from "@/lib/ids";
 
@@ -48,28 +47,4 @@ export async function audit(
       // it must be loud in the logs.
       console.error("[audit] write failed", action, err);
     });
-}
-
-export async function recentAudit(
-  tenantId: string,
-  filter: { actorId?: string; action?: string; objectId?: string; since?: Date; limit?: number } = {},
-) {
-  const conds = [eq(auditLog.tenantId, tenantId)];
-  if (filter.actorId) conds.push(eq(auditLog.actorId, filter.actorId));
-  // The filter is a prefix, not a pattern: `%` and `_` arriving from an admin's
-  // filter box would otherwise widen the match rather than narrow it.
-  if (filter.action) {
-    const prefix = filter.action.replace(/([\\%_])/g, "\\$1");
-    conds.push(sql`${auditLog.action} like ${prefix + "%"} escape '\\'`);
-  }
-  if (filter.objectId) conds.push(eq(auditLog.objectId, filter.objectId));
-  if (filter.since) conds.push(gte(auditLog.at, filter.since));
-
-  return db
-    .select({ entry: auditLog, actorName: users.name })
-    .from(auditLog)
-    .leftJoin(users, eq(users.id, auditLog.actorId))
-    .where(and(...conds))
-    .orderBy(desc(auditLog.at))
-    .limit(filter.limit ?? 100);
 }

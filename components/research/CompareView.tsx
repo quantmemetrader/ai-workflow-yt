@@ -3,9 +3,11 @@
 import { useCallback, useEffect, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { CompareScreen, type Series } from "@/components/canvas/CompareScreen";
+import { InlineAgentThread, useInlineAgent } from "@/components/shell/InlineAgent";
+import { writeCollecting } from "@/lib/client/collecting";
 import { addSeriesAction, exportComparisonAction } from "@/app/(app)/research/actions";
+import { notify } from "@/lib/client/notify";
 
-/** The artboard's series colours, in its own order. */
 /** The artboard's series colours, in its own order. */
 const COLOURS = ["#007be0", "#383838", "#8d99a6", "#c7c7c7", "#278f5e"];
 
@@ -25,6 +27,8 @@ export function CompareView({
   sourceCount,
   locale,
   model,
+  watched,
+  trending,
 }: {
   initialSeries: Series[];
   queries: string[];
@@ -33,8 +37,15 @@ export function CompareView({
   sourceCount: number;
   locale: string;
   model: string;
+  /** Phrases the studio already collects, so nobody retypes one. */
+  watched: { phrase: string; label: string; collecting: boolean }[];
+  /** What the region is searching for today. */
+  trending: { phrase: string; traffic: string | null; headline: string | null }[];
 }) {
   const router = useRouter();
+  /* The agent answers here. Asking used to push to /chat, which took the
+   * screen you were asking about off the screen. */
+  const agent = useInlineAgent({ module: "research" });
   const params = useSearchParams();
   const [exporting, startExport] = useTransition();
   const [, startAdd] = useTransition();
@@ -64,9 +75,24 @@ export function CompareView({
     [params, router],
   );
 
+  /*
+   * Hand what is still being collected to the shell, so it outlives this page.
+   *
+   * The work was never the thing that stopped when you navigated away: the
+   * worker holds the job either way. What stopped was anyone being able to see
+   * it, because the "collecting" chip was this component's state and the
+   * phrases were only in the URL. The shell's toast picks both up from here and
+   * carries on polling wherever you go.
+   */
+  const pending = series.some((s) => s.pending);
+  useEffect(() => {
+    if (pending) writeCollecting({ queries, window });
+    else writeCollecting(null);
+  }, [pending, queries, window]);
+
   // Poll only while something is still being collected.
   useEffect(() => {
-    if (!series.some((s) => s.pending)) return;
+    if (!pending) return;
 
     const id = setInterval(async () => {
       try {
@@ -83,18 +109,44 @@ export function CompareView({
     }, 6000);
 
     return () => clearInterval(id);
-  }, [series, queries, window]);
+  }, [pending, queries, window]);
 
   return (
     <CompareScreen
       series={series}
+      suggestions={[
+        ...watched.map((w) => ({
+          phrase: w.phrase,
+          kind: "watched" as const,
+          hint: w.collecting ? (locale.startsWith("zh") ? "收集中" : "collecting") : undefined,
+          // The display name when it differs from the phrase that is searched:
+          // a topic called "Nvidia earnings" searched as "nvidia earnings Q3".
+          note: w.label !== w.phrase ? w.label : null,
+        })),
+        ...trending
+          .filter((x) => !watched.some((w) => w.phrase.toLowerCase() === x.phrase.toLowerCase()))
+          .map((x) => ({
+            phrase: x.phrase,
+            kind: "trending" as const,
+            hint: x.traffic,
+            note: x.headline,
+          })),
+      ]}
       window={window}
       region={region}
       sourceCount={sourceCount}
       exporting={exporting}
       locale={locale}
       model={model}
-      onAsk={(prompt) => router.push(`/chat?q=${encodeURIComponent(prompt)}`)}
+      onAsk={(prompt) => void agent.send(prompt)}
+      thread={
+        <InlineAgentThread
+          messages={agent.messages}
+          notice={agent.notice}
+          conversationId={agent.conversationId}
+          zh={locale.startsWith("zh")}
+        />
+      }
       onAddSeries={(query) => {
         const next = [...queries, query].slice(0, 5);
         startAdd(async () => {
@@ -107,15 +159,10 @@ export function CompareView({
       onExport={() =>
         startExport(async () => {
           const res = await exportComparisonAction(queries, window, region);
-          if (res.error) window_alert(res.error);
+          if (res.error) notify(res.error);
           else if (res.fileId) router.push(`/files/${res.fileId}`);
         })
       }
     />
   );
-}
-
-/** Named so it does not shadow the `window` prop above. */
-function window_alert(message: string) {
-  globalThis.alert(message);
 }

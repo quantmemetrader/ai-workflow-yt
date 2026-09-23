@@ -178,7 +178,7 @@
     for (var i = 0; i < els.length; i++) (function (el) {
       var path = home[DOCKMOD[el.getAttribute('data-mod')]];
       if (!path) return;
-      if (el.classList.contains('mdi')) el.addEventListener('click', function () { if (path !== location.pathname) setTimeout(function () { go(path); }, 160); });
+      if (el.classList.contains('mdi')) el.addEventListener('click', function () { if (path !== here()) setTimeout(function () { go(path); }, 160); });
       else { el.setAttribute('data-nav', path); el.style.cursor = 'pointer'; }
     })(els[i]);
   }
@@ -247,7 +247,33 @@
     both(r.global).forEach(function (l) { global[norm(l)] = r.path; });
   });
   function norm(t) { return String(t).replace(/\s+/g, ' ').replace(/[•]/g, '').replace(/\s\d+$/, '').trim().toLowerCase(); }
-  function go(path) { if (path && path !== location.pathname) location.href = path; }
+  /*
+   * The canvas is published two ways, and the paths in __ROUTES only spell the
+   * URLs of one of them.
+   *
+   * On the design site they are the URLs: /script is /app/script.html behind a
+   * rewrite. Inside the product the same pages are served under /demo, and a
+   * bare /script there is not this canvas at all, it is the real product. That
+   * is how the nested-frame spiral started: the product used to show an
+   * unbuilt module by putting /demo/<module> in a same-origin iframe, one rail
+   * click assigned location.href = '/script', and the whole product loaded
+   * inside itself, rail and all, once per click.
+   *
+   * Nothing frames the canvas any more. Both halves of the fix stay anyway:
+   * every hop is rewritten into whichever space we are already in, and if this
+   * document ever finds itself in a frame it navigates the top window instead
+   * of its own, so it cannot nest even once.
+   */
+  var BASE = /^\/demo(\/|$)/.test(location.pathname) ? '/demo' : '';
+  function here() { return location.pathname.slice(BASE.length) || '/'; }
+  function go(path) {
+    if (!path || path === here()) return;
+    var to = BASE + path;
+    try {
+      if (window.top !== window.self) { window.top.location.href = to; return; }
+    } catch (e) { /* framed across origins: fall through and move ourselves */ }
+    location.href = to;
+  }
   function find(label) {
     var n = norm(label);
     return (byLabel[PAGE.module] && byLabel[PAGE.module][n]) || global[n] || null;
@@ -304,7 +330,7 @@
       if (!t || t.length > 80) continue;
       var p = find(t);
       /* a link to the page you are already on does nothing, so it is not clickable */
-      if (!p || p === location.pathname) continue;
+      if (!p || p === here()) continue;
       var target = el;
       for (var up = el, d = 0; up && up !== root && d < 4; up = up.parentElement, d++) {
         if (NAVCLS.some(function (c) { return up.classList.contains(c); })) { target = up; break; }

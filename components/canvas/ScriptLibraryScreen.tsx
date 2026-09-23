@@ -3,6 +3,7 @@
 import * as React from "react";
 import { ResearchAgentPanel } from "./ResearchAgentPanel";
 import type { ScriptListItem } from "@/lib/script/service";
+import { useResizable } from "@/components/ui/Resizer";
 
 /**
  * ScriptLibraryScreen — a transcription of design/canvas/Script-Library.dc.html.
@@ -73,6 +74,10 @@ export type ScriptLibraryScreenProps = {
   /** Hands a question to the agent on /chat, where it can cite the files and
    * scripts the asker is allowed to read. */
   onAsk: (prompt: string) => void;
+  /** The conversation so far, rendered in the agent panel. */
+  thread?: React.ReactNode;
+  /** Controls above the composer: history, a new thread. */
+  tools?: React.ReactNode;
 };
 
 type Status = ScriptListItem["status"];
@@ -447,10 +452,15 @@ export function ScriptLibraryScreen(props: ScriptLibraryScreenProps): React.JSX.
     onDelete,
     model,
     onAsk,
+    thread,
+    tools,
   } = props;
 
   const zh = locale.startsWith("zh");
   const t = (key: string): string => (zh ? (ZH[key] ?? key) : key);
+  const { width: sideWidth, handle: sideHandle } = useResizable("script-sidebar", {
+    min: 160, max: 400, initial: 212, edge: "right",
+  });
 
   /**
    * What the panel can say from these rows alone.
@@ -584,7 +594,8 @@ export function ScriptLibraryScreen(props: ScriptLibraryScreenProps): React.JSX.
         data-script-library-screen=""
         style={{
           ...frameStyle,
-          width: 212,
+          width: sideWidth,
+          position: "relative",
           flexShrink: 0,
           background: "#f8f8f8",
           borderRight: "1px solid #ededed",
@@ -593,6 +604,7 @@ export function ScriptLibraryScreen(props: ScriptLibraryScreenProps): React.JSX.
           padding: "10px 8px",
         }}
       >
+        {sideHandle}
         <div style={{ display: "flex", alignItems: "center", padding: "4px 9px 12px" }}>
           <span style={{ fontSize: 14, fontWeight: 500 }}>{t("Script")}</span>
           {/* The artboard's "+" beside the module name. The toolbar already
@@ -731,7 +743,7 @@ export function ScriptLibraryScreen(props: ScriptLibraryScreenProps): React.JSX.
         data-script-library-screen=""
         style={{ ...frameStyle, flexGrow: 1, display: "flex", minWidth: 0 }}
       >
-      <div style={{ flexGrow: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
+      <div style={{ flexGrow: 1, display: "flex", flexDirection: "column", minWidth: 0, minHeight: 0 }}>
         {/* toolbar */}
         <div className="bar">
           {here === null ? (
@@ -987,10 +999,27 @@ export function ScriptLibraryScreen(props: ScriptLibraryScreenProps): React.JSX.
                       }}
                     >
                       {scripts.map((s) => (
-                        <div key={s.id} className="ic" style={{ position: "relative" }}>
+                        <div
+                          key={s.id}
+                          className="ic"
+                          role="button"
+                          tabIndex={0}
+                          onClick={() => onOpen(s.id)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              onOpen(s.id);
+                            }
+                          }}
+                          style={{ position: "relative", cursor: "pointer" }}
+                        >
                           <button
                             type="button"
-                            onClick={() => onOpen(s.id)}
+                            tabIndex={-1}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onOpen(s.id);
+                            }}
                             title={s.title}
                             style={{
                               display: "flex",
@@ -998,6 +1027,7 @@ export function ScriptLibraryScreen(props: ScriptLibraryScreenProps): React.JSX.
                               alignItems: "center",
                               minWidth: 0,
                               maxWidth: "100%",
+                              width: "100%",
                               border: 0,
                               background: "transparent",
                               padding: 0,
@@ -1020,7 +1050,10 @@ export function ScriptLibraryScreen(props: ScriptLibraryScreenProps): React.JSX.
                           <button
                             type="button"
                             className="act ptog"
-                            onClick={() => onDelete(s.id)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onDelete(s.id);
+                            }}
                             aria-label={`${t("Delete script")} ${s.title}`}
                             title={t("Delete script")}
                             style={{ position: "absolute", top: 2, right: 2 }}
@@ -1057,7 +1090,20 @@ export function ScriptLibraryScreen(props: ScriptLibraryScreenProps): React.JSX.
                         const meta = [s.targetChannel, s.aspect].filter((x): x is string => !!x).join(" · ");
                         const st = STATUS[s.status];
                         return (
-                          <div key={s.id} className="tr" style={{ gridTemplateColumns: COLS, height: 54 }}>
+                          <div
+                            key={s.id}
+                            className="tr"
+                            role="button"
+                            tabIndex={0}
+                            onClick={() => onOpen(s.id)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" || e.key === " ") {
+                                e.preventDefault();
+                                onOpen(s.id);
+                              }
+                            }}
+                            style={{ gridTemplateColumns: COLS, height: 54, cursor: "pointer" }}
+                          >
                             <div style={{ gap: 11 }}>
                               <div style={{ width: 26, display: "flex", justifyContent: "center", flexShrink: 0 }}>
                                 <PageIcon status={s.status} width={21} />
@@ -1182,6 +1228,8 @@ export function ScriptLibraryScreen(props: ScriptLibraryScreenProps): React.JSX.
         placeholder={zh ? "询问这些剧本…" : "Ask about these scripts…"}
         model={model}
         onAsk={onAsk}
+        thread={thread}
+        tools={tools}
       />
       </div>
     </>

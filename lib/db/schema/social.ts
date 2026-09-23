@@ -99,7 +99,20 @@ export const channelPosts = pgTable(
     /** True when the post predates us, so Content performance can say which
      * numbers we are responsible for. */
     isExternal: boolean().notNull().default(false),
+    /**
+     * Where the platform actually got to with it.
+     *
+     * Read off Zernio's response and then thrown away, which is how a post
+     * scheduled for next Tuesday came to sort to the top of Content
+     * performance as though it had gone out (REVIEW.md #8). Text rather than
+     * an enum: Zernio adds states faster than we ship migrations, and an
+     * unknown one should show as itself rather than crash a sync.
+     */
+    status: text().notNull().default("published"),
+    /** Set only when the platform has actually taken it. */
     publishedAt: timestamp({ withTimezone: true }),
+    /** When it is due to go out, for the ones that have not yet. */
+    scheduledFor: timestamp({ withTimezone: true }),
     commentCount: integer().notNull().default(0),
     syncedAt: timestamp({ withTimezone: true }),
     createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
@@ -156,7 +169,17 @@ export const postMetrics = pgTable(
     engagementRate: real(),
     createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [uniqueIndex("post_metrics_day_idx").on(t.postId, t.asOf)],
+  (t) => [
+    uniqueIndex("post_metrics_day_idx").on(t.postId, t.asOf),
+    /*
+     * The daily-views chart reads this table by date across every post, and
+     * `(post_id, as_of)` cannot serve that — the leading column is wrong, so
+     * the planner sequentially scans the whole table on every load of Content
+     * performance. Five thousand rows today; one reading per post per day
+     * makes it a million inside two years.
+     */
+    index("post_metrics_as_of_idx").on(t.asOf),
+  ],
 );
 
 export const sentimentEnum = pgEnum("comment_sentiment", [
@@ -275,4 +298,67 @@ export const commentDrafts = pgTable(
     createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index("comment_drafts_comment_idx").on(t.commentId, t.createdAt)],
+);
+
+
+/**
+ * Somebody else's channel, watched from the outside.
+ *
+ * This is what the TikHub key is for, and until now nothing used it: Zernio
+ * can only ever see the accounts the studio owns, so "how are we doing against
+ * them" had no source at all and the Trends dashboard had no competitor rows
+ * (REVIEW.md, last item).
+ *
+ * Public figures only. TikHub reads what the platform publishes to anybody
+ * with a browser; there is no login, no scrape and nothing here that is not on
+ * the channel's own page.
+ */
+export const competitors = pgTable(
+  "competitors",
+  {
+    id: text().primaryKey(),
+    tenantId: text().notNull(),
+    platform: text().notNull(),
+    /** The platform's own id for the channel, which is what TikHub takes. */
+    externalId: text().notNull(),
+    handle: text(),
+    displayName: text(),
+    avatarUrl: text(),
+    subscribers: bigint({ mode: "number" }),
+    note: text(),
+    addedBy: text().references(() => users.id),
+    syncedAt: timestamp({ withTimezone: true }),
+    lastError: text(),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("competitors_idx").on(t.tenantId, t.platform, t.externalId)],
+);
+
+/**
+ * What they published, as the platform reports it.
+ *
+ * `views` is a single reading rather than a series: TikHub gives the count as
+ * it stands, and inventing a history from repeated readings of somebody else's
+ * channel is a different and much larger thing than this screen needs.
+ */
+export const competitorPosts = pgTable(
+  "competitor_posts",
+  {
+    id: text().primaryKey(),
+    tenantId: text().notNull(),
+    competitorId: text()
+      .notNull()
+      .references(() => competitors.id, { onDelete: "cascade" }),
+    externalId: text().notNull(),
+    title: text(),
+    permalink: text(),
+    thumbnailUrl: text(),
+    views: bigint({ mode: "number" }),
+    durationSecs: integer(),
+    publishedAt: timestamp({ withTimezone: true }),
+    /** What the platform said the age was, when it gave no date. */
+    publishedLabel: text(),
+    syncedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("competitor_posts_idx").on(t.competitorId, t.externalId)],
 );

@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { requireModule } from "@/lib/auth/dal";
 import { channelMessages, dmChannelWith, markRead } from "@/lib/chat/service";
 import { ChannelView } from "@/components/chat/ChannelView";
+import { answeringModel } from "@/lib/ai/models";
 
 /** A one-to-one conversation. The room is created the first time either person
  * opens it, so there is no "start a chat" step to get wrong. */
@@ -21,12 +22,15 @@ export default async function DirectMessagePage({ params }: { params: Promise<{ 
   return (
     <ChannelView
       slug={dm.channel.slug!}
+      channelId={dm.channel.id}
+      model={answeringModel()}
       name={otherName}
       topic={dm.other.title}
+      me={{ name: (zh && viewer.nameLocal) || viewer.name, avatarUrl: viewer.avatarUrl }}
       locale={viewer.locale ?? "zh-CN"}
       memberCount={2}
       members={[
-        { name: viewer.name, avatar: viewer.avatarUrl },
+        { name: (zh && viewer.nameLocal) || viewer.name, avatar: viewer.avatarUrl },
         { name: otherName, avatar: dm.other.avatarUrl },
       ]}
       messages={rows.map((r) => ({

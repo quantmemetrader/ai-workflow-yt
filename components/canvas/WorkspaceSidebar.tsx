@@ -2,9 +2,12 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useTransition } from "react";
-import { createChannelAction } from "@/app/(app)/chat/actions";
+import { useState, useTransition } from "react";
+import { NewChannelDialog } from "@/components/chat/NewChannelDialog";
+import { PlusGlyph, plusButton } from "@/components/canvas/FilesScreen";
+import { useResizable } from "@/components/ui/Resizer";
 import { setLocaleAction } from "@/app/(app)/settings/actions";
+import { JUMP_EVENT } from "@/components/shell/CommandPalette";
 import type { Locale } from "@/lib/i18n";
 
 /**
@@ -73,47 +76,34 @@ const LOCK = (
   </svg>
 );
 
+export type SidebarConversation = { id: string; title: string; updatedAt: string };
+
 export function WorkspaceSidebar({
   studio,
   channels,
   people,
+  conversations = [],
   me,
   locale,
 }: {
   studio: string;
   channels: SidebarChannel[];
   people: SidebarPerson[];
+  /** This person's own past conversations with the agent, newest first. */
+  conversations?: SidebarConversation[];
   me: { name: string; avatarUrl: string | null; status: string };
   locale: Locale;
 }) {
   const pathname = usePathname();
   const router = useRouter();
   const [, start] = useTransition();
+  const [composing, setComposing] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  // The artboard's 256 is a good default, not a law. Drag the seam.
+  const { width, handle } = useResizable("chat-sidebar", { min: 190, max: 460, initial: 256, edge: "right" });
   const zh = locale.startsWith("zh");
   const onAgent = pathname === "/chat" || pathname.startsWith("/chat/t/");
 
-  // ⌘K / Ctrl-K was drawn on the box; it should do what it says.
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
-        e.preventDefault();
-        router.push("/search");
-      }
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [router]);
-
-  function newChannel() {
-    const name = globalThis.prompt(zh ? "新频道名称" : "Name the channel");
-    if (!name) return;
-    start(async () => {
-      const res = await createChannelAction(name);
-      if (res.error) globalThis.alert(res.error);
-      else if (res.slug) router.push(`/chat/c/${res.slug}`);
-      router.refresh();
-    });
-  }
 
   function switchLocale(next: Locale) {
     if (next === locale) return;
@@ -126,8 +116,9 @@ export function WorkspaceSidebar({
   return (
     <div
       style={{
-        width: 256,
+        width,
         flexShrink: 0,
+        position: "relative",
         background: "#f8f8f8",
         borderRight: "1px solid #ededed",
         display: "flex",
@@ -135,11 +126,12 @@ export function WorkspaceSidebar({
         padding: "10px 8px",
       }}
     >
+      {handle}
       <div style={{ display: "flex", alignItems: "center", gap: 7, padding: "3px 8px 10px" }}>
         <span style={{ fontSize: 14.5, fontWeight: 600 }}>{studio}</span>
         <button
           type="button"
-          onClick={newChannel}
+          onClick={() => setComposing(true)}
           style={{
             marginLeft: "auto",
             width: 28,
@@ -174,8 +166,12 @@ export function WorkspaceSidebar({
         </button>
       </div>
 
-      <Link
-        href="/search"
+      {/* This used to be a link to /search, which is not a jump: it threw away
+        * the screen you were on to show you a text field. It opens the palette
+        * over the page instead, and ⌘K does the same from anywhere. */}
+      <button
+        type="button"
+        onClick={() => window.dispatchEvent(new Event(JUMP_EVENT))}
         style={{
           height: 30,
           border: "1px solid #ededed",
@@ -187,6 +183,9 @@ export function WorkspaceSidebar({
           padding: "0 9px",
           margin: "0 2px 12px",
           color: "inherit",
+          cursor: "pointer",
+          font: "inherit",
+          width: "calc(100% - 4px)",
         }}
       >
         <svg
@@ -198,7 +197,7 @@ export function WorkspaceSidebar({
         </svg>
         <span style={{ fontSize: 12, color: "#999999", flexGrow: 1 }}>{zh ? "跳转到…" : "Jump to…"}</span>
         <span style={{ fontSize: 10.5, color: "#c7c7c7" }}>⌘K</span>
-      </Link>
+      </button>
 
       <Link href="/chat" className={`ws${onAgent ? " on" : ""}`} style={{ gap: 9 }}>
         <div
@@ -221,17 +220,85 @@ export function WorkspaceSidebar({
         </span>
       </Link>
 
-      <div className="lbl" style={{ margin: "16px 0 5px" }}>
-        {zh ? "频道" : "Channels"}
+      {/*
+        Everything this person has asked the agent before.
+        Every turn was already stored and every one of them had a real page at
+        /chat/t/<id> — but nothing listed them, so a thread was gone the moment
+        the panel closed unless somebody had kept the link. It is their own
+        history and nobody else's: the query is by user id, and opening
+        somebody else's conversation is a 404.
+      */}
+      {conversations.length > 0 ? (
+        <>
+          <div className="lbl" style={{ margin: "16px 0 5px", display: "flex", alignItems: "center", gap: 6 }}>
+            <span style={{ flexGrow: 1 }}>{zh ? "最近问过" : "Recent chats"}</span>
+            <span style={{ fontSize: 10.5, color: "#c7c7c7" }}>{zh ? "仅你可见" : "only you"}</span>
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
+            {(historyOpen ? conversations : conversations.slice(0, 3)).map((c) => {
+              const active = pathname === `/chat/t/${c.id}`;
+              return (
+                <Link key={c.id} href={`/chat/t/${c.id}`} className={`ws${active ? " on" : ""}`} title={c.title}>
+                  <span className="hs" aria-hidden>
+                    ⌁
+                  </span>
+                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {c.title}
+                  </span>
+                  <span style={{ marginLeft: "auto", fontSize: 10, color: "#c7c7c7", flexShrink: 0 }}>
+                    {shortDay(c.updatedAt, locale)}
+                  </span>
+                </Link>
+              );
+            })}
+            {conversations.length > 3 ? (
+              <button
+                type="button"
+                onClick={() => setHistoryOpen((v) => !v)}
+                style={{
+                  border: 0,
+                  background: "transparent",
+                  padding: "3px 9px",
+                  textAlign: "left",
+                  cursor: "pointer",
+                  font: "inherit",
+                  fontSize: 11.5,
+                  color: "#7c7c7c",
+                }}
+              >
+                {historyOpen
+                  ? zh
+                    ? "收起"
+                    : "Show fewer"
+                  : zh
+                    ? `+ 再看 ${conversations.length - 3} 条`
+                    : `+ ${conversations.length - 3} more`}
+              </button>
+            ) : null}
+          </div>
+        </>
+      ) : null}
+
+      {/* The + is on the heading, next to the channels, rather than only on
+          the pencil at the top of the sidebar. */}
+      <div className="lbl" style={{ margin: "16px 0 5px", display: "flex", alignItems: "center", gap: 6 }}>
+        <span style={{ flexGrow: 1 }}>{zh ? "频道" : "Channels"}</span>
+        <button
+          type="button"
+          onClick={() => setComposing(true)}
+          aria-label={zh ? "新建频道" : "New channel"}
+          title={zh ? "新建频道" : "New channel"}
+          style={plusButton}
+        >
+          <PlusGlyph />
+        </button>
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
         {channels.length === 0 ? (
           <p
             style={{ fontSize: 11.5, color: "#999999", lineHeight: 1.5, padding: "2px 9px 0" }}
           >
-            {zh
-              ? "还没有频道。用右上角的笔新建一个。"
-              : "No channels yet — the pencil above starts one."}
+            {zh ? "还没有频道。" : "No channels yet."}
           </p>
         ) : null}
         {channels.map((c) => {
@@ -411,6 +478,24 @@ export function WorkspaceSidebar({
           </button>
         </div>
       </div>
+
+      {composing && (
+        <NewChannelDialog
+          zh={zh}
+          people={people.map((p) => ({ id: p.id, name: p.name, avatarUrl: p.avatarUrl, title: null }))}
+          onClose={() => setComposing(false)}
+        />
+      )}
     </div>
   );
+}
+
+/** "Today", "Tue", or a date once it is older than a week. */
+function shortDay(iso: string, locale: Locale): string {
+  const then = new Date(iso);
+  const days = Math.floor((Date.now() - then.getTime()) / 86_400_000);
+  const loc = locale === "en" ? "en-GB" : locale;
+  if (days <= 0) return new Intl.DateTimeFormat(loc, { hour: "2-digit", minute: "2-digit" }).format(then);
+  if (days < 7) return new Intl.DateTimeFormat(loc, { weekday: "short" }).format(then);
+  return new Intl.DateTimeFormat(loc, { day: "numeric", month: "short" }).format(then);
 }

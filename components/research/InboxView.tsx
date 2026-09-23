@@ -3,6 +3,8 @@
 import { useCallback, useMemo, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { InboxScreen } from "@/components/canvas/InboxScreen";
+import { InlineAgentThread, useInlineAgent } from "@/components/shell/InlineAgent";
+import { AgentHistory } from "@/components/shell/AgentHistory";
 import type { InboxGroup } from "@/lib/social/service";
 import {
   approveReplyAction,
@@ -44,6 +46,9 @@ export function InboxView({
   model: string;
 }) {
   const router = useRouter();
+  /* The agent answers here. Asking used to push to /chat, which took the
+   * screen you were asking about off the screen. */
+  const agent = useInlineAgent({ module: "research" }, { key: "research:inbox" });
   const params = useSearchParams();
   const [, start] = useTransition();
 
@@ -137,7 +142,16 @@ export function InboxView({
       }
       onSyncNow={() => run("sync", syncNowAction)}
       model={model}
-      onAsk={(prompt) => router.push(`/chat?q=${encodeURIComponent(prompt)}`)}
+      onAsk={(prompt) => void agent.send(prompt)}
+      tools={<AgentHistory zh={locale.startsWith("zh")} current={agent.conversationId} onPick={(id) => void agent.load(id)} onNew={agent.reset} />}
+      thread={
+        <InlineAgentThread
+          messages={agent.messages}
+          notice={agent.notice}
+          conversationId={agent.conversationId}
+          zh={locale.startsWith("zh")}
+        />
+      }
     />
   );
 }

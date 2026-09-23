@@ -1,7 +1,9 @@
 import { requireModule } from "@/lib/auth/dal";
-import { modelFor } from "@/lib/ai/models";
+import { answeringModel } from "@/lib/ai/models";
 import { LibraryView } from "@/components/script/LibraryView";
-import { libraryCounts, listFolders, listScripts, pendingApprovals, type ScriptListItem } from "@/lib/script/service";
+import { libraryCounts, listFolders, listScripts, pendingApprovals, sharedScriptIds, type ScriptListItem } from "@/lib/script/service";
+
+export const metadata = { title: "剧本 · Script" };
 
 /**
  * Script library (spec §4.4).
@@ -54,19 +56,19 @@ export default async function ScriptLibraryPage({
    * "Assigned to me" and "Waiting on approval" are both small sets over rows
    * the query already returned, and pushing them into the query would mean
    * four near-identical statements for what is one filter over one list.
-   * "Shared with me" has nothing behind it yet: per-script sharing goes
-   * through the same ReBAC tuples the Files module uses, and that is not
-   * wired for scripts, so it shows nothing rather than quietly showing
-   * everything.
+   * "Shared with me" reads the same `relation_tuples` the Files module uses —
+   * scripts now carry an owner tuple on creation, so a script shared with a
+   * person or their team appears here and one they wrote themselves does not.
    */
   const waitingIds = new Set(waiting.map((w) => w.objectId));
+  const sharedIds = scope === "shared" ? new Set(await sharedScriptIds(viewer)) : new Set<string>();
   const scripts =
     scope === "mine"
       ? all.filter((s) => s.ownerId === viewer.id)
       : scope === "awaiting"
         ? all.filter((s) => waitingIds.has(s.id))
         : scope === "shared"
-          ? []
+          ? all.filter((s) => sharedIds.has(s.id) && s.ownerId !== viewer.id)
           : all;
 
   return (
@@ -79,7 +81,7 @@ export default async function ScriptLibraryPage({
       status={status}
       scope={scope}
       query={query}
-      model={modelFor.assistant()}
+      model={answeringModel()}
     />
   );
 }

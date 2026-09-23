@@ -1,3 +1,4 @@
+import { visibilityForFiles } from "@/lib/files/access";
 import { notFound } from "next/navigation";
 import { eq, inArray, isNull, and } from "drizzle-orm";
 import { db } from "@/lib/db/client";
@@ -5,8 +6,10 @@ import { folders } from "@/lib/db/schema";
 import { requireModule } from "@/lib/auth/dal";
 import { canReadFolders, relationOn } from "@/lib/authz/rebac";
 import { listFolder } from "@/lib/files/service";
-import { modelFor } from "@/lib/ai/models";
+import { answeringModel } from "@/lib/ai/models";
 import { FilesView } from "@/components/files/FilesView";
+import { toRows } from "@/components/files/rows";
+import { relationsForFiles } from "@/lib/authz/rebac";
 
 export default async function FolderPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -31,6 +34,8 @@ export default async function FolderPage({ params }: { params: Promise<{ id: str
     listFolder(viewer, id),
   ]);
 
+  const access = await relationsForFiles(viewer, contents.files.map((r) => r.file));
+
   const breadcrumbs = folder.path
     .map((pid) => trail.find((t) => t.id === pid))
     .filter((x): x is { id: string; name: string } => Boolean(x));
@@ -40,20 +45,11 @@ export default async function FolderPage({ params }: { params: Promise<{ id: str
       folderId={id}
       breadcrumbs={breadcrumbs}
       locale={viewer.locale ?? "zh-CN"}
-      model={modelFor.assistant()}
-      canEdit={held === "owner" || held === "editor"}
+      model={answeringModel()}
+      canEdit={held === "owner" || held === "editor" || viewer.isAdmin}
       sidebarFolders={roots.filter((f) => f.name !== "__home")}
       folders={contents.folders.map((f) => ({ id: f.id, name: f.name }))}
-      files={contents.files.map((r) => ({
-        id: r.file.id,
-        name: r.file.name,
-        kind: r.file.kind,
-        sizeBytes: r.file.sizeBytes,
-        ownerName: r.ownerName,
-        updatedAt: r.file.updatedAt.toISOString(),
-        durationMs: r.file.durationMs,
-        version: r.file.version,
-      }))}
+      files={toRows(contents.files, access, await visibilityForFiles(contents.files.map((r) => r.file.id)), viewer)}
     />
   );
 }

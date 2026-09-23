@@ -13,7 +13,13 @@ import { users } from "./core";
 /** Team chat: channels, DMs, and the agent thread — the Slack-shaped surface
  * the design canvas shows. The agent's own conversations live in `agent.ts`;
  * this is people talking to people. */
-export const channelKindEnum = pgEnum("channel_kind", ["channel", "dm", "group"]);
+/**
+ * `announce` is the design's company-wide channel: everyone is a member and
+ * only an administrator may post. It is a kind rather than a flag because the
+ * membership rule differs too — joining is automatic, and leaving is not a
+ * thing you can do.
+ */
+export const channelKindEnum = pgEnum("channel_kind", ["channel", "dm", "group", "announce"]);
 
 export const chatChannels = pgTable(
   "chat_channels",

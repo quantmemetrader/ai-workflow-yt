@@ -1,6 +1,8 @@
 "use client";
 
 import * as React from "react";
+import { useResizable, useResizableHeight } from "@/components/ui/Resizer";
+import { PhrasePicker, type Suggestion } from "@/components/research/PhrasePicker";
 
 /**
  * TrendsScreen — a transcription of design/canvas/Res-Trends.dc.html.
@@ -19,6 +21,15 @@ import * as React from "react";
  * owns `onToggleCategory`, the Sources picker has no handler and stays a chip.
  */
 
+/**
+ * The key for topics nobody filed under a beat.
+ *
+ * Not a real category — it never reaches the database, and the server never
+ * stores it. It exists so the filter panel can offer "everything the
+ * classifier did not recognise" as something you can actually click.
+ */
+const UNFILED = "__unfiled";
+
 export type TrendTopic = {
   id: string;
   name: string;
@@ -35,6 +46,11 @@ export type TrendTopic = {
   sourceKeys: string[];
   freshness: string | null; // ISO, when the numbers were last refreshed
   articles: { title: string; url: string; domain: string; at: string }[];
+  /** Queued, and nothing has come back for it yet. A first collection takes
+   * about a minute across the sources. */
+  collecting?: boolean;
+  /** What a source said, when one had something to say. */
+  error?: string | null;
 };
 
 export type SourceStatus = {
@@ -50,6 +66,7 @@ const ACCENT = "#007be0";
 
 /** zh-CN is the default locale (spec §4.1). */
 const ZH: Record<string, string> = {
+  "collecting…": "收集中…",
   "Trends dashboard": "趋势面板",
   "ranked topics · adopt feeds ranking weights": "按热度排名 · 采纳会反馈到排序",
   Sources: "来源",
@@ -78,6 +95,9 @@ const ZH: Record<string, string> = {
   source: "来源",
   "No angles yet": "还没有切入角度",
   "Ask your agent to suggest some from what it has read.": "可以让助理根据已读到的内容给出建议。",
+  "Suggest angles": "让助理给出角度",
+  "Suggest more": "再给几个",
+  "Reading the headlines…": "正在读标题…",
   Cooling: "降温中",
   Rising: "升温中",
   "Why it’s moving": "为什么在升温",
@@ -93,7 +113,12 @@ const ZH: Record<string, string> = {
   Done: "完成",
   "no data for this topic yet": "这个选题还没有数据",
   "no range": "暂无区间",
-  "No topics in these categories yet": "这些类别下还没有选题",
+  Unfiled: "未归类",
+  "Nothing in this beat yet": "这个领域还没有选题",
+  "Nothing in these beats yet": "这些领域还没有选题",
+  "Everything you are watching is filed under another beat. Add a topic here, or show every beat again.":
+    "你关注的选题都归在别的领域。可以在这里添加选题，或重新显示全部领域。",
+  "Show every beat": "显示全部领域",
   d: "天",
 };
 
@@ -265,7 +290,13 @@ function sparkline(points: { d: string; v: number }[]): string {
 const CH_W = 1000;
 const CH_H = 318;
 const CH_TOP = Math.round(CH_H * 0.08);
-const CH_BOT = Math.round(CH_H * 0.74);
+/*
+ * The artboard left the bottom quarter of the chart empty, under the baseline,
+ * for an axis it never drew. On a 1440x900 window that quarter was 60 pixels
+ * of nothing between the line and its own legend, and the three cards below
+ * paid for it.
+ */
+const CH_BOT = Math.round(CH_H * 0.94);
 
 function chartPaths(points: { d: string; v: number }[]): { line: string; area: string } {
   const n = points.length;
@@ -303,6 +334,38 @@ export function TrendsScreen(props: {
   /** Start watching a phrase. The studio picks its own beats; nothing is
    * watched until someone says so. */
   onAddTopic: (query: string) => void;
+  /**
+   * The agent, docked under the watchlist.
+   *
+   * Every other Market Research screen draws it down the right edge; this one
+   * spent that edge on the watchlist, so the dashboard — the screen people
+   * open first — was the one screen with no agent on it. It goes underneath
+   * instead, on a seam you can drag, so the watchlist keeps the room it needs.
+   */
+  agent?: React.ReactNode;
+  /** Ask the model for angles on one topic, from what has been collected. */
+  onSuggestAngles?: (topicId: string) => void;
+  /** Topic to a written script, in one press. Absent for somebody without Script. */
+  onWriteScript?: (topicId: string) => void;
+  /** The topic whose angles are being written right now, if any. */
+  anglesBusy?: string | null;
+  /** What the region is searching for today, from Google's own daily feed. */
+  trending?: { phrase: string; traffic: string | null; headline: string | null }[];
+  /** True while a phrase is being queued, so the picker can say so. */
+  adding?: boolean;
+  /**
+   * Anything that belongs under the topic — the competitor board, channel
+   * discovery. Inside this screen rather than after it, so it shares the
+   * middle column's scroll instead of making the whole page scroll and
+   * pushing the watchlist and the agent off the bottom.
+   */
+  below?: React.ReactNode;
+  /**
+   * The live strip above everything: what the region is searching for and
+   * watching right now. First line of the screen, because it is the only part
+   * of it that is true this minute.
+   */
+  live?: React.ReactNode;
 }): React.JSX.Element {
   const {
     topics,
@@ -314,36 +377,63 @@ export function TrendsScreen(props: {
     onToggleCategory,
     onDecide,
     onAddTopic,
+    agent,
+    onSuggestAngles,
+    onWriteScript,
+    anglesBusy = null,
+    trending = [],
+    adding = false,
+    below = null,
+    live = null,
   } = props;
 
   const zhLocale = locale.startsWith("zh");
   const [newTopic, setNewTopic] = React.useState("");
+  // The agent column shares one stored width across every screen that
+  // draws it, so narrowing it here does not leave it wide over there.
+  const { width: agentWidth, handle: agentHandle } = useResizable("agent-panel", {
+    min: 220, max: 620, initial: 272, edge: "left",
+  });
+  // How much of the right column the agent takes. Its own stored number: the
+  // watchlist and the agent share a column and people weight them differently.
+  const { height: agentHeight, handle: agentSeam } = useResizableHeight("trends-agent", {
+    min: 150, max: 620, initial: 320, edge: "top",
+  });
+
+  /*
+   * Watching a topic used to be a bare input: type the exact phrase, press
+   * Enter, wait a minute to find out whether it was already there under a
+   * different spelling. It now suggests — what the studio already watches,
+   * and what the region is searching for today — so the answer can be
+   * recognised instead of recalled.
+   */
+  const picks: Suggestion[] = React.useMemo(() => {
+    const watched: Suggestion[] = topics.map((x) => ({
+      phrase: x.name,
+      kind: "watched",
+      hint: x.collecting ? (zhLocale ? "收集中" : "collecting") : Math.round(x.heat).toString(),
+    }));
+    const seen = new Set(watched.map((w) => w.phrase.toLowerCase()));
+    const hot: Suggestion[] = trending
+      .filter((x) => !seen.has(x.phrase.toLowerCase()))
+      .map((x) => ({ phrase: x.phrase, kind: "trending", hint: x.traffic, note: x.headline }));
+    return [...watched, ...hot];
+  }, [topics, trending, zhLocale]);
 
   const watchField = (
-    <input
+    <PhrasePicker
       value={newTopic}
-      onChange={(e) => setNewTopic(e.target.value)}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" && newTopic.trim()) {
-          e.preventDefault();
-          onAddTopic(newTopic.trim());
-          setNewTopic("");
-        }
-      }}
-      placeholder={zhLocale ? "关注一个新选题…" : "Watch a topic…"}
-      style={{
-        width: "100%",
-        height: 28,
-        border: "1px solid #ededed",
-        borderRadius: 8,
-        background: "#ffffff",
-        padding: "0 9px",
-        fontSize: 12,
-        fontFamily: "inherit",
-        letterSpacing: "inherit",
-        color: "#171717",
-        outline: "none",
-      }}
+      onChange={setNewTopic}
+      onPick={(phrase) => onAddTopic(phrase)}
+      suggestions={picks}
+      busy={adding}
+      zh={zhLocale}
+      placeholder={zhLocale ? "搜索或关注一个选题…" : "Search or watch a topic…"}
+      emptyNote={
+        zhLocale
+          ? "输入一个词，工作室就开始收集它被讨论的频率。"
+          : "Type a phrase and the studio starts collecting how often it is written about."
+      }
     />
   );
 
@@ -363,7 +453,10 @@ export function TrendsScreen(props: {
   /** A topic's category matches a filter by key or by the label it displays. */
   const inCategory = React.useCallback(
     (topic: TrendTopic, key: string): boolean => {
-      if (topic.category === null) return false;
+      // A topic nobody filed is not missing — it is unfiled, and the panel
+      // has a row for exactly that so it can still be found.
+      if (topic.category === null) return key === UNFILED;
+      if (key === UNFILED) return false;
       if (topic.category === key) return true;
       const cat = categories.find((c) => c.key === key);
       return cat !== undefined && cat.label.toLowerCase() === topic.category.toLowerCase();
@@ -371,12 +464,69 @@ export function TrendsScreen(props: {
     [categories],
   );
 
+  /**
+   * The beats the panel offers, which is the configured list plus "Unfiled"
+   * whenever anything is unfiled. Without that row a topic whose subject the
+   * classifier did not recognise is invisible to every filter, and the only
+   * way back to it is to clear the filter — which is not a thing anybody can
+   * guess from a panel that does not mention it.
+   */
+  const beats = React.useMemo(() => {
+    const anyUnfiled = topics.some((t) => t.category === null);
+    return anyUnfiled ? [...categories, { key: UNFILED, label: "Unfiled" }] : categories;
+  }, [categories, topics]);
+
   const categoryLabel = React.useCallback(
     (topic: TrendTopic): string => {
       if (topic.category === null) return "";
       return categories.find((c) => c.key === topic.category)?.label ?? topic.category;
     },
     [categories],
+  );
+
+  const clearBeats = React.useCallback(() => {
+    for (const k of [...activeCategories]) onToggleCategory(k);
+  }, [activeCategories, onToggleCategory]);
+
+  /**
+   * What the board says when a beat holds nothing.
+   *
+   * It used to say "No topics in these categories yet" in grey and stop there,
+   * so filtering to an empty beat read as the page breaking: the list, the
+   * detail pane and the watchlist all emptied at once with nothing to click.
+   * Naming the beat and offering the way back makes it an answer instead of a
+   * blank screen.
+   */
+  const nothingHere = (
+    <div style={{ padding: "26px 18px", textAlign: "center" }}>
+      <div style={{ fontSize: 12.5, color: "#383838", fontWeight: 500 }}>
+        {activeCategories.length === 1
+          ? `${t("Nothing in this beat yet")} · ${
+              beats.find((b) => b.key === activeCategories[0])?.label ?? ""
+            }`
+          : t("Nothing in these beats yet")}
+      </div>
+      <div className="cap" style={{ marginTop: 6, lineHeight: 1.55, maxWidth: 300, marginInline: "auto" }}>
+        {t(
+          "Everything you are watching is filed under another beat. Add a topic here, or show every beat again.",
+        )}
+      </div>
+      <div
+        className="btn s"
+        role="button"
+        tabIndex={0}
+        style={{ display: "inline-flex", justifyContent: "center", height: 30, marginTop: 11, padding: "0 12px" }}
+        onClick={clearBeats}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            clearBeats();
+          }
+        }}
+      >
+        {t("Show every beat")}
+      </div>
+    </div>
   );
 
   const visible = React.useMemo(
@@ -393,10 +543,6 @@ export function TrendsScreen(props: {
   const selected =
     visible.find((x) => x.id === openId) ?? (visible.length > 0 ? visible[0] : null);
 
-  const pickedSources = sources.map((s) => s.name);
-  const srcNames =
-    pickedSources.slice(0, 2).join(", ") + (pickedSources.length > 2 ? ` +${pickedSources.length - 2}` : "");
-
   const chart = selected !== null ? chartPaths(selected.points) : { line: "", area: "" };
   const firstPoint = selected !== null && selected.points.length > 0 ? selected.points[0] : null;
   const lastPoint =
@@ -411,7 +557,12 @@ export function TrendsScreen(props: {
       {/* The module sidebar is a shared component now: see ResearchSidebar. */}
       <div
         data-trends-screen=""
-        style={{ ...frameStyle, flexGrow: 1, display: "flex", flexDirection: "column", minWidth: 0 }}
+        /* `minHeight: 0` is the whole fix for the frozen screen. A flex child
+           defaults to `min-height: auto`, which means it refuses to shrink
+           below its own content — so this grew past the viewport, the parent
+           clipped it, and everything below the fold (the three cards, the
+           agent under the watchlist) was simply unreachable. */
+        style={{ ...frameStyle, flexGrow: 1, display: "flex", flexDirection: "column", minWidth: 0, minHeight: 0 }}
       >
         <div className="bar">
           <span className="h1">{t("Trends dashboard")}</span>
@@ -425,6 +576,7 @@ export function TrendsScreen(props: {
         </div>
         <div style={{ flexGrow: 1, display: "flex", minHeight: 0 }}>
           <div style={{ flexGrow: 1, minWidth: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+            {live}
             <div
               style={{
                 flexShrink: 0,
@@ -436,13 +588,13 @@ export function TrendsScreen(props: {
                 borderBottom: "1px solid #ededed",
               }}
             >
-              {/* Sources are configured for the studio, not chosen per view, so
-                  this states what was read rather than wearing a chevron for a
-                  picker that never opens. */}
-              <div className="chip">
-                {t("Sources")}
-                <span className="pkv">{pickedSources.length > 0 ? srcNames : t("None")}</span>
-              </div>
+              {/* Where the topics come from.
+                  This was a chip reading "Sources · Bloomberg, CoinDesk +11",
+                  which spent the most valuable part of the toolbar stating
+                  something that cannot be changed from here and is already
+                  listed, in full and with its connection state, in the module
+                  sidebar. The space belongs to the thing people came to do. */}
+              <div style={{ width: 268, flexShrink: 0 }}>{watchField}</div>
               <div className="pkw">
                 <div
                   className={`chip${activeCategories.length > 0 ? " pkon" : ""}`}
@@ -471,8 +623,9 @@ export function TrendsScreen(props: {
                         <b>{t("Rank only these beats")}</b>
                       </div>
                       <div className="pkg">{t("Beats")}</div>
-                      {categories.map((c) => {
+                      {beats.map((c) => {
                         const on = activeCategories.includes(c.key);
+                        // Over every topic, which is what the panel is for.
                         const n = topics.filter((t) => inCategory(t, c.key)).length;
                         return (
                           <div
@@ -504,13 +657,11 @@ export function TrendsScreen(props: {
                         <span
                           role="button"
                           tabIndex={0}
-                          onClick={() => {
-                            for (const k of [...activeCategories]) onToggleCategory(k);
-                          }}
+                          onClick={clearBeats}
                           onKeyDown={(e) => {
                             if (e.key === "Enter" || e.key === " ") {
                               e.preventDefault();
-                              for (const k of [...activeCategories]) onToggleCategory(k);
+                              clearBeats();
                             }
                           }}
                         >
@@ -541,6 +692,16 @@ export function TrendsScreen(props: {
               </span>
             </div>
 
+            {/*
+              * The scrolling part of the board.
+              *
+              * A plain block, deliberately, not a flex column. As a flex
+              * column its children shrank to fit instead of overflowing, so
+              * nothing ever scrolled: the chart stretched, the three cards
+              * were clipped by the window, and the page read as frozen.
+              * Blocks flow, and a block that overflows scrolls.
+              */}
+            <div style={{ flexGrow: 1, minHeight: 0, overflowY: "auto" }}>
             {topics.length === 0 ? (
               <div style={{ padding: "40px 20px", maxWidth: 460 }}>
                 <div style={{ fontSize: 15, fontWeight: 600 }}>
@@ -626,11 +787,11 @@ export function TrendsScreen(props: {
 
                 <div style={{ flexShrink: 0, padding: "0 20px" }}>
                   <div className="lwbox">
-                    <div style={{ width: "100%", height: 318 }}>
+                    <div style={{ width: "100%", height: 238 }}>
                       {selected.points.length > 0 ? (
                         <svg
                           width="100%"
-                          height={318}
+                          height={238}
                           viewBox={`0 0 ${CH_W} ${CH_H}`}
                           preserveAspectRatio="none"
                           style={{ display: "block" }}
@@ -698,15 +859,17 @@ export function TrendsScreen(props: {
 
                 <div
                   style={{
-                    flexGrow: 1,
-                    minHeight: 0,
+                    /* A height, not a floor. The cards scroll their own
+                       contents — "Why it's moving" is forty headlines on a
+                       busy topic — rather than growing the board. */
+                    height: 320,
                     display: "grid",
                     gridTemplateColumns: "minmax(0,1.35fr) minmax(0,1fr) 220px",
                     gap: 14,
                     padding: "16px 20px 18px",
                   }}
                 >
-                  <div className="card" style={{ padding: "13px 15px", overflow: "hidden" }}>
+                  <div className="card" style={{ padding: "13px 15px", overflowY: "auto" }}>
                     <div className="lbl" style={{ padding: 0, marginBottom: 4 }}>
                       {t("Why it’s moving")}
                     </div>
@@ -727,19 +890,49 @@ export function TrendsScreen(props: {
                       </div>
                     ))}
                   </div>
-                  <div className="card" style={{ padding: "13px 15px" }}>
+                  <div className="card" style={{ padding: "13px 15px", overflowY: "auto" }}>
                     <div className="lbl" style={{ padding: 0, marginBottom: 10 }}>
                       {t("Suggested angles")}
                     </div>
                     <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
                       {selected.angles.length === 0 ? (
-                        // Angles are the studio's own editorial judgement; until
-                        // someone (or their agent) writes them down, say so
-                        // rather than leaving a blank card.
+                        /* This said "ask your agent to suggest some" and gave
+                           you nothing to ask with — the pane had no agent on
+                           it and `angles` was a column nothing ever wrote. The
+                           sentence is now a button that does what it describes,
+                           from the headlines listed further down this pane. */
                         <div className="mut" style={{ lineHeight: 1.5 }}>
                           {t("No angles yet")}
                           {". "}
                           {t("Ask your agent to suggest some from what it has read.")}
+                        </div>
+                      ) : null}
+                      {onSuggestAngles ? (
+                        <div
+                          className="btn s"
+                          role="button"
+                          tabIndex={0}
+                          aria-busy={anglesBusy === selected.id}
+                          style={{
+                            justifyContent: "center",
+                            height: 30,
+                            marginTop: selected.angles.length === 0 ? 4 : 7,
+                            opacity: anglesBusy === selected.id ? 0.6 : 1,
+                            pointerEvents: anglesBusy === selected.id ? "none" : undefined,
+                          }}
+                          onClick={() => onSuggestAngles(selected.id)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              onSuggestAngles(selected.id);
+                            }
+                          }}
+                        >
+                          {anglesBusy === selected.id
+                            ? t("Reading the headlines…")
+                            : selected.angles.length === 0
+                              ? t("Suggest angles")
+                              : t("Suggest more")}
                         </div>
                       ) : null}
                       {selected.angles.map((angle, i) => (
@@ -756,6 +949,26 @@ export function TrendsScreen(props: {
                     <div className="lbl" style={{ padding: 0, marginBottom: 10 }}>
                       {t("Decision")}
                     </div>
+                    {onWriteScript ? (
+                      /* The decision that matters most: from here to a draft
+                         in the library in one press. Adopt still files the
+                         topic; this writes the thing the topic is for. */
+                      <div
+                        className="btn p"
+                        style={{ justifyContent: "center", height: 34, marginBottom: 7, background: "#171717" }}
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => onWriteScript(selected.id)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            onWriteScript(selected.id);
+                          }
+                        }}
+                      >
+                        {zh ? "写剧本 →" : "Write the script →"}
+                      </div>
+                    ) : null}
                     <div
                       className="btn p"
                       style={{ justifyContent: "center", height: 34 }}
@@ -811,16 +1024,19 @@ export function TrendsScreen(props: {
                 </div>
               </>
             ) : (
-              <div style={{ flexGrow: 1, minHeight: 0 }}>
-                <div className="cap" style={{ padding: "28px 16px", textAlign: "center" }}>
-                  {t("No topics in these categories yet")}
-                </div>
-              </div>
+              <div style={{ flexGrow: 1, minHeight: 0 }}>{nothingHere}</div>
             )}
+
+            {/* The competitor board and channel discovery: below the topic,
+                inside this column's own scroll, so reading them never moves
+                the watchlist or the agent. */}
+            {below}
+            </div>
           </div>
           <div
             style={{
-              width: 312,
+              width: agentWidth,
+              position: "relative",
               flexShrink: 0,
               borderLeft: "1px solid #ededed",
               background: "#fcfcfc",
@@ -828,6 +1044,7 @@ export function TrendsScreen(props: {
               flexDirection: "column",
             }}
           >
+            {agentHandle}
             <div
               style={{
                 height: 42,
@@ -843,8 +1060,13 @@ export function TrendsScreen(props: {
                   nothing. The agent is a screen of its own, reached from the
                   rail, so only the panel's own name is drawn. */}
               <div className="rtab on">{t("Watchlist")}</div>
-              <div style={{ flexGrow: 1, padding: "0 8px" }}>{watchField}</div>
-              <span className="cap">{region}</span>
+              {/* The search that adds to this list is in the toolbar, where
+                  there is room for it to suggest. Two copies of one control
+                  is two places to look and one of them is always wrong. */}
+              <div style={{ flexGrow: 1 }} />
+              <span className="cap">
+                {visible.length} · {region}
+              </span>
             </div>
 
             {/* Column headings over an empty list are furniture, not
@@ -877,7 +1099,10 @@ export function TrendsScreen(props: {
                 {t("Change")}
               </span>
             </div>
-            <div style={{ flexGrow: 1, minHeight: 0, overflow: "hidden" }}>
+            {/* The list scrolls inside the panel rather than growing the page.
+                Six topics fitted; sixty pushed the agent below the fold, and
+                the agent is the thing you want while you read them. */}
+            <div style={{ flexGrow: 1, minHeight: 0, overflowY: "auto" }}>
               {visible.map((topic, i) => (
                 <div
                   className={`wl${selected !== null && topic.id === selected.id ? " on" : ""}`}
@@ -920,7 +1145,11 @@ export function TrendsScreen(props: {
                       className="wc"
                       style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
                     >
-                      {categoryLabel(topic)}
+                      {topic.collecting ? (
+                        <span style={{ color: ACCENT }}>{t("collecting…")}</span>
+                      ) : (
+                        categoryLabel(topic)
+                      )}
                       {topic.flagged ? (
                         <span style={{ color: "#db7706" }}>
                           {categoryLabel(topic) === "" ? "" : " · "}
@@ -944,15 +1173,13 @@ export function TrendsScreen(props: {
                   >
                     <polyline points={sparkline(topic.points)} />
                   </svg>
-                  <span className="ht">{Math.round(topic.heat)}</span>
+                  {/* A zero it has not measured reads as a measurement of
+                      zero. Until something lands, it says nothing. */}
+                  <span className="ht">{topic.collecting ? "—" : Math.round(topic.heat)}</span>
                   <span className={`ch ${topic.change < 0 ? "dn" : "up"}`}>{pct(topic.change, locale)}</span>
                 </div>
               ))}
-              {topics.length > 0 && visible.length === 0 ? (
-                <div className="cap" style={{ padding: "28px 16px", textAlign: "center" }}>
-                  {t("No topics in these categories yet")}
-                </div>
-              ) : null}
+              {topics.length > 0 && visible.length === 0 ? nothingHere : null}
             </div>
             <div
               style={{
@@ -967,6 +1194,22 @@ export function TrendsScreen(props: {
               <span style={{ width: 6, height: 6, borderRadius: 3, background: "#db7706" }} />
               <span className="cap">{t("Sensitive: carries a flag and a reason")}</span>
             </div>
+
+            {agent ? (
+              <div
+                style={{
+                  position: "relative",
+                  height: agentHeight,
+                  flexShrink: 0,
+                  display: "flex",
+                  flexDirection: "column",
+                  minHeight: 0,
+                }}
+              >
+                {agentSeam}
+                {agent}
+              </div>
+            ) : null}
           </div>
         </div>
       </div>

@@ -77,6 +77,10 @@ export type InboxScreenProps = {
   /** Hands a question to the agent, which answers on /chat where it can cite
    * the files the asker is allowed to read. */
   onAsk: (prompt: string) => void;
+  /** The conversation so far, rendered in the agent panel. */
+  thread?: React.ReactNode;
+  /** Controls above the composer: history, a new thread. */
+  tools?: React.ReactNode;
 };
 
 /** The artboard's `accent` prop, at its default (#007BE0). */
@@ -401,6 +405,8 @@ export function InboxScreen(props: InboxScreenProps): React.JSX.Element {
     onSyncNow,
     model,
     onAsk,
+    thread,
+    tools,
   } = props;
 
   const zh = locale.startsWith("zh");
@@ -603,7 +609,7 @@ export function InboxScreen(props: InboxScreenProps): React.JSX.Element {
         <style>{CSS}</style>
         <div
           data-inbox-screen=""
-          style={{ ...frameStyle, flexGrow: 1, display: "flex", flexDirection: "column", minWidth: 0 }}
+          style={{ ...frameStyle, flexGrow: 1, display: "flex", flexDirection: "column", minWidth: 0, minHeight: 0 }}
         >
           {header}
           <div style={{ padding: "40px 20px", maxWidth: 460 }}>
@@ -1023,6 +1029,26 @@ export function InboxScreen(props: InboxScreenProps): React.JSX.Element {
                 </span>
               )}
             </div>
+
+            {/* What the platform said the last time this was tried. It was
+                stored on the row and shown nowhere, so three overnight
+                failures left three drafts that looked untouched. */}
+            {draft.error ? (
+              <p
+                style={{
+                  margin: "0 0 8px",
+                  padding: "8px 10px",
+                  borderRadius: 9,
+                  background: "#fff7f7",
+                  border: "1px solid #ffd6d6",
+                  fontSize: 11.5,
+                  lineHeight: 1.55,
+                  color: "#8a2b2b",
+                }}
+              >
+                {t("The last attempt was refused")}: {draft.error}
+              </p>
+            ) : null}
             <textarea
               ref={draftRef}
               className="dr"
@@ -1146,7 +1172,7 @@ export function InboxScreen(props: InboxScreenProps): React.JSX.Element {
           Rail and ResearchSidebar. */}
       <div
         data-inbox-screen=""
-        style={{ ...frameStyle, flexGrow: 1, display: "flex", flexDirection: "column", minWidth: 0 }}
+        style={{ ...frameStyle, flexGrow: 1, display: "flex", flexDirection: "column", minWidth: 0, minHeight: 0 }}
       >
         {header}
         <div style={{ flexGrow: 1, display: "flex", minHeight: 0 }}>
@@ -1198,6 +1224,8 @@ export function InboxScreen(props: InboxScreenProps): React.JSX.Element {
             model={model}
             footnote={t("Comment data is personal data, HK PDPO applies")}
             onAsk={onAsk}
+            thread={thread}
+            tools={tools}
           />
         </div>
       </div>

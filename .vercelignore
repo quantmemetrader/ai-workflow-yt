@@ -16,3 +16,12 @@ tsconfig.tsbuildinfo
 腾亚_API.docx
 # Database dumps.
 backups/
+# Graphics are rendered on the box by the worker (Chrome + FFmpeg). Vercel has
+# neither, and shipping the Remotion tree would add ~300MB to every upload.
+remotion/
+# The worker's scratch space: renders and downloads in progress (4 GB once),
+# which made every upload hang before Vercel had a deployment to show.
+scripts/.tmp/
+logs/
+*.log
+examplevideo.mp4

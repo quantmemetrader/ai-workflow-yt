@@ -60,6 +60,24 @@ export async function putObject(key: string, body: BodyInit, contentType: string
   return key;
 }
 
+/**
+ * Put, and say what landed.
+ *
+ * The etag is what a `files` row stores as its checksum: it is the mark of a
+ * confirmed upload, and a row without one is treated as a file whose bytes
+ * never arrived. The worker's own writes — renders, voice-overs, imported
+ * pictures — need the same mark, or the bin refuses the studio's own masters.
+ */
+export async function putObjectConfirmed(key: string, body: BodyInit, contentType: string): Promise<{ key: string; etag: string | null }> {
+  const res = await client.fetch(objectUrl(key), {
+    method: "PUT",
+    body,
+    headers: { "Content-Type": contentType },
+  });
+  if (!res.ok) throw new Error(`R2 put ${key} failed: ${res.status} ${await res.text()}`);
+  return { key, etag: res.headers.get("etag")?.replaceAll('"', "") ?? null };
+}
+
 export async function getObject(key: string): Promise<Response> {
   return client.fetch(objectUrl(key));
 }
@@ -72,6 +90,49 @@ export async function headObject(key: string) {
     contentType: res.headers.get("content-type") ?? "application/octet-stream",
     etag: res.headers.get("etag")?.replaceAll('"', "") ?? null,
   };
+}
+
+/**
+ * The keys under a prefix, with their sizes and dates.
+ *
+ * Paged, because `ListObjectsV2` returns a thousand at a time and a bucket of
+ * backups outlives that in three years. Only used by tooling — nothing a
+ * person waits on lists a bucket.
+ */
+export async function listObjects(
+  prefix: string,
+): Promise<{ key: string; size: number; modified: string | null }[]> {
+  const out: { key: string; size: number; modified: string | null }[] = [];
+  let token: string | undefined;
+
+  do {
+    const url = new URL(`${env.r2.endpoint}/${env.r2.bucket}`);
+    url.searchParams.set("list-type", "2");
+    url.searchParams.set("prefix", prefix);
+    url.searchParams.set("max-keys", "1000");
+    if (token) url.searchParams.set("continuation-token", token);
+
+    const res = await client.fetch(url.toString());
+    if (!res.ok) throw new Error(`R2 list ${prefix} failed: ${res.status}`);
+    const xml = await res.text();
+
+    for (const block of xml.matchAll(/<Contents>([\s\S]*?)<\/Contents>/g)) {
+      const body = block[1];
+      const key = /<Key>([\s\S]*?)<\/Key>/.exec(body)?.[1];
+      if (!key) continue;
+      out.push({
+        key,
+        size: Number(/<Size>(\d+)<\/Size>/.exec(body)?.[1] ?? 0),
+        modified: /<LastModified>([\s\S]*?)<\/LastModified>/.exec(body)?.[1] ?? null,
+      });
+    }
+
+    token = /<IsTruncated>true<\/IsTruncated>/.test(xml)
+      ? (/<NextContinuationToken>([\s\S]*?)<\/NextContinuationToken>/.exec(xml)?.[1] ?? undefined)
+      : undefined;
+  } while (token);
+
+  return out;
 }
 
 export async function deleteObject(key: string) {

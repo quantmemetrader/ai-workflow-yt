@@ -22,13 +22,66 @@ const pool =
   global.__pgPool ??
   new Pool({
     connectionString: env.databaseUrl,
-    max: 8,
-    idleTimeoutMillis: 30_000,
-    connectionTimeoutMillis: 10_000,
+    /*
+     * Sixteen, not eight.
+     *
+     * A page renders its queries in parallel — Finance opens with six, and the
+     * layout, the rail and the agent panel add their own — and every one of
+     * them takes 236ms against Singapore. Eight connections per process meant
+     * the seventh query queued behind a round trip, and on a box running at
+     * three times its core count the queue outlived the ten-second connect
+     * timeout: `/finance` answered 500 with "timeout exceeded when trying to
+     * connect" while the health check, which needs one connection, stayed
+     * green.
+     *
+     * Neon's pooler is pgbouncer and fans thousands of client connections onto
+     * a handful of Postgres ones, so this costs it nothing.
+     */
+    max: 16,
+    /*
+     * Five minutes, not thirty seconds.
+     *
+     * Measured on the box: a warm connection answers `select 1` in 244ms and a
+     * cold one in 1,900ms, because a cold one pays TCP plus a TLS handshake to
+     * Singapore first. At a thirty-second idle timeout a quiet worker closed
+     * every connection between jobs and paid that handshake again on the next
+     * one — the box's own health check took 1,667ms for a query that costs
+     * two. The heartbeat below keeps one alive past even this.
+     */
+    idleTimeoutMillis: 5 * 60_000,
+    /*
+     * Twenty seconds. Long, deliberately: the alternative to waiting is a 500,
+     * and against a database on another continent from a machine that is
+     * routinely oversubscribed, a connection that takes twelve seconds is slow
+     * rather than broken.
+     */
+    connectionTimeoutMillis: 20_000,
     // Neon terminates idle TLS sessions; keepalive stops us from handing a
     // dead socket to the first request after a quiet period.
     keepAlive: true,
   });
+
+/*
+ * Every connection starts with a known search path.
+ *
+ * This is not belt and braces, it is a bug we have already had. `DATABASE_URL`
+ * points at Neon's *pooler*, which is pgbouncer, and pgbouncer hands the same
+ * server connection to one client after another. Anything that changes session
+ * state therefore leaks — and `pg_dump` opens with
+ * `SELECT pg_catalog.set_config('search_path', '', false)`.
+ *
+ * One backup run through the pooler left `search_path` empty on a pooled
+ * server connection, and from then on unqualified table names resolved to
+ * nothing: sign-in failed with `relation "users" does not exist` while the
+ * health check, which only runs `select 1`, stayed green. The backup script
+ * now uses the direct endpoint, and this makes the app immune to the class
+ * rather than to the instance.
+ */
+pool.on("connect", (client) => {
+  void client.query("set search_path to public").catch((err) => {
+    console.error("[db] could not set search_path", err instanceof Error ? err.message : err);
+  });
+});
 
 if (!env.isProd) global.__pgPool = pool;
 
@@ -45,6 +98,28 @@ if (!global.__pgWarmed) {
   void Promise.all([pool.query("select 1"), pool.query("select 1")]).catch((err) => {
     console.error("[db] warmup failed", err.message);
   });
+
+  /*
+   * And keep one alive.
+   *
+   * Only in a long-lived process. On a serverless function the instance is
+   * frozen between requests and a timer is either ignored or billed, and the
+   * handshake there is a local one anyway: the function runs in Singapore,
+   * beside the database, and answers in 2ms. This is for the box, which is in
+   * Amsterdam and pays 1.9 seconds for a connection it let go.
+   */
+  const longLived = !process.env.VERCEL && !process.env.AWS_LAMBDA_FUNCTION_NAME;
+  if (longLived) {
+    const beat = setInterval(() => {
+      void pool.query("select 1").catch(() => {
+        // A failed heartbeat is not news: the retry wrapper and the next real
+        // query both report properly, and logging here would fill the log
+        // every twenty seconds during an outage.
+      });
+    }, 20_000);
+    // Never hold the process open on its own account.
+    beat.unref?.();
+  }
 }
 
 /**

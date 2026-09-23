@@ -1,0 +1,1 @@
+CREATE INDEX "post_metrics_as_of_idx" ON "post_metrics" USING btree ("as_of");

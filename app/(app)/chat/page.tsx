@@ -1,6 +1,8 @@
 import { requireModule } from "@/lib/auth/dal";
-import { modelFor } from "@/lib/ai/models";
+import { answeringModel } from "@/lib/ai/models";
 import { AgentScreen } from "@/components/canvas/AgentScreen";
+
+export const metadata = { title: "聊天 · Chat" };
 
 export default async function NewChatPage({
   searchParams,
@@ -16,7 +18,7 @@ export default async function NewChatPage({
       conversationId={null}
       initialMessages={[]}
       locale={viewer.locale ?? "zh-CN"}
-      model={modelFor.assistant()}
+      model={answeringModel()}
       initialPrompt={q}
       me={{
         name: zh && viewer.nameLocal ? viewer.nameLocal : viewer.name,

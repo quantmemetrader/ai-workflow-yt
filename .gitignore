@@ -23,3 +23,20 @@ backups/
 
 # Runtime logs from pm2 and the background workers. Regenerated on every run.
 logs/
+remotion/node_modules
+remotion/out
+scripts/.tmp/
+remotion/.bundle
+examplevideo.mp4
+
+# TypeScript incremental build state
+tsconfig.tsbuildinfo
+
+# Cached Remotion stills (keyed by content)
+remotion/.stills
+
+# Scratch screenshots kept locally: they show the old host IP, the client's
+# domain and a frame of client video. Not secrets, but not for a public repo.
+/image.png
+/image copy.png
+/image copy 2.png

@@ -12,6 +12,7 @@ import { BudgetStop, assertBudget, budgetState, notifyBudgetStop, recordUsage, t
 import { labelFor, modelFor } from "./models";
 import { assemblePrompt } from "./prompt";
 import { runTool, toolsFor } from "./tools";
+import type { ToolContext } from "./tools/types";
 
 /**
  * One turn of the employee's agent (spec §4.2, §5).
@@ -44,7 +45,17 @@ export type AgentEvent =
   | { type: "done"; messageId: string }
   | { type: "error"; kind: string; message: string };
 
-const MAX_ROUNDS = 4;
+/**
+ * How many times the model may call tools before it has to answer.
+ *
+ * Four was enough for "summarise this channel". Cutting a video is look,
+ * find, cut, add, add, check — and a turn that ran out of rounds halfway
+ * through "put a name on and punch in on the number" left the name on and
+ * the number alone. The editing modules get more room; the others keep the
+ * cost of a turn where it was.
+ */
+const ROUNDS_BY_MODULE: Partial<Record<Module, number>> = { video: 9, script: 6, research: 6 };
+const DEFAULT_ROUNDS = 4;
 const HISTORY = 20;
 
 export async function* runAgent(opts: {
@@ -52,6 +63,16 @@ export async function* runAgent(opts: {
   conversationId: string;
   content: string;
   module?: Module;
+  /**
+   * What is open on screen when they asked.
+   *
+   * Without it, "summarise this channel" and "cut that bit out" are
+   * unanswerable: the model would have to guess an id, and a guessed id is
+   * either wrong or somebody else's. Every field is re-checked against the
+   * viewer inside the tool that uses it, so a client sending an id it cannot
+   * read gets the same answer as one sending nothing.
+   */
+  context?: Omit<ToolContext, "viewer">;
   signal?: AbortSignal;
 }): AsyncGenerator<AgentEvent> {
   const { viewer, conversationId, content, signal } = opts;
@@ -160,6 +181,8 @@ export async function* runAgent(opts: {
    * under their cap could walk a long way past it before the next check. */
   const allowance = budget.remainingMicros;
   let budgetStopped = false;
+  /** What the tools changed this turn, in their own words. */
+  const changes: string[] = [];
 
   /** Every model call goes through here, so none of them can escape the
    * ledger (§5): user, module, model, provider, tokens, cost, request id. */
@@ -184,6 +207,8 @@ export async function* runAgent(opts: {
   };
 
   const outOfAllowance = () => allowance !== null && totalCost >= allowance;
+
+  const MAX_ROUNDS = (opts.module && ROUNDS_BY_MODULE[opts.module]) || DEFAULT_ROUNDS;
 
   try {
     for (let round = 0; round < MAX_ROUNDS; round++) {
@@ -265,7 +290,7 @@ export async function* runAgent(opts: {
         let result;
         let failed: string | null = null;
         try {
-          result = await runTool(viewer, call.name, call.arguments);
+          result = await runTool(viewer, call.name, call.arguments, opts.context ?? {});
         } catch (err) {
           failed = err instanceof Error ? err.message : String(err);
           result = { text: `The tool failed: ${failed}` };
@@ -273,6 +298,11 @@ export async function* runAgent(opts: {
 
         result.citations?.forEach((id) => citedFileIds.add(id));
         if (result.withheld) withheldAny = true;
+        /* A tool that changed something, and what it says it did. If the model
+           then says nothing, this is what the person is told — because
+           "nothing was lost, ask again" after a lower third has been added is
+           how you end up with two lower thirds. */
+        if (result.changed && !failed) changes.push(result.text.trim());
 
         // The trace is a record of the turn, not part of it: if writing the
         // row fails, the tool result still has to reach the model below.
@@ -402,6 +432,19 @@ export async function* runAgent(opts: {
       yield { type: "citations", files: [], withheld: true };
     }
 
+    /*
+     * Silent, but it did something.
+     *
+     * A model that calls two tools and then produces no closing sentence is
+     * common on the cheaper endpoints. The work happened, so the turn reports
+     * it rather than erroring: an "ask again" after a change has been written
+     * invites somebody to make the same change twice.
+     */
+    if (!answer.trim() && changes.length && !signal?.aborted) {
+      answer = changes.join(" ");
+      yield { type: "delta", text: answer };
+    }
+
     if (!answer.trim() && !signal?.aborted) {
       yield {
         type: "error",
@@ -523,8 +566,31 @@ function summarise(name: string, args: string, result: string): string {
       return result;
     case "check_ai_spend":
       return result;
+    case "describe_timeline":
+      return "Looked at the timeline";
+    case "find_in_transcript":
+      return `Searched the transcript for “${a.query ?? ""}”`;
+    case "list_clips":
+      return "Listed the clips in the bin";
+    case "list_pictures":
+    case "find_a_picture":
+      return `Looked for a picture${a.query ? ` of “${a.query}”` : ""}`;
+    case "creator_videos":
+      return `Looked at the channel's own videos${a.query ? ` for “${a.query}”` : ""}`;
+    case "creator_video":
+      return "Read one of the channel's videos";
+    case "list_topics":
+      return "Listed the watched topics";
+    case "read_topic":
+      return `Read the topic “${a.phrase ?? ""}”`;
+    case "list_scripts":
+      return "Listed the scripts";
+    case "read_script":
+      return "Read the script";
     default:
-      return name;
+      /* Anything that changed something says what it did in its own words:
+         "Cut 0:14–0:19", "Punch in ×1.15 at 1:02", "Written: …". */
+      return result.split("\n")[0].slice(0, 160) || name;
   }
 }
 

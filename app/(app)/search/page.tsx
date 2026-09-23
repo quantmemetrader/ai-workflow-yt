@@ -4,6 +4,10 @@ import { searchFiles } from "@/lib/ai/retrieval";
 import { audit } from "@/lib/audit";
 import { formatDate } from "@/lib/i18n";
 import { SearchBox } from "./search-box";
+import { AgentDock } from "@/components/shell/AgentDock";
+import { answeringModel } from "@/lib/ai/models";
+
+export const metadata = { title: "搜索 · Search" };
 
 /**
  * Search across everything this person can read (spec §4.1, "global search,
@@ -33,6 +37,9 @@ export default async function SearchPage({
   }
 
   return (
+    /* The agent sits beside the results: a search that found the wrong forty
+       things is exactly when somebody wants to ask a question in words. */
+    <div style={{ flexGrow: 1, minWidth: 0, display: "flex" }}>
     <div style={{ flexGrow: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
       <div
         style={{
@@ -119,6 +126,21 @@ export default async function SearchPage({
           </>
         )}
       </div>
+    </div>
+
+    <AgentDock
+      context={{ module: "files" }}
+      zh={zh}
+      model={answeringModel()}
+      scope={q.trim() ? `${hits.length} ${zh ? "个结果" : "results"}` : zh ? "全部内容" : "Everything"}
+      note={
+        zh
+          ? "助理和你搜到的是同一批内容：它也只能读你有权查看的文件。"
+          : "The agent searches the same set you do: it can only read what you can read."
+      }
+      placeholder={zh ? "问这些结果…" : "Ask about these results…"}
+      corner={withheld > 0 ? (zh ? `${withheld} 项未显示` : `${withheld} withheld`) : undefined}
+    />
     </div>
   );
 }

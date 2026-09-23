@@ -58,7 +58,7 @@ export const NAV: NavItem[] = [
     href: "/video",
     label: "Video Edit",
     labelZh: "视频剪辑",
-    live: false,
+    live: true,
     icon: '<rect x="3.4" y="5.4" width="12.4" height="13.2" rx="2.1"/><path d="m16.6 13 4.6 2.8V8.2L16.6 11z"/>',
   },
   {
@@ -66,7 +66,7 @@ export const NAV: NavItem[] = [
     href: "/publish",
     label: "Publish",
     labelZh: "发布",
-    live: false,
+    live: true,
     dividerAfter: true,
     icon: '<path d="M21.86 4.14a1.1 1.1 0 0 0-1.14-.18L2.9 11.13c-.86.34-.83 1.58.05 1.87l4.46 1.5 1.68 5.06c.24.72 1.15.93 1.68.38l2.4-2.5 4.4 3.23c.6.44 1.46.12 1.63-.6z"/>',
   },
@@ -75,7 +75,7 @@ export const NAV: NavItem[] = [
     href: "/accounting",
     label: "Accounting",
     labelZh: "会计",
-    live: false,
+    live: true,
     icon: '<rect x="5.4" y="3.4" width="13.2" height="17.2" rx="2"/><path d="M8.4 8h7.2M8.4 12h7.2M8.4 16h4" stroke="#f8f8f8" stroke-width="1.5" fill="none"/>',
   },
   {
@@ -83,7 +83,7 @@ export const NAV: NavItem[] = [
     href: "/finance",
     label: "Finance",
     labelZh: "财务",
-    live: false,
+    live: true,
     icon: '<circle cx="12" cy="12" r="8.6"/><path d="M14.8 9.4c-.4-1-1.5-1.6-2.8-1.6-1.6 0-2.8.9-2.8 2.1 0 2.9 5.7 1.4 5.7 4.3 0 1.2-1.2 2.1-2.9 2.1-1.4 0-2.5-.6-2.9-1.6M12 6.4v1.4M12 16.3v1.4" stroke="#f8f8f8" stroke-width="1.5" fill="none"/>',
   },
   {
@@ -91,7 +91,7 @@ export const NAV: NavItem[] = [
     href: "/legal",
     label: "Legal",
     labelZh: "法务",
-    live: false,
+    live: true,
     icon: '<path d="M12 3.2 4.4 6.2v5.6c0 4.4 3.1 8.3 7.6 9.3 4.5-1 7.6-4.9 7.6-9.3V6.2z"/>',
   },
   {
@@ -99,7 +99,7 @@ export const NAV: NavItem[] = [
     href: "/hr",
     label: "HR",
     labelZh: "人事",
-    live: false,
+    live: true,
     icon: '<circle cx="12" cy="7.8" r="3.7"/><path d="M4.7 20.2a7.3 7.3 0 0 1 14.6 0z"/>',
   },
   {
@@ -107,7 +107,7 @@ export const NAV: NavItem[] = [
     href: "/admin",
     label: "Admin",
     labelZh: "管理",
-    live: false,
+    live: true,
     icon: '<path d="M4 7.4h16M4 12h16M4 16.6h16" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linecap="round"/><circle cx="9" cy="7.4" r="2.2"/><circle cx="15" cy="16.6" r="2.2"/>',
   },
 ];

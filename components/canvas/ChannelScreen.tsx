@@ -2,6 +2,9 @@
 
 import * as React from "react";
 import { formatTextarea, type Format } from "./composer-format";
+import { FormattedPreview, HAS_MARKUP } from "@/components/ui/FormattedPreview";
+import { Markdown } from "@/components/ui/Markdown";
+import { JUMP_EVENT } from "@/components/shell/CommandPalette";
 
 /**
  * Transcription of design/canvas/Chat-Channel.dc.html — the main column only
@@ -17,6 +20,9 @@ export type ChannelMessage = {
   body: string;
   createdAt: string;
   isAgent?: boolean;
+  /** On screen but not yet acknowledged by the server. Drawn a shade back, so
+   * "sent" and "sending" are not the same picture. */
+  pending?: boolean;
 };
 
 export type ChannelMember = { name: string; avatar: string | null };
@@ -49,8 +55,15 @@ function dayLabel(iso: string, loc: string): string {
   return new Intl.DateTimeFormat(loc, { weekday: "short", day: "numeric", month: "short" }).format(d);
 }
 
-/** @mentions carry the artboard's .ment pill. */
-function renderBody(body: string): React.ReactNode[] {
+/**
+ * @mentions carry the artboard's .ment pill.
+ *
+ * A message with formatting in it — the composer's own B, I, link and list
+ * buttons write Markdown — is drawn as formatted, not as the asterisks. Plain
+ * lines keep the cheaper path with the mention pills.
+ */
+function renderBody(body: string): React.ReactNode {
+  if (HAS_MARKUP.test(body)) return <Markdown text={body} />;
   return body.split(/(@[A-Za-z0-9_\u4e00-\u9fff-]+)/g).map((part, i) =>
     part.startsWith("@") && part.length > 1 ? (
       <span className="ment" key={i}>
@@ -67,10 +80,21 @@ export function ChannelScreen(props: {
   topic: string | null;
   memberCount: number;
   members: ChannelMember[];
+  /** Opens the members sheet. The artboard drew this pill as a label; a list
+   * of faces with no way to see or change who is in the room is a label. */
+  onOpenMembers?: () => void;
   messages: ChannelMessage[];
   sending: boolean;
   onSend: (body: string) => void;
   locale: string;
+  /** False on an announcements channel for anyone but an administrator. */
+  canPost?: boolean;
+  /** Shown where the composer would be, when there is no composer. */
+  readOnlyNote?: string;
+  /** A message the server would not take, with what it said. Shown above the
+   * composer with the words still in hand. */
+  failed?: { body: string; error: string } | null;
+  onDismissFailure?: () => void;
 }): React.JSX.Element {
   const loc = props.locale === "en" ? "en-GB" : props.locale;
   const time = new Intl.DateTimeFormat(loc, { hour: "2-digit", minute: "2-digit" });
@@ -144,7 +168,10 @@ export function ChannelScreen(props: {
           )}
         </div>
         <div style={{ flexGrow: 1 }}></div>
-        <div
+        <button
+          type="button"
+          onClick={props.onOpenMembers}
+          aria-label={zh ? `${props.memberCount} 位成员` : `${props.memberCount} members`}
           style={{
             display: "flex",
             alignItems: "center",
@@ -153,6 +180,10 @@ export function ChannelScreen(props: {
             border: "1px solid #ededed",
             borderRadius: "9px",
             gap: "7px",
+            background: "#fff",
+            cursor: props.onOpenMembers ? "pointer" : "default",
+            fontFamily: "inherit",
+            letterSpacing: "inherit",
           }}
         >
           <div style={{ display: "flex" }}>
@@ -202,13 +233,21 @@ export function ChannelScreen(props: {
           >
             {props.memberCount}
           </span>
-        </div>
-        <a className="ico2" href="/search" aria-label={zh ? "搜索" : "Search"}>
+        </button>
+        {/* Search opens the palette over the channel rather than navigating to
+            /search and taking the conversation off the screen. */}
+        <button
+          type="button"
+          className="ico2"
+          onClick={() => window.dispatchEvent(new Event(JUMP_EVENT))}
+          aria-label={zh ? "搜索" : "Search"}
+          style={{ background: "transparent", border: 0, cursor: "pointer", padding: 0 }}
+        >
           <svg viewBox="0 0 24 24">
             <circle cx="11" cy="11" r="6.4" />
             <path d="m15.8 15.8 4 4" />
           </svg>
-        </a>
+        </button>
         <span className="ico2" role="note" tabIndex={0} aria-label={props.topic ?? `#${props.name}`} title={props.topic ?? `#${props.name}`}>
           <svg viewBox="0 0 24 24">
             <circle cx="12" cy="12" r="8.4" />
@@ -234,7 +273,7 @@ export function ChannelScreen(props: {
             }}
           >
             {props.messages.length === 0 ? (
-              <div style={{ margin: "auto 0", padding: "0 22px 18px" }}>
+              <div style={{ padding: "0 22px 18px" }}>
                 <div style={{ fontSize: 15, fontWeight: 600 }}>
                   {zh ? `这里还没有消息` : "No messages here yet"}
                 </div>
@@ -312,7 +351,9 @@ export function ChannelScreen(props: {
                       <span>{dayLabel(m.createdAt, loc)}</span>
                     </div>
                   ) : null}
-                  <div className={cont ? "msg cont" : "msg"}>
+                  {/* A message on screen before the server has it is drawn a
+                      shade back, so "sending" and "sent" are not one picture. */}
+                  <div className={cont ? "msg cont" : "msg"} style={m.pending ? { opacity: 0.55 } : undefined}>
                     {avatar}
                     <div style={{ minWidth: 0, flexGrow: 1 }}>
                       {cont ? null : (
@@ -329,7 +370,62 @@ export function ChannelScreen(props: {
               );
             })}
           </div>
+          {/* A channel somebody may not post in gets a line saying so rather
+              than a composer that refuses on submit. The rule is enforced in
+              `postMessage` either way; this is how it reads. */}
+          {props.canPost === false ? (
+            <div style={{ flexShrink: 0, padding: "8px 22px 18px" }}>
+              <div
+                style={{
+                  border: "1px solid #ededed",
+                  borderRadius: 12,
+                  background: "#fafafa",
+                  padding: "13px 15px",
+                  fontSize: 12,
+                  color: "#7c7c7c",
+                  lineHeight: 1.6,
+                }}
+              >
+                {props.readOnlyNote}
+              </div>
+            </div>
+          ) : (
           <div style={{ flexShrink: 0, padding: "8px 22px 18px" }}>
+            {/* A refused message, said out loud. It used to be swallowed, so a
+                send that never happened looked exactly like one that did. */}
+            {props.failed ? (
+              <div
+                role="alert"
+                style={{
+                  marginBottom: 8,
+                  border: "1px solid #fdc2c2",
+                  background: "#fff7f7",
+                  borderRadius: 10,
+                  padding: "9px 12px",
+                  fontSize: 12,
+                  color: "#b52a2a",
+                  display: "flex",
+                  alignItems: "baseline",
+                  gap: 8,
+                }}
+              >
+                <span style={{ flexGrow: 1, minWidth: 0 }}>
+                  {zh ? "没有发送出去：" : "Not sent: "}
+                  {props.failed.error}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDraft(props.failed?.body ?? "");
+                    props.onDismissFailure?.();
+                    box.current?.focus();
+                  }}
+                  style={{ border: 0, background: "transparent", padding: 0, cursor: "pointer", font: "inherit", color: "#b52a2a", textDecoration: "underline" }}
+                >
+                  {zh ? "取回文字" : "Put it back in the box"}
+                </button>
+              </div>
+            ) : null}
             <div
               style={{
                 border: "1px solid #d9d9d9",
@@ -373,6 +469,9 @@ export function ChannelScreen(props: {
                   </svg>
                 </button>
               </div>
+              {/* Pressing B inserts `**`, which a textarea can only show as
+                  two asterisks. This is what it will actually look like. */}
+              <FormattedPreview text={draft} zh={zh} />
               <textarea
                 ref={box}
                 className="dc-composer"
@@ -473,6 +572,7 @@ export function ChannelScreen(props: {
               </div>
             </div>
           </div>
+          )}
         </div>
       </div>
     </div>

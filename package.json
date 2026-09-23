@@ -21,22 +21,21 @@
     "deploy": "bash scripts/deploy.sh",
     "db:reset": "node --env-file=.env.local --dns-result-order=ipv4first --conditions=react-server --import tsx scripts/reset-tenant.ts",
     "db:add-user": "node --env-file=.env.local --dns-result-order=ipv4first --conditions=react-server --import tsx scripts/add-user.ts",
-    "db:backup": "bash -c 'set -a; . ./.env.local; set +a; mkdir -p backups; f=backups/$(date +%Y%m%d-%H%M%S).sql; pg_dump \"$DATABASE_URL\" > $f; ls -lh $f'",
-    "postbuild": "test -d .next/standalone && rm -rf .next/standalone/public .next/standalone/.next/static && cp -r public .next/standalone/public && cp -r .next/static .next/standalone/.next/static || echo 'no standalone output (Vercel builds its own); nothing to stage'"
+    "db:backup": "bash scripts/backup-db.sh",
+    "postbuild": "test -d .next/standalone && rm -rf .next/standalone/public .next/standalone/.next/static && cp -r public .next/standalone/public && cp -r .next/static .next/standalone/.next/static || echo 'no standalone output (Vercel builds its own); nothing to stage'",
+    "deploy:vercel": "bash scripts/deploy-vercel.sh"
   },
   "dependencies": {
-    "@neondatabase/serverless": "^1.1.0",
+    "@types/qrcode": "^1.5.6",
     "aws4fetch": "^1.0.20",
     "drizzle-orm": "^0.45.2",
     "fast-xml-parser": "^5.11.1",
-    "lucide-react": "^1.31.0",
-    "motion": "^13.1.0",
     "next": "16.3.0",
     "pg": "^8.23.0",
+    "qrcode": "^1.5.4",
     "react": "19.2.8",
     "react-dom": "19.2.8",
-    "server-only": "^0.0.1",
-    "zod": "^4.6.5"
+    "server-only": "^0.0.1"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

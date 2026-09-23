@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { and, desc, eq, inArray, isNull } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { channelPosts, channels, commentDrafts, comments } from "@/lib/db/schema";
 import { getViewer, type Viewer } from "@/lib/auth/dal";
@@ -99,6 +99,14 @@ export async function approveReplyAction(draftId: unknown, editedBody?: unknown)
 
   const comment = await ownComment(viewer, draft.commentId);
   if (!comment) return { error: "Not allowed" };
+  /*
+   * A comment that was hidden or marked spam while this draft sat on somebody's
+   * screen must not be replied to. The read above is a moment ago; this is the
+   * state now (REVIEW.md, smaller list).
+   */
+  if (comment.state !== "open") {
+    return { error: "That comment has already been dealt with." };
+  }
 
   const body = typeof editedBody === "string" && editedBody.trim() ? editedBody.trim() : draft.body;
   if (!body) return { error: "There is nothing to send." };
@@ -107,24 +115,75 @@ export async function approveReplyAction(draftId: unknown, editedBody?: unknown)
   const edited = body !== draft.body;
   const approvedAt = new Date();
 
+  /*
+   * Claim the draft before calling the platform (REVIEW.md #1).
+   *
+   * The check used to be a read and the write had no `where sent_at is null`,
+   * with nothing between them. Zernio's reply call has a 20-second timeout, so
+   * a producer who saw nothing happen and pressed Approve in a second tab
+   * passed the check twice and posted the same reply twice, in public, as the
+   * studio. This is one statement: whoever's update returns a row owns the
+   * send, and the other gets nothing back and stops.
+   */
+  const claimed = await db
+    .update(commentDrafts)
+    .set({
+      body,
+      ...(edited ? { editedBy: viewer.id, editedAt: approvedAt } : {}),
+      approvedBy: viewer.id,
+      approvedAt,
+      sentAt: approvedAt,
+      error: null,
+    })
+    .where(and(eq(commentDrafts.id, draft.id), isNull(commentDrafts.sentAt)))
+    .returning({ id: commentDrafts.id });
+
+  if (!claimed.length) return { error: "That reply has already been sent." };
+
+  /** Give the claim back, so the draft is a draft again rather than a lie. */
+  const release = async (message: string | null) => {
+    await db
+      .update(commentDrafts)
+      .set({ sentAt: null, approvedBy: null, approvedAt: null, error: message?.slice(0, 500) ?? null })
+      .where(eq(commentDrafts.id, draft.id));
+  };
+
+  let platformCommentId: string | null = null;
+
   try {
     const res = await zernio.replyToComment(comment.postExternalId, {
       comment: body,
       accountId: comment.channelExternalId,
       commentId: comment.externalId,
     });
+    platformCommentId = res.id ?? null;
+  } catch (err) {
+    // The send failed, so the claim is wrong: hand it back with the provider's
+    // own words on it. "Could not send" does not tell anybody a token expired.
+    const message = err instanceof Error ? err.message : String(err);
+    await release(message);
+    await audit(viewer, "comment.reply.fail", {
+      objectType: "comment",
+      objectId: comment.id,
+      module: "research",
+      meta: { error: message.slice(0, 200) },
+    });
+    return done({ error: message });
+  }
 
+  /*
+   * Past here the reply is public (REVIEW.md #2).
+   *
+   * The database writes used to sit inside the same `try` as the vendor call,
+   * so a database failure *after* a successful send landed in the catch, which
+   * cleared `sentAt` and left a sent reply reading as a draft for the next
+   * person to approve again. Nothing below may undo the send: a failure here
+   * is logged and reported, and the draft stays marked sent.
+   */
+  try {
     await db
       .update(commentDrafts)
-      .set({
-        body,
-        ...(edited ? { editedBy: viewer.id, editedAt: approvedAt } : {}),
-        approvedBy: viewer.id,
-        approvedAt,
-        sentAt: new Date(),
-        platformCommentId: res.id ?? null,
-        error: null,
-      })
+      .set({ platformCommentId })
       .where(eq(commentDrafts.id, draft.id));
 
     await db
@@ -136,23 +195,17 @@ export async function approveReplyAction(draftId: unknown, editedBody?: unknown)
       objectType: "comment",
       objectId: comment.id,
       module: "research",
-      meta: { platform: comment.platform, edited },
+      meta: { platform: comment.platform, edited, platformCommentId },
     });
-
-    return done({ ok: true });
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    // The draft stays a draft. Keeping the provider's own words is the whole
-    // point — "could not send" does not tell anyone that a token expired.
-    await db.update(commentDrafts).set({ body, error: message.slice(0, 500) }).where(eq(commentDrafts.id, draft.id));
-    await audit(viewer, "comment.reply.fail", {
-      objectType: "comment",
-      objectId: comment.id,
-      module: "research",
-      meta: { error: message.slice(0, 200) },
+    console.error("[inbox] the reply went out but the record did not", draft.id, err);
+    return done({
+      ok: true,
+      warning: "The reply was sent, but recording it failed. Do not send it again.",
     });
-    return done({ error: message });
   }
+
+  return done({ ok: true });
 }
 
 /** Saves an edit without sending. A draft that has been touched by a person
@@ -176,22 +229,6 @@ export async function editDraftAction(draftId: unknown, body: unknown) {
     );
 
   if (!rowCount) return { error: "That draft has already been sent or withdrawn." };
-  return done({ ok: true });
-}
-
-/** Throws the draft away. The comment stays open. */
-export async function discardDraftAction(draftId: unknown) {
-  const viewer = await researcher();
-  if (!viewer) return { error: "Not allowed" };
-  if (typeof draftId !== "string") return { error: "Not allowed" };
-
-  await db
-    .update(commentDrafts)
-    .set({ discardedBy: viewer.id, discardedAt: new Date() })
-    .where(
-      and(eq(commentDrafts.id, draftId), eq(commentDrafts.tenantId, viewer.tenantId), isNull(commentDrafts.sentAt)),
-    );
-
   return done({ ok: true });
 }
 
@@ -376,26 +413,4 @@ export async function syncNowAction() {
     await enqueue({ tenantId: viewer.tenantId, type, module: "research", createdBy: viewer.id, dedupeKey: type });
   }
   return done({ ok: true });
-}
-
-/** Comments waiting on a given set of posts, used by the inbox to refresh one
- * group without reloading the page. */
-export async function draftsForAction(commentIds: string[]) {
-  const viewer = await researcher();
-  if (!viewer || !commentIds.length) return { drafts: [] };
-
-  const rows = await db
-    .select({ id: commentDrafts.id, commentId: commentDrafts.commentId, body: commentDrafts.body })
-    .from(commentDrafts)
-    .where(
-      and(
-        eq(commentDrafts.tenantId, viewer.tenantId),
-        inArray(commentDrafts.commentId, commentIds.slice(0, 300)),
-        isNull(commentDrafts.sentAt),
-        isNull(commentDrafts.discardedAt),
-      ),
-    )
-    .orderBy(desc(commentDrafts.createdAt));
-
-  return { drafts: rows };
 }

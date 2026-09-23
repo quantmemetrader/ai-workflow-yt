@@ -51,11 +51,26 @@ export const users = pgTable(
     /** Chinese display name; the UI shows this when the locale is zh. */
     nameLocal: text(),
     avatarUrl: text(),
+    /** Where the picture itself lives in R2, when somebody uploaded one.
+     * `avatarUrl` stays the thing screens render — it points at the route
+     * that serves this key to colleagues. */
+    avatarKey: text(),
     title: text(),
     role: userRoleEnum().notNull().default("member"),
     status: userStatusEnum().notNull().default("invited"),
     locale: localeEnum(),
     passwordHash: text(),
+    /* Two-step verification. The seed is sealed (AES-256-GCM) rather than
+       stored as the base32 an app would scan: a database leak that hands out
+       TOTP seeds hands out second factors. `totpConfirmedAt` is what makes it
+       live — a seed exists from the moment enrolment starts, and must not
+       lock anybody out until they have proved the app is set up. */
+    totpSecret: text(),
+    totpConfirmedAt: timestamp({ withTimezone: true }),
+    /** The last 30-second step spent, so a code cannot be used twice. */
+    totpLastStep: integer(),
+    /** Recovery codes, hashed. Never the codes themselves. */
+    totpRecovery: jsonb().$type<string[]>(),
     teamId: text(),
     lastActiveAt: timestamp({ withTimezone: true }),
     createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
@@ -78,6 +93,29 @@ export const sessions = pgTable(
     userAgent: text(),
   },
   (t) => [index("sessions_user_idx").on(t.userId)],
+);
+
+/**
+ * Browsers somebody chose to trust, so two-step verification is asked for
+ * once a month rather than every sign-in.
+ *
+ * The id is the sha-256 of the cookie, exactly as sessions do it: the raw
+ * token never lands in the database, so a leak of this table cannot be
+ * replayed as a skipped second factor. Turning 2FA off, or re-enrolling,
+ * deletes every row — a trusted browser is trusted against one enrolment.
+ */
+export const trustedDevices = pgTable(
+  "trusted_devices",
+  {
+    id: text().primaryKey(),
+    userId: text().notNull().references(() => users.id, { onDelete: "cascade" }),
+    label: text(),
+    ip: text(),
+    expiresAt: timestamp({ withTimezone: true }).notNull(),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    lastSeenAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("trusted_devices_user_idx").on(t.userId)],
 );
 
 export const teams = pgTable("teams", {

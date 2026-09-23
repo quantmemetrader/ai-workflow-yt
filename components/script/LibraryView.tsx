@@ -3,8 +3,13 @@
 import { useCallback, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ScriptLibraryScreen } from "@/components/canvas/ScriptLibraryScreen";
+import { InlineAgentThread, useInlineAgent } from "@/components/shell/InlineAgent";
+import { AgentHistory } from "@/components/shell/AgentHistory";
 import type { ScriptListItem } from "@/lib/script/service";
 import { createFolderAction, createScriptAction, deleteScriptAction } from "@/app/(app)/script/actions";
+import { BriefComposer, type BriefDraft } from "@/components/script/BriefComposer";
+import { NameDialog } from "@/components/ui/NameDialog";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 
 /**
  * Live wiring for the Script library.
@@ -41,9 +46,17 @@ export function LibraryView({
   model: string;
 }) {
   const router = useRouter();
+  /* The agent answers here. Asking used to push to /chat, which took the
+   * screen you were asking about off the screen. */
+  const agent = useInlineAgent({ module: "script" }, { key: "script" });
   const params = useSearchParams();
   const [isPending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  // Three dialogs, none of them the browser's. A brief is a document, a folder
+  // needs one word, and a deletion has to say what it will delete.
+  const [briefing, setBriefing] = useState(false);
+  const [namingFolder, setNamingFolder] = useState(false);
+  const [deleting, setDeleting] = useState<ScriptListItem | null>(null);
 
   // Sort and view are ways of looking rather than things to share, so they
   // stay local. Everything that changes *which* scripts you see is in the URL.
@@ -83,7 +96,8 @@ export function LibraryView({
   );
 
   return (
-    <ScriptLibraryScreen
+    <>
+      <ScriptLibraryScreen
       locale={locale}
       scripts={scripts}
       folders={folders}
@@ -103,30 +117,81 @@ export function LibraryView({
       onSort={setSort}
       onView={setView}
       onQuery={(q) => push({ q })}
-      onNewScript={() => {
-        const title = globalThis.prompt(zh ? "剧本标题" : "Script title");
-        if (!title?.trim()) return;
-        const form = new FormData();
-        form.set("title", title.trim());
-        if (folderId) form.set("folderId", folderId);
-        run(() => createScriptAction(form), (id) => router.push(`/script/${id}`));
-      }}
-      onNewFolder={() => {
-        const name = globalThis.prompt(zh ? "文件夹名称" : "Folder name");
-        if (!name?.trim()) return;
-        run(() => createFolderAction(name.trim()));
-      }}
+      onNewScript={() => setBriefing(true)}
+      onNewFolder={() => setNamingFolder(true)}
       model={model}
-      onAsk={(prompt) => router.push(`/chat?q=${encodeURIComponent(prompt)}`)}
-      onDelete={(id) => {
-        const item = scripts.find((s) => s.id === id);
-        const ok = globalThis.confirm(
-          zh
-            ? `删除“${item?.title ?? "这个剧本"}”？可以在 30 天内恢复。`
-            : `Delete “${item?.title ?? "this script"}”? It can be restored for 30 days.`,
-        );
-        if (ok) run(() => deleteScriptAction(id));
-      }}
-    />
+      onAsk={(prompt) => void agent.send(prompt)}
+      tools={<AgentHistory zh={locale.startsWith("zh")} current={agent.conversationId} onPick={(id) => void agent.load(id)} onNew={agent.reset} />}
+      thread={
+        <InlineAgentThread
+          messages={agent.messages}
+          notice={agent.notice}
+          conversationId={agent.conversationId}
+          zh={locale.startsWith("zh")}
+        />
+      }
+      onDelete={(id) => setDeleting(scripts.find((s) => s.id === id) ?? null)}
+      />
+
+      {briefing && (
+        <BriefComposer
+          zh={zh}
+          busy={isPending}
+          error={error}
+          onClose={() => {
+            setBriefing(false);
+            setError(null);
+          }}
+          onSubmit={(draft: BriefDraft) => {
+            const form = new FormData();
+            form.set("title", draft.title.trim());
+            if (folderId) form.set("folderId", folderId);
+            if (draft.angle.trim()) form.set("angle", draft.angle.trim());
+            if (draft.targetChannel.trim()) form.set("targetChannel", draft.targetChannel.trim());
+            if (draft.aspect) form.set("aspect", draft.aspect);
+            if (draft.targetSeconds) form.set("targetSeconds", draft.targetSeconds);
+            if (draft.language.trim()) form.set("language", draft.language.trim());
+            if (draft.subtitleLanguage.trim()) form.set("subtitleLanguage", draft.subtitleLanguage.trim());
+            if (draft.mandatoryPoints.trim()) form.set("mandatoryPoints", draft.mandatoryPoints);
+            run(
+              () => createScriptAction(form),
+              (id) => {
+                setBriefing(false);
+                router.push(`/script/${id}`);
+              },
+            );
+          }}
+        />
+      )}
+
+      {namingFolder && (
+        <NameDialog
+          title={zh ? "新建文件夹" : "New folder"}
+          placeholder={zh ? "文件夹名称" : "Name it"}
+          confirm={zh ? "创建" : "Create"}
+          cancel={zh ? "取消" : "Cancel"}
+          onClose={() => setNamingFolder(false)}
+          onSubmit={(name) => run(() => createFolderAction(name))}
+        />
+      )}
+
+      {deleting && (
+        <ConfirmDialog
+          danger
+          title={
+            zh ? `删除“${deleting.title}”？` : `Delete \u201c${deleting.title}\u201d?`
+          }
+          body={
+            zh
+              ? "可以在 30 天内恢复。"
+              : "It can be restored for 30 days."
+          }
+          confirm={zh ? "删除" : "Delete"}
+          cancel={zh ? "取消" : "Cancel"}
+          onClose={() => setDeleting(null)}
+          onConfirm={() => run(() => deleteScriptAction(deleting.id))}
+        />
+      )}
+    </>
   );
 }

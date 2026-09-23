@@ -142,12 +142,35 @@ export const SOURCES: SourceDef[] = [
     requires: ["TIKHUB_TOKEN", "TICKHUB_TOKEN"],
   },
   {
+    /**
+     * What a place is searching for today.
+     *
+     * This was listed as permanently blocked — "no official API, and the
+     * contract rules out scrapers such as pytrends". Half of that was right:
+     * there is no Trends *API*, but Google publishes Daily Search Trends as
+     * RSS, which is a feed and not a scrape. It is what the topic picker
+     * suggests from, so nobody has to type into an empty box.
+     */
     key: "gtrends",
     name: "Google Trends",
     kind: "signal",
-    homepage: "https://trends.google.com",
-    blocked:
-      "Google publishes no official Trends API, and the contract rules out scrapers such as pytrends. Needs the client to confirm a licensed feed.",
+    homepage: "https://trends.google.com/trending/rss?geo=HK",
+  },
+  {
+    /**
+     * YouTube itself, through the studio's own Data API key.
+     *
+     * TikHub reads sixteen platforms and is what the competitor board is built
+     * on, but its YouTube trending and channel-search endpoints answer with
+     * empty lists. This is the platform's own: `mostPopular` by region, and
+     * search ordered by views, which is what "who is making this, and how big
+     * are they" actually needs.
+     */
+    key: "youtube",
+    name: "YouTube",
+    kind: "platform",
+    homepage: "https://developers.google.com/youtube/v3",
+    requires: ["YOUTUBE_API_KEY"],
   },
 ];
 

@@ -51,9 +51,16 @@ const sessions = await q("select count(*)::int n from sessions");
 check("the session was written to Postgres", sessions[0].n >= 1, `${sessions[0].n} session(s)`);
 
 // ---- chat: create a channel, post to it ----------------------------------
+/* The pencil used to open `window.prompt`, so this used to accept a browser
+   dialog. It opens a real new-channel dialog now: a name, a purpose, a private
+   toggle and the people to add. */
 const channelName = `wiring-${stamp}`;
-page.once("dialog", (d) => d.accept(channelName));
 await page.click('button[aria-label="新建频道"], button[aria-label="New channel"]').catch(() => {});
+await page.waitForSelector('[role="dialog"] input', { timeout: 10000 }).catch(() => {});
+await page.fill('[role="dialog"] input', channelName).catch(() => {});
+await page
+  .click('[role="dialog"] button:has-text("Create"), [role="dialog"] button:has-text("创建")')
+  .catch(() => {});
 await page.waitForTimeout(3000);
 
 const channels = await q("select slug, name from chat_channels where name = $1", [channelName]);
@@ -128,7 +135,13 @@ const topicQuery = `semiconductor ${stamp}`;
 await page.goto(`${BASE}/research`);
 await page.waitForTimeout(2000);
 
-const watch = page.locator('input[placeholder*="Watch a topic"], input[placeholder*="关注"]').first();
+/* The bare "Watch a topic…" box became a picker that suggests what the studio
+   already watches and what the region is searching for, so the placeholder
+   changed with it. Matching on the control's role keeps this check about
+   whether a topic can be watched rather than about its wording. */
+const watch = page
+  .locator('input[role="combobox"], input[placeholder*="watch a topic" i], input[placeholder*="关注"]')
+  .first();
 const hasWatch = await watch.count();
 check("Trends offers a way to watch a topic", hasWatch > 0);
 if (hasWatch) {
@@ -216,8 +229,14 @@ const scriptTitle = `wiring-script-${stamp}`;
   await page.goto(`${BASE}/script`);
   await page.waitForTimeout(2500);
 
-  page.once("dialog", (d) => d.accept(scriptTitle));
+  /* Also no longer a browser prompt: New script opens the brief composer, a
+     document with a title, an angle and the rest of the brief. */
   await page.click('button:has-text("New script"), button:has-text("新建剧本")').catch(() => {});
+  await page.waitForSelector('[role="dialog"] input', { timeout: 10000 }).catch(() => {});
+  await page.fill('[role="dialog"] input', scriptTitle).catch(() => {});
+  await page
+    .click('[role="dialog"] button:has-text("Create the script"), [role="dialog"] button:has-text("创建剧本")')
+    .catch(() => {});
   await page.waitForTimeout(3500);
 
   const rows = await q("select id, status, version from scripts where title = $1", [scriptTitle]);
@@ -254,17 +273,99 @@ const scriptTitle = `wiring-script-${stamp}`;
   }
 }
 
+const projectTitle = `wiring-video-${stamp}`;
+
 // ---- settings: a preference persists -------------------------------------
 await page.goto(`${BASE}/settings`);
 await page.waitForTimeout(1500);
 const before = (await q("select locale from users where email = $1", [EMAIL]))[0]?.locale;
-await page.click('button:has-text("English")').catch(() => {});
+/* Click whichever language is *not* the current one. Clicking "English" when
+   the account is already English is a no-op, and a run that had already
+   switched it left the next run asserting that nothing changed. */
+const target = before === "en" ? "简体中文" : "English";
+await page.click(`button:has-text("${target}")`).catch(() => {});
 await page.waitForTimeout(2500);
 const after = (await q("select locale from users where email = $1", [EMAIL]))[0]?.locale;
 check("a settings change persists", before !== after, `${before} → ${after}`);
 // put it back
 await page.click('button:has-text("简体中文")').catch(() => {});
 await page.waitForTimeout(1500);
+
+// ---- the modules built on 19 September ----------------------------------
+/*
+ * Publish, Admin, Finance, Accounting, Legal, HR and Video Edit all went from
+ * an iframe of a design to a real screen on 19 September. Each one is checked
+ * the same way: it renders for a signed-in person, it says something only its
+ * own data could produce, and at least one of them writes a row.
+ */
+{
+  const MODULES = [
+    { path: "/publish", says: /Channel board|渠道看板/ },
+    { path: "/admin", says: /People|成员/ },
+    { path: "/finance", says: /Budget|预算/ },
+    { path: "/accounting", says: /Inbox|收件箱/ },
+    { path: "/legal", says: /not legal advice|不是法律意见/ },
+    { path: "/hr", says: /Leave|假期/ },
+    { path: "/video", says: /Video Edit|视频剪辑|Media bin|素材库/ },
+  ];
+
+  for (const m of MODULES) {
+    await page.goto(`${BASE}${m.path}`);
+    await page.waitForTimeout(1800);
+    const text = await page.evaluate(() => document.body.innerText);
+    check(`${m.path} renders its own screen`, m.says.test(text), page.url());
+    check(
+      `${m.path} is not an iframe of a design`,
+      (await page.locator("iframe").count()) === 0 && !/Approved design/i.test(text),
+    );
+  }
+
+  // Legal's non-advice notice is a term of the contract (8.4), not a nicety.
+  await page.goto(`${BASE}/legal`);
+  await page.waitForTimeout(1500);
+  const legalText = await page.evaluate(() => document.body.innerText);
+  check(
+    "Legal states it is not legal advice",
+    /not legal advice|不是法律意见/.test(legalText),
+  );
+
+  // Video writes a real row, which is the part a screenshot cannot prove.
+  await page.goto(`${BASE}/video`);
+  await page.waitForTimeout(1800);
+  await page.click('button:has-text("New project"), button:has-text("新建项目")').catch(() => {});
+  await page.waitForSelector('[role="dialog"] input', { timeout: 10000 }).catch(() => {});
+  await page.fill('[role="dialog"] input', projectTitle).catch(() => {});
+  await page
+    .click('[role="dialog"] button:has-text("Create"), [role="dialog"] button:has-text("创建")')
+    .catch(() => {});
+  await page.waitForTimeout(3000);
+
+  const projects = await q("select id, title from video_projects where title = $1", [projectTitle]);
+  check("Video Edit's New project writes a project", projects.length === 1, projects[0]?.id ?? "none");
+
+  // The director's strip is on the editor, and it refuses honestly with no
+  // footage: the button is disabled rather than queuing a job that would fail.
+  if (projects[0]) {
+    await page.goto(`${BASE}/video?project=${projects[0].id}`);
+    await page.waitForTimeout(2500);
+    const strip = await page.locator('text=/Make the video|一键成片/').count();
+    check("the Make-the-video strip is on the editor", strip > 0);
+    const disabled = await page.locator('button:has-text("Make the video"), button:has-text("开始制作")').last().isDisabled().catch(() => false);
+    check("and it will not start on an empty bin", disabled === true);
+  }
+}
+
+// ---- research: the creator's channel as memory ----------------------------
+await page.goto(`${BASE}/research`);
+await page.waitForTimeout(2500);
+const memoryPanel = await page.locator('text=/Your channel, as memory|你的频道/').count();
+check("the Research board shows the creator's channel as memory", memoryPanel > 0);
+const synced = await q("select count(*)::int n from creator_videos");
+const voice = await q("select count(*)::int n from knowledge where title like 'Creator voice%' and active");
+check("the channel's uploads are mirrored", synced[0].n > 0, `${synced[0].n} videos`);
+check("and a voice note is in every prompt", voice[0].n > 0);
+const writeButton = await page.locator('text=/Write the script →|写剧本 →/').count();
+check("a topic can become a script from the board", writeButton > 0);
 
 check("no page errors anywhere", errors.length === 0, errors[0] ?? "");
 
@@ -279,6 +380,7 @@ await q("delete from jobs where object_id in (select id from topics where query 
 await q("delete from topics where query = $1", [topicQuery]);
 await q("delete from approvals where object_type = 'script' and object_id in (select id from scripts where title = $1)", [scriptTitle]);
 await q("delete from scripts where title = $1", [scriptTitle]);
+await q("delete from video_projects where title = $1", [projectTitle]);
 const leftovers = await q(
   `select (select count(*) from chat_channels where name = $1)::int
         + (select count(*) from files where name = $2)::int

@@ -2,6 +2,11 @@ import { after } from "next/server";
 import { requireViewer } from "@/lib/auth/dal";
 import { readSessionToken, touchSession } from "@/lib/auth/session";
 import { Rail } from "@/components/canvas/Rail";
+import { CommandPalette } from "@/components/shell/CommandPalette";
+import { BackgroundWork } from "@/components/shell/BackgroundWork";
+import { RenderWatch } from "@/components/shell/RenderWatch";
+import { Toaster } from "@/components/shell/Toaster";
+import { BusyBar } from "@/components/shell/BusyBar";
 
 /**
  * The shell every module sits in — the artboards' outer frame, with one
@@ -19,10 +24,16 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // write at most once an hour, and never one the reader waits for — `after`
   // runs it once the response has been sent.
   if (viewer.staleSeen) {
-    after(async () => {
-      const token = await readSessionToken();
-      if (token) await touchSession(token, viewer.id);
-    });
+    /*
+     * The cookie is read *here*, not in the callback.
+     *
+     * Next 16 refuses `cookies()` inside `after()` — the request is gone by
+     * then — and it was throwing on every single page load: "Route /chat used
+     * `cookies()` inside `after()` while rendering". The write still happens
+     * after the response, which was the point; only the read moved.
+     */
+    const token = await readSessionToken();
+    if (token) after(() => touchSession(token, viewer.id));
   }
 
   return (
@@ -47,6 +58,20 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         name={zh && viewer.nameLocal ? viewer.nameLocal : viewer.name}
       />
       {children}
+
+      {/* Above the page, not inside it: ⌘K has to work on every module, and
+        * the palette has to survive the navigation it causes. */}
+      <CommandPalette modules={viewer.modules} locale={viewer.locale ?? "zh-CN"} />
+
+      {/* Work that outlives the page that started it. */}
+      <BackgroundWork locale={viewer.locale ?? "zh-CN"} />
+      <RenderWatch locale={viewer.locale ?? "zh-CN"} />
+
+      {/* Where a failure goes, now that nothing calls window.alert. */}
+      <Toaster />
+
+      {/* And where "something is happening" goes. */}
+      <BusyBar />
     </div>
   );
 }

@@ -1,9 +1,32 @@
 import { requireModule } from "@/lib/auth/dal";
-import { DesignPreview } from "@/components/shell/DesignPreview";
+import { answeringModel } from "@/lib/ai/models";
+import { listAccounts, listDocuments, listEntries, periodSummary } from "@/lib/accounting/service";
+import { AccountingScreen } from "@/components/accounting/AccountingScreen";
 
-/** Approved design, not yet wired to data. Entitlement is still enforced:
- * someone without the module is sent away, exactly as for a live one. */
-export default async function Page() {
+export const metadata = { title: "会计 · Accounting" };
+
+/** Accounting (spec §4.7). Manual: nothing is read off a document, and nothing
+ * posts without a confirmation. */
+export default async function AccountingPage() {
   const viewer = await requireModule("accounting");
-  return <DesignPreview module="accounting" zh={(viewer.locale ?? "zh-CN").startsWith("zh")} />;
+  const period = new Date().toISOString().slice(0, 7);
+
+  const [accounts, documents, entries, summary] = await Promise.all([
+    listAccounts(viewer),
+    listDocuments(viewer),
+    listEntries(viewer, period),
+    periodSummary(viewer, period),
+  ]);
+
+  return (
+    <AccountingScreen
+      period={period}
+      accounts={accounts}
+      documents={documents}
+      entries={entries}
+      summary={summary}
+      locale={viewer.locale ?? "zh-CN"}
+      model={answeringModel()}
+    />
+  );
 }

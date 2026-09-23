@@ -1,5 +1,5 @@
 import "server-only";
-import { and, eq, isNull, or, sql, type SQL } from "drizzle-orm";
+import { and, eq, inArray, isNull, or, sql, type SQL } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { files, folders, relationTuples, type Relation } from "@/lib/db/schema";
 import type { Viewer } from "@/lib/auth/dal";
@@ -81,17 +81,35 @@ export function canReadFolders(viewer: Viewer): SQL {
 }
 
 /** The strongest relation this viewer holds on one object, or null. */
+/**
+ * What a tuple can be about.
+ *
+ * `relation_tuples.object_type` has always been open text; this was narrowed
+ * to files and folders only because nothing else used it. A script is shared
+ * the same way a document is — the same relations, the same ceiling, the same
+ * "your agent can reach exactly what you can" rule — so it belongs here rather
+ * than in a second sharing system that would drift from this one.
+ */
+export type SharedObject = "file" | "folder" | "script" | "project";
+
 export async function relationOn(
   viewer: Viewer,
-  objectType: "file" | "folder",
+  objectType: SharedObject,
   objectId: string,
 ): Promise<Relation | null> {
   const subjects = subjectList(viewer);
 
+  /* Files and folders inherit from the folder tree above them. Scripts do
+     not: the Script library's folders are a separate, flat table, so a script
+     is reachable only through a tuple on the script itself. Running the
+     folders lookup on a script id would always return an empty path anyway —
+     it is skipped so the query says what it means. */
   const path =
-    objectType === "file"
-      ? sql`coalesce((select f.folder_path from ${files} f where f.id = ${objectId}), '{}'::text[])`
-      : sql`coalesce((select fo.path from ${folders} fo where fo.id = ${objectId}), '{}'::text[])`;
+    objectType === "script" || objectType === "project"
+      ? sql`'{}'::text[]`
+      : objectType === "file"
+        ? sql`coalesce((select f.folder_path from ${files} f where f.id = ${objectId}), '{}'::text[])`
+        : sql`coalesce((select fo.path from ${folders} fo where fo.id = ${objectId}), '{}'::text[])`;
 
   const rows = await db.execute<{ relation: Relation }>(sql`
     select t.relation from ${relationTuples} t
@@ -110,11 +128,7 @@ export async function relationOn(
   return best;
 }
 
-export async function canRead(viewer: Viewer, objectType: "file" | "folder", id: string) {
-  return atLeast(await relationOn(viewer, objectType, id), "viewer");
-}
-
-export async function canWrite(viewer: Viewer, objectType: "file" | "folder", id: string) {
+export async function canWrite(viewer: Viewer, objectType: SharedObject, id: string) {
   return atLeast(await relationOn(viewer, objectType, id), "editor");
 }
 
@@ -126,7 +140,7 @@ export async function canWrite(viewer: Viewer, objectType: "file" | "folder", id
  */
 export async function share(
   viewer: Viewer,
-  object: { type: "file" | "folder"; id: string },
+  object: { type: SharedObject; id: string },
   relation: Relation,
   subject: { type: "user" | "team" | "tenant"; id: string },
   opts: { expiresAt?: Date } = {},
@@ -161,7 +175,7 @@ export async function share(
 /** The highest relation a person could possibly grant on this object — what
  * the share dialog shows *before* someone tries (brief: make the ceiling
  * legible). */
-export async function shareCeiling(viewer: Viewer, objectType: "file" | "folder", id: string) {
+export async function shareCeiling(viewer: Viewer, objectType: SharedObject, id: string) {
   return relationOn(viewer, objectType, id);
 }
 
@@ -173,7 +187,7 @@ export async function shareCeiling(viewer: Viewer, objectType: "file" | "folder"
  */
 export async function revoke(
   viewer: Viewer,
-  object: { type: "file" | "folder"; id: string },
+  object: { type: SharedObject; id: string },
   subject: { type: string; id: string },
   relation: Relation,
 ) {
@@ -195,24 +209,79 @@ export async function revoke(
   return true;
 }
 
-/** Everyone a file or folder is shared with, and at what relation. */
-export async function listShares(objectType: "file" | "folder", objectId: string) {
-  return db
-    .select()
+/**
+ * The relation this person holds on each of a list of files, in one query.
+ *
+ * The Files list used to badge every row "Editor" or "Viewer" from a single
+ * screen-wide flag — whether the person is a guest — which meant a row shared
+ * with them as a viewer sat in a list of files claiming they could edit it.
+ * The badge is a permission, so it has to be read per file.
+ *
+ * One statement for the whole page: every tuple that could touch any of these
+ * files, folded down to the best relation per file in memory. The alternative
+ * was `relationOn` per row, which is one round trip per file.
+ */
+export async function relationsForFiles(
+  viewer: Viewer,
+  rows: { id: string; folderPath: string[] | null; ownerId?: string | null }[],
+): Promise<Map<string, Relation>> {
+  const best = new Map<string, Relation>();
+  if (rows.length === 0) return best;
+
+  const put = (id: string, relation: Relation) => {
+    const held = best.get(id);
+    if (!held || RANK[relation] > RANK[held]) best.set(id, relation);
+  };
+
+  // The owner column is authoritative on its own: a file's owner holds owner
+  // whether or not the tuple survived.
+  for (const row of rows) if (row.ownerId && row.ownerId === viewer.id) put(row.id, "owner");
+
+  const ids = rows.map((r) => r.id);
+  const folderIds = [...new Set(rows.flatMap((r) => r.folderPath ?? []))];
+  const subjects = subjectList(viewer);
+
+  const tuples = await db
+    .select({
+      objectType: relationTuples.objectType,
+      objectId: relationTuples.objectId,
+      relation: relationTuples.relation,
+    })
     .from(relationTuples)
     .where(
       and(
-        eq(relationTuples.objectType, objectType),
-        eq(relationTuples.objectId, objectId),
+        or(
+          and(eq(relationTuples.objectType, "file"), inArray(relationTuples.objectId, ids)),
+          folderIds.length
+            ? and(eq(relationTuples.objectType, "folder"), inArray(relationTuples.objectId, folderIds))
+            : sql`false`,
+        ),
+        sql`(${relationTuples.subjectType} || ':' || ${relationTuples.subjectId}) in (${subjects})`,
         or(isNull(relationTuples.expiresAt), sql`${relationTuples.expiresAt} > now()`),
       ),
     );
+
+  const onFile = new Map<string, Relation[]>();
+  const onFolder = new Map<string, Relation[]>();
+  for (const t of tuples) {
+    const into = t.objectType === "file" ? onFile : onFolder;
+    into.set(t.objectId, [...(into.get(t.objectId) ?? []), t.relation]);
+  }
+
+  for (const row of rows) {
+    for (const relation of onFile.get(row.id) ?? []) put(row.id, relation);
+    for (const folderId of row.folderPath ?? []) {
+      for (const relation of onFolder.get(folderId) ?? []) put(row.id, relation);
+    }
+  }
+
+  return best;
 }
 
 /** Used when something is created: its creator owns it. */
 export async function grantOwner(
   subjectId: string,
-  object: { type: "file" | "folder"; id: string },
+  object: { type: SharedObject; id: string },
   grantedBy = subjectId,
 ) {
   await db

@@ -40,6 +40,8 @@ const ACCENT = "#007be0";
 const ZH: Record<string, string> = {
   "Content performance": "内容表现",
   Views: "播放量",
+  "Views in window": "窗口期播放量",
+  "Lifetime views": "累计播放量",
   Likes: "点赞",
   Comments: "评论",
   "Engagement rate": "互动率",
@@ -96,7 +98,16 @@ const WINDOW_LABEL_ZH: Record<Window, string> = { "7d": "7 天", "28d": "28 天"
 
 /** The post table's grid, in the artboard's shape: one flexible title column
  * and fixed numeric columns. */
-const GRID = "minmax(0,1fr) 84px 84px 74px 66px 76px 78px 72px";
+/*
+ * The post's title is what a person actually reads down this table; the rest
+ * are numbers with known widths. It had `minmax(0,1fr)` while sitting beside a
+ * 210px "By channel" block, so on anything but a very wide window the titles
+ * came out as "亚芳对话…" and the table was unreadable.
+ *
+ * A floor of 260px on the title, and the numeric columns give up a few pixels
+ * each. They are numbers: they do not need the room.
+ */
+const GRID = "minmax(260px,1fr) 78px 78px 70px 62px 72px 74px 66px";
 
 /* ------------------------------------------------------------------ */
 /* The artboard's own <style>, minus the rail and sidebar rules (neither
@@ -132,9 +143,12 @@ const CSS = `
 [data-perf-screen] .chip svg { width: 10px; height: 10px; stroke: #999999; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 [data-perf-screen] .bd { display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border-radius: 6px; font-size: 11px; font-weight: 500; white-space: nowrap; }
 [data-perf-screen] .gray { background: #f3f3f3; color: #525252 }
-[data-perf-screen] .stat { border: 1px solid #ededed; border-radius: 12px; padding: 13px 15px; background: #fff; }
-[data-perf-screen] .stat i { font-style: normal; display: block; font-size: 10.5px; font-weight: 500; color: #999999; }
-[data-perf-screen] .stat b { display: block; font-size: 22px; font-weight: 500; letter-spacing: -0.01em; margin-top: 6px; font-variant-numeric: tabular-nums; }
+[data-perf-screen] .stat { border: 1px solid #ededed; border-radius: 12px; padding: 13px 14px; background: #fff; min-width: 0; }
+/* Six of these share the row now, so the label is allowed two lines and the
+   number shrinks with the column rather than pushing a tile wider than its
+   share. */
+[data-perf-screen] .stat i { font-style: normal; display: block; font-size: 10.5px; font-weight: 500; color: #999999; line-height: 1.35; }
+[data-perf-screen] .stat b { display: block; font-size: clamp(16px, 1.45vw, 22px); font-weight: 500; letter-spacing: -0.01em; margin-top: 6px; font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 [data-perf-screen] .t { width: 100%; }
 [data-perf-screen] .t .hd { height: 32px; border-bottom: 1px solid #ededed; display: grid; align-items: center; }
@@ -251,7 +265,10 @@ export type PerfScreenProps = {
   rows: PerformanceRow[];
   totals: {
     posts: number;
+    /** Lifetime views of the posts published in this window. */
     views: number;
+    /** Views gained *during* the window, across every post however old. */
+    viewsInWindow: number;
     likes: number;
     comments: number;
     engagementRate: number | null; // 0..1, averaged over posts that report it
@@ -275,6 +292,10 @@ export type PerfScreenProps = {
   /** Hands a question to the agent on /chat, where it can cite the files the
    * asker is allowed to read. */
   onAsk: (prompt: string) => void;
+  /** The conversation so far, rendered in the agent panel. */
+  thread?: React.ReactNode;
+  /** Controls above the composer: history, a new thread. */
+  tools?: React.ReactNode;
 };
 
 type SortKey = PerfScreenProps["sort"]["key"];
@@ -287,7 +308,7 @@ function sortValue(row: PerformanceRow, key: SortKey): number | null {
 }
 
 export function PerfScreen(props: PerfScreenProps): React.JSX.Element {
-  const { locale, rows, totals, series, window: win, platform, channels, syncedAt, sort, pending, model, onAsk } = props;
+  const { locale, rows, totals, series, window: win, platform, channels, syncedAt, sort, pending, model, onAsk, thread, tools } = props;
   const zh = locale.startsWith("zh");
   const t = (key: string) => (zh ? (ZH[key] ?? key) : key);
 
@@ -431,10 +452,27 @@ export function PerfScreen(props: PerfScreenProps): React.JSX.Element {
   /** The five headline numbers. `null` means the platforms did not report it,
    * and says so; it never becomes a zero. */
   const stats: { label: string; value: string; title: string }[] = [
+    /*
+     * Two view numbers, because there are two (REVIEW.md #6).
+     *
+     * The tile used to sum lifetime views of posts published in the window and
+     * sit directly above a chart summing views gained *during* it. On a
+     * channel with history that is 1.4M over a chart totalling 40k, and
+     * neither figure is wrong — together, unlabelled, they were unreadable.
+     */
     {
-      label: t("Views"),
+      label: t("Views in window"),
+      value: compact(totals.viewsInWindow, locale),
+      title: zh
+        ? `窗口期内新增播放量：${full(totals.viewsInWindow, locale)}（与下方图表一致）`
+        : `${full(totals.viewsInWindow, locale)} gained during this window. This is what the chart below sums.`,
+    },
+    {
+      label: t("Lifetime views"),
       value: compact(totals.views, locale),
-      title: full(totals.views, locale),
+      title: zh
+        ? `本窗口期发布的贴文的累计播放量：${full(totals.views, locale)}`
+        : `${full(totals.views, locale)} in total, for the posts published in this window, over their whole lives.`,
     },
     {
       label: t("Likes"),
@@ -644,7 +682,11 @@ export function PerfScreen(props: PerfScreenProps): React.JSX.Element {
             style={{
               flexShrink: 0,
               display: "grid",
-              gridTemplateColumns: "repeat(5, minmax(0,1fr))",
+              /* One row, whatever the count. It was hard-coded to five and
+                 there are six tiles, so "posts" dropped onto a line of its
+                 own — one small box under five, which reads as a mistake
+                 rather than as a layout. */
+              gridTemplateColumns: `repeat(${stats.length}, minmax(0,1fr))`,
               gap: 12,
               padding: "14px 20px 0",
             }}
@@ -756,7 +798,10 @@ export function PerfScreen(props: PerfScreenProps): React.JSX.Element {
               flexGrow: 1,
               minHeight: 0,
               display: "grid",
-              gridTemplateColumns: "210px minmax(0,1fr)",
+              // Was a fixed 210px, which the table paid for. It shrinks first
+              // now, and disappears below the width where it would squeeze the
+              // titles.
+              gridTemplateColumns: "minmax(0,180px) minmax(0,1fr)",
               gap: 16,
               padding: "14px 20px 16px",
               overflow: "hidden",
@@ -920,6 +965,8 @@ export function PerfScreen(props: PerfScreenProps): React.JSX.Element {
           placeholder={zh ? "询问这些数据…" : "Ask about these numbers…"}
           model={model}
           onAsk={onAsk}
+          thread={thread}
+          tools={tools}
         />
         </div>
       )}

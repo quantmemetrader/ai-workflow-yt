@@ -21,6 +21,9 @@ const ORIGINS = [
   // The Vercel copy, kept as a fallback.
   "https://ai-workspace-video.vercel.app",
   "https://ai-workflow-for-video-creators.vercel.app",
+  // The custom domain on the Vercel copy. Missing here on 20 September, so
+  // every upload from it was refused by the browser and left a phantom file.
+  "https://yt.okbro.xyz",
   // Local development.
   "http://localhost:3000",
   "http://localhost:3101",

@@ -28,11 +28,21 @@ import { newId } from "@/lib/ids";
 
 const EMAIL = "service@aurafarmers.internal";
 
-let cached: string | null = null;
+/*
+ * Keyed by tenant (REVIEW.md #11).
+ *
+ * A single `cached` string meant the first studio the worker touched supplied
+ * the id for every studio after it, so one tenant's scheduled spend could be
+ * charged to another tenant's user and written into their audit log. Latent
+ * while `ingest.ts` hardcodes "the first tenant", but a cache that is wrong by
+ * construction is a bug whether or not something reaches it today.
+ */
+const cached = new Map<string, string>();
 
 /** The service principal's user id, created on first use. */
 export async function servicePrincipalId(tenantId: string): Promise<string> {
-  if (cached) return cached;
+  const hit = cached.get(tenantId);
+  if (hit) return hit;
 
   const [existing] = await db
     .select({ id: users.id })
@@ -41,7 +51,7 @@ export async function servicePrincipalId(tenantId: string): Promise<string> {
     .limit(1);
 
   if (existing) {
-    cached = existing.id;
+    cached.set(tenantId, existing.id);
     return existing.id;
   }
 
@@ -64,7 +74,7 @@ export async function servicePrincipalId(tenantId: string): Promise<string> {
     .returning({ id: users.id });
 
   if (row) {
-    cached = row.id;
+    cached.set(tenantId, row.id);
     return row.id;
   }
 
@@ -72,8 +82,8 @@ export async function servicePrincipalId(tenantId: string): Promise<string> {
     sql`select id from users where tenant_id = ${tenantId} and email = ${EMAIL} limit 1`,
   );
   if (!rows[0]?.id) throw new Error("Could not create or find the service principal");
-  cached = rows[0].id;
-  return cached;
+  cached.set(tenantId, rows[0].id);
+  return rows[0].id;
 }
 
 /** A `viewer`-shaped stub for the ledger and the audit log. Carries no
