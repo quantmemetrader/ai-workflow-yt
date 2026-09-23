@@ -17,8 +17,7 @@ import {
   videoClips,
   videoExports,
   videoGraphics,
-  videoProjects,
-} from "@/lib/db/schema";
+  videoProjects, relationTuples } from "@/lib/db/schema";
 import { getObject, putObjectConfirmed, storageKey } from "@/lib/storage/r2";
 import { grantOwner } from "@/lib/authz/rebac";
 import { newId } from "@/lib/ids";
@@ -73,6 +72,31 @@ const FPS = 30;
 const FONTS_DIR = path.join(process.cwd(), "remotion", "public", "fonts");
 /** A render that has not finished in an hour is not going to. */
 const RENDER_TIMEOUT_MS = 60 * 60_000;
+
+
+/**
+ * An export is seen by whoever can see its project.
+ *
+ * The file list and every download go through relation tuples on the file
+ * itself, never through the project — so a render that only granted its
+ * requester was invisible to everyone else in Files, even when the project
+ * was shared with the whole studio. The studio noticed when a second owner
+ * could not find a finished cut. Whatever audience the project holds
+ * (the studio, a team) is copied onto the file; the requester keeps `owner`.
+ * Written directly rather than through `share()`, which needs a signed-in
+ * granter holding the relation, and the worker is nobody.
+ */
+async function inheritProjectAudience(projectId: string, fileId: string, grantedBy: string) {
+  const audience = await db
+    .select({ relation: relationTuples.relation, subjectType: relationTuples.subjectType, subjectId: relationTuples.subjectId })
+    .from(relationTuples)
+    .where(and(eq(relationTuples.objectType, "project"), eq(relationTuples.objectId, projectId), sql`${relationTuples.subjectType} in ('tenant','team')`));
+  if (!audience.length) return;
+  await db
+    .insert(relationTuples)
+    .values(audience.map((a) => ({ id: newId("tup"), objectType: "file" as const, objectId: fileId, relation: a.relation, subjectType: a.subjectType, subjectId: a.subjectId, grantedBy })))
+    .onConflictDoNothing();
+}
 
 /**
  * FFmpeg was stopped from outside, not by a fault in the render: the worker
@@ -539,6 +563,7 @@ export async function renderExport(exportId: string): Promise<{ fileId: string; 
     // Without this the file exists and nobody can read it: the file list and
     // every download go through the relation, not through `ownerId`.
     await grantOwner(ownerId, { type: "file", id: fileId });
+    await inheritProjectAudience(e.projectId, fileId, ownerId).catch(() => {});
     // Its thumbnail, from the master still on disk: a finished video with a
     // grey rectangle beside it in Files reads as a broken one.
     await posterFromLocal(master, key)
@@ -560,7 +585,7 @@ export async function renderExport(exportId: string): Promise<{ fileId: string; 
      * export finished and the screen playing the master, which is exactly
      * where this started.
      */
-    const proxyFileId = await makeProxy({
+    const proxyFileId = await makeProxy({ projectId: e.projectId,
       master,
       dir,
       name: `${project.title} · ${e.aspect} · 预览 480p.mp4`,
@@ -598,6 +623,7 @@ export async function renderExport(exportId: string): Promise<{ fileId: string; 
         updatedBy: ownerId,
       });
       await grantOwner(ownerId, { type: "file", id: subtitleFileId });
+      await inheritProjectAudience(e.projectId, subtitleFileId, ownerId).catch(() => {});
     }
 
     await db
@@ -932,6 +958,7 @@ function runFfmpeg(args: string[], onProgress?: (doneMs: number) => Promise<void
  * nothing.
  */
 async function makeProxy(input: {
+  projectId: string;
   /** The finished master, still in the render's temp directory. */
   master: string;
   dir: string;
@@ -1004,6 +1031,7 @@ async function makeProxy(input: {
     updatedBy: ownerId,
   });
   await grantOwner(ownerId, { type: "file", id: fileId });
+  await inheritProjectAudience(input.projectId, fileId, ownerId).catch(() => {});
   /* Its own still, from the master rather than from the proxy: the frame is
      cheaper to take at full size than the difference is worth arguing about,
      and a video in Files with no poster makes the thumbnail route queue a job
