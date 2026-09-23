@@ -361,19 +361,23 @@ export async function renderExport(exportId: string): Promise<{ fileId: string; 
     const pictureIds = graphicRows.map((g) => g.fileId).filter((id): id is string => Boolean(id));
     const pictures = pictureIds.length
       ? await db
-          .select({ id: files.id, key: files.storageKey, name: files.name })
+          .select({ id: files.id, key: files.storageKey, name: files.name, mime: files.mime })
           .from(files)
           .where(and(inArray(files.id, pictureIds), isNull(files.deletedAt)))
       : [];
 
     const pictureFiles = new Map<string, string>();
+    const pictureMimes = new Map<string, string | null>();
     for (const [i, picture] of pictures.entries()) {
       if (!picture.key) continue;
       const local = path.join(dir, `picture-${i}${path.extname(picture.name) || ".png"}`);
       // A picture that will not download is left out of the render rather
       // than failing it: the video is worth more than one missing still.
       const got = await download(picture.key, local).then(() => true, () => false);
-      if (got) pictureFiles.set(picture.id, local);
+      if (got) {
+        pictureFiles.set(picture.id, local);
+        pictureMimes.set(picture.id, picture.mime ?? null);
+      }
       else console.warn(`[render] picture ${picture.id} could not be fetched; skipped`);
     }
 
@@ -388,6 +392,7 @@ export async function renderExport(exportId: string): Promise<{ fileId: string; 
         startMs: g.startMs,
         endMs: g.endMs,
         imagePath: g.fileId ? (pictureFiles.get(g.fileId) ?? null) : null,
+        imageMime: g.fileId ? (pictureMimes.get(g.fileId) ?? null) : null,
         icon: g.icon,
         placement: g.placement,
         scale: g.scale,

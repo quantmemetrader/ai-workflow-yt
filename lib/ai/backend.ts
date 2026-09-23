@@ -50,14 +50,38 @@ export type Backend = {
 export const DEEPSEEK_RATES = { inPerM: 0.28, outPerM: 0.42 } as const;
 
 /**
- * Map an OpenRouter model id to DeepSeek's own.
+ * The two id spaces, and why keeping them apart is not pedantry.
  *
- * Everything collapses to `deepseek-chat`, which is honest: DeepSeek has one
- * general model, and pretending an id like `anthropic/claude-sonnet-5` still
- * means Claude while DeepSeek answers would make every usage row a lie.
+ * OpenRouter names a model `vendor/model`; DeepSeek's own API names its two
+ * models `deepseek-flash` (V4.1 Flash) and `deepseek-v4-pro`, with no vendor
+ * in front. Both ids are real and neither service knows the other's. The
+ * editor's assistant died on `The request was rejected by the provider:
+ * deepseek-flash is not a valid model ID` — a perfectly good DeepSeek id sent
+ * to OpenRouter, from an `AI_MODEL_*` value left behind in a running process
+ * after the file on disk had moved on.
+ *
+ * So the shape of an id decides where it can go, and nothing is passed to a
+ * service that cannot possibly know it.
  */
-function deepseekModel(): string {
-  return process.env.DEEPSEEK_MODEL || "deepseek-chat";
+const DEEPSEEK_IDS = new Set(["deepseek-flash", "deepseek-v4-pro", "deepseek-chat", "deepseek-reasoner"]);
+
+/** True for an OpenRouter id: `vendor/model`, optionally `:free`. */
+export function isRoutedId(model: string): boolean {
+  return /^[A-Za-z0-9._-]+\/[A-Za-z0-9._:-]+$/.test(model.trim());
+}
+
+/**
+ * Map a model id to DeepSeek's own.
+ *
+ * A bare id is already one of theirs and is passed through; anything with a
+ * vendor in front collapses to their flash model, which is honest — DeepSeek
+ * has two models, and pretending an id like `qwen/qwen3-max` still means Qwen
+ * while DeepSeek answers would make every usage row a lie.
+ */
+function deepseekModel(model?: string): string {
+  if (model && !isRoutedId(model) && DEEPSEEK_IDS.has(model.trim())) return model.trim();
+  const pinned = process.env.DEEPSEEK_MODEL?.trim();
+  return pinned && DEEPSEEK_IDS.has(pinned) ? pinned : "deepseek-flash";
 }
 
 /**
@@ -69,6 +93,8 @@ function deepseekModel(): string {
  */
 export function prefersDeepseek(model: string): boolean {
   if (!env.deepseek.configured) return false;
+  /* A bare id is one of DeepSeek's own and OpenRouter would refuse it. */
+  if (!isRoutedId(model)) return true;
   /* The studio's own switch first: an administrator who picks Claude in Admin
      and still gets DeepSeek has been lied to by their own product. */
   const chosen = modelChoice().preferDeepseek;
@@ -86,7 +112,7 @@ export function backendFor(model: string): Backend {
       key: "deepseek",
       baseUrl: env.deepseek.baseUrl,
       apiKey: env.deepseek.apiKey,
-      model: deepseekModel(),
+      model: deepseekModel(model),
       headers: {},
       reportsCost: false,
     };
@@ -96,7 +122,10 @@ export function backendFor(model: string): Backend {
     key: "openrouter",
     baseUrl: env.openrouter.baseUrl,
     apiKey: env.openrouter.apiKey,
-    model,
+    /* Only ever an id OpenRouter can resolve. A bare one reaching here with
+       no DeepSeek key to catch it would come back 400 with the whole turn
+       lost; the catalogue's own assistant is a better answer than none. */
+    model: isRoutedId(model) ? model : "qwen/qwen3-max",
     headers: {
       "HTTP-Referer": env.appUrl,
       "X-Title": "Tengya Workspace",

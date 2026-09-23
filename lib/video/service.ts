@@ -872,6 +872,9 @@ export type GraphicRow = {
   endMs: number;
   /** A picture from the store, for an `image` graphic. */
   fileId: string | null;
+  /** That picture's type. The preview needs it to know whether the picture
+   * is set on a white card, which is decided by `cardBehindPicture`. */
+  fileMime: string | null;
   /** Which icon, for an `icon` graphic. */
   icon: string | null;
   placement: string;
@@ -885,11 +888,12 @@ export async function listGraphics(viewer: Viewer, projectId: string): Promise<G
   const project = await projectById(viewer, projectId, "viewer");
   if (!project) return [];
   const rows = await db
-    .select()
+    .select({ g: videoGraphics, mime: files.mime })
     .from(videoGraphics)
+    .leftJoin(files, eq(files.id, videoGraphics.fileId))
     .where(eq(videoGraphics.projectId, projectId))
     .orderBy(asc(videoGraphics.startMs), asc(videoGraphics.ord));
-  return rows.map((g) => ({
+  return rows.map(({ g, mime }) => ({
     id: g.id,
     kind: g.kind,
     text: g.text,
@@ -897,6 +901,7 @@ export async function listGraphics(viewer: Viewer, projectId: string): Promise<G
     startMs: g.startMs,
     endMs: g.endMs,
     fileId: g.fileId,
+    fileMime: mime ?? null,
     icon: g.icon,
     placement: g.placement,
     scale: g.scale,

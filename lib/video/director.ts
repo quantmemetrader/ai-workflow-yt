@@ -182,7 +182,7 @@ Rules:
  - "lower-third" once, when the speaker is first seen, if a name is known from the brief or the transcript.
  - "chapter" only where the subject genuinely changes. "end-card" once, at the very end, or not at all.
  - One idea per graphic, and at most one graphic on screen at a time. Leave air between them. A ten-minute video wants perhaps ten to fifteen; a sixty-second short wants five to eight.
- - "punches" are for the line that matters: 2 to 6 seconds each, zoom 1.1 to 1.3, never two in a row, at most one a minute.
+ - "punches" are for the line that matters: 2 to 5 seconds each, zoom 1.08 to 1.18, at most one every 30 seconds, and never under a title, a number, a quote, a card or a cutaway — a punch is a push on the speaker's own face, and behind a full-frame graphic it is a wobble nobody asked for.
  - "broll" only from the spare clips listed, only when the words describe what the clip shows, 3 to 8 seconds, never over the opening five seconds.
  - "footage": stock video for a cutaway when the bin has nothing that fits: a generic scene, in plain words (money being counted, a stock chart, a factory floor, a phone in a hand). Only when the stock library is available (said below). 3 to 6 seconds, at most one a minute, never over the opening five seconds and never over a named person.
  - "pictures": use "fileId" for a picture from the studio's files; use "query" (plain words, the product's or company's name, or the thing itself: "space shuttle launch", "astronaut in suit", "parents with baby") to search the picture libraries for something the studio has no picture of. Every product, company, place, person or object the speaker names is worth a picture, and a picture beats an icon for anything that has a real appearance. As many as the pace allows, one at a time, each for 2 to 3 seconds and then back to the speaker: a picture that stays up longer goes stale, and a second picture beats a long one.
@@ -540,12 +540,31 @@ export async function direct(viewer: Viewer, projectId: string, jobId?: string):
       rows.push({ id: newId("gfx"), projectId, kind: "footnote", text: plan.footnote, startMs: 0, endMs: totalMs, placement: "bottom-center", scale: 30, options: { enter: "fade" }, ord: rows.length });
     }
 
+    /*
+     * A punch-in is a push on the picture, and the picture is the speaker.
+     *
+     * Over a full-frame graphic the frame is 45-86% black behind the words,
+     * so the push is invisible work: what reaches the viewer is a background
+     * that swims for four seconds under a number that is not moving. Under a
+     * cutaway it is worse — the speaker is not even on screen. The studio's
+     * own words were "some unnecessary zooms", and every one of them was a
+     * punch the director had written under something else.
+     */
+    const COVERING = new Set(["stat", "quote", "statement", "card", "title", "end-card", "ticker", "bracket", "chapter"]);
+    const taken: { startMs: number; endMs: number }[] = [
+      ...rows
+        .filter((r) => COVERING.has(String(r.kind ?? "")))
+        .map((r) => ({ startMs: Number(r.startMs ?? 0), endMs: Number(r.endMs ?? 0) })),
+      ...plan.broll.map((b) => ({ startMs: Number(b.startMs ?? 0), endMs: Number(b.endMs ?? 0) })),
+    ];
+
     let punchEnd = -60_000;
     for (const p of plan.punches.slice().sort((a, b) => a.startMs - b.startMs)) {
-      if (p.startMs < punchEnd + 20_000) continue;
+      if (p.startMs < punchEnd + 30_000) continue;
       const startMs = Math.max(0, p.startMs);
-      const endMs = Math.min(totalMs, Math.max(startMs + 2000, Math.min(startMs + 6000, p.endMs)));
+      const endMs = Math.min(totalMs, Math.max(startMs + 2000, Math.min(startMs + 5000, p.endMs)));
       if (endMs - startMs < 1500) continue;
+      if (taken.some((c) => startMs < c.endMs && c.startMs < endMs)) continue;
       punchEnd = endMs;
       rows.push({
         id: newId("gfx"),
@@ -556,7 +575,9 @@ export async function direct(viewer: Viewer, projectId: string, jobId?: string):
         endMs,
         placement: "center",
         scale: 30,
-        options: { zoom: Math.max(1.1, Math.min(1.3, p.zoom || 1.15)), why: p.why.slice(0, 80) },
+        /* Gentle. A fifth bigger is a camera move on a head-and-shoulders
+           shot; a tenth is emphasis, which is the whole point of a punch. */
+        options: { zoom: Math.max(1.08, Math.min(1.18, p.zoom || 1.12)), why: p.why.slice(0, 80) },
         ord: rows.length,
       });
     }

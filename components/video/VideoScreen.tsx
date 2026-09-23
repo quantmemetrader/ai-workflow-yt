@@ -530,6 +530,8 @@ export function VideoScreen({
           graphics={graphics}
           audio={audio}
           accent={project.accent}
+          /* The preview draws the export's frame, not the source's. */
+          aspect={project.director?.aspect ?? "16:9"}
           zh={zh}
           busy={busy}
           onTrim={(itemId, input) => edit(() => updateItemAction(itemId, input))}

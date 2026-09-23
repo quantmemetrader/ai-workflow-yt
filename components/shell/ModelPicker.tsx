@@ -109,7 +109,7 @@ export function ModelPicker({ current, zh }: { current: string; zh: boolean }) {
           gap: 3,
         }}
       >
-        {shown.replace(/^[^/]+\//, "")}
+        {options?.find((m) => m.id === shown)?.label ?? shown.replace(/^[^/]+\//, "")}
         <svg
           viewBox="0 0 24 24"
           style={{ width: 9, height: 9, fill: "none", stroke: "currentColor", strokeWidth: 2.6, strokeLinecap: "round" }}

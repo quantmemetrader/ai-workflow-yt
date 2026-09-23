@@ -47,6 +47,9 @@ export type EditorProps = {
   graphics: GraphicRow[];
   audio: AudioRow[];
   accent: string;
+  /** The shape the export will be made at ("16:9", "9:16", "1:1"). The
+   * preview is that shape, whatever shape the source happens to be. */
+  aspect?: string;
   /** The language the cut was made in, when known: the track the preview leads with. */
   preferredLanguage?: string | null;
   zh: boolean;
@@ -108,6 +111,7 @@ const STAGE = "#f3f3f3";
 
 export function Editor(props: EditorProps) {
   const { items, clips, captions, graphics, audio, accent, zh, busy } = props;
+  const aspect = props.aspect === "9:16" || props.aspect === "1:1" ? props.aspect : "16:9";
   const t = (en: string, cn: string) => (zh ? cn : en);
 
   const video = useRef<HTMLVideoElement | null>(null);
@@ -394,28 +398,48 @@ export function Editor(props: EditorProps) {
   const punchZoom = livePunch ? Number((livePunch.options as Record<string, unknown> | undefined)?.zoom ?? 1.15) || 1.15 : 1;
 
   /*
-   * How big the picture actually is, for the overlay.
+   * The stage: the export's frame, at whatever size the window allows.
    *
-   * Everything the composition draws is a share of the frame's *height*
-   * (`ratio(height, share)` in `remotion/src/theme.ts`), so drawing the same
-   * thing over the preview means knowing how tall the preview is right now —
-   * which changes with the window, with the panels either side of it, and
-   * again when a source of a different shape loads. A ResizeObserver answers
-   * all three and costs nothing in between; reading `clientHeight` during a
-   * render would cost a layout on every frame and still be one behind.
+   * This used to be the `<video>` element itself, measured with a
+   * ResizeObserver — and that is why the speaker's circle sat in the right
+   * place in a render and the wrong place in the preview. Two reasons, both
+   * of them the same mistake. A source is whatever shape it was shot in and
+   * the export is 9:16; the render pads the picture into the export's frame
+   * and then measures every graphic against *that*, so a preview measured
+   * against the source's own box is measuring a different rectangle. And the
+   * box the element was laid out in was not even the box on screen: the
+   * wrapper clipped it with `overflow: hidden` whenever the director's panel
+   * opened and took the height away, so the same cut drew two different
+   * pictures depending on whether a panel above it was expanded.
+   *
+   * So: measure the room, fit the export's frame into it, and let everything
+   * — the picture, the overlay, the captions — be a share of that one
+   * rectangle, exactly as `lib/video/render.ts` does with `SIZES[aspect]`.
+   * The picture sits inside it with `object-fit: contain`, which is the CSS
+   * spelling of the render's `force_original_aspect_ratio=decrease` and its
+   * black pad.
    */
-  const [frame, setFrame] = useState<Frame>({ w: 0, h: 0 });
+  const stage = useRef<HTMLDivElement | null>(null);
+  const [room, setRoom] = useState<Frame>({ w: 0, h: 0 });
   useEffect(() => {
-    const el = video.current;
+    const el = stage.current;
     if (!el) return;
     const measure = new ResizeObserver(() => {
-      setFrame((was) =>
+      setRoom((was) =>
         was.w === el.clientWidth && was.h === el.clientHeight ? was : { w: el.clientWidth, h: el.clientHeight },
       );
     });
     measure.observe(el);
     return () => measure.disconnect();
   }, []);
+  const frame: Frame = useMemo(() => {
+    const ratio = aspect === "9:16" ? 9 / 16 : aspect === "1:1" ? 1 : 16 / 9;
+    // `clientWidth` counts the padding; the frame may not sit under it.
+    const w = room.w - 28;
+    const h = room.h - 28;
+    if (w < 60 || h < 60) return { w: 0, h: 0 };
+    return h * ratio <= w ? { w: Math.round(h * ratio), h } : { w, h: Math.round(w / ratio) };
+  }, [room.w, room.h, aspect]);
 
   /* A picture-in-picture cutaway keeps the speaker in a circle while the
      footage fills the frame. The render does that by cropping their face out
@@ -552,6 +576,7 @@ export function Editor(props: EditorProps) {
           }}
         >
           <div
+            ref={stage}
             style={{
               flexGrow: 1,
               minHeight: 0,
@@ -562,7 +587,18 @@ export function Editor(props: EditorProps) {
               position: "relative",
             }}
           >
-            <div style={{ position: "relative", maxWidth: "100%", maxHeight: "100%", overflow: "hidden", borderRadius: 4 }}>
+            {/* The export's frame. Everything over it is a share of this box,
+                which is the box the renderer works in. */}
+            <div
+              style={{
+                position: "relative",
+                width: frame.w || "100%",
+                height: frame.h || "100%",
+                overflow: "hidden",
+                borderRadius: 4,
+                background: "#000",
+              }}
+            >
               <video
                 ref={video}
                 /* Metadata, not the file. Both the proxy and the master are
@@ -576,11 +612,17 @@ export function Editor(props: EditorProps) {
                 onPlay={() => setPlaying(true)}
                 onPause={() => setPlaying(false)}
                 style={{
-                  maxWidth: "100%",
-                  maxHeight: "56vh",
+                  position: "absolute",
+                  inset: 0,
+                  width: "100%",
+                  height: "100%",
+                  /* The render's `force_original_aspect_ratio=decrease` and
+                     its black pad, in one word. The element's box is now the
+                     export's frame, so the transforms below are shares of the
+                     same rectangle the renderer crops and places in. */
+                  objectFit: "contain",
                   display: "block",
                   background: "#000",
-                  borderRadius: 4,
                   transform: speaker ? speaker.transform : punchZoom > 1 ? `scale(${punchZoom})` : undefined,
                   transformOrigin: speaker ? speaker.transformOrigin : "center",
                   transition: "transform .25s ease-out",

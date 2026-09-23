@@ -409,3 +409,29 @@ export function asEntrance(value: unknown): Entrance {
 /** The kinds that hold for the whole video rather than for a moment. */
 export const FURNITURE_KINDS = ["header", "watermark", "footnote"] as const;
 
+
+/* ------------------------------------------------------------ pictures */
+
+/**
+ * Whether a picture is set on a white card.
+ *
+ * A logo is a shape with holes in it. The Anthropic wordmark in this studio's
+ * files is `fill:#1f1f1e` on nothing at all, so laid straight over a dark
+ * cutaway it was black on black — on screen for four seconds and invisible,
+ * which is what the studio saw and reported. A photograph brings its own
+ * background and needs no help; a picture with an alpha channel does, and the
+ * card is the same white chip a brand book would put it on.
+ *
+ * Decided from the file's type rather than from its pixels so that the render
+ * and the editor's preview can never disagree: PNG and SVG carry transparency,
+ * JPEG cannot. A full-frame picture covers everything and is never carded.
+ */
+export function cardBehindPicture(mime: string | null | undefined, placement: string | null | undefined): boolean {
+  if (placement === "full") return false;
+  const m = (mime ?? "").toLowerCase();
+  return m.includes("svg") || m.includes("png") || m.includes("webp") || m.includes("gif");
+}
+
+/** The card's padding and corner, as shares of the frame's height. */
+export const CARD_PAD = 0.011;
+export const CARD_RADIUS = 0.012;

@@ -3,6 +3,7 @@ import { spawn } from "node:child_process";
 import { copyFile, mkdir, readdir, stat, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import path from "node:path";
+import { CARD_PAD, CARD_RADIUS, cardBehindPicture } from "@/lib/video/presets";
 
 /**
  * Titles, lower thirds and end cards, drawn by Remotion as stills.
@@ -50,6 +51,8 @@ export type GraphicSpec = {
   endMs: number;
   /** For `image`: a local path to the picture, already pulled from storage. */
   imagePath?: string | null;
+  /** For `image`: the file's type, which decides the white card. */
+  imageMime?: string | null;
   /** For `icon`: which one. */
   icon?: string | null;
   /** Where it sits: a corner, the middle, or the whole frame. */
@@ -206,6 +209,36 @@ async function placeImage(
   const boxH = spec.placement === "full" ? opts.height : Math.round(opts.height * share);
   const boxW = spec.placement === "full" ? opts.width : Math.round(opts.width * share * 1.2);
 
+  /* A logo is a shape with holes in it: the studio's Anthropic wordmark is
+     near-black on nothing, so over a dark cutaway it was black on black. A
+     picture that carries transparency is set on a white card that hugs it;
+     a photograph brings its own background and is left alone. */
+  const source = cardBehindPicture(spec.imageMime, spec.placement) ? await pictureSize(spec.imagePath!) : null;
+  /* The card has to hug the picture, so its size is settled here rather than
+     inside the filtergraph: `force_original_aspect_ratio` works out the
+     fitted size in there, where nothing downstream can ask what it came to. */
+  const card = source
+    ? (() => {
+        const pad = Math.round(opts.height * CARD_PAD);
+        const fit = Math.min(
+          Math.max(1, boxW - pad * 2) / source.w,
+          Math.max(1, boxH - pad * 2) / source.h,
+        );
+        const pw = Math.max(1, Math.round(source.w * fit));
+        const ph = Math.max(1, Math.round(source.h * fit));
+        const w = pw + pad * 2;
+        const h = ph + pad * 2;
+        return {
+          pad,
+          pw,
+          ph,
+          w,
+          h,
+          r: Math.max(2, Math.min(Math.round(opts.height * CARD_RADIUS), Math.floor(Math.min(w, h) / 2) - 1)),
+        };
+      })()
+    : null;
+
   const x =
     spec.placement === "full"
       ? "(W-w)/2"
@@ -225,6 +258,22 @@ async function placeImage(
 
   /* Full frame sits on black, the way a product shot does on the channel;
      anything smaller sits on nothing, over the footage. */
+  const graph: string[] = card
+    ? [
+        `[1:v]scale=${card.pw}:${card.ph}:flags=bicubic,format=rgba[pic]`,
+        /* A white rounded rectangle: opaque everywhere, except within a
+           corner's radius of its centre, where the distance takes the alpha
+           down over half a pixel. */
+        `[2:v]format=rgba,geq=r=255:g=255:b=255:` +
+          `a='255*clip(${card.r}-hypot(max(max(${card.r}-X,X-${card.w - 1 - card.r}),0),max(max(${card.r}-Y,Y-${card.h - 1 - card.r}),0))+0.5,0,1)'[card]`,
+        `[card][pic]overlay=x=${card.pad}:y=${card.pad}:format=auto[chip]`,
+        `[0:v][chip]overlay=x=${x}:y=${y}:format=auto[out]`,
+      ]
+    : [
+        `[1:v]scale=${boxW}:${boxH}:force_original_aspect_ratio=decrease,format=rgba[pic]`,
+        `[0:v][pic]overlay=x=${x}:y=${y}:format=auto[out]`,
+      ];
+
   await ffmpeg([
     "-y",
     "-f",
@@ -233,9 +282,9 @@ async function placeImage(
     `color=c=${spec.placement === "full" ? "black@1.0" : "black@0.0"}:s=${opts.width}x${opts.height},format=rgba`,
     "-i",
     spec.imagePath!,
+    ...(card ? ["-f", "lavfi", "-i", `color=c=white:s=${card.w}x${card.h},format=rgba`] : []),
     "-filter_complex",
-    `[1:v]scale=${boxW}:${boxH}:force_original_aspect_ratio=decrease,format=rgba[pic];` +
-      `[0:v][pic]overlay=x=${x}:y=${y}:format=auto[out]`,
+    graph.join(";"),
     "-map",
     "[out]",
     "-frames:v",
@@ -245,6 +294,25 @@ async function placeImage(
 
   if ((await stat(opts.out)).size < 200) throw new Error("that image came out empty");
   return opts.out;
+}
+
+/** A picture's own pixel size, for sizing the card that goes behind it. */
+async function pictureSize(file: string): Promise<{ w: number; h: number } | null> {
+  const out = await new Promise<string>((resolve) => {
+    const child = spawn(
+      "ffprobe",
+      ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height", "-of", "csv=p=0", file],
+      { stdio: ["ignore", "pipe", "ignore"] },
+    );
+    let text = "";
+    child.stdout?.on("data", (c) => {
+      text += String(c);
+    });
+    child.on("error", () => resolve(""));
+    child.on("close", () => resolve(text));
+  });
+  const [w, h] = out.trim().split(",").map((n) => Number(n));
+  return w > 0 && h > 0 ? { w, h } : null;
 }
 
 function ffmpeg(args: string[]): Promise<void> {

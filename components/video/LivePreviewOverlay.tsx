@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import type { ClipRow, GraphicRow } from "@/lib/video/service";
 import { ICONS } from "@/lib/video/icons";
+import { CARD_PAD, CARD_RADIUS, cardBehindPicture } from "@/lib/video/presets";
 
 /**
  * What the render will look like, drawn over the preview.
@@ -578,11 +579,16 @@ function Still({ graphic: g, accent, r, type, w }: StillProps) {
       const share = Math.min(0.95, Math.max(0.05, (g.scale || 40) / 100));
       const full = g.placement === "full";
       const margin = r(0.05);
+      const boxW = Math.round(w * share * 1.2);
+      const boxH = r(share);
+      /* A logo carries transparency and often carries black type with it, so
+         it goes on a white card that hugs it — the same rule, from the same
+         function, that `placeImage` follows with FFmpeg. */
+      const carded = !full && cardBehindPicture(g.fileMime, g.placement);
+      const pad = carded ? Math.max(2, r(CARD_PAD)) : 0;
       const place: React.CSSProperties = full
         ? { inset: 0, background: "#000" }
         : {
-            width: Math.round(w * share * 1.2),
-            height: r(share),
             top: g.placement === "top-left" || g.placement === "top-right" ? margin : undefined,
             bottom:
               g.placement === "bottom-left" || g.placement === "bottom-right" || g.placement === "bottom-center"
@@ -594,14 +600,23 @@ function Still({ graphic: g, accent, r, type, w }: StillProps) {
               ? { left: "50%", transform: "translateX(-50%)" }
               : {}),
             ...(g.placement === "center" ? { top: "50%", transform: "translate(-50%, -50%)" } : {}),
+            ...(carded
+              ? { background: "#ffffff", borderRadius: r(CARD_RADIUS), padding: pad }
+              : {}),
           };
       return (
-        <div style={{ position: "absolute", ...place }}>
+        /* The box hugs the picture rather than framing it, because FFmpeg
+           overlays the *fitted* picture at the anchor, not the box. */
+        <div style={{ position: "absolute", lineHeight: 0, ...place }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={`/api/files/${g.fileId}/download`}
             alt=""
-            style={{ width: "100%", height: "100%", objectFit: "contain", display: "block" }}
+            style={
+              full
+                ? { width: "100%", height: "100%", objectFit: "contain", display: "block" }
+                : { maxWidth: Math.max(1, boxW - pad * 2), maxHeight: Math.max(1, boxH - pad * 2), display: "block" }
+            }
           />
         </div>
       );
