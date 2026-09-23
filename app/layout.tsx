@@ -19,7 +19,7 @@ export const metadata: Metadata = {
     template: "%s · 腾亚创变",
   },
   description:
-    "选题研究、脚本、剪辑、发布，一个助理全程跟进。Research, script, cut and publish, with one assistant that knows the channel.",
+    "选题研究、脚本、剪辑、发布，一个助理全程跟进。",
   keywords: ["video", "editing", "script", "research", "YouTube", "剪辑", "脚本", "选题"],
   robots: { index: false, follow: false, nocache: true },
   openGraph: {
