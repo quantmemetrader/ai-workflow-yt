@@ -214,3 +214,50 @@ Until support clears it, ElevenLabs traffic is relayed:
 Note: the ElevenLabs account is on the **free tier, 4,606 of 10,000 characters
 used**. Voice-over will exhaust that quickly — worth upgrading before a demo
 that generates audio.
+
+---
+
+## Render pipeline — what was wrong, 2026-09-23
+
+Four faults, each hiding the next. All fixed; the notes matter because three of
+them looked like something else.
+
+1. **It never ran.** `HEAVY_JOBS_PAUSED` was still set from the old shared box.
+   Jobs queued and were never claimed.
+2. **ffmpeg took 63GB and was OOM-killed, then requeued and did it again** —
+   which took the whole site down with it, twice. Every cut was a `trim` branch
+   off one shared input; `concat` reads its inputs in order, so while it
+   consumed cut 1 the split feeding cuts 2–22 had to buffer every frame they
+   would eventually need. ~25GB of raw frames for a 4-minute 1080x1920 timeline,
+   doubled. Fixed by seeking at the demuxer (`-ss`/`-t` per input) in
+   `lib/video/render.ts`: memory is now flat at ~3.7GB whatever the length.
+   Measured old vs new on 22 cuts over 4m33s: 18.5GB and dead, versus 3.7GB and
+   faster.
+3. **A `ulimit -v` ceiling added on top of that wedged ffmpeg completely** —
+   407 threads, 0% CPU, 0 bytes of I/O. `ulimit -v` caps address space, and
+   twenty-odd decoders reserve far more of it than they touch. Removed. A real
+   cap must be a cgroup on resident memory (`systemd-run -p MemoryMax=`).
+4. **"0 graphics, 0 punch-ins, 0 cutaways" was a timeout, not a credit problem.**
+   `AI_ATTEMPT_TIMEOUT_MS` was **25000**, and a director-sized call (a 265-caption
+   transcript in, an edit plan out) measures **23750ms**. A 1.25-second margin, so
+   design failed on a coin flip and the render produced a correct but empty cut.
+   Raised to 180000. Verified: the next run produced graphics.
+
+**Do not "reset the director" by replacing the whole `video_projects.director`
+JSON.** The brief and the aspect ratio live in there and nowhere else — the job
+payload holds only `projectId` and `dedupeKey`. Overwriting it silently loses
+the studio's instructions and the run comes back 16:9 instead of 9:16. Remove
+only the keys you mean to: `director - 'resume' - 'result' - 'error'`.
+
+## Models, 2026-09-23
+
+Running `deepseek/deepseek-v4-flash` (paid, from the $10 key). **Anthropic and
+Google both return 403 "violation of provider Terms Of Service" on this
+OpenRouter org** — four upstream providers tried, all refused, and it fails from
+any network, so it is an account flag rather than an IP or credit problem. Until
+OpenRouter lifts it, Claude is unreachable through them; a direct `sk-ant-` key
+would bypass it entirely.
+
+The stored choice in `settings` (key `ai.models`) said `claude-sonnet-5` while
+the fallback chain quietly answered with DeepSeek, so the model picker named a
+model that never replied. Now set to DeepSeek so the UI is honest.
