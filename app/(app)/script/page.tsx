@@ -3,7 +3,7 @@ import { answeringModel } from "@/lib/ai/models";
 import { LibraryView } from "@/components/script/LibraryView";
 import { libraryCounts, listFolders, listScripts, pendingApprovals, sharedScriptIds, type ScriptListItem } from "@/lib/script/service";
 
-export const metadata = { title: "剧本 · Script" };
+export const metadata = { title: "脚本 · Script" };
 
 /**
  * Script library (spec §4.4).

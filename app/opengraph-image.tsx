@@ -28,7 +28,7 @@ export default function OpenGraphImage() {
         <div style={{ color: "#fff", fontSize: 76, fontWeight: 700, lineHeight: 1.1 }}>腾亚创变 工作台</div>
         <div style={{ color: "rgba(255,255,255,0.72)", fontSize: 34, marginTop: 18 }}>Aura&apos;s Inno Lab</div>
         <div style={{ color: "rgba(255,255,255,0.86)", fontSize: 30, marginTop: 44, lineHeight: 1.4 }}>
-          选题研究 · 剧本 · 剪辑 · 发布，一个助理全程跟进
+          选题研究 · 脚本 · 剪辑 · 发布，一个助理全程跟进
         </div>
       </div>
     ),

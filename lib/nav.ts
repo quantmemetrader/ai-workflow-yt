@@ -49,7 +49,7 @@ export const NAV: NavItem[] = [
     module: "script",
     href: "/script",
     label: "Script",
-    labelZh: "剧本",
+    labelZh: "脚本",
     live: true,
     icon: '<path d="M6.4 3.4h7.4L18.6 8v12.6H6.4z"/><path d="M9.4 12.3h6M9.4 15.6h6" stroke="#f8f8f8" stroke-width="1.5" fill="none"/>',
   },

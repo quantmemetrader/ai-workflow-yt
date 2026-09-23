@@ -73,7 +73,7 @@ export function ScriptSheet({
       <div
         role="dialog"
         aria-modal="true"
-        aria-label={t("Write the script", "写剧本")}
+        aria-label={t("Write the script", "写脚本")}
         onMouseDown={(e) => e.stopPropagation()}
         onKeyDown={(e) => {
           if (e.key === "Escape" && !busy) onClose();
@@ -81,7 +81,7 @@ export function ScriptSheet({
         style={{ width: "min(640px, 100%)", background: "#fff", borderRadius: 14, border: "1px solid #e2e2e2", boxShadow: "0 28px 72px rgba(23,23,23,0.24)", overflow: "hidden", animation: "fadeUp .16s cubic-bezier(.32,.72,0,1) both" }}
       >
         <div style={{ padding: "14px 18px 6px" }}>
-          <div style={{ fontSize: 14, fontWeight: 600 }}>{t("Write the script", "写剧本")}</div>
+          <div style={{ fontSize: 14, fontWeight: 600 }}>{t("Write the script", "写脚本")}</div>
           <div style={{ fontSize: 12, color: "#999999", marginTop: 3 }}>
             {topic.name} · {t("the headlines collected for it are the facts it may use", "已收集的报道会作为可用的事实")}
           </div>
@@ -174,7 +174,7 @@ export function ScriptSheet({
 
         <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "12px 18px 14px", borderTop: "1px solid #f3f3f3", marginTop: 10 }}>
           <span style={{ fontSize: 11, color: "#c7c7c7" }}>
-            {t("About half a minute. It lands in the Script library, ready to edit.", "大约半分钟，会出现在剧本库里，可直接编辑。")}
+            {t("About half a minute. It lands in the Script library, ready to edit.", "大约半分钟，会出现在脚本库里，可直接编辑。")}
           </span>
           <button type="button" onClick={onClose} disabled={busy} style={{ ...ghost, marginLeft: "auto" }}>
             {t("Cancel", "取消")}

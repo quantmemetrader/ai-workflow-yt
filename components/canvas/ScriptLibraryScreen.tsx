@@ -186,9 +186,9 @@ const CSS = `
 
 /** zh-CN strings for the artboard's chrome; English is the artboard's own. */
 const ZH: Record<string, string> = {
-  Script: "剧本",
+  Script: "脚本",
   Library: "库",
-  "All scripts": "全部剧本",
+  "All scripts": "全部脚本",
   "Assigned to me": "指派给我的",
   "Waiting on approval": "等待审批",
   "Shared with me": "共享给我的",
@@ -196,10 +196,10 @@ const ZH: Record<string, string> = {
   "No folders yet": "还没有文件夹",
   "House style": "团队风格",
   "Style guide": "风格指南",
-  "New script": "新建剧本",
+  "New script": "新建脚本",
   "New folder": "新建文件夹",
-  "Search scripts": "搜索剧本",
-  Scripts: "剧本",
+  "Search scripts": "搜索脚本",
+  Scripts: "脚本",
   All: "全部",
   Briefs: "简报",
   Brief: "简报",
@@ -217,12 +217,12 @@ const ZH: Record<string, string> = {
   Pages: "页面",
   List: "列表",
   docs: "个文档",
-  scripts: "个剧本",
+  scripts: "个脚本",
   Unassigned: "未指派",
-  "Delete script": "删除剧本",
-  "No scripts yet": "还没有剧本",
-  "New script writes the first one.": "点击“新建剧本”创建第一个。",
-  "No scripts match this search.": "没有符合条件的剧本。",
+  "Delete script": "删除脚本",
+  "No scripts yet": "还没有脚本",
+  "New script writes the first one.": "点击“新建脚本”创建第一个。",
+  "No scripts match this search.": "没有符合条件的脚本。",
   "Clear the search and the filters": "清除搜索与筛选",
   "filtered to scripts you can read": "已按你的权限过滤",
 };
@@ -471,7 +471,7 @@ export function ScriptLibraryScreen(props: ScriptLibraryScreenProps): React.JSX.
    * not been touched.
    */
   const agentNote = React.useMemo(() => {
-    if (scripts.length === 0) return zh ? "这里还没有剧本。" : "There are no scripts here yet.";
+    if (scripts.length === 0) return zh ? "这里还没有脚本。" : "There are no scripts here yet.";
 
     const waiting = scripts.filter((s) => s.status === "awaiting_approval");
     const stale = scripts.filter((s) => s.status === "drafting" && daysSince(s.updatedAt) >= 7);
@@ -482,7 +482,7 @@ export function ScriptLibraryScreen(props: ScriptLibraryScreenProps): React.JSX.
       const d = daysSince(longest.updatedAt);
       parts.push(
         zh
-          ? `${waiting.length} 个剧本在等批准，等得最久的是《${longest.title}》，${d <= 0 ? "今天" : `${d} 天`}。`
+          ? `${waiting.length} 个脚本在等批准，等得最久的是《${longest.title}》，${d <= 0 ? "今天" : `${d} 天`}。`
           : `${waiting.length} waiting on approval. The longest is “${longest.title}”, ${d <= 0 ? "since today" : `${d} days`}.`,
       );
     }
@@ -494,7 +494,7 @@ export function ScriptLibraryScreen(props: ScriptLibraryScreenProps): React.JSX.
       );
     }
     if (!parts.length) {
-      parts.push(zh ? "没有卡住的剧本。" : "Nothing is stuck.");
+      parts.push(zh ? "没有卡住的脚本。" : "Nothing is stuck.");
     }
     return parts.join(zh ? "" : " ");
   }, [scripts, zh]);
@@ -1221,11 +1221,11 @@ export function ScriptLibraryScreen(props: ScriptLibraryScreenProps): React.JSX.
         zh={zh}
         scope={
           zh
-            ? `${scripts.length} 个剧本 · ${counts.awaiting} 个待批准`
+            ? `${scripts.length} 个脚本 · ${counts.awaiting} 个待批准`
             : `${scripts.length} scripts · ${counts.awaiting} awaiting approval`
         }
         note={agentNote}
-        placeholder={zh ? "询问这些剧本…" : "Ask about these scripts…"}
+        placeholder={zh ? "询问这些脚本…" : "Ask about these scripts…"}
         model={model}
         onAsk={onAsk}
         thread={thread}

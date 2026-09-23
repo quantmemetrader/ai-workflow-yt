@@ -966,7 +966,7 @@ export function TrendsScreen(props: {
                           }
                         }}
                       >
-                        {zh ? "写剧本 →" : "Write the script →"}
+                        {zh ? "写脚本 →" : "Write the script →"}
                       </div>
                     ) : null}
                     <div

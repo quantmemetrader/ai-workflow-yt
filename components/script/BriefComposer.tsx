@@ -81,7 +81,7 @@ export function BriefComposer({
       <div
         role="dialog"
         aria-modal="true"
-        aria-label={t("New script", "新建剧本")}
+        aria-label={t("New script", "新建脚本")}
         onMouseDown={(e) => e.stopPropagation()}
         onKeyDown={(e) => {
           if (e.key === "Escape" && !busy) onClose();
@@ -111,7 +111,7 @@ export function BriefComposer({
             borderBottom: "1px solid #f3f3f3",
           }}
         >
-          <span style={{ fontSize: 12.5, fontWeight: 600 }}>{t("New script", "新建剧本")}</span>
+          <span style={{ fontSize: 12.5, fontWeight: 600 }}>{t("New script", "新建脚本")}</span>
           <span style={{ fontSize: 11, color: "#c7c7c7" }}>
             {t("the brief the editor and the agent will read", "编辑器和助理都会读这份简报")}
           </span>
@@ -130,7 +130,7 @@ export function BriefComposer({
             autoFocus
             value={draft.title}
             onChange={(e) => set("title", e.target.value)}
-            placeholder={t("Untitled script", "未命名剧本")}
+            placeholder={t("Untitled script", "未命名脚本")}
             style={{
               width: "100%",
               border: 0,
@@ -342,7 +342,7 @@ export function BriefComposer({
                 {t("Creating…", "创建中…")}
               </span>
             ) : (
-              t("Create the script", "创建剧本")
+              t("Create the script", "创建脚本")
             )}
           </button>
         </div>

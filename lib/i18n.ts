@@ -15,7 +15,7 @@ const ZH_CN: Record<string, string> = {
   "Chat": "聊天",
   "Files": "文件",
   "Market Research": "市场调研",
-  "Script": "剧本",
+  "Script": "脚本",
   "Video Edit": "视频剪辑",
   "Publish": "发布",
   "Accounting": "会计",

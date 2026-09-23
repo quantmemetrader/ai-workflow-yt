@@ -218,10 +218,10 @@ export function Director({
               <select
                 value={scriptId ?? ""}
                 onChange={(e) => onLinkScript(e.target.value || null)}
-                title={t("The script this was shot to, if any", "拍摄所依据的剧本（可选）")}
+                title={t("The script this was shot to, if any", "拍摄所依据的脚本（可选）")}
                 style={{ ...field, width: 240, height: 28, fontSize: 12 }}
               >
-                <option value="">{t("no script", "不关联剧本")}</option>
+                <option value="">{t("no script", "不关联脚本")}</option>
                 {scripts.map((s) => (
                   <option key={s.id} value={s.id}>
                     {s.title}

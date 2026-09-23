@@ -71,7 +71,7 @@ export function CreatorMemory({ state, syncing, zh, canAdmin }: { state: Creator
           ? t("Connect a YouTube channel in Publish and the assistant starts learning from it.", "在“发布”中连接 YouTube 频道后，助理会开始从中学习。")
           : t(
               "Every upload on the channel is read through YouTube's own API: titles, descriptions, tags, length, what it earned. A model folds them into one voice note that goes in front of every prompt, so scripts and cuts sound like this channel and not like a model. Transcripts are kept for the videos that were cut here.",
-              "频道的每支视频都通过 YouTube 官方接口读取：标题、简介、标签、时长、播放量。模型把它们浓缩成一份风格记忆，放在每次对话的最前面，让剧本和剪辑都像这个频道，而不是像模型。在这里剪出来的视频会保留文字稿。",
+              "频道的每支视频都通过 YouTube 官方接口读取：标题、简介、标签、时长、播放量。模型把它们浓缩成一份风格记忆，放在每次对话的最前面，让脚本和剪辑都像这个频道，而不是像模型。在这里剪出来的视频会保留文字稿。",
             )}
       </p>
 

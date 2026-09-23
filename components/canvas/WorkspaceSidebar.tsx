@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import Link, { useLinkStatus } from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { NewChannelDialog } from "@/components/chat/NewChannelDialog";
@@ -77,6 +77,17 @@ const LOCK = (
 );
 
 export type SidebarConversation = { id: string; title: string; updatedAt: string };
+
+/**
+ * A spinner that only knows about the <Link> it sits inside. `useLinkStatus`
+ * reports that link's own pending state, so the row the person actually
+ * clicked is the one that reacts — the sidebar used to sit silent until the
+ * next page resolved.
+ */
+function NavSpinner() {
+  const { pending } = useLinkStatus();
+  return pending ? <span className="spin" aria-hidden /> : null;
+}
 
 export function WorkspaceSidebar({
   studio,
@@ -218,7 +229,7 @@ export function WorkspaceSidebar({
         <span style={{ marginLeft: "auto", fontSize: 10.5, color: "#999999" }}>
           {zh ? "私密" : "private"}
         </span>
-      </Link>
+      <NavSpinner /></Link>
 
       {/*
         Everything this person has asked the agent before.
@@ -248,7 +259,7 @@ export function WorkspaceSidebar({
                   <span style={{ marginLeft: "auto", fontSize: 10, color: "#c7c7c7", flexShrink: 0 }}>
                     {shortDay(c.updatedAt, locale)}
                   </span>
-                </Link>
+                <NavSpinner /></Link>
               );
             })}
             {conversations.length > 3 ? (
@@ -314,7 +325,7 @@ export function WorkspaceSidebar({
                 {c.name}
               </span>
               {c.unread > 0 && !active && <span className="ct">{c.unread}</span>}
-            </Link>
+            <NavSpinner /></Link>
           );
         })}
       </div>
@@ -384,7 +395,7 @@ export function WorkspaceSidebar({
                   {zh ? "访客" : "guest"}
                 </span>
               )}
-            </Link>
+            <NavSpinner /></Link>
           );
         })}
       </div>
@@ -431,7 +442,7 @@ export function WorkspaceSidebar({
             </div>
           )}
           <i className="on-g" />
-        </Link>
+        <NavSpinner /></Link>
         <div style={{ minWidth: 0, flexGrow: 1 }}>
           <div style={{ fontSize: 12.5, fontWeight: 500 }}>{me.name}</div>
           <div style={{ fontSize: 11, color: "#999999" }}>{me.status}</div>

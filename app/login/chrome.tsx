@@ -140,7 +140,7 @@ export function LoginChrome({
               }}
             >
               <div style={{ fontSize: 13, fontWeight: 500, lineHeight: 1.4, textWrap: "pretty" }}>
-                {zh ? "工作室的片、剧本与素材，都在一处。" : "Every video, script and asset, in one place."}
+                {zh ? "工作室的片、脚本与素材，都在一处。" : "Every video, script and asset, in one place."}
               </div>
             </div>
           </div>
@@ -156,7 +156,7 @@ export function LoginChrome({
             }}
           >
             {zh
-              ? "一个工作台，管好每一条片、每一份剧本、每一个助理。"
+              ? "一个工作台，管好每一条片、每一份脚本、每一个助理。"
               : "One workspace for every video, every script, and every agent."}
           </div>
           <p
