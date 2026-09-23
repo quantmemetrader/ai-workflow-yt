@@ -180,3 +180,33 @@ The full WhatsApp export this backlog was written from is at
 **outside the repo**, because `quantmemetrader/ai-workflow-yt` is public and the
 thread contains an invite link, client names and commercial detail. Read it
 there when you need the exact wording; do not copy it into the repo.
+
+---
+
+## ElevenLabs egress workaround (2026-09-23) — TEMPORARY
+
+ElevenLabs refuses this host's IP: API calls from `84.32.64.46` 302-redirect to
+their "do you restrict access by country" article, with and without an API key,
+so it is IP-based, not auth. The **old box `84.32.176.16` is accepted** — same
+provider, same city, same AS — so it is that one address, not Cherry Servers
+or NL.
+
+Until support clears it, ElevenLabs traffic is relayed:
+
+- Old box: nginx site `elevenlabs-egress`, listening on **127.0.0.1:4700 only**,
+  `proxy_pass https://api.elevenlabs.io`.
+- New box: `elevenlabs-tunnel.service` (autossh) holds an SSH tunnel
+  `127.0.0.1:4700 -> 84.32.176.16:127.0.0.1:4700`, so the API key never crosses
+  the public internet in clear. The key it uses
+  (`/root/.ssh/el_tunnel`) is restricted on the old box to user `eltunnel` with
+  `restrict,port-forwarding,permitopen="127.0.0.1:4700",command="/bin/false"` —
+  it can forward that one port and nothing else.
+- `ELEVENLABS_BASE_URL="http://127.0.0.1:4700/v1"` in `.env.local`.
+
+**To undo once the IP is cleared:** set `ELEVENLABS_BASE_URL` back to
+`https://api.elevenlabs.io/v1`, `pm2 restart all --update-env`, then
+`systemctl disable --now elevenlabs-tunnel` and remove the nginx site.
+
+Note: the ElevenLabs account is on the **free tier, 4,606 of 10,000 characters
+used**. Voice-over will exhaust that quickly — worth upgrading before a demo
+that generates audio.
