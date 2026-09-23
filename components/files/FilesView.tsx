@@ -21,7 +21,7 @@ import {
   setFileAccessAction,
 } from "@/app/(app)/files/actions";
 import { notify } from "@/lib/client/notify";
-import { uploadFiles, type UploadProgress } from "@/lib/client/upload";
+import { uploadFiles } from "@/lib/client/upload";
 
 /**
  * Live wiring for the Files artboard.
@@ -69,10 +69,6 @@ export function FilesView({
 
   // Which view of a folder this person likes, remembered in their browser.
   const [layout, setLayout] = useLocalPreference("aura:files-layout", LAYOUTS, "grid");
-  /* Each batch is its own list, so two drops in a row do not renumber each
-     other's rows; a batch with nothing left to say goes away. */
-  const [batches, setBatches] = useState<{ id: number; rows: UploadProgress[] }[]>([]);
-  const uploads = batches.flatMap((b) => b.rows);
 
   /*
    * The same presign → PUT → confirm dance the editor uses. This screen had
@@ -92,25 +88,12 @@ export function FilesView({
     if (files.length) setAsking(files);
   }
 
+  /* Progress is drawn by the upload tray in the app layout, not here: the
+     transfer outlives this screen, so its picture has to as well. Leaving the
+     folder mid-upload used to kill the upload. */
   async function send(files: File[], access: AccessChoice) {
-    const id = Date.now() + Math.random();
-    setBatches((b) => [...b, { id, rows: files.map((f) => ({ name: f.name, pct: 0 })) }]);
-
-    const { uploaded, failed } = await uploadFiles(files, {
-      folderId,
-      access,
-      onProgress: (rows) => setBatches((b) => b.map((x) => (x.id === id ? { ...x, rows } : x))),
-      onDone: () => router.refresh(),
-    });
-
+    const { uploaded } = await uploadFiles(files, { folderId, access, onDone: () => router.refresh() });
     if (uploaded) notify(zh ? `已上传 ${uploaded} 个文件` : `Uploaded ${uploaded} ${uploaded === 1 ? "file" : "files"}`, "ok");
-    // Rows that failed stay on screen with their reason; the rest have landed
-    // in the list below and have nothing more to say.
-    setBatches((b) =>
-      failed
-        ? b.map((x) => (x.id === id ? { ...x, rows: x.rows.filter((r) => r.error) } : x))
-        : b.filter((x) => x.id !== id),
-    );
   }
 
   /* "Drop a file here" is what the empty state says, so it has to be true.
@@ -145,7 +128,7 @@ export function FilesView({
         currentFolderId={folderId}
         canEdit={canEdit}
         canCreate={canCreate}
-        uploads={uploads}
+        uploads={[]}
         locale={locale}
         model={model}
         view={view}

@@ -25,9 +25,14 @@ import { useEffect, useRef, useState } from "react";
  *
  * The video element streams from R2 over a signed URL with range requests, so
  * scrubbing a four-gigabyte master does not download a four-gigabyte master.
+ * It streams the clip's 480p preview copy when there is one, which is the
+ * difference between a scrub that lands and a scrub that buffers: the same
+ * film at about a fortieth of the bytes, with a keyframe every two seconds so
+ * a dropped handle has something near it to resume from.
  */
 export function Trim({
   fileId,
+  proxyFileId,
   durationMs,
   inMs,
   outMs,
@@ -37,6 +42,9 @@ export function Trim({
   onChange,
 }: {
   fileId: string;
+  /** The small copy to play instead, when the clip has one. Absent for
+   * footage uploaded before proxies existed: that still plays the master. */
+  proxyFileId?: string | null;
   /** The clip's full length. Everything here is a fraction of it. */
   durationMs: number;
   inMs: number;
@@ -156,7 +164,7 @@ export function Trim({
     <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
       <video
         ref={video}
-        src={`/api/files/${fileId}/download`}
+        src={`/api/files/${proxyFileId ?? fileId}/download`}
         preload="metadata"
         playsInline
         onPlay={() => setPlaying(true)}

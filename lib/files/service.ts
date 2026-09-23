@@ -121,9 +121,14 @@ export async function listFolder(viewer: Viewer, folderId: string | null) {
   /* The top level is everything you can read, less the stock: a licensed
      picture the director fetched for one cutaway is not what somebody
      opening Files came for. It is all in its own folder, one click away. */
+  /* Proxies — the 480p copy the editor plays instead of the master — are
+     never listed. They are an implementation detail of playback, tagged
+     `proxy` when made, and a folder that shows every master twice reads as
+     duplicated uploads. The file page still reaches them by id. */
+  const notProxy = sql`not ('proxy' = any(${files.tags}))`;
   const where = folderId
-    ? and(eq(files.folderId, folderId), isNull(files.deletedAt), canReadFiles(viewer))
-    : and(isNull(files.deletedAt), canReadFiles(viewer), sql`not ('stock' = any(${files.tags}))`);
+    ? and(eq(files.folderId, folderId), isNull(files.deletedAt), canReadFiles(viewer), notProxy)
+    : and(isNull(files.deletedAt), canReadFiles(viewer), sql`not ('stock' = any(${files.tags}))`, notProxy);
 
   const [rows, subfolders] = await Promise.all([
     db
@@ -360,6 +365,22 @@ export async function importVideo(
     priority: 6,
   });
 
+  // And its preview copy, for the same reason as any other clip's: a cutaway
+  // dropped on the timeline is played in the editor like everything else.
+  await enqueue({
+    tenantId: viewer.tenantId,
+    type: "files.proxy",
+    module: "files",
+    payload: { fileId: file.id },
+    objectType: "file",
+    objectId: file.id,
+    createdBy: viewer.id,
+    dedupeKey: `proxy:${file.id}`,
+    priority: 5,
+  }).catch((err) =>
+    console.warn(`[files] no preview proxy queued for ${file.id}:`, err instanceof Error ? err.message : err),
+  );
+
   await audit(viewer, "file.import", {
     objectType: "file",
     objectId: file.id,
@@ -424,6 +445,36 @@ export async function completeUpload(viewer: Viewer, fileId: string, checksum?: 
       dedupeKey: `poster:${fileId}`,
       priority: 6,
     });
+  }
+
+  /*
+   * And a small copy to play (`lib/video/proxy.ts`).
+   *
+   * The editor plays source clips straight out of storage, and a source clip
+   * is whatever came off the camera: 114 MB for 75 seconds, 570 MB for six
+   * minutes, sometimes iPhone HEVC that half the browsers refuse outright. A
+   * 480p H.264 rendition is about a fortieth of the bytes and plays anywhere.
+   *
+   * Behind the poster on purpose — a lower priority, so the thumbnail the
+   * uploader is looking at right now is drawn before the encode that matters
+   * the first time they press play. The `.catch` is the same promise the
+   * poster makes: a proxy that cannot be queued must never fail an upload
+   * that has already landed its bytes.
+   */
+  if (row.kind === "video") {
+    await enqueue({
+      tenantId: viewer.tenantId,
+      type: "files.proxy",
+      module: "files",
+      payload: { fileId },
+      objectType: "file",
+      objectId: fileId,
+      createdBy: viewer.id,
+      dedupeKey: `proxy:${fileId}`,
+      priority: 5,
+    }).catch((err) =>
+      console.warn(`[files] no preview proxy queued for ${fileId}:`, err instanceof Error ? err.message : err),
+    );
   }
 
   return row;
@@ -647,6 +698,12 @@ export async function purgeDeleted(olderThanDays = 30) {
     await trx
       .delete(relationTuples)
       .where(and(eq(relationTuples.objectType, "file"), inArray(relationTuples.objectId, ids)));
+    /* A master must not be left pointing at a preview copy that no longer
+       exists: the editor would ask for a file id that 404s rather than fall
+       back to the master. `files.proxy_file_id` has no foreign key (see the
+       schema for why), so nothing else would ever clear it, and the next
+       `files.proxy` job makes a fresh one. */
+    await trx.update(files).set({ proxyFileId: null }).where(inArray(files.proxyFileId, ids));
     await trx.delete(files).where(inArray(files.id, ids));
   });
 
@@ -696,7 +753,8 @@ export async function listRecent(viewer: Viewer, limit = 100) {
     .innerJoin(users, eq(users.id, files.ownerId))
     // The stock stays in its own folder here too: forty licensed pictures the
     // director fetched would otherwise be the whole of "recent".
-    .where(and(isNull(files.deletedAt), canReadFiles(viewer), sql`not ('stock' = any(${files.tags}))`))
+    // Nor the playback proxies — see `listFolder`.
+    .where(and(isNull(files.deletedAt), canReadFiles(viewer), sql`not ('stock' = any(${files.tags}))`, sql`not ('proxy' = any(${files.tags}))`))
     .orderBy(desc(files.updatedAt))
     .limit(limit);
 }

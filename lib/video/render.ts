@@ -1,6 +1,6 @@
 import "server-only";
 import { spawn } from "node:child_process";
-import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import { createWriteStream } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -22,6 +22,7 @@ import { getObject, putObjectConfirmed, storageKey } from "@/lib/storage/r2";
 import { grantOwner } from "@/lib/authz/rebac";
 import { newId } from "@/lib/ids";
 import { posterFromLocal, rememberPoster } from "@/lib/files/poster";
+import { makeProxyFile } from "@/lib/video/proxy";
 import { toSrt } from "@/lib/video/service";
 import { canKaraoke, toAss } from "@/lib/video/ass";
 import { asTransition, captionPreset, type TransitionKind } from "@/lib/video/presets";
@@ -949,13 +950,15 @@ function runFfmpeg(args: string[], onProgress?: (doneMs: number) => Promise<void
  * A second, cheap pass over the master **already on local disk**: no filter
  * graph, no download, no fonts — a straight transcode, measured at 2.2s for
  * 66s of 1080x1920 film on this box, against minutes for the render that made
- * it. The short edge goes to 480 whichever edge that is, so 16:9, 9:16 and 1:1
- * all keep their shape, and `-2` holds the other edge to the source's ratio
- * and to an even number, which H.264 requires.
+ * it.
  *
- * It returns the new file's id, and throws rather than reporting a failure:
- * the one caller decides what a missing proxy means, and the answer is
- * nothing.
+ * The encode, the file row and its permissions all live in
+ * `lib/video/proxy.ts` now, because uploaded source clips need exactly the
+ * same thing and for a stronger reason — a master off a camera is bigger than
+ * anything this renders, and sometimes in a codec the browser cannot decode
+ * at all. This is the thin part that is particular to an export: who gets to
+ * see it. It still throws rather than reporting a failure, because the one
+ * caller decides what a missing proxy means, and the answer is nothing.
  */
 async function makeProxy(input: {
   projectId: string;
@@ -969,78 +972,22 @@ async function makeProxy(input: {
   folderPath: string[];
   durationMs: number | null;
 }): Promise<string> {
-  const { master, dir, name, tenantId, ownerId, folderId, folderPath, durationMs } = input;
-  const out = path.join(dir, "proxy.mp4");
-
-  await runFfmpeg([
-    "-y",
-    "-i",
-    master,
-    // Quoted because the ratio test contains the commas and colons the filter
-    // parser splits on. The master is 1080 on its long edge in every aspect
-    // this renders, so this only ever scales down.
-    "-vf",
-    "scale='if(gt(iw,ih),-2,480)':'if(gt(iw,ih),480,-2)'",
-    "-c:v",
-    "libx264",
-    "-preset",
-    "veryfast",
-    "-crf",
-    "28",
-    "-pix_fmt",
-    "yuv420p",
-    // A keyframe every two seconds. x264 would place one every 250 frames —
-    // over eight — and a player can only resume at one, so that is how far a
-    // dropped scrubber can land from where it was dropped. Measured cost: 6%
-    // of the file, on the one thing this proxy exists to make good.
-    "-g",
-    String(FPS * 2),
-    "-c:a",
-    "aac",
-    "-b:a",
-    "96k",
-    "-ac",
-    "2",
-    "-ar",
-    "48000",
-    // The index at the front, so the browser can play and seek from the first
-    // range request instead of fetching the tail to find out how.
-    "-movflags",
-    "+faststart",
-    out,
-  ]);
-
-  const stats = await stat(out);
-  const fileId = newId("fil");
-  const key = storageKey(tenantId, fileId, name);
-  const stored = await putObjectConfirmed(key, await readFile(out), "video/mp4");
-
-  await db.insert(files).values({
-    id: fileId,
-    tenantId,
-    folderId,
-    folderPath,
-    name,
-    kind: "video",
-    mime: "video/mp4",
-    sizeBytes: stats.size,
-    storageKey: key,
-    checksum: stored.etag,
-    durationMs,
-    ownerId,
-    updatedBy: ownerId,
+  return makeProxyFile({
+    source: input.master,
+    dir: input.dir,
+    name: input.name,
+    tenantId: input.tenantId,
+    ownerId: input.ownerId,
+    folderId: input.folderId,
+    folderPath: input.folderPath,
+    durationMs: input.durationMs,
+    // Marks the row as a copy, so a backfill does not queue a proxy of it.
+    tags: ["proxy"],
+    // Swallowed, as it always was here: an export is already visible to the
+    // project's audience, so a proxy nobody else can read is a slow preview
+    // for them, not a broken one.
+    audience: (fileId) => inheritProjectAudience(input.projectId, fileId, input.ownerId).catch(() => {}),
   });
-  await grantOwner(ownerId, { type: "file", id: fileId });
-  await inheritProjectAudience(input.projectId, fileId, ownerId).catch(() => {});
-  /* Its own still, from the master rather than from the proxy: the frame is
-     cheaper to take at full size than the difference is worth arguing about,
-     and a video in Files with no poster makes the thumbnail route queue a job
-     that downloads this file again to draw one. */
-  await posterFromLocal(master, key)
-    .then((posterKey) => rememberPoster(fileId, posterKey))
-    .catch((err) => console.warn(`[render] no poster for proxy ${fileId}:`, err instanceof Error ? err.message : err));
-
-  return fileId;
 }
 
 /** Streamed to disk, not buffered: a master is measured in gigabytes. */

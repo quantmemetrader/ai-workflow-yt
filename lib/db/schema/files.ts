@@ -75,6 +75,21 @@ export const files = pgTable(
     width: integer(),
     height: integer(),
     posterKey: text(),
+    /**
+     * The small copy the editor plays, when one has been made.
+     *
+     * A file of its own — same tenant, same folder, same readers — holding a
+     * 480p H.264 rendition of this one (`lib/video/proxy.ts`). Pressing play
+     * on a 114 MB master from Hong Kong is the slowest thing in the product;
+     * playing ~3 MB of it is not.
+     *
+     * Nullable, and no foreign key, exactly like `video_exports.proxy_file_id`:
+     * every clip uploaded before this existed has none, the player falls back
+     * to the master when it is missing, and the nightly purge hard-deletes
+     * rows — a constraint here would either block that or have to be taught
+     * about it. `purgeDeleted` clears the pointer instead.
+     */
+    proxyFileId: text(),
     /** Plain text used for search and agent retrieval; extracted on upload. */
     text: text(),
     tags: text().array().notNull().default([]),

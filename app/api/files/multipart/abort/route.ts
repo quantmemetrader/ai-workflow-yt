@@ -1,3 +1,4 @@
+import { abandonUpload } from "@/lib/files/abandon";
 import { abortMultipartUpload } from "@/lib/storage/r2";
 import { openSession, readJson } from "../session";
 
@@ -10,10 +11,10 @@ import { openSession, readJson } from "../session";
  * 590 MB upload that says nothing is half a gigabyte the studio pays for and
  * cannot see, so cancel and fatal failure both call this.
  *
- * The `files` row is deliberately left alone. An upload that never finished
- * has no version and no checksum, which is already how the rest of the product
- * recognises a file whose bytes never came; deleting rows from a cancel button
- * would be a new and sharper behaviour than the single-PUT path has.
+ * The `files` row goes too. It used to be left alone on the theory that "no
+ * version" already marks it — but Files lists rows, not versions, so a failed
+ * 590 MB upload sat in the folder as a file that opened to nothing. A row is
+ * only removed if it was never confirmed (`abandonUpload` checks).
  */
 export async function POST(request: Request) {
   const parsed = await readJson(request);
@@ -22,11 +23,12 @@ export async function POST(request: Request) {
   const opened = await openSession(parsed.body);
   if ("refusal" in opened) return opened.refusal;
 
-  const { storageKey, uploadId } = opened.session;
+  const { viewer, fileId, storageKey, uploadId } = opened.session;
   try {
     await abortMultipartUpload(storageKey, uploadId);
   } catch (err) {
     return new Response(err instanceof Error ? err.message : "The upload could not be abandoned", { status: 502 });
   }
-  return Response.json({ ok: true });
+  const outcome = await abandonUpload(viewer, fileId);
+  return Response.json({ ok: true, removed: outcome === "gone" });
 }

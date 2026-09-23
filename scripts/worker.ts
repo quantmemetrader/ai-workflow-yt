@@ -23,6 +23,7 @@ import { isInterrupted, renderExport } from "../lib/video/render";
 import { transcribeProject } from "../lib/video/transcribe";
 import { speakTrack } from "../lib/video/voiceover";
 import { makePoster } from "../lib/files/poster";
+import { makeSourceProxy } from "../lib/video/proxy";
 import { makePeaks } from "../lib/video/peaks";
 import { autoEdit } from "../lib/video/autoedit";
 import { direct } from "../lib/video/director";
@@ -66,6 +67,13 @@ const TIMEOUT_BY_TYPE: Record<string, number> = {
   // should not be a failure.
   "files.poster": 20 * 60_000,
   "video.peaks": 20 * 60_000,
+  /* A proxy downloads the whole master and re-encodes it. The encode is
+     seconds — 3.4s for 75s of 1080p — but a 570MB six-minute take has to come
+     out of R2 first, and the backfill queues one of these per clip in the
+     store. Half an hour is the encoder's own ceiling; this has to be longer
+     than that plus the download, or the queue fails work that is still
+     running. */
+  "files.proxy": 60 * 60_000,
 };
 
 type Handler = (job: JobRow) => Promise<unknown>;
@@ -114,6 +122,15 @@ const HANDLERS: Record<string, Handler> = {
   "files.poster": (job) => {
     const { fileId } = job.payload as { fileId: string };
     return makePoster(fileId);
+  },
+
+  /* The small copy the editor plays. The master is 12–22 Mbps and sometimes
+     iPhone HEVC that a browser will not decode at all; this is ~0.34 Mbps of
+     H.264 that every machine in the studio can start in a second. Queued when
+     a video upload completes, never on a request. */
+  "files.proxy": (job) => {
+    const { fileId } = job.payload as { fileId: string };
+    return makeSourceProxy(fileId);
   },
 
   /* The shape of a clip's sound, so a cut can be placed by eye rather than by

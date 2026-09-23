@@ -1,0 +1,1 @@
+ALTER TABLE "files" ADD COLUMN "proxy_file_id" text;

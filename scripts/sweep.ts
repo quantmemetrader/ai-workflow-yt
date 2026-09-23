@@ -9,19 +9,22 @@ import { pool } from "../lib/db/client";
 import { purgeExpiredSessions } from "../lib/auth/session";
 import { purgeExpiredTrust } from "../lib/auth/second-factor";
 import { purgeDeleted } from "../lib/files/service";
+import { purgeUnfinished } from "../lib/files/abandon";
 import { audit } from "../lib/audit";
 
 async function main() {
   const started = Date.now();
   const purgedFiles = await purgeDeleted(30);
+  // Rows whose upload never arrived and whose browser never said so.
+  const purgedUnfinished = await purgeUnfinished(24);
   await purgeExpiredSessions();
   // Expired "trust this browser" rows: dead weight, and a row that still
   // names a browser after its 30 days are up reads as access that is not there.
   await purgeExpiredTrust();
-  await audit(null, "cron.sweep", { meta: { purgedFiles }, tenantId: "system" });
+  await audit(null, "cron.sweep", { meta: { purgedFiles, purgedUnfinished }, tenantId: "system" });
 
   console.log(
-    `[sweep] ${new Date().toISOString()} purged ${purgedFiles} file(s) in ${Date.now() - started}ms`,
+    `[sweep] ${new Date().toISOString()} purged ${purgedFiles} file(s), ${purgedUnfinished} unfinished upload(s) in ${Date.now() - started}ms`,
   );
   await pool.end();
 }

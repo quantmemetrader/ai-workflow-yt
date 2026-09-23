@@ -53,7 +53,7 @@ export function AccessDialog({
   const [access, setAccess] = useState<Access | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [target, setTarget] = useState("everyone");
-  const [relation, setRelation] = useState<"viewer" | "editor">("viewer");
+  const [relation, setRelation] = useState<"viewer" | "editor">("editor");
   const [pending, start] = useTransition();
 
   const load = () =>

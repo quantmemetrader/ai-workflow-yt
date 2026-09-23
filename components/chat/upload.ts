@@ -20,6 +20,27 @@
  * costs the server nothing and is not bounded by a request-body limit.
  */
 
+/** Who sees the file, as the upload dialog says it. The server parses this
+ * (`parseChoice`); the browser only carries it. */
+export type UploadAccess =
+  | { mode: "private" }
+  | { mode: "everyone" }
+  | { mode: "groups"; groups: string[] }
+  | { mode: "people"; userIds: string[] };
+
+/** Where the file goes and who sees it — the same two things the Files
+ * dialog asks. Omitted: the home folder, private. */
+export type UploadTarget = {
+  folderId?: string | null;
+  access?: UploadAccess;
+};
+
+type Hooks = UploadTarget & {
+  /** The row exists before the bytes finish; a caller drawing a list can
+   * point at it early. */
+  onRow?: (fileId: string) => void;
+};
+
 export type Attaching = {
   /** Stable while the upload runs; the file id is not known until it ends. */
   key: string;
@@ -57,10 +78,22 @@ export async function uploadToStudio(
   file: File,
   onProgress: (fraction: number) => void,
   signal?: AbortSignal,
+  hooks: Hooks = {},
 ): Promise<{ id: string; name: string }> {
   return file.size > MULTIPART_FLOOR
-    ? inParts(file, onProgress, signal)
-    : allAtOnce(file, onProgress, signal);
+    ? inParts(file, onProgress, signal, hooks)
+    : allAtOnce(file, onProgress, signal, hooks);
+}
+
+/** The body both `presign` and `multipart/start` read (`readUploadInput`). */
+function describe(file: File, hooks: Hooks) {
+  return JSON.stringify({
+    name: file.name,
+    mime: typeOf(file),
+    size: file.size,
+    folderId: hooks.folderId ?? null,
+    access: hooks.access ?? { mode: "private" },
+  });
 }
 
 /* ---------- one PUT ---------- */
@@ -69,11 +102,12 @@ async function allAtOnce(
   file: File,
   onProgress: (fraction: number) => void,
   signal?: AbortSignal,
+  hooks: Hooks = {},
 ): Promise<{ id: string; name: string }> {
   const presigned = await fetch("/api/files/presign", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name: file.name, mime: typeOf(file), size: file.size }),
+    body: describe(file, hooks),
     signal,
   });
   if (!presigned.ok) throw new Error((await presigned.text()) || "Upload refused");
@@ -83,12 +117,23 @@ async function allAtOnce(
     upload: { url: string; method: "PUT"; headers: Record<string, string> };
   };
 
-  await put(upload, file, onProgress, signal);
+  hooks.onRow?.(fileId);
 
-  // Until this lands the row has no version and no poster job: an object in
-  // the bucket that the studio does not yet consider a file.
-  const done = await fetch(`/api/files/${fileId}/complete`, { method: "POST", signal });
-  if (!done.ok) throw new Error((await done.text()) || "The upload did not arrive");
+  try {
+    await put(upload, file, onProgress, signal);
+
+    // Until this lands the row has no version and no poster job: an object in
+    // the bucket that the studio does not yet consider a file.
+    const done = await fetch(`/api/files/${fileId}/complete`, { method: "POST", signal });
+    if (!done.ok) throw new Error((await done.text()) || "The upload did not arrive");
+  } catch (err) {
+    /* The row was made before the bytes moved. Left behind, it is a file in
+       the list that opens to nothing — which is exactly what the studio saw
+       after a failed 590 MB upload. `keepalive` so a closing tab still
+       gets to say so. */
+    await fetch(`/api/files/${fileId}/abandon`, { method: "POST", keepalive: true }).catch(() => {});
+    throw err;
+  }
 
   return { id: fileId, name: file.name };
 }
@@ -129,11 +174,12 @@ async function inParts(
   file: File,
   onProgress: (fraction: number) => void,
   signal?: AbortSignal,
+  hooks: Hooks = {},
 ): Promise<{ id: string; name: string }> {
   const started = await fetch("/api/files/multipart/start", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name: file.name, mime: typeOf(file), size: file.size }),
+    body: describe(file, hooks),
     signal,
   });
   if (!started.ok) throw new Error((await started.text()) || "Upload refused");
@@ -146,6 +192,7 @@ async function inParts(
     partSize: number;
   };
   const count = Math.ceil(file.size / partSize);
+  hooks.onRow?.(fileId);
 
   /* Progress is the sum of what each part has sent, not how many parts have
      finished: at 16 MB a part the latter is a bar that stands still for a
@@ -251,8 +298,9 @@ async function inParts(
     halt(err instanceof Error ? err : new Error("The upload failed"));
     /* Parts already in the bucket are billed until the upload is abandoned,
        and nothing else will ever clean them up — there is no object at the key
-       to notice. Best effort: if this request is the thing that failed there
-       is nothing more to be done from here. */
+       to notice. The same request removes the row, so the list is not left
+       showing a file that has no bytes. Best effort: if this request is the
+       thing that failed there is nothing more to be done from here. */
     await fetch("/api/files/multipart/abort", {
       method: "POST",
       headers: { "Content-Type": "application/json" },

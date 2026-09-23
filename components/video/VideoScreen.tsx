@@ -1143,6 +1143,7 @@ function Timeline({
                       return (
                         <Trim
                           fileId={c.fileId}
+                          proxyFileId={c.proxyFileId}
                           durationMs={c.durationMs ?? Math.max(i.outMs ?? 0, i.inMs + 1000)}
                           inMs={i.inMs}
                           outMs={i.outMs ?? c.durationMs ?? i.inMs + 1000}

@@ -7,6 +7,7 @@ import { CommandPalette } from "@/components/shell/CommandPalette";
 import { BackgroundWork } from "@/components/shell/BackgroundWork";
 import { RenderWatch } from "@/components/shell/RenderWatch";
 import { Toaster } from "@/components/shell/Toaster";
+import { UploadTray } from "@/components/shell/UploadTray";
 import { BusyBar } from "@/components/shell/BusyBar";
 
 /**
@@ -82,6 +83,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       {/* Work that outlives the page that started it. */}
       <BackgroundWork locale={viewer.locale ?? "zh-CN"} />
       <RenderWatch locale={viewer.locale ?? "zh-CN"} />
+      {/* Uploads keep going while you move between pages; this is where they show. */}
+      <UploadTray locale={viewer.locale ?? "zh-CN"} />
 
       {/* Where a failure goes, now that nothing calls window.alert. */}
       <Toaster />

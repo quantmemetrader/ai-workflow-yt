@@ -42,6 +42,9 @@ export type JobType =
   /** A still out of a video, for the file lists. FFmpeg is on the box and not
    * on Vercel, which is why this is a job and not a request. */
   | "files.poster"
+  /** The 480p copy of an uploaded clip that the editor plays instead of the
+   * master (`lib/video/proxy.ts`). One FFmpeg pass on the box. */
+  | "files.proxy"
   | "video.peaks"
   | "video.autoedit"
   /** Transcribe, cut, design, render: the whole video from a brief

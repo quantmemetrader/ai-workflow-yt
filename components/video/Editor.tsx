@@ -2,7 +2,12 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AudioRow, CaptionRow, ClipRow, GraphicRow, ItemRow } from "@/lib/video/service";
-import { ICONS } from "@/lib/video/icons";
+import {
+  LivePreviewOverlay,
+  cutawaySource,
+  speakerTransform,
+  type Frame,
+} from "@/components/video/LivePreviewOverlay";
 import { Poster } from "@/components/files/Poster";
 import { primaryLanguage as primaryLanguageOf } from "@/lib/video/languages";
 
@@ -164,6 +169,8 @@ export function Editor(props: EditorProps) {
         inMs: number;
         outMs: number | null;
         fileId: string | null;
+        /** What the viewer actually streams. See `playFileId` below. */
+        previewFileId: string | null;
         peaks: number[] | null;
         durationMs: number | null;
       }[]
@@ -190,6 +197,7 @@ export function Editor(props: EditorProps) {
         inMs: i.inMs,
         outMs: i.outMs,
         fileId: clip?.fileId ?? null,
+        previewFileId: clip?.proxyFileId ?? null,
         peaks: clip?.peaks ?? null,
         durationMs: clip?.durationMs ?? null,
       });
@@ -230,14 +238,31 @@ export function Editor(props: EditorProps) {
       const at = sourceAt(clamped);
       const el = video.current;
       if (!el || !at?.fileId) return;
-      const src = `/api/files/${at.fileId}/download`;
-      if (loaded.current !== at.fileId) {
+      /*
+       * Play the preview copy, not the master.
+       *
+       * The master is what the camera produced — 114 MB for 75 seconds, 570 MB
+       * for six minutes, 12–22 Mbps — and it was being streamed from R2 in
+       * Europe to a browser in Hong Kong every time somebody pressed play.
+       * The proxy is the same film at 480p and ~0.34 Mbps: ~100 KB puts the
+       * first frame on screen instead of ~300 KB, and 33 KB carries the next
+       * two seconds where the master wanted 2.9 MB. Some of the studio's side
+       * cameras are iPhones shooting HEVC, which several browsers will not
+       * decode at any speed; the proxy is always H.264.
+       *
+       * `?? at.fileId` is the whole fallback story: footage uploaded before
+       * proxies existed, and anything whose proxy failed to encode or has been
+       * trashed, plays the master exactly as it did yesterday.
+       */
+      const playFileId = at.row.previewFileId ?? at.fileId;
+      const src = `/api/files/${playFileId}/download`;
+      if (loaded.current !== playFileId) {
         /* Loading a new source pauses the element (that is what the media
            load algorithm does), so a cut between two files stopped playback
            dead at the join. If it was playing, it carries on into the next
            file. */
         const wasPlaying = !el.paused;
-        loaded.current = at.fileId;
+        loaded.current = playFileId;
         el.src = src;
         el.currentTime = at.sourceMs / 1000;
         if (wasPlaying) void el.play().catch(() => {});
@@ -365,6 +390,43 @@ export function Editor(props: EditorProps) {
   const livePunch = liveAll.find((g) => g.kind === "punch") ?? null;
   const liveBroll = liveAll.find((g) => g.kind === "broll") ?? null;
   const punchZoom = livePunch ? Number((livePunch.options as Record<string, unknown> | undefined)?.zoom ?? 1.15) || 1.15 : 1;
+
+  /*
+   * How big the picture actually is, for the overlay.
+   *
+   * Everything the composition draws is a share of the frame's *height*
+   * (`ratio(height, share)` in `remotion/src/theme.ts`), so drawing the same
+   * thing over the preview means knowing how tall the preview is right now —
+   * which changes with the window, with the panels either side of it, and
+   * again when a source of a different shape loads. A ResizeObserver answers
+   * all three and costs nothing in between; reading `clientHeight` during a
+   * render would cost a layout on every frame and still be one behind.
+   */
+  const [frame, setFrame] = useState<Frame>({ w: 0, h: 0 });
+  useEffect(() => {
+    const el = video.current;
+    if (!el) return;
+    const measure = new ResizeObserver(() => {
+      setFrame((was) =>
+        was.w === el.clientWidth && was.h === el.clientHeight ? was : { w: el.clientWidth, h: el.clientHeight },
+      );
+    });
+    measure.observe(el);
+    return () => measure.disconnect();
+  }, []);
+
+  /* A picture-in-picture cutaway keeps the speaker in a circle while the
+     footage fills the frame. The render does that by cropping their face out
+     and compositing it; nothing here can crop a `<video>`, but the cutaway
+     covers everything except a round hole, so moving the picture underneath
+     until the face is behind the hole comes to the same picture. Hence a
+     transform on the element rather than anything in the overlay — and it
+     replaces the punch for those seconds, because the only part of the
+     punched frame still visible is the circle. */
+  const speaker =
+    liveBroll && liveBroll.placement === "pip" && cutawaySource(liveBroll, clips)
+      ? speakerTransform(frame.h > frame.w)
+      : null;
 
   const px = (ms: number) => (ms / 1000) * zoom;
   /** What one pixel of drag is worth, in milliseconds, at this zoom. */
@@ -501,6 +563,12 @@ export function Editor(props: EditorProps) {
             <div style={{ position: "relative", maxWidth: "100%", maxHeight: "100%", overflow: "hidden", borderRadius: 4 }}>
               <video
                 ref={video}
+                /* Metadata, not the file. Both the proxy and the master are
+                   written with the index at the front (`+faststart`) and R2
+                   answers range requests, so the browser reads the header,
+                   asks for the bytes around the playhead and starts — it never
+                   waits for the whole thing, and switching clips costs one
+                   small request rather than a download. */
                 preload="metadata"
                 playsInline
                 onPlay={() => setPlaying(true)}
@@ -511,95 +579,28 @@ export function Editor(props: EditorProps) {
                   display: "block",
                   background: "#000",
                   borderRadius: 4,
-                  transform: punchZoom > 1 ? `scale(${punchZoom})` : undefined,
-                  transformOrigin: "center",
+                  transform: speaker ? speaker.transform : punchZoom > 1 ? `scale(${punchZoom})` : undefined,
+                  transformOrigin: speaker ? speaker.transformOrigin : "center",
                   transition: "transform .25s ease-out",
                 }}
               />
 
-              {liveBroll ? (
-                <div
-                  style={{
-                    position: "absolute",
-                    inset: liveBroll.placement === "full" || liveBroll.placement === "pip" ? 0 : undefined,
-                    right: liveBroll.placement !== "full" && liveBroll.placement !== "pip" ? "5%" : undefined,
-                    top: liveBroll.placement === "top-right" ? "6%" : undefined,
-                    bottom: liveBroll.placement === "bottom-right" ? "6%" : undefined,
-                    width: liveBroll.placement === "full" || liveBroll.placement === "pip" ? undefined : "34%",
-                    aspectRatio: liveBroll.placement === "full" || liveBroll.placement === "pip" ? undefined : "16 / 9",
-                    /* The pip layout keeps the speaker in a circle at the top
-                       right: a round window cut out of the cutaway card, so the
-                       video underneath shows through where the circle will be. */
-                    ...(liveBroll.placement === "pip"
-                      ? {
-                          WebkitMaskImage: "radial-gradient(circle at 81% 17%, transparent 13.5%, #000 13.6%)",
-                          maskImage: "radial-gradient(circle at 81% 17%, transparent 13.5%, #000 13.6%)",
-                        }
-                      : {}),
-                    background: "rgba(23,23,23,0.82)",
-                    color: "#fff",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    fontSize: 12,
-                    fontWeight: 500,
-                    pointerEvents: "none",
-                    borderRadius: liveBroll.placement === "full" || liveBroll.placement === "pip" ? 0 : 4,
-                  }}
-                >
-                  {t("Cutaway", "空镜")} · {liveBroll.text}
-                </div>
-              ) : null}
-
-              {/* Graphics and captions over the picture, from the same numbers
-                  the renderer uses. Not the render — an indication of it. */}
-              {liveGraphics.map((g) => {
-                /* Where each kind sits, from the same rules the composition
-                   draws with — an indication of the render, not the render. */
-                if (g.kind === "icon" || g.kind === "image") {
-                  const corner = cornerBox(g.placement, g.scale);
-                  const paths = g.kind === "icon" ? (ICONS[g.icon ?? ""]?.d ?? ICONS.check.d) : null;
-                  return (
-                    <div key={g.id} style={{ ...corner, position: "absolute", pointerEvents: "none", display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-                      {paths ? (
-                        <span style={{ width: "100%", aspectRatio: "1", borderRadius: "22%", background: "rgba(0,0,0,0.62)", border: "1px solid rgba(255,255,255,0.14)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                          <svg viewBox="0 0 24 24" style={{ width: "58%", height: "58%", fill: "none", stroke: accent, strokeWidth: 1.7, strokeLinecap: "round", strokeLinejoin: "round" }}>
-                            {paths.map((d, i) => (
-                              <path key={i} d={d} />
-                            ))}
-                          </svg>
-                        </span>
-                      ) : g.fileId ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={`/api/files/${g.fileId}/download`} alt="" style={{ width: "100%", objectFit: "contain", borderRadius: 3 }} />
-                      ) : null}
-                      {g.text ? <span style={{ color: "#fff", fontSize: 11, fontWeight: 600, textShadow: "0 2px 10px rgba(0,0,0,0.7)" }}>{g.text}</span> : null}
-                    </div>
-                  );
-                }
-                const place = graphicPlacement(g.kind);
-                return (
-                  <div key={g.id} style={{ ...place.box, position: "absolute", pointerEvents: "none" }}>
-                    <span style={{ ...place.text, color: g.kind === "card" ? "#171717" : "#fff", textShadow: g.kind === "card" ? "none" : "0 2px 10px rgba(0,0,0,0.7)", ...(g.kind === "statement" || g.kind === "header" ? { borderTopColor: accent } : {}) }}>
-                      {g.kind === "bracket" ? <b style={{ color: accent, fontWeight: 300 }}>{"{ "}</b> : null}
-                      {g.text
-                        .split(/(【[^】]+】)/g)
-                        .filter(Boolean)
-                        .map((p, i) =>
-                          p.startsWith("【") ? (
-                            <b key={i} style={{ color: accent, fontWeight: "inherit" }}>{p.slice(1, -1)}</b>
-                          ) : (
-                            <span key={i}>{p.replace(/\s*\|\s*/g, "\n")}</span>
-                          ),
-                        )}
-                      {g.kind === "bracket" ? <b style={{ color: accent, fontWeight: 300 }}>{" }"}</b> : null}
-                      {g.sub ? (
-                        <span style={{ display: "block", fontSize: 11, fontWeight: 400, opacity: 0.78, whiteSpace: "pre-line" }}>{g.sub.replace(/\s*\|\s*/g, "\n")}</span>
-                      ) : null}
-                    </span>
-                  </div>
-                );
-              })}
+              {/* What the render will put over this frame: the cutaway's own
+                  footage where a grey card used to say 空镜, and the titles,
+                  numbers and furniture the director wrote, at the size and in
+                  the place the composition draws them. Drawn from the same
+                  rows the renderer reads. Not the render — near enough to
+                  judge the cut on without waiting for one. */}
+              <LivePreviewOverlay
+                cutaway={liveBroll}
+                graphics={liveGraphics}
+                clips={clips}
+                atMs={atMs}
+                playing={playing}
+                accent={accent}
+                zh={zh}
+                frame={frame}
+              />
 
               {liveCaption ? (
                 <div
@@ -1599,126 +1600,3 @@ function stamp(ms: number): string {
   return `${m}:${(total - m * 60).toFixed(1).padStart(4, "0")}`;
 }
 
-
-/** A corner or the middle, at a share of the frame's height, for an icon or a picture. */
-function cornerBox(placement: string, scale: number): React.CSSProperties {
-  const share = `${Math.max(5, Math.min(90, scale))}%`;
-  if (placement === "full") return { inset: 0 };
-  const base: React.CSSProperties = { width: share, maxWidth: "60%" };
-  switch (placement) {
-    case "top-left":
-      return { ...base, left: "5%", top: "6%" };
-    case "top-right":
-      return { ...base, right: "5%", top: "6%" };
-    case "bottom-left":
-      return { ...base, left: "5%", bottom: "12%" };
-    case "bottom-right":
-      return { ...base, right: "5%", bottom: "12%" };
-    case "bottom-center":
-      return { ...base, left: "50%", bottom: "12%", transform: "translateX(-50%)" };
-    default:
-      return { ...base, left: "50%", top: "50%", transform: "translate(-50%, -50%)" };
-  }
-}
-
-/**
- * Roughly where each graphic lands, for the viewer's preview.
- *
- * Deliberately approximate: the real thing is drawn by Remotion at full size.
- * What this has to get right is *which corner*, so that moving a lower third
- * and moving a chapter mark do not look like the same edit.
- */
-function graphicPlacement(kind: string): { box: React.CSSProperties; text: React.CSSProperties } {
-  const centred: React.CSSProperties = {
-    inset: 0,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    textAlign: "center",
-    padding: "0 8%",
-  };
-
-  switch (kind) {
-    case "lower-third":
-      return {
-        box: { left: "6%", bottom: "12%" },
-        text: { display: "inline-block", borderLeft: "3px solid currentColor", paddingLeft: 8, fontSize: 15, fontWeight: 650 },
-      };
-    case "chapter":
-      return {
-        box: { left: "5%", top: "7%" },
-        text: {
-          display: "inline-block",
-          background: "rgba(0,0,0,0.55)",
-          padding: "3px 7px",
-          borderRadius: 4,
-          fontSize: 10,
-          fontWeight: 650,
-          letterSpacing: "0.08em",
-          textTransform: "uppercase",
-        },
-      };
-    case "badge":
-      return {
-        box: { right: "5%", top: "7%" },
-        text: {
-          display: "inline-block",
-          background: "rgba(0,0,0,0.6)",
-          border: "1px solid rgba(255,255,255,0.18)",
-          padding: "3px 9px",
-          borderRadius: 999,
-          fontSize: 10.5,
-          fontWeight: 650,
-        },
-      };
-    case "ticker":
-      return {
-        box: { left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.72)", padding: "4px 10px" },
-        text: { display: "block", fontSize: 11, fontWeight: 500 },
-      };
-    case "quote":
-      return {
-        box: { inset: 0, display: "flex", alignItems: "center", padding: "0 10%", background: "rgba(0,0,0,0.35)" },
-        text: { display: "inline-block", fontSize: 16, fontWeight: 500, textAlign: "left", lineHeight: 1.35 },
-      };
-    case "stat":
-      return { box: centred, text: { display: "inline-block", fontSize: 40, fontWeight: 750, letterSpacing: "-0.03em" } };
-    case "bracket":
-      return {
-        box: { ...centred, background: "rgba(0,0,0,0.8)" },
-        text: { display: "inline-block", fontSize: 20, fontWeight: 650, fontStyle: "italic" },
-      };
-    case "statement":
-      return {
-        box: { left: "5%", bottom: "44%", maxWidth: "90%" },
-        text: { display: "inline-block", borderTop: "3px solid currentColor", paddingTop: 4, fontSize: 17, fontWeight: 700, lineHeight: 1.3, textAlign: "left", whiteSpace: "pre-line" },
-      };
-    case "header":
-      return {
-        box: { left: "4%", top: "5%", maxWidth: "88%" },
-        text: { display: "inline-block", borderTop: "3px solid currentColor", paddingTop: 3, fontSize: 12, fontWeight: 700, lineHeight: 1.25, textAlign: "left" },
-      };
-    case "watermark":
-      return {
-        box: { left: 0, right: 0, bottom: "16%", textAlign: "center" },
-        text: { display: "inline-block", fontSize: 9.5, fontWeight: 700, letterSpacing: "0.04em", opacity: 0.9 },
-      };
-    case "footnote":
-      return {
-        box: { left: 0, right: 0, bottom: "4%", textAlign: "center", padding: "0 6%" },
-        text: { display: "inline-block", fontSize: 7, fontWeight: 400, opacity: 0.75 },
-      };
-    case "card":
-      return {
-        box: { left: 0, right: 0, bottom: "46%", textAlign: "center" },
-        text: { display: "inline-block", background: "rgba(255,255,255,0.96)", color: "#171717", borderRadius: 6, padding: "5px 10px", fontSize: 12, fontWeight: 600, textShadow: "none" },
-      };
-    case "end-card":
-      return {
-        box: { ...centred, background: "#000" },
-        text: { display: "inline-block", fontSize: 22, fontWeight: 650 },
-      };
-    default:
-      return { box: centred, text: { display: "inline-block", fontSize: 15, fontWeight: 650 } };
-  }
-}

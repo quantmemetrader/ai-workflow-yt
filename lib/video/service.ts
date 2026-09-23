@@ -1,5 +1,6 @@
 import "server-only";
 import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import { db, tx } from "@/lib/db/client";
 import {
   audioTracks,
@@ -51,6 +52,13 @@ export function isAspect(v: unknown): v is Aspect {
 export type ClipRow = {
   id: string;
   fileId: string;
+  /**
+   * The small copy the editor plays instead of the master, when one exists
+   * (`lib/video/proxy.ts`). Null for footage uploaded before proxies did, and
+   * for anything whose proxy has since been trashed — the player falls back
+   * to the master, which is how it worked for everybody until now.
+   */
+  proxyFileId: string | null;
   label: string;
   name: string;
   durationMs: number | null;
@@ -333,17 +341,23 @@ export async function availablePictures(viewer: Viewer) {
 }
 
 export async function listClips(viewer: Viewer, projectId: string): Promise<ClipRow[]> {
+  /* The master's preview copy, joined rather than read from the pointer: a
+     proxy that has been trashed must not be handed to the player, which would
+     ask for it and get a 404 instead of falling back to the master. */
+  const proxy = alias(files, "proxy_file");
   const rows = await db
-    .select({ c: videoClips, name: files.name })
+    .select({ c: videoClips, name: files.name, proxyFileId: proxy.id })
     .from(videoClips)
     .innerJoin(videoProjects, eq(videoProjects.id, videoClips.projectId))
     .leftJoin(files, eq(files.id, videoClips.fileId))
+    .leftJoin(proxy, and(eq(proxy.id, files.proxyFileId), isNull(proxy.deletedAt)))
     .where(and(eq(videoClips.projectId, projectId), eq(videoProjects.tenantId, viewer.tenantId)))
     .orderBy(asc(videoClips.addedAt));
 
   return rows.map((r) => ({
     id: r.c.id,
     fileId: r.c.fileId,
+    proxyFileId: r.proxyFileId ?? null,
     label: r.c.label || (r.name ?? ""),
     name: r.name ?? "",
     durationMs: r.c.durationMs,
