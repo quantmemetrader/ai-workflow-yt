@@ -55,6 +55,10 @@ export type Frame = { w: number; h: number };
 export type LivePreviewOverlayProps = {
   /** The cutaway live at the playhead, if any. Drawn under everything else. */
   cutaway: GraphicRow | null;
+  /** Every cutaway on the timeline. The ones coming up are mounted early,
+   * hidden and parked on their first frame, so the live one is on screen the
+   * instant the playhead reaches it rather than a second or two later. */
+  cutaways: GraphicRow[];
   /** Everything else live at the playhead: punch-ins and cutaways removed. */
   graphics: GraphicRow[];
   /** The bin, for resolving a cutaway's clip to a file to play. */
@@ -132,8 +136,17 @@ export function speakerTransform(portrait: boolean): { transform: string; transf
   };
 }
 
+/** How far ahead of the playhead a cutaway is fetched and parked, and how
+ * far behind it is kept: a fetch from Hong Kong takes a second or two, a
+ * scrub back of a few seconds should not pay it again, and a `<video>` per
+ * cutaway across a twenty-minute cut would be more elements than a browser
+ * will run at once. */
+const AHEAD_MS = 120_000;
+const BEHIND_MS = 30_000;
+
 export function LivePreviewOverlay({
   cutaway,
+  cutaways,
   graphics,
   clips,
   atMs,
@@ -157,22 +170,35 @@ export function LivePreviewOverlay({
 
   const source = cutaway ? cutawaySource(cutaway, clips) : null;
 
+  /* The live cutaway plus the ones about to happen. Each stays mounted for
+     its window, so the element, its bytes and its first frame are already
+     there when the playhead arrives — the thing that made a cutaway show up
+     late, or not at all on a short one, was building all of that on cue. */
+  const mounted = cutaways.filter(
+    (g) => g.id === cutaway?.id || (g.startMs - atMs <= AHEAD_MS && g.endMs + BEHIND_MS >= atMs),
+  );
+
   return (
     <div style={{ position: "absolute", inset: 0, overflow: "hidden", pointerEvents: "none" }}>
-      {/* The cutaway first, so the furniture draws over it — the order the
+      {/* The cutaways first, so the furniture draws over them — the order the
           render composites in: picture, cutaway, stills, captions. */}
-      {cutaway ? (
-        source ? (
+      {mounted.map((g) => {
+        const src = cutawaySource(g, clips);
+        return src ? (
           <Cutaway
-            key={cutaway.id}
-            graphic={cutaway}
-            source={source}
+            key={g.id}
+            graphic={g}
+            source={src}
+            live={g.id === cutaway?.id}
             atMs={atMs}
             playing={playing}
             frame={frame}
             portrait={portrait}
           />
-        ) : (
+        ) : null;
+      })}
+      {cutaway ? (
+        source ? null : (
           /* The clip is not in the bin any more — the render drops a cutaway
              like this rather than failing, so the preview says so rather than
              showing the speaker as if nothing were planned. */
@@ -222,6 +248,7 @@ export function LivePreviewOverlay({
 function Cutaway({
   graphic,
   source,
+  live,
   atMs,
   playing,
   frame,
@@ -229,14 +256,18 @@ function Cutaway({
 }: {
   graphic: GraphicRow;
   source: { fileId: string; sourceInMs: number };
+  /** On screen and running. Otherwise mounted, hidden, parked on its first
+   * frame, waiting. */
+  live: boolean;
   atMs: number;
   playing: boolean;
   frame: Frame;
   portrait: boolean;
 }) {
   const el = useRef<HTMLVideoElement | null>(null);
-  /** Where in the cutaway's own file the playhead is, in seconds. */
-  const wanted = (source.sourceInMs + Math.max(0, atMs - graphic.startMs)) / 1000;
+  /** Where in the cutaway's own file the playhead is, in seconds — or, while
+   * waiting, its first frame, so that frame is decoded before it is needed. */
+  const wanted = live ? (source.sourceInMs + Math.max(0, atMs - graphic.startMs)) / 1000 : source.sourceInMs / 1000;
 
   /* Follow the playhead. `readyState` is checked because a seek on an element
      that has not got its metadata yet is thrown away; `onLoadedMetadata` does
@@ -250,12 +281,13 @@ function Cutaway({
   /* Run and stop with the main picture, including the pause the editor does
      at the end of the timeline. A rejected play() is normal — the element can
      still be loading — and there is nothing to tell anybody about. */
+  const running = live && playing;
   useEffect(() => {
     const v = el.current;
     if (!v) return;
-    if (playing && v.paused) void v.play().catch(() => {});
-    if (!playing && !v.paused) v.pause();
-  }, [playing]);
+    if (running && v.paused) void v.play().catch(() => {});
+    if (!running && !v.paused) v.pause();
+  }, [running]);
 
   const placement = graphic.placement || "full";
   const isPip = placement === "pip";
@@ -297,6 +329,9 @@ function Cutaway({
         style={{
           position: "absolute",
           ...box,
+          /* Hidden, not unmounted: a hidden `<video>` still fetches and
+             decodes, which is the whole point of mounting it early. */
+          visibility: live ? "visible" : "hidden",
           overflow: "hidden",
           borderRadius: full ? 0 : 3,
           /* The hole the speaker shows through. The `<video>` underneath has
@@ -320,7 +355,7 @@ function Cutaway({
           onLoadedMetadata={(e) => {
             const v = e.currentTarget;
             v.currentTime = wanted;
-            if (playing) void v.play().catch(() => {});
+            if (running) void v.play().catch(() => {});
           }}
           style={{ width: "100%", height: "100%", objectFit: "cover", display: "block", filter }}
         />
@@ -336,7 +371,7 @@ function Cutaway({
           />
         ) : null}
       </div>
-      {isPip && radius > 0 ? (
+      {live && isPip && radius > 0 ? (
         /* The ring around the speaker. White, as measured from the editor's
            own cut — the accent is kept for the type, not the frame. */
         <div

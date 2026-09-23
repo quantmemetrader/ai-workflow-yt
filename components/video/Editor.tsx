@@ -389,6 +389,8 @@ export function Editor(props: EditorProps) {
      as a named card where the clip will be. Indications, not the render. */
   const livePunch = liveAll.find((g) => g.kind === "punch") ?? null;
   const liveBroll = liveAll.find((g) => g.kind === "broll") ?? null;
+  // Every cutaway, for the preview to fetch ahead of the playhead.
+  const brolls = useMemo(() => graphics.filter((g) => g.kind === "broll"), [graphics]);
   const punchZoom = livePunch ? Number((livePunch.options as Record<string, unknown> | undefined)?.zoom ?? 1.15) || 1.15 : 1;
 
   /*
@@ -593,6 +595,7 @@ export function Editor(props: EditorProps) {
                   judge the cut on without waiting for one. */}
               <LivePreviewOverlay
                 cutaway={liveBroll}
+                cutaways={brolls}
                 graphics={liveGraphics}
                 clips={clips}
                 atMs={atMs}
