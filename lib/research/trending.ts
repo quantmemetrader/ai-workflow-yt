@@ -55,7 +55,7 @@ export async function trendingSearches(region: string = "HK"): Promise<TrendingS
 
   try {
     const res = await fetch(`https://trends.google.com/trending/rss?geo=${geo}`, {
-      headers: { "User-Agent": "AuraFarmers/1.0 (+studio research)" },
+      headers: { "User-Agent": "Tengya/1.0 (+studio research)" },
       signal: AbortSignal.timeout(12_000),
       cache: "no-store",
     });

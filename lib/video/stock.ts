@@ -72,7 +72,7 @@ export async function searchStock(query: string, limit = 8): Promise<StockImage[
   url.searchParams.set("mature", "false");
 
   const res = await fetch(url, {
-    headers: { accept: "application/json", "user-agent": "AuraFarmers/1.0 (studio video tool)" },
+    headers: { accept: "application/json", "user-agent": "Tengya/1.0 (studio video tool)" },
     // Openverse is a search index: a slow answer is better than a stale one,
     // but nobody should wait more than a few seconds for one.
     signal: AbortSignal.timeout(12_000),
@@ -125,7 +125,7 @@ export async function stockById(id: string): Promise<StockImage | null> {
   }
   if (!/^[0-9a-f-]{16,64}$/i.test(id)) return null;
   const res = await fetch(`${ENDPOINT}${id}/`, {
-    headers: { accept: "application/json", "user-agent": "AuraFarmers/1.0 (studio video tool)" },
+    headers: { accept: "application/json", "user-agent": "Tengya/1.0 (studio video tool)" },
     signal: AbortSignal.timeout(12_000),
     cache: "no-store",
   }).catch(() => null);
@@ -214,7 +214,7 @@ export async function searchStockClips(
   if (opts.orientation) url.searchParams.set("orientation", opts.orientation);
 
   const res = await fetch(url, {
-    headers: { Authorization: env.pexels.apiKey, "user-agent": "AuraFarmers/1.0 (studio video tool)" },
+    headers: { Authorization: env.pexels.apiKey, "user-agent": "Tengya/1.0 (studio video tool)" },
     signal: AbortSignal.timeout(12_000),
     cache: "no-store",
   }).catch(() => null);
@@ -268,7 +268,7 @@ export async function searchStockPhotos(query: string, limit = 6): Promise<Stock
     url.searchParams.set("query", text.slice(0, 120));
     url.searchParams.set("per_page", String(Math.min(10, limit)));
     const res = await fetch(url, {
-      headers: { Authorization: env.pexels.apiKey, "user-agent": "AuraFarmers/1.0 (studio video tool)" },
+      headers: { Authorization: env.pexels.apiKey, "user-agent": "Tengya/1.0 (studio video tool)" },
       signal: AbortSignal.timeout(12_000),
       cache: "no-store",
     }).catch(() => null);

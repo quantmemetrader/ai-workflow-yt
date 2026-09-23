@@ -229,7 +229,7 @@ export async function importPicture(
   if (target.protocol !== "https:") throw new Error("That picture is not served over https");
 
   const upstream = await fetch(target, {
-    headers: { accept: "image/*", "user-agent": "AuraFarmers/1.0 (studio video tool)" },
+    headers: { accept: "image/*", "user-agent": "Tengya/1.0 (studio video tool)" },
     signal: AbortSignal.timeout(30_000),
   }).catch(() => null);
   if (!upstream?.ok) throw new Error("That picture could not be fetched");
@@ -294,7 +294,7 @@ export async function importVideo(
   if (target.protocol !== "https:") throw new Error("That clip is not served over https");
 
   const upstream = await fetch(target, {
-    headers: { accept: "video/*", "user-agent": "AuraFarmers/1.0 (studio video tool)" },
+    headers: { accept: "video/*", "user-agent": "Tengya/1.0 (studio video tool)" },
     signal: AbortSignal.timeout(120_000),
   }).catch(() => null);
   if (!upstream?.ok || !upstream.body) throw new Error("That clip could not be fetched");

@@ -26,7 +26,10 @@ import { newId } from "@/lib/ids";
  * that need to read a person's data still take that person's viewer.
  */
 
-const EMAIL = "service@aurafarmers.internal";
+// Renamed with the studio (2026-09-24). The lookup below is by email, so the
+// existing row was updated in the same deploy rather than left to be
+// re-created under the new address as a duplicate.
+const EMAIL = "service@tengya.internal";
 
 /*
  * Keyed by tenant (REVIEW.md #11).
