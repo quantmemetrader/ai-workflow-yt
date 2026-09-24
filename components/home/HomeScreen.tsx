@@ -194,32 +194,36 @@ export function HomeScreen({
           <p style={{ margin: "5px 0 0", fontSize: 13.5, color: "#7c7c7c" }}>{subline}</p>
         </div>
 
-        {/* ---- 1. the task box, the whole width ---- */}
-        {composer}
-
-        {/* ---- 2. today's video, straight under it ---- */}
-        <Fold id="home-flow" title={t("今天这条片走到哪了", "Where today's video is")} sub={pipeline.title ?? t("还没有开始的片子", "Nothing in progress yet")} resizable={false}>
-          <MiniFlow pipeline={pipeline} zh={zh} bare />
-        </Fold>
-
-        {/* ---- 3. the conversation on the left, the team on the right ---- */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(380px, 1fr))", gap: 14, alignItems: "start" }}>
+        {/* ---- the box, the line of work and the team on the left; the
+             conversation down the right ---- */}
+        <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 8fr) minmax(340px, 5fr)", gap: 14, alignItems: "start" }}>
+          <div style={{ position: "sticky", top: 0, minWidth: 0, order: 2 }}>
           <Fold
-            id="home-work"
-            title={t("在这里干活", "Work here")}
-            sub={teamChannel ? `#${teamChannel.name}` : undefined}
-            icon={<AgentIcon size={20} radius={6} />}
-            flush
-            height={300}
-            right={
-              teamChannel ? (
-                <Link href={`/chat/c/${encodeURIComponent(teamChannel.slug)}`} style={{ fontSize: 12, color: "#525252", textDecoration: "none", whiteSpace: "nowrap" }}>
-                  {t("整个频道", "Whole channel")} →
-                </Link>
-              ) : null
-            }
+              id="home-work"
+              title={t("在这里干活", "Work here")}
+              sub={teamChannel ? `#${teamChannel.name}` : undefined}
+              icon={<AgentIcon size={20} radius={6} />}
+              flush
+              height={640}
+              right={
+                teamChannel ? (
+                  <Link href={`/chat/c/${encodeURIComponent(teamChannel.slug)}`} style={{ fontSize: 12, color: "#525252", textDecoration: "none", whiteSpace: "nowrap" }}>
+                    {t("整个频道", "Whole channel")} →
+                  </Link>
+                ) : null
+              }
           >
-            <Conversation zh={zh} messages={thread} waiting={waiting} pending={pending} pressing={pressing} onPress={(id, action) => teamChannel && press(teamChannel.slug, id, action)} />
+              <Conversation zh={zh} messages={thread} waiting={waiting} pending={pending} pressing={pressing} onPress={(id, action) => teamChannel && press(teamChannel.slug, id, action)} />
+          </Fold>
+
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
+        {/* ---- 1. the task box, the whole width ---- */}
+          {composer}
+
+          {/* ---- 2. today's video, straight under it ---- */}
+          <Fold id="home-flow" title={t("今天这条片走到哪了", "Where today's video is")} sub={pipeline.title ?? t("还没有开始的片子", "Nothing in progress yet")} resizable={false}>
+            <MiniFlow pipeline={pipeline} zh={zh} bare />
           </Fold>
 
           <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
@@ -315,6 +319,7 @@ export function HomeScreen({
               </Fold>
             ) : null}
           </div>
+        </div>
         </div>
       </div>
     </div>

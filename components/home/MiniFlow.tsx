@@ -98,17 +98,20 @@ export function MiniFlow({ pipeline, zh, bare = false }: { pipeline: Pipeline; z
         <span style={{ fontSize: 12, color: "#999999", whiteSpace: "nowrap" }}>{t(`${doneCount}/6 步完成`, `${doneCount}/6 done`)}</span>
       </div>
 
-      <div style={{ display: "flex", alignItems: "stretch", gap: 0, overflowX: "auto", paddingBottom: talking ? 64 : 0 }}>
-        {list.map((x, i) => (
-          <React.Fragment key={x.key}>
-            {i > 0 ? (
-              <div aria-hidden style={{ width: 20, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", color: live(x) ? "#0f5bd5" : "#b9b6b0", fontSize: 14 }}>
-                →
-              </div>
-            ) : null}
-            <StepCard step={x} zh={zh} talking={talking === x.key} onTalk={() => setTalking(talking === x.key ? null : x.key)} alignRight={i >= 3} />
-          </React.Fragment>
-        ))}
+      {/* Three and three, the second row running back under the first, the
+          way the board draws it; fits the right-hand column. */}
+      <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) 20px minmax(0,1fr) 20px minmax(0,1fr)", rowGap: 4, paddingBottom: talking ? 64 : 0 }}>
+        {[list[0], list[1], list[2]].flatMap((x, i) => [
+          ...(i ? [<Arrow key={`a${i}`} dir="→" on={live(x)} />] : []),
+          <StepCard key={x.key} step={x} zh={zh} talking={talking === x.key} onTalk={() => setTalking(talking === x.key ? null : x.key)} alignRight={i === 2} />,
+        ])}
+        <div style={{ gridColumn: "5", display: "flex", justifyContent: "center", height: 18, alignItems: "center", color: live(list[3]) ? "#0f5bd5" : "#b9b6b0", fontSize: 14 }} aria-hidden>
+          ↓
+        </div>
+        {[list[5], list[4], list[3]].flatMap((x, i, arr) => [
+          ...(i ? [<Arrow key={`b${i}`} dir="←" on={live(arr[i - 1])} />] : []),
+          <StepCard key={x.key} step={x} zh={zh} talking={talking === x.key} onTalk={() => setTalking(talking === x.key ? null : x.key)} alignRight={i === 2} />,
+        ])}
       </div>
 
       <Link
@@ -125,6 +128,14 @@ export function MiniFlow({ pipeline, zh, bare = false }: { pipeline: Pipeline; z
         <span style={{ fontSize: 20, lineHeight: 1 }}>→</span>
       </Link>
     </section>
+  );
+}
+
+function Arrow({ dir, on }: { dir: string; on: boolean }) {
+  return (
+    <div aria-hidden style={{ display: "flex", alignItems: "center", justifyContent: "center", color: on ? "#0f5bd5" : "#b9b6b0", fontSize: 14 }}>
+      {dir}
+    </div>
   );
 }
 
@@ -165,7 +176,7 @@ function StepCard({ step: x, zh, talking, onTalk, alignRight }: { step: Step; zh
   );
 
   return (
-    <div style={{ flex: "1 1 0", minWidth: 150, position: "relative" }}>
+    <div style={{ minWidth: 0, position: "relative" }}>
       <div style={{ ...frame, borderRadius: 10, padding: "10px 10px 8px", height: "100%", boxSizing: "border-box" }}>
         {x.href ? (
           <Link href={x.href} title={x.line} style={{ display: "block", color: "inherit", textDecoration: "none" }}>
