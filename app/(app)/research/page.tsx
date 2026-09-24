@@ -9,7 +9,6 @@ import { answeringModel } from "@/lib/ai/models";
 import { trendingNearby } from "@/lib/research/trending";
 import { latestDigest } from "@/lib/home/pulse";
 import { proposalsFor } from "@/lib/agents/proposals";
-import { pictureFor } from "@/lib/research/pictures";
 import { trendingVideos } from "@/lib/research/youtube";
 import { creatorMemoryState } from "@/lib/creator/service";
 import { db } from "@/lib/db/client";
@@ -105,12 +104,9 @@ export default async function TrendsPage({
     if (picks.some((x) => x.text === p.text || (digest?.topic && p.text.includes(digest.topic)))) continue;
     picks.push({ text: p.text, why: p.why, source: p.source, thumbnail: null });
   }
-  /* The picture is the channel's own video or the rival's post the pick
-     cites, when one can be matched by title; a pick that cites nothing with a
-     picture stays without one rather than getting a stock one. */
-  await Promise.all(picks.map(async (p) => {
-    p.thumbnail = await pictureFor(viewer.tenantId, `${p.text} ${p.why ?? ""}`);
-  }));
+  /* No pictures on picks. A pick is a topic to shoot, not a clip that
+     exists; matching one to an old video's thumbnail put the same face on
+     every row and implied the footage was already there. */
 
   return (
     <>
