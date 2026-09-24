@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AgentMark, MentionMenu, type MentionPerson } from "@/components/chat/MentionMenu";
 import { useMentions } from "@/components/chat/useMentions";
-import { AGENT_LABELS, agentTag, type AgentKey } from "@/lib/agents/catalog";
+import { AGENT_LABELS, agentTag, parseAgentMentions, type AgentKey } from "@/lib/agents/catalog";
 import type { AgentState, Decision, Running } from "@/lib/home/service";
 import { pressCardAction, sendChannelMessage } from "@/app/(app)/chat/actions";
 import { PipelineStrip } from "@/components/home/PipelineStrip";
@@ -124,8 +124,11 @@ export function HomeScreen({
         return;
       }
       setDraft("");
-      setSentAt(new Date().toISOString());
-      setWatching(true);
+      /* Only a message that tags a colleague has an answer to wait for. */
+      if (parseAgentMentions(body).length) {
+        setSentAt(new Date().toISOString());
+        setWatching(true);
+      }
       router.refresh();
     });
   }
@@ -185,7 +188,7 @@ export function HomeScreen({
             rows={2}
             placeholder={t(
               "想做什么？例如：@研究员 看看这周香港有什么值得拍的",
-              "What do you want made? For example: @Research agent find something worth filming in Hong Kong this week",
+              "What do you want made? For example: @research find something worth filming in Hong Kong this week",
             )}
             style={{
               width: "100%",
