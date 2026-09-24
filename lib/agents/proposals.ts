@@ -107,12 +107,16 @@ export async function proposalsFor(viewer: Viewer, owner: AgentKey): Promise<Pro
     planDate = typeof date === "string" ? date : null;
   }
 
-  /* 2. The backlog: what the studio itself decided to make. Hottest first. */
-  if (items.length < LIMIT) {
+  /* 2. The backlog: what the studio itself decided to make. Hottest first.
+        Only topics that were actually researched (they have a summary): a
+        watch phrase somebody typed to try the board — "goat", "arsenal" —
+        is not a proposal. And never for 剪辑师, which cuts what it is given
+        rather than picking subjects. */
+  if (items.length < LIMIT && owner !== "video") {
     const backlog = await db
       .select({ name: topics.name, summary: topics.summary })
       .from(topics)
-      .where(and(eq(topics.tenantId, viewer.tenantId), eq(topics.stage, "adopted")))
+      .where(and(eq(topics.tenantId, viewer.tenantId), eq(topics.stage, "adopted"), sql`coalesce(${topics.summary}, '') <> ''`))
       .orderBy(desc(topics.heat))
       .limit(LIMIT);
     for (const t of backlog) {

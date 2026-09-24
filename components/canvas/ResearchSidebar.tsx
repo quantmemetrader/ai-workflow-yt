@@ -113,116 +113,17 @@ export function ResearchSidebar({
         ))}
       </div>
 
-      {/*
-        * A folded summary, not eleven dead rows.
-        *
-        * A source is a status line, never a destination — these used to link
-        * to `/research/sources`, a screen that does not exist, so every one of
-        * them was a 404 — and eleven rows that do nothing read as a column of
-        * broken buttons. The header is the pressable thing, it carries the
-        * count that matters, and the detail is one click away and remembered.
-        */}
-      <button
-        type="button"
-        onClick={() => setOpen(open === "open" ? "shut" : "open")}
-        aria-expanded={open === "open"}
-        className="n"
-        style={{
-          margin: "18px 0 3px",
-          width: "100%",
-          border: 0,
-          background: "transparent",
-          cursor: "pointer",
-          fontFamily: "inherit",
-          letterSpacing: "inherit",
-          fontSize: 11.5,
-          fontWeight: 500,
-          color: "#999999",
-          height: 22,
-        }}
-      >
-        <span>{zh ? "已连接的来源" : "Connected sources"}</span>
-        <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6 }}>
-          <span style={{ fontSize: 11.5, color: live === sources.length ? "#278f5e" : "#999999" }}>
-            {live}/{sources.length}
-          </span>
-          <svg
-            viewBox="0 0 24 24"
-            style={{
-              width: 11,
-              height: 11,
-              stroke: "#c7c7c7",
-              fill: "none",
-              strokeWidth: 2.2,
-              strokeLinecap: "round",
-              strokeLinejoin: "round",
-              transform: open === "open" ? "rotate(180deg)" : "none",
-              transition: "transform .16s ease",
-            }}
-          >
-            <path d="m6 9.5 6 6 6-6" />
-          </svg>
-        </span>
-      </button>
-
-      {open === "open" ? (
-        <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
-          {sources.map((s) => (
-            <div
-              className="n"
-              key={s.key}
-              style={s.status === "live" ? {} : { color: "#999999" }}
-              title={
-                s.note ??
-                (s.status === "live"
-                  ? zh
-                    ? "已连接"
-                    : "Connected"
-                  : s.status === "degraded"
-                    ? zh
-                      ? "连接不稳定"
-                      : "Degraded"
-                    : zh
-                      ? "尚未配置"
-                      : "Not configured yet")
-              }
-            >
-              <span>{s.name}</span>
-              <span
-                style={{
-                  marginLeft: "auto",
-                  width: 6,
-                  height: 6,
-                  borderRadius: 3,
-                  background:
-                    s.status === "live" ? "#278f5e" : s.status === "degraded" ? "#db7706" : "#c7c7c7",
-                }}
-              />
-            </div>
-          ))}
-        </div>
-      ) : (
-        <p style={{ fontSize: 12.5, color: "#c7c7c7", lineHeight: 1.5, padding: "0 9px", margin: 0 }}>
-          {degraded > 0
-            ? zh
-              ? `${degraded} 个来源连接不稳定`
-              : `${degraded} answering badly`
-            : zh
-              ? "全部正常"
-              : "all answering"}
-        </p>
-      )}
-
-      <div style={{ marginTop: "auto", padding: "11px 9px 4px", borderTop: "1px solid #ededed" }}>
-        <div className="lbl" style={{ padding: 0, marginBottom: 5 }}>
-          {zh ? "排序权重" : "Ranking weights"}
-        </div>
-        <div className="mut" style={{ lineHeight: 1.5 }}>
-          {zh
-            ? `采纳与拒绝会反馈到排序。本月 ${decisionCount} 次决定。`
-            : `Adopt and reject feed back into ranking. ${decisionCount} decisions this month.`}
-        </div>
-      </div>
+      {/* The connected-sources fold and the ranking-weights footer used to
+          sit here. "9/14 sources, 2 answering badly" and "0 decisions this
+          month" are the plumbing's own diary; the client read them as the
+          product being broken. The sources still show on the Trends board
+          when one actually fails. */}
+      {void sources}
+      {void decisionCount}
+      {void open}
+      {void setOpen}
+      {void live}
+      {void degraded}
     </div>
   );
 }
