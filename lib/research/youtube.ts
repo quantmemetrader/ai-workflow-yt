@@ -234,13 +234,58 @@ export type BeatChannel = YouTubeChannel & {
   topVideo: { id: string; title: string; views: number } | null;
 };
 
+/**
+ * Progressively less specific versions of a subject.
+ *
+ * A model asked to find channels typed "香港 Web3 AI 创业投资" and got nothing —
+ * four concepts is not a search, it is a sentence. YouTube's own answer was
+ * the giveaway: `totalResults: 36` with zero items returned, which is what
+ * `search` does with a narrow query, a recency window and an ordering all at
+ * once. Dropping one term turned it into five results out of 6,510.
+ *
+ * Terms are dropped from the end, because people write the important word
+ * first. A subject with no spaces in it is left alone: cutting a run of Han
+ * characters by length makes a different word, not a broader one.
+ */
+function broaden(phrase: string): string[] {
+  const terms = phrase.trim().split(/\s+/).filter(Boolean);
+  const tries = terms.length > 1 ? terms.map((_, i) => terms.slice(0, terms.length - i).join(" ")) : [phrase.trim()];
+  return [...new Set(tries.filter(Boolean))].slice(0, 3);
+}
+
+export type Discovery = {
+  channels: BeatChannel[];
+  /** The query that actually answered — not always the one that was asked. */
+  query: string;
+  /** The window it had to open to find them. */
+  days: number;
+};
+
+/**
+ * Which channels are making videos about a subject, ranked by what those
+ * videos earned.
+ *
+ * Reports the query and the window that answered, because "nobody is posting
+ * about this" and "your phrasing was too narrow" are different facts, and the
+ * agent had been reporting the second as the first — which is why the
+ * competitor board was still empty after it went looking three times.
+ */
 export async function channelsForPhrase(
   phrase: string,
   opts: { days?: number; regionCode?: string } = {},
-): Promise<BeatChannel[]> {
-  const videos = await searchVideos(phrase, { days: opts.days ?? 30, limit: 50, regionCode: opts.regionCode });
-  if (videos.length === 0) return [];
+): Promise<Discovery> {
+  const asked = opts.days ?? 30;
 
+  for (const days of [asked, asked * 3]) {
+    for (const query of broaden(phrase)) {
+      const videos = await searchVideos(query, { days, limit: 50, regionCode: opts.regionCode });
+      if (videos.length) return { channels: await rank(videos), query, days };
+    }
+  }
+  return { channels: [], query: phrase.trim(), days: asked * 3 };
+}
+
+async function rank(videos: YouTubeVideo[]): Promise<BeatChannel[]> {
   const byChannel = new Map<string, YouTubeVideo[]>();
   for (const v of videos) {
     const list = byChannel.get(v.channelId);

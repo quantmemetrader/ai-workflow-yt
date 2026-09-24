@@ -5,6 +5,7 @@ import { chatChannels, chatMembers, conversations } from "@/lib/db/schema";
 import { audit } from "@/lib/audit";
 import { newId } from "@/lib/ids";
 import type { Viewer } from "@/lib/auth/types";
+import type { Module } from "@/lib/db/schema";
 import { runAgent } from "@/lib/ai/agent";
 import { postMessage } from "@/lib/chat/service";
 import { AGENT_KEYS, AGENT_LABELS, agentTag, parseAgentMentions, type AgentKey } from "./catalog";
@@ -141,6 +142,15 @@ async function channelFor(viewer: Viewer, channelId: string) {
 
 type Channel = NonNullable<Awaited<ReturnType<typeof channelFor>>>;
 
+/** Which trade each employee works in, for the prompt and the round budget. */
+const WORKS_IN: Record<AgentKey, Module> = {
+  research: "research",
+  planning: "research",
+  script: "script",
+  video: "video",
+  article: "script",
+};
+
 async function answerOne(
   input: Required<Pick<MentionDispatch, "viewer" | "channelId" | "body" | "spoken" | "hop" | "budget">>,
   key: AgentKey,
@@ -196,7 +206,17 @@ async function answerOne(
     viewer: agent,
     conversationId,
     content: question,
-    module: "chat",
+    /*
+     * The employee's own trade, not "chat".
+     *
+     * `module` decides two things: which system prompt it gets, and how many
+     * rounds of tool use it is allowed (`ROUNDS_BY_MODULE`). Every tagged
+     * employee was running as "chat", which is four rounds — and 研究员 asked
+     * to go and find competitor channels spent all four on searches and had
+     * none left to answer in. The tools it may call come from its
+     * entitlements, not from here, so this widens nothing.
+     */
+    module: WORKS_IN[key],
     // The room it was tagged in, so "this channel" means something. Re-checked
     // inside every tool against the *agent's* membership, not the asker's.
     context: { module: "chat", channelId },

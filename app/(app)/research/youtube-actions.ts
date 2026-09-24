@@ -38,13 +38,16 @@ export async function discoverChannelsAction(
   if (q.length < 2) return { error: "Type a phrase to look for." };
 
   try {
-    const channels = await channelsForPhrase(q, {
+    const found = await channelsForPhrase(q, {
       days: clampDays(opts.days),
       regionCode: opts.regionCode,
     });
-    await audit(viewer, "research.youtube.discover", { module: "research", meta: { phrase: q, found: channels.length } });
+    await audit(viewer, "research.youtube.discover", {
+      module: "research",
+      meta: { phrase: q, query: found.query, days: found.days, found: found.channels.length },
+    });
     // Twelve is what the panel draws; the rest is a longer list nobody reads.
-    return { channels: channels.slice(0, 12) };
+    return { channels: found.channels.slice(0, 12) };
   } catch (err) {
     return { error: err instanceof Error ? err.message : "YouTube could not be reached." };
   }

@@ -181,6 +181,8 @@ export async function* runAgent(opts: {
    * under their cap could walk a long way past it before the next check. */
   const allowance = budget.remainingMicros;
   let budgetStopped = false;
+  /** The last tool's own words, for a turn that ends without a sentence. */
+  let lastToolText = "";
   /** What the tools changed this turn, in their own words. */
   const changes: string[] = [];
 
@@ -298,6 +300,10 @@ export async function* runAgent(opts: {
 
         result.citations?.forEach((id) => citedFileIds.add(id));
         if (result.withheld) withheldAny = true;
+        /* The last thing a tool actually said. If the turn then produces no
+           sentence at all, this is what the person is told — "I looked and
+           found nothing" is an answer; silence is not. */
+        if (!failed) lastToolText = result.text.trim();
         /* A tool that changed something, and what it says it did. If the model
            then says nothing, this is what the person is told — because
            "nothing was lost, ask again" after a lower third has been added is
@@ -473,6 +479,19 @@ export async function* runAgent(opts: {
      */
     if (!answer.trim() && changes.length && !signal?.aborted) {
       answer = changes.join(" ");
+      yield { type: "delta", text: answer };
+    }
+
+    /*
+     * Looked, found nothing, said nothing.
+     *
+     * A turn that ran four searches and then produced no closing sentence was
+     * answering a colleague's question with "I could not answer just now",
+     * which is both untrue and unhelpful: it did the work, and what the work
+     * returned is the answer. The tool's own words are better than an error.
+     */
+    if (!answer.trim() && lastToolText && !signal?.aborted) {
+      answer = lastToolText.slice(0, 600);
       yield { type: "delta", text: answer };
     }
 

@@ -28,6 +28,8 @@ import { modelFor } from "../lib/ai/models";
 import { BudgetStop, assertBudget, recordUsage } from "../lib/ai/ledger";
 import { rankedTopics } from "../lib/research/service";
 import { studioBrief } from "../lib/research/studio";
+import { agentTag } from "../lib/agents/catalog";
+import type { CardAction } from "../lib/agents/cards";
 import { dueNow, readAutomation } from "../lib/automations/service";
 
 const TENANT = process.env.TENANT_ID ?? "tnt_aurafarmers";
@@ -182,8 +184,31 @@ async function main() {
     return;
   }
 
+  /*
+   * The one button a brief should carry.
+   *
+   * 对标账号 has been an empty screen since the product was built, and an empty
+   * screen never asks to be filled. When the studio is watching nobody, the
+   * morning brief says so and offers the one press that fixes it — 研究员 has
+   * `who_makes_this` and `watch_channel`, so it can genuinely go and do this.
+   */
+  const actions: CardAction[] =
+    studio.competitors === 0
+      ? [
+          {
+            id: "find-rivals",
+            label: "让研究员找对标账号",
+            labelEn: "Find channels to watch",
+            kind: "say",
+            body: `${agentTag("research")} 我们还没有任何对标账号。按本频道在做的题材（香港机会、Web3 与 AI、人物对话、投资与职涯），用 who_makes_this 找出真正在做这些题的 YouTube 频道，挑 3 到 5 个值得长期盯的，用 watch_channel 加进对标板，然后告诉我你选了谁、为什么。`,
+            tone: "primary",
+          },
+        ]
+      : [];
+
   const id = await postAsAgent(TENANT, setting.agent, "digest", `☀️ **研究日报 · ${date}**\n\n${body}`, {
     digest: { date, model: out!.model, costMicros: out!.costMicros, topics: movers.map((t) => t.name) },
+    ...(actions.length ? { actions } : {}),
   });
   console.log(`[digest] ${date} posted ${id} by ${out!.model}, ${out!.costMicros}µ$`);
 }

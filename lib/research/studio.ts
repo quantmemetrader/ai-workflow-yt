@@ -1,7 +1,7 @@
 import "server-only";
 import { and, desc, eq, gte, isNotNull, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { channels, comments, creatorVideos } from "@/lib/db/schema";
+import { channels, comments, competitorPosts, competitors, creatorVideos } from "@/lib/db/schema";
 
 /**
  * The studio's own numbers — which is the research that was missing.
@@ -30,6 +30,15 @@ export type StudioBrief = {
   hasData: boolean;
   videos: number;
   medianViews: number;
+  /**
+   * How many channels the studio is watching.
+   *
+   * Zero is the interesting case and the reason this is on the return rather
+   * than buried in the text: 对标账号 has been an empty screen since the
+   * product was built, and the brief can offer to fix it instead of quietly
+   * leaving the section out.
+   */
+  competitors: number;
 };
 
 type Row = {
@@ -121,6 +130,31 @@ export async function studioBrief(tenantId: string): Promise<StudioBrief> {
   const questions = asked.filter((c) => /[?？]/.test(c.body ?? "")).slice(0, 6);
   const loudest = asked.slice(0, 6);
 
+  /*
+   * The channels the studio watches, and what they have been getting away
+   * with. Ranked by views, because for somebody else's channel views are all
+   * that is public — a like count on YouTube is not.
+   */
+  const watched = await db
+    .select({ id: competitors.id, name: competitors.displayName, platform: competitors.platform })
+    .from(competitors)
+    .where(eq(competitors.tenantId, tenantId));
+
+  const rival = watched.length
+    ? await db
+        .select({
+          title: competitorPosts.title,
+          views: competitorPosts.views,
+          when: competitorPosts.publishedLabel,
+          competitorId: competitorPosts.competitorId,
+        })
+        .from(competitorPosts)
+        .where(eq(competitorPosts.tenantId, tenantId))
+        .orderBy(desc(competitorPosts.views))
+        .limit(8)
+    : [];
+  const nameById = new Map(watched.map((c) => [c.id, c.name ?? "—"]));
+
   const lines: string[] = [];
 
   lines.push("## 本频道自己的数据（这是第一手的，可以引用）");
@@ -170,11 +204,28 @@ export async function studioBrief(tenantId: string): Promise<StudioBrief> {
     lines.push("", "### 观众留言", `- 最近 ${DAYS} 天没有收到评论数据。`);
   }
 
+  if (rival.length) {
+    lines.push("", `### 对标账号最近跑得好的（共 ${watched.length} 个账号）`);
+    for (const r of rival) {
+      lines.push(
+        `- ${nameById.get(r.competitorId) ?? "—"}｜${r.title ?? "—"}｜播放 ${r.views ?? 0}${r.when ? `｜${r.when}` : ""}` +
+          `${mid && (r.views ?? 0) > mid ? `（本频道中位数的 ${((r.views ?? 0) / mid).toFixed(1)} 倍）` : ""}`,
+      );
+    }
+  } else {
+    lines.push(
+      "",
+      "### 对标账号",
+      "- 一个都还没有。没有对标数据时，不要假装有；可以在晨报里直接说「还没有对标账号」。",
+    );
+  }
+
   return {
     text: lines.join("\n"),
     hasData: rows.length > 0,
     videos: rows.length,
     medianViews: mid,
+    competitors: watched.length,
   };
 }
 

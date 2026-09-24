@@ -121,7 +121,7 @@ const defs: ToolDef[] = [
     function: {
       name: "who_makes_this",
       description:
-        "Which YouTube channels are making videos about a subject, ranked by what those videos actually earned in the last 30 days. Use it to find competitors worth watching. Costs 100 of the day's 10,000 YouTube units, so ask once per subject.",
+        "Which YouTube channels are making videos about a subject, ranked by what those videos actually earned in the last 30 days. Use it to find competitors worth watching. Give it TWO OR THREE WORDS, not a sentence: \"\u9999\u6e2f Web3\" or \"Hong Kong startups\", never \"\u9999\u6e2f Web3 AI \u521b\u4e1a\u6295\u8d44\". Ask once per subject; each call costs 100 of the day's 10,000 YouTube units.",
       parameters: {
         type: "object",
         properties: { subject: { type: "string" } },
@@ -287,17 +287,30 @@ async function run(ctx: ToolContext, name: string, args: Record<string, unknown>
     if (!env.youtube.configured) return { text: "No YouTube key is configured on this deployment." };
 
     try {
-      const channels = await channelsForPhrase(subject, { days: 30 });
+      const found = await channelsForPhrase(subject, { days: 30 });
+      const channels = found.channels;
       await audit(ctx.viewer, "agent.research.discover", {
         module: "research",
-        meta: { subject, found: channels.length },
+        meta: { subject, query: found.query, days: found.days, found: channels.length },
       });
-      if (channels.length === 0) return { text: `Nobody has posted about "${subject}" in the last month.` };
+      if (channels.length === 0) {
+        return {
+          text:
+            `Nobody has posted about "${subject}" in the last ${found.days} days. ` +
+            `I also tried shorter versions of it. Try two or three words rather than a sentence — ` +
+            `"香港 Web3" finds channels where "香港 Web3 AI 创业投资" finds none.`,
+        };
+      }
+
+      const widened =
+        found.query !== subject.trim() || found.days !== 30
+          ? ` (nothing came back for "${subject}", so this is "${found.query}" over ${found.days} days)`
+          : "";
 
       const watching = new Set((await listCompetitors(ctx.viewer)).map((c) => c.externalId));
       return {
         text: [
-          `Who is making videos about "${subject}" (last 30 days, by what those videos earned):`,
+          `Who is making videos about "${found.query}" (last ${found.days} days, by what those videos earned)${widened}:`,
           ...channels
             .slice(0, 10)
             .map(
