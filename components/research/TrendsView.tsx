@@ -8,8 +8,7 @@ import { notify } from "@/lib/client/notify";
 import { beginWork } from "@/lib/client/busy";
 import { CompetitorPanel } from "@/components/research/CompetitorPanel";
 import { DiscoverChannels } from "@/components/research/DiscoverChannels";
-import { ResearcherNote } from "@/components/research/ResearcherNote";
-import { LiveNow, type LiveVideo } from "@/components/research/LiveNow";
+import { LiveNow, type LiveVideo, type Pick } from "@/components/research/LiveNow";
 import { ResearchAgentPanel } from "@/components/canvas/ResearchAgentPanel";
 import { InlineAgentThread, useInlineAgent } from "@/components/shell/InlineAgent";
 import { AgentHistory } from "@/components/shell/AgentHistory";
@@ -41,7 +40,10 @@ export function TrendsView({
   creatorSyncing,
   canWriteScripts,
   canAdmin,
+  picks,
 }: {
+  /** What the employees already proposed today, for the top of the strip. */
+  picks: Pick[];
   topics: TrendTopic[];
   sources: SourceStatus[];
   categories: { key: string; label: string }[];
@@ -72,6 +74,9 @@ export function TrendsView({
   const params = useSearchParams();
   const [, start] = useTransition();
   const zh = locale.startsWith("zh");
+  /* The brief's own line is folded into `picks` now; the prop stays for the
+     page that already passes it. */
+  void digest;
   /* The thread is kept per screen, so coming back to Research finds the same
      conversation; History and New sit above the composer as they do in Video. */
   const agent = useInlineAgent({ module: "research" }, { key: "research" });
@@ -223,19 +228,16 @@ export function TrendsView({
       trending={trending}
       adding={adding}
       live={
-        <>
-          {digest ? (
-            <ResearcherNote topic={digest.topic} why={digest.why} date={digest.date} zh={zh} onWatch={(phrase) => addTopic(phrase)} />
-          ) : null}
-          <LiveNow
-            searches={trending}
-            videos={watching}
-            region={region}
-            zh={zh}
-            note={watchingNote}
-            onWatch={(phrase) => addTopic(phrase)}
-          />
-        </>
+        <LiveNow
+          searches={trending}
+          videos={watching}
+          region={region}
+          zh={zh}
+          note={watchingNote}
+          picks={picks}
+          canWriteScripts={canWriteScripts}
+          onWatch={(phrase) => addTopic(phrase)}
+        />
       }
       anglesBusy={anglesBusy}
       below={

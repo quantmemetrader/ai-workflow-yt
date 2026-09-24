@@ -8,6 +8,7 @@ import { env } from "@/lib/env";
 import { answeringModel } from "@/lib/ai/models";
 import { trendingNearby } from "@/lib/research/trending";
 import { latestDigest } from "@/lib/home/pulse";
+import { proposalsFor } from "@/lib/agents/proposals";
 import { trendingVideos } from "@/lib/research/youtube";
 import { creatorMemoryState } from "@/lib/creator/service";
 import { db } from "@/lib/db/client";
@@ -93,7 +94,16 @@ export default async function TrendsPage({
   const backlogCount = topics.filter((t) => t.status === "adopted").length;
   /* 研究员's pick this morning, so the page opens on a conclusion rather
      than a chart. */
-  const digest = await latestDigest(viewer.tenantId);
+  const [digest, proposals] = await Promise.all([latestDigest(viewer.tenantId), proposalsFor(viewer, "script")]);
+  /* The morning's pick first, then what 策划 put on today's plan, three at
+     most, no repeats. */
+  const picks: { text: string; why: string | null; source: "digest" | "plan" | "backlog" | "audience" }[] = [];
+  if (digest?.topic) picks.push({ text: digest.topic, why: digest.why, source: "digest" });
+  for (const p of proposals.items) {
+    if (picks.length >= 3) break;
+    if (picks.some((x) => x.text === p.text || (digest?.topic && p.text.includes(digest.topic)))) continue;
+    picks.push({ text: p.text, why: p.why, source: p.source });
+  }
 
   return (
     <>
@@ -112,6 +122,7 @@ export default async function TrendsPage({
       />
       <TrendsView
       digest={digest}
+      picks={picks}
       locale={viewer.locale ?? "zh-CN"}
       model={answeringModel()}
       trending={trending.map((x) => ({ phrase: x.phrase, traffic: x.traffic, headline: x.headline, region: x.region }))}
