@@ -7,6 +7,8 @@ import { ResearchAgentPanel } from "@/components/canvas/ResearchAgentPanel";
 import { InlineAgentThread, useInlineAgent } from "@/components/shell/InlineAgent";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Markdown } from "@/components/ui/Markdown";
+import { ProposalsStrip } from "@/components/agents/ProposalsStrip";
+import type { Proposals } from "@/lib/agents/proposals";
 import { Badge, Empty, Label, Row, chip, clip, field, ghost, solid, useAction } from "@/components/ui/kit";
 import { DESTINATIONS, destinationLabel } from "@/lib/article/destinations";
 import type { ArticleDetail, ArticleListItem, ArticleStatus, PublicationRow } from "@/lib/article/service";
@@ -75,6 +77,7 @@ const stamp = (d: Date) => new Date(d).toISOString().slice(0, 16).replace("T", "
 const day = (d: Date) => new Date(d).toISOString().slice(0, 10);
 
 export function ArticleScreen({
+  proposals,
   articles,
   counts,
   log,
@@ -97,6 +100,8 @@ export function ArticleScreen({
   scripts: { id: string; title: string; status: string }[];
   viewerId: string;
   locale: string;
+  /** What 撰稿人 suggests writing next, drawn above the library. */
+  proposals?: Proposals;
   model: string;
 }) {
   const zh = locale.startsWith("zh");
@@ -168,6 +173,10 @@ export function ArticleScreen({
             {t("New article", "新建文章")}
           </button>
         </header>
+
+        {proposals && tab === "library" ? (
+          <ProposalsStrip owner="article" items={proposals.items} planDate={proposals.planDate} zh={zh} />
+        ) : null}
 
         <div style={{ flexGrow: 1, minHeight: 0, display: "flex" }}>
           <div style={{ flexGrow: 1, minWidth: 0, overflowY: "auto", padding: "18px 22px 30px" }}>

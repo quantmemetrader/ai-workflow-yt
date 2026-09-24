@@ -269,7 +269,9 @@ async function main() {
   }
 
   const id = await postAsAgent(TENANT, setting.agent, "digest", body, {
-    plan: { date, model: used.model, costMicros: used.costMicros, todos: plan.todos.length },
+    /* The to-dos themselves, not just how many: the Script, Articles and
+       Video pages open on the ones addressed to their employee. */
+    plan: { date, model: used.model, costMicros: used.costMicros, todos: plan.todos.length, list: plan.todos },
     actions,
   });
   console.log(`[plan] ${date} posted ${id} by ${used.model}, ${used.costMicros}µ$, ${actions.length} buttons`);

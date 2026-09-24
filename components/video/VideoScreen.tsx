@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { ProposalsStrip } from "@/components/agents/ProposalsStrip";
+import type { Proposals } from "@/lib/agents/proposals";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type {
@@ -100,6 +102,7 @@ type Tab = "library" | "edit" | "bin" | "timeline" | "audio" | "graphics" | "pre
 type Render = ExportRow & { proxyFileId: string | null };
 
 export function VideoScreen({
+  proposals,
   projects,
   project,
   clips,
@@ -119,6 +122,8 @@ export function VideoScreen({
   locale,
   model,
 }: {
+  /** What 剪辑师 suggests cutting next, drawn above the project list. */
+  proposals?: Proposals;
   projects: ProjectRow[];
   project: ProjectRow | null;
   clips: ClipRow[];
@@ -505,6 +510,10 @@ export function VideoScreen({
           { key: "graphics", label: t("Graphics", "图形"), badge: graphics.length, advanced: true },
         ]}
       />
+
+      {onLibrary && proposals ? (
+        <ProposalsStrip owner="video" items={proposals.items} planDate={proposals.planDate} zh={zh} />
+      ) : null}
 
       {onLibrary ? (
         <div style={{ flexGrow: 1, minHeight: 0, overflowY: "auto", padding: "18px 22px 40px" }}>

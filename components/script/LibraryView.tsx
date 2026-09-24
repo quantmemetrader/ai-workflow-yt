@@ -3,6 +3,7 @@
 import { useCallback, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ScriptLibraryScreen } from "@/components/canvas/ScriptLibraryScreen";
+import type { Proposals } from "@/lib/agents/proposals";
 import { InlineAgentThread, useInlineAgent } from "@/components/shell/InlineAgent";
 import { AgentHistory } from "@/components/shell/AgentHistory";
 import type { ScriptListItem } from "@/lib/script/service";
@@ -24,6 +25,7 @@ type Sort = "updated" | "title" | "status";
 type View = "list" | "grid";
 
 export function LibraryView({
+  proposals,
   scripts,
   folders,
   counts,
@@ -34,6 +36,8 @@ export function LibraryView({
   locale,
   model,
 }: {
+  /** What 编剧 suggests writing next, drawn above the library. */
+  proposals: Proposals;
   scripts: ScriptListItem[];
   folders: { id: string; name: string; count: number }[];
   counts: { all: number; brief: number; drafting: number; awaiting: number; locked: number };
@@ -98,6 +102,7 @@ export function LibraryView({
   return (
     <>
       <ScriptLibraryScreen
+        proposals={proposals}
       locale={locale}
       scripts={scripts}
       folders={folders}

@@ -1,6 +1,8 @@
 "use client";
 
 import * as React from "react";
+import { ProposalsStrip } from "@/components/agents/ProposalsStrip";
+import type { Proposals } from "@/lib/agents/proposals";
 import { ResearchAgentPanel } from "./ResearchAgentPanel";
 import type { ScriptListItem } from "@/lib/script/service";
 import { useResizable } from "@/components/ui/Resizer";
@@ -45,6 +47,8 @@ import { StatusStrip } from "@/components/ui/kit";
 export type ScriptLibraryScreenProps = {
   locale: string;
   scripts: ScriptListItem[];
+  /** What 编剧 suggests writing next. */
+  proposals?: Proposals;
   folders: { id: string; name: string; count: number }[];
   counts: { all: number; brief: number; drafting: number; awaiting: number; locked: number };
   /** null = "All scripts" (no folder selected) */
@@ -431,6 +435,7 @@ export function ScriptLibraryScreen(props: ScriptLibraryScreenProps): React.JSX.
   const {
     locale,
     scripts,
+    proposals,
     folders,
     counts,
     folderId,
@@ -745,6 +750,9 @@ export function ScriptLibraryScreen(props: ScriptLibraryScreenProps): React.JSX.
         style={{ ...frameStyle, flexGrow: 1, display: "flex", minWidth: 0 }}
       >
       <div style={{ flexGrow: 1, display: "flex", flexDirection: "column", minWidth: 0, minHeight: 0 }}>
+        {proposals ? (
+          <ProposalsStrip owner="script" items={proposals.items} planDate={proposals.planDate} zh={locale.startsWith("zh")} />
+        ) : null}
         {/* toolbar */}
         <div className="bar">
           {here === null ? (

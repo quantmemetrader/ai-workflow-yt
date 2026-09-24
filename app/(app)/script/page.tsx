@@ -1,4 +1,5 @@
 import { requireModule } from "@/lib/auth/dal";
+import { proposalsFor } from "@/lib/agents/proposals";
 import { answeringModel } from "@/lib/ai/models";
 import { LibraryView } from "@/components/script/LibraryView";
 import { libraryCounts, listFolders, listScripts, pendingApprovals, sharedScriptIds, type ScriptListItem } from "@/lib/script/service";
@@ -71,8 +72,13 @@ export default async function ScriptLibraryPage({
           ? all.filter((s) => sharedIds.has(s.id) && s.ownerId !== viewer.id)
           : all;
 
+  /* What the page's own employee thinks should be made next, read from
+     what already exists — this morning's plan, the backlog, the audience. */
+  const proposals = await proposalsFor(viewer, "script");
+
   return (
     <LibraryView
+      proposals={proposals}
       locale={viewer.locale ?? "zh-CN"}
       scripts={scripts}
       folders={folders}

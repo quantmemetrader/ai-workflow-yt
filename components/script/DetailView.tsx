@@ -19,7 +19,7 @@ import {
   suggestionAction,
   unlockAction,
 } from "@/app/(app)/script/actions";
-import { projectFromScriptAction } from "@/app/(app)/video/actions";
+import { sendScriptToVideoAction } from "@/app/(app)/home/actions";
 import { notify } from "@/lib/client/notify";
 
 /**
@@ -64,6 +64,7 @@ export function DetailView({
   const agent = useInlineAgent({ module: "script", scriptId: detail?.script?.id });
   const params = useSearchParams();
   const [, start] = useTransition();
+  const zh = locale.startsWith("zh");
   const [pending, setPending] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [compareVersion, setCompareVersion] = useState<number | null>(null);
@@ -144,12 +145,17 @@ export function DetailView({
         canMakeVideo
           ? () =>
               start(async () => {
-                const res = await projectFromScriptAction(id);
+                /* Makes the project and tells 剪辑师 in #制作, in one press —
+                   "script can send to ai directly to start processing
+                   video". The employee answers there and starts the moment
+                   there is footage. */
+                const res = await sendScriptToVideoAction(id);
                 if ("error" in res && res.error) {
                   notify(res.error);
                   return;
                 }
-                if ("id" in res && res.id) router.push(`/video?project=${res.id}`);
+                notify(zh ? "已交给剪辑师，它在 #制作 里回复" : "Handed to the video agent; it answers in #制作", "ok");
+                if ("projectId" in res && res.projectId) router.push(`/video?project=${res.projectId}`);
               })
           : undefined
       }

@@ -1,4 +1,5 @@
 import { requireModule } from "@/lib/auth/dal";
+import { proposalsFor } from "@/lib/agents/proposals";
 import { answeringModel } from "@/lib/ai/models";
 import { possibleApprovers } from "@/lib/script/service";
 import {
@@ -56,8 +57,13 @@ export default async function ArticlePage({
 
   const zh = (viewer.locale ?? "zh-CN").startsWith("zh");
 
+  /* What the page's own employee thinks should be made next, read from
+     what already exists — this morning's plan, the backlog, the audience. */
+  const proposals = await proposalsFor(viewer, "article");
+
   return (
     <ArticleScreen
+      proposals={proposals}
       locale={viewer.locale ?? "zh-CN"}
       viewerId={viewer.id}
       articles={items}

@@ -2,6 +2,7 @@ import { and, eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { videoExports } from "@/lib/db/schema";
 import { requireModule } from "@/lib/auth/dal";
+import { proposalsFor } from "@/lib/agents/proposals";
 import { answeringModel } from "@/lib/ai/models";
 import {
   availableFootage,
@@ -94,8 +95,13 @@ export default async function VideoPage({
    */
   const voices = project && env.elevenlabs.configured ? await cachedVoices() : [];
 
+  /* What the page's own employee thinks should be made next, read from
+     what already exists — this morning's plan, the backlog, the audience. */
+  const proposals = await proposalsFor(viewer, "video");
+
   return (
     <VideoScreen
+      proposals={proposals}
       projects={projects}
       project={project}
       clips={clips}
