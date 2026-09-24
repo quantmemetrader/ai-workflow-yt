@@ -11,6 +11,7 @@ import { recordUsage } from "@/lib/ai/ledger";
 import { VIDEO_CRAFT } from "@/lib/video/craft";
 import { canKaraoke } from "@/lib/video/ass";
 import { intersect, mapTime, mapTimeNear, mergeRanges, speechRanges } from "@/lib/video/ranges";
+import { clock, fitToBudget, targetFromBrief, totalMs } from "@/lib/video/length";
 
 /**
  * Uploaded clips in, a cut video out.
@@ -66,7 +67,11 @@ Rules:
  - Never invent a name, a number or a claim. If the speaker is never named,
    "speaker" is null.
  - If the transcript is too thin to cut, return every field empty rather than
-   inventing structure.`;
+   inventing structure.
+ - When you are given a target length, it is the brief, not a suggestion. Add
+   up your own hook and keep ranges and make them come to about that. Selecting
+   is the job: a plan that keeps four minutes of a four-minute take is not a
+   cut, it is the take.`;
 
 export type Plan = {
   title: string | null;
@@ -84,6 +89,10 @@ export type AutoEditResult = {
   removedMs: number;
   /** What it took out and why, for the person who has to agree with it. */
   drop: { startMs: number; endMs: number; why: string }[];
+  /** The length that was asked for, and what came out. Null when nobody
+   *  asked, which is the right answer for a long-form interview. */
+  targetMs: number | null;
+  lengthMs: number;
   title: string | null;
   note: string | null;
 };
@@ -91,7 +100,7 @@ export type AutoEditResult = {
 export async function autoEdit(
   viewer: Viewer,
   projectId: string,
-  opts: { language?: string; brief?: string | null } = {},
+  opts: { language?: string; brief?: string | null; targetMs?: number | null } = {},
 ): Promise<AutoEditResult> {
   const [project] = await db
     .select()
@@ -152,6 +161,17 @@ export async function autoEdit(
 
   const lastMs = Math.round(words[words.length - 1].end * 1000);
 
+  /*
+   * How long this is supposed to be.
+   *
+   * The caller's number wins; otherwise it is whatever the producer wrote in
+   * the brief ("45 到 58 秒", "2 to 3 minutes"). No number anywhere means no
+   * budget — a long-form interview should not be trimmed because nobody said
+   * not to. This was the gap: the brief said under a minute, nothing read it,
+   * and the first pass came back at 2:53.
+   */
+  const targetMs = opts.targetMs ?? targetFromBrief(opts.brief);
+
   /* ---- 1. the model's read of it ---------------------------------------- */
 
   const transcript = rows
@@ -189,6 +209,9 @@ export async function autoEdit(
           content: [
             `Project: ${project.title}`,
             `The cut runs to ${lastMs}ms.`,
+            targetMs
+              ? `Target length: about ${Math.round(targetMs / 1000)}s (${clock(targetMs)}). The source is ${clock(lastMs)}, so you are cutting it to roughly ${Math.round((100 * targetMs) / lastMs)}% of its length. Choose.`
+              : "",
             opts.brief ? `\nWhat the producer asked for (follow it where the footage allows):\n${opts.brief.slice(0, 2000)}` : "",
             `\nTranscript:\n${transcript}`,
           ]
@@ -232,7 +255,27 @@ export async function autoEdit(
    */
   const speech = mergeRanges(speechRanges(words));
   const wanted = plan.hook ? [plan.hook, ...plan.keep] : plan.keep;
-  const cuts = wanted.length ? intersect(wanted, speech) : speech;
+  let cuts = wanted.length ? intersect(wanted, speech) : speech;
+
+  /*
+   * The backstop.
+   *
+   * The model is told the budget and usually respects it. When it does not —
+   * and with a long take it often does not — this cuts to time the way a
+   * person would: the opening stays, the ending stays, the middle gives way.
+   * Arithmetic over ranges, so unlike a second model call it cannot fail.
+   */
+  let budgetNote: string | null = null;
+  if (targetMs) {
+    const before = totalMs(cuts);
+    const fitted = fitToBudget(cuts[0] ?? null, cuts.slice(1), targetMs);
+    if (fitted.dropped.length) {
+      cuts = fitted.kept;
+      budgetNote = `Cut to the brief's ${clock(targetMs)}: ${clock(before)} of speech came back from the plan, so ${fitted.dropped.length} section${fitted.dropped.length > 1 ? "s" : ""} in the middle were dropped. The opening and the ending were kept.`;
+    } else if (fitted.overBy > 0) {
+      budgetNote = `This runs ${clock(totalMs(cuts))} against a brief of ${clock(targetMs)}. The opening and the ending alone are longer than that, so nothing was dropped — shorten the brief or the take.`;
+    }
+  }
 
   /* A kept range is a span of the *timeline*, and a span can straddle the join
      between two cuts — so each one becomes one new item per cut it covers,
@@ -403,6 +446,8 @@ export async function autoEdit(
     meta: {
       cuts: items.length,
       removedMs: lastMs - keptMs,
+      targetMs,
+      lengthMs: keptMs,
       plannedBy: modelNote === null ? modelFor.assistant() : "silence only",
     },
   });
@@ -414,7 +459,11 @@ export async function autoEdit(
     removedMs: Math.max(0, lastMs - keptMs),
     drop: plan.drop.slice(0, 8),
     title: plan.title,
-    note: modelNote,
+    /* Both, when both happened: the model's excuse and the cut to time are
+       different facts and a person needs to read the one that applies. */
+    note: [modelNote, budgetNote].filter(Boolean).join(" ") || null,
+    targetMs,
+    lengthMs: keptMs,
   };
 }
 

@@ -1262,11 +1262,17 @@ export async function requestAutoEdit(viewer: Viewer, projectId: string, languag
     throw new Error("Transcribe the cut first — everything the first pass does is built on what was said.");
   }
 
+  /* The brief the director was last given, if there was one. It is where a
+     producer writes "45 到 58 秒", and the first pass had no way to read it —
+     which is how a cut of a four-minute take came back at 2:53 against a
+     one-minute brief. */
+  const brief = (project.director as DirectorState | null)?.brief ?? null;
+
   await enqueue({
     tenantId: viewer.tenantId,
     type: "video.autoedit",
     module: "video",
-    payload: { projectId, language },
+    payload: { projectId, language, brief },
     objectType: "video_project",
     objectId: projectId,
     createdBy: viewer.id,
@@ -1614,6 +1620,25 @@ export async function requestVoiceOver(
   const text = input.text.trim();
   if (!text) throw new Error("There is nothing to say");
   if (text.length > 5000) throw new Error("That is longer than one voice-over should be. Split it.");
+
+  /*
+   * Say no now rather than in twenty minutes.
+   *
+   * ElevenLabs redirects this server's address away from its API, so a
+   * voice-over queued here fails in the worker after the person has left the
+   * screen — and the track sits in the timeline as "pending" for ever. Speech
+   * to text moved onto this box (Whisper, `lib/video/whisper.ts`) and needs
+   * nobody's permission; speech *out* is a different model and still does.
+   *
+   * `VOICEOVER_ENABLED=1` turns it back on the day there is an egress they
+   * accept, without a deploy.
+   */
+  if (process.env.VOICEOVER_ENABLED !== "1") {
+    throw new Error(
+      "\u914d\u97f3\u6682\u65f6\u4e0d\u53ef\u7528\uff1aElevenLabs \u62d2\u7edd\u4e86\u672c\u670d\u52a1\u5668\u7684\u51fa\u53e3 IP\u3002" +
+        "\u8f6c\u5199\u5b57\u5e55\u4e0d\u53d7\u5f71\u54cd\uff08\u672c\u673a Whisper\uff09\uff0c\u5176\u4ed6\u529f\u80fd\u7167\u5e38\u3002",
+    );
+  }
 
   const id = newId("rnd");
   await db.insert(audioTracks).values({

@@ -145,12 +145,16 @@ const HANDLERS: Record<string, Handler> = {
      word timings, the model's read of what matters, captions re-timed onto
      the result, graphics placed. A first pass to argue with. */
   "video.autoedit": async (job) => {
-    const { projectId, language } = job.payload as { projectId: string; language: string };
+    const { projectId, language, brief } = job.payload as {
+      projectId: string;
+      language: string;
+      brief?: string | null;
+    };
     // Read now, not from the payload: permissions can have changed between
     // pressing the button and the worker reaching the job.
     const viewer = job.createdBy ? await viewerById(job.createdBy) : null;
     if (!viewer) throw new Error("The person who asked for this is no longer active");
-    return autoEdit(viewer, projectId, { language });
+    return autoEdit(viewer, projectId, { language, brief });
   },
 
   "video.voiceover": (job) => {
