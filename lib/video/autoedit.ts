@@ -10,7 +10,7 @@ import { modelFor } from "@/lib/ai/models";
 import { recordUsage } from "@/lib/ai/ledger";
 import { VIDEO_CRAFT } from "@/lib/video/craft";
 import { canKaraoke } from "@/lib/video/ass";
-import { intersect, mapTime, mergeRanges, speechRanges } from "@/lib/video/ranges";
+import { intersect, mapTime, mapTimeNear, mergeRanges, speechRanges } from "@/lib/video/ranges";
 
 /**
  * Uploaded clips in, a cut video out.
@@ -277,30 +277,58 @@ export async function autoEdit(
    * caption is moved to where its words ended up, and one that fell entirely
    * inside a removed piece is dropped along with it.
    */
+  /*
+   * A line lives or dies by its *words*, not by its endpoints.
+   *
+   * This used to map `startMs` and `endMs` and drop the line if either came
+   * back null — and either comes back null whenever that instant fell inside a
+   * trimmed silence, which for a line that begins just after a pause is most
+   * of them. Whole sentences were disappearing from the cut with every word
+   * still in it: the gaps the studio reported.
+   *
+   * Now the surviving words decide. If any of them are still on the timeline
+   * the line stays, timed to the first and last of them, and its text is
+   * rebuilt from exactly the words that are left so what is on screen is what
+   * is heard. Only a line with nothing left goes.
+   */
+  const cjk = /[\u3000-\u9fff\uf900-\ufaff]/.test(rows.map((r) => r.text).join(""));
+  const join = (parts: string[]) => (cjk ? parts.join("") : parts.join(" ")).trim();
+
   const retimed = rows
     .map((r) => {
-      const startMs = mapTime(r.startMs, cuts);
-      const endMs = mapTime(r.endMs, cuts);
+      const original = r.words ?? [];
+      const words = original
+        .map((w) => {
+          const s = mapTime(w.start * 1000, cuts);
+          const e = mapTime(w.end * 1000, cuts);
+          return s === null || e === null ? null : { start: s / 1000, end: e / 1000, text: w.text };
+        })
+        .filter((w): w is { start: number; end: number; text: string } => w !== null);
+
+      if (original.length) {
+        if (!words.length) return null;
+        const startMs = Math.round(words[0].start * 1000);
+        const endMs = Math.round(words[words.length - 1].end * 1000);
+        if (endMs <= startMs) return null;
+        // Only rewrite the text when the cut actually took words out of it;
+        // an untouched line keeps its own punctuation and spacing.
+        const text = words.length === original.length ? r.text : join(words.map((w) => w.text));
+        return { id: r.id, startMs, endMs, words, text };
+      }
+
+      /* Typed by hand, so there are no word timings to go on. Snap both ends
+         to the nearest surviving moment rather than dropping it. */
+      const startMs = mapTimeNear(r.startMs, cuts);
+      const endMs = mapTimeNear(r.endMs, cuts);
       if (startMs === null || endMs === null || endMs <= startMs) return null;
-      return {
-        id: r.id,
-        startMs,
-        endMs,
-        words: (r.words ?? [])
-          .map((w) => {
-            const s = mapTime(w.start * 1000, cuts);
-            const e = mapTime(w.end * 1000, cuts);
-            return s === null || e === null ? null : { start: s / 1000, end: e / 1000, text: w.text };
-          })
-          .filter((w): w is { start: number; end: number; text: string } => w !== null),
-      };
+      return { id: r.id, startMs, endMs, words, text: r.text };
     })
     .filter((r): r is NonNullable<typeof r> => r !== null);
 
   for (const r of retimed) {
     await db
       .update(captions)
-      .set({ startMs: r.startMs, endMs: r.endMs, words: r.words })
+      .set({ startMs: r.startMs, endMs: r.endMs, words: r.words, text: r.text })
       .where(eq(captions.id, r.id));
   }
   // Anything whose words were all cut away has no place on the new timeline.

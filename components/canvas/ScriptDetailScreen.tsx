@@ -177,7 +177,7 @@ const CSS = `
 [data-script-screen] .pgi .pb { display: grid; grid-template-columns: 34px 132px 1fr; gap: 12px; padding: 12px 0; border-bottom: 1px solid #f3f3f3; }
 [data-script-screen] .pgi .pb i { font-style: normal; font-size: 11px; color: #999999; font-weight: 600; }
 [data-script-screen] .pgi .pb span { font-size: 11.5px; line-height: 1.45; color: #7c7c7c; }
-[data-script-screen] .pgi .pb p { font-size: 13px; line-height: 1.45; color: #383838; }
+[data-script-screen] .pgi .pb p { font-size: 14.5px; line-height: 1.6; color: #383838; }
 [data-script-screen] .pgi .pf { background: #f3f3f3; border-radius: 6px; padding: 9px 11px; margin-top: 10px; }
 [data-script-screen] .pgi .pf i { display: block; font-style: normal; font-size: 11px; color: #999999; font-weight: 600; margin-bottom: 4px; }
 [data-script-screen] .pgi .pf p { font-size: 13px; color: #383838; line-height: 1.4; }
@@ -191,12 +191,17 @@ const CSS = `
 [data-script-screen] .sg svg { width: 10px; height: 10px; stroke: #999999; fill: none; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
 
 /* editor */
-[data-script-screen] .bt { display: grid; grid-template-columns: 58px 228px minmax(0, 1fr); gap: 0 20px; padding: 13px 0; border-bottom: 1px solid #f3f3f3; }
-[data-script-screen] .bt .bn { font-size: 11.5px; font-weight: 500; color: #999999; line-height: 1.5; font-variant-numeric: tabular-nums; }
+/* The beats: the one thing on this screen somebody actually reads, and the
+   one the client said was too small. Spoken Chinese is now 16.5px on 1.8,
+   which is a reading size rather than an interface size — a 14px Han
+   character is about as legible as 11px Latin. The columns beside it move up
+   with it so the row still reads as one thing. */
+[data-script-screen] .bt { display: grid; grid-template-columns: 58px 228px minmax(0, 1fr); gap: 0 20px; padding: 15px 0; border-bottom: 1px solid #f3f3f3; }
+[data-script-screen] .bt .bn { font-size: 12px; font-weight: 500; color: #999999; line-height: 1.5; font-variant-numeric: tabular-nums; }
 [data-script-screen] .bt .bn b { display: block; font-weight: 500; color: #c7c7c7; }
-[data-script-screen] .bt .vi { font-size: 12.5px; line-height: 1.55; color: #7c7c7c; }
-[data-script-screen] .bt .zh { font-size: 14px; line-height: 1.6; color: #171717; }
-[data-script-screen] .bt .en { font-size: 12.5px; line-height: 1.55; color: #7c7c7c; margin-top: 3px; }
+[data-script-screen] .bt .vi { font-size: 13.5px; line-height: 1.65; color: #7c7c7c; }
+[data-script-screen] .bt .zh { font-size: 16.5px; line-height: 1.8; color: #171717; }
+[data-script-screen] .bt .en { font-size: 13.5px; line-height: 1.6; color: #7c7c7c; margin-top: 4px; }
 [data-script-screen] .ins { background: #e4faeb; color: #1f7a4d; border-radius: 2px; }
 [data-script-screen] .del { background: #ffe7e7; color: #c53030; text-decoration: line-through; border-radius: 2px; }
 [data-script-screen] .pop { position: absolute; background: #fff; border: 1px solid #e2e2e2; border-radius: 11px; box-shadow: 0 8px 24px rgba(0,0,0,.1), 0 1px 3px rgba(0,0,0,.06); z-index: 3; }

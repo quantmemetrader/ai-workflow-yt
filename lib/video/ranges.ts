@@ -90,6 +90,27 @@ export function intersect(wanted: Range[], speech: Range[]): Range[] {
  * timed against the original, and every timing after the first removal is
  * wrong by the length of everything taken out before it.
  */
+/**
+ * The same map, for a time that must land somewhere.
+ *
+ * `mapTime` answers "where is this instant on the cut" and says null when the
+ * instant was removed, which is right for a question and wrong for a caption:
+ * a line whose first word began a fifth of a second inside a trimmed silence
+ * was being thrown away whole, taking the sentence with it. This snaps such a
+ * time to the nearest surviving edge instead — the caption starts a moment
+ * early rather than never.
+ */
+export function mapTimeNear(ms: number, cuts: Range[]): number | null {
+  if (!cuts.length) return null;
+  let elapsed = 0;
+  for (const c of cuts) {
+    if (ms < c.startMs) return Math.round(elapsed);
+    if (ms <= c.endMs) return Math.round(elapsed + (ms - c.startMs));
+    elapsed += c.endMs - c.startMs;
+  }
+  return Math.round(elapsed);
+}
+
 export function mapTime(ms: number, cuts: Range[]): number | null {
   let elapsed = 0;
   for (const c of cuts) {

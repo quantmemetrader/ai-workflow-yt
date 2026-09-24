@@ -170,7 +170,18 @@ export async function transcribeProject(
     const audio = new Blob([await readFile(combined)], { type: "audio/mpeg" });
     const transcript = simplified(await runTranscription(projectId, audio, options.diarize ?? true));
 
-    const lines = toCaptionLines(transcript);
+    /*
+     * The line length the finished frame can actually hold.
+     *
+     * A caption is written once and burnt into whichever aspect the studio
+     * exports, so the project's own aspect is the honest guess: a vertical cut
+     * gets about sixteen Han characters a line, a wide one about twenty-four.
+     * Latin scales with it, roughly two and a half characters per Han one.
+     */
+    const aspect = (project.director as { aspect?: string } | null)?.aspect ?? "16:9";
+    const han = aspect === "9:16" ? 16 : aspect === "1:1" ? 20 : 24;
+    const isHan = /[\u3000-\u9fff\uf900-\ufaff]/.test(transcript.text);
+    const lines = toCaptionLines(transcript, { maxChars: isHan ? han : Math.round(han * 2.5) });
     if (!lines.length) throw new Error("Nothing was said, or nothing could be made out");
 
     /*

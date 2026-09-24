@@ -254,9 +254,37 @@ export function toCaptionLines(
   if (!words.length) return [];
 
   const cjk = /[　-鿿豈-﫿]/.test(transcript.text);
-  const maxChars = options.maxChars ?? (cjk ? 18 : 42);
+  /*
+   * How much fits on a line.
+   *
+   * The client's reading of the first cuts: *"each subtitle line is too
+   * short"*. It was 18 Han characters whatever the frame, which is right for a
+   * phone and wastes most of a 16:9 one. The caller passes the aspect's budget
+   * -- about 16 for 9:16, about 24 for 16:9 -- and this is the fallback for
+   * anything that does not.
+   */
+  const maxChars = options.maxChars ?? (cjk ? 20 : 46);
   const maxMs = options.maxMs ?? 6000;
   const pauseMs = options.pauseMs ?? 700;
+  /*
+   * A full stop does not always end a caption.
+   *
+   * Breaking on every sentence mark turned two four-character sentences into
+   * two four-character lines, which is the other half of "too short". A
+   * sentence now only takes the line with it once the line is worth reading on
+   * its own; otherwise the next one joins it, up to the same ceiling.
+   */
+  const minSentenceChars = Math.max(6, Math.round(maxChars * 0.55));
+  /*
+   * And a comma will do, once the line is nearly full.
+   *
+   * Counting to the ceiling and cutting there splits numbers and words down
+   * the middle -- "160 hundred million US" / "dollars". A comma inside the
+   * last fifth of the line is a better place to stop than the exact character
+   * the count lands on, and Whisper now punctuates (see the initial_prompt in
+   * /opt/whisper/transcribe.py), so there usually is one.
+   */
+  const softBreakChars = Math.round(maxChars * 0.8);
 
   const lines: {
     startMs: number;
@@ -299,8 +327,15 @@ export function toCaptionLines(
     const current = cjk ? buffer.map((w) => w.text).join("") : buffer.map((w) => w.text).join(" ");
     const lengthMs = (word.end - buffer[0].start) * 1000;
     const endsSentence = /[.!?。！？]$/.test(word.text);
+    const endsClause = /[,、，;；:：]$/.test(word.text);
 
-    if (current.length >= maxChars || lengthMs >= maxMs || endsSentence || i === words.length - 1) {
+    if (
+      current.length >= maxChars ||
+      lengthMs >= maxMs ||
+      (endsSentence && current.length >= minSentenceChars) ||
+      (endsClause && current.length >= softBreakChars) ||
+      i === words.length - 1
+    ) {
       flush();
     }
   }
