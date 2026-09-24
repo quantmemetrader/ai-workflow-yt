@@ -40,7 +40,7 @@ export function ProjectTree({ projects, zh, wide }: { projects: TreeProject[]; z
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 1, margin: "4px 0 6px" }}>
       <div style={{ display: "flex", alignItems: "center", padding: "6px 9px 4px" }}>
-        <Link href="/projects" style={{ fontSize: 11.5, fontWeight: 600, color: pathname === "/projects" ? "#171717" : "#999999", textDecoration: "none", letterSpacing: ".03em", flexGrow: 1 }}>
+        <Link prefetch={false} href="/projects" style={{ fontSize: 11.5, fontWeight: 600, color: pathname === "/projects" ? "#171717" : "#999999", textDecoration: "none", letterSpacing: ".03em", flexGrow: 1 }}>
           {t("项目", "PROJECTS")}
         </Link>
         <span style={{ fontSize: 11, color: "#c7c7c7" }}>{projects.length || ""}</span>
@@ -51,7 +51,7 @@ export function ProjectTree({ projects, zh, wide }: { projects: TreeProject[]; z
           <div key={p.id}>
             <div style={{ display: "flex", alignItems: "center", height: 29, borderRadius: 7, background: pathname === `/projects/${p.id}` ? "#fff" : "transparent", boxShadow: pathname === `/projects/${p.id}` ? "0 1px 2px rgba(0,0,0,.1)" : "none" }}>
               <span style={{ width: 10, flexShrink: 0 }} />
-              <Link href={`/projects/${p.id}`} title={p.title} style={{ flexGrow: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 7, fontSize: 13, color: p.status === "active" ? "#171717" : "#999999", textDecoration: "none", paddingRight: 8 }}>
+              <Link prefetch={false} href={`/projects/${p.id}`} title={p.title} style={{ flexGrow: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 7, fontSize: 13, color: p.status === "active" ? "#171717" : "#999999", textDecoration: "none", paddingRight: 8 }}>
                 <span style={{ width: 7, height: 7, borderRadius: 2, flexShrink: 0, background: p.status === "done" ? "#278f5e" : p.status === "archived" ? "#d9d9d9" : "#0f5bd5" }} />
                 <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: inside ? 600 : 400 }}>{p.title}</span>
               </Link>

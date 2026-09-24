@@ -134,7 +134,7 @@ export function ProjectScreen({ project: p, zh, people }: { project: ProjectDeta
           {/* ---- header ---- */}
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
             <div style={{ fontSize: 11.5, color: "#999999", display: "flex", gap: 6, alignItems: "center", flexGrow: 1 }}>
-              <Link href="/projects" style={{ color: "#999999", textDecoration: "none" }}>
+              <Link prefetch={false} href="/projects" style={{ color: "#999999", textDecoration: "none" }}>
                 {t("项目", "Projects")}
               </Link>
               <span>/</span>
@@ -144,7 +144,7 @@ export function ProjectScreen({ project: p, zh, people }: { project: ProjectDeta
               <Icon name={p.access.mode === "everyone" ? "eye" : "lock"} size={13} />
               {p.access.mode === "everyone" ? t("全工作室", "Everyone") : p.access.mode === "private" ? t("仅自己", "Private") : p.access.mode === "groups" ? t("部分分组", "Groups") : t(`${p.access.userIds?.length ?? 0} 人`, `${p.access.userIds?.length ?? 0} people`)}
             </button>
-            <Link href={`/flow?project=${p.id}`} style={{ ...btn(false), height: 30, fontSize: 12, textDecoration: "none" }}>
+            <Link prefetch={false} href={`/flow?project=${p.id}`} style={{ ...btn(false), height: 30, fontSize: 12, textDecoration: "none" }}>
               <Icon name="share" size={13} />
               {t("全部流程", "Full flow")}
             </Link>
@@ -214,10 +214,12 @@ export function ProjectScreen({ project: p, zh, people }: { project: ProjectDeta
           ) : null}
 
           {/* ---- where it stands ---- */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(0,1fr))", gap: 8 }}>
-            {p.steps.map((s, i) => (
-              <StepCard key={s.key} step={s} n={i + 1} />
-            ))}
+          {/* The line, left to right, with the way it goes drawn between steps. */}
+          <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) 22px minmax(0,1fr) 22px minmax(0,1fr) 22px minmax(0,1fr) 22px minmax(0,1fr)", alignItems: "stretch" }}>
+            {p.steps.flatMap((s, i) => [
+              ...(i ? [<StepArrow key={`a${i}`} live={s.state === "running" || s.state === "you"} done={p.steps[i - 1].state === "done" || p.steps[i - 1].state === "skipped"} />] : []),
+              <StepCard key={s.key} step={s} n={i + 1} />,
+            ])}
           </div>
 
           {/* ---- one line of activity; the whole conversation on demand ---- */}
@@ -253,7 +255,7 @@ export function ProjectScreen({ project: p, zh, people }: { project: ProjectDeta
                 icon={<AgentIcon agent="script" size={26} radius={7} />}
                 title={t("脚本", "Script")}
                 sub={p.beats.length ? t(`${p.beats.length} 个分镜 · ${scriptStatus(p.script?.status ?? "", zh)}`, `${p.beats.length} beats · ${scriptStatus(p.script?.status ?? "", zh)}`) : t("还没写", "Not written yet")}
-                right={p.script ? <Link href={`/script/${p.script.id}`} style={{ ...btn(false), height: 28, fontSize: 12, textDecoration: "none" }}>{t("编辑器", "Editor")} <Icon name="external" size={11} /></Link> : null}
+                right={p.script ? <Link prefetch={false} href={`/script/${p.script.id}`} style={{ ...btn(false), height: 28, fontSize: 12, textDecoration: "none" }}>{t("编辑器", "Editor")} <Icon name="external" size={11} /></Link> : null}
               >
                 {working("script") ? <Working agent="script" zh={zh} text={t("编剧正在写…", "The writer is writing…")} /> : null}
                 {p.beats.length ? (
@@ -273,7 +275,7 @@ export function ProjectScreen({ project: p, zh, people }: { project: ProjectDeta
                   <Empty text={t("还没有分镜。让编剧写初稿，或在下面说要什么。", "No beats yet. Ask the writer for a draft, or say what you want below.")} />
                 ) : null}
                 {p.script?.status === "awaiting_approval" ? (
-                  <Link href={`/script/${p.script.id}?tab=approval`} style={{ ...btn(true), textDecoration: "none", marginTop: 10 }}>
+                  <Link prefetch={false} href={`/script/${p.script.id}?tab=approval`} style={{ ...btn(true), textDecoration: "none", marginTop: 10 }}>
                     {t("去批准", "Review and approve")} <Icon name="external" size={11} />
                   </Link>
                 ) : null}
@@ -293,7 +295,7 @@ export function ProjectScreen({ project: p, zh, people }: { project: ProjectDeta
                 icon={<span style={{ width: 26, height: 26, borderRadius: 7, background: "#171717", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center" }}><Icon name="clapper" size={15} /></span>}
                 title={t("素材", "Clips")}
                 sub={p.video ? t(`${p.video.clips} 段 · 时间线 ${p.video.items} 段`, `${p.video.clips} clips · ${p.video.items} on the timeline`) : "—"}
-                right={p.video ? <Link href={`/video?project=${p.video.id}`} style={{ ...btn(false), height: 28, fontSize: 12, textDecoration: "none" }}>{t("剪辑台", "Editor")} <Icon name="external" size={11} /></Link> : null}
+                right={p.video ? <Link prefetch={false} href={`/video?project=${p.video.id}`} style={{ ...btn(false), height: 28, fontSize: 12, textDecoration: "none" }}>{t("剪辑台", "Editor")} <Icon name="external" size={11} /></Link> : null}
               >
                 {p.clipList.length ? (
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(120px, 1fr))", gap: 8, marginBottom: 10 }}>
@@ -330,7 +332,7 @@ export function ProjectScreen({ project: p, zh, people }: { project: ProjectDeta
               sub={rendered ? t("已渲染", "Rendered") : renderLive ? t(`渲染中 ${pct}%`, `Rendering ${pct}%`) : t("还没有成片", "Nothing rendered yet")}
               right={
                 <span style={{ display: "flex", gap: 6 }}>
-                  {p.video ? <Link href={`/video?project=${p.video.id}`} style={{ ...btn(false), height: 28, fontSize: 12, textDecoration: "none" }}>{t("在剪辑台打开", "Open in the editor")} <Icon name="external" size={11} /></Link> : null}
+                  {p.video ? <Link prefetch={false} href={`/video?project=${p.video.id}`} style={{ ...btn(false), height: 28, fontSize: 12, textDecoration: "none" }}>{t("在剪辑台打开", "Open in the editor")} <Icon name="external" size={11} /></Link> : null}
                   {rendered ? <a href={`/api/files/${rendered}/download`} target="_blank" rel="noreferrer" style={{ ...btn(false), height: 28, fontSize: 12, textDecoration: "none" }}>{t("下载", "Download")}</a> : null}
                 </span>
               }
@@ -655,6 +657,18 @@ function ChatDrawer({ project: p, zh, people, onClose }: { project: ProjectDetai
         <AskBox people={people} zh={zh} placeholder={t("@ 一位同事…", "@ a colleague…")} onSend={say} disabled={pending} />
       </div>
     </aside>
+  );
+}
+
+function StepArrow({ live, done }: { live: boolean; done: boolean }) {
+  const color = live ? "#0f5bd5" : done ? "#278f5e" : "#c9c6c0";
+  return (
+    <div aria-hidden style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <svg viewBox="0 0 22 12" style={{ width: 20, height: 12 }}>
+        <path d="M1 6h17" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeDasharray={live || done ? undefined : "3 3"} />
+        <path d="M14 2l5 4-5 4" fill="none" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    </div>
   );
 }
 

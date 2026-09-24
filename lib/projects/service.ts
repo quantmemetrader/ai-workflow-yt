@@ -86,7 +86,7 @@ export async function createWorkProject(
   return { id, channelSlug: channel.slug ?? "" };
 }
 
-export async function listWorkProjects(viewer: Viewer, limit = 40): Promise<WorkProjectRow[]> {
+export async function listWorkProjects(viewer: Viewer, limit = 40, order: "activity" | "created" = "activity"): Promise<WorkProjectRow[]> {
   const rows = await db
     .select({
       id: workProjects.id,
@@ -104,7 +104,7 @@ export async function listWorkProjects(viewer: Viewer, limit = 40): Promise<Work
     .from(workProjects)
     .leftJoin(chatChannels, eq(chatChannels.id, workProjects.channelId))
     .where(and(eq(workProjects.tenantId, viewer.tenantId), isNull(workProjects.deletedAt), visibleTo(viewer)))
-    .orderBy(desc(sql`greatest(${workProjects.updatedAt}, coalesce(${chatChannels.lastMessageAt}, ${workProjects.updatedAt}))`))
+    .orderBy(order === "created" ? desc(workProjects.createdAt) : desc(sql`greatest(${workProjects.updatedAt}, coalesce(${chatChannels.lastMessageAt}, ${workProjects.updatedAt}))`))
     .limit(limit);
   return rows.map((r) => ({ ...r, updatedAt: (r.lastMessageAt && r.lastMessageAt > r.updatedAt ? r.lastMessageAt : r.updatedAt).toISOString() }));
 }

@@ -136,6 +136,9 @@ export function Rail({ modules, locale, projects = [] }: { modules: Module[]; lo
           <span key={`${item.module}${item.secondary ? ":2" : ""}`} style={{ display: "contents" }}>
             <Link
               href={item.href}
+              /* No prefetch: every refresh on a working page re-prefetched all
+                 eleven modules, forty requests a minute for nothing. */
+              prefetch={false}
               className={`r${active ? " on" : ""}${open ? " wide" : ""}`}
               aria-label={label}
               aria-current={active ? "page" : undefined}
