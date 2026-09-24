@@ -52,15 +52,16 @@ export async function studioPulse(viewer: Viewer, zh: boolean): Promise<PulseLin
     });
   }
 
-  /* The last thing each employee said, in a channel this person can read. */
+  /* The cards still waiting on a person: an employee asked, nobody pressed.
+     Not the last thing everybody said — "only the ones which are pending". */
   const since = new Date(Date.now() - RECENT_MINUTES * 60_000);
   const rows = await db
     .select({
       body: chatMessages.body,
+      meta: chatMessages.meta,
       createdAt: chatMessages.createdAt,
       email: users.email,
       slug: chatChannels.slug,
-      channel: chatChannels.name,
       isPrivate: chatChannels.isPrivate,
     })
     .from(chatMessages)
@@ -73,26 +74,26 @@ export async function studioPulse(viewer: Viewer, zh: boolean): Promise<PulseLin
         isNull(chatMessages.deletedAt),
         eq(chatChannels.isPrivate, false),
         sql`${chatMessages.createdAt} > ${since}`,
+        sql`(${chatMessages.meta} -> 'actions') is not null`,
+        sql`(${chatMessages.meta} -> 'done') is null`,
       ),
     )
     .orderBy(desc(chatMessages.createdAt))
-    .limit(12);
+    .limit(6);
 
-  const seen = new Set<AgentKey>();
   for (const r of rows) {
     const key = (Object.keys(AGENT_LABELS) as AgentKey[]).find((k) => r.email === `${k}@agents.invalid`);
-    if (!key || seen.has(key)) continue;
-    seen.add(key);
+    if (!key) continue;
     const first = firstLine(r.body);
     if (!first) continue;
     lines.push({
       agent: key,
-      text: `${name(key)}：${first}`,
+      text: `${name(key)} ${zh ? "等你" : "waiting"}：${first}`,
       live: false,
-      href: r.slug ? `/chat/c/${encodeURIComponent(r.slug)}` : "/chat",
+      href: r.slug ? `/chat/c/${encodeURIComponent(r.slug)}` : "/home",
       at: r.createdAt.toISOString(),
     });
-    if (lines.length >= 8) break;
+    if (lines.length >= 6) break;
   }
 
   return lines;

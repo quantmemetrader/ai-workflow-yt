@@ -4,8 +4,6 @@ import { jobName, readHome } from "@/lib/home/service";
 import { channelThread, listPeople } from "@/lib/chat/service";
 import { pipelineToday } from "@/lib/home/pipeline";
 import { agentKeyFromEmail } from "@/lib/agents/catalog";
-import { AgentDock } from "@/components/shell/AgentDock";
-import { answeringModel } from "@/lib/ai/models";
 
 export const metadata = { title: "首页 · Home" };
 
@@ -61,20 +59,8 @@ export default async function HomePage() {
         }))}
       />
 
-      {/* The assistant, as on every other screen: it acts as you, and the AI
-          employees on the page act as themselves. */}
-      <AgentDock
-        zh={zh}
-        model={answeringModel()}
-        context={{ module: "chat" }}
-        scope={zh ? "今天" : "Today"}
-        note={
-          zh
-            ? "可以问它今天该做什么、某条片到哪一步了。它以你的身份行动。要叫 AI 员工，在上面的输入框里 @ 它们。"
-            : "Ask what today looks like, or where a cut has got to. It acts as you. To bring in an AI employee, @ them in the box above."
-        }
-        placeholder={zh ? "问问今天…" : "Ask about today…"}
-      />
+      {/* No assistant dock here: the box at the top is the way to talk to
+          the team, and the board has no second one. */}
     </div>
   );
 }
