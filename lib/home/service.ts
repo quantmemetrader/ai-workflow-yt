@@ -68,7 +68,7 @@ export type Home = {
 };
 
 /** Which job types belong to which employee, for "工作中". */
-const JOB_OWNER: Record<string, AgentKey> = {
+export const JOB_OWNER: Record<string, AgentKey> = {
   "video.export": "video",
   "video.direct": "video",
   "video.autoedit": "video",

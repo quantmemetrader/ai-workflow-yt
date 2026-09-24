@@ -8,6 +8,7 @@ import { notify } from "@/lib/client/notify";
 import { beginWork } from "@/lib/client/busy";
 import { CompetitorPanel } from "@/components/research/CompetitorPanel";
 import { DiscoverChannels } from "@/components/research/DiscoverChannels";
+import { ResearcherNote } from "@/components/research/ResearcherNote";
 import { LiveNow, type LiveVideo } from "@/components/research/LiveNow";
 import { ResearchAgentPanel } from "@/components/canvas/ResearchAgentPanel";
 import { InlineAgentThread, useInlineAgent } from "@/components/shell/InlineAgent";
@@ -35,6 +36,7 @@ export function TrendsView({
   trending,
   watching,
   watchingNote,
+  digest,
   creator,
   creatorSyncing,
   canWriteScripts,
@@ -57,6 +59,8 @@ export function TrendsView({
   watching: LiveVideo[];
   /** Why `watching` is empty, when it is. */
   watchingNote: string | null;
+  /** This morning's brief, first line, for the top of the page. */
+  digest?: { topic: string | null; why: string | null; date: string | null } | null;
   /** The creator's own channel, as the assistant's memory of it. */
   creator: CreatorMemoryState;
   creatorSyncing: boolean;
@@ -219,14 +223,19 @@ export function TrendsView({
       trending={trending}
       adding={adding}
       live={
-        <LiveNow
-          searches={trending}
-          videos={watching}
-          region={region}
-          zh={zh}
-          note={watchingNote}
-          onWatch={(phrase) => addTopic(phrase)}
-        />
+        <>
+          {digest ? (
+            <ResearcherNote topic={digest.topic} why={digest.why} date={digest.date} zh={zh} onWatch={(phrase) => addTopic(phrase)} />
+          ) : null}
+          <LiveNow
+            searches={trending}
+            videos={watching}
+            region={region}
+            zh={zh}
+            note={watchingNote}
+            onWatch={(phrase) => addTopic(phrase)}
+          />
+        </>
       }
       anglesBusy={anglesBusy}
       below={

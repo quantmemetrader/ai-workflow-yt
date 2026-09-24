@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { locate } from "@/lib/nav";
+import { Pulse } from "@/components/shell/Pulse";
 import { makeT, type Locale } from "@/lib/i18n";
 import type { Viewer } from "@/lib/auth/types";
 
@@ -90,6 +91,11 @@ export function TopBar({
       )}
 
       <div style={{ flexGrow: 1 }} />
+
+      {/* What the team is doing, on every page. */}
+      <Pulse zh={zh} />
+
+      <div style={{ width: 4 }} />
 
       {/* One target, not two: the avatar, the name and the role are the same
         * link to Settings, which is also where the role can be read in full. */}

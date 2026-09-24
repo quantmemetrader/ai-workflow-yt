@@ -269,6 +269,23 @@ now follow the catalog the same way the agent rows do.
   小红书 20, TikTok 15 rows. TikTok's explore endpoint takes no region, so that
   tab is global — the strip labels it as "what it is pushing", not Hong Kong.
 
+### DONE 2026-09-25 (early) — "more agentic vibe"
+Ryan looked and said the product still did not *feel* like employees at work.
+Three things, all reading state that already exists:
+- **The employees narrate their jobs.** `lib/agents/narrate.ts`, called from
+  the worker loop. 剪辑师 says in #制作 when a render or a whole-video job
+  starts, what came out when it finishes (cuts, length, target) and why when it
+  fails. Only `video.export`, `video.direct`, `video.autoedit`; the plumbing
+  (posters, proxies, peaks, feeds) stays quiet or the channel becomes a log.
+  Retries do not say "starting" twice.
+- **A pulse in the top bar, on every page.** `lib/home/pulse.ts` →
+  `/api/pulse` → `components/shell/Pulse.tsx`. One rotating line: a running job
+  with its percentage (green dot), or the last thing each employee said with
+  the time. Polled every 20s; two indexed reads.
+- **研究员's pick on Trends.** `components/research/ResearcherNote.tsx` reads
+  the morning brief's 今天讨论 line back onto the Trends page with 加入关注 and
+  让编剧写脚本, so the brief and the board are the same product.
+
 ### Still open
 - **使用人员名称错误.** The top bar shows name and role correctly; the *data* is
   wrong. `admin@okbro.xyz` is called "admin", the owner account is called

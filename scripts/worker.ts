@@ -27,6 +27,7 @@ import { makeSourceProxy } from "../lib/video/proxy";
 import { makePeaks } from "../lib/video/peaks";
 import { autoEdit } from "../lib/video/autoedit";
 import { proposeFromFootage } from "../lib/agents/footage";
+import { narrateDone, narrateFailed, narrateStart } from "../lib/agents/narrate";
 import { direct } from "../lib/video/director";
 import { refreshCreatorMemory } from "../lib/creator/service";
 import { viewerById } from "../lib/auth/viewer-by-id";
@@ -243,9 +244,13 @@ async function tick(): Promise<boolean> {
   // is told apart from one that is simply long, and reclaimed in minutes
   // rather than left "rendering" on somebody's screen.
   const pulse = setInterval(() => void heartbeat(job.id).catch(() => {}), 30_000);
+  // The employee whose job this is says it has started, in #制作. Only for
+  // the jobs a person is waiting on; the plumbing stays quiet.
+  await narrateStart(job).catch(() => {});
   try {
     const result = await withTimeout(handler(job), job.type);
     await succeed(job, result);
+    await narrateDone(job, result).catch(() => {});
     console.log(`[worker] ${job.type} ok in ${Date.now() - started}ms`, JSON.stringify(result).slice(0, 200));
   } catch (err) {
     if (isInterrupted(err) || stopping) {
@@ -255,6 +260,7 @@ async function tick(): Promise<boolean> {
       console.log(`[worker] ${job.type} interrupted after ${Date.now() - started}ms, requeued`);
     } else {
       await fail(job, err);
+      await narrateFailed(job, err).catch(() => {});
       console.error(`[worker] ${job.type} failed in ${Date.now() - started}ms:`, err instanceof Error ? err.message : err);
     }
   } finally {
