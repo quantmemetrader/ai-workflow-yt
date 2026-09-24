@@ -1,0 +1,1 @@
+ALTER TABLE "hot_snapshots" ADD COLUMN "summary" text;

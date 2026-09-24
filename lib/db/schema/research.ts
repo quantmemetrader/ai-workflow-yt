@@ -143,6 +143,8 @@ export const hotSnapshots = pgTable(
     fetchedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
     rows: jsonb().$type<unknown[]>().notNull().default([]),
     note: text(),
+    /** 研究员's one or two lines on what is going viral in this list. */
+    summary: text(),
   },
   (t) => [index("hot_snapshots_platform_idx").on(t.platform, t.fetchedAt)],
 );

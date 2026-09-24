@@ -1075,9 +1075,16 @@ export function ScriptDetailScreen(props: ScriptDetailScreenProps): React.JSX.El
         /* The other end of the pipeline: a cut in Video Edit tied to this
            script, so the director reads the beats as the shape the footage
            was shot to. */
-        <button type="button" className="btn p" onClick={onMakeVideo} disabled={busy} style={{ background: "#171717" }}>
-          {zh ? "去剪辑 →" : "Make the video →"}
-        </button>
+        <>
+          {/* The clips are what the script waits for: one press opens this
+              script's video project with the upload in front. */}
+          <button type="button" className="btn s" onClick={onMakeVideo} disabled={busy}>
+            🎬 {zh ? "添加素材" : "Add clips"}
+          </button>
+          <button type="button" className="btn p" onClick={onMakeVideo} disabled={busy} style={{ background: "#171717" }}>
+            {zh ? "去剪辑 →" : "Make the video →"}
+          </button>
+        </>
       ) : null}
       {/* The artboards' Share button. Per-script sharing rides the same
           `relation_tuples` Files uses, so a script shared with somebody shows

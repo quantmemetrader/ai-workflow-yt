@@ -434,6 +434,23 @@ export function VideoScreen({
                 header keeps out of its way there and takes the button back
                 everywhere the list is not — including the empty studio, which
                 has no list to draw one. */}
+            {/* Adding the host's clips is one press from anywhere in a
+                project, not a drop target somebody has to know about. */}
+            {project && !onLibrary ? (
+              <label style={{ ...solid, display: "inline-flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
+                🎬 {t("Add clips", "添加素材")}
+                <input
+                  type="file"
+                  multiple
+                  accept="video/*,audio/*,image/*"
+                  style={{ display: "none" }}
+                  onChange={(e) => {
+                    if (e.target.files?.length) uploadIntoProject(e.target.files);
+                    e.target.value = "";
+                  }}
+                />
+              </label>
+            ) : null}
             {(!onLibrary || projects.length === 0) && (
               <button
                 type="button"
@@ -446,6 +463,32 @@ export function VideoScreen({
           </>
         }
       />
+
+      {project && !onLibrary && clips.length === 0 ? (
+        /* A project with nothing in it has one job: get the host's clips in. */
+        <label
+          style={{ margin: "12px 22px 0", padding: "16px 18px", borderRadius: 12, border: "1.5px dashed #9fb8e8", background: "#f5f8fe", display: "flex", alignItems: "center", gap: 14, cursor: "pointer" }}
+        >
+          <span style={{ fontSize: 26 }}>🎬</span>
+          <span style={{ flexGrow: 1 }}>
+            <span style={{ display: "block", fontSize: 14, fontWeight: 600, color: "#171717" }}>{t("Add the clips for this video", "为这条片添加素材")}</span>
+            <span style={{ display: "block", fontSize: 12.5, color: "#525252", marginTop: 3 }}>
+              {t("Pick the host's recordings, or drop them anywhere on this page. They go into the timeline and are transcribed automatically.", "选主持人拍好的片段，或直接拖到页面上。上传后自动进时间线并转写。")}
+            </span>
+          </span>
+          <span style={{ ...solid, display: "inline-flex", alignItems: "center" }}>{t("Choose files", "选择文件")}</span>
+          <input
+            type="file"
+            multiple
+            accept="video/*,audio/*,image/*"
+            style={{ display: "none" }}
+            onChange={(e) => {
+              if (e.target.files?.length) uploadIntoProject(e.target.files);
+              e.target.value = "";
+            }}
+          />
+        </label>
+      ) : null}
 
       {heavyPaused && project && (
         <div

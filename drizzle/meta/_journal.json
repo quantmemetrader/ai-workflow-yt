@@ -232,6 +232,13 @@
       "when": 1790285967623,
       "tag": "0032_clumsy_shadowcat",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1790288124049,
+      "tag": "0033_hard_inertia",
+      "breakpoints": true
     }
   ]
 }

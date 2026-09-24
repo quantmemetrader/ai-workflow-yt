@@ -65,6 +65,12 @@ export function HomeScreen({
   const [giveTo, setGiveTo] = React.useState<AgentKey | null>(null);
   /* The box under the conversation, apart from the big one at the top. */
   const [quick, setQuick] = React.useState("");
+  const quickBox = React.useRef<HTMLTextAreaElement | null>(null);
+  const quickMentions = useMentions({ people, zh, draft: quick, setDraft: setQuick, box: quickBox });
+  /* Who a reply without a tag goes to: the employee who spoke last, if
+     nobody has spoken since (the server applies the same rule). */
+  const lastMsg = thread[thread.length - 1];
+  const talkingTo = lastMsg?.agent ?? null;
 
   /* After something is said, the answer comes from a model call that ends
      after the request returns. Refresh every few seconds for a minute and a
@@ -118,7 +124,9 @@ export function HomeScreen({
         setDraft("");
         if (box.current) box.current.style.height = "auto";
       }
-      if (parseAgentMentions(body).length) {
+      /* A tagged colleague answers, and so does the one being replied to:
+         the server says who when a reply without a tag goes to them. */
+      if (parseAgentMentions(body).length || ("answering" in res && res.answering)) {
         setSentAt(new Date().toISOString());
         setWatching(true);
       }
@@ -220,13 +228,39 @@ export function HomeScreen({
                     say(quick, "quick");
                     setQuick("");
                   }}
-                  style={{ display: "flex", alignItems: "center", gap: 8, padding: 10 }}
+                  style={{ display: "flex", alignItems: "center", gap: 8, padding: 10, position: "relative" }}
                 >
-                  <input
+                  <MentionMenu matches={quickMentions.matches} active={quickMentions.active} zh={zh} onPick={quickMentions.pick} onHover={quickMentions.setActive} placement="up" />
+                  {talkingTo ? (
+                    <span title={t("Replies go to this colleague without a tag", "不用 @，回复会直接给它")} style={{ display: "flex", alignItems: "center", gap: 5, flexShrink: 0, fontSize: 11.5, color: "#525252", background: "#f3f3f1", borderRadius: 999, padding: "3px 8px 3px 4px" }}>
+                      <AgentIcon agent={talkingTo} size={18} radius={5} />
+                      {zh ? AGENT_LABELS[talkingTo].nameLocal : AGENT_LABELS[talkingTo].name}
+                    </span>
+                  ) : null}
+                  <textarea
+                    ref={quickBox}
+                    rows={1}
                     value={quick}
-                    onChange={(e) => setQuick(e.target.value)}
-                    placeholder={t(`在 #${teamChannel?.name ?? "制作"} 里说…（@研究员 叫同事）`, `Message #${teamChannel?.name ?? "制作"}… (@ a colleague to bring them in)`)}
-                    style={{ flexGrow: 1, minWidth: 0, height: 34, padding: "0 12px", border: "1px solid #e2e2e2", borderRadius: 10, background: "#fff", outline: "none", fontFamily: "inherit", fontSize: 13, letterSpacing: "inherit", color: "#171717" }}
+                    onChange={(e) => {
+                      setQuick(e.target.value);
+                      quickMentions.onValue(e.target.value, e.target.selectionStart ?? e.target.value.length);
+                    }}
+                    onBlur={quickMentions.close}
+                    onKeyDown={(e) => {
+                      if (quickMentions.onKeyDown(e)) return;
+                      if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+                        e.preventDefault();
+                        if (!quick.trim()) return;
+                        say(quick, "quick");
+                        setQuick("");
+                      }
+                    }}
+                    placeholder={
+                      talkingTo
+                        ? t(`回复${AGENT_LABELS[talkingTo].nameLocal}…（不用再 @）`, `Reply to ${AGENT_LABELS[talkingTo].name}… (no tag needed)`)
+                        : t(`在 #${teamChannel?.name ?? "制作"} 里说…（@研究员 叫同事）`, `Message #${teamChannel?.name ?? "制作"}… (@ a colleague to bring them in)`)
+                    }
+                    style={{ flexGrow: 1, minWidth: 0, height: 34, padding: "7px 12px", border: "1px solid #e2e2e2", borderRadius: 10, background: "#fff", outline: "none", resize: "none", fontFamily: "inherit", fontSize: 13, lineHeight: "18px", letterSpacing: "inherit", color: "#171717" }}
                   />
                   <button
                     type="submit"

@@ -5,7 +5,8 @@ import { revalidatePath } from "next/cache";
 import { getViewer } from "@/lib/auth/dal";
 import { parseAgentMentions } from "@/lib/agents/catalog";
 import { readCardActions, readCardDone } from "@/lib/agents/cards";
-import { dispatchAgentMentions } from "@/lib/agents/mentions";
+import { dispatchAgentMentions, replyTarget } from "@/lib/agents/mentions";
+import { agentTag } from "@/lib/agents/catalog";
 import { setFileAccess } from "@/lib/files/access";
 import { conversationDetail } from "@/lib/chat/service";
 import {
@@ -125,6 +126,21 @@ export async function sendChannelMessage(
         console.error("[chat] a tagged agent could not be reached", err);
       }
     });
+    return {};
+  }
+
+  /* No tag: an answer to the employee who just spoke, if one did. The
+     message stays as written; only the dispatch names who it is for. */
+  const to = body.trim() ? await replyTarget(channel.id, viewer.id) : null;
+  if (to) {
+    after(async () => {
+      try {
+        await dispatchAgentMentions({ viewer, channelId: channel.id, body: `${agentTag(to)} ${body}` });
+      } catch (err) {
+        console.error("[chat] the employee being answered could not be reached", err);
+      }
+    });
+    return { answering: to };
   }
 
   return {};

@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { AgentIcon } from "@/components/agents/AgentIcon";
 import { AGENT_LABELS, type AgentKey } from "@/lib/agents/catalog";
 import { startProposalAction } from "@/app/(app)/home/actions";
+import { MentionMenu } from "@/components/chat/MentionMenu";
+import { useMentions } from "@/components/chat/useMentions";
 
 /**
  * A line to one colleague about one step, typed where the step is drawn.
@@ -34,6 +36,10 @@ export function SayToAgent({
   const [sending, setSending] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [sent, setSent] = React.useState(false);
+  /* The same @ picker as every other box: another colleague can be pulled
+     in from here too. */
+  const box = React.useRef<HTMLTextAreaElement | null>(null);
+  const mentions = useMentions({ people: undefined, zh, draft: text, setDraft: setText, box });
   const name = zh ? AGENT_LABELS[agent].nameLocal : AGENT_LABELS[agent].name;
 
   async function send() {
@@ -58,8 +64,9 @@ export function SayToAgent({
   return (
     <div
       onClick={(e) => e.stopPropagation()}
-      style={{ display: "flex", flexDirection: "column", gap: 6 }}
+      style={{ display: "flex", flexDirection: "column", gap: 6, position: "relative" }}
     >
+      <MentionMenu matches={mentions.matches} active={mentions.active} zh={zh} onPick={mentions.pick} onHover={mentions.setActive} placement="down" />
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -68,15 +75,27 @@ export function SayToAgent({
         style={{ display: "flex", alignItems: "center", gap: 6, padding: compact ? 4 : 6, border: "1px solid #e2e2e2", borderRadius: 10, background: "#fff", boxShadow: "0 4px 14px rgba(0,0,0,0.06)" }}
       >
         <AgentIcon agent={agent} size={22} radius={6} />
-        <input
+        <textarea
+          ref={box}
+          rows={1}
           autoFocus={autoFocus}
           value={text}
-          onChange={(e) => setText(e.target.value)}
+          onChange={(e) => {
+            setText(e.target.value);
+            mentions.onValue(e.target.value, e.target.selectionStart ?? e.target.value.length);
+          }}
+          onBlur={mentions.close}
           onKeyDown={(e) => {
+            if (mentions.onKeyDown(e)) return;
+            if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+              e.preventDefault();
+              void send();
+              return;
+            }
             if (e.key === "Escape") onDone?.();
           }}
           placeholder={zh ? `跟${name}说…` : `Tell ${name}…`}
-          style={{ flexGrow: 1, minWidth: 0, height: 28, border: 0, outline: "none", background: "transparent", fontFamily: "inherit", fontSize: 12.5, letterSpacing: "inherit", color: "#171717" }}
+          style={{ flexGrow: 1, minWidth: 0, height: 28, padding: "5px 0", border: 0, outline: "none", resize: "none", background: "transparent", fontFamily: "inherit", fontSize: 12.5, lineHeight: "18px", letterSpacing: "inherit", color: "#171717" }}
         />
         <button
           type="submit"

@@ -16,6 +16,7 @@ import {
 } from "@/lib/social/tikhub";
 import { trendingNearby } from "@/lib/research/trending";
 import { trendingVideos } from "@/lib/research/youtube";
+import { summarizeHot } from "@/lib/research/summary";
 
 /**
  * What each platform says is hot, read from storage.
@@ -42,6 +43,8 @@ export type PlatformHot = {
   /** Why the list is empty or thin, in the studio's language. */
   note: string | null;
   fetchedAt: number;
+  /** 研究员's line on what is going viral here, written at collection. */
+  summary?: string | null;
 };
 
 /** A stored list older than this is read again live rather than shown. */
@@ -75,14 +78,15 @@ async function latestStored(platform: PlatformKey): Promise<PlatformHot | null> 
     .orderBy(desc(hotSnapshots.fetchedAt))
     .limit(1);
   if (!row || !Array.isArray(row.rows) || row.rows.length === 0) return null;
-  return { platform, rows: row.rows as HotRow[], note: row.note, fetchedAt: row.fetchedAt.getTime() };
+  return { platform, rows: row.rows as HotRow[], note: row.note, fetchedAt: row.fetchedAt.getTime(), summary: row.summary };
 }
 
 /** Read one platform live and store what came back. Used by the collector. */
 export async function collectPlatform(platform: PlatformKey): Promise<PlatformHot> {
   const hot = await readLive(platform);
   if (hot.rows.length) {
-    await db.insert(hotSnapshots).values({ id: newId("hot"), platform, rows: hot.rows, note: hot.note, fetchedAt: new Date(hot.fetchedAt) });
+    hot.summary = await summarizeHot(platform, hot.rows);
+    await db.insert(hotSnapshots).values({ id: newId("hot"), platform, rows: hot.rows, note: hot.note, summary: hot.summary, fetchedAt: new Date(hot.fetchedAt) });
     memo.delete(platform);
   }
   return hot;

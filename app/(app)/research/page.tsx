@@ -98,7 +98,7 @@ export default async function TrendsPage({
   const [digest, proposals] = await Promise.all([latestDigest(viewer.tenantId), proposalsFor(viewer, "script")]);
   /* The morning's pick first, then what 策划 put on today's plan, three at
      most, no repeats. */
-  const picks: { text: string; why: string | null; source: "digest" | "plan" | "backlog" | "audience"; thumbnail: string | null; url?: string | null; evidence?: string[]; strength?: number }[] = [];
+  const picks: { text: string; why: string | null; source: "digest" | "plan" | "backlog" | "audience"; thumbnail: string | null; url?: string | null; evidence?: string[]; strength?: number; sources?: { label: string; title: string; url: string | null; numbers: string }[] }[] = [];
   /* Since the daily signal: the one or two signals, each with its evidence
      rows' own numbers and the cover of the video that proves it. Nothing
      else is added, because one strong topic is the point. */
@@ -112,6 +112,12 @@ export default async function TrendsPage({
         thumbnail: lead?.thumbnail ?? null,
         url: lead?.url ?? s.evidence[0]?.url ?? null,
         evidence: s.evidence.slice(0, 3).map((e) => `${e.source.replace(/（.*?）/, "")} · ${evidenceNumbers(e as unknown as Evidence)}`),
+        sources: s.evidence.slice(0, 5).map((e) => ({
+          label: e.source.replace(/（.*?）/, ""),
+          title: e.phrase.slice(0, 50),
+          url: e.url,
+          numbers: evidenceNumbers(e as unknown as Evidence).split(" · ").slice(0, 2).join(" · "),
+        })),
         strength: s.strength,
       });
     }

@@ -1,14 +1,14 @@
 import "server-only";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { chatChannels, chatMembers, conversations } from "@/lib/db/schema";
+import { chatChannels, chatMembers, chatMessages, conversations, users } from "@/lib/db/schema";
 import { audit } from "@/lib/audit";
 import { newId } from "@/lib/ids";
 import type { Viewer } from "@/lib/auth/types";
 import type { Module } from "@/lib/db/schema";
 import { runAgent } from "@/lib/ai/agent";
 import { postMessage } from "@/lib/chat/service";
-import { AGENT_LABELS, agentTag, parseAgentMentions, type AgentKey } from "./catalog";
+import { AGENT_LABELS, agentKeyFromEmail, agentTag, parseAgentMentions, type AgentKey } from "./catalog";
 import { agentViewer, ensureAgent } from "./index";
 
 /**
@@ -108,6 +108,34 @@ export async function dispatchAgentMentions(input: MentionDispatch): Promise<voi
       console.error(`[agents] ${key} could not answer a mention`, err);
     }
   }
+}
+
+/**
+ * Who a reply without a tag is for.
+ *
+ * "@剪辑师 make a five-second stock clip" → 剪辑师 asks "about what?" → the
+ * person types "AI chip". That answer used to reach nobody, because nothing
+ * in it was tagged, and the conversation died. A message with no tag,
+ * written right after an employee spoke in the same channel (within half an
+ * hour, nobody else in between), is that employee's to answer.
+ */
+const REPLY_WINDOW_MS = 30 * 60_000;
+
+export async function replyTarget(channelId: string, authorId: string): Promise<AgentKey | null> {
+  const recent = await db
+    .select({ authorId: chatMessages.authorId, email: users.email, createdAt: chatMessages.createdAt })
+    .from(chatMessages)
+    .leftJoin(users, eq(users.id, chatMessages.authorId))
+    .where(and(eq(chatMessages.channelId, channelId), isNull(chatMessages.deletedAt)))
+    .orderBy(desc(chatMessages.createdAt))
+    .limit(3);
+  /* The newest is the message just posted; the one before it decides. */
+  const [latest, before] = recent;
+  if (!latest || latest.authorId !== authorId || !before) return null;
+  const key = agentKeyFromEmail(before.email);
+  if (!key) return null;
+  if (latest.createdAt.getTime() - before.createdAt.getTime() > REPLY_WINDOW_MS) return null;
+  return key;
 }
 
 /** The channel, and whether the writer is actually in it. A tag in a room the

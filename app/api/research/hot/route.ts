@@ -23,5 +23,5 @@ export async function GET(request: NextRequest) {
     const judged = hot.rows.length ? await judgeHot(viewer.tenantId, platform, hot.rows, hot.fetchedAt) : {};
     return Response.json({ judged }, { headers: { "Cache-Control": "private, no-store" } });
   }
-  return Response.json({ rows: hot.rows, note: hot.note, fetchedAt: hot.fetchedAt }, { headers: { "Cache-Control": "private, no-store" } });
+  return Response.json({ rows: hot.rows, note: hot.note, fetchedAt: hot.fetchedAt, summary: hot.summary ?? null }, { headers: { "Cache-Control": "private, no-store" } });
 }

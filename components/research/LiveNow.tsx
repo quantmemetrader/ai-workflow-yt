@@ -9,6 +9,7 @@ import { AgentIcon } from "@/components/agents/AgentIcon";
 import { AGENT_COLORS } from "@/lib/agents/catalog";
 import { PLATFORMS, type HotRow, type PlatformKey } from "@/lib/research/platform-catalog";
 import { startProposalAction } from "@/app/(app)/home/actions";
+import { createProjectAction } from "@/app/(app)/video/actions";
 import type { Judged } from "@/lib/research/judge";
 import { notify } from "@/lib/client/notify";
 
@@ -31,7 +32,7 @@ import { notify } from "@/lib/client/notify";
  */
 export type LiveSearch = { phrase: string; traffic: string | null; headline: string | null; region?: string };
 export type LiveVideo = { id: string; title: string; channelTitle: string; thumbnail: string | null; views: number };
-export type Pick = { text: string; why: string | null; source: "digest" | "plan" | "backlog" | "audience"; thumbnail?: string | null; url?: string | null; evidence?: string[]; strength?: number };
+export type Pick = { text: string; why: string | null; source: "digest" | "plan" | "backlog" | "audience"; thumbnail?: string | null; url?: string | null; evidence?: string[]; strength?: number; sources?: { label: string; title: string; url: string | null; numbers: string }[] };
 
 const KEY = "aura:research:livenow";
 const PLATFORM_KEY = "aura:research:platform";
@@ -43,7 +44,7 @@ const TABS: readonly Tab[] = ["live", ...PLATFORMS.filter((p) => p.key !== "goog
  *  are unreachable from mainland China and a fair number of office networks. */
 export const throughUs = (url: string | null) => (url ? `/api/img?u=${encodeURIComponent(url)}` : null);
 
-type Loaded = { rows: HotRow[]; note: string | null };
+type Loaded = { rows: HotRow[]; note: string | null; summary: string | null; fetchedAt: number | null };
 
 export function LiveNow({
   searches,
@@ -71,8 +72,10 @@ export function LiveNow({
   const [state, setState] = useLocalPreference<"open" | "shut">(KEY, ["open", "shut"], "open");
   const open = state === "open";
   const [tab, setTab] = useLocalPreference<Tab>(PLATFORM_KEY, TABS, "live");
-  const [picksFold, setPicksFold] = useLocalPreference<"open" | "shut">("aura:fold:research-picks", ["open", "shut"], "open");
+  /* "Picked for today" sits under the list and starts folded. */
+  const [picksFold, setPicksFold] = useLocalPreference<"open" | "shut">("aura:fold:research-picks-v2", ["open", "shut"], "shut");
   const picksOpen = picksFold === "open";
+  const [openPick, setOpenPick] = React.useState<number | null>(null);
 
   const [loaded, setLoaded] = React.useState<Partial<Record<PlatformKey, Loaded>>>({});
   const [judged, setJudged] = React.useState<Partial<Record<Tab, Judged>>>({});
@@ -82,7 +85,10 @@ export function LiveNow({
   /* The list first, then 研究员's reading of it. */
   /* One read per platform per visit. "Loading" is derived — a tab that is
      open and has nothing loaded is loading — rather than set from the effect. */
-  const loading: PlatformKey | null = open && tab !== "live" && !loaded[tab] ? tab : null;
+  /* YouTube is a stored list like every other platform now, with likes and
+     comments on each row; the page's own chart is only the fallback. */
+  const listKey: PlatformKey = tab === "live" ? "youtube" : tab;
+  const loading: PlatformKey | null = open && !loaded[listKey] ? listKey : null;
   React.useEffect(() => {
     if (!loading) return;
     let cancelled = false;
@@ -90,18 +96,19 @@ export function LiveNow({
     /* A GET, not a server action: the router queues navigations behind an
        in-flight action, and a metered read can take seconds. */
     void fetch(`/api/research/hot?platform=${key}`, { cache: "no-store" })
-      .then(async (r) => (r.ok ? ((await r.json()) as { rows: HotRow[]; note: string | null }) : { rows: [] as HotRow[], note: t("Could not read this platform just now.", "这个平台刚才读不到。") }))
+      .then(async (r) => (r.ok ? ((await r.json()) as { rows: HotRow[]; note: string | null; summary?: string | null; fetchedAt?: number }) : { rows: [] as HotRow[], note: t("Could not read this platform just now.", "这个平台刚才读不到。") }))
       .catch(() => ({ rows: [] as HotRow[], note: t("Could not read this platform just now.", "这个平台刚才读不到。") }))
       .then((res) => {
         if (cancelled) return;
-        setLoaded((m) => ({ ...m, [key]: { rows: res.rows, note: res.note } }));
+        const r = res as { rows: HotRow[]; note: string | null; summary?: string | null; fetchedAt?: number };
+        setLoaded((m) => ({ ...m, [key]: { rows: r.rows, note: r.note, summary: r.summary ?? null, fetchedAt: r.fetchedAt ?? null } }));
       });
     return () => {
       cancelled = true;
     };
   }, [loading]);
 
-  const rowsReady = tab === "live" ? videos.length > 0 : Boolean(loaded[tab]?.rows.length);
+  const rowsReady = Boolean(loaded[listKey]?.rows.length) || (tab === "live" && videos.length > 0);
   /* Same shape for the reading: it is being made whenever rows are on
      screen and no judgement has landed for them. */
   const judging: Tab | null = open && rowsReady && !judged[tab] ? tab : null;
@@ -126,8 +133,9 @@ export function LiveNow({
   if (searches.length === 0 && videos.length === 0 && !note && tab === "live" && picks.length === 0) return null;
 
   const meta = tab === "live" ? null : (PLATFORMS.find((p) => p.key === tab) ?? null);
-  const rows: HotRow[] =
-    tab === "live"
+  const rows: HotRow[] = loaded[listKey]?.rows.length
+    ? loaded[listKey]!.rows
+    : tab === "live"
       ? videos.map((v) => ({
           phrase: v.title,
           heat: v.views,
@@ -136,7 +144,9 @@ export function LiveNow({
           thumbnail: v.thumbnail,
           extra: v.channelTitle,
         }))
-      : (loaded[tab]?.rows ?? []);
+      : [];
+  const summary = loaded[listKey]?.summary ?? null;
+  const summaryAt = loaded[listKey]?.fetchedAt ?? null;
   const marks = judged[tab] ?? {};
   const maxHeat = rows.reduce((m, r) => Math.max(m, r.heat ?? 0), 0);
   const platformName = tab === "live" ? "YouTube" : zh ? meta!.zh : meta!.label;
@@ -237,78 +247,6 @@ export function LiveNow({
 
       {open ? (
         <div style={{ padding: "10px 20px 12px", display: "flex", flexDirection: "column", gap: 10 }}>
-          {/* ---- what was picked this morning --------------------------- */}
-          {picks.length ? (
-            <div style={{ border: "1px solid #ededed", borderRadius: 12, background: "#fff", padding: "10px 14px 4px" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 2 }}>
-                <button type="button" onClick={() => setPicksFold(picksOpen ? "shut" : "open")} aria-expanded={picksOpen} aria-label={t("Fold", "收起/展开")} style={{ border: 0, background: "transparent", padding: 0, cursor: "pointer", display: "flex" }}>
-                  <svg viewBox="0 0 24 24" aria-hidden style={{ width: 14, height: 14, transform: picksOpen ? "rotate(90deg)" : "none", transition: "transform .15s ease", stroke: "#7c7c7c", fill: "none", strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round" }}>
-                    <path d="M9.5 6.5 15 12l-5.5 5.5" />
-                  </svg>
-                </button>
-                <AgentIcon agent="research" size={18} radius={5} />
-                <span style={{ fontSize: 12.5, fontWeight: 600 }}>{t("Picked for today", "今天挑出来的选题")}</span>
-                <span style={{ fontSize: 11.5, color: "#999999" }}>{t("from the brief and the plan", "来自晨报和今日计划")}</span>
-                <span style={{ flexGrow: 1 }} />
-                {canWriteScripts && picks.length > 1 ? (
-                  <button
-                    type="button"
-                    disabled={sending !== null}
-                    onClick={() => {
-                      for (const [i, p] of picks.entries()) writeScript(p.text, `all${i}`);
-                    }}
-                    style={smallBtn(true)}
-                  >
-                    {t("Send all to the Writer", "全部派给编剧")}
-                  </button>
-                ) : null}
-              </div>
-              {picksOpen ? (
-              <div style={{ resize: "vertical", overflow: "auto", minHeight: 60 }}>
-              {picks.map((p, i) => (
-                <div key={i} style={{ display: "grid", gridTemplateColumns: "88px minmax(0,1fr) auto", gap: 12, alignItems: "center", padding: "8px 0", borderTop: "1px solid #f3f3f3" }}>
-                  <PickPicture text={p.text} known={p.thumbnail ? { thumbnail: p.thumbnail, url: p.url ?? "#", title: p.text, channel: "" } : null} agentColor={p.source === "plan" ? AGENT_COLORS.planning : AGENT_COLORS.research} />
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.text}</div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 3, minWidth: 0 }}>
-                      <span style={tinyChip}>
-                        {p.source === "digest" ? t("morning brief", "今早晨报") : p.source === "plan" ? t("today's plan", "今日计划") : p.source === "backlog" ? t("backlog", "选题储备") : t("viewer question", "观众提问")}
-                      </span>
-                      {p.strength ? <span title={t("Signal strength", "信号强度")} style={{ fontSize: 10.5, color: "#c2410c", letterSpacing: 1, flexShrink: 0 }}>{"●".repeat(p.strength)}{"○".repeat(5 - p.strength)}</span> : null}
-                      {p.why ? <span style={{ fontSize: 11.5, color: "#7c7c7c", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.why}</span> : null}
-                    </div>
-                    {p.evidence?.length ? (
-                      <div style={{ display: "flex", flexDirection: "column", gap: 1, marginTop: 4 }}>
-                        {p.evidence.map((e, k) => (
-                          <span key={k} style={{ fontSize: 11, color: "#525252", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", fontVariantNumeric: "tabular-nums" }}>
-                            <span style={{ color: "#999999" }}>{t("Evidence", "证据")} {k + 1} · </span>{e}
-                          </span>
-                        ))}
-                      </div>
-                    ) : null}
-                  </div>
-                  <div style={{ display: "flex", gap: 6 }}>
-                    {canWriteScripts ? (
-                      <button type="button" disabled={sending !== null} onClick={() => writeScript(p.text, `pick${i}`)} style={{ ...smallBtn(true), opacity: sending === `pick${i}` ? 0.55 : 1 }}>
-                        {t("Write script", "写脚本")}
-                      </button>
-                    ) : null}
-                    <button type="button" onClick={() => onWatch(p.text.replace(/^写《|》.*$/g, "").replace(/[？?。！!—–-].*$/, "").slice(0, 40))} style={smallBtn(false)}>
-                      {t("Watch", "加入关注")}
-                    </button>
-                  </div>
-                </div>
-              ))}
-              </div>
-              ) : null}
-              {picksOpen ? (
-                <div style={{ padding: "8px 0 10px", borderTop: "1px solid #f3f3f3" }}>
-                  <SayToAgent agent="research" about={t("Picked for today", "今天挑出来的选题")} zh={zh} autoFocus={false} compact />
-                </div>
-              ) : null}
-            </div>
-          ) : null}
-
           {/* ---- the list, and the reading of it ------------------------ */}
           <div style={{ display: "flex", gap: 12, alignItems: "stretch", minWidth: 0 }}>
             <div style={{ flexGrow: 1, minWidth: 0, border: "1px solid #ededed", borderRadius: 12, background: "#fff", padding: "10px 14px 8px", display: "flex", flexDirection: "column" }}>
@@ -339,7 +277,7 @@ export function LiveNow({
                 </div>
               ) : null}
 
-              {loading === tab && !rows.length ? (
+              {loading === listKey && !rows.length ? (
                 <div style={{ fontSize: 11.5, color: "#999999", padding: "8px 0" }}>{t("Reading…", "正在读取…")}</div>
               ) : !rows.length ? (
                 <div style={{ fontSize: 11.5, color: "#a35f00", lineHeight: 1.5, padding: "8px 0" }}>{(tab === "live" ? note : loaded[tab]?.note) ?? t("Nothing came back.", "刚才没有返回内容。")}</div>
@@ -380,7 +318,7 @@ export function LiveNow({
                             {i + 1}
                             {narrow && mark ? <span title={mark.fit} style={{ width: 5, height: 5, borderRadius: 3, background: "#0b7a63" }} /> : null}
                           </span>
-                          <Cover src={throughUs(r.thumbnail)} />
+                          <Cover src={throughUs(r.thumbnail)} platform={listKey} />
                           <div style={{ minWidth: 0 }}>
                             <a
                               href={r.url ?? "#"}
@@ -485,6 +423,49 @@ export function LiveNow({
               </aside>
             ) : null}
           </div>
+
+          {/* ---- 研究员's line on what is going viral here --------------- */}
+          <div style={{ display: "flex", gap: 12, alignItems: "flex-start", padding: "12px 14px", borderRadius: 12, border: "1px solid transparent", background: "linear-gradient(#ffffff, #ffffff) padding-box, linear-gradient(135deg, #cfe0fb, #e3dcfb 50%, #cfe9e2) border-box" }}>
+            <AgentIcon agent="research" size={30} radius={9} />
+            <div style={{ minWidth: 0, flexGrow: 1 }}>
+              <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+                <span style={{ fontSize: 12, fontWeight: 600, color: "#0f5bd5" }}>{t("Researcher · what is going viral", "研究员 · 这里在火什么")}</span>
+                <span style={{ fontSize: 11, color: "#b3b3b3" }}>{platformName}{summaryAt ? ` · ${clockHK(summaryAt)} ${t("updated", "更新")}` : ""}</span>
+              </div>
+              <div style={{ fontSize: 13.5, lineHeight: 1.6, color: summary ? "#171717" : "#999999", marginTop: 3 }}>
+                {summary ?? (loading === listKey ? t("Reading the list…", "正在读这份榜…") : t("The researcher writes a line here at the next hourly collection.", "研究员会在下一次整点收集时在这里写一句总结。"))}
+              </div>
+              <div style={{ marginTop: 8 }}>
+                <SayToAgent agent="research" about={`${platformName} ${t("list", "榜单")}`} zh={zh} autoFocus={false} compact />
+              </div>
+            </div>
+          </div>
+
+          {/* ---- what was picked this morning, folded under the list ----- */}
+          {picks.length ? (
+            <PicksList
+              zh={zh}
+              picks={picks}
+              open={picksOpen}
+              onToggle={() => setPicksFold(picksOpen ? "shut" : "open")}
+              openPick={openPick}
+              setOpenPick={setOpenPick}
+              canWriteScripts={canWriteScripts}
+              sending={sending}
+              onWrite={writeScript}
+              onWatch={onWatch}
+              onClips={(title) =>
+                start(async () => {
+                  const res = await createProjectAction(title.slice(0, 120), null);
+                  if ("error" in res && res.error) {
+                    notify(res.error);
+                    return;
+                  }
+                  if ("id" in res && res.id) router.push(`/video?project=${res.id}`);
+                })
+              }
+            />
+          ) : null}
         </div>
       ) : null}
     </div>
@@ -512,19 +493,6 @@ const pill: React.CSSProperties = {
   textOverflow: "ellipsis",
 };
 
-const tinyChip: React.CSSProperties = {
-  display: "inline-flex",
-  alignItems: "center",
-  height: 18,
-  padding: "0 6px",
-  border: "1px solid #ededed",
-  borderRadius: 5,
-  background: "#fafafa",
-  fontSize: 10.5,
-  color: "#525252",
-  whiteSpace: "nowrap",
-  flexShrink: 0,
-};
 
 function smallBtn(primary: boolean): React.CSSProperties {
   return {
@@ -556,9 +524,16 @@ function Kv({ k, v, strong }: { k: string; v: string; strong?: boolean }) {
 }
 
 /** The cover, or a quiet grey square when the platform gave none. */
-function Cover({ src }: { src: string | null }) {
+function Cover({ src, platform }: { src: string | null; platform?: string }) {
   const [broken, setBroken] = React.useState(false);
-  if (!src || broken) return <span style={{ width: 48, height: 30, borderRadius: 4, background: "#f0f0f0", display: "block" }} />;
+  /* A list of phrases has no pictures; its row shows the platform's own
+     mark in the same slot, so every list reads the same way. */
+  if (!src || broken)
+    return (
+      <span style={{ width: 48, height: 30, borderRadius: 4, background: "#f5f5f3", display: "flex", alignItems: "center", justifyContent: "center" }}>
+        {platform ? <PlatformMark platform={platform} size={13} /> : null}
+      </span>
+    );
   return (
     // eslint-disable-next-line @next/next/no-img-element
     <img src={src} alt="" loading="lazy" onError={() => setBroken(true)} style={{ width: 48, height: 30, objectFit: "cover", borderRadius: 4, display: "block", background: "#f0f0f0" }} />
@@ -572,42 +547,6 @@ function compact(n: number): string {
   return String(n);
 }
 
-/**
- * A picture of what a pick is about, found by a YouTube search for its
- * subject (`app/api/research/pick-picture`). Loaded after the page, so the
- * list never waits on it; the tooltip says where it came from, and a click
- * opens the video it was taken from.
- */
-function PickPicture({ text, agentColor, known }: { text: string; agentColor: string; known: { thumbnail: string; url: string; title: string; channel: string } | null }) {
-  const [found, setFound] = React.useState<{ thumbnail: string; url: string; title: string; channel: string } | null | undefined>(known ?? undefined);
-  const [broken, setBroken] = React.useState(false);
-  React.useEffect(() => {
-    if (known) return;
-    let live = true;
-    fetch(`/api/research/pick-picture?q=${encodeURIComponent(text)}`)
-      .then((r) => (r.ok ? r.json() : { found: null }))
-      .then((d: { found: typeof found }) => live && setFound(d.found ?? null))
-      .catch(() => live && setFound(null));
-    return () => {
-      live = false;
-    };
-  }, [text, known]);
-  const box: React.CSSProperties = { width: 88, height: 50, borderRadius: 6, display: "block", flexShrink: 0, position: "relative", overflow: "hidden", background: "#f0f0f0" };
-  if (found === undefined) return <span className="sk" style={box} />;
-  if (!found || broken)
-    return (
-      <span style={{ ...box, display: "flex", alignItems: "center", justifyContent: "center", background: "#f5f5f3" }}>
-        <span style={{ width: 8, height: 8, background: agentColor }} />
-      </span>
-    );
-  return (
-    <a href={found.url} target="_blank" rel="noreferrer" title={known ? `证据视频 · ${found.title}` : `YouTube 搜索配图 · ${found.title}${found.channel ? ` · ${found.channel}` : ""}`} style={box}>
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={throughUs(found.thumbnail) ?? undefined} alt="" loading="lazy" onError={() => setBroken(true)} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
-      <span style={{ position: "absolute", left: 4, bottom: 4, width: 7, height: 7, background: agentColor, boxShadow: "0 0 0 1.5px #fff" }} />
-    </a>
-  );
-}
 
 /**
  * A row's own numbers, in one quiet line: plays, likes and like rate,
@@ -635,4 +574,132 @@ function since(iso: string, zh: boolean): string {
   if (h < 1) return zh ? "刚刚" : "just now";
   if (h < 24) return zh ? `${Math.round(h)} 小时前` : `${Math.round(h)}h ago`;
   return zh ? `${Math.round(h / 24)} 天前` : `${Math.round(h / 24)}d ago`;
+}
+
+function clockHK(ms: number): string {
+  return new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Hong_Kong", hour: "2-digit", minute: "2-digit" }).format(new Date(ms));
+}
+
+/**
+ * Today's one or two topics, as a small list that opens row by row.
+ *
+ * Folded by default under the list and the researcher's line. A row is a
+ * little picture, the topic and its strength; opened, it says why, lists
+ * the sources with their links and numbers, and offers the two things to
+ * do next: have the script written, or add the host's clips for it.
+ */
+function PicksList({
+  zh,
+  picks,
+  open,
+  onToggle,
+  openPick,
+  setOpenPick,
+  canWriteScripts,
+  sending,
+  onWrite,
+  onWatch,
+  onClips,
+}: {
+  zh: boolean;
+  picks: Pick[];
+  open: boolean;
+  onToggle: () => void;
+  openPick: number | null;
+  setOpenPick: (i: number | null) => void;
+  canWriteScripts: boolean;
+  sending: string | null;
+  onWrite: (text: string, id: string) => void;
+  onWatch: (phrase: string) => void;
+  onClips: (title: string) => void;
+}) {
+  const t = (en: string, cn: string) => (zh ? cn : en);
+  const chevron = (on: boolean, size = 13) => (
+    <svg viewBox="0 0 24 24" aria-hidden style={{ width: size, height: size, flexShrink: 0, transform: on ? "rotate(90deg)" : "none", transition: "transform .15s ease", stroke: "#7c7c7c", fill: "none", strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round" }}>
+      <path d="M9.5 6.5 15 12l-5.5 5.5" />
+    </svg>
+  );
+  return (
+    <div style={{ border: "1px solid #ededed", borderRadius: 12, background: "#fff", overflow: "hidden" }}>
+      <button type="button" onClick={onToggle} aria-expanded={open} style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, padding: "10px 14px", border: 0, background: "transparent", cursor: "pointer", font: "inherit", textAlign: "left" }}>
+        {chevron(open, 14)}
+        <span style={{ fontSize: 13 }}>✨</span>
+        <span style={{ fontSize: 12.5, fontWeight: 600, color: "#171717" }}>{t("Picked for today", "今天挑出来的选题")}</span>
+        <span style={{ fontSize: 11, color: "#fff", background: "#171717", borderRadius: 999, padding: "0 7px", lineHeight: "17px" }}>{picks.length}</span>
+        <span style={{ fontSize: 11.5, color: "#999999", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{open ? "" : picks.map((p) => p.text).join(" · ")}</span>
+      </button>
+      {open ? (
+        <div style={{ padding: "0 8px 8px", display: "flex", flexDirection: "column", gap: 4 }}>
+          {picks.map((p, i) => {
+            const on = openPick === i;
+            return (
+              <div key={i} style={{ borderRadius: 10, background: on ? "#f7f8fb" : "transparent", border: `1px solid ${on ? "#e4e9f3" : "transparent"}`, transition: "background .15s ease" }}>
+                <button type="button" onClick={() => setOpenPick(on ? null : i)} aria-expanded={on} style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "7px 8px", border: 0, background: "transparent", cursor: "pointer", font: "inherit", textAlign: "left" }}>
+                  {p.thumbnail ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={throughUs(p.thumbnail) ?? undefined} alt="" loading="lazy" style={{ width: 34, height: 34, borderRadius: 8, objectFit: "cover", flexShrink: 0, background: "#f0f0f0" }} />
+                  ) : (
+                    <span style={{ width: 34, height: 34, borderRadius: 8, background: "linear-gradient(135deg, #d5e7fb, #dcd6fb)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, fontSize: 15 }}>💡</span>
+                  )}
+                  <span style={{ minWidth: 0, flexGrow: 1 }}>
+                    <span style={{ display: "block", fontSize: 13, fontWeight: 600, color: "#171717", whiteSpace: on ? "normal" : "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.text}</span>
+                    <span style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 2 }}>
+                      <span style={{ fontSize: 10.5, color: "#7c7c7c", background: "#f3f3f1", borderRadius: 999, padding: "0 7px", lineHeight: "16px" }}>
+                        {p.source === "digest" ? t("morning brief", "今早晨报") : p.source === "plan" ? t("today's plan", "今日计划") : p.source === "backlog" ? t("backlog", "选题储备") : t("viewer question", "观众提问")}
+                      </span>
+                      {p.strength ? <span title={t("Signal strength", "信号强度")} style={{ fontSize: 10, color: "#c2410c", letterSpacing: 1 }}>{"●".repeat(p.strength)}{"○".repeat(5 - p.strength)}</span> : null}
+                    </span>
+                  </span>
+                  {chevron(on)}
+                </button>
+                {on ? (
+                  <div style={{ padding: "2px 10px 10px 52px", display: "flex", flexDirection: "column", gap: 8 }}>
+                    {p.why ? <div style={{ fontSize: 12.5, lineHeight: 1.6, color: "#2b343d" }}>{p.why}</div> : null}
+                    {p.sources?.length ? (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                        <span style={{ fontSize: 10.5, color: "#999999", letterSpacing: ".04em" }}>{t("SOURCES", "来源")}</span>
+                        {p.sources.map((src, k) => (
+                          <a key={k} href={src.url ?? "#"} target="_blank" rel="noopener noreferrer" style={{ display: "flex", alignItems: "baseline", gap: 6, fontSize: 11.5, color: "#171717", textDecoration: "none", minWidth: 0 }}>
+                            <span style={{ color: "#0f5bd5", flexShrink: 0 }}>↗</span>
+                            <span style={{ color: "#999999", flexShrink: 0 }}>{src.label}</span>
+                            <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{src.title}</span>
+                            <span style={{ color: "#7c7c7c", flexShrink: 0, fontVariantNumeric: "tabular-nums" }}>{src.numbers}</span>
+                          </a>
+                        ))}
+                      </div>
+                    ) : p.evidence?.length ? (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                        {p.evidence.map((e, k) => (
+                          <span key={k} style={{ fontSize: 11.5, color: "#525252" }}>{e}</span>
+                        ))}
+                      </div>
+                    ) : null}
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                      {canWriteScripts ? (
+                        <button type="button" disabled={sending !== null} onClick={() => onWrite(p.text, `pick${i}`)} style={{ ...smallBtn(true), height: 28, borderRadius: 8, opacity: sending === `pick${i}` ? 0.55 : 1 }}>
+                          ✍️ {t("Write script", "写脚本")}
+                        </button>
+                      ) : null}
+                      <button type="button" onClick={() => onClips(p.text)} style={{ ...smallBtn(false), height: 28, borderRadius: 8 }}>
+                        🎬 {t("Add clips", "加素材")}
+                      </button>
+                      <span style={{ flexGrow: 1 }} />
+                      {p.url ? (
+                        <a href={p.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11.5, color: "#525252", textDecoration: "none" }}>
+                          ▶ {t("Watch the source", "看原视频")}
+                        </a>
+                      ) : null}
+                      <button type="button" onClick={() => onWatch(p.text.replace(/^写《|》.*$/g, "").replace(/[？?。！!—–-].*$/, "").slice(0, 40))} style={{ border: 0, background: "transparent", padding: 0, fontSize: 11.5, color: "#525252", cursor: "pointer", font: "inherit" }}>
+                        ＋ {t("Watch the topic", "加入关注")}
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
+      ) : null}
+    </div>
+  );
 }
