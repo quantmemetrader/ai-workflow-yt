@@ -10,6 +10,7 @@ import { AGENT_LABELS, agentTag, type AgentKey } from "@/lib/agents/catalog";
 import type { AgentState, Decision, Running } from "@/lib/home/service";
 import { pressCardAction, sendChannelMessage } from "@/app/(app)/chat/actions";
 import { ProjectChats, ProjectProgress } from "@/components/home/ProjectHub";
+import { SuggestionCard, type TodaySuggestion } from "@/components/home/Suggestion";
 import type { ProjectDetail } from "@/lib/projects/service";
 import { startProjectAction } from "@/app/(app)/projects/actions";
 import { Fold } from "@/components/ui/Fold";
@@ -42,7 +43,9 @@ export function HomeScreen({
   thread,
   projects,
   hub,
+  suggestions,
 }: {
+  suggestions: TodaySuggestion[];
   /** The active projects, with their steps and latest messages. */
   hub: ProjectDetail[];
   /** Where a task can go: an existing project, or a new one. */
@@ -277,6 +280,7 @@ export function HomeScreen({
 
 
           {/* ---- 2. today's video, straight under it ---- */}
+          <SuggestionCard items={suggestions} zh={zh} />
           <ProjectProgress projects={hub} zh={zh} />
 
           <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>

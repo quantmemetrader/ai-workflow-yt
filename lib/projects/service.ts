@@ -131,6 +131,10 @@ export type ProjectDetail = {
   channel: { id: string; slug: string; name: string };
   script: { id: string; title: string; status: string; version: number; beats: number } | null;
   video: { id: string; title: string; clips: number; items: number } | null;
+  /** The script's beats, in order, for the card and its popup. */
+  beats: { ord: number; visual: string; voiceover: string }[];
+  /** The clips in the bin, for thumbnails. */
+  clipList: { id: string; fileId: string; label: string; durationMs: number | null }[];
   render: { fileId: string | null; state: string; progress: number; at: string } | null;
   steps: ProjectStep[];
   messages: { id: string; author: string; agent: AgentKey | null; body: string; at: string; actions: import("@/lib/agents/cards").CardAction[]; done: import("@/lib/agents/cards").CardDone | null }[];
@@ -152,6 +156,10 @@ export async function workProjectDetail(viewer: Viewer, id: string, zh: boolean,
   const [video] = p.videoProjectId
     ? await db.select({ id: videoProjects.id, title: videoProjects.title }).from(videoProjects).where(and(eq(videoProjects.id, p.videoProjectId), isNull(videoProjects.deletedAt))).limit(1)
     : [];
+  const [beatRows, clipRows] = await Promise.all([
+    script ? db.select({ ord: scriptBeats.ord, visual: scriptBeats.visual, voiceover: scriptBeats.voiceover }).from(scriptBeats).where(eq(scriptBeats.scriptId, script.id)).orderBy(scriptBeats.ord) : Promise.resolve([]),
+    video ? db.select({ id: videoClips.id, fileId: videoClips.fileId, label: videoClips.label, durationMs: videoClips.durationMs }).from(videoClips).where(eq(videoClips.projectId, video.id)).limit(40) : Promise.resolve([]),
+  ]);
   const [[beats], [clips], [items], [render], thread] = await Promise.all([
     script ? db.select({ n: count() }).from(scriptBeats).where(eq(scriptBeats.scriptId, script.id)) : Promise.resolve([{ n: 0 }]),
     video ? db.select({ n: count() }).from(videoClips).where(eq(videoClips.projectId, video.id)) : Promise.resolve([{ n: 0 }]),
@@ -235,6 +243,8 @@ export async function workProjectDetail(viewer: Viewer, id: string, zh: boolean,
     createdAt: p.createdAt.toISOString(),
     channel: { id: ch.id, slug: ch.slug, name: ch.name },
     script: script ? { ...script, beats: beats.n } : null,
+    beats: beatRows,
+    clipList: clipRows,
     video: video ? { id: video.id, title: video.title, clips: clips.n, items: items.n } : null,
     render: render ? { fileId: render.fileId, state: render.state, progress: render.progress, at: render.at.toISOString() } : null,
     steps,

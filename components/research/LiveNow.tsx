@@ -204,7 +204,7 @@ export function LiveNow({
   }
 
   return (
-    <div style={{ flexShrink: 0, minHeight: 0, maxHeight: "80vh", overflowY: "auto", borderBottom: "1px solid #ededed", background: "#fcfcfc" }}>
+    <div style={{ flexShrink: 0, minHeight: "calc(100vh - 150px)", borderBottom: "1px solid #ededed", background: "#fcfcfc" }}>
       {/* Scrolls inside itself: the list, the researcher's line and the picks
        are taller than the space above the board, and the page does not
        scroll, so without this the picks were cut off at the bottom. */}

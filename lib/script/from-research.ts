@@ -1,7 +1,7 @@
 import "server-only";
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { seriesCache, topics } from "@/lib/db/schema";
+import { scripts, seriesCache, topics } from "@/lib/db/schema";
 import type { Viewer } from "@/lib/auth/dal";
 import { audit } from "@/lib/audit";
 import { draftFromBrief } from "./ai";
@@ -33,6 +33,8 @@ export type ScriptRequest = {
   subtitleLanguage?: string | null;
   mandatoryPoints?: string[];
   folderId?: string | null;
+  /** Write into this script instead of making a new one (a project's own). */
+  intoScriptId?: string | null;
 };
 
 export type ScriptResult =
@@ -78,7 +80,26 @@ export async function writeScript(viewer: Viewer, req: ScriptRequest): Promise<S
         ? "9:16"
         : "16:9";
 
-  const id = await createScript(viewer, {
+  /* In a project the draft goes into the project's own script; a new one
+     each time left the project's script empty and scattered drafts about. */
+  const [into] = req.intoScriptId
+    ? await db.select({ id: scripts.id, title: scripts.title }).from(scripts).where(and(eq(scripts.id, req.intoScriptId), eq(scripts.tenantId, viewer.tenantId), isNull(scripts.deletedAt))).limit(1)
+    : [];
+  if (into) {
+    await db
+      .update(scripts)
+      .set({
+        angle: req.angle?.trim() || undefined,
+        targetChannel: req.channel?.trim() || undefined,
+        aspect,
+        targetSeconds: seconds ?? undefined,
+        language: req.language?.trim() || undefined,
+        subtitleLanguage: req.subtitleLanguage?.trim() || undefined,
+        updatedAt: new Date(),
+      })
+      .where(eq(scripts.id, into.id));
+  }
+  const id = into ? into.id : await createScript(viewer, {
     title: title.slice(0, 300),
     topicId,
     folderId: req.folderId ?? null,

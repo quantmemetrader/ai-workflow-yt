@@ -179,7 +179,7 @@ type Channel = NonNullable<Awaited<ReturnType<typeof channelFor>>>;
 
 /** Which trade each employee works in, for the prompt and the round budget. */
 /** Words that say an action was done. Checked only when no tool ran. */
-const CLAIMS = /已(经)?(导出|渲染|上传|加入|放入|放进|添加|加进|裁剪|剪好|做好|生成|创建|新建|发布|保存)|exported|rendered|uploaded|added (it|them)? ?to|placed (it )?in|cropped|created|published|saved/i;
+const CLAIMS = /(已|已经)(导出|渲染|上传|加入|放入|放进|添加|加进|裁剪|剪好|剪完|做好|生成|创建|新建|发布|保存|导入|对齐|移除|设置|完成|写好|写入|改好)|(粗剪|精剪|剪辑|渲染|导出)(已)?完成|完成了|exported|rendered|uploaded|imported|added (it|them)? ?to|placed (it )?in|cropped|created|published|saved|is done|are done|finished/i;
 
 const WORKS_IN: Record<AgentKey, Module> = {
   research: "research",

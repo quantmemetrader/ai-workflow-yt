@@ -21,7 +21,7 @@ const defs: ToolDef[] = [
     function: {
       name: "write_script",
       description:
-        "Write a full shooting script into the Script library and return its link. Give the subject (a watched topic's name, or anything), and optionally the angle, the channel (YouTube, Shorts, LinkedIn…), the length in seconds, the spoken language and the subtitle language. When the subject is a watched topic, the headlines it collected are used as facts. Takes about half a minute. Costs one drafting-model call.",
+        "Write a full shooting script and return its link. Inside a project it is written into the project's own script (never a new one); elsewhere a new script goes into the Script library. Give the subject (a watched topic's name, or anything), and optionally the angle, the channel (YouTube, Shorts, LinkedIn…), the length in seconds, the spoken language and the subtitle language. When the subject is a watched topic, the headlines it collected are used as facts. Takes about half a minute. Costs one drafting-model call.",
       parameters: {
         type: "object",
         properties: {
@@ -73,6 +73,8 @@ async function run(ctx: ToolContext, name: string, args: Record<string, unknown>
 
     const points = Array.isArray(args.points) ? args.points.filter((p): p is string => typeof p === "string") : [];
     const res = await writeScript(ctx.viewer, {
+      /* Inside a project, always its own script. */
+      intoScriptId: ctx.scriptId ?? null,
       topicId: topic?.id ?? null,
       subject: topic ? topic.name : subject,
       angle: str(args.angle, 300) || null,

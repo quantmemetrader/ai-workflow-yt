@@ -608,7 +608,9 @@ export function TrendsScreen(props: {
             product. The board's own chips still show the counts. */}
 
         <div style={{ flexGrow: 1, display: "flex", minHeight: 0 }}>
-          <div style={{ flexGrow: 1, minWidth: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+          {/* One page that scrolls: "Right now" fills the first screen and the
+              watched topics start below it, reached by scrolling. */}
+          <div style={{ flexGrow: 1, minWidth: 0, display: "flex", flexDirection: "column", overflowY: "auto" }}>
             {live}
             <div
               style={{
@@ -734,7 +736,7 @@ export function TrendsScreen(props: {
               * were clipped by the window, and the page read as frozen.
               * Blocks flow, and a block that overflows scrolls.
               */}
-            <div style={{ flexGrow: 1, minHeight: 0, overflowY: "auto" }}>
+            <div style={{ flexGrow: 1, flexShrink: 0, minHeight: "70vh" }}>
             {topics.length === 0 ? (
               <div style={{ padding: "40px 20px", maxWidth: 460 }}>
                 <div style={{ fontSize: 15, fontWeight: 600 }}>

@@ -198,11 +198,26 @@ export async function presignDownload(key: string, opts: { expiresIn?: number; f
   return signed.url;
 }
 
+/**
+ * The body's size as a header, when it is known.
+ *
+ * R2 refuses a PUT without Content-Length (411), and signing wraps a byte
+ * array in a stream that has none: every stock clip brought in from Pexels
+ * failed on this, for the one-go button and for 剪辑师's own tool alike.
+ */
+function lengthOf(body: BodyInit): Record<string, string> {
+  if (body instanceof ArrayBuffer) return { "Content-Length": String(body.byteLength) };
+  if (ArrayBuffer.isView(body)) return { "Content-Length": String(body.byteLength) };
+  if (typeof body === "string") return { "Content-Length": String(Buffer.byteLength(body)) };
+  if (typeof Blob !== "undefined" && body instanceof Blob) return { "Content-Length": String(body.size) };
+  return {};
+}
+
 export async function putObject(key: string, body: BodyInit, contentType: string) {
   const res = await client.fetch(objectUrl(key), {
     method: "PUT",
     body,
-    headers: { "Content-Type": contentType },
+    headers: { "Content-Type": contentType, ...lengthOf(body) },
   });
   if (!res.ok) throw new Error(`R2 put ${key} failed: ${res.status} ${await res.text()}`);
   return key;
@@ -220,7 +235,7 @@ export async function putObjectConfirmed(key: string, body: BodyInit, contentTyp
   const res = await client.fetch(objectUrl(key), {
     method: "PUT",
     body,
-    headers: { "Content-Type": contentType },
+    headers: { "Content-Type": contentType, ...lengthOf(body) },
   });
   if (!res.ok) throw new Error(`R2 put ${key} failed: ${res.status} ${await res.text()}`);
   return { key, etag: res.headers.get("etag")?.replaceAll('"', "") ?? null };

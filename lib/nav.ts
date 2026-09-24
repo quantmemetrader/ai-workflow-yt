@@ -76,8 +76,8 @@ const ALL: NavItem[] = [
   {
     module: "script",
     href: "/script",
-    label: "Script",
-    labelZh: "脚本",
+    label: "All scripts",
+    labelZh: "所有脚本",
     live: true,
     icon: '<path d="M6.4 3.4h7.4L18.6 8v12.6H6.4z"/><path d="M9.4 12.3h6M9.4 15.6h6" stroke="#f8f8f8" stroke-width="1.5" fill="none"/>',
   },
@@ -104,8 +104,8 @@ const ALL: NavItem[] = [
   {
     module: "video",
     href: "/video",
-    label: "Video Edit",
-    labelZh: "视频剪辑",
+    label: "All videos",
+    labelZh: "所有视频",
     live: true,
     icon: '<rect x="3.4" y="5.4" width="12.4" height="13.2" rx="2.1"/><path d="m16.6 13 4.6 2.8V8.2L16.6 11z"/>',
   },

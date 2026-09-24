@@ -2,9 +2,9 @@ import { type NextRequest } from "next/server";
 import { and, count, eq } from "drizzle-orm";
 import { getViewer } from "@/lib/auth/dal";
 import { db } from "@/lib/db/client";
-import { videoClips } from "@/lib/db/schema";
+import { timelineItems, videoClips } from "@/lib/db/schema";
 import { workProjectDetail } from "@/lib/projects/service";
-import { addClip, requestDirector } from "@/lib/video/service";
+import { addClip, addTimelineItem, requestDirector, requestExport, updateTimelineItem } from "@/lib/video/service";
 import { importVideo } from "@/lib/files/service";
 import { clipAttribution, searchStockClips, stockConfigured } from "@/lib/video/stock";
 import { complete } from "@/lib/ai/openrouter";
@@ -23,13 +23,15 @@ import { modelFor } from "@/lib/ai/models";
  * A route, not a server action: importing clips takes a while, and the app
  * router holds every navigation behind an action in flight.
  */
-export async function POST(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const viewer = await getViewer();
   if (!viewer || !viewer.modules.includes("video")) return Response.json({ error: "Not allowed" }, { status: 403 });
   const { id } = await params;
   const p = await workProjectDetail(viewer, id, true, 1);
   if (!p?.video) return Response.json({ error: "No such project" }, { status: 404 });
-  const brief = (p.brief ?? p.title).replace(/@\S+/g, "").trim() || p.title;
+  const body = (await req.json().catch(() => ({}))) as { prompt?: unknown };
+  const asked = typeof body.prompt === "string" ? body.prompt.trim().slice(0, 2000) : "";
+  const brief = asked || (p.brief ?? p.title).replace(/@\S+/g, "").trim() || p.title;
 
   const [have] = await db.select({ n: count() }).from(videoClips).where(and(eq(videoClips.projectId, p.video.id)));
   let brought = 0;
@@ -56,12 +58,42 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
     if (brought === 0) return Response.json({ error: "No stock footage matched this topic; upload the clips instead." }, { status: 400 });
   }
 
-  try {
-    await requestDirector(viewer, p.video.id, { brief, aspect: "9:16", render: true, pace: "channel" });
-  } catch (err) {
-    return Response.json({ error: err instanceof Error ? err.message : "Could not start the director" }, { status: 400 });
+  /*
+   * Two ways to a finished video.
+   *
+   * Footage with somebody speaking goes to the director, which cuts on
+   * what is said. Stock footage is silent and the director refuses it
+   * ("nothing to transcribe"), so a stock video is assembled directly: the
+   * clips in order, trimmed to the length asked for, and rendered.
+   */
+  const stockOnly = brought > 0 || p.mode === "direct:video";
+  if (!stockOnly) {
+    try {
+      await requestDirector(viewer, p.video.id, { brief, aspect: "9:16", render: true, pace: "channel" });
+      return Response.json({ ok: true, brought, way: "director" });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "";
+      if (!/sound|transcribe|speech|声音|转写/i.test(msg)) return Response.json({ error: msg || "Could not start the director" }, { status: 400 });
+    }
   }
-  return Response.json({ ok: true, brought });
+
+  const seconds = Math.max(3, Math.min(180, Number(brief.match(/(\d{1,3})\s*(秒|s\b|sec|second)/i)?.[1] ?? 15)));
+  const [onTimeline] = await db.select({ n: count() }).from(timelineItems).where(eq(timelineItems.projectId, p.video.id));
+  try {
+    if (onTimeline.n === 0) {
+      const clips = await db.select({ id: videoClips.id, durationMs: videoClips.durationMs }).from(videoClips).where(eq(videoClips.projectId, p.video.id)).limit(6);
+      const each = Math.max(1500, Math.round((seconds * 1000) / Math.max(1, clips.length)));
+      for (const c of clips) {
+        const itemId = await addTimelineItem(viewer, p.video.id, { kind: "clip", clipId: c.id, text: "" });
+        const out = c.durationMs ? Math.min(c.durationMs, each) : each;
+        await updateTimelineItem(viewer, itemId, { inMs: 0, outMs: out });
+      }
+    }
+    await requestExport(viewer, p.video.id, { aspect: "9:16", burnCaptions: false, captionLanguage: "zh-CN" });
+  } catch (err) {
+    return Response.json({ error: err instanceof Error ? err.message : "Could not put the video together" }, { status: 400 });
+  }
+  return Response.json({ ok: true, brought, way: "assembled", seconds });
 }
 
 /** Two or three English stock-search phrases for a topic. */

@@ -5,6 +5,8 @@ import { channelThread, listPeople } from "@/lib/chat/service";
 import { pipelineToday } from "@/lib/home/pipeline";
 import { agentKeyFromEmail } from "@/lib/agents/catalog";
 import { listWorkProjects, workProjectDetail } from "@/lib/projects/service";
+import { latestDigest } from "@/lib/home/pulse";
+import { evidenceNumbers, type Evidence } from "@/lib/research/signals";
 
 export const metadata = { title: "首页 · Home" };
 
@@ -40,6 +42,20 @@ export default async function HomePage() {
   /* The projects in progress, with where each stands and its last words. */
   const hub = (await Promise.all(projects.filter((x) => x.status === "active").slice(0, 6).map((x) => workProjectDetail(viewer, x.id, zh, 12)))).filter((x): x is NonNullable<typeof x> => x !== null);
 
+  /* Today's suggested video: the morning brief's signals, or its topic. */
+  const digest = await latestDigest(viewer.tenantId);
+  const suggestions = digest?.signals.length
+    ? digest.signals.slice(0, 2).map((sg) => ({
+        title: sg.title,
+        why: sg.whyNow.replace(/（证据\d+）|\[[A-Z]\d{1,2}\]/g, "").trim() || null,
+        hook: sg.hook || null,
+        strength: sg.strength || null,
+        evidence: sg.evidence.slice(0, 3).map((e) => ({ label: e.source.replace(/（.*?）/, ""), url: e.url, numbers: evidenceNumbers(e as unknown as Evidence).split(" · ")[0] ?? "" })),
+      }))
+    : digest?.topic
+      ? [{ title: digest.topic, why: digest.why, hook: null, strength: null, evidence: [] }]
+      : [];
+
   const runningNames = Object.fromEntries(home.running.map((j) => [j.type, jobName(j.type, zh)]));
 
   return (
@@ -54,6 +70,7 @@ export default async function HomePage() {
         teamChannel={home.teamChannel}
         pipeline={pipeline}
         hub={hub}
+        suggestions={suggestions}
         projects={projects.map((x) => ({ id: x.id, title: x.title, channelSlug: x.channelSlug }))}
         thread={thread}
         people={people.map((p) => ({
