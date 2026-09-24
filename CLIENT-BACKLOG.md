@@ -682,3 +682,18 @@ Everything below was exercised in production, not just built.
 `scripts/director-smoke.ts <userId> <fileId> [startSec] [len]` proves the whole pipeline on a short cut in ~2 minutes. Run it before believing any pipeline change.
 
 **Domain cutover done 2026-09-24:** the site is `https://tengya.media` (Cloudflare, orange, SSL Full strict). `APP_URL` flipped; `yt.okbro.xyz` 301s to it (kept on purpose — old links and cached chat previews still land). `server.okbro.xyz` (code-server) untouched. Rollback is one line, printed by `/root/cutover-tengya.sh`. Pending on the studio: an A record for `www` (→ 84.32.64.46, proxied). Sessions are per-host, so everyone signs in once more on the new domain.
+
+## DONE — 25 Sep, the second pass on "agentic" (Home, Flow, Trends, Script)
+
+- Home: the tail of #制作 sits under the prompt box and refreshes while an
+  answer is on its way — the "I tagged 研究员 and nothing happened" case.
+  Today's video as eight steps with a button to the full flow.
+- /flow: the whole line of work on one page, with the three automation
+  switches on the steps they govern.
+- Chat: answered cards read as answered (tick + who chose what); the list
+  scrolls both ways (the flex-end bug).
+- Every AI employee has its own drawn icon in its own colour.
+- Trends: platform switch, the morning's picks with one press to 编剧,
+  the platform's own list as a table with 研究员's mark and reason.
+- Script: a 流程 panel — topic, plan, versions, approval, project, post.
+- Articles parked off the rail at the client's request.

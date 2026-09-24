@@ -21,6 +21,8 @@ import {
 } from "@/app/(app)/script/actions";
 import { sendScriptToVideoAction } from "@/app/(app)/home/actions";
 import { notify } from "@/lib/client/notify";
+import { RunPanel } from "@/components/script/RunPanel";
+import type { ScriptRun } from "@/lib/script/run";
 
 /**
  * Live wiring for one script.
@@ -45,7 +47,10 @@ export function DetailView({
   model,
   shareSheet,
   canMakeVideo = false,
+  flow,
 }: {
+  /** Where this script is in the line of work, for the panel. */
+  flow?: ScriptRun | null;
   detail: ScriptDetail;
   siblings: Record<string, ScriptListItem[]>;
   approvers: { id: string; name: string }[];
@@ -160,6 +165,19 @@ export function DetailView({
           : undefined
       }
       onAsk={(prompt) => void agent.send(prompt)}
+      run={
+        flow ? (
+          <RunPanel
+            run={flow}
+            zh={zh}
+            onApprove={() => {
+              const q = new URLSearchParams(params.toString());
+              q.set("tab", "approval");
+              router.replace(`/script/${id}?${q.toString()}`, { scroll: false });
+            }}
+          />
+        ) : undefined
+      }
       thread={
         <InlineAgentThread
           messages={agent.messages}

@@ -82,6 +82,9 @@ export type ScriptDetailScreenProps = {
   /** The conversation so far, in the panel. It used to hand the question to
    * /chat, which took the script off the screen to discuss the script. */
   thread?: React.ReactNode;
+  /** Where this script is in the line of work — the panel's first tab when
+   * the page can read it. */
+  run?: React.ReactNode;
   /** The sharing dialog, dropped under the header's Share button. Omitted for
    * somebody who holds nothing to share with, in which case the button says
    * so rather than opening a sheet that can do nothing. */
@@ -238,6 +241,7 @@ const CSS = `
 /** zh-CN strings for the chrome; English is the artboards' own. The script's
  * own words are never in here — they are whatever the writer wrote. */
 const ZH: Record<string, string> = {
+  "Flow": "流程",
   "All scripts": "全部脚本",
   "Jump to a script": "跳转到脚本",
   Drafting: "撰写中",
@@ -705,6 +709,7 @@ export function ScriptDetailScreen(props: ScriptDetailScreenProps): React.JSX.El
     onComment,
     onAsk,
     thread,
+    run,
     shareSheet,
     onMakeVideo,
   } = props;
@@ -779,7 +784,7 @@ export function ScriptDetailScreen(props: ScriptDetailScreenProps): React.JSX.El
   const [selection, setSelection] = React.useState("");
   const [rewriteOpen, setRewriteOpen] = React.useState(false);
   const [instruction, setInstruction] = React.useState("");
-  const [panel, setPanel] = React.useState<"style" | "agent" | "comments">("style");
+  const [panel, setPanel] = React.useState<"run" | "style" | "agent" | "comments">(run ? "run" : "style");
   const [openSuggestion, setOpenSuggestion] = React.useState<string | null>(null);
   const [focusBeat, setFocusBeat] = React.useState<number | null>(null);
   const [filter, setFilter] = React.useState("");
@@ -2822,7 +2827,7 @@ export function ScriptDetailScreen(props: ScriptDetailScreenProps): React.JSX.El
 
   /** The Draft tab keeps the artboard's three-tab panel; every other tab shows
    * the two the artboards give it, and a locked script shows the record. */
-  const panelTabs: { key: "style" | "agent" | "comments"; label: string; icon: boolean }[] = locked
+  const panelTabs: { key: "run" | "style" | "agent" | "comments"; label: string; icon: boolean }[] = locked
     ? [
         { key: "style", label: t("Record"), icon: false },
         { key: "agent", label: t("Agent"), icon: true },
@@ -2838,6 +2843,9 @@ export function ScriptDetailScreen(props: ScriptDetailScreenProps): React.JSX.El
           { key: "comments", label: t("Comments"), icon: false },
         ];
 
+  /* The run comes first on every tab: it is the answer to "where is this",
+     which is the question people open a script with. */
+  if (run) panelTabs.unshift({ key: "run", label: t("Flow"), icon: false });
   const activePanel = panelTabs.some((p) => p.key === panel) ? panel : panelTabs[0].key;
 
   const rightPanel = (
@@ -2876,7 +2884,7 @@ export function ScriptDetailScreen(props: ScriptDetailScreenProps): React.JSX.El
         <div style={{ flexGrow: 1 }}></div>
       </div>
 
-      {activePanel === "style" ? (locked ? recordTab : styleTab) : activePanel === "agent" ? agentTab : commentsTab}
+      {activePanel === "run" ? run : activePanel === "style" ? (locked ? recordTab : styleTab) : activePanel === "agent" ? agentTab : commentsTab}
 
       <div
         style={{

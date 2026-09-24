@@ -6,6 +6,7 @@ import { sharesWithNames } from "@/lib/files/service";
 import { DetailView } from "@/components/script/DetailView";
 import { ShareSheet } from "@/components/files/ShareSheet";
 import { jumpList, possibleApprovers, scriptDetail } from "@/lib/script/service";
+import { scriptRun } from "@/lib/script/run";
 
 /**
  * One script: Brief, Draft, Versions, Approval (spec §4.4).
@@ -21,7 +22,8 @@ export default async function ScriptPage({ params }: { params: Promise<{ id: str
   const detail = await scriptDetail(viewer, id);
   if (!detail) notFound();
 
-  const [siblings, approvers, ceiling, shares] = await Promise.all([
+  const zh0 = (viewer.locale ?? "zh-CN").startsWith("zh");
+  const [siblings, approvers, ceiling, shares, run] = await Promise.all([
     jumpList(viewer, detail.script.folderId),
     possibleApprovers(viewer),
     /* Scripts carry the same `relation_tuples` files do, so sharing one is the
@@ -29,6 +31,7 @@ export default async function ScriptPage({ params }: { params: Promise<{ id: str
        system that would drift from the first. */
     shareCeiling(viewer, "script", id),
     sharesWithNames("script", id),
+    scriptRun(viewer, id, zh0),
   ]);
 
   const zh = (viewer.locale ?? "zh-CN").startsWith("zh");
@@ -42,6 +45,7 @@ export default async function ScriptPage({ params }: { params: Promise<{ id: str
       viewerId={viewer.id}
       model={modelFor.drafting()}
       canMakeVideo={viewer.modules.includes("video")}
+      flow={run}
       shareSheet={
         ceiling ? (
           <ShareSheet
