@@ -3,6 +3,7 @@ import { HomeScreen } from "@/components/home/HomeScreen";
 import { jobName, readHome } from "@/lib/home/service";
 import { channelThread, listPeople } from "@/lib/chat/service";
 import { pipelineToday } from "@/lib/home/pipeline";
+import { AUTOMATIONS, readAutomations } from "@/lib/automations/service";
 import { agentKeyFromEmail } from "@/lib/agents/catalog";
 
 export const metadata = { title: "首页 · Home" };
@@ -22,7 +23,9 @@ export default async function HomePage() {
   const viewer = await requireModule("chat");
   const locale = viewer.locale ?? "zh-CN";
   const zh = locale.startsWith("zh");
-  const [home, people, pipeline] = await Promise.all([readHome(viewer, zh), listPeople(viewer), pipelineToday(viewer, zh)]);
+  const [home, people, pipeline, autos] = await Promise.all([readHome(viewer, zh), listPeople(viewer), pipelineToday(viewer, zh), readAutomations()]);
+  /* The same rows the flow page builds, for the preview of it on this page. */
+  const automations = AUTOMATIONS.map((def) => ({ key: def.key, name: def.name, nameEn: def.nameEn, what: def.what, whatEn: def.whatEn, scheduled: def.scheduled, value: autos[def.key] }));
   /* The tail of the team channel: fourteen messages, newest last. Same read the
      channel page does, so what is here is exactly what is there. */
   const tail = home.teamChannel ? await channelThread(viewer, home.teamChannel.slug, 14) : null;
@@ -49,6 +52,7 @@ export default async function HomePage() {
         runningNames={runningNames}
         teamChannel={home.teamChannel}
         pipeline={pipeline}
+        automations={automations}
         thread={thread}
         people={people.map((p) => ({
           id: p.id,

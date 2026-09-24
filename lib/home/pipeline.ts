@@ -100,8 +100,18 @@ export async function pipelineToday(viewer: Viewer, zh: boolean): Promise<Pipeli
 
   const research = `/chat/c/${encodeURIComponent(RESEARCH_CHANNEL)}`;
 
+  /*
+   * The line starts from today's topic.
+   *
+   * Everything after step 2 is about the piece today's brief chose, so it
+   * only counts work started after that brief was posted. Before the brief,
+   * yesterday's half-finished script is not "today's video", and showing it
+   * as the current step told the studio the line was further on than it is.
+   */
+  const workSince = digestToday ? digest!.createdAt : null;
+
   /* ---- 3 · 4  the script and its approval ------------------------------ */
-  const [script] = await db
+  const [script] = !workSince ? [] : await db
     .select({
       id: scripts.id,
       title: scripts.title,
@@ -112,7 +122,7 @@ export async function pipelineToday(viewer: Viewer, zh: boolean): Promise<Pipeli
       updatedAt: scripts.updatedAt,
     })
     .from(scripts)
-    .where(and(eq(scripts.tenantId, tenantId), isNull(scripts.deletedAt), gte(scripts.updatedAt, since)))
+    .where(and(eq(scripts.tenantId, tenantId), isNull(scripts.deletedAt), gte(scripts.createdAt, workSince)))
     .orderBy(desc(scripts.updatedAt))
     .limit(1);
 
@@ -126,14 +136,14 @@ export async function pipelineToday(viewer: Viewer, zh: boolean): Promise<Pipeli
     : [];
 
   /* ---- 5 · 6  the project, its timeline, and the jobs on it ------------ */
-  const [project] = await db
+  const [project] = !workSince ? [] : await db
     .select({ id: videoProjects.id, title: videoProjects.title, masterFileId: videoProjects.masterFileId, updatedAt: videoProjects.updatedAt })
     .from(videoProjects)
     .where(
       and(
         eq(videoProjects.tenantId, tenantId),
         isNull(videoProjects.deletedAt),
-        script ? eq(videoProjects.scriptId, script.id) : gte(videoProjects.updatedAt, since),
+        script ? eq(videoProjects.scriptId, script.id) : gte(videoProjects.createdAt, workSince),
       ),
     )
     .orderBy(desc(videoProjects.updatedAt))
@@ -290,7 +300,7 @@ export async function pipelineToday(viewer: Viewer, zh: boolean): Promise<Pipeli
 
   return {
     collectedAt,
-    title: script ? (zh && script.titleLocal) || script.title : project?.title ?? digestTopic,
+    title: script ? (zh && script.titleLocal) || script.title : project?.title ?? (digestToday ? digestTopic : null),
     scriptId: script?.id ?? null,
     projectId: project?.id ?? null,
     stages,

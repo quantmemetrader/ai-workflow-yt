@@ -14,6 +14,7 @@ import { Fold } from "@/components/ui/Fold";
 import { SayToAgent } from "@/components/flow/SayToAgent";
 import type { ThreadMessage } from "@/components/home/Echo";
 import type { Pipeline } from "@/lib/home/pipeline";
+import type { AutomationRow } from "@/components/flow/FlowScreen";
 
 /**
  * 首页 — where the day is driven from, not a page that sends you elsewhere.
@@ -40,7 +41,9 @@ export function HomeScreen({
   people,
   pipeline,
   thread,
+  automations,
 }: {
+  automations: AutomationRow[];
   pipeline: Pipeline;
   thread: ThreadMessage[];
   agents: AgentState[];
@@ -293,7 +296,7 @@ export function HomeScreen({
 
           {/* ---- 2. today's video, straight under it ---- */}
           <Fold id="home-flow" title={t("今天这条片走到哪了", "Where today's video is")} sub={pipeline.title ?? t("还没有开始的片子", "Nothing in progress yet")} resizable={false}>
-            <MiniFlow pipeline={pipeline} zh={zh} bare />
+            <MiniFlow pipeline={pipeline} zh={zh} bare automations={automations} />
           </Fold>
 
           <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>

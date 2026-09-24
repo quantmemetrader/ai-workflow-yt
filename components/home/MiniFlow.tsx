@@ -6,6 +6,8 @@ import { AgentIcon } from "@/components/agents/AgentIcon";
 import { SayToAgent } from "@/components/flow/SayToAgent";
 import { AGENT_COLORS, AGENT_LABELS, type AgentKey } from "@/lib/agents/catalog";
 import type { Pipeline, Stage } from "@/lib/home/pipeline";
+import { useRouter } from "next/navigation";
+import { FlowScreen, type AutomationRow } from "@/components/flow/FlowScreen";
 
 /**
  * Today's video as the studio describes it, in six steps and one row:
@@ -38,9 +40,9 @@ function steps(p: Pipeline, zh: boolean): Step[] {
   const footage: Step = {
     key: "footage",
     n: 4,
-    label: t("等素材", "Host's clips"),
+    label: t("主持人", "Host"),
     owner: "you",
-    ownerName: t("主持人", "Host"),
+    ownerName: t("上传素材", "Upload clips"),
     state: footageIn ? "done" : waitingFootage ? "you" : "todo",
     line: footageIn ? t("素材已到", "Clips are in") : waitingFootage ? t("等主持人上传素材", "Waiting for the host to upload") : t("脚本批准后", "After the script is approved"),
     href: p.projectId ? `/video?project=${p.projectId}` : "/video",
@@ -79,7 +81,8 @@ function steps(p: Pipeline, zh: boolean): Step[] {
   ];
 }
 
-export function MiniFlow({ pipeline, zh, bare = false }: { pipeline: Pipeline; zh: boolean; /** Inside a Fold, which draws the frame. */ bare?: boolean }) {
+export function MiniFlow({ pipeline, zh, bare = false, automations = [] }: { pipeline: Pipeline; zh: boolean; /** Inside a Fold, which draws the frame. */ bare?: boolean; /** For the preview of the full flow. */ automations?: AutomationRow[] }) {
+  const router = useRouter();
   const t = (a: string, b: string) => (zh ? a : b);
   const [talking, setTalking] = React.useState<string | null>(null);
   const list = steps(pipeline, zh);
@@ -92,7 +95,7 @@ export function MiniFlow({ pipeline, zh, bare = false }: { pipeline: Pipeline; z
       <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 12, minWidth: 0 }}>
         {bare ? null : <span style={{ fontSize: 14, fontWeight: 600, whiteSpace: "nowrap" }}>{t("今天这条片走到哪了", "Where today's video is")}</span>}
         <span style={{ fontSize: 12.5, color: "#525252", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-          {t("数据 → 选题 → 脚本 → 主持人拍素材 → 剪辑 → 交付", "Data → topic → script → host films → edit → deliver")}
+          {t("数据 → 选题 → 脚本 → 上传素材 → 剪辑 → 交付", "Data → topic → script → upload clips → edit → deliver")}
         </span>
         <span style={{ flexGrow: 1 }} />
         <span style={{ fontSize: 12, color: "#999999", whiteSpace: "nowrap" }}>{t(`${doneCount}/6 步完成`, `${doneCount}/6 done`)}</span>
@@ -105,7 +108,7 @@ export function MiniFlow({ pipeline, zh, bare = false }: { pipeline: Pipeline; z
           ...(i ? [<Arrow key={`a${i}`} dir="→" on={live(x)} />] : []),
           <StepCard key={x.key} step={x} zh={zh} talking={talking === x.key} onTalk={() => setTalking(talking === x.key ? null : x.key)} alignRight={i === 2} />,
         ])}
-        <div style={{ gridColumn: "5", display: "flex", justifyContent: "center", height: 18, alignItems: "center", color: live(list[3]) ? "#0f5bd5" : "#b9b6b0", fontSize: 14 }} aria-hidden>
+        <div style={{ gridColumn: "5", display: "flex", justifyContent: "center", height: 18, alignItems: "center", color: live(list[3]) ? "#0f5bd5" : "#3d3d3d", fontSize: 17, fontWeight: 700 }} aria-hidden>
           ↓
         </div>
         {[list[5], list[4], list[3]].flatMap((x, i, arr) => [
@@ -114,7 +117,18 @@ export function MiniFlow({ pipeline, zh, bare = false }: { pipeline: Pipeline; z
         ])}
       </div>
 
-      <Link href="/flow" style={{ marginTop: 14, display: "block", borderRadius: 12, overflow: "hidden", textDecoration: "none", color: "#fff", boxShadow: "0 2px 8px rgba(0,0,0,0.14)", border: "1px solid #171717" }}>
+      {/* A div, not a link: the preview inside is the real flow page, whose
+          nodes are links, and a link inside a link is not allowed. */}
+      <div
+        role="link"
+        tabIndex={0}
+        onClick={() => router.push("/flow")}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") router.push("/flow");
+        }}
+        onMouseEnter={() => router.prefetch("/flow")}
+        style={{ marginTop: 14, display: "block", borderRadius: 12, overflow: "hidden", color: "#fff", boxShadow: "0 2px 8px rgba(0,0,0,0.14)", border: "1px solid #171717", cursor: "pointer" }}
+      >
         <span style={{ display: "flex", alignItems: "center", gap: 14, padding: "14px 18px", background: "linear-gradient(180deg, #2b2b2b, #111111)" }}>
           <AgentIcon size={34} radius={9} />
           <span style={{ minWidth: 0, flexGrow: 1 }}>
@@ -125,15 +139,15 @@ export function MiniFlow({ pipeline, zh, bare = false }: { pipeline: Pipeline; z
           </span>
           <span style={{ fontSize: 20, lineHeight: 1 }}>→</span>
         </span>
-        <FlowPreview pipeline={pipeline} zh={zh} />
-      </Link>
+        <ScaledFlow pipeline={pipeline} automations={automations} zh={zh} />
+      </div>
     </section>
   );
 }
 
 function Arrow({ dir, on }: { dir: string; on: boolean }) {
   return (
-    <div aria-hidden style={{ display: "flex", alignItems: "center", justifyContent: "center", color: on ? "#0f5bd5" : "#b9b6b0", fontSize: 14 }}>
+    <div aria-hidden style={{ display: "flex", alignItems: "center", justifyContent: "center", color: on ? "#0f5bd5" : "#3d3d3d", fontSize: 17, fontWeight: 700 }}>
       {dir}
     </div>
   );
@@ -203,66 +217,34 @@ function StepCard({ step: x, zh, talking, onTalk, alignRight }: { step: Step; zh
   );
 }
 
-/**
- * A small picture of the full flow page, drawn from the same state: the
- * twelve nodes in the board's own positions, each in its owner's tint, the
- * running one outlined, the ones waiting on a person in black. It is a
- * preview, not a control; the whole thing is the link to /flow.
- */
-function FlowPreview({ pipeline: p, zh }: { pipeline: Pipeline; zh: boolean }) {
-  const t = (a: string, b: string) => (zh ? a : b);
-  const S = (k: Stage["key"]) => p.stages.find((s) => s.key === k)!;
-  const topic = S("topic"), plan = S("plan"), script = S("script"), approve = S("approve"), cut = S("cut"), exp = S("export"), publish = S("publish"), feedback = S("feedback");
-  const review: Stage["state"] = publish.state !== "todo" ? "done" : exp.state === "done" ? "you" : "todo";
-  const post: Stage["state"] = publish.state === "done" ? "done" : publish.state === "you" ? "you" : "todo";
-  type N = { x: number; y: number; owner: AgentKey | "you" | "loop"; name: string; state: Stage["state"] };
-  const X = [40, 356, 672, 988], Y = [40, 250, 460];
-  const nodes: N[] = [
-    { x: X[0], y: Y[0], owner: "research", name: t("研究员发晨报", "Brief"), state: topic.state },
-    { x: X[1], y: Y[0], owner: "planning", name: t("策划派活", "Plan"), state: plan.state },
-    { x: X[2], y: Y[0], owner: "script", name: t("编剧写脚本", "Script"), state: script.state },
-    { x: X[3], y: Y[0], owner: "you", name: t("批准脚本", "Approve"), state: approve.state },
-    { x: X[3], y: Y[1], owner: "video", name: t("转写 + 粗剪", "Rough cut"), state: cut.state },
-    { x: X[2], y: Y[1], owner: "video", name: t("图形 + 渲染", "Render"), state: exp.state },
-    { x: X[1], y: Y[1], owner: "you", name: t("看成片", "Watch the cut"), state: review },
-    { x: X[0], y: Y[1], owner: "article", name: t("写各平台文案", "Copy"), state: publish.state === "you" ? "done" : publish.state },
-    { x: X[0], y: Y[2], owner: "you", name: t("批准发布", "Publish"), state: post },
-    { x: X[1], y: Y[2], owner: "research", name: t("收评论", "Comments"), state: feedback.state === "done" ? "done" : "todo" },
-    { x: X[2], y: Y[2], owner: "research", name: t("复盘数据", "Numbers"), state: feedback.state },
-    { x: X[3], y: Y[2], owner: "loop", name: t("明天再来一轮", "Again tomorrow"), state: "todo" },
-  ];
-  const W = 236, H = 120;
-  const mid = (n: N) => ({ cx: n.x + W / 2, cy: n.y + H / 2 });
-  const links: [number, number][] = [[0, 1], [1, 2], [2, 3], [3, 4], [4, 5], [5, 6], [6, 7], [7, 8], [8, 9], [9, 10], [10, 11]];
-  const TINT: Record<AgentKey, string> = { research: "#d5e7fb", planning: "#dcd6fb", script: "#f8dcc6", video: "#c3e6e0", article: "#f5d4e6" };
 
+/**
+ * The full flow page itself, shrunk to the width it is given.
+ *
+ * Not a drawing of it: the same `FlowScreen` the /flow page renders, from
+ * the same data, scaled down and made inert, so the preview can never look
+ * different from the page it opens.
+ */
+const BOARD_W = 1254;
+const BOARD_H = 860;
+
+function ScaledFlow({ pipeline, automations, zh }: { pipeline: Pipeline; automations: AutomationRow[]; zh: boolean }) {
+  const box = React.useRef<HTMLDivElement | null>(null);
+  const [scale, setScale] = React.useState(0.55);
+  React.useEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    const measure = () => setScale(el.clientWidth / BOARD_W);
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
   return (
-    <span style={{ display: "block", padding: "12px 14px 14px", backgroundColor: "#f4f3f0", backgroundImage: "radial-gradient(#d8d5cf 1px, transparent 1px)", backgroundSize: "14px 14px" }}>
-      <svg viewBox="0 0 1264 620" style={{ width: "100%", height: "auto", display: "block" }} aria-label={t("全部流程预览", "Preview of the full flow")}>
-        {links.map(([a, b]) => {
-          const A = mid(nodes[a]), B = mid(nodes[b]);
-          const live = nodes[b].state === "running" || nodes[b].state === "you";
-          return <line key={`${a}-${b}`} x1={A.cx} y1={A.cy} x2={B.cx} y2={B.cy} stroke={live ? "#0f5bd5" : "#bdb9b2"} strokeWidth={4} strokeDasharray={nodes[b].state === "todo" ? "10 10" : undefined} />;
-        })}
-        <path d={`M${mid(nodes[11]).cx} ${nodes[11].y} C ${mid(nodes[11]).cx} 0, ${mid(nodes[0]).cx} 0, ${mid(nodes[0]).cx} ${nodes[0].y}`} fill="none" stroke="#6a3fc4" strokeWidth={3} strokeDasharray="6 10" opacity={0.6} />
-        {nodes.map((n, i) => {
-          const you = n.owner === "you", loop = n.owner === "loop";
-          const needs = n.state === "you", running = n.state === "running", todo = n.state === "todo";
-          const fill = needs ? "#171717" : loop ? "#ffffff" : todo ? "#fbfbfa" : you ? "#e8e8e6" : TINT[n.owner as AgentKey];
-          const stroke = needs ? "#171717" : running ? "#0f5bd5" : loop ? "#0f5bd5" : todo ? "#d9d9d9" : you ? "#bdbdbd" : AGENT_COLORS[n.owner as AgentKey];
-          const ink = needs ? "#ffffff" : todo ? "#a3a3a3" : "#171717";
-          return (
-            <g key={i}>
-              <rect x={n.x} y={n.y} width={W} height={H} rx={16} fill={fill} stroke={stroke} strokeWidth={running ? 6 : 3} strokeDasharray={todo || loop ? "10 8" : undefined} />
-              {!you && !loop ? <rect x={n.x + 20} y={n.y + 22} width={26} height={26} rx={7} fill={todo ? "#e2e2e2" : AGENT_COLORS[n.owner as AgentKey]} /> : null}
-              <text x={n.x + (you || loop ? 20 : 58)} y={n.y + 44} fontSize={28} fontWeight={600} fill={ink} fontFamily="Inter, Noto Sans SC, sans-serif">{n.name}</text>
-              <text x={n.x + 20} y={n.y + 92} fontSize={22} fill={needs ? "#d9d9d9" : "#8f8c86"} fontFamily="Inter, Noto Sans SC, sans-serif">
-                {needs ? t("需要你", "Needs you") : running ? t("进行中", "Running") : n.state === "done" ? t("已完成", "Done") : loop ? t("循环", "Loop") : t("等上一步", "Waiting")}
-              </text>
-            </g>
-          );
-        })}
-      </svg>
-    </span>
+    <div ref={box} aria-hidden style={{ position: "relative", width: "100%", height: Math.round(BOARD_H * scale), overflow: "hidden", background: "#f4f3f0" }}>
+      <div style={{ position: "absolute", left: 0, top: 0, width: BOARD_W, height: BOARD_H, display: "flex", transform: `scale(${scale})`, transformOrigin: "0 0", pointerEvents: "none" }}>
+        <FlowScreen pipeline={pipeline} automations={automations} zh={zh} canEdit={false} />
+      </div>
+    </div>
   );
 }
