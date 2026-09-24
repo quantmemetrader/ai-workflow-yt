@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import Link, { useLinkStatus } from "next/link";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { HistoryButton } from "@/components/shell/HistoryButton";
@@ -143,6 +143,7 @@ export function Rail({ modules, locale }: { modules: Module[]; locale: string })
             >
               <svg viewBox="0 0 24 24" dangerouslySetInnerHTML={{ __html: item.icon }} />
               {open && <span>{label}</span>}
+              <RailSpinner wide={open} />
             </Link>
             {item.dividerAfter && (
               <div
@@ -216,4 +217,15 @@ export function Rail({ modules, locale }: { modules: Module[]; locale: string })
       )}
     </nav>
   );
+}
+
+/**
+ * The click answered at once. A page whose scripts are not cached yet can take
+ * a moment to arrive from the server, and a rail entry that does nothing for
+ * that moment reads as broken. Same spinner the chat sidebar uses.
+ */
+function RailSpinner({ wide }: { wide: boolean }) {
+  const { pending } = useLinkStatus();
+  if (!pending) return null;
+  return <span className="spin" aria-hidden style={wide ? { marginLeft: "auto" } : { position: "absolute", right: 4, top: 4, width: 8, height: 8 }} />;
 }

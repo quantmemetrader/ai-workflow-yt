@@ -202,6 +202,8 @@ textarea::placeholder { color: #999999; }
 @keyframes sk-shimmer { 0% { background-position: 100% 50%; } 100% { background-position: 0 50%; } }
 .ws.pending { background: rgba(0,0,0,.05); color: #171717; }
 .ws .spin { margin-left: auto; width: 11px; height: 11px; border: 1.5px solid #c9c9c9; border-top-color: #525252; border-radius: 50%; animation: ws-spin .6s linear infinite; flex-shrink: 0; }
+.r { position: relative; }
+.r .spin { width: 11px; height: 11px; border: 1.5px solid #c9c9c9; border-top-color: #525252; border-radius: 50%; animation: ws-spin .6s linear infinite; flex-shrink: 0; box-sizing: border-box; }
 @keyframes ws-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) {
   .sk { animation: none; }

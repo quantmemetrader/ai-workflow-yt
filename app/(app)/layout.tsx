@@ -9,6 +9,7 @@ import { RenderWatch } from "@/components/shell/RenderWatch";
 import { Toaster } from "@/components/shell/Toaster";
 import { UploadTray } from "@/components/shell/UploadTray";
 import { BusyBar } from "@/components/shell/BusyBar";
+import { Warmup } from "@/components/shell/Warmup";
 
 /**
  * The shell every module sits in — the artboards' outer frame, with one
@@ -91,6 +92,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
       {/* And where "something is happening" goes. */}
       <BusyBar />
+
+      {/* Every page's scripts, fetched while you read this one. */}
+      <Warmup />
     </div>
   );
 }
