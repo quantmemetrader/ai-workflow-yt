@@ -4,7 +4,7 @@ import { JOB_OWNER, jobName, readHome } from "@/lib/home/service";
 import { channelThread, listPeople } from "@/lib/chat/service";
 import { pipelineToday } from "@/lib/home/pipeline";
 import { agentKeyFromEmail } from "@/lib/agents/catalog";
-import { listWorkProjects } from "@/lib/projects/service";
+import { listWorkProjects, workProjectDetail } from "@/lib/projects/service";
 
 export const metadata = { title: "首页 · Home" };
 
@@ -37,6 +37,9 @@ export default async function HomePage() {
     done: m.done,
   }));
 
+  /* The projects in progress, with where each stands and its last words. */
+  const hub = (await Promise.all(projects.filter((x) => x.status === "active").slice(0, 6).map((x) => workProjectDetail(viewer, x.id, zh, 12)))).filter((x): x is NonNullable<typeof x> => x !== null);
+
   const runningNames = Object.fromEntries(home.running.map((j) => [j.type, jobName(j.type, zh)]));
 
   return (
@@ -50,6 +53,7 @@ export default async function HomePage() {
         runningNames={runningNames}
         teamChannel={home.teamChannel}
         pipeline={pipeline}
+        hub={hub}
         projects={projects.map((x) => ({ id: x.id, title: x.title, channelSlug: x.channelSlug }))}
         thread={thread}
         people={people.map((p) => ({

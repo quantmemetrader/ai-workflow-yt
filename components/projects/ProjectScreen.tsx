@@ -10,7 +10,7 @@ import { useMentions } from "@/components/chat/useMentions";
 import { AGENT_COLORS, AGENT_LABELS, agentTag, parseAgentMentions, type AgentKey } from "@/lib/agents/catalog";
 import { pressCardAction, sendChannelMessage } from "@/app/(app)/chat/actions";
 import { renameProjectAction, setProjectStatusAction } from "@/app/(app)/projects/actions";
-import { addClipAction, addItemAction } from "@/app/(app)/video/actions";
+import { addClipAction, addItemAction, autoEditAction, directAction, exportAction } from "@/app/(app)/video/actions";
 import { uploadFiles } from "@/lib/client/upload";
 import { beginWork } from "@/lib/client/busy";
 import { notify } from "@/lib/client/notify";
@@ -116,6 +116,26 @@ export function ProjectScreen({ project: p, zh, people }: { project: ProjectDeta
     }
   }
 
+  /* A button that runs a tool directly (render, auto cut, the whole video),
+     rather than asking in chat. The step above shows it running. */
+  const [busyAction, setBusyAction] = React.useState<string | null>(null);
+  function runTool(key: string, label: string, fn: () => Promise<{ error?: string } | Record<string, never>>) {
+    if (busyAction) return;
+    setBusyAction(key);
+    start(async () => {
+      const res = await fn();
+      setBusyAction(null);
+      if (res && "error" in res && res.error) {
+        notify(res.error);
+        return;
+      }
+      notify(t(`已开始：${label}`, `Started: ${label}`), "ok");
+      setWatching(true);
+      setSentAt(new Date().toISOString());
+      router.refresh();
+    });
+  }
+
   const lastAgent = [...p.messages].reverse().find((m) => m.agent)?.agent ?? null;
   const lastIsAgent = p.messages[p.messages.length - 1]?.agent ?? null;
   const ask = (key: AgentKey, text: string) => say(`${agentTag(key)} ${text}`);
@@ -166,12 +186,21 @@ export function ProjectScreen({ project: p, zh, people }: { project: ProjectDeta
             ))}
           </div>
 
+          {/* ---- the topic ---- */}
+          <Card icon={<AgentIcon agent="research" size={26} radius={7} />} title={t("选题", "Topic")} sub={p.source?.label ?? t("你定的题", "Your topic")}>
+            <ActionBar>
+              <Action icon="spark" label={t("补充证据", "Find evidence")} onClick={() => ask("research", t("为这个项目的选题找 3 条真实数据证据（平台、播放或热度、链接），只用工具查到的数字。", "Find 3 real pieces of evidence for this project's topic (platform, views or heat, link), numbers from tools only."))} disabled={pending} />
+              <Action icon="bulb" label={t("给 3 个角度", "3 angles")} onClick={() => ask("research", t("给这个项目 3 个适合本频道的切入角度，每个一句话，说明为什么。", "Give 3 angles for this project that suit our channel, one line each, with why."))} disabled={pending} />
+              <Action icon="eye" label={t("看对标怎么做", "How rivals did it")} onClick={() => ask("research", t("找对标账号做过的同题视频，说出播放和他们的开头怎么写。", "Find rival videos on this topic, with their views and how they open."))} disabled={pending} />
+            </ActionBar>
+          </Card>
+
           {/* ---- the script ---- */}
           {p.steps.find((s) => s.key === "script")?.state !== "skipped" ? (
             <Card
               icon={<AgentIcon agent="script" size={26} radius={7} />}
               title={t("脚本", "Script")}
-              sub={p.script ? t(`第 ${p.script.version} 版 · ${scriptStatus(p.script.status, zh)}`, `v${p.script.version} · ${scriptStatus(p.script.status, zh)}`) : "—"}
+              sub={p.script ? (p.script.beats > 0 && p.script.status === "brief" ? t(`草稿 · ${p.script.beats} 个分镜`, `Draft · ${p.script.beats} beats`) : t(`第 ${p.script.version} 版 · ${scriptStatus(p.script.status, zh)}`, `v${p.script.version} · ${scriptStatus(p.script.status, zh)}`)) : "—"}
               right={
                 p.script ? (
                   <Link href={`/script/${p.script.id}`} style={{ ...btn(false), textDecoration: "none" }}>
@@ -180,17 +209,17 @@ export function ProjectScreen({ project: p, zh, people }: { project: ProjectDeta
                 ) : null
               }
             >
-              {p.script && (p.script.status === "brief" || p.script.status === "drafting") ? (
-                <button type="button" disabled={pending} onClick={() => ask("script", t("按这个项目写脚本，写进项目的脚本里。", "Write this project's script, into the project's script."))} style={btn(true)}>
-                  <Icon name="pen" size={14} /> {t("让编剧写脚本", "Ask the writer to write it")}
-                </button>
-              ) : p.script?.status === "awaiting_approval" ? (
-                <Link href={`/script/${p.script.id}?tab=approval`} style={{ ...btn(true), textDecoration: "none" }}>
+              {p.script?.status === "awaiting_approval" ? (
+                <Link href={`/script/${p.script.id}?tab=approval`} style={{ ...btn(true), textDecoration: "none", marginBottom: 8 }}>
                   {t("去批准", "Review and approve")} →
                 </Link>
-              ) : (
-                <span style={{ fontSize: 12.5, color: "#525252" }}>{t("脚本已锁定，等素材。", "Locked; waiting for the clips.")}</span>
-              )}
+              ) : null}
+              <ActionBar>
+                <Action primary icon="pen" label={p.script && p.script.beats > 0 ? t("重写一版", "Rewrite") : t("写初稿", "Write the draft")} onClick={() => ask("script", t("写这个项目的脚本初稿，直接写进项目脚本（用 write_script）。", "Write this project's first draft straight into the project's script (write_script)."))} disabled={pending || p.script?.status === "locked"} />
+                <Action icon="scissors" label={t("改到 60 秒", "Cut to 60s")} onClick={() => ask("script", t("把项目脚本改到 60 秒以内，保留最有力的三点。", "Cut the project's script to under 60 seconds, keeping the three strongest points."))} disabled={pending || p.script?.status === "locked"} />
+                <Action icon="spark" label={t("加强开头", "Stronger hook")} onClick={() => ask("script", t("把项目脚本的开头改得更抓人，前 3 秒给出冲突或数字。", "Make the script's opening grab harder: a conflict or a number in the first 3 seconds."))} disabled={pending || p.script?.status === "locked"} />
+                <Action icon="check" label={t("核查事实", "Fact-check")} onClick={() => ask("research", t("核查这个项目脚本里的每个数字和说法，列出需要改的地方和来源。", "Fact-check every number and claim in this project's script; list what to change, with sources."))} disabled={pending} />
+              </ActionBar>
             </Card>
           ) : null}
 
@@ -220,6 +249,11 @@ export function ProjectScreen({ project: p, zh, people }: { project: ProjectDeta
                   e.target.value = "";
                 }} />
               </label>
+              <div style={{ marginTop: 8 }}>
+                <ActionBar>
+                  <Action icon="film" label={t("从素材库找画面", "Find stock shots")} onClick={() => ask("video", t("从素材库给这个项目找 3 段合适的画面，放进项目的素材箱。", "Find 3 fitting stock shots for this project and put them in its bin."))} disabled={pending} />
+                </ActionBar>
+              </div>
             </Card>
           ) : null}
 
@@ -253,11 +287,26 @@ export function ProjectScreen({ project: p, zh, people }: { project: ProjectDeta
                   </button>
                 </div>
               </>
-            ) : (
-              <button type="button" disabled={pending} onClick={() => ask("video", p.mode === "direct:video" ? t("开始做这个视频，做完渲染出来。", "Make this video and render it.") : t("用这个项目的素材按脚本剪，剪好渲染出来。", "Cut the project's clips to the script and render it."))} style={btn(true)}>
-                <Icon name="film" size={14} /> {t("让剪辑师做出来", "Ask the video agent to make it")}
-              </button>
-            )}
+            ) : null}
+            {p.video ? (
+              <div style={{ marginTop: rendered ? 10 : 0 }}>
+                <ActionBar>
+                  <Action primary icon="spark" label={busyAction === "direct" ? t("开始中…", "Starting…") : t("一键成片", "Make it in one go")} onClick={() => runTool("direct", t("一键成片", "one-go video"), () => directAction(p.video!.id, { brief: (p.brief ?? p.title).replace(/@\S+/g, "").trim() || p.title, aspect: "9:16", render: true }))} disabled={pending || renderLive} />
+                  <Action icon="scissors" label={t("自动粗剪", "Auto rough cut")} onClick={() => runTool("autoedit", t("自动粗剪", "auto rough cut"), () => autoEditAction(p.video!.id, zh ? "zh-CN" : "en"))} disabled={pending || !p.video.clips} />
+                  <Action icon="play" label={t("渲染 9:16", "Render 9:16")} onClick={() => runTool("r916", t("渲染 9:16", "render 9:16"), () => exportAction(p.video!.id, { aspect: "9:16", burnCaptions: true, captionLanguage: "zh-CN" }))} disabled={pending || renderLive || !p.video.items} />
+                  <Action icon="play" label={t("渲染 16:9", "Render 16:9")} onClick={() => runTool("r169", t("渲染 16:9", "render 16:9"), () => exportAction(p.video!.id, { aspect: "16:9", burnCaptions: true, captionLanguage: "zh-CN" }))} disabled={pending || renderLive || !p.video.items} />
+                  <Action icon="chat" label={t("交给剪辑师", "Hand to the editor")} onClick={() => ask("video", p.mode === "direct:video" ? t("开始做这个视频，做完渲染出来。", "Make this video and render it.") : t("用这个项目的素材按脚本剪，剪好渲染出来。", "Cut the project's clips to the script and render it."))} disabled={pending} />
+                </ActionBar>
+              </div>
+            ) : null}
+          </Card>
+          {/* ---- delivery ---- */}
+          <Card icon={<AgentIcon agent="article" size={26} radius={7} />} title={t("交付", "Deliver")} sub={p.status === "done" ? t("已交付", "Delivered") : t("成片之后", "After the cut")}>
+            <ActionBar>
+              <Action icon="pen" label={t("写各平台文案", "Write platform copy")} onClick={() => ask("article", t("为这个项目写 YouTube、小红书、抖音、微博的标题、简介和标签，各一版。", "Write titles, descriptions and tags for YouTube, Rednote, Douyin and Weibo for this project."))} disabled={pending} />
+              <Action icon="bulb" label={t("封面标题", "Thumbnail lines")} onClick={() => ask("article", t("给这个项目 5 个封面大字标题，每个不超过 10 个字。", "Give 5 thumbnail headlines for this project, 10 characters or fewer each."))} disabled={pending} />
+              <Action primary={Boolean(rendered) && p.status !== "done"} icon="check" label={p.status === "done" ? t("已交付", "Delivered") : t("标记交付", "Mark delivered")} onClick={() => start(async () => { await setProjectStatusAction(p.id, p.status === "done" ? "active" : "done"); router.refresh(); })} disabled={pending} />
+            </ActionBar>
           </Card>
         </div>
       </div>
@@ -435,3 +484,17 @@ function btn(primary: boolean): React.CSSProperties {
 }
 
 const PAPER: React.CSSProperties = { backgroundColor: "#f4f3f0", backgroundImage: "radial-gradient(#d8d5cf 1px, transparent 1px)", backgroundSize: "22px 22px" };
+
+/** A row of one-press actions: the AI driven by buttons, not only by chat. */
+function ActionBar({ children }: { children: React.ReactNode }) {
+  return <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>{children}</div>;
+}
+
+function Action({ icon, label, onClick, disabled, primary = false }: { icon: import("@/components/ui/Icon").IconName; label: string; onClick: () => void; disabled?: boolean; primary?: boolean }) {
+  return (
+    <button type="button" onClick={onClick} disabled={disabled} style={{ ...btn(primary), height: 30, fontSize: 12, borderRadius: 8, opacity: disabled ? 0.45 : 1, cursor: disabled ? "default" : "pointer" }}>
+      <Icon name={icon} size={13} />
+      {label}
+    </button>
+  );
+}

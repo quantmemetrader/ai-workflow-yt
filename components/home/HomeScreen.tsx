@@ -1,16 +1,16 @@
 "use client";
 
-import { Icon } from "@/components/ui/Icon";
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { MentionMenu, type MentionPerson } from "@/components/chat/MentionMenu";
 import { useMentions } from "@/components/chat/useMentions";
 import { AgentIcon } from "@/components/agents/AgentIcon";
-import { AGENT_LABELS, agentTag, parseAgentMentions, type AgentKey } from "@/lib/agents/catalog";
+import { AGENT_LABELS, agentTag, type AgentKey } from "@/lib/agents/catalog";
 import type { AgentState, Decision, Running } from "@/lib/home/service";
 import { pressCardAction, sendChannelMessage } from "@/app/(app)/chat/actions";
-import { MiniFlow } from "@/components/home/MiniFlow";
+import { ProjectChats, ProjectProgress } from "@/components/home/ProjectHub";
+import type { ProjectDetail } from "@/lib/projects/service";
 import { startProjectAction } from "@/app/(app)/projects/actions";
 import { Fold } from "@/components/ui/Fold";
 import { SayToAgent } from "@/components/flow/SayToAgent";
@@ -35,15 +35,16 @@ export function HomeScreen({
   agents,
   decisions,
   running,
-  teamChannel,
   runningNames,
   zh,
   me,
   people,
-  pipeline,
   thread,
   projects,
+  hub,
 }: {
+  /** The active projects, with their steps and latest messages. */
+  hub: ProjectDetail[];
   /** Where a task can go: an existing project, or a new one. */
   projects: { id: string; title: string; channelSlug: string | null }[];
   pipeline: Pipeline;
@@ -65,16 +66,8 @@ export function HomeScreen({
   const box = React.useRef<HTMLTextAreaElement | null>(null);
   const mentions = useMentions({ people, zh, draft, setDraft, box });
   const [giveTo, setGiveTo] = React.useState<AgentKey | null>(null);
-  /* The box under the conversation, apart from the big one at the top. */
-  const [quick, setQuick] = React.useState("");
   /* Which project the task box sends to: a new one unless one is chosen. */
   const [target, setTarget] = React.useState<string>("new");
-  const quickBox = React.useRef<HTMLTextAreaElement | null>(null);
-  const quickMentions = useMentions({ people, zh, draft: quick, setDraft: setQuick, box: quickBox });
-  /* Who a reply without a tag goes to: the employee who spoke last, if
-     nobody has spoken since (the server applies the same rule). */
-  const lastMsg = thread[thread.length - 1];
-  const talkingTo = lastMsg?.agent ?? null;
 
   /* After something is said, the answer comes from a model call that ends
      after the request returns. Refresh every few seconds for a minute and a
@@ -82,7 +75,6 @@ export function HomeScreen({
   const [watching, setWatching] = React.useState(false);
   const [sentAt, setSentAt] = React.useState<string | null>(null);
   const answered = thread.some((m) => m.agent && sentAt !== null && m.at > sentAt);
-  const waiting = watching && !answered;
   React.useEffect(() => {
     if (!watching || answered) return;
     const until = Date.now() + 90_000;
@@ -144,28 +136,6 @@ export function HomeScreen({
     });
   }
 
-  function say(body: string, from: "top" | "quick" = "top") {
-    if (!teamChannel || !body.trim()) return;
-    setError(null);
-    start(async () => {
-      const res = await sendChannelMessage(teamChannel.slug, body.trim());
-      if (res?.error) {
-        setError(res.error);
-        return;
-      }
-      if (from === "top") {
-        setDraft("");
-        if (box.current) box.current.style.height = "auto";
-      }
-      /* A tagged colleague answers, and so does the one being replied to:
-         the server says who when a reply without a tag goes to them. */
-      if (parseAgentMentions(body).length || ("answering" in res && res.answering)) {
-        setSentAt(new Date().toISOString());
-        setWatching(true);
-      }
-      router.refresh();
-    });
-  }
 
   const subline =
     decisions.length > 0
@@ -257,74 +227,7 @@ export function HomeScreen({
              conversation down the right ---- */}
         <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 8fr) minmax(340px, 5fr)", gap: 14, alignItems: "start" }}>
           <div style={{ minWidth: 0, order: 2, display: "flex", flexDirection: "column", gap: 14 }}>
-          <Fold
-              id="home-work"
-              title={t("在这里干活", "Work here")}
-              sub={teamChannel ? `#${teamChannel.name}` : undefined}
-              icon={<AgentIcon size={20} radius={6} />}
-              flush
-              height={448}
-              footer={
-                <form
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    if (!quick.trim()) return;
-                    say(quick, "quick");
-                    setQuick("");
-                  }}
-                  style={{ display: "flex", alignItems: "center", gap: 8, padding: 10, position: "relative" }}
-                >
-                  <MentionMenu matches={quickMentions.matches} active={quickMentions.active} zh={zh} onPick={quickMentions.pick} onHover={quickMentions.setActive} placement="up" />
-                  {talkingTo ? (
-                    <span title={t("Replies go to this colleague without a tag", "不用 @，回复会直接给它")} style={{ display: "flex", alignItems: "center", gap: 5, flexShrink: 0, fontSize: 11.5, color: "#525252", background: "#f3f3f1", borderRadius: 999, padding: "3px 8px 3px 4px" }}>
-                      <AgentIcon agent={talkingTo} size={18} radius={5} />
-                      {zh ? AGENT_LABELS[talkingTo].nameLocal : AGENT_LABELS[talkingTo].name}
-                    </span>
-                  ) : null}
-                  <textarea
-                    ref={quickBox}
-                    rows={1}
-                    value={quick}
-                    onChange={(e) => {
-                      setQuick(e.target.value);
-                      quickMentions.onValue(e.target.value, e.target.selectionStart ?? e.target.value.length);
-                    }}
-                    onBlur={quickMentions.close}
-                    onKeyDown={(e) => {
-                      if (quickMentions.onKeyDown(e)) return;
-                      if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
-                        e.preventDefault();
-                        if (!quick.trim()) return;
-                        say(quick, "quick");
-                        setQuick("");
-                      }
-                    }}
-                    placeholder={
-                      talkingTo
-                        ? t(`回复${AGENT_LABELS[talkingTo].nameLocal}…（不用再 @）`, `Reply to ${AGENT_LABELS[talkingTo].name}… (no tag needed)`)
-                        : t(`在 #${teamChannel?.name ?? "制作"} 里说…（@研究员 叫同事）`, `Message #${teamChannel?.name ?? "制作"}… (@ a colleague to bring them in)`)
-                    }
-                    style={{ flexGrow: 1, minWidth: 0, height: 34, padding: "7px 12px", border: "1px solid #e2e2e2", borderRadius: 10, background: "#fff", outline: "none", resize: "none", fontFamily: "inherit", fontSize: 13, lineHeight: "18px", letterSpacing: "inherit", color: "#171717" }}
-                  />
-                  <button
-                    type="submit"
-                    disabled={pending || !quick.trim() || !teamChannel}
-                    style={{ height: 34, padding: "0 14px", borderRadius: 10, border: 0, background: quick.trim() ? "#171717" : "#ededed", color: quick.trim() ? "#fff" : "#999999", fontFamily: "inherit", fontSize: 12.5, fontWeight: 500, cursor: quick.trim() ? "pointer" : "default", flexShrink: 0 }}
-                  >
-                    {t("发送", "Send")}
-                  </button>
-                </form>
-              }
-              right={
-                teamChannel ? (
-                  <Link href={`/chat/c/${encodeURIComponent(teamChannel.slug)}`} style={{ fontSize: 12, color: "#525252", textDecoration: "none", whiteSpace: "nowrap" }}>
-                    {t("整个频道", "Whole channel")} →
-                  </Link>
-                ) : null
-              }
-          >
-              <Conversation zh={zh} messages={thread} waiting={waiting} pending={pending} pressing={pressing} onPress={(id, action) => teamChannel && press(teamChannel.slug, id, action)} />
-          </Fold>
+          <ProjectChats projects={hub} zh={zh} />
             <Fold id="home-team" title={t("同事", "The team")} height={300}>
               {agents.map((a, idx) => {
                 const on = giveTo === a.key;
@@ -374,9 +277,7 @@ export function HomeScreen({
 
 
           {/* ---- 2. today's video, straight under it ---- */}
-          <Fold id="home-flow" title={t("今天这条片走到哪了", "Where today's video is")} sub={pipeline.title ?? t("还没有开始的片子", "Nothing in progress yet")} resizable={false}>
-            <MiniFlow pipeline={pipeline} zh={zh} bare />
-          </Fold>
+          <ProjectProgress projects={hub} zh={zh} />
 
           <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
             {decisions.length > 0 ? (
@@ -425,86 +326,6 @@ export function HomeScreen({
 
 /* ------------------------------------------------------------- the conversation */
 
-function Conversation({
-  zh,
-  messages,
-  waiting,
-  pending,
-  pressing,
-  onPress,
-}: {
-  zh: boolean;
-  messages: ThreadMessage[];
-  waiting: boolean;
-  pending: boolean;
-  pressing: string | null;
-  onPress: (messageId: string, actionId: string) => void;
-}) {
-  const t = (a: string, b: string) => (zh ? a : b);
-  const scroller = React.useRef<HTMLDivElement | null>(null);
-  const last = messages[messages.length - 1]?.id;
-  React.useEffect(() => {
-    /* The fold's body is the thing that scrolls; keep the newest in view. */
-    const el = scroller.current?.parentElement;
-    if (el) el.scrollTop = el.scrollHeight;
-  }, [last, waiting]);
-
-  return (
-    <div ref={scroller} style={{ padding: "6px 14px" }}>
-      {messages.length === 0 ? (
-        <div style={{ fontSize: 12.5, color: "#999999", padding: "24px 0", textAlign: "center" }}>{t("还没有动静。在下面说一句。", "Nothing yet. Say something below.")}</div>
-      ) : null}
-      {messages.map((m) => (
-        <div key={m.id} style={{ display: "flex", gap: 10, padding: "9px 0" }}>
-          {m.agent ? (
-            <AgentIcon agent={m.agent} size={28} radius={8} />
-          ) : (
-            <span style={{ width: 28, height: 28, borderRadius: 8, background: "#e8e8e6", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11.5, fontWeight: 600, color: "#525252", flexShrink: 0 }}>
-              {m.author.slice(0, 1).toUpperCase()}
-            </span>
-          )}
-          <div style={{ minWidth: 0, flexGrow: 1 }}>
-            <div style={{ display: "flex", alignItems: "baseline", gap: 7 }}>
-              <span style={{ fontSize: 12.5, fontWeight: 600 }}>{m.agent ? (zh ? AGENT_LABELS[m.agent].nameLocal : AGENT_LABELS[m.agent].name) : m.author}</span>
-              <span style={{ fontSize: 11, color: "#b3b3b3" }}>{ago(new Date(m.at), zh)}</span>
-            </div>
-            <div style={{ fontSize: 13, lineHeight: 1.6, color: "#2b343d", marginTop: 2, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{trim(m.body, 480)}</div>
-            {m.actions.length > 0 ? (
-              m.done ? (
-                <div style={{ fontSize: 11.5, color: "#278f5e", marginTop: 6 }}>
-                  <Icon name="check" size={12} strokeWidth={2.4} /> {(() => {
-                    const a = m.actions.find((x) => x.id === m.done!.actionId);
-                    return a ? (zh ? a.label : a.labelEn) : t("已处理", "Done");
-                  })()}
-                </div>
-              ) : (
-                <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
-                  {m.actions.map((a, i) =>
-                    a.kind === "open" ? (
-                      <Link key={a.id} href={a.href ?? "#"} style={{ ...btn(false), height: 28, fontSize: 12, textDecoration: "none" }}>
-                        {zh ? a.label : a.labelEn}
-                      </Link>
-                    ) : (
-                      <button key={a.id} type="button" disabled={pending} onClick={() => onPress(m.id, a.id)} style={{ ...btn(i === 0), height: 28, fontSize: 12, opacity: pressing === m.id + a.id ? 0.55 : 1 }}>
-                        {zh ? a.label : a.labelEn}
-                      </button>
-                    ),
-                  )}
-                </div>
-              )
-            ) : null}
-          </div>
-        </div>
-      ))}
-      {waiting ? (
-        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 0", fontSize: 12.5, color: "#525252" }}>
-          <span style={{ width: 7, height: 7, borderRadius: 4, background: "#278f5e", animation: "auraPulse 1.6s ease-in-out infinite" }} />
-          {t("同事正在回复…", "A colleague is answering…")}
-        </div>
-      ) : null}
-    </div>
-  );
-}
 
 /* ------------------------------------------------------------- running now */
 

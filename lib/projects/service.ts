@@ -1,7 +1,7 @@
 import "server-only";
 import { and, count, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { chatChannels, scripts, timelineItems, videoClips, videoExports, videoProjects, workProjects } from "@/lib/db/schema";
+import { chatChannels, scriptBeats, scripts, timelineItems, videoClips, videoExports, videoProjects, workProjects } from "@/lib/db/schema";
 import { newId } from "@/lib/ids";
 import type { Viewer } from "@/lib/auth/types";
 import { createScript } from "@/lib/script/service";
@@ -109,14 +109,14 @@ export type ProjectDetail = {
   source: { kind: string; label?: string; url?: string | null } | null;
   createdAt: string;
   channel: { id: string; slug: string; name: string };
-  script: { id: string; title: string; status: string; version: number } | null;
+  script: { id: string; title: string; status: string; version: number; beats: number } | null;
   video: { id: string; title: string; clips: number; items: number } | null;
   render: { fileId: string | null; state: string; progress: number; at: string } | null;
   steps: ProjectStep[];
   messages: { id: string; author: string; agent: AgentKey | null; body: string; at: string; actions: import("@/lib/agents/cards").CardAction[]; done: import("@/lib/agents/cards").CardDone | null }[];
 };
 
-export async function workProjectDetail(viewer: Viewer, id: string, zh: boolean): Promise<ProjectDetail | null> {
+export async function workProjectDetail(viewer: Viewer, id: string, zh: boolean, messageLimit = 80): Promise<ProjectDetail | null> {
   const [p] = await db
     .select()
     .from(workProjects)
@@ -132,7 +132,8 @@ export async function workProjectDetail(viewer: Viewer, id: string, zh: boolean)
   const [video] = p.videoProjectId
     ? await db.select({ id: videoProjects.id, title: videoProjects.title }).from(videoProjects).where(and(eq(videoProjects.id, p.videoProjectId), isNull(videoProjects.deletedAt))).limit(1)
     : [];
-  const [[clips], [items], [render], thread] = await Promise.all([
+  const [[beats], [clips], [items], [render], thread] = await Promise.all([
+    script ? db.select({ n: count() }).from(scriptBeats).where(eq(scriptBeats.scriptId, script.id)) : Promise.resolve([{ n: 0 }]),
     video ? db.select({ n: count() }).from(videoClips).where(eq(videoClips.projectId, video.id)) : Promise.resolve([{ n: 0 }]),
     video ? db.select({ n: count() }).from(timelineItems).where(eq(timelineItems.projectId, video.id)) : Promise.resolve([{ n: 0 }]),
     video
@@ -143,7 +144,7 @@ export async function workProjectDetail(viewer: Viewer, id: string, zh: boolean)
           .orderBy(desc(videoExports.createdAt))
           .limit(1)
       : Promise.resolve([]),
-    channelThread(viewer, ch.slug, 80),
+    channelThread(viewer, ch.slug, messageLimit),
   ]);
 
   const t = (a: string, b: string) => (zh ? a : b);
@@ -157,7 +158,7 @@ export async function workProjectDetail(viewer: Viewer, id: string, zh: boolean)
       ? "done"
       : script.status === "awaiting_approval"
         ? "you"
-        : script.status === "drafting"
+        : script.status === "drafting" || beats.n > 0
           ? "running"
           : "todo";
   const rendered = render?.state === "done" && render.fileId;
@@ -176,7 +177,7 @@ export async function workProjectDetail(viewer: Viewer, id: string, zh: boolean)
           : scriptState === "you"
             ? t("写好了，等你批准", "Written; waiting for your OK")
             : scriptState === "running"
-              ? t(`第 ${script!.version} 版草稿`, `Draft v${script!.version}`)
+              ? t(`草稿 · ${beats.n} 个分镜`, `Draft · ${beats.n} beats`)
               : t("等编剧开写", "Waiting for the writer"),
     },
     {
@@ -211,7 +212,7 @@ export async function workProjectDetail(viewer: Viewer, id: string, zh: boolean)
     source: (p.source as ProjectDetail["source"]) ?? null,
     createdAt: p.createdAt.toISOString(),
     channel: { id: ch.id, slug: ch.slug, name: ch.name },
-    script: script ?? null,
+    script: script ? { ...script, beats: beats.n } : null,
     video: video ? { id: video.id, title: video.title, clips: clips.n, items: items.n } : null,
     render: render ? { fileId: render.fileId, state: render.state, progress: render.progress, at: render.at.toISOString() } : null,
     steps,
