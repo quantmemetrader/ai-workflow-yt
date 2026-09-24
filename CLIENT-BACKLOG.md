@@ -228,6 +228,21 @@ They do two different jobs and only one of them is replaced.
   `audio_tracks` is empty — nobody has ever used it — so this is a capability
   nobody currently misses.
 
+### The demo video
+`scripts/demo-video.mjs` drives the real site in a real browser, captions each
+scene into the page so the recorder picks it up, and encodes an mp4. Nothing in
+it is staged: it signs in as a real person, the numbers are the studio's own,
+and the button it presses really does hand work to 编剧, who really does answer
+while the tour is elsewhere. Re-run it after a change and the film is current.
+
+    node --env-file=.env.local scripts/demo-video.mjs
+    # -> docs/demo/tengya-demo.mp4
+
+Two things the first take exposed and fixed: #制作's own description still said
+"脚本助理 hands it to 视频助理", two colleagues who no longer exist by those
+names, and a QA invite of mine was on screen in Settings. Channel descriptions
+now follow the catalog the same way the agent rows do.
+
 ### Still open
 - **使用人员名称错误.** The top bar shows name and role correctly; the *data* is
   wrong. `admin@okbro.xyz` is called "admin", the owner account is called

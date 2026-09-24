@@ -1,7 +1,7 @@
 import "server-only";
-import { and, eq } from "drizzle-orm";
+import { and, eq, ne } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { entitlements, users, type Module } from "@/lib/db/schema";
+import { chatChannels, entitlements, users, type Module } from "@/lib/db/schema";
 import { newId } from "@/lib/ids";
 import { viewerById } from "@/lib/auth/viewer-by-id";
 import type { Viewer } from "@/lib/auth/types";
@@ -171,6 +171,11 @@ export async function ensureAgent(tenantId: string, key: AgentKey): Promise<stri
  */
 export async function ensureAllAgents(tenantId: string): Promise<void> {
   for (const key of AGENT_KEYS) await ensureAgent(tenantId, key);
+  /* And the two rooms they work in, whose descriptions are written in this
+     file and went stale the same way the names did. */
+  for (const which of Object.keys(AGENT_CHANNELS) as AgentChannel[]) {
+    await ensureAgentChannel(tenantId, which);
+  }
 }
 
 /** The agent as a viewer: what every tool and service takes. */
@@ -186,6 +191,22 @@ export async function ensureAgentChannel(tenantId: string, which: AgentChannel):
   const def = AGENT_CHANNELS[which];
   const owner = await agentViewer(tenantId, def.owner);
   const channel = await createChannel(owner, { name: def.name, topic: def.topic });
+
+  /*
+   * The description follows the catalog too.
+   *
+   * `createChannel` finds the existing room rather than making a second one,
+   * and leaves everything about it alone — which is right for a channel a
+   * person named, and wrong for these two, whose description is written in
+   * this file. After the employees were renamed, #制作 still told the studio
+   * that "脚本助理 hands it to 视频助理", two colleagues who no longer exist by
+   * those names.
+   */
+  await db
+    .update(chatChannels)
+    .set({ topic: def.topic })
+    .where(and(eq(chatChannels.id, channel.id), ne(chatChannels.topic, def.topic)));
+
   return channel.id;
 }
 
