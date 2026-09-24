@@ -243,6 +243,32 @@ Two things the first take exposed and fixed: #制作's own description still sai
 names, and a QA invite of mine was on screen in Settings. Channel descriptions
 now follow the catalog the same way the agent rows do.
 
+### DONE 2026-09-25 (early) — Ryan's "interconnected everywhere" list
+> "When I enter article page I can already see ideas proposed. Same for
+> script. And script can send to ai directly to start processing video. Also
+> for trend page see if can select platform — TikTok, rednote, WeChat,
+> YouTube, Weibo etc."
+
+- **Proposals on every maker's page.** `lib/agents/proposals.ts` +
+  `components/agents/ProposalsStrip.tsx`. Script, Articles and Video each open
+  on a shelf from their own employee with 3–4 things to make and one button.
+  Sources in order: this morning's plan (策划's to-dos addressed to that
+  employee — `plan.ts` now stores the list in `meta.plan.list`), the topic
+  backlog, a viewer's own question. The button is `startProposalAction`, which
+  posts `@编剧 …` into #制作 as the person and dispatches — the same door as
+  typing it.
+- **Script → 剪辑师.** The make-video button now also tells 剪辑师 in #制作
+  with the links (`sendScriptToVideoAction`), so the hand-off happens in one
+  press instead of make-project-then-go-and-ask.
+- **Platform switch on Trends.** `lib/research/platform-catalog.ts` (client
+  safe) + `lib/research/platforms.ts` (server) + five TikHub readers in
+  `lib/social/tikhub.ts`. Tabs: 此刻 (Google + YouTube HK, free, on page load),
+  then 抖音 / 小红书 / 微博 / B站 / TikTok, each the platform's own hot list,
+  fetched only when picked and cached 30 min. WeChat says it has no public
+  list. Measured through the app's own readers: 抖音 51, 微博 85, B站 30,
+  小红书 20, TikTok 15 rows. TikTok's explore endpoint takes no region, so that
+  tab is global — the strip labels it as "what it is pushing", not Hong Kong.
+
 ### Still open
 - **使用人员名称错误.** The top bar shows name and role correctly; the *data* is
   wrong. `admin@okbro.xyz` is called "admin", the owner account is called

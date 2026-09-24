@@ -124,7 +124,7 @@ const CSS = `
 
 /* generic */
 [data-script-library-screen] .bar { height: 48px; flex-shrink: 0; border-bottom: 1px solid #ededed; display: flex; align-items: center; gap: 10px; padding: 0 20px; }
-[data-script-library-screen] .h1 { font-size: 15px; font-weight: 500; }
+[data-script-library-screen] .h1 { font-size: 15px; font-weight: 500; white-space: nowrap; }
 [data-script-library-screen] .mut { font-size: 12.5px; color: #999999; }
 [data-script-library-screen] .btn { height: 30px; padding: 0 12px; border-radius: 8px; display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; white-space: nowrap; }
 [data-script-library-screen] .btn.p { background: #007be0; color: #fff; font-weight: 500; }

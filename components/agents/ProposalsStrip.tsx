@@ -72,15 +72,24 @@ export function ProposalsStrip({
         flexShrink: 0,
         borderBottom: "1px solid #ededed",
         background: "#fcfcfc",
-        padding: "12px 22px 13px",
+        padding: "10px 22px 11px",
       }}
     >
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 9 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, minWidth: 0 }}>
         <AgentMark size={20} radius={6} />
-        <span style={{ fontSize: 12.5, fontWeight: 600 }}>
+        <span style={{ fontSize: 12.5, fontWeight: 600, whiteSpace: "nowrap" }}>
           {t(`${who}建议做这些`, `${who} suggests`)}
         </span>
-        <span style={{ fontSize: 11.5, color: "#999999" }}>
+        <span
+          style={{
+            fontSize: 11.5,
+            color: "#999999",
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            minWidth: 0,
+          }}
+        >
           {t("按一下就开工，它会在 #制作 里回复", "One press starts it; it answers in #制作")}
         </span>
         <span style={{ flexGrow: 1 }} />
@@ -92,26 +101,54 @@ export function ProposalsStrip({
         </Link>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 8 }}>
+      <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 2 }}>
         {items.map((p, i) => {
           const done = sent.has(i);
           return (
             <div
               key={`${p.source}-${i}`}
               style={{
+                width: 300,
+                flexShrink: 0,
                 border: "1px solid #ededed",
                 borderRadius: 11,
                 background: "#ffffff",
-                padding: "10px 12px 11px",
+                padding: "9px 12px 10px",
                 display: "flex",
                 flexDirection: "column",
-                gap: 6,
+                gap: 5,
                 opacity: done ? 0.6 : 1,
               }}
             >
-              <div style={{ fontSize: 13, lineHeight: 1.55, color: "#171717" }}>{p.text}</div>
+              <div
+                title={p.text}
+                style={{
+                  fontSize: 12.5,
+                  lineHeight: 1.5,
+                  color: "#171717",
+                  display: "-webkit-box",
+                  WebkitLineClamp: 2,
+                  WebkitBoxOrient: "vertical",
+                  overflow: "hidden",
+                }}
+              >
+                {p.text}
+              </div>
               {p.why ? (
-                <div style={{ fontSize: 11.5, lineHeight: 1.5, color: "#7c7c7c" }}>{p.why}</div>
+                <div
+                  title={p.why}
+                  style={{
+                    fontSize: 11,
+                    lineHeight: 1.45,
+                    color: "#7c7c7c",
+                    display: "-webkit-box",
+                    WebkitLineClamp: 2,
+                    WebkitBoxOrient: "vertical",
+                    overflow: "hidden",
+                  }}
+                >
+                  {p.why}
+                </div>
               ) : null}
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 2 }}>
                 <span
