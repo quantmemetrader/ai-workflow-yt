@@ -1,3 +1,5 @@
+import { projectFor } from "@/lib/projects/service";
+import { ProjectBar } from "@/components/projects/ProjectBar";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { videoExports } from "@/lib/db/schema";
@@ -99,7 +101,8 @@ export default async function VideoPage({
      what already exists — this morning's plan, the backlog, the audience. */
   const proposals = await proposalsFor(viewer, "video");
 
-  return (
+  const inProject = project ? await projectFor(viewer.tenantId, { videoProjectId: project.id }) : null;
+  const view = (
     <VideoScreen
       proposals={proposals}
       projects={projects}
@@ -121,6 +124,14 @@ export default async function VideoPage({
       locale={viewer.locale ?? "zh-CN"}
       model={answeringModel()}
     />
+  );
+  if (!inProject) return view;
+  /* A project's editor opens inside the project: its bar on top. */
+  return (
+    <div style={{ flexGrow: 1, minWidth: 0, display: "flex", flexDirection: "column", minHeight: 0 }}>
+      <ProjectBar project={inProject} active="editor" zh={(viewer.locale ?? "zh-CN").startsWith("zh")} />
+      <div style={{ flexGrow: 1, minHeight: 0, display: "flex" }}>{view}</div>
+    </div>
   );
 }
 

@@ -1,0 +1,1 @@
+ALTER TABLE "work_projects" ADD COLUMN "access" jsonb DEFAULT '{"mode":"everyone"}'::jsonb NOT NULL;

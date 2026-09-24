@@ -1,7 +1,7 @@
 import "server-only";
 import { and, count, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { chatChannels, scriptBeats, scripts, timelineItems, videoClips, videoExports, videoProjects, workProjects } from "@/lib/db/schema";
+import { chatChannels, chatMembers, relationTuples, users, scriptBeats, scripts, timelineItems, videoClips, videoExports, videoProjects, workProjects } from "@/lib/db/schema";
 import { newId } from "@/lib/ids";
 import type { Viewer } from "@/lib/auth/types";
 import { createScript } from "@/lib/script/service";
@@ -10,6 +10,20 @@ import { channelThread, createChannel } from "@/lib/chat/service";
 import { agentKeyFromEmail, type AgentKey } from "@/lib/agents/catalog";
 import { audit } from "@/lib/audit";
 import { share } from "@/lib/authz/rebac";
+
+/**
+ * Which projects this person may see: their own, the studio-wide ones
+ * (not for guests), the ones shared with a group they are in, the ones
+ * naming them. Owners and admins see all of the studio's.
+ */
+function visibleTo(viewer: Viewer) {
+  if (viewer.isAdmin) return sql`true`;
+  return sql`(${workProjects.createdBy} = ${viewer.id}
+    or (${workProjects.access} ->> 'mode' = 'everyone' and ${viewer.role} <> 'guest')
+    or (${workProjects.access} ->> 'mode' = 'groups' and (${workProjects.access} -> 'groups') ? ${viewer.role})
+    or (${workProjects.access} ->> 'mode' = 'groups' and ${viewer.role} = 'owner' and (${workProjects.access} -> 'groups') ? 'admin')
+    or (${workProjects.access} ->> 'mode' = 'people' and (${workProjects.access} -> 'userIds') ? ${viewer.id}))`;
+}
 
 export type WorkProjectRow = {
   id: string;
@@ -31,11 +45,11 @@ export type WorkProjectRow = {
  */
 export async function createWorkProject(
   viewer: Viewer,
-  input: { title: string; brief?: string | null; mode?: string; source?: { kind: string; label?: string; url?: string | null; evidence?: unknown[] } | null },
+  input: { title: string; brief?: string | null; mode?: string; source?: { kind: string; label?: string; url?: string | null; evidence?: unknown[] } | null; scriptId?: string },
 ): Promise<{ id: string; channelSlug: string }> {
   const title = input.title.replace(/\s+/g, " ").trim().slice(0, 80) || "新项目";
   const id = newId("wp");
-  const scriptId = await createScript(viewer, { title, angle: input.brief ?? null });
+  const scriptId = input.scriptId ?? (await createScript(viewer, { title, angle: input.brief ?? null }));
   const videoProjectId = await createVideoProject(viewer, title, scriptId);
   const topic = [
     `这是项目《${title}》的对话，只谈这个项目。`,
@@ -85,7 +99,7 @@ export async function listWorkProjects(viewer: Viewer, limit = 40): Promise<Work
     })
     .from(workProjects)
     .leftJoin(chatChannels, eq(chatChannels.id, workProjects.channelId))
-    .where(and(eq(workProjects.tenantId, viewer.tenantId), isNull(workProjects.deletedAt)))
+    .where(and(eq(workProjects.tenantId, viewer.tenantId), isNull(workProjects.deletedAt), visibleTo(viewer)))
     .orderBy(desc(sql`greatest(${workProjects.updatedAt}, coalesce(${chatChannels.lastMessageAt}, ${workProjects.updatedAt}))`))
     .limit(limit);
   return rows.map((r) => ({ ...r, updatedAt: (r.lastMessageAt && r.lastMessageAt > r.updatedAt ? r.lastMessageAt : r.updatedAt).toISOString() }));
@@ -106,6 +120,8 @@ export type ProjectDetail = {
   brief: string | null;
   status: string;
   mode: string;
+  access: { mode: "private" | "everyone" | "groups" | "people"; groups?: string[]; userIds?: string[] };
+  canManage: boolean;
   source: { kind: string; label?: string; url?: string | null } | null;
   createdAt: string;
   channel: { id: string; slug: string; name: string };
@@ -120,7 +136,7 @@ export async function workProjectDetail(viewer: Viewer, id: string, zh: boolean,
   const [p] = await db
     .select()
     .from(workProjects)
-    .where(and(eq(workProjects.id, id), eq(workProjects.tenantId, viewer.tenantId), isNull(workProjects.deletedAt)))
+    .where(and(eq(workProjects.id, id), eq(workProjects.tenantId, viewer.tenantId), isNull(workProjects.deletedAt), visibleTo(viewer)))
     .limit(1);
   if (!p) return null;
   const [ch] = await db.select({ id: chatChannels.id, slug: chatChannels.slug, name: chatChannels.name }).from(chatChannels).where(eq(chatChannels.id, p.channelId)).limit(1);
@@ -209,6 +225,8 @@ export async function workProjectDetail(viewer: Viewer, id: string, zh: boolean,
     brief: p.brief,
     status: p.status,
     mode: p.mode,
+    access: p.access ?? { mode: "everyone" },
+    canManage: viewer.isAdmin || p.createdBy === viewer.id,
     source: (p.source as ProjectDetail["source"]) ?? null,
     createdAt: p.createdAt.toISOString(),
     channel: { id: ch.id, slug: ch.slug, name: ch.name },
@@ -234,4 +252,75 @@ export async function setProjectStatus(viewer: Viewer, id: string, status: "acti
 
 export async function touchProjects(ids: string[]) {
   if (ids.length) await db.update(workProjects).set({ updatedAt: new Date() }).where(inArray(workProjects.id, ids));
+}
+
+/** The project a script or a video project belongs to, if any. */
+export async function projectFor(tenantId: string, by: { scriptId?: string; videoProjectId?: string }) {
+  const cond = by.scriptId ? eq(workProjects.scriptId, by.scriptId) : by.videoProjectId ? eq(workProjects.videoProjectId, by.videoProjectId) : null;
+  if (!cond) return null;
+  const [row] = await db
+    .select({ id: workProjects.id, title: workProjects.title, scriptId: workProjects.scriptId, videoProjectId: workProjects.videoProjectId })
+    .from(workProjects)
+    .where(and(eq(workProjects.tenantId, tenantId), isNull(workProjects.deletedAt), cond))
+    .limit(1);
+  return row ?? null;
+}
+
+type Access = { mode: "private" | "everyone" | "groups" | "people"; groups?: string[]; userIds?: string[] };
+
+/**
+ * Change who can see and work on a project, and make the chat, the script
+ * and the video project follow. Only the person who started it, or an admin.
+ */
+export async function setProjectAccess(viewer: Viewer, id: string, access: Access): Promise<void> {
+  const [p] = await db.select().from(workProjects).where(and(eq(workProjects.id, id), eq(workProjects.tenantId, viewer.tenantId))).limit(1);
+  if (!p) throw new Error("No such project");
+  if (!viewer.isAdmin && p.createdBy !== viewer.id) throw new Error("Only the person who started it, or an admin, can change who sees it");
+
+  const roles = (access.groups ?? []).filter((g) => ["owner", "admin", "member", "guest"].includes(g));
+  const clean: Access =
+    access.mode === "groups" ? { mode: "groups", groups: roles } : access.mode === "people" ? { mode: "people", userIds: (access.userIds ?? []).slice(0, 100) } : { mode: access.mode === "private" ? "private" : "everyone" };
+
+  const tenantUsers = await db
+    .select({ id: users.id, role: users.role, isAgent: users.isAgent })
+    .from(users)
+    .where(and(eq(users.tenantId, viewer.tenantId), isNull(users.deletedAt)));
+  const agents = tenantUsers.filter((u) => u.isAgent).map((u) => u.id);
+  const people =
+    clean.mode === "everyone"
+      ? tenantUsers.filter((u) => !u.isAgent && u.role !== "guest").map((u) => u.id)
+      : clean.mode === "groups"
+        ? tenantUsers.filter((u) => !u.isAgent && (roles.includes(u.role) || (u.role === "owner" && roles.includes("admin")))).map((u) => u.id)
+        : clean.mode === "people"
+          ? tenantUsers.filter((u) => !u.isAgent && clean.userIds!.includes(u.id)).map((u) => u.id)
+          : [];
+  const members = [...new Set([p.createdBy, ...people, ...agents])];
+
+  await db.transaction(async (trx) => {
+    await trx.update(workProjects).set({ access: clean, updatedAt: new Date() }).where(eq(workProjects.id, id));
+    /* The chat: open to the studio, or private to exactly these people. */
+    await trx.update(chatChannels).set({ isPrivate: clean.mode !== "everyone" }).where(eq(chatChannels.id, p.channelId));
+    if (clean.mode !== "everyone") {
+      await trx.delete(chatMembers).where(eq(chatMembers.channelId, p.channelId));
+      await trx.insert(chatMembers).values(members.map((userId) => ({ channelId: p.channelId, userId }))).onConflictDoNothing();
+    }
+    /* The script and the video: editors are exactly who may work on it. */
+    for (const [type, objectId] of [["script", p.scriptId], ["project", p.videoProjectId]] as const) {
+      if (!objectId) continue;
+      await trx
+        .delete(relationTuples)
+        .where(and(eq(relationTuples.objectType, type), eq(relationTuples.objectId, objectId), sql`${relationTuples.relation} <> 'owner'`));
+      const subjects =
+        clean.mode === "everyone"
+          ? [{ type: "tenant" as const, id: viewer.tenantId }, ...agents.map((a) => ({ type: "user" as const, id: a }))]
+          : members.filter((m) => m !== p.createdBy).map((m) => ({ type: "user" as const, id: m }));
+      if (subjects.length) {
+        await trx
+          .insert(relationTuples)
+          .values(subjects.map((sub) => ({ id: newId("tup"), objectType: type, objectId, relation: "editor" as const, subjectType: sub.type, subjectId: sub.id, grantedBy: viewer.id })))
+          .onConflictDoNothing();
+      }
+    }
+  });
+  await audit(viewer, "project.access", { module: "chat", objectType: "project", objectId: id, meta: { mode: clean.mode } });
 }

@@ -3,7 +3,7 @@
 import { after } from "next/server";
 import { revalidatePath } from "next/cache";
 import { getViewer } from "@/lib/auth/dal";
-import { createWorkProject, setProjectStatus } from "@/lib/projects/service";
+import { createWorkProject, setProjectAccess, setProjectStatus } from "@/lib/projects/service";
 import { postMessage } from "@/lib/chat/service";
 import { dispatchAgentMentions } from "@/lib/agents/mentions";
 import { parseAgentMentions } from "@/lib/agents/catalog";
@@ -78,6 +78,19 @@ export async function renameProjectAction(id: string, title: string) {
   const t = String(title ?? "").trim().slice(0, 80);
   if (!t) return { error: "A project needs a name" };
   await db.update(workProjects).set({ title: t, updatedAt: new Date() }).where(and(eq(workProjects.id, id), eq(workProjects.tenantId, viewer.tenantId)));
+  revalidatePath("/", "layout");
+  return {};
+}
+
+/** Who can see and work on a project. */
+export async function setProjectAccessAction(id: string, access: { mode: "private" | "everyone" | "groups" | "people"; groups?: string[]; userIds?: string[] }) {
+  const viewer = await getViewer();
+  if (!viewer || !viewer.modules.includes("chat")) return { error: "Not allowed" };
+  try {
+    await setProjectAccess(viewer, String(id), access);
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Could not change who sees it" };
+  }
   revalidatePath("/", "layout");
   return {};
 }

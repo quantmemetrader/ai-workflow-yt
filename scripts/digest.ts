@@ -196,14 +196,22 @@ async function main() {
    * morning brief says so and offers the one press that fixes it — 研究员 has
    * `who_makes_this` and `watch_channel`, so it can genuinely go and do this.
    */
-  const write: CardAction[] = signals.map((sg, i) => ({
-    id: `write-${i + 1}`,
-    label: signals.length > 1 ? `写第 ${i + 1} 个` : "写脚本",
-    labelEn: signals.length > 1 ? `Write #${i + 1}` : "Write the script",
-    kind: "say" as const,
-    body: `${agentTag("script")} 按今天研究日报的信号写《${sg.title}》。开头第一句：「${sg.hook}」。角度：${sg.angle}。格式：${sg.format}。证据：${sg.evidence.map((e) => `${e.source} ${e.phrase.slice(0, 30)}`).join("；")}。`,
-    tone: i === 0 ? ("primary" as const) : ("quiet" as const),
-  }));
+  /* Each signal starts a project: the button opens a one-press confirm with
+     the title, the brief and the writer's first task filled in. */
+  const write: CardAction[] = signals.map((sg, i) => {
+    const brief = `${sg.whyNow}\n开头：「${sg.hook}」\n角度：${sg.angle}\n格式：${sg.format}`;
+    const ask = `${agentTag("script")} 按这个信号写脚本初稿。开头第一句：「${sg.hook}」。角度：${sg.angle}。格式：${sg.format}。证据：${sg.evidence.map((e) => `${e.source} ${e.phrase.slice(0, 30)}`).join("；")}。`;
+    void brief;
+    void ask;
+    return {
+      id: `project-${i + 1}`,
+      label: signals.length > 1 ? `开项目 · 第 ${i + 1} 个` : "开项目",
+      labelEn: signals.length > 1 ? `Start project #${i + 1}` : "Start the project",
+      kind: "open" as const,
+      href: `/projects/new?signal=${i}`,
+      tone: i === 0 ? ("primary" as const) : ("quiet" as const),
+    };
+  });
   const actions: CardAction[] = [...write, ...(
     studio.competitors === 0
       ? ([

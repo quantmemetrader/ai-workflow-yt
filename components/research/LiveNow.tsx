@@ -10,7 +10,7 @@ import { AgentIcon } from "@/components/agents/AgentIcon";
 import { AGENT_COLORS } from "@/lib/agents/catalog";
 import { PLATFORMS, type HotRow, type PlatformKey } from "@/lib/research/platform-catalog";
 import { startProposalAction } from "@/app/(app)/home/actions";
-import { createProjectAction } from "@/app/(app)/video/actions";
+import { startProjectAction } from "@/app/(app)/projects/actions";
 import type { Judged } from "@/lib/research/judge";
 import { notify } from "@/lib/client/notify";
 
@@ -490,14 +490,19 @@ export function LiveNow({
               sending={sending}
               onWrite={writeScript}
               onWatch={onWatch}
-              onClips={(title) =>
+              onClips={(title, withScript) =>
                 start(async () => {
-                  const res = await createProjectAction(title.slice(0, 120), null);
+                  const pick = picks.find((x) => x.text === title);
+                  const res = await startProjectAction({
+                    title: title.slice(0, 80),
+                    message: withScript ? `@编剧 按这个选题写脚本初稿：${title}` : undefined,
+                    source: { kind: pick?.source === "mine" ? "person" : "pick", label: pick?.source === "digest" ? "晨报信号" : pick?.source === "mine" ? `${pick.by ?? ""}加的选题` : "今日选题", url: pick?.url ?? null },
+                  });
                   if ("error" in res && res.error) {
                     notify(res.error);
                     return;
                   }
-                  if ("id" in res && res.id) router.push(`/video?project=${res.id}`);
+                  if ("id" in res && res.id) router.push(`/projects/${res.id}`);
                 })
               }
             />
@@ -647,7 +652,7 @@ function PicksList({
   sending: string | null;
   onWrite: (text: string, id: string) => void;
   onWatch: (phrase: string) => void;
-  onClips: (title: string) => void;
+  onClips: (title: string, withScript?: boolean) => void;
 }) {
   const t = (en: string, cn: string) => (zh ? cn : en);
   const chevron = (on: boolean, size = 13) => (
@@ -712,14 +717,14 @@ function PicksList({
                       </div>
                     ) : null}
                     <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                      <button type="button" onClick={() => onClips(p.text)} style={{ ...smallBtn(true), height: 28, borderRadius: 8 }}>
+                        <Icon name="plus" size={13} /> {t("Start project", "开始项目")}
+                      </button>
                       {canWriteScripts ? (
-                        <button type="button" disabled={sending !== null} onClick={() => onWrite(p.text, `pick${i}`)} style={{ ...smallBtn(true), height: 28, borderRadius: 8, opacity: sending === `pick${i}` ? 0.55 : 1 }}>
-                          <Icon name="pen" size={13} /> {t("Write script", "写脚本")}
+                        <button type="button" onClick={() => onClips(p.text, true)} style={{ ...smallBtn(false), height: 28, borderRadius: 8 }}>
+                          <Icon name="pen" size={13} /> {t("Start and write the script", "开项目并写脚本")}
                         </button>
                       ) : null}
-                      <button type="button" onClick={() => onClips(p.text)} style={{ ...smallBtn(false), height: 28, borderRadius: 8 }}>
-                        <Icon name="upload" size={13} /> {t("Add clips", "加素材")}
-                      </button>
                       <span style={{ flexGrow: 1 }} />
                       {p.url ? (
                         <a href={p.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11.5, color: "#525252", textDecoration: "none" }}>

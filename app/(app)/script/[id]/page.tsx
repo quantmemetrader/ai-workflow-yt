@@ -1,3 +1,5 @@
+import { projectFor } from "@/lib/projects/service";
+import { ProjectBar } from "@/components/projects/ProjectBar";
 import { notFound } from "next/navigation";
 import { requireModule } from "@/lib/auth/dal";
 import { modelFor } from "@/lib/ai/models";
@@ -36,7 +38,8 @@ export default async function ScriptPage({ params }: { params: Promise<{ id: str
 
   const zh = (viewer.locale ?? "zh-CN").startsWith("zh");
 
-  return (
+  const inProject = await projectFor(viewer.tenantId, { scriptId: id });
+  const view = (
     <DetailView
       locale={viewer.locale ?? "zh-CN"}
       detail={detail}
@@ -64,5 +67,13 @@ export default async function ScriptPage({ params }: { params: Promise<{ id: str
         ) : null
       }
     />
+  );
+  if (!inProject) return view;
+  /* A project's script opens inside the project: its bar on top. */
+  return (
+    <div style={{ flexGrow: 1, minWidth: 0, display: "flex", flexDirection: "column", minHeight: 0 }}>
+      <ProjectBar project={inProject} active="script" zh={zh} />
+      <div style={{ flexGrow: 1, minHeight: 0, display: "flex" }}>{view}</div>
+    </div>
   );
 }

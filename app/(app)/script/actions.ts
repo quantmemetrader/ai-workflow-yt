@@ -1,5 +1,7 @@
 "use server";
 
+import { createWorkProject } from "@/lib/projects/service";
+
 import { revalidatePath } from "next/cache";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
@@ -98,6 +100,11 @@ export async function createScriptAction(form: FormData) {
   });
 
   await audit(viewer, "script.create", { objectType: "script", objectId: id, module: "script" });
+  /* Every piece of work lives in a project: a new script gets one around it
+     (its chat, its video project), and opens with the project's bar. */
+  if (viewer.modules.includes("chat")) {
+    await createWorkProject(viewer, { title, brief: String(form.get("angle") ?? "") || null, scriptId: id, source: { kind: "person", label: viewer.nameLocal || viewer.name } });
+  }
   return done({ ok: true, id }, id);
 }
 

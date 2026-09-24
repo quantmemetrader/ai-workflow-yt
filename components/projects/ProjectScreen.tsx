@@ -9,7 +9,8 @@ import { MentionMenu, type MentionPerson } from "@/components/chat/MentionMenu";
 import { useMentions } from "@/components/chat/useMentions";
 import { AGENT_COLORS, AGENT_LABELS, agentTag, parseAgentMentions, type AgentKey } from "@/lib/agents/catalog";
 import { pressCardAction, sendChannelMessage } from "@/app/(app)/chat/actions";
-import { renameProjectAction, setProjectStatusAction } from "@/app/(app)/projects/actions";
+import { renameProjectAction, setProjectAccessAction, setProjectStatusAction } from "@/app/(app)/projects/actions";
+import { AccessPicker } from "@/components/files/AccessPicker";
 import { addClipAction, addItemAction, autoEditAction, directAction, exportAction } from "@/app/(app)/video/actions";
 import { uploadFiles } from "@/lib/client/upload";
 import { beginWork } from "@/lib/client/busy";
@@ -34,6 +35,7 @@ export function ProjectScreen({ project: p, zh, people }: { project: ProjectDeta
   const [sentAt, setSentAt] = React.useState<string | null>(null);
   const [watching, setWatching] = React.useState(false);
   const [naming, setNaming] = React.useState(false);
+  const [sharing, setSharing] = React.useState(false);
   const [name, setName] = React.useState(p.title);
   const box = React.useRef<HTMLTextAreaElement | null>(null);
   const mentions = useMentions({ people, zh, draft, setDraft, box });
@@ -176,8 +178,33 @@ export function ProjectScreen({ project: p, zh, people }: { project: ProjectDeta
               )}
               {p.brief ? <p style={{ margin: "6px 0 0", fontSize: 13, color: "#7c7c7c", lineHeight: 1.6 }}>{p.brief.replace(/@\S+/g, "").trim().slice(0, 200)}</p> : null}
             </div>
-            <StatusPill status={p.status} zh={zh} />
+            <div style={{ display: "flex", gap: 8, alignItems: "center", flexShrink: 0 }}>
+              <button type="button" onClick={() => p.canManage && setSharing(true)} disabled={!p.canManage} title={p.canManage ? t("设置谁能看到这个项目", "Choose who can see this project") : t("只有发起人或管理员能改", "Only the person who started it, or an admin")} style={{ ...btn(false), height: 30, fontSize: 12 }}>
+                <Icon name={p.access.mode === "everyone" ? "eye" : "lock"} size={13} />
+                {p.access.mode === "everyone" ? t("全工作室", "Everyone") : p.access.mode === "private" ? t("仅自己", "Private") : p.access.mode === "groups" ? t("部分分组", "Groups") : t(`${p.access.userIds?.length ?? 0} 人`, `${p.access.userIds?.length ?? 0} people`)}
+              </button>
+              <StatusPill status={p.status} zh={zh} />
+            </div>
           </div>
+          {sharing ? (
+            <AccessPicker
+              title={t("谁可以看到并参与这个项目？", "Who can see and work on this project?")}
+              zh={zh}
+              initial={p.access.mode === "groups" ? { mode: "groups", groups: p.access.groups ?? [] } : p.access.mode === "people" ? { mode: "people", userIds: p.access.userIds ?? [] } : { mode: p.access.mode }}
+              confirm={t("保存", "Save")}
+              note={t("对话、脚本和视频都跟着这个设置。五位 AI 员工始终可以参与。", "The chat, script and video follow this. The five AI employees can always take part.")}
+              onClose={() => setSharing(false)}
+              onConfirm={(choice) =>
+                start(async () => {
+                  const r = await setProjectAccessAction(p.id, choice as Parameters<typeof setProjectAccessAction>[1]);
+                  if (r?.error) notify(r.error);
+                  else notify(t("已更新谁能看到这个项目", "Updated who can see this project"), "ok");
+                  setSharing(false);
+                  router.refresh();
+                })
+              }
+            />
+          ) : null}
 
           {/* ---- where it stands ---- */}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(0,1fr))", gap: 8 }}>

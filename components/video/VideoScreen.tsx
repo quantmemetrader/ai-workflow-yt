@@ -3,6 +3,7 @@
 import { Icon } from "@/components/ui/Icon";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { ProposalsStrip } from "@/components/agents/ProposalsStrip";
+import { startProjectAction } from "@/app/(app)/projects/actions";
 import type { Proposals } from "@/lib/agents/proposals";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -20,7 +21,6 @@ import {
   addClipAction,
   addMusicAction,
   addItemAction,
-  createProjectAction,
   deleteProjectAction,
   directAction,
   exportAction,
@@ -905,12 +905,11 @@ export function VideoScreen({
           onClose={() => setNaming(false)}
           onSubmit={(name) =>
               run(async () => {
-                const res = await createProjectAction(name, null);
+                /* A new project is a real project: its chat, script and cut
+                   together, and its page is where the work happens. */
+                const res = await startProjectAction({ title: name });
                 if ("error" in res && res.error) return res;
-                /* Straight into the new cut, whichever tab this was pressed
-                   from: a project you just named is a project you are about to
-                   work on. Opening it is what moves the tab to 剪辑. */
-                if ("id" in res && res.id) router.push(`/video?project=${res.id}`);
+                if ("id" in res && res.id) router.push(`/projects/${res.id}`);
                 return {};
               })
             }

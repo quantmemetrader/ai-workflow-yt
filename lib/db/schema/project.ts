@@ -28,6 +28,12 @@ export const workProjects = pgTable(
     mode: text().notNull().default("full"),
     /** Where the topic came from: a pick's evidence, or who typed it. */
     source: jsonb().$type<{ kind: string; label?: string; url?: string | null; evidence?: unknown[] } | null>(),
+    /**
+     * Who can see and work on it, as the Files picker says it: private (the
+     * person who started it), everyone in the studio, some groups (roles), or
+     * named people (guests only when named). The five employees always can.
+     */
+    access: jsonb().$type<{ mode: "private" | "everyone" | "groups" | "people"; groups?: string[]; userIds?: string[] }>().notNull().default({ mode: "everyone" }),
     channelId: text().notNull(),
     scriptId: text(),
     videoProjectId: text(),
