@@ -51,6 +51,28 @@ export function subjectList(viewer: Viewer): SQL {
 const live = sql`(${relationTuples.expiresAt} is null or ${relationTuples.expiresAt} > now())`;
 
 /**
+ * Whoever runs the studio sees the studio.
+ *
+ * The client was asked how sharing should work and answered: *"each owner can
+ * set access / And there are the master admin / Who can set access for
+ * everything"*. Everything in this file implements the first half — private by
+ * default, opened by a tuple — and nothing implemented the second, so an owner
+ * could not open, share or hand over a file one of their own staff had
+ * uploaded and then gone on holiday with.
+ *
+ * It is a real widening and it is written here once, on purpose, rather than
+ * as a role check scattered through the callers. Two things bound it:
+ *
+ *   — **owner and admin only.** A member or a guest gets nothing from this.
+ *   — **their own studio only.** Several callers filter by tenant themselves
+ *     and several do not, so the tenant test is part of the clause rather than
+ *     something the caller is trusted to have added.
+ */
+function runsTheStudio(viewer: Viewer): boolean {
+  return viewer.role === "owner" || viewer.role === "admin";
+}
+
+/**
  * The predicate that makes every file list permission-filtered. Compose it
  * into any query over `files`:
  *
@@ -58,7 +80,7 @@ const live = sql`(${relationTuples.expiresAt} is null or ${relationTuples.expire
  */
 export function canReadFiles(viewer: Viewer): SQL {
   const subjects = subjectList(viewer);
-  return sql`exists (
+  const shared = sql`exists (
     select 1 from ${relationTuples} t
     where (t.subject_type || ':' || t.subject_id) in (${subjects})
       and (t.expires_at is null or t.expires_at > now())
@@ -67,17 +89,23 @@ export function canReadFiles(viewer: Viewer): SQL {
         or (t.object_type = 'folder' and t.object_id = any(${files.folderPath}))
       )
   )`;
+  return runsTheStudio(viewer)
+    ? sql`(${files.tenantId} = ${viewer.tenantId} or ${shared})`
+    : shared;
 }
 
 /** Same idea for folder lists. */
 export function canReadFolders(viewer: Viewer): SQL {
   const subjects = subjectList(viewer);
-  return sql`exists (
+  const shared = sql`exists (
     select 1 from ${relationTuples} t
     where (t.subject_type || ':' || t.subject_id) in (${subjects})
       and (t.expires_at is null or t.expires_at > now())
       and t.object_type = 'folder' and t.object_id = any(${folders.path})
   )`;
+  return runsTheStudio(viewer)
+    ? sql`(${folders.tenantId} = ${viewer.tenantId} or ${shared})`
+    : shared;
 }
 
 /** The strongest relation this viewer holds on one object, or null. */
@@ -92,12 +120,36 @@ export function canReadFolders(viewer: Viewer): SQL {
  */
 export type SharedObject = "file" | "folder" | "script" | "project";
 
+/** Whether an object belongs to this viewer's studio. One indexed read. */
+async function inThisStudio(viewer: Viewer, objectType: SharedObject, objectId: string): Promise<boolean> {
+  const table =
+    objectType === "file"
+      ? sql`files`
+      : objectType === "folder"
+        ? sql`folders`
+        : objectType === "script"
+          ? sql`scripts`
+          : sql`video_projects`;
+
+  const rows = await db.execute<{ ok: boolean }>(sql`
+    select true as ok from ${table} where id = ${objectId} and tenant_id = ${viewer.tenantId} limit 1
+  `);
+  return rows.rows.length > 0;
+}
+
 export async function relationOn(
   viewer: Viewer,
   objectType: SharedObject,
   objectId: string,
 ): Promise<Relation | null> {
   const subjects = subjectList(viewer);
+
+  /* An owner or an admin holds owner on everything in their own studio, which
+     is what lets them open a file, re-share it, or take it over when the
+     person who uploaded it has left. Their own studio only: the tuple query
+     below does not filter by tenant either, but it does not need to — a tuple
+     names a subject — and this one would, so it asks. */
+  if (runsTheStudio(viewer) && (await inThisStudio(viewer, objectType, objectId))) return "owner";
 
   /* Files and folders inherit from the folder tree above them. Scripts do
      not: the Script library's folders are a separate, flat table, so a script
