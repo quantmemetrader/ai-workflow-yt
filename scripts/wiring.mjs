@@ -176,7 +176,7 @@ if (hasWatch) {
   if (channelCount === 0) {
     check(
       "content performance says plainly that no channel is connected",
-      /connect|連接|连接/i.test(perfText),
+      /connect|连接|连接/i.test(perfText),
       "no channels in the database",
     );
   } else {
@@ -219,7 +219,7 @@ if (hasWatch) {
   // The claims this screen used to make, which were wrong and are now gone.
   check(
     "the inbox no longer claims TikTok has no comment interface",
-    !/no comment interface|沒有.*評論|没有.*评论接口/i.test(inboxText),
+    !/no comment interface|没有.*评论|没有.*评论接口/i.test(inboxText),
   );
 }
 

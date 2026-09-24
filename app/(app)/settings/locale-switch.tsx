@@ -16,10 +16,9 @@ export function LocaleSwitch({ current }: { current: Locale }) {
     <section className="rounded-xl border border-outline-gray-1 p-5">
       <h2 className="mb-3 text-sm font-semibold text-ink-gray-9">{zh ? "语言" : "Language"}</h2>
       <div className="flex gap-2">
-        {/* zh-HK is offered by the Locale type but has no dictionary in
-            lib/i18n.ts, so choosing it dropped every shared string back to
-            English — a worse result than either language. It comes back with
-            the Traditional dictionary. */}
+        {/* Simplified and English. zh-HK survives in the `locale` enum
+            because old rows still hold it, but the studio publishes in
+            Simplified only and it is no longer something to pick. */}
         {(
           [
             ["zh-CN", "简体中文"],

@@ -573,7 +573,7 @@ export function VideoScreen({
               startRender({
                 aspect: lastRender?.aspect ?? project.director?.aspect ?? "16:9",
                 burnCaptions: (lastRender?.burnCaptions ?? "burn") === "burn",
-                captionLanguage: lastRender?.captionLanguage ?? project.director?.language ?? "zh-HK",
+                captionLanguage: lastRender?.captionLanguage ?? project.director?.language ?? "zh-CN",
               })
             }
           />
@@ -631,7 +631,7 @@ export function VideoScreen({
                 text: t("New caption", "新字幕"),
                 /* The language already on this cut, so a new line joins the
                    track that exists rather than starting a second one. */
-                language: captions[0]?.language ?? "zh-HK",
+                language: captions[0]?.language ?? "zh-CN",
               }),
             )
           }
@@ -726,7 +726,7 @@ export function VideoScreen({
               autoEditing={autoEditing}
               onAutoEdit={() =>
                 edit(async () => {
-                  const res = await autoEditAction(project.id, captions[0]?.language ?? "zh-HK");
+                  const res = await autoEditAction(project.id, captions[0]?.language ?? "zh-CN");
                   if (heavyPaused && !("error" in res && res.error)) notify(t("Auto-edit queued. It starts once the new server is live.", "自动剪辑已排队，新服务器上线后自动开始。"), "ok");
                   return res;
                 })
@@ -1443,7 +1443,7 @@ function Captions({
 }) {
   const t = (en: string, cn: string) => (zh ? cn : en);
   /* The language the cut already has, so the list is not empty on arrival. */
-  const [language, setLanguage] = useState(primaryLanguage(captions, preferredLanguage) ?? "zh-HK");
+  const [language, setLanguage] = useState(primaryLanguage(captions, preferredLanguage) ?? "zh-CN");
   const [diarize, setDiarize] = useState(true);
   const [bulk, setBulk] = useState("");
   const shown = captions.filter((c) => c.language === language);
@@ -1452,7 +1452,6 @@ function Captions({
     <>
       <div style={{ display: "flex", gap: 9, alignItems: "center", marginBottom: 14 }}>
         <select value={language} onChange={(e) => setLanguage(e.target.value)} style={{ ...field, width: 170, height: 32 }}>
-          <option value="zh-HK">繁體中文 (zh-HK)</option>
           <option value="zh-CN">简体中文 (zh-CN)</option>
           <option value="en">English</option>
         </select>
@@ -1657,7 +1656,7 @@ function Exports({
   const t = (en: string, cn: string) => (zh ? cn : en);
   const [aspect, setAspect] = useState("16:9");
   const [burn, setBurn] = useState(true);
-  const [language, setLanguage] = useState(captionLanguages[0] ?? "zh-HK");
+  const [language, setLanguage] = useState(captionLanguages[0] ?? "zh-CN");
   const stateLabel = (state: string) =>
     state === "queued" ? t("queued", "排队中") : state === "done" ? t("done", "完成") : state === "failed" ? t("failed", "失败") : state;
 
@@ -1701,7 +1700,6 @@ function Exports({
           ))}
         </div>
         <select value={language} onChange={(e) => setLanguage(e.target.value)} disabled={!hasCaptions} style={{ ...field, width: 170, height: 30 }}>
-          <option value="zh-HK">繁體中文</option>
           <option value="zh-CN">简体中文</option>
           <option value="en">English</option>
         </select>

@@ -189,7 +189,7 @@ export function ScriptSheet({
                 aspect: channel.aspect,
                 seconds,
                 language,
-                subtitleLanguage: language === "English" ? "繁體中文" : "English",
+                subtitleLanguage: language === "English" ? "简体中文" : "English",
               })
             }
             style={{ ...solid, opacity: busy ? 0.55 : 1 }}

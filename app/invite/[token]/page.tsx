@@ -87,7 +87,7 @@ function Shell({ children }: { children: React.ReactNode }) {
         justifyContent: "center",
         padding: 22,
         background: "#f8f8f8",
-        fontFamily: "Inter, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Noto Sans SC', 'Source Han Sans SC', system-ui, sans-serif",
+        fontFamily: "Inter, 'Noto Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Source Han Sans SC', system-ui, sans-serif",
         fontWeight: 420,
         letterSpacing: "0.02em",
         color: "#171717",

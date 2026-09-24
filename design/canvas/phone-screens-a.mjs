@@ -152,7 +152,7 @@ ${PV.map(([c, t, s, ch], i) => row({ lead: cover(c, ' width: 54px; height: 36px;
   ask: 'Ask about performance…',
   sheet: sheet('Your channels · 28 days', 'What made Ep 74 do so well?', 'Read analytics for 11 videos · 0.7 s', 'People kept watching past the first minute: 52% watched through, about 14 points above your average. The cold open with no narration seems to work.', 'Use it for Ep 75'),
 });
-const CM = [['KL', 'yt', 'This episode is great, when is the next one?', 'grn', 'Positive', 'Thank you! Ep 75 goes up on 12 Sep.'], ['WS', 'ig', '背景音樂好大聲，聽唔清楚旁白', 'amb', 'Complaint', ''], ['BP', 'ig', 'Do you take sponsorships? We are a F&amp;B group.', 'blue', 'Business lead', ''], ['TM', 'yt', 'First!!!', 'gray', 'Neutral', '']];
+const CM = [['KL', 'yt', 'This episode is great, when is the next one?', 'grn', 'Positive', 'Thank you! Ep 75 goes up on 12 Sep.'], ['WS', 'ig', '背景音乐好大声，听唔清楚旁白', 'amb', 'Complaint', ''], ['BP', 'ig', 'Do you take sponsorships? We are a F&amp;B group.', 'blue', 'Business lead', ''], ['TM', 'yt', 'First!!!', 'gray', 'Neutral', '']];
 const LG = { yt: '#ff0000', ig: '#d62976' };
 add('Res-Inbox-Phone.dc.html', 'res', 'Comment inbox', {
   tab: 'res', crumb: 'Market Research', heading: 'Comment inbox', sub: '27 waiting · replies need approval', chips: RCH, chipOn: 2,
@@ -211,7 +211,7 @@ add('Script-Editor-Phone.dc.html', 'script', 'Draft', {
         <svg viewBox="0 0 40 40" style="width: 38px; height: 38px; transform: rotate(-90deg); flex-shrink: 0;"><circle cx="20" cy="20" r="16" fill="none" stroke="#ededed" stroke-width="4.5"/><circle cx="20" cy="20" r="16" fill="none" stroke="var(--ac)" stroke-width="4.5" stroke-linecap="round" stroke-dasharray="82 100.5"/></svg>
         <div style="flex-grow: 1;"><div style="font-size: 15px; font-weight: 500;">82 house style</div><div class="cap">4 suggestions · 3:48 of 3:45</div></div>${bd('+3 s', 'amb')}
       </div>
-${[['01', '0:00', 'Shutters rolling up at 6:40 am.', '（現場聲）', 'Natural sound only.'], ['02', '0:12', 'Wide, handheld, Pei Ho Street, <span style="text-decoration: underline wavy #f5a524; text-underline-offset: 3px;">morning light before the crowds</span>.', '深水埗曾經有過百檔大牌檔，今日只剩四檔。', 'Sham Shui Po once had over a hundred. Four are left.'], ['03', '0:31', 'Mrs Ho at her counter, mid-shot.', '「張牌係我阿爸留低嘅。」', '“My father left me this licence.”']].map(([n, t, vi, zh, en], i) => `
+${[['01', '0:00', 'Shutters rolling up at 6:40 am.', '（现场声）', 'Natural sound only.'], ['02', '0:12', 'Wide, handheld, Pei Ho Street, <span style="text-decoration: underline wavy #f5a524; text-underline-offset: 3px;">morning light before the crowds</span>.', '深水埗曾经有过百档大牌档，今日只剩四档。', 'Sham Shui Po once had over a hundred. Four are left.'], ['03', '0:31', 'Mrs Ho at her counter, mid-shot.', '「张牌系我阿爸留低嘅。」', '“My father left me this licence.”']].map(([n, t, vi, zh, en], i) => `
       <div style="padding: 12px 16px; border-bottom: 1px solid #f3f3f3;">
         <div style="display: flex; gap: 8px;" class="cap"><b style="font-weight: 500; color: #7c7c7c;">Beat ${n}</b><span>${t}</span></div>
         <div style="font-size: 13.5px; color: #7c7c7c; margin-top: 5px; line-height: 1.5;">${vi}</div>
@@ -219,7 +219,7 @@ ${[['01', '0:00', 'Shutters rolling up at 6:40 am.', '（現場聲）', 'Natural
         ${i === 1 ? `<div style="margin-top: 10px; padding: 11px 12px; border-radius: 12px; border: 1px solid #f7dcb0; background: #fffbf0;"><div class="cap" style="color: #b36b00;">House style · name the hour</div><div style="font-size: 14px; margin-top: 4px;"><s style="color: #e03636;">morning light</s> → <span style="color: #278f5e;">at 6:40 am</span></div><div style="display: flex; gap: 8px; margin-top: 10px;"><div class="bs" style="height: 36px; font-size: 13.5px;">Reject</div><div class="bp" style="height: 36px; font-size: 13.5px; background: #171717;">Accept</div></div></div>` : ''}
       </div>`).join('')}`,
   ask: 'Rewrite a line, or ask…',
-  sheet: sheet('Beat 02 selected', 'Make the closing line warmer', 'Rewrote 1 line · 0.8 s', '“佢哋唔係懷舊，係仲喺度做緊生意。” becomes “佢哋唔係回憶，係每朝六點開檔嘅生活。” Same length, keeps the stall owners as the subject.', 'Use it', ['Shorter', 'Warmer', '書面語']),
+  sheet: sheet('Beat 02 selected', 'Make the closing line warmer', 'Rewrote 1 line · 0.8 s', '“佢哋唔系怀旧，系仲喺度做紧生意。” becomes “佢哋唔系回忆，系每朝六点开档嘅生活。” Same length, keeps the stall owners as the subject.', 'Use it', ['Shorter', 'Warmer', '书面语']),
 });
 add('Script-Versions-Phone.dc.html', 'script', 'Versions', {
   ...sspHead, chips: STABS, chipOn: 2,
@@ -228,7 +228,7 @@ add('Script-Versions-Phone.dc.html', 'script', 'Versions', {
       <div style="padding: 6px 0 0;">${kpis([['Words', '<span style="color: #278f5e;">+38</span> <span style="color: #e03636;">−14</span>'], ['House style', '76 → 82']])}</div>
       <div style="padding: 12px 16px 0; display: flex; flex-direction: column; gap: 10px;">
         <div class="card"><div class="cap">Beat 02 · visual</div><div style="font-size: 14.5px; line-height: 1.55; margin-top: 6px;">Wide, handheld, Pei Ho Street <span style="background: #ffe7e7; color: #c53030; text-decoration: line-through;">at dawn</span> <span style="background: #e4faeb; color: #1f7a4d;">morning light before the crowds arrive</span>.</div></div>
-        <div class="card"><div class="cap">Beat 04 · voice-over</div><div style="font-size: 14.5px; line-height: 1.55; margin-top: 6px;">發牌委員會八月決定，<span style="background: #ffe7e7; color: #c53030; text-decoration: line-through;">放寬續牌</span><span style="background: #e4faeb; color: #1f7a4d;">現有牌照可以轉讓俾直系親屬</span>。</div></div>
+        <div class="card"><div class="cap">Beat 04 · voice-over</div><div style="font-size: 14.5px; line-height: 1.55; margin-top: 6px;">发牌委员会八月决定，<span style="background: #ffe7e7; color: #c53030; text-decoration: line-through;">放宽续牌</span><span style="background: #e4faeb; color: #1f7a4d;">现有牌照可以转让俾直系亲属</span>。</div></div>
       </div>
 ${sec('History', '4 versions')}
 ${[['v4', 'amy', 'Tone pass on beats 2, 4, 6', '2 Sep 09:40'], ['v3', 'leung', 'Added the archive credit', '1 Sep 18:20'], ['v2', 'amy', 'Cut beat 07', '1 Sep 15:12'], ['v1', 'chan', 'First draft from the brief', '1 Sep 14:02']].map(([v, o, t, w], i) => row({ lead: `<div style="width: 40px; height: 40px; border-radius: 11px; background: #f3f3f3; font-size: 14px; font-weight: 500; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">${v}</div>`, title: t, sub: `${pav(o, 16)}<span>${P[o][1]} · ${w}</span>`, sep: i < 3 ? 'i' : '' })).join('')}`,
@@ -316,7 +316,7 @@ ${[['Shot 03 · strait at dusk', 'Veo 3.1 Fast · try 1 of 3', 62], ['Rough cut 
 add('Video-Preview-Phone.dc.html', 'video', 'Preview', {
   ...vHead, chips: VCH, chipOn: 3,
   body: `
-      <div style="margin: 14px 16px 0; position: relative; border-radius: 14px; overflow: hidden; aspect-ratio: 16 / 9;">${cover('head', ' position: absolute; inset: 0;')}<div style="position: absolute; left: 10%; right: 10%; bottom: 8%; text-align: center;"><span style="display: inline-block; background: rgba(23,23,23,.78); color: #fff; font-size: 13px; line-height: 1.45; padding: 3px 9px; border-radius: 5px;">到入夜，波斯艦隊已經潰散。</span></div></div>
+      <div style="margin: 14px 16px 0; position: relative; border-radius: 14px; overflow: hidden; aspect-ratio: 16 / 9;">${cover('head', ' position: absolute; inset: 0;')}<div style="position: absolute; left: 10%; right: 10%; bottom: 8%; text-align: center;"><span style="display: inline-block; background: rgba(23,23,23,.78); color: #fff; font-size: 13px; line-height: 1.45; padding: 3px 9px; border-radius: 5px;">到入夜，波斯舰队已经溃散。</span></div></div>
       <div style="display: flex; align-items: center; gap: 12px; padding: 14px 16px 0;"><div style="width: 40px; height: 40px; border-radius: 20px; background: #171717; display: flex; align-items: center; justify-content: center; flex-shrink: 0;"><svg viewBox="0 0 24 24" style="width: 15px; height: 15px;"><path d="M8 5.5v13l10.5-6.5z" fill="#fff"/></svg></div><span style="font-size: 13px; font-variant-numeric: tabular-nums;">1:57</span><div style="flex-grow: 1; position: relative;">${pbar(52)}<span style="position: absolute; left: 52%; top: -5px; width: 15px; height: 15px; margin-left: -7px; border-radius: 8px; background: #fff; box-shadow: 0 0 0 2px var(--ac);"></span></div><span class="cap">3:48</span></div>
       <div style="display: flex; gap: 8px; padding: 14px 16px 0;"><div style="display: flex; gap: 2px; padding: 2px; border-radius: 10px; background: #f3f3f3;">${['16:9', '9:16', '1:1'].map((a, i) => `<span style="height: 32px; padding: 0 12px; border-radius: 8px; font-size: 13px; display: flex; align-items: center; ${i === 0 ? 'background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.1);' : 'color: #7c7c7c;'}">${a}</span>`).join('')}</div><div class="chip" style="margin-left: auto;">Compare v2</div></div>
 ${sec('All cuts', '3 versions')}

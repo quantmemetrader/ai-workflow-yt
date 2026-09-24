@@ -558,7 +558,7 @@ async function autoTranscribe(
     .limit(1);
   if (anyCaption) return null;
 
-  const language = (project.director as DirectorState | null)?.language || "zh-HK";
+  const language = (project.director as DirectorState | null)?.language || "zh-CN";
   const job = await enqueue({
     tenantId: viewer.tenantId,
     type: "video.transcribe",

@@ -100,7 +100,7 @@ export async function autoEdit(
     .limit(1);
   if (!project) throw new Error("That project does not exist");
 
-  const language = opts.language ?? "zh-HK";
+  const language = opts.language ?? "zh-CN";
   const rows = await db
     .select()
     .from(captions)

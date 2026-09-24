@@ -53,7 +53,7 @@ ${fld('Description <span style="margin-left: auto; font-weight: 420; color: #999
       <div style="display: grid; grid-template-columns: 1fr 1fr;">${fld('Who sees it', 'Private for now', 'background: #fffbf0; font-size: 14px;')}${fld('When', 'Sat 12 Sep 19:30', 'font-size: 14px;')}</div>
 ${btns('Send for approval', 'Preview')}`,
   ask: 'Ask about this post…',
-  sheet: sheet('Post · History of Greece Ep 75', 'Write a shorter Instagram caption', 'Drafted 3 options · 0.9 s', '“480 BC. One strait, two fleets. 海峽決定一切。” is 47 characters and keeps the Cantonese line.', 'Use it for Instagram'),
+  sheet: sheet('Post · History of Greece Ep 75', 'Write a shorter Instagram caption', 'Drafted 3 options · 0.9 s', '“480 BC. One strait, two fleets. 海峡决定一切。” is 47 characters and keeps the Cantonese line.', 'Use it for Instagram'),
 });
 const ap = (c, t, chans, who, note, actions = true) => `
       <div class="card" style="margin: 12px 16px 0; padding: 12px;">

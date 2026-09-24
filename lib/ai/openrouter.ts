@@ -1,6 +1,7 @@
 import "server-only";
 import { env } from "@/lib/env";
 import { backendFor, estimateCostMicros } from "@/lib/ai/backend";
+import { toSimplified } from "@/lib/text/simplified";
 
 /**
  * OpenRouter client (spec §5: one aggregator, the client's own account, every
@@ -335,10 +336,10 @@ export async function* streamChat(opts: StreamOptions): AsyncGenerator<StreamEve
 
       const delta = chunk.choices?.[0]?.delta;
       if (typeof delta?.content === "string" && delta.content) {
-        yield { type: "text", text: delta.content };
+        yield { type: "text", text: toSimplified(delta.content) };
       }
       if (typeof delta?.reasoning === "string" && delta.reasoning) {
-        yield { type: "reasoning", text: delta.reasoning };
+        yield { type: "reasoning", text: toSimplified(delta.reasoning) };
       }
 
       for (const call of delta?.tool_calls ?? []) {
@@ -399,7 +400,7 @@ export async function* streamChat(opts: StreamOptions): AsyncGenerator<StreamEve
 function* fromCompletion(json: ProviderPayload, fallbackModel: string): Generator<StreamEvent> {
   const message = json?.choices?.[0]?.message;
   if (typeof message?.content === "string" && message.content) {
-    yield { type: "text", text: message.content };
+    yield { type: "text", text: toSimplified(message.content) };
   }
   let unnamed = 0;
   for (const call of message?.tool_calls ?? []) {
@@ -497,7 +498,10 @@ export async function complete(opts: Omit<StreamOptions, "tools">): Promise<{
   const completionTokens = Number(json.usage?.completion_tokens ?? 0);
 
   return {
-    text: typeof json.choices?.[0]?.message?.content === "string" ? json.choices[0].message.content : "",
+    /* Simplified only, whichever way the model leaned. A model asked for
+       Chinese answers Traditional often enough that the studio would find
+       it in a script, a caption or an article otherwise. */
+    text: typeof json.choices?.[0]?.message?.content === "string" ? toSimplified(json.choices[0].message.content) : "",
     promptTokens,
     completionTokens,
     /* OpenRouter bills us and says what it charged, so that figure is the

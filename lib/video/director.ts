@@ -241,7 +241,7 @@ export async function direct(viewer: Viewer, projectId: string, jobId?: string):
   if (asked.resume === "render" && asked.result && wantRender) {
     await patch(projectId, (d) => ({ ...d, state: "running", resume: undefined, error: undefined }));
     try {
-      const result = await renderStep(viewer, projectId, aspect, asked.language ?? "zh-HK", asked.result, say);
+      const result = await renderStep(viewer, projectId, aspect, asked.language ?? "zh-CN", asked.result, say);
       await finish(viewer, projectId, jobId, result);
       return result;
     } catch (err) {
@@ -278,7 +278,7 @@ export async function direct(viewer: Viewer, projectId: string, jobId?: string):
 
     /* ---- 2. transcribe ---------------------------------------------- */
     const [anyCaption] = await db.select({ language: captions.language }).from(captions).where(eq(captions.projectId, projectId)).limit(1);
-    const language = anyCaption?.language ?? asked.language ?? (/english|英文|in english/i.test(brief) ? "en" : "zh-HK");
+    const language = anyCaption?.language ?? asked.language ?? (/english|英文|in english/i.test(brief) ? "en" : "zh-CN");
 
     const timed = await db
       .select({ n: sql<number>`count(*)::int` })

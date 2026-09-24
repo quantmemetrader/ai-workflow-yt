@@ -455,12 +455,12 @@ const out = [
 const HIST = [['Very negative', 2, '#e03636'], ['Negative', 4, '#f79596'], ['Neutral', 7, '#c7c7c7'], ['Positive', 10, '#86e0a8'], ['Very positive', 4, '#278f5e']];
 const CMTS = [
   ['cover-history.jpg', 'history-of-greece_ep75', [
-    ['pfp-amy.jpg', '@kk_wong', '呢集真係好正,幾時出下一集?', 'grn', 'Positive', 1, '2 h'],
+    ['pfp-amy.jpg', '@kk_wong', '呢集真系好正,几时出下一集?', 'grn', 'Positive', 1, '2 h'],
     ['pfp-leung.jpg', '@brandpartner_hk', 'Do you take sponsorship enquiries for the night-market series?', 'blue', 'Lead', 0, '3 h'],
     ['pfp-michelle.jpg', '@anon_4471', 'Contains a flagged keyword', 'amb', 'Flagged', 0, '4 h']]],
   ['cover-porsche.jpg', 'porsche-cat_night', [
     ['pfp-chan.jpg', '@lensbyleo', 'Colour grade on this is unreal. What LUT?', 'grn', 'Positive', 0, '5 h'],
-    ['pfp-amy.jpg', '@mei_eats', '好想知間舖喺邊', 'gray', 'Neutral', 0, '6 h']]],
+    ['pfp-amy.jpg', '@mei_eats', '好想知间舖喺边', 'gray', 'Neutral', 0, '6 h']]],
 ];
 const inboxBody = `
         <div style="flex-shrink: 0; height: 50px; display: flex; align-items: center; gap: 8px; padding: 0 20px; border-bottom: 1px solid #ededed;">
@@ -478,9 +478,9 @@ ${HIST.map(([l, n, c]) => `              <div style="flex: 1; display: flex; fle
           </div>
           <div style="border-left: 1px solid #ededed; padding-left: 18px;">
             <div class="lbl" style="padding: 0; margin-bottom: 10px;">Language</div>
-            <div class="kv" style="padding: 5px 0;"><span>粵語 Cantonese</span><span>18</span></div>
+            <div class="kv" style="padding: 5px 0;"><span>粤语 Cantonese</span><span>18</span></div>
             <div class="kv" style="padding: 5px 0;"><span>English</span><span>7</span></div>
-            <div class="kv" style="padding: 5px 0; border: none;"><span>普通話 Mandarin</span><span>2</span></div>
+            <div class="kv" style="padding: 5px 0; border: none;"><span>普通话 Mandarin</span><span>2</span></div>
             <div class="cap" style="margin-top: 6px;">TikTok has no comment interface</div>
           </div>
         </div>
@@ -491,10 +491,10 @@ ${list.map(([av, h, t, c, lab, sel, ago]) => `            <div style="display: f
           </div>
           <div style="flex-grow: 1; min-width: 0; padding: 16px 20px; overflow: hidden;">
             <div style="display: flex; align-items: center; gap: 10px;"><img src="pfp-amy.jpg" style="width: 36px; height: 36px; border-radius: 18px; object-fit: cover;"><div><div style="font-size: 13.5px; font-weight: 600;">@kk_wong</div><div class="cap">YouTube · on history-of-greece_ep75 · 2 h ago · 14 prior comments</div></div><span class="bd grn" style="margin-left: auto;">Positive</span></div>
-            <div style="margin-top: 14px; padding: 14px 16px; border-radius: 12px; background: #f8f8f8; font-size: 15px; line-height: 1.6;">呢集真係好正,幾時出下一集?</div>
+            <div style="margin-top: 14px; padding: 14px 16px; border-radius: 12px; background: #f8f8f8; font-size: 15px; line-height: 1.6;">呢集真系好正,几时出下一集?</div>
             <div class="cap" style="margin-top: 7px;">“This episode is great, when’s the next one?” · machine translation</div>
             <div style="display: flex; align-items: center; gap: 8px; margin: 20px 0 8px;"><span class="lbl" style="padding: 0;">AI-suggested reply</span><span class="bd amb">Draft</span></div>
-            <div style="border: 1px solid #d9d9d9; border-radius: 12px; padding: 13px 15px; font-size: 14px; line-height: 1.6; color: #2b343d; box-shadow: 0 0 0 3px #EFF6FF;">多謝支持!下一集會喺下星期三上載,記得開通知 🔔</div>
+            <div style="border: 1px solid #d9d9d9; border-radius: 12px; padding: 13px 15px; font-size: 14px; line-height: 1.6; color: #2b343d; box-shadow: 0 0 0 3px #EFF6FF;">多谢支持!下一集会喺下星期三上载,记得开通知 🔔</div>
             <div style="display: flex; align-items: center; gap: 8px; margin-top: 12px;">
               <div class="btn p" style="height: 32px;">Approve &amp; send</div><div class="btn s" style="height: 32px;">Edit</div><div class="btn s" style="height: 32px;">Regenerate</div>
               <div style="flex-grow: 1;"></div><span class="cap">Nothing sends without approval</span>

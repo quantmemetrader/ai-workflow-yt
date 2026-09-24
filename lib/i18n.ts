@@ -6,6 +6,9 @@
  * The dictionary lives here rather than in a runtime file so it type-checks
  * and ships in the same bundle as the components that use it.
  */
+/** zh-HK is dead weight kept only because the `locale` enum in Postgres
+ * still has the value and old rows still carry it. Nothing offers it:
+ * the studio publishes in Simplified Chinese only. */
 export type Locale = "zh-CN" | "zh-HK" | "en";
 
 export const DEFAULT_LOCALE: Locale = "zh-CN";

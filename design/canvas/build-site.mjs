@@ -120,7 +120,7 @@ for (const [p, module, desk, phone, labels] of R) {
   const links = [...new Set([...d.links, ...m.links])].join('\n');
   const title = (module === 'login' ? 'Sign in' : (labels[0] || module)).replace('&amp;', '&');
   const page = `<!doctype html>
-<html lang="en">
+<html lang="zh-Hans-CN">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">

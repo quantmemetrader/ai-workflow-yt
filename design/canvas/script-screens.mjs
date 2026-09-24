@@ -26,7 +26,7 @@ import { page as shellPage, ICON, collapsible, toggleBtn, SIMPLE } from './shell
 const DIR = path.dirname(new URL(import.meta.url).pathname);
 const src = fs.readFileSync(path.join(DIR, 'Desktop.dc.html'), 'utf8');
 const css = src.slice(src.indexOf('<style>') + 7, src.indexOf('</style>'))
-  .replace("font-family: Inter, system-ui, sans-serif;", "font-family: Inter, 'PingFang HK', 'Noto Sans HK', system-ui, sans-serif;");
+  .replace("font-family: Inter, system-ui, sans-serif;", "font-family: Inter, 'Noto Sans SC', 'PingFang SC', system-ui, sans-serif;");
 
 const EXTRA_CSS = `
     .tabs { height: 40px; flex-shrink: 0; display: flex; align-items: stretch; gap: 20px; padding: 0 22px; border-bottom: 1px solid #ededed; }
@@ -144,27 +144,27 @@ const badge = st => `<span class="bd ${ST[st][1]}" style="gap: 4px;">${st === 'l
 /* ---------- the folder: 11 scripts ---------- */
 const DOCS = [
   { id: 'ssp', t: 'Sham Shui Po dai pai dong revival', st: 'draft', v: 4, o: 'amy', dur: '3:48', sc: 82, ch: 'YouTube · 16:9', ed: '2 min ago',
-    b: [['Stall shutters rolling up at 6:40 am.', '（現場聲）', 'Natural sound only.'], ['Wide handheld along Pei Ho Street.', '深水埗曾經有過百檔大牌檔，今日只剩四檔。', 'Sham Shui Po once had over a hundred dai pai dong. Four are left.'], ['Mrs Ho at her counter, mid-shot.', '「張牌係我阿爸留低嘅。」', '“My father left me this licence.”'], ['Renewal letter on the counter.', '發牌委員會八月決定……', 'In August the licensing board ruled…']] },
+    b: [['Stall shutters rolling up at 6:40 am.', '（现场声）', 'Natural sound only.'], ['Wide handheld along Pei Ho Street.', '深水埗曾经有过百档大牌档，今日只剩四档。', 'Sham Shui Po once had over a hundred dai pai dong. Four are left.'], ['Mrs Ho at her counter, mid-shot.', '「张牌系我阿爸留低嘅。」', '“My father left me this licence.”'], ['Renewal letter on the counter.', '发牌委员会八月决定……', 'In August the licensing board ruled…']] },
   { id: 'tpe', t: 'Taipei night-market crossover creators', st: 'await', v: 3, o: 'leung', dur: '2:10', sc: 91, ch: 'Instagram · 9:16', ed: '2 h ago',
-    b: [['Raohe market gate, neon, vertical.', '香港創作者過海開檔。', 'Hong Kong creators set up stalls across the strait.'], ['Creator plating egg waffles.', '一晚賣三百份。', 'Three hundred portions a night.'], ['Queue from above.', '排隊嘅大部分係本地人。', 'Most of the queue is local.']] },
+    b: [['Raohe market gate, neon, vertical.', '香港创作者过海开档。', 'Hong Kong creators set up stalls across the strait.'], ['Creator plating egg waffles.', '一晚卖三百份。', 'Three hundred portions a night.'], ['Queue from above.', '排队嘅大部分系本地人。', 'Most of the queue is local.']] },
   { id: 'grc', t: 'History of Greece · Ep 75', st: 'locked', v: 6, o: 'chan', dur: '3:48', sc: 94, ch: 'YouTube · 16:9', ed: '28 Aug',
-    b: [['Map of the Aegean, slow push.', 'In 480 BC, a fleet gathers at Salamis.', '公元前480年，艦隊喺薩拉米斯集結。'], ['Trireme reconstruction, oars.', 'Three banks of rowers, one drum.', '三排槳手，一個鼓。'], ['Strait at dusk, wide.', 'The narrows decide everything.', '海峽決定一切。']] },
+    b: [['Map of the Aegean, slow push.', 'In 480 BC, a fleet gathers at Salamis.', '公元前480年，舰队喺萨拉米斯集结。'], ['Trireme reconstruction, oars.', 'Three banks of rowers, one drum.', '三排桨手，一个鼓。'], ['Strait at dusk, wide.', 'The narrows decide everything.', '海峡决定一切。']] },
   { id: 'vcl', t: 'Cantonese voice cloning backlash', st: 'draft', v: 1, o: 'leung', dur: '2:55', sc: 64, ch: 'YouTube · 16:9', ed: 'Yesterday',
-    b: [['Studio mic, dark room.', '一把聲，可以唔屬於你。', 'A voice that no longer belongs to you.'], ['Voice actor interview.', '「我聽到自己講我冇講過嘅嘢。」', '“I heard myself say things I never said.”'], ['Waveform graphic.', '三十秒錄音已經夠。', 'Thirty seconds of audio is enough.']] },
+    b: [['Studio mic, dark room.', '一把声，可以唔属于你。', 'A voice that no longer belongs to you.'], ['Voice actor interview.', '「我听到自己讲我冇讲过嘅嘢。」', '“I heard myself say things I never said.”'], ['Waveform graphic.', '三十秒录音已经够。', 'Thirty seconds of audio is enough.']] },
   { id: 'gdy', t: 'Good day · collage teaser', st: 'await', v: 2, o: 'amy', dur: '0:20', sc: 88, ch: 'Instagram · 9:16', ed: 'Yesterday',
-    b: [['Paper cut-outs, stop motion.', '早晨。', 'Good morning.'], ['Collage of commuters.', '今日都係好日子。', 'Today is a good day too.']] },
+    b: [['Paper cut-outs, stop motion.', '早晨。', 'Good morning.'], ['Collage of commuters.', '今日都系好日子。', 'Today is a good day too.']] },
   { id: 'hbf', t: 'Harbourfront redevelopment hearing', st: 'brief', o: 'leung', dur: 'target 4:00', ch: 'YouTube · 16:9', ed: '3 Sep', flag: 1,
     f: [['Topic', 'Harbourfront redevelopment hearing'], ['Angle', 'What residents actually asked for'], ['Channel', 'YouTube · 16:9 · 4 min'], ['Mandatory points', 'Quote the hearing record. Show both sides.']] },
   { id: 'prs', t: 'Porsche cat · night drive', st: 'locked', v: 3, o: 'chan', dur: '0:30', sc: 88, ch: 'Instagram · 9:16', ed: '2 Sep',
-    b: [['Cat on the driver seat, neon.', '夜晚，佢揸車。', 'At night, the cat drives.'], ['Tail lights, Tsing Ma bridge.', '冇目的地。', 'No destination.']] },
+    b: [['Cat on the driver seat, neon.', '夜晚，佢揸车。', 'At night, the cat drives.'], ['Tail lights, Tsing Ma bridge.', '冇目的地。', 'No destination.']] },
   { id: 'cct', t: 'Cha chaan teng menu inflation', st: 'changes', v: 2, o: 'amy', dur: '2:40', sc: 77, ch: 'LinkedIn · 1:1', ed: '1 Sep',
-    b: [['Menu board, 2016 vs 2026.', '奶茶十年貴咗一倍。', 'Milk tea has doubled in ten years.'], ['Owner counting receipts.', '租金先係問題。', 'Rent is the real problem.']] },
+    b: [['Menu board, 2016 vs 2026.', '奶茶十年贵咗一倍。', 'Milk tea has doubled in ten years.'], ['Owner counting receipts.', '租金先系问题。', 'Rent is the real problem.']] },
   { id: 'sgh', t: 'Singapore hawker succession', st: 'brief', o: 'michelle', dur: 'target 3:00', ch: 'LinkedIn · 1:1', ed: '31 Aug',
     f: [['Topic', 'Singapore hawker succession'], ['Angle', 'Compare with HK dai pai dong'], ['Channel', 'LinkedIn · 1:1 · 3 min'], ['Mandatory points', 'Cite the NEA succession scheme.']] },
   { id: 'dmo', t: 'Do more · brand spot', st: 'locked', v: 2, o: 'michelle', dur: '0:45', sc: 90, ch: 'Instagram · 9:16', ed: '31 Aug',
-    b: [['Runner at dawn, Lion Rock.', '做多一步。', 'Do one more.'], ['Product close-up.', '由今朝開始。', 'Starting this morning.']] },
+    b: [['Runner at dawn, Lion Rock.', '做多一步。', 'Do one more.'], ['Product close-up.', '由今朝开始。', 'Starting this morning.']] },
   { id: 'org', t: 'Orange typography cut', st: 'locked', v: 2, o: 'leung', dur: '0:15', sc: 86, ch: 'X · 1:1', ed: '30 Aug',
-    b: [['Kinetic type, orange on black.', '字，都識郁。', 'Words move too.']] },
+    b: [['Kinetic type, orange on black.', '字，都识郁。', 'Words move too.']] },
 ];
 const D = Object.fromEntries(DOCS.map(d => [d.id, d]));
 
@@ -428,12 +428,12 @@ const verDraft = '<span class="bd blue">v4 · Drafting</span>';
 
 /* ---------------- DRAFT (the "split editor") ---------------- */
 const BEATS = [
-  ['01', '0:00', 'Stall shutters rolling up at 6:40 am. No narration for the first four seconds.', '（現場聲）', 'Natural sound only.'],
-  ['02', '0:12', 'Wide, handheld, along Pei Ho Street, <span class="wv">{{b2}}</span>.', '深水埗曾經有過百檔大牌檔，今日只剩四檔。', 'Sham Shui Po once had over a hundred dai pai dong. Four are left.'],
-  ['03', '0:31', 'Mrs Ho at her counter, mid-shot. <span class="wv">Keep the ambient market noise under her.</span>', '何太：「張牌係我阿爸留低嘅，我唔會交返出去。」', 'Mrs Ho: “My father left me this licence. I’m not giving it back.”'],
-  ['04', '1:04', 'Cutaway: the renewal letter on the counter. Tight, shallow depth of field.', '發牌委員會八月決定，<span class="ins">現有牌照可以轉讓俾直系親屬</span>。', 'In August the licensing board ruled that <span class="ins">existing licences may pass to immediate family</span>.'],
-  ['05', '1:22', 'Archive: the same street in 1998. Credit HK Film Archive on screen.', '廿幾年前，呢條街朝早六點已經坐滿人。', 'Twenty-odd years ago this street was full by six in the morning.'],
-  ['06', '1:48', 'Four stall signs, one after another: 坤記, 華姐, 德昌, 新興.', '佢哋唔係懷舊，係仲喺度做緊生意。', '<span class="sl">They aren’t nostalgia. They’re still open for business.</span>'],
+  ['01', '0:00', 'Stall shutters rolling up at 6:40 am. No narration for the first four seconds.', '（现场声）', 'Natural sound only.'],
+  ['02', '0:12', 'Wide, handheld, along Pei Ho Street, <span class="wv">{{b2}}</span>.', '深水埗曾经有过百档大牌档，今日只剩四档。', 'Sham Shui Po once had over a hundred dai pai dong. Four are left.'],
+  ['03', '0:31', 'Mrs Ho at her counter, mid-shot. <span class="wv">Keep the ambient market noise under her.</span>', '何太：「张牌系我阿爸留低嘅，我唔会交返出去。」', 'Mrs Ho: “My father left me this licence. I’m not giving it back.”'],
+  ['04', '1:04', 'Cutaway: the renewal letter on the counter. Tight, shallow depth of field.', '发牌委员会八月决定，<span class="ins">现有牌照可以转让俾直系亲属</span>。', 'In August the licensing board ruled that <span class="ins">existing licences may pass to immediate family</span>.'],
+  ['05', '1:22', 'Archive: the same street in 1998. Credit HK Film Archive on screen.', '廿几年前，呢条街朝早六点已经坐满人。', 'Twenty-odd years ago this street was full by six in the morning.'],
+  ['06', '1:48', 'Four stall signs, one after another: 坤记, 华姐, 德昌, 新兴.', '佢哋唔系怀旧，系仲喺度做紧生意。', '<span class="sl">They aren’t nostalgia. They’re still open for business.</span>'],
 ];
 const beatRow = ([n, tc, vi, zh, en]) => `
             <div class="bt"${n === '06' ? ' style="position: relative;"' : n === '02' ? ' style="position: relative;"' : ''}>
@@ -453,7 +453,7 @@ const beatRow = ([n, tc, vi, zh, en]) => `
                   <svg viewBox="0 0 24 24" style="width: 14px; height: 14px; flex-shrink: 0; stroke: {{accent}}; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;"><path d="m12 3.5 1.9 5.1 5.1 1.9-5.1 1.9L12 17.5l-1.9-5.1L5 10.5l5.1-1.9z"/><path d="M18.5 16v4M16.5 18h4"/></svg>
                   <span style="font-size: 12.5px; color: #171717; flex-grow: 1;">end on the stall owner, not the narrator<span style="display: inline-block; width: 1.5px; height: 14px; background: {{accent}}; vertical-align: -2px; margin-left: 1px;"></span></span><span class="kbd">⏎</span>
                 </div>
-                <div style="display: flex; gap: 5px; padding: 3px 6px 5px; border-top: 1px solid #f3f3f3;"><span class="qc">Shorter</span><span class="qc">Warmer</span><span class="qc">More formal</span><span class="qc">轉做書面語</span></div>
+                <div style="display: flex; gap: 5px; padding: 3px 6px 5px; border-top: 1px solid #f3f3f3;"><span class="qc">Shorter</span><span class="qc">Warmer</span><span class="qc">More formal</span><span class="qc">转做书面语</span></div>
               </div>` : ''}
             </div>`;
 
@@ -483,7 +483,7 @@ const draftMain = `${docHeader({
             <span style="display: flex; align-items: center; gap: 6px;">${av('amy', 16)}Amy Wong</span><span style="color: #e2e2e2;">|</span><span>Operator interview · warm, documentary</span><span style="color: #e2e2e2;">|</span><span>6 beats · 412 words · 3:48 spoken</span>
           </div>
           <div class="bt" style="padding: 8px 0; border-bottom: 1px solid #ededed; border-top: 1px solid #ededed;">
-            <div class="bn" style="color: #7c7c7c;">Beat</div><div class="bn" style="color: #7c7c7c;">Visual</div><div class="bn" style="color: #7c7c7c;">Voice-over · 粵語 / English subtitle</div>
+            <div class="bn" style="color: #7c7c7c;">Beat</div><div class="bn" style="color: #7c7c7c;">Visual</div><div class="bn" style="color: #7c7c7c;">Voice-over · 粤语 / English subtitle</div>
           </div>
 ${BEATS.map(beatRow).join('')}
         </div>
@@ -509,8 +509,8 @@ ${rightPanel(['House style', 'Agent', 'Comments'], 'House style', `
             <div class="sug" style="background: #f8f8f8;"><div class="k"><span class="ck" style="width: 14px; height: 14px; border-radius: 7px; background: #278f5e;"><svg viewBox="0 0 16 16" style="width: 9px; height: 9px;"><path d="M3.6 8.3 6.5 11.2 12.4 5.1"/></svg></span>Beat 02 · accepted just now</div><div class="q" style="color: #7c7c7c;">“at 6:40 am, before the first customers”</div></div>
             </sc-if>
             <div class="sug"><div class="k"><span class="dot" style="background: #db7706;"></span>Beat 03 · sound direction</div><div class="q">“Keep the ambient market noise under her”</div><div class="w">Sound belongs in the shot list. Move it to Video Edit?</div><div style="display: flex; gap: 6px; margin-top: 8px;"><div class="btn s" style="height: 25px; font-size: 11.5px;">Move to shot list</div><div class="btn s" style="height: 25px; font-size: 11.5px;">Keep</div></div></div>
-            <div class="sug"><div class="k"><span class="dot" style="background: #007be0;"></span>Beat 05 · length</div><div class="q">Trim 3 s to hit 3:45</div><div class="w">Drop “朝早六點”. The archive shot already says it.</div></div>
-            <div class="sug"><div class="k"><span class="dot" style="background: #c7c7c7;"></span>Beat 06 · register</div><div class="q">“做緊生意” is spoken Cantonese</div><div class="w">Fine for VO; subtitles use written form per guide §5.</div></div>
+            <div class="sug"><div class="k"><span class="dot" style="background: #007be0;"></span>Beat 05 · length</div><div class="q">Trim 3 s to hit 3:45</div><div class="w">Drop “朝早六点”. The archive shot already says it.</div></div>
+            <div class="sug"><div class="k"><span class="dot" style="background: #c7c7c7;"></span>Beat 06 · register</div><div class="q">“做紧生意” is spoken Cantonese</div><div class="w">Fine for VO; subtitles use written form per guide §5.</div></div>
           </div>
         </div>
         <div style="flex-shrink: 0; border-top: 1px solid #f3f3f3; padding: 10px 14px 12px; display: flex; align-items: center; gap: 7px;">
@@ -547,7 +547,7 @@ const briefMain = `${docHeader({
             <div><div class="fl">Angle</div><div class="inp"><span style="flex-grow: 1;">Operator interview</span><svg viewBox="0 0 24 24"><path d="m6.5 9.5 5.5 5.5 5.5-5.5"/></svg></div></div>
             <div><div class="fl">Target channel</div><div class="inp"><span style="flex-grow: 1;">YouTube · 16:9</span><svg viewBox="0 0 24 24"><path d="m6.5 9.5 5.5 5.5 5.5-5.5"/></svg></div></div>
             <div><div class="fl">Target duration</div><div class="inp"><span style="flex-grow: 1; font-variant-numeric: tabular-nums;">3 min 45 s</span><span class="cap">±5%</span></div></div>
-            <div><div class="fl">Language</div><div class="inp"><span style="flex-grow: 1;">粵語 VO · 繁中 + English subtitles</span></div></div>
+            <div><div class="fl">Language</div><div class="inp"><span style="flex-grow: 1;">粤语 VO · 繁中 + English subtitles</span></div></div>
             <div style="grid-column: 1 / -1;"><div class="fl">Tone</div><div style="display: flex; gap: 6px; flex-wrap: wrap;"><span class="fc on">Warm</span><span class="fc on">Documentary</span><span class="fc">Playful</span><span class="fc">Urgent</span><span class="fc">Formal</span><span class="fc" style="border-style: dashed; color: #999999;">+ Tone</span></div></div>
           </div>
           <div style="display: flex; align-items: center; margin: 20px 0 4px;"><span class="fl" style="margin: 0;">Mandatory points</span><span class="cap" style="margin-left: auto;">Checked against every draft</span></div>
@@ -629,13 +629,13 @@ ${VERS.map(([v, o, note, when, tone, tag, ab]) => `        <div class="vr${ab ==
         </div>
         <div class="df">
           <div class="dh"><b style="font-weight: 500; color: #383838;">Beat 04</b> · 1:04 · voice-over<span style="margin-left: auto;">Amy Wong · 2 Sep 09:40</span></div>
-          <div>發牌委員會八月決定<span class="del">放寬續牌</span>。<div class="cap" style="margin-top: 4px;">In August the licensing board <span class="del">relaxed renewals</span>.</div></div>
-          <div>發牌委員會八月決定，<span class="ins">現有牌照可以轉讓俾直系親屬</span>。<div class="cap" style="margin-top: 4px;">In August the licensing board ruled that <span class="ins">existing licences may pass to immediate family</span>.</div></div>
+          <div>发牌委员会八月决定<span class="del">放宽续牌</span>。<div class="cap" style="margin-top: 4px;">In August the licensing board <span class="del">relaxed renewals</span>.</div></div>
+          <div>发牌委员会八月决定，<span class="ins">现有牌照可以转让俾直系亲属</span>。<div class="cap" style="margin-top: 4px;">In August the licensing board ruled that <span class="ins">existing licences may pass to immediate family</span>.</div></div>
         </div>
         <div class="df">
           <div class="dh"><b style="font-weight: 500; color: #383838;">Beat 06</b> · 1:48 · voice-over<span style="margin-left: auto;">Amy Wong · 2 Sep 09:40</span></div>
           <div style="color: #c7c7c7; font-style: italic;">Not in v3</div>
-          <div><span class="ins">佢哋唔係懷舊，係仲喺度做緊生意。</span><div class="cap" style="margin-top: 4px;"><span class="ins">They aren’t nostalgia. They’re still open for business.</span></div></div>
+          <div><span class="ins">佢哋唔系怀旧，系仲喺度做紧生意。</span><div class="cap" style="margin-top: 4px;"><span class="ins">They aren’t nostalgia. They’re still open for business.</span></div></div>
         </div>
         <div style="display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 12px; border: 1px dashed #e2e2e2; border-radius: 9px;"><svg viewBox="0 0 24 24" style="width: 12px; height: 12px; stroke: #999999; fill: none; stroke-width: 2; stroke-linecap: round;"><path d="m6.5 9.5 5.5 5.5 5.5-5.5"/></svg><span class="cap">3 unchanged beats: 01, 03, 05</span></div>
       </div>
@@ -709,11 +709,11 @@ ${rightPanel(['Agent', 'Comments'], 'Agent', agentBlock({
 /* ---------------- A LOCKED SCRIPT (read-only) ---------------- */
 const grc = D.grc;
 const GBEATS = [
-  ['01', '0:00', 'Map of the Aegean, slow push towards Salamis.', 'In 480 BC, a Persian fleet gathers off the coast of Attica.', '公元前480年，波斯艦隊喺阿提卡海岸集結。'],
-  ['02', '0:18', 'Trireme reconstruction, oars in unison.', 'Three banks of rowers. One drum. Two hundred men to a ship.', '三排槳手，一個鼓，每艘船兩百人。'],
-  ['03', '0:41', 'Strait at dusk, wide, drone.', 'The Greeks choose the narrows. Here, numbers stop mattering.', '希臘人揀咗海峽。喺呢度，數量唔再重要。'],
+  ['01', '0:00', 'Map of the Aegean, slow push towards Salamis.', 'In 480 BC, a Persian fleet gathers off the coast of Attica.', '公元前480年，波斯舰队喺阿提卡海岸集结。'],
+  ['02', '0:18', 'Trireme reconstruction, oars in unison.', 'Three banks of rowers. One drum. Two hundred men to a ship.', '三排桨手，一个鼓，每艘船两百人。'],
+  ['03', '0:41', 'Strait at dusk, wide, drone.', 'The Greeks choose the narrows. Here, numbers stop mattering.', '希腊人拣咗海峡。喺呢度，数量唔再重要。'],
   ['04', '1:21', 'Battle plan: fire spreads across the strait.', 'Themistocles lets a rumour reach the Persian king.', '地米斯托克利故意放出消息。'],
-  ['05', '1:57', 'Winged Victory statue, slow tilt up.', 'By nightfall, the Persian fleet is broken.', '到入夜，波斯艦隊已經潰散。'],
+  ['05', '1:57', 'Winged Victory statue, slow tilt up.', 'By nightfall, the Persian fleet is broken.', '到入夜，波斯舰队已经溃散。'],
 ];
 const lockedMain = `${docHeader({
   d: grc, tab: 'draft', verLabel: `<span class="bd grn" style="gap: 4px;">${LOCK}v6 · Locked</span>`, people: ['chan'],

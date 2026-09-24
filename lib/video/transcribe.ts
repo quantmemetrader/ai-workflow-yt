@@ -15,6 +15,7 @@ import { probe } from "@/lib/files/poster";
 import { ElevenLabsUnconfigured, toCaptionLines, transcribe } from "@/lib/video/elevenlabs";
 import type { Transcript } from "@/lib/video/elevenlabs";
 import { transcribeLocal } from "@/lib/video/whisper";
+import { toSimplified } from "@/lib/text/simplified";
 import { env } from "@/lib/env";
 
 /**
@@ -167,7 +168,7 @@ export async function transcribeProject(
     if (size < 1000) throw new Error("The cut has no audible audio");
 
     const audio = new Blob([await readFile(combined)], { type: "audio/mpeg" });
-    const transcript = await runTranscription(projectId, audio, options.diarize ?? true);
+    const transcript = simplified(await runTranscription(projectId, audio, options.diarize ?? true));
 
     const lines = toCaptionLines(transcript);
     if (!lines.length) throw new Error("Nothing was said, or nothing could be made out");
@@ -231,6 +232,22 @@ export async function transcribeProject(
  *
  * `auto` is the old belt-and-braces behaviour, kept one env change away.
  */
+/**
+ * Whisper writes Cantonese, and a good deal of Mandarin, in Traditional
+ * characters. This studio publishes in Simplified only, so the conversion
+ * happens here, once, before a line is ever written to a caption row — not in
+ * the player, which would leave the database, the burnt-in subtitles and the
+ * screen disagreeing with each other. The timings are untouched: t2s is one
+ * character in, one character out.
+ */
+function simplified(t: Transcript): Transcript {
+  return {
+    ...t,
+    text: toSimplified(t.text),
+    words: t.words.map((w) => ({ ...w, text: toSimplified(w.text) })),
+  };
+}
+
 async function runTranscription(
   projectId: string,
   audio: Blob,

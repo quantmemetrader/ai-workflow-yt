@@ -22,7 +22,7 @@ import { audit } from "@/lib/audit";
 import { LANG_COOKIE, LANG_COOKIE_MAX_AGE, type Locale } from "@/lib/i18n";
 import { cookies } from "next/headers";
 
-const ALLOWED: Locale[] = ["zh-CN", "zh-HK", "en"];
+const ALLOWED: Locale[] = ["zh-CN", "en"];
 
 export async function setLocaleAction(locale: Locale) {
   const viewer = await getViewer();

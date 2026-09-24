@@ -39,9 +39,9 @@ import { CARD_PAD, CARD_RADIUS, CORNER_MAX_W, HEADER_BAND, cardBehindPicture, in
    Naming a CJK face is not optional — see CLIENT-BACKLOG: a bare `Inter,
    system-ui` picked a Japanese fallback and drew the wrong glyph forms. */
 const FAMILY =
-  '"Inter", "Noto Sans CJK SC", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", "Source Han Sans SC", system-ui, sans-serif';
+  '"Inter", "Noto Sans SC", "Noto Sans CJK SC", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Source Han Sans SC", system-ui, sans-serif';
 const CJK =
-  '"Noto Sans CJK SC", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", "Source Han Sans SC", "Inter", system-ui, sans-serif';
+  '"Noto Sans SC", "Noto Sans CJK SC", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Source Han Sans SC", "Inter", system-ui, sans-serif';
 
 /** The composition's own values (`remotion/src/theme.ts`). */
 const INK = "#ffffff";

@@ -8,7 +8,7 @@ import { P } from './shell.mjs';
 
 export const PCSS = `
     html, body { overflow: hidden; }
-    body { margin: 0; font-family: Inter, 'PingFang HK', 'Noto Sans HK', system-ui, sans-serif; font-weight: 420; letter-spacing: 0.02em; -webkit-font-smoothing: antialiased; }
+    body { margin: 0; font-family: Inter, 'Noto Sans SC', 'PingFang SC', system-ui, sans-serif; font-weight: 420; letter-spacing: 0.02em; -webkit-font-smoothing: antialiased; }
     * { box-sizing: border-box; }
     p { margin: 0; }
     img { display: block; }

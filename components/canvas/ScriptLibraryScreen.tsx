@@ -105,7 +105,7 @@ function daysSince(d: Date): number {
  * artboard's, so the cascade inside is unchanged.
  */
 const CSS = `
-[data-script-library-screen] { font-family: Inter, 'PingFang SC', 'Noto Sans SC', system-ui, sans-serif; font-weight: 420; letter-spacing: 0.02em; -webkit-font-smoothing: antialiased; color: #171717; }
+[data-script-library-screen] { font-family: Inter, 'Noto Sans SC', 'PingFang SC', system-ui, sans-serif; font-weight: 420; letter-spacing: 0.02em; -webkit-font-smoothing: antialiased; color: #171717; }
 [data-script-library-screen] * { box-sizing: border-box; }
 [data-script-library-screen] a { color: #007be0; text-decoration: none; }
 [data-script-library-screen] img { display: block; }

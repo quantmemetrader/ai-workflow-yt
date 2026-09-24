@@ -8,9 +8,9 @@
  * looks confident.
  */
 export const THEME = {
-  family: '"Inter", "Noto Sans CJK SC", "Noto Sans CJK TC", "PingFang SC", "Helvetica Neue", -apple-system, sans-serif',
+  family: '"Inter", "Noto Sans CJK SC", "PingFang SC", "Helvetica Neue", -apple-system, sans-serif',
   /** The CJK face first, for a line that is mostly Chinese. */
-  cjk: '"Noto Sans CJK SC", "Noto Sans CJK TC", "PingFang SC", "Inter", sans-serif',
+  cjk: '"Noto Sans CJK SC", "PingFang SC", "Inter", sans-serif',
   ink: "#ffffff",
   quiet: "rgba(255,255,255,0.68)",
   void: "#000000",

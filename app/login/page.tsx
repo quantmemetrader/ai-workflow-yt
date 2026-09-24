@@ -6,7 +6,7 @@ import { LoginForm } from "./login-form";
 
 export const metadata = { title: "登录" };
 
-const LOCALES: Locale[] = ["zh-CN", "zh-HK", "en"];
+const LOCALES: Locale[] = ["zh-CN", "en"];
 
 export default async function LoginPage() {
   if (await getViewer()) redirect("/chat");

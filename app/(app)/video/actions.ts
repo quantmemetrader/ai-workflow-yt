@@ -238,7 +238,7 @@ export async function addCaptionAction(
       startMs: start,
       endMs: end,
       text: String(input.text ?? "").slice(0, 500),
-      language: String(input.language ?? "zh-HK").slice(0, 16),
+      language: String(input.language ?? "zh-CN").slice(0, 16),
     });
     refresh();
     return {};
@@ -316,7 +316,7 @@ export async function autoEditAction(projectId: string, language: string) {
   if (!viewer) return { error: "Not allowed" };
   if (!id(projectId)) return { error: "Not found" };
   try {
-    await requestAutoEdit(viewer, projectId, String(language || "zh-HK"));
+    await requestAutoEdit(viewer, projectId, String(language || "zh-CN"));
     refresh();
     return {};
   } catch (err) {
@@ -502,7 +502,7 @@ export async function splitCaptionsAction(projectId: string, text: string, langu
       viewer,
       projectId,
       String(text ?? "").slice(0, 40_000),
-      String(language ?? "zh-HK").slice(0, 16),
+      String(language ?? "zh-CN").slice(0, 16),
       totalMs,
     );
     refresh();
@@ -525,7 +525,7 @@ export async function exportAction(
     await requestExport(viewer, projectId, {
       aspect: input.aspect,
       burnCaptions: Boolean(input.burnCaptions),
-      captionLanguage: String(input.captionLanguage ?? "zh-HK").slice(0, 16),
+      captionLanguage: String(input.captionLanguage ?? "zh-CN").slice(0, 16),
       replaces: input.replaces && id(input.replaces) ? input.replaces : null,
     });
     refresh();
@@ -542,11 +542,14 @@ export async function exportAction(
  * and uploads it, which on a long interview is minutes. The screen polls while
  * it runs rather than holding a request open.
  */
-export async function transcribeAction(projectId: string, language: string, diarize: boolean) {
+export async function transcribeAction(projectId: string, raw: string, diarize: boolean) {
   const viewer = await editor();
   if (!viewer) return { error: "Not allowed" };
   if (!id(projectId)) return { error: "Not found" };
-  if (!["zh-HK", "zh-CN", "en"].includes(language)) return { error: "No such language" };
+  /* zh-HK was the old default and is still in a tab somebody left open.
+     There is one Chinese here now, so it folds into it. */
+  const language = raw === "zh-HK" ? "zh-CN" : raw;
+  if (!["zh-CN", "en"].includes(language)) return { error: "No such language" };
 
   try {
     await requestTranscription(viewer, projectId, language, Boolean(diarize));

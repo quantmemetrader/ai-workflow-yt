@@ -106,7 +106,7 @@ ${DOCS.map(([t, m, amt, st, tone, on]) => `          <div class="di${on ? ' on' 
         <div class="desk" style="flex-grow: 1; min-width: 0; margin-bottom: 14px;">
           <div class="rc">
             <div class="c" style="font-size: 13px; font-weight: 700; letter-spacing: .04em;"><span class="fx" data-l="Supplier">BROADWAY PHOTO SUPPLY</span></div>
-            <div class="c" style="margin-top: 3px;">百老匯攝影器材有限公司</div>
+            <div class="c" style="margin-top: 3px;">百老汇摄影器材有限公司</div>
             <div class="c" style="color: #7c7c7c;">Mong Kok, Kowloon · 2332 1234</div>
             <hr>
             <div class="rl"><span>INVOICE</span><span class="fx" data-l="Invoice no.">BP-208841</span></div>
@@ -123,7 +123,7 @@ ${DOCS.map(([t, m, amt, st, tone, on]) => `          <div class="di${on ? ' on' 
             <div class="rl" style="font-weight: 700; font-size: 13px; margin-top: 4px;"><span>TOTAL HKD</span><span class="fx" data-l="Amount">4,280.00</span></div>
             <div class="rl" style="margin-top: 8px;"><span>PAID</span><span class="fx w" data-l="Check">VISA ****4412</span></div>
             <hr>
-            <div class="c" style="color: #7c7c7c;">THANK YOU · 多謝惠顧</div>
+            <div class="c" style="color: #7c7c7c;">THANK YOU · 多谢惠顾</div>
           </div>
         </div>
       </div>

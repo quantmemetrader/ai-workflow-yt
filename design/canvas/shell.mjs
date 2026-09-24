@@ -10,7 +10,7 @@ import path from 'path';
 const DIR = path.dirname(new URL(import.meta.url).pathname);
 const src = fs.readFileSync(path.join(DIR, 'Desktop.dc.html'), 'utf8');
 export const css = src.slice(src.indexOf('<style>') + 7, src.indexOf('</style>'))
-  .replace("font-family: Inter, system-ui, sans-serif;", "font-family: Inter, 'PingFang HK', 'Noto Sans HK', system-ui, sans-serif;");
+  .replace("font-family: Inter, system-ui, sans-serif;", "font-family: Inter, 'Noto Sans SC', 'PingFang SC', system-ui, sans-serif;");
 
 export const BASE_CSS = `
     .tabs { height: 40px; flex-shrink: 0; display: flex; align-items: stretch; gap: 20px; padding: 0 22px; border-bottom: 1px solid #ededed; }

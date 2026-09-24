@@ -136,7 +136,7 @@ const ZH: Record<string, string> = {
  * .btn. Source order is the artboard's, so the cascade inside is unchanged.
  */
 const CSS = `
-[data-trends-screen] { font-family: Inter, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Noto Sans SC', 'Source Han Sans SC', system-ui, sans-serif; font-weight: 420; letter-spacing: 0.02em; -webkit-font-smoothing: antialiased; color: #171717; }
+[data-trends-screen] { font-family: Inter, 'Noto Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Source Han Sans SC', system-ui, sans-serif; font-weight: 420; letter-spacing: 0.02em; -webkit-font-smoothing: antialiased; color: #171717; }
 [data-trends-screen] * { box-sizing: border-box; }
 [data-trends-screen] a { color: #007be0; text-decoration: none; }
 [data-trends-screen] img { display: block; }

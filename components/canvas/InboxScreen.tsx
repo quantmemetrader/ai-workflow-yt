@@ -128,7 +128,7 @@ const PICKER: React.CSSProperties = {
  * artboard's, so the cascade inside is unchanged.
  */
 const CSS = `
-[data-inbox-screen] { font-family: Inter, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Noto Sans SC', 'Source Han Sans SC', system-ui, sans-serif; font-weight: 420; letter-spacing: 0.02em; -webkit-font-smoothing: antialiased; color: #171717; }
+[data-inbox-screen] { font-family: Inter, 'Noto Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Source Han Sans SC', system-ui, sans-serif; font-weight: 420; letter-spacing: 0.02em; -webkit-font-smoothing: antialiased; color: #171717; }
 [data-inbox-screen] * { box-sizing: border-box; }
 [data-inbox-screen] a { color: #007be0; text-decoration: none; }
 [data-inbox-screen] img { display: block; }
@@ -311,8 +311,8 @@ function clock(at: Date, locale: string): string {
 /** A BCP-47 tag as a person would read it; unknown tags keep the tag. */
 function languageLabel(tag: string): string {
   const known: Record<string, string> = {
-    yue: "粵語 Cantonese",
-    "zh-Hant": "繁體中文",
+    yue: "粤语 Cantonese",
+    "zh-Hant": "繁体中文",
     "zh-Hans": "简体中文",
     en: "English",
   };

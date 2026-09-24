@@ -118,7 +118,7 @@ const CHS = [
   ['li', 'Aura Farmers Ltd', ['#30a46c', 'Connected'], 'Page posts', 91, '11 Aug'],
   ['tt', '@aurafarmers', ['#f5a524', 'Waiting on audit'], 'Lands in the TikTok inbox', 100, 'Never'],
   ['x', '@aurafarmers', ['#30a46c', 'Connected'], 'Posts, media', 38, '31 Aug'],
-  ['wc', 'Aura Farmers 官方號', ['#30a46c', 'Connected'], 'Drafts, comments', 70, '24 Aug'],
+  ['wc', 'Aura Farmers 官方号', ['#30a46c', 'Connected'], 'Drafts, comments', 70, '24 Aug'],
   ['xhs', 'No publishing API', ['#c7c7c7', 'Manual'], 'We export an asset pack', null, '19 Aug'],
   ['bili', 'No publishing API', ['#c7c7c7', 'Manual'], 'We export an asset pack', null, 'Never'],
 ];
@@ -182,7 +182,7 @@ const composerBody = `
       <div class="fl" style="margin-top: 14px;">Description<span class="cnt">612 / 5,000</span></div>
       <div class="inp" style="min-height: 74px; align-items: flex-start; padding-top: 9px; line-height: 1.55; font-size: 12.5px;">In 480 BC a Persian fleet gathers off Attica. How did the Greeks win in a strait barely a mile wide? Chapters: 0:00 The fleet · 0:50 The narrows · 1:57 Nightfall.</div>
       <div style="display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; margin-top: 14px;">
-        <div><div class="fl">Tags<span class="cnt">6 / 15</span></div><div style="display: flex; gap: 5px; flex-wrap: wrap;"><span class="tagc">history</span><span class="tagc">greece</span><span class="tagc">salamis</span><span class="tagc">粵語字幕</span><span class="tagc" style="border-style: solid; color: #999999;">+ Tag</span></div></div>
+        <div><div class="fl">Tags<span class="cnt">6 / 15</span></div><div style="display: flex; gap: 5px; flex-wrap: wrap;"><span class="tagc">history</span><span class="tagc">greece</span><span class="tagc">salamis</span><span class="tagc">粤语字幕</span><span class="tagc" style="border-style: solid; color: #999999;">+ Tag</span></div></div>
         <div><div class="fl">Video file</div><div class="inp" style="font-size: 12.5px;">${crop('history', ' width: 32px; height: 18px; border-radius: 3px;')}16:9 · 3:48<span class="cap" style="margin-left: auto;">繁中 + EN subtitles</span></div></div>
       </div>
       <div class="fl" style="margin-top: 14px;">Thumbnail<span class="cnt">1280 × 720</span></div>
@@ -245,7 +245,7 @@ const approvalsPanel = rightPanel(['Preview', 'Agent'], 'Preview', `
         <div style="flex-grow: 1; min-height: 0; overflow: hidden; padding: 14px;">
           <div style="font-size: 13px; font-weight: 500;">You’re approving 3 posts</div>
           <div class="cap" style="margin-top: 3px;">History of Greece · Ep 75 · Sat 12 Sep, 19:30</div>
-          ${[['yt', 'The Battle of Salamis in 4 minutes | History of Greece Ep 75', 'Private until the audit passes'], ['ig', '480 BC. One strait, two fleets. 海峽決定一切。 #history #greece', 'Reel · 9:16'], ['li', 'How a narrow strait decided a war: our new History of Greece episode.', 'Follows Master']].map(([k, txt, s]) => `<div style="margin-top: 12px; padding: 10px 11px; border: 1px solid #ededed; border-radius: 11px; background: #fff;"><div style="display: flex; align-items: center; gap: 7px;">${logo(k, 18)}<span style="font-size: 12px; font-weight: 500;">${CHN[k]}</span><span class="cap" style="margin-left: auto;">${s}</span></div><div style="font-size: 12px; line-height: 1.5; color: #383838; margin-top: 7px;">${txt}</div></div>`).join('')}
+          ${[['yt', 'The Battle of Salamis in 4 minutes | History of Greece Ep 75', 'Private until the audit passes'], ['ig', '480 BC. One strait, two fleets. 海峡决定一切。 #history #greece', 'Reel · 9:16'], ['li', 'How a narrow strait decided a war: our new History of Greece episode.', 'Follows Master']].map(([k, txt, s]) => `<div style="margin-top: 12px; padding: 10px 11px; border: 1px solid #ededed; border-radius: 11px; background: #fff;"><div style="display: flex; align-items: center; gap: 7px;">${logo(k, 18)}<span style="font-size: 12px; font-weight: 500;">${CHN[k]}</span><span class="cap" style="margin-left: auto;">${s}</span></div><div style="font-size: 12px; line-height: 1.5; color: #383838; margin-top: 7px;">${txt}</div></div>`).join('')}
           <div style="margin-top: 14px; padding: 10px 11px; border-radius: 10px; background: #fafafa;"><div style="font-size: 12px; font-weight: 500;">Before you approve</div><div class="cap" style="line-height: 1.5; margin-top: 4px;">Script v6 is locked, subtitles are attached, and all three posts pass their channel’s rules.</div></div>
         </div>
         <div style="flex-shrink: 0; border-top: 1px solid #f3f3f3; padding: 10px 14px 12px;" class="cap">Nothing leaves the platform without an approval record.</div>`);

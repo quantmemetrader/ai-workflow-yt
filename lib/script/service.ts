@@ -539,8 +539,8 @@ export function checksumOf(beats: { ord: number; visual: string; voiceover: stri
   const canonical = beats
     .slice()
     .sort((a, b) => a.ord - b.ord)
-    .map((b) => [b.ord, b.naturalSound ? 1 : 0, b.visual, b.voiceover, b.subtitle].join(" "))
-    .join("");
+    .map((b) => [b.ord, b.naturalSound ? 1 : 0, b.visual, b.voiceover, b.subtitle].join("\x00"))
+    .join("\x01");
   return createHash("sha256").update(canonical).digest("hex");
 }
 

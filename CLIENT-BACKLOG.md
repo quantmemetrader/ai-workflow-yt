@@ -53,6 +53,62 @@ pm2 logs aura          # or logs/aura.err.log, logs/worker.log
 
 ---
 
+## DONE 2026-09-24 — Simplified Chinese everywhere, and glyphs that cannot drift
+
+> The client, 2026-09-24: 乱码、字体错误、使用人员名称错误 — "garbled text, font
+> errors, and incorrect user name displays."
+
+Four separate causes were behind one complaint. All four are closed.
+
+**1. The screen asked the reader's own machine for a Chinese font.** The
+2026-09-23 pass named PingFang SC and Microsoft YaHei in the stacks, but named
+them *before* any webfont, and no webfont was shipped at all. On a Hong Kong
+Mac that resolves to PingFang HK and on a Hong Kong PC to Microsoft JhengHei —
+Traditional cuts, which draw a different glyph for the same codepoint. One
+screen, the script detail view, asked for `'PingFang HK'` by name. The site now
+ships **Noto Sans SC** from `public/fonts/noto-sans-sc/` (101 unicode-range
+subsets, 4.6 MB on disk, ~150 KB over the wire per page) and names it first in
+every one of the 16 stacks. Refetch with `scripts/fetch-cjk-font.sh`.
+
+**2. The box picked its own CJK font for renders.** `Noto Sans CJK` ships SC,
+TC, HK, JP and KR in one file and fontconfig took whichever came first when
+nothing declared a language, so a burnt-in subtitle or a Remotion still could
+come back in Japanese letterforms. `/etc/fonts/local.conf` now pins the
+Simplified cut; the file is kept in the repo as `scripts/fonts-local.conf`.
+
+**3. Whisper writes Traditional.** It always has — Cantonese especially, and a
+good deal of Mandarin. Nothing converted it, and the caption track it landed in
+was labelled `zh-HK`, which was the **default everywhere**: captions, exports,
+the director's own language field, the transcribe UI. So the platform was
+generating Traditional subtitles and calling that correct. Now:
+`lib/text/simplified.ts` converts Traditional to Simplified at the two seams
+where text arrives — the transcript, and the model's own output — and `zh-HK`
+is gone from every default and from the language pickers.
+
+**4. Traditional text was already in the repo and the database.** 358 runs
+across 57 files, and 84 values in Postgres. Both swept. `npm run build` and
+`scripts/simplify-existing.ts` are both idempotent; a second run finds nothing.
+
+### Notes for whoever is next
+- `lib/text/simplified.ts` is **generated** by `scripts/gen-simplified.py` from
+  OpenCC's `t2s` tables. Edit the generator. It matches OpenCC byte for byte
+  over a 356-line corpus that covers every character and phrase in the table.
+- The generator **drops the 1,120 conversions whose Simplified form is above
+  U+FFFF**, because neither the shipped webfont nor the Noto Sans CJK SC that
+  ffmpeg burns subtitles with has a glyph for any of them. The one that occurs
+  in real Cantonese is 嗰 → 𠮶; converting it would have replaced a readable
+  character with an empty box, which is the complaint this work started from.
+- `zh-HK` survives in the Postgres `locale` enum only because removing a value
+  needs a table rewrite. Nothing offers it and nothing defaults to it.
+
+### Still open from the same message
+- **使用人员名称错误** — the top bar shows the login name (`admin`) rather than
+  the person's name and role. Separate fix; see §4 of the agentic brief.
+- The rest of the 2026-09-24 brief (sidebar labels, resizable panels, the
+  agent team, the article page) is untouched.
+
+---
+
 ## BLOCKER — ElevenLabs refuses this server (found 2026-09-23)
 
 Every ElevenLabs request from this box (84.32.64.46, Cherry Servers,

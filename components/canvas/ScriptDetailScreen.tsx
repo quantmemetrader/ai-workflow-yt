@@ -103,7 +103,7 @@ const ACCENT = "#007be0";
  * the app, which defines its own .n / .lbl / .btn.
  */
 const CSS = `
-[data-script-screen] { font-family: Inter, 'PingFang SC', 'PingFang HK', 'Noto Sans SC', system-ui, sans-serif; font-weight: 420; letter-spacing: 0.02em; -webkit-font-smoothing: antialiased; color: #171717; }
+[data-script-screen] { font-family: Inter, 'Noto Sans SC', 'PingFang SC', system-ui, sans-serif; font-weight: 420; letter-spacing: 0.02em; -webkit-font-smoothing: antialiased; color: #171717; }
 [data-script-screen] * { box-sizing: border-box; }
 [data-script-screen] a { color: #007be0; text-decoration: none; }
 [data-script-screen] img { display: block; }
@@ -736,8 +736,8 @@ export function ScriptDetailScreen(props: ScriptDetailScreenProps): React.JSX.El
     [beats],
   );
   const signature = beats
-    .map((b) => [b.id, b.visual, b.voiceover, b.subtitle, b.naturalSound].join(" "))
-    .join("");
+    .map((b) => [b.id, b.visual, b.voiceover, b.subtitle, b.naturalSound].join("\x00"))
+    .join("\x01");
 
   /* The sharing sheet is a popover, so it closes on Escape and on a click
      anywhere else — a panel that can only be dismissed by the button that
@@ -1583,7 +1583,7 @@ export function ScriptDetailScreen(props: ScriptDetailScreenProps): React.JSX.El
                 onCommit={commitDraft}
                 onSelectText={setSelection}
               />
-              {/* The artboard writes "（現場聲）· Natural sound only" into beat
+              {/* The artboard writes "（现场声）· Natural sound only" into beat
                   01 as text. It is a column on the beat, it changes how the
                   duration is estimated, and Video is told about it, so it gets
                   a control rather than a convention. */}

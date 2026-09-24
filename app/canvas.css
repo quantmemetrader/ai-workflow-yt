@@ -152,7 +152,7 @@ textarea::placeholder { color: #999999; }
 /* from design/canvas/FilesDesktop.dc.html — scoped to [data-files-screen],
  * because that artboard defines its own .n / .lbl / .btn which must win
  * inside the Files screen and nowhere else. */
-[data-files-screen] { font-family: Inter, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Noto Sans SC', 'Source Han Sans SC', system-ui, sans-serif; font-weight: 420; letter-spacing: 0.02em; -webkit-font-smoothing: antialiased; color: #171717; background: #ffffff; }
+[data-files-screen] { font-family: Inter, 'Noto Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Source Han Sans SC', system-ui, sans-serif; font-weight: 420; letter-spacing: 0.02em; -webkit-font-smoothing: antialiased; color: #171717; background: #ffffff; }
 [data-files-screen], [data-files-screen] * { box-sizing: border-box; }
 [data-files-screen] a { color: #007be0; text-decoration: none; }
 [data-files-screen] a:hover { color: #0169be; }

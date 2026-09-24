@@ -282,7 +282,7 @@ export function BriefComposer({
               <input
                 value={draft.subtitleLanguage}
                 onChange={(e) => set("subtitleLanguage", e.target.value)}
-                placeholder={t("繁體中文, English…", "繁體中文、English…")}
+                placeholder={t("简体中文, English…", "简体中文、English…")}
                 style={field}
               />
             </Labelled>

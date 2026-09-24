@@ -1084,7 +1084,7 @@ async function run(ctx: ToolContext, name: string, args: Record<string, unknown>
     .where(eq(captions.projectId, project.id))
     .limit(1);
 
-  const scoped = { ...ctx, projectId: project.id, language: anyCaption?.language ?? "zh-HK" };
+  const scoped = { ...ctx, projectId: project.id, language: anyCaption?.language ?? "zh-CN" };
   const text = await dispatch(scoped, name, JSON.stringify(args));
 
   // Everything here but the two read-only tools changes the timeline, and the

@@ -107,7 +107,7 @@ export async function ensureAgent(tenantId: string, key: AgentKey): Promise<stri
         // in, because sign-in refuses `is_agent` and it has no password.
         status: "active",
         isAgent: true,
-        locale: "zh-HK",
+        locale: "zh-CN",
       })
       .onConflictDoNothing({ target: [users.tenantId, users.email] });
     // Two first uses at once: whichever row won is the agent.

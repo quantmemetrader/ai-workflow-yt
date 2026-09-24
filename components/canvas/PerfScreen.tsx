@@ -118,7 +118,7 @@ const GRID = "minmax(260px,1fr) 78px 78px 70px 62px 72px 74px 66px";
  * artboard's, so the cascade inside is unchanged.                      */
 /* ------------------------------------------------------------------ */
 const CSS = `
-[data-perf-screen] { font-family: Inter, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Noto Sans SC', 'Source Han Sans SC', system-ui, sans-serif; font-weight: 420; letter-spacing: 0.02em; -webkit-font-smoothing: antialiased; }
+[data-perf-screen] { font-family: Inter, 'Noto Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Source Han Sans SC', system-ui, sans-serif; font-weight: 420; letter-spacing: 0.02em; -webkit-font-smoothing: antialiased; }
 [data-perf-screen], [data-perf-screen] * { box-sizing: border-box; }
 [data-perf-screen] a { color: #007be0; text-decoration: none; }
 [data-perf-screen] img { display: block; }
@@ -741,7 +741,7 @@ export function PerfScreen(props: PerfScreenProps): React.JSX.Element {
                     width={boxW}
                     height={CH}
                     viewBox={`0 0 ${boxW} ${CH}`}
-                    style={{ display: "block", fontFamily: "Inter, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Noto Sans SC', 'Source Han Sans SC', system-ui, sans-serif" }}
+                    style={{ display: "block", fontFamily: "Inter, 'Noto Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Source Han Sans SC', system-ui, sans-serif" }}
                   >
                     <defs>
                       <linearGradient id="perf-area" x1="0" y1="0" x2="0" y2="1">

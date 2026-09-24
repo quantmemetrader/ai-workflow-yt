@@ -552,7 +552,7 @@ const previewMain = `${header('preview',
         <div style="height: 392px; flex-shrink: 0; border-radius: 14px; background: #f5f5f5; display: flex; align-items: center; justify-content: center; gap: 18px; position: relative;">
           <sc-if value="{{single}}" hint-placeholder-val="{{ true }}">
             <div style="width: {{fw}}px; height: {{fh}}px; border-radius: 8px; overflow: hidden; position: relative; box-shadow: 0 6px 20px rgba(0,0,0,.12);">${crop('H_FULL', ' position: absolute; inset: 0;')}
-              <div style="position: absolute; left: 8%; right: 8%; bottom: 7%; text-align: center;"><span style="display: inline-block; background: rgba(23,23,23,.78); color: #fff; font-size: 14px; line-height: 1.45; padding: 4px 10px; border-radius: 5px;">到入夜，波斯艦隊已經潰散。<br><span style="font-size: 12px; opacity: .8;">By nightfall, the Persian fleet is broken.</span></span></div>
+              <div style="position: absolute; left: 8%; right: 8%; bottom: 7%; text-align: center;"><span style="display: inline-block; background: rgba(23,23,23,.78); color: #fff; font-size: 14px; line-height: 1.45; padding: 4px 10px; border-radius: 5px;">到入夜，波斯舰队已经溃散。<br><span style="font-size: 12px; opacity: .8;">By nightfall, the Persian fleet is broken.</span></span></div>
             </div>
           </sc-if>
           <sc-if value="{{compare}}" hint-placeholder-val="{{ false }}">
@@ -655,7 +655,7 @@ const audioMain = `${header('audio',
             <div style="display: flex; align-items: center; margin-bottom: 6px;"><span class="lbl" style="padding: 0;">Voice</span><span class="cap" style="margin-left: auto;">English VO</span></div>
             <div class="tk on"><div class="play">${PLAY_SVG}</div><span style="flex-grow: 1; min-width: 0;">Azure · Ryan, en-GB</span>${okDot.replace('width: 18px; height: 18px; border-radius: 9px', 'width: 16px; height: 16px; border-radius: 8px')}</div>
             <div class="tk"><div class="play">${PLAY_SVG}</div><span style="flex-grow: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">ElevenLabs · Chan’s clone</span><span class="cap">client account</span></div>
-            <div class="tk"><div class="play">${PLAY_SVG}</div><span style="flex-grow: 1; min-width: 0;">Azure · WanLung, 粵語</span><span class="cap">dub</span></div>
+            <div class="tk"><div class="play">${PLAY_SVG}</div><span style="flex-grow: 1; min-width: 0;">Azure · WanLung, 粤语</span><span class="cap">dub</span></div>
           </div>
           <div class="card" style="padding: 12px;">
             <div style="display: flex; align-items: center; margin-bottom: 6px;"><span class="lbl" style="padding: 0;">Music</span><span class="cap" style="margin-left: auto;">From beat 01</span></div>

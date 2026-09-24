@@ -157,8 +157,8 @@ export const captions = pgTable(
     startMs: integer().notNull().default(0),
     endMs: integer().notNull().default(2000),
     text: text().notNull().default(""),
-    /** zh-HK, zh-CN, en. A project can carry several tracks. */
-    language: text().notNull().default("zh-HK"),
+    /** zh-CN, en. A project can carry several tracks. */
+    language: text().notNull().default("zh-CN"),
     ord: integer().notNull().default(0),
     /**
      * When each word was said, from the transcriber.
@@ -256,7 +256,7 @@ export const videoExports = pgTable(
     replaces: text(),
     /** Burn the captions into the picture, or ship an SRT beside it. */
     burnCaptions: text().notNull().default("burn"),
-    captionLanguage: text().notNull().default("zh-HK"),
+    captionLanguage: text().notNull().default("zh-CN"),
     state: exportStateEnum().notNull().default("queued"),
     progress: real().notNull().default(0),
     /** The finished file, and its subtitle sidecar when there is one. */

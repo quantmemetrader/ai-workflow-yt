@@ -343,7 +343,7 @@ const REWRITE_PROMPT = `You rewrite one passage of a shooting script for a Hong 
 
 Answer with the rewritten passage alone. No quotes, no preamble, no explanation, no markdown. Keep the same language and the same speaker. Do not add facts that were not in the original.`;
 
-/** "Rewrite selection" and the Shorter / Warmer / More formal / 轉做書面語
+/** "Rewrite selection" and the Shorter / Warmer / More formal / 转做书面语
  * buttons: one passage, one instruction, the text back. */
 export async function rewriteSelection(viewer: Viewer, selection: string, instruction: string) {
   await assertBudget(viewer);
