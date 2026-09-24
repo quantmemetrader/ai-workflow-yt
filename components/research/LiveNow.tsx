@@ -204,7 +204,7 @@ export function LiveNow({
   }
 
   return (
-    <div style={{ flexShrink: 1, minHeight: 0, maxHeight: "80vh", overflowY: "auto", borderBottom: "1px solid #ededed", background: "#fcfcfc" }}>
+    <div style={{ flexShrink: 0, minHeight: 0, maxHeight: "80vh", overflowY: "auto", borderBottom: "1px solid #ededed", background: "#fcfcfc" }}>
       {/* Scrolls inside itself: the list, the researcher's line and the picks
        are taller than the space above the board, and the page does not
        scroll, so without this the picks were cut off at the bottom. */}
@@ -328,7 +328,7 @@ export function LiveNow({
                     {narrow ? null : <span />}
                     <span />
                   </div>
-                  <div style={{ maxHeight: 336, overflowY: "auto", margin: "0 -8px", padding: "0 8px" }}>
+                  <div style={{ maxHeight: "52vh", overflowY: "auto", margin: "0 -8px", padding: "0 8px" }}>
                     {rows.map((r, i) => {
                       const mark = marks[r.phrase];
                       const on = selected === r.phrase;

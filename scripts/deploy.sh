@@ -28,7 +28,17 @@ mkdir -p logs
 
 echo "==> reload"
 if pm2 describe aura >/dev/null 2>&1; then
-  pm2 reload ecosystem.config.cjs --update-env
+  # Only the app and the workers. The scheduled scripts (digest, plan, hot
+  # lists, social sync…) are cron apps, and pm2 runs a cron app once every
+  # time it is (re)loaded: reloading them on each deploy ran the paid TikHub
+  # collection and the social sync every few minutes on a busy day. They pick
+  # up new code on their next scheduled run anyway.
+  pm2 reload ecosystem.config.cjs --only aura,aura-worker --update-env
+  # A scheduled app that is new in the ecosystem file is started once, so it
+  # exists; the ones already there are left alone.
+  for app in $(node -e "console.log(require(\"./ecosystem.config.cjs\").apps.map(a=>a.name).join(\" \"))"); do
+    pm2 describe "$app" >/dev/null 2>&1 || pm2 start ecosystem.config.cjs --only "$app"
+  done
   # A reload keeps the instance count it already had; the ecosystem file asks
   # for two workers so a render never holds up the small jobs behind it.
   pm2 scale aura-worker 2 >/dev/null 2>&1 || true

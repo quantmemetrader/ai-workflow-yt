@@ -11,7 +11,7 @@ import { AGENT_COLORS, AGENT_LABELS, agentTag, parseAgentMentions, type AgentKey
 import { pressCardAction, sendChannelMessage } from "@/app/(app)/chat/actions";
 import { deleteProjectAction, renameProjectAction, setProjectAccessAction, setProjectStatusAction } from "@/app/(app)/projects/actions";
 import { AccessPicker } from "@/components/files/AccessPicker";
-import { addClipAction, addItemAction, autoEditAction, directAction, exportAction } from "@/app/(app)/video/actions";
+import { addClipAction, addItemAction, autoEditAction, exportAction } from "@/app/(app)/video/actions";
 import { uploadFiles } from "@/lib/client/upload";
 import { beginWork } from "@/lib/client/busy";
 import { notify } from "@/lib/client/notify";
@@ -148,8 +148,9 @@ export function ProjectScreen({ project: p, zh, people }: { project: ProjectDeta
       {/* ================= the project ================= */}
       <div style={{ flexGrow: 1, minWidth: 0, overflowY: "auto" }}>
         <div style={{ maxWidth: 900, margin: "0 auto", padding: "22px 24px 48px", display: "flex", flexDirection: "column", gap: 14 }}>
-          <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
-            <div style={{ minWidth: 0, flexGrow: 1 }}>
+          {/* The actions sit on their own row above, so the title has the full width. */}
+          <div style={{ display: "flex", flexDirection: "column-reverse", gap: 10 }}>
+            <div style={{ minWidth: 0 }}>
               <div style={{ fontSize: 11.5, color: "#999999", display: "flex", gap: 6, alignItems: "center" }}>
                 <Link href="/projects" style={{ color: "#999999", textDecoration: "none" }}>
                   {t("项目", "Projects")}
@@ -178,7 +179,7 @@ export function ProjectScreen({ project: p, zh, people }: { project: ProjectDeta
               )}
               {p.brief ? <p style={{ margin: "6px 0 0", fontSize: 13, color: "#7c7c7c", lineHeight: 1.6 }}>{p.brief.replace(/@\S+/g, "").trim().slice(0, 200)}</p> : null}
             </div>
-            <div style={{ display: "flex", gap: 8, alignItems: "center", flexShrink: 0 }}>
+            <div style={{ display: "flex", gap: 8, alignItems: "center", justifyContent: "flex-end", flexWrap: "wrap" }}>
               <button type="button" onClick={() => p.canManage && setSharing(true)} disabled={!p.canManage} title={p.canManage ? t("设置谁能看到这个项目", "Choose who can see this project") : t("只有发起人或管理员能改", "Only the person who started it, or an admin")} style={{ ...btn(false), height: 30, fontSize: 12 }}>
                 <Icon name={p.access.mode === "everyone" ? "eye" : "lock"} size={13} />
                 {p.access.mode === "everyone" ? t("全工作室", "Everyone") : p.access.mode === "private" ? t("仅自己", "Private") : p.access.mode === "groups" ? t("部分分组", "Groups") : t(`${p.access.userIds?.length ?? 0} 人`, `${p.access.userIds?.length ?? 0} people`)}
@@ -344,7 +345,7 @@ export function ProjectScreen({ project: p, zh, people }: { project: ProjectDeta
             {p.video ? (
               <div style={{ marginTop: rendered ? 10 : 0 }}>
                 <ActionBar>
-                  <Action primary icon="spark" label={busyAction === "direct" ? t("开始中…", "Starting…") : t("一键成片", "Make it in one go")} onClick={() => runTool("direct", t("一键成片", "one-go video"), () => directAction(p.video!.id, { brief: (p.brief ?? p.title).replace(/@\S+/g, "").trim() || p.title, aspect: "9:16", render: true }))} disabled={pending || renderLive} />
+                  <Action primary icon="spark" label={busyAction === "direct" ? t("开始中…", "Starting…") : t("一键成片", "Make it in one go")} onClick={() => runTool("direct", t("一键成片", "one-go video"), async () => { const r = await fetch(`/api/projects/${p.id}/one-go`, { method: "POST" }); const j = (await r.json().catch(() => ({}))) as { error?: string }; return r.ok ? {} : { error: j.error ?? t("没能开始", "Could not start") }; })} disabled={pending || renderLive} />
                   <Action icon="scissors" label={t("自动粗剪", "Auto rough cut")} onClick={() => runTool("autoedit", t("自动粗剪", "auto rough cut"), () => autoEditAction(p.video!.id, zh ? "zh-CN" : "en"))} disabled={pending || !p.video.clips} />
                   <Action icon="play" label={t("渲染 9:16", "Render 9:16")} onClick={() => runTool("r916", t("渲染 9:16", "render 9:16"), () => exportAction(p.video!.id, { aspect: "9:16", burnCaptions: true, captionLanguage: "zh-CN" }))} disabled={pending || renderLive || !p.video.items} />
                   <Action icon="play" label={t("渲染 16:9", "Render 16:9")} onClick={() => runTool("r169", t("渲染 16:9", "render 16:9"), () => exportAction(p.video!.id, { aspect: "16:9", burnCaptions: true, captionLanguage: "zh-CN" }))} disabled={pending || renderLive || !p.video.items} />
