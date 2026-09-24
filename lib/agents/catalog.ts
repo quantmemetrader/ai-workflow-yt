@@ -96,6 +96,10 @@ const ALIASES: Record<AgentKey, string[]> = {
   article: ["撰稿人", "文章助理", "撰稿", "文章", "articleagent", "article"],
 };
 
+/** Every name an employee answers to — the picker searches all of them, so
+ *  `@r`, `@研`, `@edit` and `@剪` all find the same colleague. */
+export const agentAliases = (key: AgentKey): string[] => [...ALIASES[key]];
+
 /** Latin aliases, longest first, so `videoagent` is not read as `video`. */
 const LATIN: { key: AgentKey; alias: string }[] = AGENT_KEYS.flatMap((key) =>
   ALIASES[key].filter((a) => /^[a-z]+$/.test(a)).map((alias) => ({ key, alias })),

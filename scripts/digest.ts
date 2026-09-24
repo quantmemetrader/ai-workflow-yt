@@ -27,6 +27,7 @@ import { AiError, complete } from "../lib/ai/openrouter";
 import { modelFor } from "../lib/ai/models";
 import { BudgetStop, assertBudget, recordUsage } from "../lib/ai/ledger";
 import { rankedTopics } from "../lib/research/service";
+import { studioBrief } from "../lib/research/studio";
 import { dueNow, readAutomation } from "../lib/automations/service";
 
 const TENANT = process.env.TENANT_ID ?? "tnt_aurafarmers";
@@ -38,28 +39,35 @@ const DRY = process.argv.includes("--dry");
 const hkDate = (d = new Date()) =>
   new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Hong_Kong", year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
 
-const INSTRUCTIONS = `你现在是腾亚创变的「研究助理」，一名 AI 员工。每天早上 8 点，你在团队频道 #研究日报 发一条晨报。
+const INSTRUCTIONS = `你现在是腾亚创变的「研究员」，一名 AI 员工。每天早上 8 点，你在团队频道 #研究日报 发一条晨报。
 
-只用下面给你的资料。不要编造数字、新闻或来源；资料不够就直说「资料不足」，不要硬凑。
+最重要的一条：晨报是写给这个频道的，不是写新闻摘要。
+- 先看「本频道自己的数据」那一段：哪条片的点赞率高、观众在问什么。这是第一手资料。
+- 外部热搜只是参考。不要把一条和频道无关的热搜（台风、球赛、明星八卦）当成选题，除非你能用本频道的数据说清楚为什么这个频道要讲它。
+- 选题必须能接上这个频道已经验证过的东西（香港机会、Web3 与 AI、人物对话、投资与职涯），并且团队今天真的拍得了。
+
+只用下面给你的资料。不要编造数字、新闻或来源；资料不够就直说「资料不足」。
 传闻就写明是传闻；当事人已经否认的，要写出否认。不要把未经证实的消息当成事实，尤其是个人私生活。
+引用本频道数据时，把具体数字写出来（播放、点赞率、评论原话）。
 
-格式（Markdown，简体中文，整条不超过 350 字）：
+格式（Markdown，简体中文，整条不超过 400 字）：
 
 **今天讨论：<一个选题，一句话>**
-为什么是现在：<一到两句，引用资料里的具体数字或标题>
+为什么是现在：<一到两句，先引本频道的数字或观众原话，再引外部信号>
 可以讨论：
 - <问题 1>
 - <问题 2>
 - <问题 3>
 建议角度：<一句话，适合这个频道的观众>
 
-**昨日趋势**
-- <最多 5 条，每条一行：发生了什么 + 数据>
+**本频道近况**
+- <2 到 3 条，每条一行：哪条片 + 具体数字 + 说明了什么>
 
-**值得盯的**
-- <1 到 2 个正在变化的已关注话题，没有就写「暂无明显变化」>
+**观众在问**
+- <最多 3 条，引评论原话；没有就写「最近没有新留言」>
 
-选题要选团队今天真的可以开会讨论、可以拍的那一个，不是最热的那个。`;
+**外面在发生什么**
+- <最多 3 条，只写和这个频道相关的，每条带数据或标题>`;
 
 async function alreadyPosted(channelId: string, date: string): Promise<boolean> {
   const { rows } = await db.execute<{ n: number }>(sql`
@@ -111,7 +119,12 @@ async function main() {
     .sort((a, b) => b.change14d - a.change14d)
     .slice(0, 3);
 
-  const [trending, listed, ...details] = await Promise.all([
+  /* The studio's own numbers first. This is the half that was missing: 125
+     of its videos, their like rates and the questions its viewers typed are
+     in this database, and the brief was reading Google's trending searches
+     instead — which is why it came back generic. */
+  const [studio, trending, listed, ...details] = await Promise.all([
+    studioBrief(TENANT),
     runTool(viewer, "trending_now", JSON.stringify({ region: "HK" })),
     runTool(viewer, "list_topics", JSON.stringify({ limit: 20 })),
     ...movers.map((t) => runTool(viewer, "read_topic", JSON.stringify({ phrase: t.name }))),
@@ -119,9 +132,10 @@ async function main() {
 
   const material = [
     `日期：${date}（香港）`,
-    `## 香港热搜与 YouTube 热门\n${trending.text}`,
-    `## 团队关注的话题（热度与 14 天变化）\n${listed.text}`,
-    ...details.map((d) => `## 话题详情\n${d.text}`),
+    studio.text,
+    `## 外部信号 · 香港热搜与 YouTube 热门（只是参考）\n${trending.text}`,
+    `## 外部信号 · 团队关注的话题（热度与 14 天变化）\n${listed.text}`,
+    ...details.map((d) => `## 外部信号 · 话题详情\n${d.text}`),
   ].join("\n\n");
 
   const { text: base } = await assemblePrompt(viewer, "research");

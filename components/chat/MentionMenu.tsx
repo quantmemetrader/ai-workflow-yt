@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { AGENT_KEYS, AGENT_LABELS, type AgentKey } from "@/lib/agents/catalog";
+import { AGENT_KEYS, AGENT_LABELS, agentAliases, type AgentKey } from "@/lib/agents/catalog";
 
 /**
  * The @-picker: who you can tag, people and AI employees together.
@@ -27,9 +27,27 @@ export type MentionTarget = {
   avatarUrl: string | null;
   /** Set for an AI employee; null for a person. */
   agent: AgentKey | null;
+  /**
+   * Everything this target answers to, lower-cased.
+   *
+   * Searching only the written tag meant that on a Chinese keyboard layout the
+   * picker was useless to anyone typing Latin: `@r` matched none of 研究员,
+   * 策划, 编剧, 剪辑师, 撰稿人, because none of them contains an "r". An
+   * employee's aliases come from the catalog — the same list that routes a
+   * tag — and a person's are their name, each word of it, and the local part
+   * of their email.
+   */
+  aliases: string[];
 };
 
-export type MentionPerson = { id: string; name: string; avatarUrl: string | null; title?: string | null };
+export type MentionPerson = {
+  id: string;
+  name: string;
+  avatarUrl: string | null;
+  title?: string | null;
+  /** Searched by the picker; never shown. */
+  email?: string | null;
+};
 
 /** Everyone who can be tagged here: the three AI employees, then the studio. */
 export function mentionTargets(people: MentionPerson[], zh: boolean): MentionTarget[] {
@@ -41,6 +59,7 @@ export function mentionTargets(people: MentionPerson[], zh: boolean): MentionTar
       sub: zh ? a.hint : a.hintEn,
       avatarUrl: null,
       agent: key,
+      aliases: words([...agentAliases(key), a.name, a.nameLocal]),
     };
   });
 
@@ -52,19 +71,47 @@ export function mentionTargets(people: MentionPerson[], zh: boolean): MentionTar
     sub: p.title ?? null,
     avatarUrl: p.avatarUrl,
     agent: null,
+    aliases: words([p.name, p.name.replace(/\s+/g, ""), ...p.name.split(/\s+/), p.email?.split("@")[0] ?? ""]),
   }));
 
   return [...agents, ...humans];
 }
 
-/** Matches on the typed name and on the tag, so `@vid`, `@视频` and `@视` all
- * find 视频助理. An empty query lists everybody. */
+/** Lower-cased, de-duplicated, empties dropped. */
+function words(list: (string | null | undefined)[]): string[] {
+  return [...new Set(list.filter((s): s is string => Boolean(s && s.trim())).map((s) => s.trim().toLowerCase()))];
+}
+
+/**
+ * Who `@…` could mean, best first.
+ *
+ * Matched against every name a target answers to, so `@r`, `@研`, `@剪`,
+ * `@edit` and `@videoagent` all land somewhere sensible. Ranked rather than
+ * merely filtered: something that *starts* with what has been typed is almost
+ * always what was meant, and an AI employee is listed above a person on an
+ * equal match because the employees are what the picker exists for.
+ *
+ * An empty query lists everybody, which is what pressing `@` on its own
+ * should do.
+ */
 export function filterTargets(targets: MentionTarget[], query: string): MentionTarget[] {
   const q = query.trim().toLowerCase();
   if (!q) return targets.slice(0, 8);
-  return targets
-    .filter((t) => t.tag.toLowerCase().includes(q) || t.label.toLowerCase().includes(q))
-    .slice(0, 8);
+
+  const scored: { target: MentionTarget; score: number }[] = [];
+  for (const target of targets) {
+    let best = 0;
+    for (const alias of target.aliases) {
+      const score = alias === q ? 4 : alias.startsWith(q) ? 3 : alias.includes(q) ? 2 : 0;
+      if (score > best) best = score;
+    }
+    if (best) scored.push({ target, score: best + (target.agent ? 0.5 : 0) });
+  }
+
+  return scored
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 8)
+    .map((s) => s.target);
 }
 
 /** The cube that means "this is an AI employee", at whatever size. */

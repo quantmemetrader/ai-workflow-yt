@@ -32,6 +32,7 @@ import { AiError, complete } from "../lib/ai/openrouter";
 import { modelFor } from "../lib/ai/models";
 import { BudgetStop, assertBudget, recordUsage } from "../lib/ai/ledger";
 import { dueNow, readAutomation } from "../lib/automations/service";
+import { studioBrief } from "../lib/research/studio";
 
 const TENANT = process.env.TENANT_ID ?? "tnt_aurafarmers";
 const FORCE = process.argv.includes("--force");
@@ -197,7 +198,10 @@ async function main() {
   }
 
   const digest = await digestToday(channelId, date);
-  const [topics, scripts] = await Promise.all([
+  const [studio, topics, scripts] = await Promise.all([
+    /* The same first-hand numbers the brief is built on, so a to-do can say
+       "this worked, do more of it" with a figure behind it. */
+    studioBrief(TENANT),
     runTool(viewer, "list_topics", JSON.stringify({ limit: 20 })),
     runTool(viewer, "list_scripts", JSON.stringify({ limit: 15 })),
   ]);
@@ -205,6 +209,7 @@ async function main() {
   const material = [
     `日期：${date}（香港）`,
     digest ? `## 今天早上研究员发的晨报\n${digest}` : "## 今天早上研究员还没发晨报\n（按下面的资料自己判断）",
+    studio.text,
     `## 选题储备\n${topics.text}`,
     `## 脚本进度\n${scripts.text}`,
   ].join("\n\n");
