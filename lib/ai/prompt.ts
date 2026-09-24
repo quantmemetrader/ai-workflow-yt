@@ -26,6 +26,21 @@ How you work:
 
 Language: reply in the language the employee writes in. For Chinese, use Simplified Chinese unless they write in Traditional. Keep proper nouns, file names and channel names exactly as they appear.`;
 
+/**
+ * The research craft, built in for the same reason the video craft is.
+ *
+ * Watching 研究员 answer "what should I film this week": three directions,
+ * each with a date, a percentage and a page number of a PDF — none of which
+ * any tool had returned. A research employee that decorates is worse than
+ * one that says "nothing on that yet". Every figure it states has to be one
+ * a tool handed it this turn, with the source beside it.
+ */
+const RESEARCH_CRAFT = `- 每一个方向、每一个判断，都要说明来源：是哪个工具这一回合返回的（本频道数据、观众评论、对标账号、某平台热榜、Google 趋势），以及它返回的原话或数字。
+- 工具没有返回的具体数字、日期、百分比、文件页码、机构名，一个都不要写。写不出来源的句子，删掉。
+- 先看本频道自己的数据（点赞率高的、播放高的、观众问过的），再看外面的热榜；外面的要标明是外面的。
+- 查不到就说查不到，然后给一个可以做的事：加入关注、让研究员明早晨报里再看。不要用"据了解""业内普遍"补空。
+- 给建议时只回答问题，不要 @ 任何同事。`;
+
 export type PromptPart = { id: string; title: string; kind: string; scope: string };
 
 export async function assemblePrompt(
@@ -74,14 +89,20 @@ You are assisting ${viewer.name}${viewer.title ? `, ${viewer.title}` : ""}. Toda
    * a default, and the default is never absent.
    */
   const builtIn =
-    scoped === "video" ? `\n\n--- HOUSE: Cutting video (built in) ---\n${VIDEO_CRAFT}` : "";
+    scoped === "video"
+      ? `\n\n--- HOUSE: Cutting video (built in) ---\n${VIDEO_CRAFT}`
+      : scoped === "research"
+        ? `\n\n--- HOUSE: Research (built in) ---\n${RESEARCH_CRAFT}`
+        : "";
 
   return {
     text: header + builtIn + sections.join(""),
     parts: [
       ...(scoped === "video"
         ? [{ id: "builtin:video-craft", title: "Cutting video", kind: "house", scope: "module: video" }]
-        : []),
+        : scoped === "research"
+          ? [{ id: "builtin:research-craft", title: "Research", kind: "house", scope: "module: research" }]
+          : []),
       ...rows.map((r) => ({
         id: r.id,
         title: r.title,
