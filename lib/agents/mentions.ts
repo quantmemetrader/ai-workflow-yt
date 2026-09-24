@@ -7,7 +7,7 @@ import { newId } from "@/lib/ids";
 import type { Viewer } from "@/lib/auth/types";
 import { runAgent } from "@/lib/ai/agent";
 import { postMessage } from "@/lib/chat/service";
-import { AGENT_LABELS, parseAgentMentions, type AgentKey } from "./catalog";
+import { AGENT_KEYS, AGENT_LABELS, agentTag, parseAgentMentions, type AgentKey } from "./catalog";
 import { agentViewer, ensureAgent } from "./index";
 
 /**
@@ -182,7 +182,9 @@ async function answerOne(
     "- 不要调用 send_message。你写的回答会被自动发到这个频道里，再发一次就是两条。",
     "- 像同事在群里说话那样直接说内容，不要写“已回复”“做了什么”这类汇报格式。",
     "- 先用 read_channel 看看上下文。用中文，简短。",
-    "- 需要别的助理接手时，在回答里 @ 它（@研究助理 / @脚本助理 / @视频助理）；不要 @ 你自己。",
+    `- 需要别的同事接手时，在回答里 @ 它（${AGENT_KEYS.filter((k) => k !== key)
+      .map((k) => agentTag(k))
+      .join(" / ")}）；不要 @ 你自己。`,
   ]
     .filter((line) => line !== null)
     .join("\n");

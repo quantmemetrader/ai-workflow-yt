@@ -71,6 +71,10 @@ export default async function ChannelPage({ params }: { params: Promise<{ slug: 
         isAgent: m.authorIsAgent,
         roleLabel: m.authorTitle,
         attachments: m.attachments,
+        /* The buttons it put under what it said, and who has already
+           pressed one. */
+        actions: m.actions,
+        done: m.done,
         body: m.body,
         createdAt: m.createdAt.toISOString(),
       }))}

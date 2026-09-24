@@ -12,11 +12,11 @@
  * `@视频助理`, not `@Video agent`. The English forms are aliases so a message
  * typed on an English keyboard still reaches the right employee.
  */
-export type AgentKey = "research" | "script" | "video";
+export type AgentKey = "research" | "planning" | "script" | "video" | "article";
 
-/** In the order the picker lists them: research, then script, then video —
- * which is the order the work itself goes in. */
-export const AGENT_KEYS = ["research", "script", "video"] as const satisfies readonly AgentKey[];
+/** In the order the picker lists them, which is the order the work goes in:
+ * find out, decide, write, cut, and write it up. */
+export const AGENT_KEYS = ["research", "planning", "script", "video", "article"] as const satisfies readonly AgentKey[];
 
 export type AgentLabel = {
   name: string;
@@ -33,15 +33,23 @@ export type AgentLabel = {
 export const AGENT_LABELS: Record<AgentKey, AgentLabel> = {
   research: {
     name: "Research agent",
-    nameLocal: "研究助理",
+    nameLocal: "研究员",
     title: "AI 员工 · 研究",
     titleEn: "AI employee · Research",
-    hint: "趋势、选题、对标账号",
-    hintEn: "Trends, topics, channels to watch",
+    hint: "趋势、选题、对标账号、每日晨报",
+    hintEn: "Trends, topics, channels to watch, the morning brief",
+  },
+  planning: {
+    name: "Planning agent",
+    nameLocal: "策划",
+    title: "AI 员工 · 策划",
+    titleEn: "AI employee · Planning",
+    hint: "把调研变成计划：今日待办、选题决定、派活",
+    hintEn: "Turns research into a plan: today's to-dos, topic picks, who does what",
   },
   script: {
     name: "Script agent",
-    nameLocal: "脚本助理",
+    nameLocal: "编剧",
     title: "AI 员工 · 脚本",
     titleEn: "AI employee · Script",
     hint: "写脚本、改脚本、审批前的检查",
@@ -49,11 +57,19 @@ export const AGENT_LABELS: Record<AgentKey, AgentLabel> = {
   },
   video: {
     name: "Video agent",
-    nameLocal: "视频助理",
+    nameLocal: "剪辑师",
     title: "AI 员工 · 视频",
     titleEn: "AI employee · Video",
-    hint: "粗剪、字幕、素材",
-    hintEn: "First cut, subtitles, footage",
+    hint: "粗剪、字幕、图形、渲染",
+    hintEn: "First cut, subtitles, graphics, renders",
+  },
+  article: {
+    name: "Article agent",
+    nameLocal: "撰稿人",
+    title: "AI 员工 · 文章",
+    titleEn: "AI employee · Writing",
+    hint: "长文、发布记录、按平台改写",
+    hintEn: "Long-form, publishing logs, rewriting per platform",
   },
 };
 
@@ -69,9 +85,15 @@ export const agentTag = (key: AgentKey): string => `@${AGENT_LABELS[key].nameLoc
  * `@video-agent`, `@VideoAgent` and `@video` all arrive at the same employee.
  */
 const ALIASES: Record<AgentKey, string[]> = {
-  research: ["研究助理", "研究", "调研助理", "researchagent", "research"],
-  script: ["脚本助理", "脚本", "scriptagent", "script"],
-  video: ["视频助理", "视频", "videoagent", "video"],
+  /* The first entry is the tag the picker writes. The rest are what somebody
+     might type instead — including the names these five had before the studio
+     renamed them, because those are in messages already and a tag that stops
+     routing is a colleague who stopped answering. */
+  research: ["研究员", "研究助理", "调研助理", "研究", "调研", "researchagent", "research"],
+  planning: ["策划", "策划助理", "企划", "planningagent", "planning", "planner"],
+  script: ["编剧", "脚本助理", "脚本", "scriptagent", "script", "writer"],
+  video: ["剪辑师", "视频助理", "剪辑", "视频", "videoagent", "video", "editor"],
+  article: ["撰稿人", "文章助理", "撰稿", "文章", "articleagent", "article"],
 };
 
 /** Latin aliases, longest first, so `videoagent` is not read as `video`. */

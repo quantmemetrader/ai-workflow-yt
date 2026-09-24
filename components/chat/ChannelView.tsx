@@ -3,7 +3,7 @@
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { ChannelSurface, type ChannelMember, type ChannelMessage } from "@/components/chat/ChannelSurface";
-import { sendChannelMessage } from "@/app/(app)/chat/actions";
+import { pressCardAction, sendChannelMessage } from "@/app/(app)/chat/actions";
 import { MembersSheet } from "@/components/chat/MembersSheet";
 import { AgentDock } from "@/components/shell/AgentDock";
 
@@ -80,6 +80,9 @@ export function ChannelView({
    */
   const [optimistic, setOptimistic] = useState<ChannelMessage[]>([]);
   const [failed, setFailed] = useState<{ body: string; error: string } | null>(null);
+  /** The card button waiting on the server, so it reads as busy and the
+   *  rest of them are not pressed underneath it. */
+  const [pressing, setPressing] = useState<string | null>(null);
   const [seen, setSeen] = useState(messages);
   if (seen !== messages) {
     setSeen(messages);
@@ -154,6 +157,28 @@ export function ChannelView({
     });
   }
 
+  /**
+   * Pressing a button an AI employee put under its message.
+   *
+   * No optimistic row: what the press posts is a line written by the agent,
+   * and guessing at it here would mean two copies of the truth. The refresh is
+   * a few hundred milliseconds and the button reads as busy meanwhile.
+   */
+  function press(messageId: string, actionId: string) {
+    if (pressing) return;
+    setFailed(null);
+    setPressing(actionId);
+    start(async () => {
+      const res = await pressCardAction(slug, messageId, actionId);
+      setPressing(null);
+      if (res?.error) {
+        setFailed({ body: "", error: res.error });
+        return;
+      }
+      router.refresh();
+    });
+  }
+
   return (
     <>
       <div style={{ flexGrow: 1, minWidth: 0, minHeight: 0, display: "flex" }}>
@@ -165,6 +190,8 @@ export function ChannelView({
           messages={[...messages, ...optimistic]}
           sending={pending}
           onSend={send}
+          onPress={press}
+          pressing={pressing}
           people={mentionPeople ?? studioPeople}
           canAttach={canAttach}
           failed={failed}

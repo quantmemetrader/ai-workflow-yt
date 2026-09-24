@@ -133,6 +133,25 @@ module.exports = {
 
     {
       /**
+       * The other half of the morning: the Planning agent's to-dos.
+       *
+       * "polanning agent will send out to dos". Five minutes behind the
+       * digest, because it reads it — 08:05 in Hong Kong. Same once-a-day
+       * guard, so a pm2 restart at noon does not post a second plan.
+       */
+      name: "aura-plan",
+      ...runTs("scripts/plan.ts"),
+      cwd: root,
+      autorestart: false,
+      cron_restart: "5 0 * * *",
+      out_file: path.join(root, "logs/plan.log"),
+      error_file: path.join(root, "logs/plan.log"),
+      merge_logs: true,
+      time: true,
+    },
+
+    {
+      /**
        * Queues the social sync: the studio's own channels, their posts and
        * numbers, the comments on them, and the reading of those comments.
        *

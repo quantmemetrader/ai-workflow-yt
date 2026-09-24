@@ -41,6 +41,14 @@ export const AGENTS: Record<AgentKey, AgentDef> = {
     ...labels("research"),
     modules: ["chat", "research"],
   },
+  /* The one that decides. It reads what research found and what the studio is
+     already making, so it holds the three modules it has to look at — and it
+     assigns work by tagging a colleague, never by acting for them. */
+  planning: {
+    email: "planning@agents.invalid",
+    ...labels("planning"),
+    modules: ["chat", "research", "script", "video"],
+  },
   script: {
     email: "script@agents.invalid",
     ...labels("script"),
@@ -50,6 +58,11 @@ export const AGENTS: Record<AgentKey, AgentDef> = {
     email: "video@agents.invalid",
     ...labels("video"),
     modules: ["chat", "video", "script", "files"],
+  },
+  article: {
+    email: "article@agents.invalid",
+    ...labels("article"),
+    modules: ["chat", "script", "research", "publish"],
   },
 };
 
@@ -64,12 +77,12 @@ function labels(key: AgentKey): Pick<AgentDef, "name" | "nameLocal" | "title"> {
 export const AGENT_CHANNELS = {
   digest: {
     name: "研究日报",
-    topic: "研究助理每天早上 8:00（香港时间）发布：昨日趋势，和今天值得讨论的一个选题。",
+    topic: "研究员每天早上 8:00（香港时间）发布：昨日趋势，和今天值得讨论的一个选题。紧接着策划发当天的待办。",
     owner: "research",
   },
   production: {
     name: "制作",
-    topic: "脚本通过审批后，脚本助理在这里把它交给视频助理。",
+    topic: "脚本通过审批后，编剧在这里把它交给剪辑师。新素材上传后，策划也在这里说可以拿它做什么。",
     owner: "script",
   },
 } as const satisfies Record<string, { name: string; topic: string; owner: AgentKey }>;
@@ -80,7 +93,13 @@ export type AgentChannel = keyof typeof AGENT_CHANNELS;
 export async function ensureAgent(tenantId: string, key: AgentKey): Promise<string> {
   const def = AGENTS[key];
   const [existing] = await db
-    .select({ id: users.id, isAgent: users.isAgent })
+    .select({
+      id: users.id,
+      isAgent: users.isAgent,
+      name: users.name,
+      nameLocal: users.nameLocal,
+      title: users.title,
+    })
     .from(users)
     .where(and(eq(users.tenantId, tenantId), eq(users.email, def.email)))
     .limit(1);
@@ -117,6 +136,19 @@ export async function ensureAgent(tenantId: string, key: AgentKey): Promise<stri
       .where(and(eq(users.tenantId, tenantId), eq(users.email, def.email)))
       .limit(1);
     id = row.id;
+  } else if (
+    existing.name !== def.name ||
+    existing.nameLocal !== def.nameLocal ||
+    existing.title !== def.title
+  ) {
+    /* The studio renamed an employee — 视频助理 became 剪辑师. The row is what
+       the chat list, the @-picker's people half and every old message's byline
+       read from, so a rename that only lands in the catalog leaves two names
+       for one colleague on the same screen. */
+    await db
+      .update(users)
+      .set({ name: def.name, nameLocal: def.nameLocal, title: def.title })
+      .where(eq(users.id, id));
   }
 
   await db

@@ -433,6 +433,37 @@ export async function* runAgent(opts: {
     }
 
     /*
+     * Asked to answer, one more time, with nothing to hide behind.
+     *
+     * A round can come back with neither a sentence nor a tool call — an empty
+     * assistant message, which several endpoints produce under load and
+     * qwen3-max produces often enough to matter. The loop reads that as "it
+     * has finished" and breaks, and the turn ends silent although everything
+     * it needed was already in `messages`. This is one more call with the
+     * tools withdrawn, which is the same thing the last round would have done.
+     *
+     * Once, and only when the turn has nothing at all to show: it costs a
+     * short completion, and the alternative is an AI employee that answers a
+     * tag with "I could not answer just now".
+     */
+    if (!answer.trim() && !changes.length && !budgetStopped && !signal?.aborted && !outOfAllowance()) {
+      try {
+        for await (const ev of streamChat({ model, messages, signal, user: viewer.id })) {
+          if (ev.type === "text") {
+            answer += ev.text;
+            yield { type: "delta", text: ev.text };
+          } else if (ev.type === "usage") {
+            await meter(ev);
+          }
+        }
+      } catch (err) {
+        // The error the turn reports below is the better one: this was a
+        // second chance, not the attempt.
+        console.error("[agent] the closing retry failed", err);
+      }
+    }
+
+    /*
      * Silent, but it did something.
      *
      * A model that calls two tools and then produces no closing sentence is

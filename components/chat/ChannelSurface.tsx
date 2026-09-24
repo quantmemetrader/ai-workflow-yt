@@ -22,6 +22,7 @@ import {
   type MentionTarget,
 } from "./MentionMenu";
 import { bytes, uploadToStudio, type Attaching } from "./upload";
+import type { CardAction, CardDone } from "@/lib/agents/cards";
 
 /**
  * The channel's main column: header, messages, composer.
@@ -53,6 +54,10 @@ export type ChannelMessage = {
   /** The agent's job, straight off its user row: "AI 员工 · 视频". */
   roleLabel?: string | null;
   attachments?: ChannelAttachment[];
+  /** The buttons an AI employee put under this message. */
+  actions?: CardAction[];
+  /** Set once somebody has pressed one of them. */
+  done?: CardDone | null;
   /** On screen but not yet acknowledged by the server. Drawn a shade back, so
    * "sent" and "sending" are not the same picture. */
   pending?: boolean;
@@ -135,6 +140,89 @@ function Tagged({ keys, zh }: { keys: AgentKey[]; zh: boolean }) {
   );
 }
 
+/**
+ * The buttons under an agent's message.
+ *
+ * "some buttons and stuff AI can execute itself" — this is the half a person
+ * still decides. A `say` button posts a prepared line as whoever pressed it,
+ * which is how one press hands work to the next colleague; an `open` button is
+ * a plain link to the screen that holds a real gate, because an approval is
+ * not something a chat card should be able to grant.
+ *
+ * Once pressed, the card says who decided and stops offering the decision
+ * again — the server refuses a second press either way, and a button that
+ * looks live but is not is worse than no button.
+ */
+function Card({
+  actions,
+  done,
+  zh,
+  busy,
+  onPress,
+}: {
+  actions: CardAction[];
+  done: CardDone | null | undefined;
+  zh: boolean;
+  busy: string | null;
+  onPress: (id: string) => void;
+}) {
+  if (!actions.length) return null;
+  const chosen = actions.find((a) => a.id === done?.actionId);
+
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 7, marginTop: 9, flexWrap: "wrap" }}>
+      {actions.map((a) => {
+        const primary = a.tone === "primary" && !done;
+        const style: React.CSSProperties = {
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 6,
+          height: 27,
+          padding: "0 11px",
+          borderRadius: 8,
+          fontSize: 12,
+          fontWeight: 500,
+          fontFamily: "inherit",
+          letterSpacing: "inherit",
+          cursor: done ? "default" : "pointer",
+          border: `1px solid ${primary ? "#171717" : "#e2e2e2"}`,
+          background: primary ? "#171717" : "#ffffff",
+          color: primary ? "#ffffff" : "#383838",
+          opacity: done && a.id !== done.actionId ? 0.4 : 1,
+          textDecoration: "none",
+        };
+
+        if (a.kind === "open") {
+          return (
+            <Link key={a.id} href={a.href ?? "#"} style={style}>
+              {zh ? a.label : a.labelEn}
+            </Link>
+          );
+        }
+        return (
+          <button
+            key={a.id}
+            type="button"
+            disabled={Boolean(done) || busy !== null}
+            onClick={() => onPress(a.id)}
+            style={{ ...style, opacity: style.opacity === 1 && busy === a.id ? 0.55 : style.opacity }}
+          >
+            {zh ? a.label : a.labelEn}
+          </button>
+        );
+      })}
+
+      {done && (
+        <span style={{ fontSize: 11.5, color: "#999999" }}>
+          {zh
+            ? `${done.by} 选了「${chosen ? chosen.label : "…"}」`
+            : `${done.by} chose “${chosen ? chosen.labelEn : "…"}”`}
+        </span>
+      )}
+    </div>
+  );
+}
+
 /** What a message carries. Re-checked server-side for every reader, so an
  * attachment that is not listed here is one this person may not open. */
 function Attachments({ items }: { items: ChannelAttachment[] }) {
@@ -192,6 +280,10 @@ export function ChannelSurface(props: {
   canAttach?: boolean;
   /** False on an announcements channel for anyone but an administrator. */
   canPost?: boolean;
+  /** Pressing a button under an agent's message. */
+  onPress?: (messageId: string, actionId: string) => void;
+  /** The action id currently in flight, so its button reads as busy. */
+  pressing?: string | null;
   /** Shown where the composer would be, when there is no composer. */
   readOnlyNote?: string;
   /** A message the server would not take, with what it said. */
@@ -579,6 +671,13 @@ export function ChannelSurface(props: {
                       )}
                       <div className="txt">{renderBody(m.body)}</div>
                       <Attachments items={m.attachments ?? []} />
+                      <Card
+                        actions={m.actions ?? []}
+                        done={m.done}
+                        zh={zh}
+                        busy={props.pressing ?? null}
+                        onPress={(id) => props.onPress?.(m.id, id)}
+                      />
                       <Tagged keys={tags} zh={zh} />
                     </div>
                   </div>

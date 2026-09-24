@@ -4,6 +4,7 @@ import { after } from "next/server";
 import { revalidatePath } from "next/cache";
 import { getViewer } from "@/lib/auth/dal";
 import { parseAgentMentions } from "@/lib/agents/catalog";
+import { readCardActions, readCardDone } from "@/lib/agents/cards";
 import { dispatchAgentMentions } from "@/lib/agents/mentions";
 import { setFileAccess } from "@/lib/files/access";
 import { conversationDetail } from "@/lib/chat/service";
@@ -13,6 +14,8 @@ import {
   channelById,
   channelBySlug,
   channelMembers,
+  channelMessage,
+  markCardDone,
   createChannel,
   listConversations,
   postMessage,
@@ -115,6 +118,64 @@ export async function sendChannelMessage(
      model call with tool use behind it, and nobody pressing enter should wait
      for that. */
   if (parseAgentMentions(body).length) {
+    after(async () => {
+      try {
+        await dispatchAgentMentions({ viewer, channelId: channel.id, body });
+      } catch (err) {
+        console.error("[chat] a tagged agent could not be reached", err);
+      }
+    });
+  }
+
+  return {};
+}
+
+/**
+ * Pressing a button an AI employee put under its message.
+ *
+ * What it does is post a prepared line into the same channel **as the person
+ * who pressed it** — which is exactly what they could have typed, and goes
+ * through the same checks, the same `postMessage` and the same agent dispatch.
+ * The button is a shortcut for typing, and it is deliberately not more than
+ * that: nothing here can approve, publish or spend, and the card's other kind
+ * of action is a plain link to the screen that holds the real gate.
+ *
+ * The press is written back onto the agent's message so the card records who
+ * decided and when, and stops offering the decision twice.
+ */
+export async function pressCardAction(slug: string, messageId: string, actionId: string) {
+  const viewer = await getViewer();
+  if (!viewer || !viewer.modules.includes("chat")) return { error: "Not allowed" };
+  if (typeof slug !== "string" || !slug || slug.length > MAX_SLUG) return { error: "Channel not found" };
+  if (typeof messageId !== "string" || messageId.length > 64) return { error: "No such message" };
+  if (typeof actionId !== "string" || actionId.length > 64) return { error: "No such button" };
+
+  const channel = await channelBySlug(viewer, slug);
+  if (!channel) return { error: "Channel not found" };
+  if (channel.kind === "announce") return { error: "Not allowed" };
+
+  const message = await channelMessage(channel.id, messageId);
+  if (!message) return { error: "No such message" };
+
+  const action = readCardActions(message.meta).find((a) => a.id === actionId);
+  if (!action || action.kind !== "say" || !action.body) return { error: "No such button" };
+
+  const already = readCardDone(message.meta);
+  if (already) return { error: "Somebody already answered this" };
+
+  await postMessage(viewer, channel.id, action.body);
+  await markCardDone(channel.id, messageId, {
+    actionId,
+    by: viewer.nameLocal || viewer.name,
+    at: new Date().toISOString(),
+  });
+  revalidatePath(`/chat/c/${slug}`);
+
+  /* The prepared line nearly always tags a colleague — that is the point of
+     "hand it to the editor" being one press. Same path as a typed tag, after
+     the response, because it is a model call. */
+  if (parseAgentMentions(action.body).length) {
+    const body = action.body;
     after(async () => {
       try {
         await dispatchAgentMentions({ viewer, channelId: channel.id, body });

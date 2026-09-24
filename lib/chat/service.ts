@@ -18,6 +18,7 @@ import type { Viewer } from "@/lib/auth/dal";
 import { audit } from "@/lib/audit";
 import { canReadFiles, relationOn } from "@/lib/authz/rebac";
 import { newId } from "@/lib/ids";
+import { readCardActions, readCardDone } from "@/lib/agents/cards";
 
 /** Channels this person is in, plus the public ones they could join. A private
  * channel they are not in is not listed — the same rule as files. */
@@ -424,6 +425,7 @@ export async function channelThread(viewer: Viewer, slug: string, limit = 80) {
     author_is_agent: boolean | null;
     author_title: string | null;
     attachments: unknown;
+    meta: unknown;
   }>(sql`
     with ch as (
       select c.id, c.name, c.topic, c.is_private, c.kind
@@ -438,7 +440,7 @@ export async function channelThread(viewer: Viewer, slug: string, limit = 80) {
        it as undefined -- which is why the announcements channel drew a
        composer for everybody. */
     select ch.id as channel_id, ch.name as channel_name, ch.topic, ch.is_private, ch.kind,
-           m.id as message_id, m.body, m.created_at, m.author_id, m.attachments,
+           m.id as message_id, m.body, m.created_at, m.author_id, m.attachments, m.meta,
            u.name as author_name, u.name_local as author_name_local, u.avatar_url as author_avatar,
            u.is_agent as author_is_agent, u.title as author_title
       from ch
@@ -484,9 +486,52 @@ export async function channelThread(viewer: Viewer, slug: string, limit = 80) {
       authorIsAgent: r.author_is_agent === true,
       authorTitle: r.author_title,
       attachments: toIds(r.attachments).flatMap((id) => attachments.get(id) ?? []),
+      /* The buttons an agent put under it, and whether somebody has already
+         pressed one. Validated on the way out (`readCardActions`), because a
+         jsonb column is `unknown` however it was written. */
+      actions: readCardActions(r.meta),
+      done: readCardDone(r.meta),
       createdAt: toDate(r.created_at) ?? new Date(),
     })),
   };
+}
+
+/** One message, with its raw `meta`, for the action behind a card's button. */
+export async function channelMessage(channelId: string, messageId: string) {
+  const [row] = await db
+    .select({ id: chatMessages.id, meta: chatMessages.meta, authorId: chatMessages.authorId })
+    .from(chatMessages)
+    .where(
+      and(
+        eq(chatMessages.id, messageId),
+        eq(chatMessages.channelId, channelId),
+        isNull(chatMessages.deletedAt),
+      ),
+    )
+    .limit(1);
+  return row ?? null;
+}
+
+/**
+ * Records that somebody pressed one of a card's buttons.
+ *
+ * Merged into the existing `meta` in one statement rather than read-then-write:
+ * two people pressing at the same moment is the ordinary case for an approval
+ * card, and the loser of that race should not erase the agent's own buttons.
+ * `where meta->'done' is null` makes the first press the one that counts.
+ */
+export async function markCardDone(
+  channelId: string,
+  messageId: string,
+  done: { actionId: string; by: string; at: string },
+) {
+  await db.execute(sql`
+    update ${chatMessages}
+       set meta = coalesce(meta, '{}'::jsonb) || ${JSON.stringify({ done })}::jsonb
+     where id = ${messageId}
+       and channel_id = ${channelId}
+       and (meta -> 'done') is null
+  `);
 }
 
 /** A jsonb column that should hold file ids, treated as if it might not. */
