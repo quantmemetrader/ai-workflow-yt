@@ -3,7 +3,8 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { AgentMark } from "@/components/chat/MentionMenu";
+import { AgentMark, MentionMenu, type MentionPerson } from "@/components/chat/MentionMenu";
+import { useMentions } from "@/components/chat/useMentions";
 import { AGENT_LABELS, agentTag, type AgentKey } from "@/lib/agents/catalog";
 import type { AgentState, Decision, Running } from "@/lib/home/service";
 import { pressCardAction, sendChannelMessage } from "@/app/(app)/chat/actions";
@@ -38,6 +39,7 @@ export function HomeScreen({
   runningNames,
   zh,
   me,
+  people,
 }: {
   agents: AgentState[];
   decisions: Decision[];
@@ -46,12 +48,19 @@ export function HomeScreen({
   runningNames: Record<string, string>;
   zh: boolean;
   me: string;
+  /** Everyone the `@` picker can offer besides the five employees. */
+  people: MentionPerson[];
 }) {
   const router = useRouter();
   const [pending, start] = React.useTransition();
   const [pressing, setPressing] = React.useState<string | null>(null);
   const [draft, setDraft] = React.useState("");
   const [error, setError] = React.useState<string | null>(null);
+  const box = React.useRef<HTMLTextAreaElement | null>(null);
+  /* The same `@` picker the chat composer has, from the same hook — two
+     implementations of "where does a tag start" is two answers to "who did
+     that reach". */
+  const mentions = useMentions({ people, zh, draft, setDraft, box });
 
   const t = (a: string, b: string) => (zh ? a : b);
 
@@ -98,6 +107,7 @@ export function HomeScreen({
         {/* ---- 1. say what you want ------------------------------------- */}
         <div
           style={{
+            position: "relative",
             marginTop: 20,
             border: "1px solid #ededed",
             borderRadius: 14,
@@ -106,10 +116,27 @@ export function HomeScreen({
             boxShadow: "0 1px 2px rgba(0,0,0,0.03)",
           }}
         >
+          <MentionMenu
+            matches={mentions.matches}
+            active={mentions.active}
+            zh={zh}
+            onPick={mentions.pick}
+            onHover={mentions.setActive}
+            placement="down"
+          />
+
           <textarea
+            ref={box}
             value={draft}
-            onChange={(e) => setDraft(e.target.value)}
+            onChange={(e) => {
+              setDraft(e.target.value);
+              mentions.onValue(e.target.value, e.target.selectionStart ?? e.target.value.length);
+            }}
+            onBlur={mentions.close}
             onKeyDown={(e) => {
+              // The picker gets the arrows and Enter first, or choosing a
+              // colleague would send the half-typed line instead.
+              if (mentions.onKeyDown(e)) return;
               if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
                 e.preventDefault();
                 say(draft);
@@ -138,7 +165,10 @@ export function HomeScreen({
               <button
                 key={key}
                 type="button"
-                onClick={() => setDraft((d) => (d.includes(agentTag(key)) ? d : `${agentTag(key)} ${d}`.trim()))}
+                onClick={() => {
+                  setDraft((d) => (d.includes(agentTag(key)) ? d : `${agentTag(key)} ${d}`.trim()));
+                  requestAnimationFrame(() => box.current?.focus());
+                }}
                 className="chip"
                 style={{ height: 26, fontSize: 11.5, gap: 5, cursor: "pointer", borderColor: "#ededed" }}
               >

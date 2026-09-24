@@ -61,6 +61,9 @@ export default async function ChannelPage({ params }: { params: Promise<{ slug: 
         name: (zh && p.nameLocal) || p.name,
         avatarUrl: p.avatarUrl,
         title: p.title,
+        /* Searched by the @-picker so `@ry` finds somebody whose display name
+           is written in Chinese. Never rendered. */
+        email: p.email,
       }))}
       messages={thread.messages.map((m) => ({
         id: m.id,

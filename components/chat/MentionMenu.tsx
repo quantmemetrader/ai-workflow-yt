@@ -98,6 +98,12 @@ export function filterTargets(targets: MentionTarget[], query: string): MentionT
   const q = query.trim().toLowerCase();
   if (!q) return targets.slice(0, 8);
 
+  /* One character is not enough to be interesting in the middle of a word.
+     `@r` matching 策划 because one of its aliases is "planner" is technically
+     a match and practically noise; at one character, only a name that starts
+     with it counts. */
+  const floor = q.length === 1 ? 3 : 2;
+
   const scored: { target: MentionTarget; score: number }[] = [];
   for (const target of targets) {
     let best = 0;
@@ -105,7 +111,7 @@ export function filterTargets(targets: MentionTarget[], query: string): MentionT
       const score = alias === q ? 4 : alias.startsWith(q) ? 3 : alias.includes(q) ? 2 : 0;
       if (score > best) best = score;
     }
-    if (best) scored.push({ target, score: best + (target.agent ? 0.5 : 0) });
+    if (best >= floor) scored.push({ target, score: best + (target.agent ? 0.5 : 0) });
   }
 
   return scored
@@ -162,12 +168,19 @@ export function MentionMenu({
   zh,
   onPick,
   onHover,
+  placement = "up",
 }: {
   matches: MentionTarget[];
   active: number;
   zh: boolean;
   onPick: (target: MentionTarget) => void;
   onHover: (index: number) => void;
+  /**
+   * Which way it opens. A composer at the foot of a thread has room above it
+   * and none below; a box at the top of a page is the other way round, and
+   * opening upward there put the list over the page heading.
+   */
+  placement?: "up" | "down";
 }): React.JSX.Element | null {
   if (!matches.length) return null;
 
@@ -179,7 +192,7 @@ export function MentionMenu({
         position: "absolute",
         left: 0,
         right: 0,
-        bottom: "calc(100% + 6px)",
+        ...(placement === "down" ? { top: "calc(100% + 6px)" } : { bottom: "calc(100% + 6px)" }),
         maxHeight: 268,
         overflowY: "auto",
         border: "1px solid #ededed",

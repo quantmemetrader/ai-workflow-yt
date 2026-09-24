@@ -295,10 +295,28 @@ export const listPeople = cache(async function listPeople(viewer: Viewer) {
       /** The role line under a name in the composer's @-picker. */
       title: users.title,
       role: users.role,
+      email: users.email,
       lastActiveAt: users.lastActiveAt,
     })
     .from(users)
-    .where(and(eq(users.tenantId, viewer.tenantId), isNull(users.deletedAt), eq(users.isAgent, false)))
+    /*
+     * People, and only people.
+     *
+     * A suspended service principal — the row the schedulers act as — was
+     * listed here as a colleague called "Scheduled work", so the studio's
+     * message list showed a member of staff nobody had hired. It is not an
+     * agent (`is_agent` is for the AI employees) and it is not deleted, so
+     * neither filter caught it; being suspended is what makes it not somebody
+     * to message.
+     */
+    .where(
+      and(
+        eq(users.tenantId, viewer.tenantId),
+        isNull(users.deletedAt),
+        eq(users.isAgent, false),
+        eq(users.status, "active"),
+      ),
+    )
     .orderBy(users.name);
 
   /* Unread per person: their messages in the one-to-one room since this
@@ -328,6 +346,10 @@ export const listPeople = cache(async function listPeople(viewer: Viewer) {
         nameLocal: r.nameLocal,
         avatarUrl: r.avatarUrl,
         title: r.title,
+        /* For the @-picker to search on, never to show: somebody whose
+           display name is written in Chinese is still found by typing the
+           Latin handle they sign in with. */
+        email: r.email,
         presence,
         isGuest: r.role === "guest",
         unread: unreadBy.get(r.id) ?? 0,

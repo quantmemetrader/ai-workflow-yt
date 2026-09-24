@@ -1,6 +1,7 @@
 import { requireModule } from "@/lib/auth/dal";
 import { HomeScreen } from "@/components/home/HomeScreen";
 import { jobName, readHome } from "@/lib/home/service";
+import { listPeople } from "@/lib/chat/service";
 import { AgentDock } from "@/components/shell/AgentDock";
 import { answeringModel } from "@/lib/ai/models";
 
@@ -21,7 +22,7 @@ export default async function HomePage() {
   const viewer = await requireModule("chat");
   const locale = viewer.locale ?? "zh-CN";
   const zh = locale.startsWith("zh");
-  const home = await readHome(viewer, zh);
+  const [home, people] = await Promise.all([readHome(viewer, zh), listPeople(viewer)]);
 
   const runningNames = Object.fromEntries(home.running.map((j) => [j.type, jobName(j.type, zh)]));
 
@@ -35,6 +36,13 @@ export default async function HomePage() {
         running={home.running.map((j) => ({ ...j, label: jobName(j.type, zh) }))}
         runningNames={runningNames}
         teamChannel={home.teamChannel}
+        people={people.map((p) => ({
+          id: p.id,
+          name: (zh && p.nameLocal) || p.name,
+          avatarUrl: p.avatarUrl,
+          title: p.title,
+          email: p.email,
+        }))}
       />
 
       {/* The assistant, as on every other screen: it acts as you, and the AI
