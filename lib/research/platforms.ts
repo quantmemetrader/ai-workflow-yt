@@ -101,6 +101,15 @@ export async function platformHot(platform: PlatformKey): Promise<PlatformHot> {
     }
   } catch (err) {
     if (hit) return hit;
-    return done([], err instanceof Error ? err.message.slice(0, 160) : "这个平台暂时读不到。");
+    /* The reader's own message names the endpoint and quotes the upstream
+       body — right for a log, wrong for a screen. */
+    console.error(`[research] ${platform} hot list`, err);
+    const status = err instanceof Error ? (err.message.match(/\((\d{3})\//)?.[1] ?? null) : null;
+    return done(
+      [],
+      status
+        ? `这个平台刚才没给数据（上游 ${status}）。过一会儿再点一次，通常就好。`
+        : "这个平台暂时读不到，过一会儿再点一次。",
+    );
   }
 }

@@ -9,6 +9,7 @@ import { answeringModel } from "@/lib/ai/models";
 import { trendingNearby } from "@/lib/research/trending";
 import { latestDigest } from "@/lib/home/pulse";
 import { proposalsFor } from "@/lib/agents/proposals";
+import { pictureFor } from "@/lib/research/pictures";
 import { trendingVideos } from "@/lib/research/youtube";
 import { creatorMemoryState } from "@/lib/creator/service";
 import { db } from "@/lib/db/client";
@@ -97,13 +98,19 @@ export default async function TrendsPage({
   const [digest, proposals] = await Promise.all([latestDigest(viewer.tenantId), proposalsFor(viewer, "script")]);
   /* The morning's pick first, then what 策划 put on today's plan, three at
      most, no repeats. */
-  const picks: { text: string; why: string | null; source: "digest" | "plan" | "backlog" | "audience" }[] = [];
-  if (digest?.topic) picks.push({ text: digest.topic, why: digest.why, source: "digest" });
+  const picks: { text: string; why: string | null; source: "digest" | "plan" | "backlog" | "audience"; thumbnail: string | null }[] = [];
+  if (digest?.topic) picks.push({ text: digest.topic, why: digest.why, source: "digest", thumbnail: null });
   for (const p of proposals.items) {
     if (picks.length >= 3) break;
     if (picks.some((x) => x.text === p.text || (digest?.topic && p.text.includes(digest.topic)))) continue;
-    picks.push({ text: p.text, why: p.why, source: p.source });
+    picks.push({ text: p.text, why: p.why, source: p.source, thumbnail: null });
   }
+  /* The picture is the channel's own video or the rival's post the pick
+     cites, when one can be matched by title; a pick that cites nothing with a
+     picture stays without one rather than getting a stock one. */
+  await Promise.all(picks.map(async (p) => {
+    p.thumbnail = await pictureFor(viewer.tenantId, `${p.text} ${p.why ?? ""}`);
+  }));
 
   return (
     <>

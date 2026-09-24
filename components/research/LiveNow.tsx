@@ -31,7 +31,7 @@ import { notify } from "@/lib/client/notify";
  */
 export type LiveSearch = { phrase: string; traffic: string | null; headline: string | null; region?: string };
 export type LiveVideo = { id: string; title: string; channelTitle: string; thumbnail: string | null; views: number };
-export type Pick = { text: string; why: string | null; source: "digest" | "plan" | "backlog" | "audience" };
+export type Pick = { text: string; why: string | null; source: "digest" | "plan" | "backlog" | "audience"; thumbnail?: string | null };
 
 const KEY = "aura:research:livenow";
 const PLATFORM_KEY = "aura:research:platform";
@@ -247,8 +247,14 @@ export function LiveNow({
                 ) : null}
               </div>
               {picks.map((p, i) => (
-                <div key={i} style={{ display: "grid", gridTemplateColumns: "8px minmax(0,1fr) auto", gap: 12, alignItems: "center", padding: "8px 0", borderTop: "1px solid #f3f3f3" }}>
-                  <span style={{ width: 8, height: 8, borderRadius: 2, background: p.source === "plan" ? AGENT_COLORS.planning : AGENT_COLORS.research }} />
+                <div key={i} style={{ display: "grid", gridTemplateColumns: "56px minmax(0,1fr) auto", gap: 12, alignItems: "center", padding: "8px 0", borderTop: "1px solid #f3f3f3" }}>
+                  {p.thumbnail ? (
+                    <Cover src={throughUs(p.thumbnail)} />
+                  ) : (
+                    <span style={{ width: 48, height: 30, borderRadius: 4, background: p.source === "plan" ? "#efe9fa" : "#e8effc", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      <span style={{ width: 8, height: 8, borderRadius: 2, background: p.source === "plan" ? AGENT_COLORS.planning : AGENT_COLORS.research }} />
+                    </span>
+                  )}
                   <div style={{ minWidth: 0 }}>
                     <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.text}</div>
                     <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 3, minWidth: 0 }}>

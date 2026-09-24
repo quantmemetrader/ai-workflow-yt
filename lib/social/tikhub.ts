@@ -146,7 +146,14 @@ const asNumber = (v: unknown): number | null => {
 export async function douyinHotSearch(): Promise<HotRow[]> {
   const res = await get<{
     data?: {
-      word_list?: { word?: string; hot_value?: number; view_count?: number; discuss_video_count?: number }[];
+      word_list?: {
+        word?: string;
+        hot_value?: number;
+        view_count?: number;
+        discuss_video_count?: number;
+        /** The platform's own cover for the phrase, on its signed picture CDN. */
+        word_cover?: { url_list?: string[] } | null;
+      }[];
     };
   }>("/api/v1/douyin/app/v3/fetch_hot_search_list");
   return (res.data?.word_list ?? [])
@@ -156,7 +163,7 @@ export async function douyinHotSearch(): Promise<HotRow[]> {
       heat: asNumber(w.hot_value) ?? asNumber(w.view_count),
       heatLabel: null,
       url: `https://www.douyin.com/search/${encodeURIComponent(w.word!.trim())}`,
-      thumbnail: null,
+      thumbnail: w.word_cover?.url_list?.find((u) => typeof u === "string" && u.startsWith("http")) ?? null,
       extra: w.discuss_video_count ? `${w.discuss_video_count} 条视频在讨论` : null,
     }));
 }

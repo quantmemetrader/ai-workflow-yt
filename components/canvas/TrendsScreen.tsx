@@ -3,7 +3,6 @@
 import * as React from "react";
 import { useResizable, useResizableHeight } from "@/components/ui/Resizer";
 import { PhrasePicker, type Suggestion } from "@/components/research/PhrasePicker";
-import { StatusStrip } from "@/components/ui/kit";
 
 /**
  * TrendsScreen — a transcription of design/canvas/Res-Trends.dc.html.
@@ -452,7 +451,7 @@ export function TrendsScreen(props: {
 
   /** The four states a topic can be in, plus how many sources answered. Every
    * one of these is already on the screen somewhere; none is computed twice. */
-  const pulse = React.useMemo(
+  const pulse = React.useMemo( // kept: the chips read from it
     () => ({
       collecting: topics.filter((x) => x.collecting === true).length,
       undecided: topics.filter((x) => x.status === "new").length,
@@ -603,23 +602,10 @@ export function TrendsScreen(props: {
             here that is asking for a person: adopting or rejecting a topic is
             what re-weights everything below it, and until somebody does it the
             board is a list the machine wrote and nobody read. */}
-        <StatusStrip
-          items={[
-            { label: t("Collecting"), value: pulse.collecting, tone: "running" },
-            { label: t("Undecided"), value: pulse.undecided, tone: "you" },
-            { label: t("Adopted"), value: pulse.adopted, tone: "done" },
-            { label: t("Rejected"), value: pulse.rejected, tone: "quiet" },
-          ]}
-          right={
-            pulse.degraded > 0
-              ? zh
-                ? `${count(pulse.liveSources, locale)}/${count(sources.length, locale)} 个来源正常`
-                : `${count(pulse.liveSources, locale)} of ${count(sources.length, locale)} sources healthy`
-              : zh
-                ? `${count(pulse.liveSources, locale)} 个来源正常`
-                : `${count(pulse.liveSources, locale)} sources healthy`
-          }
-        />
+        {/* The Collecting / Undecided / Adopted / Rejected strip used to sit
+            here. It counted watch phrases — arsenal, goat — that somebody
+            typed as a test, and the client read it as the state of the
+            product. The board's own chips still show the counts. */}
 
         <div style={{ flexGrow: 1, display: "flex", minHeight: 0 }}>
           <div style={{ flexGrow: 1, minWidth: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
