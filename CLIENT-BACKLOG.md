@@ -195,6 +195,39 @@ That is the next real increase in research quality.
 - **高级** — the video module's eight tabs are four, with the media bin, cut
   list, audio and graphics behind a fold.
 
+### DONE later the same evening
+- **对标账号 fills itself.** `who_makes_this` had been answering "nobody has
+  posted about this" to every query because the model typed sentences and
+  YouTube returns zero items for a narrow query with a recency window. It
+  broadens until it answers and reports which query worked. A tagged employee
+  now runs in its own trade rather than as "chat", so 研究员 gets six rounds
+  instead of four — it was spending all four searching. And a turn that used
+  tools and then produced no sentence reports what the tools found instead of
+  "我暂时答不上来". Proven: pressed the brief's button, 研究员 found three HK
+  channels on real view counts, added all three itself, and tagged 策划
+  unprompted. 77 competitor videos synced.
+- **The first pass reads the brief's length.** `lib/video/length.ts`: 45–58 秒,
+  2 分钟, 2-3 minutes, 90 seconds, both languages, upper bound. Ten forms
+  tested. The model is told the target and the arithmetic, and a backstop cuts
+  to time the way a person does — opening stays, ending stays, middle gives
+  way. A 2:53 plan against 58s comes out at 0:45.
+- **Voice-over refuses up front** with the reason, instead of queueing a job
+  that fails in the worker twenty minutes later and leaves a track pending for
+  ever. `VOICEOVER_ENABLED=1` re-enables it without a deploy.
+- **Uploads over 64 MB are proven from a browser.** A 570 MB file went up on
+  2026-09-23 and is still in the store. Closing that as done.
+
+### On ElevenLabs and Whisper
+They do two different jobs and only one of them is replaced.
+- **Speech to text**: Whisper on this box has fully replaced ElevenLabs Scribe.
+  It is better here — no IP block, no per-minute cost, `large-v3-turbo` at
+  ~3x realtime, and `TRANSCRIBE_BACKEND=local` does not fall back.
+- **Speech out (voice-over)**: Whisper cannot do this. It is a transcriber; TTS
+  is a different model. If the studio ever wants narration in a voice that is
+  not 谢亚芳's, that needs a provider this server's egress can reach.
+  `audio_tracks` is empty — nobody has ever used it — so this is a capability
+  nobody currently misses.
+
 ### Still open
 - **使用人员名称错误.** The top bar shows name and role correctly; the *data* is
   wrong. `admin@okbro.xyz` is called "admin", the owner account is called

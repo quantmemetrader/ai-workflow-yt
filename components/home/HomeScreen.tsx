@@ -160,7 +160,11 @@ export function HomeScreen({
               background: "transparent",
             }}
           />
-          <div style={{ display: "flex", alignItems: "center", gap: 7, marginTop: 8, flexWrap: "wrap" }}>
+          {/* Two groups, not one wrapping row: the colleagues wrap among
+              themselves and the send button stays on the right, instead of
+              being pushed onto a line of its own at the first narrow window. */}
+          <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 8 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap", flexGrow: 1, minWidth: 0 }}>
             {(["research", "planning", "script", "video", "article"] as AgentKey[]).map((key) => (
               <button
                 key={key}
@@ -176,8 +180,8 @@ export function HomeScreen({
                 {zh ? AGENT_LABELS[key].nameLocal : AGENT_LABELS[key].name}
               </button>
             ))}
-            <span style={{ flexGrow: 1 }} />
-            <span style={{ fontSize: 11.5, color: "#c7c7c7" }}>
+            </div>
+            <span style={{ fontSize: 11.5, color: "#c7c7c7", whiteSpace: "nowrap", flexShrink: 0 }}>
               {teamChannel ? t(`发到 #${teamChannel.name}`, `Posts to #${teamChannel.name}`) : t("还没有团队频道", "No team channel yet")}
             </span>
             <button
@@ -194,6 +198,7 @@ export function HomeScreen({
                 fontSize: 12.5,
                 fontWeight: 500,
                 fontFamily: "inherit",
+                flexShrink: 0,
                 cursor: draft.trim() ? "pointer" : "default",
               }}
             >
