@@ -109,6 +109,70 @@ across 57 files, and 84 values in Postgres. Both swept. `npm run build` and
 
 ---
 
+## DONE 2026-09-24 (evening) — the agentic pass
+
+### The five AI employees
+研究员 · 策划 · 编剧 · 剪辑师 · 撰稿人, the names the client's table asked for.
+Three existed under other names; 策划 and 撰稿人 are new. Every old name is
+kept as an alias, and `ensureAgent` brings a renamed employee's user row back
+in step with `lib/agents/catalog.ts` when it is next used.
+
+### Cards with buttons
+`lib/agents/cards.ts`. A `say` button posts a prepared line **as whoever
+pressed it** — same `postMessage`, same tag dispatch, same permission checks a
+typed message gets — and an `open` button is a link to the screen holding a
+real gate. Nothing on a card can approve, publish or spend. The press is
+written onto the message (`meta.done`), so the card records who decided and the
+server refuses a second press.
+
+### What runs on its own
+| | when | who |
+|---|---|---|
+| 每日晨报 | 08:00 HKT | 研究员 |
+| 每日待办 | 08:05 HKT, reads the digest | 策划 |
+| 新素材自动分析 | when an upload has been transcribed | 策划 |
+
+All three are switchable on **Settings → 自动化**, including the Hong Kong time
+and which employee signs it. pm2 now wakes `aura-digest` and `aura-plan`
+**hourly** and the scripts ask the setting (`dueNow`) — a cron line in
+`ecosystem.config.cjs` cannot be edited from a browser, and the client asked
+for a page that changes this. Three-hour catch-up window, so a deploy at eight
+makes the brief late rather than losing it.
+
+### 首页
+`/home`, where signing in lands. Say what you want (posts to the team channel
+and tags whoever you name), everything waiting on a decision with its buttons,
+then the five employees with what each is on. No state of its own: running jobs
+say who is busy, the last thing an employee said says where it got to, an
+unpressed card is the studio's turn.
+
+### The rest of the P0 list
+- **Sidebar labels** — the rail is a named list, open by default, collapsible,
+  draggable, remembered.
+- **Subtitles** — the gaps were `mapTime` returning null for an endpoint inside
+  a trimmed silence, which threw away the whole line. Surviving words decide
+  now. Lines are the aspect's own budget (16 Han for 9:16, 24 for 16:9), a
+  sentence only breaks the line once it is worth reading, and Whisper gets an
+  `initial_prompt` in punctuated Simplified so there is something to break at.
+- **Script text** — beats are 16.5px on 1.8, up from 14px.
+- **Chat file upload** — tested from a browser end to end: presign → PUT to R2 →
+  complete, then two files attached and posted. It works. Multipart above
+  64 MB is still only proven server-side.
+- **Comments by platform** — already shipped; filter and group-by are both there.
+- **添加选题** — already shipped (`components/canvas/AddTopicButton.tsx`).
+
+### Still open
+- **使用人员名称错误.** The top bar shows name and role correctly; the *data* is
+  wrong. `admin@okbro.xyz` is called "admin", the owner account is called
+  "Studio owner", there are two Ryans, and only 谢亚芳 has a Chinese name. This
+  needs the studio to say what each person should be called — do not invent
+  Chinese names for them.
+- **Resizable panels** exist (`components/ui/Resizer.tsx`) on the rail, the
+  module sidebars and the agent dock. Not audited screen by screen.
+- **P2 "fewer visible options"** — the 高级 fold on the editor is not done.
+
+---
+
 ## BLOCKER — ElevenLabs refuses this server (found 2026-09-23)
 
 Every ElevenLabs request from this box (84.32.64.46, Cherry Servers,
