@@ -15,6 +15,7 @@ import { addClipAction, addItemAction, autoEditAction, exportAction } from "@/ap
 import { uploadFiles } from "@/lib/client/upload";
 import { beginWork } from "@/lib/client/busy";
 import { notify } from "@/lib/client/notify";
+import { writeRendering } from "@/lib/client/rendering";
 import type { ProjectDetail, ProjectStep } from "@/lib/projects/service";
 
 /**
@@ -49,14 +50,26 @@ export function ProjectScreen({ project: p, zh, people }: { project: ProjectDeta
     return Boolean(since && !p.messages.some((m) => m.agent === a && m.at > since));
   };
   const anyWorking = (Object.keys(asked) as AgentKey[]).some(working);
-  const renderLive = p.render?.state === "queued" || p.render?.state === "rendering";
+  const directing = p.director?.state === "queued" || p.director?.state === "running";
+  const renderLive = p.render?.state === "queued" || p.render?.state === "rendering" || directing;
 
+  /* While something is being worked on, ask for the project's state in one
+     short string and refresh only when it changes: re-rendering on a timer
+     read as the page reloading itself. */
   React.useEffect(() => {
     if (!(anyWorking || renderLive)) return;
-    const until = Date.now() + 6 * 60_000;
-    const id = setInterval(() => (Date.now() > until ? clearInterval(id) : router.refresh()), 4000);
+    const until = Date.now() + 8 * 60_000;
+    let last: string | null = null;
+    const id = setInterval(async () => {
+      if (Date.now() > until) return clearInterval(id);
+      const r = await fetch(`/api/projects/${p.id}/pulse`, { cache: "no-store" }).catch(() => null);
+      const j = r?.ok ? ((await r.json()) as { stamp: string }) : null;
+      if (!j) return;
+      if (last !== null && j.stamp !== last) router.refresh();
+      last = j.stamp;
+    }, 3000);
     return () => clearInterval(id);
-  }, [anyWorking, renderLive, router]);
+  }, [anyWorking, renderLive, router, p.id]);
 
   /** Ask one employee something from its card; the answer comes back there. */
   function ask(agent: AgentKey, text: string) {
@@ -72,20 +85,22 @@ export function ProjectScreen({ project: p, zh, people }: { project: ProjectDeta
     });
   }
 
-  function runTool(key: string, label: string, fn: () => Promise<{ error?: string } | Record<string, never>>) {
+  /* A video job, started from a card. Not inside a page-wide transition
+     (that dimmed every button and read as the page glitching), and followed
+     by the corner chip on every page until it lands. */
+  async function runTool(key: string, label: string, fn: () => Promise<{ error?: string } | Record<string, never>>) {
     if (busyAction) return;
     setBusyAction(key);
-    start(async () => {
-      const res = await fn();
-      setBusyAction(null);
-      if (res && "error" in res && res.error) {
-        notify(res.error);
-        return;
-      }
-      notify(t(`已开始：${label}`, `Started: ${label}`), "ok");
-      setAsked((m) => ({ ...m, video: new Date().toISOString() }));
-      router.refresh();
-    });
+    const res = await fn().catch((err) => ({ error: err instanceof Error ? err.message : String(err) }));
+    setBusyAction(null);
+    if (res && "error" in res && res.error) {
+      notify(res.error);
+      return;
+    }
+    if (p.video) writeRendering({ projectId: p.video.id, title: p.title });
+    notify(t(`已开始：${label}`, `Started: ${label}`), "ok");
+    setAsked((m) => ({ ...m, video: new Date().toISOString() }));
+    router.refresh();
   }
 
   async function upload(list: FileList) {
@@ -217,7 +232,9 @@ export function ProjectScreen({ project: p, zh, people }: { project: ProjectDeta
             </span>
           </button>
 
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(460px, 1fr))", gap: 14, alignItems: "start" }}>
+          {/* A board of two columns that pack like a puzzle: each card starts
+              where the one above it ends, whatever their heights. */}
+          <Board>
             {/* ---- topic ---- */}
             <Workbench icon={<AgentIcon agent="research" size={26} radius={7} />} title={t("选题", "Topic")} sub={p.source?.label ?? t("你定的题", "Your topic")}>
               {p.brief ? <p style={{ margin: "0 0 10px", fontSize: 13, color: "#525252", lineHeight: 1.6 }}>{p.brief.replace(/@\S+/g, "").trim().slice(0, 300)}</p> : null}
@@ -311,10 +328,33 @@ export function ProjectScreen({ project: p, zh, people }: { project: ProjectDeta
               icon={<AgentIcon agent="video" size={26} radius={7} />}
               title={t("成片", "The video")}
               sub={rendered ? t("已渲染", "Rendered") : renderLive ? t(`渲染中 ${pct}%`, `Rendering ${pct}%`) : t("还没有成片", "Nothing rendered yet")}
-              right={rendered ? <a href={`/api/files/${rendered}/download`} target="_blank" rel="noreferrer" style={{ ...btn(false), height: 28, fontSize: 12, textDecoration: "none" }}>{t("打开", "Open")} <Icon name="external" size={11} /></a> : null}
+              right={
+                <span style={{ display: "flex", gap: 6 }}>
+                  {p.video ? <Link href={`/video?project=${p.video.id}`} style={{ ...btn(false), height: 28, fontSize: 12, textDecoration: "none" }}>{t("在剪辑台打开", "Open in the editor")} <Icon name="external" size={11} /></Link> : null}
+                  {rendered ? <a href={`/api/files/${rendered}/download`} target="_blank" rel="noreferrer" style={{ ...btn(false), height: 28, fontSize: 12, textDecoration: "none" }}>{t("下载", "Download")}</a> : null}
+                </span>
+              }
             >
+              {directing ? (
+                <div style={{ display: "flex", alignItems: "center", gap: 9, padding: "9px 12px", borderRadius: 12, background: "#f3f8f5", border: "1px solid #e0efe6", marginBottom: 10 }}>
+                  <AgentIcon agent="video" size={20} radius={5} />
+                  <span style={{ fontSize: 12.5, color: "#0b7a63", flexGrow: 1 }}>{t(`剪辑师正在做：${stepName(p.director?.step ?? null, true)}`, `The editor is on it: ${stepName(p.director?.step ?? null, false)}`)}</span>
+                  <span style={{ width: 7, height: 7, borderRadius: 4, background: "#278f5e", animation: "auraPulse 1.6s ease-in-out infinite" }} />
+                </div>
+              ) : p.director?.state === "failed" && p.director.error ? (
+                <div style={{ padding: "10px 12px", borderRadius: 12, background: "#fdf3f2", border: "1px solid #f6d5d1", marginBottom: 10 }}>
+                  <div style={{ fontSize: 12.5, color: "#a3281c", lineHeight: 1.55 }}>
+                    {/no words|no sound|transcribe|转写|声音/i.test(p.director.error)
+                      ? t("素材里没有人说话，导演没法按口播剪。可以直接用这些画面拼成片。", "There is no speech in the footage, so the director cannot cut on it. The shots can be put together directly instead.")
+                      : `${t("上次没做成：", "Last try stopped: ")}${p.director.error}`}
+                  </div>
+                  <button type="button" disabled={busyAction !== null} onClick={() => runTool("assemble", t("用画面拼成片", "build from the shots"), async () => { const r = await fetch(`/api/projects/${p.id}/one-go`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ prompt: videoPrompt, way: "assemble" }) }); const j = (await r.json().catch(() => ({}))) as { error?: string }; return r.ok ? {} : { error: j.error ?? t("没能开始", "Could not start") }; })} style={{ ...btn(true), height: 30, fontSize: 12, marginTop: 8 }}>
+                    <Icon name="film" size={13} /> {t("用这些画面直接拼成片", "Build it from the shots instead")}
+                  </button>
+                </div>
+              ) : null}
               {rendered ? <video controls preload="metadata" src={`/api/files/${rendered}/download`} style={{ width: "100%", maxHeight: 420, borderRadius: 12, background: "#000", display: "block", marginBottom: 10 }} /> : null}
-              {renderLive ? (
+              {renderLive && !directing ? (
                 <div style={{ marginBottom: 10 }}>
                   <div style={{ height: 6, borderRadius: 3, background: "#e6efe9", overflow: "hidden" }}>
                     <div style={{ width: `${Math.max(4, pct)}%`, height: "100%", background: "linear-gradient(90deg,#278f5e,#0f5bd5)", transition: "width .4s ease" }} />
@@ -349,7 +389,7 @@ export function ProjectScreen({ project: p, zh, people }: { project: ProjectDeta
               </Actions>
               <AskBox people={people} zh={zh} placeholder={t("文案要求，例如：更口语、加 3 个话题标签…", "What the copy should be, e.g. more casual, add 3 hashtags…")} onSend={(v) => ask("article", v)} disabled={pending} />
             </Workbench>
-          </div>
+          </Board>
         </div>
       </div>
 
@@ -360,6 +400,23 @@ export function ProjectScreen({ project: p, zh, people }: { project: ProjectDeta
 }
 
 /* ------------------------------------------------------------- the pieces */
+
+/**
+ * Cards in two columns, dealt alternately (left, right, left…), each column
+ * stacking its cards with no gaps; one column on a narrow screen.
+ */
+function Board({ children }: { children: React.ReactNode }) {
+  const cards = React.Children.toArray(children).filter(Boolean);
+  const left = cards.filter((_, i) => i % 2 === 0);
+  const right = cards.filter((_, i) => i % 2 === 1);
+  return (
+    <div className="pboard" style={{ display: "flex", gap: 14, alignItems: "flex-start" }}>
+      <div style={{ flex: "1 1 0", minWidth: 0, display: "flex", flexDirection: "column", gap: 14 }}>{left}</div>
+      <div style={{ flex: "1 1 0", minWidth: 0, display: "flex", flexDirection: "column", gap: 14 }}>{right}</div>
+      <style>{`@media (max-width: 980px) { .pboard { flex-direction: column; } .pboard > div { width: 100%; } }`}</style>
+    </div>
+  );
+}
 
 function Workbench({ icon, title, sub, right, children }: { icon: React.ReactNode; title: string; sub?: string; right?: React.ReactNode; children: React.ReactNode }) {
   return (
@@ -643,6 +700,22 @@ function scriptStatus(s: string, zh: boolean): string {
   const m: Record<string, [string, string]> = { brief: ["草稿", "draft"], drafting: ["草稿", "draft"], awaiting_approval: ["等批准", "awaiting approval"], locked: ["已锁定", "locked"], archived: ["已归档", "archived"] };
   const v = m[s] ?? [s, s];
   return zh ? v[0] : v[1];
+}
+
+function stepName(step: string | null, zh: boolean): string {
+  const m: Record<string, [string, string]> = {
+    transcribe: ["转写素材", "transcribing the footage"],
+    plan: ["规划剪辑", "planning the cut"],
+    cut: ["剪辑", "cutting"],
+    captions: ["加字幕", "adding captions"],
+    graphics: ["加图形", "adding graphics"],
+    footage: ["找画面", "finding footage"],
+    pictures: ["找图", "finding pictures"],
+    write: ["写入", "writing"],
+    render: ["渲染", "rendering"],
+  };
+  const v = step ? m[step] : null;
+  return v ? (zh ? v[0] : v[1]) : zh ? "处理中" : "working";
 }
 
 function clean(body: string): string {

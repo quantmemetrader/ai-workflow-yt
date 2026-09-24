@@ -29,7 +29,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const { id } = await params;
   const p = await workProjectDetail(viewer, id, true, 1);
   if (!p?.video) return Response.json({ error: "No such project" }, { status: 404 });
-  const body = (await req.json().catch(() => ({}))) as { prompt?: unknown };
+  const body = (await req.json().catch(() => ({}))) as { prompt?: unknown; way?: unknown };
   const asked = typeof body.prompt === "string" ? body.prompt.trim().slice(0, 2000) : "";
   const brief = asked || (p.brief ?? p.title).replace(/@\S+/g, "").trim() || p.title;
 
@@ -66,7 +66,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
    * ("nothing to transcribe"), so a stock video is assembled directly: the
    * clips in order, trimmed to the length asked for, and rendered.
    */
-  const stockOnly = brought > 0 || p.mode === "direct:video";
+  /* "assemble" is asked for after the director found no speech to cut on. */
+  const stockOnly = brought > 0 || p.mode === "direct:video" || body.way === "assemble";
   if (!stockOnly) {
     try {
       await requestDirector(viewer, p.video.id, { brief, aspect: "9:16", render: true, pace: "channel" });
@@ -87,6 +88,23 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         const itemId = await addTimelineItem(viewer, p.video.id, { kind: "clip", clipId: c.id, text: "" });
         const out = c.durationMs ? Math.min(c.durationMs, each) : each;
         await updateTimelineItem(viewer, itemId, { inMs: 0, outMs: out });
+      }
+    } else {
+      /* A timeline already there (an earlier try) is held to the length
+         asked for: each clip trimmed to its share, from its own in-point. */
+      const items = await db
+        .select({ id: timelineItems.id, kind: timelineItems.kind, inMs: timelineItems.inMs, outMs: timelineItems.outMs, holdMs: timelineItems.holdMs, dur: videoClips.durationMs })
+        .from(timelineItems)
+        .leftJoin(videoClips, eq(videoClips.id, timelineItems.clipId))
+        .where(eq(timelineItems.projectId, p.video.id));
+      const clipItems = items.filter((i) => i.kind === "clip");
+      const total = items.reduce((n, i) => n + (i.kind === "clip" ? (i.outMs ?? i.dur ?? 0) - i.inMs : i.holdMs), 0);
+      if (clipItems.length && total > seconds * 1000 * 1.2) {
+        const each = Math.max(1000, Math.round((seconds * 1000) / clipItems.length));
+        for (const i of clipItems) {
+          const end = i.dur ? Math.min(i.dur, i.inMs + each) : i.inMs + each;
+          await updateTimelineItem(viewer, i.id, { outMs: end });
+        }
       }
     }
     await requestExport(viewer, p.video.id, { aspect: "9:16", burnCaptions: false, captionLanguage: "zh-CN" });

@@ -136,6 +136,8 @@ export type ProjectDetail = {
   /** The clips in the bin, for thumbnails. */
   clipList: { id: string; fileId: string; label: string; durationMs: number | null }[];
   render: { fileId: string | null; state: string; progress: number; at: string } | null;
+  /** Where the director has got to, when it is at work on this project. */
+  director: { state: string; step: string | null; error: string | null } | null;
   steps: ProjectStep[];
   messages: { id: string; author: string; agent: AgentKey | null; body: string; at: string; actions: import("@/lib/agents/cards").CardAction[]; done: import("@/lib/agents/cards").CardDone | null }[];
 };
@@ -154,7 +156,7 @@ export async function workProjectDetail(viewer: Viewer, id: string, zh: boolean,
     ? await db.select({ id: scripts.id, title: scripts.title, status: scripts.status, version: scripts.version }).from(scripts).where(and(eq(scripts.id, p.scriptId), isNull(scripts.deletedAt))).limit(1)
     : [];
   const [video] = p.videoProjectId
-    ? await db.select({ id: videoProjects.id, title: videoProjects.title }).from(videoProjects).where(and(eq(videoProjects.id, p.videoProjectId), isNull(videoProjects.deletedAt))).limit(1)
+    ? await db.select({ id: videoProjects.id, title: videoProjects.title, director: videoProjects.director }).from(videoProjects).where(and(eq(videoProjects.id, p.videoProjectId), isNull(videoProjects.deletedAt))).limit(1)
     : [];
   const [beatRows, clipRows] = await Promise.all([
     script ? db.select({ ord: scriptBeats.ord, visual: scriptBeats.visual, voiceover: scriptBeats.voiceover }).from(scriptBeats).where(eq(scriptBeats.scriptId, script.id)).orderBy(scriptBeats.ord) : Promise.resolve([]),
@@ -246,6 +248,7 @@ export async function workProjectDetail(viewer: Viewer, id: string, zh: boolean,
     beats: beatRows,
     clipList: clipRows,
     video: video ? { id: video.id, title: video.title, clips: clips.n, items: items.n } : null,
+    director: video?.director && typeof (video.director as { state?: unknown }).state === "string" ? { state: String((video.director as { state: string }).state), step: ((video.director as { step?: string }).step ?? null), error: ((video.director as { error?: string }).error ?? null) } : null,
     render: render ? { fileId: render.fileId, state: render.state, progress: render.progress, at: render.at.toISOString() } : null,
     steps,
     messages: (thread?.messages ?? []).map((m) => ({
