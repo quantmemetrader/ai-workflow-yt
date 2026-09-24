@@ -6,13 +6,7 @@ import { formatTextarea, type Format } from "@/components/canvas/composer-format
 import { FormattedPreview, HAS_MARKUP } from "@/components/ui/FormattedPreview";
 import { Markdown } from "@/components/ui/Markdown";
 import { JUMP_EVENT } from "@/components/shell/CommandPalette";
-import {
-  AGENT_LABELS,
-  isTagStart,
-  parseAgentMentions,
-  splitMentions,
-  type AgentKey,
-} from "@/lib/agents/catalog";
+import { AGENT_COLORS, AGENT_LABELS, isTagStart, parseAgentMentions, splitMentions, type AgentKey } from "@/lib/agents/catalog";
 import {
   AgentMark,
   MentionMenu,
@@ -51,6 +45,8 @@ export type ChannelMessage = {
   createdAt: string;
   /** Written by one of the studio's AI employees. */
   isAgent?: boolean;
+  /** Which one, so it gets its own icon and colour. */
+  agentKey?: AgentKey | null;
   /** The agent's job, straight off its user row: "AI 员工 · 视频". */
   roleLabel?: string | null;
   attachments?: ChannelAttachment[];
@@ -132,7 +128,7 @@ function Tagged({ keys, zh }: { keys: AgentKey[]; zh: boolean }) {
           className="chip"
           style={{ height: 22, fontSize: 11, gap: 5, borderColor: "#d9d9d9", color: "#171717" }}
         >
-          <AgentMark size={12} radius={4} />
+          <AgentMark agent={key} size={12} radius={4} />
           {zh ? AGENT_LABELS[key].nameLocal : AGENT_LABELS[key].name}
         </span>
       ))}
@@ -169,10 +165,44 @@ function Card({
   if (!actions.length) return null;
   const chosen = actions.find((a) => a.id === done?.actionId);
 
+  if (done) {
+    /* Answered. The buttons that were not pressed are gone, not greyed: a
+       disabled button still looks like a thing to try, and people tried. */
+    const opens = actions.filter((a) => a.kind === "open");
+    return (
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 9, flexWrap: "wrap" }}>
+        <span
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 6,
+            height: 24,
+            padding: "0 9px",
+            borderRadius: 999,
+            background: "#e4faeb",
+            color: "#1f7a4d",
+            fontSize: 11.5,
+            fontWeight: 500,
+          }}
+        >
+          <svg viewBox="0 0 24 24" style={{ width: 11, height: 11, stroke: "currentColor", fill: "none", strokeWidth: 2.4, strokeLinecap: "round", strokeLinejoin: "round" }}>
+            <path d="m5 12.5 4.5 4.5L19 7.5" />
+          </svg>
+          {zh ? `${done.by} 选了「${chosen ? chosen.label : "…"}」` : `${done.by} chose “${chosen ? chosen.labelEn : "…"}”`}
+        </span>
+        {opens.map((a) => (
+          <Link key={a.id} href={a.href ?? "#"} style={{ fontSize: 12, color: "#525252", textDecoration: "none" }}>
+            {zh ? a.label : a.labelEn} →
+          </Link>
+        ))}
+      </div>
+    );
+  }
+
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 7, marginTop: 9, flexWrap: "wrap" }}>
       {actions.map((a) => {
-        const primary = a.tone === "primary" && !done;
+        const primary = a.tone === "primary";
         const style: React.CSSProperties = {
           display: "inline-flex",
           alignItems: "center",
@@ -184,11 +214,11 @@ function Card({
           fontWeight: 500,
           fontFamily: "inherit",
           letterSpacing: "inherit",
-          cursor: done ? "default" : "pointer",
+          cursor: "pointer",
           border: `1px solid ${primary ? "#171717" : "#e2e2e2"}`,
           background: primary ? "#171717" : "#ffffff",
           color: primary ? "#ffffff" : "#383838",
-          opacity: done && a.id !== done.actionId ? 0.4 : 1,
+          opacity: 1,
           textDecoration: "none",
         };
 
@@ -203,7 +233,7 @@ function Card({
           <button
             key={a.id}
             type="button"
-            disabled={Boolean(done) || busy !== null}
+            disabled={busy !== null}
             onClick={() => onPress(a.id)}
             style={{ ...style, opacity: style.opacity === 1 && busy === a.id ? 0.55 : style.opacity }}
           >
@@ -212,13 +242,6 @@ function Card({
         );
       })}
 
-      {done && (
-        <span style={{ fontSize: 11.5, color: "#999999" }}>
-          {zh
-            ? `${done.by} 选了「${chosen ? chosen.label : "…"}」`
-            : `${done.by} chose “${chosen ? chosen.labelEn : "…"}”`}
-        </span>
-      )}
     </div>
   );
 }
@@ -297,6 +320,27 @@ export function ChannelSurface(props: {
   const [attached, setAttached] = React.useState<Attaching[]>([]);
   const box = React.useRef<HTMLTextAreaElement>(null);
   const picker = React.useRef<HTMLInputElement>(null);
+  const list = React.useRef<HTMLDivElement>(null);
+
+  /* The newest message is the one you came for. Jump there on open and
+     whenever one arrives — unless you have scrolled up to read, in which case
+     the view stays where you put it. */
+  const lastId = props.messages[props.messages.length - 1]?.id ?? null;
+  const stuck = React.useRef(true);
+  React.useEffect(() => {
+    const el = list.current;
+    if (!el) return;
+    if (stuck.current) el.scrollTop = el.scrollHeight;
+  }, [lastId]);
+  React.useEffect(() => {
+    const el = list.current;
+    if (!el) return;
+    const onScroll = () => {
+      stuck.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+    };
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => el.removeEventListener("scroll", onScroll);
+  }, []);
   const format = (f: Format) => formatTextarea(box.current, f, setDraft);
 
   /* ---------- tagging ---------- */
@@ -589,10 +633,15 @@ export function ChannelSurface(props: {
               overflowY: "auto",
               display: "flex",
               flexDirection: "column",
-              justifyContent: "flex-end",
               paddingBottom: "4px",
             }}
+            ref={list}
           >
+            {/* Bottom-aligned by a spacer, not by `justify-content: flex-end`:
+                on a column that overflows, flex-end pushes the oldest
+                messages out through the top edge, where no scrollbar can
+                reach them. That was "I can't scroll up in chat". */}
+            <div style={{ flexGrow: 1 }} />
             {props.messages.length === 0 ? (
               <div style={{ padding: "0 22px 18px" }}>
                 <div style={{ fontSize: 15, fontWeight: 600 }}>
@@ -617,7 +666,7 @@ export function ChannelSurface(props: {
 
               const avatar =
                 m.isAgent === true ? (
-                  <AgentMark />
+                  <AgentMark agent={m.agentKey ?? null} />
                 ) : m.authorAvatar === null ? (
                   <div
                     className="mav"
@@ -661,7 +710,7 @@ export function ChannelSurface(props: {
                           {m.isAgent === true ? (
                             <span
                               className="app"
-                              style={{ background: "#171717", color: "#fff", letterSpacing: 0 }}
+                              style={{ background: m.agentKey ? AGENT_COLORS[m.agentKey] : "#171717", color: "#fff", letterSpacing: 0 }}
                             >
                               {m.roleLabel || (zh ? "AI 员工" : "AI STAFF")}
                             </span>

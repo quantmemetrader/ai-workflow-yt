@@ -1,5 +1,7 @@
 "use client";
 
+import { AgentIcon } from "@/components/agents/AgentIcon";
+
 import * as React from "react";
 import { AGENT_KEYS, AGENT_LABELS, agentAliases, type AgentKey } from "@/lib/agents/catalog";
 
@@ -120,8 +122,14 @@ export function filterTargets(targets: MentionTarget[], query: string): MentionT
     .map((s) => s.target);
 }
 
-/** The cube that means "this is an AI employee", at whatever size. */
-export function AgentMark({ size = 36, radius = 10 }: { size?: number; radius?: number }) {
+/** An AI employee's own mark — its glyph on its colour — or the team's cube
+ *  when no employee is named. Kept under this name so every screen that
+ *  drew the cube now draws the right face without changing its import. */
+export function AgentMark({ size = 36, radius = 10, agent = null }: { size?: number; radius?: number; agent?: AgentKey | null }) {
+  return <AgentIcon agent={agent} size={size} radius={radius} />;
+}
+
+function LegacyCube({ size = 36, radius = 10 }: { size?: number; radius?: number }) {
   return (
     <div
       style={{
@@ -235,7 +243,7 @@ export function MentionMenu({
           }}
         >
           {t.agent ? (
-            <AgentMark size={26} radius={8} />
+            <AgentMark agent={t.agent} size={26} radius={8} />
           ) : t.avatarUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
@@ -288,3 +296,6 @@ export function MentionMenu({
     </div>
   );
 }
+
+/* The cube is kept for the day a screen wants the team rather than one employee. */
+void LegacyCube;

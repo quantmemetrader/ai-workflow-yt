@@ -446,6 +446,7 @@ export async function channelThread(viewer: Viewer, slug: string, limit = 80) {
     author_avatar: string | null;
     author_is_agent: boolean | null;
     author_title: string | null;
+    author_email: string | null;
     attachments: unknown;
     meta: unknown;
   }>(sql`
@@ -464,7 +465,7 @@ export async function channelThread(viewer: Viewer, slug: string, limit = 80) {
     select ch.id as channel_id, ch.name as channel_name, ch.topic, ch.is_private, ch.kind,
            m.id as message_id, m.body, m.created_at, m.author_id, m.attachments, m.meta,
            u.name as author_name, u.name_local as author_name_local, u.avatar_url as author_avatar,
-           u.is_agent as author_is_agent, u.title as author_title
+           u.is_agent as author_is_agent, u.title as author_title, u.email as author_email
       from ch
       left join lateral (
         select * from ${chatMessages} msg
@@ -507,6 +508,7 @@ export async function channelThread(viewer: Viewer, slug: string, limit = 80) {
       authorAvatar: r.author_avatar,
       authorIsAgent: r.author_is_agent === true,
       authorTitle: r.author_title,
+      authorEmail: r.author_email,
       attachments: toIds(r.attachments).flatMap((id) => attachments.get(id) ?? []),
       /* The buttons an agent put under it, and whether somebody has already
          pressed one. Validated on the way out (`readCardActions`), because a

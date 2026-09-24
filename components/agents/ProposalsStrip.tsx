@@ -76,7 +76,7 @@ export function ProposalsStrip({
       }}
     >
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, minWidth: 0 }}>
-        <AgentMark size={20} radius={6} />
+        <AgentMark agent={owner} size={20} radius={6} />
         <span style={{ fontSize: 12.5, fontWeight: 600, whiteSpace: "nowrap" }}>
           {t(`${who}建议做这些`, `${who} suggests`)}
         </span>

@@ -4,6 +4,7 @@ import { requireModule } from "@/lib/auth/dal";
 import { announcementsChannel, channelMembers, channelThread, listPeople, markRead } from "@/lib/chat/service";
 import { ChannelView } from "@/components/chat/ChannelView";
 import { answeringModel } from "@/lib/ai/models";
+import { agentKeyFromEmail } from "@/lib/agents/catalog";
 
 export default async function ChannelPage({ params }: { params: Promise<{ slug: string }> }) {
   /* The segment can arrive still percent-encoded: a channel named 研究日报
@@ -72,6 +73,7 @@ export default async function ChannelPage({ params }: { params: Promise<{ slug: 
         /* An AI employee's messages say so, and say which one. Without this
            the studio's three agents read as three colleagues. */
         isAgent: m.authorIsAgent,
+        agentKey: m.authorIsAgent ? agentKeyFromEmail(m.authorEmail) : null,
         roleLabel: m.authorTitle,
         attachments: m.attachments,
         /* The buttons it put under what it said, and who has already

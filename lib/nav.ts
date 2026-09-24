@@ -27,9 +27,11 @@ export type NavItem = {
    * module called" and a module has one name.
    */
   secondary?: boolean;
+  /** Built, but kept off the rail for now. */
+  parked?: boolean;
 };
 
-export const NAV: NavItem[] = [
+const ALL: NavItem[] = [
   {
     /*
      * 首页 — the day's work, not a page of its own subject.
@@ -95,6 +97,9 @@ export const NAV: NavItem[] = [
     labelZh: "文章",
     live: true,
     icon: '<rect x="3.4" y="4.8" width="13.2" height="14.4" rx="2"/><path d="M6.4 8.6h7.2M6.4 12h7.2M6.4 15.4h4.6" stroke="#f8f8f8" stroke-width="1.5" fill="none"/><path d="M16.6 8.6h2.1a1.9 1.9 0 0 1 1.9 1.9v6.8a1.9 1.9 0 0 1-1.9 1.9h-2.1z"/>',
+    /* Parked at the client's request ("comment out article page for now"):
+       the route still works, the rail does not offer it. */
+    parked: true,
   },
   {
     module: "video",
@@ -155,6 +160,8 @@ export const NAV: NavItem[] = [
   },
 ];
 
+export const NAV: NavItem[] = ALL.filter((n) => !n.parked);
+
 export const NAV_BY_MODULE = new Map(NAV.filter((n) => !n.secondary).map((n) => [n.module, n]));
 
 /* ------------------------------------------------------------------ crumbs */
@@ -191,6 +198,7 @@ const SCREENS: CrumbItem[] = [
  */
 const LOOSE: CrumbItem[] = [
   { href: "/home", label: "Home", labelZh: "首页" },
+  { href: "/flow", label: "Flow", labelZh: "自动化流程" },
   { href: "/settings", label: "Settings", labelZh: "设置" },
   { href: "/search", label: "Search", labelZh: "搜索" },
 ];

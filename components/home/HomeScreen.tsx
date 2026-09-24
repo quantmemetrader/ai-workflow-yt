@@ -8,6 +8,9 @@ import { useMentions } from "@/components/chat/useMentions";
 import { AGENT_LABELS, agentTag, type AgentKey } from "@/lib/agents/catalog";
 import type { AgentState, Decision, Running } from "@/lib/home/service";
 import { pressCardAction, sendChannelMessage } from "@/app/(app)/chat/actions";
+import { PipelineStrip } from "@/components/home/PipelineStrip";
+import { TeamThread, type ThreadMessage } from "@/components/home/TeamThread";
+import type { Pipeline } from "@/lib/home/pipeline";
 
 /**
  * 首页 — the studio's day, as a line of work rather than a set of pages.
@@ -40,7 +43,13 @@ export function HomeScreen({
   zh,
   me,
   people,
+  pipeline,
+  thread,
 }: {
+  /** Today's video, step by step. */
+  pipeline: Pipeline;
+  /** The tail of the team channel, so an answer shows up here. */
+  thread: ThreadMessage[];
   agents: AgentState[];
   decisions: Decision[];
   running: (Running & { label: string })[];
@@ -62,6 +71,31 @@ export function HomeScreen({
      that reach". */
   const mentions = useMentions({ people, zh, draft, setDraft, box });
 
+  /* After you say something, the answer comes from a model call that
+     finishes after the request returns. Refresh every few seconds for a
+     minute and a half, then stop: an answer that has not come by then is
+     not coming, and a page that polls for ever is a page that never rests. */
+  /* `sentAt` is state, not a ref: it is read during render to decide whether
+     an answer has arrived since, and a ref read in render is the thing the
+     rules of hooks forbid. */
+  const [watching, setWatching] = React.useState(false);
+  const [sentAt, setSentAt] = React.useState<string | null>(null);
+  const answered = thread.some((m) => m.agent && sentAt !== null && m.at > sentAt);
+  const waiting = watching && !answered;
+  React.useEffect(() => {
+    if (!watching || answered) return;
+    const until = Date.now() + 90_000;
+    const id = setInterval(() => {
+      if (Date.now() >= until) {
+        clearInterval(id);
+        setWatching(false);
+        return;
+      }
+      router.refresh();
+    }, 4000);
+    return () => clearInterval(id);
+  }, [watching, answered, router]);
+
   const t = (a: string, b: string) => (zh ? a : b);
 
   function press(channelSlug: string, messageId: string, actionId: string) {
@@ -72,7 +106,11 @@ export function HomeScreen({
       const res = await pressCardAction(channelSlug, messageId, actionId);
       setPressing(null);
       if (res?.error) setError(res.error);
-      else router.refresh();
+      else {
+        setSentAt(new Date().toISOString());
+        setWatching(true);
+        router.refresh();
+      }
     });
   }
 
@@ -86,6 +124,8 @@ export function HomeScreen({
         return;
       }
       setDraft("");
+      setSentAt(new Date().toISOString());
+      setWatching(true);
       router.refresh();
     });
   }
@@ -176,7 +216,7 @@ export function HomeScreen({
                 className="chip"
                 style={{ height: 26, fontSize: 11.5, gap: 5, cursor: "pointer", borderColor: "#ededed" }}
               >
-                <AgentMark size={12} radius={4} />
+                <AgentMark agent={key} size={12} radius={4} />
                 {zh ? AGENT_LABELS[key].nameLocal : AGENT_LABELS[key].name}
               </button>
             ))}
@@ -211,6 +251,26 @@ export function HomeScreen({
           <p style={{ marginTop: 10, fontSize: 12.5, color: "#e03636" }}>{error}</p>
         )}
 
+        {/* ---- where the answer shows up ------------------------------- */}
+        {teamChannel ? (
+          <div style={{ marginTop: 14 }}>
+            <TeamThread
+              zh={zh}
+              channelName={teamChannel.name}
+              channelSlug={teamChannel.slug}
+              messages={thread}
+              waiting={waiting}
+              pressing={pressing}
+              onPress={(messageId, actionId) => press(teamChannel.slug, messageId, actionId)}
+            />
+          </div>
+        ) : null}
+
+        {/* ---- today's video, step by step ------------------------------ */}
+        <div style={{ marginTop: 14 }}>
+          <PipelineStrip pipeline={pipeline} zh={zh} />
+        </div>
+
         {/* ---- 2. waiting on you ---------------------------------------- */}
         {decisions.length > 0 && (
           <section style={{ marginTop: 28 }}>
@@ -227,7 +287,7 @@ export function HomeScreen({
                   }}
                 >
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    {d.agent ? <AgentMark size={20} radius={6} /> : null}
+                    {d.agent ? <AgentMark agent={d.agent} size={20} radius={6} /> : null}
                     <span style={{ fontSize: 13, fontWeight: 600 }}>{d.author}</span>
                     <Link
                       href={`/chat/c/${encodeURIComponent(d.channelSlug)}`}
@@ -299,7 +359,7 @@ export function HomeScreen({
                 }}
               >
                 <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
-                  <AgentMark size={26} radius={8} />
+                  <AgentMark agent={a.key} size={26} radius={8} />
                   <div style={{ minWidth: 0 }}>
                     <div style={{ fontSize: 13, fontWeight: 600 }}>{zh ? a.nameLocal : a.name}</div>
                     <div style={{ fontSize: 11, color: "#999999" }}>{a.title}</div>

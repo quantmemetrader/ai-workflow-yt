@@ -49,7 +49,7 @@ export function ResearcherNote({
         gap: 11,
       }}
     >
-      <AgentMark size={26} radius={8} />
+      <AgentMark agent="research" size={26} radius={8} />
       <div style={{ minWidth: 0, flexGrow: 1 }}>
         <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
           <span style={{ fontSize: 12.5, fontWeight: 600 }}>{t("研究员今天建议讨论", "Research agent's pick today")}</span>

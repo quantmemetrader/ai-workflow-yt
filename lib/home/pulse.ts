@@ -133,7 +133,7 @@ export async function latestDigest(tenantId: string): Promise<DigestNote | null>
 function firstLine(body: string): string {
   for (const raw of body.split("\n")) {
     const line = raw.replace(/^[#>\-*\s]+/, "").replace(/\*\*/g, "").replace(/[_`]/g, "").trim();
-    if (line) return line.length > 90 ? `${line.slice(0, 90)}…` : line;
+    if (line) return line.length > 52 ? `${line.slice(0, 52)}…` : line;
   }
   return "";
 }

@@ -1,7 +1,9 @@
 import { requireModule } from "@/lib/auth/dal";
 import { HomeScreen } from "@/components/home/HomeScreen";
 import { jobName, readHome } from "@/lib/home/service";
-import { listPeople } from "@/lib/chat/service";
+import { channelThread, listPeople } from "@/lib/chat/service";
+import { pipelineToday } from "@/lib/home/pipeline";
+import { agentKeyFromEmail } from "@/lib/agents/catalog";
 import { AgentDock } from "@/components/shell/AgentDock";
 import { answeringModel } from "@/lib/ai/models";
 
@@ -22,7 +24,19 @@ export default async function HomePage() {
   const viewer = await requireModule("chat");
   const locale = viewer.locale ?? "zh-CN";
   const zh = locale.startsWith("zh");
-  const [home, people] = await Promise.all([readHome(viewer, zh), listPeople(viewer)]);
+  const [home, people, pipeline] = await Promise.all([readHome(viewer, zh), listPeople(viewer), pipelineToday(viewer, zh)]);
+  /* The tail of the team channel: six messages, newest last. Same read the
+     channel page does, so what is here is exactly what is there. */
+  const tail = home.teamChannel ? await channelThread(viewer, home.teamChannel.slug, 6) : null;
+  const thread = (tail?.messages ?? []).map((m) => ({
+    id: m.id,
+    author: (zh && m.authorNameLocal) || m.authorName || "—",
+    agent: m.authorIsAgent ? agentKeyFromEmail(m.authorEmail) : null,
+    body: m.body,
+    at: m.createdAt.toISOString(),
+    actions: m.actions,
+    done: m.done,
+  }));
 
   const runningNames = Object.fromEntries(home.running.map((j) => [j.type, jobName(j.type, zh)]));
 
@@ -36,6 +50,8 @@ export default async function HomePage() {
         running={home.running.map((j) => ({ ...j, label: jobName(j.type, zh) }))}
         runningNames={runningNames}
         teamChannel={home.teamChannel}
+        pipeline={pipeline}
+        thread={thread}
         people={people.map((p) => ({
           id: p.id,
           name: (zh && p.nameLocal) || p.name,

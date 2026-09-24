@@ -3,6 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { AgentMark } from "@/components/chat/MentionMenu";
+import type { AgentKey } from "@/lib/agents/catalog";
 
 type Line = { agent: string; text: string; live: boolean; href: string; at: string };
 
@@ -61,7 +62,7 @@ export function Pulse({ zh }: { zh: boolean }) {
         alignItems: "center",
         gap: 7,
         minWidth: 0,
-        maxWidth: 520,
+        maxWidth: 380,
         height: 24,
         padding: "0 9px 0 6px",
         borderRadius: 999,
@@ -83,7 +84,7 @@ export function Pulse({ zh }: { zh: boolean }) {
           boxShadow: line.live ? "0 0 0 3px rgba(39,143,94,0.15)" : "none",
         }}
       />
-      <AgentMark size={14} radius={4} />
+      <AgentMark agent={line.agent as AgentKey} size={14} radius={4} />
       <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>
         {line.text}
       </span>

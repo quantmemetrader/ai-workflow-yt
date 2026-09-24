@@ -73,6 +73,27 @@ export const AGENT_LABELS: Record<AgentKey, AgentLabel> = {
   },
 };
 
+/**
+ * The colour that follows each employee around: its icon, its stage on the
+ * strip, its node in the flow, the dot beside its name. Five hues far enough
+ * apart to be told at a glance, none of them the blue the product uses for
+ * links.
+ */
+export const AGENT_COLORS: Record<AgentKey, string> = {
+  research: "#0f5bd5",
+  planning: "#6a3fc4",
+  script: "#b3420e",
+  video: "#0b7a63",
+  article: "#9d1d52",
+};
+
+/** Which employee an agent user is, from the address every agent row has. */
+export function agentKeyFromEmail(email: string | null | undefined): AgentKey | null {
+  if (!email) return null;
+  const key = email.split("@")[0];
+  return AGENT_KEYS.includes(key as AgentKey) && email.endsWith("@agents.invalid") ? (key as AgentKey) : null;
+}
+
 /** How an agent is written when it is tagged in a message. */
 export const agentTag = (key: AgentKey): string => `@${AGENT_LABELS[key].nameLocal}`;
 
