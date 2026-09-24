@@ -106,7 +106,14 @@ export async function studioPulse(viewer: Viewer, zh: boolean): Promise<PulseLin
  * names would be watched, written and argued about. Reading the brief back
  * here is what makes the two the same product.
  */
-export type DigestNote = { topic: string | null; why: string | null; date: string | null };
+export type DigestSignal = {
+  title: string;
+  whyNow: string;
+  hook: string;
+  strength: number;
+  evidence: { source: string; phrase: string; url: string | null; thumbnail: string | null; extra: string | null; heat: number | null; heatLabel: string | null; stats: Record<string, unknown> | null }[];
+};
+export type DigestNote = { topic: string | null; why: string | null; date: string | null; signals: DigestSignal[] };
 
 export async function latestDigest(tenantId: string): Promise<DigestNote | null> {
   const [row] = await db
@@ -127,8 +134,12 @@ export async function latestDigest(tenantId: string): Promise<DigestNote | null>
   const body = row.body ?? "";
   const topic = body.match(/\*\*今天讨论[：:]\s*(.+?)\*\*/)?.[1]?.trim() ?? null;
   const why = body.match(/为什么是现在[：:]\s*(.+)/)?.[1]?.trim().slice(0, 240) ?? null;
-  const date = (row.meta as { digest?: { date?: unknown } } | null)?.digest?.date;
-  return { topic, why, date: typeof date === "string" ? date : null };
+  const meta = (row.meta as { digest?: { date?: unknown; signals?: unknown } } | null)?.digest;
+  const date = meta?.date;
+  /* Briefs written since the daily signal carry their signals, evidence
+     rows included; older ones have only the text. */
+  const signals = Array.isArray(meta?.signals) ? (meta!.signals as DigestSignal[]).filter((s) => s && typeof s.title === "string") : [];
+  return { topic, why, date: typeof date === "string" ? date : null, signals };
 }
 
 function firstLine(body: string): string {

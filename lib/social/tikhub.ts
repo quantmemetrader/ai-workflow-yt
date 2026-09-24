@@ -37,7 +37,7 @@ const TIMEOUT_MS = Number(process.env.TIKHUB_TIMEOUT_MS ?? 30_000);
 
 type Query = Record<string, string | number | boolean | undefined | null>;
 
-async function get<T>(path: string, query: Query = {}): Promise<T> {
+async function get<T>(path: string, query: Query = {}, body?: unknown): Promise<T> {
   if (!env.tikhub.configured) throw new TikHubUnconfigured();
 
   const url = new URL(env.tikhub.baseUrl + path);
@@ -49,7 +49,9 @@ async function get<T>(path: string, query: Query = {}): Promise<T> {
   try {
     res = await fetch(url, {
       signal: AbortSignal.timeout(TIMEOUT_MS),
-      headers: { authorization: `Bearer ${env.tikhub.token}`, accept: "application/json" },
+      method: body === undefined ? "GET" : "POST",
+      headers: { authorization: `Bearer ${env.tikhub.token}`, accept: "application/json", ...(body === undefined ? {} : { "content-type": "application/json" }) },
+      body: body === undefined ? undefined : JSON.stringify(body),
       cache: "no-store",
     });
   } catch (err) {
@@ -245,7 +247,8 @@ export async function tiktokExplore(count = 20): Promise<HotRow[]> {
       id?: string;
       desc?: string;
       author?: { uniqueId?: string; nickname?: string };
-      stats?: { playCount?: number };
+      stats?: { playCount?: number; diggCount?: number; commentCount?: number; shareCount?: number };
+      createTime?: number;
       video?: { cover?: string; originCover?: string };
       challenges?: { title?: string }[];
     }[];
@@ -262,6 +265,146 @@ export async function tiktokExplore(count = 20): Promise<HotRow[]> {
         url: handle && v.id ? `https://www.tiktok.com/@${handle}/video/${v.id}` : null,
         thumbnail: v.video?.cover ?? v.video?.originCover ?? null,
         extra: [handle ? `@${handle}` : null, ...tags.map((t) => `#${t}`)].filter(Boolean).join(" · ") || null,
+        stats: {
+          views: asNumber(v.stats?.playCount),
+          likes: asNumber(v.stats?.diggCount),
+          comments: asNumber(v.stats?.commentCount),
+          shares: asNumber(v.stats?.shareCount),
+          likeRate: rate(asNumber(v.stats?.diggCount), asNumber(v.stats?.playCount)),
+          publishedAt: v.createTime ? new Date(v.createTime * 1000).toISOString() : null,
+        },
       };
     });
+}
+
+const rate = (a: number | null, b: number | null) => (a !== null && b ? a / b : null);
+
+// ------------------------------------------------------------ 抖音 billboards
+
+/**
+ * 抖音's creator billboards (热点宝): ranked videos with their real numbers.
+ *
+ * Unlike the hot-search list, which is phrases, these are videos: plays,
+ * likes, like rate, the account's follower count and when it went up. They
+ * can be filtered to a vertical, so the studio sees 财经 and 科技 rather than
+ * whatever dance is top today.
+ */
+export const DOUYIN_VERTICALS = {
+  /** 财经: 金融, 宏观经济, 创业商业, 房产, 保险. */
+  finance: { value: 616, children: [{ value: 61601 }, { value: 61605 }, { value: 61604 }, { value: 61603 }, { value: 61602 }] },
+  /** 科技: 前沿科技, 科技产品, 数码产品, 大众科技, 科技科普. */
+  tech: { value: 615, children: [{ value: 61506 }, { value: 61501 }, { value: 61507 }, { value: 61509 }, { value: 61502 }] },
+} as const;
+
+type BillboardVideo = {
+  item_id?: string;
+  item_title?: string;
+  item_cover_url?: string;
+  nick_name?: string;
+  fans_cnt?: number;
+  play_cnt?: number;
+  like_cnt?: number;
+  like_rate?: number;
+  publish_time?: number;
+};
+
+function billboardRow(v: BillboardVideo): HotRow {
+  const title = (v.item_title ?? "").replace(/\s*#\S+/g, "").trim();
+  return {
+    phrase: title || (v.nick_name ? `${v.nick_name} 的视频` : "（无标题视频）"),
+    heat: asNumber(v.play_cnt),
+    heatLabel: null,
+    url: v.item_id ? `https://www.douyin.com/video/${v.item_id}` : null,
+    thumbnail: v.item_cover_url ?? null,
+    extra: v.nick_name ?? null,
+    stats: {
+      views: asNumber(v.play_cnt),
+      likes: asNumber(v.like_cnt),
+      likeRate: rate(asNumber(v.like_cnt), asNumber(v.play_cnt)) ?? (typeof v.like_rate === "number" && v.like_rate > 0 ? v.like_rate : null),
+      fans: asNumber(v.fans_cnt),
+      publishedAt: v.publish_time ? new Date(v.publish_time * 1000).toISOString() : null,
+    },
+  };
+}
+
+/** Hot videos in the given verticals. `subType` 1001 is the whole list. */
+export async function douyinBillboardVideos(
+  verticals: (keyof typeof DOUYIN_VERTICALS)[],
+  opts: { hours?: 1 | 24 | 72 | 168; subType?: 1001 | 1002 | 1005; size?: number } = {},
+): Promise<HotRow[]> {
+  const res = await get<{ data?: { objs?: BillboardVideo[] } }>(
+    "/api/v1/douyin/billboard/fetch_hot_total_video_list",
+    {},
+    {
+      page: 1,
+      page_size: opts.size ?? 30,
+      date_window: opts.hours ?? 24,
+      sub_type: opts.subType ?? 1001,
+      keyword: "",
+      tags: verticals.map((k) => DOUYIN_VERTICALS[k]),
+    },
+  );
+  return (res.data?.objs ?? []).filter((v) => v.item_id).map(billboardRow);
+}
+
+/**
+ * Videos from small accounts that travelled far past their own audience.
+ *
+ * One request per vertical: given 财经 and 科技 together the billboard drops
+ * the filter and returns everything, dance clips included. Merged and
+ * ordered by how many times its own followers each video was watched.
+ */
+export async function douyinBreakouts(verticals: (keyof typeof DOUYIN_VERTICALS)[], hours: 24 | 72 | 168 = 168, size = 20): Promise<HotRow[]> {
+  const lists = await Promise.all(
+    verticals.map((k) =>
+      get<{ data?: { objs?: BillboardVideo[] } }>(
+        "/api/v1/douyin/billboard/fetch_hot_total_low_fan_list",
+        {},
+        { page: 1, page_size: size, date_window: hours, keyword: "", tags: [DOUYIN_VERTICALS[k]] },
+      ),
+    ),
+  );
+  const seen = new Set<string>();
+  const rows: HotRow[] = [];
+  for (const [i, res] of lists.entries()) {
+    for (const v of res.data?.objs ?? []) {
+      if (!v.item_id || seen.has(v.item_id)) continue;
+      seen.add(v.item_id);
+      const row = billboardRow(v);
+      row.extra = [v.nick_name, verticals[i] === "finance" ? "财经" : "科技"].filter(Boolean).join(" · ");
+      rows.push(row);
+    }
+  }
+  const ratio = (r: HotRow) => (r.stats?.views && r.stats?.fans ? r.stats.views / r.stats.fans : 0);
+  return rows.sort((a, b) => ratio(b) - ratio(a));
+}
+
+/** Topics climbing fastest on 抖音 right now, with their hourly heat. */
+export async function douyinRising(size = 30): Promise<HotRow[]> {
+  const res = await get<{ data?: {
+    objs?: {
+      sentence?: string;
+      hot_score?: number;
+      rank_diff?: number;
+      video_count?: number;
+      create_at?: number;
+      sentence_tag_name?: string;
+      first_item_cover_url?: string;
+    }[];
+  } }>("/api/v1/douyin/billboard/fetch_hot_rise_list", { page: 1, page_size: size, order: "rank_diff", sentence_tag: "", keyword: "" });
+  return (res.data?.objs ?? [])
+    .filter((o) => o.sentence)
+    .map((o) => ({
+      phrase: o.sentence!.trim(),
+      heat: asNumber(o.hot_score),
+      heatLabel: null,
+      url: `https://www.douyin.com/search/${encodeURIComponent(o.sentence!.trim())}`,
+      thumbnail: o.first_item_cover_url || null,
+      extra: o.sentence_tag_name ?? null,
+      stats: {
+        videos: asNumber(o.video_count),
+        rankUp: asNumber(o.rank_diff),
+        publishedAt: o.create_at ? new Date(o.create_at * 1000).toISOString() : null,
+      },
+    }));
 }

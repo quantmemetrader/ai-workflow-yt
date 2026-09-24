@@ -8,6 +8,7 @@ import { env } from "@/lib/env";
 import { answeringModel } from "@/lib/ai/models";
 import { trendingNearby } from "@/lib/research/trending";
 import { latestDigest } from "@/lib/home/pulse";
+import { evidenceNumbers, type Evidence } from "@/lib/research/signals";
 import { proposalsFor } from "@/lib/agents/proposals";
 import { trendingVideos } from "@/lib/research/youtube";
 import { creatorMemoryState } from "@/lib/creator/service";
@@ -97,9 +98,25 @@ export default async function TrendsPage({
   const [digest, proposals] = await Promise.all([latestDigest(viewer.tenantId), proposalsFor(viewer, "script")]);
   /* The morning's pick first, then what 策划 put on today's plan, three at
      most, no repeats. */
-  const picks: { text: string; why: string | null; source: "digest" | "plan" | "backlog" | "audience"; thumbnail: string | null }[] = [];
-  if (digest?.topic) picks.push({ text: digest.topic, why: digest.why, source: "digest", thumbnail: null });
-  for (const p of proposals.items) {
+  const picks: { text: string; why: string | null; source: "digest" | "plan" | "backlog" | "audience"; thumbnail: string | null; url?: string | null; evidence?: string[]; strength?: number }[] = [];
+  /* Since the daily signal: the one or two signals, each with its evidence
+     rows' own numbers and the cover of the video that proves it. Nothing
+     else is added, because one strong topic is the point. */
+  if (digest?.signals.length) {
+    for (const s of digest.signals.slice(0, 2)) {
+      const lead = s.evidence.find((e) => e.thumbnail) ?? null;
+      picks.push({
+        text: s.title,
+        why: s.whyNow.replace(/（证据\d+）|\[[A-Z]\d{1,2}\]/g, "").trim() || null,
+        source: "digest",
+        thumbnail: lead?.thumbnail ?? null,
+        url: lead?.url ?? s.evidence[0]?.url ?? null,
+        evidence: s.evidence.slice(0, 3).map((e) => `${e.source.replace(/（.*?）/, "")} · ${evidenceNumbers(e as unknown as Evidence)}`),
+        strength: s.strength,
+      });
+    }
+  } else if (digest?.topic) picks.push({ text: digest.topic, why: digest.why, source: "digest", thumbnail: null });
+  for (const p of digest?.signals.length ? [] : proposals.items) {
     if (picks.length >= 3) break;
     if (picks.some((x) => x.text === p.text || (digest?.topic && p.text.includes(digest.topic)))) continue;
     picks.push({ text: p.text, why: p.why, source: p.source, thumbnail: null });

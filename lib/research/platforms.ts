@@ -1,8 +1,15 @@
 import "server-only";
+import { and, desc, eq, gte } from "drizzle-orm";
+import { db } from "@/lib/db/client";
+import { hotSnapshots } from "@/lib/db/schema";
+import { newId } from "@/lib/ids";
 import { env } from "@/lib/env";
 import {
   bilibiliHotSearch,
+  douyinBillboardVideos,
+  douyinBreakouts,
   douyinHotSearch,
+  douyinRising,
   tiktokExplore,
   weiboHotSearch,
   xiaohongshuHotInspiration,
@@ -11,24 +18,23 @@ import { trendingNearby } from "@/lib/research/trending";
 import { trendingVideos } from "@/lib/research/youtube";
 
 /**
- * What each platform says is hot, on one switch.
+ * What each platform says is hot, read from storage.
  *
- * The client's ask: *"for trend page see if can select platform — TikTok,
- * rednote, WeChat, YouTube, Weibo etc."* The Trends strip had two feeds,
- * Google's searches and YouTube's chart, and both are Hong Kong's. A studio
- * that publishes into the Chinese platforms too was looking at the wrong
- * side of the wall.
+ * Reading a platform takes seconds and TikHub bills per request, and when
+ * each page view called out the studio waited on Amsterdam-to-China round
+ * trips and every one of the four app processes kept its own copy. Now
+ * `scripts/collect-hot.ts` reads every list on the hour into
+ * `hot_snapshots`, and a page reads the newest row: one database read.
  *
- * Every row here is the platform's own list, read as published — nothing is
- * scraped, and the unit of "heat" is kept as the platform gave it. WeChat has
- * no public list and says so rather than showing somebody else's.
+ * A platform with nothing stored yet (a new one, or the first hour after a
+ * wipe) is read live once and stored, so the page is never empty just
+ * because the collector has not run.
  *
- * TikHub bills per request, so each platform is read at most once per half
- * hour for the whole server, and only when somebody picks it. The two feeds
- * that are free (Google, YouTube) stay on the page load as before.
+ * Every row is the platform's own list, read as published. The unit of
+ * "heat" is kept as the platform gave it. WeChat has no public list.
  */
 export { PLATFORMS, isPlatformKey, type PlatformKey } from "@/lib/research/platform-catalog";
-import { type PlatformKey, type HotRow } from "@/lib/research/platform-catalog";
+import { PLATFORMS, type PlatformKey, type HotRow } from "@/lib/research/platform-catalog";
 
 export type PlatformHot = {
   platform: PlatformKey;
@@ -38,19 +44,63 @@ export type PlatformHot = {
   fetchedAt: number;
 };
 
-const TTL_MS = 30 * 60_000;
-const cache = new Map<PlatformKey, PlatformHot>();
+/** A stored list older than this is read again live rather than shown. */
+const STALE_MS = 6 * 60 * 60_000;
+/** Within a process, a stored list is re-read from the database this often. */
+const MEMO_MS = 60_000;
+const memo = new Map<PlatformKey, { at: number; hot: PlatformHot }>();
 
 export async function platformHot(platform: PlatformKey): Promise<PlatformHot> {
-  const hit = cache.get(platform);
-  if (hit && Date.now() - hit.fetchedAt < TTL_MS) return hit;
+  const m = memo.get(platform);
+  if (m && Date.now() - m.at < MEMO_MS) return m.hot;
 
-  const done = (rows: HotRow[], note: string | null = null): PlatformHot => {
-    const out = { platform, rows, note, fetchedAt: Date.now() };
-    // A failure is not cached: the next person who looks should get a fresh try.
-    if (rows.length) cache.set(platform, out);
-    return out;
-  };
+  const stored = await latestStored(platform);
+  if (stored && Date.now() - stored.fetchedAt < STALE_MS) {
+    memo.set(platform, { at: Date.now(), hot: stored });
+    return stored;
+  }
+
+  const live = await collectPlatform(platform);
+  // A failed live read still shows the last good list, labelled by its time.
+  const hot = live.rows.length || !stored ? live : stored;
+  memo.set(platform, { at: Date.now(), hot });
+  return hot;
+}
+
+async function latestStored(platform: PlatformKey): Promise<PlatformHot | null> {
+  const [row] = await db
+    .select()
+    .from(hotSnapshots)
+    .where(and(eq(hotSnapshots.platform, platform), gte(hotSnapshots.fetchedAt, new Date(Date.now() - 7 * 86_400_000))))
+    .orderBy(desc(hotSnapshots.fetchedAt))
+    .limit(1);
+  if (!row || !Array.isArray(row.rows) || row.rows.length === 0) return null;
+  return { platform, rows: row.rows as HotRow[], note: row.note, fetchedAt: row.fetchedAt.getTime() };
+}
+
+/** Read one platform live and store what came back. Used by the collector. */
+export async function collectPlatform(platform: PlatformKey): Promise<PlatformHot> {
+  const hot = await readLive(platform);
+  if (hot.rows.length) {
+    await db.insert(hotSnapshots).values({ id: newId("hot"), platform, rows: hot.rows, note: hot.note, fetchedAt: new Date(hot.fetchedAt) });
+    memo.delete(platform);
+  }
+  return hot;
+}
+
+/** Every platform that has a list, one after another. */
+export async function collectAll(): Promise<{ platform: PlatformKey; rows: number; note: string | null }[]> {
+  const out = [];
+  for (const p of PLATFORMS) {
+    if (p.unavailable) continue;
+    const hot = await collectPlatform(p.key);
+    out.push({ platform: p.key, rows: hot.rows.length, note: hot.note });
+  }
+  return out;
+}
+
+async function readLive(platform: PlatformKey): Promise<PlatformHot> {
+  const done = (rows: HotRow[], note: string | null = null): PlatformHot => ({ platform, rows, note, fetchedAt: Date.now() });
 
   try {
     switch (platform) {
@@ -77,6 +127,13 @@ export async function platformHot(platform: PlatformKey): Promise<PlatformHot> {
             url: `https://www.youtube.com/watch?v=${v.id}`,
             thumbnail: v.thumbnail,
             extra: v.channelTitle,
+            stats: {
+              views: v.views,
+              likes: v.likes,
+              comments: v.comments,
+              likeRate: v.views ? v.likes / v.views : null,
+              publishedAt: v.publishedAt,
+            },
           })),
         );
       }
@@ -87,29 +144,34 @@ export async function platformHot(platform: PlatformKey): Promise<PlatformHot> {
           return done([], "没有配置 TikHub 密钥，读不到这个平台。在 管理 → 渠道与凭证 里设置。");
         }
         const rows =
-          platform === "douyin"
-            ? await douyinHotSearch()
-            : platform === "weibo"
-              ? await weiboHotSearch()
-              : platform === "bilibili"
-                ? await bilibiliHotSearch()
-                : platform === "xiaohongshu"
-                  ? await xiaohongshuHotInspiration()
-                  : await tiktokExplore();
+          platform === "dy_breakout"
+            ? await douyinBreakouts(["finance", "tech"])
+            : platform === "dy_finance"
+              ? await douyinBillboardVideos(["finance"], { hours: 24 })
+              : platform === "dy_tech"
+                ? await douyinBillboardVideos(["tech"], { hours: 24 })
+                : platform === "dy_rising"
+                  ? await douyinRising()
+                  : platform === "douyin"
+                    ? await douyinHotSearch()
+                    : platform === "weibo"
+                      ? await weiboHotSearch()
+                      : platform === "bilibili"
+                        ? await bilibiliHotSearch()
+                        : platform === "xiaohongshu"
+                          ? await xiaohongshuHotInspiration()
+                          : await tiktokExplore();
         return done(rows, rows.length ? null : "这个平台刚才没有返回任何内容。");
       }
     }
   } catch (err) {
-    if (hit) return hit;
     /* The reader's own message names the endpoint and quotes the upstream
        body — right for a log, wrong for a screen. */
     console.error(`[research] ${platform} hot list`, err);
     const status = err instanceof Error ? (err.message.match(/\((\d{3})\//)?.[1] ?? null) : null;
     return done(
       [],
-      status
-        ? `这个平台刚才没给数据（上游 ${status}）。过一会儿再点一次，通常就好。`
-        : "这个平台暂时读不到，过一会儿再点一次。",
+      status ? `这个平台刚才没给数据（上游 ${status}）。过一会儿再点一次，通常就好。` : "这个平台暂时读不到，过一会儿再点一次。",
     );
   }
 }

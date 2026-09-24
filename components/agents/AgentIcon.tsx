@@ -1,5 +1,5 @@
 import * as React from "react";
-import { AGENT_COLORS, type AgentKey } from "@/lib/agents/catalog";
+import { AGENT_COLORS, AGENT_TINTS, type AgentKey } from "@/lib/agents/catalog";
 
 /**
  * One drawn mark per AI employee, in that employee's colour.
@@ -67,7 +67,10 @@ export function AgentIcon({
   radius?: number;
   title?: string;
 }) {
-  const color = agent ? AGENT_COLORS[agent] : "#171717";
+  /* A light square with the glyph in the employee's full colour; the team's
+     own mark stays black on white-grey. */
+  const color = agent ? AGENT_TINTS[agent] : "#ededed";
+  const ink = agent ? AGENT_COLORS[agent] : "#171717";
   return (
     <div
       role={title ? "img" : undefined}
@@ -89,7 +92,7 @@ export function AgentIcon({
         style={{
           width: Math.round(size * 0.58),
           height: Math.round(size * 0.58),
-          stroke: "#fff",
+          stroke: ink,
           fill: "none",
           strokeWidth: size <= 16 ? 2.1 : 1.8,
           strokeLinecap: "round",

@@ -10,6 +10,14 @@
 export const PLATFORMS = [
   { key: "google", label: "Google", zh: "Google 热搜", kind: "search", metered: false, unavailable: false },
   { key: "youtube", label: "YouTube", zh: "YouTube", kind: "video", metered: false, unavailable: false },
+  /* The four 抖音 creator billboards: real videos with plays, likes, like
+     rate and the account's follower count, filtered to the studio's own
+     verticals (财经, 科技). The breakout list is videos from small accounts
+     that took off, which is the earliest sign a topic works. */
+  { key: "dy_breakout", label: "Breakouts", zh: "低粉爆款", kind: "video", metered: true, unavailable: false },
+  { key: "dy_finance", label: "Douyin finance", zh: "抖音财经", kind: "video", metered: true, unavailable: false },
+  { key: "dy_tech", label: "Douyin tech", zh: "抖音科技", kind: "video", metered: true, unavailable: false },
+  { key: "dy_rising", label: "Rising", zh: "上升热点", kind: "search", metered: true, unavailable: false },
   { key: "douyin", label: "Douyin", zh: "抖音", kind: "search", metered: true, unavailable: false },
   { key: "xiaohongshu", label: "Rednote", zh: "小红书", kind: "note", metered: true, unavailable: false },
   { key: "weibo", label: "Weibo", zh: "微博", kind: "search", metered: true, unavailable: false },
@@ -40,4 +48,25 @@ export type HotRow = {
   thumbnail: string | null;
   /** A second line: the creator, the hashtag, the category. */
   extra: string | null;
+  /** The numbers the platform gave for this row, when it is a video or
+   *  a topic with counts. Absent fields were not given, never zero-filled. */
+  stats?: HotStats | null;
+};
+
+export type HotStats = {
+  views?: number | null;
+  likes?: number | null;
+  comments?: number | null;
+  shares?: number | null;
+  /** likes ÷ views, as the platform computed it or from the two above. */
+  likeRate?: number | null;
+  /** The account's followers, so views ÷ followers says how far past its
+   *  own audience a video travelled. */
+  fans?: number | null;
+  /** ISO time the video was published or the topic first appeared. */
+  publishedAt?: string | null;
+  /** Videos made about a topic. */
+  videos?: number | null;
+  /** Places climbed on the platform's list since the last snapshot. */
+  rankUp?: number | null;
 };

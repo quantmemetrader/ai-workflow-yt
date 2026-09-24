@@ -4,6 +4,7 @@ import React from "react";
 import { useRouter } from "next/navigation";
 import { useLocalPreference } from "@/lib/client/preference";
 import { PlatformMark } from "@/components/ui/PlatformMark";
+import { SayToAgent } from "@/components/flow/SayToAgent";
 import { AgentIcon } from "@/components/agents/AgentIcon";
 import { AGENT_COLORS } from "@/lib/agents/catalog";
 import { PLATFORMS, type HotRow, type PlatformKey } from "@/lib/research/platform-catalog";
@@ -30,7 +31,7 @@ import { notify } from "@/lib/client/notify";
  */
 export type LiveSearch = { phrase: string; traffic: string | null; headline: string | null; region?: string };
 export type LiveVideo = { id: string; title: string; channelTitle: string; thumbnail: string | null; views: number };
-export type Pick = { text: string; why: string | null; source: "digest" | "plan" | "backlog" | "audience"; thumbnail?: string | null };
+export type Pick = { text: string; why: string | null; source: "digest" | "plan" | "backlog" | "audience"; thumbnail?: string | null; url?: string | null; evidence?: string[]; strength?: number };
 
 const KEY = "aura:research:livenow";
 const PLATFORM_KEY = "aura:research:platform";
@@ -70,6 +71,8 @@ export function LiveNow({
   const [state, setState] = useLocalPreference<"open" | "shut">(KEY, ["open", "shut"], "open");
   const open = state === "open";
   const [tab, setTab] = useLocalPreference<Tab>(PLATFORM_KEY, TABS, "live");
+  const [picksFold, setPicksFold] = useLocalPreference<"open" | "shut">("aura:fold:research-picks", ["open", "shut"], "open");
+  const picksOpen = picksFold === "open";
 
   const [loaded, setLoaded] = React.useState<Partial<Record<PlatformKey, Loaded>>>({});
   const [judged, setJudged] = React.useState<Partial<Record<Tab, Judged>>>({});
@@ -238,6 +241,11 @@ export function LiveNow({
           {picks.length ? (
             <div style={{ border: "1px solid #ededed", borderRadius: 12, background: "#fff", padding: "10px 14px 4px" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 2 }}>
+                <button type="button" onClick={() => setPicksFold(picksOpen ? "shut" : "open")} aria-expanded={picksOpen} aria-label={t("Fold", "收起/展开")} style={{ border: 0, background: "transparent", padding: 0, cursor: "pointer", display: "flex" }}>
+                  <svg viewBox="0 0 24 24" aria-hidden style={{ width: 14, height: 14, transform: picksOpen ? "rotate(90deg)" : "none", transition: "transform .15s ease", stroke: "#7c7c7c", fill: "none", strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round" }}>
+                    <path d="M9.5 6.5 15 12l-5.5 5.5" />
+                  </svg>
+                </button>
                 <AgentIcon agent="research" size={18} radius={5} />
                 <span style={{ fontSize: 12.5, fontWeight: 600 }}>{t("Picked for today", "今天挑出来的选题")}</span>
                 <span style={{ fontSize: 11.5, color: "#999999" }}>{t("from the brief and the plan", "来自晨报和今日计划")}</span>
@@ -255,17 +263,29 @@ export function LiveNow({
                   </button>
                 ) : null}
               </div>
+              {picksOpen ? (
+              <div style={{ resize: "vertical", overflow: "auto", minHeight: 60 }}>
               {picks.map((p, i) => (
                 <div key={i} style={{ display: "grid", gridTemplateColumns: "88px minmax(0,1fr) auto", gap: 12, alignItems: "center", padding: "8px 0", borderTop: "1px solid #f3f3f3" }}>
-                  <PickPicture text={p.text} agentColor={p.source === "plan" ? AGENT_COLORS.planning : AGENT_COLORS.research} />
+                  <PickPicture text={p.text} known={p.thumbnail ? { thumbnail: p.thumbnail, url: p.url ?? "#", title: p.text, channel: "" } : null} agentColor={p.source === "plan" ? AGENT_COLORS.planning : AGENT_COLORS.research} />
                   <div style={{ minWidth: 0 }}>
                     <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.text}</div>
                     <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 3, minWidth: 0 }}>
                       <span style={tinyChip}>
                         {p.source === "digest" ? t("morning brief", "今早晨报") : p.source === "plan" ? t("today's plan", "今日计划") : p.source === "backlog" ? t("backlog", "选题储备") : t("viewer question", "观众提问")}
                       </span>
+                      {p.strength ? <span title={t("Signal strength", "信号强度")} style={{ fontSize: 10.5, color: "#c2410c", letterSpacing: 1, flexShrink: 0 }}>{"●".repeat(p.strength)}{"○".repeat(5 - p.strength)}</span> : null}
                       {p.why ? <span style={{ fontSize: 11.5, color: "#7c7c7c", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.why}</span> : null}
                     </div>
+                    {p.evidence?.length ? (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 1, marginTop: 4 }}>
+                        {p.evidence.map((e, k) => (
+                          <span key={k} style={{ fontSize: 11, color: "#525252", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", fontVariantNumeric: "tabular-nums" }}>
+                            <span style={{ color: "#999999" }}>{t("Evidence", "证据")} {k + 1} · </span>{e}
+                          </span>
+                        ))}
+                      </div>
+                    ) : null}
                   </div>
                   <div style={{ display: "flex", gap: 6 }}>
                     {canWriteScripts ? (
@@ -279,6 +299,13 @@ export function LiveNow({
                   </div>
                 </div>
               ))}
+              </div>
+              ) : null}
+              {picksOpen ? (
+                <div style={{ padding: "8px 0 10px", borderTop: "1px solid #f3f3f3" }}>
+                  <SayToAgent agent="research" about={t("Picked for today", "今天挑出来的选题")} zh={zh} autoFocus={false} compact />
+                </div>
+              ) : null}
             </div>
           ) : null}
 
@@ -364,7 +391,12 @@ export function LiveNow({
                             >
                               {r.phrase}
                             </a>
-                            {r.extra ? <div style={{ fontSize: 10.5, color: "#999999", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{r.extra}</div> : null}
+                            {r.extra || r.stats ? (
+                              <div style={{ fontSize: 10.5, color: "#999999", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", display: "flex", gap: 8, alignItems: "center" }}>
+                                {r.extra ? <span style={{ overflow: "hidden", textOverflow: "ellipsis", flexShrink: 1, minWidth: 0 }}>{r.extra}</span> : null}
+                                <StatLine stats={r.stats} zh={zh} />
+                              </div>
+                            ) : null}
                           </div>
                           <span style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 7, fontSize: 11.5, color: "#525252", fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>
                             {pct !== null && !narrow ? (
@@ -408,6 +440,15 @@ export function LiveNow({
                 <div style={{ fontSize: 12 }}>
                   <Kv k={t("Platform", "平台")} v={platformName} />
                   <Kv k={t("Heat", "热度")} v={picked.heatLabel ?? (picked.heat ? compact(picked.heat) : "—")} strong />
+                  {picked.stats?.views != null ? <Kv k={t("Views", "播放")} v={compact(picked.stats.views)} /> : null}
+                  {picked.stats?.likes != null ? <Kv k={t("Likes", "点赞")} v={`${compact(picked.stats.likes)}${picked.stats.likeRate != null ? ` · ${(picked.stats.likeRate * 100).toFixed(1)}%` : ""}`} /> : null}
+                  {picked.stats?.comments != null ? <Kv k={t("Comments", "评论")} v={compact(picked.stats.comments)} /> : null}
+                  {picked.stats?.shares != null ? <Kv k={t("Shares", "分享")} v={compact(picked.stats.shares)} /> : null}
+                  {picked.stats?.fans != null ? <Kv k={t("Followers", "账号粉丝")} v={compact(picked.stats.fans)} /> : null}
+                  {picked.stats?.fans && picked.stats?.views ? <Kv k={t("Past its audience", "粉丝倍数")} v={`×${compact(Math.round(picked.stats.views / picked.stats.fans))}`} strong /> : null}
+                  {picked.stats?.videos != null ? <Kv k={t("Videos on it", "相关视频")} v={compact(picked.stats.videos)} /> : null}
+                  {picked.stats?.rankUp ? <Kv k={t("Climbed", "排名上升")} v={`↑${picked.stats.rankUp}`} /> : null}
+                  {picked.stats?.publishedAt ? <Kv k={t("Posted", "发布")} v={since(picked.stats.publishedAt, zh)} /> : null}
                   {picked.extra ? <Kv k={tab === "live" || meta?.kind === "video" ? t("Channel", "账号") : t("Note", "备注")} v={picked.extra} /> : null}
                 </div>
                 <div style={{ padding: "8px 10px", borderLeft: `2px solid ${AGENT_COLORS.research}`, background: "#fafafa", fontSize: 12, lineHeight: 1.55 }}>
@@ -537,10 +578,11 @@ function compact(n: number): string {
  * list never waits on it; the tooltip says where it came from, and a click
  * opens the video it was taken from.
  */
-function PickPicture({ text, agentColor }: { text: string; agentColor: string }) {
-  const [found, setFound] = React.useState<{ thumbnail: string; url: string; title: string; channel: string } | null | undefined>(undefined);
+function PickPicture({ text, agentColor, known }: { text: string; agentColor: string; known: { thumbnail: string; url: string; title: string; channel: string } | null }) {
+  const [found, setFound] = React.useState<{ thumbnail: string; url: string; title: string; channel: string } | null | undefined>(known ?? undefined);
   const [broken, setBroken] = React.useState(false);
   React.useEffect(() => {
+    if (known) return;
     let live = true;
     fetch(`/api/research/pick-picture?q=${encodeURIComponent(text)}`)
       .then((r) => (r.ok ? r.json() : { found: null }))
@@ -549,7 +591,7 @@ function PickPicture({ text, agentColor }: { text: string; agentColor: string })
     return () => {
       live = false;
     };
-  }, [text]);
+  }, [text, known]);
   const box: React.CSSProperties = { width: 88, height: 50, borderRadius: 6, display: "block", flexShrink: 0, position: "relative", overflow: "hidden", background: "#f0f0f0" };
   if (found === undefined) return <span className="sk" style={box} />;
   if (!found || broken)
@@ -559,10 +601,38 @@ function PickPicture({ text, agentColor }: { text: string; agentColor: string })
       </span>
     );
   return (
-    <a href={found.url} target="_blank" rel="noreferrer" title={`YouTube 搜索配图 · ${found.title}${found.channel ? ` · ${found.channel}` : ""}`} style={box}>
+    <a href={found.url} target="_blank" rel="noreferrer" title={known ? `证据视频 · ${found.title}` : `YouTube 搜索配图 · ${found.title}${found.channel ? ` · ${found.channel}` : ""}`} style={box}>
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img src={throughUs(found.thumbnail) ?? undefined} alt="" loading="lazy" onError={() => setBroken(true)} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
       <span style={{ position: "absolute", left: 4, bottom: 4, width: 7, height: 7, background: agentColor, boxShadow: "0 0 0 1.5px #fff" }} />
     </a>
   );
+}
+
+/**
+ * A row's own numbers, in one quiet line: plays, likes and like rate,
+ * comments, how far past its account's audience it went, and when it went
+ * up. Only what the platform gave; a missing number is left out, not zero.
+ */
+function StatLine({ stats, zh }: { stats?: HotRow["stats"]; zh: boolean }) {
+  if (!stats) return null;
+  const bits: React.ReactNode[] = [];
+  const ratio = stats.fans && stats.views ? Math.round(stats.views / stats.fans) : null;
+  if (stats.views != null) bits.push(<span key="v">▶ {compact(stats.views)}</span>);
+  if (stats.likes != null) bits.push(<span key="l">♥ {compact(stats.likes)}{stats.likeRate != null ? <span style={{ color: stats.likeRate >= 0.05 ? "#0b7a63" : "#999999" }}> {(stats.likeRate * 100).toFixed(1)}%</span> : null}</span>);
+  if (stats.comments != null) bits.push(<span key="c">💬 {compact(stats.comments)}</span>);
+  if (stats.shares != null) bits.push(<span key="s">↗ {compact(stats.shares)}</span>);
+  if (ratio !== null && ratio >= 10) bits.push(<span key="r" title={zh ? "播放 ÷ 账号粉丝" : "views ÷ followers"} style={{ color: "#fff", background: ratio >= 100 ? "#c2410c" : "#a35f00", borderRadius: 3, padding: "0 4px", fontWeight: 600 }}>×{compact(ratio)}{zh ? " 粉丝量" : " fans"}</span>);
+  if (stats.videos != null) bits.push(<span key="n">{compact(stats.videos)} {zh ? "条视频" : "videos"}</span>);
+  if (stats.rankUp) bits.push(<span key="u" style={{ color: "#0b7a63" }}>↑{stats.rankUp}</span>);
+  if (stats.publishedAt) bits.push(<span key="p">{since(stats.publishedAt, zh)}</span>);
+  if (!bits.length) return null;
+  return <span style={{ display: "inline-flex", gap: 8, flexShrink: 0, color: "#7c7c7c", fontVariantNumeric: "tabular-nums" }}>{bits}</span>;
+}
+
+function since(iso: string, zh: boolean): string {
+  const h = Math.max(0, (Date.now() - new Date(iso).getTime()) / 3_600_000);
+  if (h < 1) return zh ? "刚刚" : "just now";
+  if (h < 24) return zh ? `${Math.round(h)} 小时前` : `${Math.round(h)}h ago`;
+  return zh ? `${Math.round(h / 24)} 天前` : `${Math.round(h / 24)}d ago`;
 }

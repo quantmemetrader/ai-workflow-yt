@@ -115,6 +115,9 @@ export function FlowScreen({ pipeline, automations, zh, canEdit }: { pipeline: P
       <div style={{ position: "relative", width: W, height: H, margin: "0 auto" }}>
         {/* ---- title row ---- */}
         <div style={{ position: "absolute", left: 26, right: 26, top: 0, height: 56, display: "flex", alignItems: "center", gap: 14 }}>
+          <Link href="/home" style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 32, padding: "0 12px", borderRadius: 9, border: "1px solid #d9d9d9", background: "#fff", color: "#171717", fontSize: 12.5, textDecoration: "none", flexShrink: 0 }}>
+            ← {t("回首页", "Back to Home")}
+          </Link>
           <div>
             <div style={{ fontSize: 15, fontWeight: 600 }}>{t("自动化流程", "The flow")}</div>
             <div style={{ fontSize: 12, color: "#525252" }}>{t("没有人吩咐的时候，这些事也会发生。黑色是需要你点头的地方。", "These happen with nobody asking. Black is where you nod.")}</div>

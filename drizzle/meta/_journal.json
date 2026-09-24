@@ -225,6 +225,13 @@
       "when": 1790246691985,
       "tag": "0031_same_expediter",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1790285967623,
+      "tag": "0032_clumsy_shadowcat",
+      "breakpoints": true
     }
   ]
 }

@@ -87,6 +87,19 @@ export const AGENT_COLORS: Record<AgentKey, string> = {
   article: "#9d1d52",
 };
 
+/**
+ * The light version of each colour, for the square behind an employee's
+ * mark: the studio's palette, steps 3–4 (blue, violet, orange, teal, pink).
+ * The glyph is drawn in the full colour on top.
+ */
+export const AGENT_TINTS: Record<AgentKey, string> = {
+  research: "#d5e7fb",
+  planning: "#dcd6fb",
+  script: "#f8dcc6",
+  video: "#c3e6e0",
+  article: "#f5d4e6",
+};
+
 /** Which employee an agent user is, from the address every agent row has. */
 export function agentKeyFromEmail(email: string | null | undefined): AgentKey | null {
   if (!email) return null;

@@ -65,7 +65,8 @@ export function platformLabel(platform: string): string {
     xiaohongshu: "Xiaohongshu",
     reddit: "Reddit",
   };
-  const key = platform.trim().toLowerCase();
+  /* The 抖音 billboards (dy_finance, dy_breakout, …) are 抖音's own lists. */
+  const key = platform.trim().toLowerCase().replace(/^dy_.*/, "douyin");
   return names[key] ?? platform;
 }
 

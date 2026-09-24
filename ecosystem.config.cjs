@@ -114,6 +114,23 @@ module.exports = {
 
     {
       /**
+       * Every platform's hot list into `hot_snapshots` (scripts/collect-hot.ts).
+       * At :50, so the brief that runs on the hour reads lists ten minutes
+       * old. Pages read what this stores and never call a platform.
+       */
+      name: "aura-hot",
+      ...runTs("scripts/collect-hot.ts"),
+      cwd: root,
+      autorestart: false,
+      cron_restart: "50 * * * *",
+      out_file: path.join(root, "logs/hot.log"),
+      error_file: path.join(root, "logs/hot.log"),
+      merge_logs: true,
+      time: true,
+    },
+
+    {
+      /**
        * The Research agent's morning digest, into #研究日报 (scripts/digest.ts).
        *
        * pm2 cron is UTC: "0 0 * * *" is 08:00 in Hong Kong, which is when the

@@ -10,6 +10,7 @@ import { AGENT_LABELS, agentTag, parseAgentMentions, type AgentKey } from "@/lib
 import type { AgentState, Decision, Running } from "@/lib/home/service";
 import { pressCardAction, sendChannelMessage } from "@/app/(app)/chat/actions";
 import { MiniFlow } from "@/components/home/MiniFlow";
+import { Fold } from "@/components/ui/Fold";
 import { SayToAgent } from "@/components/flow/SayToAgent";
 import type { ThreadMessage } from "@/components/home/Echo";
 import type { Pipeline } from "@/lib/home/pipeline";
@@ -125,139 +126,142 @@ export function HomeScreen({
         ? t("没有要你决定的，同事还在做手上的活。", "Nothing waiting on you; the team is still working.")
         : t("今天没有待办。在下面说一句就能开工。", "Nothing on today. Say a word below and the team starts.");
 
+  const composer = (
+    <div style={{ position: "relative" }}>
+      <MentionMenu matches={mentions.matches} active={mentions.active} zh={zh} onPick={mentions.pick} onHover={mentions.setActive} placement="down" />
+      <div style={{ border: "1px solid #e2e2e2", borderRadius: 16, background: "#fff", padding: "12px 14px", boxShadow: "0 2px 10px rgba(0,0,0,0.04)" }}>
+        <textarea
+          ref={box}
+          value={draft}
+          rows={2}
+          onChange={(e) => {
+            setDraft(e.target.value);
+            mentions.onValue(e.target.value, e.target.selectionStart ?? e.target.value.length);
+            e.target.style.height = "auto";
+            e.target.style.height = `${Math.min(180, e.target.scrollHeight)}px`;
+          }}
+          onBlur={mentions.close}
+          onKeyDown={(e) => {
+            if (mentions.onKeyDown(e)) return;
+            if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+              e.preventDefault();
+              say(draft);
+            }
+          }}
+          placeholder={t("想做什么？例如：@编剧 把 RWA 这条写成 60 秒竖版", "What do you want made? e.g. @writer make the RWA piece a 60s vertical")}
+          style={{ width: "100%", border: 0, outline: "none", resize: "none", fontSize: 14.5, lineHeight: 1.6, fontFamily: "inherit", letterSpacing: "inherit", color: "#171717", background: "transparent" }}
+        />
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 6 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", flexGrow: 1, minWidth: 0 }}>
+            {(["research", "planning", "script", "video", "article"] as AgentKey[]).map((key) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => {
+                  setDraft((d) => (d.includes(agentTag(key)) ? d : `${agentTag(key)} ${d}`.trim()));
+                  requestAnimationFrame(() => box.current?.focus());
+                }}
+                className="chip"
+                style={{ height: 28, fontSize: 12, gap: 6, cursor: "pointer", borderColor: draft.includes(agentTag(key)) ? "#171717" : "#ededed", background: "#fff" }}
+              >
+                <AgentIcon agent={key} size={16} radius={5} />
+                {zh ? AGENT_LABELS[key].nameLocal : AGENT_LABELS[key].name}
+              </button>
+            ))}
+            <span style={{ fontSize: 11, color: "#b3b3b3", whiteSpace: "nowrap", marginLeft: 4 }}>
+              {teamChannel ? t(`发到 #${teamChannel.name} · Enter 发送`, `Posts to #${teamChannel.name} · Enter to send`) : t("还没有团队频道", "No team channel yet")}
+            </span>
+          </div>
+          <button
+            type="button"
+            disabled={pending || !draft.trim() || !teamChannel}
+            onClick={() => say(draft)}
+            style={{ height: 34, padding: "0 18px", borderRadius: 10, border: 0, background: draft.trim() ? "#171717" : "#ededed", color: draft.trim() ? "#fff" : "#999999", fontSize: 13, fontWeight: 500, fontFamily: "inherit", flexShrink: 0, cursor: draft.trim() ? "pointer" : "default" }}
+          >
+            {t("开工", "Start")}
+          </button>
+        </div>
+      </div>
+      {error ? <div style={{ fontSize: 12.5, color: "#e03636", marginTop: 6 }}>{error}</div> : null}
+    </div>
+  );
+
   return (
     <div style={{ flexGrow: 1, minWidth: 0, minHeight: 0, overflowY: "auto", ...PAPER }}>
-      <div style={{ maxWidth: 1180, margin: "0 auto", padding: "24px 24px 48px", display: "flex", flexDirection: "column", gap: 16 }}>
+      <div style={{ maxWidth: 1240, margin: "0 auto", padding: "22px 24px 48px", display: "flex", flexDirection: "column", gap: 14 }}>
         <div>
           <h1 style={{ fontSize: 22, fontWeight: 600, margin: 0, letterSpacing: "-0.01em" }}>{t(`${greeting(zh)}，${me}`, `${greeting(zh)}, ${me}`)}</h1>
           <p style={{ margin: "5px 0 0", fontSize: 13.5, color: "#7c7c7c" }}>{subline}</p>
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(380px, 1fr))", gap: 16, alignItems: "start" }}>
-          {/* ================= work here ================= */}
-          <section style={{ ...CARD, padding: 0, display: "flex", flexDirection: "column", minWidth: 0, overflow: "hidden" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "12px 16px 10px", borderBottom: "1px solid #f0f0f0" }}>
-              <AgentIcon size={22} radius={6} />
-              <span style={{ fontSize: 13.5, fontWeight: 600 }}>{t("在这里干活", "Work here")}</span>
-              <span style={{ fontSize: 12, color: "#999999" }}>{teamChannel ? `#${teamChannel.name}` : ""}</span>
-              <span style={{ flexGrow: 1 }} />
-              {teamChannel ? (
-                <Link href={`/chat/c/${encodeURIComponent(teamChannel.slug)}`} style={{ fontSize: 12, color: "#525252", textDecoration: "none" }}>
+        {/* ---- 1. the task box, the whole width ---- */}
+        {composer}
+
+        {/* ---- 2. today's video, straight under it ---- */}
+        <Fold id="home-flow" title={t("今天这条片走到哪了", "Where today's video is")} sub={pipeline.title ?? t("还没有开始的片子", "Nothing in progress yet")} resizable={false}>
+          <MiniFlow pipeline={pipeline} zh={zh} bare />
+        </Fold>
+
+        {/* ---- 3. the conversation on the left, the team on the right ---- */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(380px, 1fr))", gap: 14, alignItems: "start" }}>
+          <Fold
+            id="home-work"
+            title={t("在这里干活", "Work here")}
+            sub={teamChannel ? `#${teamChannel.name}` : undefined}
+            icon={<AgentIcon size={20} radius={6} />}
+            flush
+            height={300}
+            right={
+              teamChannel ? (
+                <Link href={`/chat/c/${encodeURIComponent(teamChannel.slug)}`} style={{ fontSize: 12, color: "#525252", textDecoration: "none", whiteSpace: "nowrap" }}>
                   {t("整个频道", "Whole channel")} →
                 </Link>
-              ) : null}
-            </div>
+              ) : null
+            }
+          >
+            <Conversation zh={zh} messages={thread} waiting={waiting} pending={pending} pressing={pressing} onPress={(id, action) => teamChannel && press(teamChannel.slug, id, action)} />
+          </Fold>
 
-            <Conversation
-              zh={zh}
-              messages={thread}
-              waiting={waiting}
-              pending={pending}
-              pressing={pressing}
-              onPress={(id, action) => teamChannel && press(teamChannel.slug, id, action)}
-            />
-
-            {/* ---- the task box, as it was: rounded, the five marks ---- */}
-            <div style={{ position: "relative", borderTop: "1px solid #f0f0f0", padding: 12, background: "#fcfcfb" }}>
-              <MentionMenu matches={mentions.matches} active={mentions.active} zh={zh} onPick={mentions.pick} onHover={mentions.setActive} placement="up" />
-              <div style={{ border: "1px solid #e6e6e6", borderRadius: 14, background: "#fff", padding: "10px 12px", boxShadow: "0 1px 2px rgba(0,0,0,0.03)" }}>
-                <textarea
-                  ref={box}
-                  value={draft}
-                  rows={2}
-                  onChange={(e) => {
-                    setDraft(e.target.value);
-                    mentions.onValue(e.target.value, e.target.selectionStart ?? e.target.value.length);
-                    e.target.style.height = "auto";
-                    e.target.style.height = `${Math.min(160, e.target.scrollHeight)}px`;
-                  }}
-                  onBlur={mentions.close}
-                  onKeyDown={(e) => {
-                    if (mentions.onKeyDown(e)) return;
-                    if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
-                      e.preventDefault();
-                      say(draft);
-                    }
-                  }}
-                  placeholder={t("想做什么？例如：@编剧 把 RWA 这条写成 60 秒竖版", "What do you want made? e.g. @writer make the RWA piece a 60s vertical")}
-                  style={{ width: "100%", border: 0, outline: "none", resize: "none", fontSize: 14, lineHeight: 1.6, fontFamily: "inherit", letterSpacing: "inherit", color: "#171717", background: "transparent" }}
-                />
-                <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 6 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", flexGrow: 1, minWidth: 0 }}>
-                    {(["research", "planning", "script", "video", "article"] as AgentKey[]).map((key) => (
-                      <button
-                        key={key}
-                        type="button"
-                        onClick={() => {
-                          setDraft((d) => (d.includes(agentTag(key)) ? d : `${agentTag(key)} ${d}`.trim()));
-                          requestAnimationFrame(() => box.current?.focus());
-                        }}
-                        className="chip"
-                        style={{ height: 26, fontSize: 11.5, gap: 5, cursor: "pointer", borderColor: draft.includes(agentTag(key)) ? "#171717" : "#ededed", background: "#fff" }}
-                      >
-                        <AgentIcon agent={key} size={14} radius={4} />
-                        {zh ? AGENT_LABELS[key].nameLocal : AGENT_LABELS[key].name}
-                      </button>
-                    ))}
-                  </div>
-                  <button
-                    type="button"
-                    disabled={pending || !draft.trim() || !teamChannel}
-                    onClick={() => say(draft)}
-                    style={{ height: 32, padding: "0 16px", borderRadius: 10, border: 0, background: draft.trim() ? "#171717" : "#ededed", color: draft.trim() ? "#fff" : "#999999", fontSize: 13, fontWeight: 500, fontFamily: "inherit", flexShrink: 0, cursor: draft.trim() ? "pointer" : "default" }}
-                  >
-                    {t("开工", "Start")}
-                  </button>
-                </div>
-              </div>
-              <div style={{ fontSize: 11, color: "#b3b3b3", marginTop: 6, paddingLeft: 4 }}>
-                {teamChannel ? t(`发到 #${teamChannel.name} · Enter 发送，Shift+Enter 换行`, `Posts to #${teamChannel.name} · Enter to send, Shift+Enter for a new line`) : t("还没有团队频道", "No team channel yet")}
-              </div>
-              {error ? <div style={{ fontSize: 12.5, color: "#e03636", marginTop: 6 }}>{error}</div> : null}
-            </div>
-          </section>
-
-          {/* ================= waiting, and the team ================= */}
-          <div style={{ display: "flex", flexDirection: "column", gap: 16, minWidth: 0 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
             {decisions.length > 0 ? (
-              <section style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                <Heading text={t("等你决定", "Waiting on you")} count={decisions.length} />
-                {decisions.map((d) => (
-                  <article key={d.messageId} style={GRADIENT_CARD}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      {d.agent ? <AgentIcon agent={d.agent} size={22} radius={6} /> : null}
-                      <span style={{ fontSize: 13, fontWeight: 600 }}>{d.author}</span>
-                      <Link href={`/chat/c/${encodeURIComponent(d.channelSlug)}`} style={{ fontSize: 11.5, color: "#999999", textDecoration: "none" }}>
-                        #{d.channelName}
-                      </Link>
-                      <span style={{ flexGrow: 1 }} />
-                      <span style={{ fontSize: 11.5, color: "#c7c7c7" }}>{ago(d.at, zh)}</span>
-                    </div>
-                    <p style={{ margin: "9px 0 0", fontSize: 13, lineHeight: 1.65, color: "#2b343d", whiteSpace: "pre-wrap" }}>{trim(d.body, 320)}</p>
-                    <div style={{ display: "flex", gap: 7, marginTop: 12, flexWrap: "wrap" }}>
-                      {d.actions.map((a, i) =>
-                        a.kind === "open" ? (
-                          <Link key={a.id} href={a.href ?? "#"} style={{ ...btn(false), textDecoration: "none" }}>
-                            {zh ? a.label : a.labelEn}
-                          </Link>
-                        ) : (
-                          <button key={a.id} type="button" disabled={pending} onClick={() => press(d.channelSlug, d.messageId, a.id)} style={{ ...btn(i === 0), opacity: pressing === d.messageId + a.id ? 0.55 : 1 }}>
-                            {zh ? a.label : a.labelEn}
-                          </button>
-                        ),
-                      )}
-                    </div>
-                  </article>
-                ))}
-              </section>
+              <Fold id="home-decisions" title={t("等你决定", "Waiting on you")} sub={String(decisions.length)} height={decisions.length > 2 ? 360 : undefined}>
+                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                  {decisions.map((d) => (
+                    <article key={d.messageId} style={GRADIENT_CARD}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        {d.agent ? <AgentIcon agent={d.agent} size={22} radius={6} /> : null}
+                        <span style={{ fontSize: 13, fontWeight: 600 }}>{d.author}</span>
+                        <Link href={`/chat/c/${encodeURIComponent(d.channelSlug)}`} style={{ fontSize: 11.5, color: "#999999", textDecoration: "none" }}>
+                          #{d.channelName}
+                        </Link>
+                        <span style={{ flexGrow: 1 }} />
+                        <span style={{ fontSize: 11.5, color: "#c7c7c7" }}>{ago(d.at, zh)}</span>
+                      </div>
+                      <p style={{ margin: "9px 0 0", fontSize: 13, lineHeight: 1.65, color: "#2b343d", whiteSpace: "pre-wrap" }}>{trim(d.body, 320)}</p>
+                      <div style={{ display: "flex", gap: 7, marginTop: 12, flexWrap: "wrap" }}>
+                        {d.actions.map((a, i) =>
+                          a.kind === "open" ? (
+                            <Link key={a.id} href={a.href ?? "#"} style={{ ...btn(false), textDecoration: "none" }}>
+                              {zh ? a.label : a.labelEn}
+                            </Link>
+                          ) : (
+                            <button key={a.id} type="button" disabled={pending} onClick={() => press(d.channelSlug, d.messageId, a.id)} style={{ ...btn(i === 0), opacity: pressing === d.messageId + a.id ? 0.55 : 1 }}>
+                              {zh ? a.label : a.labelEn}
+                            </button>
+                          ),
+                        )}
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              </Fold>
             ) : null}
 
-            <section style={{ ...CARD, padding: "12px 14px 6px" }}>
-              <Heading text={t("同事", "The team")} count={null} />
-              {agents.map((a) => {
+            <Fold id="home-team" title={t("同事", "The team")} height={300}>
+              {agents.map((a, idx) => {
                 const on = giveTo === a.key;
                 return (
-                  <div key={a.key} style={{ borderTop: "1px solid #f3f3f3", padding: "9px 0" }}>
+                  <div key={a.key} style={{ borderTop: idx ? "1px solid #f3f3f3" : "none", padding: "8px 0" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                       <AgentIcon agent={a.key} size={30} radius={8} />
                       <div style={{ minWidth: 0, flexGrow: 1 }}>
@@ -280,25 +284,25 @@ export function HomeScreen({
                     </div>
                     {on ? (
                       <div style={{ marginTop: 8 }}>
-                        <SayToAgent agent={a.key} zh={zh} onDone={() => {
-                          setSentAt(new Date().toISOString());
-                          setWatching(true);
-                        }} />
+                        <SayToAgent
+                          agent={a.key}
+                          zh={zh}
+                          onDone={() => {
+                            setSentAt(new Date().toISOString());
+                            setWatching(true);
+                          }}
+                        />
                       </div>
                     ) : null}
                   </div>
                 );
               })}
-            </section>
+            </Fold>
 
             {running.length > 0 ? (
-              <section style={{ ...CARD, padding: "12px 14px 6px" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 4 }}>
-                  <span style={{ fontSize: 12.5, fontWeight: 600 }}>{t("正在进行", "Running now")}</span>
-                  <span style={{ width: 7, height: 7, borderRadius: 4, background: "#278f5e" }} />
-                </div>
-                {running.map((j) => (
-                  <div key={j.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderTop: "1px solid #f3f3f3", fontSize: 12.5 }}>
+              <Fold id="home-running" title={t("正在进行", "Running now")} sub={String(running.length)} height={running.length > 5 ? 220 : undefined}>
+                {running.map((j, idx) => (
+                  <div key={j.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 0", borderTop: idx ? "1px solid #f3f3f3" : "none", fontSize: 12.5 }}>
                     <span style={{ width: 7, height: 7, borderRadius: 4, background: j.status === "running" ? "#278f5e" : "#d9d9d9", flexShrink: 0 }} />
                     <span>{runningNames[j.type] ?? j.type}</span>
                     {j.who ? <span style={{ color: "#999999" }}>· {j.who}</span> : null}
@@ -308,12 +312,10 @@ export function HomeScreen({
                     </span>
                   </div>
                 ))}
-              </section>
+              </Fold>
             ) : null}
           </div>
         </div>
-
-        <MiniFlow pipeline={pipeline} zh={zh} />
       </div>
     </div>
   );
@@ -340,12 +342,13 @@ function Conversation({
   const scroller = React.useRef<HTMLDivElement | null>(null);
   const last = messages[messages.length - 1]?.id;
   React.useEffect(() => {
-    const el = scroller.current;
+    /* The fold's body is the thing that scrolls; keep the newest in view. */
+    const el = scroller.current?.parentElement;
     if (el) el.scrollTop = el.scrollHeight;
   }, [last, waiting]);
 
   return (
-    <div ref={scroller} style={{ maxHeight: 440, minHeight: 180, overflowY: "auto", padding: "8px 16px" }}>
+    <div ref={scroller} style={{ padding: "6px 14px" }}>
       {messages.length === 0 ? (
         <div style={{ fontSize: 12.5, color: "#999999", padding: "24px 0", textAlign: "center" }}>{t("还没有动静。在下面说一句。", "Nothing yet. Say something below.")}</div>
       ) : null}
@@ -403,15 +406,6 @@ function Conversation({
 
 /* ------------------------------------------------------------- pieces */
 
-function Heading({ text, count }: { text: string; count: number | null }) {
-  return (
-    <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 6 }}>
-      <span style={{ fontSize: 13.5, fontWeight: 600 }}>{text}</span>
-      {count !== null ? <span style={{ fontSize: 12, color: "#999999" }}>{count}</span> : null}
-    </div>
-  );
-}
-
 function Status({ status, zh }: { status: AgentState["status"]; zh: boolean }) {
   const [label, color, bg] =
     status === "working" ? [zh ? "工作中" : "Working", "#0b7a63", "#e3f4ee"] : status === "waiting" ? [zh ? "等你" : "Waiting", "#a35f00", "#fbf0dc"] : [zh ? "空闲" : "Idle", "#999999", "#f3f3f3"];
@@ -424,7 +418,6 @@ const PAPER: React.CSSProperties = {
   backgroundSize: "22px 22px",
 };
 
-const CARD: React.CSSProperties = { background: "#ffffff", border: "1px solid #e2e2e2", borderRadius: 14 };
 
 const GRADIENT_CARD: React.CSSProperties = {
   border: "1px solid transparent",

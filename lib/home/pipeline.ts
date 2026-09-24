@@ -6,6 +6,7 @@ import {
   chatChannels,
   chatMessages,
   comments,
+  hotSnapshots,
   jobs,
   publishPosts,
   scripts,
@@ -51,6 +52,8 @@ export type Pipeline = {
   scriptId: string | null;
   projectId: string | null;
   stages: Stage[];
+  /** When the hot lists were last collected from every platform. */
+  collectedAt: string | null;
 };
 
 const HK = "Asia/Hong_Kong";
@@ -282,7 +285,11 @@ export async function pipelineToday(viewer: Viewer, zh: boolean): Promise<Pipeli
     push({ key: "feedback", owner: "research", state: "todo", line: t("发布后 24 小时", "24h after post"), href: null, progress: null });
   }
 
+  const [collected] = await db.select({ at: sql<Date | null>`max(${hotSnapshots.fetchedAt})` }).from(hotSnapshots);
+  const collectedAt = collected?.at ? new Date(collected.at).toISOString() : null;
+
   return {
+    collectedAt,
     title: script ? (zh && script.titleLocal) || script.title : project?.title ?? digestTopic,
     scriptId: script?.id ?? null,
     projectId: project?.id ?? null,

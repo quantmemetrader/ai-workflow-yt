@@ -126,6 +126,27 @@ export const seriesCache = pgTable(
   (t) => [uniqueIndex("series_cache_idx").on(t.query, t.window)],
 );
 
+/**
+ * Every hot list as it was fetched, kept.
+ *
+ * Reading a platform takes seconds and TikHub bills per request, so pages
+ * never call out: `scripts/collect-hot.ts` reads each list on the hour and
+ * stores it here, and the Research page and the morning brief read the
+ * newest row. Kept rows are also the history a rising topic is measured
+ * against.
+ */
+export const hotSnapshots = pgTable(
+  "hot_snapshots",
+  {
+    id: text().primaryKey(),
+    platform: text().notNull(),
+    fetchedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    rows: jsonb().$type<unknown[]>().notNull().default([]),
+    note: text(),
+  },
+  (t) => [index("hot_snapshots_platform_idx").on(t.platform, t.fetchedAt)],
+);
+
 export const topicActionEnum = pgEnum("topic_action", ["adopt", "reject", "save", "unsave"]);
 
 /** Every adopt and reject, kept. The dashboard tells people their choices
