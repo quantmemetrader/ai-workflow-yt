@@ -177,7 +177,7 @@ export async function pipelineToday(viewer: Viewer, zh: boolean): Promise<Pipeli
   /* ---- and the line of work, in order ---------------------------------- */
   const stages: Stage[] = [];
   const push = (s: Omit<Stage, "n">) => stages.push({ ...s, n: stages.length + 1 });
-  const waits = t("等上一步", "after the previous step");
+  const waits = t("等上一步", "waiting");
 
   push({
     key: "topic",
@@ -213,12 +213,12 @@ export async function pipelineToday(viewer: Viewer, zh: boolean): Promise<Pipeli
       key: "script",
       owner: "script",
       state: recent ? "running" : "you",
-      line: recent ? `${t("第", "v")}${script.version + 1}${t(" 版 · 正在写", " · writing")}` : t("草稿等你看", "draft, for you to read"),
+      line: recent ? `${t("第", "v")}${script.version + 1}${t(" 版 · 正在写", " · writing")}` : t("草稿等你看", "draft to read"),
       href: scriptHref,
       progress: null,
     });
   } else {
-    push({ key: "script", owner: "script", state: "you", line: t("有简报，还没写", "brief only, not written"), href: scriptHref, progress: null });
+    push({ key: "script", owner: "script", state: "you", line: t("有简报，还没写", "brief, not written"), href: scriptHref, progress: null });
   }
 
   if (script?.status === "locked") {
@@ -277,9 +277,9 @@ export async function pipelineToday(viewer: Viewer, zh: boolean): Promise<Pipeli
   if (published && heard.n > 0) {
     push({ key: "feedback", owner: "research", state: "done", line: `${heard.n} ${t("条评论已收", "comments in")}`, href: "/research/inbox", progress: null });
   } else if (published) {
-    push({ key: "feedback", owner: "research", state: "running", line: t("发布后 24 小时", "24h after posting"), href: "/research/performance", progress: null });
+    push({ key: "feedback", owner: "research", state: "running", line: t("发布后 24 小时", "24h after post"), href: "/research/performance", progress: null });
   } else {
-    push({ key: "feedback", owner: "research", state: "todo", line: t("发布后 24 小时", "24h after posting"), href: null, progress: null });
+    push({ key: "feedback", owner: "research", state: "todo", line: t("发布后 24 小时", "24h after post"), href: null, progress: null });
   }
 
   return {

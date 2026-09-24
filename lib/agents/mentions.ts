@@ -8,7 +8,7 @@ import type { Viewer } from "@/lib/auth/types";
 import type { Module } from "@/lib/db/schema";
 import { runAgent } from "@/lib/ai/agent";
 import { postMessage } from "@/lib/chat/service";
-import { AGENT_KEYS, AGENT_LABELS, agentTag, parseAgentMentions, type AgentKey } from "./catalog";
+import { AGENT_LABELS, agentTag, parseAgentMentions, type AgentKey } from "./catalog";
 import { agentViewer, ensureAgent } from "./index";
 
 /**
@@ -40,8 +40,11 @@ import { agentViewer, ensureAgent } from "./index";
  *      employees holding a meeting on the client's OpenRouter account.
  */
 
-/** How far a tag may travel: the message, then two answers. */
-const MAX_HOPS = 2;
+/** How far a tag may travel: the message, its answer, and one hand-off
+ *  from that answer (编剧 finishing and tagging 剪辑师). Not further: the
+ *  third level was 剪辑师 and 策划 answering each other about work nobody
+ *  asked for. */
+const MAX_HOPS = 1;
 
 /**
  * How many answers one tag may cost, in total, across the whole chain.
@@ -52,7 +55,7 @@ const MAX_HOPS = 2;
  * a reply, and a round of it. Past that the studio is paying for the agents to
  * talk among themselves.
  */
-const MAX_REPLIES = 4;
+const MAX_REPLIES = 3;
 
 /** What an agent's answer may be before the channel becomes unreadable. Longer
  * than any useful chat reply and far short of a pasted document. */
@@ -84,7 +87,11 @@ export async function dispatchAgentMentions(input: MentionDispatch): Promise<voi
   const budget = input.budget ?? { left: MAX_REPLIES };
   if (hop > MAX_HOPS || budget.left <= 0) return;
 
-  const wanted = parseAgentMentions(input.body).filter((key) => !spoken.includes(key));
+  /* A person may tag three colleagues at once. An agent's answer hands off
+     to at most one: a reply that tags two is a meeting, and the second tag
+     was always an aside ("@策划 若需延伸…") rather than a hand-off. */
+  const tagged = parseAgentMentions(input.body).filter((key) => !spoken.includes(key));
+  const wanted = hop > 0 ? tagged.slice(0, 1) : tagged;
   if (!wanted.length) return;
 
   const channel = await channelFor(input.viewer, input.channelId);
@@ -195,9 +202,12 @@ async function answerOne(
     /* Employees were answering "收到，马上开工" and then doing nothing: a
        promise, not work. If a tool can do it now, the turn does it. */
     "- 能用你的工具现在就做的事，就直接做（比如粗剪、写脚本、查数据），做完再说结果；不要只说“收到，马上开工”。做不了才说缺什么。",
-    `- 需要别的同事接手时，在回答里 @ 它（${AGENT_KEYS.filter((k) => k !== key)
-      .map((k) => agentTag(k))
-      .join(" / ")}）；不要 @ 你自己。`,
+    /* Watching it run: 研究员 answered a question and tagged two colleagues
+       in passing; 剪辑师 went off to make a project nobody asked for; 策划
+       announced a cut it had no tool to make. Three rules from that. */
+    "- 只说你这一回合真的用工具做完的事。没做的、没有工具做的，一律不要说“已完成”“已更新”“已强化”；说清楚谁能做、还缺什么。",
+    "- 有人问你问题、要你的建议，就回答问题，不要 @ 任何同事。提到别的同事，写名字就好，不要加 @——加了 @ 它就会真的开工。",
+    `- 只有两种情况在回答里 @ 同事：提问的人明确要你交给它；或者你用工具做完了自己那一步，下一步按流程属于它（脚本写完交 ${agentTag("video")}）。一次最多 @ 一位。不要 @ 你自己。`,
   ]
     .filter((line) => line !== null)
     .join("\n");

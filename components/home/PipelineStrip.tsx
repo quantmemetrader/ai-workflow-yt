@@ -23,9 +23,18 @@ const LABELS: Record<StageKey, [string, string]> = {
   feedback: ["数据回流", "Feedback"],
 };
 
+/** Short English names for the cells; the Chinese ones are already short. */
+const SHORT: Record<Exclude<Stage["owner"], "you">, string> = {
+  research: "Researcher",
+  planning: "Planner",
+  script: "Writer",
+  video: "Editor",
+  article: "Copywriter",
+};
+
 function ownerName(stage: Stage, zh: boolean): string {
   if (stage.owner === "you") return zh ? "你" : "You";
-  return zh ? AGENT_LABELS[stage.owner].nameLocal : AGENT_LABELS[stage.owner].name;
+  return zh ? AGENT_LABELS[stage.owner].nameLocal : SHORT[stage.owner];
 }
 
 function ownerColor(stage: Stage): string {
@@ -103,7 +112,7 @@ export function PipelineStrip({
         ) : null}
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(88px, 1fr))", gap: 10 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: "14px 12px" }}>
         {pipeline.stages.map((s) => {
           const dim = s.state === "todo";
           const color = ownerColor(s);
@@ -132,9 +141,11 @@ export function PipelineStrip({
                   marginTop: 3,
                   color: s.state === "running" ? color : s.state === "you" ? "#171717" : dim ? "#b3b3b3" : "#525252",
                   fontWeight: s.state === "running" || s.state === "you" ? 500 : 400,
-                  whiteSpace: "nowrap",
+                  lineHeight: 1.4,
                   overflow: "hidden",
-                  textOverflow: "ellipsis",
+                  display: "-webkit-box",
+                  WebkitLineClamp: 2,
+                  WebkitBoxOrient: "vertical",
                 }}
               >
                 {s.line}

@@ -9,7 +9,8 @@ import { AGENT_LABELS, agentTag, parseAgentMentions, type AgentKey } from "@/lib
 import type { AgentState, Decision, Running } from "@/lib/home/service";
 import { pressCardAction, sendChannelMessage } from "@/app/(app)/chat/actions";
 import { PipelineStrip } from "@/components/home/PipelineStrip";
-import { TeamThread, type ThreadMessage } from "@/components/home/TeamThread";
+import { Echo, type ThreadMessage } from "@/components/home/Echo";
+import { startProposalAction } from "@/app/(app)/home/actions";
 import type { Pipeline } from "@/lib/home/pipeline";
 
 /**
@@ -79,6 +80,9 @@ export function HomeScreen({
      an answer has arrived since, and a ref read in render is the thing the
      rules of hooks forbid. */
   const [watching, setWatching] = React.useState(false);
+  /* One draft per colleague's card. */
+  const [tasks, setTasks] = React.useState<Partial<Record<AgentKey, string>>>({});
+  const [giving, setGiving] = React.useState<AgentKey | null>(null);
   const [sentAt, setSentAt] = React.useState<string | null>(null);
   const answered = thread.some((m) => m.agent && sentAt !== null && m.at > sentAt);
   const waiting = watching && !answered;
@@ -254,19 +258,9 @@ export function HomeScreen({
           <p style={{ marginTop: 10, fontSize: 12.5, color: "#e03636" }}>{error}</p>
         )}
 
-        {/* ---- where the answer shows up ------------------------------- */}
+        {/* ---- one line back from the channel ---------------------------- */}
         {teamChannel ? (
-          <div style={{ marginTop: 14 }}>
-            <TeamThread
-              zh={zh}
-              channelName={teamChannel.name}
-              channelSlug={teamChannel.slug}
-              messages={thread}
-              waiting={waiting}
-              pressing={pressing}
-              onPress={(messageId, actionId) => press(teamChannel.slug, messageId, actionId)}
-            />
-          </div>
+          <Echo zh={zh} channelName={teamChannel.name} channelSlug={teamChannel.slug} messages={thread} sentAt={sentAt} waiting={waiting} />
         ) : null}
 
         {/* ---- today's video, step by step ------------------------------ */}
@@ -383,23 +377,76 @@ export function HomeScreen({
                   {a.line ? trim(a.line, 110) : t("还没说过话。", "Has not spoken yet.")}
                 </p>
 
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                {/* Work is typed here and goes straight to this colleague in
+                    #制作 — the same door as tagging it in the box above. */}
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    const text = (tasks[a.key] ?? "").trim();
+                    if (!text || giving) return;
+                    setGiving(a.key);
+                    start(async () => {
+                      const res = await startProposalAction(a.key, text);
+                      setGiving(null);
+                      if ("error" in res && res.error) {
+                        setError(res.error);
+                        return;
+                      }
+                      setTasks((m) => ({ ...m, [a.key]: "" }));
+                      setSentAt(new Date().toISOString());
+                      setWatching(true);
+                      router.refresh();
+                    });
+                  }}
+                  style={{ display: "flex", alignItems: "center", gap: 6 }}
+                >
+                  <input
+                    type="text"
+                    value={tasks[a.key] ?? ""}
+                    onChange={(e) => setTasks((m) => ({ ...m, [a.key]: e.target.value }))}
+                    placeholder={t("交给它一件事…", "Give it work…")}
+                    aria-label={t(`交给${a.nameLocal}`, `Give ${a.name} work`)}
+                    style={{
+                      flexGrow: 1,
+                      minWidth: 0,
+                      height: 28,
+                      padding: "0 9px",
+                      border: "1px solid #e2e2e2",
+                      borderRadius: 8,
+                      fontSize: 12,
+                      fontFamily: "inherit",
+                      letterSpacing: "inherit",
+                      background: "#fff",
+                      color: "#171717",
+                      outline: "none",
+                    }}
+                  />
                   <button
-                    type="button"
-                    onClick={() => setDraft((d) => (d.includes(agentTag(a.key)) ? d : `${agentTag(a.key)} ${d}`.trim()))}
-                    style={{ ...buttonStyle(false), height: 25, fontSize: 11.5, cursor: "pointer" }}
+                    type="submit"
+                    disabled={giving !== null || !(tasks[a.key] ?? "").trim()}
+                    style={{
+                      ...buttonStyle(true),
+                      height: 28,
+                      padding: "0 10px",
+                      fontSize: 11.5,
+                      whiteSpace: "nowrap",
+                      flexShrink: 0,
+                      cursor: (tasks[a.key] ?? "").trim() ? "pointer" : "default",
+                      opacity: (tasks[a.key] ?? "").trim() ? (giving === a.key ? 0.55 : 1) : 0.35,
+                    }}
                   >
-                    {t("交给它", "Give it work")}
+                    {t("开工", "Go")}
                   </button>
                   {a.channelSlug && (
                     <Link
                       href={`/chat/c/${encodeURIComponent(a.channelSlug)}`}
-                      style={{ fontSize: 11.5, color: "#999999", textDecoration: "none" }}
+                      title={t("看对话", "Open the thread")}
+                      style={{ fontSize: 11.5, color: "#999999", textDecoration: "none", whiteSpace: "nowrap" }}
                     >
-                      {t("看对话", "Open the thread")}
+                      {t("对话", "Thread")}
                     </Link>
                   )}
-                </div>
+                </form>
               </article>
             ))}
           </div>
