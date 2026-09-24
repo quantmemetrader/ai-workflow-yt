@@ -489,16 +489,20 @@ export function VideoScreen({
           }
           setTab(key);
         }}
+        foldKey="video"
+        foldLabel={{ more: t("More", "高级"), less: t("Less", "收起") }}
         tabs={[
           /* First, because it is the first thing somebody does here. */
           { key: "library", label: t("Projects", "项目"), badge: projects.length },
           { key: "edit", label: t("Edit", "剪辑"), badge: items.length },
-          { key: "bin", label: t("Media bin", "素材库"), badge: clips.length },
-          { key: "timeline", label: t("Cut list", "片段列表"), badge: items.length },
-          { key: "audio", label: t("Audio", "音频"), badge: audio.length + captions.length },
-          { key: "graphics", label: t("Graphics", "图形"), badge: graphics.length },
           { key: "preview", label: t("Preview", "预览"), badge: done.length },
           { key: "exports", label: t("Export", "导出"), badge: renders.length },
+          /* Behind 高级. Four screens somebody opens once a week, and the
+             eight-tab bar was the whole of "it feels like a video editor". */
+          { key: "bin", label: t("Media bin", "素材库"), badge: clips.length, advanced: true },
+          { key: "timeline", label: t("Cut list", "片段列表"), badge: items.length, advanced: true },
+          { key: "audio", label: t("Audio", "音频"), badge: audio.length + captions.length, advanced: true },
+          { key: "graphics", label: t("Graphics", "图形"), badge: graphics.length, advanced: true },
         ]}
       />
 

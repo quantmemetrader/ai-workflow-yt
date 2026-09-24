@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { notify } from "@/lib/client/notify";
+import { useLocalPreference } from "@/lib/client/preference";
 import { beginWork } from "@/lib/client/busy";
 
 /**
@@ -287,13 +288,44 @@ export function Tabs<T extends string>({
    * will lose quietly the next time the inline styles change.
    */
   tone = "light",
+  /**
+   * Where the fold is remembered. Without it the advanced tabs are always
+   * shown, which is the old behaviour and right for a bar of three.
+   */
+  foldKey,
+  /** What the fold's own button says. The bar's labels are translated by the
+   *  caller, so this one is too. */
+  foldLabel = { more: "高级", less: "收起" },
 }: {
-  tabs: { key: T; label: string; badge?: number }[];
+  /**
+   * `advanced` puts a tab behind 高级.
+   *
+   * "less like video editor, more like ai prompt stuff" — the video module
+   * opened with eight tabs, of which four are things somebody reaches for once
+   * a week: the media bin, the cut list, the audio track and the graphics
+   * list. They are still one press away, and the fold opens by itself when the
+   * tab somebody is already on lives inside it, so a deep link never lands on
+   * a screen whose tab is not on the bar.
+   */
+  tabs: { key: T; label: string; badge?: number; advanced?: boolean }[];
   active: T;
   onChange: (key: T) => void;
   tone?: "light" | "dark";
+  foldKey?: string;
+  foldLabel?: { more: string; less: string };
 }) {
   const dark = tone === "dark";
+  const [fold, setFold] = useLocalPreference(
+    `aura:tabs:${foldKey ?? "none"}`,
+    ["open", "closed"] as const,
+    "closed",
+  );
+
+  const hidden = tabs.filter((x) => x.advanced);
+  const activeIsHidden = hidden.some((x) => x.key === active);
+  const showAll = !foldKey || fold === "open" || activeIsHidden;
+  const shown = showAll ? tabs : tabs.filter((x) => !x.advanced);
+
   return (
     <div
       style={{
@@ -308,7 +340,7 @@ export function Tabs<T extends string>({
         flexWrap: "wrap",
       }}
     >
-      {tabs.map((x) => (
+      {shown.map((x) => (
         <button
           key={x.key}
           type="button"
@@ -337,6 +369,42 @@ export function Tabs<T extends string>({
           ) : null}
         </button>
       ))}
+
+      {foldKey && hidden.length > 0 && !activeIsHidden ? (
+        <button
+          type="button"
+          onClick={() => setFold(showAll ? "closed" : "open")}
+          aria-expanded={showAll}
+          style={{
+            height: 28,
+            padding: "0 10px",
+            borderRadius: 8,
+            border: 0,
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+            background: "transparent",
+            color: dark ? "#7a7a82" : "#999999",
+            fontSize: 12.5,
+            fontFamily: "inherit",
+            letterSpacing: "inherit",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {showAll ? foldLabel.less : foldLabel.more}
+          <svg viewBox="0 0 24 24" style={{ width: 11, height: 11 }} aria-hidden>
+            <path
+              d={showAll ? "M7 14.5 12 9.5l5 5" : "M7 9.5 12 14.5l5-5"}
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </button>
+      ) : null}
     </div>
   );
 }

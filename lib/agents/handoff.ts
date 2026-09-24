@@ -68,7 +68,39 @@ export async function handOffToVideo(approver: Viewer, scriptId: string, version
       "",
       `把素材放进时间线，我会自动转写字幕；剪辑按锁定的第 ${versionNo} 版脚本来。`,
     ].join("\n"),
-    { mentions: ["script"], handoff },
+    {
+      mentions: ["script"],
+      handoff,
+      /* The hand-off ends on something to press rather than on a sentence.
+         Both are the ordinary card kinds: one posts a line as whoever pressed
+         it, the other is a link. */
+      actions: [
+        {
+          id: "open-project",
+          label: "打开项目",
+          labelEn: "Open the project",
+          kind: "open",
+          href: projectHref,
+          tone: "primary",
+        },
+        {
+          id: "rough-cut",
+          label: "让剪辑师出粗剪",
+          labelEn: "Ask for a first cut",
+          kind: "say",
+          body: `${tag("video")} 《${script.title}》的素材已经在项目里了，按锁定的第 ${versionNo} 版脚本先出一版粗剪。${projectHref}`,
+          tone: "quiet",
+        },
+        {
+          id: "read-script",
+          label: "看脚本",
+          labelEn: "Read the script",
+          kind: "open",
+          href: scriptHref,
+          tone: "quiet",
+        },
+      ],
+    },
   );
 
   // The person whose script it is hears about it even if they are not
