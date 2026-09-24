@@ -98,7 +98,7 @@ export function Rail({ modules, locale }: { modules: Module[]; locale: string })
       {open ? handle : null}
 
       <Link
-        href="/chat"
+        href="/home"
         aria-label="腾亚创变"
         style={{
           display: "flex",

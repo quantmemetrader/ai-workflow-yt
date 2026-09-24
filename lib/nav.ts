@@ -31,6 +31,23 @@ export type NavItem = {
 
 export const NAV: NavItem[] = [
   {
+    /*
+     * 首页 — the day's work, not a page of its own subject.
+     *
+     * Gated on Chat, like Articles is on Script: it is a second surface of the
+     * place the AI employees work, not a twelfth entitlement for an admin to
+     * discover and grant. `secondary` keeps it out of `NAV_BY_MODULE`, which
+     * answers "what is this module called" and must keep answering 聊天.
+     */
+    module: "chat",
+    secondary: true,
+    href: "/home",
+    label: "Home",
+    labelZh: "首页",
+    live: true,
+    icon: '<path d="M12 3.2 3.4 10v10.4h6V15h5.2v5.4h6V10z"/>',
+  },
+  {
     module: "chat",
     href: "/chat",
     label: "Chat",
@@ -173,6 +190,7 @@ const SCREENS: CrumbItem[] = [
  * would have nothing to say on two of the screens people reach most often.
  */
 const LOOSE: CrumbItem[] = [
+  { href: "/home", label: "Home", labelZh: "首页" },
   { href: "/settings", label: "Settings", labelZh: "设置" },
   { href: "/search", label: "Search", labelZh: "搜索" },
 ];

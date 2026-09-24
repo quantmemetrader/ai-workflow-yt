@@ -9,7 +9,7 @@ export const metadata = { title: "登录" };
 const LOCALES: Locale[] = ["zh-CN", "en"];
 
 export default async function LoginPage() {
-  if (await getViewer()) redirect("/chat");
+  if (await getViewer()) redirect("/home");
 
   /* Whatever this browser's last signed-in person reads in. Without it the
      screen opened in Chinese for everybody, every time. */

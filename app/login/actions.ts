@@ -113,7 +113,7 @@ export async function signIn(_prev: LoginState, formData: FormData): Promise<Log
   await clearLoginThrottle(email);
   await audit({ id: user.id, tenantId: user.tenantId }, "auth.login");
 
-  redirect("/chat");
+  redirect("/home");
 }
 
 /* ------------------------------------------------------- the second step */
@@ -195,7 +195,7 @@ export async function verifySecondFactor(_prev: VerifyState, formData: FormData)
     meta: { secondFactor: usedRecovery ? "recovery" : "totp", trusted: trust && !usedRecovery },
   });
 
-  redirect("/chat");
+  redirect("/home");
 }
 
 /** "Back" on the code screen: the half-finished sign-in is dropped. */
