@@ -60,6 +60,8 @@ export function HomeScreen({
   const box = React.useRef<HTMLTextAreaElement | null>(null);
   const mentions = useMentions({ people, zh, draft, setDraft, box });
   const [giveTo, setGiveTo] = React.useState<AgentKey | null>(null);
+  /* The box under the conversation, apart from the big one at the top. */
+  const [quick, setQuick] = React.useState("");
 
   /* After something is said, the answer comes from a model call that ends
      after the request returns. Refresh every few seconds for a minute and a
@@ -100,7 +102,7 @@ export function HomeScreen({
     });
   }
 
-  function say(body: string) {
+  function say(body: string, from: "top" | "quick" = "top") {
     if (!teamChannel || !body.trim()) return;
     setError(null);
     start(async () => {
@@ -109,8 +111,10 @@ export function HomeScreen({
         setError(res.error);
         return;
       }
-      setDraft("");
-      if (box.current) box.current.style.height = "auto";
+      if (from === "top") {
+        setDraft("");
+        if (box.current) box.current.style.height = "auto";
+      }
       if (parseAgentMentions(body).length) {
         setSentAt(new Date().toISOString());
         setWatching(true);
@@ -197,14 +201,39 @@ export function HomeScreen({
         {/* ---- the box, the line of work and the team on the left; the
              conversation down the right ---- */}
         <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 8fr) minmax(340px, 5fr)", gap: 14, alignItems: "start" }}>
-          <div style={{ position: "sticky", top: 0, minWidth: 0, order: 2 }}>
+          <div style={{ minWidth: 0, order: 2, display: "flex", flexDirection: "column", gap: 14 }}>
           <Fold
               id="home-work"
               title={t("在这里干活", "Work here")}
               sub={teamChannel ? `#${teamChannel.name}` : undefined}
               icon={<AgentIcon size={20} radius={6} />}
               flush
-              height={640}
+              height={448}
+              footer={
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    if (!quick.trim()) return;
+                    say(quick, "quick");
+                    setQuick("");
+                  }}
+                  style={{ display: "flex", alignItems: "center", gap: 8, padding: 10 }}
+                >
+                  <input
+                    value={quick}
+                    onChange={(e) => setQuick(e.target.value)}
+                    placeholder={t(`在 #${teamChannel?.name ?? "制作"} 里说…（@研究员 叫同事）`, `Message #${teamChannel?.name ?? "制作"}… (@ a colleague to bring them in)`)}
+                    style={{ flexGrow: 1, minWidth: 0, height: 34, padding: "0 12px", border: "1px solid #e2e2e2", borderRadius: 10, background: "#fff", outline: "none", fontFamily: "inherit", fontSize: 13, letterSpacing: "inherit", color: "#171717" }}
+                  />
+                  <button
+                    type="submit"
+                    disabled={pending || !quick.trim() || !teamChannel}
+                    style={{ height: 34, padding: "0 14px", borderRadius: 10, border: 0, background: quick.trim() ? "#171717" : "#ededed", color: quick.trim() ? "#fff" : "#999999", fontFamily: "inherit", fontSize: 12.5, fontWeight: 500, cursor: quick.trim() ? "pointer" : "default", flexShrink: 0 }}
+                  >
+                    {t("发送", "Send")}
+                  </button>
+                </form>
+              }
               right={
                 teamChannel ? (
                   <Link href={`/chat/c/${encodeURIComponent(teamChannel.slug)}`} style={{ fontSize: 12, color: "#525252", textDecoration: "none", whiteSpace: "nowrap" }}>
@@ -215,6 +244,47 @@ export function HomeScreen({
           >
               <Conversation zh={zh} messages={thread} waiting={waiting} pending={pending} pressing={pressing} onPress={(id, action) => teamChannel && press(teamChannel.slug, id, action)} />
           </Fold>
+            <Fold id="home-team" title={t("同事", "The team")} height={300}>
+              {agents.map((a, idx) => {
+                const on = giveTo === a.key;
+                return (
+                  <div key={a.key} style={{ borderTop: idx ? "1px solid #f3f3f3" : "none", padding: "8px 0" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <AgentIcon agent={a.key} size={30} radius={8} />
+                      <div style={{ minWidth: 0, flexGrow: 1 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                          <span style={{ fontSize: 13, fontWeight: 600 }}>{zh ? a.nameLocal : a.name}</span>
+                          <Status status={a.status} zh={zh} />
+                        </div>
+                        <div title={a.line ?? undefined} style={{ fontSize: 12, color: a.line ? "#525252" : "#c7c7c7", marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                          {a.line ? trim(a.line, 90) : t("还没说过话", "Has not spoken yet")}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setGiveTo(on ? null : a.key)}
+                        aria-expanded={on}
+                        style={{ height: 26, padding: "0 10px", borderRadius: 8, border: `1px solid ${on ? "#171717" : "#e2e2e2"}`, background: "#fff", color: "#171717", fontFamily: "inherit", fontSize: 12, cursor: "pointer", flexShrink: 0 }}
+                      >
+                        {on ? t("收起", "Close") : t("交代", "Give work")}
+                      </button>
+                    </div>
+                    {on ? (
+                      <div style={{ marginTop: 8 }}>
+                        <SayToAgent
+                          agent={a.key}
+                          zh={zh}
+                          onDone={() => {
+                            setSentAt(new Date().toISOString());
+                            setWatching(true);
+                          }}
+                        />
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              })}
+            </Fold>
 
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
@@ -261,47 +331,6 @@ export function HomeScreen({
               </Fold>
             ) : null}
 
-            <Fold id="home-team" title={t("同事", "The team")} height={300}>
-              {agents.map((a, idx) => {
-                const on = giveTo === a.key;
-                return (
-                  <div key={a.key} style={{ borderTop: idx ? "1px solid #f3f3f3" : "none", padding: "8px 0" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                      <AgentIcon agent={a.key} size={30} radius={8} />
-                      <div style={{ minWidth: 0, flexGrow: 1 }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-                          <span style={{ fontSize: 13, fontWeight: 600 }}>{zh ? a.nameLocal : a.name}</span>
-                          <Status status={a.status} zh={zh} />
-                        </div>
-                        <div title={a.line ?? undefined} style={{ fontSize: 12, color: a.line ? "#525252" : "#c7c7c7", marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                          {a.line ? trim(a.line, 90) : t("还没说过话", "Has not spoken yet")}
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => setGiveTo(on ? null : a.key)}
-                        aria-expanded={on}
-                        style={{ height: 26, padding: "0 10px", borderRadius: 8, border: `1px solid ${on ? "#171717" : "#e2e2e2"}`, background: "#fff", color: "#171717", fontFamily: "inherit", fontSize: 12, cursor: "pointer", flexShrink: 0 }}
-                      >
-                        {on ? t("收起", "Close") : t("交代", "Give work")}
-                      </button>
-                    </div>
-                    {on ? (
-                      <div style={{ marginTop: 8 }}>
-                        <SayToAgent
-                          agent={a.key}
-                          zh={zh}
-                          onDone={() => {
-                            setSentAt(new Date().toISOString());
-                            setWatching(true);
-                          }}
-                        />
-                      </div>
-                    ) : null}
-                  </div>
-                );
-              })}
-            </Fold>
 
             {running.length > 0 ? (
               <Fold id="home-running" title={t("正在进行", "Running now")} sub={String(running.length)} height={running.length > 5 ? 220 : undefined}>

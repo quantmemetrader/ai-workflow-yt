@@ -21,8 +21,11 @@ export function Fold({
   height,
   minHeight = 80,
   flush = false,
+  footer,
   style,
 }: {
+  /** Pinned under the body, outside what scrolls: an input, say. */
+  footer?: React.ReactNode;
   /** Where the open/closed state is remembered. */
   id: string;
   title: React.ReactNode;
@@ -73,6 +76,7 @@ export function Fold({
           {children}
         </div>
       ) : null}
+      {open && footer ? <div style={{ borderTop: "1px solid #f0f0f0" }}>{footer}</div> : null}
     </section>
   );
 }
