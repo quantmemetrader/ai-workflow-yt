@@ -7,7 +7,6 @@ import { PlatformMark } from "@/components/ui/PlatformMark";
 import { AgentIcon } from "@/components/agents/AgentIcon";
 import { AGENT_COLORS } from "@/lib/agents/catalog";
 import { PLATFORMS, type HotRow, type PlatformKey } from "@/lib/research/platform-catalog";
-import { judgeHotAction, platformHotAction } from "@/app/(app)/research/platform-actions";
 import { startProposalAction } from "@/app/(app)/home/actions";
 import type { Judged } from "@/lib/research/judge";
 import { notify } from "@/lib/client/notify";
@@ -85,10 +84,15 @@ export function LiveNow({
     if (!loading) return;
     let cancelled = false;
     const key = loading;
-    void platformHotAction(key).then((res) => {
-      if (cancelled) return;
-      setLoaded((m) => ({ ...m, [key]: "error" in res ? { rows: [], note: res.error } : { rows: res.rows, note: res.note } }));
-    });
+    /* A GET, not a server action: the router queues navigations behind an
+       in-flight action, and a metered read can take seconds. */
+    void fetch(`/api/research/hot?platform=${key}`, { cache: "no-store" })
+      .then(async (r) => (r.ok ? ((await r.json()) as { rows: HotRow[]; note: string | null }) : { rows: [] as HotRow[], note: t("Could not read this platform just now.", "这个平台刚才读不到。") }))
+      .catch(() => ({ rows: [] as HotRow[], note: t("Could not read this platform just now.", "这个平台刚才读不到。") }))
+      .then((res) => {
+        if (cancelled) return;
+        setLoaded((m) => ({ ...m, [key]: { rows: res.rows, note: res.note } }));
+      });
     return () => {
       cancelled = true;
     };
@@ -102,10 +106,15 @@ export function LiveNow({
     if (!judging) return;
     let cancelled = false;
     const key = judging;
-    void judgeHotAction(key === "live" ? "youtube" : key).then((res) => {
-      if (cancelled) return;
-      setJudged((m) => ({ ...m, [key]: "error" in res ? {} : res.judged }));
-    });
+    /* Same: 研究员's reading is a model call of up to half a minute, and
+       it must never hold the rail hostage. */
+    void fetch(`/api/research/hot?platform=${key === "live" ? "youtube" : key}&judge=1`, { cache: "no-store" })
+      .then(async (r) => (r.ok ? ((await r.json()) as { judged: Judged }) : { judged: {} as Judged }))
+      .catch(() => ({ judged: {} as Judged }))
+      .then((res) => {
+        if (cancelled) return;
+        setJudged((m) => ({ ...m, [key]: res.judged }));
+      });
     return () => {
       cancelled = true;
     };
