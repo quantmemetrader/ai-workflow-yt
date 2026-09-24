@@ -124,7 +124,11 @@ module.exports = {
       ...runTs("scripts/digest.ts"),
       cwd: root,
       autorestart: false,
-      cron_restart: "0 0 * * *",
+      /* Hourly, not daily. The hour itself is set on the Automations page and
+         read by the script (`lib/automations/service.ts` → `dueNow`), which is
+         the only way a time in a browser can change a time on this box. Each
+         script posts at most once per Hong Kong day either way. */
+      cron_restart: "0 * * * *",
       out_file: path.join(root, "logs/digest.log"),
       error_file: path.join(root, "logs/digest.log"),
       merge_logs: true,
@@ -143,7 +147,7 @@ module.exports = {
       ...runTs("scripts/plan.ts"),
       cwd: root,
       autorestart: false,
-      cron_restart: "5 0 * * *",
+      cron_restart: "5 * * * *",
       out_file: path.join(root, "logs/plan.log"),
       error_file: path.join(root, "logs/plan.log"),
       merge_logs: true,

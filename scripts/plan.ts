@@ -31,6 +31,7 @@ import { assemblePrompt } from "../lib/ai/prompt";
 import { AiError, complete } from "../lib/ai/openrouter";
 import { modelFor } from "../lib/ai/models";
 import { BudgetStop, assertBudget, recordUsage } from "../lib/ai/ledger";
+import { dueNow, readAutomation } from "../lib/automations/service";
 
 const TENANT = process.env.TENANT_ID ?? "tnt_aurafarmers";
 const FORCE = process.argv.includes("--force");
@@ -166,7 +167,18 @@ function render(date: string, plan: Plan): string {
 
 async function main() {
   const date = hkDate();
-  const viewer = await agentViewer(TENANT, "planning");
+
+  const setting = await readAutomation("plan");
+  if (!FORCE && !DRY && !dueNow(setting)) {
+    console.log(
+      setting.enabled
+        ? `[plan] not due yet (${String(setting.hour).padStart(2, "0")}:${String(setting.minute).padStart(2, "0")} HKT)`
+        : "[plan] switched off in Automations",
+    );
+    return;
+  }
+
+  const viewer = await agentViewer(TENANT, setting.agent);
   const channelId = await ensureAgentChannel(TENANT, "digest");
 
   if (!FORCE && !DRY && (await alreadyPosted(channelId, date))) {
@@ -247,7 +259,7 @@ async function main() {
     return;
   }
 
-  const id = await postAsAgent(TENANT, "planning", "digest", body, {
+  const id = await postAsAgent(TENANT, setting.agent, "digest", body, {
     plan: { date, model: used.model, costMicros: used.costMicros, todos: plan.todos.length },
     actions,
   });

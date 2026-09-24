@@ -4,11 +4,13 @@ import { makeT } from "@/lib/i18n";
 import { NAV_BY_MODULE } from "@/lib/nav";
 import { signOut } from "@/app/login/actions";
 import { LocaleSwitch } from "./locale-switch";
+import { AutomationsCard } from "./automations";
 import { PasswordCard } from "./password";
 import { ProfileCard } from "./profile";
 import { TwoStepCard } from "./two-step";
 import { PeopleCard } from "./people";
 import { canInvite, listInvites } from "@/lib/invites/service";
+import { AUTOMATIONS, readAutomations } from "@/lib/automations/service";
 import { listTrustedDevices } from "@/lib/auth/second-factor";
 import { db } from "@/lib/db/client";
 import { users } from "@/lib/db/schema";
@@ -28,6 +30,11 @@ export default async function SettingsPage() {
   const zh = locale.startsWith("zh");
   // Until Admin ships, this is where an owner adds their own staff.
   const invites = canInvite(viewer) ? await listInvites(viewer) : [];
+  /* What the AI employees do on their own. Everyone can see the switch —
+     work happening in the studio's channels without a person asking for it
+     should not be a thing only an admin knows about — but only an owner or
+     an admin can move it. */
+  const automations = await readAutomations();
 
   /* Two-step verification, read here rather than in the card so the card can
      stay a client component without a round trip of its own. */
@@ -125,6 +132,20 @@ export default async function SettingsPage() {
           )}
 
           <LocaleSwitch current={locale} />
+
+          <AutomationsCard
+            zh={zh}
+            canEdit={viewer.role === "owner" || viewer.role === "admin"}
+            rows={AUTOMATIONS.map((def) => ({
+              key: def.key,
+              name: def.name,
+              nameEn: def.nameEn,
+              what: def.what,
+              whatEn: def.whatEn,
+              scheduled: def.scheduled,
+              value: automations[def.key],
+            }))}
+          />
 
           <PasswordCard zh={zh} />
 

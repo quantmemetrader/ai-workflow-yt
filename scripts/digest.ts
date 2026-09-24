@@ -27,6 +27,7 @@ import { AiError, complete } from "../lib/ai/openrouter";
 import { modelFor } from "../lib/ai/models";
 import { BudgetStop, assertBudget, recordUsage } from "../lib/ai/ledger";
 import { rankedTopics } from "../lib/research/service";
+import { dueNow, readAutomation } from "../lib/automations/service";
 
 const TENANT = process.env.TENANT_ID ?? "tnt_aurafarmers";
 const FORCE = process.argv.includes("--force");
@@ -71,7 +72,20 @@ async function alreadyPosted(channelId: string, date: string): Promise<boolean> 
 
 async function main() {
   const date = hkDate();
-  const viewer = await agentViewer(TENANT, "research");
+
+  /* pm2 wakes this hourly and the Automations page decides the rest: whether
+     it runs at all, at what Hong Kong time, and which employee signs it. */
+  const setting = await readAutomation("digest");
+  if (!FORCE && !DRY && !dueNow(setting)) {
+    console.log(
+      setting.enabled
+        ? `[digest] not due yet (${String(setting.hour).padStart(2, "0")}:${String(setting.minute).padStart(2, "0")} HKT)`
+        : "[digest] switched off in Automations",
+    );
+    return;
+  }
+
+  const viewer = await agentViewer(TENANT, setting.agent);
   const channelId = await ensureAgentChannel(TENANT, "digest");
 
   if (!FORCE && !DRY && (await alreadyPosted(channelId, date))) {
@@ -154,7 +168,7 @@ async function main() {
     return;
   }
 
-  const id = await postAsAgent(TENANT, "research", "digest", `☀️ **研究日报 · ${date}**\n\n${body}`, {
+  const id = await postAsAgent(TENANT, setting.agent, "digest", `☀️ **研究日报 · ${date}**\n\n${body}`, {
     digest: { date, model: out!.model, costMicros: out!.costMicros, topics: movers.map((t) => t.name) },
   });
   console.log(`[digest] ${date} posted ${id} by ${out!.model}, ${out!.costMicros}µ$`);

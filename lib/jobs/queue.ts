@@ -52,7 +52,12 @@ export type JobType =
   | "video.direct"
   /** Mirror the creator's own channel and rewrite the voice note
    * (`lib/creator/service.ts`). */
-  | "creator.sync";
+  | "creator.sync"
+  /** 策划 reads a freshly transcribed upload and says in #制作 what could be
+   * made from it (`lib/agents/footage.ts`). Queued by the transcription that
+   * footage landing started, so the studio hears about a tape without anybody
+   * asking. */
+  | "agent.footage";
 
 export type JobRow = typeof jobs.$inferSelect;
 

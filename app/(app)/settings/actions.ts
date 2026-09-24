@@ -18,11 +18,41 @@ import {
   verifyCode,
 } from "@/lib/auth/totp";
 import QRCode from "qrcode";
+import {
+  AUTOMATION_KEYS,
+  setAutomation,
+  type Automation,
+  type AutomationKey,
+} from "@/lib/automations/service";
 import { audit } from "@/lib/audit";
 import { LANG_COOKIE, LANG_COOKIE_MAX_AGE, type Locale } from "@/lib/i18n";
 import { cookies } from "next/headers";
 
 const ALLOWED: Locale[] = ["zh-CN", "en"];
+
+/**
+ * Turning one of the AI employees' standing jobs on or off, moving its time,
+ * or handing it to a different colleague.
+ *
+ * Owner or admin only, re-checked here: a server action is a public endpoint
+ * whatever the page around it looked like. The service validates the values
+ * themselves, so a bad hour from a stale tab falls back to the default rather
+ * than scheduling something at twenty-five o'clock.
+ */
+export async function setAutomationAction(key: AutomationKey, patch: Partial<Automation>) {
+  const viewer = await getViewer();
+  if (!viewer) return { error: "Not signed in" };
+  if (viewer.role !== "owner" && viewer.role !== "admin") return { error: "Not allowed" };
+  if (!AUTOMATION_KEYS.includes(key)) return { error: "No such automation" };
+
+  try {
+    const saved = await setAutomation(viewer, key, patch ?? {});
+    revalidatePath("/settings");
+    return { automation: saved };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Could not save that" };
+  }
+}
 
 export async function setLocaleAction(locale: Locale) {
   const viewer = await getViewer();

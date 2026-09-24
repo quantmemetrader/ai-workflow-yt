@@ -7,7 +7,7 @@
  *
  *   pm2 logs aura-worker
  */
-import { claim, fail, heartbeat, requeue, requeueStalled, succeed, type JobRow } from "../lib/jobs/queue";
+import { claim, enqueue, fail, heartbeat, requeue, requeueStalled, succeed, type JobRow } from "../lib/jobs/queue";
 import { refreshFeeds, refreshSeries, refreshTopic, syncSourceRegistry } from "../lib/research/ingest";
 import {
   classifyComments,
@@ -26,6 +26,7 @@ import { makePoster } from "../lib/files/poster";
 import { makeSourceProxy } from "../lib/video/proxy";
 import { makePeaks } from "../lib/video/peaks";
 import { autoEdit } from "../lib/video/autoedit";
+import { proposeFromFootage } from "../lib/agents/footage";
 import { direct } from "../lib/video/director";
 import { refreshCreatorMemory } from "../lib/creator/service";
 import { viewerById } from "../lib/auth/viewer-by-id";
@@ -180,7 +181,34 @@ const HANDLERS: Record<string, Handler> = {
        waited ninety seconds; if captions arrived meanwhile — typed, or from the
        button — this would replace them, so it stands down instead. */
     if (auto && (await hasCaptions(projectId))) return { skipped: "the cut already has captions" };
-    return transcribeProject(projectId, { language, diarize });
+    const result = await transcribeProject(projectId, { language, diarize });
+
+    /*
+     * Only the automatic one, and only once.
+     *
+     * A person pressing "transcribe" on a cut they are already working on does
+     * not need an AI employee to tell them what is in it; somebody dropping a
+     * tape into the studio at midnight does. `dedupeKey` keeps a re-transcribe
+     * from posting a second read of the same project.
+     */
+    if (auto) {
+      await enqueue({
+        tenantId: job.tenantId,
+        type: "agent.footage",
+        module: "video",
+        objectType: "video_project",
+        objectId: projectId,
+        payload: { projectId },
+        dedupeKey: `footage:${projectId}`,
+      });
+    }
+    return result;
+  },
+
+  /* 策划, reading a tape nobody has asked it about yet. */
+  "agent.footage": (job) => {
+    const { projectId } = job.payload as { projectId: string };
+    return proposeFromFootage(projectId);
   },
 };
 
