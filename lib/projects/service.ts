@@ -34,6 +34,8 @@ export type WorkProjectRow = {
   scriptId: string | null;
   videoProjectId: string | null;
   channelSlug: string | null;
+  createdBy: string;
+  access: string;
 };
 
 /**
@@ -96,6 +98,8 @@ export async function listWorkProjects(viewer: Viewer, limit = 40): Promise<Work
       videoProjectId: workProjects.videoProjectId,
       channelSlug: chatChannels.slug,
       lastMessageAt: chatChannels.lastMessageAt,
+      createdBy: workProjects.createdBy,
+      access: sql<string>`${workProjects.access} ->> 'mode'`,
     })
     .from(workProjects)
     .leftJoin(chatChannels, eq(chatChannels.id, workProjects.channelId))
@@ -323,4 +327,13 @@ export async function setProjectAccess(viewer: Viewer, id: string, access: Acces
     }
   });
   await audit(viewer, "project.access", { module: "chat", objectType: "project", objectId: id, meta: { mode: clean.mode } });
+}
+
+/** Remove a project from every list (kept in the database, recoverable). */
+export async function deleteProject(viewer: Viewer, id: string): Promise<void> {
+  const [p] = await db.select({ createdBy: workProjects.createdBy }).from(workProjects).where(and(eq(workProjects.id, id), eq(workProjects.tenantId, viewer.tenantId))).limit(1);
+  if (!p) throw new Error("No such project");
+  if (!viewer.isAdmin && p.createdBy !== viewer.id) throw new Error("Only the person who started it, or an admin, can delete it");
+  await db.update(workProjects).set({ deletedAt: new Date() }).where(eq(workProjects.id, id));
+  await audit(viewer, "project.delete", { module: "chat", objectType: "project", objectId: id });
 }

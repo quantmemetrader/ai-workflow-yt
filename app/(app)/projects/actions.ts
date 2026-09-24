@@ -3,7 +3,7 @@
 import { after } from "next/server";
 import { revalidatePath } from "next/cache";
 import { getViewer } from "@/lib/auth/dal";
-import { createWorkProject, setProjectAccess, setProjectStatus } from "@/lib/projects/service";
+import { createWorkProject, deleteProject, setProjectAccess, setProjectStatus } from "@/lib/projects/service";
 import { postMessage } from "@/lib/chat/service";
 import { dispatchAgentMentions } from "@/lib/agents/mentions";
 import { parseAgentMentions } from "@/lib/agents/catalog";
@@ -90,6 +90,18 @@ export async function setProjectAccessAction(id: string, access: { mode: "privat
     await setProjectAccess(viewer, String(id), access);
   } catch (err) {
     return { error: err instanceof Error ? err.message : "Could not change who sees it" };
+  }
+  revalidatePath("/", "layout");
+  return {};
+}
+
+export async function deleteProjectAction(id: string) {
+  const viewer = await getViewer();
+  if (!viewer || !viewer.modules.includes("chat")) return { error: "Not allowed" };
+  try {
+    await deleteProject(viewer, String(id));
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Could not delete it" };
   }
   revalidatePath("/", "layout");
   return {};

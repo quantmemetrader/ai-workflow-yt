@@ -9,7 +9,7 @@ import { MentionMenu, type MentionPerson } from "@/components/chat/MentionMenu";
 import { useMentions } from "@/components/chat/useMentions";
 import { AGENT_COLORS, AGENT_LABELS, agentTag, parseAgentMentions, type AgentKey } from "@/lib/agents/catalog";
 import { pressCardAction, sendChannelMessage } from "@/app/(app)/chat/actions";
-import { renameProjectAction, setProjectAccessAction, setProjectStatusAction } from "@/app/(app)/projects/actions";
+import { deleteProjectAction, renameProjectAction, setProjectAccessAction, setProjectStatusAction } from "@/app/(app)/projects/actions";
 import { AccessPicker } from "@/components/files/AccessPicker";
 import { addClipAction, addItemAction, autoEditAction, directAction, exportAction } from "@/app/(app)/video/actions";
 import { uploadFiles } from "@/lib/client/upload";
@@ -183,7 +183,33 @@ export function ProjectScreen({ project: p, zh, people }: { project: ProjectDeta
                 <Icon name={p.access.mode === "everyone" ? "eye" : "lock"} size={13} />
                 {p.access.mode === "everyone" ? t("全工作室", "Everyone") : p.access.mode === "private" ? t("仅自己", "Private") : p.access.mode === "groups" ? t("部分分组", "Groups") : t(`${p.access.userIds?.length ?? 0} 人`, `${p.access.userIds?.length ?? 0} people`)}
               </button>
+              <Link href={`/flow?project=${p.id}`} style={{ ...btn(false), height: 30, fontSize: 12, textDecoration: "none" }}>
+                <Icon name="share" size={13} />
+                {t("全部流程", "Full flow")}
+              </Link>
               <StatusPill status={p.status} zh={zh} />
+              {p.canManage ? (
+                <>
+                  <button type="button" disabled={pending} onClick={() => start(async () => { await setProjectStatusAction(p.id, p.status === "archived" ? "active" : "archived"); router.refresh(); })} style={{ ...btn(false), height: 30, fontSize: 12 }}>
+                    {p.status === "archived" ? t("取消归档", "Unarchive") : t("归档", "Archive")}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={pending}
+                    onClick={() => {
+                      if (!window.confirm(t("删除这个项目？对话、脚本和视频会从列表里消失。", "Delete this project? Its chat, script and video leave every list."))) return;
+                      start(async () => {
+                        const r = await deleteProjectAction(p.id);
+                        if (r?.error) notify(r.error);
+                        else router.push("/projects");
+                      });
+                    }}
+                    style={{ ...btn(false), height: 30, fontSize: 12, color: "#c42b2b" }}
+                  >
+                    {t("删除", "Delete")}
+                  </button>
+                </>
+              ) : null}
             </div>
           </div>
           {sharing ? (
