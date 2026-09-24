@@ -1,5 +1,6 @@
 "use client";
 
+import { Icon } from "@/components/ui/Icon";
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -10,6 +11,7 @@ import { AGENT_LABELS, agentTag, parseAgentMentions, type AgentKey } from "@/lib
 import type { AgentState, Decision, Running } from "@/lib/home/service";
 import { pressCardAction, sendChannelMessage } from "@/app/(app)/chat/actions";
 import { MiniFlow } from "@/components/home/MiniFlow";
+import { startProjectAction } from "@/app/(app)/projects/actions";
 import { Fold } from "@/components/ui/Fold";
 import { SayToAgent } from "@/components/flow/SayToAgent";
 import type { ThreadMessage } from "@/components/home/Echo";
@@ -40,11 +42,10 @@ export function HomeScreen({
   people,
   pipeline,
   thread,
-  focus,
-  recentProject,
+  projects,
 }: {
-  focus: { agent: AgentKey; fromId: string } | null;
-  recentProject: { id: string; title: string; render: { fileId: string; at: string } | null } | null;
+  /** Where a task can go: an existing project, or a new one. */
+  projects: { id: string; title: string; channelSlug: string | null }[];
   pipeline: Pipeline;
   thread: ThreadMessage[];
   agents: AgentState[];
@@ -66,9 +67,8 @@ export function HomeScreen({
   const [giveTo, setGiveTo] = React.useState<AgentKey | null>(null);
   /* The box under the conversation, apart from the big one at the top. */
   const [quick, setQuick] = React.useState("");
-  /* The focus card closes for the exchange it was showing; a new request opens it again. */
-  const [closedFocus, setClosedFocus] = React.useState<string | null>(null);
-  const focusOpen = Boolean(focus && closedFocus !== focus.fromId);
+  /* Which project the task box sends to: a new one unless one is chosen. */
+  const [target, setTarget] = React.useState<string>("new");
   const quickBox = React.useRef<HTMLTextAreaElement | null>(null);
   const quickMentions = useMentions({ people, zh, draft: quick, setDraft: setQuick, box: quickBox });
   /* Who a reply without a tag goes to: the employee who spoke last, if
@@ -112,6 +112,35 @@ export function HomeScreen({
         setWatching(true);
         router.refresh();
       }
+    });
+  }
+
+  /* The task box starts a project (or adds to one) and goes there: the work
+     happens on the project's page, not here. */
+  function startWork(body: string) {
+    const text = body.trim();
+    if (!text) return;
+    setError(null);
+    start(async () => {
+      if (target === "new") {
+        const r = await startProjectAction({ message: text });
+        if ("error" in r && r.error) {
+          setError(r.error);
+          return;
+        }
+        setDraft("");
+        if ("id" in r && r.id) router.push(`/projects/${r.id}`);
+        return;
+      }
+      const p = projects.find((x) => x.id === target);
+      if (!p?.channelSlug) return;
+      const res = await sendChannelMessage(p.channelSlug, text);
+      if (res?.error) {
+        setError(res.error);
+        return;
+      }
+      setDraft("");
+      router.push(`/projects/${p.id}`);
     });
   }
 
@@ -164,7 +193,7 @@ export function HomeScreen({
             if (mentions.onKeyDown(e)) return;
             if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
               e.preventDefault();
-              say(draft);
+              startWork(draft);
             }
           }}
           placeholder={t("想做什么？例如：@编剧 把 RWA 这条写成 60 秒竖版", "What do you want made? e.g. @writer make the RWA piece a 60s vertical")}
@@ -187,14 +216,25 @@ export function HomeScreen({
                 {zh ? AGENT_LABELS[key].nameLocal : AGENT_LABELS[key].name}
               </button>
             ))}
-            <span style={{ fontSize: 11, color: "#b3b3b3", whiteSpace: "nowrap", marginLeft: 4 }}>
-              {teamChannel ? t(`发到 #${teamChannel.name} · Enter 发送`, `Posts to #${teamChannel.name} · Enter to send`) : t("还没有团队频道", "No team channel yet")}
-            </span>
+            <select
+              value={target}
+              onChange={(e) => setTarget(e.target.value)}
+              aria-label={t("交给哪个项目", "Which project")}
+              style={{ height: 28, marginLeft: 4, padding: "0 8px", border: "1px solid #e2e2e2", borderRadius: 8, background: "#fafafa", fontFamily: "inherit", fontSize: 12, color: "#171717", maxWidth: 220 }}
+            >
+              <option value="new">{t("＋ 新项目", "+ New project")}</option>
+              {projects.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {t("项目：", "Project: ")}
+                  {p.title}
+                </option>
+              ))}
+            </select>
           </div>
           <button
             type="button"
-            disabled={pending || !draft.trim() || !teamChannel}
-            onClick={() => say(draft)}
+            disabled={pending || !draft.trim()}
+            onClick={() => startWork(draft)}
             style={{ height: 34, padding: "0 18px", borderRadius: 10, border: 0, background: draft.trim() ? "#171717" : "#ededed", color: draft.trim() ? "#fff" : "#999999", fontSize: 13, fontWeight: 500, fontFamily: "inherit", flexShrink: 0, cursor: draft.trim() ? "pointer" : "default" }}
           >
             {t("开工", "Start")}
@@ -332,25 +372,10 @@ export function HomeScreen({
         {/* ---- 1. the task box, the whole width ---- */}
           {composer}
 
-          {/* ---- what you asked for, being done right here ---- */}
-          {focusOpen && focus ? (
-            <FocusCard
-              zh={zh}
-              focus={focus}
-              thread={thread}
-              waiting={waiting}
-              pending={pending}
-              pressing={pressing}
-              recentProject={recentProject}
-              onPress={(id, action) => teamChannel && press(teamChannel.slug, id, action)}
-              onReply={(text) => say(text, "quick")}
-              onClose={() => setClosedFocus(focus.fromId)}
-            />
-          ) : null}
 
           {/* ---- 2. today's video, straight under it ---- */}
           <Fold id="home-flow" title={t("今天这条片走到哪了", "Where today's video is")} sub={pipeline.title ?? t("还没有开始的片子", "Nothing in progress yet")} resizable={false}>
-            <MiniFlow pipeline={pipeline} zh={zh} bare direct={focusOpen ? focus?.agent ?? null : null} />
+            <MiniFlow pipeline={pipeline} zh={zh} bare />
           </Fold>
 
           <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
@@ -447,7 +472,7 @@ function Conversation({
             {m.actions.length > 0 ? (
               m.done ? (
                 <div style={{ fontSize: 11.5, color: "#278f5e", marginTop: 6 }}>
-                  ✓ {(() => {
+                  <Icon name="check" size={12} strokeWidth={2.4} /> {(() => {
                     const a = m.actions.find((x) => x.id === m.done!.actionId);
                     return a ? (zh ? a.label : a.labelEn) : t("已处理", "Done");
                   })()}
@@ -478,153 +503,6 @@ function Conversation({
         </div>
       ) : null}
     </div>
-  );
-}
-
-/* ------------------------------------------------------------- the focus card */
-
-/**
- * What you just asked one employee for, done here rather than in a channel.
- *
- * Your request, what the employee has said since, and a box to answer it
- * (no tag needed: the reply goes to them). For 剪辑师 the project it worked
- * in is one press away, with the clips button beside it.
- */
-function FocusCard({
-  zh,
-  focus,
-  thread,
-  waiting,
-  pending,
-  pressing,
-  recentProject,
-  onPress,
-  onReply,
-  onClose,
-}: {
-  zh: boolean;
-  focus: { agent: AgentKey; fromId: string };
-  thread: ThreadMessage[];
-  waiting: boolean;
-  pending: boolean;
-  pressing: string | null;
-  recentProject: { id: string; title: string; render: { fileId: string; at: string } | null } | null;
-  onPress: (messageId: string, actionId: string) => void;
-  onReply: (text: string) => void;
-  onClose: () => void;
-}) {
-  const t = (a: string, b: string) => (zh ? a : b);
-  const [text, setText] = React.useState("");
-  const from = thread.findIndex((m) => m.id === focus.fromId);
-  const exchange = from >= 0 ? thread.slice(from) : [];
-  const request = exchange[0];
-  const after = exchange.slice(1);
-  const name = zh ? AGENT_LABELS[focus.agent].nameLocal : AGENT_LABELS[focus.agent].name;
-  const answering = waiting || (after.length > 0 && !after[after.length - 1].agent) || after.length === 0;
-
-  return (
-    <section style={{ borderRadius: 16, border: "1px solid transparent", background: "linear-gradient(#ffffff, #ffffff) padding-box, linear-gradient(135deg, #278f5e, #0f5bd5 60%, #6a3fc4) border-box", boxShadow: "0 6px 24px rgba(15,91,213,0.08)" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 14px 10px", borderBottom: "1px solid #f0f0f0" }}>
-        <AgentIcon agent={focus.agent} size={32} radius={9} />
-        <div style={{ minWidth: 0, flexGrow: 1 }}>
-          <div style={{ fontSize: 14, fontWeight: 600 }}>{answering ? t(`${name}正在做`, `${name} is on it`) : t(`${name}回复了你`, `${name} answered`)}</div>
-          <div style={{ fontSize: 11.5, color: "#999999" }}>{t("直接交代 · 跳过前面的步骤", "Asked directly · earlier steps skipped")}</div>
-        </div>
-        {answering ? <span style={{ width: 8, height: 8, borderRadius: 4, background: "#278f5e", animation: "auraPulse 1.6s ease-in-out infinite" }} /> : null}
-        <button type="button" onClick={onClose} aria-label={t("关闭", "Close")} style={{ border: 0, background: "transparent", cursor: "pointer", fontSize: 16, color: "#999999", padding: "0 4px" }}>
-          ×
-        </button>
-      </div>
-
-      <div style={{ padding: "10px 14px", display: "flex", flexDirection: "column", gap: 10, maxHeight: 320, overflowY: "auto" }}>
-        {request ? (
-          <div style={{ alignSelf: "flex-end", maxWidth: "85%", background: "#171717", color: "#fff", borderRadius: "12px 12px 4px 12px", padding: "8px 12px", fontSize: 13, lineHeight: 1.55, whiteSpace: "pre-wrap" }}>{trim(request.body, 300)}</div>
-        ) : null}
-        {after.map((m) =>
-          m.agent ? (
-            <div key={m.id} style={{ display: "flex", gap: 8, alignItems: "flex-start", maxWidth: "92%" }}>
-              <AgentIcon agent={m.agent} size={24} radius={7} />
-              <div style={{ background: "#f5f7fb", borderRadius: "12px 12px 12px 4px", padding: "8px 12px", fontSize: 13, lineHeight: 1.6, color: "#2b343d", whiteSpace: "pre-wrap", minWidth: 0 }}>
-                {trim(m.body, 600)}
-                {m.actions.length && !m.done ? (
-                  <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
-                    {m.actions.map((a, i) =>
-                      a.kind === "open" ? (
-                        <Link key={a.id} href={a.href ?? "#"} style={{ ...btn(false), height: 28, fontSize: 12, textDecoration: "none" }}>
-                          {zh ? a.label : a.labelEn}
-                        </Link>
-                      ) : (
-                        <button key={a.id} type="button" disabled={pending} onClick={() => onPress(m.id, a.id)} style={{ ...btn(i === 0), height: 28, fontSize: 12, opacity: pressing === m.id + a.id ? 0.55 : 1 }}>
-                          {zh ? a.label : a.labelEn}
-                        </button>
-                      ),
-                    )}
-                  </div>
-                ) : null}
-              </div>
-            </div>
-          ) : (
-            <div key={m.id} style={{ alignSelf: "flex-end", maxWidth: "85%", background: "#171717", color: "#fff", borderRadius: "12px 12px 4px 12px", padding: "8px 12px", fontSize: 13, lineHeight: 1.55, whiteSpace: "pre-wrap" }}>{trim(m.body, 300)}</div>
-          ),
-        )}
-        {answering ? (
-          <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, color: "#525252" }}>
-            <AgentIcon agent={focus.agent} size={24} radius={7} />
-            <span style={{ background: "#f5f7fb", borderRadius: 12, padding: "6px 12px" }}>{t(`${name}正在处理…`, `${name} is working…`)}</span>
-          </div>
-        ) : null}
-      </div>
-
-      {focus.agent === "video" && recentProject?.render ? (
-        /* The finished video, playable here: what was asked for, not a
-           sentence saying it exists somewhere. */
-        <div style={{ padding: "0 14px 10px" }}>
-          <video
-            controls
-            preload="metadata"
-            src={`/api/files/${recentProject.render.fileId}/download`}
-            style={{ width: "100%", maxHeight: 360, borderRadius: 12, background: "#000", display: "block" }}
-          />
-          <div style={{ display: "flex", gap: 10, marginTop: 6, fontSize: 12 }}>
-            <a href={`/api/files/${recentProject.render.fileId}/download`} target="_blank" rel="noreferrer" style={{ color: "#0f5bd5", textDecoration: "none" }}>
-              {t("在新窗口打开", "Open in a new tab")} ↗
-            </a>
-            <span style={{ color: "#999999" }}>{recentProject.title}</span>
-          </div>
-        </div>
-      ) : null}
-
-      {focus.agent === "video" && recentProject ? (
-        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "0 14px 10px", flexWrap: "wrap" }}>
-          <Link href={`/video?project=${recentProject.id}`} style={{ ...btn(true), textDecoration: "none" }}>
-            ▶ {t(`打开视频《${recentProject.title}》`, `Open the video “${recentProject.title}”`)}
-          </Link>
-          <Link href={`/video?project=${recentProject.id}`} style={{ ...btn(false), textDecoration: "none" }}>
-            🎬 {t("添加素材", "Add clips")}
-          </Link>
-        </div>
-      ) : null}
-
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (!text.trim()) return;
-          onReply(text);
-          setText("");
-        }}
-        style={{ display: "flex", gap: 8, padding: "10px 14px 12px", borderTop: "1px solid #f0f0f0" }}
-      >
-        <input
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          placeholder={t(`回复${name}…（不用 @）`, `Reply to ${name}… (no tag needed)`)}
-          style={{ flexGrow: 1, minWidth: 0, height: 34, padding: "0 12px", border: "1px solid #e2e2e2", borderRadius: 10, outline: "none", fontFamily: "inherit", fontSize: 13, letterSpacing: "inherit" }}
-        />
-        <button type="submit" disabled={pending || !text.trim()} style={{ ...btn(true), height: 34, opacity: text.trim() ? 1 : 0.45 }}>
-          {t("发送", "Send")}
-        </button>
-      </form>
-    </section>
   );
 }
 

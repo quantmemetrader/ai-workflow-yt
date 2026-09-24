@@ -8,6 +8,8 @@ import { BrandMark } from "@/components/brand/BrandMark";
 import { useLocalPreference } from "@/lib/client/preference";
 import { useResizable } from "@/components/ui/Resizer";
 import { NAV } from "@/lib/nav";
+import { Suspense } from "react";
+import { ProjectTree, type TreeProject } from "@/components/projects/ProjectTree";
 import type { Module } from "@/lib/db/schema";
 
 /**
@@ -32,7 +34,7 @@ const RAIL_MAX = 268;
 const RAIL_DEFAULT = 186;
 const COLLAPSED = 52;
 
-export function Rail({ modules, locale }: { modules: Module[]; locale: string }) {
+export function Rail({ modules, locale, projects = [] }: { modules: Module[]; locale: string; projects?: TreeProject[] }) {
   const pathname = usePathname();
   const zh = locale.startsWith("zh");
   const [state, setState] = useLocalPreference("aura:rail", ["open", "icons"] as const, "open");
@@ -145,6 +147,12 @@ export function Rail({ modules, locale }: { modules: Module[]; locale: string })
               {open && <span>{label}</span>}
               <RailSpinner wide={open} />
             </Link>
+            {/* Right under Home: the projects, as a tree. */}
+            {item.href === "/home" ? (
+              <Suspense fallback={null}>
+                <ProjectTree projects={projects} zh={zh} wide={open} />
+              </Suspense>
+            ) : null}
             {item.dividerAfter && (
               <div
                 style={{

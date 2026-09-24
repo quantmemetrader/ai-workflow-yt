@@ -1,5 +1,6 @@
 "use client";
 
+import { Icon } from "@/components/ui/Icon";
 import React from "react";
 import { useRouter } from "next/navigation";
 import { useLocalPreference } from "@/lib/client/preference";
@@ -203,7 +204,7 @@ export function LiveNow({
   }
 
   return (
-    <div style={{ flexShrink: 1, minHeight: 0, maxHeight: "60vh", overflowY: "auto", borderBottom: "1px solid #ededed", background: "#fcfcfc" }}>
+    <div style={{ flexShrink: 1, minHeight: 0, maxHeight: "80vh", overflowY: "auto", borderBottom: "1px solid #ededed", background: "#fcfcfc" }}>
       {/* Scrolls inside itself: the list, the researcher's line and the picks
        are taller than the space above the board, and the page does not
        scroll, so without this the picks were cut off at the bottom. */}
@@ -592,10 +593,10 @@ function StatLine({ stats, zh }: { stats?: HotRow["stats"]; zh: boolean }) {
   if (!stats) return null;
   const bits: React.ReactNode[] = [];
   const ratio = stats.fans && stats.views ? Math.round(stats.views / stats.fans) : null;
-  if (stats.views != null) bits.push(<span key="v">▶ {compact(stats.views)}</span>);
-  if (stats.likes != null) bits.push(<span key="l">♥ {compact(stats.likes)}{stats.likeRate != null ? <span style={{ color: stats.likeRate >= 0.05 ? "#0b7a63" : "#999999" }}> {(stats.likeRate * 100).toFixed(1)}%</span> : null}</span>);
-  if (stats.comments != null) bits.push(<span key="c">💬 {compact(stats.comments)}</span>);
-  if (stats.shares != null) bits.push(<span key="s">↗ {compact(stats.shares)}</span>);
+  if (stats.views != null) bits.push(<span key="v"><Icon name="play" size={10} fill /> {compact(stats.views)}</span>);
+  if (stats.likes != null) bits.push(<span key="l"><Icon name="heart" size={10} /> {compact(stats.likes)}{stats.likeRate != null ? <span style={{ color: stats.likeRate >= 0.05 ? "#0b7a63" : "#999999" }}> {(stats.likeRate * 100).toFixed(1)}%</span> : null}</span>);
+  if (stats.comments != null) bits.push(<span key="c"><Icon name="comment" size={10} /> {compact(stats.comments)}</span>);
+  if (stats.shares != null) bits.push(<span key="s"><Icon name="share" size={10} /> {compact(stats.shares)}</span>);
   if (ratio !== null && ratio >= 10) bits.push(<span key="r" title={zh ? "播放 ÷ 账号粉丝" : "views ÷ followers"} style={{ color: "#fff", background: ratio >= 100 ? "#c2410c" : "#a35f00", borderRadius: 3, padding: "0 4px", fontWeight: 600 }}>×{compact(ratio)}{zh ? " 粉丝量" : " fans"}</span>);
   if (stats.videos != null) bits.push(<span key="n">{compact(stats.videos)} {zh ? "条视频" : "videos"}</span>);
   if (stats.rankUp) bits.push(<span key="u" style={{ color: "#0b7a63" }}>↑{stats.rankUp}</span>);
@@ -658,7 +659,7 @@ function PicksList({
     <div style={{ border: "1px solid #ededed", borderRadius: 12, background: "#fff", overflow: "hidden" }}>
       <button type="button" onClick={onToggle} aria-expanded={open} style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, padding: "10px 14px", border: 0, background: "transparent", cursor: "pointer", font: "inherit", textAlign: "left" }}>
         {chevron(open, 14)}
-        <span style={{ fontSize: 13 }}>✨</span>
+        <Icon name="spark" size={14} color="#c2410c" />
         <span style={{ fontSize: 12.5, fontWeight: 600, color: "#171717", whiteSpace: "nowrap", flexShrink: 0 }}>{t("Picked for today", "今天挑出来的选题")}</span>
         <span style={{ fontSize: 11, color: "#fff", background: "#171717", borderRadius: 999, padding: "0 7px", lineHeight: "17px", flexShrink: 0 }}>{picks.length}</span>
         <span style={{ fontSize: 11.5, color: "#999999", minWidth: 0, flex: "1 1 0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{open ? "" : picks.map((p) => p.text).join(" · ")}</span>
@@ -675,7 +676,7 @@ function PicksList({
                     // eslint-disable-next-line @next/next/no-img-element
                     <img src={throughUs(p.thumbnail) ?? undefined} alt="" loading="lazy" style={{ width: 34, height: 34, borderRadius: 8, objectFit: "cover", flexShrink: 0, background: "#f0f0f0" }} />
                   ) : (
-                    <span style={{ width: 34, height: 34, borderRadius: 8, background: "linear-gradient(135deg, #d5e7fb, #dcd6fb)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, fontSize: 15 }}>💡</span>
+                    <span style={{ width: 34, height: 34, borderRadius: 8, background: "linear-gradient(135deg, #d5e7fb, #dcd6fb)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, color: "#0f5bd5" }}><Icon name="bulb" size={16} /></span>
                   )}
                   <span style={{ minWidth: 0, flexGrow: 1 }}>
                     <span style={{ display: "block", fontSize: 13, fontWeight: 600, color: "#171717", whiteSpace: on ? "normal" : "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.text}</span>
@@ -696,7 +697,7 @@ function PicksList({
                         <span style={{ fontSize: 10.5, color: "#999999", letterSpacing: ".04em" }}>{t("SOURCES", "来源")}</span>
                         {p.sources.map((src, k) => (
                           <a key={k} href={src.url ?? "#"} target="_blank" rel="noopener noreferrer" style={{ display: "flex", alignItems: "baseline", gap: 6, fontSize: 11.5, color: "#171717", textDecoration: "none", minWidth: 0 }}>
-                            <span style={{ color: "#0f5bd5", flexShrink: 0 }}>↗</span>
+                            <span style={{ color: "#0f5bd5", flexShrink: 0 }}><Icon name="external" size={11} /></span>
                             <span style={{ color: "#999999", flexShrink: 0 }}>{src.label}</span>
                             <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{src.title}</span>
                             <span style={{ color: "#7c7c7c", flexShrink: 0, fontVariantNumeric: "tabular-nums" }}>{src.numbers}</span>
@@ -713,20 +714,20 @@ function PicksList({
                     <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                       {canWriteScripts ? (
                         <button type="button" disabled={sending !== null} onClick={() => onWrite(p.text, `pick${i}`)} style={{ ...smallBtn(true), height: 28, borderRadius: 8, opacity: sending === `pick${i}` ? 0.55 : 1 }}>
-                          ✍️ {t("Write script", "写脚本")}
+                          <Icon name="pen" size={13} /> {t("Write script", "写脚本")}
                         </button>
                       ) : null}
                       <button type="button" onClick={() => onClips(p.text)} style={{ ...smallBtn(false), height: 28, borderRadius: 8 }}>
-                        🎬 {t("Add clips", "加素材")}
+                        <Icon name="upload" size={13} /> {t("Add clips", "加素材")}
                       </button>
                       <span style={{ flexGrow: 1 }} />
                       {p.url ? (
                         <a href={p.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11.5, color: "#525252", textDecoration: "none" }}>
-                          ▶ {t("Watch the source", "看原视频")}
+                          <Icon name="play" size={11} fill /> {t("Watch the source", "看原视频")}
                         </a>
                       ) : null}
                       <button type="button" onClick={() => onWatch(p.text.replace(/^写《|》.*$/g, "").replace(/[？?。！!—–-].*$/, "").slice(0, 40))} style={{ border: 0, background: "transparent", padding: 0, fontSize: 11.5, color: "#525252", cursor: "pointer", font: "inherit" }}>
-                        ＋ {t("Watch the topic", "加入关注")}
+                        <Icon name="eye" size={12} /> {t("Watch the topic", "加入关注")}
                       </button>
                     </div>
                   </div>

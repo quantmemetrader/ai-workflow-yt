@@ -1,5 +1,6 @@
 "use client";
 
+import { Icon } from "@/components/ui/Icon";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { ProposalsStrip } from "@/components/agents/ProposalsStrip";
 import type { Proposals } from "@/lib/agents/proposals";
@@ -438,7 +439,7 @@ export function VideoScreen({
                 project, not a drop target somebody has to know about. */}
             {project && !onLibrary ? (
               <label style={{ ...solid, display: "inline-flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
-                🎬 {t("Add clips", "添加素材")}
+                <Icon name="upload" size={14} /> {t("Add clips", "添加素材")}
                 <input
                   type="file"
                   multiple
@@ -469,7 +470,7 @@ export function VideoScreen({
         <label
           style={{ margin: "12px 22px 0", padding: "16px 18px", borderRadius: 12, border: "1.5px dashed #9fb8e8", background: "#f5f8fe", display: "flex", alignItems: "center", gap: 14, cursor: "pointer" }}
         >
-          <span style={{ fontSize: 26 }}>🎬</span>
+          <span style={{ color: "#0f5bd5", display: "flex" }}><Icon name="upload" size={26} /></span>
           <span style={{ flexGrow: 1 }}>
             <span style={{ display: "block", fontSize: 14, fontWeight: 600, color: "#171717" }}>{t("Add the clips for this video", "为这条片添加素材")}</span>
             <span style={{ display: "block", fontSize: 12.5, color: "#525252", marginTop: 3 }}>

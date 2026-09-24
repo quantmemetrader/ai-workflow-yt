@@ -1,5 +1,6 @@
 "use client";
 
+import { Icon } from "@/components/ui/Icon";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AudioRow, CaptionRow, ClipRow, GraphicRow, ItemRow } from "@/lib/video/service";
 import {
@@ -699,7 +700,7 @@ export function Editor(props: EditorProps) {
               ◀
             </Key>
             <Key onClick={toggle} label={playing ? t("Pause", "暂停") : t("Play", "播放")} wide>
-              {playing ? "❚❚" : "▶"}
+              {playing ? <Icon name="pause" size={14} strokeWidth={2.4} /> : <Icon name="play" size={14} fill />}
             </Key>
             <Key onClick={() => seek(atMs + 100)} label={t("Forward", "前进")}>
               ▶
@@ -715,7 +716,7 @@ export function Editor(props: EditorProps) {
               }}
               label={t("Split here (S)", "在此分割（S）")}
             >
-              ✂
+              <Icon name="scissors" size={14} />
             </Key>
 
             {/* Undo, where an editor puts it. The browser's Back button is

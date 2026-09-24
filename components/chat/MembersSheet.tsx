@@ -1,5 +1,6 @@
 "use client";
 
+import { Icon } from "@/components/ui/Icon";
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -124,7 +125,7 @@ export function MembersSheet({
       >
         <div style={{ padding: "16px 18px 12px", borderBottom: "1px solid #f3f3f3" }}>
           <div style={{ fontSize: 14.5, fontWeight: 600 }}>
-            {isPrivate ? "🔒 " : "# "}
+            {isPrivate ? <><Icon name="lock" size={12} />{" "}</> : "# "}
             {channelName}
           </div>
           <div style={{ fontSize: 11.5, color: "#999999", marginTop: 3 }}>

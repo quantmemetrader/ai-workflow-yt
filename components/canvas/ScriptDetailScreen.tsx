@@ -1,5 +1,6 @@
 "use client";
 
+import { Icon } from "@/components/ui/Icon";
 import * as React from "react";
 import type { Measurement, ScriptDetail, ScriptListItem } from "@/lib/script/service";
 import { useResizable } from "@/components/ui/Resizer";
@@ -1079,7 +1080,7 @@ export function ScriptDetailScreen(props: ScriptDetailScreenProps): React.JSX.El
           {/* The clips are what the script waits for: one press opens this
               script's video project with the upload in front. */}
           <button type="button" className="btn s" onClick={onMakeVideo} disabled={busy}>
-            🎬 {zh ? "添加素材" : "Add clips"}
+            <Icon name="upload" size={14} /> {zh ? "添加素材" : "Add clips"}
           </button>
           <button type="button" className="btn p" onClick={onMakeVideo} disabled={busy} style={{ background: "#171717" }}>
             {zh ? "去剪辑 →" : "Make the video →"}
@@ -2873,8 +2874,13 @@ export function ScriptDetailScreen(props: ScriptDetailScreenProps): React.JSX.El
           display: "flex",
           alignItems: "center",
           gap: 2,
-          padding: "0 10px",
+          padding: "0 8px",
           borderBottom: "1px solid #ededed",
+          /* Four tabs in English ran past 320px; they scroll sideways now
+             instead of spilling over the panel edge. */
+          overflowX: "auto",
+          overflowY: "hidden",
+          scrollbarWidth: "none",
         }}
       >
         {panelTabs.map((p) => (
@@ -2883,6 +2889,7 @@ export function ScriptDetailScreen(props: ScriptDetailScreenProps): React.JSX.El
             type="button"
             className={`rtab${activePanel === p.key ? " on" : ""}`}
             onClick={() => setPanel(p.key)}
+            style={{ flexShrink: 0, whiteSpace: "nowrap", paddingLeft: 8, paddingRight: 8 }}
           >
             {p.icon ? <AgentIcon size={12} color={ACCENT} /> : null}
             {p.label}

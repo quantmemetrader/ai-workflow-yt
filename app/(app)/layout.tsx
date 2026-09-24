@@ -9,6 +9,7 @@ import { RenderWatch } from "@/components/shell/RenderWatch";
 import { Toaster } from "@/components/shell/Toaster";
 import { UploadTray } from "@/components/shell/UploadTray";
 import { BusyBar } from "@/components/shell/BusyBar";
+import { listWorkProjects } from "@/lib/projects/service";
 import { Warmup } from "@/components/shell/Warmup";
 
 /**
@@ -53,7 +54,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         letterSpacing: "0.02em",
       }}
     >
-      <Rail modules={viewer.modules} locale={viewer.locale ?? "zh-CN"} />
+      <Rail
+        modules={viewer.modules}
+        locale={viewer.locale ?? "zh-CN"}
+        projects={viewer.modules.includes("chat") ? (await listWorkProjects(viewer, 30)).map((p) => ({ id: p.id, title: p.title, status: p.status, scriptId: p.scriptId, videoProjectId: p.videoProjectId })) : []}
+      />
 
       {/*
         * Everything right of the rail is a column now, not the page itself.

@@ -46,7 +46,7 @@ export type IdPrefix =
   | "bl" | "cf" | "req"
   | "tpl" | "con" | "rev" | "dep" | "comp"
   | "emp" | "lv" | "lvt" | "rq" | "app" | "cand" | "int"
-  | "hot";
+  | "hot" | "wp";
 
 export function newId(prefix: IdPrefix): string {
   return `${prefix}_${ulid()}`;

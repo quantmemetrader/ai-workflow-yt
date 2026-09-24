@@ -108,7 +108,9 @@ export async function ensureStockFolder(viewer: Viewer): Promise<FolderRow> {
       id: newId("tup"),
       objectType: "folder",
       objectId: folder.id,
-      relation: "viewer",
+      /* Editor, not viewer: the employees bring clips into it on everyone's
+         behalf ("You need edit access to upload here" stopped 剪辑师 cold). */
+      relation: "editor",
       subjectType: "tenant",
       subjectId: viewer.tenantId,
       grantedBy: viewer.id,

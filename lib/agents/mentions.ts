@@ -1,7 +1,7 @@
 import "server-only";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { chatChannels, chatMembers, chatMessages, conversations, users } from "@/lib/db/schema";
+import { chatChannels, chatMembers, chatMessages, conversations, users, workProjects } from "@/lib/db/schema";
 import { audit } from "@/lib/audit";
 import { newId } from "@/lib/ids";
 import type { Viewer } from "@/lib/auth/types";
@@ -245,6 +245,15 @@ async function answerOne(
 
   /* One turn of the employee, returning what it said and whether it used
      a single tool to do what it says it did. */
+  /* In a project's chat the employee works inside that project: its script
+     and its video project are the ones open, so "no project is open" cannot
+     happen and nothing lands anywhere else. */
+  const [inProject] = await db
+    .select({ scriptId: workProjects.scriptId, videoProjectId: workProjects.videoProjectId })
+    .from(workProjects)
+    .where(eq(workProjects.channelId, channelId))
+    .limit(1);
+
   const turn = async (content: string) => {
     let answer = "";
     let spokeItself = false;
@@ -257,7 +266,12 @@ async function answerOne(
       module: WORKS_IN[key],
       // The room it was tagged in, so "this channel" means something. Re-checked
       // inside every tool against the *agent's* membership, not the asker's.
-      context: { module: "chat", channelId },
+      context: {
+        module: "chat",
+        channelId,
+        ...(inProject?.videoProjectId ? { projectId: inProject.videoProjectId } : {}),
+        ...(inProject?.scriptId ? { scriptId: inProject.scriptId } : {}),
+      },
     })) {
       if (event.type === "delta") answer += event.text;
       else if (event.type === "error") failure = event.message;
