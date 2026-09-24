@@ -114,18 +114,18 @@ export function MiniFlow({ pipeline, zh, bare = false }: { pipeline: Pipeline; z
         ])}
       </div>
 
-      <Link
-        href="/flow"
-        style={{ marginTop: 14, display: "flex", alignItems: "center", gap: 14, padding: "14px 18px", borderRadius: 12, background: "linear-gradient(180deg, #2b2b2b, #111111)", color: "#fff", textDecoration: "none", boxShadow: "0 2px 8px rgba(0,0,0,0.14)" }}
-      >
-        <AgentIcon size={34} radius={9} />
-        <span style={{ minWidth: 0, flexGrow: 1 }}>
-          <span style={{ display: "block", fontSize: 15, fontWeight: 600 }}>{t("打开全部流程", "Open the full flow")}</span>
-          <span style={{ display: "block", fontSize: 12, color: "#b3b3b3", marginTop: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {yours ? t(`下一步需要你：${yours.label}。`, `Next it needs you: ${yours.label}.`) : t("没有人吩咐的时候，这些事也会发生。黑色是需要你点头的地方。", "These happen with nobody asking. Black is where you nod.")}
+      <Link href="/flow" style={{ marginTop: 14, display: "block", borderRadius: 12, overflow: "hidden", textDecoration: "none", color: "#fff", boxShadow: "0 2px 8px rgba(0,0,0,0.14)", border: "1px solid #171717" }}>
+        <span style={{ display: "flex", alignItems: "center", gap: 14, padding: "14px 18px", background: "linear-gradient(180deg, #2b2b2b, #111111)" }}>
+          <AgentIcon size={34} radius={9} />
+          <span style={{ minWidth: 0, flexGrow: 1 }}>
+            <span style={{ display: "block", fontSize: 15, fontWeight: 600 }}>{t("打开全部流程", "Open the full flow")}</span>
+            <span style={{ display: "block", fontSize: 12, color: "#b3b3b3", marginTop: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {yours ? t(`下一步需要你：${yours.label}。`, `Next it needs you: ${yours.label}.`) : t("没有人吩咐的时候，这些事也会发生。黑色是需要你点头的地方。", "These happen with nobody asking. Black is where you nod.")}
+            </span>
           </span>
+          <span style={{ fontSize: 20, lineHeight: 1 }}>→</span>
         </span>
-        <span style={{ fontSize: 20, lineHeight: 1 }}>→</span>
+        <FlowPreview pipeline={pipeline} zh={zh} />
       </Link>
     </section>
   );
@@ -200,5 +200,69 @@ function StepCard({ step: x, zh, talking, onTalk, alignRight }: { step: Step; zh
         </div>
       ) : null}
     </div>
+  );
+}
+
+/**
+ * A small picture of the full flow page, drawn from the same state: the
+ * twelve nodes in the board's own positions, each in its owner's tint, the
+ * running one outlined, the ones waiting on a person in black. It is a
+ * preview, not a control; the whole thing is the link to /flow.
+ */
+function FlowPreview({ pipeline: p, zh }: { pipeline: Pipeline; zh: boolean }) {
+  const t = (a: string, b: string) => (zh ? a : b);
+  const S = (k: Stage["key"]) => p.stages.find((s) => s.key === k)!;
+  const topic = S("topic"), plan = S("plan"), script = S("script"), approve = S("approve"), cut = S("cut"), exp = S("export"), publish = S("publish"), feedback = S("feedback");
+  const review: Stage["state"] = publish.state !== "todo" ? "done" : exp.state === "done" ? "you" : "todo";
+  const post: Stage["state"] = publish.state === "done" ? "done" : publish.state === "you" ? "you" : "todo";
+  type N = { x: number; y: number; owner: AgentKey | "you" | "loop"; name: string; state: Stage["state"] };
+  const X = [40, 356, 672, 988], Y = [40, 250, 460];
+  const nodes: N[] = [
+    { x: X[0], y: Y[0], owner: "research", name: t("研究员发晨报", "Brief"), state: topic.state },
+    { x: X[1], y: Y[0], owner: "planning", name: t("策划派活", "Plan"), state: plan.state },
+    { x: X[2], y: Y[0], owner: "script", name: t("编剧写脚本", "Script"), state: script.state },
+    { x: X[3], y: Y[0], owner: "you", name: t("批准脚本", "Approve"), state: approve.state },
+    { x: X[3], y: Y[1], owner: "video", name: t("转写 + 粗剪", "Rough cut"), state: cut.state },
+    { x: X[2], y: Y[1], owner: "video", name: t("图形 + 渲染", "Render"), state: exp.state },
+    { x: X[1], y: Y[1], owner: "you", name: t("看成片", "Watch the cut"), state: review },
+    { x: X[0], y: Y[1], owner: "article", name: t("写各平台文案", "Copy"), state: publish.state === "you" ? "done" : publish.state },
+    { x: X[0], y: Y[2], owner: "you", name: t("批准发布", "Publish"), state: post },
+    { x: X[1], y: Y[2], owner: "research", name: t("收评论", "Comments"), state: feedback.state === "done" ? "done" : "todo" },
+    { x: X[2], y: Y[2], owner: "research", name: t("复盘数据", "Numbers"), state: feedback.state },
+    { x: X[3], y: Y[2], owner: "loop", name: t("明天再来一轮", "Again tomorrow"), state: "todo" },
+  ];
+  const W = 236, H = 120;
+  const mid = (n: N) => ({ cx: n.x + W / 2, cy: n.y + H / 2 });
+  const links: [number, number][] = [[0, 1], [1, 2], [2, 3], [3, 4], [4, 5], [5, 6], [6, 7], [7, 8], [8, 9], [9, 10], [10, 11]];
+  const TINT: Record<AgentKey, string> = { research: "#d5e7fb", planning: "#dcd6fb", script: "#f8dcc6", video: "#c3e6e0", article: "#f5d4e6" };
+
+  return (
+    <span style={{ display: "block", padding: "12px 14px 14px", backgroundColor: "#f4f3f0", backgroundImage: "radial-gradient(#d8d5cf 1px, transparent 1px)", backgroundSize: "14px 14px" }}>
+      <svg viewBox="0 0 1264 620" style={{ width: "100%", height: "auto", display: "block" }} aria-label={t("全部流程预览", "Preview of the full flow")}>
+        {links.map(([a, b]) => {
+          const A = mid(nodes[a]), B = mid(nodes[b]);
+          const live = nodes[b].state === "running" || nodes[b].state === "you";
+          return <line key={`${a}-${b}`} x1={A.cx} y1={A.cy} x2={B.cx} y2={B.cy} stroke={live ? "#0f5bd5" : "#bdb9b2"} strokeWidth={4} strokeDasharray={nodes[b].state === "todo" ? "10 10" : undefined} />;
+        })}
+        <path d={`M${mid(nodes[11]).cx} ${nodes[11].y} C ${mid(nodes[11]).cx} 0, ${mid(nodes[0]).cx} 0, ${mid(nodes[0]).cx} ${nodes[0].y}`} fill="none" stroke="#6a3fc4" strokeWidth={3} strokeDasharray="6 10" opacity={0.6} />
+        {nodes.map((n, i) => {
+          const you = n.owner === "you", loop = n.owner === "loop";
+          const needs = n.state === "you", running = n.state === "running", todo = n.state === "todo";
+          const fill = needs ? "#171717" : loop ? "#ffffff" : todo ? "#fbfbfa" : you ? "#e8e8e6" : TINT[n.owner as AgentKey];
+          const stroke = needs ? "#171717" : running ? "#0f5bd5" : loop ? "#0f5bd5" : todo ? "#d9d9d9" : you ? "#bdbdbd" : AGENT_COLORS[n.owner as AgentKey];
+          const ink = needs ? "#ffffff" : todo ? "#a3a3a3" : "#171717";
+          return (
+            <g key={i}>
+              <rect x={n.x} y={n.y} width={W} height={H} rx={16} fill={fill} stroke={stroke} strokeWidth={running ? 6 : 3} strokeDasharray={todo || loop ? "10 8" : undefined} />
+              {!you && !loop ? <rect x={n.x + 20} y={n.y + 22} width={26} height={26} rx={7} fill={todo ? "#e2e2e2" : AGENT_COLORS[n.owner as AgentKey]} /> : null}
+              <text x={n.x + (you || loop ? 20 : 58)} y={n.y + 44} fontSize={28} fontWeight={600} fill={ink} fontFamily="Inter, Noto Sans SC, sans-serif">{n.name}</text>
+              <text x={n.x + 20} y={n.y + 92} fontSize={22} fill={needs ? "#d9d9d9" : "#8f8c86"} fontFamily="Inter, Noto Sans SC, sans-serif">
+                {needs ? t("需要你", "Needs you") : running ? t("进行中", "Running") : n.state === "done" ? t("已完成", "Done") : loop ? t("循环", "Loop") : t("等上一步", "Waiting")}
+              </text>
+            </g>
+          );
+        })}
+      </svg>
+    </span>
   );
 }
