@@ -161,15 +161,51 @@ unpressed card is the studio's turn.
 - **Comments by platform** — already shipped; filter and group-by are both there.
 - **添加选题** — already shipped (`components/canvas/AddTopicButton.tsx`).
 
+### The research was the wrong research
+This is the one worth reading twice. The morning brief was built from Google
+Daily Search Trends, GDELT and Google News — what Hong Kong is *searching* —
+so it came back about typhoons and football. Meanwhile 125 of the channel's own
+videos, their view counts, their like rates and the questions its viewers typed
+underneath them were in this database, read by nothing.
+
+`lib/research/studio.ts` is the first half of every brief now: connected
+accounts, the like-rate leaders (likes ÷ views, the only number that says
+anything about the *subject* on a 253-subscriber channel), the view leaders,
+and the audience's questions verbatim. Outside signals come second and are
+labelled as outside. Same day, before and after: "谷爱凌 and a tropical cyclone"
+became "21.7% like rate on the Nvidia power piece, 1,244 views and 8.1% on
+香港五年规划, a viewer asking how RWA rental income is split" — with 庄太量
+named and dropped as off-channel.
+
+**Still thin, and worth doing next:** `competitors` is empty, so 对标账号 is a
+screen with nothing on it. The TikHub key is set and `syncCompetitors` works,
+but only for YouTube — the 抖音 / 小红书 / B站 / 微博 readers are not written.
+That is the next real increase in research quality.
+
+### Also done
+- **@ picker** searches every name a colleague answers to (`@r`, `@研`, `@edit`,
+  an email's local part), ranked rather than filtered, one shared hook for the
+  chat and home boxes.
+- **Access** — owner and admin hold owner on everything in their own studio
+  (`runsTheStudio` in `lib/authz/rebac.ts`). Measured: owners and admins see all
+  108 files; a member created from nothing sees 107, of which 102 are the stock
+  library, which is deliberately shared.
+- **Resizable panels** — audited: the rail, every module sidebar, the research
+  sidebar, the agent dock, the files/script/trends/compare/inbox/backlog screens.
+- **高级** — the video module's eight tabs are four, with the media bin, cut
+  list, audio and graphics behind a fold.
+
 ### Still open
 - **使用人员名称错误.** The top bar shows name and role correctly; the *data* is
   wrong. `admin@okbro.xyz` is called "admin", the owner account is called
   "Studio owner", there are two Ryans, and only 谢亚芳 has a Chinese name. This
-  needs the studio to say what each person should be called — do not invent
-  Chinese names for them.
-- **Resizable panels** exist (`components/ui/Resizer.tsx`) on the rail, the
-  module sidebars and the agent dock. Not audited screen by screen.
-- **P2 "fewer visible options"** — the 高级 fold on the editor is not done.
+  needs the studio to say what each person should be called — **do not invent
+  Chinese names for them.** The suspended service principal no longer appears
+  as a colleague called 定时任务, which was probably the half of this complaint
+  that was ours.
+- **Competitor readers** for the Chinese platforms (above).
+- **Multipart upload from a browser** is still only proven server-side; the
+  single-PUT path is proven end to end from Chrome.
 
 ---
 
