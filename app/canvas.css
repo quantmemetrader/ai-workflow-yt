@@ -48,6 +48,11 @@ p { margin: 0; }
 .r svg { width: 17px; height: 17px; fill: currentColor; }
 .r.on { background: #ffffff; box-shadow: 0 1px 2px rgba(0,0,0,0.1); color: #171717; }
 .r.no { opacity: .32; }
+/* The rail with its words showing. A tile stops being a 34px square and
+   becomes a row: icon, then the module's name. */
+.r.wide { width: auto; justify-content: flex-start; gap: 9px; height: 30px; padding: 0 9px; font-size: 12.5px; }
+.r.wide > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.r.wide.on { font-weight: 500; }
 /* sidebar */
 .n { display: flex; align-items: center; gap: 8px; height: 28px; padding: 0 9px; border-radius: 8px; font-size: 12.5px; color: #525252; transition: background .16s ease; }
 .n.on { background: #ffffff; box-shadow: 0 1px 2px rgba(0,0,0,0.1); color: #171717; font-weight: 500; }

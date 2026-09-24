@@ -17,7 +17,9 @@ import { recentConversationsAction, type RecentConversation } from "@/app/(app)/
  * on every page render — this is a thing people reach for occasionally, and it
  * should cost nothing the rest of the time.
  */
-export function HistoryButton({ locale }: { locale: string }) {
+/** `wide` follows the rail: with the words showing, this is a row like
+ *  every other entry rather than a lone square at the foot of them. */
+export function HistoryButton({ locale, wide = false }: { locale: string; wide?: boolean }) {
   const zh = locale.startsWith("zh");
   const [open, setOpen] = useState(false);
   const [rows, setRows] = useState<RecentConversation[] | null>(null);
@@ -57,7 +59,7 @@ export function HistoryButton({ locale }: { locale: string }) {
       <button
         type="button"
         onClick={toggle}
-        className={`r${open ? " on" : ""}`}
+        className={`r${open ? " on" : ""}${wide ? " wide" : ""}`}
         aria-label={zh ? "历史记录" : "Your chat history"}
         title={zh ? "历史记录" : "Your chat history"}
         aria-expanded={open}
@@ -68,6 +70,7 @@ export function HistoryButton({ locale }: { locale: string }) {
           <path d="M20 4v4.5h-4.5" />
           <path d="M12 7.5V12l3 1.8" />
         </svg>
+        {wide && <span>{zh ? "历史记录" : "History"}</span>}
       </button>
 
       {open ? (
