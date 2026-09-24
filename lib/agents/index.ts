@@ -6,7 +6,7 @@ import { newId } from "@/lib/ids";
 import { viewerById } from "@/lib/auth/viewer-by-id";
 import type { Viewer } from "@/lib/auth/types";
 import { createChannel, postMessage } from "@/lib/chat/service";
-import { AGENT_LABELS, agentTag, type AgentKey } from "./catalog";
+import { AGENT_KEYS, AGENT_LABELS, agentTag, type AgentKey } from "./catalog";
 
 /**
  * The studio's AI employees.
@@ -156,6 +156,21 @@ export async function ensureAgent(tenantId: string, key: AgentKey): Promise<stri
     .values(def.modules.map((module) => ({ userId: id!, module })))
     .onConflictDoNothing();
   return id;
+}
+
+/**
+ * All five, present and correctly named.
+ *
+ * An employee's row is made the first time somebody uses it, which is right
+ * for a fresh studio and wrong for everything else: 剪辑师 sat in the database
+ * as 视频助理 for a day after the rename because nobody had tagged it, so the
+ * card said one name and the byline said another. 撰稿人 did not exist at all.
+ *
+ * Called from the hourly scheduler, so a catalog change reaches the rows
+ * within the hour without anybody running anything.
+ */
+export async function ensureAllAgents(tenantId: string): Promise<void> {
+  for (const key of AGENT_KEYS) await ensureAgent(tenantId, key);
 }
 
 /** The agent as a viewer: what every tool and service takes. */

@@ -23,7 +23,7 @@
  */
 import { sql } from "drizzle-orm";
 import { db, pool } from "../lib/db/client";
-import { agentViewer, ensureAgentChannel, postAsAgent } from "../lib/agents";
+import { agentViewer, ensureAgentChannel, ensureAllAgents, postAsAgent } from "../lib/agents";
 import { AGENT_LABELS, agentTag, type AgentKey } from "../lib/agents/catalog";
 import type { CardAction } from "../lib/agents/cards";
 import { runTool } from "../lib/ai/tools";
@@ -168,6 +168,10 @@ function render(date: string, plan: Plan): string {
 
 async function main() {
   const date = hkDate();
+
+  /* Cheap, idempotent, and hourly: the five employees exist and answer to the
+     names the catalog gives them, whether or not today's plan is due. */
+  await ensureAllAgents(TENANT);
 
   const setting = await readAutomation("plan");
   if (!FORCE && !DRY && !dueNow(setting)) {
