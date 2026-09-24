@@ -256,8 +256,8 @@ export function LiveNow({
                 ) : null}
               </div>
               {picks.map((p, i) => (
-                <div key={i} style={{ display: "grid", gridTemplateColumns: "8px minmax(0,1fr) auto", gap: 12, alignItems: "center", padding: "8px 0", borderTop: "1px solid #f3f3f3" }}>
-                  <span style={{ width: 8, height: 8, background: p.source === "plan" ? AGENT_COLORS.planning : AGENT_COLORS.research }} />
+                <div key={i} style={{ display: "grid", gridTemplateColumns: "88px minmax(0,1fr) auto", gap: 12, alignItems: "center", padding: "8px 0", borderTop: "1px solid #f3f3f3" }}>
+                  <PickPicture text={p.text} agentColor={p.source === "plan" ? AGENT_COLORS.planning : AGENT_COLORS.research} />
                   <div style={{ minWidth: 0 }}>
                     <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.text}</div>
                     <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 3, minWidth: 0 }}>
@@ -529,4 +529,40 @@ function compact(n: number): string {
   if (n >= 10_000) return `${Math.round(n / 10_000)}万`;
   if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
   return String(n);
+}
+
+/**
+ * A picture of what a pick is about, found by a YouTube search for its
+ * subject (`app/api/research/pick-picture`). Loaded after the page, so the
+ * list never waits on it; the tooltip says where it came from, and a click
+ * opens the video it was taken from.
+ */
+function PickPicture({ text, agentColor }: { text: string; agentColor: string }) {
+  const [found, setFound] = React.useState<{ thumbnail: string; url: string; title: string; channel: string } | null | undefined>(undefined);
+  const [broken, setBroken] = React.useState(false);
+  React.useEffect(() => {
+    let live = true;
+    fetch(`/api/research/pick-picture?q=${encodeURIComponent(text)}`)
+      .then((r) => (r.ok ? r.json() : { found: null }))
+      .then((d: { found: typeof found }) => live && setFound(d.found ?? null))
+      .catch(() => live && setFound(null));
+    return () => {
+      live = false;
+    };
+  }, [text]);
+  const box: React.CSSProperties = { width: 88, height: 50, borderRadius: 6, display: "block", flexShrink: 0, position: "relative", overflow: "hidden", background: "#f0f0f0" };
+  if (found === undefined) return <span className="sk" style={box} />;
+  if (!found || broken)
+    return (
+      <span style={{ ...box, display: "flex", alignItems: "center", justifyContent: "center", background: "#f5f5f3" }}>
+        <span style={{ width: 8, height: 8, background: agentColor }} />
+      </span>
+    );
+  return (
+    <a href={found.url} target="_blank" rel="noreferrer" title={`YouTube 搜索配图 · ${found.title}${found.channel ? ` · ${found.channel}` : ""}`} style={box}>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={throughUs(found.thumbnail) ?? undefined} alt="" loading="lazy" onError={() => setBroken(true)} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+      <span style={{ position: "absolute", left: 4, bottom: 4, width: 7, height: 7, background: agentColor, boxShadow: "0 0 0 1.5px #fff" }} />
+    </a>
+  );
 }

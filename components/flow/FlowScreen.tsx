@@ -8,6 +8,8 @@ import type { Automation, AutomationKey } from "@/lib/automations/service";
 import type { Pipeline, Stage } from "@/lib/home/pipeline";
 import { setAutomationAction } from "@/app/(app)/settings/actions";
 import { notify } from "@/lib/client/notify";
+import { AgentIcon } from "@/components/agents/AgentIcon";
+import { SayToAgent } from "@/components/flow/SayToAgent";
 
 /**
  * 自动化流程 — the approved board, live.
@@ -46,12 +48,13 @@ type Node = {
 };
 
 const W = 1254;
-const H = 800;
+const H = 860;
 
 export function FlowScreen({ pipeline, automations, zh, canEdit }: { pipeline: Pipeline; automations: AutomationRow[]; zh: boolean; canEdit: boolean }) {
   const t = (a: string, b: string) => (zh ? a : b);
   const router = useRouter();
   const [pending, start] = React.useTransition();
+  const [talk, setTalk] = React.useState<string | null>(null);
   const by = new Map(pipeline.stages.map((s) => [s.key, s]));
   const auto = new Map(automations.map((a) => [a.key, a]));
   const S = (k: Stage["key"]) => by.get(k)!;
@@ -119,12 +122,12 @@ export function FlowScreen({ pipeline, automations, zh, canEdit }: { pipeline: P
           <div style={{ flexGrow: 1 }} />
           {(["research", "planning", "script", "video", "article"] as AgentKey[]).map((k) => (
             <span key={k} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "#525252" }}>
-              <span style={{ width: 8, height: 8, background: AGENT_COLORS[k], flexShrink: 0 }} />
+              <AgentIcon agent={k} size={18} radius={5} />
               {zh ? AGENT_LABELS[k].nameLocal : AGENT_LABELS[k].name}
             </span>
           ))}
           <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "#525252" }}>
-            <span style={{ width: 8, height: 8, background: "#171717", flexShrink: 0 }} />
+            <span style={{ width: 18, height: 18, borderRadius: 5, background: "#171717", flexShrink: 0 }} />
             {t("你", "You")}
           </span>
         </div>
@@ -173,8 +176,22 @@ export function FlowScreen({ pipeline, automations, zh, canEdit }: { pipeline: P
 
         {/* ---- nodes ---- */}
         {nodes.map((n) => (
-          <NodeCard key={n.id} node={n} zh={zh} automation={n.automation ? auto.get(n.automation) : undefined} canEdit={canEdit} pending={pending} onToggle={(k, v) => save(k, { enabled: v })} />
+          <NodeCard key={n.id} talking={talk === n.id} onTalk={() => setTalk(talk === n.id ? null : n.id)} node={n} zh={zh} automation={n.automation ? auto.get(n.automation) : undefined} canEdit={canEdit} pending={pending} onToggle={(k, v) => save(k, { enabled: v })} />
         ))}
+
+        {/* ---- a line to whoever owns the step, typed on the board ---- */}
+        {talk
+          ? (() => {
+              const n = byId.get(talk);
+              if (!n || n.owner === "loop") return null;
+              const agent: AgentKey = n.owner === "you" ? (n.id === "approve" ? "script" : n.id === "review" ? "video" : "article") : n.owner;
+              return (
+                <div style={{ position: "absolute", left: Math.min(n.x, W - 330), top: n.y + 168, width: 320, zIndex: 20 }}>
+                  <SayToAgent agent={agent} about={n.name} zh={zh} onDone={() => setTalk(null)} />
+                </div>
+              );
+            })()
+          : null}
 
         {/* ---- the line at the bottom ---- */}
         <div style={{ position: "absolute", left: 26, right: 26, bottom: 18, background: "#fff", border: "1px solid #e2e2e2", padding: "10px 16px", display: "flex", alignItems: "center", gap: 12 }}>
@@ -194,7 +211,7 @@ export function FlowScreen({ pipeline, automations, zh, canEdit }: { pipeline: P
   );
 }
 
-function NodeCard({ node: n, zh, automation, canEdit, pending, onToggle }: { node: Node; zh: boolean; automation?: AutomationRow; canEdit: boolean; pending: boolean; onToggle: (k: AutomationKey, v: boolean) => void }) {
+function NodeCard({ node: n, zh, automation, canEdit, pending, onToggle, talking, onTalk }: { talking: boolean; onTalk: () => void; node: Node; zh: boolean; automation?: AutomationRow; canEdit: boolean; pending: boolean; onToggle: (k: AutomationKey, v: boolean) => void }) {
   const t = (a: string, b: string) => (zh ? a : b);
   const dark = n.owner === "you";
   const loop = n.owner === "loop";
@@ -230,7 +247,7 @@ function NodeCard({ node: n, zh, automation, canEdit, pending, onToggle }: { nod
         ) : null}
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6 }}>
-        {!dark && !loop ? <span style={{ width: 8, height: 8, background: color, flexShrink: 0 }} /> : null}
+        {!dark && !loop ? <span style={{ opacity: todo ? 0.45 : 1, display: "flex" }}><AgentIcon agent={n.owner as AgentKey} size={22} radius={6} /></span> : null}
         <span style={{ fontSize: 13.5, fontWeight: 600, color: dark && !todo ? "#fff" : muted ? "#999999" : "#171717" }}>{n.name}</span>
       </div>
       <div style={{ fontSize: 12, color: dark && !todo ? "#b3b3b3" : muted ? "#b3b3b3" : "#525252", marginTop: 5, lineHeight: 1.5 }}>{n.what}</div>
@@ -249,6 +266,20 @@ function NodeCard({ node: n, zh, automation, canEdit, pending, onToggle }: { nod
         </span>
       ) : null}
       {off ? <div style={{ fontSize: 11, color: "#a35f00", marginTop: 8 }}>{t("已关闭", "Off")}</div> : null}
+      {!loop ? (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onTalk();
+          }}
+          aria-expanded={talking}
+          style={{ marginTop: 9, height: 22, padding: "0 8px", border: `1px solid ${dark && !todo ? "#4a4a4a" : "#e2e2e2"}`, background: dark && !todo ? "transparent" : "#fafafa", color: dark && !todo ? "#d9d9d9" : "#525252", fontFamily: "inherit", fontSize: 11, cursor: "pointer", letterSpacing: "inherit" }}
+        >
+          {talking ? t("收起", "Close") : t("说一句", "Comment")}
+        </button>
+      ) : null}
     </div>
   );
   return n.href && !loop ? (

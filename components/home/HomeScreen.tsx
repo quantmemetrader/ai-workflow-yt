@@ -3,27 +3,30 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { AgentMark, MentionMenu, type MentionPerson } from "@/components/chat/MentionMenu";
+import { MentionMenu, type MentionPerson } from "@/components/chat/MentionMenu";
 import { useMentions } from "@/components/chat/useMentions";
-import { AGENT_COLORS, AGENT_LABELS, agentTag, parseAgentMentions, type AgentKey } from "@/lib/agents/catalog";
+import { AgentIcon } from "@/components/agents/AgentIcon";
+import { AGENT_LABELS, agentTag, parseAgentMentions, type AgentKey } from "@/lib/agents/catalog";
 import type { AgentState, Decision, Running } from "@/lib/home/service";
 import { pressCardAction, sendChannelMessage } from "@/app/(app)/chat/actions";
-import { PipelineStrip } from "@/components/home/PipelineStrip";
-import { Echo, gist, type ThreadMessage } from "@/components/home/Echo";
-import { startProposalAction } from "@/app/(app)/home/actions";
+import { MiniFlow } from "@/components/home/MiniFlow";
+import { SayToAgent } from "@/components/flow/SayToAgent";
+import type { ThreadMessage } from "@/components/home/Echo";
 import type { Pipeline } from "@/lib/home/pipeline";
 
 /**
- * 首页 — the studio's day, drawn as the approved board draws it.
+ * 首页 — where the day is driven from, not a page that sends you elsewhere.
  *
- * Dotted paper, hairline panels, square corners, one colour per employee.
- * Left: say what you want; where today's video is; what is waiting on you.
- * Right: the five colleagues and what each is on, with a line to give one
- * work; and what is happening in #制作, one line per thing.
+ * Built back over the earlier Home, with its pieces: the rounded task box
+ * with each employee's own mark, the cards waiting on you, the team with a
+ * line to give each work, and the assistant panel on the right (the page
+ * passes it in). What is new is that the work happens here:
  *
- * Everything is read from what the work already leaves behind
- * (`lib/home/service.ts`, `lib/home/pipeline.ts`), and every action goes
- * through the same server actions the chat screen uses.
+ *   - the conversation in #制作 is on the page, answers and buttons included,
+ *     so saying something and hearing back no longer means leaving;
+ *   - today's video is drawn as the flow board draws it, two rows, and every
+ *     step has a line to talk to whoever owns it;
+ *   - the full flow is one big button, not a small link.
  */
 export function HomeScreen({
   agents,
@@ -38,7 +41,6 @@ export function HomeScreen({
   thread,
 }: {
   pipeline: Pipeline;
-  /** The tail of the team channel, for "what is happening". */
   thread: ThreadMessage[];
   agents: AgentState[];
   decisions: Decision[];
@@ -56,10 +58,11 @@ export function HomeScreen({
   const [error, setError] = React.useState<string | null>(null);
   const box = React.useRef<HTMLTextAreaElement | null>(null);
   const mentions = useMentions({ people, zh, draft, setDraft, box });
+  const [giveTo, setGiveTo] = React.useState<AgentKey | null>(null);
 
-  /* After you say something, the answer comes from a model call that
-     finishes after the request returns. Refresh every few seconds for a
-     minute and a half, then stop. */
+  /* After something is said, the answer comes from a model call that ends
+     after the request returns. Refresh every few seconds for a minute and a
+     half, then stop. */
   const [watching, setWatching] = React.useState(false);
   const [sentAt, setSentAt] = React.useState<string | null>(null);
   const answered = thread.some((m) => m.agent && sentAt !== null && m.at > sentAt);
@@ -77,11 +80,6 @@ export function HomeScreen({
     }, 4000);
     return () => clearInterval(id);
   }, [watching, answered, router]);
-
-  /* Giving one colleague work from its own row. */
-  const [open, setOpen] = React.useState<AgentKey | null>(null);
-  const [task, setTask] = React.useState("");
-  const [giving, setGiving] = React.useState<AgentKey | null>(null);
 
   const t = (a: string, b: string) => (zh ? a : b);
 
@@ -111,30 +109,11 @@ export function HomeScreen({
         return;
       }
       setDraft("");
+      if (box.current) box.current.style.height = "auto";
       if (parseAgentMentions(body).length) {
         setSentAt(new Date().toISOString());
         setWatching(true);
       }
-      router.refresh();
-    });
-  }
-
-  function give(key: AgentKey) {
-    const text = task.trim();
-    if (!text || giving) return;
-    setGiving(key);
-    setError(null);
-    start(async () => {
-      const res = await startProposalAction(key, text);
-      setGiving(null);
-      if ("error" in res && res.error) {
-        setError(res.error);
-        return;
-      }
-      setTask("");
-      setOpen(null);
-      setSentAt(new Date().toISOString());
-      setWatching(true);
       router.refresh();
     });
   }
@@ -144,234 +123,300 @@ export function HomeScreen({
       ? t(`有 ${decisions.length} 件事等你决定。`, `${decisions.length} thing${decisions.length > 1 ? "s" : ""} waiting on you.`)
       : running.length > 0
         ? t("没有要你决定的，同事还在做手上的活。", "Nothing waiting on you; the team is still working.")
-        : t("今天没有待办。说一句就能开工。", "Nothing on today. Say a word and the team starts.");
+        : t("今天没有待办。在下面说一句就能开工。", "Nothing on today. Say a word below and the team starts.");
 
   return (
     <div style={{ flexGrow: 1, minWidth: 0, minHeight: 0, overflowY: "auto", ...PAPER }}>
-      <div style={{ display: "flex", gap: 18, padding: "22px 26px 40px", maxWidth: 1240, margin: "0 auto", alignItems: "flex-start" }}>
-        {/* ================= left ================= */}
-        <section style={{ flexGrow: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 14 }}>
-          <div>
-            <div style={{ fontSize: 20, fontWeight: 600, letterSpacing: "-0.005em" }}>{t(`${greeting(zh)}，${me}`, `${greeting(zh)}, ${me}`)}</div>
-            <div style={{ fontSize: 13, color: "#525252", marginTop: 4 }}>{subline}</div>
-          </div>
+      <div style={{ maxWidth: 1180, margin: "0 auto", padding: "24px 24px 48px", display: "flex", flexDirection: "column", gap: 16 }}>
+        <div>
+          <h1 style={{ fontSize: 22, fontWeight: 600, margin: 0, letterSpacing: "-0.01em" }}>{t(`${greeting(zh)}，${me}`, `${greeting(zh)}, ${me}`)}</h1>
+          <p style={{ margin: "5px 0 0", fontSize: 13.5, color: "#7c7c7c" }}>{subline}</p>
+        </div>
 
-          {/* ---- say what you want -------------------------------------- */}
-          <div style={{ position: "relative", background: "#ffffff", border: "1px solid #d9d9d9", padding: "10px 10px 8px 14px" }}>
-            <MentionMenu matches={mentions.matches} active={mentions.active} zh={zh} onPick={mentions.pick} onHover={mentions.setActive} placement="down" />
-            <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
-              <label htmlFor="ask" style={{ fontSize: 12.5, color: "#999999", whiteSpace: "nowrap", paddingTop: 8 }}>
-                {t("交代一件事", "Give the team a task")}
-              </label>
-              <textarea
-                id="ask"
-                ref={box}
-                value={draft}
-                rows={1}
-                onChange={(e) => {
-                  setDraft(e.target.value);
-                  mentions.onValue(e.target.value, e.target.selectionStart ?? e.target.value.length);
-                  e.target.style.height = "auto";
-                  e.target.style.height = `${Math.min(120, e.target.scrollHeight)}px`;
-                }}
-                onBlur={mentions.close}
-                onKeyDown={(e) => {
-                  if (mentions.onKeyDown(e)) return;
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
-                    say(draft);
-                  }
-                }}
-                placeholder={t("@编剧 把 RWA 这条写成 60 秒竖版，结尾留一个问题给观众", "@writer make the RWA piece a 60s vertical, end on a question for the viewer")}
-                style={{ flexGrow: 1, minWidth: 0, minHeight: 32, padding: "7px 0", border: 0, outline: "none", resize: "none", fontFamily: "inherit", letterSpacing: "inherit", fontSize: 13, lineHeight: 1.5, background: "transparent", color: "#171717" }}
-              />
-              <button type="button" disabled={pending || !draft.trim() || !teamChannel} onClick={() => say(draft)} style={{ ...BLACK, opacity: draft.trim() ? 1 : 0.45 }}>
-                {t("开工", "Start")}
-              </button>
-            </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
-              {(["research", "planning", "script", "video", "article"] as AgentKey[]).map((key) => (
-                <button
-                  key={key}
-                  type="button"
-                  onClick={() => {
-                    setDraft((d) => (d.includes(agentTag(key)) ? d : `${agentTag(key)} ${d}`.trim()));
-                    requestAnimationFrame(() => box.current?.focus());
-                  }}
-                  style={{ ...CHIP, gap: 6 }}
-                >
-                  <span style={{ width: 8, height: 8, background: AGENT_COLORS[key] }} />
-                  {zh ? AGENT_LABELS[key].nameLocal : AGENT_LABELS[key].name}
-                </button>
-              ))}
-              <span style={{ flexGrow: 1 }} />
-              <span style={{ fontSize: 11.5, color: "#b3b3b3", whiteSpace: "nowrap" }}>
-                {teamChannel ? t(`发到 #${teamChannel.name} · Enter 发送`, `Posts to #${teamChannel.name} · Enter to send`) : t("还没有团队频道", "No team channel yet")}
-              </span>
-            </div>
-          </div>
-
-          {error ? <div style={{ fontSize: 12.5, color: "#e03636" }}>{error}</div> : null}
-
-          {teamChannel ? <Echo zh={zh} channelName={teamChannel.name} channelSlug={teamChannel.slug} messages={thread} sentAt={sentAt} waiting={waiting} /> : null}
-
-          <PipelineStrip pipeline={pipeline} zh={zh} />
-
-          {/* ---- waiting on you ------------------------------------------ */}
-          {decisions.length > 0 ? (
-            <>
-              <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginTop: 4 }}>
-                <span style={{ fontSize: 12.5, fontWeight: 600 }}>{t("等你决定", "Waiting on you")}</span>
-                <span style={{ fontSize: 12, color: "#999999" }}>{decisions.length}</span>
-              </div>
-              {decisions.map((d) => (
-                <article key={d.messageId} style={GRADIENT_CARD}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12 }}>
-                    {d.agent ? <span style={{ width: 8, height: 8, background: AGENT_COLORS[d.agent], flexShrink: 0 }} /> : null}
-                    <span style={{ fontWeight: 600 }}>{d.author}</span>
-                    <Link href={`/chat/c/${encodeURIComponent(d.channelSlug)}`} style={{ color: "#999999", textDecoration: "none" }}>
-                      #{d.channelName} · {ago(d.at, zh)}
-                    </Link>
-                  </div>
-                  <p style={{ margin: "8px 0 0", fontSize: 13.5, lineHeight: 1.65, whiteSpace: "pre-wrap" }}>{trim(d.body, 420)}</p>
-                  <div style={{ display: "flex", gap: 6, marginTop: 12, flexWrap: "wrap" }}>
-                    {d.actions.map((a, i) =>
-                      a.kind === "open" ? (
-                        <Link key={a.id} href={a.href ?? "#"} style={{ ...WHITE, textDecoration: "none" }}>
-                          {zh ? a.label : a.labelEn}
-                        </Link>
-                      ) : (
-                        <button
-                          key={a.id}
-                          type="button"
-                          disabled={pending}
-                          onClick={() => press(d.channelSlug, d.messageId, a.id)}
-                          style={{ ...(i === 0 ? BLACK : WHITE), opacity: pressing === d.messageId + a.id ? 0.55 : 1 }}
-                        >
-                          {zh ? a.label : a.labelEn}
-                        </button>
-                      ),
-                    )}
-                  </div>
-                </article>
-              ))}
-            </>
-          ) : null}
-
-          {/* ---- the machine's own queue --------------------------------- */}
-          {running.length > 0 ? (
-            <div style={PANEL}>
-              <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 4 }}>
-                <span style={{ fontSize: 12.5, fontWeight: 600 }}>{t("正在进行", "Running now")}</span>
-                <span style={{ width: 7, height: 7, borderRadius: 4, background: "#278f5e" }} />
-              </div>
-              {running.map((j) => (
-                <div key={j.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderTop: "1px solid #f0f0f0", fontSize: 12.5 }}>
-                  <span style={{ width: 7, height: 7, borderRadius: 4, background: j.status === "running" ? "#278f5e" : "#d9d9d9", flexShrink: 0 }} />
-                  <span>{runningNames[j.type] ?? j.type}</span>
-                  {j.who ? <span style={{ color: "#999999" }}>· {j.who}</span> : null}
-                  <span style={{ flexGrow: 1 }} />
-                  <span style={{ color: "#999999", fontVariantNumeric: "tabular-nums" }}>
-                    {j.status === "running" ? (j.progress > 0 ? `${Math.round(j.progress * 100)}%` : t("进行中", "running")) : t("排队中", "queued")}
-                  </span>
-                </div>
-              ))}
-            </div>
-          ) : null}
-        </section>
-
-        {/* ================= right ================= */}
-        <aside style={{ width: 330, flexShrink: 0, display: "flex", flexDirection: "column", gap: 14 }}>
-          <div style={{ ...PANEL, padding: "12px 16px 6px" }}>
-            <div style={{ fontSize: 12.5, fontWeight: 600, marginBottom: 6 }}>{t("同事", "The team")}</div>
-            {agents.map((a) => {
-              const on = open === a.key;
-              return (
-                <div key={a.key} style={{ borderTop: "1px solid #f0f0f0" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 9, padding: "8px 0" }}>
-                    <span style={{ width: 8, height: 8, background: AGENT_COLORS[a.key], flexShrink: 0 }} />
-                    <span style={{ fontSize: 12.5, fontWeight: 500, width: 64, flexShrink: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                      {zh ? a.nameLocal : a.name}
-                    </span>
-                    <span style={{ fontSize: 12, color: "#525252", flexGrow: 1, minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }} title={a.line ?? undefined}>
-                      {a.line ? gist(a.line, 60) : t("还没说过话", "Has not spoken yet")}
-                    </span>
-                    <span style={{ fontSize: 11.5, color: a.status === "working" ? "#0b7a63" : a.status === "waiting" ? "#a35f00" : "#999999", fontWeight: a.status === "idle" ? 400 : 500, whiteSpace: "nowrap" }}>
-                      {a.status === "working" ? t("工作中", "Working") : a.status === "waiting" ? t("等你", "Waiting") : t("空闲", "Idle")}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setOpen(on ? null : a.key);
-                        setTask("");
-                      }}
-                      title={t("交代它一件事", "Give it work")}
-                      aria-expanded={on}
-                      style={{ ...CHIP, height: 22, padding: "0 7px", fontSize: 11, color: on ? "#171717" : "#525252", borderColor: on ? "#171717" : "#d9d9d9" }}
-                    >
-                      {t("交代", "Task")}
-                    </button>
-                  </div>
-                  {on ? (
-                    <form
-                      onSubmit={(e) => {
-                        e.preventDefault();
-                        give(a.key);
-                      }}
-                      style={{ display: "flex", gap: 6, padding: "0 0 10px 17px" }}
-                    >
-                      <input
-                        autoFocus
-                        type="text"
-                        value={task}
-                        onChange={(e) => setTask(e.target.value)}
-                        placeholder={t(`交给${a.nameLocal}…`, `For ${a.name}…`)}
-                        style={{ flexGrow: 1, minWidth: 0, height: 28, padding: "0 9px", border: "1px solid #d9d9d9", background: "#fff", fontFamily: "inherit", fontSize: 12, letterSpacing: "inherit", outline: "none" }}
-                      />
-                      <button type="submit" disabled={giving !== null || !task.trim()} style={{ ...BLACK, height: 28, padding: "0 10px", fontSize: 12, opacity: task.trim() ? (giving === a.key ? 0.55 : 1) : 0.45 }}>
-                        {t("开工", "Go")}
-                      </button>
-                    </form>
-                  ) : null}
-                </div>
-              );
-            })}
-          </div>
-
-          <div style={{ ...PANEL, padding: "12px 16px 6px" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 4 }}>
-              <span style={{ fontSize: 12.5, fontWeight: 600 }}>{t("正在发生", "Happening")}</span>
-              {running.length ? <span style={{ width: 7, height: 7, borderRadius: 4, background: "#278f5e" }} /> : null}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(380px, 1fr))", gap: 16, alignItems: "start" }}>
+          {/* ================= work here ================= */}
+          <section style={{ ...CARD, padding: 0, display: "flex", flexDirection: "column", minWidth: 0, overflow: "hidden" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "12px 16px 10px", borderBottom: "1px solid #f0f0f0" }}>
+              <AgentIcon size={22} radius={6} />
+              <span style={{ fontSize: 13.5, fontWeight: 600 }}>{t("在这里干活", "Work here")}</span>
+              <span style={{ fontSize: 12, color: "#999999" }}>{teamChannel ? `#${teamChannel.name}` : ""}</span>
               <span style={{ flexGrow: 1 }} />
               {teamChannel ? (
-                <Link href={`/chat/c/${encodeURIComponent(teamChannel.slug)}`} style={{ fontSize: 11.5, color: "#525252", textDecoration: "none" }}>
-                  #{teamChannel.name} →
+                <Link href={`/chat/c/${encodeURIComponent(teamChannel.slug)}`} style={{ fontSize: 12, color: "#525252", textDecoration: "none" }}>
+                  {t("整个频道", "Whole channel")} →
                 </Link>
               ) : null}
             </div>
-            {thread.length === 0 ? (
-              <div style={{ fontSize: 12, color: "#999999", padding: "8px 0" }}>{t("还没有动静。", "Nothing yet.")}</div>
-            ) : (
-              [...thread].reverse().slice(0, 5).map((m) => (
-                <div key={m.id} style={{ display: "flex", gap: 10, padding: "9px 0", borderTop: "1px solid #f0f0f0" }}>
-                  <div style={{ width: 2, background: m.agent ? AGENT_COLORS[m.agent] : "#d9d9d9", flexShrink: 0 }} />
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ fontSize: 12.5, lineHeight: 1.55 }}>
-                      <span style={{ fontWeight: 600 }}>{m.author}</span> {gist(m.body, 64)}
-                    </div>
-                    <div style={{ fontSize: 11, color: "#999999", marginTop: 2 }}>{ago(new Date(m.at), zh)}</div>
+
+            <Conversation
+              zh={zh}
+              messages={thread}
+              waiting={waiting}
+              pending={pending}
+              pressing={pressing}
+              onPress={(id, action) => teamChannel && press(teamChannel.slug, id, action)}
+            />
+
+            {/* ---- the task box, as it was: rounded, the five marks ---- */}
+            <div style={{ position: "relative", borderTop: "1px solid #f0f0f0", padding: 12, background: "#fcfcfb" }}>
+              <MentionMenu matches={mentions.matches} active={mentions.active} zh={zh} onPick={mentions.pick} onHover={mentions.setActive} placement="up" />
+              <div style={{ border: "1px solid #e6e6e6", borderRadius: 14, background: "#fff", padding: "10px 12px", boxShadow: "0 1px 2px rgba(0,0,0,0.03)" }}>
+                <textarea
+                  ref={box}
+                  value={draft}
+                  rows={2}
+                  onChange={(e) => {
+                    setDraft(e.target.value);
+                    mentions.onValue(e.target.value, e.target.selectionStart ?? e.target.value.length);
+                    e.target.style.height = "auto";
+                    e.target.style.height = `${Math.min(160, e.target.scrollHeight)}px`;
+                  }}
+                  onBlur={mentions.close}
+                  onKeyDown={(e) => {
+                    if (mentions.onKeyDown(e)) return;
+                    if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+                      e.preventDefault();
+                      say(draft);
+                    }
+                  }}
+                  placeholder={t("想做什么？例如：@编剧 把 RWA 这条写成 60 秒竖版", "What do you want made? e.g. @writer make the RWA piece a 60s vertical")}
+                  style={{ width: "100%", border: 0, outline: "none", resize: "none", fontSize: 14, lineHeight: 1.6, fontFamily: "inherit", letterSpacing: "inherit", color: "#171717", background: "transparent" }}
+                />
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 6 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", flexGrow: 1, minWidth: 0 }}>
+                    {(["research", "planning", "script", "video", "article"] as AgentKey[]).map((key) => (
+                      <button
+                        key={key}
+                        type="button"
+                        onClick={() => {
+                          setDraft((d) => (d.includes(agentTag(key)) ? d : `${agentTag(key)} ${d}`.trim()));
+                          requestAnimationFrame(() => box.current?.focus());
+                        }}
+                        className="chip"
+                        style={{ height: 26, fontSize: 11.5, gap: 5, cursor: "pointer", borderColor: draft.includes(agentTag(key)) ? "#171717" : "#ededed", background: "#fff" }}
+                      >
+                        <AgentIcon agent={key} size={14} radius={4} />
+                        {zh ? AGENT_LABELS[key].nameLocal : AGENT_LABELS[key].name}
+                      </button>
+                    ))}
                   </div>
+                  <button
+                    type="button"
+                    disabled={pending || !draft.trim() || !teamChannel}
+                    onClick={() => say(draft)}
+                    style={{ height: 32, padding: "0 16px", borderRadius: 10, border: 0, background: draft.trim() ? "#171717" : "#ededed", color: draft.trim() ? "#fff" : "#999999", fontSize: 13, fontWeight: 500, fontFamily: "inherit", flexShrink: 0, cursor: draft.trim() ? "pointer" : "default" }}
+                  >
+                    {t("开工", "Start")}
+                  </button>
                 </div>
-              ))
-            )}
+              </div>
+              <div style={{ fontSize: 11, color: "#b3b3b3", marginTop: 6, paddingLeft: 4 }}>
+                {teamChannel ? t(`发到 #${teamChannel.name} · Enter 发送，Shift+Enter 换行`, `Posts to #${teamChannel.name} · Enter to send, Shift+Enter for a new line`) : t("还没有团队频道", "No team channel yet")}
+              </div>
+              {error ? <div style={{ fontSize: 12.5, color: "#e03636", marginTop: 6 }}>{error}</div> : null}
+            </div>
+          </section>
+
+          {/* ================= waiting, and the team ================= */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 16, minWidth: 0 }}>
+            {decisions.length > 0 ? (
+              <section style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                <Heading text={t("等你决定", "Waiting on you")} count={decisions.length} />
+                {decisions.map((d) => (
+                  <article key={d.messageId} style={GRADIENT_CARD}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      {d.agent ? <AgentIcon agent={d.agent} size={22} radius={6} /> : null}
+                      <span style={{ fontSize: 13, fontWeight: 600 }}>{d.author}</span>
+                      <Link href={`/chat/c/${encodeURIComponent(d.channelSlug)}`} style={{ fontSize: 11.5, color: "#999999", textDecoration: "none" }}>
+                        #{d.channelName}
+                      </Link>
+                      <span style={{ flexGrow: 1 }} />
+                      <span style={{ fontSize: 11.5, color: "#c7c7c7" }}>{ago(d.at, zh)}</span>
+                    </div>
+                    <p style={{ margin: "9px 0 0", fontSize: 13, lineHeight: 1.65, color: "#2b343d", whiteSpace: "pre-wrap" }}>{trim(d.body, 320)}</p>
+                    <div style={{ display: "flex", gap: 7, marginTop: 12, flexWrap: "wrap" }}>
+                      {d.actions.map((a, i) =>
+                        a.kind === "open" ? (
+                          <Link key={a.id} href={a.href ?? "#"} style={{ ...btn(false), textDecoration: "none" }}>
+                            {zh ? a.label : a.labelEn}
+                          </Link>
+                        ) : (
+                          <button key={a.id} type="button" disabled={pending} onClick={() => press(d.channelSlug, d.messageId, a.id)} style={{ ...btn(i === 0), opacity: pressing === d.messageId + a.id ? 0.55 : 1 }}>
+                            {zh ? a.label : a.labelEn}
+                          </button>
+                        ),
+                      )}
+                    </div>
+                  </article>
+                ))}
+              </section>
+            ) : null}
+
+            <section style={{ ...CARD, padding: "12px 14px 6px" }}>
+              <Heading text={t("同事", "The team")} count={null} />
+              {agents.map((a) => {
+                const on = giveTo === a.key;
+                return (
+                  <div key={a.key} style={{ borderTop: "1px solid #f3f3f3", padding: "9px 0" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <AgentIcon agent={a.key} size={30} radius={8} />
+                      <div style={{ minWidth: 0, flexGrow: 1 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                          <span style={{ fontSize: 13, fontWeight: 600 }}>{zh ? a.nameLocal : a.name}</span>
+                          <Status status={a.status} zh={zh} />
+                        </div>
+                        <div title={a.line ?? undefined} style={{ fontSize: 12, color: a.line ? "#525252" : "#c7c7c7", marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                          {a.line ? trim(a.line, 90) : t("还没说过话", "Has not spoken yet")}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setGiveTo(on ? null : a.key)}
+                        aria-expanded={on}
+                        style={{ height: 26, padding: "0 10px", borderRadius: 8, border: `1px solid ${on ? "#171717" : "#e2e2e2"}`, background: "#fff", color: "#171717", fontFamily: "inherit", fontSize: 12, cursor: "pointer", flexShrink: 0 }}
+                      >
+                        {on ? t("收起", "Close") : t("交代", "Give work")}
+                      </button>
+                    </div>
+                    {on ? (
+                      <div style={{ marginTop: 8 }}>
+                        <SayToAgent agent={a.key} zh={zh} onDone={() => {
+                          setSentAt(new Date().toISOString());
+                          setWatching(true);
+                        }} />
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              })}
+            </section>
+
+            {running.length > 0 ? (
+              <section style={{ ...CARD, padding: "12px 14px 6px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 4 }}>
+                  <span style={{ fontSize: 12.5, fontWeight: 600 }}>{t("正在进行", "Running now")}</span>
+                  <span style={{ width: 7, height: 7, borderRadius: 4, background: "#278f5e" }} />
+                </div>
+                {running.map((j) => (
+                  <div key={j.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderTop: "1px solid #f3f3f3", fontSize: 12.5 }}>
+                    <span style={{ width: 7, height: 7, borderRadius: 4, background: j.status === "running" ? "#278f5e" : "#d9d9d9", flexShrink: 0 }} />
+                    <span>{runningNames[j.type] ?? j.type}</span>
+                    {j.who ? <span style={{ color: "#999999" }}>· {j.who}</span> : null}
+                    <span style={{ flexGrow: 1 }} />
+                    <span style={{ color: "#999999", fontVariantNumeric: "tabular-nums" }}>
+                      {j.status === "running" ? (j.progress > 0 ? `${Math.round(j.progress * 100)}%` : t("进行中", "running")) : t("排队中", "queued")}
+                    </span>
+                  </div>
+                ))}
+              </section>
+            ) : null}
           </div>
-        </aside>
+        </div>
+
+        <MiniFlow pipeline={pipeline} zh={zh} />
       </div>
     </div>
   );
 }
 
-/* ------------------------------------------------------------- the board's own metrics */
+/* ------------------------------------------------------------- the conversation */
+
+function Conversation({
+  zh,
+  messages,
+  waiting,
+  pending,
+  pressing,
+  onPress,
+}: {
+  zh: boolean;
+  messages: ThreadMessage[];
+  waiting: boolean;
+  pending: boolean;
+  pressing: string | null;
+  onPress: (messageId: string, actionId: string) => void;
+}) {
+  const t = (a: string, b: string) => (zh ? a : b);
+  const scroller = React.useRef<HTMLDivElement | null>(null);
+  const last = messages[messages.length - 1]?.id;
+  React.useEffect(() => {
+    const el = scroller.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [last, waiting]);
+
+  return (
+    <div ref={scroller} style={{ maxHeight: 440, minHeight: 180, overflowY: "auto", padding: "8px 16px" }}>
+      {messages.length === 0 ? (
+        <div style={{ fontSize: 12.5, color: "#999999", padding: "24px 0", textAlign: "center" }}>{t("还没有动静。在下面说一句。", "Nothing yet. Say something below.")}</div>
+      ) : null}
+      {messages.map((m) => (
+        <div key={m.id} style={{ display: "flex", gap: 10, padding: "9px 0" }}>
+          {m.agent ? (
+            <AgentIcon agent={m.agent} size={28} radius={8} />
+          ) : (
+            <span style={{ width: 28, height: 28, borderRadius: 8, background: "#e8e8e6", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11.5, fontWeight: 600, color: "#525252", flexShrink: 0 }}>
+              {m.author.slice(0, 1).toUpperCase()}
+            </span>
+          )}
+          <div style={{ minWidth: 0, flexGrow: 1 }}>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 7 }}>
+              <span style={{ fontSize: 12.5, fontWeight: 600 }}>{m.agent ? (zh ? AGENT_LABELS[m.agent].nameLocal : AGENT_LABELS[m.agent].name) : m.author}</span>
+              <span style={{ fontSize: 11, color: "#b3b3b3" }}>{ago(new Date(m.at), zh)}</span>
+            </div>
+            <div style={{ fontSize: 13, lineHeight: 1.6, color: "#2b343d", marginTop: 2, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{trim(m.body, 480)}</div>
+            {m.actions.length > 0 ? (
+              m.done ? (
+                <div style={{ fontSize: 11.5, color: "#278f5e", marginTop: 6 }}>
+                  ✓ {(() => {
+                    const a = m.actions.find((x) => x.id === m.done!.actionId);
+                    return a ? (zh ? a.label : a.labelEn) : t("已处理", "Done");
+                  })()}
+                </div>
+              ) : (
+                <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
+                  {m.actions.map((a, i) =>
+                    a.kind === "open" ? (
+                      <Link key={a.id} href={a.href ?? "#"} style={{ ...btn(false), height: 28, fontSize: 12, textDecoration: "none" }}>
+                        {zh ? a.label : a.labelEn}
+                      </Link>
+                    ) : (
+                      <button key={a.id} type="button" disabled={pending} onClick={() => onPress(m.id, a.id)} style={{ ...btn(i === 0), height: 28, fontSize: 12, opacity: pressing === m.id + a.id ? 0.55 : 1 }}>
+                        {zh ? a.label : a.labelEn}
+                      </button>
+                    ),
+                  )}
+                </div>
+              )
+            ) : null}
+          </div>
+        </div>
+      ))}
+      {waiting ? (
+        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 0", fontSize: 12.5, color: "#525252" }}>
+          <span style={{ width: 7, height: 7, borderRadius: 4, background: "#278f5e", animation: "auraPulse 1.6s ease-in-out infinite" }} />
+          {t("同事正在回复…", "A colleague is answering…")}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------- pieces */
+
+function Heading({ text, count }: { text: string; count: number | null }) {
+  return (
+    <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 6 }}>
+      <span style={{ fontSize: 13.5, fontWeight: 600 }}>{text}</span>
+      {count !== null ? <span style={{ fontSize: 12, color: "#999999" }}>{count}</span> : null}
+    </div>
+  );
+}
+
+function Status({ status, zh }: { status: AgentState["status"]; zh: boolean }) {
+  const [label, color, bg] =
+    status === "working" ? [zh ? "工作中" : "Working", "#0b7a63", "#e3f4ee"] : status === "waiting" ? [zh ? "等你" : "Waiting", "#a35f00", "#fbf0dc"] : [zh ? "空闲" : "Idle", "#999999", "#f3f3f3"];
+  return <span style={{ fontSize: 10.5, fontWeight: 500, color, background: bg, borderRadius: 999, padding: "1px 7px" }}>{label}</span>;
+}
 
 const PAPER: React.CSSProperties = {
   backgroundColor: "#f4f3f0",
@@ -379,61 +424,33 @@ const PAPER: React.CSSProperties = {
   backgroundSize: "22px 22px",
 };
 
-const PANEL: React.CSSProperties = { background: "#ffffff", border: "1px solid #e2e2e2", padding: "12px 16px" };
+const CARD: React.CSSProperties = { background: "#ffffff", border: "1px solid #e2e2e2", borderRadius: 14 };
 
 const GRADIENT_CARD: React.CSSProperties = {
   border: "1px solid transparent",
+  borderRadius: 14,
   background: "linear-gradient(#ffffff, #ffffff) padding-box, linear-gradient(135deg, #dcdcdc, #cbd6f2 55%, #cfe6dd) border-box",
   padding: "14px 16px",
 };
 
-const BLACK: React.CSSProperties = {
-  display: "inline-flex",
-  alignItems: "center",
-  height: 30,
-  padding: "0 13px",
-  border: "1px solid #171717",
-  background: "linear-gradient(180deg, #2b2b2b, #171717)",
-  color: "#fff",
-  fontFamily: "inherit",
-  letterSpacing: "inherit",
-  fontSize: 12.5,
-  fontWeight: 500,
-  cursor: "pointer",
-  boxShadow: "0 1px 1px rgba(0,0,0,0.12)",
-  whiteSpace: "nowrap",
-  flexShrink: 0,
-};
-
-const WHITE: React.CSSProperties = {
-  display: "inline-flex",
-  alignItems: "center",
-  height: 30,
-  padding: "0 12px",
-  border: "1px solid #d9d9d9",
-  background: "#fff",
-  color: "#171717",
-  fontFamily: "inherit",
-  letterSpacing: "inherit",
-  fontSize: 12.5,
-  cursor: "pointer",
-  whiteSpace: "nowrap",
-};
-
-const CHIP: React.CSSProperties = {
-  display: "inline-flex",
-  alignItems: "center",
-  height: 24,
-  padding: "0 9px",
-  border: "1px solid #d9d9d9",
-  background: "#fff",
-  color: "#525252",
-  fontFamily: "inherit",
-  letterSpacing: "inherit",
-  fontSize: 11.5,
-  cursor: "pointer",
-  whiteSpace: "nowrap",
-};
+function btn(primary: boolean): React.CSSProperties {
+  return {
+    display: "inline-flex",
+    alignItems: "center",
+    height: 30,
+    padding: "0 13px",
+    borderRadius: 9,
+    border: primary ? "1px solid #171717" : "1px solid #e2e2e2",
+    background: primary ? "#171717" : "#fff",
+    color: primary ? "#fff" : "#171717",
+    fontFamily: "inherit",
+    letterSpacing: "inherit",
+    fontSize: 12.5,
+    fontWeight: primary ? 500 : 400,
+    cursor: "pointer",
+    whiteSpace: "nowrap",
+  };
+}
 
 function trim(text: string, max: number): string {
   const clean = text.replace(/\*\*/g, "").replace(/^#+\s*/gm, "").trim();
@@ -455,7 +472,3 @@ function ago(at: Date, zh: boolean): string {
   const days = Math.round(hours / 24);
   return zh ? `${days} 天前` : `${days}d ago`;
 }
-
-/* AgentMark is still imported by other screens through MentionMenu; the home
-   board draws colour squares instead. */
-void AgentMark;

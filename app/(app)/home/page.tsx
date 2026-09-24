@@ -4,6 +4,8 @@ import { jobName, readHome } from "@/lib/home/service";
 import { channelThread, listPeople } from "@/lib/chat/service";
 import { pipelineToday } from "@/lib/home/pipeline";
 import { agentKeyFromEmail } from "@/lib/agents/catalog";
+import { AgentDock } from "@/components/shell/AgentDock";
+import { answeringModel } from "@/lib/ai/models";
 
 export const metadata = { title: "首页 · Home" };
 
@@ -23,9 +25,9 @@ export default async function HomePage() {
   const locale = viewer.locale ?? "zh-CN";
   const zh = locale.startsWith("zh");
   const [home, people, pipeline] = await Promise.all([readHome(viewer, zh), listPeople(viewer), pipelineToday(viewer, zh)]);
-  /* The tail of the team channel: six messages, newest last. Same read the
+  /* The tail of the team channel: fourteen messages, newest last. Same read the
      channel page does, so what is here is exactly what is there. */
-  const tail = home.teamChannel ? await channelThread(viewer, home.teamChannel.slug, 6) : null;
+  const tail = home.teamChannel ? await channelThread(viewer, home.teamChannel.slug, 14) : null;
   const thread = (tail?.messages ?? []).map((m) => ({
     id: m.id,
     author: (zh && m.authorNameLocal) || m.authorName || "—",
@@ -59,8 +61,20 @@ export default async function HomePage() {
         }))}
       />
 
-      {/* No assistant dock here: the box at the top is the way to talk to
-          the team, and the board has no second one. */}
+      {/* The assistant, back on the right as it was: it acts as you, and the
+          AI employees in the conversation act as themselves. */}
+      <AgentDock
+        zh={zh}
+        model={answeringModel()}
+        context={{ module: "chat" }}
+        scope={zh ? "今天" : "Today"}
+        note={
+          zh
+            ? "可以问它今天该做什么、某条片到哪一步了。它以你的身份行动。要叫 AI 员工，在左边的对话里 @ 它们。"
+            : "Ask what today looks like, or where a cut has got to. It acts as you. To bring in an AI employee, @ them in the conversation."
+        }
+        placeholder={zh ? "问问今天…" : "Ask about today…"}
+      />
     </div>
   );
 }
