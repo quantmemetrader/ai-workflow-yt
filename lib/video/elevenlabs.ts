@@ -40,6 +40,29 @@ function key(): string {
   return k;
 }
 
+/**
+ * Whether the answer came from the API at all.
+ *
+ * ElevenLabs does not refuse an address it dislikes with an error. It
+ * redirects the request to a help article, so `fetch` follows it and hands
+ * back a cheerful 200 of HTML where JSON or audio should be, and the failure
+ * surfaces three functions later as a parse error about a `<`. This server is
+ * on such an address: it used to reach the API through an SSH tunnel to
+ * another machine, and that machine is gone on purpose. Say so here, once,
+ * in the words of the thing that actually happened.
+ */
+function cameFromTheApi(res: Response): boolean {
+  try {
+    return new URL(res.url).origin === new URL(env.elevenlabs.baseUrl).origin;
+  } catch {
+    return true;
+  }
+}
+
+const REFUSED =
+  "ElevenLabs redirected this request away from its API, which is how it refuses a server's address. " +
+  "Voice-over needs an egress ElevenLabs accepts; everything else in the pipeline is unaffected.";
+
 async function call<T>(
   method: "GET" | "POST",
   path: string,
@@ -54,6 +77,8 @@ async function call<T>(
     body: init.json ? JSON.stringify(init.json) : init.body,
     signal: AbortSignal.timeout(TIMEOUT_MS),
   });
+
+  if (!cameFromTheApi(res)) throw new ElevenLabsError(REFUSED, 403);
 
   const text = await res.text();
   if (!res.ok) {
@@ -202,6 +227,7 @@ export async function speak(
     },
   );
 
+  if (!cameFromTheApi(res)) throw new ElevenLabsError(REFUSED, 403);
   if (!res.ok) {
     throw new ElevenLabsError(`ElevenLabs said ${res.status}: ${(await res.text()).slice(0, 300)}`, res.status);
   }

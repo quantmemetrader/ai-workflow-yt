@@ -15,7 +15,7 @@ import { headObject, presignDownload, putObject } from "@/lib/storage/r2";
  * that and only one of them was visible:
  *
  *   1. **FFmpeg is not on Vercel.** The box has it; a serverless function does
- *      not. So video posters worked on `84.32.176.16` and silently never
+ *      not. So video posters worked on the old shared box and silently never
  *      appeared on the deployment everybody actually opens.
  *   2. **It downloaded the whole video inside a request.** A four-gigabyte
  *      master, to make one 480-pixel JPEG, while a browser waits.

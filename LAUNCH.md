@@ -3,7 +3,7 @@
 State as of 18 September 2026. The demo studio has been wiped: the database
 holds one owner account and nothing else.
 
-**Two deployments, one database.** The box (`http://84.32.176.16:3300`, pm2)
+**Two deployments, one database.** The box (`http://the old shared box:3300`, pm2)
 and an HTTPS copy (`https://ai-workspace-video.vercel.app`). Both are current
 and both pass the full suite; the HTTPS one is the only one safe for real
 passwords today.
@@ -12,7 +12,7 @@ passwords today.
 
 | | What | Who | Why it blocks |
 |---|---|---|---|
-| ☐ | **TLS in front of the box** | us, once a hostname exists | `http://84.32.176.16:3300` sends passwords and session cookies in the clear, and `COOKIE_SECURE=false` is set because a Secure cookie would be dropped over HTTP. **In the meantime there is an HTTPS copy of exactly the same product, on the same database, at https://ai-workspace-video.vercel.app — use that with real accounts until the box has a certificate.** Both pass the same 19 wiring checks. Point a DNS A record at the box and the four steps in `DEPLOYMENT.md` take ten minutes. |
+| ☐ | **TLS in front of the box** | us, once a hostname exists | `http://the old shared box:3300` sends passwords and session cookies in the clear, and `COOKIE_SECURE=false` is set because a Secure cookie would be dropped over HTTP. **In the meantime there is an HTTPS copy of exactly the same product, on the same database, at https://ai-workspace-video.vercel.app — use that with real accounts until the box has a certificate.** Both pass the same 19 wiring checks. Point a DNS A record at the box and the four steps in `DEPLOYMENT.md` take ten minutes. |
 | ☐ | **Credit on the OpenRouter account** | client | The account has zero balance. The assistant runs on free models that are rate-limited upstream and refuse under load, so roughly half of turns fail with "the provider is rate-limiting this account". Add US$20 and delete `AI_MODEL_ASSISTANT` and `AI_MODEL_FALLBACKS` from `.env.local`; it returns to Claude Sonnet 5 and answers in seconds. |
 | ☐ | **Real accounts for the studio** | client supplies names, we create | One owner account exists. Everyone else is created with `npm run db:add-user` until the Admin module ships. |
 | ☐ | **Someone changes the owner password** | client | It was generated at wipe time and printed to a terminal. |

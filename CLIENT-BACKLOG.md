@@ -191,7 +191,7 @@ there when you need the exact wording; do not copy it into the repo.
 
 ElevenLabs refuses this host's IP: API calls from `84.32.64.46` 302-redirect to
 their "do you restrict access by country" article, with and without an API key,
-so it is IP-based, not auth. The **old box `84.32.176.16` is accepted** — same
+so it is IP-based, not auth. The **old box `the old shared box` is accepted** — same
 provider, same city, same AS — so it is that one address, not Cherry Servers
 or NL.
 
@@ -200,7 +200,7 @@ Until support clears it, ElevenLabs traffic is relayed:
 - Old box: nginx site `elevenlabs-egress`, listening on **127.0.0.1:4700 only**,
   `proxy_pass https://api.elevenlabs.io`.
 - New box: `elevenlabs-tunnel.service` (autossh) holds an SSH tunnel
-  `127.0.0.1:4700 -> 84.32.176.16:127.0.0.1:4700`, so the API key never crosses
+  `127.0.0.1:4700 -> the old shared box:127.0.0.1:4700`, so the API key never crosses
   the public internet in clear. The key it uses
   (`/root/.ssh/el_tunnel`) is restricted on the old box to user `eltunnel` with
   `restrict,port-forwarding,permitopen="127.0.0.1:4700",command="/bin/false"` —

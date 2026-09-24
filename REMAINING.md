@@ -174,7 +174,7 @@ direction on 19 September.
 
 ## 7. Operational, before anyone outside the team uses it
 
-- [ ] **TLS on the box.** `http://84.32.176.16:3300` sends passwords in the
+- [ ] **TLS on the box.** `http://the old shared box:3300` sends passwords in the
       clear and `COOKIE_SECURE=false` is set because of it.
 - [ ] **OpenRouter has no credit.** The assistant runs on rate-limited free
       models. US$20 and deleting the two `AI_MODEL_*` pins fixes it.

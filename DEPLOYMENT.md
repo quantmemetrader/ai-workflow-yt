@@ -12,8 +12,8 @@ pm2 monit               # live process view
 pm2 describe aura       # state, restarts, memory
 ```
 
-- **Where:** this machine, `84.32.176.16`, 32 cores / 186 GB, Amsterdam.
-- **Port:** 3300, bound on `0.0.0.0`, so `http://84.32.176.16:3300`.
+- **Where:** this machine, `the old shared box`, 32 cores / 186 GB, Amsterdam.
+- **Port:** 3300, bound on `0.0.0.0`, so `http://the old shared box:3300`.
 - **Processes:** four clustered instances of `.next/standalone/server.js`, plus
   `aura-sweep`, a once-a-day housekeeping run (19:00 UTC / 03:00 HK) that pm2
   triggers by restarting a process that exits.
@@ -34,7 +34,7 @@ The app is served over plain HTTP by IP and port, so `COOKIE_SECURE=false` in
 would silently fail. **Passwords and session tokens therefore cross the network
 in the clear.** The moment a hostname and certificate are in front of it:
 
-1. point a DNS A record at `84.32.176.16`,
+1. point a DNS A record at `the old shared box`,
 2. add an nginx server block proxying to `127.0.0.1:3300` (nginx already
    terminates TLS for a dozen hosts here) and run certbot,
 3. set `COOKIE_SECURE=true` and `APP_URL=https://<host>` in `.env.local`,

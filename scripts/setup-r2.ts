@@ -14,8 +14,9 @@ import { putBucketCors } from "../lib/storage/r2";
  * Add the TLS hostname here the day one exists.
  */
 const ORIGINS = [
-  // The Cherry box, where the product actually runs today.
-  "http://84.32.176.16:3300",
+  /* No plain-HTTP origin on a shared machine. An origin listed here may
+     upload straight into the bucket from a browser, so the list is the
+     product's own boundary and it now ends at this deployment. */
   "http://127.0.0.1:3300",
   "http://localhost:3300",
   // The Vercel copy, kept as a fallback.

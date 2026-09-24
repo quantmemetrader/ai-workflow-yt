@@ -5,7 +5,7 @@ server. It exists so we don't re-derive context (and burn tokens) each
 time. Update it whenever a phase of work finishes — append, don't rewrite
 history.
 
-**Server:** `ssh root@84.32.176.16` (`endless-spaniel`). Repo at
+**Server:** `ssh root@the old shared box` (`endless-spaniel`). Repo at
 `/home/ubuntu/aiVideoFreeLance`. Code-server (browser VS Code) at
 `https://clickhouse-code-server.polyinsiders.com/?folder=/home/ubuntu/aiVideoFreeLance`.
 Full connection details in `~/Desktop/server-84-guide.md` on the Mac.
