@@ -234,12 +234,10 @@ export async function autoEdit(
 
     plan = parsePlan(out.text, lastMs);
     if (plan.keep.length === 0 && plan.hook === null) {
-      modelNote = "The model did not return a usable plan, so this is the take with its dead air removed — which is most of the work anyway.";
+      modelNote = "模型没有给出可用的剪辑方案，所以这一版只去掉了停顿——这已经是大部分工作。";
     }
   } catch (err) {
-    modelNote = `The model could not be reached (${
-      err instanceof Error ? err.message.slice(0, 120) : "unknown"
-    }), so this is the take with its dead air removed. Run it again for the rest.`;
+    modelNote = `模型暂时连不上（${err instanceof Error ? err.message.slice(0, 120) : "未知原因"}），所以这一版只去掉了停顿。再跑一次可以补上其余部分。`;
   }
 
   /* ---- 2. the cut ------------------------------------------------------- */
@@ -271,9 +269,9 @@ export async function autoEdit(
     const fitted = fitToBudget(cuts[0] ?? null, cuts.slice(1), targetMs);
     if (fitted.dropped.length) {
       cuts = fitted.kept;
-      budgetNote = `Cut to the brief's ${clock(targetMs)}: ${clock(before)} of speech came back from the plan, so ${fitted.dropped.length} section${fitted.dropped.length > 1 ? "s" : ""} in the middle were dropped. The opening and the ending were kept.`;
+      budgetNote = `按简报的 ${clock(targetMs)} 剪：方案里有 ${clock(before)} 的内容，所以去掉了中间 ${fitted.dropped.length} 段，开头和结尾都保留了。`;
     } else if (fitted.overBy > 0) {
-      budgetNote = `This runs ${clock(totalMs(cuts))} against a brief of ${clock(targetMs)}. The opening and the ending alone are longer than that, so nothing was dropped — shorten the brief or the take.`;
+      budgetNote = `成片 ${clock(totalMs(cuts))}，简报要求 ${clock(targetMs)}。光开头和结尾就超了，所以没有删——请放宽时长或换素材。`;
     }
   }
 

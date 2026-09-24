@@ -192,6 +192,9 @@ async function answerOne(
     "- 不要调用 send_message。你写的回答会被自动发到这个频道里，再发一次就是两条。",
     "- 像同事在群里说话那样直接说内容，不要写“已回复”“做了什么”这类汇报格式。",
     "- 先用 read_channel 看看上下文。用中文，简短。",
+    /* Employees were answering "收到，马上开工" and then doing nothing: a
+       promise, not work. If a tool can do it now, the turn does it. */
+    "- 能用你的工具现在就做的事，就直接做（比如粗剪、写脚本、查数据），做完再说结果；不要只说“收到，马上开工”。做不了才说缺什么。",
     `- 需要别的同事接手时，在回答里 @ 它（${AGENT_KEYS.filter((k) => k !== key)
       .map((k) => agentTag(k))
       .join(" / ")}）；不要 @ 你自己。`,
