@@ -145,6 +145,8 @@ export const hotSnapshots = pgTable(
     note: text(),
     /** 研究员's one or two lines on what is going viral in this list. */
     summary: text(),
+    /** 研究员's marks on the rows that are this channel's business, by phrase. */
+    judged: jsonb().$type<Record<string, { fit: string; why: string }>>(),
   },
   (t) => [index("hot_snapshots_platform_idx").on(t.platform, t.fetchedAt)],
 );

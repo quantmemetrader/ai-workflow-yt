@@ -71,7 +71,8 @@ export function platformLabel(platform: string): string {
 }
 
 export function PlatformMark({ platform, size = 14, mono = false, title }: Props) {
-  const key = platform.trim().toLowerCase();
+  /* The 抖音 billboards (dy_finance, dy_breakout, …) are 抖音's own lists. */
+  const key = platform.trim().toLowerCase().replace(/^dy_.*/, "douyin");
   const fill = mono ? "#7c7c7c" : platformColor(key);
   const path = PATHS[key];
 

@@ -178,6 +178,9 @@ async function channelFor(viewer: Viewer, channelId: string) {
 type Channel = NonNullable<Awaited<ReturnType<typeof channelFor>>>;
 
 /** Which trade each employee works in, for the prompt and the round budget. */
+/** Words that say an action was done. Checked only when no tool ran. */
+const CLAIMS = /已(经)?(导出|渲染|上传|加入|放入|放进|添加|加进|裁剪|剪好|做好|生成|创建|新建|发布|保存)|exported|rendered|uploaded|added (it|them)? ?to|placed (it )?in|cropped|created|published|saved/i;
+
 const WORKS_IN: Record<AgentKey, Module> = {
   research: "research",
   planning: "research",
@@ -240,42 +243,63 @@ async function answerOne(
     .filter((line) => line !== null)
     .join("\n");
 
-  let answer = "";
-  let spokeItself = false;
-  let failure: string | null = null;
-  for await (const event of runAgent({
-    viewer: agent,
-    conversationId,
-    content: question,
-    /*
-     * The employee's own trade, not "chat".
-     *
-     * `module` decides two things: which system prompt it gets, and how many
-     * rounds of tool use it is allowed (`ROUNDS_BY_MODULE`). Every tagged
-     * employee was running as "chat", which is four rounds — and 研究员 asked
-     * to go and find competitor channels spent all four on searches and had
-     * none left to answer in. The tools it may call come from its
-     * entitlements, not from here, so this widens nothing.
-     */
-    module: WORKS_IN[key],
-    // The room it was tagged in, so "this channel" means something. Re-checked
-    // inside every tool against the *agent's* membership, not the asker's.
-    context: { module: "chat", channelId },
-  })) {
-    if (event.type === "delta") answer += event.text;
-    else if (event.type === "error") failure = event.message;
-    else if (event.type === "tool" && event.status === "running") {
-      /* Everything said before a tool call is the model talking to itself —
-         "I'll check the channel context first." — and it was ending up in the
-         channel ahead of the actual answer. Only what it says after the last
-         tool it ran is the reply. */
-      answer = "";
-    } else if (event.type === "tool" && event.name === "send_message" && event.status === "ok") {
-      // Told not to, did anyway. Its words are already in a channel; posting
-      // the turn's text on top of them is the duplicate this guards against.
-      spokeItself = true;
+  /* One turn of the employee, returning what it said and whether it used
+     a single tool to do what it says it did. */
+  const turn = async (content: string) => {
+    let answer = "";
+    let spokeItself = false;
+    let failure: string | null = null;
+    let tools = 0;
+    for await (const event of runAgent({
+      viewer: agent,
+      conversationId,
+      content,
+      module: WORKS_IN[key],
+      // The room it was tagged in, so "this channel" means something. Re-checked
+      // inside every tool against the *agent's* membership, not the asker's.
+      context: { module: "chat", channelId },
+    })) {
+      if (event.type === "delta") answer += event.text;
+      else if (event.type === "error") failure = event.message;
+      else if (event.type === "tool" && event.status === "running") {
+        /* Everything said before a tool call is the model talking to itself;
+           only what it says after the last tool it ran is the reply. */
+        answer = "";
+        tools++;
+      } else if (event.type === "tool" && event.name === "send_message" && event.status === "ok") {
+        spokeItself = true;
+      }
+    }
+    return { answer, spokeItself, failure, tools };
+  };
+
+  let { answer, spokeItself, failure, tools } = await turn(question);
+
+  /*
+   * Said it, did not do it.
+   *
+   * 剪辑师 answered "@剪辑师 make a five-second crypto clip" with footage it
+   * found, a timeline it built and a file it exported, and called no tool at
+   * all: nothing existed. A reply that claims an action with no tool behind
+   * it is sent back once to actually do the work; if it still has not, the
+   * channel is told plainly that nothing was done.
+   */
+  if (tools === 0 && !spokeItself && CLAIMS.test(answer)) {
+    const again = await turn(
+      zh
+        ? "（系统提示）你刚才的回复说做了操作（找素材、放进时间线、导出、上传之类），但这一轮你没有调用任何工具，所以其实什么都没发生。现在真的调用工具去做；做不了就直说缺什么。不要说你做了没做的事。"
+        : "(System) Your last reply said you did things (found footage, put it on the timeline, exported, uploaded), but you called no tool, so nothing happened. Call the tools now and actually do it; if you cannot, say what is missing. Never say you did something you did not do.",
+    );
+    if (again.tools > 0 || !CLAIMS.test(again.answer)) {
+      ({ answer, spokeItself, failure, tools } = again);
+    } else {
+      answer = zh
+        ? `@${asker} 抱歉，我上面说的操作其实没有执行（这一轮没有调用任何工具），项目和文件都没有变化。请再说一次要做什么，我会真的去做。`
+        : `@${asker} Sorry: what I described was not actually done (I called no tool this turn), so nothing changed in the project or files. Ask again and I will do it for real.`;
+      failure = null;
     }
   }
+  void tools;
 
   const text = answer.trim().slice(0, MAX_REPLY);
 

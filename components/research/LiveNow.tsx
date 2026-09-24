@@ -32,7 +32,7 @@ import { notify } from "@/lib/client/notify";
  */
 export type LiveSearch = { phrase: string; traffic: string | null; headline: string | null; region?: string };
 export type LiveVideo = { id: string; title: string; channelTitle: string; thumbnail: string | null; views: number };
-export type Pick = { text: string; why: string | null; source: "digest" | "plan" | "backlog" | "audience"; thumbnail?: string | null; url?: string | null; evidence?: string[]; strength?: number; sources?: { label: string; title: string; url: string | null; numbers: string }[] };
+export type Pick = { by?: string; text: string; why: string | null; source: "digest" | "plan" | "backlog" | "audience" | "mine"; thumbnail?: string | null; url?: string | null; evidence?: string[]; strength?: number; sources?: { label: string; title: string; url: string | null; numbers: string }[] };
 
 const KEY = "aura:research:livenow";
 const PLATFORM_KEY = "aura:research:platform";
@@ -85,6 +85,38 @@ export function LiveNow({
   /* The list first, then 研究员's reading of it. */
   /* One read per platform per visit. "Loading" is derived — a tab that is
      open and has nothing loaded is loading — rather than set from the effect. */
+  /* Every tab's stored list and 研究员's marks, in one request when the
+     panel opens, so switching platforms never waits. */
+  React.useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    void fetch("/api/research/hot?platform=all")
+      .then((r) => (r.ok ? r.json() : { lists: {} }))
+      .then((res: { lists: Partial<Record<PlatformKey, { rows: HotRow[]; note: string | null; summary?: string | null; fetchedAt?: number; judged?: Judged | null }>> }) => {
+        if (cancelled) return;
+        const lists = res.lists ?? {};
+        setLoaded((m) => {
+          const next = { ...m };
+          for (const [k, v] of Object.entries(lists)) {
+            if (v && !next[k as PlatformKey]) next[k as PlatformKey] = { rows: v.rows, note: v.note, summary: v.summary ?? null, fetchedAt: v.fetchedAt ?? null };
+          }
+          return next;
+        });
+        setJudged((m) => {
+          const next = { ...m };
+          for (const [k, v] of Object.entries(lists)) {
+            const tabKey = (k === "youtube" ? "live" : k) as Tab;
+            if (v?.judged && !next[tabKey]) next[tabKey] = v.judged;
+          }
+          return next;
+        });
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
+
   /* YouTube is a stored list like every other platform now, with likes and
      comments on each row; the page's own chart is only the fallback. */
   const listKey: PlatformKey = tab === "live" ? "youtube" : tab;
@@ -171,7 +203,10 @@ export function LiveNow({
   }
 
   return (
-    <div style={{ flexShrink: 0, borderBottom: "1px solid #ededed", background: "#fcfcfc" }}>
+    <div style={{ flexShrink: 1, minHeight: 0, maxHeight: "60vh", overflowY: "auto", borderBottom: "1px solid #ededed", background: "#fcfcfc" }}>
+      {/* Scrolls inside itself: the list, the researcher's line and the picks
+       are taller than the space above the board, and the page does not
+       scroll, so without this the picks were cut off at the bottom. */}
       {/* ---- the switch ------------------------------------------------ */}
       <div style={{ display: "flex", alignItems: "center", gap: 9, padding: "9px 20px 0", flexWrap: "wrap" }}>
         <button
@@ -219,7 +254,7 @@ export function LiveNow({
                     cursor: "pointer",
                   }}
                 >
-                  {p ? <PlatformMark platform={p.key} size={11} mono={on} /> : null}
+                  {p ? <PlatformMark platform={p.key} size={11} mono={on} /> : <PlatformMark platform="youtube" size={11} mono={on} />}
                   {key === "live" ? `${region} · Google + YouTube` : zh ? p!.zh : p!.label}
                   {off ? <span style={{ fontSize: 10.5 }}>· {t("no list", "无公开热榜")}</span> : null}
                 </button>
@@ -260,7 +295,7 @@ export function LiveNow({
                   {tab !== "live" && loaded[tab]?.note && rows.length ? ` · ${loaded[tab]!.note}` : ""}
                 </span>
                 <span style={{ flexGrow: 1 }} />
-                <span style={{ fontSize: 11, color: "#b3b3b3", whiteSpace: "nowrap" }}>{t("Heat is the platform's own number", "热度是平台自己的说法")}</span>
+
               </div>
 
               {/* Google's searches, as a strip: no covers, no heat unit, one press to watch. */}
@@ -342,7 +377,7 @@ export function LiveNow({
                                 <span style={{ position: "absolute", left: 0, top: 0, height: 4, width: `${pct}%`, background: i < 3 ? "#171717" : "#a9a6a0", borderRadius: 2 }} />
                               </span>
                             ) : null}
-                            {r.heatLabel ?? (r.heat ? compact(r.heat) : "—")}
+                            <span style={{ minWidth: 48, textAlign: "right" }}>{r.heatLabel ?? (r.heat ? compact(r.heat) : "—")}</span>
                           </span>
                           {narrow ? null : (
                             <span style={{ minWidth: 0 }}>
@@ -442,7 +477,7 @@ export function LiveNow({
           </div>
 
           {/* ---- what was picked this morning, folded under the list ----- */}
-          {picks.length ? (
+          {true ? (
             <PicksList
               zh={zh}
               picks={picks}
@@ -624,12 +659,13 @@ function PicksList({
       <button type="button" onClick={onToggle} aria-expanded={open} style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, padding: "10px 14px", border: 0, background: "transparent", cursor: "pointer", font: "inherit", textAlign: "left" }}>
         {chevron(open, 14)}
         <span style={{ fontSize: 13 }}>✨</span>
-        <span style={{ fontSize: 12.5, fontWeight: 600, color: "#171717" }}>{t("Picked for today", "今天挑出来的选题")}</span>
-        <span style={{ fontSize: 11, color: "#fff", background: "#171717", borderRadius: 999, padding: "0 7px", lineHeight: "17px" }}>{picks.length}</span>
-        <span style={{ fontSize: 11.5, color: "#999999", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{open ? "" : picks.map((p) => p.text).join(" · ")}</span>
+        <span style={{ fontSize: 12.5, fontWeight: 600, color: "#171717", whiteSpace: "nowrap", flexShrink: 0 }}>{t("Picked for today", "今天挑出来的选题")}</span>
+        <span style={{ fontSize: 11, color: "#fff", background: "#171717", borderRadius: 999, padding: "0 7px", lineHeight: "17px", flexShrink: 0 }}>{picks.length}</span>
+        <span style={{ fontSize: 11.5, color: "#999999", minWidth: 0, flex: "1 1 0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{open ? "" : picks.map((p) => p.text).join(" · ")}</span>
       </button>
       {open ? (
         <div style={{ padding: "0 8px 8px", display: "flex", flexDirection: "column", gap: 4 }}>
+          <OwnTopic zh={zh} />
           {picks.map((p, i) => {
             const on = openPick === i;
             return (
@@ -645,7 +681,7 @@ function PicksList({
                     <span style={{ display: "block", fontSize: 13, fontWeight: 600, color: "#171717", whiteSpace: on ? "normal" : "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.text}</span>
                     <span style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 2 }}>
                       <span style={{ fontSize: 10.5, color: "#7c7c7c", background: "#f3f3f1", borderRadius: 999, padding: "0 7px", lineHeight: "16px" }}>
-                        {p.source === "digest" ? t("morning brief", "今早晨报") : p.source === "plan" ? t("today's plan", "今日计划") : p.source === "backlog" ? t("backlog", "选题储备") : t("viewer question", "观众提问")}
+                        {p.source === "mine" ? t(`added by ${p.by ?? "you"}`, `${p.by ?? "你"}加的`) : p.source === "digest" ? t("morning brief", "今早晨报") : p.source === "plan" ? t("today's plan", "今日计划") : p.source === "backlog" ? t("backlog", "选题储备") : t("viewer question", "观众提问")}
                       </span>
                       {p.strength ? <span title={t("Signal strength", "信号强度")} style={{ fontSize: 10, color: "#c2410c", letterSpacing: 1 }}>{"●".repeat(p.strength)}{"○".repeat(5 - p.strength)}</span> : null}
                     </span>
@@ -701,5 +737,49 @@ function PicksList({
         </div>
       ) : null}
     </div>
+  );
+}
+
+/**
+ * Your own topic, next to the researcher's. Stored for today
+ * (`/api/research/picks`), so it stays on the list for everybody and gets
+ * the same Write script and Add clips buttons.
+ */
+function OwnTopic({ zh }: { zh: boolean }) {
+  const t = (en: string, cn: string) => (zh ? cn : en);
+  const router = useRouter();
+  const [text, setText] = React.useState("");
+  const [busy, setBusy] = React.useState(false);
+  async function add() {
+    const v = text.trim();
+    if (!v || busy) return;
+    setBusy(true);
+    const r = await fetch("/api/research/picks", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: v }) }).catch(() => null);
+    setBusy(false);
+    if (!r?.ok) {
+      notify(t("Could not add that topic.", "没加上这个选题。"));
+      return;
+    }
+    setText("");
+    router.refresh();
+  }
+  return (
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        void add();
+      }}
+      style={{ display: "flex", gap: 6, padding: "2px 6px 6px" }}
+    >
+      <input
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        placeholder={t("＋ Add your own topic for today…", "＋ 加一个自己的选题…")}
+        style={{ flexGrow: 1, minWidth: 0, height: 30, padding: "0 10px", border: "1px dashed #d9d9d9", borderRadius: 8, outline: "none", fontFamily: "inherit", fontSize: 12.5, background: "#fcfcfc" }}
+      />
+      <button type="submit" disabled={!text.trim() || busy} style={{ ...smallBtn(true), height: 30, borderRadius: 8, opacity: text.trim() ? 1 : 0.45 }}>
+        {t("Add", "添加")}
+      </button>
+    </form>
   );
 }

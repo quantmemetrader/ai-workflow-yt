@@ -1,6 +1,6 @@
 import { type NextRequest } from "next/server";
 import { getViewer } from "@/lib/auth/dal";
-import { isPlatformKey, platformHot } from "@/lib/research/platforms";
+import { isPlatformKey, platformHot, storedAll } from "@/lib/research/platforms";
 import { judgeHot } from "@/lib/research/judge";
 
 /**
@@ -15,12 +15,18 @@ import { judgeHot } from "@/lib/research/judge";
 export async function GET(request: NextRequest) {
   const viewer = await getViewer();
   if (!viewer || !viewer.modules.includes("research")) return Response.json({ error: "Not allowed" }, { status: 403 });
+  /* Every tab at once, from storage: the page asks this once and switching
+     platforms is then instant. */
+  if (request.nextUrl.searchParams.get("platform") === "all") {
+    const all = await storedAll();
+    return Response.json({ lists: all }, { headers: { "Cache-Control": "private, max-age=60" } });
+  }
   const platform = request.nextUrl.searchParams.get("platform");
   if (!isPlatformKey(platform)) return Response.json({ error: "No such platform" }, { status: 400 });
 
   const hot = await platformHot(platform);
   if (request.nextUrl.searchParams.get("judge") === "1") {
-    const judged = hot.rows.length ? await judgeHot(viewer.tenantId, platform, hot.rows, hot.fetchedAt) : {};
+    const judged = hot.judged ?? (hot.rows.length ? await judgeHot(viewer.tenantId, platform, hot.rows, hot.fetchedAt) : {});
     return Response.json({ judged }, { headers: { "Cache-Control": "private, no-store" } });
   }
   return Response.json({ rows: hot.rows, note: hot.note, fetchedAt: hot.fetchedAt, summary: hot.summary ?? null }, { headers: { "Cache-Control": "private, no-store" } });

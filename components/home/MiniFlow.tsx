@@ -6,8 +6,6 @@ import { AgentIcon } from "@/components/agents/AgentIcon";
 import { SayToAgent } from "@/components/flow/SayToAgent";
 import { AGENT_COLORS, AGENT_LABELS, type AgentKey } from "@/lib/agents/catalog";
 import type { Pipeline, Stage } from "@/lib/home/pipeline";
-import { useRouter } from "next/navigation";
-import { FlowScreen, type AutomationRow } from "@/components/flow/FlowScreen";
 
 /**
  * Today's video as the studio describes it, in six steps and one row:
@@ -20,7 +18,26 @@ import { FlowScreen, type AutomationRow } from "@/components/flow/FlowScreen";
  * talk to whoever owns it. The full board is one big button away.
  */
 type Owner = AgentKey | "you";
-type Step = { key: string; n: number; label: string; owner: Owner; ownerName?: string; state: Stage["state"]; line: string; href: string | null; ask: AgentKey };
+type Step = { key: string; n: number; label: string; owner: Owner; ownerName?: string; state: Stage["state"] | "skipped"; line: string; href: string | null; ask: AgentKey };
+
+/**
+ * A request straight to one employee skips the line before them: "@剪辑师
+ * make a five-second crypto clip" needs no topic, no script and no host.
+ */
+function skipFor(list: Step[], direct: AgentKey | null, zh: boolean): Step[] {
+  if (!direct) return list;
+  const startAt = direct === "video" ? "edit" : direct === "script" ? "script" : direct === "article" ? "deliver" : null;
+  if (!startAt) return list;
+  const idx = list.findIndex((x) => x.key === startAt);
+  const who = zh ? AGENT_LABELS[direct].nameLocal : AGENT_LABELS[direct].name;
+  return list.map((x, i) =>
+    i < idx
+      ? { ...x, state: "skipped" as const, line: zh ? `跳过 · 直接交给${who}` : `Skipped · straight to ${who}` }
+      : i === idx
+        ? { ...x, state: x.state === "done" ? "done" : ("running" as const), line: zh ? `${who}正在做你交代的事` : `${who} is on your request` }
+        : x,
+  );
+}
 
 function steps(p: Pipeline, zh: boolean): Step[] {
   const t = (a: string, b: string) => (zh ? a : b);
@@ -81,13 +98,11 @@ function steps(p: Pipeline, zh: boolean): Step[] {
   ];
 }
 
-export function MiniFlow({ pipeline, zh, bare = false, automations = [] }: { pipeline: Pipeline; zh: boolean; /** Inside a Fold, which draws the frame. */ bare?: boolean; /** For the preview of the full flow. */ automations?: AutomationRow[] }) {
-  const router = useRouter();
+export function MiniFlow({ pipeline, zh, bare = false, direct = null }: { pipeline: Pipeline; zh: boolean; /** Inside a Fold, which draws the frame. */ bare?: boolean; /** Somebody asked this employee straight away: the steps before theirs are skipped. */ direct?: AgentKey | null }) {
   const t = (a: string, b: string) => (zh ? a : b);
   const [talking, setTalking] = React.useState<string | null>(null);
-  const list = steps(pipeline, zh);
+  const list = skipFor(steps(pipeline, zh), direct, zh);
   const doneCount = list.filter((x) => x.state === "done").length;
-  const yours = list.find((x) => x.state === "you") ?? null;
   const live = (x: Step) => x.state === "running" || x.state === "you";
 
   return (
@@ -117,29 +132,10 @@ export function MiniFlow({ pipeline, zh, bare = false, automations = [] }: { pip
         ])}
       </div>
 
-      {/* A div, not a link: the preview inside is the real flow page, whose
-          nodes are links, and a link inside a link is not allowed. */}
-      <div
-        role="link"
-        tabIndex={0}
-        onClick={() => router.push("/flow")}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") router.push("/flow");
-        }}
-        onMouseEnter={() => router.prefetch("/flow")}
-        style={{ marginTop: 14, display: "block", borderRadius: 12, overflow: "hidden", color: "#fff", boxShadow: "0 2px 8px rgba(0,0,0,0.14)", border: "1px solid #171717", cursor: "pointer" }}
-      >
-        <span style={{ display: "flex", alignItems: "center", gap: 14, padding: "14px 18px", background: "linear-gradient(180deg, #2b2b2b, #111111)" }}>
-          <AgentIcon size={34} radius={9} />
-          <span style={{ minWidth: 0, flexGrow: 1 }}>
-            <span style={{ display: "block", fontSize: 15, fontWeight: 600 }}>{t("打开全部流程", "Open the full flow")}</span>
-            <span style={{ display: "block", fontSize: 12, color: "#b3b3b3", marginTop: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              {yours ? t(`下一步需要你：${yours.label}。`, `Next it needs you: ${yours.label}.`) : t("没有人吩咐的时候，这些事也会发生。黑色是需要你点头的地方。", "These happen with nobody asking. Black is where you nod.")}
-            </span>
-          </span>
-          <span style={{ fontSize: 20, lineHeight: 1 }}>→</span>
-        </span>
-        <ScaledFlow pipeline={pipeline} automations={automations} zh={zh} />
+      <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 10 }}>
+        <Link href="/flow" style={{ display: "inline-flex", alignItems: "center", gap: 7, height: 32, padding: "0 14px", borderRadius: 9, background: "#171717", color: "#fff", fontSize: 12.5, fontWeight: 500, textDecoration: "none" }}>
+          {t("打开全部流程", "Open the full flow")} →
+        </Link>
       </div>
     </section>
   );
@@ -156,7 +152,8 @@ function Arrow({ dir, on }: { dir: string; on: boolean }) {
 function StepCard({ step: x, zh, talking, onTalk, alignRight }: { step: Step; zh: boolean; talking: boolean; onTalk: () => void; alignRight: boolean }) {
   const you = x.owner === "you";
   const color = you ? "#171717" : AGENT_COLORS[x.owner as AgentKey];
-  const todo = x.state === "todo";
+  const skipped = x.state === "skipped";
+  const todo = x.state === "todo" || skipped;
   const running = x.state === "running";
   const needsYou = x.state === "you";
   const owner = x.ownerName ?? (you ? (zh ? "你" : "You") : zh ? AGENT_LABELS[x.owner as AgentKey].nameLocal : AGENT_LABELS[x.owner as AgentKey].name);
@@ -165,9 +162,11 @@ function StepCard({ step: x, zh, talking, onTalk, alignRight }: { step: Step; zh
     ? { background: "#171717", color: "#fff", border: "1px solid #171717" }
     : running
       ? { border: "1px solid transparent", background: "linear-gradient(#fff, #fff) padding-box, linear-gradient(135deg, #278f5e, #0f5bd5) border-box" }
-      : todo
-        ? { border: "1px dashed #d9d9d9", background: "#fbfbfa" }
-        : { border: "1px solid #e2e2e2", background: "#fff" };
+      : skipped
+        ? { border: "1px dashed #e6e6e6", background: "repeating-linear-gradient(135deg, #fafaf9 0 8px, #f3f3f1 8px 16px)", opacity: 0.75 }
+        : todo
+          ? { border: "1px dashed #d9d9d9", background: "#fbfbfa" }
+          : { border: "1px solid #e2e2e2", background: "#fff" };
 
   const body = (
     <>
@@ -218,39 +217,3 @@ function StepCard({ step: x, zh, talking, onTalk, alignRight }: { step: Step; zh
 }
 
 
-/**
- * The full flow page itself, shrunk to the width it is given.
- *
- * Not a drawing of it: the same `FlowScreen` the /flow page renders, from
- * the same data, scaled down and made inert, so the preview can never look
- * different from the page it opens.
- */
-const BOARD_W = 1254;
-const BOARD_H = 860;
-/** How much of the board shows, and from how far down it starts. */
-const CROP = 0.2;
-const TOP = 84;
-
-function ScaledFlow({ pipeline, automations, zh }: { pipeline: Pipeline; automations: AutomationRow[]; zh: boolean }) {
-  const box = React.useRef<HTMLDivElement | null>(null);
-  const [scale, setScale] = React.useState(0.55);
-  React.useEffect(() => {
-    const el = box.current;
-    if (!el) return;
-    const measure = () => setScale(el.clientWidth / BOARD_W);
-    measure();
-    const ro = new ResizeObserver(measure);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
-  return (
-    /* A strip, not the whole board: the first row of nodes, cut off and
-       faded, enough to show what is behind the button. */
-    <div ref={box} aria-hidden style={{ position: "relative", width: "100%", height: Math.round(BOARD_H * scale * CROP), overflow: "hidden", background: "#f4f3f0" }}>
-      <div style={{ position: "absolute", left: 0, top: 0, width: BOARD_W, height: BOARD_H, display: "flex", transform: `translateY(${-TOP * scale}px) scale(${scale})`, transformOrigin: "0 0", pointerEvents: "none" }}>
-        <FlowScreen pipeline={pipeline} automations={automations} zh={zh} canEdit={false} />
-      </div>
-      <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: "45%", background: "linear-gradient(rgba(244,243,240,0), #f4f3f0)" }} />
-    </div>
-  );
-}

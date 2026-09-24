@@ -17,6 +17,7 @@ import {
 import { trendingNearby } from "@/lib/research/trending";
 import { trendingVideos } from "@/lib/research/youtube";
 import { summarizeHot } from "@/lib/research/summary";
+import { judgeHot, type Judged } from "@/lib/research/judge";
 
 /**
  * What each platform says is hot, read from storage.
@@ -45,6 +46,8 @@ export type PlatformHot = {
   fetchedAt: number;
   /** 研究员's line on what is going viral here, written at collection. */
   summary?: string | null;
+  /** 研究员's marks on the rows, made at collection so no page waits. */
+  judged?: Judged | null;
 };
 
 /** A stored list older than this is read again live rather than shown. */
@@ -78,18 +81,36 @@ async function latestStored(platform: PlatformKey): Promise<PlatformHot | null> 
     .orderBy(desc(hotSnapshots.fetchedAt))
     .limit(1);
   if (!row || !Array.isArray(row.rows) || row.rows.length === 0) return null;
-  return { platform, rows: row.rows as HotRow[], note: row.note, fetchedAt: row.fetchedAt.getTime(), summary: row.summary };
+  return { platform, rows: row.rows as HotRow[], note: row.note, fetchedAt: row.fetchedAt.getTime(), summary: row.summary, judged: (row.judged as Judged | null) ?? null };
 }
 
 /** Read one platform live and store what came back. Used by the collector. */
-export async function collectPlatform(platform: PlatformKey): Promise<PlatformHot> {
+export async function collectPlatform(platform: PlatformKey, tenantId: string | null = process.env.TENANT_ID ?? null): Promise<PlatformHot> {
   const hot = await readLive(platform);
   if (hot.rows.length) {
-    hot.summary = await summarizeHot(platform, hot.rows);
-    await db.insert(hotSnapshots).values({ id: newId("hot"), platform, rows: hot.rows, note: hot.note, summary: hot.summary, fetchedAt: new Date(hot.fetchedAt) });
+    const [summary, judged] = await Promise.all([
+      summarizeHot(platform, hot.rows),
+      tenantId ? judgeHot(tenantId, platform, hot.rows, hot.fetchedAt).catch(() => null) : Promise.resolve(null),
+    ]);
+    hot.summary = summary;
+    hot.judged = judged;
+    await db.insert(hotSnapshots).values({ id: newId("hot"), platform, rows: hot.rows, note: hot.note, summary, judged, fetchedAt: new Date(hot.fetchedAt) });
     memo.delete(platform);
   }
   return hot;
+}
+
+/** Every platform's newest stored list at once, for a page that wants all
+ *  its tabs ready before anybody clicks one. Storage only, never a live read. */
+export async function storedAll(): Promise<Partial<Record<PlatformKey, PlatformHot>>> {
+  const out: Partial<Record<PlatformKey, PlatformHot>> = {};
+  await Promise.all(
+    PLATFORMS.filter((p) => !p.unavailable).map(async (p) => {
+      const hot = await latestStored(p.key);
+      if (hot) out[p.key] = hot;
+    }),
+  );
+  return out;
 }
 
 /** Every platform that has a list, one after another. */

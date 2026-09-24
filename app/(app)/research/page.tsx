@@ -8,6 +8,7 @@ import { env } from "@/lib/env";
 import { answeringModel } from "@/lib/ai/models";
 import { trendingNearby } from "@/lib/research/trending";
 import { latestDigest } from "@/lib/home/pulse";
+import { ownPicksToday } from "@/lib/research/own-picks";
 import { evidenceNumbers, type Evidence } from "@/lib/research/signals";
 import { proposalsFor } from "@/lib/agents/proposals";
 import { trendingVideos } from "@/lib/research/youtube";
@@ -98,7 +99,7 @@ export default async function TrendsPage({
   const [digest, proposals] = await Promise.all([latestDigest(viewer.tenantId), proposalsFor(viewer, "script")]);
   /* The morning's pick first, then what 策划 put on today's plan, three at
      most, no repeats. */
-  const picks: { text: string; why: string | null; source: "digest" | "plan" | "backlog" | "audience"; thumbnail: string | null; url?: string | null; evidence?: string[]; strength?: number; sources?: { label: string; title: string; url: string | null; numbers: string }[] }[] = [];
+  const picks: { text: string; why: string | null; source: "digest" | "plan" | "backlog" | "audience" | "mine"; thumbnail: string | null; url?: string | null; evidence?: string[]; strength?: number; sources?: { label: string; title: string; url: string | null; numbers: string }[] }[] = [];
   /* Since the daily signal: the one or two signals, each with its evidence
      rows' own numbers and the cover of the video that proves it. Nothing
      else is added, because one strong topic is the point. */
@@ -126,6 +127,11 @@ export default async function TrendsPage({
     if (picks.length >= 3) break;
     if (picks.some((x) => x.text === p.text || (digest?.topic && p.text.includes(digest.topic)))) continue;
     picks.push({ text: p.text, why: p.why, source: p.source, thumbnail: null });
+  }
+  /* And what people added themselves today, after the researcher's. */
+  for (const o of await ownPicksToday(viewer.tenantId)) {
+    if (picks.some((x) => x.text === o.text)) continue;
+    picks.push({ text: o.text, why: null, source: "mine", thumbnail: null, url: null, by: o.by } as (typeof picks)[number]);
   }
   /* No pictures on picks. A pick is a topic to shoot, not a clip that
      exists; matching one to an old video's thumbnail put the same face on
