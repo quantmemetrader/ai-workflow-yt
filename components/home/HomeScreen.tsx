@@ -48,7 +48,7 @@ export function HomeScreen({
   thread: ThreadMessage[];
   agents: AgentState[];
   decisions: Decision[];
-  running: (Running & { label: string })[];
+  running: (Running & { label: string; owner?: AgentKey | null })[];
   teamChannel: { id: string; slug: string; name: string } | null;
   runningNames: Record<string, string>;
   zh: boolean;
@@ -335,21 +335,7 @@ export function HomeScreen({
             ) : null}
 
 
-            {running.length > 0 ? (
-              <Fold id="home-running" title={t("正在进行", "Running now")} sub={String(running.length)} height={running.length > 5 ? 220 : undefined}>
-                {running.map((j, idx) => (
-                  <div key={j.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 0", borderTop: idx ? "1px solid #f3f3f3" : "none", fontSize: 12.5 }}>
-                    <span style={{ width: 7, height: 7, borderRadius: 4, background: j.status === "running" ? "#278f5e" : "#d9d9d9", flexShrink: 0 }} />
-                    <span>{runningNames[j.type] ?? j.type}</span>
-                    {j.who ? <span style={{ color: "#999999" }}>· {j.who}</span> : null}
-                    <span style={{ flexGrow: 1 }} />
-                    <span style={{ color: "#999999", fontVariantNumeric: "tabular-nums" }}>
-                      {j.status === "running" ? (j.progress > 0 ? `${Math.round(j.progress * 100)}%` : t("进行中", "running")) : t("排队中", "queued")}
-                    </span>
-                  </div>
-                ))}
-              </Fold>
-            ) : null}
+            {running.length > 0 ? <RunningPanel zh={zh} running={running} names={runningNames} /> : null}
           </div>
         </div>
         </div>
@@ -438,6 +424,97 @@ function Conversation({
         </div>
       ) : null}
     </div>
+  );
+}
+
+/* ------------------------------------------------------------- running now */
+
+/**
+ * What the machines are doing, in the order a person cares about.
+ *
+ * Running jobs first, each with whose work it is, a bar (a real one when the
+ * job reports progress, a moving one when it does not), and how long it has
+ * been going. Queued jobs are one line that says how many and what, opened
+ * on demand: seven rows of "queued" said nothing a count does not.
+ */
+function RunningPanel({ zh, running, names }: { zh: boolean; running: (Running & { label: string; owner?: AgentKey | null })[]; names: Record<string, string> }) {
+  const t = (a: string, b: string) => (zh ? a : b);
+  const [showQueue, setShowQueue] = React.useState(false);
+  const now = running.filter((j) => j.status === "running");
+  const queued = running.filter((j) => j.status === "queued");
+  const name = (j: Running) => names[j.type] ?? j.type;
+  const owner = (j: Running & { owner?: AgentKey | null }): AgentKey | null => j.owner ?? null;
+
+  return (
+    <Fold
+      id="home-running"
+      title={t("正在进行", "Running now")}
+      sub={t(`${now.length} 个在跑${queued.length ? ` · ${queued.length} 个排队` : ""}`, `${now.length} running${queued.length ? ` · ${queued.length} queued` : ""}`)}
+      icon={<span style={{ width: 8, height: 8, borderRadius: 4, background: now.length ? "#278f5e" : "#d9d9d9", boxShadow: now.length ? "0 0 0 3px rgba(39,143,94,0.15)" : "none", animation: now.length ? "auraPulse 1.6s ease-in-out infinite" : "none" }} />}
+      resizable={false}
+    >
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {now.length === 0 ? <div style={{ fontSize: 12.5, color: "#999999" }}>{t("现在没有在跑的，下面的在排队。", "Nothing running; the ones below are waiting their turn.")}</div> : null}
+        {now.map((j) => {
+          const o = owner(j);
+          const pct = j.progress > 0 ? Math.round(j.progress * 100) : null;
+          return (
+            <div key={j.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", border: "1px solid #eef2ef", borderRadius: 10, background: "#fbfdfc" }}>
+              <AgentIcon agent={o} size={28} radius={8} />
+              <div style={{ minWidth: 0, flexGrow: 1 }}>
+                <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+                  <span style={{ fontSize: 13, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{name(j)}</span>
+                  <span style={{ fontSize: 11.5, color: "#999999", whiteSpace: "nowrap" }}>
+                    {o ? (zh ? AGENT_LABELS[o].nameLocal : AGENT_LABELS[o].name) : ""}
+                    {j.who ? ` · ${t("由", "for ")}${j.who}${t("发起", "")}` : ""} · {ago(j.at, zh)}
+                  </span>
+                  <span style={{ flexGrow: 1 }} />
+                  <span style={{ fontSize: 12, fontWeight: 600, color: "#278f5e", fontVariantNumeric: "tabular-nums" }}>{pct !== null ? `${pct}%` : ""}</span>
+                </div>
+                <div style={{ position: "relative", height: 4, borderRadius: 2, background: "#e6efe9", marginTop: 7, overflow: "hidden" }}>
+                  {pct !== null ? (
+                    <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: `${pct}%`, background: "linear-gradient(90deg, #278f5e, #0f5bd5)", borderRadius: 2, transition: "width .4s ease" }} />
+                  ) : (
+                    <div style={{ position: "absolute", top: 0, bottom: 0, width: "30%", background: "linear-gradient(90deg, rgba(39,143,94,0), #278f5e, rgba(39,143,94,0))", animation: "homeSlide 1.4s ease-in-out infinite" }} />
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+
+        {queued.length ? (
+          <div style={{ border: "1px dashed #e2e2e2", borderRadius: 10 }}>
+            <button
+              type="button"
+              onClick={() => setShowQueue((v) => !v)}
+              aria-expanded={showQueue}
+              style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", border: 0, background: "transparent", cursor: "pointer", font: "inherit", textAlign: "left", color: "#525252" }}
+            >
+              <span style={{ fontSize: 12, fontWeight: 600, color: "#171717", whiteSpace: "nowrap" }}>{t(`排队中 ${queued.length}`, `${queued.length} queued`)}</span>
+              <span style={{ fontSize: 12, color: "#999999", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flexGrow: 1 }}>
+                {[...new Set(queued.map(name))].join(t("、", ", "))}
+              </span>
+              <span style={{ fontSize: 11.5, color: "#7c7c7c", whiteSpace: "nowrap" }}>{showQueue ? t("收起", "Hide") : t("展开", "Show")}</span>
+            </button>
+            {showQueue ? (
+              <div style={{ padding: "0 10px 6px" }}>
+                {queued.map((j) => (
+                  <div key={j.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0", borderTop: "1px solid #f3f3f3", fontSize: 12 }}>
+                    <AgentIcon agent={owner(j)} size={18} radius={5} />
+                    <span>{name(j)}</span>
+                    {j.who ? <span style={{ color: "#999999" }}>· {j.who}</span> : null}
+                    <span style={{ flexGrow: 1 }} />
+                    <span style={{ color: "#b3b3b3" }}>{t("排队", "waiting")} {ago(j.at, zh)}</span>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+      <style>{`@keyframes homeSlide { 0% { left: -30%; } 100% { left: 100%; } } @media (prefers-reduced-motion: reduce) { [style*="homeSlide"] { animation: none !important; } }`}</style>
+    </Fold>
   );
 }
 

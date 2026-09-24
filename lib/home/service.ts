@@ -86,6 +86,9 @@ export const JOB_OWNER: Record<string, AgentKey> = {
   "creator.sync": "research",
   "social.syncDailyViews": "research",
   "social.syncCompetitors": "research",
+  "social.syncPosts": "research",
+  "social.syncChannels": "research",
+  "research.digest": "research",
 };
 
 /** What a running job is, in the studio's words rather than the queue's. */
@@ -107,6 +110,8 @@ const JOB_NAMES: Record<string, [string, string]> = {
   "social.syncDailyViews": ["正在收播放数据", "Collecting view counts"],
   "social.syncCompetitors": ["正在同步对标账号", "Syncing rivals"],
   "research.digest": ["正在写晨报", "Writing the brief"],
+  "social.syncPosts": ["正在同步本频道发布", "Syncing the channel posts"],
+  "social.syncChannels": ["正在同步频道信息", "Syncing channel details"],
 };
 
 export function jobName(type: string, zh: boolean): string {

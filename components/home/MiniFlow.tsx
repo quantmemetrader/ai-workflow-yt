@@ -227,6 +227,9 @@ function StepCard({ step: x, zh, talking, onTalk, alignRight }: { step: Step; zh
  */
 const BOARD_W = 1254;
 const BOARD_H = 860;
+/** How much of the board shows, and from how far down it starts. */
+const CROP = 0.2;
+const TOP = 84;
 
 function ScaledFlow({ pipeline, automations, zh }: { pipeline: Pipeline; automations: AutomationRow[]; zh: boolean }) {
   const box = React.useRef<HTMLDivElement | null>(null);
@@ -241,10 +244,13 @@ function ScaledFlow({ pipeline, automations, zh }: { pipeline: Pipeline; automat
     return () => ro.disconnect();
   }, []);
   return (
-    <div ref={box} aria-hidden style={{ position: "relative", width: "100%", height: Math.round(BOARD_H * scale), overflow: "hidden", background: "#f4f3f0" }}>
-      <div style={{ position: "absolute", left: 0, top: 0, width: BOARD_W, height: BOARD_H, display: "flex", transform: `scale(${scale})`, transformOrigin: "0 0", pointerEvents: "none" }}>
+    /* A strip, not the whole board: the first row of nodes, cut off and
+       faded, enough to show what is behind the button. */
+    <div ref={box} aria-hidden style={{ position: "relative", width: "100%", height: Math.round(BOARD_H * scale * CROP), overflow: "hidden", background: "#f4f3f0" }}>
+      <div style={{ position: "absolute", left: 0, top: 0, width: BOARD_W, height: BOARD_H, display: "flex", transform: `translateY(${-TOP * scale}px) scale(${scale})`, transformOrigin: "0 0", pointerEvents: "none" }}>
         <FlowScreen pipeline={pipeline} automations={automations} zh={zh} canEdit={false} />
       </div>
+      <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: "45%", background: "linear-gradient(rgba(244,243,240,0), #f4f3f0)" }} />
     </div>
   );
 }

@@ -1,6 +1,6 @@
 import { requireModule } from "@/lib/auth/dal";
 import { HomeScreen } from "@/components/home/HomeScreen";
-import { jobName, readHome } from "@/lib/home/service";
+import { JOB_OWNER, jobName, readHome } from "@/lib/home/service";
 import { channelThread, listPeople } from "@/lib/chat/service";
 import { pipelineToday } from "@/lib/home/pipeline";
 import { AUTOMATIONS, readAutomations } from "@/lib/automations/service";
@@ -48,7 +48,7 @@ export default async function HomePage() {
         me={(zh && viewer.nameLocal) || viewer.name}
         agents={home.agents}
         decisions={home.decisions}
-        running={home.running.map((j) => ({ ...j, label: jobName(j.type, zh) }))}
+        running={home.running.map((j) => ({ ...j, label: jobName(j.type, zh), owner: JOB_OWNER[j.type] ?? null }))}
         runningNames={runningNames}
         teamChannel={home.teamChannel}
         pipeline={pipeline}
