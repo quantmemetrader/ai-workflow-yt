@@ -21,6 +21,12 @@ import { notify } from "@/lib/client/notify";
  * marked, with a press to make the one they are looking at their default.
  *
  * `RoleExtraPanel`: the panel only one job has (`roleExtra` on the server).
+ *
+ * The tabs are drawn as one segmented control (a soft tray, the job being
+ * looked at raised in white), the way a project's own tabs are drawn in
+ * `ProjectBar`. They used to be separate pills with the current one in solid
+ * black, which made the job switcher the loudest thing on Home, louder than
+ * 开工 under it. The hover is `ROLE_TABS_CSS`, drawn once by Home.
  */
 export function RoleTabs({ zh, role, defaultRole, canSetDefault }: { zh: boolean; role: HomeRole; defaultRole: HomeRole; canSetDefault: boolean }) {
   const t = (a: string, b: string) => (zh ? a : b);
@@ -43,54 +49,64 @@ export function RoleTabs({ zh, role, defaultRole, canSetDefault }: { zh: boolean
   }
 
   return (
-    <nav aria-label={t("按岗位查看首页", "Home by job")} style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginTop: 12 }}>
-      {HOME_ROLES.map((r) => {
-        const on = r === role;
-        const label = zh ? ROLE_LABELS[r].zh : ROLE_LABELS[r].en;
-        return (
-          <Link
-            key={r}
-            href={`/home?view=${r}`}
-            prefetch={false}
-            aria-current={on ? "page" : undefined}
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 6,
-              height: 30,
-              padding: r === "overview" ? "0 12px" : "0 12px 0 6px",
-              borderRadius: 999,
-              border: `1px solid ${on ? "#171717" : "#e4e3df"}`,
-              background: on ? "#171717" : "#ffffff",
-              color: on ? "#ffffff" : "#3d3d3d",
-              fontSize: 12.5,
-              fontWeight: on ? 600 : 500,
-              textDecoration: "none",
-              whiteSpace: "nowrap",
-            }}
-          >
-            {r !== "overview" ? <AgentIcon agent={r} size={20} radius={999} /> : null}
-            {label}
-            {r === mine ? (
-              <span style={{ fontSize: 10.5, fontWeight: 500, color: on ? "#d4d4d4" : "#9a9a9a", marginLeft: 1 }}>{t("· 我的默认", "· my default")}</span>
-            ) : null}
-          </Link>
-        );
-      })}
+    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginTop: 14 }}>
+      <nav aria-label={t("按岗位查看首页", "Home by job")} style={{ display: "inline-flex", alignItems: "center", gap: 2, flexWrap: "wrap", padding: 3, borderRadius: 12, background: "#ecebe6", border: "1px solid #e3e1db" }}>
+        {HOME_ROLES.map((r) => {
+          const on = r === role;
+          const label = zh ? ROLE_LABELS[r].zh : ROLE_LABELS[r].en;
+          return (
+            <Link
+              key={r}
+              href={`/home?view=${r}`}
+              prefetch={false}
+              aria-current={on ? "page" : undefined}
+              className="role-tab"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                height: 30,
+                padding: r === "overview" ? "0 12px" : "0 12px 0 6px",
+                borderRadius: 9,
+                background: on ? "#ffffff" : "transparent",
+                boxShadow: on ? "0 1px 2px rgba(0,0,0,0.08), 0 0 0 1px rgba(0,0,0,0.03)" : "none",
+                color: on ? "#171717" : "#5f5f5f",
+                fontSize: 12.5,
+                fontWeight: on ? 600 : 500,
+                textDecoration: "none",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {r !== "overview" ? <AgentIcon agent={r} size={20} radius={6} /> : null}
+              {label}
+              {r === mine ? (
+                <span style={{ fontSize: 10.5, fontWeight: 500, color: "#8a8a8a", background: on ? "#f3f3f1" : "rgba(255,255,255,0.7)", borderRadius: 999, padding: "0 6px", lineHeight: "16px" }}>{t("我的默认", "my default")}</span>
+              ) : null}
+            </Link>
+          );
+        })}
+      </nav>
       {canSetDefault && role !== mine ? (
         <button
           type="button"
           disabled={pending}
           onClick={makeDefault}
-          style={{ height: 30, padding: "0 11px", borderRadius: 999, border: "1px dashed #cfcfcb", background: "transparent", color: "#525252", fontFamily: "inherit", fontSize: 12, cursor: pending ? "default" : "pointer", opacity: pending ? 0.6 : 1, display: "inline-flex", alignItems: "center", gap: 5 }}
+          style={{ height: 30, padding: "0 11px", borderRadius: 9, border: "1px dashed #cfcfcb", background: "transparent", color: "#525252", fontFamily: "inherit", fontSize: 12, cursor: pending ? "default" : "pointer", opacity: pending ? 0.6 : 1, display: "inline-flex", alignItems: "center", gap: 5 }}
         >
           <Icon name="check" size={12} />
           {t("设为我的默认", "Make this my default")}
         </button>
       ) : null}
-    </nav>
+    </div>
   );
 }
+
+/** The tabs' hover, drawn once by Home beside `DETAIL_LINK_CSS`. */
+export const ROLE_TABS_CSS = `
+.role-tab { transition: background-color .15s ease, color .15s ease; }
+.role-tab:not([aria-current]):hover { background: rgba(255,255,255,0.65) !important; color: #171717 !important; }
+.role-tab:focus-visible { outline: 2px solid #171717; outline-offset: 1px; }
+`;
 
 /* ------------------------------------------------------------- role extras */
 

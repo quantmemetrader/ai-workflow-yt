@@ -6,14 +6,14 @@ import { useRouter } from "next/navigation";
 import { MentionMenu, type MentionPerson } from "@/components/chat/MentionMenu";
 import { useMentions } from "@/components/chat/useMentions";
 import { AgentIcon } from "@/components/agents/AgentIcon";
-import { AGENT_KEYS, AGENT_LABELS, agentTag, parseAgentMentions, type AgentKey } from "@/lib/agents/catalog";
+import { AGENT_KEYS, AGENT_LABELS, AGENT_TINTS, agentTag, parseAgentMentions, type AgentKey } from "@/lib/agents/catalog";
 import type { AgentState, Decision, RoleExtra, Running } from "@/lib/home/service";
 import { pressCardAction, sendChannelMessage } from "@/app/(app)/chat/actions";
 import { ProjectChats, ProjectProgress } from "@/components/home/ProjectHub";
 import { SuggestionCard, type TodaySuggestion } from "@/components/home/Suggestion";
-import { IdeasPanel } from "@/components/home/IdeasPanel";
+import { IdeasPanel, IDEAS_CSS } from "@/components/home/IdeasPanel";
 import { DetailLink, DETAIL_LINK_CSS } from "@/components/home/DetailLink";
-import { RoleExtraPanel, RoleTabs } from "@/components/home/RolePanels";
+import { RoleExtraPanel, RoleTabs, ROLE_TABS_CSS } from "@/components/home/RolePanels";
 import type { ProjectDetail } from "@/lib/projects/service";
 import type { Idea } from "@/lib/ideas/types";
 import type { Module } from "@/lib/db/schema";
@@ -198,10 +198,15 @@ export function HomeScreen({
         ? t("没有要你决定的，同事还在做手上的活。", "Nothing waiting on you; the team is still working.")
         : t("今天没有待办。在下面说一句就能开工。", "Nothing on today. Say a word below and the team starts.");
 
+  /* The task box. Under the text, two rows: who it is for (the five
+     employees, each lit in its own tint once tagged), then where it goes
+     (the project picker) with 开工 at the right. It was one row that wrapped
+     wherever the width ran out, which left the picker alone on a second line
+     under the chips and 开工 floating between the two. */
   const composer = (
     <div style={{ position: "relative" }}>
       <MentionMenu matches={mentions.matches} active={mentions.active} zh={zh} onPick={mentions.pick} onHover={mentions.setActive} placement="down" />
-      <div style={{ border: "1px solid #e2e2e2", borderRadius: 16, background: "#fff", padding: "12px 14px", boxShadow: "0 2px 10px rgba(0,0,0,0.04)" }}>
+      <div style={{ border: "1px solid #e2e2e2", borderRadius: 14, background: "#fff", padding: "12px 14px", boxShadow: "0 1px 2px rgba(0,0,0,0.03)" }}>
         <textarea
           ref={box}
           value={draft}
@@ -223,9 +228,10 @@ export function HomeScreen({
           placeholder={t("想做什么？例如：@编剧 把 RWA 这条写成 60 秒竖版", "What do you want made? e.g. @writer make the RWA piece a 60s vertical")}
           style={{ width: "100%", border: 0, outline: "none", resize: "none", fontSize: 14.5, lineHeight: 1.6, fontFamily: "inherit", letterSpacing: "inherit", color: "#171717", background: "transparent" }}
         />
-        <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 6 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", flexGrow: 1, minWidth: 0 }}>
-            {(["research", "planning", "script", "video", "article"] as AgentKey[]).map((key) => (
+        <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginTop: 6 }}>
+          {(["research", "planning", "script", "video", "article"] as AgentKey[]).map((key) => {
+            const tagged = draft.includes(agentTag(key));
+            return (
               <button
                 key={key}
                 type="button"
@@ -234,33 +240,37 @@ export function HomeScreen({
                   requestAnimationFrame(() => box.current?.focus());
                 }}
                 className="chip"
-                style={{ height: 28, fontSize: 12, gap: 6, cursor: "pointer", borderColor: draft.includes(agentTag(key)) ? "#171717" : "#ededed", background: "#fff" }}
+                aria-pressed={tagged}
+                style={{ height: 28, fontSize: 12, gap: 6, cursor: "pointer", borderColor: tagged ? AGENT_TINTS[key] : "#ededed", background: tagged ? `${AGENT_TINTS[key]}73` : "#fff", color: tagged ? "#171717" : undefined, fontWeight: tagged ? 600 : undefined }}
               >
                 <AgentIcon agent={key} size={16} radius={5} />
                 {zh ? AGENT_LABELS[key].nameLocal : AGENT_LABELS[key].name}
               </button>
+            );
+          })}
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 10 }}>
+          <select
+            value={target}
+            onChange={(e) => setTarget(e.target.value)}
+            aria-label={t("交给哪个项目", "Which project")}
+            style={{ height: 30, padding: "0 8px", border: "1px solid #e2e2e2", borderRadius: 8, background: "#fafafa", fontFamily: "inherit", fontSize: 12, color: "#171717", minWidth: 0, maxWidth: 260 }}
+          >
+            <option value="new">{t("＋ 新项目", "+ New project")}</option>
+            {projects.map((p) => (
+              <option key={p.id} value={p.id}>
+                {t("项目：", "Project: ")}
+                {p.title}
+              </option>
             ))}
-            <select
-              value={target}
-              onChange={(e) => setTarget(e.target.value)}
-              aria-label={t("交给哪个项目", "Which project")}
-              style={{ height: 28, marginLeft: 4, padding: "0 8px", border: "1px solid #e2e2e2", borderRadius: 8, background: "#fafafa", fontFamily: "inherit", fontSize: 12, color: "#171717", maxWidth: 220 }}
-            >
-              <option value="new">{t("＋ 新项目", "+ New project")}</option>
-              {projects.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {t("项目：", "Project: ")}
-                  {p.title}
-                </option>
-              ))}
-            </select>
-          </div>
+          </select>
+          <span style={{ flexGrow: 1 }} />
           {can("chat") ? <DetailLink zh={zh} href="/projects/new" label="新建项目" labelEn="New project" /> : null}
           <button
             type="button"
             disabled={pending || !ready}
             onClick={() => startWork(draft)}
-            style={{ height: 34, padding: "0 18px", borderRadius: 10, border: 0, background: ready ? "#171717" : "#ededed", color: ready ? "#fff" : "#999999", fontSize: 13, fontWeight: 500, fontFamily: "inherit", flexShrink: 0, cursor: ready ? "pointer" : "default" }}
+            style={{ height: 34, marginLeft: 6, padding: "0 18px", borderRadius: 10, border: 0, background: ready ? "#171717" : "#ededed", color: ready ? "#fff" : "#999999", fontSize: 13, fontWeight: 500, fontFamily: "inherit", flexShrink: 0, cursor: ready ? "pointer" : "default" }}
           >
             {t("开工", "Start")}
           </button>
@@ -363,18 +373,22 @@ export function HomeScreen({
     chats: <ProjectChats projects={hub} zh={zh} right={can("chat") ? <DetailLink zh={zh} href="/projects" /> : null} />,
     team: (
       <Fold id="home-team" title={t("同事", "The team")} height={300} right={can("chat") ? <DetailLink zh={zh} href="/flow" /> : null}>
+        {/* Five rows that fit the panel's 300px without a scrollbar: the
+            first and last rows give their outer padding to the panel's own,
+            and the last line said is grey under the name, not a second
+            line of body text. */}
         {team.map((a, idx) => {
           const on = giveTo === a.key;
           return (
-            <div key={a.key} style={{ borderTop: idx ? "1px solid #f3f3f3" : "none", padding: "8px 0" }}>
+            <div key={a.key} style={{ borderTop: idx ? "1px solid #f3f3f3" : "none", paddingTop: idx ? 8 : 0, paddingBottom: idx === team.length - 1 ? 0 : 8 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <AgentIcon agent={a.key} size={30} radius={8} />
+                <AgentIcon agent={a.key} size={28} radius={8} />
                 <div style={{ minWidth: 0, flexGrow: 1 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
                     <span style={{ fontSize: 13, fontWeight: 600 }}>{zh ? a.nameLocal : a.name}</span>
                     <Status status={a.status} zh={zh} />
                   </div>
-                  <div title={a.line ?? undefined} style={{ fontSize: 12, color: a.line ? "#525252" : "#c7c7c7", marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                  <div title={a.line ?? undefined} style={{ fontSize: 12, color: a.line ? "#7c7c7c" : "#c7c7c7", marginTop: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                     {a.line ? trim(a.line, 90) : t("还没说过话", "Has not spoken yet")}
                   </div>
                 </div>
@@ -382,7 +396,7 @@ export function HomeScreen({
                   type="button"
                   onClick={() => setGiveTo(on ? null : a.key)}
                   aria-expanded={on}
-                  style={{ height: 26, padding: "0 10px", borderRadius: 8, border: `1px solid ${on ? "#171717" : "#e2e2e2"}`, background: "#fff", color: "#171717", fontFamily: "inherit", fontSize: 12, cursor: "pointer", flexShrink: 0 }}
+                  style={{ height: 26, padding: "0 10px", borderRadius: 8, border: `1px solid ${on ? "#171717" : "#e6e6e6"}`, background: on ? "#f5f5f4" : "#fff", color: "#3d3d3d", fontFamily: "inherit", fontSize: 12, cursor: "pointer", flexShrink: 0 }}
                 >
                   {on ? t("收起", "Close") : t("交代", "Give work")}
                 </button>
@@ -410,7 +424,7 @@ export function HomeScreen({
 
   return (
     <div style={{ flexGrow: 1, minWidth: 0, minHeight: 0, overflowY: "auto", ...PAPER }}>
-      <style dangerouslySetInnerHTML={{ __html: `${DETAIL_LINK_CSS} .home-all:hover { color: #171717 !important; }` }} />
+      <style dangerouslySetInnerHTML={{ __html: `${DETAIL_LINK_CSS}${IDEAS_CSS}${ROLE_TABS_CSS} .home-all:hover { color: #171717 !important; }` }} />
       <div style={{ maxWidth: 1240, margin: "0 auto", padding: "22px 24px 48px", display: "flex", flexDirection: "column", gap: 14 }}>
         <div>
           <h1 style={{ fontSize: 22, fontWeight: 600, margin: 0, letterSpacing: "-0.01em" }}>{t(`${greeting(zh)}，${me}`, `${greeting(zh)}, ${me}`)}</h1>
@@ -530,7 +544,7 @@ function RunningPanel({ zh, running, names, right }: { zh: boolean; running: (Ru
 function Status({ status, zh }: { status: AgentState["status"]; zh: boolean }) {
   const [label, color, bg] =
     status === "working" ? [zh ? "工作中" : "Working", "#0b7a63", "#e3f4ee"] : status === "waiting" ? [zh ? "等你" : "Waiting", "#a35f00", "#fbf0dc"] : [zh ? "空闲" : "Idle", "#999999", "#f3f3f3"];
-  return <span style={{ fontSize: 10.5, fontWeight: 500, color, background: bg, borderRadius: 999, padding: "1px 7px" }}>{label}</span>;
+  return <span style={{ fontSize: 10.5, fontWeight: 500, color, background: bg, borderRadius: 999, padding: "0 7px", lineHeight: "17px" }}>{label}</span>;
 }
 
 const PAPER: React.CSSProperties = {
