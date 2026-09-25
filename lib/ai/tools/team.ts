@@ -159,13 +159,16 @@ async function run(ctx: ToolContext, name: string, args: Record<string, unknown>
     if (!to) return { text: "Say who does it: research, planning, script, video or article." };
     const from: AgentKey | "human" = agentKeyFromEmail(ctx.viewer.email) ?? "human";
     if (to === from) return { text: "That is you. Do it with your own tools, or say what is missing." };
-    const task = str(args.task, 600);
+    const { MAX_HOPS, dispatchAgentMentions, hrefFor, later, stripAgentMentions } = await import("@/lib/agents/mentions");
+    /* The task as it is posted under the one tag this hand-off is for. A
+       second "@剪辑师" inside it would draw as a second hand-off that nobody
+       made. */
+    const task = stripAgentMentions(str(args.task, 600)).trim();
     if (!task) return { text: "Say what they should do, specifically enough to start now." };
 
     /* The same bound a tag has. This is a hand-off like any other: it counts
        as a hop and costs an answer, and a colleague who already spoke in this
        branch is not asked again — or three employees hold a meeting. */
-    const { MAX_HOPS, dispatchAgentMentions, hrefFor, later } = await import("@/lib/agents/mentions");
     const team = ctx.team;
     const hop = team ? team.hop + 1 : from === "human" ? 0 : 1;
     if (hop > MAX_HOPS || (team && team.budget.left <= 0)) {
