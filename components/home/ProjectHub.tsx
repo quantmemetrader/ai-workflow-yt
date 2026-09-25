@@ -166,7 +166,7 @@ export function ProjectChats({ projects, zh, right }: { projects: ProjectDetail[
   const t = (a: string, b: string) => (zh ? a : b);
   const [open, setOpen] = React.useState<string | null>(null);
   return (
-    <Fold id="home-project-chats" title={t("项目对话", "Project chats")} sub={t("每个项目最近在聊什么", "What each project is talking about")} icon={<Icon name="chat" size={15} color="#525252" />} flush height={460} right={right}>
+    <Fold id="home-project-chats" title={t("项目对话", "Project chats")} sub={t("每个项目最近在聊什么", "What each project is talking about")} icon={<Icon name="chat" size={15} color="#525252" />} flush height={projects.length ? 460 : undefined} right={right}>
       {projects.length === 0 ? <div style={{ fontSize: 12.5, color: "#999999", padding: 14 }}>{t("还没有项目对话。", "No project chats yet.")}</div> : null}
       {projects.map((p, i) => (
         <ProjectChat key={p.id} project={p} zh={zh} first={i === 0} open={open === p.id} onToggle={() => setOpen(open === p.id ? null : p.id)} />
