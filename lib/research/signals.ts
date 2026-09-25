@@ -1,6 +1,6 @@
 import "server-only";
 import { platformHot } from "@/lib/research/platforms";
-import type { HotRow, PlatformKey } from "@/lib/research/platform-catalog";
+import { onFocus, relevanceLabel, type HotRow, type PlatformKey, type Relevance } from "@/lib/research/platform-catalog";
 
 /**
  * The evidence the morning signal is chosen from, with numbers nobody typed.
@@ -10,6 +10,14 @@ import type { HotRow, PlatformKey } from "@/lib/research/platform-catalog";
  * the ids that support it; the brief then prints the rows' own numbers from
  * here. So a figure in the brief is always the platform's figure, and a
  * made-up statistic has nowhere to go.
+ *
+ * Only rows on the studio's beat go in. The pool was 165 rows of which about
+ * fourteen were business or tech, and a prompt that asked for two pieces of
+ * evidence per topic got a trucker's video and a summit banquet cited for
+ * "AI时代普通人如何不被淘汰？". Rows marked business or tech at score 1 or
+ * more are kept (looser than the screen's 2, so a summit that may move
+ * trade can still back a topic); a list the classifier never marked goes in
+ * whole, as before.
  */
 export type Evidence = {
   id: string;
@@ -22,11 +30,13 @@ export type Evidence = {
   heat: number | null;
   heatLabel: string | null;
   stats: HotRow["stats"] | null;
+  /** The row's business / tech mark, when its list was classified. */
+  rel?: Relevance | null;
 };
 
 /** Which lists, how many rows of each, and the letter their ids start with. */
 const POOL: { platform: PlatformKey; letter: string; source: string; take: number }[] = [
-  { platform: "dy_breakout", letter: "B", source: "抖音低粉爆款（财经+科技，近7天）", take: 20 },
+  { platform: "dy_breakout", letter: "B", source: "抖音低粉爆款（小账号，近7天）", take: 20 },
   { platform: "dy_finance", letter: "F", source: "抖音财经热门视频（24小时）", take: 15 },
   { platform: "dy_tech", letter: "T", source: "抖音科技热门视频（24小时）", take: 15 },
   { platform: "dy_rising", letter: "R", source: "抖音上升热点", take: 20 },
@@ -46,7 +56,9 @@ export async function evidencePool(): Promise<{ rows: Evidence[]; fetchedAt: Rec
     const hot = lists[i];
     if (!hot) return;
     fetchedAt[p.platform] = hot.fetchedAt;
-    hot.rows.slice(0, p.take).forEach((r, j) => {
+    const rel = hot.relevance ?? null;
+    const kept = rel ? hot.rows.filter((r) => onFocus(rel[r.phrase], 1)) : hot.rows;
+    kept.slice(0, p.take).forEach((r, j) => {
       rows.push({
         id: `${p.letter}${j + 1}`,
         platform: p.platform,
@@ -58,6 +70,7 @@ export async function evidencePool(): Promise<{ rows: Evidence[]; fetchedAt: Rec
         heat: r.heat,
         heatLabel: r.heatLabel,
         stats: r.stats ?? null,
+        rel: rel?.[r.phrase] ?? null,
       });
     });
   });
@@ -97,7 +110,7 @@ export function evidenceForModel(rows: Evidence[]): string {
       out.push(`\n### ${e.source}`);
       last = e.source;
     }
-    out.push(`[${e.id}] ${e.phrase.slice(0, 80)}${e.extra ? ` ｜ ${e.extra.slice(0, 30)}` : ""} ｜ ${evidenceNumbers(e) || "—"}`);
+    out.push(`[${e.id}] ${e.phrase.slice(0, 80)}${e.extra ? ` ｜ ${e.extra.slice(0, 30)}` : ""} ｜ ${evidenceNumbers(e) || "—"}${e.rel ? ` ｜ ${relevanceLabel(e.rel, true)}` : ""}`);
   }
   return out.join("\n");
 }

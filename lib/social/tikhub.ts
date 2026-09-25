@@ -166,7 +166,9 @@ export async function douyinHotSearch(): Promise<HotRow[]> {
       heatLabel: null,
       url: `https://www.douyin.com/search/${encodeURIComponent(w.word!.trim())}`,
       thumbnail: w.word_cover?.url_list?.find((u) => typeof u === "string" && u.startsWith("http")) ?? null,
-      extra: w.discuss_video_count ? `${w.discuss_video_count} 条视频在讨论` : null,
+      /* Almost every row says "1 条视频在讨论", which tells nobody anything;
+         the count is shown only when it is a count. */
+      extra: w.discuss_video_count && w.discuss_video_count > 1 ? `${w.discuss_video_count} 条视频在讨论` : null,
     }));
 }
 
@@ -174,7 +176,12 @@ export async function douyinHotSearch(): Promise<HotRow[]> {
  * 微博热搜. The payload is the app's own page layout — groups of cells — so
  * the rows are wherever a cell carries a `desc`. `desc_extr` is the search
  * index the app prints beside each entry.
+ *
+ * The layout's own links carry a `desc` too ("查看更多实时上升热点",
+ * "更多", "开启定位，实时获取本地看点"); they are buttons, not topics.
  */
+const WEIBO_CHROME = /^(查看更多|更多$|开启定位)/;
+
 export async function weiboHotSearch(): Promise<HotRow[]> {
   const res = await get<{
     items?: { items?: { data?: { desc?: string; desc_extr?: string; scheme?: string } }[] }[];
@@ -185,7 +192,7 @@ export async function weiboHotSearch(): Promise<HotRow[]> {
       const d = cell.data;
       if (!d?.desc || typeof d.desc !== "string") continue;
       const phrase = d.desc.replace(/^#|#$/g, "").trim();
-      if (!phrase || rows.some((r) => r.phrase === phrase)) continue;
+      if (!phrase || WEIBO_CHROME.test(phrase) || rows.some((r) => r.phrase === phrase)) continue;
       rows.push({
         phrase,
         heat: asNumber(d.desc_extr),
@@ -240,8 +247,15 @@ export async function xiaohongshuHotInspiration(): Promise<HotRow[]> {
     }));
 }
 
-/** TikTok's explore page: what the platform is pushing, with play counts. */
-export async function tiktokExplore(count = 20): Promise<HotRow[]> {
+/**
+ * TikTok's explore page: what the platform is pushing, with play counts.
+ *
+ * `categoryType` is TikTok's own explore category (TikHub's documentation
+ * of `fetch_explore_post`): 120 is everything, 118 Technology, 116
+ * Education, 114 Society. There is no finance category. One request
+ * whichever is asked for.
+ */
+export async function tiktokExplore(count = 20, categoryType = 120): Promise<HotRow[]> {
   const res = await get<{
     itemList?: {
       id?: string;
@@ -252,7 +266,7 @@ export async function tiktokExplore(count = 20): Promise<HotRow[]> {
       video?: { cover?: string; originCover?: string };
       challenges?: { title?: string }[];
     }[];
-  }>("/api/v1/tiktok/web/fetch_explore_post", { categoryType: 120, count });
+  }>("/api/v1/tiktok/web/fetch_explore_post", { categoryType, count });
   return (res.itemList ?? [])
     .filter((v) => v.id && (v.desc || v.challenges?.length))
     .map((v) => {

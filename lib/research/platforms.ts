@@ -18,6 +18,8 @@ import { trendingNearby } from "@/lib/research/trending";
 import { trendingVideos } from "@/lib/research/youtube";
 import { summarizeHot } from "@/lib/research/summary";
 import { judgeHot, type Judged } from "@/lib/research/judge";
+import { FOCUS_FALLBACK, channelFocus, classifyHot } from "@/lib/research/relevance";
+import { recordUsage } from "@/lib/ai/ledger";
 
 /**
  * What each platform says is hot, read from storage.
@@ -36,7 +38,7 @@ import { judgeHot, type Judged } from "@/lib/research/judge";
  * "heat" is kept as the platform gave it. WeChat has no public list.
  */
 export { PLATFORMS, isPlatformKey, type PlatformKey } from "@/lib/research/platform-catalog";
-import { PLATFORMS, type PlatformKey, type HotRow } from "@/lib/research/platform-catalog";
+import { PLATFORMS, onFocus, type PlatformKey, type HotRow, type RelevanceMap } from "@/lib/research/platform-catalog";
 
 export type PlatformHot = {
   platform: PlatformKey;
@@ -48,6 +50,10 @@ export type PlatformHot = {
   summary?: string | null;
   /** 研究员's marks on the rows, made at collection so no page waits. */
   judged?: Judged | null;
+  /** Business, tech or neither, per row (`lib/research/relevance.ts`).
+   *  Null on a list collected before this existed, or when the classifier
+   *  failed: readers show such a list unfiltered. */
+  relevance?: RelevanceMap | null;
 };
 
 /** A stored list older than this is read again live rather than shown. */
@@ -81,23 +87,108 @@ async function latestStored(platform: PlatformKey): Promise<PlatformHot | null> 
     .orderBy(desc(hotSnapshots.fetchedAt))
     .limit(1);
   if (!row || !Array.isArray(row.rows) || row.rows.length === 0) return null;
-  return { platform, rows: row.rows as HotRow[], note: row.note, fetchedAt: row.fetchedAt.getTime(), summary: row.summary, judged: (row.judged as Judged | null) ?? null };
+  return {
+    platform,
+    rows: row.rows as HotRow[],
+    note: row.note,
+    fetchedAt: row.fetchedAt.getTime(),
+    summary: row.summary,
+    judged: (row.judged as Judged | null) ?? null,
+    relevance: (row.relevance as RelevanceMap | null) ?? null,
+  };
 }
 
-/** Read one platform live and store what came back. Used by the collector. */
-export async function collectPlatform(platform: PlatformKey, tenantId: string | null = process.env.TENANT_ID ?? null): Promise<PlatformHot> {
+/** When a platform was last stored, without reading its rows. */
+async function newestAt(platform: PlatformKey): Promise<number | null> {
+  const [row] = await db
+    .select({ at: hotSnapshots.fetchedAt })
+    .from(hotSnapshots)
+    .where(eq(hotSnapshots.platform, platform))
+    .orderBy(desc(hotSnapshots.fetchedAt))
+    .limit(1);
+  return row ? row.at.getTime() : null;
+}
+
+/**
+ * The classifier's model calls, on the Research agent's own ledger row, so
+ * the AI spend screen shows what keeping the lists on the beat costs. Looked
+ * up once per list and only when a model was actually asked; a studio whose
+ * agent is switched off still gets its marks, just unmetered.
+ */
+function meterFor(tenantId: string) {
+  let viewer: Promise<{ id: string; tenantId: string } | null> | null = null;
+  return async (res: { model: string; provider?: string; promptTokens: number; completionTokens: number; costMicros: number; requestId?: string }) => {
+    viewer ??= import("@/lib/agents").then((m) => m.agentViewer(tenantId, "research")).catch(() => null);
+    const v = await viewer;
+    if (!v) return;
+    await recordUsage({
+      viewer: v,
+      module: "research",
+      model: res.model,
+      provider: res.provider ?? "openrouter",
+      promptTokens: res.promptTokens,
+      completionTokens: res.completionTokens,
+      costMicros: res.costMicros,
+      requestId: res.requestId,
+    });
+  };
+}
+
+/**
+ * Read one platform live and store what came back. Used by the collector.
+ *
+ * The tenant defaults to the studio's own, as every other script does. It
+ * defaulted to `null` while `.env.local` has no `TENANT_ID`, so 研究员's
+ * marks were never stored and every tab view asked a model for them again.
+ *
+ * Order matters: the rows are marked business / tech / other first, and the
+ * researcher's line and marks are then written about the rows on the beat —
+ * a summary of a list that is mostly concerts and festival greetings was
+ * the noise the studio complained about, restated. With fewer than three
+ * rows on the beat the marks look at the whole list, since there is too
+ * little to judge otherwise; the screen's filter still hides what is off it.
+ */
+export async function collectPlatform(
+  platform: PlatformKey,
+  tenantId: string = process.env.TENANT_ID ?? "tnt_aurafarmers",
+  opts: { reuse?: RelevanceMap } = {},
+): Promise<PlatformHot> {
   const hot = await readLive(platform);
   if (hot.rows.length) {
+    const [prev, pillars] = await Promise.all([
+      latestStored(platform).catch(() => null),
+      channelFocus(tenantId).catch(() => FOCUS_FALLBACK),
+    ]);
+    const { relevance, counts } = await classifyHot(platform, hot.rows, {
+      prev: { ...opts.reuse, ...(prev?.relevance ?? {}) },
+      pillars,
+      onUsage: meterFor(tenantId),
+    });
+    if (relevance) {
+      console.log(`[research] ${platform} relevance: ${counts.rules} by rule, ${counts.reused} reused, ${counts.model} by model${counts.missing ? `, ${counts.missing} unmarked` : ""}`);
+    }
+    const focus = relevance ? hot.rows.filter((r) => onFocus(relevance[r.phrase])) : hot.rows;
     const [summary, judged] = await Promise.all([
-      summarizeHot(platform, hot.rows),
-      tenantId ? judgeHot(tenantId, platform, hot.rows, hot.fetchedAt).catch(() => null) : Promise.resolve(null),
+      summarizeHot(platform, hot.rows, relevance),
+      judgeHot(tenantId, platform, relevance && focus.length >= 3 ? focus : hot.rows, hot.fetchedAt).catch(() => null),
     ]);
     hot.summary = summary;
     hot.judged = judged;
-    await db.insert(hotSnapshots).values({ id: newId("hot"), platform, rows: hot.rows, note: hot.note, summary, judged, fetchedAt: new Date(hot.fetchedAt) });
+    hot.relevance = relevance;
+    await db.insert(hotSnapshots).values({ id: newId("hot"), platform, rows: hot.rows, note: hot.note, summary, judged, relevance, fetchedAt: new Date(hot.fetchedAt) });
     memo.delete(platform);
   }
   return hot;
+}
+
+/**
+ * One platform's newest stored list, never a live read — for a page render,
+ * which must not wait on a platform or a model. `platformHot` reads live
+ * when the stored list is stale; this shows the stale list (with its time)
+ * instead, or null when nothing was ever stored.
+ */
+export async function storedHot(platform: PlatformKey): Promise<PlatformHot | null> {
+  return latestStored(platform);
 }
 
 /** Every platform's newest stored list at once, for a page that wants all
@@ -113,12 +204,46 @@ export async function storedAll(): Promise<Partial<Record<PlatformKey, PlatformH
   return out;
 }
 
+/**
+ * How long a stored list is left alone before the collector reads it again.
+ *
+ * TikHub bills per request. Two things were spending it for nothing:
+ *
+ *   - Extra runs. 26 full runs landed between 05:50 and 07:28 HKT on 09-25,
+ *     where two were due — about 260 billed requests for lists that had not
+ *     changed. A list stored under half an hour ago is not read again unless
+ *     the run says `--force`.
+ *   - The creator billboards. 财经, 科技 and the low-follower breakouts rank
+ *     over 24 hours and 7 days, and across 49 hourly runs they showed about
+ *     one new title per run. They are read every third hour (a list under
+ *     2h50m old is kept), which saves four of the ten requests in two runs
+ *     of three. Age rather than the clock hour, so a run missed to a restart
+ *     does not push them out to six hours.
+ */
+const MIN_GAP_MS = 30 * 60_000;
+const SLOW_GAP_MS = 170 * 60_000;
+const SLOW = new Set<PlatformKey>(["dy_breakout", "dy_finance", "dy_tech"]);
+
 /** Every platform that has a list, one after another. */
-export async function collectAll(): Promise<{ platform: PlatformKey; rows: number; note: string | null }[]> {
-  const out = [];
+export async function collectAll(
+  opts: { force?: boolean } = {},
+): Promise<{ platform: PlatformKey; rows: number; note: string | null; skipped?: string }[]> {
+  const out: { platform: PlatformKey; rows: number; note: string | null; skipped?: string }[] = [];
+  /* What this run has already marked, so a video on two 抖音 lists is
+     classified once. */
+  const seen: RelevanceMap = {};
   for (const p of PLATFORMS) {
     if (p.unavailable) continue;
-    const hot = await collectPlatform(p.key);
+    if (!opts.force) {
+      const at = await newestAt(p.key).catch(() => null);
+      const gap = SLOW.has(p.key) ? SLOW_GAP_MS : MIN_GAP_MS;
+      if (at !== null && Date.now() - at < gap) {
+        out.push({ platform: p.key, rows: 0, note: null, skipped: `stored ${Math.round((Date.now() - at) / 60_000)} min ago` });
+        continue;
+      }
+    }
+    const hot = await collectPlatform(p.key, undefined, { reuse: seen });
+    Object.assign(seen, hot.relevance ?? {});
     out.push({ platform: p.key, rows: hot.rows.length, note: hot.note });
   }
   return out;
@@ -130,6 +255,8 @@ async function readLive(platform: PlatformKey): Promise<PlatformHot> {
   try {
     switch (platform) {
       case "google": {
+        /* Topped up from Taiwan and Singapore only when Hong Kong's feed is
+           thin; Britain, the US and Japan added football and lotteries. */
         const rows = await trendingNearby("HK", 30);
         return done(
           rows.map((r) => ({
@@ -143,7 +270,14 @@ async function readLive(platform: PlatformKey): Promise<PlatformHot> {
         );
       }
       case "youtube": {
-        const rows = await trendingVideos("HK", 24);
+        /* Hong Kong's Science & Technology chart (category 28) rather than
+           the whole chart, which is music videos and film trailers. Checked
+           on 09-25: Hong Kong has one, 24 videos, phone reviews and chip
+           analysis. A region without one answers empty or with an error;
+           then the whole chart, said so in the note, and the classifier
+           sorts it. One unit of quota either way. */
+        const tech = await trendingVideos("HK", 24, { categoryId: "28" }).catch(() => []);
+        const rows = tech.length ? tech : await trendingVideos("HK", 24);
         return done(
           rows.map((v) => ({
             phrase: v.title,
@@ -160,6 +294,7 @@ async function readLive(platform: PlatformKey): Promise<PlatformHot> {
               publishedAt: v.publishedAt,
             },
           })),
+          tech.length ? null : "YouTube 香港此刻没有科技分类榜，这里是总榜。",
         );
       }
       case "wechat":
@@ -185,7 +320,7 @@ async function readLive(platform: PlatformKey): Promise<PlatformHot> {
                         ? await bilibiliHotSearch()
                         : platform === "xiaohongshu"
                           ? await xiaohongshuHotInspiration()
-                          : await tiktokExplore();
+                          : await tiktokExplore(20, 118);
         return done(rows, rows.length ? null : "这个平台刚才没有返回任何内容。");
       }
     }

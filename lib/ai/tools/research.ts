@@ -10,6 +10,8 @@ import { createTopic, decide, rankedTopics } from "@/lib/research/service";
 import { suggestAngles } from "@/lib/research/angles";
 import { trendingSearches } from "@/lib/research/trending";
 import { channelsForPhrase, trendingVideos } from "@/lib/research/youtube";
+import { storedAll } from "@/lib/research/platforms";
+import { PLATFORMS, isPlatformKey, onFocus, relevanceLabel } from "@/lib/research/platform-catalog";
 import { addCompetitor, listCompetitors } from "@/lib/social/service";
 import { num, str, type ToolContext, type ToolPack, type ToolResult } from "./types";
 
@@ -106,10 +108,17 @@ const defs: ToolDef[] = [
     function: {
       name: "trending_now",
       description:
-        "What a region is searching for and watching right now: Google's daily trending searches and YouTube's most-watched chart. Free and current to the last few hours.",
+        "What is hot right now on every platform the studio collects hourly (抖音 billboards, rising topics and hot search, 微博, B站, 小红书, TikTok, YouTube and Google for Hong Kong), " +
+        "business and tech rows only unless all=true, each with its rank on the platform's own list. Reads stored lists: free and instant. " +
+        "A region other than HK reads Google and YouTube for that market live instead, unfiltered.",
       parameters: {
         type: "object",
         properties: {
+          platform: {
+            type: "string",
+            description: "One list only: google, youtube, dy_breakout, dy_finance, dy_tech, dy_rising, douyin, weibo, bilibili, xiaohongshu or tiktok. Default every list.",
+          },
+          all: { type: "boolean", description: "Include the rows that are not business or tech (entertainment, sport, festivals). Default false." },
           region: { type: "string", description: "HK, TW, SG, US, GB or JP. Default HK." },
         },
         required: [],
@@ -258,6 +267,59 @@ async function run(ctx: ToolContext, name: string, args: Record<string, unknown>
 
   if (name === "trending_now") {
     const region = str(args.region, 2).toUpperCase() || "HK";
+    /*
+     * Hong Kong is what the collector stores, marked business / tech / other
+     * row by row, so the agent reads the same focused lists the Research
+     * page shows instead of Google's and YouTube's whole charts, which were
+     * music videos, football and lotteries. Other markets are not collected
+     * and keep the live read below.
+     */
+    if (region === "HK") {
+      const everything = args.all === true || args.all === "true";
+      const only = str(args.platform, 20);
+      const keys = isPlatformKey(only) ? [only] : PLATFORMS.filter((p) => !p.unavailable).map((p) => p.key);
+      const lists = await storedAll();
+      const lines: string[] = [];
+      let hidden = 0;
+      for (const key of keys) {
+        const hot = lists[key];
+        if (!hot?.rows.length) continue;
+        const rel = hot.relevance ?? null;
+        const ranked = hot.rows.map((r, i) => ({ r, rank: i + 1, mark: rel?.[r.phrase] ?? null }));
+        const shown = everything || !rel ? ranked : ranked.filter((x) => onFocus(x.mark));
+        hidden += ranked.length - shown.length;
+        if (!shown.length) continue;
+        const meta = PLATFORMS.find((p) => p.key === key)!;
+        const age = Math.max(1, Math.round((Date.now() - hot.fetchedAt) / 60_000));
+        lines.push(`\n${meta.zh} (${meta.label}), stored ${age} min ago${rel ? "" : ", not yet sorted by topic so shown whole"}:`);
+        for (const x of shown.slice(0, everything ? 15 : 10)) {
+          const views = x.r.stats?.views;
+          const heat = views != null ? `${views.toLocaleString("en-US")} views` : (x.r.heatLabel ?? (x.r.heat != null ? `heat ${x.r.heat.toLocaleString("en-US")}` : ""));
+          const tag = x.mark && x.mark.t !== "other" ? ` [${relevanceLabel(x.mark, true)}]` : "";
+          /* A search list's link is only the phrase searched again; a
+             video's or a news story's is the source. */
+          const link = x.r.url && (meta.kind !== "search" || key === "google") ? ` · ${x.r.url}` : "";
+          lines.push(`- #${x.rank} ${x.r.phrase.replace(/\s+/g, " ").slice(0, 90)}${tag}${heat ? ` · ${heat}` : ""}${link}`);
+        }
+      }
+      if (!lines.length) {
+        return {
+          text: hidden
+            ? `Nothing on the business or tech beat in the stored lists right now (${hidden} other rows). Ask again with all=true to see everything.`
+            : "No stored hot lists yet; the hourly collector has not run.",
+        };
+      }
+      return {
+        text: [
+          everything ? "What is hot right now (every row):" : "Business and tech rows on each list right now (the # is the rank on that platform's own list):",
+          ...lines,
+          !everything && hidden ? `\n${hidden} rows about entertainment, sport and the like were left out; all=true shows them.` : "",
+        ]
+          .filter(Boolean)
+          .join("\n"),
+      };
+    }
+
     const [searches, videos] = await Promise.all([
       trendingSearches(region).catch(() => []),
       env.youtube.configured ? trendingVideos(region, 10).catch(() => []) : Promise.resolve([]),

@@ -6,12 +6,12 @@ import { TrendsView } from "@/components/research/TrendsView";
 import { listCompetitors, ourMedianViews } from "@/lib/social/service";
 import { env } from "@/lib/env";
 import { answeringModel } from "@/lib/ai/models";
-import { trendingNearby } from "@/lib/research/trending";
+import { storedHot } from "@/lib/research/platforms";
+import { onFocus } from "@/lib/research/platform-catalog";
 import { latestDigest } from "@/lib/home/pulse";
 import { ownPicksToday } from "@/lib/research/own-picks";
 import { evidenceNumbers, type Evidence } from "@/lib/research/signals";
 import { proposalsFor } from "@/lib/agents/proposals";
-import { trendingVideos } from "@/lib/research/youtube";
 import { creatorMemoryState } from "@/lib/creator/service";
 import { db } from "@/lib/db/client";
 import { jobs } from "@/lib/db/schema";
@@ -68,30 +68,45 @@ export default async function TrendsPage({
   ]);
 
   /*
-   * What Hong Kong is searching for today, for the topic picker to suggest.
+   * What Hong Kong is searching for and watching, for the topic picker to
+   * suggest and the live strip's first tab.
    *
-   * Outside the `Promise.all` and never allowed to fail the page: it is a list
-   * of suggestions, and a dashboard that will not render because Google was
-   * slow is worse than a dashboard with no suggestions. Cached for half an
-   * hour inside `trendingSearches`, so this is free on most renders.
+   * From storage, the lists the hourly collector read and marked business /
+   * tech / other — not Google's feed and YouTube's chart read live on every
+   * render, which were the noisiest lists on the page and, being unmarked,
+   * could not be filtered. Storage only, never a live read: a render does
+   * not wait on a platform or a model. Never allowed to fail the page.
+   *
+   * The suggestions are the searches on the beat; a list nobody has marked
+   * yet (before the first collection with the classifier) is passed whole.
+   * The strip's own "show everything" switch reads the full list from
+   * `/api/research/hot`, so nothing is lost by filtering here.
    */
-  const [trending, watched] = await Promise.all([
-    /* Topped up from the markets the studio also posts into when Hong Kong's
-       own feed is thin — each row says where it came from. */
-    trendingNearby("HK", 14).catch(() => []),
-    /*
-     * And what Hong Kong is *watching*, from YouTube's own chart. One unit of
-     * quota, cached twenty minutes, and never allowed to fail the page: the
-     * strip explains itself when the key is missing or the quota is spent.
-     */
-    trendingVideos("HK", 20).then(
-      (videos) => ({ videos, note: null as string | null }),
-      (err: unknown) => ({
-        videos: [] as Awaited<ReturnType<typeof trendingVideos>>,
-        note: err instanceof Error ? err.message : "YouTube could not be reached.",
-      }),
-    ),
-  ]);
+  const zhPage = (viewer.locale ?? "zh-CN").startsWith("zh");
+  const [google, youtube] = await Promise.all([storedHot("google").catch(() => null), storedHot("youtube").catch(() => null)]);
+  const googleRel = google?.relevance ?? null;
+  const trending = (google?.rows ?? [])
+    .filter((r) => !googleRel || onFocus(googleRel[r.phrase]))
+    .slice(0, 14)
+    .map((r) => {
+      // The collector writes "TW · headline" for a row topped up from elsewhere.
+      const from = /^([A-Z]{2}) · ([\s\S]*)$/.exec(r.extra ?? "");
+      return { phrase: r.phrase, traffic: r.heatLabel, headline: (from ? from[2] : r.extra) || null, region: from ? from[1] : "HK" };
+    });
+  const youtubeRel = youtube?.relevance ?? null;
+  const watched = {
+    videos: (youtube?.rows ?? []).map((r) => ({
+      id: /[?&]v=([\w-]+)/.exec(r.url ?? "")?.[1] ?? r.phrase,
+      title: r.phrase,
+      channelTitle: r.extra ?? "",
+      thumbnail: r.thumbnail,
+      views: r.heat ?? 0,
+      rel: youtubeRel?.[r.phrase] ?? null,
+    })),
+    note: youtube?.rows.length
+      ? null
+      : (youtube?.note ?? (zhPage ? "YouTube 的榜单还没收集到，整点收集后会出现在这里。" : "YouTube's chart has not been collected yet; it appears after the next hourly collection.")),
+  };
 
   const backlogCount = topics.filter((t) => t.status === "adopted").length;
   /* 研究员's pick this morning, so the page opens on a conclusion rather
@@ -157,14 +172,8 @@ export default async function TrendsPage({
       picks={picks}
       locale={viewer.locale ?? "zh-CN"}
       model={answeringModel()}
-      trending={trending.map((x) => ({ phrase: x.phrase, traffic: x.traffic, headline: x.headline, region: x.region }))}
-      watching={watched.videos.map((v) => ({
-        id: v.id,
-        title: v.title,
-        channelTitle: v.channelTitle,
-        thumbnail: v.thumbnail,
-        views: v.views,
-      }))}
+      trending={trending}
+      watching={watched.videos}
       watchingNote={watched.note}
       creator={creator}
       creatorSyncing={syncJobs.length > 0}
