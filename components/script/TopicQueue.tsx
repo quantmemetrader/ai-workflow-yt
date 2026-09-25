@@ -74,9 +74,12 @@ export function TopicQueue({ items, zh, canStart }: { items: TopicQueueItem[]; z
         </div>
       ) : (
         items.map((it) => (
-          <div key={it.key} style={{ border: "1px solid #ededed", borderRadius: 12, background: "#fff", padding: "11px 14px", display: "flex", flexDirection: "column", gap: 6 }}>
+          <div key={it.key} style={{ border: "1px solid #ececec", borderRadius: 12, background: "#fff", padding: "13px 16px 14px", display: "flex", flexDirection: "column", gap: 6 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-              <span style={{ fontSize: 11, color: "#525252", background: it.kind === "project" ? "#f8dcc6" : "#d5e7fb", borderRadius: 999, padding: "1px 8px", flexShrink: 0, maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {/* Tinted by whose it is (AGENT_TINTS): a project waiting on
+                  编剧 in the script peach, a to-do from today's plan in
+                  策划's violet, anything 研究员 found in the research blue. */}
+              <span style={{ fontSize: 11, color: "#525252", background: it.kind === "project" ? "#f8dcc6" : it.kind === "plan" ? "#dcd6fb" : "#d5e7fb", borderRadius: 999, padding: "1px 8px", flexShrink: 0, maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                 {it.kind === "project" ? t("项目 · 等初稿", "Project · needs a draft") : it.label}
               </span>
               {it.strength ? (
@@ -151,7 +154,8 @@ function btn(primary: boolean): React.CSSProperties {
     background: primary ? "#171717" : "#fff",
     color: primary ? "#fff" : "#171717",
     fontFamily: "inherit",
-    fontSize: 12,
+    fontSize: 12.5,
+    fontWeight: primary ? 500 : 400,
     cursor: "pointer",
     display: "inline-flex",
     alignItems: "center",

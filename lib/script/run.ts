@@ -1,5 +1,5 @@
 import "server-only";
-import { and, count, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import {
   approvals,
@@ -8,6 +8,7 @@ import {
   chatMessages,
   jobs,
   publishPosts,
+  scriptBeats,
   scripts,
   timelineItems,
   topics,
@@ -16,6 +17,7 @@ import {
   workProjects,
 } from "@/lib/db/schema";
 import type { Viewer } from "@/lib/auth/types";
+import { isWriting, type ProjectSource } from "@/lib/projects/topic";
 
 /**
  * One script's place in the line of work.
@@ -31,7 +33,25 @@ export type ScriptRun = {
   updatedAt: string;
   /** Touched in the last quarter hour: 编剧 is at it, or somebody is. */
   recent: boolean;
-  topic: { name: string; href: string } | null;
+  /**
+   * 编剧 is writing a draft into it right now: the project's own mark
+   * (`work_projects.source.writing`, younger than ten minutes), the same
+   * one `/api/script/[id]/pulse` answers with. "Touched recently" is not
+   * the same thing: a person fixing a comma touches it too, and the panel
+   * used to say "正在写" for a quarter of an hour after every save.
+   */
+  writing: boolean;
+  /** How many beats the draft has now. */
+  beats: number;
+  /**
+   * What it is about. The script's own backlog topic when it has one, and
+   * otherwise the project's: a project started from an idea, a morning-brief
+   * signal or a hot-list row carries its topic on the project
+   * (`work_projects.topic_id` / `.source`), never on the script, so reading
+   * only `scripts.topic_id` said "没有绑定选题" for exactly the scripts that
+   * came from a topic. `from` is where the topic was picked ("研究员的选题灵感").
+   */
+  topic: { name: string; href: string; from: string | null } | null;
   plan: { date: string; text: string; href: string } | null;
   versions: { no: number; by: string | null; at: string; model: string | null; note: string | null }[];
   lockedVersion: number | null;
@@ -66,21 +86,38 @@ export async function scriptRun(viewer: Viewer, scriptId: string, zh: boolean): 
     .limit(1);
   if (!script) return null;
 
-  const [topic] = script.topicId
+  /* The project it is the script of: the topic links there, where the
+     topic's why and evidence are, rather than to the generic backlog. The
+     oldest one, as the pulse and the topic strip pick it, so the three
+     never disagree about which project a script belongs to. Read here
+     rather than through `projectFor`, which returns only ids and the title,
+     because the topic lives in the project's `topic_id` and `source`. */
+  const [inProject] = await db
+    .select({ id: workProjects.id, title: workProjects.title, topicId: workProjects.topicId, source: workProjects.source })
+    .from(workProjects)
+    .where(and(eq(workProjects.tenantId, tenantId), eq(workProjects.scriptId, scriptId), isNull(workProjects.deletedAt)))
+    .orderBy(asc(workProjects.createdAt))
+    .limit(1);
+  const src = (inProject?.source as ProjectSource | null | undefined) ?? null;
+
+  /* A backlog topic by any of the three places one can be recorded: the
+     script's own, the project's (an idea's id lands here too, and simply
+     matches no `topics` row), and the snapshot's. */
+  const topicIds = [script.topicId, inProject?.topicId, src?.topicId].filter((x): x is string => typeof x === "string" && x.length > 0);
+  const [topic] = topicIds.length
     ? await db
         .select({ name: topics.name, nameLocal: topics.nameLocal })
         .from(topics)
-        .where(and(eq(topics.id, script.topicId), eq(topics.tenantId, tenantId)))
+        .where(and(inArray(topics.id, topicIds), eq(topics.tenantId, tenantId)))
         .limit(1)
     : [];
+  /* No backlog row, but the project was started from a picked topic (an
+     idea, a signal, a hot-list row, somebody's own pick): its title is the
+     topic, and the snapshot says where it was picked. A project with no
+     snapshot and no topic id was typed in by hand and has no topic to show. */
+  const projectTopic = !topic && inProject && (src || inProject.topicId) ? inProject.title : null;
 
-  /* The project it is the script of: the topic links there, where the
-     topic's why and evidence are, rather than to the generic backlog. */
-  const [inProject] = await db
-    .select({ id: workProjects.id })
-    .from(workProjects)
-    .where(and(eq(workProjects.tenantId, tenantId), eq(workProjects.scriptId, scriptId), isNull(workProjects.deletedAt)))
-    .limit(1);
+  const [beatCount] = await db.select({ n: count() }).from(scriptBeats).where(eq(scriptBeats.scriptId, scriptId));
 
   /* The latest plan, and the to-do in it that names this script. */
   const [plan] = await db
@@ -165,7 +202,16 @@ export async function scriptRun(viewer: Viewer, scriptId: string, zh: boolean): 
     status: script.status,
     updatedAt: script.updatedAt.toISOString(),
     recent: Date.now() - script.updatedAt.getTime() < 15 * 60_000,
-    topic: topic ? { name: (zh && topic.nameLocal) || topic.name, href: inProject ? `/projects/${inProject.id}` : "/research/backlog" } : null,
+    writing: isWriting(src, Date.now()),
+    beats: beatCount?.n ?? 0,
+    topic:
+      topic || projectTopic
+        ? {
+            name: topic ? (zh && topic.nameLocal) || topic.name : (projectTopic as string),
+            href: inProject ? `/projects/${inProject.id}` : "/research/backlog",
+            from: typeof src?.label === "string" && src.label ? src.label : topic ? (zh ? "选题储备" : "Topic backlog") : null,
+          }
+        : null,
     plan:
       todo && typeof planMeta?.date === "string"
         ? { date: planMeta.date, text: String(todo.text), href: `/chat/c/${encodeURIComponent(plan!.slug ?? "研究日报")}` }

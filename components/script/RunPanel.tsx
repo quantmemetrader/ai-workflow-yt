@@ -17,10 +17,18 @@ import type { ScriptRun } from "@/lib/script/run";
  */
 type State = "done" | "running" | "you" | "todo";
 
-export function RunPanel({ run, zh, onApprove }: { run: ScriptRun; zh: boolean; onApprove?: () => void }) {
+export function RunPanel({ run, zh, onApprove, writing }: { run: ScriptRun; zh: boolean; onApprove?: () => void; writing?: boolean }) {
   const t = (a: string, b: string) => (zh ? a : b);
   const latest = run.versions[run.versions.length - 1] ?? null;
-  const recent = run.recent;
+  /*
+   * "正在写" only while a draft is actually being written: the project's
+   * writing mark, as the server read it, or the page's own live answer from
+   * `/api/script/[id]/pulse` (`writing`), which goes false the moment the
+   * draft lands. It used to be "touched in the last quarter hour", which a
+   * person's own save also is, so a finished 13-beat draft read "正在写".
+   */
+  const writingNow = writing ?? run.writing;
+  const beatsLine = run.beats > 0 ? t(`草稿 ${run.beats} 个分镜`, `draft · ${run.beats} beat${run.beats === 1 ? "" : "s"}`) : null;
 
   const steps: { owner: AgentKey | "you"; name: string; line: string; state: State; href?: string; sub?: string }[] = [
     {
@@ -29,6 +37,8 @@ export function RunPanel({ run, zh, onApprove }: { run: ScriptRun; zh: boolean; 
       line: run.topic ? run.topic.name : t("没有绑定选题", "not tied to a topic"),
       state: run.topic ? "done" : "todo",
       href: run.topic?.href,
+      /* Where it was picked: "研究员的选题灵感", "晨报信号", "选题储备". */
+      sub: run.topic?.from ?? undefined,
     },
     {
       owner: "planning",
@@ -45,14 +55,12 @@ export function RunPanel({ run, zh, onApprove }: { run: ScriptRun; zh: boolean; 
           ? `${t("第", "v")}${run.lockedVersion ?? latest?.no ?? ""}${t(" 版已锁", " locked")}`
           : run.status === "awaiting_approval"
             ? `${t("第", "v")}${latest?.no ?? ""}${t(" 版已交审", " sent for approval")}`
-            : run.status === "drafting"
-              ? recent
-                ? t("正在写", "writing now")
-                : latest
-                  ? `${t("第", "v")}${latest.no}${t(" 版 · 草稿在改", " · draft being edited")}`
-                  : t("草稿写着", "drafting")
-              : t("有简报，还没写", "brief only, not written"),
-      state: run.status === "locked" || run.status === "awaiting_approval" ? "done" : run.status === "drafting" && recent ? "running" : "you",
+            : writingNow
+              ? t("正在写", "writing now")
+              : run.status === "drafting"
+                ? (beatsLine ?? t("草稿还是空的", "the draft is empty"))
+                : t("有简报，还没写", "brief only, not written"),
+      state: run.status === "locked" || run.status === "awaiting_approval" ? "done" : writingNow ? "running" : "you",
       sub: latest ? `${latest.by ?? "—"} · ${clock(latest.at)}${latest.model ? ` · ${latest.model.replace(/^[^/]+\//, "")}` : ""}` : undefined,
     },
     {
