@@ -90,6 +90,7 @@ export default async function BacklogPage() {
       locale={viewer.locale ?? "zh-CN"}
       region="HK / TW / SG"
       model={answeringModel()}
+      canWriteScripts={viewer.modules.includes("script")}
       channels={CHANNELS}
       people={people.map((p) => ({ id: p.id, name: (zh && p.nameLocal) || p.name }))}
       items={rows.map((r) => ({

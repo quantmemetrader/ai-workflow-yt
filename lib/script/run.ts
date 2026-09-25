@@ -17,7 +17,8 @@ import {
   workProjects,
 } from "@/lib/db/schema";
 import type { Viewer } from "@/lib/auth/types";
-import { isWriting, type ProjectSource } from "@/lib/projects/topic";
+import type { ProjectSource } from "@/lib/projects/topic";
+import { scriptWriting } from "@/lib/script/writing";
 
 /**
  * One script's place in the line of work.
@@ -34,11 +35,12 @@ export type ScriptRun = {
   /** Touched in the last quarter hour: 编剧 is at it, or somebody is. */
   recent: boolean;
   /**
-   * 编剧 is writing a draft into it right now: the project's own mark
-   * (`work_projects.source.writing`, younger than ten minutes), the same
-   * one `/api/script/[id]/pulse` answers with. "Touched recently" is not
-   * the same thing: a person fixing a comma touches it too, and the panel
-   * used to say "正在写" for a quarter of an hour after every save.
+   * 编剧 is writing a draft into it right now: a project's own mark
+   * (`work_projects.source.writing`, younger than ten minutes) on any live
+   * project that has the script, the same answer `/api/script/[id]/pulse`
+   * gives (both read `scriptWriting`). "Touched recently" is not the same
+   * thing: a person fixing a comma touches it too, and the panel used to
+   * say "正在写" for a quarter of an hour after every save.
    */
   writing: boolean;
   /** How many beats the draft has now. */
@@ -88,8 +90,9 @@ export async function scriptRun(viewer: Viewer, scriptId: string, zh: boolean): 
 
   /* The project it is the script of: the topic links there, where the
      topic's why and evidence are, rather than to the generic backlog. The
-     oldest one, as the pulse and the topic strip pick it, so the three
-     never disagree about which project a script belongs to. Read here
+     oldest one, as the topic strip picks it, so the two never disagree
+     about which project a script belongs to. (Whether 编剧 is writing is
+     not read from this one project: see `writing` below.) Read here
      rather than through `projectFor`, which returns only ids and the title,
      because the topic lives in the project's `topic_id` and `source`. */
   const [inProject] = await db
@@ -117,7 +120,12 @@ export async function scriptRun(viewer: Viewer, scriptId: string, zh: boolean): 
      snapshot and no topic id was typed in by hand and has no topic to show. */
   const projectTopic = !topic && inProject && (src || inProject.topicId) ? inProject.title : null;
 
-  const [beatCount] = await db.select({ n: count() }).from(scriptBeats).where(eq(scriptBeats.scriptId, scriptId));
+  const [[beatCount], writing] = await Promise.all([
+    db.select({ n: count() }).from(scriptBeats).where(eq(scriptBeats.scriptId, scriptId)),
+    /* Every project on the script, not only `inProject`: a draft started
+       from a newer project that shares it is still a draft being written. */
+    scriptWriting(tenantId, scriptId).then((w) => w.writing),
+  ]);
 
   /* The latest plan, and the to-do in it that names this script. */
   const [plan] = await db
@@ -202,7 +210,7 @@ export async function scriptRun(viewer: Viewer, scriptId: string, zh: boolean): 
     status: script.status,
     updatedAt: script.updatedAt.toISOString(),
     recent: Date.now() - script.updatedAt.getTime() < 15 * 60_000,
-    writing: isWriting(src, Date.now()),
+    writing,
     beats: beatCount?.n ?? 0,
     topic:
       topic || projectTopic

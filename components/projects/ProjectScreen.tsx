@@ -31,7 +31,7 @@ import { cleanCodes, type ProjectSource } from "@/lib/projects/topic";
  */
 type Msg = ProjectDetail["messages"][number];
 
-export function ProjectScreen({ project: p, zh, people }: { project: ProjectDetail; zh: boolean; people: MentionPerson[] }) {
+export function ProjectScreen({ project: p, zh, people, writing }: { project: ProjectDetail; zh: boolean; people: MentionPerson[]; writing: boolean }) {
   const t = (a: string, b: string) => (zh ? a : b);
   const router = useRouter();
   const [pending, start] = React.useTransition();
@@ -61,11 +61,16 @@ export function ProjectScreen({ project: p, zh, people }: { project: ProjectDeta
    * 编剧 writing the draft that was started with the project (from Home,
    * Research, the backlog or the Script queue), or from the button below.
    * The mark lives on the project, so arriving from anywhere shows it; the
-   * script's pulse says when it is done (or that an old mark has gone
-   * stale), and the page refreshes once instead of showing "no beats yet"
-   * until somebody reloads it.
+   * script's pulse says when it is done, and the page refreshes once instead
+   * of showing "no beats yet" until somebody reloads it.
+   *
+   * It starts from `writing`, the server's reading of the mark with its
+   * ten-minute limit applied (`scriptWriting`), not from the raw mark: a
+   * mark a restart left behind used to show "编剧正在写初稿…" and a full
+   * page refresh three seconds later on every visit. Worked out on the
+   * server, so the first render and hydration agree.
    */
-  const [draftWriting, setDraftWriting] = React.useState(Boolean(src?.writing?.at));
+  const [draftWriting, setDraftWriting] = React.useState(writing);
   const scriptIdForPulse = p.script?.id ?? null;
   React.useEffect(() => {
     if (!draftWriting || !scriptIdForPulse) return;

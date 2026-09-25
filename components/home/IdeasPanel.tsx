@@ -262,10 +262,19 @@ export function IdeasPanel({ zh, initial, canStart, canResearch = true }: { zh: 
                     <StartedNotice zh={zh} title={idea.title} projectId={done.projectId} scriptId={done.scriptId} writing={done.writing} existed={done.existed} onStay={() => setStarted((m) => { const next = { ...m }; delete next[idea.id]; return next; })} />
                   ) : (
                     <div style={{ display: "flex", gap: 6, marginTop: 12, flexWrap: "wrap", alignItems: "center" }}>
+                      {/* Started: a link only to a project this person can open.
+                          The server answers an idea whose project was deleted
+                          as new (so it can be started again), and one whose
+                          project is private to others as started with no id:
+                          said, not linked, so nothing here leads to a 404. */}
                       {idea.status === "started" && projectId ? (
                         <Link prefetch={false} href={`/projects/${projectId}`} style={{ ...btn(false), textDecoration: "none" }}>
                           <Icon name="check" size={13} /> {t("已开项目 · 打开", "Started · open it")}
                         </Link>
+                      ) : idea.status === "started" ? (
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 30, fontSize: 12, color: "#7c7c7c" }}>
+                          <Icon name="check" size={13} /> {t("已有同事开了项目", "A colleague has started a project from it")}
+                        </span>
                       ) : canStart ? (
                         /* In 编剧's tint, not black: five ideas used to carry
                            five black buttons, and the eye had nowhere to land. */

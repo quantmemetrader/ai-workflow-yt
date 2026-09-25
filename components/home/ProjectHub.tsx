@@ -104,7 +104,8 @@ export function ProjectProgress({
 
 const PROGRESS_CSS = `
 .pp-card { display: flex; gap: 14px; padding: 12px 14px 12px 12px; border: 1px solid #efefed; border-radius: 14px; background: #fff; text-decoration: none; color: #171717; box-shadow: 0 1px 2px rgba(0,0,0,.025); transition: border-color .15s ease, box-shadow .15s ease, transform .15s ease; }
-.pp-card:hover { border-color: var(--pp-tone, #e3e3e0); box-shadow: 0 4px 14px rgba(20,30,60,.06); }
+/* The colour again on hover: canvas.css's a:hover turns every link blue, and a card's title is not a text link. */
+.pp-card:hover { color: #171717; border-color: var(--pp-tone, #e3e3e0); box-shadow: 0 4px 14px rgba(20,30,60,.06); }
 .pp-card:hover .pp-open { color: #171717; }
 .pp-thumb { position: relative; width: 78px; height: 78px; border-radius: 11px; flex-shrink: 0; overflow: hidden; background: linear-gradient(135deg, #eef4fd, #f3effc 55%, #edf7f2); display: flex; align-items: center; justify-content: center; }
 .pp-pct { position: absolute; left: 6px; right: 6px; bottom: 6px; height: 4px; border-radius: 2px; background: rgba(255,255,255,.75); overflow: hidden; }
