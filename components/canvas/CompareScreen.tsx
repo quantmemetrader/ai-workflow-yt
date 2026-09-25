@@ -45,6 +45,8 @@ const WINDOW_WORDS: Record<Window, string> = { "1m": "1 month", "3m": "3 months"
 const WINDOW_WORDS_ZH: Record<Window, string> = { "1m": "1 个月", "3m": "3 个月", "6m": "6 个月" };
 
 /** The sources the studio reads, by the key `series_cache` stores. */
+/* "YouTube mostPopular" was the API's chart name, not something anybody calls
+   it; in a narrow column it was also the thing that wrapped. */
 const SOURCE_NAMES: Record<string, string> = {
   gdelt: "GDELT",
   googlenews: "Google News",
@@ -56,7 +58,7 @@ const SOURCE_NAMES: Record<string, string> = {
   nikkei: "Nikkei Asia",
   bloomberg: "Bloomberg",
   reuters: "Reuters",
-  youtube: "YouTube mostPopular",
+  youtube: "YouTube",
   gtrends: "Google Trends",
 };
 
@@ -78,7 +80,7 @@ const ZH: Record<string, string> = {
   "Peak / day": "单日峰值",
   "Avg / day": "日均",
   "d change": "天变化",
-  "Corr. with #1": "与第一条的相关性",
+  "Corr. with #1": "与首条相关",
   Agent: "助理",
   "Ask about these trends…": "询问这些趋势…",
   "Scoped to your entitled sources": "仅限你有权限的来源",
@@ -90,7 +92,25 @@ const ZH: Record<string, string> = {
 /** Line weights, in the artboard's series order. */
 const LINE_WIDTHS = [2.4, 1.8, 1.6, 1.6, 1.6];
 
-const GRID = "minmax(0,1.5fr) 110px 100px 110px 150px minmax(0,1fr)";
+/*
+ * The table's columns.
+ *
+ * The four numeric columns were 110 / 100 / 110 / 150px — 470px of a column
+ * that is ~570px wide at 1280 — so the series name came out as "c…" and the
+ * sources were squeezed to a letter per line ("Yo / m…"). Even at 1440 the
+ * sources cell wrapped "YouTube mostPopu…" onto two lines.
+ *
+ * Each numeric column is now its header's width plus padding (the headers set
+ * the floor: "单日峰值", "90 天变化", "与首条相关"), 310px in all, and the name
+ * and the sources share what is left. The sources cell is one line now — the
+ * source and a "+N" for the article sites, with the full list on hover. The
+ * English headers are a little longer, so they get a little more.
+ *
+ * The templates live in CSS (.t .hd / .t .tr, keyed on data-lang) so that a
+ * container query can tighten them when the table itself is narrow — 1280,
+ * or a wide agent panel: the correlation bar and the "+N" step aside there
+ * and the number and the source name keep their room.
+ */
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
@@ -159,6 +179,26 @@ const CSS = `
 [data-compare-screen] .addq { border: 0; outline: 0; background: transparent; font: inherit; letter-spacing: inherit; color: #171717; width: 142px; padding: 0; }
 [data-compare-screen] .addq::placeholder { color: #999999; }
 [data-compare-screen] [aria-disabled="true"] { opacity: .5; pointer-events: none; }
+
+/* The scope chips (sources, category, region) state what this comparison ran
+   over; none of them opens anything. Drawn as bordered chips they looked like
+   three buttons that did nothing when pressed, so they are quiet tags now. */
+[data-compare-screen] .chip.st { border-color: transparent; background: #f5f5f5; height: 26px; color: #7c7c7c; cursor: default; }
+[data-compare-screen] .t .hd > * { white-space: nowrap; }
+[data-compare-screen] .t .hd > *, [data-compare-screen] .tr > * { padding-left: 10px; padding-right: 10px; }
+[data-compare-screen] .tw { container-type: inline-size; container-name: cmptable; }
+[data-compare-screen] .t .hd, [data-compare-screen] .t .tr { grid-template-columns: minmax(110px,1.3fr) 70px 60px 80px 100px minmax(128px,1fr); }
+[data-compare-screen][data-lang="en"] .t .hd, [data-compare-screen][data-lang="en"] .t .tr { grid-template-columns: minmax(110px,1.3fr) 80px 72px 88px 104px minmax(128px,1fr); }
+@container cmptable (max-width: 600px) {
+  [data-compare-screen] .t .hd, [data-compare-screen] .t .tr { grid-template-columns: minmax(110px,1.3fr) 70px 60px 80px 84px minmax(110px,1fr); }
+  [data-compare-screen][data-lang="en"] .t .hd, [data-compare-screen][data-lang="en"] .t .tr { grid-template-columns: minmax(110px,1.3fr) 80px 72px 88px 92px minmax(110px,1fr); }
+  [data-compare-screen] .t .hd > *, [data-compare-screen] .tr > * { padding-left: 8px; padding-right: 8px; }
+  [data-compare-screen] .tr .cbar, [data-compare-screen] .tr .more { display: none; }
+}
+[data-compare-screen] .more { flex: none; display: inline-flex; align-items: center; height: 18px; padding: 0 5px; border-radius: 6px; background: #f3f3f3; color: #7c7c7c; font-size: 11px; font-variant-numeric: tabular-nums; }
+[data-compare-screen] .tr:hover { background: #fafafa; }
+/* The series name may take two lines rather than be cut to one letter. */
+[data-compare-screen] .nm { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.35; overflow-wrap: anywhere; }
 `;
 
 /* ------------------------------------------------------------------ */
@@ -252,6 +292,80 @@ function shortDomain(domain: string): string {
   return domain.replace(/^www\./, "");
 }
 
+/* ------------------------------------------------------------------ */
+/* What the sources said, in words a producer can act on.                */
+/* ------------------------------------------------------------------ */
+
+/**
+ * `series.error` is written by the collector (lib/research/ingest.ts) for the
+ * logs as much as for people: raw fetch errors joined with "; ", then a note
+ * about which fallback drew the line — "fetch failed; no signal volume, chart
+ * drawn from article counts". It was printed as-is, in English, in an amber
+ * box, on a Chinese screen: it looked like the page had broken, when what it
+ * meant was "one source was unreachable, so the line counts news articles".
+ *
+ * Each fragment is matched to a sentence here, in zh with the English beside
+ * it, and split into two kinds, because they are different news:
+ *   — `fallback`: the line is drawn from a different source than usual. Not a
+ *     failure; worth knowing when reading the chart's shape.
+ *   — `trouble`: a source did not answer this round. Temporary; the collector
+ *     retries on its own, so there is nothing for anybody to do.
+ * Anything unrecognised is still shown (a message is never swallowed), but as
+ * a generic "a source returned an error" with the raw text on hover.
+ */
+type Explained = { kind: "fallback" | "trouble"; zh: string; en: string };
+
+function explainPart(raw: string): Explained | null {
+  const part = raw.trim();
+  // The second half of GDELT's own message ("…this address; parked for ten
+  // minutes" / "; next attempt after 09:52:10"), split off by the "; " join.
+  if (/^(parked for|next attempt after)/i.test(part)) return null;
+  const said = /^(.+?) (?:said|answered) (\d{3})/.exec(part);
+  if (/no signal volume/i.test(part)) {
+    return {
+      kind: "fallback",
+      zh: "这个词没有检索量数据，走势按新闻报道篇数绘制",
+      en: "no search-volume signal for this phrase, so the line counts news articles",
+    };
+  }
+  if (/chart drawn from article counts/i.test(part)) {
+    return { kind: "fallback", zh: "走势按新闻报道篇数绘制", en: "the line counts news articles" };
+  }
+  if (/no fresh data this round/i.test(part)) {
+    return { kind: "trouble", zh: "这一轮没取到新数据，显示的是上一次的结果", en: "no fresh data this round; showing the last good result" };
+  }
+  if (/GDELT is rate-limiting/i.test(part)) {
+    return { kind: "trouble", zh: "GDELT 暂时限流，稍后会自动重试", en: "GDELT is briefly rate-limiting us and will be retried" };
+  }
+  if (/quota/i.test(part)) {
+    return { kind: "trouble", zh: "YouTube 今日配额已用完，太平洋时间午夜重置", en: "YouTube's daily quota is used up; it resets at midnight Pacific" };
+  }
+  if (/fetch failed|could not be reached|timed? ?out|aborted|ECONN|ENOTFOUND|network/i.test(part)) {
+    return { kind: "trouble", zh: "有一个来源暂时连不上，稍后会自动重试", en: "a source could not be reached and will be retried" };
+  }
+  if (said) {
+    return {
+      kind: "trouble",
+      zh: `${said[1]} 暂时不可用（${said[2]}），稍后会自动重试`,
+      en: `${said[1]} is unavailable for now (${said[2]}) and will be retried`,
+    };
+  }
+  return { kind: "trouble", zh: "有一个来源返回了错误", en: "a source returned an error" };
+}
+
+/** A whole `series.error`, as de-duplicated sentences, trouble first. */
+function explainError(raw: string): Explained[] {
+  const out: Explained[] = [];
+  for (const part of raw.split(/;\s*/)) {
+    if (!part.trim()) continue;
+    const e = explainPart(part);
+    if (e && !out.some((o) => o.zh === e.zh)) out.push(e);
+  }
+  // "Fetch failed" and "the line counts articles" are cause and effect: say
+  // the cause, then what it means for the chart.
+  return out.sort((a, b) => (a.kind === b.kind ? 0 : a.kind === "trouble" ? -1 : 1));
+}
+
 /** Nice round tick values across a range. */
 function ticksFor(min: number, max: number, want: number): number[] {
   if (!(max > min)) return [min];
@@ -332,6 +446,7 @@ export function CompareScreen(props: {
         }
         return {
           series: s,
+          explained: s.error ? explainError(s.error) : [],
           lineWidth: LINE_WIDTHS[Math.min(i, LINE_WIDTHS.length - 1)],
           pts,
           peak: values.length ? Math.max(...values) : 0,
@@ -364,6 +479,34 @@ export function CompareScreen(props: {
       }`;
 
   const windowWords = zh ? WINDOW_WORDS_ZH[props.window] : WINDOW_WORDS[props.window];
+
+  /** One series' notes as a sentence, in the reader's language. */
+  const sentence = (list: Explained[]) =>
+    list.length === 0 ? "" : zh ? `${list.map((e) => e.zh).join("；")}。` : `${list.map((e) => e.en).join("; ")}.`;
+
+  /* Series whose sources said the same thing are said once, together: three
+     series behind one rate-limited source is one note, not three. */
+  const notes: { text: string; raw: string; trouble: boolean; series: Series[] }[] = [];
+  for (const r of rows) {
+    if (!r.explained.length) continue;
+    const text = sentence(r.explained);
+    const same = notes.find((n) => n.text === text);
+    if (same) {
+      same.series.push(r.series);
+      same.raw = `${same.raw}\n${r.series.query}: ${r.series.error}`;
+    } else {
+      notes.push({
+        text,
+        raw: `${r.series.query}: ${r.series.error}`,
+        trouble: r.explained.some((e) => e.kind === "trouble"),
+        series: [r.series],
+      });
+    }
+  }
+  const noteFor = (query: string) => {
+    const r = rows.find((x) => x.series.query === query);
+    return r && r.explained.length ? sentence(r.explained) : undefined;
+  };
 
   /* The agent's note, said from the data rather than from the artboard's demo. */
   const leader = rows.length
@@ -435,6 +578,7 @@ export function CompareScreen(props: {
   return (
     <div
       data-compare-screen=""
+      data-lang={zh ? "zh" : "en"}
       style={{
         ["--ac" as string]: "#007be0",
         flexGrow: 1,
@@ -475,19 +619,24 @@ export function CompareScreen(props: {
               {/* The artboard drew these three as pickers. None of them has a
                   picker behind it on this screen, so they carry the chevron no
                   longer: they state the scope this comparison actually ran in. */}
-              <div className="chip">
+              <div className="chip st">
                 {t("Sources")}
                 <span className="pkv">{props.sourceCount > 0 ? props.sourceCount : t("None")}</span>
               </div>
-              <div className="chip">
+              <div className="chip st">
                 {t("Category")}
                 <span className="pkv">{t("All")}</span>
               </div>
-              <div className="chip">
-                {t("Region")}: {props.region}
+              <div className="chip st">
+                {t("Region")}
+                <span className="pkv">{props.region}</span>
               </div>
               <div style={{ flexGrow: 1 }}></div>
-              <span className="cap">{t("Reads only the sources you pick")}</span>
+              {/* One line or none: in a narrow column it stacked into a
+                  four-line column of two characters each. */}
+              <span className="cap el" style={{ minWidth: 0 }} title={t("Reads only the sources you pick")}>
+                {t("Reads only the sources you pick")}
+              </span>
             </div>
 
             <div
@@ -507,7 +656,7 @@ export function CompareScreen(props: {
                   key={s.query}
                   className="chip"
                   style={{ background: "#fff" }}
-                  title={s.error ?? undefined}
+                  title={noteFor(s.query)}
                 >
                   <span className="sw" style={{ background: s.colour }}></span>
                   {s.query}
@@ -587,30 +736,65 @@ export function CompareScreen(props: {
               * writes about: a thin chart and no explanation. A person cannot
               * act on a tooltip they do not know to hover.
               */}
-            {props.series.some((s) => s.error) && (
+            {notes.length > 0 && (
+              /*
+               * Drawn as a quiet note rather than a warning: amber and raw
+               * English made a fallback source look like a broken page. The
+               * sentences are explainError's; the collector's own words stay
+               * on hover for whoever is debugging a source.
+               */
               <div
+                role="note"
                 style={{
                   flexShrink: 0,
                   display: "flex",
-                  flexDirection: "column",
-                  gap: 4,
-                  padding: "10px 20px",
-                  borderBottom: "1px solid #ededed",
-                  background: "#fffaf3",
+                  gap: 9,
+                  alignItems: "flex-start",
+                  padding: "8px 20px",
+                  borderBottom: "1px solid #ececec",
+                  background: "#f8fafd",
                 }}
               >
-                {props.series
-                  .filter((s) => s.error)
-                  .map((s) => (
-                    <div key={s.query} style={{ display: "flex", gap: 8, alignItems: "baseline" }}>
-                      <span className="sw" style={{ background: s.colour, flexShrink: 0 }}></span>
-                      <span style={{ fontSize: 12.5, color: "#5c4420", lineHeight: 1.55 }}>
-                        <b style={{ fontWeight: 500 }}>{s.query}</b>
-                        {" · "}
-                        {s.error}
-                      </span>
+                <svg
+                  viewBox="0 0 24 24"
+                  aria-hidden
+                  style={{
+                    width: 14,
+                    height: 14,
+                    marginTop: 2,
+                    flexShrink: 0,
+                    stroke: "#8a9bb0",
+                    fill: "none",
+                    strokeWidth: 1.8,
+                    strokeLinecap: "round",
+                    strokeLinejoin: "round",
+                  }}
+                >
+                  <circle cx="12" cy="12" r="8.5" />
+                  <path d="M12 11v5.2M12 7.8v.01" />
+                </svg>
+                <div style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}>
+                  {notes.map((n) => (
+                    <div
+                      key={n.series.map((x) => x.query).join("|")}
+                      title={n.raw}
+                      style={{ fontSize: 12, color: "#5f6b7a", lineHeight: 1.55 }}
+                    >
+                      {n.series.map((x, k) => (
+                        <span key={x.query} style={{ whiteSpace: "nowrap" }}>
+                          {k > 0 ? (zh ? "、" : ", ") : null}
+                          <span
+                            className="sw"
+                            style={{ background: x.colour, display: "inline-block", marginRight: 5, verticalAlign: "0" }}
+                          ></span>
+                          <span style={{ color: "#383838", fontWeight: 500 }}>{x.query}</span>
+                        </span>
+                      ))}
+                      {zh ? "：" : ": "}
+                      {n.text}
                     </div>
                   ))}
+                </div>
               </div>
             )}
 
@@ -624,9 +808,15 @@ export function CompareScreen(props: {
                 </p>
               </div>
             ) : (
-              <>
-            <div style={{ flexShrink: 0, padding: "16px 20px 0" }}>
-              <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 10 }}>
+              /*
+               * The chart, the table and the per-platform list scroll as one.
+               * Only the table's slot scrolled before, and at 1280×800 the
+               * 316px chart above it left that slot ~190px tall: three rows,
+               * and the per-platform section was never seen at all.
+               */
+              <div style={{ flexGrow: 1, minHeight: 0, overflowY: "auto" }}>
+            <div style={{ padding: "16px 20px 0" }}>
+              <div style={{ display: "flex", alignItems: "baseline", flexWrap: "wrap", columnGap: 10, rowGap: 2, marginBottom: 10 }}>
                 <span style={{ fontSize: 15, fontWeight: 500 }}>{t("Mention volume, indexed")}</span>
                 <span className="cap">
                   {t("Day 1 = 100 for each series, so shape compares rather than absolute size")}
@@ -648,12 +838,17 @@ export function CompareScreen(props: {
                     ))}
                     <line x1={plotW + 0.5} x2={plotW + 0.5} y1={0} y2={plotH} stroke="#ededed" strokeWidth={1} />
                     <line x1={0} x2={boxW} y1={plotH + 0.5} y2={plotH + 0.5} stroke="#ededed" strokeWidth={1} />
+                    {/* A tick label that an end-of-line value sits on is
+                        skipped: the two were drawn on top of each other
+                        ("50" showing through "53.3"). */}
                     {drawable.length
-                      ? yTicks.map((v) => (
-                          <text key={`hl${v}`} x={plotW + 8} y={y(v) + 4} fill="#999999" fontSize={11}>
-                            {v.toFixed(tickDp)}
-                          </text>
-                        ))
+                      ? yTicks
+                          .filter((v) => !endLabels.some((l) => Math.abs(l.y - y(v)) < 12))
+                          .map((v) => (
+                            <text key={`hl${v}`} x={plotW + 8} y={y(v) + 4} fill="#999999" fontSize={11}>
+                              {v.toFixed(tickDp)}
+                            </text>
+                          ))
                       : null}
                     {xTicks.map((t, i) => (
                       <text
@@ -704,9 +899,9 @@ export function CompareScreen(props: {
               </div>
             </div>
 
-            <div style={{ flexGrow: 1, minHeight: 0, padding: "14px 20px 18px", overflowY: "auto" }}>
+            <div className="tw" style={{ padding: "14px 20px 20px" }}>
               <div className="t">
-                <div className="hd" style={{ gridTemplateColumns: GRID }}>
+                <div className="hd">
                   <div>{t("Series")}</div>
                   <div className="num">{t("Peak / day")}</div>
                   <div className="num">{t("Avg / day")}</div>
@@ -723,12 +918,11 @@ export function CompareScreen(props: {
                     <div
                       key={r.series.query}
                       className="tr"
-                      style={{ gridTemplateColumns: GRID }}
-                      title={r.series.error ?? undefined}
+                      title={noteFor(r.series.query)}
                     >
-                      <div style={{ gap: 9 }}>
+                      <div style={{ gap: 9, paddingTop: 7, paddingBottom: 7 }}>
                         <span className="sw" style={{ background: r.series.colour }}></span>
-                        <span className="el">{r.series.query}</span>
+                        <span className="nm" title={r.series.query}>{r.series.query}</span>
                       </div>
                       {quiet ? (
                         <>
@@ -741,8 +935,8 @@ export function CompareScreen(props: {
                           <div className="num" style={{ color: "#c7c7c7" }}>
                             —
                           </div>
-                          <div className="num" style={{ gap: 8, color: "#c7c7c7" }}>
-                            <div style={{ width: 60, height: 4, borderRadius: 2, background: "#ededed" }}>
+                          <div className="num" style={{ gap: 7, color: "#c7c7c7" }}>
+                            <div className="cbar" style={{ width: 36, height: 4, borderRadius: 2, background: "#ededed", flexShrink: 0 }}>
                               <div style={{ width: "0%", height: 4, borderRadius: 2, background: "#c7c7c7" }}></div>
                             </div>
                             —
@@ -753,8 +947,8 @@ export function CompareScreen(props: {
                           <div className="num">{fmtN(r.peak)}</div>
                           <div className="num">{fmtN(r.avg)}</div>
                           <div className={r.change < 0 ? "num dn" : "num up"}>{fmtPct(r.change)}</div>
-                          <div className="num" style={{ gap: 8 }}>
-                            <div style={{ width: 60, height: 4, borderRadius: 2, background: "#ededed" }}>
+                          <div className="num" style={{ gap: 7 }}>
+                            <div className="cbar" style={{ width: 36, height: 4, borderRadius: 2, background: "#ededed", flexShrink: 0 }}>
                               <div
                                 style={{
                                   width: `${Math.round(Math.abs(corr) * 100)}%`,
@@ -768,24 +962,18 @@ export function CompareScreen(props: {
                           </div>
                         </>
                       )}
-                      {/* Two lines at most, and the rest on hover: a series
-                          read from six places should not make its row three
-                          times the height of its neighbours. */}
+                      {/* One line: the source the line is drawn from, and how
+                          many article sites stand behind it, with every one of
+                          them on hover. It was the source and two domains
+                          joined into a sentence, which wrapped — "YouTube
+                          mostPopu… / Google News · …" — in any column narrower
+                          than the sentence. */}
                       <div
-                        style={{ color: "#7c7c7c", paddingTop: 9, paddingBottom: 9, alignItems: "flex-start" }}
+                        style={{ color: "#7c7c7c", gap: 6 }}
                         title={[sourceName(r.series.sourceKey), ...r.domains].join(" · ")}
                       >
-                        <span
-                          style={{
-                            display: "-webkit-box",
-                            WebkitLineClamp: 2,
-                            WebkitBoxOrient: "vertical",
-                            overflow: "hidden",
-                            lineHeight: 1.35,
-                          }}
-                        >
-                          {[sourceName(r.series.sourceKey), ...r.domains.slice(0, 2)].join(" · ")}
-                        </span>
+                        <span className="el">{sourceName(r.series.sourceKey)}</span>
+                        {r.domains.length ? <span className="more">+{r.domains.length}</span> : null}
                       </div>
                     </div>
                   );
@@ -793,7 +981,7 @@ export function CompareScreen(props: {
               </div>
               <PlatformSearch phrases={props.series.map((x) => x.query)} zh={zh} />
             </div>
-              </>
+              </div>
             )}
           </div>
 

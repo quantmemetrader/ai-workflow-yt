@@ -3,6 +3,7 @@
 import { PlatformMark } from "@/components/ui/PlatformMark";
 
 import * as React from "react";
+import Link from "next/link";
 import { ResearchAgentPanel } from "./ResearchAgentPanel";
 import type { ChannelRow, PerformanceRow, Window } from "@/lib/social/service";
 
@@ -56,7 +57,7 @@ const ZH: Record<string, string> = {
   Channel: "渠道",
   Published: "发布时间",
   "Watch-thru": "完播率",
-  Engage: "互动",
+  Engage: "互动率",
   All: "全部",
   "Check now": "立即更新",
   Checking: "更新中",
@@ -94,6 +95,20 @@ const PLATFORM_NAMES: Record<string, string> = {
   kuaishou: "Kuaishou",
 };
 
+/* The Chinese platforms by their Chinese names in a Chinese interface: the
+   tiles said "Douyin" and "Xiaohongshu" to people who only ever call them
+   抖音 and 小红书. The international ones keep their own names, as the
+   studio writes them. */
+const PLATFORM_NAMES_ZH: Record<string, string> = {
+  douyin: "抖音",
+  xiaohongshu: "小红书",
+  bilibili: "B站",
+  weibo: "微博",
+  wechat: "微信公众号",
+  kuaishou: "快手",
+  linkedin: "领英",
+};
+
 const WINDOW_DAYS: Record<Window, number> = { "7d": 7, "28d": 28, "90d": 90 };
 const WINDOW_LABEL: Record<Window, string> = { "7d": "7d", "28d": "28d", "90d": "90d" };
 const WINDOW_LABEL_ZH: Record<Window, string> = { "7d": "7 天", "28d": "28 天", "90d": "90 天" };
@@ -102,14 +117,24 @@ const WINDOW_LABEL_ZH: Record<Window, string> = { "7d": "7 天", "28d": "28 天"
  * and fixed numeric columns. */
 /*
  * The post's title is what a person actually reads down this table; the rest
- * are numbers with known widths. It had `minmax(0,1fr)` while sitting beside a
- * 210px "By channel" block, so on anything but a very wide window the titles
- * came out as "亚芳对话…" and the table was unreadable.
+ * are numbers with known widths.
  *
- * A floor of 260px on the title, and the numeric columns give up a few pixels
- * each. They are numbers: they do not need the room.
+ * This was eight columns — post, channel, published, then five numbers — with
+ * a 260px floor on the title, sitting beside a 180px "By channel" block. The
+ * columns added up to ~760px in a column that is ~730px wide at 1440 and ~560px
+ * at 1280, so the table ran off its own right edge: 点赞 was cut in half,
+ * 评论 / 完播率 / 互动 were not on screen at all, and 发布时间 and 播放量
+ * wrapped onto two lines in their headers.
+ *
+ * Channel and publish time are facts *about the post*, not measurements of
+ * it, so they now ride under the title as its second line. That leaves the
+ * title and the five numbers, and five numbers fit: the fixed columns total
+ * 350px, which leaves the title ~360px at 1440. Each width is the header's
+ * own (label + sort arrow + 20px of padding) plus a little. Below 600px of
+ * table (1280, or a wide agent panel) the columns and their padding tighten
+ * and the thumbnail shrinks, which gives the title back ~60px — see the
+ * `posts` container query in CSS, which is where the template lives.
  */
-const GRID = "minmax(260px,1fr) 78px 78px 70px 62px 72px 74px 66px";
 
 /* ------------------------------------------------------------------ */
 /* The artboard's own <style>, minus the rail and sidebar rules (neither
@@ -145,18 +170,60 @@ const CSS = `
 [data-perf-screen] .chip svg { width: 10px; height: 10px; stroke: #999999; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 [data-perf-screen] .bd { display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border-radius: 6px; font-size: 11.5px; font-weight: 500; white-space: nowrap; }
 [data-perf-screen] .gray { background: #f3f3f3; color: #525252 }
-[data-perf-screen] .stat { border: 1px solid #ededed; border-radius: 12px; padding: 13px 14px; background: #fff; min-width: 0; }
-/* Six of these share the row now, so the label is allowed two lines and the
-   number shrinks with the column rather than pushing a tile wider than its
-   share. */
-[data-perf-screen] .stat i { font-style: normal; display: block; font-size: 11.5px; font-weight: 500; color: #999999; line-height: 1.35; }
-[data-perf-screen] .stat b { display: block; font-size: clamp(16px, 1.45vw, 22px); font-weight: 500; letter-spacing: -0.01em; margin-top: 6px; font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/*
+ * The headline tiles.
+ *
+ * Six tiles shared one row whatever the width, and the first also carried a
+ * 72px sparkline beside its number. At 1440 a tile is ~110px wide, so the
+ * sparkline took the room and the number came out as "7···" — the one figure
+ * the screen leads with, unreadable. At 1280 every label wrapped as well.
+ *
+ * Now the row reads its own width (a container query on .kpis, not the
+ * viewport, because the agent panel beside it is resizable): six across when
+ * there is room (~820px, a wide screen or a narrowed panel), with the first
+ * tile a little wider for its sparkline, and three by two otherwise — which is
+ * what 1280 and 1440 get. The number never clips; on a very narrow tile it
+ * steps down a size (cqi) before it would, and the sparkline is the thing
+ * that yields: it shrinks, and on a tile too narrow to draw a meaningful line
+ * it is not drawn at all (.stat is its own container for that). The daily
+ * chart directly below draws the same series at full size, so nothing is
+ * lost.
+ */
+[data-perf-screen] .kpiwrap { container-type: inline-size; container-name: kpis; }
+[data-perf-screen] .kpis { display: grid; gap: 10px; grid-template-columns: minmax(0,1.7fr) repeat(5, minmax(0,1fr)); }
+@container kpis (max-width: 820px) {
+  [data-perf-screen] .kpis { grid-template-columns: repeat(3, minmax(0,1fr)); }
+}
+[data-perf-screen] .stat { border: 1px solid #ececec; border-radius: 12px; padding: 12px 13px 11px; background: #fff; min-width: 0; container-type: inline-size; }
+[data-perf-screen] .stat i { font-style: normal; display: block; font-size: 11.5px; font-weight: 500; color: #8a8a8a; line-height: 1.35; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+[data-perf-screen] .stat .sv { display: flex; align-items: flex-end; gap: 8px; margin-top: 6px; }
+[data-perf-screen] .stat b { flex: none; display: block; font-size: clamp(16px, 24cqi, 21px); line-height: 26px; font-weight: 500; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; white-space: nowrap; }
+[data-perf-screen] .stat .spark { flex: 1 1 0; min-width: 0; max-width: 88px; height: 22px; margin-left: auto; margin-bottom: 3px; }
+@container (max-width: 130px) {
+  [data-perf-screen] .stat .spark { display: none; }
+}
 
+[data-perf-screen] .twrap { container-type: inline-size; container-name: posts; }
 [data-perf-screen] .t { width: 100%; }
-[data-perf-screen] .t .hd { height: 32px; border-bottom: 1px solid #ededed; display: grid; align-items: center; }
-[data-perf-screen] .t .hd > * { font-size: 11.5px; font-weight: 500; color: #7c7c7c; padding: 0 12px; }
-[data-perf-screen] .tr { height: 46px; border-bottom: 1px solid #f3f3f3; display: grid; align-items: center; }
-[data-perf-screen] .tr > * { font-size: 12.5px; color: #383838; padding: 0 12px; min-width: 0; display: flex; align-items: center; }
+[data-perf-screen] .t .hd, [data-perf-screen] .t .tr { grid-template-columns: minmax(0,1fr) 78px 66px 66px 70px 70px; }
+[data-perf-screen] .thumb { width: 56px; height: 32px; border-radius: 6px; flex-shrink: 0; background: #f3f3f3; }
+[data-perf-screen] .t .hd { height: 34px; border-bottom: 1px solid #ececec; display: grid; align-items: center; }
+[data-perf-screen] .t .hd > * { font-size: 11.5px; font-weight: 500; color: #7c7c7c; padding: 0 10px; white-space: nowrap; }
+[data-perf-screen] .tr { height: 52px; border-bottom: 1px solid #f3f3f3; display: grid; align-items: center; }
+[data-perf-screen] .tr > * { font-size: 12.5px; color: #383838; padding: 0 10px; min-width: 0; display: flex; align-items: center; }
+[data-perf-screen] .tr:hover { background: #fafafa; }
+/* The post cell: the title, and under it where and when it went out. */
+/* The English headers ("Comments ▼", "Watch-thru") are wider than the
+   Chinese ones, so English gets its own widths rather than headers that run
+   into each other. */
+[data-perf-screen][data-lang="en"] .t .hd, [data-perf-screen][data-lang="en"] .t .tr { grid-template-columns: minmax(0,1fr) 74px 66px 96px 82px 80px; }
+@container posts (max-width: 600px) {
+  [data-perf-screen] .t .hd, [data-perf-screen] .t .tr { grid-template-columns: minmax(0,1fr) 66px 56px 54px 62px 64px; }
+  [data-perf-screen][data-lang="en"] .t .hd, [data-perf-screen][data-lang="en"] .t .tr { grid-template-columns: minmax(0,1fr) 70px 62px 90px 76px 74px; }
+  [data-perf-screen] .t .hd > *, [data-perf-screen] .t .tr > * { padding: 0 8px; }
+  [data-perf-screen] .thumb { width: 48px; height: 28px; }
+}
+[data-perf-screen] .pmeta { display: flex; align-items: center; gap: 5px; margin-top: 3px; font-size: 11px; color: #8a8a8a; white-space: nowrap; min-width: 0; }
 [data-perf-screen] .num { justify-content: flex-end; font-variant-numeric: tabular-nums; }
 [data-perf-screen] .el { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
 [data-perf-screen] .up { color: #278f5e; } [data-perf-screen] .dn { color: #e03636; }
@@ -169,6 +236,20 @@ const CSS = `
 [data-perf-screen] .sw { width: 9px; height: 9px; border-radius: 3px; flex-shrink: 0; }
 [data-perf-screen] .pkv { color: #171717; font-weight: 500; margin-left: 5px; }
 [data-perf-screen] .chip.pkon { border-color: var(--ac); color: #171717; font-weight: 500; }
+/*
+ * The platform filter's pressed chip was the accent's blue outline, the only
+ * blue control on a toolbar of grey ones, and it read as a link. It is the
+ * studio's pressed state now — the near-black pill the per-platform search on
+ * Search & compare already uses — and the idle chips take the soft border.
+ */
+[data-perf-screen] .chip { border-color: #e2e2e2; color: #525252; transition: border-color .12s ease, background .12s ease; }
+[data-perf-screen] .chip:hover { border-color: #cfcfcf; }
+[data-perf-screen] .chip.pkon { background: #171717; border-color: #171717; color: #fff; }
+/* Eight titles in link blue down one column was the loudest thing on the
+   screen. The title is text that happens to open the post: dark, and blue
+   only under the pointer. */
+[data-perf-screen] .tr a.el { color: #171717; }
+[data-perf-screen] .tr a.el:hover { color: #007be0; }
 
 /* Additions the product needs and a static artboard did not: buttons that look
  * like the artboard's divs, right-aligned numeric headers (the artboard's
@@ -242,7 +323,8 @@ function windowRange(w: Window): { start: Date; end: Date } {
   return { start, end };
 }
 
-function platformName(key: string): string {
+function platformName(key: string, zh = false): string {
+  if (zh && PLATFORM_NAMES_ZH[key]) return PLATFORM_NAMES_ZH[key];
   return PLATFORM_NAMES[key] ?? (key.charAt(0).toUpperCase() + key.slice(1));
 }
 
@@ -341,7 +423,7 @@ export function PerfScreen(props: PerfScreenProps): React.JSX.Element {
     return seen;
   }, [channels]);
 
-  const sourceLine = platforms.map(platformName).join(", ");
+  const sourceLine = platforms.map((k) => platformName(k, zh)).join(zh ? "、" : ", ");
 
   const freshness = syncedAt === null ? t("never checked") : timeAgo(syncedAt, locale);
 
@@ -358,20 +440,10 @@ export function PerfScreen(props: PerfScreenProps): React.JSX.Element {
     return out;
   }, [rows, sort]);
 
-  /** Views per platform, summed from the rows that report views. A platform
-   * whose posts report no views at all is not drawn as a zero bar. */
-  const byPlatform = React.useMemo(() => {
-    const totalsByKey = new Map<string, number>();
-    for (const r of rows) {
-      if (r.views === null) continue;
-      totalsByKey.set(r.platform, (totalsByKey.get(r.platform) ?? 0) + r.views);
-    }
-    return [...totalsByKey.entries()]
-      .map(([key, views]) => ({ key, views }))
-      .sort((a, b) => b.views - a.views);
-  }, [rows]);
-
-  const topPlatformViews = byPlatform.length > 0 ? byPlatform[0].views : 0;
+  /* The "By channel" bars that sat left of the table are gone: they drew views
+     per platform, which the platform tiles above the chart already say — with
+     likes, engagement and a post count besides — and the 196px they took was
+     exactly what the table was missing. */
 
   /* ------------------------------------------------------------- chart */
 
@@ -566,6 +638,7 @@ export function PerfScreen(props: PerfScreenProps): React.JSX.Element {
   return (
     <div
       data-perf-screen=""
+      data-lang={zh ? "zh" : "en"}
       style={{
         ...frameStyle,
         flexGrow: 1,
@@ -585,7 +658,10 @@ export function PerfScreen(props: PerfScreenProps): React.JSX.Element {
           the spec asks every chart for — the range, the sources, the age. */}
       <div className="bar">
         <span className="h1">{t("Content performance")}</span>
-        <span className="mut">
+        {/* "23 minutes ago" is read from the clock, and the clock moves
+            between the server's render and the browser's; the text is allowed
+            to differ by that minute rather than throw a hydration error. */}
+        <span className="mut" suppressHydrationWarning>
           {day(range.start, locale)} – {day(range.end, locale)}
           {sourceLine === "" ? "" : ` · ${t("via")} ${sourceLine}`}
           {` · ${freshness}`}
@@ -673,67 +749,71 @@ export function PerfScreen(props: PerfScreenProps): React.JSX.Element {
                   }
                 }}
               >
-                {platformName(key)}
+                <PlatformMark platform={key} size={11} />
+                {platformName(key, zh)}
               </div>
             ))}
             <div style={{ flexGrow: 1 }} />
             {syncButton}
           </div>
 
-          <div
-            style={{
-              flexShrink: 0,
-              display: "grid",
-              /* One row, whatever the count. It was hard-coded to five and
-                 there are six tiles, so "posts" dropped onto a line of its
-                 own — one small box under five, which reads as a mistake
-                 rather than as a layout. */
-              gridTemplateColumns: `repeat(${stats.length}, minmax(0,1fr))`,
-              gap: 12,
-              padding: "14px 20px 0",
-            }}
-          >
-            {stats.map((s, i) => (
-              <div className="stat" key={s.label}>
-                <i>{s.label}</i>
-                <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 8 }}>
-                  <b title={s.title}>{s.value}</b>
-                  {/* The artboard put a sparkline in every card. Only views has
-                      a day-by-day series behind it, so only views gets one. */}
-                  {i === 0 && drawable ? (
-                    <svg
-                      viewBox="0 0 72 24"
-                      style={{
-                        width: 72,
-                        height: 24,
-                        fill: "none",
-                        stroke: ACCENT,
-                        strokeWidth: 1.6,
-                        strokeLinecap: "round",
-                        strokeLinejoin: "round",
-                      }}
-                    >
-                      <polyline
-                        points={points
-                          .map((p, j) => {
-                            const px = 2 + (j * 68) / (points.length - 1);
-                            const py = vMax > 0 ? 22 - (p.v / vMax) * 20 : 12;
-                            return `${px.toFixed(1)},${py.toFixed(1)}`;
-                          })
-                          .join(" ")}
-                      />
-                    </svg>
-                  ) : null}
+          {/*
+            * Everything under the toolbar scrolls as one page.
+            *
+            * It was a stack of fixed-height blocks inside `overflow: hidden`,
+            * with the posts table taking whatever height was left over. At
+            * 1280×800 nothing was left over: the tiles and the chart filled
+            * the column and the table — the reason anybody opens this screen —
+            * was cut off below the fold with no way to scroll to it.
+            */}
+          <div style={{ flexGrow: 1, minHeight: 0, overflowY: "auto", paddingBottom: 20 }}>
+          <div className="kpiwrap" style={{ padding: "14px 20px 0" }}>
+            <div className="kpis">
+              {stats.map((s, i) => (
+                <div className="stat" key={s.label}>
+                  <i title={s.label}>{s.label}</i>
+                  <div className="sv">
+                    <b title={s.title}>{s.value}</b>
+                    {/* The artboard put a sparkline in every card. Only views has
+                        a day-by-day series behind it, so only views gets one —
+                        and it gives way to the number, never the other way. */}
+                    {i === 0 && drawable ? (
+                      <svg
+                        className="spark"
+                        viewBox="0 0 72 24"
+                        preserveAspectRatio="none"
+                        aria-hidden
+                        style={{
+                          fill: "none",
+                          stroke: ACCENT,
+                          strokeWidth: 1.6,
+                          strokeLinecap: "round",
+                          strokeLinejoin: "round",
+                        }}
+                      >
+                        <polyline
+                          vectorEffect="non-scaling-stroke"
+                          points={points
+                            .map((p, j) => {
+                              const px = 2 + (j * 68) / (points.length - 1);
+                              const py = vMax > 0 ? 22 - (p.v / vMax) * 20 : 12;
+                              return `${px.toFixed(1)},${py.toFixed(1)}`;
+                            })
+                            .join(" ")}
+                        />
+                      </svg>
+                    ) : null}
+                  </div>
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
 
           {/* ---- by platform, the way the trends board is laid out ---- */}
           <PlatformTiles rows={rows} channels={channels} active={platform} zh={zh} onPick={props.onPlatform} />
 
-          <div style={{ flexShrink: 0, padding: "14px 20px 0" }}>
-            <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 8 }}>
+          <div style={{ padding: "18px 20px 0" }}>
+            <div style={{ display: "flex", alignItems: "baseline", flexWrap: "wrap", columnGap: 10, rowGap: 2, marginBottom: 8 }}>
               <span style={{ fontSize: 14, fontWeight: 500 }}>{t("Daily views")}</span>
               <span className="cap">{t("across every post in the window")}</span>
               <div style={{ flexGrow: 1 }} />
@@ -798,107 +878,58 @@ export function PerfScreen(props: PerfScreenProps): React.JSX.Element {
             </div>
           </div>
 
-          <div
-            style={{
-              flexGrow: 1,
-              minHeight: 0,
-              display: "grid",
-              // Was a fixed 210px, which the table paid for. It shrinks first
-              // now, and disappears below the width where it would squeeze the
-              // titles.
-              gridTemplateColumns: "minmax(0,180px) minmax(0,1fr)",
-              gap: 16,
-              padding: "14px 20px 16px",
-              overflow: "hidden",
-            }}
-          >
-            <div style={{ overflow: "hidden" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 11 }}>
-                <span className="lbl" style={{ padding: 0 }}>
-                  {t("By channel")}
-                </span>
-                <span className="cap">{t("views")}</span>
+          <div className="twrap" style={{ padding: "18px 20px 0", minWidth: 0 }}>
+            {rows.length === 0 ? (
+              /* Connected, but nothing went out in this period. */
+              <div style={{ padding: "20px 0", maxWidth: 460 }}>
+                <div style={{ fontSize: 15, fontWeight: 600 }}>{t("No posts in this window")}</div>
+                <p className="mut" style={{ lineHeight: 1.55, marginTop: 6 }}>
+                  {t("Nothing was published in this period. Try a longer window, or check for new posts now.")}
+                </p>
+                <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+                  {win === "90d" ? null : (
+                    <button type="button" className="btn s" onClick={() => props.onWindow("90d")}>
+                      {t("Show 90 days")}
+                    </button>
+                  )}
+                  {syncButton}
+                </div>
               </div>
-              {byPlatform.length === 0 ? (
-                <div className="cap" style={{ lineHeight: 1.5 }}>
-                  {notReported}
-                </div>
-              ) : null}
-              {byPlatform.map((p, i) => (
-                <div key={p.key} style={{ marginBottom: 11 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 5 }}>
-                    <span className="el">{platformName(p.key)}</span>
-                    <span style={{ fontVariantNumeric: "tabular-nums", color: "#525252" }}>
-                      {full(p.views, locale)}
-                    </span>
-                  </div>
-                  <div style={{ height: 7, borderRadius: 4, background: "#f3f3f3" }}>
-                    <div
-                      style={{
-                        width: `${topPlatformViews > 0 ? Math.round((p.views / topPlatformViews) * 100) : 0}%`,
-                        height: 7,
-                        borderRadius: 4,
-                        background: i === 0 ? ACCENT : "#c7c7c7",
-                      }}
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <div style={{ minWidth: 0, overflow: "auto" }}>
-              {rows.length === 0 ? (
-                /* Connected, but nothing went out in this period. */
-                <div style={{ padding: "32px 12px", maxWidth: 460 }}>
-                  <div style={{ fontSize: 15, fontWeight: 600 }}>{t("No posts in this window")}</div>
-                  <p className="mut" style={{ lineHeight: 1.55, marginTop: 6 }}>
-                    {t("Nothing was published in this period. Try a longer window, or check for new posts now.")}
-                  </p>
-                  <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-                    {win === "90d" ? null : (
-                      <button type="button" className="btn s" onClick={() => props.onWindow("90d")}>
-                        {t("Show 90 days")}
-                      </button>
-                    )}
-                    {syncButton}
-                  </div>
-                </div>
-              ) : (
-                <div className="t">
-                  <div className="hd" style={{ gridTemplateColumns: GRID }}>
-                    <div>{t("Post")}</div>
-                    <div>{t("Channel")}</div>
+            ) : (
+              <div className="t">
+                <div className="hd">
+                  {/* The post column carries the publish-time sort now that
+                      publish time is the post's second line. */}
+                  <div style={{ justifyContent: "space-between", gap: 8 }}>
+                    <span>{t("Post")}</span>
                     {sortHead("publishedAt", t("Published"), false)}
-                    {sortHead("views", t("Views"), true)}
-                    {sortHead("likes", t("Likes"), true)}
-                    {sortHead("comments", t("Comments"), true)}
-                    <div className="num">{t("Watch-thru")}</div>
-                    {sortHead("engagementRate", t("Engage"), true)}
                   </div>
-                  {sorted.map((r) => (
-                    <div key={r.id} className="tr" style={{ gridTemplateColumns: GRID, height: 42 }}>
-                      <div style={{ gap: 10 }}>
-                        {r.thumbnailUrl === null ? (
-                          <div
-                            style={{
-                              width: 46,
-                              height: 26,
-                              borderRadius: 4,
-                              background: "#f3f3f3",
-                              flexShrink: 0,
-                            }}
-                          />
-                        ) : (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img
-                            src={r.thumbnailUrl}
-                            alt=""
-                            // Google's thumbnail host refuses a cross-origin
-                            // referrer, so without this every poster is broken.
-                            referrerPolicy="no-referrer"
-                            style={{ width: 46, height: 26, borderRadius: 4, objectFit: "cover", flexShrink: 0 }}
-                          />
-                        )}
+                  {sortHead("views", t("Views"), true)}
+                  {sortHead("likes", t("Likes"), true)}
+                  {sortHead("comments", t("Comments"), true)}
+                  <div className="num">{t("Watch-thru")}</div>
+                  {sortHead("engagementRate", t("Engage"), true)}
+                </div>
+                {sorted.map((r) => (
+                  <div key={r.id} className="tr">
+                    <div style={{ gap: 10 }}>
+                      {r.thumbnailUrl === null ? (
+                        <div className="thumb" style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
+                          <PlatformMark platform={r.platform} size={12} mono />
+                        </div>
+                      ) : (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={r.thumbnailUrl}
+                          alt=""
+                          // Google's thumbnail host refuses a cross-origin
+                          // referrer, so without this every poster is broken.
+                          referrerPolicy="no-referrer"
+                          className="thumb"
+                          style={{ objectFit: "cover" }}
+                        />
+                      )}
+                      <div style={{ minWidth: 0, flexGrow: 1 }}>
                         {r.permalink === null ? (
                           <span className="el" title={r.title ?? undefined}>
                             {r.title ?? (zh ? "无标题" : "Untitled")}
@@ -914,47 +945,47 @@ export function PerfScreen(props: PerfScreenProps): React.JSX.Element {
                             {r.title ?? (zh ? "无标题" : "Untitled")}
                           </a>
                         )}
-                      </div>
-                      <div>
-                        <span className="bd gray" title={r.channelName ?? undefined}>
-                          {platformName(r.platform)}
-                        </span>
-                      </div>
-                      <div style={{ color: "#7c7c7c" }}>
-                        {r.publishedAt === null ? (
-                          dash(zh ? "没有发布时间" : "no publish date")
-                        ) : (
-                          <span
-                            className="el"
-                            title={new Intl.DateTimeFormat(tag(locale), {
-                              dateStyle: "medium",
-                              timeStyle: "short",
-                            }).format(r.publishedAt)}
-                          >
-                            {timeAgo(r.publishedAt, locale)}
-                          </span>
-                        )}
-                      </div>
-                      <div className="num" title={r.views === null ? notReported : full(r.views, locale)}>
-                        {r.views === null ? dash(notReported) : compact(r.views, locale)}
-                      </div>
-                      <div className="num" title={r.likes === null ? notReported : full(r.likes, locale)}>
-                        {r.likes === null ? dash(notReported) : compact(r.likes, locale)}
-                      </div>
-                      <div className="num" title={r.comments === null ? notReported : full(r.comments, locale)}>
-                        {r.comments === null ? dash(notReported) : compact(r.comments, locale)}
-                      </div>
-                      <div className="num">
-                        {r.completionRate === null ? dash(notReported) : pct1(r.completionRate, locale)}
-                      </div>
-                      <div className="num">
-                        {r.engagementRate === null ? dash(notReported) : pct1(r.engagementRate, locale)}
+                        <div className="pmeta">
+                          <PlatformMark platform={r.platform} size={10} />
+                          <span title={r.channelName ?? undefined}>{platformName(r.platform, zh)}</span>
+                          <span aria-hidden style={{ color: "#d0d0d0" }}>·</span>
+                          {r.publishedAt === null ? (
+                            dash(zh ? "没有发布时间" : "no publish date")
+                          ) : (
+                            <span
+                              className="el"
+                              suppressHydrationWarning
+                              title={new Intl.DateTimeFormat(tag(locale), {
+                                dateStyle: "medium",
+                                timeStyle: "short",
+                              }).format(r.publishedAt)}
+                            >
+                              {timeAgo(r.publishedAt, locale)}
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </div>
-                  ))}
-                </div>
-              )}
-            </div>
+                    <div className="num" style={{ color: "#171717", fontWeight: 500 }} title={r.views === null ? notReported : full(r.views, locale)}>
+                      {r.views === null ? dash(notReported) : compact(r.views, locale)}
+                    </div>
+                    <div className="num" title={r.likes === null ? notReported : full(r.likes, locale)}>
+                      {r.likes === null ? dash(notReported) : compact(r.likes, locale)}
+                    </div>
+                    <div className="num" title={r.comments === null ? notReported : full(r.comments, locale)}>
+                      {r.comments === null ? dash(notReported) : compact(r.comments, locale)}
+                    </div>
+                    <div className="num">
+                      {r.completionRate === null ? dash(notReported) : pct1(r.completionRate, locale)}
+                    </div>
+                    <div className="num">
+                      {r.engagementRate === null ? dash(notReported) : pct1(r.engagementRate, locale)}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
           </div>
         </div>
 
@@ -980,57 +1011,106 @@ export function PerfScreen(props: PerfScreenProps): React.JSX.Element {
 }
 
 /**
- * One tile per platform: what the studio's posts there did in this window
- * (views, likes, engagement, posts), the way the trends board is by
- * platform. Platforms with no connected account say so and point at where
- * to connect one, rather than showing zeros that read as failure.
+ * One tile per connected platform: what the studio's posts there did in this
+ * window (views, likes, engagement, posts), the way the trends board is by
+ * platform.
+ *
+ * It used to draw a tile for every platform the studio *might* publish to,
+ * connected or not: two real tiles and six dashed "还没连接账号" boxes, which
+ * took two rows at 1440 and three at 1280 to say one thing six times. The
+ * platforms without an account are one quiet line now, with the one place to
+ * connect them, and the tiles are the studio's real numbers.
  */
 const TILE_PLATFORMS = ["youtube", "douyin", "xiaohongshu", "bilibili", "weibo", "tiktok", "linkedin", "instagram"];
 
 function PlatformTiles({ rows, channels, active, zh, onPick }: { rows: PerformanceRow[]; channels: ChannelRow[]; active: string | null; zh: boolean; onPick: (p: string | null) => void }) {
-  const connected = new Set(channels.map((c) => c.platform));
-  const keys = [...new Set([...TILE_PLATFORMS.filter((k) => connected.has(k)), ...TILE_PLATFORMS.filter((k) => !connected.has(k))])];
+  const connected = [...new Set(channels.map((c) => c.platform))];
+  // Connected platforms in the studio's usual order, then any the list above
+  // does not know, rather than dropping them.
+  const shown = [
+    ...TILE_PLATFORMS.filter((k) => connected.includes(k)),
+    ...connected.filter((k) => !TILE_PLATFORMS.includes(k)),
+  ];
+  const missing = TILE_PLATFORMS.filter((k) => !connected.includes(k));
   const fmt = (n: number) => (n >= 1e4 ? (zh ? `${(n / 1e4).toFixed(1)}万` : `${(n / 1000).toFixed(1)}k`) : String(n));
   return (
-    <div style={{ flexShrink: 0, padding: "12px 20px 0" }}>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 10 }}>
-        {keys.map((k) => {
-          const on = connected.has(k);
-          const mine = rows.filter((r) => r.platform === k);
-          const views = mine.reduce((n, r) => n + (r.views ?? 0), 0);
-          const likes = mine.reduce((n, r) => n + (r.likes ?? 0), 0);
-          const comments = mine.reduce((n, r) => n + (r.comments ?? 0), 0);
-          const eng = views ? (likes + comments) / views : null;
-          const selected = active === k;
-          return on ? (
-            <button
-              key={k}
-              type="button"
-              onClick={() => onPick(selected ? null : k)}
-              style={{ textAlign: "left", padding: "10px 12px", borderRadius: 12, border: `1px solid ${selected ? "#171717" : "#ececec"}`, background: "#fff", cursor: "pointer", fontFamily: "inherit" }}
-            >
-              <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 600 }}>
-                <PlatformMark platform={k} size={13} />
-                {platformName(k)}
-                <span style={{ marginLeft: "auto", fontSize: 11, color: "#999999", fontWeight: 400 }}>{mine.length} {zh ? "条" : "posts"}</span>
-              </div>
-              <div style={{ fontSize: 18, fontWeight: 600, marginTop: 6, fontVariantNumeric: "tabular-nums" }}>{fmt(views)}</div>
-              <div style={{ fontSize: 11, color: "#7c7c7c", marginTop: 2 }}>
-                {zh ? "播放" : "views"} · {zh ? "赞" : "likes"} {fmt(likes)} · {eng !== null ? `${(eng * 100).toFixed(1)}%` : "—"}
-              </div>
-            </button>
-          ) : (
-            <a key={k} href="/admin" style={{ display: "block", padding: "10px 12px", borderRadius: 12, border: "1px dashed #e2e2e2", background: "#fbfbfa", textDecoration: "none", color: "#999999" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 600, color: "#7c7c7c" }}>
-                <PlatformMark platform={k} size={13} mono />
-                {platformName(k)}
-              </div>
-              <div style={{ fontSize: 11.5, marginTop: 8 }}>{zh ? "还没连接账号" : "No account connected"}</div>
-              <div style={{ fontSize: 11, marginTop: 2, color: "#0f5bd5" }}>{zh ? "在管理里连接 →" : "Connect in Admin →"}</div>
-            </a>
-          );
-        })}
-      </div>
+    <div style={{ padding: "10px 20px 0", display: "flex", flexWrap: "wrap", gap: 10 }}>
+      {shown.map((k) => {
+        const mine = rows.filter((r) => r.platform === k);
+        const views = mine.reduce((n, r) => n + (r.views ?? 0), 0);
+        const likes = mine.reduce((n, r) => n + (r.likes ?? 0), 0);
+        const comments = mine.reduce((n, r) => n + (r.comments ?? 0), 0);
+        const eng = views ? (likes + comments) / views : null;
+        const selected = active === k;
+        return (
+          <button
+            key={k}
+            type="button"
+            aria-pressed={selected}
+            onClick={() => onPick(selected ? null : k)}
+            style={{
+              flex: "1 1 170px",
+              minWidth: 0,
+              textAlign: "left",
+              padding: "11px 13px",
+              borderRadius: 12,
+              border: `1px solid ${selected ? "#171717" : "#ececec"}`,
+              background: "#fff",
+              cursor: "pointer",
+              fontFamily: "inherit",
+              color: "#171717",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 600 }}>
+              <PlatformMark platform={k} size={13} />
+              {platformName(k, zh)}
+              <span style={{ marginLeft: "auto", fontSize: 11, color: "#999999", fontWeight: 400 }}>
+                {mine.length} {zh ? "条" : mine.length === 1 ? "post" : "posts"}
+              </span>
+            </div>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 5, marginTop: 7 }}>
+              <span style={{ fontSize: 19, fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>{fmt(views)}</span>
+              <span style={{ fontSize: 11, color: "#8a8a8a" }}>{zh ? "播放" : "views"}</span>
+            </div>
+            <div style={{ fontSize: 11, color: "#7c7c7c", marginTop: 3, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+              {zh ? "赞" : "likes"} {fmt(likes)}
+              <span style={{ color: "#d0d0d0" }}> · </span>
+              {zh ? "互动率" : "engagement"} {eng !== null ? `${(eng * 100).toFixed(1)}%` : "—"}
+            </div>
+          </button>
+        );
+      })}
+      {missing.length ? (
+        <div
+          style={{
+            flex: "2 1 260px",
+            minWidth: 0,
+            padding: "11px 13px",
+            borderRadius: 12,
+            border: "1px dashed #e2e2e2",
+            background: "#fbfbfa",
+            display: "flex",
+            flexDirection: "column",
+            justifyContent: "space-between",
+            gap: 8,
+          }}
+        >
+          <div style={{ fontSize: 12, fontWeight: 600, color: "#7c7c7c" }}>
+            {zh ? `还有 ${missing.length} 个平台没有连接账号` : `${missing.length} platforms have no account connected`}
+          </div>
+          <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", columnGap: 10, rowGap: 4, fontSize: 11.5, color: "#999999" }}>
+            {missing.map((k) => (
+              <span key={k} style={{ display: "inline-flex", alignItems: "center", gap: 4, whiteSpace: "nowrap" }}>
+                <PlatformMark platform={k} size={11} mono />
+                {platformName(k, zh)}
+              </span>
+            ))}
+            <Link prefetch={false} href="/admin" style={{ marginLeft: "auto", color: "#0f5bd5", whiteSpace: "nowrap", fontSize: 11.5 }}>
+              {zh ? "在管理里连接 →" : "Connect in Admin →"}
+            </Link>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

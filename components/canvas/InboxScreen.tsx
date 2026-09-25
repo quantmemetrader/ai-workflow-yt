@@ -1497,9 +1497,14 @@ export function InboxScreen(props: InboxScreenProps): React.JSX.Element {
         <article className="ib-card" aria-label={`${t("Comment")} · ${name}`}>
           {/* The video the comment was left on: a reply reads differently
               under a different video, so it is the first thing on the card. */}
-          <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", background: "#fcfcfc" }}>
+          {/* Allowed to wrap. At 1280 this card is ~250px wide, and the
+              thumbnail, the open-on-platform button and the pager took all
+              of it: the video title was squeezed to zero width and vanished,
+              leaving its link icon floating under "YouTube". The title keeps
+              a floor now and the controls drop to a second line instead. */}
+          <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 12, rowGap: 8, padding: "12px 16px", background: "#fcfcfc" }}>
             <Thumb url={open.group.thumbnailUrl} width={72} height={40} />
-            <div style={{ minWidth: 0, flexGrow: 1 }}>
+            <div style={{ minWidth: 0, flex: "1 1 130px" }}>
               <div className="cap" style={{ display: "flex", alignItems: "center", gap: 5 }}>
                 <PlatformMark platform={c.platform} size={11} />
                 {platformLabel(c.platform)}
@@ -1523,6 +1528,8 @@ export function InboxScreen(props: InboxScreenProps): React.JSX.Element {
                 </span>
               )}
             </div>
+            {/* One group, so when it wraps it wraps together, to the right. */}
+            <div style={{ display: "flex", alignItems: "center", gap: 12, flexShrink: 0, marginLeft: "auto" }}>
             {c.permalink !== null && c.permalink !== "" ? (
               <a
                 className="ib-nav"
@@ -1567,6 +1574,7 @@ export function InboxScreen(props: InboxScreenProps): React.JSX.Element {
                 </button>
               </div>
             ) : null}
+            </div>
           </div>
 
           <div className="ib-sec" style={{ padding: "16px 18px 18px" }}>
@@ -1638,7 +1646,9 @@ export function InboxScreen(props: InboxScreenProps): React.JSX.Element {
                   <span className="ib-ai" aria-hidden>
                     <Icon name="spark" size={12} />
                   </span>
-                  <span style={{ fontSize: 12.5, fontWeight: 600 }}>{t("Reply")}</span>
+                  {/* nowrap: in a narrow card the long hint beside it
+                      squeezed this to one character a line ("回 / 复"). */}
+                  <span style={{ fontSize: 12.5, fontWeight: 600, whiteSpace: "nowrap", flexShrink: 0 }}>{t("Reply")}</span>
                   <span className="cap">{t("The AI drafts, you approve. Pick a tone or say what to cover.")}</span>
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
