@@ -4,7 +4,7 @@ import { db } from "@/lib/db/client";
 import { scripts, seriesCache, topics, workProjects } from "@/lib/db/schema";
 import type { Viewer } from "@/lib/auth/dal";
 import { audit } from "@/lib/audit";
-import { draftSources, type ProjectSource } from "@/lib/projects/topic";
+import { cleanCodes, draftSources, type ProjectSource } from "@/lib/projects/topic";
 import { draftFromBrief } from "./ai";
 import { createScript } from "./service";
 
@@ -111,7 +111,7 @@ export async function sourcesForScript(viewer: Viewer, scriptId: string, topicId
   const snapshot = (project?.source as ProjectSource | null) ?? null;
   const tid = topicId ?? (await topicIdForScript(viewer.tenantId, scriptId));
   const topic = tid ? await topicFacts(viewer.tenantId, tid) : null;
-  const fromProject = draftSources(snapshot) || (project?.brief ? `项目简介：${project.brief.slice(0, 400)}` : "");
+  const fromProject = draftSources(snapshot) || (project?.brief ? `项目简介：${cleanCodes(project.brief).slice(0, 400)}` : "");
   return [fromProject, topic?.facts ?? ""].filter(Boolean).join("\n\n").slice(0, 4000);
 }
 

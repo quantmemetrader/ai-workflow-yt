@@ -205,7 +205,7 @@ export async function startFromTopicAction(rawRef: TopicRef, opts: { write?: boo
   }
   if (!resolved) return { error: zh ? "找不到这个选题了（可能已经过期）" : "That topic is no longer there" };
 
-  const existing = await projectForTopic(viewer.tenantId, { topicId: resolved.projectTopicId, key: resolved.source.key });
+  const existing = await projectForTopic(viewer.tenantId, { topicId: resolved.projectTopicId, key: resolved.source.key, title: resolved.title, kind: resolved.source.kind });
   if (existing) {
     if (ref.kind === "idea") await db.update(ideas).set({ status: "started", projectId: existing.id, updatedAt: new Date() }).where(and(eq(ideas.id, ref.id), eq(ideas.tenantId, viewer.tenantId)));
     const w = write ? await writeFromTopic(viewer, existing, { chips, mandatoryPoints: resolved.mandatoryPoints, topicId: resolved.scriptTopicId }) : { writing: false };

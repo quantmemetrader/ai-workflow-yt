@@ -192,8 +192,10 @@ export async function evidencePool(viewer: Viewer): Promise<{ rows: PoolRow[]; t
     for (const r of take) {
       const id = `H${++n}`;
       const numbers = numbersOf(r.stats, r.heat, r.heatLabel);
-      rows.push({ id, label: name, title: r.phrase.slice(0, 80), url: r.url ?? null, numbers, thumbnail: r.thumbnail ?? null, platform: list.platform });
-      lines.push(`[${id}] ${r.phrase.slice(0, 70)}${r.extra ? ` ｜ ${r.extra.slice(0, 24)}` : ""} ｜ ${numbers || "—"}`);
+      const phrase = r.phrase.replace(/\s+/g, " ").trim();
+      const extra = (r.extra ?? "").replace(/\s+/g, " ").trim();
+      rows.push({ id, label: name, title: phrase.slice(0, 80), url: r.url ?? null, numbers, thumbnail: r.thumbnail ?? null, platform: list.platform });
+      lines.push(`[${id}] ${phrase.slice(0, 70)}${extra ? ` ｜ ${extra.slice(0, 24)}` : ""} ｜ ${numbers || "—"}`);
     }
   }
 
@@ -405,9 +407,11 @@ export async function generateIdeas(viewer: Viewer, opts: { seed?: string | null
         seed,
         title,
         titles: (Array.isArray(r.titles) ? r.titles : []).map((x) => s(x, 80)).filter((x) => x && x !== title).slice(0, 3),
-        angle: s(r.angle, 200) || null,
-        why: s(r.why, 300) || null,
-        hook: s(r.hook, 120) || null,
+        /* The pool's ids ("[H10]") mean nothing on Home; the evidence chips
+           carry the rows themselves. */
+        angle: cleanCodes(s(r.angle, 200)) || null,
+        why: cleanCodes(s(r.why, 300)) || null,
+        hook: cleanCodes(s(r.hook, 120)) || null,
         format: s(r.format, 40) || null,
         strength: Number.isFinite(strength) ? Math.max(1, Math.min(5, Math.round(strength))) : null,
         evidence,

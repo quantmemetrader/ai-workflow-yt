@@ -68,7 +68,7 @@ export async function scriptTopicQueue(viewer: Viewer, opts: { proposals?: Propo
       scriptId: workProjects.scriptId,
       createdAt: workProjects.createdAt,
       scriptStatus: scripts.status,
-      beats: sql<number>`(select count(*)::int from script_beats b where b.script_id = ${workProjects.scriptId})`,
+      beats: sql<number>`(select count(*)::int from script_beats b where b.script_id = "work_projects"."script_id")`,
     })
     .from(workProjects)
     .leftJoin(scripts, and(eq(scripts.id, workProjects.scriptId), isNull(scripts.deletedAt)))

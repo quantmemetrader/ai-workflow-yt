@@ -547,7 +547,7 @@ export async function resolveTopicRef(viewer: Viewer, ref: TopicRef): Promise<Re
     const kind = ref.source === "audience" ? "audience" : ref.source === "backlog" ? "backlog" : "plan";
     return {
       title,
-      source: { kind, label: kind === "audience" ? "观众提问" : kind === "backlog" ? "选题储备" : "今天的计划", key: `proposal:${kind}:${text.slice(0, 120)}`, why: kind === "audience" ? `观众在评论里问的：${text.slice(0, 120)}` : null },
+      source: { kind, label: kind === "audience" ? "观众提问" : kind === "backlog" ? "选题储备" : "今天的计划", key: `proposal:${kind}:${text.slice(0, 120)}`, why: kind === "audience" ? `观众在评论里问：「${title}」` : null },
       projectTopicId: null,
       scriptTopicId: null,
       mandatoryPoints: [],
@@ -562,16 +562,20 @@ export async function resolveTopicRef(viewer: Viewer, ref: TopicRef): Promise<Re
  * id, or by the snapshot's key. Choosing the same thing twice opens the same
  * project rather than a second copy of it.
  */
-export async function projectForTopic(tenantId: string, by: { topicId?: string | null; key?: string | null }) {
+export async function projectForTopic(tenantId: string, by: { topicId?: string | null; key?: string | null; title?: string | null; kind?: string | null }) {
   const conds = [
     by.topicId ? eq(workProjects.topicId, by.topicId) : null,
     by.key ? sql`(${workProjects.source} ->> 'key') = ${by.key}` : null,
+    /* Projects started before snapshots had keys (from a brief's signal or
+       a pick) are found by their title and kind, so the same signal pressed
+       again does not make a second one. */
+    by.title && by.kind ? sql`(${workProjects.title} = ${by.title} and (${workProjects.source} ->> 'kind') = ${by.kind} and (${workProjects.source} ->> 'key') is null)` : null,
   ].filter((c): c is NonNullable<typeof c> => c !== null);
   if (!conds.length) return null;
   const [row] = await db
     .select({ id: workProjects.id, title: workProjects.title, scriptId: workProjects.scriptId, channelId: workProjects.channelId, source: workProjects.source })
     .from(workProjects)
-    .where(and(eq(workProjects.tenantId, tenantId), isNull(workProjects.deletedAt), conds.length === 1 ? conds[0] : sql`(${conds[0]} or ${conds[1]})`))
+    .where(and(eq(workProjects.tenantId, tenantId), isNull(workProjects.deletedAt), sql.join(conds.map((c) => sql`(${c})`), sql` or `)))
     .orderBy(workProjects.createdAt)
     .limit(1);
   return row ?? null;
@@ -618,10 +622,16 @@ export async function visibleProject(viewer: Viewer, id: string) {
   return row ?? null;
 }
 
-/** How many beats a script has, and whether it is locked. */
+/**
+ * How many beats a script has, and whether it is locked.
+ *
+ * The subquery names the outer table itself: in a one-table select drizzle
+ * writes columns unqualified, and an unqualified "id" inside the subquery
+ * would be the beat's own id.
+ */
 export async function scriptState(tenantId: string, scriptId: string) {
   const [row] = await db
-    .select({ locked: scripts.lockedVersion, beats: sql<number>`(select count(*)::int from ${scriptBeats} where ${scriptBeats.scriptId} = ${scripts.id})` })
+    .select({ locked: scripts.lockedVersion, beats: sql<number>`(select count(*)::int from script_beats b where b.script_id = "scripts"."id")` })
     .from(scripts)
     .where(and(eq(scripts.id, scriptId), eq(scripts.tenantId, tenantId), isNull(scripts.deletedAt)))
     .limit(1);

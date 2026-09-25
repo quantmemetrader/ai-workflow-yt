@@ -48,7 +48,7 @@ export default async function BacklogPage() {
           .where(and(eq(workProjects.tenantId, viewer.tenantId), isNull(workProjects.deletedAt), inArray(workProjects.topicId, ids)))
           .orderBy(workProjects.createdAt),
         db
-          .select({ id: scripts.id, topicId: scripts.topicId, status: scripts.status, beats: sql<number>`(select count(*)::int from script_beats b where b.script_id = ${scripts.id})` })
+          .select({ id: scripts.id, topicId: scripts.topicId, status: scripts.status, beats: sql<number>`(select count(*)::int from script_beats b where b.script_id = "scripts"."id")` })
           .from(scripts)
           .where(and(eq(scripts.tenantId, viewer.tenantId), isNull(scripts.deletedAt), inArray(scripts.topicId, ids)))
           .orderBy(scripts.createdAt),

@@ -39,7 +39,9 @@ export function IdeasPanel({ zh, initial, canStart, canResearch = true }: { zh: 
   const [working, setWorking] = React.useState<string | null>(null);
   const [asking, setAsking] = React.useState<string | null>(null);
   const [question, setQuestion] = React.useState("");
-  const agent = useInlineAgent({ module: "research" }, { agent: "research", key: "home:ideas" });
+  /* One thread with 研究员 for the panel, started fresh for each idea asked
+     about, so an answer about one idea never sits under another. */
+  const agent = useInlineAgent({ module: "research" }, { agent: "research" });
 
   /* The seconds on the progress line, only while a batch is being written. */
   React.useEffect(() => {
@@ -244,7 +246,14 @@ export function IdeasPanel({ zh, initial, canStart, canResearch = true }: { zh: 
                         <Icon name={idea.status === "saved" ? "check" : "plus"} size={13} /> {idea.status === "saved" ? t("已存进选题储备", "In the backlog") : t("存进选题储备", "Save to the backlog")}
                       </button>
                     ) : null}
-                    <button type="button" onClick={() => setAsking(asking === idea.id ? null : idea.id)} style={{ ...btn(false), borderColor: asking === idea.id ? "#0f5bd5" : "#e2e2e2" }}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (asking !== idea.id && agent.messages.length) agent.reset();
+                        setAsking(asking === idea.id ? null : idea.id);
+                      }}
+                      style={{ ...btn(false), borderColor: asking === idea.id ? "#0f5bd5" : "#e2e2e2" }}
+                    >
                       <Icon name="chat" size={13} /> {t("问研究员", "Ask the researcher")}
                     </button>
                     <span style={{ flexGrow: 1 }} />
