@@ -8,6 +8,7 @@ import Link from "next/link";
 import { useResizable } from "@/components/ui/Resizer";
 import { Poster, Waiting } from "@/components/files/Poster";
 import { EyeOffGlyph, GlobeGlyph, PeopleGlyph, PersonGlyph, visibilityLabel } from "@/components/files/AccessPicker";
+import { AgentIcon } from "@/components/agents/AgentIcon";
 /**
  * FilesScreen — a transcription of design/canvas/FilesDesktop.dc.html.
  *
@@ -54,8 +55,39 @@ export type FileRow = {
 
 export type FolderRow = { id: string; name: string; count?: number };
 
-/** The artboard's `accent` prop, at its default. */
+/** The artboard's `accent` prop, at its default. Kept for the soft things
+ * (the upload track, the Restore chip); not for buttons. */
 const ACCENT = "#007be0";
+
+/**
+ * The product's one primary colour, the one every other screen's primary
+ * action wears (New project, 开工, 新建发布, the agent panels' send). This
+ * screen was transcribed with the artboard's blue on Upload and on send, so
+ * Files was the one place in the app whose main button was a different
+ * colour from everywhere else.
+ */
+const PRIMARY = "#171717";
+
+/**
+ * What this screen adds to the artboard's stylesheet (app/canvas.css, which
+ * is not this file's): tile actions that wait for the pointer, and the agent
+ * panel's one line of fact while nothing has been asked. Scoped to
+ * [data-files-screen] like the rest.
+ */
+const FILES_CSS = `
+[data-files-screen] .fs-tile { transition: border-color .15s ease, box-shadow .15s ease; }
+[data-files-screen] .fs-tile:hover { border-color: #e2e2e2; box-shadow: 0 4px 14px rgba(20,30,60,.06); }
+[data-files-screen] .fs-tile:focus-visible { outline: 2px solid #171717; outline-offset: 2px; }
+@media (hover: hover) {
+  [data-files-screen] .fs-acts { opacity: 0; transition: opacity .15s ease; }
+  [data-files-screen] .fs-tile:hover .fs-acts, [data-files-screen] .fs-tile:focus-within .fs-acts, [data-files-screen] .fs-acts[data-keep] { opacity: 1; }
+}
+[data-files-screen] .fs-note { display: none; flex-grow: 1; min-height: 0; padding: 16px 14px 0; overflow: hidden; }
+[data-files-screen] .fs-note p { font-size: 12.5px; line-height: 1.65; color: #525252; text-wrap: pretty; margin: 0; }
+[data-files-screen] [data-files-agent]:has([data-agent-empty]:empty) .fs-note { display: block; }
+[data-files-screen] [data-files-agent]:has([data-agent-empty]:empty) [data-agent-empty] { display: none; }
+@media (prefers-reduced-motion: reduce) { [data-files-screen] .fs-tile, [data-files-screen] .fs-acts { transition: none; } }
+`;
 
 /** zh-CN is the default locale (spec §4.1); English is the toggle. */
 const ZH: Record<string, string> = {
@@ -333,8 +365,33 @@ export function FilesScreen(props: {
   const totalBytes = files.reduce((sum, f) => sum + (f.sizeBytes || 0), 0);
   const empty = folders.length === 0 && files.length === 0;
 
+  /* What the toolbar is titled when there is no folder path to show: the
+     top of Files, or one of the three saved views. It used to be blank on
+     all four, so the toolbar was a row of controls with nothing to say where
+     you were. */
+  const viewTitle =
+    view === "recent" ? (zh ? "最近" : "Recent") : view === "shared" ? (zh ? "共享给我的" : "Shared with me") : view === "trash" ? (zh ? "回收站" : "Trash") : t("Files");
+
+  const agentNote =
+    view === "trash"
+      ? files.length === 0
+        ? zh
+          ? "回收站是空的。删除的文件会在这里保留 30 天，随时可以恢复。"
+          : "The trash is empty. Deleted files wait here for 30 days, and can be put back any time."
+        : zh
+          ? `回收站里有 ${files.length} 个文件，30 天内都能恢复。可以在下面问我它们是什么。`
+          : `${files.length} ${files.length === 1 ? "file" : "files"} in the trash, each restorable for 30 days. Ask below what they are.`
+      : folders.length === 0 && files.length === 0
+        ? zh
+          ? "这里还是空的。上传的文件会出现在这里，之后可以在下面问我它们的内容。"
+          : "Nothing here yet. Uploaded files appear here; then ask below about what is in them."
+        : zh
+        ? `这里有${folders.length ? ` ${folders.length} 个文件夹、` : " "}${files.length} 个文件，共 ${formatBytes(totalBytes, locale)}。在下面问我这里的任何事，比如某段素材拍了什么、适合放进哪条片。`
+        : `${folders.length ? `${folders.length} ${folders.length === 1 ? "folder" : "folders"} and ` : ""}${files.length} ${files.length === 1 ? "file" : "files"} here, ${formatBytes(totalBytes, locale)} in all. Ask below about anything in them — what a clip shows, which video it suits.`;
+
   return (
     <>
+      <style dangerouslySetInnerHTML={{ __html: FILES_CSS }} />
 
       {/* sidebar */}
       <div
@@ -505,6 +562,40 @@ export function FilesScreen(props: {
             flexWrap: "wrap",
           }}
         >
+          {breadcrumbs.length === 0 ? (
+            <span style={{ display: "inline-flex", alignItems: "baseline", gap: 7, minWidth: 0 }}>
+              <span style={{ fontSize: 14, fontWeight: 500 }}>{viewTitle}</span>
+              <span style={{ fontSize: 12, color: "#999999", fontVariantNumeric: "tabular-nums" }}>
+                {folders.length + files.length}
+              </span>
+            </span>
+          ) : view === "folder" ? (
+            /* The way back to the top of Files, which a folder's own path
+               does not include. */
+            <>
+              <span
+                role="button"
+                tabIndex={0}
+                onClick={() => onOpenFolder(null)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    onOpenFolder(null);
+                  }
+                }}
+                style={{ fontSize: 13, color: "#999999", cursor: "pointer" }}
+              >
+                {t("Files")}
+              </span>
+              <svg
+                viewBox="0 0 24 24"
+                aria-hidden
+                style={{ width: 12, height: 12, stroke: "#c7c7c7", fill: "none", strokeWidth: 2, strokeLinecap: "round" }}
+              >
+                <path d="m9.5 5.5 6 6.5-6 6.5" />
+              </svg>
+            </>
+          ) : null}
           {breadcrumbs.flatMap((b, i) => {
             const last = i === breadcrumbs.length - 1;
             if (last) {
@@ -659,7 +750,7 @@ export function FilesScreen(props: {
               onClick={onUploadClick}
               style={{
                 flexShrink: 0,
-                background: ACCENT,
+                background: PRIMARY,
                 color: "#ffffff",
                 border: 0,
                 fontFamily: "inherit",
@@ -1184,6 +1275,7 @@ export function FilesScreen(props: {
 
           {/* ============ AGENT PANEL ============ */}
           <div
+            data-files-agent=""
             style={{
               width: agentWidth,
               position: "relative",
@@ -1206,35 +1298,26 @@ export function FilesScreen(props: {
                 borderBottom: "1px solid #ededed",
               }}
             >
+              {/* Who answers here: the host's own pixel robot, drawn the way
+                  every other screen's agent panel draws its employee
+                  (ResearchAgentPanel). It was the artboard's blue cube, a
+                  shape that stood for nobody, in a colour nothing else on
+                  the screen used. */}
               <div
                 style={{
-                  height: 26,
-                  padding: "0 10px",
-                  borderRadius: 7,
+                  height: 28,
+                  padding: "0 10px 0 6px",
+                  borderRadius: 8,
                   background: "#ffffff",
-                  boxShadow: "0 1px 2px rgba(0,0,0,0.1)",
+                  boxShadow: "0 1px 2px rgba(0,0,0,.08), 0 0 0 1px rgba(0,0,0,.03)",
                   display: "flex",
                   alignItems: "center",
-                  gap: 6,
+                  gap: 7,
                   fontSize: 12.5,
                   fontWeight: 500,
                 }}
               >
-                <svg
-                  viewBox="0 0 24 24"
-                  style={{
-                    width: 13,
-                    height: 13,
-                    stroke: ACCENT,
-                    fill: "none",
-                    strokeWidth: 1.8,
-                    strokeLinecap: "round",
-                    strokeLinejoin: "round",
-                  }}
-                >
-                  <path d="M12 4.2 19 8v8l-7 3.8L5 16V8z" />
-                  <path d="M12 11.8 19 8M12 11.8v8M12 11.8 5 8" />
-                </svg>
+                <AgentIcon agent={null} size={18} radius={5} />
                 {t("Agent")}
               </div>
               {/* The artboard paired this with a "Details" tab and a collapse
@@ -1284,8 +1367,16 @@ export function FilesScreen(props: {
                 is the way in. */}
             {/* thread — the artboard's worked example was demo content. This is
                 the real conversation, answered here rather than on /chat. */}
+            {/* Until something has been asked, one line of fact about the
+                folder in place of an empty column: the thread's empty state
+                is marked `data-agent-empty`, and while it is empty the note
+                shows instead (the same :has() rule ResearchAgentPanel uses;
+                a browser without it shows the empty thread, as before). */}
+            <div className="fs-note">
+              <p>{agentNote}</p>
+            </div>
             {thread ?? (
-              <div style={{ flexGrow: 1, minHeight: 0, padding: "16px 14px 0", overflow: "hidden" }}></div>
+              <div data-agent-empty="" style={{ flexGrow: 1, minHeight: 0, padding: "16px 14px 0", overflow: "hidden" }}></div>
             )}
 
             {/* composer */}
@@ -1341,13 +1432,16 @@ export function FilesScreen(props: {
                       }
                     }}
                     style={{
-                      cursor: "pointer",
+                      cursor: draft.trim() ? "pointer" : "default",
                       border: 0,
                       padding: 0,
                       width: 26,
                       height: 26,
                       borderRadius: 7,
-                      background: ACCENT,
+                      /* The product's primary colour once there is something
+                         to send, grey until then — as on every other panel. */
+                      background: draft.trim() ? PRIMARY : "#d4d4d4",
+                      transition: "background .15s",
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "center",
@@ -1493,7 +1587,11 @@ function Tiles({
   t: (key: string) => string;
 }) {
   const gallery = layout === "gallery";
-  const min = gallery ? 232 : 152;
+  /* A little roomier than the artboard's 152px / 74px: at that size a
+     vertical clip's poster was a sliver and the board read as a contact
+     sheet of grey boxes. */
+  const min = gallery ? 232 : 168;
+  const thumbHeight = gallery ? 118 : 92;
 
   return (
     <div
@@ -1506,6 +1604,7 @@ function Tiles({
       {folders.map((f) => (
         <div
           key={f.id}
+          className="fs-tile"
           role="button"
           tabIndex={0}
           onClick={() => onOpenFolder(f.id)}
@@ -1533,7 +1632,7 @@ function Tiles({
           <TileActions kind="folder" id={f.id} name={f.name} onRename={onRename} onDelete={onDelete} onRestore={onRestore} t={t} />
           <div
             style={{
-              height: gallery ? 118 : 74,
+              height: thumbHeight,
               borderRadius: 8,
               background: "#f8f8f8",
               display: "flex",
@@ -1553,16 +1652,25 @@ function Tiles({
               />
             </svg>
           </div>
-          <span
-            style={{
-              fontSize: 12.5,
-              fontWeight: 500,
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-            }}
-          >
-            {f.name}
+          {/* Two lines, like a file's, so a row of tiles lines up: a folder
+              tile used to stop a line short of the files beside it. */}
+          <span style={{ minWidth: 0 }}>
+            <span
+              style={{
+                fontSize: 12.5,
+                fontWeight: 500,
+                display: "block",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {f.name}
+            </span>
+            <span style={{ fontSize: 11.5, color: "#999999", display: "block", marginTop: 2, lineHeight: "18px" }}>
+              {t("folder")}
+              {f.count != null ? ` · ${f.count} ${t("items")}` : ""}
+            </span>
           </span>
         </div>
       ))}
@@ -1570,6 +1678,7 @@ function Tiles({
       {files.map((f) => (
         <div
           key={f.id}
+          className="fs-tile"
           role="button"
           tabIndex={0}
           onClick={() => onOpenFile(f.id)}
@@ -1598,7 +1707,7 @@ function Tiles({
           <TileActions kind="file" id={f.id} name={f.name} onRename={onRename} onDelete={onDelete} onRestore={onRestore} t={t} />
           <div
             style={{
-              height: gallery ? 118 : 74,
+              height: thumbHeight,
               borderRadius: 8,
               background: "#f8f8f8",
               display: "flex",
@@ -1678,8 +1787,16 @@ function TileActions({
   t: (key: string) => string;
 }) {
   if (!onRename && !onDelete && !onRestore) return null;
+  /* Rename and delete wait for the pointer (FILES_CSS), so a board of clips
+     is a board of pictures rather than of pencils and bins; Restore, the
+     only way out of the trash, always shows. A touch screen has no hover and
+     keeps them all visible. */
   return (
-    <span style={{ position: "absolute", top: 7, right: 7, display: "flex", gap: 4, zIndex: 1 }}>
+    <span
+      className="fs-acts"
+      data-keep={onRestore ? "" : undefined}
+      style={{ position: "absolute", top: 7, right: 7, display: "flex", gap: 4, zIndex: 1 }}
+    >
       {onRestore && (
         <button
           type="button"

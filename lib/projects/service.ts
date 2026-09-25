@@ -151,6 +151,13 @@ export type ProjectStageRow = WorkProjectRow & {
   steps: ProjectStep[];
   /** Where it has got to (`frontierStep`); null when delivered. */
   frontier: ProjectStep | null;
+  /**
+   * The file a card's picture comes from (`/api/files/{id}/thumb`): the first
+   * clip in the bin, as on Home, or — for a cut made without uploads (a
+   * direct edit from stock) — the finished render. Null draws the soft
+   * gradient and the clapper.
+   */
+  thumbFileId: string | null;
 };
 
 /**
@@ -199,6 +206,9 @@ export async function listProjectStages(
          where ${videoExports.projectId} = ${videoProjects.id}
          order by ${videoExports.createdAt} desc
          limit 1)`,
+      /* One more correlated read of the same row, for the projects list's
+         pictures: the first clip added, which is what Home shows too. */
+      firstClipFileId: sql<string | null>`(select ${videoClips.fileId} from ${videoClips} where ${videoClips.projectId} = ${videoProjects.id} order by ${videoClips.addedAt} asc limit 1)`,
     })
     .from(workProjects)
     .leftJoin(chatChannels, eq(chatChannels.id, workProjects.channelId))
@@ -248,6 +258,7 @@ export async function listProjectStages(
       directorState: r.directorState ?? null,
       steps,
       frontier: frontierStep(steps),
+      thumbFileId: r.firstClipFileId ?? (render?.state === "done" ? (render.fileId ?? null) : null),
     };
   });
 }

@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useSyncExternalStore, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { ChannelRow, LogRow, PostRow } from "@/lib/publish/service";
 import { CONNECTABLE, checkForPlatform, specFor } from "@/lib/publish/platforms";
 import { PlatformMark, platformLabel } from "@/components/ui/PlatformMark";
+import { Icon, type IconName } from "@/components/ui/Icon";
 import {
   approveAction,
   createPostAction,
@@ -274,6 +275,7 @@ function ChannelBoard({
 }) {
   const t = (en: string, cn: string) => (zh ? cn : en);
   const [connecting, setConnecting] = useState(false);
+  const minute = useMinute();
 
   if (!channels.length) {
     return (
@@ -282,41 +284,48 @@ function ChannelBoard({
           <ConnectChannel zh={zh} onClose={() => setConnecting(false)} onPick={onConnect} />
         ) : null}
         <Empty
+          icon="share"
           title={t("No channel is connected yet", "还没有连接任何渠道")}
           body={t(
             "Connect one of your own accounts and it appears here, along with what it is allowed to do.",
             "连接你自己的账号后，它会出现在这里，并显示它被授权可以做什么。",
           )}
-        />
-        <div style={{ display: "flex", justifyContent: "center", marginTop: -8 }}>
+        >
           <button type="button" onClick={() => setConnecting(true)} style={solid}>
             {t("Add channel", "添加渠道")}
           </button>
-        </div>
+        </Empty>
       </>
     );
   }
 
+  /* The platforms the studio could still connect, as one-press chips under
+     the board. The board used to end at the last card and leave the rest of
+     the column blank; this is the next thing anybody on this tab does. */
+  const connected = new Set(channels.map((c) => c.platform));
+  const more = CONNECTABLE.filter((p) => !connected.has(p));
+  /* Anything a card draws a note for counts: a state that is not "can
+     post", a token running out, an issue or an error from the platform. */
+  const attention = channels.filter(
+    (c) => c.enabled && (channelHealth(c).tone !== "good" || c.tokenExpiresSoon || c.issues.length > 0 || Boolean(c.lastError)),
+  ).length;
+
   return (
     <>
-      <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 14 }}>
-        <span style={{ fontSize: 15, fontWeight: 500 }}>{t("Channels", "渠道")}</span>
+      <style dangerouslySetInnerHTML={{ __html: BOARD_CSS }} />
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14, flexWrap: "wrap" }}>
+        <span style={{ fontSize: 15, fontWeight: 600 }}>{t("Channels", "渠道")}</span>
         <span style={{ fontSize: 11.5, color: "#999999" }}>
-          {t(
-            "connection state, scopes and token expiry, read from the platform",
-            "连接状态、授权范围与令牌有效期，直接来自平台",
-          )}
+          {attention
+            ? t(`${channels.length} connected · ${attention} need a look`, `已连接 ${channels.length} 个 · ${attention} 个需要留意`)
+            : t(`${channels.length} connected · all fine`, `已连接 ${channels.length} 个 · 都正常`)}
         </span>
-        <button
-          type="button"
-          onClick={() => setConnecting(true)}
-          disabled={busy}
-          style={{ ...solid, marginLeft: "auto" }}
-        >
-          {t("Add channel", "添加渠道")}
-        </button>
+        <span style={{ flexGrow: 1 }} />
         <button type="button" onClick={onSync} disabled={busy} style={ghost}>
           {busy ? t("Checking…", "检查中…") : t("Check now", "立即检查")}
+        </button>
+        <button type="button" onClick={() => setConnecting(true)} disabled={busy} style={solid}>
+          {t("Add channel", "添加渠道")}
         </button>
       </div>
 
@@ -328,130 +337,406 @@ function ChannelBoard({
         />
       ) : null}
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 12 }}>
-        {channels.map((c) => {
-          const bad = c.needsReconnect || c.status === "error" || !!c.lastError;
-          return (
-            <div
-              key={c.id}
+      {/* Each card its own height: a healthy channel has two figures and a
+          footer, and stretching it to its neighbour's notes left a card
+          that was mostly blank. */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 12, alignItems: "start" }}>
+        {channels.map((c) => (
+          <ChannelCard key={c.id} c={c} zh={zh} busy={busy} minute={minute} onToggle={onToggle} onConnect={onConnect} />
+        ))}
+      </div>
+
+      {more.length ? (
+        <div style={{ marginTop: 22 }}>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+            <span style={{ fontSize: 13, fontWeight: 600 }}>{t("Also available", "还可以连接")}</span>
+            <span style={{ fontSize: 11.5, color: "#999999" }}>
+              {t("Sign in as the account you publish from; it opens in a new tab. Come back and press Check now.", "用要发布的账号登录，会在新标签页打开；回来后点“立即检查”。")}
+            </span>
+          </div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
+            {more.map((p) => (
+              <button key={p} type="button" className="pub-more" disabled={busy} onClick={() => onConnect(p)}>
+                <PlatformMark platform={p} size={15} />
+                {platformLabel(p)}
+                <Icon name="plus" size={12} color="#b3b3b3" />
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : null}
+    </>
+  );
+}
+
+const BOARD_CSS = `
+.pub-more { display: inline-flex; align-items: center; gap: 7px; height: 34px; padding: 0 10px 0 11px; border-radius: 10px; border: 1px solid #ececec; background: #fff; color: #383838; font-size: 12.5px; font-family: inherit; letter-spacing: inherit; cursor: pointer; transition: border-color .15s ease, box-shadow .15s ease; }
+.pub-more:hover { border-color: #dcdcdc; box-shadow: 0 2px 8px rgba(20,30,60,.06); }
+.pub-more:disabled { opacity: .6; cursor: default; }
+@media (prefers-reduced-motion: reduce) { .pub-more { transition: none; } }
+`;
+
+/* ------------------------------------------------------- channel health */
+
+/** Tints for a channel's state, the same soft set the rest of the app uses. */
+const TONES = {
+  good: { bg: "#e7f6ee", fg: "#1e7a4f", line: "#cbe9d8" },
+  warn: { bg: "#fff4df", fg: "#95590a", line: "#f4ddb0" },
+  bad: { bg: "#fdecec", fg: "#c43c3c", line: "#f6cfcf" },
+  quiet: { bg: "#f3f3f1", fg: "#5f5f5f", line: "#e6e6e3" },
+} as const;
+
+type Tone = keyof typeof TONES;
+
+/** The pill in a card's corner: can it post, in one word. */
+function channelHealth(c: ChannelRow): { tone: Tone; en: string; zh: string } {
+  if (!c.enabled) return { tone: "quiet", en: "switched off", zh: "已停用" };
+  if (c.needsReconnect) return { tone: "bad", en: "needs reconnecting", zh: "需重新连接" };
+  if (c.status === "error") return { tone: "bad", en: "connection error", zh: "连接出错" };
+  if (c.canPost) return { tone: "good", en: "can post", zh: "可发布" };
+  return { tone: "quiet", en: "read only", zh: "只读" };
+}
+
+/**
+ * What a platform's error means for the person looking at the card.
+ *
+ * `lastError` is the platform's own sentence, kept intact on purpose — the
+ * log and the tooltip still show it word for word — but a red "Rate limit
+ * exceeded. Please retry after 1 seconds." on the board read as a broken
+ * channel when it is a pause the next round gets past. So the card says what
+ * it means and what to do, and the raw text is one hover away.
+ */
+function describeError(raw: string): { tone: Tone; en: string; zh: string; reconnect: boolean } {
+  const s = raw.toLowerCase();
+  if (/rate.?limit|too many requests|\b429\b|retry after|throttl/.test(s)) {
+    return { tone: "warn", zh: "平台暂时限流，稍后会自动重试", en: "The platform is rate-limiting; it retries on its own shortly", reconnect: false };
+  }
+  if (/quota/.test(s)) {
+    return { tone: "warn", zh: "平台今天的调用额度用完了，额度恢复后会自动继续", en: "Today's platform quota is used up; it carries on when it resets", reconnect: false };
+  }
+  if (/invalid_grant|expired|revoked|unauthori[sz]ed|\b401\b|re-?auth|reconnect|invalid (access )?token/.test(s)) {
+    return { tone: "bad", zh: "授权已过期，需要重新连接", en: "The sign-in has expired; reconnect the account", reconnect: true };
+  }
+  if (/forbidden|\b403\b|permission|scope|insufficient/.test(s)) {
+    return { tone: "bad", zh: "账号权限不足，需要重新授权", en: "The account lacks a permission; authorise it again", reconnect: true };
+  }
+  if (/timeout|timed out|etimedout|econnreset|enotfound|network|fetch failed|\b50[0-4]\b|unavailable|bad gateway/.test(s)) {
+    return { tone: "warn", zh: "平台暂时连不上，稍后会自动重试", en: "The platform could not be reached; it tries again shortly", reconnect: false };
+  }
+  return { tone: "bad", zh: "连接出错（悬停查看平台原话）", en: "Connection error (hover for the platform's words)", reconnect: false };
+}
+
+/**
+ * When a token runs out, in words.
+ *
+ * Before the browser has a clock (the server's HTML, and hydration) it is the
+ * date and time; afterwards "today at 03:20", "in 3 days" or "expired".
+ * `tokenExpiresSoon` is the server's reading (within seven days) and decides
+ * the colour either way, so the card never changes colour on hydration.
+ */
+function tokenWords(at: Date, minute: number | null, zh: boolean): string {
+  const ms = at.getTime();
+  const stamp = `${hkDate(ms, zh)} ${hkTime(ms)}`;
+  if (minute === null) return zh ? `授权将于 ${stamp} 到期` : `Sign-in expires ${stamp}`;
+  const now = minute * 60_000;
+  if (ms <= now) return zh ? `授权已于 ${stamp} 到期` : `Sign-in expired ${stamp}`;
+  const days = hkDay(ms) - hkDay(now);
+  if (days === 0) return zh ? `授权今天 ${hkTime(ms)} 到期` : `Sign-in expires today at ${hkTime(ms)}`;
+  if (days === 1) return zh ? `授权明天 ${hkTime(ms)} 到期` : `Sign-in expires tomorrow at ${hkTime(ms)}`;
+  return zh ? `授权 ${days} 天后到期（${hkDate(ms, zh)}）` : `Sign-in expires in ${days} days (${hkDate(ms, zh)})`;
+}
+
+function ChannelCard({
+  c,
+  zh,
+  busy,
+  minute,
+  onToggle,
+  onConnect,
+}: {
+  c: ChannelRow;
+  zh: boolean;
+  busy: boolean;
+  minute: number | null;
+  onToggle: (id: string, on: boolean) => void;
+  onConnect: (platform: string) => void;
+}) {
+  const t = (en: string, cn: string) => (zh ? cn : en);
+  const health = channelHealth(c);
+  const pill = TONES[health.tone];
+  const error = c.lastError ? describeError(c.lastError) : null;
+  const expiring = Boolean(c.tokenExpiresAt && c.tokenExpiresSoon);
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        border: "1px solid #ececec",
+        borderRadius: 12,
+        padding: "14px 14px 12px",
+        background: c.enabled ? "#fff" : "#fafafa",
+        opacity: c.enabled ? 1 : 0.72,
+        boxShadow: "0 1px 2px rgba(0,0,0,.03)",
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
+        {/* The channel's own picture, with the platform's mark on the
+            corner: the picture says which account, the logo which platform. */}
+        <span style={{ position: "relative", flexShrink: 0, width: 36, height: 36 }}>
+          {c.avatarUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={c.avatarUrl}
+              alt=""
+              style={{ width: 36, height: 36, borderRadius: 10, objectFit: "cover", display: "block", background: "#f3f3f3" }}
+            />
+          ) : (
+            <span
               style={{
-                border: "1px solid #ededed",
-                borderRadius: 11,
-                padding: 14,
-                background: c.enabled ? "#fff" : "#fafafa",
-                opacity: c.enabled ? 1 : 0.72,
+                width: 36,
+                height: 36,
+                borderRadius: 10,
+                background: "#f3f3f1",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
               }}
             >
-              <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
-                {/* The channel's own picture, with the platform's mark on the
-                    corner. Smaller than it was: the picture says which account,
-                    the logo says which platform, and neither needs to be the
-                    biggest thing on the card. */}
-                <span style={{ position: "relative", flexShrink: 0, width: 24, height: 24 }}>
-                  {c.avatarUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={c.avatarUrl}
-                      alt=""
-                      style={{ width: 24, height: 24, borderRadius: 7, objectFit: "cover", display: "block" }}
-                    />
-                  ) : (
-                    <span
-                      style={{
-                        width: 24,
-                        height: 24,
-                        borderRadius: 7,
-                        background: "#f3f3f3",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                      }}
-                    >
-                      <PlatformMark platform={c.platform} size={13} />
-                    </span>
-                  )}
-                  {c.avatarUrl ? (
-                    <span
-                      style={{
-                        position: "absolute",
-                        right: -3,
-                        bottom: -3,
-                        width: 13,
-                        height: 13,
-                        borderRadius: 7,
-                        background: "#fff",
-                        boxShadow: "0 0 0 1.5px #fff",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                      }}
-                    >
-                      <PlatformMark platform={c.platform} size={11} />
-                    </span>
-                  ) : null}
-                </span>
-                <span style={{ minWidth: 0 }}>
-                  <span style={{ fontSize: 13, fontWeight: 500, display: "block" }}>
-                    {c.displayName ?? c.username ?? c.platform}
-                  </span>
-                  <span style={{ fontSize: 11, color: "#999999", display: "block" }}>
-                    {platformLabel(c.platform)}
-                    {c.username ? ` · ${c.username}` : ""}
-                  </span>
-                </span>
-              </div>
-
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 11 }}>
-                <Badge
-                  tone={bad ? "bad" : c.canPost ? "good" : "quiet"}
-                  text={
-                    c.needsReconnect
-                      ? t("needs reconnecting", "需重新连接")
-                      : c.canPost
-                        ? t("can post", "可发布")
-                        : t("read only", "只读")
-                  }
-                />
-                <Badge tone="quiet" text={`${c.followers.toLocaleString()} ${t("followers", "粉丝")}`} />
-                {c.tokenExpiresAt && (
-                  <Badge
-                    tone={c.tokenExpiresSoon ? "warn" : "quiet"}
-                    text={`${t("token to", "令牌有效期至")} ${c.tokenExpiresAt.toISOString().slice(0, 10)}`}
-                  />
-                )}
-              </div>
-
-              {c.issues.length > 0 && (
-                <p style={{ fontSize: 11.5, color: "#a35f00", lineHeight: 1.55, margin: "9px 0 0" }}>
-                  {c.issues.join(" · ")}
-                </p>
-              )}
-              {c.lastError && (
-                <p style={{ fontSize: 11.5, color: "#e03636", lineHeight: 1.55, margin: "9px 0 0" }}>
-                  {c.lastError}
-                </p>
-              )}
-
-              <div style={{ display: "flex", alignItems: "center", gap: 9, marginTop: 12 }}>
-                <button
-                  type="button"
-                  onClick={() => onToggle(c.id, !c.enabled)}
-                  disabled={busy}
-                  style={ghost}
-                >
-                  {c.enabled ? t("Switch off", "停用") : t("Switch on", "启用")}
-                </button>
-                <span style={{ fontSize: 10.5, color: "#c7c7c7" }}>
-                  {c.syncedAt
-                    ? `${t("checked", "检查于")} ${c.syncedAt.toISOString().slice(11, 16)}`
-                    : t("never checked", "尚未检查")}
-                </span>
-              </div>
-            </div>
-          );
-        })}
+              <PlatformMark platform={c.platform} size={17} />
+            </span>
+          )}
+          {c.avatarUrl ? (
+            <span
+              style={{
+                position: "absolute",
+                right: -4,
+                bottom: -4,
+                width: 18,
+                height: 18,
+                borderRadius: 6,
+                background: "#fff",
+                boxShadow: "0 0 0 1.5px #fff, 0 1px 2px rgba(0,0,0,.12)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <PlatformMark platform={c.platform} size={12} />
+            </span>
+          ) : null}
+        </span>
+        <span style={{ minWidth: 0, flexGrow: 1 }}>
+          <span style={{ fontSize: 13.5, fontWeight: 600, display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {c.displayName ?? c.username ?? c.platform}
+          </span>
+          <span style={{ fontSize: 11.5, color: "#999999", display: "flex", alignItems: "center", gap: 5, minWidth: 0, marginTop: 1 }}>
+            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {platformLabel(c.platform)}
+              {c.username ? ` · ${c.username}` : ""}
+            </span>
+            {c.profileUrl ? (
+              <a
+                href={c.profileUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                title={t("Open the profile", "打开主页")}
+                aria-label={t("Open the profile", "打开主页")}
+                style={{ display: "inline-flex", color: "#b3b3b3", flexShrink: 0 }}
+              >
+                <Icon name="external" size={11} />
+              </a>
+            ) : null}
+          </span>
+        </span>
+        <span
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 5,
+            flexShrink: 0,
+            alignSelf: "flex-start",
+            padding: "2px 9px 2px 7px",
+            borderRadius: 999,
+            background: pill.bg,
+            color: pill.fg,
+            fontSize: 11,
+            fontWeight: 500,
+            whiteSpace: "nowrap",
+          }}
+        >
+          <span style={{ width: 6, height: 6, borderRadius: 3, background: pill.fg, opacity: 0.7 }} />
+          {zh ? health.zh : health.en}
+        </span>
       </div>
-    </>
+
+      {/* Two small figures rather than a row of grey pills. */}
+      <div style={{ display: "flex", gap: 22, marginTop: 14 }}>
+        <Figure label={t("Followers", "粉丝")} value={countWord(c.followers, zh)} />
+        {c.tokenExpiresAt ? (
+          <Figure
+            label={t("Sign-in valid to", "授权有效至")}
+            value={hkDate(c.tokenExpiresAt.getTime(), zh)}
+            tone={expiring ? "warn" : undefined}
+          />
+        ) : null}
+      </div>
+
+      {expiring && c.tokenExpiresAt ? (
+        <Notice
+          tone="warn"
+          glyph="clock"
+          title={tokenWords(c.tokenExpiresAt, minute, zh)}
+          detail={t("It may stop posting once it runs out.", "到期后可能无法发布")}
+          action={
+            <NoticeAction onClick={() => onConnect(c.platform)} disabled={busy} tone="warn">
+              {t("Re-authorise", "重新授权")}
+            </NoticeAction>
+          }
+        />
+      ) : null}
+
+      {c.needsReconnect && !error?.reconnect ? (
+        <Notice
+          tone="bad"
+          glyph="alert"
+          title={t("This account has to be reconnected before it can post.", "这个账号需要重新连接才能发布。")}
+          action={
+            <NoticeAction onClick={() => onConnect(c.platform)} disabled={busy} tone="bad">
+              {t("Reconnect", "重新连接")}
+            </NoticeAction>
+          }
+        />
+      ) : null}
+
+      {c.issues.length > 0 ? <Notice tone="warn" glyph="alert" title={c.issues.join(" · ")} /> : null}
+
+      {error && c.lastError ? (
+        <Notice
+          tone={error.tone}
+          glyph="alert"
+          title={zh ? error.zh : error.en}
+          raw={c.lastError}
+          action={
+            error.reconnect ? (
+              <NoticeAction onClick={() => onConnect(c.platform)} disabled={busy} tone={error.tone}>
+                {t("Reconnect", "重新连接")}
+              </NoticeAction>
+            ) : null
+          }
+        />
+      ) : null}
+
+      {/* The footer sits on the card's floor, so two cards side by side end
+          on the same line whatever is written in them. */}
+      <div style={{ flexGrow: 1, minHeight: 14 }} />
+      <div style={{ display: "flex", alignItems: "center", gap: 8, paddingTop: 10, borderTop: "1px solid #f3f3f1" }}>
+        <span style={{ fontSize: 11, color: "#a3a3a3", flexGrow: 1, minWidth: 0 }}>
+          {c.syncedAt ? `${t("Checked", "检查于")} ${checkedWords(c.syncedAt.getTime(), minute, zh)}` : t("Never checked", "尚未检查")}
+        </span>
+        <button type="button" onClick={() => onToggle(c.id, !c.enabled)} disabled={busy} style={{ ...ghost, height: 28 }}>
+          {c.enabled ? t("Switch off", "停用") : t("Switch on", "启用")}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function Figure({ label, value, tone }: { label: string; value: string; tone?: Tone }) {
+  return (
+    <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
+      <span style={{ fontSize: 11, color: "#a3a3a3" }}>{label}</span>
+      <span style={{ fontSize: 13.5, fontWeight: 600, color: tone ? TONES[tone].fg : "#171717", fontVariantNumeric: "tabular-nums" }}>{value}</span>
+    </span>
+  );
+}
+
+/**
+ * A soft tinted note inside a card: amber for "keep an eye on it", rose for
+ * "this needs you". `raw`, when given, is the platform's own sentence, put in
+ * the tooltip rather than on the card.
+ */
+function Notice({
+  tone,
+  glyph,
+  title,
+  detail,
+  raw,
+  action,
+}: {
+  tone: Tone;
+  glyph: "clock" | "alert";
+  title: string;
+  detail?: string;
+  raw?: string;
+  action?: React.ReactNode;
+}) {
+  const c = TONES[tone];
+  return (
+    <div
+      title={raw}
+      style={{
+        display: "flex",
+        alignItems: "flex-start",
+        gap: 8,
+        marginTop: 12,
+        padding: "8px 8px 8px 10px",
+        borderRadius: 9,
+        background: c.bg,
+        border: `1px solid ${c.line}`,
+        color: c.fg,
+        fontSize: 12,
+        fontWeight: 500,
+        lineHeight: 1.5,
+        cursor: raw ? "help" : undefined,
+      }}
+    >
+      <svg viewBox="0 0 24 24" aria-hidden style={{ width: 14, height: 14, flexShrink: 0, marginTop: 2, stroke: "currentColor", fill: "none", strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round" }}>
+        {glyph === "clock" ? (
+          <>
+            <circle cx="12" cy="12" r="8.2" />
+            <path d="M12 7.8V12l2.8 1.7" />
+          </>
+        ) : (
+          <>
+            <circle cx="12" cy="12" r="8.2" />
+            <path d="M12 7.8v5M12 16.2v.1" />
+          </>
+        )}
+      </svg>
+      <span style={{ minWidth: 0, flexGrow: 1 }}>
+        {title}
+        {detail ? <span style={{ display: "block", fontWeight: 400, opacity: 0.8, marginTop: 1 }}>{detail}</span> : null}
+      </span>
+      {action}
+    </div>
+  );
+}
+
+function NoticeAction({ onClick, disabled, tone, children }: { onClick: () => void; disabled: boolean; tone: Tone; children: React.ReactNode }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      style={{
+        flexShrink: 0,
+        alignSelf: "center",
+        height: 26,
+        padding: "0 10px",
+        borderRadius: 7,
+        border: `1px solid ${TONES[tone].line}`,
+        background: "#fff",
+        color: TONES[tone].fg,
+        fontSize: 11.5,
+        fontWeight: 600,
+        fontFamily: "inherit",
+        letterSpacing: "inherit",
+        cursor: "pointer",
+        whiteSpace: "nowrap",
+      }}
+    >
+      {children}
+    </button>
   );
 }
 
@@ -757,6 +1042,7 @@ function Caption({
   if (!posts.length) {
     return (
       <Empty
+        icon="pen"
         title={t("Nothing is being written", "还没有待发布的内容")}
         body={t(
           "New post starts one: a master caption, and the channels it goes to.",
@@ -1006,6 +1292,7 @@ function Approvals({
   if (!posts.length) {
     return (
       <Empty
+        icon="check"
         title={t("Nothing is waiting", "没有待审批的内容")}
         body={t(
           "Posts appear here when somebody sends them for approval.",
@@ -1033,7 +1320,7 @@ function Approvals({
                 {p.targets.map((x) => x.channelName).join(", ")}
               </span>
               {p.scheduledFor && (
-                <Badge tone="quiet" text={`${t("scheduled", "定时")} ${p.scheduledFor.toISOString().slice(0, 16).replace("T", " ")}`} />
+                <Badge tone="quiet" text={`${t("scheduled", "定时")} ${hkStamp(p.scheduledFor)}`} />
               )}
             </div>
 
@@ -1106,35 +1393,36 @@ function LogTable({
        log is *for* and what fills it, because somebody reading it has almost
        always arrived wondering whether something went out. */
     return (
-      <>
         <Empty
+          icon="upload"
           title={t("Nothing has been published yet", "还没有发布记录")}
           body={t(
             "Every attempt lands here — the one that worked and the three before it — with the platform's own answer kept exactly as it came back.",
             "每一次尝试都会记录在这里：成功的那次，以及之前失败的几次，并原样保留平台返回的内容。",
           )}
-        />
-        <div style={{ display: "flex", flexDirection: "column", gap: 7, maxWidth: 520 }}>
-          {[
-            t(
-              "A post reaches this log only after someone approves it by name. That is the module's one rule.",
-              "只有经人具名批准后，内容才会进入这里。这是本模块唯一的规则。",
-            ),
-            t(
-              "The worker sends it, not the browser — so closing the tab cannot half-publish anything.",
-              "发送由后台工作进程完成，而不是浏览器，所以关闭页面不会造成“发了一半”。",
-            ),
-            t(
-              "A platform that answers late — a scheduled post, a video still transcoding — updates this log when it does.",
-              "平台稍后才有结果（定时发布、视频仍在转码）时，会在有结果时回写这里。",
-            ),
-          ].map((line) => (
-            <p key={line} style={{ fontSize: 11.5, color: "#999999", lineHeight: 1.6, margin: 0 }}>
-              {line}
-            </p>
-          ))}
-        </div>
-      </>
+        >
+          <div style={{ display: "flex", flexDirection: "column", gap: 7, paddingTop: 12, borderTop: "1px solid #efefec" }}>
+            {[
+              t(
+                "A post reaches this log only after someone approves it by name. That is the module's one rule.",
+                "只有经人具名批准后，内容才会进入这里。这是本模块唯一的规则。",
+              ),
+              t(
+                "The worker sends it, not the browser — so closing the tab cannot half-publish anything.",
+                "发送由后台工作进程完成，而不是浏览器，所以关闭页面不会造成“发了一半”。",
+              ),
+              t(
+                "A platform that answers late — a scheduled post, a video still transcoding — updates this log when it does.",
+                "平台稍后才有结果（定时发布、视频仍在转码）时，会在有结果时回写这里。",
+              ),
+            ].map((line) => (
+              <p key={line} style={{ display: "flex", gap: 7, fontSize: 11.5, color: "#999999", lineHeight: 1.6, margin: 0 }}>
+                <Icon name="check" size={12} color="#b8b8b4" style={{ marginTop: 3 }} />
+                <span>{line}</span>
+              </p>
+            ))}
+          </div>
+        </Empty>
     );
   }
 
@@ -1150,7 +1438,7 @@ function LogTable({
       {log.map((l) => (
         <div key={l.id} style={{ ...row, borderBottom: "1px solid #f3f3f3", minHeight: 44, alignItems: "flex-start", paddingTop: 10 }}>
           <span style={{ width: 130, fontSize: 11.5, color: "#7c7c7c" }}>
-            {l.at.toISOString().slice(0, 16).replace("T", " ")}
+            {hkStamp(l.at)}
           </span>
           <span style={{ flexGrow: 1, minWidth: 0 }}>
             <span
@@ -1329,6 +1617,74 @@ function NewPostDialog({
   );
 }
 
+/* ------------------------------------------------------------- the clock */
+
+/**
+ * The minute, in the browser only.
+ *
+ * "Today at 03:20" and "in 3 days" are readings of the clock, and a render
+ * that reads the clock draws one thing on the server and another in the
+ * browser. So the server (and hydration) get null — the cards then print
+ * the date — and the browser's first render after that gets the minute,
+ * refreshed twice a minute while the tab is open.
+ */
+const subscribeMinute = (onChange: () => void) => {
+  const id = setInterval(onChange, 30_000);
+  return () => clearInterval(id);
+};
+const readMinute = (): number | null => Math.floor(Date.now() / 60_000);
+const serverMinute = (): number | null => null;
+
+function useMinute(): number | null {
+  return useSyncExternalStore(subscribeMinute, readMinute, serverMinute);
+}
+
+/** The studio's clock: Hong Kong, UTC+8, no summer time. Plain arithmetic,
+ * so the server and the browser print the same thing. The card used to slice
+ * `toISOString()`, which printed UTC: "检查于 19:20" for a check at 03:20. */
+const HK_OFFSET = 8 * 3_600_000;
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+function hkDay(ms: number): number {
+  return Math.floor((ms + HK_OFFSET) / 86_400_000);
+}
+
+function hkDate(ms: number, zh: boolean): string {
+  const d = new Date(ms + HK_OFFSET);
+  return zh ? `${d.getUTCMonth() + 1}月${d.getUTCDate()}日` : `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]}`;
+}
+
+function hkTime(ms: number): string {
+  const d = new Date(ms + HK_OFFSET);
+  return `${String(d.getUTCHours()).padStart(2, "0")}:${String(d.getUTCMinutes()).padStart(2, "0")}`;
+}
+
+/** "2026-09-26 03:20" in the studio's clock, for the queue and the log. */
+function hkStamp(date: Date): string {
+  const d = new Date(date.getTime() + HK_OFFSET);
+  return d.toISOString().slice(0, 16).replace("T", " ");
+}
+
+/** When a channel was last read: "今天 03:20" once the browser has a clock. */
+function checkedWords(ms: number, minute: number | null, zh: boolean): string {
+  if (minute !== null) {
+    const days = hkDay(minute * 60_000) - hkDay(ms);
+    if (days === 0) return `${zh ? "今天" : "today"} ${hkTime(ms)}`;
+    if (days === 1) return `${zh ? "昨天" : "yesterday"} ${hkTime(ms)}`;
+  }
+  return `${hkDate(ms, zh)} ${hkTime(ms)}`;
+}
+
+/** A follower count, the same on the server and in the browser
+ * (`toLocaleString` is not): 255, 1,204, 3.2万 / 32K. */
+function countWord(n: number, zh: boolean): string {
+  const trim = (x: number) => (Math.round(x * 10) / 10).toString();
+  if (zh && n >= 10_000) return `${trim(n / 10_000)}万`;
+  if (!zh && n >= 1_000_000) return `${trim(n / 1_000_000)}M`;
+  if (!zh && n >= 10_000) return `${trim(n / 1_000)}K`;
+  return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+}
+
 /* ------------------------------------------------------------- fragments */
 
 function agentNote(channels: ChannelRow[], posts: PostRow[], waiting: number, zh: boolean) {
@@ -1390,11 +1746,22 @@ function Badge({ tone, text }: { tone: "good" | "bad" | "warn" | "quiet"; text: 
   );
 }
 
-function Empty({ title, body }: { title: string; body: string }) {
+/**
+ * What a tab says when it has nothing to show.
+ *
+ * A soft dashed card with a line icon, the way the projects list and Files
+ * say it, rather than a heading floating at the top of a blank column. The
+ * next step (a button, or the log's three notes) sits inside it.
+ */
+function Empty({ title, body, icon, children }: { title: string; body: string; icon: IconName; children?: React.ReactNode }) {
   return (
-    <div style={{ maxWidth: 460, padding: "26px 0" }}>
-      <div style={{ fontSize: 15, fontWeight: 600 }}>{title}</div>
-      <p style={{ fontSize: 12.5, color: "#999999", lineHeight: 1.65, margin: "7px 0 0" }}>{body}</p>
+    <div style={{ maxWidth: 560, marginTop: 4, padding: "24px 24px 22px", border: "1px dashed #e0e0dc", borderRadius: 14, background: "#fcfcfb" }}>
+      <span style={{ width: 40, height: 40, borderRadius: 11, background: "#f1f1ef", display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <Icon name={icon} size={18} color="#8a8a86" />
+      </span>
+      <div style={{ fontSize: 14.5, fontWeight: 600, marginTop: 12 }}>{title}</div>
+      <p style={{ fontSize: 12.5, color: "#8a8a8a", lineHeight: 1.65, margin: "6px 0 0" }}>{body}</p>
+      {children ? <div style={{ marginTop: 14 }}>{children}</div> : null}
     </div>
   );
 }

@@ -6,17 +6,20 @@ import { useRouter } from "next/navigation";
 import { AgentIcon } from "@/components/agents/AgentIcon";
 import { Icon } from "@/components/ui/Icon";
 import { Fold } from "@/components/ui/Fold";
-import { AGENT_COLORS, AGENT_LABELS, AGENT_TINTS, parseAgentMentions, type AgentKey } from "@/lib/agents/catalog";
+import { AGENT_COLORS, AGENT_LABELS, parseAgentMentions } from "@/lib/agents/catalog";
 import { sendChannelMessage } from "@/app/(app)/chat/actions";
 import { notify } from "@/lib/client/notify";
-import type { ProjectDetail, ProjectStep } from "@/lib/projects/service";
+import type { ProjectDetail } from "@/lib/projects/service";
 import { frontierStep } from "@/lib/home/roles";
+import { StageBadge, StepTrack, stageToneOf } from "@/components/projects/StepTrack";
 
 /**
  * Home, project by project.
  *
  * `ProjectProgress`: every project in progress and where it stands, one
- * row each, the step that needs somebody in black.
+ * row each, the step that needs somebody in black. The stepper and the
+ * status pill are `components/projects/StepTrack.tsx`, shared with the
+ * projects list so the two cards cannot drift apart.
  * `ProjectChats`: the last few messages from each of those projects, and
  * the whole conversation with a reply box one press away, so the studio can
  * keep several projects moving without opening any of them.
@@ -56,7 +59,7 @@ export function ProjectProgress({
                filter with — not the first open step, which on a cut whose
                script was never locked is the script. */
             const now = frontierStep(p.steps);
-            const tone = !now ? TONE.done : now.state === "you" ? TONE.you : now.state === "running" ? TONE.running : TONE.todo;
+            const tone = stageToneOf(now);
             const thumb = p.clipList[0]?.fileId ?? null;
             const done = p.steps.filter((s) => s.state === "done" || s.state === "skipped").length;
             const pct = Math.round((done / Math.max(1, p.steps.length)) * 100);
@@ -76,12 +79,9 @@ export function ProjectProgress({
                 <span style={{ minWidth: 0, flexGrow: 1, display: "flex", flexDirection: "column", gap: 9 }}>
                   <span style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
                     <span style={{ fontSize: 13.5, fontWeight: 600, minWidth: 0, flexGrow: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.title}</span>
-                    <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11.5, fontWeight: 500, whiteSpace: "nowrap", color: tone.ink, background: tone.bg, borderRadius: 999, padding: "2px 9px 2px 7px" }}>
-                      <span className={now?.state === "running" ? "pp-live" : undefined} style={{ width: 6, height: 6, borderRadius: 3, background: tone.dot }} />
-                      {!now ? t("已完成", "Done") : now.state === "you" ? t("等你", "Needs you") : now.state === "running" ? t("进行中", "Working") : t("下一步", "Next")}
-                    </span>
+                    <StageBadge now={now} zh={zh} />
                   </span>
-                  <Stepper steps={p.steps} current={now?.key ?? null} />
+                  <StepTrack steps={p.steps} current={now?.key ?? null} />
                   <span style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 11.5, color: "#7c7c7c", minWidth: 0 }}>
                     {now && now.owner !== "you" ? <AgentIcon agent={now.owner} size={16} radius={5} /> : now ? <Icon name="upload" size={13} color="#b07a1f" /> : <Icon name="check" size={13} color="#1e7a4f" />}
                     <span style={{ minWidth: 0, flexGrow: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{now ? now.line : t("已交付", "Delivered")}</span>
@@ -110,57 +110,7 @@ const PROGRESS_CSS = `
 .pp-pct { position: absolute; left: 6px; right: 6px; bottom: 6px; height: 4px; border-radius: 2px; background: rgba(255,255,255,.75); overflow: hidden; }
 .pp-pct > span { display: block; height: 100%; border-radius: 2px; background: #7fb0ea; }
 .pp-open { display: inline-flex; align-items: center; gap: 2px; white-space: nowrap; color: #a3a3a3; font-weight: 500; transition: color .15s ease; }
-.pp-live { animation: pp-pulse 1.4s ease-in-out infinite; }
-@keyframes pp-pulse { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
-.pp-step { position: relative; display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 0; }
-.pp-step::before { content: ""; position: absolute; top: 9px; left: calc(-50% + 12px); right: calc(50% + 12px); height: 2px; border-radius: 1px; background: var(--pp-line, #ececea); }
-.pp-step:first-child::before { display: none; }
-.pp-dot { position: relative; z-index: 1; width: 20px; height: 20px; border-radius: 10px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-.pp-lbl { max-width: 100%; font-size: 11px; line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 `;
-
-/** Soft tints for where a project stands. */
-const TONE = {
-  you: { bg: "#fff4df", ink: "#95590a", line: "#f4ddb0", dot: "#f0a53a" },
-  running: { bg: "#e9f2fe", ink: "#1f5fbf", line: "#cfe0fb", dot: "#4a90e2" },
-  todo: { bg: "#f3f3f1", ink: "#5f5f5f", line: "#e6e6e3", dot: "#b8b8b4" },
-  done: { bg: "#e7f6ee", ink: "#1e7a4f", line: "#cbe9d8", dot: "#3fb57a" },
-};
-
-/** The host's own steps (upload the clips, approve the cut) in a warm light tint. */
-const YOU_TINT = "#fcebc9";
-const YOU_INK = "#95590a";
-
-/** The five steps as a small stepper: each dot in its employee's light colour. */
-function Stepper({ steps, current }: { steps: ProjectStep[]; current: string | null }) {
-  return (
-    <span style={{ display: "grid", gridTemplateColumns: `repeat(${steps.length}, minmax(0,1fr))` }}>
-      {steps.map((s, i) => {
-        const tint = s.owner === "you" ? YOU_TINT : AGENT_TINTS[s.owner as AgentKey];
-        const ink = s.owner === "you" ? YOU_INK : AGENT_COLORS[s.owner as AgentKey];
-        const done = s.state === "done";
-        const skipped = s.state === "skipped";
-        const isNow = current === s.key;
-        const prevDone = i > 0 && (steps[i - 1].state === "done" || steps[i - 1].state === "skipped");
-        const dot: React.CSSProperties = done
-          ? { background: tint, color: ink }
-          : skipped
-            ? { background: "#fff", border: "1.5px dashed #d6d6d2", color: "#c4c4c0" }
-            : isNow
-              ? { background: "#fff", border: `2px solid ${ink}`, boxShadow: `0 0 0 3px ${tint}` }
-              : { background: "#f4f4f2", border: "1px solid #e6e6e3" };
-        return (
-          <span key={s.key} className="pp-step" title={`${s.label} · ${s.line}`} style={{ ["--pp-line" as string]: prevDone ? tint : "#ececea" } as React.CSSProperties}>
-            <span className="pp-dot" style={dot}>
-              {done ? <Icon name="check" size={11} strokeWidth={2.6} /> : isNow ? <span className={s.state === "running" ? "pp-live" : undefined} style={{ width: 7, height: 7, borderRadius: 4, background: ink }} /> : null}
-            </span>
-            <span className="pp-lbl" style={{ color: isNow ? ink : done ? "#525252" : "#a8a8a4", fontWeight: isNow ? 600 : 500, textDecoration: skipped ? "line-through" : undefined }}>{s.label}</span>
-          </span>
-        );
-      })}
-    </span>
-  );
-}
 
 export function ProjectChats({ projects, zh, right }: { projects: ProjectDetail[]; zh: boolean; right?: React.ReactNode }) {
   const t = (a: string, b: string) => (zh ? a : b);
