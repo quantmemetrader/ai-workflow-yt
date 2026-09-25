@@ -6,7 +6,7 @@ import { formatTextarea, type Format } from "@/components/canvas/composer-format
 import { FormattedPreview, HAS_MARKUP } from "@/components/ui/FormattedPreview";
 import { Markdown } from "@/components/ui/Markdown";
 import { JUMP_EVENT } from "@/components/shell/CommandPalette";
-import { AGENT_COLORS, AGENT_LABELS, isTagStart, parseAgentMentions, splitMentions, type AgentKey } from "@/lib/agents/catalog";
+import { AGENT_COLORS, AGENT_LABELS, AGENT_TINTS, isTagStart, parseAgentMentions, splitMentions, type AgentKey } from "@/lib/agents/catalog";
 import {
   AgentMark,
   MentionMenu,
@@ -17,6 +17,11 @@ import {
 } from "./MentionMenu";
 import { bytes, uploadToStudio, type Attaching } from "./upload";
 import type { CardAction, CardDone } from "@/lib/agents/cards";
+import type { ChatCardKind, ChatHandoff, HandoffArtifact } from "@/lib/chat/handoff";
+import { AgentIcon } from "@/components/agents/AgentIcon";
+import { Icon, type IconName } from "@/components/ui/Icon";
+import { clock, dayLabel, minutesBetween, sameDay } from "./when";
+import { initials, soft, threadCss, tidyMarkdown, withoutLeadingPictures } from "./look";
 
 /**
  * The channel's main column: header, messages, composer.
@@ -27,9 +32,10 @@ import type { CardAction, CardDone } from "@/lib/agents/cards";
  * three things the studio asked for all land in this one column and none of
  * them are in the artboard:
  *
- *   1. **Roles you can see.** An AI employee's message carries the dark cube
- *      and its job — "AI 员工 · 视频" — not a grey APP pill that could be any
- *      integration. "so i think just make each role clearer in the chat".
+ *   1. **Roles you can see.** An AI employee's message carries its pixel
+ *      face and its job — "AI 员工 · 视频" — in that employee's colour, not a
+ *      grey APP pill that could be any integration. "so i think just make
+ *      each role clearer in the chat".
  *   2. **Tagging.** `@` opens a picker of people *and* agents, and a tag that
  *      names an agent is drawn as the agent, not as blue text.
  *   3. **Files.** An attach button, because there was not one.
@@ -54,6 +60,10 @@ export type ChannelMessage = {
   actions?: CardAction[];
   /** Set once somebody has pressed one of them. */
   done?: CardDone | null;
+  /** A checked hand-off recorded beside the text (`meta.handoff`). */
+  handoff?: ChatHandoff | null;
+  /** A morning brief or a day plan, drawn as a document rather than a line. */
+  card?: ChatCardKind | null;
   /** On screen but not yet acknowledged by the server. Drawn a shade back, so
    * "sent" and "sending" are not the same picture. */
   pending?: boolean;
@@ -61,76 +71,182 @@ export type ChannelMessage = {
 
 export type ChannelMember = { name: string; avatar: string | null };
 
-/** "Vincent Chow" -> "VC", for the artboard's grey initials tile. */
-function initials(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return "?";
-  const first = parts[0] ?? "";
-  const last = parts.length > 1 ? (parts[parts.length - 1] ?? "") : "";
-  return (first.charAt(0) + last.charAt(0)).toUpperCase();
-}
-
-function startOfDay(d: Date): number {
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
-}
-
-function sameDay(a: string, b: string): boolean {
-  return startOfDay(new Date(a)) === startOfDay(new Date(b));
-}
-
-/** The artboard's day pill: "Today" / "Yesterday", the date for anything older. */
-function dayLabel(iso: string, loc: string): string {
-  const d = new Date(iso);
-  const days = Math.round((startOfDay(d) - startOfDay(new Date())) / 86400000);
-  if (days === 0 || days === -1) {
-    const rel = new Intl.RelativeTimeFormat(loc, { numeric: "auto" }).format(days, "day");
-    return rel.charAt(0).toUpperCase() + rel.slice(1);
-  }
-  return new Intl.DateTimeFormat(loc, { weekday: "short", day: "numeric", month: "short" }).format(d);
-}
+/**
+ * How long a run of messages from one person stays one block. Within it the
+ * name, badge and face are drawn once and the rest sit under them; past it,
+ * or across a day, the author is named again. Worked out from the messages'
+ * own timestamps, so the server and the browser group identically.
+ */
+const GROUP_MINUTES = 5;
 
 /**
- * @mentions carry the artboard's .ment pill — and an agent's tag carries a
- * darker one, because "I asked a colleague" and "I asked the video agent" are
- * different events and used to look identical.
+ * The list's own rules on top of the shared thread rules (`threadCss`): the
+ * brief and plan drawn as documents, the hand-off line, the header buttons.
+ */
+const CSS = `
+${threadCss("[data-chat-surface]")}
+[data-chat-surface] .doc { margin-top: 7px; max-width: calc(72ch + 34px); border-radius: 12px; padding: 12px 16px 13px; }
+[data-chat-surface] .doc .txt { margin-top: 0; }
+[data-chat-surface] .doc .txt > div > p:first-child { font-size: 14.5px; }
+[data-chat-surface] .handoff { display: flex; align-items: center; gap: 6px; margin-top: 7px; flex-wrap: wrap; }
+[data-chat-surface] .handoff .lbl2 { font-size: 11.5px; color: #a3a3a3; }
+[data-chat-surface] .handoff .to { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 9px 0 4px; border-radius: 7px; font-size: 12px; font-weight: 600; color: #171717; border: 1px solid transparent; }
+[data-chat-surface] .handoff.quiet .to { font-weight: 500; color: #525252; background: #fff; border: 1px dashed #d4d4d4; }
+[data-chat-surface] .handoff .art { display: inline-flex; align-items: center; gap: 5px; height: 24px; max-width: 260px; padding: 0 9px; border-radius: 7px; border: 1px solid #e5e5e5; background: #fff; font-size: 12px; color: #404040; text-decoration: none; }
+[data-chat-surface] .handoff .art span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+[data-chat-surface] a.art:hover { border-color: #c7c7c7; color: #171717; }
+[data-chat-surface] .hdr-btn { background: transparent; border: 0; cursor: pointer; padding: 0; }
+[data-chat-surface] .hdr-btn:hover, [data-chat-surface] .ico2.note:hover { background: #f4f4f5; }
+`;
+
+/**
+ * What each kind of hand-over is called, and drawn with — every kind a
+ * receipt can name (`ArtifactKind` in lib/ai/tools/types), plus the two the
+ * older hand-offs used. A kind this list does not know is still drawn, as
+ * "内容", rather than as its raw English id in a Chinese sentence.
+ */
+const ARTIFACT: Record<string, { zh: string; en: string; icon: IconName }> = {
+  script: { zh: "脚本", en: "Script", icon: "pen" },
+  video: { zh: "视频项目", en: "Video project", icon: "clapper" },
+  video_project: { zh: "视频项目", en: "Video project", icon: "clapper" },
+  project: { zh: "项目", en: "Project", icon: "spark" },
+  work_project: { zh: "项目", en: "Project", icon: "spark" },
+  file: { zh: "文件", en: "File", icon: "upload" },
+  article: { zh: "文章", en: "Article", icon: "comment" },
+  topic: { zh: "选题", en: "Topic", icon: "bulb" },
+  render: { zh: "成片", en: "Render", icon: "film" },
+  competitor: { zh: "对标账号", en: "Channel to watch", icon: "eye" },
+  assignment: { zh: "任务", en: "Task", icon: "check" },
+};
+const OTHER_ARTIFACT = { zh: "内容", en: "Item", icon: "external" as IconName };
+
+/**
+ * @mentions carry the artboard's .ment pill — and an agent's tag carries that
+ * employee's own colour, because "I asked a colleague" and "I asked the video
+ * agent" are different events and used to look identical.
  *
  * A message with formatting in it — the composer's own B, I, link and list
  * buttons write Markdown — is drawn as formatted. The tags in it are still
- * named underneath, by `Tagged`, so a hand-off reads as a hand-off either way.
+ * named underneath, by `Handoff`, so a hand-off reads as a hand-off either way.
  */
-function renderBody(body: string): React.ReactNode {
-  if (HAS_MARKUP.test(body)) return <Markdown text={body} />;
-  return splitMentions(body).map((part, i) =>
-    part.isTag ? (
-      <span
-        className="ment"
-        key={i}
-        style={part.agent ? { color: "#fff", background: "#171717", fontWeight: 600 } : undefined}
-      >
-        {part.text}
-      </span>
-    ) : (
-      <React.Fragment key={i}>{part.text}</React.Fragment>
-    ),
+function Body({ body }: { body: string }) {
+  if (HAS_MARKUP.test(body)) {
+    return (
+      <div className="txt">
+        <Markdown text={tidyMarkdown(body)} />
+      </div>
+    );
+  }
+  /* Plain text keeps its line breaks: an employee's reply is often a few
+     short lines, and run together they read as one breathless sentence. */
+  return (
+    <div className="txt plain">
+      {splitMentions(body).map((part, i) =>
+        part.isTag ? (
+          <span
+            className="ment"
+            key={i}
+            style={
+              part.agent
+                ? { color: AGENT_COLORS[part.agent], background: soft(AGENT_TINTS[part.agent], 0.7), fontWeight: 600 }
+                : undefined
+            }
+          >
+            {part.text}
+          </span>
+        ) : (
+          <React.Fragment key={i}>{part.text}</React.Fragment>
+        ),
+      )}
+    </div>
   );
 }
 
-/** "→ 视频助理" under a message that hands work on. The one line that makes a
- * channel of agents readable at a glance. */
-function Tagged({ keys, zh }: { keys: AgentKey[]; zh: boolean }) {
-  if (!keys.length) return null;
+/** The receiving employee, face and name, on the colour that follows them —
+ *  or, for a mere mention, on white with a dashed edge. */
+function Receiver({ agent, zh, quiet = false }: { agent: AgentKey; zh: boolean; quiet?: boolean }) {
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
-      <span style={{ fontSize: 11, color: "#999999" }}>{zh ? "交给" : "Over to"}</span>
-      {keys.map((key) => (
-        <span
-          key={key}
-          className="chip"
-          style={{ height: 22, fontSize: 11, gap: 5, borderColor: "#d9d9d9", color: "#171717" }}
-        >
-          <AgentMark agent={key} size={12} radius={4} />
-          {zh ? AGENT_LABELS[key].nameLocal : AGENT_LABELS[key].name}
-        </span>
+    <span
+      className="to"
+      style={quiet ? undefined : { background: soft(AGENT_TINTS[agent], 0.55), borderColor: AGENT_TINTS[agent] }}
+    >
+      <AgentIcon agent={agent} size={16} radius={4} />
+      {zh ? AGENT_LABELS[agent].nameLocal : AGENT_LABELS[agent].name}
+    </span>
+  );
+}
+
+function Artifact({ item, zh }: { item: HandoffArtifact; zh: boolean }) {
+  // Own keys only: the kind is read out of a jsonb column.
+  const known = Object.prototype.hasOwnProperty.call(ARTIFACT, item.kind) ? ARTIFACT[item.kind] : OTHER_ARTIFACT;
+  const kind = zh ? known.zh : known.en;
+  // "打开…" only on something that opens.
+  const label = item.title
+    ? `${kind} · ${item.title}`
+    : item.href
+      ? zh
+        ? `打开${kind}`
+        : `Open ${kind.toLowerCase()}`
+      : kind;
+  const inner = (
+    <>
+      <Icon name={known.icon} size={12} />
+      <span>{label}</span>
+    </>
+  );
+  return item.href ? (
+    // The script and video pages are heavy; a chip in a list of messages is
+    // not a reason to start loading them.
+    <Link href={item.href} prefetch={false} className="art" title={label}>
+      {inner}
+    </Link>
+  ) : (
+    <span className="art" title={label}>
+      {inner}
+    </span>
+  );
+}
+
+/**
+ * The "交给 剪辑师" line under a message that hands work on — the one line
+ * that makes a channel of agents readable at a glance.
+ *
+ * Drawn from the hand-off the dispatcher recorded when there is one: who it
+ * went to, and a link to each thing handed over. A message without one falls
+ * back to the tags in its text, the way every message used to be read; when a
+ * person wrote the tag it did reach the employee (sending dispatches it), so
+ * it still says 交给. When an employee wrote it, a tag in the text is only a
+ * mention — the checked hand-off is the record of work actually passed on —
+ * so it is drawn quieter and says 提到.
+ */
+function Handoff({
+  handoff,
+  tags,
+  byAgent,
+  zh,
+}: {
+  handoff: ChatHandoff | null | undefined;
+  tags: AgentKey[];
+  byAgent: boolean;
+  zh: boolean;
+}) {
+  if (handoff) {
+    return (
+      <div className="handoff">
+        <span className="lbl2">{zh ? "交给" : "Over to"}</span>
+        <Receiver agent={handoff.to} zh={zh} />
+        {handoff.artifacts.map((a) => (
+          <Artifact key={`${a.kind}-${a.id}`} item={a} zh={zh} />
+        ))}
+      </div>
+    );
+  }
+  if (!tags.length) return null;
+  return (
+    <div className={byAgent ? "handoff quiet" : "handoff"}>
+      <span className="lbl2">{byAgent ? (zh ? "提到" : "Mentions") : zh ? "交给" : "Over to"}</span>
+      {tags.map((key) => (
+        <Receiver key={key} agent={key} zh={zh} quiet={byAgent} />
       ))}
     </div>
   );
@@ -191,7 +307,7 @@ function Card({
           {zh ? `${done.by} 选了「${chosen ? chosen.label : "…"}」` : `${done.by} chose “${chosen ? chosen.labelEn : "…"}”`}
         </span>
         {opens.map((a) => (
-          <Link key={a.id} href={a.href ?? "#"} style={{ fontSize: 12, color: "#525252", textDecoration: "none" }}>
+          <Link key={a.id} href={a.href ?? "#"} prefetch={false} style={{ fontSize: 12, color: "#525252", textDecoration: "none" }}>
             {zh ? a.label : a.labelEn} →
           </Link>
         ))}
@@ -224,7 +340,9 @@ function Card({
 
         if (a.kind === "open") {
           return (
-            <Link key={a.id} href={a.href ?? "#"} style={style}>
+            // The project and script screens are heavy; a button in a message
+            // list is not a reason to start loading them.
+            <Link key={a.id} href={a.href ?? "#"} prefetch={false} style={style}>
               {zh ? a.label : a.labelEn}
             </Link>
           );
@@ -312,10 +430,17 @@ export function ChannelSurface(props: {
   /** A message the server would not take, with what it said. */
   failed?: { body: string; error: string } | null;
   onDismissFailure?: () => void;
+  /** The server render's clock, so the day pills hydrate to the same words. */
+  now?: string;
+  /** A one-to-one conversation: the header is the other person, not a #room. */
+  isDirect?: boolean;
+  /** The other person's picture, in a direct message. */
+  directAvatar?: string | null;
 }): React.JSX.Element {
-  const loc = props.locale === "en" ? "en-GB" : props.locale;
-  const time = new Intl.DateTimeFormat(loc, { hour: "2-digit", minute: "2-digit" });
   const zh = props.locale.startsWith("zh");
+  /* Falls back to the newest message rather than the clock, so a caller that
+     passes no `now` still renders the same thing on both sides. */
+  const now = props.now ?? props.messages[props.messages.length - 1]?.createdAt ?? "1970-01-01T00:00:00.000Z";
   const [draft, setDraft] = React.useState("");
   const [attached, setAttached] = React.useState<Attaching[]>([]);
   const box = React.useRef<HTMLTextAreaElement>(null);
@@ -468,55 +593,108 @@ export function ChannelSurface(props: {
       }
     }
 
-    if (e.key === "Enter" && !e.shiftKey) {
+    // Not while an input method is still composing: on a pinyin keyboard
+    // Enter commits the letters typed so far, and used to send the message.
+    if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault();
       send();
     }
   }
 
-  const composerLabel = zh ? `在 #${props.name} 中发消息` : `Message #${props.name}`;
+  const composerLabel = props.isDirect
+    ? zh
+      ? `发消息给 ${props.name}`
+      : `Message ${props.name}`
+    : zh
+      ? `在 #${props.name} 中发消息`
+      : `Message #${props.name}`;
+  /* Says what the box can do, not only where it posts: tagging an employee is
+     the thing people did not find. */
+  const composerPlaceholder = zh
+    ? `${composerLabel}，输入 @ 叫上 AI 同事`
+    : `${composerLabel} — type @ to bring in an AI teammate`;
+  const nothingToSend = !draft.trim() && !attached.some((a) => a.fileId);
 
   return (
-    <div style={{ flexGrow: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
-      {/* the artboard's placeholder colour; ::placeholder cannot be set inline */}
-      <style dangerouslySetInnerHTML={{ __html: ".dc-composer::placeholder { color: #999999; }" }} />
+    <div data-chat-surface="" style={{ flexGrow: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
+      <style dangerouslySetInnerHTML={{ __html: CSS }} />
 
       <div
         style={{
-          height: "56px",
+          height: "58px",
           flexShrink: 0,
           borderBottom: "1px solid #ededed",
           display: "flex",
           alignItems: "center",
           gap: "11px",
-          padding: "0 18px 0 22px",
+          padding: "0 18px 0 24px",
         }}
       >
-        <div
-          style={{
-            width: "32px",
-            height: "32px",
-            borderRadius: "9px",
-            background: "#f3f3f3",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            fontSize: "17px",
-            color: "#525252",
-          }}
-        >
-          #
-        </div>
-        <div style={{ minWidth: 0 }}>
-          <div style={{ fontSize: "15px", fontWeight: 600, display: "flex", alignItems: "center", gap: "7px" }}>
-            {props.name}
-          </div>
-          {props.topic === null ? null : (
+        {props.isDirect ? (
+          props.directAvatar ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={props.directAvatar} alt="" style={{ width: 32, height: 32, borderRadius: 9, objectFit: "cover", flexShrink: 0 }} />
+          ) : (
             <div
               style={{
-                fontSize: "11.5px",
-                color: "#999999",
-                marginTop: "1px",
+                width: 32,
+                height: 32,
+                borderRadius: 9,
+                background: "#ececec",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontSize: 12,
+                fontWeight: 600,
+                color: "#525252",
+                flexShrink: 0,
+              }}
+            >
+              {initials(props.name)}
+            </div>
+          )
+        ) : (
+          <div
+            style={{
+              width: "32px",
+              height: "32px",
+              borderRadius: "9px",
+              background: "#f4f4f5",
+              border: "1px solid #ececec",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: "16px",
+              color: "#525252",
+              flexShrink: 0,
+            }}
+          >
+            #
+          </div>
+        )}
+        {/* Both lines truncate: a project channel's name is a whole headline,
+            and it pushed the member faces and search off the header. */}
+        <div style={{ minWidth: 0, flex: "1 1 auto" }}>
+          <div
+            title={props.name}
+            style={{
+              fontSize: "15px",
+              fontWeight: 600,
+              color: "#171717",
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+            }}
+          >
+            {props.name}
+          </div>
+          {props.topic === null || !props.topic ? null : (
+            <div
+              title={props.topic}
+              style={{
+                fontSize: "12px",
+                color: "#8a8a8a",
+                marginTop: "2px",
                 whiteSpace: "nowrap",
                 overflow: "hidden",
                 textOverflow: "ellipsis",
@@ -526,16 +704,16 @@ export function ChannelSurface(props: {
             </div>
           )}
         </div>
-        <div style={{ flexGrow: 1 }}></div>
         <button
           type="button"
           onClick={props.onOpenMembers}
           aria-label={zh ? `${props.memberCount} 位成员` : `${props.memberCount} members`}
+          title={zh ? `${props.memberCount} 位成员` : `${props.memberCount} members`}
           style={{
             display: "flex",
             alignItems: "center",
-            height: "30px",
-            padding: "0 4px 0 3px",
+            height: "32px",
+            padding: "0 5px 0 4px",
             border: "1px solid #ededed",
             borderRadius: "9px",
             gap: "7px",
@@ -543,27 +721,33 @@ export function ChannelSurface(props: {
             cursor: props.onOpenMembers ? "pointer" : "default",
             fontFamily: "inherit",
             letterSpacing: "inherit",
+            flexShrink: 0,
           }}
         >
           <div style={{ display: "flex" }}>
-            {props.members.slice(0, 4).map((member, i) =>
+            {/* The employees in a channel now have faces here too: their rows
+                carry `/api/agent/avatar/<key>`, the same pixel face as in the
+                message list. */}
+            {props.members.slice(0, 5).map((member, i) =>
               member.avatar === null ? (
                 <div
                   key={member.name + i}
+                  title={member.name}
                   style={{
-                    width: "22px",
-                    height: "22px",
-                    borderRadius: "6px",
+                    width: "24px",
+                    height: "24px",
+                    borderRadius: "7px",
                     border: "2px solid #fff",
                     marginLeft: i === 0 ? "0px" : "-7px",
-                    background: "#e2e2e2",
+                    background: "#e5e5e5",
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
-                    fontSize: "7px",
+                    fontSize: "9.5px",
                     fontWeight: 600,
                     color: "#525252",
                     flexShrink: 0,
+                    boxSizing: "border-box",
                   }}
                 >
                   {initials(member.name)}
@@ -574,22 +758,22 @@ export function ChannelSurface(props: {
                   key={member.name + i}
                   src={member.avatar}
                   alt=""
+                  title={member.name}
                   style={{
-                    width: "22px",
-                    height: "22px",
-                    borderRadius: "6px",
+                    width: "24px",
+                    height: "24px",
+                    borderRadius: "7px",
                     objectFit: "cover",
                     border: "2px solid #fff",
                     marginLeft: i === 0 ? "0px" : "-7px",
+                    boxSizing: "border-box",
+                    background: "#fff",
                   }}
                 />
               ),
             )}
           </div>
-          <span
-            style={{ fontSize: "12px", color: "#525252", paddingRight: "5px" }}
-            title={zh ? `${props.memberCount} 位成员` : `${props.memberCount} members`}
-          >
+          <span style={{ fontSize: "12px", color: "#525252", paddingRight: "4px", fontVariantNumeric: "tabular-nums" }}>
             {props.memberCount}
           </span>
         </button>
@@ -597,10 +781,10 @@ export function ChannelSurface(props: {
             /search and taking the conversation off the screen. */}
         <button
           type="button"
-          className="ico2"
+          className="ico2 hdr-btn"
           onClick={() => window.dispatchEvent(new Event(JUMP_EVENT))}
           aria-label={zh ? "搜索" : "Search"}
-          style={{ background: "transparent", border: 0, cursor: "pointer", padding: 0 }}
+          title={zh ? "搜索" : "Search"}
         >
           <svg viewBox="0 0 24 24">
             <circle cx="11" cy="11" r="6.4" />
@@ -608,7 +792,7 @@ export function ChannelSurface(props: {
           </svg>
         </button>
         <span
-          className="ico2"
+          className="ico2 note"
           role="note"
           tabIndex={0}
           aria-label={props.topic ?? `#${props.name}`}
@@ -633,7 +817,7 @@ export function ChannelSurface(props: {
               overflowY: "auto",
               display: "flex",
               flexDirection: "column",
-              paddingBottom: "4px",
+              paddingBottom: "10px",
             }}
             ref={list}
           >
@@ -643,35 +827,44 @@ export function ChannelSurface(props: {
                 reach them. That was "I can't scroll up in chat". */}
             <div style={{ flexGrow: 1 }} />
             {props.messages.length === 0 ? (
-              <div style={{ padding: "0 22px 18px" }}>
+              <div style={{ padding: "0 24px 18px" }}>
                 <div style={{ fontSize: 15, fontWeight: 600 }}>
                   {zh ? `这里还没有消息` : "No messages here yet"}
                 </div>
-                <p className="mut" style={{ marginTop: 4, lineHeight: 1.55, maxWidth: 460 }}>
+                <p className="mut" style={{ marginTop: 4, lineHeight: 1.6, maxWidth: 460 }}>
                   {zh
-                    ? "写下第一条消息，这个频道里的所有人都能看到。输入 @ 可以叫上同事或 AI 助理。"
-                    : "Write the first message; everyone in this channel will see it. Type @ to bring in a colleague or an AI employee."}
+                    ? "写下第一条消息，这里的所有人都能看到。输入 @ 可以叫上同事或 AI 同事。"
+                    : "Write the first message; everyone here will see it. Type @ to bring in a colleague or an AI teammate."}
                 </p>
               </div>
             ) : null}
             {props.messages.map((m, i) => {
               const prev = i === 0 ? null : (props.messages[i - 1] ?? null);
               const newDay = prev === null || !sameDay(prev.createdAt, m.createdAt);
+              /* One author's run of messages is one block: same person (or
+                 the same employee), same day, a few minutes apart. A card
+                 always starts its own block — it is a document, with a
+                 byline. */
               const cont =
                 prev !== null &&
                 !newDay &&
-                m.isAgent !== true &&
-                prev.isAgent !== true &&
-                prev.authorName === m.authorName;
+                (m.isAgent === true) === (prev.isAgent === true) &&
+                (m.isAgent === true ? (m.agentKey ?? null) === (prev.agentKey ?? null) : true) &&
+                prev.authorName === m.authorName &&
+                !m.card &&
+                !prev.card &&
+                minutesBetween(prev.createdAt, m.createdAt) <= GROUP_MINUTES;
 
               const avatar =
                 m.isAgent === true ? (
-                  <AgentMark agent={m.agentKey ?? null} />
+                  <div className="face">
+                    <AgentMark agent={m.agentKey ?? null} />
+                  </div>
                 ) : m.authorAvatar === null ? (
                   <div
                     className="mav"
                     style={{
-                      background: "#e2e2e2",
+                      background: "#ececec",
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "center",
@@ -688,37 +881,63 @@ export function ChannelSurface(props: {
                 );
 
               const tags = parseAgentMentions(m.body);
+              const at = clock(m.createdAt, props.locale);
+              const agentTint = m.agentKey ? AGENT_TINTS[m.agentKey] : null;
+              /* An employee's brief or plan opens with a picture character
+                 as its title decoration; the product draws none. */
+              const body = m.isAgent === true ? withoutLeadingPictures(m.body) : m.body;
 
               return (
                 <React.Fragment key={m.id}>
                   {newDay ? (
                     <div className="day">
-                      <span>{dayLabel(m.createdAt, loc)}</span>
+                      <span>{dayLabel(m.createdAt, now, props.locale)}</span>
                     </div>
                   ) : null}
                   {/* A message on screen before the server has it is drawn a
                       shade back, so "sending" and "sent" are not one picture. */}
                   <div className={cont ? "msg cont" : "msg"} style={m.pending ? { opacity: 0.55 } : undefined}>
+                    {cont ? (
+                      <span className="gut" aria-hidden>
+                        {at}
+                      </span>
+                    ) : null}
                     {avatar}
                     <div style={{ minWidth: 0, flexGrow: 1 }}>
                       {cont ? null : (
-                        <div style={{ display: "flex", alignItems: "baseline", flexWrap: "wrap" }}>
+                        <div className="head">
                           <span className="who">{m.authorName}</span>
                           {/* The role, not "APP". A colleague and an AI
                               employee used to be told apart by a grey pill
-                              that said neither. */}
+                              that said neither; the employee's own colour,
+                              light, says which one without shouting. */}
                           {m.isAgent === true ? (
                             <span
-                              className="app"
-                              style={{ background: m.agentKey ? AGENT_COLORS[m.agentKey] : "#171717", color: "#fff", letterSpacing: 0 }}
+                              className="role"
+                              style={{
+                                background: agentTint ? soft(agentTint, 0.75) : "#f4f4f5",
+                                color: m.agentKey ? AGENT_COLORS[m.agentKey] : "#525252",
+                              }}
                             >
                               {m.roleLabel || (zh ? "AI 员工" : "AI STAFF")}
                             </span>
                           ) : null}
-                          <span className="when">{time.format(new Date(m.createdAt))}</span>
+                          <span className="when">{at}</span>
                         </div>
                       )}
-                      <div className="txt">{renderBody(m.body)}</div>
+                      {m.card ? (
+                        <div
+                          className="doc"
+                          style={{
+                            background: agentTint ? soft(agentTint, 0.28) : "#fafafa",
+                            border: `1px solid ${agentTint ? soft(agentTint, 0.95) : "#ececec"}`,
+                          }}
+                        >
+                          <Body body={body} />
+                        </div>
+                      ) : (
+                        <Body body={body} />
+                      )}
                       <Attachments items={m.attachments ?? []} />
                       <Card
                         actions={m.actions ?? []}
@@ -727,7 +946,7 @@ export function ChannelSurface(props: {
                         busy={props.pressing ?? null}
                         onPress={(id) => props.onPress?.(m.id, id)}
                       />
-                      <Tagged keys={tags} zh={zh} />
+                      <Handoff handoff={m.handoff} tags={tags} byAgent={m.isAgent === true} zh={zh} />
                     </div>
                   </div>
                 </React.Fragment>
@@ -738,23 +957,27 @@ export function ChannelSurface(props: {
               than a composer that refuses on submit. The rule is enforced in
               `postMessage` either way; this is how it reads. */}
           {props.canPost === false ? (
-            <div style={{ flexShrink: 0, padding: "8px 22px 18px" }}>
+            <div style={{ flexShrink: 0, padding: "6px 24px 18px" }}>
               <div
                 style={{
                   border: "1px solid #ededed",
                   borderRadius: 12,
                   background: "#fafafa",
                   padding: "13px 15px",
-                  fontSize: 12,
-                  color: "#7c7c7c",
+                  fontSize: 12.5,
+                  color: "#737373",
                   lineHeight: 1.6,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
                 }}
               >
+                <Icon name="lock" size={13} color="#a3a3a3" />
                 {props.readOnlyNote}
               </div>
             </div>
           ) : (
-            <div style={{ flexShrink: 0, padding: "8px 22px 18px", position: "relative" }}>
+            <div style={{ flexShrink: 0, padding: "6px 24px 18px", position: "relative" }}>
               {/* A refused message, said out loud. It used to be swallowed, so a
                   send that never happened looked exactly like one that did. */}
               {props.failed ? (
@@ -766,7 +989,7 @@ export function ChannelSurface(props: {
                     background: "#fff7f7",
                     borderRadius: 10,
                     padding: "9px 12px",
-                    fontSize: 12,
+                    fontSize: 12.5,
                     color: "#b52a2a",
                     display: "flex",
                     alignItems: "baseline",
@@ -799,13 +1022,7 @@ export function ChannelSurface(props: {
                 </div>
               ) : null}
               <div
-                style={{
-                  position: "relative",
-                  border: "1px solid #d9d9d9",
-                  borderRadius: "12px",
-                  background: "#fff",
-                  boxShadow: "0 1px 1px rgba(5,5,6,.04)",
-                }}
+                className="composer"
                 onDragOver={(e) => {
                   if (props.canAttach === false) return;
                   e.preventDefault();
@@ -824,41 +1041,6 @@ export function ChannelSurface(props: {
                   onHover={setActive}
                 />
 
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "2px",
-                    padding: "6px 8px",
-                    borderBottom: "1px solid #f3f3f3",
-                  }}
-                >
-                  <button type="button" className="ico2" onClick={() => format("bold")} aria-label="Bold">
-                    <svg viewBox="0 0 24 24">
-                      <path d="M7 5h6a3.5 3.5 0 0 1 0 7H7zM7 12h7a3.5 3.5 0 0 1 0 7H7z" />
-                    </svg>
-                  </button>
-                  <button type="button" className="ico2" onClick={() => format("italic")} aria-label="Italic">
-                    <svg viewBox="0 0 24 24">
-                      <path d="M10 5h8M6 19h8M14.5 5 9.5 19" />
-                    </svg>
-                  </button>
-                  <button type="button" className="ico2" onClick={() => format("link")} aria-label="Link">
-                    <svg viewBox="0 0 24 24">
-                      <path d="M9.5 14.5 14.5 9.5M8 11l-2 2a3.5 3.5 0 0 0 5 5l2-2M16 13l2-2a3.5 3.5 0 0 0-5-5l-2 2" />
-                    </svg>
-                  </button>
-                  <button type="button" className="ico2" onClick={() => format("list")} aria-label="List">
-                    <svg viewBox="0 0 24 24">
-                      <path d="M8 6.5h11M8 12h11M8 17.5h11M4.5 6.5h.01M4.5 12h.01M4.5 17.5h.01" />
-                    </svg>
-                  </button>
-                  <button type="button" className="ico2" onClick={() => format("code")} aria-label="Code">
-                    <svg viewBox="0 0 24 24">
-                      <path d="m8 8-4 4 4 4M16 8l4 4-4 4" />
-                    </svg>
-                  </button>
-                </div>
                 {/* Pressing B inserts `**`, which a textarea can only show as
                     two asterisks. This is what it will actually look like. */}
                 <FormattedPreview text={draft} zh={zh} />
@@ -876,7 +1058,7 @@ export function ChannelSurface(props: {
                   }}
                   rows={1}
                   aria-label={composerLabel}
-                  placeholder={composerLabel}
+                  placeholder={composerPlaceholder}
                   style={{
                     display: "block",
                     width: "100%",
@@ -887,8 +1069,8 @@ export function ChannelSurface(props: {
                     fontFamily: "inherit",
                     fontWeight: "inherit",
                     letterSpacing: "inherit",
-                    lineHeight: 1.55,
-                    padding: "11px 13px 4px",
+                    lineHeight: 1.6,
+                    padding: "12px 14px 6px",
                     fontSize: "13.5px",
                     color: "#171717",
                   }}
@@ -948,7 +1130,11 @@ export function ChannelSurface(props: {
                   </div>
                 ) : null}
 
-                <div style={{ display: "flex", alignItems: "center", gap: "2px", padding: "6px 8px 8px" }}>
+                {/* One row under the text: what to add (a file, a tag), how to
+                    format it, and send. The formatting buttons used to sit in
+                    a bar of their own above the box, which made an empty
+                    composer look like a document editor. */}
+                <div className="bar">
                   {/* The artboard drew an attach glyph with nothing behind it.
                       This is the thing behind it. */}
                   {props.canAttach === false ? null : (
@@ -970,7 +1156,6 @@ export function ChannelSurface(props: {
                         onClick={() => picker.current?.click()}
                         aria-label={zh ? "添加文件" : "Attach a file"}
                         title={zh ? "添加文件" : "Attach a file"}
-                        style={{ background: "transparent", border: 0, cursor: "pointer", padding: 0 }}
                       >
                         <svg viewBox="0 0 24 24">
                           <path d="M16.5 8.5 10 15a2.5 2.5 0 0 0 3.5 3.5l6.5-6.5a4.5 4.5 0 0 0-6.4-6.4L7 12.2" />
@@ -997,41 +1182,61 @@ export function ChannelSurface(props: {
                         el.setSelectionRange(to, to);
                       });
                     }}
-                    aria-label={zh ? "@ 某人或某个助理" : "Tag a person or an agent"}
-                    title={zh ? "@ 同事或 AI 助理" : "Tag a colleague or an AI employee"}
-                    style={{
-                      background: "transparent",
-                      border: 0,
-                      cursor: "pointer",
-                      padding: 0,
-                      fontSize: 15,
-                      color: "#525252",
-                      fontFamily: "inherit",
-                    }}
+                    aria-label={zh ? "@ 同事或 AI 同事" : "Tag a colleague or an AI teammate"}
+                    title={zh ? "@ 同事或 AI 同事" : "Tag a colleague or an AI teammate"}
                   >
-                    @
+                    <svg viewBox="0 0 24 24">
+                      <circle cx="12" cy="12" r="3.6" />
+                      <path d="M15.6 8.6v4.6a2.4 2.4 0 0 0 4.8 0V12a8.4 8.4 0 1 0-3.3 6.7" />
+                    </svg>
                   </button>
-                  <span style={{ fontSize: "12px", color: "#999999", paddingLeft: 4 }}>
-                    {zh ? "@ 可以叫上 AI 助理" : "@ brings in an AI employee"}
-                  </span>
+                  <span className="sep" aria-hidden />
+                  <button type="button" className="ico2" onClick={() => format("bold")} aria-label="Bold" title={zh ? "加粗" : "Bold"}>
+                    <svg viewBox="0 0 24 24">
+                      <path d="M7 5h6a3.5 3.5 0 0 1 0 7H7zM7 12h7a3.5 3.5 0 0 1 0 7H7z" />
+                    </svg>
+                  </button>
+                  <button type="button" className="ico2" onClick={() => format("italic")} aria-label="Italic" title={zh ? "斜体" : "Italic"}>
+                    <svg viewBox="0 0 24 24">
+                      <path d="M10 5h8M6 19h8M14.5 5 9.5 19" />
+                    </svg>
+                  </button>
+                  <button type="button" className="ico2" onClick={() => format("link")} aria-label="Link" title={zh ? "链接" : "Link"}>
+                    <svg viewBox="0 0 24 24">
+                      <path d="M9.5 14.5 14.5 9.5M8 11l-2 2a3.5 3.5 0 0 0 5 5l2-2M16 13l2-2a3.5 3.5 0 0 0-5-5l-2 2" />
+                    </svg>
+                  </button>
+                  <button type="button" className="ico2" onClick={() => format("list")} aria-label="List" title={zh ? "列表" : "List"}>
+                    <svg viewBox="0 0 24 24">
+                      <path d="M8 6.5h11M8 12h11M8 17.5h11M4.5 6.5h.01M4.5 12h.01M4.5 17.5h.01" />
+                    </svg>
+                  </button>
+                  <button type="button" className="ico2" onClick={() => format("code")} aria-label="Code" title={zh ? "代码" : "Code"}>
+                    <svg viewBox="0 0 24 24">
+                      <path d="m8 8-4 4 4 4M16 8l4 4-4 4" />
+                    </svg>
+                  </button>
+                  <span className="hint">{zh ? "回车发送，Shift + 回车换行" : "Enter to send, Shift + Enter for a new line"}</span>
                   <div style={{ flexGrow: 1 }}></div>
                   <button
                     type="button"
                     onClick={send}
                     disabled={props.sending || uploading}
                     aria-label={zh ? "发送" : "Send"}
+                    title={zh ? "发送" : "Send"}
                     style={{
                       width: "32px",
                       height: "32px",
                       borderRadius: "9px",
-                      background: "#007be0",
+                      background: nothingToSend || props.sending || uploading ? "#d4d4d4" : "#171717",
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "center",
                       border: "none",
                       padding: 0,
-                      cursor: props.sending || uploading ? "default" : "pointer",
-                      opacity: props.sending || uploading ? 0.6 : 1,
+                      flexShrink: 0,
+                      cursor: props.sending || uploading || nothingToSend ? "default" : "pointer",
+                      transition: "background .15s",
                     }}
                   >
                     <svg

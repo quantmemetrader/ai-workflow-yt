@@ -19,6 +19,7 @@ import { audit } from "@/lib/audit";
 import { canReadFiles, relationOn } from "@/lib/authz/rebac";
 import { newId } from "@/lib/ids";
 import { readCardActions, readCardDone } from "@/lib/agents/cards";
+import { readCardKind, readHandoff } from "@/lib/chat/handoff";
 
 /** Channels this person is in, plus the public ones they could join. A private
  * channel they are not in is not listed — the same rule as files. */
@@ -124,6 +125,11 @@ export async function channelMessages(channelId: string, limit = 80) {
        * leaving it to be mistaken for a colleague. */
       authorIsAgent: users.isAgent,
       authorTitle: users.title,
+      /* Which employee an agent row is, read off its address
+         (`agentKeyFromEmail`). Without it a direct message could say "this is
+         an AI employee" but not which one, and every one of them was drawn
+         with the host's face. */
+      authorEmail: users.email,
     })
     .from(chatMessages)
     .leftJoin(users, eq(users.id, chatMessages.authorId))
@@ -515,6 +521,12 @@ export async function channelThread(viewer: Viewer, slug: string, limit = 80) {
          jsonb column is `unknown` however it was written. */
       actions: readCardActions(r.meta),
       done: readCardDone(r.meta),
+      /* A checked hand-off (`meta.handoff`), so the "交给 …" line is drawn
+         from what the dispatcher recorded rather than from an @ in the text,
+         and a morning brief or day plan, so it is drawn as the document it
+         is. Both read defensively: the column is jsonb. */
+      handoff: readHandoff(r.meta),
+      card: readCardKind(r.meta),
       createdAt: toDate(r.created_at) ?? new Date(),
     })),
   };

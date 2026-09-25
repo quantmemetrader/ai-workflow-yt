@@ -39,6 +39,9 @@ export function ChannelView({
   canPost = true,
   canAttach = true,
   me,
+  now,
+  isDirect = false,
+  directAvatar = null,
 }: {
   slug: string;
   /** Who is typing: the name the optimistic row is signed with while the
@@ -67,6 +70,14 @@ export function ChannelView({
   /** False for somebody without the Files module — the upload route would
    * refuse them, so the paperclip is not drawn. */
   canAttach?: boolean;
+  /** The server render's clock, handed to the list so day labels hydrate. */
+  now?: string;
+  /** A one-to-one conversation: its header is the other person rather than
+   * a #room. Said by the DM page rather than read off the slug — a channel
+   * somebody named "dm test" has the slug `dm-test`. */
+  isDirect?: boolean;
+  /** In a direct message, the other person's picture for the header. */
+  directAvatar?: string | null;
 }) {
   const router = useRouter();
   const zh = locale.startsWith("zh");
@@ -205,6 +216,9 @@ export function ChannelView({
                 : "Company-wide announcements. Only an administrator posts here."
           }
           locale={locale}
+          now={now}
+          isDirect={isDirect}
+          directAvatar={directAvatar}
           onOpenMembers={studioPeople ? () => setShowMembers(true) : undefined}
         />
 
@@ -219,7 +233,7 @@ export function ChannelView({
           zh={zh}
           model={model}
           context={{ module: "chat", channelId }}
-          scope={`#${name}`}
+          scope={isDirect ? `@${name}` : `#${name}`}
           note={
             zh
               ? "可以让它总结这个频道、找某条消息，或替你发一条。它以你的身份发送。要叫 AI 员工，在下面的输入框里 @ 它们。"

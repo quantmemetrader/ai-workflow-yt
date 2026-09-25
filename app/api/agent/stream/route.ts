@@ -1,7 +1,7 @@
 import { after } from "next/server";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { conversations } from "@/lib/db/schema";
+import { agentMessages, conversations } from "@/lib/db/schema";
 import { getViewer } from "@/lib/auth/dal";
 import type { Module } from "@/lib/db/schema";
 import { runAgent, titleConversation } from "@/lib/ai/agent";
@@ -125,6 +125,21 @@ export async function POST(request: Request) {
       send({ type: "conversation", id: conversationId });
       send({ type: "speaker", agent: speaker });
 
+      /*
+       * Who answered, kept on the answer's own row.
+       *
+       * The speaker used to exist only in this stream, so a reloaded thread —
+       * or the same thread picked up in a side panel — drew every employee's
+       * answer as the host's. `runAgent` creates the assistant row and names
+       * it in its "message" event; the speaker is written onto that row as
+       * soon as it exists rather than after the turn, so an answer that is cut
+       * off half way still says who was speaking. Started without waiting, so
+       * the first words are not held up by a database round trip, and settled
+       * before the stream closes. Null (the person's own assistant) is the
+       * column's default and needs no write.
+       */
+      let speakerSaved: Promise<unknown> | null = null;
+
       try {
         for await (const event of runAgent({
           viewer: speakerViewer,
@@ -136,6 +151,13 @@ export async function POST(request: Request) {
           context,
           signal: request.signal,
         })) {
+          if (event.type === "message" && speaker && !speakerSaved) {
+            speakerSaved = db
+              .update(agentMessages)
+              .set({ speaker })
+              .where(and(eq(agentMessages.id, event.id), eq(agentMessages.conversationId, conversationId!)))
+              .catch((err) => console.error("[agent] could not record who answered", err));
+          }
           send(event);
         }
       } catch (err) {
@@ -146,6 +168,7 @@ export async function POST(request: Request) {
         console.error("[agent] stream failed", err);
         send({ type: "error", kind: "server", message: "Something went wrong." });
       } finally {
+        if (speakerSaved) await speakerSaved;
         controller.close();
       }
 
