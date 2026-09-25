@@ -127,7 +127,9 @@ export async function runTool(
       return {
         text: toolsFor(viewer).some(named)
           ? `${name} changes things, and this turn only looks things up. Say what you found; if something needs doing, say who should do it.`
-          : `${name} is not part of your job. Hand the work to the colleague whose job it is with assign_task.`,
+          : AGENTS_NEVER.has(name)
+            ? `${name} is not for employees: what you answer is posted for you, and work for a colleague goes through assign_task.`
+            : `${name} is not part of your job. Hand the work to the colleague whose job it is with assign_task.`,
       };
     }
     return { text: `Unknown tool ${name}.` };
