@@ -44,8 +44,11 @@ export function Fold({
   const [state, setState] = useLocalPreference(`aura:fold:${id}`, ["open", "shut"] as const, "open");
   const open = state === "open";
 
+  /* The same faint lift as every other card on Home and on a project (the
+     composer, the researcher's panels, a project's workbenches), so a fold
+     does not read as flatter than the panel beside it. */
   return (
-    <section style={{ background: "#ffffff", border: "1px solid #e2e2e2", borderRadius: 14, minWidth: 0, overflow: "hidden", ...style }}>
+    <section style={{ background: "#ffffff", border: "1px solid #e2e2e2", borderRadius: 14, boxShadow: "0 1px 2px rgba(0,0,0,0.03)", minWidth: 0, overflow: "hidden", ...style }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "11px 14px", borderBottom: open ? "1px solid #f0f0f0" : "none", minWidth: 0 }}>
         <button
           type="button"

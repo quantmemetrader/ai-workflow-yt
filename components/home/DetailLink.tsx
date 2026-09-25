@@ -17,6 +17,11 @@ import Link from "next/link";
  *
  * The hover styles are `DETAIL_LINK_CSS`, drawn once by the screen that uses
  * these, so seven links do not each carry a <style>.
+ *
+ * The negative right margin gives back the link's own hover padding, so the
+ * chevron lines up with the panel's content edge (the "打开" and the buttons
+ * below it) instead of sitting 6px inside it; every panel on Home, the Folds
+ * and the researcher's two panels alike, now ends its header on that line.
  */
 export function DetailLink({ href, zh, label, labelEn }: { href: string; zh: boolean; label?: string; labelEn?: string }) {
   return (
@@ -30,7 +35,7 @@ export function DetailLink({ href, zh, label, labelEn }: { href: string; zh: boo
 }
 
 export const DETAIL_LINK_CSS = `
-.home-detail { display: inline-flex; align-items: center; gap: 2px; height: 24px; padding: 0 6px 0 8px; border-radius: 7px; font-size: 12px; font-weight: 500; color: #8a8a8a; text-decoration: none; white-space: nowrap; flex-shrink: 0; transition: color .15s ease, background-color .15s ease; }
+.home-detail { display: inline-flex; align-items: center; gap: 2px; height: 24px; padding: 0 6px 0 8px; margin-right: -6px; border-radius: 7px; font-size: 12px; font-weight: 500; color: #8a8a8a; text-decoration: none; white-space: nowrap; flex-shrink: 0; transition: color .15s ease, background-color .15s ease; }
 .home-detail:hover { color: #171717; background: #f4f4f2; }
 .home-detail:focus-visible { outline: 2px solid #171717; outline-offset: 1px; }
 `;

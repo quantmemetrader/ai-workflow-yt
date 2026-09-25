@@ -1,12 +1,12 @@
 "use client";
 
 import * as React from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AgentIcon } from "@/components/agents/AgentIcon";
 import { Icon } from "@/components/ui/Icon";
 import { startFromTopicAction } from "@/app/(app)/projects/actions";
-import { StartedNotice } from "@/components/home/IdeasPanel";
+import { StartedNotice, Strength, TINT_PANEL, TINT_PANEL_BODY, TINT_PANEL_HEAD, tintBtn } from "@/components/home/IdeasPanel";
+import { DetailLink } from "@/components/home/DetailLink";
 import { notify } from "@/lib/client/notify";
 
 export type TodaySuggestion = {
@@ -58,28 +58,30 @@ export function SuggestionCard({ items, zh, canResearch = false }: { items: Toda
     })();
   };
   return (
-    <section style={{ borderRadius: 16, border: "1px solid transparent", background: "linear-gradient(#ffffff, #ffffff) padding-box, linear-gradient(135deg, #cfe0fb, #e3dcfb 50%, #cfe9e2) border-box", padding: "14px 16px" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, minWidth: 0 }}>
-        <AgentIcon agent="research" size={22} radius={6} />
+    /* The same frame as the ideas panel (`TINT_PANEL`): both are the
+       researcher's, and they used to differ in radius, edge and header. */
+    <section style={TINT_PANEL}>
+      <div style={TINT_PANEL_HEAD}>
+        <AgentIcon agent="research" size={18} radius={5} />
         <span style={{ fontSize: 13.5, fontWeight: 600, whiteSpace: "nowrap" }}>{t("今天建议拍", "Suggested for today")}</span>
         <span style={{ fontSize: 12, color: "#999999", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t("来自研究员的晨报", "from the researcher's morning brief")}</span>
         <span style={{ flexGrow: 1 }} />
-        {canResearch ? (
-          <Link prefetch={false} href="/research" style={{ fontSize: 12, color: "#525252", textDecoration: "none", whiteSpace: "nowrap" }}>
-            {t("查看研究 →", "See the research →")}
-          </Link>
-        ) : null}
+        {canResearch ? <DetailLink zh={zh} href="/research" label="查看研究" labelEn="See the research" /> : null}
       </div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      <div style={{ ...TINT_PANEL_BODY, display: "flex", flexDirection: "column", gap: 14 }}>
         {items.map((s, i) => (
-          <div key={i} style={{ borderTop: i ? "1px solid #f0f0f0" : "none", paddingTop: i ? 10 : 0 }}>
-            <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
-              <span style={{ fontSize: 15, fontWeight: 600, lineHeight: 1.4 }}>{s.title}</span>
-              {s.strength ? <span title={t("信号强度", "Signal strength")} style={{ fontSize: 10.5, color: "#c2410c", letterSpacing: 1, flexShrink: 0 }}>{"●".repeat(s.strength)}{"○".repeat(Math.max(0, 5 - s.strength))}</span> : null}
+          <div key={i} style={{ borderTop: i ? "1px solid #f0f0f0" : "none", paddingTop: i ? 14 : 0 }}>
+            <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+              <span style={{ fontSize: 15, fontWeight: 600, lineHeight: 1.4, minWidth: 0 }}>{s.title}</span>
+              {s.strength ? (
+                <span style={{ display: "inline-flex", alignItems: "center", height: 21, flexShrink: 0 }}>
+                  <Strength n={s.strength} title={t("信号强度", "Signal strength")} />
+                </span>
+              ) : null}
             </div>
-            {s.why ? <div style={{ fontSize: 12.5, color: "#525252", lineHeight: 1.6, marginTop: 4 }}>{s.why}</div> : null}
+            {s.why ? <div style={{ fontSize: 12.5, color: "#525252", lineHeight: 1.6, marginTop: 5 }}>{s.why}</div> : null}
             {s.evidence.length ? (
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 6 }}>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
                 {s.evidence.slice(0, 3).map((e, k) =>
                   e.url ? (
                     <a key={k} href={e.url} target="_blank" rel="noopener noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11.5, color: "#525252", background: "#f5f7fb", borderRadius: 999, padding: "2px 9px", textDecoration: "none" }}>
@@ -111,11 +113,13 @@ export function SuggestionCard({ items, zh, canResearch = false }: { items: Toda
                 }
               />
             ) : (
-              <div style={{ display: "flex", gap: 6, marginTop: 10, flexWrap: "wrap" }}>
-                <button type="button" disabled={busy !== null} onClick={() => go(s, i, true)} style={{ height: 30, padding: "0 12px", borderRadius: 8, border: 0, background: "#171717", color: "#fff", fontFamily: "inherit", fontSize: 12, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6, opacity: busy === `${i}:w` ? 0.6 : 1 }}>
+              <div style={{ display: "flex", gap: 6, marginTop: 12, flexWrap: "wrap" }}>
+                {/* 编剧's tint, as on the ideas: the start press, without
+                    another black block in a column that already has 开工. */}
+                <button type="button" className="ip-go" disabled={busy !== null} onClick={() => go(s, i, true)} style={{ ...tintBtn(), opacity: busy === `${i}:w` ? 0.6 : 1 }}>
                   <Icon name="pen" size={13} /> {busy === `${i}:w` ? t("正在开项目…", "Starting…") : t("做成项目并写脚本", "Make it a project, write the script")}
                 </button>
-                <button type="button" disabled={busy !== null} onClick={() => go(s, i, false)} style={{ height: 30, padding: "0 12px", borderRadius: 8, border: "1px solid #e2e2e2", background: "#fff", fontFamily: "inherit", fontSize: 12, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6, opacity: busy === `${i}:c` ? 0.6 : 1 }}>
+                <button type="button" disabled={busy !== null} onClick={() => go(s, i, false)} style={{ height: 30, padding: "0 12px", borderRadius: 8, border: "1px solid #e2e2e2", background: "#fff", color: "#171717", fontFamily: "inherit", fontSize: 12, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6, whiteSpace: "nowrap", opacity: busy === `${i}:c` ? 0.6 : 1 }}>
                   <Icon name="upload" size={13} /> {t("做成项目，上传素材", "Make it a project, upload clips")}
                 </button>
               </div>

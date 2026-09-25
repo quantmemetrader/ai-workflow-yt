@@ -82,17 +82,26 @@ const GROUP_MINUTES = 5;
 /**
  * The list's own rules on top of the shared thread rules (`threadCss`): the
  * brief and plan drawn as documents, the hand-off line, the header buttons.
+ *
+ * Two of them tune the shared ones for a channel: a little more room above a
+ * new author (12, was 10), because a message here often ends in a hand-off
+ * line and the next author's name sat right under it; and the hand-off line
+ * itself, which leads with an arrow and a readable grey so "交给 剪辑师"
+ * reads as work passed on, not as a caption.
  */
 const CSS = `
 ${threadCss("[data-chat-surface]")}
+[data-chat-surface] .msg { padding-top: 12px; padding-bottom: 4px; }
 [data-chat-surface] .doc { margin-top: 7px; max-width: calc(72ch + 34px); border-radius: 12px; padding: 12px 16px 13px; }
 [data-chat-surface] .doc .txt { margin-top: 0; }
 [data-chat-surface] .doc .txt > div > p:first-child { font-size: 14.5px; }
-[data-chat-surface] .handoff { display: flex; align-items: center; gap: 6px; margin-top: 7px; flex-wrap: wrap; }
-[data-chat-surface] .handoff .lbl2 { font-size: 11.5px; color: #a3a3a3; }
-[data-chat-surface] .handoff .to { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 9px 0 4px; border-radius: 7px; font-size: 12px; font-weight: 600; color: #171717; border: 1px solid transparent; }
+[data-chat-surface] .handoff { display: flex; align-items: center; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+[data-chat-surface] .handoff .lbl2 { display: inline-flex; align-items: center; gap: 4px; font-size: 11.5px; color: #8a8a8a; }
+[data-chat-surface] .handoff.quiet .lbl2 { color: #a3a3a3; }
+[data-chat-surface] .handoff .lbl2 svg { width: 12px; height: 12px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
+[data-chat-surface] .handoff .to { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 9px 0 4px; border-radius: 8px; font-size: 12px; font-weight: 600; color: #171717; border: 1px solid transparent; }
 [data-chat-surface] .handoff.quiet .to { font-weight: 500; color: #525252; background: #fff; border: 1px dashed #d4d4d4; }
-[data-chat-surface] .handoff .art { display: inline-flex; align-items: center; gap: 5px; height: 24px; max-width: 260px; padding: 0 9px; border-radius: 7px; border: 1px solid #e5e5e5; background: #fff; font-size: 12px; color: #404040; text-decoration: none; }
+[data-chat-surface] .handoff .art { display: inline-flex; align-items: center; gap: 5px; height: 24px; max-width: 260px; padding: 0 9px; border-radius: 8px; border: 1px solid #e5e5e5; background: #fff; font-size: 12px; color: #404040; text-decoration: none; }
 [data-chat-surface] .handoff .art span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 [data-chat-surface] a.art:hover { border-color: #c7c7c7; color: #171717; }
 [data-chat-surface] .hdr-btn { background: transparent; border: 0; cursor: pointer; padding: 0; }
@@ -233,7 +242,10 @@ function Handoff({
   if (handoff) {
     return (
       <div className="handoff">
-        <span className="lbl2">{zh ? "交给" : "Over to"}</span>
+        <span className="lbl2">
+          <HandoffArrow />
+          {zh ? "交给" : "Over to"}
+        </span>
         <Receiver agent={handoff.to} zh={zh} />
         {handoff.artifacts.map((a) => (
           <Artifact key={`${a.kind}-${a.id}`} item={a} zh={zh} />
@@ -244,11 +256,23 @@ function Handoff({
   if (!tags.length) return null;
   return (
     <div className={byAgent ? "handoff quiet" : "handoff"}>
-      <span className="lbl2">{byAgent ? (zh ? "提到" : "Mentions") : zh ? "交给" : "Over to"}</span>
+      <span className="lbl2">
+        {byAgent ? null : <HandoffArrow />}
+        {byAgent ? (zh ? "提到" : "Mentions") : zh ? "交给" : "Over to"}
+      </span>
       {tags.map((key) => (
         <Receiver key={key} agent={key} zh={zh} quiet={byAgent} />
       ))}
     </div>
+  );
+}
+
+/** The line-icon arrow that leads a hand-off (a mention, 提到, has none). */
+function HandoffArrow() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden>
+      <path d="M5 12h13M13 7l5 5-5 5" />
+    </svg>
   );
 }
 

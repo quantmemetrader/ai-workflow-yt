@@ -8,7 +8,7 @@ import { Icon, type IconName } from "@/components/ui/Icon";
 import { MentionMenu, type MentionPerson } from "@/components/chat/MentionMenu";
 import { useMentions } from "@/components/chat/useMentions";
 import { AccessPicker } from "@/components/files/AccessPicker";
-import { AGENT_COLORS, AGENT_LABELS, agentTag, parseAgentMentions, type AgentKey } from "@/lib/agents/catalog";
+import { AGENT_COLORS, AGENT_LABELS, AGENT_TINTS, agentTag, parseAgentMentions, type AgentKey } from "@/lib/agents/catalog";
 import { pressCardAction, sendChannelMessage } from "@/app/(app)/chat/actions";
 import { deleteProjectAction, renameProjectAction, setProjectAccessAction, setProjectStatusAction, chooseScriptAction, chooseTopicAction, startFromTopicAction } from "@/app/(app)/projects/actions";
 import { addClipAction, addItemAction, autoEditAction, exportAction } from "@/app/(app)/video/actions";
@@ -184,7 +184,14 @@ export function ProjectScreen({ project: p, zh, people }: { project: ProjectDeta
     <div style={{ flexGrow: 1, minWidth: 0, minHeight: 0, display: "flex", position: "relative", ...PAPER }}>
       <div style={{ flexGrow: 1, minWidth: 0, overflowY: "auto" }}>
         <div style={{ maxWidth: 1080, margin: "0 auto", padding: "20px 24px 60px", display: "flex", flexDirection: "column", gap: 14 }}>
-          {/* ---- header ---- */}
+          <style dangerouslySetInnerHTML={{ __html: PROJECT_CSS }} />
+          {/* ---- header ----
+              Who can see it and the full flow as the two real buttons; the
+              state (进行中) moved beside the title, where it describes the
+              project instead of looking like a fourth button; and 归档 and
+              删除 behind a hairline as quiet text, 删除 in red, so the one
+              press that cannot be undone no longer has a frame as heavy as
+              the ones that can. */}
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
             <div style={{ fontSize: 11.5, color: "#999999", display: "flex", gap: 6, alignItems: "center", flexGrow: 1 }}>
               <Link prefetch={false} href="/projects" style={{ color: "#999999", textDecoration: "none" }}>
@@ -201,10 +208,10 @@ export function ProjectScreen({ project: p, zh, people }: { project: ProjectDeta
               <Icon name="share" size={13} />
               {t("全部流程", "Full flow")}
             </Link>
-            <StatusPill status={p.status} zh={zh} />
             {p.canManage ? (
               <>
-                <button type="button" disabled={pending} onClick={() => start(async () => { await setProjectStatusAction(p.id, p.status === "archived" ? "active" : "archived"); router.refresh(); })} style={{ ...btn(false), height: 30, fontSize: 12 }}>
+                <span aria-hidden style={{ width: 1, height: 16, background: "#dedcd6", margin: "0 2px" }} />
+                <button type="button" className="pj-quiet" disabled={pending} onClick={() => start(async () => { await setProjectStatusAction(p.id, p.status === "archived" ? "active" : "archived"); router.refresh(); })} style={quiet("#525252")}>
                   {p.status === "archived" ? t("取消归档", "Unarchive") : t("归档", "Archive")}
                 </button>
                 <button
@@ -218,16 +225,18 @@ export function ProjectScreen({ project: p, zh, people }: { project: ProjectDeta
                       else router.push("/projects");
                     });
                   }}
-                  style={{ ...btn(false), height: 30, fontSize: 12, color: "#c42b2b" }}
+                  className="pj-quiet pj-danger"
+                  style={quiet("#c42b2b")}
                 >
                   {t("删除", "Delete")}
                 </button>
               </>
             ) : null}
           </div>
-          <div>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
             {naming ? (
               <form
+                style={{ flexGrow: 1, minWidth: 0 }}
                 onSubmit={(e) => {
                   e.preventDefault();
                   start(async () => {
@@ -241,10 +250,11 @@ export function ProjectScreen({ project: p, zh, people }: { project: ProjectDeta
                 <input autoFocus value={name} onChange={(e) => setName(e.target.value)} onBlur={() => setNaming(false)} style={{ fontSize: 24, fontWeight: 600, border: "1px solid #d9d9d9", borderRadius: 8, padding: "2px 8px", width: "100%", fontFamily: "inherit" }} />
               </form>
             ) : (
-              <h1 onDoubleClick={() => setNaming(true)} title={t("双击改名", "Double-click to rename")} style={{ fontSize: 24, fontWeight: 600, margin: 0, letterSpacing: "-0.01em", cursor: "text" }}>
+              <h1 onDoubleClick={() => setNaming(true)} title={t("双击改名", "Double-click to rename")} style={{ fontSize: 24, fontWeight: 600, margin: 0, letterSpacing: "-0.01em", cursor: "text", minWidth: 0 }}>
                 {p.title}
               </h1>
             )}
+            <StatusPill status={p.status} zh={zh} />
           </div>
 
           {sharing ? (
@@ -276,7 +286,7 @@ export function ProjectScreen({ project: p, zh, people }: { project: ProjectDeta
           </div>
 
           {/* ---- one line of activity; the whole conversation on demand ---- */}
-          <button type="button" onClick={() => setChatOpen(true)} style={{ display: "flex", alignItems: "center", gap: 9, padding: "8px 12px", border: "1px solid #e6e6e6", borderRadius: 10, background: "#fff", cursor: "pointer", font: "inherit", textAlign: "left", minWidth: 0 }}>
+          <button type="button" onClick={() => setChatOpen(true)} style={{ display: "flex", alignItems: "center", gap: 9, padding: "9px 14px", border: "1px solid #e6e6e6", borderRadius: 12, background: "#fff", cursor: "pointer", font: "inherit", textAlign: "left", minWidth: 0, boxShadow: "0 1px 2px rgba(0,0,0,0.03)" }}>
             <span style={{ width: 7, height: 7, borderRadius: 4, flexShrink: 0, background: anyWorking ? "#278f5e" : "#d9d9d9", animation: anyWorking ? "auraPulse 1.6s ease-in-out infinite" : "none" }} />
             <span style={{ fontSize: 11.5, color: "#999999", flexShrink: 0 }}>{t("动态", "Activity")}</span>
             <span style={{ fontSize: 12.5, color: "#525252", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flexGrow: 1 }}>
@@ -291,7 +301,16 @@ export function ProjectScreen({ project: p, zh, people }: { project: ProjectDeta
               where the one above it ends, whatever their heights. */}
           <Board>
             {/* ---- topic ---- */}
-            <Workbench icon={<AgentIcon agent="research" size={26} radius={7} />} title={t("选题", "Topic")} sub={src?.label ?? t("你定的题", "Your topic")}>
+            {/* Swapping the topic (and, on the script card, using another
+                script) is not the employee's work on it, so it is a quiet
+                press in the card's header rather than one more framed
+                button in the row (where it wrapped onto a line of its own). */}
+            <Workbench
+              icon={<AgentIcon agent="research" size={26} radius={7} />}
+              title={t("选题", "Topic")}
+              sub={src?.label ?? t("你定的题", "Your topic")}
+              right={<Action quiet icon="bulb" label={t("换成已有选题", "Use an existing topic")} onClick={() => setPicking("topics")} disabled={pending} />}
+            >
               {src?.why || src?.hook || src?.evidence?.length ? (
                 <TopicFacts src={src} zh={zh} />
               ) : p.brief ? (
@@ -303,9 +322,6 @@ export function ProjectScreen({ project: p, zh, people }: { project: ProjectDeta
                 <Action icon="bulb" label={t("3 个角度", "3 angles")} onClick={() => ask("research", t("给这个项目 3 个适合本频道的切入角度，每个一句话，说明为什么。", "Give 3 angles for this project that suit our channel, one line each, with why."))} disabled={pending} />
                 <Action icon="eye" label={t("对标怎么做", "How rivals did it")} onClick={() => ask("research", t("找对标账号做过的同题视频，说出播放和他们的开头怎么写。", "Find rival videos on this topic, with their views and how they open."))} disabled={pending} />
               </Actions>
-              <Actions>
-                <Action icon="bulb" label={t("换成已有选题", "Use an existing topic")} onClick={() => setPicking("topics")} disabled={pending} />
-              </Actions>
               <AskBox people={people} zh={zh} placeholder={t("问研究员这个选题…", "Ask the researcher about this topic…")} onSend={(v) => ask("research", v)} disabled={pending} />
             </Workbench>
 
@@ -315,7 +331,12 @@ export function ProjectScreen({ project: p, zh, people }: { project: ProjectDeta
                 icon={<AgentIcon agent="script" size={26} radius={7} />}
                 title={t("脚本", "Script")}
                 sub={p.beats.length ? t(`${p.beats.length} 个分镜 · ${scriptStatus(p.script?.status ?? "", zh)}`, `${p.beats.length} beats · ${scriptStatus(p.script?.status ?? "", zh)}`) : t("还没写", "Not written yet")}
-                right={p.script ? <Link prefetch={false} href={`/script/${p.script.id}`} style={{ ...btn(false), height: 28, fontSize: 12, textDecoration: "none" }}>{t("编辑器", "Editor")} <Icon name="external" size={11} /></Link> : null}
+                right={
+                  <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                    <Action quiet icon="pen" label={t("用已有脚本", "Use an existing script")} onClick={() => setPicking("scripts")} disabled={pending} />
+                    {p.script ? <Link prefetch={false} href={`/script/${p.script.id}`} style={{ ...btn(false), height: 28, fontSize: 12, textDecoration: "none" }}>{t("编辑器", "Editor")} <Icon name="external" size={11} /></Link> : null}
+                  </span>
+                }
               >
                 {working("script") || draftWriting ? <Working agent="script" zh={zh} text={draftWriting ? (p.beats.length ? t("编剧正在按选题重写…", "The writer is rewriting from the topic…") : t("编剧正在写初稿，写好会自动出现在这里…", "The writer is drafting; it appears here when done…")) : t("编剧正在写…", "The writer is writing…")} /> : null}
                 {p.beats.length ? (
@@ -347,7 +368,6 @@ export function ProjectScreen({ project: p, zh, people }: { project: ProjectDeta
                   <Action icon="scissors" label={t("改到 60 秒", "Cut to 60s")} onClick={() => ask("script", t("把项目脚本改到 60 秒以内，保留最有力的三点，写回项目脚本。", "Cut the project's script to under 60 seconds, keeping the three strongest points; write it back."))} disabled={pending || !p.beats.length || p.script?.status === "locked"} />
                   <Action icon="spark" label={t("加强开头", "Stronger hook")} onClick={() => ask("script", t("把项目脚本的开头改得更抓人，前 3 秒给出冲突或数字，写回项目脚本。", "Make the opening grab harder: a conflict or a number in the first 3 seconds; write it back."))} disabled={pending || !p.beats.length || p.script?.status === "locked"} />
                   <Action icon="check" label={t("核查事实", "Fact-check")} onClick={() => ask("research", t("核查这个项目脚本里的每个数字和说法，列出需要改的地方和来源。", "Fact-check every number and claim in this project's script; list what to change, with sources."))} disabled={pending || !p.beats.length} />
-                  <Action icon="pen" label={t("用已有脚本", "Use an existing script")} onClick={() => setPicking("scripts")} disabled={pending} />
                 </Actions>
                 <AskBox people={people} zh={zh} placeholder={t("告诉编剧怎么写或怎么改…", "Tell the writer what to write or change…")} onSend={(v) => ask("script", `${v}（写进项目脚本）`)} disabled={pending || p.script?.status === "locked"} />
               </Workbench>
@@ -378,7 +398,9 @@ export function ProjectScreen({ project: p, zh, people }: { project: ProjectDeta
                     <span style={{ display: "block", fontSize: 13, fontWeight: 600 }}>{t("添加主持人的素材", "Add the host's clips")}</span>
                     <span style={{ display: "block", fontSize: 11.5, color: "#525252", marginTop: 2 }}>{t("上传后自动进时间线并转写。", "They go onto the timeline and are transcribed.")}</span>
                   </span>
-                  <span style={{ ...btn(true), height: 30, fontSize: 12 }}>{t("选择文件", "Choose files")}</span>
+                  {/* White: the whole dashed box is the press, and a black
+                      block in it made the card's loudest thing a label. */}
+                  <span style={{ ...btn(false), height: 30, fontSize: 12, borderColor: "#c9d8f3", color: "#0f5bd5" }}>{t("选择文件", "Choose files")}</span>
                   <input type="file" multiple accept="video/*,audio/*,image/*" style={{ display: "none" }} onChange={(e) => {
                     if (e.target.files?.length) void upload(e.target.files);
                     e.target.value = "";
@@ -502,40 +524,84 @@ export function ProjectScreen({ project: p, zh, people }: { project: ProjectDeta
 function TopicFacts({ src, zh }: { src: ProjectSource; zh: boolean }) {
   const t = (a: string, b: string) => (zh ? a : b);
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 10 }}>
-      {src.why ? <p style={{ margin: 0, fontSize: 13, color: "#383838", lineHeight: 1.6 }}>{cleanCodes(src.why).slice(0, 300)}</p> : null}
-      {src.hook ? <div style={{ fontSize: 12.5, color: "#525252", lineHeight: 1.55 }}>{t(`开头：「${cleanCodes(src.hook)}」`, `Opening: “${cleanCodes(src.hook)}”`)}</div> : null}
-      {src.angle ? <div style={{ fontSize: 12.5, color: "#525252", lineHeight: 1.55 }}>{t(`角度：${cleanCodes(src.angle)}`, `Angle: ${cleanCodes(src.angle)}`)}</div> : null}
-      {src.strength ? (
-        <div style={{ fontSize: 11.5, color: "#7c7c7c", display: "flex", alignItems: "center", gap: 6 }}>
-          {t("信号强度", "Strength")}
-          <span style={{ color: "#c2410c", letterSpacing: 1 }}>{"●".repeat(src.strength)}{"○".repeat(Math.max(0, 5 - src.strength))}</span>
-        </div>
-      ) : null}
-      {src.evidence?.length ? (
-        <div style={{ display: "flex", flexDirection: "column", gap: 3, marginTop: 2 }}>
-          <span style={{ fontSize: 10.5, color: "#999999", letterSpacing: ".04em" }}>{t(`证据 · ${src.evidence.length} 条`, `EVIDENCE · ${src.evidence.length}`)}</span>
-          {src.evidence.slice(0, 5).map((e, i) =>
-            e.url ? (
-              <a key={i} href={e.url} target="_blank" rel="noopener noreferrer" title={e.title} style={{ display: "flex", alignItems: "baseline", gap: 6, fontSize: 12, color: "#171717", textDecoration: "none", minWidth: 0 }}>
-                <span style={{ color: "#0f5bd5", flexShrink: 0 }}>
-                  <Icon name="external" size={11} />
-                </span>
-                <span style={{ color: "#999999", flexShrink: 0 }}>{e.label}</span>
-                <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.title}</span>
-                {e.numbers ? <span style={{ color: "#7c7c7c", flexShrink: 0, fontVariantNumeric: "tabular-nums" }}>{e.numbers.split(" · ").slice(0, 2).join(" · ")}</span> : null}
-              </a>
-            ) : (
-              <span key={i} title={e.title} style={{ display: "flex", alignItems: "baseline", gap: 6, fontSize: 12, color: "#171717", minWidth: 0 }}>
-                <span style={{ color: "#999999", flexShrink: 0 }}>{e.label}</span>
-                <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.title}</span>
-                {e.numbers ? <span style={{ color: "#7c7c7c", flexShrink: 0 }}>{e.numbers.split(" · ").slice(0, 2).join(" · ")}</span> : null}
+    /* The why as the lead paragraph, then the rest as labelled lines in one
+       column (开头, 角度, 信号强度, 证据), as Home's ideas draw them: it was
+       four lines of differently sized greys and a caps caption, which read
+       as one grey block. */
+    <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 12 }}>
+      {src.why ? <p style={{ margin: 0, fontSize: 13, color: "#383838", lineHeight: 1.65 }}>{cleanCodes(src.why).slice(0, 300)}</p> : null}
+      {src.hook || src.angle || src.strength || src.evidence?.length ? (
+        <div style={{ display: "grid", gridTemplateColumns: "auto minmax(0, 1fr)", columnGap: 12, rowGap: 5, fontSize: 12.5, lineHeight: 1.6, padding: "10px 12px", borderRadius: 12, background: "#fafaf9", border: "1px solid #f0efec" }}>
+          {src.hook ? (
+            <>
+              <span style={FACT_LABEL}>{t("开头", "Opening")}</span>
+              <span style={{ color: "#383838" }}>{t(`「${cleanCodes(src.hook)}」`, `“${cleanCodes(src.hook)}”`)}</span>
+            </>
+          ) : null}
+          {src.angle ? (
+            <>
+              <span style={FACT_LABEL}>{t("角度", "Angle")}</span>
+              <span style={{ color: "#383838" }}>{cleanCodes(src.angle)}</span>
+            </>
+          ) : null}
+          {src.strength ? (
+            <>
+              <span style={FACT_LABEL}>{t("信号强度", "Strength")}</span>
+              <span style={{ display: "flex", alignItems: "center", height: 20 }}>
+                <Strength n={src.strength} title={t("信号强度", "Signal strength")} />
               </span>
-            ),
-          )}
+            </>
+          ) : null}
+          {src.evidence?.length ? (
+            <>
+              <span style={FACT_LABEL}>{t("证据", "Evidence")}</span>
+              <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
+                {src.evidence.slice(0, 5).map((e, i) =>
+                  e.url ? (
+                    <a key={i} href={e.url} target="_blank" rel="noopener noreferrer" title={e.title} style={{ display: "flex", alignItems: "baseline", gap: 6, fontSize: 12, color: "#171717", textDecoration: "none", minWidth: 0 }}>
+                      <span style={{ color: "#0f5bd5", flexShrink: 0 }}>
+                        <Icon name="external" size={11} />
+                      </span>
+                      <span style={{ color: "#999999", flexShrink: 0 }}>{e.label}</span>
+                      <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.title}</span>
+                      {e.numbers ? <span style={{ color: "#7c7c7c", flexShrink: 0, fontVariantNumeric: "tabular-nums" }}>{e.numbers.split(" · ").slice(0, 2).join(" · ")}</span> : null}
+                    </a>
+                  ) : (
+                    <span key={i} title={e.title} style={{ display: "flex", alignItems: "baseline", gap: 6, fontSize: 12, color: "#171717", minWidth: 0 }}>
+                      <span style={{ color: "#999999", flexShrink: 0 }}>{e.label}</span>
+                      <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.title}</span>
+                      {e.numbers ? <span style={{ color: "#7c7c7c", flexShrink: 0 }}>{e.numbers.split(" · ").slice(0, 2).join(" · ")}</span> : null}
+                    </span>
+                  ),
+                )}
+                {src.evidence.length > 5 ? <span style={{ fontSize: 11.5, color: "#a3a3a3" }}>{t(`还有 ${src.evidence.length - 5} 条`, `${src.evidence.length - 5} more`)}</span> : null}
+              </span>
+            </>
+          ) : null}
         </div>
       ) : null}
     </div>
+  );
+}
+
+const FACT_LABEL: React.CSSProperties = { fontSize: 11.5, lineHeight: "20px", color: "#a3a3a3", whiteSpace: "nowrap" };
+
+/** 研究员's tint (`AGENT_TINTS.research`), a step darker so an empty dot still shows on white. */
+const EMPTY_DOT = "#c4d8f4";
+
+/**
+ * A topic's strength as five dots in 研究员's colours, the same as on Home's
+ * ideas and suggestion (`Strength` in components/home/IdeasPanel), drawn here
+ * rather than imported so a project page does not load Home's ideas panel.
+ */
+function Strength({ n, title }: { n: number; title: string }) {
+  const k = Math.max(0, Math.min(5, Math.round(n)));
+  return (
+    <span role="img" aria-label={`${k}/5`} title={title} style={{ display: "inline-flex", alignItems: "center", gap: 3 }}>
+      {[0, 1, 2, 3, 4].map((i) => (
+        <span key={i} style={{ width: 6, height: 6, borderRadius: 3, background: i < k ? AGENT_COLORS.research : EMPTY_DOT }} />
+      ))}
+    </span>
   );
 }
 
@@ -625,8 +691,8 @@ function Board({ children }: { children: React.ReactNode }) {
 
 function Workbench({ icon, title, sub, right, children }: { icon: React.ReactNode; title: string; sub?: string; right?: React.ReactNode; children: React.ReactNode }) {
   return (
-    <section style={{ background: "#fff", border: "1px solid #e2e2e2", borderRadius: 16, padding: "14px 16px 16px", minWidth: 0, boxShadow: "0 1px 2px rgba(0,0,0,0.03)" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+    <section style={{ background: "#fff", border: "1px solid #e2e2e2", borderRadius: 14, padding: "14px 16px 16px", minWidth: 0, boxShadow: "0 1px 2px rgba(0,0,0,0.03)" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14, minWidth: 0 }}>
         {icon}
         <span style={{ fontSize: 14.5, fontWeight: 600 }}>{title}</span>
         {sub ? <span style={{ fontSize: 12, color: "#999999", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{sub}</span> : null}
@@ -642,9 +708,20 @@ function Actions({ children }: { children: React.ReactNode }) {
   return <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 10 }}>{children}</div>;
 }
 
-function Action({ icon, label, onClick, disabled, primary = false }: { icon: IconName; label: string; onClick: () => void; disabled?: boolean; primary?: boolean }) {
+/**
+ * One press on a card. `quiet` is for the press that is not the card's
+ * employee's work (swap the topic, use another script): grey text with no
+ * frame, sized for the card's header.
+ */
+function Action({ icon, label, onClick, disabled, primary = false, quiet: isQuiet = false }: { icon: IconName; label: string; onClick: () => void; disabled?: boolean; primary?: boolean; quiet?: boolean }) {
   return (
-    <button type="button" onClick={onClick} disabled={disabled} style={{ ...btn(primary), height: 30, fontSize: 12, borderRadius: 8, opacity: disabled ? 0.45 : 1, cursor: disabled ? "default" : "pointer" }}>
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={isQuiet ? "pj-quiet" : undefined}
+      style={isQuiet ? { ...quiet("#525252"), height: 28, padding: "0 8px", opacity: disabled ? 0.45 : 1, cursor: disabled ? "default" : "pointer" } : { ...btn(primary), height: 30, fontSize: 12, borderRadius: 8, opacity: disabled ? 0.45 : 1, cursor: disabled ? "default" : "pointer" }}
+    >
       <Icon name={icon} size={13} />
       {label}
     </button>
@@ -686,7 +763,14 @@ function AskBox({ people, zh, placeholder, onSend, disabled }: { people: Mention
         placeholder={placeholder}
         style={{ flexGrow: 1, minWidth: 0, minHeight: 34, border: "1px solid #e2e2e2", borderRadius: 10, padding: "8px 11px", outline: "none", resize: "none", fontFamily: "inherit", fontSize: 12.5, lineHeight: 1.45, background: "#fcfcfc", boxSizing: "border-box" }}
       />
-      <button type="button" onClick={send} disabled={disabled || !draft.trim()} style={{ ...btn(true), height: 34, borderRadius: 10, opacity: draft.trim() ? 1 : 0.4 }}>
+      {/* Light grey until there is something to send, as Home's 开工 is;
+          a 40% black block beside every empty box read as a grey slab. */}
+      <button
+        type="button"
+        onClick={send}
+        disabled={disabled || !draft.trim()}
+        style={draft.trim() ? { ...btn(true), height: 34, borderRadius: 10, opacity: disabled ? 0.5 : 1 } : { ...btn(false), height: 34, borderRadius: 10, background: "#f0f0ee", borderColor: "#f0f0ee", color: "#a3a3a3", cursor: "default" }}
+      >
         <Icon name="upload" size={13} style={{ transform: "rotate(90deg)" }} />
       </button>
     </div>
@@ -814,21 +898,29 @@ function ChatDrawer({ project: p, zh, people, onClose }: { project: ProjectDetai
     });
   return (
     <aside style={{ position: "absolute", right: 0, top: 0, bottom: 0, width: 420, background: "#fff", borderLeft: "1px solid #e6e6e6", boxShadow: "-12px 0 40px rgba(0,0,0,0.08)", display: "flex", flexDirection: "column", zIndex: 20 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "12px 14px", borderBottom: "1px solid #f0f0f0" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "12px 14px 12px 16px", borderBottom: "1px solid #f0f0f0" }}>
         <Icon name="chat" size={15} />
-        <span style={{ fontSize: 13.5, fontWeight: 600, flexGrow: 1 }}>{t("项目对话", "Project chat")}</span>
+        <span style={{ fontSize: 13.5, fontWeight: 600 }}>{t("项目对话", "Project chat")}</span>
+        <span style={{ fontSize: 12, color: "#a3a3a3", flexGrow: 1 }}>{p.messages.length}</span>
         <button type="button" onClick={onClose} aria-label="Close" style={{ border: 0, background: "transparent", cursor: "pointer", fontSize: 18, color: "#999999" }}>
           ×
         </button>
       </div>
-      <div ref={scroller} style={{ flexGrow: 1, minHeight: 0, overflowY: "auto", padding: "10px 14px", display: "flex", flexDirection: "column", gap: 10 }}>
+      {/* Room between messages (14, was 10), the time beside each name, and
+          the employee's bubble edged in its own tint, so a long answer reads
+          as one message rather than running into the next. The drawer only
+          renders after a press, so `ago` here never meets the server's HTML. */}
+      <div ref={scroller} style={{ flexGrow: 1, minHeight: 0, overflowY: "auto", padding: "14px 16px", display: "flex", flexDirection: "column", gap: 14 }}>
         {p.messages.map((m) =>
           m.agent ? (
-            <div key={m.id} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
-              <AgentIcon agent={m.agent} size={24} radius={7} />
+            <div key={m.id} style={{ display: "flex", gap: 9, alignItems: "flex-start" }}>
+              <AgentIcon agent={m.agent} size={26} radius={7} />
               <div style={{ minWidth: 0 }}>
-                <div style={{ fontSize: 11.5, fontWeight: 600, color: AGENT_COLORS[m.agent] }}>{zh ? AGENT_LABELS[m.agent].nameLocal : AGENT_LABELS[m.agent].name}</div>
-                <div style={{ marginTop: 2, background: "#f5f7fb", borderRadius: "4px 12px 12px 12px", padding: "8px 11px", fontSize: 12.5, lineHeight: 1.6, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+                <div style={{ display: "flex", alignItems: "baseline", gap: 6, fontSize: 11.5, fontWeight: 600, color: AGENT_COLORS[m.agent] }}>
+                  {zh ? AGENT_LABELS[m.agent].nameLocal : AGENT_LABELS[m.agent].name}
+                  <span style={{ fontWeight: 400, color: "#b3b3b3" }}>{ago(m.at, zh)}</span>
+                </div>
+                <div style={{ marginTop: 3, background: "#f7f8fb", border: `1px solid ${AGENT_TINTS[m.agent]}`, borderRadius: "4px 12px 12px 12px", padding: "9px 12px", fontSize: 12.5, lineHeight: 1.65, color: "#2b343d", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
                   {clean(m.body)}
                   {m.actions.length && !m.done ? (
                     <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
@@ -850,13 +942,15 @@ function ChatDrawer({ project: p, zh, people, onClose }: { project: ProjectDetai
             </div>
           ) : (
             <div key={m.id} style={{ alignSelf: "flex-end", maxWidth: "86%" }}>
-              <div style={{ fontSize: 11, color: "#b3b3b3", textAlign: "right" }}>{m.author}</div>
-              <div style={{ marginTop: 2, background: "#171717", color: "#fff", borderRadius: "12px 4px 12px 12px", padding: "8px 11px", fontSize: 12.5, lineHeight: 1.55, whiteSpace: "pre-wrap" }}>{m.body}</div>
+              <div style={{ fontSize: 11, color: "#b3b3b3", textAlign: "right" }}>
+                {m.author} · {ago(m.at, zh)}
+              </div>
+              <div style={{ marginTop: 3, background: "#171717", color: "#fff", borderRadius: "12px 4px 12px 12px", padding: "9px 12px", fontSize: 12.5, lineHeight: 1.6, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{m.body}</div>
             </div>
           ),
         )}
       </div>
-      <div style={{ borderTop: "1px solid #f0f0f0", padding: 10 }}>
+      <div style={{ borderTop: "1px solid #f0f0f0", padding: "0 12px 12px" }}>
         <AskBox people={people} zh={zh} placeholder={t("@ 一位同事…", "@ a colleague…")} onSend={say} disabled={pending} />
       </div>
     </aside>
@@ -889,18 +983,22 @@ function StepCard({ step: s, n }: { step: ProjectStep; n: number }) {
             ? { border: "1px dashed #d9d9d9", background: "#fbfbfa" }
             : { border: "1px solid #e2e2e2", background: "#fff" };
   const dim = s.state === "todo" || s.state === "skipped";
+  /* The step's name is the card's title now (12.5, dark), its number a quiet
+     prefix; it was all one 11px grey caption, the same weight as the line
+     under it, so five cards read as five grey smudges. */
   return (
-    <div style={{ ...frame, borderRadius: 10, padding: "9px 10px", minWidth: 0, overflow: "hidden" }}>
-      <div style={{ display: "flex", alignItems: "flex-start", gap: 7, minWidth: 0 }}>
-        <span style={{ opacity: dim ? 0.5 : 1, display: "flex" }}>
+    <div style={{ ...frame, borderRadius: 12, padding: "10px 12px", minWidth: 0, overflow: "hidden" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+        <span style={{ opacity: dim ? 0.5 : 1, display: "flex", flexShrink: 0 }}>
           <AgentIcon agent={you ? null : (s.owner as AgentKey)} size={22} radius={6} />
         </span>
-        <span style={{ fontSize: 11, lineHeight: 1.3, color: s.state === "you" ? "#b3b3b3" : "#999999", minWidth: 0, overflowWrap: "anywhere" }}>
-          {n} · {s.label}
+        <span style={{ fontSize: 12.5, fontWeight: 600, lineHeight: 1.3, color: s.state === "you" ? "#fff" : dim ? "#a3a3a3" : "#171717", minWidth: 0, overflowWrap: "anywhere" }}>
+          <span style={{ fontWeight: 500, color: s.state === "you" ? "#8a8a8a" : "#b3b3b3", marginRight: 5, fontVariantNumeric: "tabular-nums" }}>{n}</span>
+          {s.label}
         </span>
-        {s.state === "done" ? <span style={{ marginLeft: "auto", color: "#278f5e", display: "flex" }}><Icon name="check" size={13} strokeWidth={2.4} /></span> : null}
+        {s.state === "done" ? <span style={{ marginLeft: "auto", color: "#278f5e", display: "flex", flexShrink: 0 }}><Icon name="check" size={13} strokeWidth={2.4} /></span> : null}
       </div>
-      <div style={{ fontSize: 11.5, marginTop: 6, lineHeight: 1.4, color: s.state === "you" ? "#fff" : s.state === "running" ? color : dim ? "#b3b3b3" : "#525252", fontWeight: s.state === "running" || s.state === "you" ? 500 : 400, overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>
+      <div style={{ fontSize: 11.5, marginTop: 7, lineHeight: 1.4, color: s.state === "you" ? "#fff" : s.state === "running" ? color : dim ? "#b3b3b3" : "#525252", fontWeight: s.state === "running" || s.state === "you" ? 500 : 400, overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>
         {s.line}
       </div>
     </div>
@@ -910,7 +1008,7 @@ function StepCard({ step: s, n }: { step: ProjectStep; n: number }) {
 function StatusPill({ status, zh }: { status: string; zh: boolean }) {
   const [label, color, bg] =
     status === "done" ? [zh ? "已交付" : "Delivered", "#0b7a63", "#e3f4ee"] : status === "archived" ? [zh ? "已归档" : "Archived", "#7c7c7c", "#f0f0f0"] : [zh ? "进行中" : "In progress", "#0f5bd5", "#e6effd"];
-  return <span style={{ fontSize: 12, fontWeight: 500, color, background: bg, borderRadius: 999, padding: "3px 10px", whiteSpace: "nowrap" }}>{label}</span>;
+  return <span style={{ fontSize: 11.5, fontWeight: 500, color, background: bg, borderRadius: 999, padding: "0 9px", lineHeight: "22px", whiteSpace: "nowrap", flexShrink: 0 }}>{label}</span>;
 }
 
 function scriptStatus(s: string, zh: boolean): string {
@@ -959,5 +1057,17 @@ function ago(iso: string, zh: boolean): string {
 function btn(primary: boolean): React.CSSProperties {
   return { display: "inline-flex", alignItems: "center", gap: 6, height: 32, padding: "0 13px", borderRadius: 9, border: primary ? "1px solid #171717" : "1px solid #e2e2e2", background: primary ? "#171717" : "#fff", color: primary ? "#fff" : "#171717", fontFamily: "inherit", fontSize: 12.5, fontWeight: primary ? 500 : 400, cursor: "pointer", whiteSpace: "nowrap" };
 }
+
+/** A frameless text press (归档, 删除, 换成已有选题, 用已有脚本); its hover is `PROJECT_CSS`. */
+function quiet(color: string): React.CSSProperties {
+  return { display: "inline-flex", alignItems: "center", gap: 6, height: 30, padding: "0 10px", borderRadius: 8, border: "1px solid transparent", background: "transparent", color, fontFamily: "inherit", fontSize: 12, cursor: "pointer", whiteSpace: "nowrap" };
+}
+
+const PROJECT_CSS = `
+.pj-quiet { transition: background-color .15s ease, color .15s ease; }
+.pj-quiet:hover:not(:disabled) { background: rgba(0,0,0,0.045) !important; color: #171717 !important; }
+.pj-danger:hover:not(:disabled) { background: #fdecea !important; color: #b42318 !important; }
+.pj-quiet:focus-visible { outline: 2px solid #171717; outline-offset: 1px; }
+`;
 
 const PAPER: React.CSSProperties = { backgroundColor: "#f4f3f0", backgroundImage: "radial-gradient(#d8d5cf 1px, transparent 1px)", backgroundSize: "22px 22px" };
