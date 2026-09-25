@@ -909,7 +909,7 @@ export function VideoScreen({
                    together, and its page is where the work happens. */
                 const res = await startProjectAction({ title: name });
                 if ("error" in res && res.error) return res;
-                if ("id" in res && res.id) router.push(`/projects/${res.id}`);
+                if ("id" in res && res.id) router.push(`/projects/${res.id}`); setTimeout(() => router.refresh(), 400);
                 return {};
               })
             }

@@ -3,7 +3,7 @@
 import * as React from "react";
 import { ResearchAgentPanel } from "./ResearchAgentPanel";
 import { PlatformMark, platformLabel } from "@/components/ui/PlatformMark";
-import { StatusStrip } from "@/components/ui/kit";
+import { Icon } from "@/components/ui/Icon";
 import { useResizable } from "@/components/ui/Resizer";
 import type { InboxComment, InboxGroup } from "@/lib/social/service";
 
@@ -37,6 +37,12 @@ import type { InboxComment, InboxGroup } from "@/lib/social/service";
  * The artboard's 312px Agent panel is drawn, through the shared
  * ResearchAgentPanel that every Research screen uses. Its scripted
  * conversation is not: the panel says what these rows actually contain.
+ *
+ * 2026-09: the studio asked for this screen to work better than the artboard
+ * drew it, so the layout departs from it in five places: the counters are
+ * filter tabs, the pickers sit in one tidy row, the charts fold away behind a
+ * one-line summary, the list rows are cards with a sentiment bar, and the
+ * detail pane is a card that carries the video, the comment and the reply.
  *
  * Not drawn: the artboard's notification bell, whose red dot claimed something
  * was waiting when there is no notification feed behind it (the same call
@@ -102,6 +108,16 @@ const BAR_COLOUR: Record<Sentiment, string> = {
 /** The tallest bar in the artboard is 44px; the rest are drawn against it. */
 const BAR_MAX = 44;
 
+/** The colour of a list card's left edge: the histogram's own colour for the
+ * comment's sentiment, nothing for one no classifier has read yet. */
+function sentimentColour(s: string | null): string {
+  return s !== null && (SENTIMENTS as readonly string[]).includes(s) ? BAR_COLOUR[s as Sentiment] : "transparent";
+}
+
+/** Which slice of the inbox the tabs above the list are showing. Client-side,
+ * like the platform picker: it sifts the rows already in hand. */
+type ListView = "all" | "drafts" | "undrafted" | "unclassified";
+
 /** A <select> wearing the artboard's chip text. */
 const PICKER: React.CSSProperties = {
   border: "none",
@@ -141,10 +157,10 @@ const CSS = `
 [data-inbox-screen] .h1 { font-size: 15px; font-weight: 500; }
 [data-inbox-screen] .mut { font-size: 12.5px; color: #999999; }
 [data-inbox-screen] .btn { height: 30px; padding: 0 12px; border-radius: 8px; display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; white-space: nowrap; }
-[data-inbox-screen] .btn.p { background: #007be0; color: #fff; font-weight: 500; }
-[data-inbox-screen] .btn.s { border: 1px solid #ededed; color: #525252; }
+[data-inbox-screen] .btn.p { background: #171717; color: #fff; font-weight: 500; }
+[data-inbox-screen] .btn.s { border: 1px solid #e2e2e2; background: #fff; color: #525252; }
 [data-inbox-screen] .btn svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-[data-inbox-screen] .chip { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 11px; border: 1px solid #ededed; border-radius: 8px; font-size: 12.5px; color: #4a5763; white-space: nowrap; }
+[data-inbox-screen] .chip { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border: 1px solid #e2e2e2; border-radius: 8px; background: #fff; font-size: 12px; color: #7c7c7c; white-space: nowrap; }
 [data-inbox-screen] .chip svg { width: 10px; height: 10px; stroke: #999999; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 [data-inbox-screen] .bd { display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border-radius: 6px; font-size: 11.5px; font-weight: 500; white-space: nowrap; }
 [data-inbox-screen] .gray { background: #f3f3f3; color: #525252 }
@@ -160,14 +176,17 @@ const CSS = `
 [data-inbox-screen] .cap { font-size: 11.5px; color: #999999; }
 
 /* a list row (the artboard's selected row, and the rest) */
-[data-inbox-screen] .cmt { display: flex; gap: 10px; padding: 9px 14px; cursor: pointer; }
-[data-inbox-screen] .cmt.on { background: #f5faff; box-shadow: inset 2px 0 0 var(--ac); }
+[data-inbox-screen] .cmt { position: relative; display: flex; gap: 10px; margin: 0 10px 6px; padding: 10px 12px 10px 14px; border: 1px solid #ececec; border-radius: 10px; background: #fff; overflow: hidden; cursor: pointer; transition: border-color .12s ease, box-shadow .12s ease; }
+[data-inbox-screen] .cmt::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--sb, transparent); }
+[data-inbox-screen] .cmt:hover { border-color: #d6d6d6; }
+[data-inbox-screen] .cmt:focus-visible { outline: none; box-shadow: 0 0 0 3px #eff6ff; border-color: var(--ac); }
+[data-inbox-screen] .cmt.on { border-color: #171717; box-shadow: 0 1px 4px rgba(0,0,0,.07); }
 
 /* the product needs a pointer on what it made clickable; the artboard is static */
 [data-inbox-screen] .btn, [data-inbox-screen] .chip { cursor: pointer; }
 [data-inbox-screen] .btn { border: 0; font-family: inherit; letter-spacing: inherit; }
 [data-inbox-screen] .btn:disabled { opacity: .45; cursor: not-allowed; }
-[data-inbox-screen] .chip.pkon { border-color: var(--ac); color: #171717; }
+[data-inbox-screen] .chip.pkon { border-color: #171717; background: #f8f8f8; color: #171717; }
 
 /* bulk selection: out of the way until it is wanted */
 [data-inbox-screen] .cbx { opacity: 0; transition: opacity .12s ease; }
@@ -185,6 +204,32 @@ const CSS = `
 [data-inbox-screen] .tf { display: flex; gap: 2px; padding: 2px; border-radius: 8px; background: #f3f3f3; }
 [data-inbox-screen] .tf button { height: 24px; padding: 0 10px; border: 0; border-radius: 6px; background: transparent; display: flex; align-items: center; font-size: 11.5px; font-weight: 500; font-family: inherit; letter-spacing: inherit; color: #7c7c7c; cursor: pointer; }
 [data-inbox-screen] .tf button.on { background: #fff; color: #171717; box-shadow: 0 1px 2px rgba(0,0,0,.1); }
+
+/* 2026-09 layout: filter tabs, the folded summary, cards. Prefixed, because
+   the rest of the app has its own .card and .tab. */
+[data-inbox-screen] .btn.ib-q { height: 28px; padding: 0 9px; background: transparent; color: #525252; font-size: 12px; }
+[data-inbox-screen] .btn.ib-q:hover:not(:disabled) { background: #f3f3f3; color: #171717; }
+[data-inbox-screen] .btn.s:hover:not(:disabled) { background: #f8f8f8; }
+[data-inbox-screen] .ib-row { flex-shrink: 0; display: flex; align-items: center; gap: 8px; padding: 0 20px; border-bottom: 1px solid #ececec; }
+[data-inbox-screen] .ib-fchip { display: inline-flex; align-items: center; gap: 7px; height: 28px; padding: 0 10px; border: 1px solid #e2e2e2; border-radius: 8px; background: #fff; font-family: inherit; font-size: 12px; letter-spacing: inherit; color: #525252; white-space: nowrap; cursor: pointer; }
+[data-inbox-screen] .ib-fchip:hover { border-color: #cfcfcf; color: #171717; }
+[data-inbox-screen] .ib-fchip .n { font-size: 11px; font-weight: 500; color: #999999; font-variant-numeric: tabular-nums; }
+[data-inbox-screen] .ib-fchip.on { background: #171717; border-color: #171717; color: #fff; }
+[data-inbox-screen] .ib-fchip.on .n { color: rgba(255,255,255,.7); }
+[data-inbox-screen] .ib-vr { width: 1px; height: 16px; background: #e2e2e2; margin: 0 4px; flex-shrink: 0; }
+[data-inbox-screen] .ib-sum { flex-shrink: 0; height: 36px; display: flex; align-items: center; gap: 8px; padding: 0 14px 0 20px; border-bottom: 1px solid #ececec; background: #fafafa; }
+[data-inbox-screen] .ib-sumitems { flex: 1; min-width: 0; display: flex; align-items: center; gap: 2px; overflow-x: auto; scrollbar-width: none; white-space: nowrap; }
+[data-inbox-screen] .ib-sumitems::-webkit-scrollbar { display: none; }
+[data-inbox-screen] .ib-sumk { font-size: 11.5px; font-weight: 500; color: #999999; margin-right: 4px; }
+[data-inbox-screen] .ib-sumi { display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 7px; border: 1px solid transparent; border-radius: 6px; background: transparent; font-family: inherit; font-size: 12px; letter-spacing: inherit; color: #525252; cursor: pointer; white-space: nowrap; }
+[data-inbox-screen] .ib-sumi:hover { background: #f0f0f0; color: #171717; }
+[data-inbox-screen] .ib-sumi.on { background: #fff; border-color: #171717; color: #171717; }
+[data-inbox-screen] .ib-sumi .n { font-variant-numeric: tabular-nums; color: #999999; }
+[data-inbox-screen] .ib-dot { width: 7px; height: 7px; border-radius: 4px; flex-shrink: 0; }
+[data-inbox-screen] .ib-gh { display: flex; align-items: center; gap: 10px; padding: 12px 12px 7px; }
+[data-inbox-screen] .ib-clamp { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+[data-inbox-screen] .ib-card { max-width: 780px; background: #fff; border: 1px solid #e2e2e2; border-radius: 14px; overflow: hidden; }
+[data-inbox-screen] .ib-sec { border-top: 1px solid #ececec; }
 `;
 
 /* ---------------------------------------------------------------- language */
@@ -253,13 +298,22 @@ const ZH: Record<string, string> = {
   "Drafts to approve": "待批准草稿",
   "No draft yet": "尚无草稿",
   Unclassified: "未分类",
+  // The 2026-09 layout.
+  Show: "显示",
+  "Clear filters": "清除筛选",
+  "Show charts": "展开图表",
+  "Hide charts": "收起图表",
+  "Open on platform": "在平台上查看",
+  "Reply drafted": "已备好回复草稿",
+  Comment: "评论",
   "Comment data is personal data, HK PDPO applies": "评论数据属于个人资料，适用香港《个人资料（私隐）条例》",
 };
 
 /* ------------------------------------------------------------------ format */
 
-function count(n: number, locale: string): string {
-  return new Intl.NumberFormat(locale).format(n);
+function count(n: number, _locale: string): string {
+  void _locale;
+  return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 }
 
 /** "2 h" — the artboard's stamp on a list row, short enough for one line. */
@@ -278,29 +332,32 @@ function shortAgo(at: Date | null, zh: boolean): string {
 
 /** "2 hours ago" — the artboard's caption line, which has room for words. */
 function longAgo(at: Date | null, locale: string): string {
+  /* Written out rather than through Intl.RelativeTimeFormat: the server and
+     the browser use different ICU data and put different spaces in the
+     result, which was a hydration error on every load. */
   if (at === null) return "";
-  const seconds = (at.getTime() - Date.now()) / 1000;
-  const steps: [Intl.RelativeTimeFormatUnit, number][] = [
-    ["year", 31536000],
-    ["month", 2592000],
-    ["week", 604800],
-    ["day", 86400],
-    ["hour", 3600],
-    ["minute", 60],
-    ["second", 1],
+  const zh = locale.startsWith("zh");
+  const s = Math.max(0, (Date.now() - at.getTime()) / 1000);
+  const units: [number, string, string][] = [
+    [31536000, "年", "year"],
+    [2592000, "个月", "month"],
+    [604800, "周", "week"],
+    [86400, "天", "day"],
+    [3600, "小时", "hour"],
+    [60, "分钟", "minute"],
   ];
-  const rtf = new Intl.RelativeTimeFormat(locale, { numeric: "auto" });
-  for (const [unit, size] of steps) {
-    if (Math.abs(seconds) >= size || unit === "second") {
-      return rtf.format(Math.round(seconds / size), unit);
-    }
+  for (const [size, cn, en] of units) {
+    const n = Math.floor(s / size);
+    if (n >= 1) return zh ? `${n} ${cn}前` : `${n} ${en}${n === 1 ? "" : "s"} ago`;
   }
-  return "";
+  return zh ? "刚刚" : "just now";
 }
 
 /** "09:15" — when the channels were last checked. */
 function clock(at: Date, locale: string): string {
-  return new Intl.DateTimeFormat(locale, { hour: "2-digit", minute: "2-digit" }).format(at);
+  /* Hong Kong time, stated: left to the machine, the server rendered UTC
+     and the browser local time, and the two disagreed on every load. */
+  return new Intl.DateTimeFormat(locale, { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Hong_Kong" }).format(at);
 }
 
 /* The platform's own name and its own mark come from components/ui/PlatformMark,
@@ -380,9 +437,16 @@ function Avatar({ url, label, size }: { url: string | null; label: string; size:
 }
 
 /** The artboard's 34x19 post thumbnail, and what stands in when there is none. */
-function Thumb({ url }: { url: string | null }): React.JSX.Element {
+function Thumb({ url, width = 34, height = 19 }: { url: string | null; width?: number; height?: number }): React.JSX.Element {
   const [broken, setBroken] = React.useState(false);
-  const common: React.CSSProperties = { width: 34, height: 19, borderRadius: 3, objectFit: "cover", flexShrink: 0 };
+  const common: React.CSSProperties = {
+    width,
+    height,
+    borderRadius: width >= 48 ? 6 : 3,
+    objectFit: "cover",
+    flexShrink: 0,
+    border: width >= 48 ? "1px solid #ececec" : undefined,
+  };
   if (url === null || url === "" || broken) {
     return <div aria-hidden style={{ ...common, background: "#f3f3f3" }} />;
   }
@@ -445,6 +509,9 @@ export function InboxScreen(props: InboxScreenProps): React.JSX.Element {
    */
   const [platform, setPlatform] = React.useState("");
   const [groupBy, setGroupBy] = React.useState<"post" | "platform">("post");
+  const [view, setView] = React.useState<ListView>("all");
+  /** The charts fold away by default: the list and the reply need the height. */
+  const [chartsOpen, setChartsOpen] = React.useState(false);
   /** The draft as it stands in the textarea, before it is saved or sent. */
   const [edit, setEdit] = React.useState<{ draftId: string; body: string } | null>(null);
   const draftRef = React.useRef<HTMLTextAreaElement | null>(null);
@@ -465,8 +532,14 @@ export function InboxScreen(props: InboxScreenProps): React.JSX.Element {
 
   const q = query.trim().toLowerCase();
   const shown = React.useMemo<InboxGroup[]>(() => {
-    if (q === "" && platform === "") return groups;
+    if (q === "" && platform === "" && view === "all") return groups;
+    const inView = (c: InboxComment): boolean =>
+      view === "all" ||
+      (view === "drafts" && c.draft !== null) ||
+      (view === "undrafted" && c.draft === null) ||
+      (view === "unclassified" && c.sentiment === null);
     const hit = (c: InboxComment): boolean =>
+      inView(c) &&
       (platform === "" || c.platform === platform) &&
       (q === "" ||
         c.body.toLowerCase().includes(q) ||
@@ -476,7 +549,7 @@ export function InboxScreen(props: InboxScreenProps): React.JSX.Element {
     return groups
       .map((g) => ({ ...g, comments: g.comments.filter(hit) }))
       .filter((g) => g.comments.length > 0);
-  }, [groups, q, platform]);
+  }, [groups, q, platform, view]);
 
   /**
    * How many comments came from each platform, commonest first.
@@ -490,7 +563,7 @@ export function InboxScreen(props: InboxScreenProps): React.JSX.Element {
   const platforms = React.useMemo<[string, number][]>(() => {
     const n = new Map<string, number>();
     for (const g of groups) for (const c of g.comments) n.set(c.platform, (n.get(c.platform) ?? 0) + 1);
-    return [...n.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+    return [...n.entries()].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
   }, [groups]);
 
   /**
@@ -520,7 +593,7 @@ export function InboxScreen(props: InboxScreenProps): React.JSX.Element {
       }
     }
     return [...byPlatform.entries()]
-      .sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0]))
+      .sort((a, b) => b[1].length - a[1].length || (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))
       .map(([key, comments]) => ({ key, platform: key, title: null, thumbnailUrl: null, comments }));
   }, [shown, groupBy]);
 
@@ -606,6 +679,8 @@ export function InboxScreen(props: InboxScreenProps): React.JSX.Element {
       drafts: all.filter((c) => c.draft !== null).length,
       undrafted: all.filter((c) => c.draft === null).length,
       flagged: all.filter((c) => c.flagged).length,
+      leads: all.filter((c) => c.isLead).length,
+      unclassified: all.filter((c) => c.sentiment === null).length,
     };
   }, [groups]);
 
@@ -719,7 +794,7 @@ export function InboxScreen(props: InboxScreenProps): React.JSX.Element {
   if (channelCount === 0) {
     return (
       <>
-        <style>{CSS}</style>
+        <style dangerouslySetInnerHTML={{ __html: CSS }} />
         <div
           data-inbox-screen=""
           style={{ ...frameStyle, flexGrow: 1, display: "flex", flexDirection: "column", minWidth: 0, minHeight: 0 }}
@@ -743,25 +818,88 @@ export function InboxScreen(props: InboxScreenProps): React.JSX.Element {
   const sentimentKeys = SENTIMENTS.filter((k) => (summary.sentiment[k] ?? 0) > 0);
   const currentSentiment = filters.sentiment ?? "";
   const currentLanguage = filters.language ?? "";
+  const serverFiltered =
+    currentSentiment !== "" || currentLanguage !== "" || filters.flagged === true || filters.leads === true;
+  const anyFilter = serverFiltered || platform !== "" || view !== "all" || q !== "";
+
+  /** Back to the whole inbox. The page is only asked to refilter when one of
+   * its own filters is on; the rest is local state. */
+  function clearFilters(): void {
+    setPlatform("");
+    setView("all");
+    setQuery("");
+    if (serverFiltered) onFilter({});
+  }
+
+  /*
+   * The inbox as a state rather than as a list, and each state a way in.
+   *
+   * These were a strip of counters that answered "is anything waiting on me"
+   * and then left the person to go and find it. Each one now narrows the list
+   * to exactly the rows it counted. The first four are one choice (a comment
+   * is drafted or it is not); flagged and leads are the page's own filters and
+   * toggle on top of it.
+   */
+  const views: { key: ListView; label: string; n: number }[] = [
+    { key: "all", label: t("Waiting for a reply"), n: summary.open },
+    { key: "drafts", label: t("Drafts to approve"), n: waiting.drafts },
+    { key: "undrafted", label: t("No draft yet"), n: waiting.undrafted },
+    { key: "unclassified", label: t("Unclassified"), n: waiting.unclassified },
+  ];
+
+  const tabRow = (
+    <div className="ib-row" style={{ minHeight: 48, paddingTop: 10, paddingBottom: 10 }}>
+      <div role="group" aria-label={t("Show")} style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", minWidth: 0 }}>
+        {views.map((v) => (
+          <button
+            key={v.key}
+            type="button"
+            className={`ib-fchip${view === v.key ? " on" : ""}`}
+            aria-pressed={view === v.key}
+            onClick={() => setView(v.key)}
+          >
+            {v.label}
+            <span className="n">{count(v.n, locale)}</span>
+          </button>
+        ))}
+        <span className="ib-vr" aria-hidden />
+        <button
+          type="button"
+          className={`ib-fchip${filters.flagged === true ? " on" : ""}`}
+          aria-pressed={filters.flagged === true}
+          onClick={() => onFilter({ ...filters, flagged: filters.flagged === true ? undefined : true })}
+        >
+          {t("Flagged")}
+          <span className="n">{count(waiting.flagged, locale)}</span>
+        </button>
+        <button
+          type="button"
+          className={`ib-fchip${filters.leads === true ? " on" : ""}`}
+          aria-pressed={filters.leads === true}
+          onClick={() => onFilter({ ...filters, leads: filters.leads === true ? undefined : true })}
+        >
+          {t("Business leads")}
+          <span className="n">{count(waiting.leads, locale)}</span>
+        </button>
+      </div>
+      <div style={{ flexGrow: 1 }} />
+      <span className="cap" style={{ whiteSpace: "nowrap" }} suppressHydrationWarning>
+        {syncLine}
+      </span>
+      <button type="button" className="btn ib-q" onClick={onSyncNow}>
+        {t("Check now")}
+      </button>
+    </div>
+  );
 
   const filterRow = (
-    <div
-      style={{
-        flexShrink: 0,
-        height: 50,
-        display: "flex",
-        alignItems: "center",
-        gap: 8,
-        padding: "0 20px",
-        borderBottom: "1px solid #ededed",
-      }}
-    >
+    <div className="ib-row" style={{ height: 46 }}>
       {/* Platform first, because it is the coarsest cut and the one the studio
           asked for: a reply to a YouTube comment and a reply to a TikTok
           comment are written by different people in a different register. */}
       <div className={`chip${platform === "" ? "" : " pkon"}`}>
         {platform === "" ? null : <PlatformMark platform={platform} size={12} />}
-        {t("Platform")}:
+        {t("Platform")}
         <select
           aria-label={t("Platform")}
           value={platform}
@@ -785,7 +923,10 @@ export function InboxScreen(props: InboxScreenProps): React.JSX.Element {
         </svg>
       </div>
       <div className={`chip${currentSentiment === "" ? "" : " pkon"}`}>
-        {t("Sentiment")}:
+        {currentSentiment === "" || !(SENTIMENTS as readonly string[]).includes(currentSentiment) ? null : (
+          <span className="ib-dot" aria-hidden style={{ background: BAR_COLOUR[currentSentiment as Sentiment] }} />
+        )}
+        {t("Sentiment")}
         <select
           aria-label={t("Sentiment")}
           value={currentSentiment}
@@ -809,7 +950,7 @@ export function InboxScreen(props: InboxScreenProps): React.JSX.Element {
         </svg>
       </div>
       <div className={`chip${currentLanguage === "" ? "" : " pkon"}`}>
-        {t("Language")}:
+        {t("Language")}
         <select
           aria-label={t("Language")}
           value={currentLanguage}
@@ -830,24 +971,11 @@ export function InboxScreen(props: InboxScreenProps): React.JSX.Element {
           <path d="m6.5 9.5 5.5 5.5 5.5-5.5" />
         </svg>
       </div>
-      <button
-        type="button"
-        className={`chip${filters.flagged === true ? " pkon" : ""}`}
-        aria-pressed={filters.flagged === true}
-        onClick={() => onFilter({ ...filters, flagged: filters.flagged === true ? undefined : true })}
-        style={{ background: "transparent", fontFamily: "inherit", fontSize: 12, letterSpacing: "inherit" }}
-      >
-        {t("Flagged")}
-      </button>
-      <button
-        type="button"
-        className={`chip${filters.leads === true ? " pkon" : ""}`}
-        aria-pressed={filters.leads === true}
-        onClick={() => onFilter({ ...filters, leads: filters.leads === true ? undefined : true })}
-        style={{ background: "transparent", fontFamily: "inherit", fontSize: 12, letterSpacing: "inherit" }}
-      >
-        {t("Business leads")}
-      </button>
+      {anyFilter ? (
+        <button type="button" className="btn ib-q" onClick={clearFilters}>
+          {t("Clear filters")}
+        </button>
+      ) : null}
       <div style={{ flexGrow: 1 }} />
       <span className="cap">{t("Bulk:")}</span>
       {/* Hiding or reporting what someone said is an action with an author and
@@ -856,6 +984,7 @@ export function InboxScreen(props: InboxScreenProps): React.JSX.Element {
       <button
         type="button"
         className="btn s"
+        style={{ height: 28, fontSize: 12 }}
         disabled={!anySelected}
         title={anySelected ? undefined : t("Tick a comment first")}
         onClick={() => onBulk("hide")}
@@ -866,6 +995,7 @@ export function InboxScreen(props: InboxScreenProps): React.JSX.Element {
       <button
         type="button"
         className="btn s"
+        style={{ height: 28, fontSize: 12 }}
         disabled={!anySelected}
         title={anySelected ? undefined : t("Tick a comment first")}
         onClick={() => onBulk("spam")}
@@ -876,10 +1006,100 @@ export function InboxScreen(props: InboxScreenProps): React.JSX.Element {
     </div>
   );
 
+  /*
+   * The charts, folded to one line.
+   *
+   * Open, the band below is 140px of bars and tables above a list that needs
+   * the height more. Folded, the same numbers read as a sentence — and each
+   * number is still a way in: pressing "Negative 3" narrows the list to those
+   * three, as the picker above does.
+   */
+  const summaryLine = (
+    <div className="ib-sum">
+      <div className="ib-sumitems">
+        <span className="ib-sumk">{t("Sentiment")}</span>
+        {sentimentKeys.length === 0 ? <span className="cap">{zh ? "暂无" : "none yet"}</span> : null}
+        {sentimentKeys.map((k) => {
+          const on = currentSentiment === k;
+          return (
+            <button
+              key={k}
+              type="button"
+              className={`ib-sumi${on ? " on" : ""}`}
+              aria-pressed={on}
+              onClick={() => onFilter({ ...filters, sentiment: on ? undefined : k })}
+            >
+              <span className="ib-dot" aria-hidden style={{ background: BAR_COLOUR[k] }} />
+              {sentimentLabel(k)}
+              <span className="n">{count(summary.sentiment[k] ?? 0, locale)}</span>
+            </button>
+          );
+        })}
+        <span className="ib-vr" aria-hidden />
+        <span className="ib-sumk">{t("Language")}</span>
+        {languages.length === 0 ? <span className="cap">{zh ? "暂无" : "none yet"}</span> : null}
+        {languages.map(([tag, n]) => {
+          const on = currentLanguage === tag;
+          return (
+            <button
+              key={tag}
+              type="button"
+              className={`ib-sumi${on ? " on" : ""}`}
+              aria-pressed={on}
+              onClick={() => onFilter({ ...filters, language: on ? undefined : tag })}
+            >
+              {languageLabel(tag)}
+              <span className="n">{count(n, locale)}</span>
+            </button>
+          );
+        })}
+        {platforms.length > 1 ? (
+          <>
+            <span className="ib-vr" aria-hidden />
+            <span className="ib-sumk">{t("Platform")}</span>
+            {platforms.map(([key, n]) => {
+              const on = platform === key;
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  className={`ib-sumi${on ? " on" : ""}`}
+                  aria-pressed={on}
+                  onClick={() => setPlatform(on ? "" : key)}
+                >
+                  <PlatformMark platform={key} size={11} />
+                  {platformLabel(key)}
+                  <span className="n">{count(n, locale)}</span>
+                </button>
+              );
+            })}
+          </>
+        ) : null}
+      </div>
+      <button
+        type="button"
+        className="btn ib-q"
+        aria-expanded={chartsOpen}
+        aria-controls="inbox-charts"
+        onClick={() => setChartsOpen((v) => !v)}
+        style={{ flexShrink: 0 }}
+      >
+        {chartsOpen ? t("Hide charts") : t("Show charts")}
+        <svg
+          viewBox="0 0 24 24"
+          style={{ transform: chartsOpen ? "rotate(180deg)" : undefined, transition: "transform .15s ease" }}
+        >
+          <path d="m6.5 9.5 5.5 5.5 5.5-5.5" />
+        </svg>
+      </button>
+    </div>
+  );
+
   /* -------------------------------------------------- the distribution band */
 
   const band = (
     <div
+      id="inbox-charts"
       style={{
         flexShrink: 0,
         display: "grid",
@@ -1015,16 +1235,19 @@ export function InboxScreen(props: InboxScreenProps): React.JSX.Element {
 
   /* ------------------------------------------------------------- the list */
 
+  const listed = sections.reduce((n, g) => n + g.comments.length, 0);
+
   const list = (
     <div
       style={{
         width: listWidth,
         flexShrink: 0,
         position: "relative",
-        borderRight: "1px solid #ededed",
+        borderRight: "1px solid #ececec",
         display: "flex",
         flexDirection: "column",
         minHeight: 0,
+        background: "#fafafa",
       }}
     >
       {listHandle}
@@ -1033,20 +1256,18 @@ export function InboxScreen(props: InboxScreenProps): React.JSX.Element {
         *
         * Filtering to one platform answers "what is TikTok saying"; grouping by
         * platform answers "how do the two compare" without throwing the rest of
-        * the inbox away. Both were asked for, so both are here — but the filter
-        * row is already six controls wide at 1440, and a seventh pushed the
-        * bulk buttons off the end of it. This one belongs over the thing it
-        * rearranges anyway.
+        * the inbox away. This one belongs over the thing it rearranges.
         */}
       <div
         style={{
           flexShrink: 0,
-          height: 34,
+          height: 38,
           display: "flex",
           alignItems: "center",
           gap: 8,
-          padding: "0 14px",
-          borderBottom: "1px solid #f3f3f3",
+          padding: "0 12px",
+          borderBottom: "1px solid #ececec",
+          background: "#fff",
         }}
       >
         <span className="lbl" style={{ padding: 0 }}>
@@ -1070,107 +1291,132 @@ export function InboxScreen(props: InboxScreenProps): React.JSX.Element {
             {t("By platform")}
           </button>
         </div>
+        <span className="cap" style={{ marginLeft: "auto", fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>
+          {zh ? `${count(listed, locale)} 条` : `${count(listed, locale)} shown`}
+        </span>
       </div>
-      <div style={{ flexGrow: 1, minHeight: 0, overflowY: "auto", padding: "6px 0" }}>
-      {sections.map((g) => (
-        <div key={g.key}>
-          {/* The group heading. By video it is the artboard's thumbnail and
-              title, with the platform's mark in front of it — the artboard left
-              that out, so a list of eight videos never said which channel any
-              of them went out on. By platform the platform *is* the heading. */}
-          <div style={{ display: "flex", alignItems: "center", gap: 9, padding: "9px 14px 6px" }}>
-            {groupBy === "post" ? <Thumb url={g.thumbnailUrl} /> : null}
-            <PlatformMark platform={g.platform} size={groupBy === "post" ? 12 : 14} />
-            <span
-              className="el"
-              title={(groupBy === "post" ? g.title : platformLabel(g.platform)) ?? undefined}
-              style={{ fontSize: 11.5, fontWeight: 500, color: "#525252", minWidth: 0 }}
-            >
-              {groupBy === "post" ? (g.title ?? t("no title")) : platformLabel(g.platform)}
-            </span>
-            <span className="cap" style={{ marginLeft: "auto" }}>
-              {count(g.comments.length, locale)}
-            </span>
-          </div>
-          {g.comments.map((c) => {
-            const on = c.id === selectedId;
-            const badge = badgeFor(c);
-            const name = displayName(c, zh);
-            const ticked = selected.includes(c.id);
-            return (
-              <div
-                key={c.id}
-                className={`cmt${on ? " on" : ""}${anySelected ? " anysel" : ""}`}
-                role="button"
-                tabIndex={0}
-                aria-pressed={on}
-                onClick={() => onSelect(c.id)}
-                onKeyDown={(e) => {
-                  if (e.target !== e.currentTarget) return;
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    onSelect(c.id);
-                  }
-                }}
+      <div style={{ flexGrow: 1, minHeight: 0, overflowY: "auto", paddingBottom: 10 }}>
+      {sections.map((g) => {
+        const heading = groupBy === "post" ? (g.title ?? t("no title")) : platformLabel(g.platform);
+        return (
+          <section key={g.key} aria-label={heading}>
+            {/* The group heading. By video it is the video's thumbnail and
+                title, with the platform it went out on under it. By platform
+                the platform *is* the heading. */}
+            <div className="ib-gh">
+              {groupBy === "post" ? (
+                <Thumb url={g.thumbnailUrl} width={52} height={29} />
+              ) : (
+                <PlatformMark platform={g.platform} size={16} />
+              )}
+              <div style={{ minWidth: 0, flexGrow: 1 }}>
+                <span className="el" title={heading} style={{ fontSize: 12, fontWeight: 600, color: "#171717" }}>
+                  {heading}
+                </span>
+                {groupBy === "post" ? (
+                  <span className="cap" style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 2 }}>
+                    <PlatformMark platform={g.platform} size={10} />
+                    {platformLabel(g.platform)}
+                  </span>
+                ) : null}
+              </div>
+              <span
+                className="bd gray"
+                title={zh ? `${count(g.comments.length, locale)} 条评论` : `${count(g.comments.length, locale)} comments`}
+                style={{ flexShrink: 0, fontVariantNumeric: "tabular-nums" }}
               >
-                <input
-                  type="checkbox"
-                  className="cbx"
-                  checked={ticked}
-                  aria-label={zh ? `选择 ${name} 的评论` : `Select the comment from ${name}`}
-                  onClick={(e) => e.stopPropagation()}
-                  onChange={() => onToggleSelect(c.id)}
-                  style={{
-                    width: 13,
-                    height: 13,
-                    marginTop: 7,
-                    accentColor: ACCENT,
-                    flexShrink: 0,
-                    cursor: "pointer",
-                    ...(ticked ? { opacity: 1 } : {}),
+                {count(g.comments.length, locale)}
+              </span>
+            </div>
+            {g.comments.map((c) => {
+              const on = c.id === selectedId;
+              const badge = badgeFor(c);
+              const name = displayName(c, zh);
+              const ticked = selected.includes(c.id);
+              return (
+                <div
+                  key={c.id}
+                  className={`cmt${on ? " on" : ""}${anySelected ? " anysel" : ""}`}
+                  style={{ "--sb": sentimentColour(c.sentiment) } as React.CSSProperties}
+                  role="button"
+                  tabIndex={0}
+                  aria-pressed={on}
+                  onClick={() => onSelect(c.id)}
+                  onKeyDown={(e) => {
+                    if (e.target !== e.currentTarget) return;
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      onSelect(c.id);
+                    }
                   }}
-                />
-                <Avatar url={c.authorAvatarUrl} label={name} size={26} />
-                <div style={{ minWidth: 0, flexGrow: 1 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    <span className="el" style={{ fontSize: 12.5, fontWeight: on ? 600 : 500, minWidth: 0 }}>
-                      {name}
-                    </span>
-                    {/* On the row as well as on the heading: the heading
-                        scrolls away, and a comment a person is deciding how to
-                        answer should say where it was said without being
-                        opened. */}
-                    <PlatformMark platform={c.platform} size={11} />
-                    <span className="cap" style={{ flexShrink: 0 }}>
-                      {shortAgo(c.postedAt, zh)}
-                    </span>
-                    {badge === null ? null : (
-                      <span className={`bd ${badge.cls}`} title={badge.title} style={{ marginLeft: "auto" }}>
-                        {badge.text}
+                >
+                  <input
+                    type="checkbox"
+                    className="cbx"
+                    checked={ticked}
+                    aria-label={zh ? `选择 ${name} 的评论` : `Select the comment from ${name}`}
+                    onClick={(e) => e.stopPropagation()}
+                    onChange={() => onToggleSelect(c.id)}
+                    style={{
+                      width: 13,
+                      height: 13,
+                      margin: "8px 0 0",
+                      accentColor: "#171717",
+                      flexShrink: 0,
+                      cursor: "pointer",
+                      ...(ticked ? { opacity: 1 } : {}),
+                    }}
+                  />
+                  <Avatar url={c.authorAvatarUrl} label={name} size={28} />
+                  <div style={{ minWidth: 0, flexGrow: 1 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <span className="el" style={{ fontSize: 12.5, fontWeight: on ? 600 : 500, minWidth: 0 }}>
+                        {name}
                       </span>
+                      {/* On the row as well as on the heading: the heading
+                          scrolls away, and a comment a person is deciding how
+                          to answer should say where it was said without being
+                          opened. */}
+                      <PlatformMark platform={c.platform} size={11} />
+                      <span className="cap" style={{ flexShrink: 0 }} suppressHydrationWarning>
+                        {shortAgo(c.postedAt, zh)}
+                      </span>
+                      {badge === null ? null : (
+                        <span className={`bd ${badge.cls}`} title={badge.title} style={{ marginLeft: "auto", flexShrink: 0 }}>
+                          {badge.text}
+                        </span>
+                      )}
+                    </div>
+                    <div
+                      className="ib-clamp"
+                      style={{ fontSize: 12.5, lineHeight: 1.5, color: on ? "#171717" : "#525252", marginTop: 3 }}
+                    >
+                      {c.body}
+                    </div>
+                    {c.draft === null ? null : (
+                      <div
+                        className="cap"
+                        style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 5, color: "#db7706" }}
+                      >
+                        <Icon name="pen" size={11} />
+                        {t("Reply drafted")}
+                      </div>
                     )}
                   </div>
-                  <div
-                    style={{
-                      fontSize: 12.5,
-                      color: "#525252",
-                      marginTop: 3,
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    {c.body}
-                  </div>
                 </div>
-              </div>
-            );
-          })}
-        </div>
-      ))}
+              );
+            })}
+          </section>
+        );
+      })}
       {sections.length === 0 ? (
-        <div className="cap" style={{ padding: "28px 16px", textAlign: "center" }}>
-          {t("Nothing matches these filters")}
+        <div style={{ padding: "32px 16px", textAlign: "center" }}>
+          <div className="cap">{t("Nothing matches these filters")}</div>
+          {anyFilter ? (
+            <button type="button" className="btn s" style={{ height: 28, fontSize: 12, marginTop: 10 }} onClick={clearFilters}>
+              {t("Clear filters")}
+            </button>
+          ) : null}
         </div>
       ) : null}
       </div>
@@ -1183,8 +1429,23 @@ export function InboxScreen(props: InboxScreenProps): React.JSX.Element {
 
   if (open === null) {
     detail = (
-      <div style={{ flexGrow: 1, minWidth: 0, padding: "16px 20px" }}>
-        <div className="cap">{t("Pick a comment on the left to read it here.")}</div>
+      <div
+        style={{
+          flexGrow: 1,
+          minWidth: 0,
+          background: "#fafafa",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: 24,
+        }}
+      >
+        <div style={{ textAlign: "center" }}>
+          <Icon name="comment" size={22} color="#c7c7c7" />
+          <div className="cap" style={{ marginTop: 8 }}>
+            {t("Pick a comment on the left to read it here.")}
+          </div>
+        </div>
       </div>
     );
   } else {
@@ -1196,11 +1457,11 @@ export function InboxScreen(props: InboxScreenProps): React.JSX.Element {
     const busy = pending !== null && (pending === c.id || (draft !== null && pending === draft.id));
     const draftBody = draft === null ? "" : edit !== null && edit.draftId === draft.id ? edit.body : draft.body;
     const dirty = draft !== null && draftBody !== draft.body;
+    const videoTitle = open.group.title !== null && open.group.title !== "" ? open.group.title : t("no title");
 
-    const caption: string[] = [platformLabel(c.platform)];
-    if (open.group.title !== null && open.group.title !== "") {
-      caption.push(zh ? `在《${open.group.title}》` : `on ${open.group.title}`);
-    }
+    // The platform and the video have their own strip at the top of the card
+    // now, so the caption under the name keeps only what is about the person.
+    const caption: string[] = [];
     const rel = longAgo(c.postedAt, locale);
     if (rel !== "") caption.push(rel);
     if (priorCount > 0) {
@@ -1213,195 +1474,255 @@ export function InboxScreen(props: InboxScreenProps): React.JSX.Element {
       );
     }
 
+    const approvalNote = (
+      <span className="cap" style={{ display: "inline-flex", alignItems: "center", gap: 5, whiteSpace: "nowrap" }}>
+        <Icon name="lock" size={12} />
+        {t("Nothing sends without approval")}
+      </span>
+    );
+
     detail = (
-      <div style={{ flexGrow: 1, minWidth: 0, padding: "16px 20px", overflowY: "auto" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <Avatar url={c.authorAvatarUrl} label={name} size={36} />
-          <div style={{ minWidth: 0 }}>
-            <div className="el" style={{ fontSize: 13.5, fontWeight: 600 }}>
-              {name}
+      <div style={{ flexGrow: 1, minWidth: 0, overflowY: "auto", background: "#fafafa", padding: 16 }}>
+        <article className="ib-card" aria-label={`${t("Comment")} · ${name}`}>
+          {/* The video the comment was left on: a reply reads differently
+              under a different video, so it is the first thing on the card. */}
+          <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", background: "#fcfcfc" }}>
+            <Thumb url={open.group.thumbnailUrl} width={72} height={40} />
+            <div style={{ minWidth: 0, flexGrow: 1 }}>
+              <div className="cap" style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                <PlatformMark platform={c.platform} size={11} />
+                {platformLabel(c.platform)}
+              </div>
+              {open.group.permalink !== null && open.group.permalink !== "" ? (
+                <a
+                  href={open.group.permalink}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title={videoTitle}
+                  style={{ display: "flex", alignItems: "center", gap: 5, minWidth: 0, marginTop: 2, color: "#171717", fontSize: 13, fontWeight: 500 }}
+                >
+                  <span className="el" style={{ minWidth: 0 }}>
+                    {videoTitle}
+                  </span>
+                  <Icon name="external" size={12} color="#999999" />
+                </a>
+              ) : (
+                <span className="el" title={videoTitle} style={{ marginTop: 2, fontSize: 13, fontWeight: 500 }}>
+                  {videoTitle}
+                </span>
+              )}
             </div>
-            <div className="cap">{caption.join(" · ")}</div>
+            {c.permalink !== null && c.permalink !== "" ? (
+              <a className="btn ib-q" href={c.permalink} target="_blank" rel="noopener noreferrer" style={{ flexShrink: 0 }}>
+                {t("Open on platform")}
+                <Icon name="external" size={12} />
+              </a>
+            ) : null}
           </div>
-          {badge === null ? null : (
-            <span className={`bd ${badge.cls}`} title={badge.title} style={{ marginLeft: "auto" }}>
-              {badge.text}
-            </span>
-          )}
-        </div>
 
-        <div
-          style={{
-            marginTop: 14,
-            padding: "14px 16px",
-            borderRadius: 12,
-            background: "#f8f8f8",
-            fontSize: 15,
-            lineHeight: 1.6,
-            textWrap: "pretty",
-          }}
-        >
-          {c.body}
-        </div>
-        {c.translation === null || c.translation === "" ? null : (
-          <div className="cap" style={{ marginTop: 7 }}>
-            {`“${c.translation}” · ${t("machine translation")}`}
-          </div>
-        )}
-
-        {!isOpen ? (
-          // Nothing to approve: the comment has already been acted on, and the
-          // approve controls would be an offer the screen cannot keep.
-          <div style={{ marginTop: 20, display: "flex", alignItems: "center", gap: 8 }}>
-            <span className="bd gray">{stateLabel(c.state)}</span>
-            <span className="cap">{t("This comment is out of the inbox. Nothing is waiting on it.")}</span>
-          </div>
-        ) : draft === null ? (
-          // No draft yet. The artboard never drew this state; an empty draft
-          // box would read as a reply nobody wrote.
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 20 }}>
-            <button
-              type="button"
-              className="btn p"
-              style={{ height: 32 }}
-              disabled={busy}
-              onClick={() => onRegenerate(c.id)}
-            >
-              {busy ? `${t("Working")}…` : t("Draft a reply")}
-            </button>
-            <div style={{ flexGrow: 1 }} />
-            <span className="cap">{t("Nothing sends without approval")}</span>
-          </div>
-        ) : (
-          <>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "20px 0 8px" }}>
-              <span className="lbl" style={{ padding: 0 }}>
-                {t("AI-suggested reply")}
-              </span>
-              <span className="bd amb">{t("Draft")}</span>
-              {draft.model === null ? null : (
-                <span className="cap" style={{ marginLeft: "auto" }}>
-                  {draft.model.replace(/^[^/]+\//, "")}
+          <div className="ib-sec" style={{ padding: "16px 18px 18px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <Avatar url={c.authorAvatarUrl} label={name} size={36} />
+              <div style={{ minWidth: 0 }}>
+                <div className="el" style={{ fontSize: 14, fontWeight: 600 }}>
+                  {name}
+                </div>
+                {caption.length === 0 ? null : <div className="cap" suppressHydrationWarning>{caption.join(" · ")}</div>}
+              </div>
+              {badge === null ? null : (
+                <span className={`bd ${badge.cls}`} title={badge.title} style={{ marginLeft: "auto", flexShrink: 0 }}>
+                  {badge.text}
                 </span>
               )}
             </div>
 
-            {/* What the platform said the last time this was tried. It was
-                stored on the row and shown nowhere, so three overnight
-                failures left three drafts that looked untouched. */}
-            {draft.error ? (
-              <p
+            <div
+              style={{
+                marginTop: 14,
+                fontSize: 16,
+                lineHeight: 1.65,
+                color: "#171717",
+                whiteSpace: "pre-wrap",
+                overflowWrap: "anywhere",
+                textWrap: "pretty",
+              }}
+            >
+              {c.body}
+            </div>
+            {c.translation === null || c.translation === "" ? null : (
+              <div
                 style={{
-                  margin: "0 0 8px",
-                  padding: "8px 10px",
-                  borderRadius: 9,
-                  background: "#fff7f7",
-                  border: "1px solid #ffd6d6",
+                  marginTop: 10,
+                  padding: "8px 11px",
+                  borderRadius: 8,
+                  background: "#f8f8f8",
                   fontSize: 12.5,
                   lineHeight: 1.55,
-                  color: "#8a2b2b",
+                  color: "#525252",
                 }}
               >
-                {t("The last attempt was refused")}: {draft.error}
-              </p>
+                {c.translation}
+                <span className="cap"> · {t("machine translation")}</span>
+              </div>
+            )}
+            {c.likeCount > 0 ? (
+              <div className="cap" style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 10 }}>
+                <Icon name="heart" size={12} />
+                {zh ? `${count(c.likeCount, locale)} 赞` : `${count(c.likeCount, locale)} likes`}
+              </div>
             ) : null}
-            <textarea
-              ref={draftRef}
-              className="dr"
-              rows={2}
-              value={draftBody}
-              onChange={(e) => setEdit({ draftId: draft.id, body: e.target.value })}
-              aria-label={t("AI-suggested reply")}
-              style={{
-                display: "block",
-                width: "100%",
-                border: "1px solid #d9d9d9",
-                borderRadius: 12,
-                padding: "13px 15px",
-                fontSize: 14,
-                lineHeight: 1.6,
-                color: "#2b343d",
-                background: "#fff",
-                fontFamily: "inherit",
-                letterSpacing: "inherit",
-                resize: "vertical",
-                outline: "none",
-              }}
-            />
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 12 }}>
-              <button
-                type="button"
-                className="btn p"
-                style={{ height: 32 }}
-                disabled={busy || draftBody.trim() === ""}
-                onClick={() => onApprove(draft.id, draftBody)}
-              >
-                {busy ? `${t("Working")}…` : t("Approve & send")}
-              </button>
-              {/* One button for both halves of editing: it saves once there is
-                  something to save, and puts the cursor in the box when there
-                  is not. */}
-              <button
-                type="button"
-                className="btn s"
-                style={{ height: 32 }}
-                disabled={busy}
-                onClick={() => {
-                  if (dirty) onSaveEdit(draft.id, draftBody);
-                  else draftRef.current?.focus();
-                }}
-              >
-                {dirty ? t("Save") : t("Edit")}
-              </button>
-              <button
-                type="button"
-                className="btn s"
-                style={{ height: 32 }}
-                disabled={busy}
-                onClick={() => onRegenerate(c.id)}
-              >
-                {t("Regenerate")}
-              </button>
-              <div style={{ flexGrow: 1 }} />
-              <span className="cap">{t("Nothing sends without approval")}</span>
-            </div>
-          </>
-        )}
-
-        {isOpen ? (
-          // The artboard drew moderation only as a bulk control in the filter
-          // row, which meant acting on the comment you are reading took a trip
-          // back up to tick it first.
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 14 }}>
-            <button
-              type="button"
-              className="btn s"
-              style={{ height: 28, fontSize: 12 }}
-              disabled={busy}
-              onClick={() => onModerate(c.id, "hide")}
-            >
-              {t("Hide")}
-            </button>
-            <button
-              type="button"
-              className="btn s"
-              style={{ height: 28, fontSize: 12 }}
-              disabled={busy}
-              onClick={() => onModerate(c.id, "spam")}
-            >
-              {t("Mark as spam")}
-            </button>
-            <button
-              type="button"
-              className="btn s"
-              style={{ height: 28, fontSize: 12 }}
-              disabled={busy}
-              onClick={() => onModerate(c.id, "ignore")}
-            >
-              {t("Set aside")}
-            </button>
           </div>
-        ) : null}
+
+          <div className="ib-sec" style={{ padding: "14px 18px 16px" }}>
+            {!isOpen ? (
+              // Nothing to approve: the comment has already been acted on, and
+              // the approve controls would be an offer the screen cannot keep.
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span className="bd gray">{stateLabel(c.state)}</span>
+                <span className="cap">{t("This comment is out of the inbox. Nothing is waiting on it.")}</span>
+              </div>
+            ) : draft === null ? (
+              // No draft yet. An empty draft box would read as a reply nobody
+              // wrote.
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                <button
+                  type="button"
+                  className="btn p"
+                  style={{ height: 32 }}
+                  disabled={busy}
+                  onClick={() => onRegenerate(c.id)}
+                >
+                  <Icon name="spark" size={13} />
+                  {busy ? `${t("Working")}…` : t("Draft a reply")}
+                </button>
+                <div style={{ flexGrow: 1 }} />
+                {approvalNote}
+              </div>
+            ) : (
+              <>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                  <span style={{ fontSize: 12.5, fontWeight: 600 }}>{t("AI-suggested reply")}</span>
+                  <span className="bd amb">{t("Draft")}</span>
+                  {draft.model === null ? null : (
+                    <span className="cap" style={{ marginLeft: "auto" }}>
+                      {draft.model.replace(/^[^/]+\//, "")}
+                    </span>
+                  )}
+                </div>
+
+                {/* What the platform said the last time this was tried. It was
+                    stored on the row and shown nowhere, so three overnight
+                    failures left three drafts that looked untouched. */}
+                {draft.error ? (
+                  <p
+                    style={{
+                      margin: "0 0 8px",
+                      padding: "8px 10px",
+                      borderRadius: 9,
+                      background: "#fff7f7",
+                      border: "1px solid #ffd6d6",
+                      fontSize: 12.5,
+                      lineHeight: 1.55,
+                      color: "#8a2b2b",
+                    }}
+                  >
+                    {t("The last attempt was refused")}: {draft.error}
+                  </p>
+                ) : null}
+                <textarea
+                  ref={draftRef}
+                  className="dr"
+                  rows={3}
+                  value={draftBody}
+                  onChange={(e) => setEdit({ draftId: draft.id, body: e.target.value })}
+                  aria-label={t("AI-suggested reply")}
+                  style={{
+                    display: "block",
+                    width: "100%",
+                    minHeight: 84,
+                    border: "1px solid #e2e2e2",
+                    borderRadius: 10,
+                    padding: "11px 13px",
+                    fontSize: 14,
+                    lineHeight: 1.6,
+                    color: "#171717",
+                    background: "#fff",
+                    fontFamily: "inherit",
+                    letterSpacing: "inherit",
+                    resize: "vertical",
+                    outline: "none",
+                  }}
+                />
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
+                  <button
+                    type="button"
+                    className="btn p"
+                    style={{ height: 32 }}
+                    disabled={busy || draftBody.trim() === ""}
+                    onClick={() => onApprove(draft.id, draftBody)}
+                  >
+                    <Icon name="check" size={13} />
+                    {busy ? `${t("Working")}…` : t("Approve & send")}
+                  </button>
+                  {/* One button for both halves of editing: it saves once there
+                      is something to save, and puts the cursor in the box when
+                      there is not. */}
+                  <button
+                    type="button"
+                    className="btn s"
+                    style={{ height: 32 }}
+                    disabled={busy}
+                    onClick={() => {
+                      if (dirty) onSaveEdit(draft.id, draftBody);
+                      else draftRef.current?.focus();
+                    }}
+                  >
+                    <Icon name="pen" size={13} />
+                    {dirty ? t("Save") : t("Edit")}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn s"
+                    style={{ height: 32 }}
+                    disabled={busy}
+                    onClick={() => onRegenerate(c.id)}
+                  >
+                    <Icon name="spark" size={13} />
+                    {t("Regenerate")}
+                  </button>
+                  <div style={{ flexGrow: 1 }} />
+                  {approvalNote}
+                </div>
+              </>
+            )}
+          </div>
+
+          {isOpen ? (
+            // Acting on the comment you are reading, without a trip back up to
+            // tick it for the bulk controls. Quiet, because none of these is
+            // what a person usually came here to do.
+            <div
+              className="ib-sec"
+              style={{ display: "flex", alignItems: "center", gap: 2, padding: "6px 10px", background: "#fcfcfc" }}
+            >
+              <button type="button" className="btn ib-q" disabled={busy} onClick={() => onModerate(c.id, "hide")}>
+                <Icon name="eye" size={13} />
+                {t("Hide")}
+              </button>
+              <button type="button" className="btn ib-q" disabled={busy} onClick={() => onModerate(c.id, "spam")}>
+                <svg viewBox="0 0 24 24" aria-hidden>
+                  <circle cx="12" cy="12" r="8" />
+                  <path d="m6.4 6.4 11.2 11.2" />
+                </svg>
+                {t("Mark as spam")}
+              </button>
+              <button type="button" className="btn ib-q" disabled={busy} onClick={() => onModerate(c.id, "ignore")}>
+                <Icon name="pause" size={13} />
+                {t("Set aside")}
+              </button>
+            </div>
+          ) : null}
+        </article>
       </div>
     );
   }
@@ -1411,7 +1732,7 @@ export function InboxScreen(props: InboxScreenProps): React.JSX.Element {
   const nothingWaiting = (
     <div style={{ padding: "40px 20px", maxWidth: 460 }}>
       <div style={{ fontSize: 15, fontWeight: 600 }}>{t("No comments waiting")}</div>
-      <p className="mut" style={{ lineHeight: 1.55, marginTop: 6 }}>
+      <p className="mut" style={{ lineHeight: 1.55, marginTop: 6 }} suppressHydrationWarning>
         {syncLine}
       </p>
       <button type="button" className="btn s" style={{ marginTop: 12 }} onClick={onSyncNow}>
@@ -1422,7 +1743,7 @@ export function InboxScreen(props: InboxScreenProps): React.JSX.Element {
 
   return (
     <>
-      <style>{CSS}</style>
+      <style dangerouslySetInnerHTML={{ __html: CSS }} />
 
       {/* The rail and the module sidebar are components of their own: see
           Rail and ResearchSidebar. */}
@@ -1431,18 +1752,9 @@ export function InboxScreen(props: InboxScreenProps): React.JSX.Element {
         style={{ ...frameStyle, flexGrow: 1, display: "flex", flexDirection: "column", minWidth: 0, minHeight: 0 }}
       >
         {header}
-        <StatusStrip
-          items={[
-            { label: t("Drafts to approve"), value: waiting.drafts, tone: "you" },
-            { label: t("No draft yet"), value: waiting.undrafted, tone: "waiting" },
-            { label: t("Flagged"), value: waiting.flagged, tone: "waiting" },
-            { label: t("Waiting for a reply"), value: summary.open, tone: "quiet" },
-            { label: t("Unclassified"), value: summary.unclassified, tone: "quiet" },
-          ]}
-          right={syncLine}
-        />
         <div style={{ flexGrow: 1, display: "flex", minHeight: 0 }}>
           <div style={{ flexGrow: 1, minWidth: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+            {tabRow}
             {filterRow}
             {/* The artboard had nowhere to put a failure. A platform refusal
                 has to be readable, and in the person's own words, wherever it
@@ -1463,7 +1775,8 @@ export function InboxScreen(props: InboxScreenProps): React.JSX.Element {
                 {error}
               </div>
             )}
-            {band}
+            {summaryLine}
+            {chartsOpen ? band : null}
             {groups.length === 0 ? (
               nothingWaiting
             ) : (

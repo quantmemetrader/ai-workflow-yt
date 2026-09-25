@@ -124,7 +124,7 @@ export function HomeScreen({
           return;
         }
         setDraft("");
-        if ("id" in r && r.id) router.push(`/projects/${r.id}`);
+        if ("id" in r && r.id) router.push(`/projects/${r.id}`); setTimeout(() => router.refresh(), 400);
         return;
       }
       const p = projects.find((x) => x.id === target);
@@ -417,7 +417,7 @@ function RunningPanel({ zh, running, names }: { zh: boolean; running: (Running &
           </div>
         ) : null}
       </div>
-      <style>{`@keyframes homeSlide { 0% { left: -30%; } 100% { left: 100%; } } @media (prefers-reduced-motion: reduce) { [style*="homeSlide"] { animation: none !important; } }`}</style>
+      <style dangerouslySetInnerHTML={{ __html: `@keyframes homeSlide { 0% { left: -30%; } 100% { left: 100%; } } @media (prefers-reduced-motion: reduce) { [style*="homeSlide"] { animation: none !important; } }` }} />
     </Fold>
   );
 }

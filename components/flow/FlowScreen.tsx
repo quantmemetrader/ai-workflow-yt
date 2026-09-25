@@ -215,6 +215,7 @@ export function FlowScreen({ pipeline, automations, zh, canEdit }: { pipeline: P
 }
 
 function NodeCard({ node: n, zh, automation, canEdit, pending, onToggle, talking, onTalk }: { talking: boolean; onTalk: () => void; node: Node; zh: boolean; automation?: AutomationRow; canEdit: boolean; pending: boolean; onToggle: (k: AutomationKey, v: boolean) => void }) {
+  const router = useRouter();
   const t = (a: string, b: string) => (zh ? a : b);
   const dark = n.owner === "you";
   const loop = n.owner === "loop";
@@ -257,9 +258,20 @@ function NodeCard({ node: n, zh, automation, canEdit, pending, onToggle, talking
       {n.buttons ? (
         <div style={{ display: "flex", gap: 6, marginTop: 10, flexWrap: "wrap" }}>
           {n.buttons.map((b) => (
-            <Link key={b.label} href={b.href} onClick={(e) => e.stopPropagation()} style={{ height: 28, padding: "0 12px", display: "inline-flex", alignItems: "center", border: `1px solid ${b.primary ? "#fff" : "#4a4a4a"}`, background: b.primary ? "#fff" : "transparent", color: b.primary ? "#171717" : "#fff", fontSize: 12, fontWeight: b.primary ? 500 : 400, textDecoration: "none" }}>
+            <span
+              key={b.label}
+              role="link"
+              tabIndex={0}
+              /* Not a link: the whole node already is one, and a link inside a
+                 link is invalid HTML the browser rebuilds (a hydration error). */
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                router.push(b.href);
+              }}
+              style={{ cursor: "pointer",  height: 28, padding: "0 12px", display: "inline-flex", alignItems: "center", border: `1px solid ${b.primary ? "#fff" : "#4a4a4a"}`, background: b.primary ? "#fff" : "transparent", color: b.primary ? "#171717" : "#fff", fontSize: 12, fontWeight: b.primary ? 500 : 400, textDecoration: "none" }}>
               {b.label}
-            </Link>
+            </span>
           ))}
         </div>
       ) : n.chip && !todo ? (

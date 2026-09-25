@@ -2922,7 +2922,7 @@ export function ScriptDetailScreen(props: ScriptDetailScreenProps): React.JSX.El
 
   return (
     <>
-      <style>{CSS}</style>
+      <style dangerouslySetInnerHTML={{ __html: CSS }} />
       {sidebar}
       <div
         data-script-screen=""

@@ -119,15 +119,20 @@ export async function writeScript(viewer: Viewer, req: ScriptRequest): Promise<S
   let beats = 0;
   let model: string | null = null;
   let note: string | null = null;
-  try {
-    const draft = await draftFromBrief(viewer, id, { sources });
-    if ("error" in draft) note = draft.error ?? "The draft could not be written.";
-    else {
-      beats = draft.beats;
-      model = draft.model;
+  /* The drafting model now and then answers with something unreadable; a
+     second try almost always lands, and a script with no beats is useless. */
+  for (let attempt = 0; attempt < 2 && beats === 0; attempt++) {
+    try {
+      const draft = await draftFromBrief(viewer, id, { sources });
+      if ("error" in draft) note = draft.error ?? "The draft could not be written.";
+      else {
+        beats = draft.beats;
+        model = draft.model;
+        note = null;
+      }
+    } catch (err) {
+      note = err instanceof Error ? err.message : "The draft could not be written.";
     }
-  } catch (err) {
-    note = err instanceof Error ? err.message : "The draft could not be written.";
   }
 
   await audit(viewer, "script.write", {

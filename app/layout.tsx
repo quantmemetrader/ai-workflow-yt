@@ -68,7 +68,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             </p>
           </div>
         </div>
-        <style>{`
+        <style dangerouslySetInnerHTML={{ __html: `
           .desktop-only-gate { display: none; }
           @media (max-width: 820px) {
             .desktop-only-gate {
@@ -79,7 +79,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             }
             body { overflow: hidden; }
           }
-        `}</style>
+        ` }} />
       </body>
     </html>
   );

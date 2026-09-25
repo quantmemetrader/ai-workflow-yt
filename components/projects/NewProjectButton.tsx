@@ -24,7 +24,7 @@ export function NewProjectButton({ zh, compact = false }: { zh: boolean; compact
       }
       setOpen(false);
       setName("");
-      if ("id" in r && r.id) router.push(`/projects/${r.id}`);
+      if ("id" in r && r.id) router.push(`/projects/${r.id}`); setTimeout(() => router.refresh(), 400);
     });
   }
   if (open)

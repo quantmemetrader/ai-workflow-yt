@@ -106,7 +106,7 @@ export function ResearchAgentPanel({
       }}
     >
       {dock ? null : handle}
-      <style>{CSS}</style>
+      <style dangerouslySetInnerHTML={{ __html: CSS }} />
       <div
         style={{
           height: 42,

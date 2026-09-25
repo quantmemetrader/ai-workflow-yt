@@ -20,7 +20,7 @@ export function StartProject({ zh, title, brief, from, ask }: { zh: boolean; tit
         notify(r.error);
         return;
       }
-      if ("id" in r && r.id) router.replace(`/projects/${r.id}`);
+      if ("id" in r && r.id) router.replace(`/projects/${r.id}`); setTimeout(() => router.refresh(), 400);
     });
   }
   return (

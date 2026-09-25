@@ -575,7 +575,7 @@ export function TrendsScreen(props: {
 
   return (
     <>
-      <style>{CSS}</style>
+      <style dangerouslySetInnerHTML={{ __html: CSS }} />
 
       {/* The module sidebar is a shared component now: see ResearchSidebar. */}
       <div

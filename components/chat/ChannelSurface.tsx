@@ -479,7 +479,7 @@ export function ChannelSurface(props: {
   return (
     <div style={{ flexGrow: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
       {/* the artboard's placeholder colour; ::placeholder cannot be set inline */}
-      <style>{".dc-composer::placeholder { color: #999999; }"}</style>
+      <style dangerouslySetInnerHTML={{ __html: ".dc-composer::placeholder { color: #999999; }" }} />
 
       <div
         style={{

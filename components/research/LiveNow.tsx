@@ -502,7 +502,7 @@ export function LiveNow({
                     notify(res.error);
                     return;
                   }
-                  if ("id" in res && res.id) router.push(`/projects/${res.id}`);
+                  if ("id" in res && res.id) router.push(`/projects/${res.id}`); setTimeout(() => router.refresh(), 400);
                 })
               }
             />

@@ -1,5 +1,7 @@
 "use client";
 
+import { PlatformSearch } from "@/components/research/PlatformSearch";
+
 import { ModelPicker } from "@/components/shell/ModelPicker";
 
 import * as React from "react";
@@ -443,7 +445,7 @@ export function CompareScreen(props: {
         minWidth: 0,
       }}
     >
-      <style>{CSS}</style>
+      <style dangerouslySetInnerHTML={{ __html: CSS }} />
 
       {/* The module sidebar is a shared component now: see ResearchSidebar. */}
             <div style={{ flexGrow: 1, display: "flex", flexDirection: "column", minWidth: 0, minHeight: 0 }}>
@@ -702,7 +704,7 @@ export function CompareScreen(props: {
               </div>
             </div>
 
-            <div style={{ flexGrow: 1, minHeight: 0, padding: "14px 20px 18px" }}>
+            <div style={{ flexGrow: 1, minHeight: 0, padding: "14px 20px 18px", overflowY: "auto" }}>
               <div className="t">
                 <div className="hd" style={{ gridTemplateColumns: GRID }}>
                   <div>{t("Series")}</div>
@@ -789,6 +791,7 @@ export function CompareScreen(props: {
                   );
                 })}
               </div>
+              <PlatformSearch phrases={props.series.map((x) => x.query)} zh={zh} />
             </div>
               </>
             )}

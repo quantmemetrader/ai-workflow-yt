@@ -134,14 +134,14 @@ export function RichText({
           {placeholder}
         </div>
       ) : null}
-      <style>{`
+      <style dangerouslySetInnerHTML={{ __html: `
         [data-rich-text] strong { font-weight: 650; }
         [data-rich-text] em { font-style: italic; }
         [data-rich-text] code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; background: #f6f6f6; border-radius: 4px; padding: 1px 4px; }
         [data-rich-text] a { color: #007be0; }
         [data-rich-text] ul { margin: 6px 0; padding-left: 20px; }
         [data-rich-text] li { margin: 2px 0; }
-      `}</style>
+      ` }} />
     </div>
   );
 }

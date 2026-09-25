@@ -29,7 +29,7 @@ export function SuggestionCard({ items, zh }: { items: TodaySuggestion[]; zh: bo
         notify(r.error);
         return;
       }
-      if ("id" in r && r.id) router.push(`/projects/${r.id}`);
+      if ("id" in r && r.id) router.push(`/projects/${r.id}`); setTimeout(() => router.refresh(), 400);
     });
   return (
     <section style={{ borderRadius: 16, border: "1px solid transparent", background: "linear-gradient(#ffffff, #ffffff) padding-box, linear-gradient(135deg, #cfe0fb, #e3dcfb 50%, #cfe9e2) border-box", padding: "14px 16px" }}>

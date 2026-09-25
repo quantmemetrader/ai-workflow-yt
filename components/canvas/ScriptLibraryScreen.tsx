@@ -583,7 +583,7 @@ export function ScriptLibraryScreen(props: ScriptLibraryScreenProps): React.JSX.
 
   return (
     <>
-      <style>{CSS}</style>
+      <style dangerouslySetInnerHTML={{ __html: CSS }} />
 
       {/* The gradient the folder tiles share, declared once. */}
       <svg width="0" height="0" aria-hidden="true" style={{ position: "absolute" }} focusable="false">

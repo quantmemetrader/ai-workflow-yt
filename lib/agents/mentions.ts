@@ -313,6 +313,14 @@ async function answerOne(
       failure = null;
     }
   }
+  /* Worked, then said nothing: the turn ended on a tool call. One more turn
+     to say what it found, instead of posting "I could not answer". */
+  if (!answer.trim() && tools > 0 && !spokeItself && !failure) {
+    const more = await turn(
+      zh ? "（系统提示）把你刚才用工具查到或做到的结果，用两三句话直接告诉提问的人。没有结果就说明缺什么。" : "(System) In two or three sentences, tell the person what your tools just found or did. If nothing, say what is missing.",
+    );
+    if (more.answer.trim()) ({ answer, spokeItself, failure } = more);
+  }
   void tools;
 
   const text = answer.trim().slice(0, MAX_REPLY);

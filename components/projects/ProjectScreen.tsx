@@ -10,7 +10,7 @@ import { useMentions } from "@/components/chat/useMentions";
 import { AccessPicker } from "@/components/files/AccessPicker";
 import { AGENT_COLORS, AGENT_LABELS, agentTag, parseAgentMentions, type AgentKey } from "@/lib/agents/catalog";
 import { pressCardAction, sendChannelMessage } from "@/app/(app)/chat/actions";
-import { deleteProjectAction, renameProjectAction, setProjectAccessAction, setProjectStatusAction } from "@/app/(app)/projects/actions";
+import { deleteProjectAction, renameProjectAction, setProjectAccessAction, setProjectStatusAction, chooseScriptAction, chooseTopicAction } from "@/app/(app)/projects/actions";
 import { addClipAction, addItemAction, autoEditAction, exportAction } from "@/app/(app)/video/actions";
 import { uploadFiles } from "@/lib/client/upload";
 import { beginWork } from "@/lib/client/busy";
@@ -41,6 +41,7 @@ export function ProjectScreen({ project: p, zh, people }: { project: ProjectDeta
   const [popup, setPopup] = React.useState<{ title: string; body: React.ReactNode } | null>(null);
   const [videoPrompt, setVideoPrompt] = React.useState((p.brief ?? p.title).replace(/@\S+/g, "").trim());
   const [busyAction, setBusyAction] = React.useState<string | null>(null);
+  const [picking, setPicking] = React.useState<null | "clips" | "scripts" | "topics">(null);
   /* When each employee was last asked from a card, so its card can show it working. */
   const [asked, setAsked] = React.useState<Partial<Record<AgentKey, string>>>({});
 
@@ -246,6 +247,9 @@ export function ProjectScreen({ project: p, zh, people }: { project: ProjectDeta
                 <Action icon="bulb" label={t("3 个角度", "3 angles")} onClick={() => ask("research", t("给这个项目 3 个适合本频道的切入角度，每个一句话，说明为什么。", "Give 3 angles for this project that suit our channel, one line each, with why."))} disabled={pending} />
                 <Action icon="eye" label={t("对标怎么做", "How rivals did it")} onClick={() => ask("research", t("找对标账号做过的同题视频，说出播放和他们的开头怎么写。", "Find rival videos on this topic, with their views and how they open."))} disabled={pending} />
               </Actions>
+              <Actions>
+                <Action icon="bulb" label={t("换成已有选题", "Use an existing topic")} onClick={() => setPicking("topics")} disabled={pending} />
+              </Actions>
               <AskBox people={people} zh={zh} placeholder={t("问研究员这个选题…", "Ask the researcher about this topic…")} onSend={(v) => ask("research", v)} disabled={pending} />
             </Workbench>
 
@@ -284,6 +288,7 @@ export function ProjectScreen({ project: p, zh, people }: { project: ProjectDeta
                   <Action icon="scissors" label={t("改到 60 秒", "Cut to 60s")} onClick={() => ask("script", t("把项目脚本改到 60 秒以内，保留最有力的三点，写回项目脚本。", "Cut the project's script to under 60 seconds, keeping the three strongest points; write it back."))} disabled={pending || !p.beats.length || p.script?.status === "locked"} />
                   <Action icon="spark" label={t("加强开头", "Stronger hook")} onClick={() => ask("script", t("把项目脚本的开头改得更抓人，前 3 秒给出冲突或数字，写回项目脚本。", "Make the opening grab harder: a conflict or a number in the first 3 seconds; write it back."))} disabled={pending || !p.beats.length || p.script?.status === "locked"} />
                   <Action icon="check" label={t("核查事实", "Fact-check")} onClick={() => ask("research", t("核查这个项目脚本里的每个数字和说法，列出需要改的地方和来源。", "Fact-check every number and claim in this project's script; list what to change, with sources."))} disabled={pending || !p.beats.length} />
+                  <Action icon="pen" label={t("用已有脚本", "Use an existing script")} onClick={() => setPicking("scripts")} disabled={pending} />
                 </Actions>
                 <AskBox people={people} zh={zh} placeholder={t("告诉编剧怎么写或怎么改…", "Tell the writer what to write or change…")} onSend={(v) => ask("script", `${v}（写进项目脚本）`)} disabled={pending || p.script?.status === "locked"} />
               </Workbench>
@@ -320,6 +325,9 @@ export function ProjectScreen({ project: p, zh, people }: { project: ProjectDeta
                     e.target.value = "";
                   }} />
                 </label>
+                <Actions>
+                  <Action icon="film" label={t("从已上传的素材里选", "Choose from uploaded clips")} onClick={() => setPicking("clips")} disabled={pending} />
+                </Actions>
                 {working("video") && !renderLive ? <Working agent="video" zh={zh} text={t("剪辑师正在找画面…", "The editor is finding footage…")} /> : null}
                 <AskBox people={people} zh={zh} placeholder={t("描述想从素材库找的画面，例如：交易屏幕、香港夜景…", "Describe stock shots to find, e.g. trading screens, Hong Kong at night…")} onSend={(v) => ask("video", `从素材库找这类画面放进项目素材箱：${v}`)} disabled={pending} />
               </Workbench>
@@ -397,11 +405,103 @@ export function ProjectScreen({ project: p, zh, people }: { project: ProjectDeta
 
       {chatOpen ? <ChatDrawer project={p} zh={zh} people={people} onClose={() => setChatOpen(false)} /> : null}
       {popup ? <Popup title={popup.title} onClose={() => setPopup(null)}>{popup.body}</Popup> : null}
+      {picking ? (
+        <Picker
+          projectId={p.id}
+          kind={picking}
+          zh={zh}
+          onClose={() => setPicking(null)}
+          onPick={async (items) => {
+            setPicking(null);
+            if (picking === "clips" && p.video) {
+              for (const it of items) {
+                const res = await addClipAction(p.video.id, it.id);
+                if ("id" in res && res.id) await addItemAction(p.video.id, "clip", res.id, "");
+              }
+              notify(t(`已加入 ${items.length} 段素材`, `Added ${items.length} clip(s)`), "ok");
+            } else if (picking === "scripts" && items[0]) {
+              const r = await chooseScriptAction(p.id, items[0].id);
+              if (r?.error) notify(r.error);
+            } else if (picking === "topics" && items[0]) {
+              const r = await chooseTopicAction(p.id, { title: items[0].title, brief: items[0].brief ?? "", label: items[0].sub ?? undefined });
+              if (r?.error) notify(r.error);
+            }
+            router.refresh();
+          }}
+        />
+      ) : null}
     </div>
   );
 }
 
 /* ------------------------------------------------------------- the pieces */
+
+type Choice = { id: string; title: string; sub?: string | null; thumb?: string | null; brief?: string };
+
+/** "Choose existing": clips already uploaded, scripts already written, topics already picked. */
+function Picker({ projectId, kind, zh, onClose, onPick }: { projectId: string; kind: "clips" | "scripts" | "topics"; zh: boolean; onClose: () => void; onPick: (items: Choice[]) => void }) {
+  const t = (a: string, b: string) => (zh ? a : b);
+  const [items, setItems] = React.useState<Choice[] | null>(null);
+  const [q, setQ] = React.useState("");
+  const [chosen, setChosen] = React.useState<string[]>([]);
+  const many = kind === "clips";
+  React.useEffect(() => {
+    let live = true;
+    void fetch(`/api/projects/${projectId}/choices?kind=${kind}`)
+      .then((r) => (r.ok ? r.json() : { items: [] }))
+      .then((j: { items: Choice[] }) => live && setItems(j.items ?? []))
+      .catch(() => live && setItems([]));
+    return () => {
+      live = false;
+    };
+  }, [projectId, kind]);
+  const shown = (items ?? []).filter((i) => !q.trim() || i.title.toLowerCase().includes(q.trim().toLowerCase()));
+  const title = kind === "clips" ? t("从已上传的素材里选", "Choose from uploaded clips") : kind === "scripts" ? t("用已有脚本", "Use an existing script") : t("换成已有选题", "Use an existing topic");
+  return (
+    <Popup title={title} onClose={onClose}>
+      <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("搜索…", "Search…")} style={{ width: "100%", height: 34, border: "1px solid #e2e2e2", borderRadius: 10, padding: "0 11px", fontFamily: "inherit", fontSize: 13, outline: "none", boxSizing: "border-box", marginBottom: 10 }} />
+      {items === null ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>{[0, 1, 2, 3].map((i) => <div key={i} className="sk" style={{ height: 44 }} />)}</div>
+      ) : !shown.length ? (
+        <Empty text={t("没有可选的。", "Nothing to choose from.")} />
+      ) : (
+        <div style={kind === "clips" ? { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 10 } : { display: "flex", flexDirection: "column", gap: 2 }}>
+          {shown.map((it) => {
+            const on = chosen.includes(it.id);
+            const toggle = () => (many ? setChosen((c) => (on ? c.filter((x) => x !== it.id) : [...c, it.id])) : onPick([it]));
+            return kind === "clips" ? (
+              <button key={it.id} type="button" onClick={toggle} style={{ padding: 0, border: `2px solid ${on ? "#0f5bd5" : "#ececec"}`, borderRadius: 10, overflow: "hidden", background: "#fff", cursor: "pointer", textAlign: "left", fontFamily: "inherit" }}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={it.thumb ?? ""} alt="" loading="lazy" style={{ width: "100%", aspectRatio: "16 / 10", objectFit: "cover", display: "block", background: "#111" }} />
+                <div style={{ padding: "6px 8px" }}>
+                  <div style={{ fontSize: 12, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{it.title}</div>
+                  <div style={{ fontSize: 11, color: "#999999" }}>{it.sub}</div>
+                </div>
+              </button>
+            ) : (
+              <button key={it.id} type="button" onClick={toggle} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 10px", border: 0, borderRadius: 10, background: "transparent", cursor: "pointer", textAlign: "left", fontFamily: "inherit" }}>
+                <Icon name={kind === "scripts" ? "pen" : "bulb"} size={15} color="#7c7c7c" />
+                <span style={{ minWidth: 0, flexGrow: 1 }}>
+                  <span style={{ display: "block", fontSize: 13.5, fontWeight: 500, color: "#171717" }}>{it.title}</span>
+                  {it.sub ? <span style={{ display: "block", fontSize: 11.5, color: "#999999", marginTop: 2 }}>{it.sub}</span> : null}
+                </span>
+                <Icon name="external" size={12} color="#b3b3b3" />
+              </button>
+            );
+          })}
+        </div>
+      )}
+      {many ? (
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 14 }}>
+          <button type="button" onClick={onClose} style={{ ...btn(false) }}>{t("取消", "Cancel")}</button>
+          <button type="button" disabled={!chosen.length} onClick={() => onPick((items ?? []).filter((i) => chosen.includes(i.id)))} style={{ ...btn(true), opacity: chosen.length ? 1 : 0.45 }}>
+            {t(`加入 ${chosen.length} 段`, `Add ${chosen.length}`)}
+          </button>
+        </div>
+      ) : null}
+    </Popup>
+  );
+}
 
 /**
  * Cards in two columns, dealt alternately (left, right, left…), each column
@@ -415,7 +515,7 @@ function Board({ children }: { children: React.ReactNode }) {
     <div className="pboard" style={{ display: "flex", gap: 14, alignItems: "flex-start" }}>
       <div style={{ flex: "1 1 0", minWidth: 0, display: "flex", flexDirection: "column", gap: 14 }}>{left}</div>
       <div style={{ flex: "1 1 0", minWidth: 0, display: "flex", flexDirection: "column", gap: 14 }}>{right}</div>
-      <style>{`@media (max-width: 980px) { .pboard { flex-direction: column; } .pboard > div { width: 100%; } }`}</style>
+      <style dangerouslySetInnerHTML={{ __html: `@media (max-width: 980px) { .pboard { flex-direction: column; } .pboard > div { width: 100%; } }` }} />
     </div>
   );
 }

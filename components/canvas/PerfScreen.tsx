@@ -1,5 +1,7 @@
 "use client";
 
+import { PlatformMark } from "@/components/ui/PlatformMark";
+
 import * as React from "react";
 import { ResearchAgentPanel } from "./ResearchAgentPanel";
 import type { ChannelRow, PerformanceRow, Window } from "@/lib/social/service";
@@ -575,7 +577,7 @@ export function PerfScreen(props: PerfScreenProps): React.JSX.Element {
         overflow: "hidden",
       }}
     >
-      <style>{CSS}</style>
+      <style dangerouslySetInnerHTML={{ __html: CSS }} />
 
       {/* The artboard also drew a search box and a notification bell here.
           Neither had anything behind it, so neither is drawn: global search
@@ -726,6 +728,9 @@ export function PerfScreen(props: PerfScreenProps): React.JSX.Element {
               </div>
             ))}
           </div>
+
+          {/* ---- by platform, the way the trends board is laid out ---- */}
+          <PlatformTiles rows={rows} channels={channels} active={platform} zh={zh} onPick={props.onPlatform} />
 
           <div style={{ flexShrink: 0, padding: "14px 20px 0" }}>
             <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 8 }}>
@@ -970,6 +975,62 @@ export function PerfScreen(props: PerfScreenProps): React.JSX.Element {
         />
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * One tile per platform: what the studio's posts there did in this window
+ * (views, likes, engagement, posts), the way the trends board is by
+ * platform. Platforms with no connected account say so and point at where
+ * to connect one, rather than showing zeros that read as failure.
+ */
+const TILE_PLATFORMS = ["youtube", "douyin", "xiaohongshu", "bilibili", "weibo", "tiktok", "linkedin", "instagram"];
+
+function PlatformTiles({ rows, channels, active, zh, onPick }: { rows: PerformanceRow[]; channels: ChannelRow[]; active: string | null; zh: boolean; onPick: (p: string | null) => void }) {
+  const connected = new Set(channels.map((c) => c.platform));
+  const keys = [...new Set([...TILE_PLATFORMS.filter((k) => connected.has(k)), ...TILE_PLATFORMS.filter((k) => !connected.has(k))])];
+  const fmt = (n: number) => (n >= 1e4 ? (zh ? `${(n / 1e4).toFixed(1)}万` : `${(n / 1000).toFixed(1)}k`) : String(n));
+  return (
+    <div style={{ flexShrink: 0, padding: "12px 20px 0" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 10 }}>
+        {keys.map((k) => {
+          const on = connected.has(k);
+          const mine = rows.filter((r) => r.platform === k);
+          const views = mine.reduce((n, r) => n + (r.views ?? 0), 0);
+          const likes = mine.reduce((n, r) => n + (r.likes ?? 0), 0);
+          const comments = mine.reduce((n, r) => n + (r.comments ?? 0), 0);
+          const eng = views ? (likes + comments) / views : null;
+          const selected = active === k;
+          return on ? (
+            <button
+              key={k}
+              type="button"
+              onClick={() => onPick(selected ? null : k)}
+              style={{ textAlign: "left", padding: "10px 12px", borderRadius: 12, border: `1px solid ${selected ? "#171717" : "#ececec"}`, background: "#fff", cursor: "pointer", fontFamily: "inherit" }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 600 }}>
+                <PlatformMark platform={k} size={13} />
+                {platformName(k)}
+                <span style={{ marginLeft: "auto", fontSize: 11, color: "#999999", fontWeight: 400 }}>{mine.length} {zh ? "条" : "posts"}</span>
+              </div>
+              <div style={{ fontSize: 18, fontWeight: 600, marginTop: 6, fontVariantNumeric: "tabular-nums" }}>{fmt(views)}</div>
+              <div style={{ fontSize: 11, color: "#7c7c7c", marginTop: 2 }}>
+                {zh ? "播放" : "views"} · {zh ? "赞" : "likes"} {fmt(likes)} · {eng !== null ? `${(eng * 100).toFixed(1)}%` : "—"}
+              </div>
+            </button>
+          ) : (
+            <a key={k} href="/admin" style={{ display: "block", padding: "10px 12px", borderRadius: 12, border: "1px dashed #e2e2e2", background: "#fbfbfa", textDecoration: "none", color: "#999999" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 600, color: "#7c7c7c" }}>
+                <PlatformMark platform={k} size={13} mono />
+                {platformName(k)}
+              </div>
+              <div style={{ fontSize: 11.5, marginTop: 8 }}>{zh ? "还没连接账号" : "No account connected"}</div>
+              <div style={{ fontSize: 11, marginTop: 2, color: "#0f5bd5" }}>{zh ? "在管理里连接 →" : "Connect in Admin →"}</div>
+            </a>
+          );
+        })}
+      </div>
     </div>
   );
 }
