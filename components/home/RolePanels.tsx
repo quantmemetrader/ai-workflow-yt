@@ -161,7 +161,7 @@ export function RoleExtraPanel({ extra, zh }: { extra: RoleExtra; zh: boolean })
         right={<DetailLink zh={zh} href="/video" />}
       >
         {extra.items.length === 0 ? (
-          <div style={QUIET}>{t("没有卡住的渲染。最近两周的都顺利出片了。", "No render stuck. Everything in the last two weeks came out.")}</div>
+          <div style={QUIET}>{t("最近两周没有在排队、在渲染或失败的渲染。", "Nothing queued, rendering or failed in the last two weeks.")}</div>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             {extra.items.map((r) => {

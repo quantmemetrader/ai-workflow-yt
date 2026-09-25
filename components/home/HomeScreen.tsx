@@ -364,44 +364,44 @@ export function HomeScreen({
     team: (
       <Fold id="home-team" title={t("同事", "The team")} height={300} right={can("chat") ? <DetailLink zh={zh} href="/flow" /> : null}>
         {team.map((a, idx) => {
-                const on = giveTo === a.key;
-                return (
-                  <div key={a.key} style={{ borderTop: idx ? "1px solid #f3f3f3" : "none", padding: "8px 0" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                      <AgentIcon agent={a.key} size={30} radius={8} />
-                      <div style={{ minWidth: 0, flexGrow: 1 }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-                          <span style={{ fontSize: 13, fontWeight: 600 }}>{zh ? a.nameLocal : a.name}</span>
-                          <Status status={a.status} zh={zh} />
-                        </div>
-                        <div title={a.line ?? undefined} style={{ fontSize: 12, color: a.line ? "#525252" : "#c7c7c7", marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                          {a.line ? trim(a.line, 90) : t("还没说过话", "Has not spoken yet")}
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => setGiveTo(on ? null : a.key)}
-                        aria-expanded={on}
-                        style={{ height: 26, padding: "0 10px", borderRadius: 8, border: `1px solid ${on ? "#171717" : "#e2e2e2"}`, background: "#fff", color: "#171717", fontFamily: "inherit", fontSize: 12, cursor: "pointer", flexShrink: 0 }}
-                      >
-                        {on ? t("收起", "Close") : t("交代", "Give work")}
-                      </button>
-                    </div>
-                    {on ? (
-                      <div style={{ marginTop: 8 }}>
-                        <SayToAgent
-                          agent={a.key}
-                          zh={zh}
-                          onDone={() => {
-                            setSentAt(new Date().toISOString());
-                            setWatching(true);
-                          }}
-                        />
-                      </div>
-                    ) : null}
+          const on = giveTo === a.key;
+          return (
+            <div key={a.key} style={{ borderTop: idx ? "1px solid #f3f3f3" : "none", padding: "8px 0" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <AgentIcon agent={a.key} size={30} radius={8} />
+                <div style={{ minWidth: 0, flexGrow: 1 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                    <span style={{ fontSize: 13, fontWeight: 600 }}>{zh ? a.nameLocal : a.name}</span>
+                    <Status status={a.status} zh={zh} />
                   </div>
-                );
-              })}
+                  <div title={a.line ?? undefined} style={{ fontSize: 12, color: a.line ? "#525252" : "#c7c7c7", marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    {a.line ? trim(a.line, 90) : t("还没说过话", "Has not spoken yet")}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setGiveTo(on ? null : a.key)}
+                  aria-expanded={on}
+                  style={{ height: 26, padding: "0 10px", borderRadius: 8, border: `1px solid ${on ? "#171717" : "#e2e2e2"}`, background: "#fff", color: "#171717", fontFamily: "inherit", fontSize: 12, cursor: "pointer", flexShrink: 0 }}
+                >
+                  {on ? t("收起", "Close") : t("交代", "Give work")}
+                </button>
+              </div>
+              {on ? (
+                <div style={{ marginTop: 8 }}>
+                  <SayToAgent
+                    agent={a.key}
+                    zh={zh}
+                    onDone={() => {
+                      setSentAt(new Date().toISOString());
+                      setWatching(true);
+                    }}
+                  />
+                </div>
+              ) : null}
+            </div>
+          );
+        })}
       </Fold>
     ),
   };
