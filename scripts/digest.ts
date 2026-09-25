@@ -31,6 +31,7 @@ import { modelFor } from "../lib/ai/models";
 import { BudgetStop, assertBudget, recordUsage } from "../lib/ai/ledger";
 import { evidenceForModel, evidenceForPeople, evidencePool, type Evidence } from "../lib/research/signals";
 import { studioBrief } from "../lib/research/studio";
+import { channelFocus } from "../lib/research/relevance";
 import { agentTag } from "../lib/agents/catalog";
 import type { CardAction } from "../lib/agents/cards";
 import { dueNow, readAutomation } from "../lib/automations/service";
@@ -44,20 +45,36 @@ const DRY = process.argv.includes("--dry");
 const hkDate = (d = new Date()) =>
   new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Hong_Kong", year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
 
-const INSTRUCTIONS = `你现在是腾亚创变的「研究员」，全世界最好的内容研究员。每天早上你只做一件事：替这个频道的主持人挑出今天最值得拍的 1 个选题（最多 2 个），并把证据摆出来，让她看完就能去拍。
+/*
+ * The channel's pillars come from its creator-voice note (`channelFocus`),
+ * not from this file: they were typed here once ("香港机会、Web3 与 AI…")
+ * and the note, written from the channel's own uploads, has moved on since.
+ *
+ * Business and tech only. The client: "keep it related to business and
+ * tech". Politics only where it moves markets, trade or tech, because a
+ * summit is on every list for days and is almost never this channel's video.
+ *
+ * One to three pieces of evidence, each of which has to be about the topic.
+ * "至少引 2 条" with a pool that was mostly noise made the model pad: the
+ * brief for "AI时代普通人如何不被淘汰？" cited a trucker's video and a
+ * banquet. One real row is better evidence than one real row and a filler.
+ */
+const instructions = (pillars: string[]) => `你现在是腾亚创变的「研究员」，全世界最好的内容研究员。每天早上你只做一件事：替这个频道的主持人挑出今天最值得拍的 1 个选题（最多 2 个），并把证据摆出来，让她看完就能去拍。
 
 怎么挑（按重要性）：
 1. 已经被验证的需求：抖音「低粉爆款」里，小账号的播放是粉丝的几十、几百倍，说明是题目本身在带流量，不是账号。这是最强的信号。
 2. 多个平台同时出现：同一件事在两个以上的平台（抖音、微博、小红书、B站、YouTube、Google）同时在热，比只在一个平台上热更可靠。
 3. 正在上升：抖音上升热点、刚发出几小时就破百万的视频。
-4. 接得上本频道：必须能连到这个频道已经验证过的方向（香港机会、Web3 与 AI、投资与职涯、财经科技、人物对话），最好能引本频道自己的数字或观众原话。和频道无关的娱乐、体育、明星八卦，不选。
+4. 只选财经、商业、科技：宏观与政策、市场与投资、公司与商业模式、创业与就业、AI、芯片、互联网、Web3 这类。时政外交只有在直接影响市场、贸易或科技时才可以选，而且要从这个影响切入。娱乐、体育、明星八卦、节日、一般社会新闻，一律不选。
+   同时要接得上本频道：能连到这个频道已经验证过的方向（${pillars.join("、")}），最好能引本频道自己的数字或观众原话。
 5. 主持人今天拍得了：一个人对着镜头、加一些素材就能讲清楚。
 
 宁缺毋滥：只有一个强信号就只给一个。两个都弱就给一个，并在 strength 里如实打分。
 
 证据规则（非常重要）：
 - 下面每条外部数据前面有编号，例如 [B3]、[F1]。你只能用编号引用证据，不要自己写任何播放、点赞、粉丝数字，系统会按编号把真实数字印出来。
-- 每个选题至少引 2 条证据，最好来自不同平台。同一条视频出现在两个榜单里只算一条，不要重复引用。
+- 每个选题引 1 到 3 条证据，每一条都必须直接支持这个选题（说的是同一件事、同一家公司或同一个趋势）。无关的条目不能拿来凑数：只有一条就只引一条。能来自不同平台更好。同一条视频出现在两个榜单里只算一条，不要重复引用。
+- 外部数据每行末尾标了它属于财经还是科技，没标的是没分过类的，要自己判断是不是财经科技。
 - why_now 里也不要写数字，只写编号和判断。
 - 引用本频道数据时（channel_fit），可以写本频道数据段里出现过的具体数字或观众原话，原样照抄，不要改。
 - 不要编造新闻或来源。传闻写明是传闻。
@@ -127,10 +144,11 @@ async function main() {
      of its videos, their like rates and the questions its viewers typed are
      in this database, and the brief was reading Google's trending searches
      instead — which is why it came back generic. */
-  const [studio, pool, listed] = await Promise.all([
+  const [studio, pool, listed, pillars] = await Promise.all([
     studioBrief(TENANT),
     evidencePool(),
     runTool(viewer, "list_topics", JSON.stringify({ limit: 20 })),
+    channelFocus(TENANT),
   ]);
   if (pool.rows.length === 0) throw new Error("No stored hot lists to choose from; run scripts/collect-hot.ts");
   const byId = new Map(pool.rows.map((e) => [e.id, e]));
@@ -155,7 +173,7 @@ async function main() {
         maxTokens: 4000,
         user: viewer.id,
         messages: [
-          { role: "system", content: `${base}\n\n${INSTRUCTIONS}` },
+          { role: "system", content: `${base}\n\n${instructions(pillars)}` },
           { role: "user", content: material },
         ],
       });
@@ -220,7 +238,7 @@ async function main() {
             label: "让研究员找对标账号",
             labelEn: "Find channels to watch",
             kind: "say",
-            body: `${agentTag("research")} 我们还没有任何对标账号。按本频道在做的题材（香港机会、Web3 与 AI、人物对话、投资与职涯），用 who_makes_this 找出真正在做这些题的 YouTube 频道，挑 3 到 5 个值得长期盯的，用 watch_channel 加进对标板，然后告诉我你选了谁、为什么。`,
+            body: `${agentTag("research")} 我们还没有任何对标账号。按本频道在做的题材（${pillars.join("、")}），用 who_makes_this 找出真正在做这些题的 YouTube 频道，挑 3 到 5 个值得长期盯的，用 watch_channel 加进对标板，然后告诉我你选了谁、为什么。`,
             tone: "primary",
           },
         ] as CardAction[])
@@ -253,7 +271,8 @@ type Signal = {
 };
 
 /** The model's JSON, held to what it may say: known evidence ids only, at
- *  most two signals, and none without at least one real row behind it. */
+ *  most two signals, at most three rows each, none marked off the beat, and
+ *  no signal without at least one real row behind it. */
 function parseSignals(text: string, byId: Map<string, Evidence>): Signal[] {
   const json = text.slice(text.indexOf("{"), text.lastIndexOf("}") + 1);
   let raw: { signals?: Record<string, unknown>[] };
@@ -268,9 +287,11 @@ function parseSignals(text: string, byId: Map<string, Evidence>): Signal[] {
     const evidence = (Array.isArray(r.evidence) ? r.evidence : [])
       .map((x) => byId.get(String(x).replace(/[\[\]\s]/g, "").toUpperCase()))
       .filter((e): e is Evidence => Boolean(e))
+      // A row the classifier called entertainment or sport backs no topic here.
+      .filter((e) => e.rel?.t !== "other")
       // The same video on two lists is one piece of evidence, not two.
       .filter((e, k, all) => !e.url || all.findIndex((x) => x.url === e.url) === k)
-      .slice(0, 5);
+      .slice(0, 3);
     const title = str(r.title, 60);
     if (!title || evidence.length === 0) continue;
     out.push({

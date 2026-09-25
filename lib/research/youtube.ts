@@ -128,10 +128,18 @@ type VideoListItem = {
 const TRENDING_TTL_MS = 20 * 60_000;
 const trendingCache = new Map<string, { at: number; rows: YouTubeVideo[] }>();
 
-/** What a country is watching today, in the platform's own order. */
-export async function trendingVideos(regionCode = "HK", limit = 20): Promise<YouTubeVideo[]> {
+/**
+ * What a country is watching today, in the platform's own order.
+ *
+ * `categoryId` narrows the chart to one of YouTube's video categories ("28"
+ * is Science & Technology). Not every region has a chart for every
+ * category: YouTube answers with an error or an empty list, and the caller
+ * decides whether the whole chart will do instead.
+ */
+export async function trendingVideos(regionCode = "HK", limit = 20, opts: { categoryId?: string } = {}): Promise<YouTubeVideo[]> {
   const region = regionCode.toUpperCase();
-  const hit = trendingCache.get(region);
+  const key = opts.categoryId ? `${region}:${opts.categoryId}` : region;
+  const hit = trendingCache.get(key);
   if (hit && Date.now() - hit.at < TRENDING_TTL_MS) return hit.rows.slice(0, limit);
 
   try {
@@ -139,10 +147,11 @@ export async function trendingVideos(regionCode = "HK", limit = 20): Promise<You
       part: "snippet,statistics",
       chart: "mostPopular",
       regionCode: region,
+      videoCategoryId: opts.categoryId,
       maxResults: 50,
     });
     const rows = (res.items ?? []).map(toVideo);
-    trendingCache.set(region, { at: Date.now(), rows });
+    trendingCache.set(key, { at: Date.now(), rows });
     return rows.slice(0, limit);
   } catch (err) {
     // The last good list beats an empty strip; quota resets at midnight

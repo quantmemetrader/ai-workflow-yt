@@ -142,9 +142,12 @@ export async function trendingNearby(
   if (rows.length >= want) return rows.slice(0, want);
 
   const seen = new Set(rows.map((r) => r.phrase.toLowerCase()));
-  /* Nearest first: the markets a Hong Kong studio's audience overlaps with
-     before the ones it does not. */
-  const order = home === "HK" ? ["TW", "SG", "GB", "US", "JP"] : TRENDING_REGIONS.filter((r) => r !== home);
+  /* Nearest first, and for Hong Kong only the two markets its audience
+     overlaps with most. Britain, the US and Japan used to be in the chain
+     too: on 09-25 twenty of the thirty stored rows came from outside Hong
+     Kong, almost none of them business or tech. A shorter list beats a
+     padded one. */
+  const order = home === "HK" ? ["TW", "SG"] : TRENDING_REGIONS.filter((r) => r !== home);
 
   for (const other of order) {
     if (rows.length >= want) break;

@@ -70,3 +70,45 @@ export type HotStats = {
   /** Places climbed on the platform's list since the last snapshot. */
   rankUp?: number | null;
 };
+
+/**
+ * Whether a row is the studio's beat: business, tech, or neither.
+ *
+ * The studio makes business and tech videos, and most of what a platform
+ * calls hot is neither — on the day this was written, 86% of 374 stored rows
+ * were concerts, sport, festival greetings and memes, and even 抖音's
+ * "finance" billboard led with a joke about a gold bar, because it filters by
+ * the account's category rather than by what the video is about. So every
+ * row is marked once, when the list is collected (`lib/research/relevance.ts`),
+ * and the screen, the morning brief and the Research agent read the mark.
+ *
+ *   t  biz · tech · other
+ *   s  how squarely: 0 unrelated, 1 touches it (a summit that may move trade,
+ *      a tycoon's gossip), 2 plainly business or tech, 3 the channel could
+ *      film it today (a rate move, a chip price, an oil price change)
+ *   tag  two to four characters naming the corner of it: 宏观, 芯片, 楼市
+ *
+ * Here rather than in the classifier because the browser draws the filter.
+ */
+export type Relevance = { t: "biz" | "tech" | "other"; s: 0 | 1 | 2 | 3; tag?: string };
+/** Keyed by the row's phrase, the same way `judged` is. */
+export type RelevanceMap = Record<string, Relevance>;
+
+/**
+ * On the studio's beat at or above `min`.
+ *
+ * The screen's default view asks for 2 (plainly business or tech); the
+ * morning brief's evidence pool asks for 1, so a summit that may move trade
+ * can still back a topic without showing up as a row about a banquet.
+ * A missing mark is not on the beat. A list with no marks at all (collected
+ * before this existed, or the classifier failed) is the caller's to handle:
+ * show everything, never nothing.
+ */
+export const onFocus = (r: Relevance | null | undefined, min: 1 | 2 | 3 = 2): boolean => !!r && r.t !== "other" && r.s >= min;
+
+/** The words a mark is shown in: 财经 · 宏观, 科技 · 芯片. */
+export function relevanceLabel(r: Relevance, zh: boolean): string {
+  const kind = r.t === "biz" ? (zh ? "财经" : "Business") : r.t === "tech" ? (zh ? "科技" : "Tech") : zh ? "其他" : "Other";
+  // A tag that only repeats the kind ("科技 · 科技") is left off.
+  return r.tag && !/^(财经|商业|科技|其他)$/.test(r.tag) ? `${kind} · ${r.tag}` : kind;
+}
