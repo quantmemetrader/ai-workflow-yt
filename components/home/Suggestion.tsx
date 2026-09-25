@@ -48,6 +48,7 @@ export function SuggestionCard({ items, zh, canResearch = false }: { items: Toda
         }
         if ("projectId" in r && r.projectId) {
           setStarted((m) => ({ ...m, [i]: { projectId: r.projectId, scriptId: r.scriptId ?? null, writing: Boolean(r.writing), existed: Boolean(r.existed) } }));
+          if (r.note) notify(r.note, "info");
           /* The sidebar's project list, quietly; the card keeps its state. */
           router.refresh();
         }

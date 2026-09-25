@@ -3214,7 +3214,6 @@ export function ScriptDetailScreen(props: ScriptDetailScreenProps): React.JSX.El
   );
 }
 
-/** The tab strip's running duration against target, the artboard's amber pill. */
 /** The topic card's sparkline: the chart's own points, drawn in the artboard's 230×44 box. */
 function Sparkline({ points }: { points: number[] }): React.JSX.Element {
   const max = Math.max(...points);
@@ -3230,6 +3229,7 @@ function Sparkline({ points }: { points: number[] }): React.JSX.Element {
   );
 }
 
+/** The tab strip's running duration against target, the artboard's amber pill. */
 function DurationBadge({ live, t }: { live: Measurement; t: (key: string) => string }): React.JSX.Element {
   if (live.targetSeconds === null) {
     return (

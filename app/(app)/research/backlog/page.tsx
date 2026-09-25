@@ -37,8 +37,10 @@ export default async function BacklogPage() {
 
   /* Where each topic has got to in Script: its project and its script, so a
      card can open them rather than only say "Scripting". A topic's project
-     is the one started from it (`work_projects.topic_id`); its script is the
-     one written from it (`scripts.topic_id`), else the project's. */
+     is the one started from it (`work_projects.topic_id`), else the one
+     whose script was written from it (an idea kept here and then started
+     from Home); its script is the one written from it (`scripts.topic_id`),
+     else the project's. */
   const ids = rows.map((r) => r.topic.id);
   const [projects, written] = ids.length
     ? await Promise.all([
@@ -48,7 +50,13 @@ export default async function BacklogPage() {
           .where(and(eq(workProjects.tenantId, viewer.tenantId), isNull(workProjects.deletedAt), inArray(workProjects.topicId, ids)))
           .orderBy(workProjects.createdAt),
         db
-          .select({ id: scripts.id, topicId: scripts.topicId, status: scripts.status, beats: sql<number>`(select count(*)::int from script_beats b where b.script_id = "scripts"."id")` })
+          .select({
+            id: scripts.id,
+            topicId: scripts.topicId,
+            status: scripts.status,
+            beats: sql<number>`(select count(*)::int from script_beats b where b.script_id = "scripts"."id")`,
+            projectId: sql<string | null>`(select p.id from work_projects p where p.script_id = "scripts"."id" and p.tenant_id = "scripts"."tenant_id" and p.deleted_at is null order by p.created_at limit 1)`,
+          })
           .from(scripts)
           .where(and(eq(scripts.tenantId, viewer.tenantId), isNull(scripts.deletedAt), inArray(scripts.topicId, ids)))
           .orderBy(scripts.createdAt),
@@ -57,7 +65,11 @@ export default async function BacklogPage() {
   const projectOf = new Map<string, { id: string; scriptId: string | null }>();
   for (const p of projects) if (p.topicId && !projectOf.has(p.topicId)) projectOf.set(p.topicId, { id: p.id, scriptId: p.scriptId });
   const scriptOf = new Map<string, { id: string; status: string; beats: number }>();
-  for (const sc of written) if (sc.topicId && !scriptOf.has(sc.topicId)) scriptOf.set(sc.topicId, { id: sc.id, status: sc.status, beats: Number(sc.beats) });
+  for (const sc of written) {
+    if (!sc.topicId || scriptOf.has(sc.topicId)) continue;
+    scriptOf.set(sc.topicId, { id: sc.id, status: sc.status, beats: Number(sc.beats) });
+    if (sc.projectId && !projectOf.has(sc.topicId)) projectOf.set(sc.topicId, { id: sc.projectId, scriptId: sc.id });
+  }
 
   return (
     <>

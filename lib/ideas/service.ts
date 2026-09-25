@@ -13,7 +13,7 @@ import { creatorVoiceText } from "@/lib/creator/service";
 import { guessBeat } from "@/lib/research/service";
 import { PLATFORMS, type HotRow } from "@/lib/research/platform-catalog";
 import { toSimplified } from "@/lib/text/simplified";
-import { cleanCodes, numbersOf } from "@/lib/projects/topic";
+import { backlogQueryOf, cleanCodes, numbersOf } from "@/lib/projects/topic";
 
 /**
  * Video ideas worked out by 研究员 from the research the studio already has.
@@ -110,7 +110,7 @@ export async function setIdeaStatus(viewer: Viewer, id: string, status: "saved" 
 }
 
 async function backlogFromIdea(viewer: Viewer, idea: IdeaRow): Promise<string | null> {
-  const query = idea.title.replace(/\s+/g, " ").trim().slice(0, 80);
+  const query = backlogQueryOf(idea.title);
   if (!query) return null;
   const angles = [idea.angle, ...(idea.titles ?? []).filter((t) => t !== idea.title)].filter((x): x is string => Boolean(x && x.trim())).slice(0, 5);
   const [made] = await db
@@ -238,13 +238,13 @@ export async function evidencePool(viewer: Viewer): Promise<{ rows: PoolRow[]; t
   const since = new Date(Date.now() - 120 * 86_400_000);
   const [best, recent] = await Promise.all([
     db
-      .select({ id: creatorVideos.id, title: creatorVideos.title, views: creatorVideos.views, likes: creatorVideos.likes, externalId: creatorVideos.externalId, publishedAt: creatorVideos.publishedAt, thumbnailUrl: creatorVideos.thumbnailUrl })
+      .select({ id: creatorVideos.id, platform: creatorVideos.platform, title: creatorVideos.title, views: creatorVideos.views, likes: creatorVideos.likes, externalId: creatorVideos.externalId, publishedAt: creatorVideos.publishedAt, thumbnailUrl: creatorVideos.thumbnailUrl })
       .from(creatorVideos)
       .where(and(eq(creatorVideos.tenantId, viewer.tenantId), gte(creatorVideos.publishedAt, since)))
       .orderBy(desc(creatorVideos.views))
       .limit(5),
     db
-      .select({ id: creatorVideos.id, title: creatorVideos.title, views: creatorVideos.views, likes: creatorVideos.likes, externalId: creatorVideos.externalId, publishedAt: creatorVideos.publishedAt, thumbnailUrl: creatorVideos.thumbnailUrl })
+      .select({ id: creatorVideos.id, platform: creatorVideos.platform, title: creatorVideos.title, views: creatorVideos.views, likes: creatorVideos.likes, externalId: creatorVideos.externalId, publishedAt: creatorVideos.publishedAt, thumbnailUrl: creatorVideos.thumbnailUrl })
       .from(creatorVideos)
       .where(eq(creatorVideos.tenantId, viewer.tenantId))
       .orderBy(sql`${creatorVideos.publishedAt} desc nulls last`)
@@ -257,7 +257,10 @@ export async function evidencePool(viewer: Viewer): Promise<{ rows: PoolRow[]; t
       const id = `C${i + 1}`;
       const likeRate = v.views > 0 ? v.likes / v.views : null;
       const numbers = numbersOf({ views: v.views, likes: v.likes, likeRate }, null, null, 2);
-      rows.push({ id, label: "本频道", title: v.title.slice(0, 80), url: `https://www.youtube.com/watch?v=${v.externalId}`, numbers, thumbnail: v.thumbnailUrl ?? null, platform: "youtube" });
+      /* A watch link only where the id is a YouTube one; another platform's
+         upload is still evidence, by its numbers. */
+      const url = v.platform === "youtube" ? `https://www.youtube.com/watch?v=${v.externalId}` : null;
+      rows.push({ id, label: "本频道", title: v.title.slice(0, 80), url, numbers, thumbnail: v.thumbnailUrl ?? null, platform: v.platform });
       lines.push(`[${id}] ${v.title.slice(0, 70)} ｜ ${numbers}${v.publishedAt ? ` ｜ ${v.publishedAt.toISOString().slice(0, 10)}` : ""}`);
     });
     counts.channel = own5.length;

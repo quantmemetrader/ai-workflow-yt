@@ -190,6 +190,15 @@ export async function startFromTopicAction(rawRef: TopicRef, opts: { write?: boo
   const ref = cleanRef(rawRef);
   if (!ref) return { error: "Not allowed" };
   const write = opts.write === true && viewer.modules.includes("script");
+  /* Asked to write without the Script module: the project still starts
+     (or opens), and the answer says why no draft is coming rather than
+     leaving the press to look like it did nothing. */
+  const denied =
+    opts.write === true && !write
+      ? zh
+        ? "写脚本需要脚本模块的权限，这次没有开始写初稿。"
+        : "Writing the script needs the Script module, so no draft was started."
+      : null;
   const chips = cleanChips(opts.chips);
 
   /* A project that already exists: write its script (or rewrite it). */
@@ -197,7 +206,7 @@ export async function startFromTopicAction(rawRef: TopicRef, opts: { write?: boo
     const p = await visibleProject(viewer, ref.id);
     if (!p) return { error: zh ? "没有这个项目" : "No such project" };
     const w = write ? await writeFromTopic(viewer, p, { rewrite: opts.rewrite === true, chips }) : { writing: false };
-    return { projectId: p.id, scriptId: p.scriptId, existed: true, writing: w.writing, note: w.note ?? null };
+    return { projectId: p.id, scriptId: p.scriptId, existed: true, writing: w.writing, note: w.note ?? denied };
   }
 
   let resolved;
@@ -209,11 +218,15 @@ export async function startFromTopicAction(rawRef: TopicRef, opts: { write?: boo
   }
   if (!resolved) return { error: zh ? "找不到这个选题了（可能已经过期）" : "That topic is no longer there" };
 
-  const existing = await projectForTopic(viewer.tenantId, { topicId: resolved.projectTopicId, key: resolved.source.key, title: resolved.title, kind: resolved.source.kind });
+  /* An idea kept in the backlog may already have been started from its
+     backlog topic (on the board, or in Script's queue): that project too. */
+  const existing =
+    (await projectForTopic(viewer, { topicId: resolved.projectTopicId, key: resolved.source.key, title: resolved.title, kind: resolved.source.kind })) ??
+    (resolved.scriptTopicId && resolved.scriptTopicId !== resolved.projectTopicId ? await projectForTopic(viewer, { topicId: resolved.scriptTopicId }) : null);
   if (existing) {
     if (ref.kind === "idea") await db.update(ideas).set({ status: "started", projectId: existing.id, updatedAt: new Date() }).where(and(eq(ideas.id, ref.id), eq(ideas.tenantId, viewer.tenantId)));
     const w = write ? await writeFromTopic(viewer, existing, { chips, mandatoryPoints: resolved.mandatoryPoints, topicId: resolved.scriptTopicId }) : { writing: false };
-    return { projectId: existing.id, scriptId: existing.scriptId, existed: true, writing: w.writing, note: w.note ?? null };
+    return { projectId: existing.id, scriptId: existing.scriptId, existed: true, writing: w.writing, note: w.note ?? denied };
   }
 
   const hints = formatHints(resolved.source.format);
@@ -246,7 +259,7 @@ export async function startFromTopicAction(rawRef: TopicRef, opts: { write?: boo
     writing = w.writing;
   }
   /* No revalidatePath: the caller navigates, and the sidebar refreshes quietly. */
-  return { projectId: created.id, scriptId: created.scriptId, existed: false, writing, note: null as string | null };
+  return { projectId: created.id, scriptId: created.scriptId, existed: false, writing, note: denied };
 }
 
 export async function setProjectStatusAction(id: string, status: "active" | "done" | "archived") {
@@ -355,7 +368,9 @@ export async function chooseTopicAction(projectId: string, input: { id?: string;
   if (!resolved) return { error: zh ? "找不到这个选题了" : "That topic is no longer there" };
   await db
     .update(workProjects)
-    .set({ title: resolved.title, brief: briefText(resolved.source, resolved.title), source: resolved.source, topicId: resolved.projectTopicId, updatedAt: new Date() })
+    /* A draft already being written keeps its mark: the page waiting on it
+       would otherwise stop waiting before it lands. */
+    .set({ title: resolved.title, brief: briefText(resolved.source, resolved.title), source: { ...resolved.source, writing: (p.source as ProjectSource | null)?.writing ?? null }, topicId: resolved.projectTopicId, updatedAt: new Date() })
     .where(eq(workProjects.id, p.id));
 
   let scriptUpdated = false;

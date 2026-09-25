@@ -329,3 +329,26 @@ export function refFromChoice(id: string): TopicRef | null {
   if (m[1] === "idea") return { kind: "idea", id: m[2] };
   return { kind: "own", text: m[2] };
 }
+
+/**
+ * The phrase an idea is kept under in the topic backlog: "存进选题储备" makes
+ * a `topics` row whose `query` is the idea's title, whitespace folded, cut
+ * to the eighty characters a watched phrase may have. Starting the idea
+ * later finds that row by it, so the backlog card, the Script queue and the
+ * script all agree it is one topic, not two.
+ */
+export function backlogQueryOf(title: string): string {
+  return String(title ?? "").replace(/\s+/g, " ").trim().slice(0, 80);
+}
+
+/**
+ * Spaces, quotes and punctuation, as one bracket expression that reads the
+ * same to JavaScript and to Postgres (an ARE): what two spellings of one
+ * title differ by ("“X”：Y" and "X：Y").
+ */
+export const TITLE_NOISE = "[\\s\"'“”‘’「」『』《》〈〉（）()【】\\[\\]，,。.：:；;！!？?、·…—-]";
+
+/** A title's words, for telling whether two titles are the same one. */
+export function titleCore(title: string): string {
+  return String(title ?? "").replace(new RegExp(TITLE_NOISE, "g"), "").slice(0, 40);
+}

@@ -10,7 +10,7 @@ import { channelThread, createChannel } from "@/lib/chat/service";
 import { agentKeyFromEmail, type AgentKey } from "@/lib/agents/catalog";
 import { audit } from "@/lib/audit";
 import { share } from "@/lib/authz/rebac";
-import { channelNote, fromHotRow, fromIdea, fromSignal, fromTopicRow, type ProjectSource, type SignalLike, type SourceEvidence, type TopicRef } from "@/lib/projects/topic";
+import { TITLE_NOISE, backlogQueryOf, channelNote, fromHotRow, fromIdea, fromSignal, fromTopicRow, type ProjectSource, type SignalLike, type SourceEvidence, type TopicRef, titleCore } from "@/lib/projects/topic";
 import { PLATFORMS, isPlatformKey, type HotRow } from "@/lib/research/platform-catalog";
 
 /**
@@ -487,7 +487,17 @@ export async function resolveTopicRef(viewer: Viewer, ref: TopicRef): Promise<Re
     const [row] = await db.select().from(ideas).where(and(eq(ideas.id, str(ref.id, 64)), eq(ideas.tenantId, viewer.tenantId))).limit(1);
     if (!row) return null;
     const source = fromIdea({ id: row.id, title: row.title, titles: row.titles, angle: row.angle, why: row.why, hook: row.hook, format: row.format, strength: row.strength, evidence: (row.evidence as SourceEvidence[]) ?? [] });
-    return { title: row.title.slice(0, 80), source, projectTopicId: row.id, scriptTopicId: null, mandatoryPoints: [] };
+    /* An idea kept with "存进选题储备" is also a backlog topic, under its
+       title (`backlogQueryOf`). The script is written from that topic, so
+       the board moves it to Scripting and links the script, and neither the
+       board nor the Script queue offers the same thing a second time. */
+    const [kept] = await db
+      .select({ id: topics.id })
+      .from(topics)
+      .where(and(eq(topics.tenantId, viewer.tenantId), eq(topics.query, backlogQueryOf(row.title)), sql`${topics.status} <> 'rejected'`))
+      .limit(1);
+    if (kept) source.topicId = kept.id;
+    return { title: row.title.slice(0, 80), source, projectTopicId: row.id, scriptTopicId: kept?.id ?? null, mandatoryPoints: [] };
   }
 
   if (ref.kind === "own") {
@@ -561,21 +571,33 @@ export async function resolveTopicRef(viewer: Viewer, ref: TopicRef): Promise<Re
  * The project already started from this topic, if any: by the topic or idea
  * id, or by the snapshot's key. Choosing the same thing twice opens the same
  * project rather than a second copy of it.
+ *
+ * Only a project this person may see: somebody else's private project on
+ * the same topic is theirs, and handing its id back would start a draft in
+ * (and send the person to) a project they cannot open.
  */
-export async function projectForTopic(tenantId: string, by: { topicId?: string | null; key?: string | null; title?: string | null; kind?: string | null }) {
+export async function projectForTopic(viewer: Viewer, by: { topicId?: string | null; key?: string | null; title?: string | null; kind?: string | null }) {
+  const core = by.title ? titleCore(by.title) : "";
   const conds = [
     by.topicId ? eq(workProjects.topicId, by.topicId) : null,
     by.key ? sql`(${workProjects.source} ->> 'key') = ${by.key}` : null,
     /* Projects started before snapshots had keys (from a brief's signal or
        a pick) are found by their title and kind, so the same signal pressed
-       again does not make a second one. */
-    by.title && by.kind ? sql`(${workProjects.title} = ${by.title} and (${workProjects.source} ->> 'kind') = ${by.kind} and (${workProjects.source} ->> 'key') is null)` : null,
+       again does not make a second one. By the title's words only: the live
+       digest project is "X：Y" where its signal is "“X”：Y". */
+    core.length >= 4 && by.kind
+      ? sql`(left(regexp_replace(${workProjects.title}, ${TITLE_NOISE}, '', 'g'), 40) = ${core} and (${workProjects.source} ->> 'kind') = ${by.kind} and (${workProjects.source} ->> 'key') is null)`
+      : null,
   ].filter((c): c is NonNullable<typeof c> => c !== null);
   if (!conds.length) return null;
   const [row] = await db
     .select({ id: workProjects.id, title: workProjects.title, scriptId: workProjects.scriptId, channelId: workProjects.channelId, source: workProjects.source })
     .from(workProjects)
-    .where(and(eq(workProjects.tenantId, tenantId), isNull(workProjects.deletedAt), sql.join(conds.map((c) => sql`(${c})`), sql` or `)))
+    /* The alternatives in one bracket. Joined bare with " or " they sat
+       beside the tenant, deleted and visibility tests under one "and"
+       (drizzle's `and` does not bracket its parts), and a key or title
+       match in any studio's project, deleted or private, came back. */
+    .where(and(eq(workProjects.tenantId, viewer.tenantId), isNull(workProjects.deletedAt), visibleTo(viewer), sql`(${sql.join(conds.map((c) => sql`(${c})`), sql` or `)})`))
     .orderBy(workProjects.createdAt)
     .limit(1);
   return row ?? null;
@@ -659,4 +681,13 @@ export async function rewriteChannelTopic(projectId: string): Promise<void> {
     .filter(Boolean)
     .join("");
   await db.update(chatChannels).set({ topic }).where(eq(chatChannels.id, p.channelId));
+}
+
+/**
+ * `visibleTo` for queries outside this file that list projects (the Script
+ * module's topics queue): the same rule the sidebar and the project page
+ * use, so a private project never shows up in someone else's list.
+ */
+export function projectsVisibleTo(viewer: Viewer) {
+  return visibleTo(viewer);
 }

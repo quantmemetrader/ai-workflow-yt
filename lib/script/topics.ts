@@ -4,7 +4,8 @@ import { db } from "@/lib/db/client";
 import { chatChannels, chatMessages, ideas, scripts, settings, topics, workProjects } from "@/lib/db/schema";
 import type { Viewer } from "@/lib/auth/types";
 import { proposalsFor, type Proposals } from "@/lib/agents/proposals";
-import { cleanCodes, fromSignal, isWriting, type ProjectSource, type SignalLike, type SourceEvidence, type TopicRef } from "@/lib/projects/topic";
+import { projectsVisibleTo } from "@/lib/projects/service";
+import { backlogQueryOf, cleanCodes, fromSignal, isWriting, titleCore, type ProjectSource, type SignalLike, type SourceEvidence, type TopicRef } from "@/lib/projects/topic";
 
 /**
  * The Script module's 选题 (topics) queue: what is waiting to be written.
@@ -54,33 +55,98 @@ export async function scriptTopicQueue(viewer: Viewer, opts: { proposals?: Propo
   const zh = (viewer.locale ?? "zh-CN").startsWith("zh");
   const tenantId = viewer.tenantId;
   const now = Date.now();
+  const today = hkToday();
   const out: TopicQueueItem[] = [];
 
-  /* What has a project already, so nothing below is offered twice. */
-  const live = await db
-    .select({
-      id: workProjects.id,
-      title: workProjects.title,
-      brief: workProjects.brief,
-      status: workProjects.status,
-      source: workProjects.source,
-      topicId: workProjects.topicId,
-      scriptId: workProjects.scriptId,
-      createdAt: workProjects.createdAt,
-      scriptStatus: scripts.status,
-      beats: sql<number>`(select count(*)::int from script_beats b where b.script_id = "work_projects"."script_id")`,
-    })
-    .from(workProjects)
-    .leftJoin(scripts, and(eq(scripts.id, workProjects.scriptId), isNull(scripts.deletedAt)))
-    .where(and(eq(workProjects.tenantId, tenantId), isNull(workProjects.deletedAt)))
-    .orderBy(desc(workProjects.createdAt))
-    .limit(200);
+  /*
+   * Everything the list is merged from, read at once: none of these reads
+   * needs another's answer, and the library draws this list's count on
+   * every visit, so six round trips one after another would be felt.
+   *
+   * Projects are the ones this person may see (`projectsVisibleTo`), as in
+   * the sidebar: somebody's private project is neither listed here nor
+   * counted as "already started" for someone who cannot open it.
+   */
+  const [live, [digest], [own], saved, backlog, proposals] = await Promise.all([
+    db
+      .select({
+        id: workProjects.id,
+        title: workProjects.title,
+        brief: workProjects.brief,
+        status: workProjects.status,
+        mode: workProjects.mode,
+        source: workProjects.source,
+        topicId: workProjects.topicId,
+        scriptId: workProjects.scriptId,
+        createdAt: workProjects.createdAt,
+        scriptStatus: scripts.status,
+        beats: sql<number>`(select count(*)::int from script_beats b where b.script_id = "work_projects"."script_id")`,
+      })
+      .from(workProjects)
+      .leftJoin(scripts, and(eq(scripts.id, workProjects.scriptId), isNull(scripts.deletedAt)))
+      .where(and(eq(workProjects.tenantId, tenantId), isNull(workProjects.deletedAt), projectsVisibleTo(viewer)))
+      .orderBy(desc(workProjects.createdAt))
+      .limit(200),
+    db
+      .select({ meta: chatMessages.meta, createdAt: chatMessages.createdAt })
+      .from(chatMessages)
+      .innerJoin(chatChannels, eq(chatChannels.id, chatMessages.channelId))
+      .where(and(eq(chatChannels.tenantId, tenantId), isNull(chatMessages.deletedAt), sql`(${chatMessages.meta} -> 'digest' ->> 'date') is not null`))
+      .orderBy(desc(chatMessages.createdAt))
+      .limit(1),
+    db.select({ value: settings.value }).from(settings).where(eq(settings.key, `research:own-picks:${tenantId}`)).limit(1),
+    db
+      .select()
+      .from(ideas)
+      .where(and(eq(ideas.tenantId, tenantId), eq(ideas.status, "saved")))
+      .orderBy(desc(ideas.updatedAt))
+      .limit(12),
+    db
+      .select({ id: topics.id, query: topics.query, name: topics.name, nameLocal: topics.nameLocal, summary: topics.summary, angles: topics.angles, updatedAt: topics.updatedAt })
+      .from(topics)
+      .where(and(eq(topics.tenantId, tenantId), inArray(topics.status, ["adopted", "saved"]), sql`${topics.stage} <> 'handed'`))
+      .orderBy(desc(topics.heat))
+      .limit(20),
+    opts.proposals ? Promise.resolve(opts.proposals) : proposalsFor(viewer, "script").catch(() => ({ owner: "script" as const, items: [], planDate: null })),
+  ]);
   const takenKeys = new Set(live.map((p) => (p.source as ProjectSource | null)?.key).filter((k): k is string => Boolean(k)));
-  const takenTopics = new Set(live.map((p) => p.topicId).filter((k): k is string => Boolean(k)));
+  /* Projects from a brief made before snapshots had keys: known by their
+     title's words, as `projectForTopic` finds them. */
+  const takenDigestTitles = new Set(
+    live.filter((p) => (p.source as ProjectSource | null)?.kind === "digest" && !(p.source as ProjectSource | null)?.key).map((p) => titleCore(p.title))
+      .filter((core) => core.length >= 4),
+  );
+  const takenTopics = new Set(
+    live.flatMap((p) => [p.topicId, (p.source as ProjectSource | null)?.topicId]).filter((k): k is string => Boolean(k)),
+  );
 
-  /* 1. Projects waiting for their script. */
+  /* A saved idea is also a backlog topic under its title (`backlogQueryOf`).
+     Which of those topics have a script already, and which are the ideas'. */
+  const ideaQuery = new Map(saved.map((i) => [i.id, backlogQueryOf(i.title)]));
+  const ideaTopics = ideaQuery.size
+    ? await db
+        .select({ id: topics.id, query: topics.query })
+        .from(topics)
+        .where(and(eq(topics.tenantId, tenantId), inArray(topics.query, [...new Set(ideaQuery.values())]), sql`${topics.status} <> 'rejected'`))
+    : [];
+  const topicIds = [...new Set([...backlog.map((t) => t.id), ...ideaTopics.map((t) => t.id)])];
+  const scripted = new Set(
+    topicIds.length
+      ? (
+          await db
+            .select({ topicId: scripts.topicId })
+            .from(scripts)
+            .where(and(eq(scripts.tenantId, tenantId), isNull(scripts.deletedAt), inArray(scripts.topicId, topicIds)))
+        ).map((r) => r.topicId)
+      : [],
+  );
+  const topicByQuery = new Map(ideaTopics.map((t) => [t.query, t.id]));
+
+  /* 1. Projects waiting for their script: made for the whole line (a
+     project started straight at the edit has no script step), with a live
+     script that has no beats yet. */
   for (const p of live) {
-    if (p.status !== "active" || !p.scriptId || Number(p.beats) > 0 || p.scriptStatus === "locked") continue;
+    if (p.status !== "active" || p.mode.startsWith("direct") || !p.scriptId || p.scriptStatus === null || Number(p.beats) > 0 || p.scriptStatus === "locked") continue;
     const src = (p.source as ProjectSource | null) ?? null;
     out.push({
       key: `project:${p.id}`,
@@ -104,20 +170,13 @@ export async function scriptTopicQueue(viewer: Viewer, opts: { proposals?: Propo
   }
 
   /* 2. This morning's signals and today's own picks, not yet a project. */
-  const [digest] = await db
-    .select({ meta: chatMessages.meta, createdAt: chatMessages.createdAt })
-    .from(chatMessages)
-    .innerJoin(chatChannels, eq(chatChannels.id, chatMessages.channelId))
-    .where(and(eq(chatChannels.tenantId, tenantId), isNull(chatMessages.deletedAt), sql`(${chatMessages.meta} -> 'digest' ->> 'date') is not null`))
-    .orderBy(desc(chatMessages.createdAt))
-    .limit(1);
   const d = (digest?.meta as { digest?: { date?: unknown; signals?: unknown } } | null)?.digest;
   const date = typeof d?.date === "string" ? d.date : null;
   const signals = Array.isArray(d?.signals) ? (d!.signals as SignalLike[]).filter((x) => x && typeof x.title === "string") : [];
   if (date) {
     signals.forEach((sg, index) => {
       const src = fromSignal(sg, date, index);
-      if (src.key && takenKeys.has(src.key)) return;
+      if ((src.key && takenKeys.has(src.key)) || takenDigestTitles.has(titleCore(sg.title))) return;
       out.push({
         key: src.key ?? `signal:${date}:${index}`,
         kind: "signal",
@@ -139,8 +198,6 @@ export async function scriptTopicQueue(viewer: Viewer, opts: { proposals?: Propo
       });
     });
   }
-  const [own] = await db.select({ value: settings.value }).from(settings).where(eq(settings.key, `research:own-picks:${tenantId}`)).limit(1);
-  const today = hkToday();
   for (const pick of Array.isArray(own?.value) ? (own!.value as { text?: string; by?: string; at?: string; date?: string }[]) : []) {
     if (!pick.text || pick.date !== today || takenKeys.has(`own:${today}:${pick.text.slice(0, 120)}`)) continue;
     out.push({
@@ -164,15 +221,16 @@ export async function scriptTopicQueue(viewer: Viewer, opts: { proposals?: Propo
     });
   }
 
-  /* 3. Ideas saved from Home, and backlog topics, with no project yet. */
-  const saved = await db
-    .select()
-    .from(ideas)
-    .where(and(eq(ideas.tenantId, tenantId), eq(ideas.status, "saved")))
-    .orderBy(desc(ideas.updatedAt))
-    .limit(12);
+  /* 3. Ideas saved from Home, and backlog topics, with no project yet. An
+     idea and the backlog topic it was saved as are one item: the idea,
+     which carries its evidence, and starting it writes from the topic. */
+  const listedQueries = new Set<string>();
   for (const idea of saved) {
     if (takenTopics.has(idea.id) || idea.projectId) continue;
+    const query = ideaQuery.get(idea.id) ?? "";
+    const asTopic = topicByQuery.get(query);
+    if (asTopic && (takenTopics.has(asTopic) || scripted.has(asTopic))) continue;
+    listedQueries.add(query);
     out.push({
       key: `idea:${idea.id}`,
       kind: "idea",
@@ -187,30 +245,14 @@ export async function scriptTopicQueue(viewer: Viewer, opts: { proposals?: Propo
       scriptId: null,
       scriptStatus: null,
       beats: 0,
-      topicId: null,
+      topicId: asTopic ?? null,
       writing: false,
       createdAt: idea.createdAt.toISOString(),
       ref: { kind: "idea", id: idea.id },
     });
   }
-  const backlog = await db
-    .select({ id: topics.id, name: topics.name, nameLocal: topics.nameLocal, summary: topics.summary, angles: topics.angles, updatedAt: topics.updatedAt })
-    .from(topics)
-    .where(and(eq(topics.tenantId, tenantId), inArray(topics.status, ["adopted", "saved"]), sql`${topics.stage} <> 'handed'`))
-    .orderBy(desc(topics.heat))
-    .limit(20);
-  const scripted = backlog.length
-    ? new Set(
-        (
-          await db
-            .select({ topicId: scripts.topicId })
-            .from(scripts)
-            .where(and(eq(scripts.tenantId, tenantId), isNull(scripts.deletedAt), inArray(scripts.topicId, backlog.map((b) => b.id))))
-        ).map((r) => r.topicId),
-      )
-    : new Set<string | null>();
   for (const t of backlog) {
-    if (takenTopics.has(t.id) || scripted.has(t.id)) continue;
+    if (takenTopics.has(t.id) || scripted.has(t.id) || listedQueries.has(t.query)) continue;
     out.push({
       key: `topic:${t.id}`,
       kind: "backlog",
@@ -233,7 +275,6 @@ export async function scriptTopicQueue(viewer: Viewer, opts: { proposals?: Propo
   }
 
   /* 4. Today's plan: the to-dos 策划 addressed to 编剧. */
-  const proposals: Pick<Proposals, "items" | "planDate"> = opts.proposals ?? (await proposalsFor(viewer, "script").catch(() => ({ owner: "script" as const, items: [], planDate: null })));
   for (const p of proposals.items) {
     if (p.source !== "plan" || takenKeys.has(`proposal:plan:${p.text.slice(0, 120)}`)) continue;
     out.push({

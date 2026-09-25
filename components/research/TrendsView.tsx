@@ -15,6 +15,7 @@ import { AgentHistory } from "@/components/shell/AgentHistory";
 import { ScriptSheet } from "@/components/research/ScriptSheet";
 import { CreatorMemory } from "@/components/research/CreatorMemory";
 import { startFromTopicAction } from "@/app/(app)/projects/actions";
+import { writeScriptAction } from "@/app/(app)/script/actions";
 import type { CompetitorRow } from "@/lib/social/service";
 import type { CreatorMemoryState } from "@/lib/creator/service";
 
@@ -352,11 +353,32 @@ export function TrendsView({
                 { write: true, chips: { angle: input.angle, channel: input.channel, aspect: input.aspect, seconds: input.seconds, language: input.language, subtitleLanguage: input.subtitleLanguage } },
               );
               if ("error" in res && res.error) {
-                setWriteError(res.error);
+                if (res.error !== "Not allowed") {
+                  setWriteError(res.error);
+                  return;
+                }
+                /* No Chat, so no project to put it in: the script is written
+                   here and now, on its own, as it was before projects. */
+                const done = beginWork(zh ? `正在写“${scriptingTopic.name}”` : `Writing “${scriptingTopic.name}”`);
+                try {
+                  const old = await writeScriptAction({ topicId: scriptingTopic.id, subject: scriptingTopic.name, ...input });
+                  if ("error" in old && old.error) {
+                    setWriteError(old.error);
+                    return;
+                  }
+                  if ("id" in old && old.id) {
+                    if ("note" in old && old.note) notify(String(old.note));
+                    setScripting(null);
+                    router.push(`/script/${old.id}`);
+                  }
+                } finally {
+                  done();
+                }
                 return;
               }
               if ("projectId" in res && res.projectId) {
-                if (res.existed && !res.writing) notify(zh ? "这个选题已经有项目了，打开的是它的脚本。" : "This topic already has a project; opening its script.", "info");
+                if (res.note) notify(res.note, "info");
+                else if (res.existed && !res.writing) notify(zh ? "这个选题已经有项目了，打开的是它的脚本。" : "This topic already has a project; opening its script.", "info");
                 setScripting(null);
                 router.push(res.scriptId ? `/script/${res.scriptId}${res.writing ? "?writing=1" : ""}` : `/projects/${res.projectId}`);
               }

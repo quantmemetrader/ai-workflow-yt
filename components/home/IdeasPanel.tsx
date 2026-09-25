@@ -97,6 +97,7 @@ export function IdeasPanel({ zh, initial, canStart, canResearch = true }: { zh: 
         if ("projectId" in res && res.projectId) {
           setStarted((m) => ({ ...m, [idea.id]: { projectId: res.projectId, scriptId: res.scriptId ?? null, writing: Boolean(res.writing), existed: Boolean(res.existed) } }));
           setItems((list) => list.map((x) => (x.id === idea.id ? { ...x, status: "started", projectId: res.projectId } : x)));
+          if (res.note) notify(res.note, "info");
           /* The sidebar's project list, quietly; the panel keeps its state. */
           router.refresh();
         }

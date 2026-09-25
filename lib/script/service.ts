@@ -322,7 +322,14 @@ export async function scriptTopic(viewer: Viewer, row: Pick<ScriptRow, "id" | "t
   const candidates = [row.topicId, project?.topicId, src?.topicId].filter((x): x is string => typeof x === "string" && x.length > 0);
   const [topic] = candidates.length
     ? await db
-        .select({ topic: topics, ownerName: users.name, ownerNameLocal: users.nameLocal })
+        .select({
+          topic: topics,
+          ownerName: users.name,
+          ownerNameLocal: users.nameLocal,
+          /* When it was adopted or kept: the choice itself, from the log the
+             board writes. `updated_at` moves with every chart refresh. */
+          chosenAt: sql<string | Date | null>`(select max(e.at) from topic_events e where e.topic_id = "topics"."id" and e.action in ('adopt', 'save'))`,
+        })
         .from(topics)
         .leftJoin(users, eq(users.id, topics.ownerId))
         .where(and(eq(topics.tenantId, viewer.tenantId), inArray(topics.id, candidates)))
@@ -353,13 +360,16 @@ export async function scriptTopic(viewer: Viewer, row: Pick<ScriptRow, "id" | "t
       label: src?.label ?? (t ? (zh ? "选题储备" : "Topic backlog") : (zh ? "项目" : "Project")),
       href: project ? `/projects/${project.id}` : t ? "/research/backlog" : null,
     },
-    heat: t ? t.heat : null,
-    change14d: t ? t.change14d : null,
+    /* A topic whose chart was never read (one just kept from an idea) has
+       a heat of 0 that means "not measured"; the card then leads with
+       where it came from rather than with a zero. */
+    heat: t && (t.lastFetchedAt !== null || t.heat > 0) ? t.heat : null,
+    change14d: t && (t.lastFetchedAt !== null || t.heat > 0) ? t.change14d : null,
     points: points.map((p) => p.v),
     range: points.length > 1 ? [points[0].d, points[points.length - 1].d] : null,
     flagged: t?.flagged ?? false,
     flagReason: t?.flagReason ?? null,
-    adoptedAt: t && (t.status === "adopted" || t.status === "saved") ? t.updatedAt.toISOString() : null,
+    adoptedAt: t && (t.status === "adopted" || t.status === "saved") ? new Date(topic?.chosenAt ?? t.createdAt).toISOString() : null,
     ownerName: topic ? (zh && topic.ownerNameLocal) || topic.ownerName || null : null,
     dueDate: t?.dueDate ?? null,
     stage: t?.stage ?? null,
