@@ -8,6 +8,7 @@ import { createScript } from "@/lib/script/service";
 import { createProject as createVideoProject } from "@/lib/video/service";
 import { channelThread, createChannel } from "@/lib/chat/service";
 import { agentKeyFromEmail, type AgentKey } from "@/lib/agents/catalog";
+import { frontierStep } from "@/lib/home/roles";
 import { audit } from "@/lib/audit";
 import { share } from "@/lib/authz/rebac";
 
@@ -109,6 +110,115 @@ export async function listWorkProjects(viewer: Viewer, limit = 40, order: "activ
   return rows.map((r) => ({ ...r, updatedAt: (r.lastMessageAt && r.lastMessageAt > r.updatedAt ? r.lastMessageAt : r.updatedAt).toISOString() }));
 }
 
+export type ProjectStageRow = WorkProjectRow & {
+  scriptStatus: string | null;
+  beats: number;
+  /** `video_projects.director.state`, when the director has been at it. */
+  directorState: string | null;
+  steps: ProjectStep[];
+  /** Where it has got to (`frontierStep`); null when delivered. */
+  frontier: ProjectStep | null;
+};
+
+/**
+ * Every project this person may see, with its steps, in one query.
+ *
+ * What role Homes filter by. `workProjectDetail` answers the same question
+ * for one project with nine round trips and a thread read, which is right
+ * for its page and wrong for a list: sixty projects would be five hundred
+ * queries to find the six a video editor has in hand. Here the script's
+ * status, the counts, the latest render and the director's state come from
+ * correlated subqueries of the same row, and the steps are built by the same
+ * `buildSteps` the project page uses, so a card and its page cannot disagree.
+ *
+ * Same visibility (`visibleTo`), same order (latest activity first) and the
+ * same `updatedAt` as `listWorkProjects`.
+ */
+export async function listProjectStages(
+  viewer: Viewer,
+  options: { status?: "active" | "done" | "archived"; limit?: number; zh?: boolean } = {},
+): Promise<ProjectStageRow[]> {
+  const limit = Math.min(Math.max(1, options.limit ?? 60), 200);
+  const zh = options.zh ?? true;
+  const rows = await db
+    .select({
+      id: workProjects.id,
+      title: workProjects.title,
+      status: workProjects.status,
+      mode: workProjects.mode,
+      updatedAt: workProjects.updatedAt,
+      scriptId: workProjects.scriptId,
+      videoProjectId: workProjects.videoProjectId,
+      channelSlug: chatChannels.slug,
+      lastMessageAt: chatChannels.lastMessageAt,
+      createdBy: workProjects.createdBy,
+      access: sql<string>`${workProjects.access} ->> 'mode'`,
+      source: workProjects.source,
+      scriptStatus: scripts.status,
+      scriptVersion: scripts.version,
+      directorState: sql<string | null>`${videoProjects.director} ->> 'state'`,
+      beats: sql<number>`(select count(*)::int from ${scriptBeats} where ${scriptBeats.scriptId} = ${scripts.id})`,
+      clips: sql<number>`(select count(*)::int from ${videoClips} where ${videoClips.projectId} = ${videoProjects.id})`,
+      items: sql<number>`(select count(*)::int from ${timelineItems} where ${timelineItems.projectId} = ${videoProjects.id})`,
+      render: sql<{ state: string; progress: number; fileId: string | null } | null>`(
+        select json_build_object('state', ${videoExports.state}, 'progress', ${videoExports.progress}, 'fileId', ${videoExports.fileId})
+          from ${videoExports}
+         where ${videoExports.projectId} = ${videoProjects.id}
+         order by ${videoExports.createdAt} desc
+         limit 1)`,
+    })
+    .from(workProjects)
+    .leftJoin(chatChannels, eq(chatChannels.id, workProjects.channelId))
+    .leftJoin(scripts, and(eq(scripts.id, workProjects.scriptId), isNull(scripts.deletedAt)))
+    .leftJoin(videoProjects, and(eq(videoProjects.id, workProjects.videoProjectId), isNull(videoProjects.deletedAt)))
+    .where(
+      and(
+        eq(workProjects.tenantId, viewer.tenantId),
+        isNull(workProjects.deletedAt),
+        visibleTo(viewer),
+        options.status ? eq(workProjects.status, options.status) : undefined,
+      ),
+    )
+    .orderBy(desc(sql`greatest(${workProjects.updatedAt}, coalesce(${chatChannels.lastMessageAt}, ${workProjects.updatedAt}))`))
+    .limit(limit);
+
+  return rows.map((r) => {
+    /* pg hands a json column back parsed; a driver that returns the text
+       instead is read the same way. */
+    const render = typeof r.render === "string" ? (JSON.parse(r.render) as typeof r.render) : r.render;
+    const steps = buildSteps(
+      {
+        mode: r.mode,
+        status: r.status,
+        source: r.source,
+        script: r.scriptStatus ? { status: r.scriptStatus, version: r.scriptVersion ?? 1 } : null,
+        beats: Number(r.beats ?? 0),
+        clips: Number(r.clips ?? 0),
+        items: Number(r.items ?? 0),
+        render: render ? { state: String(render.state), progress: Number(render.progress ?? 0), fileId: render.fileId ?? null } : null,
+      },
+      zh,
+    );
+    return {
+      id: r.id,
+      title: r.title,
+      status: r.status,
+      mode: r.mode,
+      updatedAt: (r.lastMessageAt && r.lastMessageAt > r.updatedAt ? r.lastMessageAt : r.updatedAt).toISOString(),
+      scriptId: r.scriptId,
+      videoProjectId: r.videoProjectId,
+      channelSlug: r.channelSlug,
+      createdBy: r.createdBy,
+      access: r.access,
+      scriptStatus: r.scriptStatus ?? null,
+      beats: Number(r.beats ?? 0),
+      directorState: r.directorState ?? null,
+      steps,
+      frontier: frontierStep(steps),
+    };
+  });
+}
+
 /** Channels that belong to projects, so Chat can leave them to their pages. */
 export async function projectChannelIds(tenantId: string): Promise<string[]> {
   const rows = await db.select({ id: workProjects.channelId }).from(workProjects).where(eq(workProjects.tenantId, tenantId));
@@ -141,6 +251,90 @@ export type ProjectDetail = {
   steps: ProjectStep[];
   messages: { id: string; author: string; agent: AgentKey | null; body: string; at: string; actions: import("@/lib/agents/cards").CardAction[]; done: import("@/lib/agents/cards").CardDone | null }[];
 };
+
+/** What the five steps are worked out from. Everything a project's own rows
+ * say; nothing about who is looking except the language. */
+export type StepFacts = {
+  mode: string;
+  status: string;
+  source: { label?: string } | null;
+  /** The live script, if it has one (deleted counts as none). */
+  script: { status: string; version: number } | null;
+  beats: number;
+  clips: number;
+  items: number;
+  /** The latest render. */
+  render: { state: string; progress: number; fileId: string | null } | null;
+};
+
+/**
+ * A project's five steps and where each stands, from its rows.
+ *
+ * Pure, and the only place the rule lives: the project page
+ * (`workProjectDetail`) and the Home lists (`listProjectStages`) both call
+ * it, so a card and its page cannot tell two stories.
+ */
+export function buildSteps(f: StepFacts, zh: boolean): ProjectStep[] {
+  const t = (a: string, b: string) => (zh ? a : b);
+  const { script, render } = f;
+  const beats = { n: f.beats };
+  const clips = { n: f.clips };
+  const items = { n: f.items };
+  const direct = f.mode.startsWith("direct:") ? (f.mode.slice(7) as AgentKey) : null;
+  const skip = (key: ProjectStep["key"]) =>
+    direct === "video" ? key === "script" || key === "clips" : direct === "article" ? key !== "deliver" && key !== "topic" : false;
+
+  const scriptState: StepState = !script
+    ? "todo"
+    : script.status === "locked"
+      ? "done"
+      : script.status === "awaiting_approval"
+        ? "you"
+        : script.status === "drafting" || beats.n > 0
+          ? "running"
+          : "todo";
+  const rendered = render?.state === "done" && render.fileId;
+  const rendering = render && (render.state === "queued" || render.state === "rendering");
+  return [
+    { key: "topic", label: t("选题", "Topic"), owner: "research", state: "done", line: f.source?.label ?? t("你定的题", "Your topic") },
+    {
+      key: "script",
+      label: t("脚本", "Script"),
+      owner: "script",
+      state: skip("script") ? "skipped" : scriptState,
+      line: skip("script")
+        ? t("跳过 · 直接剪辑", "Skipped · straight to the edit")
+        : scriptState === "done"
+          ? t(`第 ${script!.version} 版已锁定`, `v${script!.version} locked`)
+          : scriptState === "you"
+            ? t("写好了，等你批准", "Written; waiting for your OK")
+            : scriptState === "running"
+              ? t(`草稿 · ${beats.n} 个分镜`, `Draft · ${beats.n} beats`)
+              : t("等编剧开写", "Waiting for the writer"),
+    },
+    {
+      key: "clips",
+      label: t("上传素材", "Upload clips"),
+      owner: "you",
+      state: skip("clips") ? "skipped" : clips.n > 0 ? "done" : scriptState === "done" ? "you" : "todo",
+      line: skip("clips") ? t("跳过 · 用素材库", "Skipped · stock footage") : clips.n > 0 ? t(`${clips.n} 段素材`, `${clips.n} clips`) : t("主持人拍好后上传", "The host uploads when filmed"),
+    },
+    {
+      key: "edit",
+      label: t("剪辑", "Edit"),
+      owner: "video",
+      state: rendered ? "done" : rendering || items.n > 0 ? "running" : "todo",
+      line: rendered ? t("成片已出", "Rendered") : rendering ? t(`渲染中 ${Math.round((render!.progress ?? 0) * (render!.progress > 1 ? 1 : 100))}%`, `Rendering ${Math.round((render!.progress ?? 0) * (render!.progress > 1 ? 1 : 100))}%`) : items.n > 0 ? t(`时间线 ${items.n} 段`, `${items.n} on the timeline`) : t("素材到了就开始", "Starts when clips arrive"),
+    },
+    {
+      key: "deliver",
+      label: t("批准交付", "Approve & deliver"),
+      owner: "you",
+      state: f.status === "done" ? "done" : rendered ? "you" : "todo",
+      line: f.status === "done" ? t("已交付", "Delivered") : rendered ? t("看成片，满意就交付", "Watch it; deliver when happy") : t("剪完之后", "After the edit"),
+    },
+  ];
+}
 
 export async function workProjectDetail(viewer: Viewer, id: string, zh: boolean, messageLimit = 80): Promise<ProjectDetail | null> {
   const [p] = await db
@@ -177,61 +371,19 @@ export async function workProjectDetail(viewer: Viewer, id: string, zh: boolean,
     channelThread(viewer, ch.slug, messageLimit),
   ]);
 
-  const t = (a: string, b: string) => (zh ? a : b);
-  const direct = p.mode.startsWith("direct:") ? (p.mode.slice(7) as AgentKey) : null;
-  const skip = (key: ProjectStep["key"]) =>
-    direct === "video" ? key === "script" || key === "clips" : direct === "article" ? key !== "deliver" && key !== "topic" : false;
-
-  const scriptState: StepState = !script
-    ? "todo"
-    : script.status === "locked"
-      ? "done"
-      : script.status === "awaiting_approval"
-        ? "you"
-        : script.status === "drafting" || beats.n > 0
-          ? "running"
-          : "todo";
-  const rendered = render?.state === "done" && render.fileId;
-  const rendering = render && (render.state === "queued" || render.state === "rendering");
-  const steps: ProjectStep[] = [
-    { key: "topic", label: t("选题", "Topic"), owner: "research", state: "done", line: p.source?.label ?? t("你定的题", "Your topic") },
+  const steps = buildSteps(
     {
-      key: "script",
-      label: t("脚本", "Script"),
-      owner: "script",
-      state: skip("script") ? "skipped" : scriptState,
-      line: skip("script")
-        ? t("跳过 · 直接剪辑", "Skipped · straight to the edit")
-        : scriptState === "done"
-          ? t(`第 ${script!.version} 版已锁定`, `v${script!.version} locked`)
-          : scriptState === "you"
-            ? t("写好了，等你批准", "Written; waiting for your OK")
-            : scriptState === "running"
-              ? t(`草稿 · ${beats.n} 个分镜`, `Draft · ${beats.n} beats`)
-              : t("等编剧开写", "Waiting for the writer"),
+      mode: p.mode,
+      status: p.status,
+      source: (p.source as { label?: string } | null) ?? null,
+      script: script ? { status: script.status, version: script.version } : null,
+      beats: beats.n,
+      clips: clips.n,
+      items: items.n,
+      render: render ? { state: render.state, progress: render.progress, fileId: render.fileId } : null,
     },
-    {
-      key: "clips",
-      label: t("上传素材", "Upload clips"),
-      owner: "you",
-      state: skip("clips") ? "skipped" : clips.n > 0 ? "done" : scriptState === "done" ? "you" : "todo",
-      line: skip("clips") ? t("跳过 · 用素材库", "Skipped · stock footage") : clips.n > 0 ? t(`${clips.n} 段素材`, `${clips.n} clips`) : t("主持人拍好后上传", "The host uploads when filmed"),
-    },
-    {
-      key: "edit",
-      label: t("剪辑", "Edit"),
-      owner: "video",
-      state: rendered ? "done" : rendering || items.n > 0 ? "running" : "todo",
-      line: rendered ? t("成片已出", "Rendered") : rendering ? t(`渲染中 ${Math.round((render!.progress ?? 0) * (render!.progress > 1 ? 1 : 100))}%`, `Rendering ${Math.round((render!.progress ?? 0) * (render!.progress > 1 ? 1 : 100))}%`) : items.n > 0 ? t(`时间线 ${items.n} 段`, `${items.n} on the timeline`) : t("素材到了就开始", "Starts when clips arrive"),
-    },
-    {
-      key: "deliver",
-      label: t("批准交付", "Approve & deliver"),
-      owner: "you",
-      state: p.status === "done" ? "done" : rendered ? "you" : "todo",
-      line: p.status === "done" ? t("已交付", "Delivered") : rendered ? t("看成片，满意就交付", "Watch it; deliver when happy") : t("剪完之后", "After the edit"),
-    },
-  ];
+    zh,
+  );
 
   return {
     id: p.id,

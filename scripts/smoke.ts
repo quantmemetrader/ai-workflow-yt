@@ -69,6 +69,7 @@ function viewer(
     nameLocal: null,
     avatarUrl: null,
     title: null,
+    workRole: null,
     role: user.role,
     locale: "en",
     modules: MODULES,

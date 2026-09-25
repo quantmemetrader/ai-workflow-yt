@@ -16,6 +16,8 @@ import {
   type Module,
 } from "@/lib/db/schema";
 import type { Viewer } from "@/lib/auth/dal";
+import { workRoleOf } from "@/lib/auth/types";
+import { AGENT_KEYS, type AgentKey } from "@/lib/agents/catalog";
 import { audit } from "@/lib/audit";
 import { newId } from "@/lib/ids";
 import { env } from "@/lib/env";
@@ -55,6 +57,8 @@ export type PersonRow = {
   nameLocal: string | null;
   email: string;
   title: string | null;
+  /** Their job in the studio (岗位), which picks their Home. Null: not set. */
+  workRole: AgentKey | null;
   role: "owner" | "admin" | "member" | "guest";
   status: "active" | "invited" | "suspended";
   avatarUrl: string | null;
@@ -119,6 +123,7 @@ export async function listPeople(viewer: Viewer): Promise<PersonRow[]> {
     nameLocal: u.nameLocal,
     email: u.email,
     title: u.title,
+    workRole: workRoleOf(u.workRole),
     role: u.role,
     status: u.status,
     avatarUrl: u.avatarUrl,
@@ -200,6 +205,58 @@ export async function setUserRole(
     module: "admin",
     meta: { role },
   });
+}
+
+/**
+ * A person's job in the studio (岗位): research, planning, script, video or
+ * article, or null for none. It decides which Home they land on
+ * (`lib/home/roles.ts`) and nothing else — what they may open is still
+ * their modules, and what they may administer is still `role`.
+ *
+ * Except one thing: Home and every project live behind the chat module, so a
+ * job given to somebody without chat would be a Home they cannot open. Chat
+ * is granted with it, and that grant is audited like any other.
+ *
+ * The owner's row follows the rule the rest of this screen does: the owner's
+ * own details are the owner's to change.
+ */
+export async function setWorkRole(viewer: Viewer, userId: string, role: AgentKey | null) {
+  assertAdmin(viewer);
+  if (role !== null && !(AGENT_KEYS as readonly string[]).includes(role)) throw new Error("No such job");
+
+  const [target] = await db
+    .select({ id: users.id, role: users.role })
+    .from(users)
+    .where(and(eq(users.id, userId), eq(users.tenantId, viewer.tenantId), isNull(users.deletedAt), eq(users.isAgent, false)))
+    .limit(1);
+  if (!target) throw new Error("Nobody here has that id");
+  if (target.role === "owner" && viewer.role !== "owner") throw new Error("The owner's job is set by the owner");
+
+  const grantedChat = await db.transaction(async (trx) => {
+    await trx.update(users).set({ workRole: role }).where(and(eq(users.id, userId), eq(users.tenantId, viewer.tenantId)));
+    if (!role) return false;
+    const added = await trx
+      .insert(entitlements)
+      .values({ userId, module: "chat", grantedBy: viewer.id })
+      .onConflictDoNothing()
+      .returning({ userId: entitlements.userId });
+    return added.length > 0;
+  });
+
+  await audit(viewer, "admin.user.workRole", {
+    objectType: "user",
+    objectId: userId,
+    module: "admin",
+    meta: { workRole: role, grantedChat },
+  });
+  if (grantedChat) {
+    await audit(viewer, "admin.entitlement.grant", {
+      objectType: "user",
+      objectId: userId,
+      module: "admin",
+      meta: { module: "chat", via: "workRole" },
+    });
+  }
 }
 
 export async function setUserStatus(viewer: Viewer, userId: string, status: "active" | "suspended") {

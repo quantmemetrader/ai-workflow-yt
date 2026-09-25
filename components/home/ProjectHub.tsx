@@ -10,6 +10,7 @@ import { AGENT_COLORS, AGENT_LABELS, AGENT_TINTS, parseAgentMentions, type Agent
 import { sendChannelMessage } from "@/app/(app)/chat/actions";
 import { notify } from "@/lib/client/notify";
 import type { ProjectDetail, ProjectStep } from "@/lib/projects/service";
+import { frontierStep } from "@/lib/home/roles";
 
 /**
  * Home, project by project.
@@ -19,18 +20,42 @@ import type { ProjectDetail, ProjectStep } from "@/lib/projects/service";
  * `ProjectChats`: the last few messages from each of those projects, and
  * the whole conversation with a reply box one press away, so the studio can
  * keep several projects moving without opening any of them.
+ *
+ * On a job's Home these are the projects in hand for that job, so the
+ * title, the count, the empty line and the way out (`right`, `footer`) come
+ * from the page's layout rather than being fixed here.
  */
-export function ProjectProgress({ projects, zh }: { projects: ProjectDetail[]; zh: boolean }) {
+export function ProjectProgress({
+  projects,
+  zh,
+  title,
+  sub,
+  empty,
+  right,
+  footer,
+}: {
+  projects: ProjectDetail[];
+  zh: boolean;
+  title?: string;
+  /** Beside the title; defaults to how many are shown. */
+  sub?: string;
+  empty?: string;
+  right?: React.ReactNode;
+  footer?: React.ReactNode;
+}) {
   const t = (a: string, b: string) => (zh ? a : b);
   return (
-    <Fold id="home-projects" title={t("进行中的项目", "Projects in progress")} sub={String(projects.length)} resizable={false} icon={<Icon name="film" size={15} color="#525252" />}>
+    <Fold id="home-projects" title={title ?? t("进行中的项目", "Projects in progress")} sub={sub ?? String(projects.length)} resizable={false} icon={<Icon name="film" size={15} color="#525252" />} right={right} footer={footer}>
       <style dangerouslySetInnerHTML={{ __html: PROGRESS_CSS }} />
       {projects.length === 0 ? (
-        <div style={{ fontSize: 12.5, color: "#999999", padding: "6px 0" }}>{t("还没有进行中的项目。在上面交代一件事就会开一个。", "Nothing in progress. Give the team a task above and a project starts.")}</div>
+        <div style={{ fontSize: 12.5, color: "#999999", padding: "6px 0" }}>{empty ?? t("还没有进行中的项目。在上面交代一件事就会开一个。", "Nothing in progress. Give the team a task above and a project starts.")}</div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           {projects.map((p) => {
-            const now = p.steps.find((s) => s.state === "you") ?? p.steps.find((s) => s.state === "running") ?? p.steps.find((s) => s.state === "todo") ?? null;
+            /* Where it has actually got to, by the same rule the role Homes
+               filter with — not the first open step, which on a cut whose
+               script was never locked is the script. */
+            const now = frontierStep(p.steps);
             const tone = !now ? TONE.done : now.state === "you" ? TONE.you : now.state === "running" ? TONE.running : TONE.todo;
             const thumb = p.clipList[0]?.fileId ?? null;
             const done = p.steps.filter((s) => s.state === "done" || s.state === "skipped").length;
@@ -137,11 +162,11 @@ function Stepper({ steps, current }: { steps: ProjectStep[]; current: string | n
   );
 }
 
-export function ProjectChats({ projects, zh }: { projects: ProjectDetail[]; zh: boolean }) {
+export function ProjectChats({ projects, zh, right }: { projects: ProjectDetail[]; zh: boolean; right?: React.ReactNode }) {
   const t = (a: string, b: string) => (zh ? a : b);
   const [open, setOpen] = React.useState<string | null>(null);
   return (
-    <Fold id="home-project-chats" title={t("项目对话", "Project chats")} sub={t("每个项目最近在聊什么", "What each project is talking about")} icon={<Icon name="chat" size={15} color="#525252" />} flush height={460}>
+    <Fold id="home-project-chats" title={t("项目对话", "Project chats")} sub={t("每个项目最近在聊什么", "What each project is talking about")} icon={<Icon name="chat" size={15} color="#525252" />} flush height={460} right={right}>
       {projects.length === 0 ? <div style={{ fontSize: 12.5, color: "#999999", padding: 14 }}>{t("还没有项目对话。", "No project chats yet.")}</div> : null}
       {projects.map((p, i) => (
         <ProjectChat key={p.id} project={p} zh={zh} first={i === 0} open={open === p.id} onToggle={() => setOpen(open === p.id ? null : p.id)} />
@@ -191,7 +216,7 @@ function ProjectChat({ project: p, zh, first, open, onToggle }: { project: Proje
         </svg>
         <span style={{ fontSize: 13, fontWeight: 600, color: "#171717", minWidth: 0, flexGrow: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.title}</span>
         {last ? <span style={{ fontSize: 11, color: "#b3b3b3", whiteSpace: "nowrap" }}>{ago(last.at, zh)}</span> : null}
-        <Link href={`/projects/${p.id}`} onClick={(e) => e.stopPropagation()} style={{ fontSize: 11.5, color: "#525252", textDecoration: "none", whiteSpace: "nowrap" }}>
+        <Link href={`/projects/${p.id}`} prefetch={false} onClick={(e) => e.stopPropagation()} style={{ fontSize: 11.5, color: "#525252", textDecoration: "none", whiteSpace: "nowrap" }}>
           {t("打开", "Open")}
         </Link>
       </button>

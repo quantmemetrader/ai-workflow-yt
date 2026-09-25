@@ -8,6 +8,7 @@
  * where both can reach it.
  */
 import type { Module } from "@/lib/db/schema";
+import { AGENT_KEYS, type AgentKey } from "@/lib/agents/catalog";
 
 export type Viewer = {
   id: string;
@@ -18,6 +19,13 @@ export type Viewer = {
   avatarUrl: string | null;
   title: string | null;
   role: "owner" | "admin" | "member" | "guest";
+  /**
+   * Which job this person does in the studio — one of the employee keys —
+   * and so which Home they land on (`lib/home/roles.ts`). Null is "not
+   * set": owners and admins get the overview, members a Home worked out
+   * from their modules. Not `role`, which is what they are allowed to do.
+   */
+  workRole: AgentKey | null;
   locale: "zh-CN" | "zh-HK" | "en" | null;
   /** Exactly the modules this person holds. The rail renders this list and
    * nothing else (spec §4.1). */
@@ -31,3 +39,15 @@ export type Viewer = {
    * rather than in the middle of rendering. */
   staleSeen: boolean;
 };
+
+/**
+ * `users.work_role` as a Viewer holds it.
+ *
+ * The column is free text; only an employee key is a work role. Anything
+ * else (a value typed by hand into the database, a key since retired) reads
+ * as "not set" rather than as a Home with no layout. Here, beside the type,
+ * because both readers of a viewer need it and neither may import the other.
+ */
+export function workRoleOf(value: string | null | undefined): AgentKey | null {
+  return value && (AGENT_KEYS as readonly string[]).includes(value) ? (value as AgentKey) : null;
+}

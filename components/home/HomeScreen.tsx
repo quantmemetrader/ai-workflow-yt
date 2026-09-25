@@ -6,17 +6,23 @@ import { useRouter } from "next/navigation";
 import { MentionMenu, type MentionPerson } from "@/components/chat/MentionMenu";
 import { useMentions } from "@/components/chat/useMentions";
 import { AgentIcon } from "@/components/agents/AgentIcon";
-import { AGENT_LABELS, agentTag, type AgentKey } from "@/lib/agents/catalog";
-import type { AgentState, Decision, Running } from "@/lib/home/service";
+import { AGENT_KEYS, AGENT_LABELS, agentTag, parseAgentMentions, type AgentKey } from "@/lib/agents/catalog";
+import type { AgentState, Decision, RoleExtra, Running } from "@/lib/home/service";
 import { pressCardAction, sendChannelMessage } from "@/app/(app)/chat/actions";
 import { ProjectChats, ProjectProgress } from "@/components/home/ProjectHub";
 import { SuggestionCard, type TodaySuggestion } from "@/components/home/Suggestion";
+import { IdeasPanel } from "@/components/home/IdeasPanel";
+import { DetailLink, DETAIL_LINK_CSS } from "@/components/home/DetailLink";
+import { RoleExtraPanel, RoleTabs } from "@/components/home/RolePanels";
 import type { ProjectDetail } from "@/lib/projects/service";
+import type { Idea } from "@/lib/ideas/types";
+import type { Module } from "@/lib/db/schema";
+import { HOME_LAYOUT, type HomeRole, type PanelKey } from "@/lib/home/roles";
 import { startProjectAction } from "@/app/(app)/projects/actions";
 import { Fold } from "@/components/ui/Fold";
+import { Icon } from "@/components/ui/Icon";
 import { SayToAgent } from "@/components/flow/SayToAgent";
 import type { ThreadMessage } from "@/components/home/Echo";
-import type { Pipeline } from "@/lib/home/pipeline";
 
 /**
  * 首页 — where the day is driven from, not a page that sends you elsewhere.
@@ -31,6 +37,12 @@ import type { Pipeline } from "@/lib/home/pipeline";
  *   - today's video is drawn as the flow board draws it, two rows, and every
  *     step has a line to talk to whoever owns it;
  *   - the full flow is one big button, not a small link.
+ *
+ * And it is per job: `role` picks a layout from `HOME_LAYOUT` — which
+ * panels, in what order, which employee the task box is addressed to — and
+ * the page has already filtered the projects, decisions and running jobs to
+ * that job. Every panel has its way out to the page it summarises
+ * (`DetailLink`), drawn only when the viewer holds the module behind it.
  */
 export function HomeScreen({
   agents,
@@ -44,13 +56,35 @@ export function HomeScreen({
   projects,
   hub,
   suggestions,
+  teamChannel,
+  role,
+  defaultRole,
+  canSetDefault,
+  modules,
+  inHandCount,
+  allActiveCount,
+  ideas,
+  extra,
 }: {
   suggestions: TodaySuggestion[];
-  /** The active projects, with their steps and latest messages. */
+  /** The projects in hand for this job (the first six), with their steps
+   * and latest messages. */
   hub: ProjectDetail[];
   /** Where a task can go: an existing project, or a new one. */
   projects: { id: string; title: string; channelSlug: string | null }[];
-  pipeline: Pipeline;
+  /** Which job's Home this is, and which one this person lands on. */
+  role: HomeRole;
+  defaultRole: HomeRole;
+  /** Whether "设为我的默认" can express this view (see the page). */
+  canSetDefault: boolean;
+  /** The viewer's modules: a detail link is drawn only when its page opens. */
+  modules: Module[];
+  /** All the projects in hand for this job, of which `hub` is the first six. */
+  inHandCount: number;
+  /** Every active project in the studio, whatever the job. */
+  allActiveCount: number;
+  ideas: Idea[];
+  extra: RoleExtra | null;
   thread: ThreadMessage[];
   agents: AgentState[];
   decisions: Decision[];
@@ -62,9 +96,17 @@ export function HomeScreen({
   people: MentionPerson[];
 }) {
   const router = useRouter();
+  const layout = HOME_LAYOUT[role];
+  const can = (m: Module) => modules.includes(m);
+  /* The job's employee is tagged in the box from the start — the editor's
+     task goes to 剪辑师 unless they say otherwise. The page remounts this
+     screen per job (`key`), so switching tabs re-seeds it. */
+  const seed = layout.agent ? `${agentTag(layout.agent)} ` : "";
   const [pending, start] = React.useTransition();
   const [pressing, setPressing] = React.useState<string | null>(null);
-  const [draft, setDraft] = React.useState("");
+  const [draft, setDraft] = React.useState(seed);
+  /* The project the box just started: offered, not opened. */
+  const [created, setCreated] = React.useState<{ id: string; what: string; tagged: boolean } | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const box = React.useRef<HTMLTextAreaElement | null>(null);
   const mentions = useMentions({ people, zh, draft, setDraft, box });
@@ -110,11 +152,18 @@ export function HomeScreen({
     });
   }
 
-  /* The task box starts a project (or adds to one) and goes there: the work
-     happens on the project's page, not here. */
+  /* A box holding nothing but a tag has nothing to start: the seeded tag
+     alone must not make a project called "@剪辑师". */
+  const said = (text: string) => AGENT_KEYS.reduce((rest, k) => rest.split(agentTag(k)).join(""), text).trim();
+  const ready = said(draft).length > 0;
+
+  /* The task box starts a project (or adds to one). A new project is
+     offered, not opened — "打开项目" or "留在首页" — because somebody
+     handing out three tasks in a row wants to stay here; adding to an
+     existing one still goes there, where the answer will appear. */
   function startWork(body: string) {
     const text = body.trim();
-    if (!text) return;
+    if (!said(text)) return;
     setError(null);
     start(async () => {
       if (target === "new") {
@@ -123,8 +172,10 @@ export function HomeScreen({
           setError(r.error);
           return;
         }
-        setDraft("");
-        if ("id" in r && r.id) router.push(`/projects/${r.id}`); setTimeout(() => router.refresh(), 400);
+        setDraft(seed);
+        if ("id" in r && r.id) setCreated({ id: r.id, what: trim(said(text), 40), tagged: parseAgentMentions(text).length > 0 });
+        /* The new project in the lists and the sidebar, without leaving. */
+        router.refresh();
         return;
       }
       const p = projects.find((x) => x.id === target);
@@ -204,35 +255,115 @@ export function HomeScreen({
               ))}
             </select>
           </div>
+          {can("chat") ? <DetailLink zh={zh} href="/projects/new" label="新建项目" labelEn="New project" /> : null}
           <button
             type="button"
-            disabled={pending || !draft.trim()}
+            disabled={pending || !ready}
             onClick={() => startWork(draft)}
-            style={{ height: 34, padding: "0 18px", borderRadius: 10, border: 0, background: draft.trim() ? "#171717" : "#ededed", color: draft.trim() ? "#fff" : "#999999", fontSize: 13, fontWeight: 500, fontFamily: "inherit", flexShrink: 0, cursor: draft.trim() ? "pointer" : "default" }}
+            style={{ height: 34, padding: "0 18px", borderRadius: 10, border: 0, background: ready ? "#171717" : "#ededed", color: ready ? "#fff" : "#999999", fontSize: 13, fontWeight: 500, fontFamily: "inherit", flexShrink: 0, cursor: ready ? "pointer" : "default" }}
           >
             {t("开工", "Start")}
           </button>
         </div>
       </div>
       {error ? <div style={{ fontSize: 12.5, color: "#e03636", marginTop: 6 }}>{error}</div> : null}
+      {created ? (
+        <div role="status" style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 8, padding: "9px 12px", border: "1px solid #cbe9d8", borderRadius: 12, background: "#f1faf5", flexWrap: "wrap" }}>
+          <Icon name="check" size={15} color="#1e7a4f" strokeWidth={2.2} />
+          <span style={{ fontSize: 13, color: "#1f3a2c", minWidth: 0, flexGrow: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {t("项目开好了", "Project started")}
+            {created.what ? <span style={{ color: "#5b7466" }}>{t(`：「${created.what}」`, `: "${created.what}"`)}</span> : null}
+            {/* Only a tagged employee is told (startProjectAction); an
+                untagged task waits in the project for whoever opens it. */}
+            {created.tagged ? <span style={{ color: "#5b7466" }}>{t("，已经交给同事。", ". Handed to the team.")}</span> : null}
+          </span>
+          <Link href={`/projects/${created.id}`} prefetch={false} style={{ ...btn(true), height: 28, textDecoration: "none" }}>
+            {t("打开项目", "Open the project")}
+          </Link>
+          <button type="button" onClick={() => setCreated(null)} style={{ ...btn(false), height: 28 }}>
+            {t("留在首页", "Stay on Home")}
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 
-  return (
-    <div style={{ flexGrow: 1, minWidth: 0, minHeight: 0, overflowY: "auto", ...PAPER }}>
-      <div style={{ maxWidth: 1240, margin: "0 auto", padding: "22px 24px 48px", display: "flex", flexDirection: "column", gap: 14 }}>
-        <div>
-          <h1 style={{ fontSize: 22, fontWeight: 600, margin: 0, letterSpacing: "-0.01em" }}>{t(`${greeting(zh)}，${me}`, `${greeting(zh)}, ${me}`)}</h1>
-          <p style={{ margin: "5px 0 0", fontSize: 13.5, color: "#7c7c7c" }}>{subline}</p>
-        </div>
+  /* The team, with this job's own employee first. */
+  const team = layout.agent ? [...agents.filter((a) => a.key === layout.agent), ...agents.filter((a) => a.key !== layout.agent)] : agents;
 
-        {/* ---- the box, the line of work and the team on the left; the
-             conversation down the right ---- */}
-        <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 8fr) minmax(340px, 5fr)", gap: 14, alignItems: "start" }}>
-          <div style={{ minWidth: 0, order: 2, display: "flex", flexDirection: "column", gap: 14 }}>
-          <ProjectChats projects={hub} zh={zh} />
-            <Fold id="home-team" title={t("同事", "The team")} height={300}>
-              {agents.map((a, idx) => {
+  /* "工作室全部进行中项目 N →": whatever this Home filters, every project
+     stays one press away. */
+  const allProjectsLink =
+    can("chat") && (role !== "overview" || allActiveCount > hub.length) ? (
+      <Link href="/projects" prefetch={false} className="home-all" style={{ display: "flex", alignItems: "center", gap: 4, padding: "9px 14px", fontSize: 12.5, color: "#525252", textDecoration: "none" }}>
+        {role === "overview" ? t(`全部进行中项目 ${allActiveCount}`, `All ${allActiveCount} projects in progress`) : t(`工作室全部进行中项目 ${allActiveCount}`, `All ${allActiveCount} of the studio's projects in progress`)}
+        <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+          <path d="m9.5 6.5 5.5 5.5-5.5 5.5" />
+        </svg>
+      </Link>
+    ) : null;
+
+  const panels: Record<PanelKey, React.ReactNode> = {
+    composer,
+    ideas: <IdeasPanel zh={zh} initial={ideas} canStart={can("chat")} />,
+    suggestion: <SuggestionCard items={suggestions} zh={zh} />,
+    extra: extra ? <RoleExtraPanel extra={extra} zh={zh} /> : null,
+    projects: (
+      <ProjectProgress
+        projects={hub}
+        zh={zh}
+        title={zh ? layout.projectsZh : layout.projectsEn}
+        sub={String(inHandCount)}
+        empty={zh ? layout.emptyZh : layout.emptyEn}
+        right={can("chat") ? <DetailLink zh={zh} href="/projects" /> : null}
+        footer={allProjectsLink}
+      />
+    ),
+    decisions:
+      decisions.length > 0 ? (
+        <Fold
+          id="home-decisions"
+          title={t("等你决定", "Waiting on you")}
+          sub={String(decisions.length)}
+          height={decisions.length > 2 ? 360 : undefined}
+          right={teamChannel && can("chat") ? <DetailLink zh={zh} href={`/chat/c/${encodeURIComponent(teamChannel.slug)}`} /> : null}
+        >
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {decisions.map((d) => (
+              <article key={d.messageId} style={GRADIENT_CARD}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  {d.agent ? <AgentIcon agent={d.agent} size={22} radius={6} /> : null}
+                  <span style={{ fontSize: 13, fontWeight: 600 }}>{d.author}</span>
+                  <Link href={`/chat/c/${encodeURIComponent(d.channelSlug)}`} prefetch={false} style={{ fontSize: 11.5, color: "#999999", textDecoration: "none" }}>
+                    #{d.channelName}
+                  </Link>
+                  <span style={{ flexGrow: 1 }} />
+                  <span style={{ fontSize: 11.5, color: "#c7c7c7" }}>{ago(d.at, zh)}</span>
+                </div>
+                <p style={{ margin: "9px 0 0", fontSize: 13, lineHeight: 1.65, color: "#2b343d", whiteSpace: "pre-wrap" }}>{trim(d.body, 320)}</p>
+                <div style={{ display: "flex", gap: 7, marginTop: 12, flexWrap: "wrap" }}>
+                  {d.actions.map((a, i) =>
+                    a.kind === "open" ? (
+                      <Link key={a.id} href={a.href ?? "#"} prefetch={false} style={{ ...btn(false), textDecoration: "none" }}>
+                        {zh ? a.label : a.labelEn}
+                      </Link>
+                    ) : (
+                      <button key={a.id} type="button" disabled={pending} onClick={() => press(d.channelSlug, d.messageId, a.id)} style={{ ...btn(i === 0), opacity: pressing === d.messageId + a.id ? 0.55 : 1 }}>
+                        {zh ? a.label : a.labelEn}
+                      </button>
+                    ),
+                  )}
+                </div>
+              </article>
+            ))}
+          </div>
+        </Fold>
+      ) : null,
+    running: running.length > 0 ? <RunningPanel zh={zh} running={running} names={runningNames} right={can("chat") ? <DetailLink zh={zh} href="/flow" /> : null} /> : null,
+    chats: <ProjectChats projects={hub} zh={zh} right={can("chat") ? <DetailLink zh={zh} href="/projects" /> : null} />,
+    team: (
+      <Fold id="home-team" title={t("同事", "The team")} height={300} right={can("chat") ? <DetailLink zh={zh} href="/flow" /> : null}>
+        {team.map((a, idx) => {
                 const on = giveTo === a.key;
                 return (
                   <div key={a.key} style={{ borderTop: idx ? "1px solid #f3f3f3" : "none", padding: "8px 0" }}>
@@ -271,57 +402,28 @@ export function HomeScreen({
                   </div>
                 );
               })}
-            </Fold>
+      </Fold>
+    ),
+  };
 
-          </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
-        {/* ---- 1. the task box, the whole width ---- */}
-          {composer}
+  const column = (keys: PanelKey[]) => keys.map((k) => <React.Fragment key={k}>{panels[k]}</React.Fragment>);
 
-
-          {/* ---- 2. today's video, straight under it ---- */}
-          <SuggestionCard items={suggestions} zh={zh} />
-          <ProjectProgress projects={hub} zh={zh} />
-
-          <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
-            {decisions.length > 0 ? (
-              <Fold id="home-decisions" title={t("等你决定", "Waiting on you")} sub={String(decisions.length)} height={decisions.length > 2 ? 360 : undefined}>
-                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                  {decisions.map((d) => (
-                    <article key={d.messageId} style={GRADIENT_CARD}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        {d.agent ? <AgentIcon agent={d.agent} size={22} radius={6} /> : null}
-                        <span style={{ fontSize: 13, fontWeight: 600 }}>{d.author}</span>
-                        <Link href={`/chat/c/${encodeURIComponent(d.channelSlug)}`} style={{ fontSize: 11.5, color: "#999999", textDecoration: "none" }}>
-                          #{d.channelName}
-                        </Link>
-                        <span style={{ flexGrow: 1 }} />
-                        <span style={{ fontSize: 11.5, color: "#c7c7c7" }}>{ago(d.at, zh)}</span>
-                      </div>
-                      <p style={{ margin: "9px 0 0", fontSize: 13, lineHeight: 1.65, color: "#2b343d", whiteSpace: "pre-wrap" }}>{trim(d.body, 320)}</p>
-                      <div style={{ display: "flex", gap: 7, marginTop: 12, flexWrap: "wrap" }}>
-                        {d.actions.map((a, i) =>
-                          a.kind === "open" ? (
-                            <Link key={a.id} href={a.href ?? "#"} style={{ ...btn(false), textDecoration: "none" }}>
-                              {zh ? a.label : a.labelEn}
-                            </Link>
-                          ) : (
-                            <button key={a.id} type="button" disabled={pending} onClick={() => press(d.channelSlug, d.messageId, a.id)} style={{ ...btn(i === 0), opacity: pressing === d.messageId + a.id ? 0.55 : 1 }}>
-                              {zh ? a.label : a.labelEn}
-                            </button>
-                          ),
-                        )}
-                      </div>
-                    </article>
-                  ))}
-                </div>
-              </Fold>
-            ) : null}
-
-
-            {running.length > 0 ? <RunningPanel zh={zh} running={running} names={runningNames} /> : null}
-          </div>
+  return (
+    <div style={{ flexGrow: 1, minWidth: 0, minHeight: 0, overflowY: "auto", ...PAPER }}>
+      <style dangerouslySetInnerHTML={{ __html: `${DETAIL_LINK_CSS} .home-all:hover { color: #171717 !important; }` }} />
+      <div style={{ maxWidth: 1240, margin: "0 auto", padding: "22px 24px 48px", display: "flex", flexDirection: "column", gap: 14 }}>
+        <div>
+          <h1 style={{ fontSize: 22, fontWeight: 600, margin: 0, letterSpacing: "-0.01em" }}>{t(`${greeting(zh)}，${me}`, `${greeting(zh)}, ${me}`)}</h1>
+          <p style={{ margin: "5px 0 0", fontSize: 13.5, color: "#7c7c7c" }}>{subline}</p>
+          <RoleTabs zh={zh} role={role} defaultRole={defaultRole} canSetDefault={canSetDefault} />
         </div>
+
+        {/* ---- the job's panels down the wide column; the project chats and
+             the team down the narrow one (drawn second in the DOM order of
+             the old screen, so `order: 2` keeps it on the right) ---- */}
+        <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 8fr) minmax(340px, 5fr)", gap: 14, alignItems: "start" }}>
+          <div style={{ minWidth: 0, order: 2, display: "flex", flexDirection: "column", gap: 14 }}>{column(layout.side)}</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>{column(layout.main)}</div>
         </div>
       </div>
     </div>
@@ -341,7 +443,7 @@ export function HomeScreen({
  * been going. Queued jobs are one line that says how many and what, opened
  * on demand: seven rows of "queued" said nothing a count does not.
  */
-function RunningPanel({ zh, running, names }: { zh: boolean; running: (Running & { label: string; owner?: AgentKey | null })[]; names: Record<string, string> }) {
+function RunningPanel({ zh, running, names, right }: { zh: boolean; running: (Running & { label: string; owner?: AgentKey | null })[]; names: Record<string, string>; right?: React.ReactNode }) {
   const t = (a: string, b: string) => (zh ? a : b);
   const [showQueue, setShowQueue] = React.useState(false);
   const now = running.filter((j) => j.status === "running");
@@ -356,6 +458,7 @@ function RunningPanel({ zh, running, names }: { zh: boolean; running: (Running &
       sub={t(`${now.length} 个在跑${queued.length ? ` · ${queued.length} 个排队` : ""}`, `${now.length} running${queued.length ? ` · ${queued.length} queued` : ""}`)}
       icon={<span style={{ width: 8, height: 8, borderRadius: 4, background: now.length ? "#278f5e" : "#d9d9d9", boxShadow: now.length ? "0 0 0 3px rgba(39,143,94,0.15)" : "none", animation: now.length ? "auraPulse 1.6s ease-in-out infinite" : "none" }} />}
       resizable={false}
+      right={right}
     >
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         {now.length === 0 ? <div style={{ fontSize: 12.5, color: "#999999" }}>{t("现在没有在跑的，下面的在排队。", "Nothing running; the ones below are waiting their turn.")}</div> : null}

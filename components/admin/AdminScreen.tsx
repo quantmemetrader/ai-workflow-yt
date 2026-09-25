@@ -31,11 +31,14 @@ import {
   setRoleAction,
   setStatusAction,
   setTeamMemberAction,
+  setWorkRoleAction,
   knowledgeHistoryAction,
   type AddedPerson,
 } from "@/app/(app)/admin/actions";
 import { notify } from "@/lib/client/notify";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { AGENT_KEYS } from "@/lib/agents/catalog";
+import { ROLE_LABELS } from "@/lib/home/roles";
 
 /**
  * Admin (spec §4.8, §8), transcribed from the seven `Adm-*` artboards.
@@ -204,6 +207,7 @@ export function AdminScreen({
             viewerId={viewerId}
             viewerRole={viewerRole}
             onRole={(userId, role) => run(() => setRoleAction(userId, role))}
+            onWorkRole={(userId, role) => run(() => setWorkRoleAction(userId, role || null))}
             onStatus={(userId, status) => run(() => setStatusAction(userId, status))}
             onProfile={(userId, profile, after) => run(() => setProfileAction(userId, profile), after)}
             onCreateTeam={(input, after) => run(() => createTeamAction(input), after)}
@@ -230,6 +234,7 @@ export function AdminScreen({
             viewerId={viewerId}
             onToggle={(userId, module, granted) => run(() => setEntitlementAction(userId, module, granted))}
             onRole={(userId, role) => run(() => setRoleAction(userId, role))}
+            onWorkRole={(userId, role) => run(() => setWorkRoleAction(userId, role || null))}
             onStatus={(userId, status) => run(() => setStatusAction(userId, status))}
           />
         )}
@@ -304,7 +309,48 @@ function TAB_SCOPE(tab: string, zh: boolean): string {
 
 /** The roster's column widths, in one place because the header row and every
  * person's row have to agree on them. */
-const COLUMNS = "minmax(0,1.6fr) 110px minmax(0,1fr) 120px 120px 140px";
+const COLUMNS = "minmax(0,1.6fr) 110px 120px minmax(0,1fr) 110px 110px 140px";
+
+/**
+ * 岗位: which job a person does, and so which Home they land on.
+ *
+ * Beside the role select and deliberately not merged with it: `role` is what
+ * somebody may do (admin, member, guest), this is what they do (research,
+ * script, the edit). "—" means not set — owners and admins then get the
+ * overview, members a Home read from their modules. Setting one also grants
+ * the chat module, because Home lives behind it.
+ */
+function WorkRoleSelect({
+  value,
+  zh,
+  disabled,
+  onChange,
+  width = 108,
+}: {
+  value: string | null;
+  zh: boolean;
+  disabled: boolean;
+  onChange: (role: string) => void;
+  width?: number;
+}) {
+  return (
+    <select
+      value={value ?? ""}
+      disabled={disabled}
+      onChange={(e) => onChange(e.target.value)}
+      aria-label={zh ? "岗位" : "Job"}
+      title={zh ? "岗位决定这个人打开首页时看到的版面" : "The job decides which Home this person lands on"}
+      style={{ ...field, height: 26, width, fontSize: 11.5 }}
+    >
+      <option value="">{zh ? "— 未设" : "— not set"}</option>
+      {AGENT_KEYS.map((k) => (
+        <option key={k} value={k}>
+          {zh ? ROLE_LABELS[k].zh : ROLE_LABELS[k].en}
+        </option>
+      ))}
+    </select>
+  );
+}
 
 /**
  * Who is here — the design's own People screen.
@@ -333,6 +379,7 @@ function People({
   viewerId,
   viewerRole,
   onRole,
+  onWorkRole,
   onStatus,
   onProfile,
   onAdd,
@@ -349,6 +396,7 @@ function People({
   viewerId: string;
   viewerRole: "owner" | "admin" | "member" | "guest";
   onRole: (userId: string, role: string) => void;
+  onWorkRole: (userId: string, role: string) => void;
   onStatus: (userId: string, status: string) => void;
   onProfile: (
     userId: string,
@@ -455,6 +503,7 @@ function People({
         >
           <span>{t("Employee", "成员")}</span>
           <span>{t("Role", "角色")}</span>
+          <span>{t("Job", "岗位")}</span>
           <span>{t("Team", "团队")}</span>
           <span>{t("Status", "状态")}</span>
           <span>{t("Last active", "最近活跃")}</span>
@@ -550,6 +599,8 @@ function People({
                   ))}
                 </select>
               )}
+
+              <WorkRoleSelect value={p.workRole} zh={zh} disabled={busy || !mayEdit(p)} onChange={(r) => onWorkRole(p.id, r)} />
 
               <span style={{ fontSize: 11.5, color: "#7c7c7c", ...clip }}>
                 {p.teams.length ? p.teams.join(", ") : "—"}
@@ -1099,6 +1150,7 @@ function Entitlements({
   viewerId,
   onToggle,
   onRole,
+  onWorkRole,
   onStatus,
 }: {
   people: PersonRow[];
@@ -1107,6 +1159,7 @@ function Entitlements({
   viewerId: string;
   onToggle: (userId: string, module: Module, granted: boolean) => void;
   onRole: (userId: string, role: string) => void;
+  onWorkRole: (userId: string, role: string) => void;
   onStatus: (userId: string, status: string) => void;
 }) {
   const t = (en: string, cn: string) => (zh ? cn : en);
@@ -1127,6 +1180,7 @@ function Entitlements({
             <tr>
               <th style={{ ...th, textAlign: "left", minWidth: 190 }}>{t("Person", "成员")}</th>
               <th style={{ ...th, minWidth: 86 }}>{t("Role", "角色")}</th>
+              <th style={{ ...th, minWidth: 100 }}>{t("Job", "岗位")}</th>
               <th style={{ ...th, minWidth: 74 }}>{t("Spend", "花费")}</th>
               {MODULES.map((m) => (
                 <th key={m} style={{ ...th, width: 52 }}>
@@ -1163,6 +1217,18 @@ function Entitlements({
                       <option value="member">member</option>
                       <option value="guest">guest</option>
                     </select>
+                  )}
+                </td>
+                <td style={td}>
+                  {/* The owner's row is the owner's, as on the People screen;
+                      this matrix is not told who is looking, so an owner's
+                      job is set from People. */}
+                  {p.role === "owner" ? (
+                    <span style={{ fontSize: 11, color: "#7c7c7c" }}>
+                      {p.workRole ? (zh ? ROLE_LABELS[p.workRole].zh : ROLE_LABELS[p.workRole].en) : "—"}
+                    </span>
+                  ) : (
+                    <WorkRoleSelect value={p.workRole} zh={zh} disabled={busy} onChange={(r) => onWorkRole(p.id, r)} width={96} />
                   )}
                 </td>
                 <td style={{ ...td, fontVariantNumeric: "tabular-nums", color: "#7c7c7c" }}>

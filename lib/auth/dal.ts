@@ -17,7 +17,7 @@ import { readSessionToken, sessionId } from "./session";
  * matter how many components ask.
  */
 export type { Viewer } from "./types";
-import type { Viewer } from "./types";
+import { workRoleOf, type Viewer } from "./types";
 
 /** Raw rows are untyped: see `toDate` / `toArray` in lib/db/client. */
 type Row = {
@@ -28,6 +28,7 @@ type Row = {
   name_local: string | null;
   avatar_url: string | null;
   title: string | null;
+  work_role: string | null;
   role: Viewer["role"];
   locale: Viewer["locale"];
   status: string;
@@ -43,7 +44,7 @@ export const getViewer = cache(async (): Promise<Viewer | null> => {
   if (!token) return null;
 
   const { rows } = await db.execute<Row>(sql`
-    select u.id, u.tenant_id, u.email, u.name, u.name_local, u.avatar_url, u.title,
+    select u.id, u.tenant_id, u.email, u.name, u.name_local, u.avatar_url, u.title, u.work_role,
            u.role, u.locale, u.status, u.is_agent, u.deleted_at, s.last_seen_at,
            coalesce((select array_agg(e.module) from entitlements e where e.user_id = u.id), '{}') as modules,
            coalesce((select array_agg(tm.team_id) from team_members tm where tm.user_id = u.id), '{}') as team_ids
@@ -75,6 +76,7 @@ export const getViewer = cache(async (): Promise<Viewer | null> => {
     nameLocal: row.name_local,
     avatarUrl: row.avatar_url,
     title: row.title,
+    workRole: workRoleOf(row.work_role),
     role: row.role,
     locale: row.locale,
     modules: toArray<Module>(row.modules),

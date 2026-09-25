@@ -1,11 +1,16 @@
 import "server-only";
-import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, count, desc, eq, gt, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { chatChannels, chatMembers, chatMessages, jobs, users } from "@/lib/db/schema";
+import { chatChannels, chatMembers, chatMessages, jobs, publishPosts, topics, users, videoExports, videoProjects } from "@/lib/db/schema";
 import type { Viewer } from "@/lib/auth/types";
 import { AGENTS } from "@/lib/agents";
 import { AGENT_KEYS, AGENT_LABELS, type AgentKey } from "@/lib/agents/catalog";
 import { readCardActions, readCardDone, type CardAction } from "@/lib/agents/cards";
+import { audit } from "@/lib/audit";
+import { pendingApprovals } from "@/lib/script/service";
+import { openCommentCount } from "@/lib/social/service";
+import { canReadProjects } from "@/lib/video/access";
+import type { HomeRole } from "@/lib/home/roles";
 
 /**
  * What the studio's five AI employees are doing, right now, on one screen.
@@ -114,6 +119,13 @@ const JOB_NAMES: Record<string, [string, string]> = {
   "social.syncChannels": ["正在同步频道信息", "Syncing channel details"],
 };
 
+/** The job types that are one employee's work, for a role Home's 正在进行. */
+export function jobTypesOf(owner: AgentKey): string[] {
+  return Object.entries(JOB_OWNER)
+    .filter(([, o]) => o === owner)
+    .map(([type]) => type);
+}
+
 export function jobName(type: string, zh: boolean): string {
   const pair = JOB_NAMES[type];
   return pair ? (zh ? pair[0] : pair[1]) : type;
@@ -121,7 +133,13 @@ export function jobName(type: string, zh: boolean): string {
 
 const RECENT_MESSAGES = 60;
 
-export async function readHome(viewer: Viewer, zh: boolean): Promise<Home> {
+/**
+ * `runningFor`: a role Home shows only that employee's jobs in 正在进行.
+ * Filtered in the query, not afterwards — eight of the studio's jobs, then
+ * filtered, is usually none of the editor's when research is syncing. The
+ * studio-wide eight are still read for the team's 工作中 badges.
+ */
+export async function readHome(viewer: Viewer, zh: boolean, opts: { runningFor?: AgentKey | null } = {}): Promise<Home> {
   const tenantId = viewer.tenantId;
 
   /* The channels this person may actually read. A decision waiting in a
@@ -211,7 +229,28 @@ export async function readHome(viewer: Viewer, zh: boolean): Promise<Home> {
     .orderBy(desc(jobs.createdAt))
     .limit(8);
 
-  const busy = new Set(running.map((j) => JOB_OWNER[j.type]).filter(Boolean) as AgentKey[]);
+  const ownTypes = opts.runningFor ? jobTypesOf(opts.runningFor) : null;
+  const own = ownTypes
+    ? ownTypes.length
+      ? await db
+          .select({
+            id: jobs.id,
+            type: jobs.type,
+            status: jobs.status,
+            progress: jobs.progress,
+            createdAt: jobs.createdAt,
+            who: users.nameLocal,
+            whoEn: users.name,
+          })
+          .from(jobs)
+          .leftJoin(users, eq(users.id, jobs.createdBy))
+          .where(and(eq(jobs.tenantId, tenantId), inArray(jobs.status, ["queued", "running"]), inArray(jobs.type, ownTypes)))
+          .orderBy(desc(jobs.createdAt))
+          .limit(8)
+      : []
+    : null;
+
+  const busy = new Set([...running, ...(own ?? [])].map((j) => JOB_OWNER[j.type]).filter(Boolean) as AgentKey[]);
 
   /* A card with buttons and nobody's answer on it. Oldest first: the thing
      that has been waiting longest is the thing to do next. */
@@ -256,7 +295,7 @@ export async function readHome(viewer: Viewer, zh: boolean): Promise<Home> {
   return {
     agents,
     decisions,
-    running: running.map((j) => ({
+    running: (own ?? running).map((j) => ({
       id: j.id,
       type: j.type,
       status: j.status as "queued" | "running",
@@ -266,6 +305,120 @@ export async function readHome(viewer: Viewer, zh: boolean): Promise<Home> {
     })),
     teamChannel: production ? { id: production.id, slug: production.slug, name: production.name } : null,
   };
+}
+
+/* ------------------------------------------------------------ role extras */
+
+/**
+ * The one panel only a job's Home has: the thing that job checks first.
+ *
+ *   script    scripts waiting on this person's approval
+ *   video     renders queued, rendering or failed (latest per project, 14 days)
+ *   article   posts not out yet: drafts, awaiting approval, failed
+ *   research  how deep the backlog is and how many comments are unanswered
+ *
+ * Null when the job has none, or the person lacks the module the panel
+ * would link to — `requireModule` would only bounce them back here.
+ */
+export type RoleExtra =
+  | { kind: "approvals"; total: number; items: { id: string; scriptId: string; title: string; version: number | null; who: string | null }[] }
+  | { kind: "renders"; total: number; items: { id: string; projectId: string; title: string; state: "queued" | "rendering" | "failed"; progress: number; error: string | null }[] }
+  | { kind: "posts"; total: number; items: { id: string; title: string; state: string }[] }
+  | { kind: "research"; backlog: number; inbox: number };
+
+const EXTRA_ITEMS = 6;
+
+export async function roleExtra(viewer: Viewer, role: HomeRole): Promise<RoleExtra | null> {
+  const has = (m: Viewer["modules"][number]) => viewer.modules.includes(m);
+
+  if (role === "script" && has("script")) {
+    const rows = await pendingApprovals(viewer);
+    return {
+      kind: "approvals",
+      total: rows.length,
+      items: rows.slice(0, EXTRA_ITEMS).map((r) => ({ id: r.id, scriptId: r.objectId, title: r.title, version: r.versionNo, who: r.requesterName ?? null })),
+    };
+  }
+
+  if (role === "video" && has("video")) {
+    /* The latest render of each project the person can open. An older
+       failure under a newer good render is history, not work. */
+    const rows = await db
+      .select({
+        id: videoExports.id,
+        projectId: videoExports.projectId,
+        title: videoProjects.title,
+        state: videoExports.state,
+        progress: videoExports.progress,
+        error: videoExports.error,
+      })
+      .from(videoExports)
+      .innerJoin(videoProjects, eq(videoProjects.id, videoExports.projectId))
+      .where(
+        and(
+          eq(videoExports.tenantId, viewer.tenantId),
+          isNull(videoProjects.deletedAt),
+          inArray(videoExports.state, ["queued", "rendering", "failed"]),
+          gt(videoExports.createdAt, sql`now() - interval '14 days'`),
+          sql`not exists (select 1 from ${videoExports} as newer where newer.project_id = ${videoExports.projectId} and newer.created_at > ${videoExports.createdAt})`,
+          canReadProjects(viewer),
+        ),
+      )
+      .orderBy(desc(videoExports.createdAt))
+      .limit(20);
+    return {
+      kind: "renders",
+      total: rows.length,
+      items: rows.slice(0, EXTRA_ITEMS).map((r) => ({
+        id: r.id,
+        projectId: r.projectId,
+        title: r.title,
+        state: r.state as "queued" | "rendering" | "failed",
+        progress: r.progress,
+        error: r.error ? r.error.slice(0, 160) : null,
+      })),
+    };
+  }
+
+  if (role === "article" && has("publish")) {
+    const where = and(eq(publishPosts.tenantId, viewer.tenantId), isNull(publishPosts.deletedAt), inArray(publishPosts.state, ["draft", "awaiting_approval", "failed"]));
+    const [rows, [total]] = await Promise.all([
+      db.select({ id: publishPosts.id, title: publishPosts.title, state: publishPosts.state }).from(publishPosts).where(where).orderBy(desc(publishPosts.updatedAt)).limit(EXTRA_ITEMS),
+      db.select({ n: count() }).from(publishPosts).where(where),
+    ]);
+    return { kind: "posts", total: total?.n ?? rows.length, items: rows };
+  }
+
+  if (role === "research" && has("research")) {
+    /* The same two numbers the research sidebar shows: the backlog page's
+       adopted-or-saved topics and the inbox's open comments. */
+    const [[backlog], inbox] = await Promise.all([
+      db
+        .select({ n: count() })
+        .from(topics)
+        .where(and(eq(topics.tenantId, viewer.tenantId), inArray(topics.status, ["adopted", "saved"]))),
+      openCommentCount(viewer),
+    ]);
+    return { kind: "research", backlog: backlog?.n ?? 0, inbox };
+  }
+
+  return null;
+}
+
+/**
+ * A person choosing their own Home ("设为我的默认").
+ *
+ * Only their own row, only a work role or nothing. Unlike the admin's
+ * `setWorkRole` this grants no module: someone on Home already holds chat,
+ * and choosing a layout is not a reason to be given anything else.
+ */
+export async function setMyWorkRole(viewer: Viewer, role: AgentKey | null): Promise<void> {
+  if (role !== null && !(AGENT_KEYS as readonly string[]).includes(role)) throw new Error("No such job");
+  await db
+    .update(users)
+    .set({ workRole: role })
+    .where(and(eq(users.id, viewer.id), eq(users.tenantId, viewer.tenantId)));
+  await audit(viewer, "user.workRole", { objectType: "user", objectId: viewer.id, module: "chat", meta: { workRole: role } });
 }
 
 /** The first line of a message, with its Markdown furniture taken off — a

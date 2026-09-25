@@ -22,7 +22,9 @@ import {
   setKnowledgeActive,
   setUserRole,
   setUserStatus,
+  setWorkRole,
 } from "@/lib/admin/service";
+import { AGENT_KEYS, type AgentKey } from "@/lib/agents/catalog";
 
 /**
  * Admin, from the screen.
@@ -65,6 +67,23 @@ export async function setRoleAction(userId: string, role: string) {
 
   try {
     await setUserRole(viewer, userId, role);
+    refresh();
+    return {};
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Could not change that" };
+  }
+}
+
+/** A person's job (岗位), which picks their Home. Empty or null clears it. */
+export async function setWorkRoleAction(userId: string, role: string | null) {
+  const viewer = await admin();
+  if (!viewer) return { error: "Not allowed" };
+  if (!id(userId)) return { error: "Not allowed" };
+  const next = role === null || role === "" ? null : (AGENT_KEYS as readonly string[]).includes(role) ? (role as AgentKey) : undefined;
+  if (next === undefined) return { error: "No such job" };
+
+  try {
+    await setWorkRole(viewer, userId, next);
     refresh();
     return {};
   } catch (err) {
