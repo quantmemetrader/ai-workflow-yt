@@ -249,6 +249,10 @@ export function DetailView({
           <RunPanel
             run={flow}
             zh={zh}
+            /* The live answer (the pulse flips it the moment the draft
+               lands), so the flow step and the banner above the beats
+               never disagree about whether 编剧 is still writing. */
+            writing={writing}
             onApprove={() => {
               const q = new URLSearchParams(params.toString());
               q.set("tab", "approval");

@@ -130,9 +130,13 @@ const CSS = `
 [data-script-library-screen] .bar { height: 48px; flex-shrink: 0; border-bottom: 1px solid #ededed; display: flex; align-items: center; gap: 10px; padding: 0 20px; }
 [data-script-library-screen] .h1 { font-size: 15px; font-weight: 500; white-space: nowrap; }
 [data-script-library-screen] .mut { font-size: 12.5px; color: #999999; }
-[data-script-library-screen] .btn { height: 30px; padding: 0 12px; border-radius: 8px; display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; white-space: nowrap; }
-[data-script-library-screen] .btn.p { background: #007be0; color: #fff; font-weight: 500; }
-[data-script-library-screen] .btn.s { border: 1px solid #ededed; color: #525252; }
+/* The primary button is the app's ink black, as on every other screen; the
+   artboard's blue made "新建脚本" the one blue button in the product. */
+[data-script-library-screen] .btn { height: 30px; padding: 0 12px; border-radius: 8px; display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; white-space: nowrap; flex-shrink: 0; transition: background .15s ease, border-color .15s ease; }
+[data-script-library-screen] .btn.p { background: #171717; color: #fff; font-weight: 500; }
+[data-script-library-screen] .btn.p:hover { background: #2e2e2e; }
+[data-script-library-screen] .btn.s { border: 1px solid #e2e2e2; color: #383838; }
+[data-script-library-screen] .btn.s:hover { background: #f7f7f7; }
 [data-script-library-screen] .btn svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 [data-script-library-screen] .chip { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 11px; border: 1px solid #ededed; border-radius: 8px; font-size: 12.5px; color: #4a5763; white-space: nowrap; }
 [data-script-library-screen] .bd { display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border-radius: 6px; font-size: 11.5px; font-weight: 500; white-space: nowrap; }
@@ -146,9 +150,10 @@ const CSS = `
 /* table */
 [data-script-library-screen] .t { width: 100%; }
 [data-script-library-screen] .t .hd { height: 32px; border-bottom: 1px solid #ededed; display: grid; align-items: center; }
-[data-script-library-screen] .t .hd > * { font-size: 11.5px; font-weight: 500; color: #7c7c7c; padding: 0 12px; }
+[data-script-library-screen] .t .hd > * { font-size: 11.5px; font-weight: 500; color: #7c7c7c; padding: 0 12px; white-space: nowrap; }
+[data-script-library-screen] .t .hd > .num { text-align: right; }
 [data-script-library-screen] .tr { height: 46px; border-bottom: 1px solid #f3f3f3; display: grid; align-items: center; }
-[data-script-library-screen] .tr > * { font-size: 12.5px; color: #383838; padding: 0 12px; min-width: 0; display: flex; align-items: center; }
+[data-script-library-screen] .tr > * { font-size: 12.5px; color: #383838; padding: 0 12px; min-width: 0; display: flex; align-items: center; white-space: nowrap; }
 [data-script-library-screen] .num { justify-content: flex-end; font-variant-numeric: tabular-nums; }
 [data-script-library-screen] .el { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
 
@@ -175,11 +180,13 @@ const CSS = `
 /* the product needs a pointer on what it made clickable; the artboard is static */
 [data-script-library-screen] .btn, [data-script-library-screen] .fc, [data-script-library-screen] .n, [data-script-library-screen] .ic { cursor: pointer; }
 [data-script-library-screen] .btn, [data-script-library-screen] .fc { border: 0; font-family: inherit; letter-spacing: inherit; }
-[data-script-library-screen] .btn.s, [data-script-library-screen] .fc { border: 1px solid #ededed; }
+[data-script-library-screen] .btn.s, [data-script-library-screen] .fc { border: 1px solid #e2e2e2; }
 [data-script-library-screen] .fc.on { border-color: #171717; }
 [data-script-library-screen] .n { border: 0; background: transparent; font-family: inherit; letter-spacing: inherit; width: 100%; text-align: left; }
 [data-script-library-screen] .n.on { background: #ffffff; }
+[data-script-library-screen] .tr { transition: background .12s ease; }
 [data-script-library-screen] .tr:hover { background: #f8f8f8; }
+[data-script-library-screen] .fc:not(.on):hover { background: #f7f7f7; }
 
 /* the delete affordance the artboard has no room for: present to the keyboard,
    invisible until the row or tile it belongs to is hovered or focused */
@@ -545,8 +552,12 @@ export function ScriptLibraryScreen(props: ScriptLibraryScreenProps): React.JSX.
     { key: "locked", label: t("Locked"), n: counts.locked, dot: STATUS.locked.dot },
   ];
 
-  /** The artboard's list geometry, minus Length and House style (no data). */
-  const COLS = "minmax(0, 1fr) 150px 44px 132px 76px 40px";
+  /** The artboard's list geometry, minus Length and House style (no data).
+   * Version and Edited are wide enough for their own header and a Chinese
+   * "10小时前" on one line (at 44px and 76px both broke onto two, "版/本");
+   * Status and Owner give back what their contents never used, so at 1280
+   * the title keeps about 180px rather than eighty. */
+  const COLS = "minmax(0, 1fr) 92px 56px 112px 88px 36px";
 
   const frameStyle = { "--ac": ACCENT } as React.CSSProperties;
 
@@ -903,11 +914,15 @@ export function ScriptLibraryScreen(props: ScriptLibraryScreenProps): React.JSX.
         {/* The same four counts the filter chips carry, read as a state of the
             module rather than as four things to click: what is being written,
             what is waiting on somebody, what is finished. */}
+        {/* In the order a script moves (brief, drafting, approval, locked)
+            and in the colours the filter chips and the row badges below
+            use: a brief is grey, not the amber of "waiting on somebody",
+            and 待审批 is the chips' amber rather than a third, red one. */}
         <StatusStrip
           items={[
+            { label: t("Briefs"), value: counts.brief, tone: "quiet" },
             { label: t("Drafting"), value: counts.drafting, tone: "running" },
-            { label: t("Awaiting approval"), value: counts.awaiting, tone: "you" },
-            { label: t("Briefs"), value: counts.brief, tone: "waiting" },
+            { label: t("Awaiting approval"), value: counts.awaiting, tone: "waiting" },
             { label: t("Locked"), value: counts.locked, tone: "done" },
           ]}
           right={zh ? `共 ${count(counts.all, locale)} 个脚本` : `${count(counts.all, locale)} scripts in all`}
@@ -1234,7 +1249,7 @@ export function ScriptLibraryScreen(props: ScriptLibraryScreenProps): React.JSX.
                             <div style={{ color: "#7c7c7c" }} title={fullStamp(s.updatedAt, locale)}>
                               {edited(s.updatedAt, locale)}
                             </div>
-                            <div style={{ padding: "0 7px", justifyContent: "flex-end" }}>
+                            <div style={{ padding: "0 5px", justifyContent: "flex-end" }}>
                               <button
                                 type="button"
                                 className="act ptog"

@@ -1688,7 +1688,6 @@ function Exports({
   hasCaptions,
   canRender,
   stale,
-  lastRenderAt,
   zh,
   busy,
   onExport,
@@ -1701,7 +1700,9 @@ function Exports({
   canRender: boolean;
   /** True when the timeline has moved on from the last finished render. */
   stale?: boolean;
-  /** When that render was asked for, for the line that says so. */
+  /** When that render was asked for. Passed by the caller but not drawn
+   * yet (the stale line says only that the cut has moved on), so it is not
+   * destructured above. */
   lastRenderAt?: Date | null;
   zh: boolean;
   busy: boolean;
@@ -1874,6 +1875,19 @@ function parseClock(value: string): number | null {
  * first tab and what `/video` opens on, so it is the first thing this module
  * says — and the one place with a New-project button while it is showing.
  */
+/**
+ * The project cards' hover and focus, which inline styles cannot say: the
+ * border darkens and the card lifts a little, so it reads as something to
+ * open; the small text actions darken under the pointer.
+ */
+const LIBRARY_CSS = `
+.vlib-card { transition: border-color .15s ease, box-shadow .15s ease; }
+.vlib-card:hover { box-shadow: 0 4px 14px rgba(0,0,0,.06); }
+.vlib-card:not(.on):hover { border-color: #d6d6d6 !important; }
+.vlib-card:focus-visible { outline: 2px solid #171717; outline-offset: 2px; }
+.vlib-act:hover { color: #171717 !important; }
+`;
+
 function Library({
   projects,
   current,
@@ -1936,14 +1950,18 @@ function Library({
 
   return (
     <>
-      <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 14 }}>
+      <style dangerouslySetInnerHTML={{ __html: LIBRARY_CSS }} />
+      {/* One row, centred: the heading, its note, the sort and the button
+          all sit on the same 30px line (the select was 26px beside a 30px
+          button, and the heading sat on the text baseline above both). */}
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14, minHeight: 30 }}>
         <span style={{ fontSize: 15, fontWeight: 500 }}>{t("Projects", "项目")}</span>
-        <span style={{ fontSize: 11.5, color: "#999999" }}>
+        <span style={{ fontSize: 12, color: "#999999", ...clip }}>
           {t("yours, and the ones shared with you", "你的项目，以及分享给你的")}
         </span>
-        <label style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6, fontSize: 11.5, color: "#7c7c7c" }}>
+        <label style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "#7c7c7c", flexShrink: 0 }}>
           {t("Sort", "排序")}
-          <select value={sort} onChange={(e) => pickSort(e.target.value as SortKey)} style={{ ...field, height: 26, fontSize: 11.5, width: 150 }}>
+          <select value={sort} onChange={(e) => pickSort(e.target.value as SortKey)} style={{ ...field, height: 30, borderRadius: 8, fontSize: 12, width: 140, cursor: "pointer" }}>
             <option value="updated">{t("Recently edited", "最近编辑")}</option>
             <option value="created">{t("Newest first", "最新创建")}</option>
             <option value="title">{t("Title A–Z", "按标题 A–Z")}</option>
@@ -1953,15 +1971,20 @@ function Library({
         </label>
         {/* The module's only New-project button while the list is showing —
             the header hides its own rather than stack a second one under it. */}
-        <button type="button" onClick={onNew} style={solid}>
+        <button type="button" onClick={onNew} style={{ ...solid, fontSize: 12.5, flexShrink: 0, display: "inline-flex", alignItems: "center", gap: 6 }}>
+          <Icon name="plus" size={13} />
           {t("New project", "新建项目")}
         </button>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 12 }}>
+      {/* 260px at the least: at 240 a 1280 screen fitted four columns of
+          252px, and the card's footer (who, when, three actions) cut the
+          time off. Now three there, four at 1440. */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 14 }}>
         {sorted.map((p) => (
           <div
             key={p.id}
+            className={p.id === current?.id ? "vlib-card on" : "vlib-card"}
             role="button"
             tabIndex={0}
             onClick={() => onOpen(p.id)}
@@ -1970,21 +1993,28 @@ function Library({
             }}
             style={{
               textAlign: "left",
-              border: p.id === current?.id ? "1px solid #171717" : "1px solid #ededed",
-              borderRadius: 11,
-              padding: 13,
+              border: p.id === current?.id ? "1px solid #171717" : "1px solid #ececec",
+              borderRadius: 12,
+              padding: 12,
               background: "#fff",
               cursor: "pointer",
               font: "inherit",
               color: "#171717",
+              display: "flex",
+              flexDirection: "column",
             }}
           >
             {/* The render's frame, or the first clip's, with the length on it. */}
-            <div style={{ position: "relative", marginBottom: 10, borderRadius: 7, overflow: "hidden", background: "#111", aspectRatio: "16 / 9" }}>
+            <div style={{ position: "relative", marginBottom: 11, borderRadius: 8, overflow: "hidden", background: p.posterFileId ? "#111" : "#eef7f5", aspectRatio: "16 / 9" }}>
               {p.posterFileId ? (
                 <Poster src={`/api/files/${p.posterFileId}/thumb`} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
               ) : (
-                <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: "#555", fontSize: 11 }}>
+                /* A project with no footage yet is waiting for the host's
+                   clips, not broken: 剪辑师's pale green (the video tint)
+                   and a film mark, rather than a black slab that read as a
+                   video that failed to load. */
+                <div style={{ width: "100%", height: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 7, color: "#4f8f84", fontSize: 11.5, border: "1px dashed #c3e6e0", borderRadius: 8 }}>
+                  <Icon name="film" size={20} strokeWidth={1.6} />
                   {t("no footage yet", "还没有素材")}
                 </div>
               )}
@@ -2018,14 +2048,14 @@ function Library({
                 style={{ ...field, height: 28, width: "100%", fontSize: 13, fontWeight: 500 }}
               />
             ) : (
-              <span style={{ fontSize: 13, fontWeight: 500, display: "block", ...clip }} title={p.title}>
+              <span style={{ fontSize: 13.5, fontWeight: 500, display: "block", ...clip }} title={p.title}>
                 {p.title}
               </span>
             )}
-            <span style={{ fontSize: 11.5, color: "#999999", display: "block", marginTop: 4 }}>
+            <span style={{ fontSize: 11.5, color: "#999999", display: "block", marginTop: 4, fontVariantNumeric: "tabular-nums" }}>
               {clock(p.durationMs)} · {p.itemCount} {t("cuts", "个片段")} · {p.clipCount} {t("in the bin", "个素材")}
             </span>
-            <span style={{ display: "flex", gap: 5, marginTop: 8, flexWrap: "wrap" }}>
+            <span style={{ display: "flex", gap: 5, marginTop: 9, marginBottom: 11, flexWrap: "wrap" }}>
               {p.masterFileId ? (
                 <Badge tone="good">{t("rendered", "已渲染")}</Badge>
               ) : (
@@ -2041,7 +2071,11 @@ function Library({
               </Badge>
               {p.relation === "viewer" || p.relation === "commenter" ? <Badge tone="quiet">{t("view only", "仅查看")}</Badge> : null}
             </span>
-            <span style={{ fontSize: 10.5, color: "#c7c7c7", display: "flex", alignItems: "center", gap: 8, marginTop: 7 }}>
+            {/* Who and when on the left, the three actions on the right, under
+                a hairline and pinned to the bottom so the rows line up across
+                cards whose badges wrap differently. Was 10.5px in #c7c7c7,
+                which is below what reads on a white card. */}
+            <span style={{ fontSize: 11.5, color: "#999999", display: "flex", alignItems: "center", gap: 10, marginTop: "auto", paddingTop: 10, borderTop: "1px solid #f3f3f3" }}>
               <span style={{ ...clip, minWidth: 0 }}>
                 {p.ownerName ?? ""} · {when(p.updatedAt)}
               </span>
@@ -2051,7 +2085,8 @@ function Library({
                   e.stopPropagation();
                   setSharing(p);
                 }}
-                style={{ marginLeft: "auto", border: 0, background: "transparent", color: "#7c7c7c", cursor: "pointer", font: "inherit", fontSize: 10.5, padding: 0 }}
+                className="vlib-act"
+                style={{ marginLeft: "auto", border: 0, background: "transparent", color: "#7c7c7c", cursor: "pointer", font: "inherit", fontSize: 11.5, padding: 0, flexShrink: 0 }}
               >
                 {t("access", "权限")}
               </button>
@@ -2061,7 +2096,8 @@ function Library({
                   e.stopPropagation();
                   setRenaming({ id: p.id, title: p.title });
                 }}
-                style={{ border: 0, background: "transparent", color: "#7c7c7c", cursor: "pointer", font: "inherit", fontSize: 10.5, padding: 0 }}
+                className="vlib-act"
+                style={{ border: 0, background: "transparent", color: "#7c7c7c", cursor: "pointer", font: "inherit", fontSize: 11.5, padding: 0, flexShrink: 0 }}
               >
                 {t("rename", "重命名")}
               </button>
@@ -2071,7 +2107,8 @@ function Library({
                   e.stopPropagation();
                   setDeleting(p);
                 }}
-                style={{ border: 0, background: "transparent", color: "#7c7c7c", cursor: "pointer", font: "inherit", fontSize: 10.5, padding: 0 }}
+                className="vlib-act"
+                style={{ border: 0, background: "transparent", color: "#7c7c7c", cursor: "pointer", font: "inherit", fontSize: 11.5, padding: 0, flexShrink: 0 }}
               >
                 {t("delete", "删除")}
               </button>

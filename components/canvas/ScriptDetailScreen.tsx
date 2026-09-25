@@ -109,8 +109,12 @@ export type ScriptDetailScreenProps = {
   onRewriteFromTopic?: () => void;
 };
 
-/** The artboards' `accent` prop, at its default (#007BE0). */
+/** The artboards' `accent` prop, at its default (#007BE0). Links, the
+ * sparkline and small marks only: a filled button in it read as a second
+ * brand colour beside the rest of the app's ink-black ones. */
 const ACCENT = "#007be0";
+/** The app's primary button: every filled button here is this one colour. */
+const INK = "#171717";
 
 /* --------------------------------------------------------------------- css */
 
@@ -140,9 +144,16 @@ const CSS = `
 [data-script-screen] .bar { height: 48px; flex-shrink: 0; border-bottom: 1px solid #ededed; display: flex; align-items: center; gap: 10px; padding: 0 20px; }
 [data-script-screen] .h1 { font-size: 15px; font-weight: 500; }
 [data-script-screen] .mut { font-size: 12.5px; color: #999999; }
-[data-script-screen] .btn { height: 30px; padding: 0 12px; border-radius: 8px; display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; white-space: nowrap; }
-[data-script-screen] .btn.p { background: #007be0; color: #fff; font-weight: 500; }
-[data-script-screen] .btn.s { border: 1px solid #ededed; color: #525252; }
+/* One button size for the whole header: 30px tall, 12.5px, 8px corners.
+   The five used to come out at three sizes (the reset further down let
+   <button> inherit the page's 16px over this rule), with a blue primary
+   the rest of the app does not use. */
+[data-script-screen] .btn { height: 30px; padding: 0 12px; border-radius: 8px; display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; white-space: nowrap; flex-shrink: 0; transition: background .15s ease, border-color .15s ease; }
+[data-script-screen] .btn.p { background: #171717; color: #fff; font-weight: 500; }
+[data-script-screen] .btn.s { border: 1px solid #e2e2e2; color: #383838; }
+[data-script-screen] button.btn.p:not(:disabled):hover { background: #2e2e2e; }
+[data-script-screen] button.btn.s:not(:disabled):hover { background: #f7f7f7; border-color: #d6d6d6; }
+[data-script-screen] .vsep { width: 1px; height: 18px; background: #ececec; flex-shrink: 0; margin: 0 2px; }
 [data-script-screen] .btn svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 [data-script-screen] .chip { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 11px; border: 1px solid #ededed; border-radius: 8px; font-size: 12.5px; color: #4a5763; white-space: nowrap; }
 [data-script-screen] .chip svg { width: 10px; height: 10px; stroke: #999999; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
@@ -155,6 +166,9 @@ const CSS = `
 [data-script-screen] .card { border: 1px solid #ededed; border-radius: 12px; background: #fff; padding: 16px; }
 [data-script-screen] .kv { display: flex; justify-content: space-between; gap: 14px; padding: 8px 0; border-bottom: 1px solid #f3f3f3; font-size: 12.5px; }
 [data-script-screen] .kv span:first-child { color: #999999; }
+/* The label keeps its line: beside a long value (a project title) "来自"
+   was squeezed to one character a line. */
+[data-script-screen] .kv > :first-child { flex-shrink: 0; white-space: nowrap; }
 [data-script-screen] .av { width: 20px; height: 20px; border-radius: 10px; object-fit: cover; flex-shrink: 0; }
 [data-script-screen] .stat { border: 1px solid #ededed; border-radius: 12px; padding: 13px 15px; background: #fff; }
 [data-script-screen] .stat i { font-style: normal; display: block; font-size: 11.5px; font-weight: 500; color: #999999; }
@@ -165,8 +179,9 @@ const CSS = `
 [data-script-screen] .body { flex-grow: 1; min-height: 0; padding: 18px 20px; overflow: hidden; }
 [data-script-screen] .focus { box-shadow: 0 0 0 3px #EFF6FF; }
 
-[data-script-screen] .tabs { height: 40px; flex-shrink: 0; display: flex; align-items: stretch; gap: 20px; padding: 0 22px; border-bottom: 1px solid #ededed; }
-[data-script-screen] .tb { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: #7c7c7c; border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap; }
+[data-script-screen] .tabs { height: 40px; flex-shrink: 0; display: flex; align-items: stretch; gap: 22px; padding: 0 20px; border-bottom: 1px solid #ededed; }
+[data-script-screen] .tb { display: flex; align-items: center; gap: 6px; font-size: 13px; color: #7c7c7c; border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap; transition: color .15s ease; }
+[data-script-screen] button.tb:hover { color: #171717; }
 [data-script-screen] .tb.on { color: #171717; font-weight: 500; border-color: #171717; }
 [data-script-screen] .tb b { font-size: 11.5px; font-weight: 500; color: #999999; }
 [data-script-screen] .tb i { font-style: normal; display: inline-flex; align-items: center; height: 16px; padding: 0 5px; border-radius: 8px; background: #e6f4ff; color: #007be0; font-size: 11px; font-weight: 500; }
@@ -217,7 +232,10 @@ const CSS = `
    which is a reading size rather than an interface size — a 14px Han
    character is about as legible as 11px Latin. The columns beside it move up
    with it so the row still reads as one thing. */
-[data-script-screen] .bt { display: grid; grid-template-columns: 58px 228px minmax(0, 1fr); gap: 0 20px; padding: 15px 0; border-bottom: 1px solid #f3f3f3; }
+/* The columns share the width (shot 4 : spoken 6) rather than the shot
+   taking a fixed 228px: at 1280 that left the spoken words, the column
+   people read, a 150px strip of four characters a line. */
+[data-script-screen] .bt { display: grid; grid-template-columns: 44px minmax(0, 4fr) minmax(0, 6fr); gap: 0 22px; padding: 16px 0; border-bottom: 1px solid #f3f3f3; }
 [data-script-screen] .bt .bn { font-size: 12px; font-weight: 500; color: #999999; line-height: 1.5; font-variant-numeric: tabular-nums; }
 [data-script-screen] .bt .bn b { display: block; font-weight: 500; color: #c7c7c7; }
 [data-script-screen] .bt .vi { font-size: 13.5px; line-height: 1.65; color: #7c7c7c; }
@@ -246,8 +264,16 @@ const CSS = `
 
 /* the product needs a pointer on what it made clickable; the artboard is static */
 [data-script-screen] .btn, [data-script-screen] .chip, [data-script-screen] .rtab, [data-script-screen] .tb, [data-script-screen] .sn, [data-script-screen] .qc, [data-script-screen] .vr { cursor: pointer; }
-[data-script-screen] button.btn, [data-script-screen] button.tb, [data-script-screen] button.rtab, [data-script-screen] button.sn, [data-script-screen] button.qc, [data-script-screen] button.vr { border: 0; background: none; font-family: inherit; font-size: inherit; letter-spacing: inherit; padding-top: 0; padding-bottom: 0; }
-[data-script-screen] button.btn.s { border: 1px solid #ededed; background: #fff; }
+/* The reset no longer sets font-size: at this specificity it beat each
+   class's own size, so the header buttons, the tabs and the script list
+   all came out at the page's 16px. Each class sizes itself; .vr has no
+   size of its own and keeps inheriting. The script list is left-aligned
+   (a <button> centres its text, which put short titles in the middle). */
+[data-script-screen] button.btn, [data-script-screen] button.tb, [data-script-screen] button.rtab, [data-script-screen] button.sn, [data-script-screen] button.qc, [data-script-screen] button.vr { border: 0; background: none; font-family: inherit; letter-spacing: inherit; padding-top: 0; padding-bottom: 0; }
+[data-script-screen] button.vr { font-size: inherit; }
+[data-script-screen] button.sn { text-align: left; width: 100%; }
+[data-script-screen] button.sn:not(.on):hover, [data-script-screen] button.rtab:not(.on):hover { background: rgba(0,0,0,.04); }
+[data-script-screen] button.btn.s { border: 1px solid #e2e2e2; background: #fff; }
 [data-script-screen] button:disabled { cursor: default; opacity: .55; }
 [data-script-screen] textarea.cell { width: 100%; border: 0; outline: none; resize: none; padding: 0; margin: 0; background: transparent; font-family: inherit; font-size: inherit; line-height: inherit; letter-spacing: inherit; color: inherit; overflow: hidden; display: block; }
 [data-script-screen] input.field, [data-script-screen] textarea.field { border: 0; outline: none; background: transparent; font-family: inherit; font-size: inherit; letter-spacing: inherit; color: #171717; min-width: 0; }
@@ -696,7 +722,7 @@ function Composer(props: {
               width: 25,
               height: 25,
               borderRadius: 7,
-              background: ACCENT,
+              background: INK,
               border: 0,
               padding: 0,
               cursor: "pointer",
@@ -980,7 +1006,7 @@ export function ScriptDetailScreen(props: ScriptDetailScreenProps): React.JSX.El
           className="btn"
           onClick={onGenerate}
           disabled={busy}
-          style={{ background: ACCENT, color: "#fff", fontWeight: 500 }}
+          style={{ background: INK, color: "#fff", fontWeight: 500 }}
         >
           <SparkIcon size={13} color="currentColor" />
           {t("Generate from brief")}
@@ -994,7 +1020,7 @@ export function ScriptDetailScreen(props: ScriptDetailScreenProps): React.JSX.El
           className="btn"
           onClick={() => onTab("approval")}
           disabled={busy}
-          style={{ background: ACCENT, color: "#fff", fontWeight: 500 }}
+          style={{ background: INK, color: "#fff", fontWeight: 500 }}
         >
           {t("Send for approval")}
         </button>
@@ -1010,7 +1036,7 @@ export function ScriptDetailScreen(props: ScriptDetailScreenProps): React.JSX.El
             onTab("draft");
           }}
           disabled={busy}
-          style={{ background: ACCENT, color: "#fff", fontWeight: 500 }}
+          style={{ background: INK, color: "#fff", fontWeight: 500 }}
         >
           {script.version > 0 ? `${t("Open")} v${script.version}` : t("Open")}
         </button>
@@ -1025,7 +1051,7 @@ export function ScriptDetailScreen(props: ScriptDetailScreenProps): React.JSX.El
           className="btn"
           onClick={() => onDecideApproval(requested.id, "approved", approvalNote.trim() || undefined)}
           disabled={busy}
-          style={{ background: ACCENT, color: "#fff", fontWeight: 500 }}
+          style={{ background: INK, color: "#fff", fontWeight: 500 }}
         >
           <LockIcon size={13} color="currentColor" />
           {`${t("Approve & lock")} v${requested.versionNo ?? script.version}`}
@@ -1067,7 +1093,7 @@ export function ScriptDetailScreen(props: ScriptDetailScreenProps): React.JSX.El
   })();
 
   const header = (
-    <div className="bar" style={{ height: 52, gap: 10 }}>
+    <div className="bar" style={{ height: 52, gap: 8 }}>
       <DocIcon size={16} color="#7c7c7c" />
       <span
         className="h1"
@@ -1120,11 +1146,17 @@ export function ScriptDetailScreen(props: ScriptDetailScreenProps): React.JSX.El
           {/* The clips are what the script waits for: one press opens this
               script's video project with the upload in front. */}
           <button type="button" className="btn s" onClick={onMakeVideo} disabled={busy}>
-            <Icon name="upload" size={14} /> {zh ? "添加素材" : "Add clips"}
+            <Icon name="upload" size={13} />
+            {zh ? "添加素材" : "Add clips"}
           </button>
-          <button type="button" className="btn p" onClick={onMakeVideo} disabled={busy} style={{ background: "#171717" }}>
-            {zh ? "去剪辑 →" : "Make the video →"}
+          {/* Outlined, like its neighbours: the one filled button in the
+              bar is the next step for the words (送审 / 生成 / 批准), and two
+              black buttons side by side left neither of them the obvious one. */}
+          <button type="button" className="btn s" onClick={onMakeVideo} disabled={busy}>
+            <Icon name="scissors" size={13} />
+            {zh ? "去剪辑" : "Make the video"}
           </button>
+          <span className="vsep" aria-hidden />
         </>
       ) : null}
       {/* The artboards' Share button. Per-script sharing rides the same
@@ -1676,7 +1708,7 @@ export function ScriptDetailScreen(props: ScriptDetailScreenProps): React.JSX.El
         {briefPoints}
         {locked ? null : (
           <div style={{ display: "flex", gap: 8, marginTop: 18, paddingBottom: 20 }}>
-            <button type="submit" className="btn" disabled={busy} style={{ background: ACCENT, color: "#fff", fontWeight: 500 }}>
+            <button type="submit" className="btn" disabled={busy} style={{ background: INK, color: "#fff", fontWeight: 500 }}>
               {t("Save brief")}
             </button>
             <span className="cap" style={{ alignSelf: "center" }}>
@@ -1864,13 +1896,15 @@ export function ScriptDetailScreen(props: ScriptDetailScreenProps): React.JSX.El
   const draftToolbar = (
     <div
       style={{
-        height: 42,
+        /* 44, the right panel's tab row beside it, so the two rules under
+           them run as one line across the screen instead of stepping 2px. */
+        height: 44,
         flexShrink: 0,
         display: "flex",
         alignItems: "center",
         gap: 2,
         padding: "0 20px",
-        borderBottom: "1px solid #f3f3f3",
+        borderBottom: "1px solid #ededed",
         position: "relative",
       }}
     >
@@ -2493,7 +2527,7 @@ export function ScriptDetailScreen(props: ScriptDetailScreenProps): React.JSX.El
               className="btn"
               disabled={busy || approverId === ""}
               onClick={() => onRequestApproval(approverId, approvalNote.trim() || undefined)}
-              style={{ background: ACCENT, color: "#fff", fontWeight: 500 }}
+              style={{ background: INK, color: "#fff", fontWeight: 500 }}
             >
               {t("Send for approval")}
             </button>
@@ -2611,7 +2645,9 @@ export function ScriptDetailScreen(props: ScriptDetailScreenProps): React.JSX.El
                 <i>{ord2(b.ord)}</i>
                 <span title={b.visual}>{b.visual}</span>
                 {b.naturalSound ? (
-                  <span className="bd gray" style={{ height: 18, fontSize: 11.5, flexGrow: 0 }}>
+                  /* Not squeezed by the shot text beside it (".shot span"
+                     lets spans shrink), which cut 现场声 down to "现". */
+                  <span className="bd gray" style={{ height: 18, fontSize: 11.5, flexGrow: 0, flexShrink: 0, overflow: "visible" }}>
                     {t("Natural sound")}
                   </span>
                 ) : null}
