@@ -4,6 +4,8 @@
  * Pure functions, no React, so the server pages and the client lists agree.
  */
 
+import { splitMentions } from "@/lib/agents/catalog";
+
 /** A palette colour at a given opacity: `soft("#d5e7fb", .4)`. */
 export function soft(hex: string, alpha: number): string {
   const h = hex.replace("#", "");
@@ -68,6 +70,22 @@ export function tidyMarkdown(body: string): string {
     out.push(line.replace(UNDERSCORE_EM, "$1*$2*"));
   }
   return out.join("\n");
+}
+
+/**
+ * Whether a draft to the assistant asks anything beyond who should answer.
+ *
+ * The composers that talk to the assistant start a draft with an employee's
+ * tag already in it — picked in the sidebar ("/chat?agent=script"), carried
+ * over from the last turn, or put there by a face button. "@编剧 " alone is
+ * not a question, but it is not empty either, so the send button lit up and
+ * Enter started a billed turn with nothing in it. An employee's tag is set
+ * aside — read the way routing reads it (`splitMentions`), so "@编剧写个开头"
+ * with no space is a tag and a question — and anything else counts, a
+ * person's name or a stray "@" included.
+ */
+export function asksSomething(draft: string): boolean {
+  return splitMentions(draft).some((part) => part.agent === null && part.text.trim().length > 0);
 }
 
 /** "Vincent Chow" -> "VC"; "谢亚芳" -> "谢". For the grey initials tile. */

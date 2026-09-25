@@ -6,6 +6,7 @@ import { useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { MentionMenu } from "@/components/chat/MentionMenu";
 import { useMentions } from "@/components/chat/useMentions";
+import { asksSomething } from "@/components/chat/look";
 import { AgentIcon } from "@/components/agents/AgentIcon";
 import { AGENT_LABELS, agentTag, parseAgentMentions, screenAgentForPath, type AgentKey } from "@/lib/agents/catalog";
 import { useResizable } from "@/components/ui/Resizer";
@@ -111,8 +112,11 @@ export function ResearchAgentPanel({
   const answering: AgentKey | null = taggedNow ?? home;
   const name = (k: AgentKey) => (zh ? AGENT_LABELS[k].nameLocal : AGENT_LABELS[k].name);
 
+  /* "@编剧 " from a face button is who to ask, not a question: nothing to
+     send until something follows it. */
+  const ready = asksSomething(ask);
   const send = () => {
-    if (!ask.trim()) return;
+    if (!ready) return;
     onAsk(ask.trim());
     setAsk("");
   };
@@ -269,10 +273,10 @@ export function ResearchAgentPanel({
                 borderRadius: 7,
                 border: 0,
                 padding: 0,
-                cursor: "pointer",
+                cursor: ready ? "pointer" : "default",
                 /* The product's one primary colour. The screen's accent
                    stays on the scope dot above. */
-                background: ask.trim() ? "#171717" : "#d4d4d4",
+                background: ready ? "#171717" : "#d4d4d4",
                 transition: "background .15s",
                 display: "flex",
                 alignItems: "center",

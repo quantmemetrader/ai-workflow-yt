@@ -40,6 +40,7 @@ export function ChannelView({
   canAttach = true,
   me,
   now,
+  isDirect = false,
   directAvatar = null,
 }: {
   slug: string;
@@ -71,6 +72,10 @@ export function ChannelView({
   canAttach?: boolean;
   /** The server render's clock, handed to the list so day labels hydrate. */
   now?: string;
+  /** A one-to-one conversation: its header is the other person rather than
+   * a #room. Said by the DM page rather than read off the slug — a channel
+   * somebody named "dm test" has the slug `dm-test`. */
+  isDirect?: boolean;
   /** In a direct message, the other person's picture for the header. */
   directAvatar?: string | null;
 }) {
@@ -212,9 +217,7 @@ export function ChannelView({
           }
           locale={locale}
           now={now}
-          /* A DM's slug is `dm-` and both ids (`dmChannelWith`); its header is
-             the other person rather than a #room. */
-          isDirect={slug.startsWith("dm-")}
+          isDirect={isDirect}
           directAvatar={directAvatar}
           onOpenMembers={studioPeople ? () => setShowMembers(true) : undefined}
         />
@@ -230,7 +233,7 @@ export function ChannelView({
           zh={zh}
           model={model}
           context={{ module: "chat", channelId }}
-          scope={slug.startsWith("dm-") ? `@${name}` : `#${name}`}
+          scope={isDirect ? `@${name}` : `#${name}`}
           note={
             zh
               ? "可以让它总结这个频道、找某条消息，或替你发一条。它以你的身份发送。要叫 AI 员工，在下面的输入框里 @ 它们。"

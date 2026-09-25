@@ -99,7 +99,12 @@ ${threadCss("[data-chat-surface]")}
 [data-chat-surface] .hdr-btn:hover, [data-chat-surface] .ico2.note:hover { background: #f4f4f5; }
 `;
 
-/** What each kind of hand-over is called, and drawn with. */
+/**
+ * What each kind of hand-over is called, and drawn with — every kind a
+ * receipt can name (`ArtifactKind` in lib/ai/tools/types), plus the two the
+ * older hand-offs used. A kind this list does not know is still drawn, as
+ * "内容", rather than as its raw English id in a Chinese sentence.
+ */
 const ARTIFACT: Record<string, { zh: string; en: string; icon: IconName }> = {
   script: { zh: "脚本", en: "Script", icon: "pen" },
   video: { zh: "视频项目", en: "Video project", icon: "clapper" },
@@ -108,7 +113,12 @@ const ARTIFACT: Record<string, { zh: string; en: string; icon: IconName }> = {
   work_project: { zh: "项目", en: "Project", icon: "spark" },
   file: { zh: "文件", en: "File", icon: "upload" },
   article: { zh: "文章", en: "Article", icon: "comment" },
+  topic: { zh: "选题", en: "Topic", icon: "bulb" },
+  render: { zh: "成片", en: "Render", icon: "film" },
+  competitor: { zh: "对标账号", en: "Channel to watch", icon: "eye" },
+  assignment: { zh: "任务", en: "Task", icon: "check" },
 };
+const OTHER_ARTIFACT = { zh: "内容", en: "Item", icon: "external" as IconName };
 
 /**
  * @mentions carry the artboard's .ment pill — and an agent's tag carries that
@@ -167,12 +177,20 @@ function Receiver({ agent, zh, quiet = false }: { agent: AgentKey; zh: boolean; 
 }
 
 function Artifact({ item, zh }: { item: HandoffArtifact; zh: boolean }) {
-  const known = ARTIFACT[item.kind];
-  const kind = known ? (zh ? known.zh : known.en) : item.kind;
-  const label = item.title ? `${kind} · ${item.title}` : zh ? `打开${kind}` : `Open ${kind.toLowerCase()}`;
+  // Own keys only: the kind is read out of a jsonb column.
+  const known = Object.prototype.hasOwnProperty.call(ARTIFACT, item.kind) ? ARTIFACT[item.kind] : OTHER_ARTIFACT;
+  const kind = zh ? known.zh : known.en;
+  // "打开…" only on something that opens.
+  const label = item.title
+    ? `${kind} · ${item.title}`
+    : item.href
+      ? zh
+        ? `打开${kind}`
+        : `Open ${kind.toLowerCase()}`
+      : kind;
   const inner = (
     <>
-      <Icon name={known?.icon ?? "external"} size={12} />
+      <Icon name={known.icon} size={12} />
       <span>{label}</span>
     </>
   );
@@ -289,7 +307,7 @@ function Card({
           {zh ? `${done.by} 选了「${chosen ? chosen.label : "…"}」` : `${done.by} chose “${chosen ? chosen.labelEn : "…"}”`}
         </span>
         {opens.map((a) => (
-          <Link key={a.id} href={a.href ?? "#"} style={{ fontSize: 12, color: "#525252", textDecoration: "none" }}>
+          <Link key={a.id} href={a.href ?? "#"} prefetch={false} style={{ fontSize: 12, color: "#525252", textDecoration: "none" }}>
             {zh ? a.label : a.labelEn} →
           </Link>
         ))}
@@ -322,7 +340,9 @@ function Card({
 
         if (a.kind === "open") {
           return (
-            <Link key={a.id} href={a.href ?? "#"} style={style}>
+            // The project and script screens are heavy; a button in a message
+            // list is not a reason to start loading them.
+            <Link key={a.id} href={a.href ?? "#"} prefetch={false} style={style}>
               {zh ? a.label : a.labelEn}
             </Link>
           );

@@ -53,10 +53,15 @@ function agentKey(value: unknown): AgentKey | null {
   return typeof value === "string" && (AGENT_KEYS as readonly string[]).includes(value) ? (value as AgentKey) : null;
 }
 
-/** A path inside this app. `//host` and `https://…` are somewhere else. */
+/**
+ * A path inside this app. `//host` and `https://…` are somewhere else, and so
+ * is `/\host`: browsers read a backslash as a slash, so it is a second way
+ * of writing `//host`. Whitespace is refused with it (a tab or a newline is
+ * dropped by the URL parser, which is how `/\t/host` would become `//host`).
+ */
 function localHref(value: unknown): string | null {
   const href = str(value, 512);
-  return href && href.startsWith("/") && !href.startsWith("//") ? href : null;
+  return href && href.startsWith("/") && !href.startsWith("//") && !/[\\\s]/.test(href) ? href : null;
 }
 
 /**

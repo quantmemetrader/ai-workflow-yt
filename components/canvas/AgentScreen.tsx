@@ -14,7 +14,7 @@ import { formatTextarea, type Format } from "./composer-format";
 import { FormattedPreview } from "@/components/ui/FormattedPreview";
 import { useResizable } from "@/components/ui/Resizer";
 import { clock, dayLabel } from "@/components/chat/when";
-import { initials, soft, threadCss, tidyMarkdown } from "@/components/chat/look";
+import { asksSomething, initials, soft, threadCss, tidyMarkdown } from "@/components/chat/look";
 import type { Locale } from "@/lib/i18n";
 
 /**
@@ -139,6 +139,9 @@ export function AgentScreen({
      the label under the box is never a guess. */
   const answering: AgentKey | null = parseAgentMentions(input)[0] ?? null;
   const name = (k: AgentKey) => (zh ? AGENT_LABELS[k].nameLocal : AGENT_LABELS[k].name);
+  /* A draft that is only "@编剧 " — the tag this screen puts there itself —
+     has nothing to send yet. */
+  const ready = asksSomething(input);
 
   /* Put a colleague's tag at the front of the draft, replacing one already
      there, and hand the caret back to the box. */
@@ -191,7 +194,7 @@ export function AgentScreen({
   }, []);
 
   async function send(text: string) {
-    if (!text.trim() || busy) return;
+    if (!asksSomething(text) || busy) return;
     setBusy(true);
     setNotice(null);
     /* The next draft starts addressed to whoever this one was: a question to
@@ -569,7 +572,7 @@ export function AgentScreen({
                 <button
                   type="button"
                   onClick={() => (busy ? abort.current?.abort() : void send(input))}
-                  disabled={!busy && !input.trim()}
+                  disabled={!busy && !ready}
                   aria-label={busy ? (zh ? "停止" : "Stop") : zh ? "发送" : "Send"}
                   title={busy ? (zh ? "停止" : "Stop") : zh ? "发送" : "Send"}
                   style={{
@@ -577,8 +580,8 @@ export function AgentScreen({
                     height: 32,
                     borderRadius: 9,
                     border: 0,
-                    cursor: !busy && !input.trim() ? "default" : "pointer",
-                    background: !busy && !input.trim() ? "#d4d4d4" : "#171717",
+                    cursor: !busy && !ready ? "default" : "pointer",
+                    background: !busy && !ready ? "#d4d4d4" : "#171717",
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",

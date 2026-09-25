@@ -91,8 +91,8 @@ function words(list: (string | null | undefined)[]): string[] {
  * Matched against every name a target answers to, so `@r`, `@研`, `@剪`,
  * `@edit` and `@videoagent` all land somewhere sensible. Ranked rather than
  * merely filtered: something that *starts* with what has been typed is almost
- * always what was meant, and an AI employee is listed above a person on an
- * equal match because the employees are what the picker exists for.
+ * always what was meant. The AI employees who match are listed above the
+ * people who do, because the employees are what the picker exists for.
  *
  * An empty query lists everybody, which is what pressing `@` on its own
  * should do.
@@ -117,10 +117,12 @@ export function filterTargets(targets: MentionTarget[], query: string): MentionT
     if (best >= floor) scored.push({ target, score: best + (target.agent ? 0.5 : 0) });
   }
 
-  return scored
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 8)
-    .map((s) => s.target);
+  /* Best first within each kind, and the employees as one block above the
+     people: the menu heads each kind once, and a person whose name matched
+     exactly ranked above an employee's prefix match and split the employees
+     into two runs, each with its own "AI 同事" heading. */
+  const ranked = scored.sort((a, b) => b.score - a.score).map((s) => s.target);
+  return [...ranked.filter((t) => t.agent), ...ranked.filter((t) => !t.agent)].slice(0, 8);
 }
 
 /** An AI employee's own face — the pixel sprite on its tint — or the host's
@@ -178,8 +180,8 @@ export function MentionMenu({
       {matches.map((t, i) => (
         <React.Fragment key={`${t.agent ?? "u"}-${t.tag}-${i}`}>
           {/* A heading where the list changes kind: the employees, then the
-              people. Filtered lists keep them in that order (`filterTargets`
-              ranks an employee above a person on an equal match). */}
+              people. `filterTargets` keeps each kind in one block, so each
+              heading is drawn once. */}
           {i === 0 || Boolean(matches[i - 1]?.agent) !== Boolean(t.agent) ? (
             <div
               aria-hidden

@@ -38,6 +38,7 @@ export default async function DirectMessagePage({ params }: { params: Promise<{ 
       model={answeringModel()}
       name={otherName}
       topic={dm.other.title}
+      isDirect
       directAvatar={dm.other.avatarUrl}
       canAttach={viewer.modules.includes("files")}
       me={{ name: (zh && viewer.nameLocal) || viewer.name, avatarUrl: viewer.avatarUrl }}
