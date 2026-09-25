@@ -174,6 +174,8 @@ export async function collectPlatform(
     });
     if (relevance) {
       console.log(`[research] ${platform} relevance: ${counts.rules} by rule, ${counts.reused} reused, ${counts.model} by model${counts.missing ? `, ${counts.missing} unmarked` : ""}`);
+    } else {
+      console.log(`[research] ${platform} relevance: not marked (${counts.missing} rows no model would mark); stored unfiltered`);
     }
     const focus = relevance ? hot.rows.filter((r) => onFocus(relevance[r.phrase])) : hot.rows;
     const [summary, judged] = await Promise.all([

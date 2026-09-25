@@ -30,9 +30,10 @@ import type { HotRow, PlatformKey, Relevance, RelevanceMap } from "@/lib/researc
  *      with the definitions and real rows as examples.
  *
  * Failing is allowed to cost the filter and nothing else: if the model
- * cannot mark a batch, the whole list gets `null` and every screen shows it
- * unfiltered. Hiding a list because a classifier was down would be worse
- * than the noise.
+ * leaves more than a quarter of a list unmarked, the whole list gets `null`
+ * and every screen shows it unfiltered. Hiding a list because a classifier
+ * was down would be worse than the noise. (A few rows no model would mark
+ * are only left out of the filtered view, and asked again next hour.)
  */
 
 export type ClassifyResult = {
@@ -261,18 +262,31 @@ export async function classifyHot(
   }
 
   const pillars = opts.pillars ?? [];
+  /*
+   * How many rows may stay unmarked before the list is shown unfiltered
+   * instead: a quarter of it. Most hours only a handful of new rows go to
+   * the model, and when those are the ones a model will not touch (a summit
+   * on 微博 trips some filters) they stay unmarked — out of the filtered
+   * view, asked again next hour — rather than costing the eighty rows that
+   * kept their marks from the last list. A model that is down, with the
+   * whole list to mark, is past the quarter at the first batch.
+   */
+  const tolerance = Math.floor((Object.keys(map).length + ask.length) / 4);
+  const failed: HotRow[] = [];
   let pending = ask;
   /* Two passes: the whole remainder in batches, then once more for any row
-     the first answer skipped. A row still unmarked after that is left out
-     (so it is not shown in the filtered view) and asked again next hour. */
+     the first answer skipped. A batch no model would mark is not asked
+     twice. */
   for (let pass = 0; pass < 2 && pending.length; pass++) {
     const skipped: HotRow[] = [];
     for (let i = 0; i < pending.length; i += BATCH) {
       const batch = pending.slice(i, i + BATCH);
       const marks = await markBatch(platform, batch, pillars, opts.onUsage);
       if (!marks) {
-        // Nobody could mark it. Better the whole list unfiltered than half of it hidden.
-        return { relevance: null, counts };
+        failed.push(...batch);
+        // Better the whole list unfiltered than a good part of it hidden.
+        if (failed.length > tolerance) return { relevance: null, counts: { ...counts, missing: failed.length } };
+        continue;
       }
       batch.forEach((row, k) => {
         const mark = marks.get(k + 1);
@@ -284,7 +298,8 @@ export async function classifyHot(
     }
     pending = skipped;
   }
-  counts.missing = pending.length;
+  counts.missing = pending.length + failed.length;
+  if (counts.missing > tolerance) return { relevance: null, counts };
   return { relevance: Object.keys(map).length ? map : null, counts };
 }
 
