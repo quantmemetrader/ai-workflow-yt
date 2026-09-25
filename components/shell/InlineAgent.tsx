@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Markdown } from "@/components/ui/Markdown";
 import { conversationMessagesAction } from "@/app/(app)/chat/actions";
+import { tidyMarkdown } from "@/components/chat/look";
 
 /**
  * The agent, answering inside the module you are already in.
@@ -305,7 +306,13 @@ export function InlineAgentThread({
   empty?: React.ReactNode;
 }) {
   if (!messages.length) {
-    return <div style={{ flexGrow: 1, minHeight: 0, padding: "16px 14px 0", overflow: "hidden" }}>{empty}</div>;
+    /* Marked, so a panel whose host passed no `empty` can show its own note
+       here instead of a blank column (ResearchAgentPanel's `.ap-note`). */
+    return (
+      <div data-agent-empty="" style={{ flexGrow: 1, minHeight: 0, padding: "16px 14px 0", overflow: "hidden" }}>
+        {empty}
+      </div>
+    );
   }
 
   return (
@@ -338,13 +345,22 @@ export function InlineAgentThread({
             {m.content}
           </div>
         ) : (
-          <div key={m.id} style={{ fontSize: 12.5, lineHeight: 1.6, color: "#383838" }}>
-            {m.speaker ? (
-              <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
-                <AgentIcon agent={m.speaker} size={16} radius={4} />
-                <span style={{ fontSize: 11.5, fontWeight: 600, color: AGENT_COLORS[m.speaker] }}>{zh ? AGENT_LABELS[m.speaker].nameLocal : AGENT_LABELS[m.speaker].name}</span>
-              </div>
-            ) : null}
+          <div key={m.id} style={{ fontSize: 12.5, lineHeight: 1.65, color: "#383838" }}>
+            {/* Who is speaking, with their face: the employee who answered
+                (stored with the answer, so a thread reopened here still says
+                so), or the host's robot for the person's own assistant. */}
+            <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 5 }}>
+              <AgentIcon agent={m.speaker ?? null} size={18} radius={5} />
+              <span style={{ fontSize: 12, fontWeight: 600, color: m.speaker ? AGENT_COLORS[m.speaker] : "#171717" }}>
+                {m.speaker
+                  ? zh
+                    ? AGENT_LABELS[m.speaker].nameLocal
+                    : AGENT_LABELS[m.speaker].name
+                  : zh
+                    ? "你的助理"
+                    : "Your agent"}
+              </span>
+            </div>
             {m.tools.length > 0 && (
               <div style={{ display: "flex", flexDirection: "column", gap: 3, marginBottom: m.content ? 8 : 4 }}>
                 {m.tools.map((x) => (
@@ -375,7 +391,7 @@ export function InlineAgentThread({
               </div>
             )}
             {m.content ? (
-              <Markdown text={m.content} />
+              <Markdown text={tidyMarkdown(m.content)} />
             ) : m.status === "streaming" && !m.tools.some((x) => x.status === "running") ? (
               /* The agent's waiting belongs to the agent's panel, where its
                  answer will appear — not to an indicator somewhere else. */

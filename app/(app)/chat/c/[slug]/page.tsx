@@ -80,9 +80,14 @@ export default async function ChannelPage({ params }: { params: Promise<{ slug: 
            pressed one. */
         actions: m.actions,
         done: m.done,
+        handoff: m.handoff,
+        card: m.card,
         body: m.body,
         createdAt: m.createdAt.toISOString(),
       }))}
+      /* The server's "now", so "今天" and "昨天" are worked out once and
+         hydrate to the same words. */
+      now={new Date().toISOString()}
     />
   );
 }

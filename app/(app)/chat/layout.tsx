@@ -54,6 +54,7 @@ export default async function ChatLayout({ children }: { children: React.ReactNo
           avatarUrl: viewer.avatarUrl,
           status: viewer.title ?? (zh ? "在线" : "Online"),
         }}
+        now={new Date().toISOString()}
       />
       {children}
     </>

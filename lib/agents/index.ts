@@ -99,10 +99,17 @@ export async function ensureAgent(tenantId: string, key: AgentKey): Promise<stri
       name: users.name,
       nameLocal: users.nameLocal,
       title: users.title,
+      avatarUrl: users.avatarUrl,
     })
     .from(users)
     .where(and(eq(users.tenantId, tenantId), eq(users.email, def.email)))
     .limit(1);
+
+  /* The pixel face, for the two places that draw a member from `avatar_url`
+     alone (the channel header's faces, the members sheet). A route rather than
+     the SVG itself — see app/api/agent/avatar/[key]. Bump `v` when a face
+     changes: the route is cached for a year. */
+  const avatarUrl = `/api/agent/avatar/${key}?v=1`;
 
   let id = existing?.id;
   if (existing && !existing.isAgent) {
@@ -127,6 +134,7 @@ export async function ensureAgent(tenantId: string, key: AgentKey): Promise<stri
         status: "active",
         isAgent: true,
         locale: "zh-CN",
+        avatarUrl,
       })
       .onConflictDoNothing({ target: [users.tenantId, users.email] });
     // Two first uses at once: whichever row won is the agent.
@@ -139,7 +147,8 @@ export async function ensureAgent(tenantId: string, key: AgentKey): Promise<stri
   } else if (
     existing.name !== def.name ||
     existing.nameLocal !== def.nameLocal ||
-    existing.title !== def.title
+    existing.title !== def.title ||
+    existing.avatarUrl !== avatarUrl
   ) {
     /* The studio renamed an employee — 视频助理 became 剪辑师. The row is what
        the chat list, the @-picker's people half and every old message's byline
@@ -147,7 +156,7 @@ export async function ensureAgent(tenantId: string, key: AgentKey): Promise<stri
        for one colleague on the same screen. */
     await db
       .update(users)
-      .set({ name: def.name, nameLocal: def.nameLocal, title: def.title })
+      .set({ name: def.name, nameLocal: def.nameLocal, title: def.title, avatarUrl })
       .where(eq(users.id, id));
   }
 

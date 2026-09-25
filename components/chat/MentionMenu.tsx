@@ -3,17 +3,18 @@
 import { AgentIcon } from "@/components/agents/AgentIcon";
 
 import * as React from "react";
-import { AGENT_KEYS, AGENT_LABELS, agentAliases, type AgentKey } from "@/lib/agents/catalog";
+import { AGENT_COLORS, AGENT_KEYS, AGENT_LABELS, AGENT_TINTS, agentAliases, type AgentKey } from "@/lib/agents/catalog";
+import { initials, soft } from "./look";
 
 /**
  * The @-picker: who you can tag, people and AI employees together.
  *
  * The studio's ask was "AI employees they can tag" and "make each role clearer
  * in the chat", so the two kinds are listed in one menu and drawn as different
- * things. An agent gets the dark cube the message list gives its messages, its
- * Chinese name, and one line saying what to tag it for; a colleague gets their
- * face and their job title. Agents come first — they are the new thing, and
- * they are what the picker exists for.
+ * things. An agent gets the pixel face the message list gives its messages,
+ * its Chinese name, and one line saying what to tag it for; a colleague gets
+ * their face and their job title. Agents come first, under their own heading
+ * — they are the new thing, and they are what the picker exists for.
  *
  * The agents are listed from the catalog rather than from the database. They
  * are created on first use (`lib/agents/ensureAgent`), so in a studio that has
@@ -122,52 +123,11 @@ export function filterTargets(targets: MentionTarget[], query: string): MentionT
     .map((s) => s.target);
 }
 
-/** An AI employee's own mark — its glyph on its colour — or the team's cube
- *  when no employee is named. Kept under this name so every screen that
- *  drew the cube now draws the right face without changing its import. */
+/** An AI employee's own face — the pixel sprite on its tint — or the host's
+ *  robot when no employee is named. Kept under this name so every screen that
+ *  drew the old cube now draws the right face without changing its import. */
 export function AgentMark({ size = 36, radius = 10, agent = null }: { size?: number; radius?: number; agent?: AgentKey | null }) {
   return <AgentIcon agent={agent} size={size} radius={radius} />;
-}
-
-function LegacyCube({ size = 36, radius = 10 }: { size?: number; radius?: number }) {
-  return (
-    <div
-      style={{
-        width: size,
-        height: size,
-        borderRadius: radius,
-        background: "#171717",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        flexShrink: 0,
-      }}
-    >
-      <svg
-        viewBox="0 0 24 24"
-        style={{
-          width: Math.round(size / 2),
-          height: Math.round(size / 2),
-          stroke: "#fff",
-          fill: "none",
-          strokeWidth: "1.7",
-          strokeLinecap: "round",
-          strokeLinejoin: "round",
-        }}
-      >
-        <path d="M12 4.2 19 8v8l-7 3.8L5 16V8z" />
-        <path d="M12 11.8 19 8M12 11.8v8M12 11.8 5 8" />
-      </svg>
-    </div>
-  );
-}
-
-function initials(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return "?";
-  const first = parts[0] ?? "";
-  const last = parts.length > 1 ? (parts[parts.length - 1] ?? "") : "";
-  return (first.charAt(0) + last.charAt(0)).toUpperCase();
 }
 
 export function MentionMenu({
@@ -211,91 +171,124 @@ export function MentionMenu({
         zIndex: 40,
       }}
     >
-      <div style={{ fontSize: 10.5, color: "#999999", padding: "5px 9px 6px", letterSpacing: ".04em" }}>
-        {zh ? "输入名字，回车选择" : "Type a name, Enter to pick"}
+      <div style={{ display: "flex", alignItems: "center", fontSize: 11.5, color: "#a3a3a3", padding: "5px 9px 4px" }}>
+        <span style={{ flexGrow: 1 }}>{zh ? "输入名字，回车选择" : "Type a name, Enter to pick"}</span>
+        <span>{zh ? "↑↓ 切换" : "↑↓ to move"}</span>
       </div>
       {matches.map((t, i) => (
-        <button
-          key={`${t.agent ?? "u"}-${t.tag}-${i}`}
-          type="button"
-          role="option"
-          aria-selected={i === active}
-          onMouseEnter={() => onHover(i)}
-          // The textarea must keep the caret: a blur here closes the menu
-          // before the click can land on it.
-          onMouseDown={(e) => {
-            e.preventDefault();
-            onPick(t);
-          }}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 9,
-            width: "100%",
-            padding: "6px 9px",
-            border: 0,
-            borderRadius: 8,
-            background: i === active ? "#f3f3f3" : "transparent",
-            cursor: "pointer",
-            textAlign: "left",
-            font: "inherit",
-            letterSpacing: "inherit",
-          }}
-        >
-          {t.agent ? (
-            <AgentMark agent={t.agent} size={26} radius={8} />
-          ) : t.avatarUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={t.avatarUrl}
-              alt=""
-              style={{ width: 26, height: 26, borderRadius: 8, objectFit: "cover", flexShrink: 0 }}
-            />
-          ) : (
+        <React.Fragment key={`${t.agent ?? "u"}-${t.tag}-${i}`}>
+          {/* A heading where the list changes kind: the employees, then the
+              people. Filtered lists keep them in that order (`filterTargets`
+              ranks an employee above a person on an equal match). */}
+          {i === 0 || Boolean(matches[i - 1]?.agent) !== Boolean(t.agent) ? (
             <div
+              aria-hidden
               style={{
-                width: 26,
-                height: 26,
-                borderRadius: 8,
-                background: "#e2e2e2",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontSize: 9.5,
+                fontSize: 11.5,
                 fontWeight: 600,
-                color: "#525252",
-                flexShrink: 0,
+                color: "#737373",
+                padding: i === 0 ? "4px 9px 3px" : "9px 9px 3px",
+                borderTop: i === 0 ? undefined : "1px solid #f3f3f3",
+                marginTop: i === 0 ? 0 : 4,
               }}
             >
-              {initials(t.label)}
+              {t.agent ? (zh ? "AI 同事" : "AI teammates") : zh ? "同事" : "People"}
             </div>
-          )}
-
-          <span style={{ minWidth: 0, flexGrow: 1 }}>
-            <span style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
-              <span style={{ fontSize: 13, fontWeight: 600, color: "#171717" }}>{t.label}</span>
-              {t.agent ? <span className="app">{zh ? "AI 员工" : "AI STAFF"}</span> : null}
-            </span>
-            {t.sub ? (
-              <span
+          ) : null}
+          <button
+            type="button"
+            role="option"
+            aria-selected={i === active}
+            onMouseEnter={() => onHover(i)}
+            // The textarea must keep the caret: a blur here closes the menu
+            // before the click can land on it.
+            onMouseDown={(e) => {
+              e.preventDefault();
+              onPick(t);
+            }}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 9,
+              width: "100%",
+              padding: "6px 9px",
+              border: 0,
+              borderRadius: 8,
+              background: i === active ? (t.agent ? soft(AGENT_TINTS[t.agent], 0.45) : "#f4f4f5") : "transparent",
+              cursor: "pointer",
+              textAlign: "left",
+              font: "inherit",
+              letterSpacing: "inherit",
+            }}
+          >
+            {t.agent ? (
+              <AgentMark agent={t.agent} size={26} radius={8} />
+            ) : t.avatarUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={t.avatarUrl}
+                alt=""
+                style={{ width: 26, height: 26, borderRadius: 8, objectFit: "cover", flexShrink: 0 }}
+              />
+            ) : (
+              <div
                 style={{
-                  display: "block",
-                  fontSize: 11.5,
-                  color: "#999999",
-                  whiteSpace: "nowrap",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
+                  width: 26,
+                  height: 26,
+                  borderRadius: 8,
+                  background: "#e2e2e2",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: 9.5,
+                  fontWeight: 600,
+                  color: "#525252",
+                  flexShrink: 0,
                 }}
               >
-                {t.sub}
+                {initials(t.label)}
+              </div>
+            )}
+
+            <span style={{ minWidth: 0, flexGrow: 1 }}>
+              <span style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
+                <span style={{ fontSize: 13, fontWeight: 600, color: "#171717" }}>{t.label}</span>
+                {t.agent ? (
+                  <span
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      height: 17,
+                      padding: "0 6px",
+                      borderRadius: 5,
+                      fontSize: 11,
+                      fontWeight: 600,
+                      color: AGENT_COLORS[t.agent],
+                      background: AGENT_TINTS[t.agent],
+                    }}
+                  >
+                    {zh ? "AI 员工" : "AI STAFF"}
+                  </span>
+                ) : null}
               </span>
-            ) : null}
-          </span>
-        </button>
+              {t.sub ? (
+                <span
+                  style={{
+                    display: "block",
+                    fontSize: 11.5,
+                    color: "#999999",
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                  }}
+                >
+                  {t.sub}
+                </span>
+              ) : null}
+            </span>
+          </button>
+        </React.Fragment>
       ))}
     </div>
   );
 }
-
-/* The cube is kept for the day a screen wants the team rather than one employee. */
-void LegacyCube;

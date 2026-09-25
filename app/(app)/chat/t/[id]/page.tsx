@@ -3,6 +3,7 @@ import { requireModule } from "@/lib/auth/dal";
 import { conversationDetail } from "@/lib/chat/service";
 import { answeringModel } from "@/lib/ai/models";
 import { AgentScreen, type ThreadMessage } from "@/components/canvas/AgentScreen";
+import { AGENT_KEYS, type AgentKey } from "@/lib/agents/catalog";
 
 export default async function ConversationPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -23,6 +24,9 @@ export default async function ConversationPage({ params }: { params: Promise<{ i
       model: m.model,
       costMicros: Number(m.costMicros ?? 0),
       withheld: m.withheld,
+      /* Who answered, as stored by the stream route. Without it a reloaded
+         thread drew every employee's answer as the host's. */
+      speaker: asAgentKey(m.speaker),
       createdAt: m.createdAt.toISOString(),
       citations: detail.citations
         .filter((c) => c.messageId === m.id)
@@ -46,6 +50,9 @@ export default async function ConversationPage({ params }: { params: Promise<{ i
 
   const zh = (viewer.locale ?? "zh-CN").startsWith("zh");
   const lastModel = [...detail.messages].reverse().find((m) => m.model)?.model;
+  /* Picking the thread up again continues with whoever answered last — the
+     composer starts with their tag, which one × takes back off. */
+  const lastSpeaker = [...messages].reverse().find((m) => m.role === "assistant")?.speaker ?? null;
 
   return (
     <AgentScreen
@@ -53,12 +60,19 @@ export default async function ConversationPage({ params }: { params: Promise<{ i
       initialMessages={messages}
       locale={viewer.locale ?? "zh-CN"}
       model={lastModel ?? answeringModel()}
+      initialAgent={lastSpeaker}
+      now={new Date().toISOString()}
       me={{
         name: zh && viewer.nameLocal ? viewer.nameLocal : viewer.name,
         avatarUrl: viewer.avatarUrl,
       }}
     />
   );
+}
+
+/** A stored speaker, if it still names an employee. */
+function asAgentKey(value: string | null): AgentKey | null {
+  return value && (AGENT_KEYS as readonly string[]).includes(value) ? (value as AgentKey) : null;
 }
 
 /** The one-line trace the artboard shows beside a tool chip. */

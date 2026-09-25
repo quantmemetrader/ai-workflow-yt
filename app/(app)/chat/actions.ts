@@ -3,7 +3,7 @@
 import { after } from "next/server";
 import { revalidatePath } from "next/cache";
 import { getViewer } from "@/lib/auth/dal";
-import { parseAgentMentions } from "@/lib/agents/catalog";
+import { AGENT_KEYS, parseAgentMentions, type AgentKey } from "@/lib/agents/catalog";
 import { readCardActions, readCardDone } from "@/lib/agents/cards";
 import { dispatchAgentMentions, replyTarget } from "@/lib/agents/mentions";
 import { agentTag } from "@/lib/agents/catalog";
@@ -333,7 +333,15 @@ export async function recentConversationsAction(): Promise<{
  * id is an empty answer, not a 403.
  */
 export async function conversationMessagesAction(conversationId: string): Promise<{
-  messages?: { id: string; role: "user" | "assistant"; content: string; status: "complete" | "failed" | "stopped" | "streaming"; error?: string }[];
+  messages?: {
+    id: string;
+    role: "user" | "assistant";
+    content: string;
+    status: "complete" | "failed" | "stopped" | "streaming";
+    error?: string;
+    /** The employee who answered this turn; null is the person's own assistant. */
+    speaker: AgentKey | null;
+  }[];
   error?: string;
 }> {
   const viewer = await getViewer();
@@ -350,6 +358,12 @@ export async function conversationMessagesAction(conversationId: string): Promis
         content: m.content,
         status: m.status === "streaming" ? "failed" : m.status,
         error: m.error ?? undefined,
+        /* Stored by the stream route, so a thread picked up again still
+           shows which employee said what. */
+        speaker:
+          m.role === "assistant" && m.speaker && (AGENT_KEYS as readonly string[]).includes(m.speaker)
+            ? (m.speaker as AgentKey)
+            : null,
       })),
   };
 }

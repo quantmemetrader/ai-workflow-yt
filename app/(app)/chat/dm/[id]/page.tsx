@@ -3,6 +3,8 @@ import { requireModule } from "@/lib/auth/dal";
 import { attachmentsFor, channelMessages, dmChannelWith, listPeople, markRead } from "@/lib/chat/service";
 import { ChannelView } from "@/components/chat/ChannelView";
 import { answeringModel } from "@/lib/ai/models";
+import { agentKeyFromEmail } from "@/lib/agents/catalog";
+import { readCardKind, readHandoff } from "@/lib/chat/handoff";
 
 /** A one-to-one conversation. The room is created the first time either person
  * opens it, so there is no "start a chat" step to get wrong. */
@@ -36,6 +38,7 @@ export default async function DirectMessagePage({ params }: { params: Promise<{ 
       model={answeringModel()}
       name={otherName}
       topic={dm.other.title}
+      directAvatar={dm.other.avatarUrl}
       canAttach={viewer.modules.includes("files")}
       me={{ name: (zh && viewer.nameLocal) || viewer.name, avatarUrl: viewer.avatarUrl }}
       locale={viewer.locale ?? "zh-CN"}
@@ -58,11 +61,18 @@ export default async function DirectMessagePage({ params }: { params: Promise<{ 
         authorName: (zh && r.authorNameLocal) || r.authorName || "—",
         authorAvatar: r.authorAvatar,
         isAgent: r.authorIsAgent === true,
+        /* Which employee, so an agent pulled into a DM answers with its own
+           face and colour. This was never set here, and every employee who
+           answered in a DM was drawn as the host's assistant. */
+        agentKey: r.authorIsAgent ? agentKeyFromEmail(r.authorEmail) : null,
         roleLabel: r.authorTitle,
         attachments: (r.message.attachments ?? []).flatMap((id) => attachments.get(id) ?? []),
+        handoff: readHandoff(r.message.meta),
+        card: readCardKind(r.message.meta),
         body: r.message.body,
         createdAt: r.message.createdAt.toISOString(),
       }))}
+      now={new Date().toISOString()}
     />
   );
 }
