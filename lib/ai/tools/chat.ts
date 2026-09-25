@@ -5,6 +5,7 @@ import { chatChannels, chatMembers, chatMessages, users } from "@/lib/db/schema"
 import { audit } from "@/lib/audit";
 import { newId } from "@/lib/ids";
 import type { ToolDef } from "@/lib/ai/openrouter";
+import { AGENT_KEYS, AGENT_LABELS, type AgentKey } from "@/lib/agents/catalog";
 import { id, num, str, type ToolContext, type ToolPack, type ToolResult } from "./types";
 
 /**
@@ -36,13 +37,13 @@ const defs: ToolDef[] = [
     function: {
       name: "read_channel",
       description:
-        "Recent messages from a channel, oldest first, with who wrote each and when. Use this to summarise a conversation or to catch up on one. Defaults to the channel currently open on screen.",
+        "Recent messages from a channel, oldest first, with who wrote each and when. Your own messages are marked （你）; a plan's to-dos and a verified hand-off are marked as such. Use this to summarise a conversation or to catch up on one. Defaults to the channel currently open on screen.",
       parameters: {
         type: "object",
         properties: {
           channel_id: {
             type: "string",
-            description: "Leave out to read the channel that is open on screen.",
+            description: "The channel's id, or its name (\"研究日报\", \"#制作\"). Leave out to read the channel that is open on screen.",
           },
           limit: { type: "number", description: "How many messages. Default 60, most 200." },
         },
@@ -110,9 +111,16 @@ async function myChannels(ctx: ToolContext) {
     .orderBy(desc(chatChannels.lastMessageAt));
 }
 
-/** The channel a tool should act on: the one named, or the one on screen. */
+/**
+ * The channel a tool should act on: the one named, or the one on screen.
+ *
+ * Named by id or by name. Models pass whichever they saw, and a channel is
+ * written "#研究日报" everywhere a person reads it; asked to read it that way,
+ * this used to answer "no such channel" and cost a round finding the id.
+ */
 async function resolve(ctx: ToolContext, given: unknown): Promise<{ id: string; name: string } | null> {
-  const wanted = id(given) ?? (given === undefined || given === null ? (ctx.channelId ?? null) : null);
+  const byName = typeof given === "string" && given.trim() && !id(given) ? await channelNamed(ctx, given) : null;
+  const wanted = id(given) ?? byName ?? (given === undefined || given === null || given === "" ? (ctx.channelId ?? null) : null);
   if (!wanted) return null;
 
   const [row] = await db
@@ -128,6 +136,80 @@ async function resolve(ctx: ToolContext, given: unknown): Promise<{ id: string; 
     )
     .limit(1);
   return row ?? null;
+}
+
+/** One of this person's channels by its name or slug, exactly first and then
+ * as the only one containing it. */
+async function channelNamed(ctx: ToolContext, given: string): Promise<string | null> {
+  const wanted = given.trim().replace(/^#/, "").toLowerCase();
+  if (!wanted) return null;
+  const rows = await db
+    .select({ id: chatChannels.id, name: chatChannels.name, slug: chatChannels.slug })
+    .from(chatMembers)
+    .innerJoin(chatChannels, eq(chatChannels.id, chatMembers.channelId))
+    .where(and(eq(chatMembers.userId, ctx.viewer.id), eq(chatChannels.tenantId, ctx.viewer.tenantId), isNull(chatChannels.archivedAt)));
+  const exact = rows.find((r) => r.name.toLowerCase() === wanted || (r.slug ?? "").toLowerCase() === wanted);
+  if (exact) return exact.id;
+  const partial = rows.filter((r) => r.name.toLowerCase().includes(wanted));
+  return partial.length === 1 ? partial[0].id : null;
+}
+
+const KIND_ZH: Record<string, string> = {
+  script: "脚本",
+  video_project: "视频项目",
+  work_project: "项目",
+  article: "文章",
+  topic: "选题",
+  file: "文件",
+  render: "成片",
+  competitor: "对标账号",
+  assignment: "派活",
+};
+
+const agentName = (key: unknown): string =>
+  typeof key === "string" && AGENT_KEYS.includes(key as AgentKey)
+    ? AGENT_LABELS[key as AgentKey].nameLocal
+    : key === "human"
+      ? "人"
+      : String(key ?? "");
+
+/**
+ * What a message's `meta` says that its text does not, as lines under it.
+ *
+ * Two readings went wrong without these. The morning plan reads "编剧 —
+ * 完成脚本《AI模型蒸馏》初稿", which a model took for a report that the
+ * script was done; it is an assignment. And a hand-off the system checked
+ * looks exactly like a colleague's unchecked "@剪辑师" in plain text, so
+ * the checked one says what was handed over, by id.
+ */
+export function notesFor(meta: Record<string, unknown> | null): string[] {
+  if (!meta) return [];
+  const notes: string[] = [];
+  const plan = meta.plan as { date?: unknown; list?: unknown } | undefined;
+  if (plan && Array.isArray(plan.list)) {
+    notes.push(
+      `这是${typeof plan.date === "string" ? ` ${plan.date} 的` : ""}今日计划。每条“名字 — 事情”是派给那个人的待办，不是已经完成的工作；做没做完要用工具查。`,
+    );
+    const done = meta.done as { actionId?: unknown; by?: unknown; at?: unknown } | undefined;
+    if (done && typeof done.actionId === "string") {
+      const who = typeof done.by === "string" ? done.by : "有人";
+      const when = typeof done.at === "string" ? ` 在 ${done.at.slice(0, 16).replace("T", " ")}` : "";
+      const label = done.actionId.startsWith("hand-") ? `交给${agentName(done.actionId.slice(5))}` : done.actionId;
+      notes.push(`${who}${when} 按了它的「${label}」按钮：只是把待办交了出去，不代表做完。`);
+    }
+  }
+  const handoff = meta.handoff as { from?: unknown; to?: unknown; artifacts?: unknown; verified?: unknown } | undefined;
+  if (handoff && handoff.verified === true) {
+    const items = Array.isArray(handoff.artifacts)
+      ? (handoff.artifacts as { kind?: unknown; id?: unknown; title?: unknown }[])
+          .filter((a) => typeof a.id === "string")
+          .map((a) => `${KIND_ZH[String(a.kind)] ?? String(a.kind)}${typeof a.title === "string" && a.title ? `《${a.title}》` : ""} ${a.id}`)
+      : [];
+    notes.push(`系统已核实的交接：${agentName(handoff.from)} → ${agentName(handoff.to)}${items.length ? `：${items.join("；")}` : ""}`);
+  }
+  const digest = meta.digest as { date?: unknown } | undefined;
+  if (digest) notes.push(`研究员的晨报${typeof digest.date === "string" ? `（${digest.date}）` : ""}。`);
+  return notes;
 }
 
 async function run(ctx: ToolContext, name: string, args: Record<string, unknown>): Promise<ToolResult> {
@@ -155,7 +237,10 @@ async function run(ctx: ToolContext, name: string, args: Record<string, unknown>
       .select({
         body: chatMessages.body,
         createdAt: chatMessages.createdAt,
+        authorId: chatMessages.authorId,
+        meta: chatMessages.meta,
         author: users.name,
+        authorLocal: users.nameLocal,
       })
       .from(chatMessages)
       .leftJoin(users, eq(users.id, chatMessages.authorId))
@@ -173,15 +258,16 @@ async function run(ctx: ToolContext, name: string, args: Record<string, unknown>
     });
 
     // Oldest first: a conversation reads forwards, and a model summarising one
-    // backwards gets the order of events wrong.
-    const lines = rows
-      .reverse()
-      .map(
-        (m) =>
-          `[${m.createdAt.toISOString().slice(0, 16).replace("T", " ")}] ${m.author ?? "someone"}: ${(
-            m.body ?? ""
-          ).replace(/\s+/g, " ")}`,
-      );
+    // backwards gets the order of events wrong. Names as the studio writes
+    // them — 策划, not "Planning agent" — and the reader's own words marked,
+    // because an employee that does not recognise its own plan reads it as
+    // somebody else's news.
+    const lines = rows.reverse().map((m) => {
+      const who = `${m.authorLocal || m.author || "someone"}${m.authorId === ctx.viewer.id ? "（你）" : ""}`;
+      const line = `[${m.createdAt.toISOString().slice(0, 16).replace("T", " ")}] ${who}: ${(m.body ?? "").replace(/\s+/g, " ")}`;
+      const notes = notesFor(m.meta);
+      return notes.length ? `${line}\n${notes.map((n) => `  ↳ ${n}`).join("\n")}` : line;
+    });
 
     return { text: `# ${channel.name}\n\n${lines.join("\n")}` };
   }

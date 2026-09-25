@@ -8,7 +8,7 @@ import { scripts } from "@/lib/db/schema";
 import { getViewer } from "@/lib/auth/dal";
 import { ensureAgentChannel } from "@/lib/agents";
 import { AGENT_KEYS, agentTag, type AgentKey } from "@/lib/agents/catalog";
-import { dispatchAgentMentions } from "@/lib/agents/mentions";
+import { dispatchAgentMentions, handoffMeta, type Handoff } from "@/lib/agents/mentions";
 import { postMessage } from "@/lib/chat/service";
 import { projectFromScript } from "@/lib/video/service";
 import { audit } from "@/lib/audit";
@@ -61,6 +61,11 @@ export async function startProposalAction(owner: AgentKey, text: string) {
  * `projectFromScript`, owned by the same person — and tells 剪辑师 in #制作
  * that the script is ready, with the link. The employee answers there and
  * starts as soon as there is footage to start on.
+ *
+ * The message carries the hand-off itself — the script and the project, by
+ * id — and 剪辑师 is started with the same, so its turn opens inside that
+ * project. It used to get the sentence only, and in #制作, which is not a
+ * project's chat, every cutting tool answered "no video project is open".
  */
 export async function sendScriptToVideoAction(scriptId: string) {
   const viewer = await getViewer();
@@ -85,19 +90,31 @@ export async function sendScriptToVideoAction(scriptId: string) {
 
   const href = `/video?project=${projectId}`;
   const channelId = await ensureAgentChannel(viewer.tenantId, "production");
+  const handoff: Handoff = {
+    from: "human",
+    to: "video",
+    artifacts: [
+      { kind: "script", id: scriptId, title: script.title, href: `/script/${scriptId}` },
+      { kind: "video_project", id: projectId, href },
+    ],
+    verified: true,
+    task: `按《${script.title}》的脚本做视频。`,
+    scriptId,
+    projectId,
+  };
   const body = [
     `${agentTag("video")} 《${script.title}》的脚本准备好了，请开始做视频。`,
     `- [打开脚本](/script/${scriptId})`,
     `- [打开视频项目](${href})`,
     "素材一进时间线就会自动转写；按脚本的段落来剪。",
   ].join("\n");
-  await postMessage(viewer, channelId, body, { handoff: { scriptId, projectId, from: "script-page" } });
+  await postMessage(viewer, channelId, body, { handoff: handoffMeta(handoff), via: "script-page" });
   revalidatePath(`/chat/c/${PRODUCTION_SLUG}`);
   revalidatePath("/home");
 
   after(async () => {
     try {
-      await dispatchAgentMentions({ viewer, channelId, body });
+      await dispatchAgentMentions({ viewer, channelId, body, handoff });
     } catch (err) {
       console.error("[script] 剪辑师 could not be reached", err);
     }

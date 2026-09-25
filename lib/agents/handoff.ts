@@ -7,7 +7,8 @@ import { newId } from "@/lib/ids";
 import { viewerById } from "@/lib/auth/viewer-by-id";
 import type { Viewer } from "@/lib/auth/types";
 import { projectFromScript } from "@/lib/video/service";
-import { postAsAgent, tag } from "./index";
+import { agentViewer, ensureAgentChannel, postAsAgent, tag } from "./index";
+import type { Handoff } from "./mentions";
 
 /**
  * Script agent → Video agent, once a script is approved.
@@ -20,8 +21,15 @@ import { postAsAgent, tag } from "./index";
  *   1. makes (or finds) the script's video project — owned by the script's
  *      owner, because projects are private to their owner and the people
  *      doing the work have to be able to open it;
- *   2. the Script agent tags the Video agent in #制作, with the links;
- *   3. the Video agent answers with what happens next.
+ *   2. the Script agent tags the Video agent in #制作, with the links, and
+ *      the message carries the hand-off itself — the script and the project,
+ *      by id — so the chat can draw what was handed over;
+ *   3. the Video agent is started on it with those ids in hand, after the
+ *      approval has returned, and answers with what happens next.
+ *
+ * Step 3 used to be a canned line posted as the Video agent. It read as an
+ * answer but nobody had asked the employee anything, so the next time it was
+ * tagged in #制作 it had no idea which project it had "said" it would cut.
  *
  * It does not start the director. A fresh project has no footage, and
  * `requestDirector` on an empty bin is an error; the work starts when footage
@@ -44,63 +52,80 @@ export async function handOffToVideo(approver: Viewer, scriptId: string, version
   const approverName = approver.nameLocal || approver.name;
   const scriptHref = `/script/${scriptId}`;
   const projectHref = `/video?project=${projectId}`;
-  const handoff = { scriptId, versionNo, approvalId, projectId, approvedBy: approver.id };
+  const approval = { scriptId, versionNo, approvalId, projectId, approvedBy: approver.id };
+  const { dispatchAgentMentions, handoffMeta, later } = await import("./mentions");
 
-  await postAsAgent(
-    tenantId,
-    "script",
-    "production",
-    [
-      `${tag("video")} 《${script.title}》第 ${versionNo} 版已由 ${approverName} 审批通过并锁定，交给你了。`,
-      "",
-      `- [打开脚本](${scriptHref})`,
-      `- [打开视频项目](${projectHref})`,
-    ].join("\n"),
-    { mentions: ["video"], handoff },
-  );
+  const handoff: Handoff = {
+    from: "script",
+    to: "video",
+    artifacts: [
+      { kind: "script", id: scriptId, title: script.title, href: scriptHref },
+      { kind: "video_project", id: projectId, href: projectHref },
+    ],
+    verified: true,
+    scriptId,
+    projectId,
+    notes: [
+      `脚本第 ${versionNo} 版已由 ${approverName} 审批通过并锁定，剪辑按这一版来。`,
+      `视频项目已经建好${owner.id === approver.id ? "" : `，归 ${owner.nameLocal || owner.name}`}。素材放进时间线后会自动转写字幕。`,
+      "项目里还没有素材就先说清楚：素材一到你就按脚本开剪，现在不要空跑一键成片。",
+    ],
+  };
 
-  await postAsAgent(
-    tenantId,
-    "video",
-    "production",
-    [
-      `${tag("script")} 收到。《${script.title}》的[视频项目](${projectHref})已经建好${owner.id === approver.id ? "" : `，归 ${owner.nameLocal || owner.name}`}。`,
-      "",
-      `把素材放进时间线，我会自动转写字幕；剪辑按锁定的第 ${versionNo} 版脚本来。`,
-    ].join("\n"),
-    {
-      mentions: ["script"],
+  const body = [
+    `${tag("video")} 《${script.title}》第 ${versionNo} 版已由 ${approverName} 审批通过并锁定，交给你了。`,
+    "",
+    `- [打开脚本](${scriptHref})`,
+    `- [打开视频项目](${projectHref})`,
+  ].join("\n");
+  await postAsAgent(tenantId, "script", "production", body, { mentions: ["video"], handoff: handoffMeta(handoff), approval });
+
+  /* The Video agent answers the hand-off itself, with the script and the
+     project in hand — after the response, because it is a model call and the
+     person pressing Approve should not wait for it. Its answer carries the
+     buttons the canned reply used to. */
+  const [from, channelId] = await Promise.all([agentViewer(tenantId, "script"), ensureAgentChannel(tenantId, "production")]);
+  later(() =>
+    dispatchAgentMentions({
+      viewer: from,
+      channelId,
+      body,
       handoff,
-      /* The hand-off ends on something to press rather than on a sentence.
-         Both are the ordinary card kinds: one posts a line as whoever pressed
-         it, the other is a link. */
-      actions: [
-        {
-          id: "open-project",
-          label: "打开项目",
-          labelEn: "Open the project",
-          kind: "open",
-          href: projectHref,
-          tone: "primary",
-        },
-        {
-          id: "rough-cut",
-          label: "让剪辑师出粗剪",
-          labelEn: "Ask for a first cut",
-          kind: "say",
-          body: `${tag("video")} 《${script.title}》的素材已经在项目里了，按锁定的第 ${versionNo} 版脚本先出一版粗剪。${projectHref}`,
-          tone: "quiet",
-        },
-        {
-          id: "read-script",
-          label: "看脚本",
-          labelEn: "Read the script",
-          kind: "open",
-          href: scriptHref,
-          tone: "quiet",
-        },
-      ],
-    },
+      hop: 1,
+      spoken: ["script"],
+      origin: approverName,
+      replyMeta: {
+        /* The hand-off ends on something to press rather than on a sentence.
+           Both are the ordinary card kinds: one posts a line as whoever pressed
+           it, the other is a link. */
+        actions: [
+          {
+            id: "open-project",
+            label: "打开项目",
+            labelEn: "Open the project",
+            kind: "open",
+            href: projectHref,
+            tone: "primary",
+          },
+          {
+            id: "rough-cut",
+            label: "让剪辑师出粗剪",
+            labelEn: "Ask for a first cut",
+            kind: "say",
+            body: `${tag("video")} 《${script.title}》的素材已经在项目里了，按锁定的第 ${versionNo} 版脚本先出一版粗剪。${projectHref}`,
+            tone: "quiet",
+          },
+          {
+            id: "read-script",
+            label: "看脚本",
+            labelEn: "Read the script",
+            kind: "open",
+            href: scriptHref,
+            tone: "quiet",
+          },
+        ],
+      },
+    }),
   );
 
   // The person whose script it is hears about it even if they are not
@@ -121,7 +146,7 @@ export async function handOffToVideo(approver: Viewer, scriptId: string, version
     module: "script",
     objectType: "script",
     objectId: scriptId,
-    meta: { ...handoff, from: "script", to: "video" },
+    meta: { ...approval, from: "script", to: "video" },
   });
 
   return projectId;

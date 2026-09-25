@@ -147,3 +147,73 @@ export async function proposalsFor(viewer: Viewer, owner: AgentKey): Promise<Pro
 
   return { owner, items, planDate };
 }
+
+export type LatestPlan = {
+  messageId: string;
+  channelId: string;
+  channelName: string;
+  body: string;
+  /** The plan's own date (Hong Kong), as the morning script wrote it. */
+  date: string | null;
+  postedAt: Date;
+  list: { text: string; owner: string; why: string | null }[];
+  /** A hand-off button somebody pressed on it, if anyone did. */
+  done: { actionId: string; by: string; at: string } | null;
+};
+
+/**
+ * The newest plan 策划 posted, whole: every to-do and whom it is for, and
+ * whether anybody pressed one of its hand-off buttons.
+ *
+ * The same message `proposalsFor` reads from, for the employees themselves:
+ * "有什么新的策划案" is a question about this, and 策划 had no way to read its
+ * own plan except as a line of chat. Only a plan in a channel the whole
+ * studio can see — which is where the morning script posts it.
+ */
+export async function latestPlan(viewer: Viewer): Promise<LatestPlan | null> {
+  const [row] = await db
+    .select({
+      id: chatMessages.id,
+      channelId: chatMessages.channelId,
+      channelName: chatChannels.name,
+      body: chatMessages.body,
+      meta: chatMessages.meta,
+      createdAt: chatMessages.createdAt,
+    })
+    .from(chatMessages)
+    .innerJoin(chatChannels, eq(chatChannels.id, chatMessages.channelId))
+    .where(
+      and(
+        eq(chatChannels.tenantId, viewer.tenantId),
+        eq(chatChannels.isPrivate, false),
+        sql`${chatMessages.deletedAt} is null`,
+        sql`(${chatMessages.meta} -> 'plan' -> 'list') is not null`,
+      ),
+    )
+    .orderBy(desc(chatMessages.createdAt))
+    .limit(1);
+  if (!row) return null;
+
+  const meta = (row.meta ?? {}) as { plan?: { list?: unknown; date?: unknown }; done?: unknown };
+  const raw = Array.isArray(meta.plan?.list) ? (meta.plan.list as Todo[]) : [];
+  const done = meta.done as { actionId?: unknown; by?: unknown; at?: unknown } | undefined;
+  return {
+    messageId: row.id,
+    channelId: row.channelId,
+    channelName: row.channelName,
+    body: row.body,
+    date: typeof meta.plan?.date === "string" ? meta.plan.date : null,
+    postedAt: row.createdAt,
+    list: raw
+      .filter((t) => typeof t.text === "string" && t.text.trim())
+      .map((t) => ({
+        text: String(t.text).trim(),
+        owner: typeof t.owner === "string" ? t.owner : "human",
+        why: typeof t.why === "string" && t.why.trim() ? t.why.trim() : null,
+      })),
+    done:
+      done && typeof done.actionId === "string"
+        ? { actionId: done.actionId, by: typeof done.by === "string" ? done.by : "", at: typeof done.at === "string" ? done.at : "" }
+        : null,
+  };
+}

@@ -1,9 +1,10 @@
 import "server-only";
-import { and, asc, desc, eq, isNull } from "drizzle-orm";
+import { and, asc, desc, eq, ilike, isNull, or } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { scriptBeats, scripts, topics } from "@/lib/db/schema";
 import type { ToolDef } from "@/lib/ai/openrouter";
 import { writeScript } from "@/lib/script/from-research";
+import { listScripts } from "@/lib/script/service";
 import { num, str, type ToolContext, type ToolPack, type ToolResult } from "./types";
 
 /**
@@ -41,8 +42,16 @@ const defs: ToolDef[] = [
     type: "function",
     function: {
       name: "list_scripts",
-      description: "The scripts in the library, newest first, with their status.",
-      parameters: { type: "object", properties: { limit: { type: "number", description: "Default 15." } }, required: [] },
+      description:
+        "The scripts in the library, newest first, with their status. Give a query to find one by title, subject or angle (\"蒸馏\", \"AI模型\") — use it before saying a script does or does not exist.",
+      parameters: {
+        type: "object",
+        properties: {
+          query: { type: "string", description: "Words from the title, the subject or the angle. Optional." },
+          limit: { type: "number", description: "Default 15." },
+        },
+        required: [],
+      },
     },
   },
   {
@@ -86,6 +95,9 @@ async function run(ctx: ToolContext, name: string, args: Record<string, unknown>
     });
     if (!res.ok) return { text: res.error };
     return {
+      /* The receipt. Inside a project the script already existed and was
+         written into; elsewhere it is new. */
+      artifacts: [{ kind: "script", id: res.id, title: res.title, action: ctx.scriptId ? "updated" : "created" }],
       text: [
         `Written: "${res.title}" — ${res.beats} beat${res.beats === 1 ? "" : "s"}${res.model ? ` by ${res.model}` : ""}.`,
         `Open it at /script/${res.id} (id: ${res.id}).`,
@@ -99,6 +111,8 @@ async function run(ctx: ToolContext, name: string, args: Record<string, unknown>
   }
 
   if (name === "list_scripts") {
+    const query = str(args.query, 80);
+    if (query) return findScripts(ctx, query, Math.min(40, Math.max(1, num(args.limit, 15))));
     const rows = await db
       .select({ id: scripts.id, title: scripts.title, status: scripts.status, channel: scripts.targetChannel, updatedAt: scripts.updatedAt })
       .from(scripts)
@@ -140,6 +154,67 @@ async function run(ctx: ToolContext, name: string, args: Record<string, unknown>
   }
 
   return { text: `Unknown tool ${name}.` };
+}
+
+/**
+ * Scripts matching some words, for "is there a script about 蒸馏 yet".
+ *
+ * The library's own search first (title, in either language), then the
+ * angle and the words of the beats: a script written into a project keeps
+ * the project's name — one about distillation is filed as "测试" — so a
+ * title search alone says "no" about a script that is sitting right there.
+ * When nothing matches, it says what the library does hold, because "there
+ * is no such script" is only useful next to "here is what there is".
+ */
+async function findScripts(ctx: ToolContext, query: string, limit: number): Promise<ToolResult> {
+  const byTitle = await listScripts(ctx.viewer, { query });
+  const seen = new Set(byTitle.map((r) => r.id));
+  const like = `%${query}%`;
+  const byContent = await db
+    .selectDistinct({ id: scripts.id, title: scripts.title, status: scripts.status, channel: scripts.targetChannel, updatedAt: scripts.updatedAt })
+    .from(scripts)
+    .leftJoin(scriptBeats, eq(scriptBeats.scriptId, scripts.id))
+    .where(
+      and(
+        eq(scripts.tenantId, ctx.viewer.tenantId),
+        isNull(scripts.deletedAt),
+        or(ilike(scripts.angle, like), ilike(scriptBeats.voiceover, like), ilike(scriptBeats.visual, like)),
+      ),
+    )
+    .orderBy(desc(scripts.updatedAt))
+    .limit(limit);
+
+  const hits = [
+    ...byTitle.map((r) => ({ id: r.id, title: r.title, status: r.status, channel: r.targetChannel, updatedAt: r.updatedAt, where: "title" })),
+    ...byContent.filter((r) => !seen.has(r.id)).map((r) => ({ ...r, where: "angle or beats" })),
+  ].slice(0, limit);
+
+  if (hits.length) {
+    return {
+      text: [
+        `Scripts matching "${query}":`,
+        ...hits.map(
+          (r) =>
+            `- ${r.title} (id: ${r.id}) — ${r.status}${r.channel ? ` · ${r.channel}` : ""} · ${r.updatedAt.toISOString().slice(0, 10)} · matched in the ${r.where}`,
+        ),
+      ].join("\n"),
+    };
+  }
+
+  const newest = await db
+    .select({ id: scripts.id, title: scripts.title, status: scripts.status, updatedAt: scripts.updatedAt })
+    .from(scripts)
+    .where(and(eq(scripts.tenantId, ctx.viewer.tenantId), isNull(scripts.deletedAt)))
+    .orderBy(desc(scripts.updatedAt))
+    .limit(8);
+  return {
+    text: newest.length
+      ? [
+          `No script matches "${query}" — not in a title, an angle or any beat. What the library does hold, newest first:`,
+          ...newest.map((r) => `- ${r.title} (id: ${r.id}) — ${r.status} · ${r.updatedAt.toISOString().slice(0, 10)}`),
+        ].join("\n")
+      : `No script matches "${query}", and the library is empty.`,
+  };
 }
 
 export const scriptPack: ToolPack = { module: "script", defs, run };
