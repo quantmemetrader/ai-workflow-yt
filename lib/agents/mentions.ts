@@ -442,6 +442,11 @@ export type Claim = {
   /** "已交给…": handing over, which any receipt backs — the work that was
    * handed, or the assignment that handed it. */
   handing: boolean;
+  /** Said outright — "我…", "刚完成…", "I've…" — rather than of a thing with
+   * no subject ("《测试》已经写好了"), which may be a report on its state. */
+  explicit: boolean;
+  /** Ids in the same sentence, the thing a report would be about. */
+  ids: string[];
 };
 
 /**
@@ -482,21 +487,33 @@ export function findClaims(text: string, self: AgentKey): Claim[] {
     if (/等|如果|要是|一旦|假如|只要|\b(?:before|after|once|when|if)\b/i.test(before)) continue;
     // Asked, or offered: "写好了吗？", "我可以写好…", "请存入…".
     if (/[?？]\s*$/.test(clause)) continue;
-    if (/请|要|会|将|准备|打算|可以|帮我|让|\b(?:will|would|can|could|should|going to)\b/i.test(text.slice(Math.max(clauseStart, at - 5), at))) continue;
+    if (/请|要|会|将|准备|打算|可以|帮我|让|说|称|以为|\b(?:will|would|can|could|should|going to|said|says)\b/i.test(text.slice(Math.max(clauseStart, at - 5), at))) continue;
     // Something that happened before this turn, said as such: "今早已发布".
     if (/今天?早上|今早|上午|昨天|昨晚|前天|之前|此前|早些时候|earlier|yesterday|this morning/i.test(before)) continue;
 
     const subject = text.slice(sentenceStart, at);
+    const firstPerson = /我|\bI\b|\bwe\b|我们/i.test(subject);
     // Quoted, not said: 你说的“已存入脚本库”.
     const count = (re: RegExp) => subject.match(re)?.length ?? 0;
     if (count(/[“「『]/g) > count(/[”」』]/g) || count(/"/g) % 2 === 1) continue;
 
-    const mine = /我|\bI\b|\bwe\b|我们/i.test(subject) || !otherRe.test(subject);
+    const mine = firstPerson || !otherRe.test(subject);
 
     const plain = sentence.replace(namesRe, "");
     const handing = HANDING.test(m[0]);
-    const kinds = handing ? [] : [...new Set(KIND_WORDS.filter(([re]) => re.test(plain)).flatMap(([, k]) => k))];
-    claims.push({ claim: text.slice(Math.max(sentenceStart, at - 12), Math.min(sentenceEnd, end + 16)).trim(), kinds, mine, handing });
+    const ids = idsIn(sentence);
+    /* What it is about: the words around it, or failing those the kind of
+       thing whose id it quotes. */
+    const worded = KIND_WORDS.filter(([re]) => re.test(plain)).flatMap(([, k]) => k);
+    const kinds = handing ? [] : [...new Set(worded.length ? worded : ids.flatMap((id) => KIND_OF_PREFIX[prefixOf(id)] ?? []))];
+    claims.push({
+      claim: text.slice(Math.max(sentenceStart, at - 12), Math.min(sentenceEnd, end + 16)).trim(),
+      kinds,
+      mine,
+      handing,
+      explicit: firstPerson || /^(?:刚|我|I)/.test(m[0]),
+      ids,
+    });
   }
   return claims;
 }
@@ -519,6 +536,12 @@ export function judgeReply(text: string, facts: ReplyFacts, exists: ReadonlySet<
   /* Work handed to the worker has begun, not finished: making a whole video
      is minutes away from being something anybody may call done. */
   const finished = new Set(facts.receipts.filter((r) => r.action !== "started").map((r) => r.kind));
+  /* "《测试》（scr_…）已经写好了", with that script just looked up: a report on
+     a real thing's state, not a claim to have made it. Only without an "I"
+     or a "just" — "刚完成《…》（scr_…）" is a claim whatever it points at. */
+  const reportsOn = (c: Claim) =>
+    !c.explicit &&
+    c.ids.some((id) => facts.seen.has(id) && (KIND_OF_PREFIX[prefixOf(id)] ?? []).some((k) => c.kinds.includes(k)));
   const unbacked = findClaims(text, facts.self)
     .filter((c) =>
       c.mine
@@ -526,7 +549,7 @@ export function judgeReply(text: string, facts: ReplyFacts, exists: ReadonlySet<
           c.handing
           ? facts.receipts.length === 0
           : c.kinds.length
-            ? !c.kinds.some((k) => finished.has(k))
+            ? !c.kinds.some((k) => finished.has(k)) && !reportsOn(c)
             : finished.size === 0
         : // Somebody else's: at least something of that kind was looked at.
           c.kinds.length > 0 && !c.kinds.some((k) => seenKinds.has(k) || receiptKinds.has(k)),
