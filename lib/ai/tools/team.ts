@@ -180,6 +180,15 @@ async function run(ctx: ToolContext, name: string, args: Record<string, unknown>
     /* Where: the named project's own chat; else the channel this is being
        asked in; else #制作, where the studio hands work over. */
     const projectId = asId(args.project_id);
+    /* A project named by id has to be one this viewer can see, by the rule
+       the project list itself uses — being in the tenant is not enough.
+       Handing 编剧 a project is handing it that project's script to write
+       into, and a person must not reach a private project that way. The one
+       found from the channel needs no such check: the viewer is already in
+       that project's chat. */
+    if (projectId && !(await listWorkProjects(ctx.viewer, 200)).some((p) => p.id === projectId)) {
+      return { text: "There is no such project, or it is not open to you. list_projects gives the ids." };
+    }
     const [project] = projectId
       ? await db
           .select({ id: workProjects.id, title: workProjects.title, channelId: workProjects.channelId, scriptId: workProjects.scriptId, videoProjectId: workProjects.videoProjectId })

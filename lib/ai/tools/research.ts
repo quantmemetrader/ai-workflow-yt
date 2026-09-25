@@ -338,6 +338,10 @@ async function run(ctx: ToolContext, name: string, args: Record<string, unknown>
       return { text: "No outside-world key is configured, so nobody else's channel can be read." };
     }
 
+    /* Asked first, because adding one already watched does nothing and
+       still hands back a fresh id: a receipt for that would name a
+       competitor that does not exist. */
+    const already = (await listCompetitors(ctx.viewer)).some((c) => c.platform === "youtube" && c.externalId === channelId);
     const competitorId = await addCompetitor(ctx.viewer, {
       platform: "youtube",
       externalId: channelId,
@@ -354,9 +358,11 @@ async function run(ctx: ToolContext, name: string, args: Record<string, unknown>
       priority: 5,
     });
     return {
-      text: `Watching ${str(args.name, 200) || channelId}. Its numbers appear on the Trends dashboard once they are read.`,
-      changed: true,
-      artifacts: [{ kind: "competitor", id: competitorId, title: str(args.name, 200) || channelId, action: "created" }],
+      text: already
+        ? `The studio already watches ${str(args.name, 200) || channelId}; nothing was added. Its numbers are on the Trends dashboard.`
+        : `Watching ${str(args.name, 200) || channelId}. Its numbers appear on the Trends dashboard once they are read.`,
+      changed: !already,
+      ...(already ? {} : { artifacts: [{ kind: "competitor" as const, id: competitorId, title: str(args.name, 200) || channelId, action: "created" as const }] }),
     };
   }
 

@@ -311,24 +311,36 @@ export type ReplyVerdict = {
 };
 
 /**
- * Which table each checkable id lives in.
+ * Which tables each checkable id may live in.
  *
  * Only the things a reply might claim to have made, or hand over, or point
  * at. An id with a prefix not listed here still has to have been seen this
  * turn; it just is not looked up.
+ *
+ * Two prefixes are minted for two tables each: `rnd_` for a render and for a
+ * voiceover or music track, `chn_` for a watched competitor and for one of
+ * the studio's own connected accounts. Looked up in one table only, a real
+ * track or account quoted in a reply read as invented, and the reply was held
+ * back for being right.
  */
-const CHECKABLE: Record<string, { table: string; soft: boolean }> = {
-  scr: { table: "scripts", soft: true },
-  prj: { table: "video_projects", soft: true },
-  wp: { table: "work_projects", soft: true },
-  art: { table: "articles", soft: true },
-  fil: { table: "files", soft: true },
-  top: { table: "topics", soft: false },
-  rnd: { table: "video_exports", soft: false },
-  cv: { table: "creator_videos", soft: false },
-  chn: { table: "competitors", soft: false },
-  ch: { table: "chat_channels", soft: false },
-  usr: { table: "users", soft: false },
+const CHECKABLE: Record<string, { table: string; soft: boolean }[]> = {
+  scr: [{ table: "scripts", soft: true }],
+  prj: [{ table: "video_projects", soft: true }],
+  wp: [{ table: "work_projects", soft: true }],
+  art: [{ table: "articles", soft: true }],
+  fil: [{ table: "files", soft: true }],
+  top: [{ table: "topics", soft: false }],
+  rnd: [
+    { table: "video_exports", soft: false },
+    { table: "audio_tracks", soft: false },
+  ],
+  cv: [{ table: "creator_videos", soft: false }],
+  chn: [
+    { table: "competitors", soft: false },
+    { table: "channels", soft: false },
+  ],
+  ch: [{ table: "chat_channels", soft: false }],
+  usr: [{ table: "users", soft: false }],
 };
 
 const prefixOf = (id: string) => id.slice(0, id.indexOf("_"));
@@ -350,8 +362,9 @@ const KIND_OF_PREFIX: Record<string, ArtifactKind[]> = {
 /**
  * The ids among these that exist in this studio and are not deleted.
  *
- * One small query per kind of id. The table names come from the fixed list
- * above, never from the text being checked; the ids go in as parameters.
+ * One small query per kind of id and table. The table names come from the
+ * fixed list above, never from the text being checked; the ids go in as
+ * parameters.
  */
 export async function existingIds(tenantId: string, ids: string[]): Promise<Set<string>> {
   const found = new Set<string>();
@@ -362,19 +375,20 @@ export async function existingIds(tenantId: string, ids: string[]): Promise<Set<
     byPrefix.set(p, [...(byPrefix.get(p) ?? []), id]);
   }
   await Promise.all(
-    [...byPrefix].map(async ([prefix, wanted]) => {
-      const { table, soft } = CHECKABLE[prefix];
-      const { rows } = await db.execute<{ id: string }>(sql`
-        select id from ${sql.identifier(table)}
-         where tenant_id = ${tenantId}
-           and id in (${sql.join(
-             wanted.map((w) => sql`${w}`),
-             sql`, `,
-           )})
-           ${soft ? sql`and deleted_at is null` : sql``}
-      `);
-      for (const r of rows) found.add(r.id);
-    }),
+    [...byPrefix].flatMap(([prefix, wanted]) =>
+      CHECKABLE[prefix].map(async ({ table, soft }) => {
+        const { rows } = await db.execute<{ id: string }>(sql`
+          select id from ${sql.identifier(table)}
+           where tenant_id = ${tenantId}
+             and id in (${sql.join(
+               wanted.map((w) => sql`${w}`),
+               sql`, `,
+             )})
+             ${soft ? sql`and deleted_at is null` : sql``}
+        `);
+        for (const r of rows) found.add(r.id);
+      }),
+    ),
   );
   return found;
 }
@@ -482,8 +496,10 @@ export function findClaims(text: string, self: AgentKey): Claim[] {
 
     // Not done: "还没写好", "未完成", "没有存入".
     if (/[没未不别]|无法|尚未/.test(text.slice(Math.max(clauseStart, at - 3), at))) continue;
-    // Later, or on a condition: "写好后", "写完再", "做完就", "…的话".
-    if (/^(?:后|之后|以后|再|就|的话|吗|么|没|了吗|了没|了么)/.test(after)) continue;
+    // Later, or on a condition: "写好后", "写完再", "做完就", "…的话", and
+    // the promise "写好会在这里说" — said after handing the work on, it is
+    // a plan about the colleague's work, not a report of it.
+    if (/^(?:后|之后|以后|再|就|的话|吗|么|没|了吗|了没|了么|会|才|时|前|之前)/.test(after)) continue;
     if (/等|如果|要是|一旦|假如|只要|\b(?:before|after|once|when|if)\b/i.test(before)) continue;
     // Asked, or offered: "写好了吗？", "我可以写好…", "请存入…".
     if (/[?？]\s*$/.test(clause)) continue;
@@ -506,8 +522,14 @@ export function findClaims(text: string, self: AgentKey): Claim[] {
        thing whose id it quotes. */
     const worded = KIND_WORDS.filter(([re]) => re.test(plain)).flatMap(([, k]) => k);
     const kinds = handing ? [] : [...new Set(worded.length ? worded : ids.flatMap((id) => KIND_OF_PREFIX[prefixOf(id)] ?? []))];
+    /* The words, with a little around them, never cutting through an id:
+       half an id quoted back is a new near-miss id of its own. */
+    let from = Math.max(sentenceStart, at - 12);
+    while (from > sentenceStart && /[0-9a-z_]/i.test(text[from - 1])) from--;
+    let to = Math.min(sentenceEnd, end + 16);
+    while (to < sentenceEnd && /[0-9a-z_]/i.test(text[to])) to++;
     claims.push({
-      claim: text.slice(Math.max(sentenceStart, at - 12), Math.min(sentenceEnd, end + 16)).trim(),
+      claim: text.slice(from, to).trim(),
       kinds,
       mine,
       handing,
@@ -609,6 +631,10 @@ const receiptLine = (r: Artifact) =>
 /** Kind words for an id nobody may quote, without quoting it. */
 const thingOf = (id: string) => KIND_ZH[(KIND_OF_PREFIX[prefixOf(id)] ?? [])[0] as ArtifactKind] ?? "东西";
 
+/** A quoted claim with its ids taken out, for anywhere the id itself is the
+ * thing that must not be repeated. */
+const withoutIds = (s: string) => idsIn(s).reduce((t, id) => t.replace(new RegExp(escape(id), "gi"), "…"), s);
+
 /** What went wrong, in a line each, for the second attempt and the record. */
 function problems(v: ReplyVerdict, zh: boolean, withIds: boolean): string[] {
   const out: string[] = [];
@@ -627,13 +653,59 @@ function problems(v: ReplyVerdict, zh: boolean, withIds: boolean): string[] {
     );
   }
   for (const c of v.unbacked) {
+    const claim = withIds ? c.claim : withoutIds(c.claim);
     out.push(
       zh
-        ? `说了“${c.claim}”，但这一回合没有成功执行对应的${c.kinds.length ? c.kinds.map((k) => KIND_ZH[k]).join("/") : ""}写入工具（没有回执）`
-        : `said "${c.claim}", but no tool that writes${c.kinds.length ? ` a ${c.kinds.join("/")}` : ""} succeeded this turn (no receipt)`,
+        ? `说了“${claim}”，但这一回合没有成功执行对应的${c.kinds.length ? c.kinds.map((k) => KIND_ZH[k]).join("/") : ""}写入工具（没有回执）`
+        : `said "${claim}", but no tool that writes${c.kinds.length ? ` a ${c.kinds.join("/")}` : ""} succeeded this turn (no receipt)`,
     );
   }
   return out;
+}
+
+/**
+ * What went wrong, as the channel is told it.
+ *
+ * The channel gets the kind of problem and nothing of the reply that was
+ * held back: quoting "刚完成《…》，已存入脚本库（scr_…）" in the apology
+ * would post the very claim, and the very id, the check exists to stop.
+ */
+export function publicProblems(v: ReplyVerdict, zh: boolean): string[] {
+  const out: string[] = [];
+  const things = [...new Set(v.missing.map(thingOf))];
+  if (things.length) out.push(zh ? `提到的${things.join("、")}在工作室里找不到` : "something it mentioned could not be found in the studio");
+  if (v.unseen.some((id) => !v.missing.includes(id))) {
+    out.push(zh ? "引用了这一回合没有查到的编号" : "it quoted an id nothing looked up this turn");
+  }
+  if (v.unbacked.length) {
+    const kinds = [...new Set(v.unbacked.flatMap((c) => c.kinds))];
+    out.push(
+      zh
+        ? `说${kinds.length ? kinds.map((k) => KIND_ZH[k]).join("、") : "事情"}已经做好，但这一回合并没有真的做`
+        : `it said ${kinds.length ? `the ${kinds.join("/")}` : "something"} was done, and nothing was done this turn`,
+    );
+  }
+  return out;
+}
+
+/**
+ * The colleague a person's message asks this employee to hand the work to.
+ *
+ * "@策划 让编剧写个《AI模型蒸馏》脚本" is 策划 being asked to get 编剧 on it,
+ * and the whole of that is one `assign_task`. A model used to the old way
+ * answers "好的，@编剧 请写…", which reaches nobody. Only a name straight
+ * after a word that asks for it — 让, 叫, 请, 交给, 安排, 派, 通知 — so
+ * "编剧昨天写的那个" is not a hand-off, and never a colleague the person
+ * tagged themselves: that one is already on its way.
+ */
+export function delegatedTo(body: string, self: AgentKey): AgentKey | null {
+  const tagged = parseAgentMentions(body);
+  for (const k of AGENT_KEYS) {
+    if (k === self || tagged.includes(k)) continue;
+    const names = EMPLOYEE_NAMES[k].map(escape).join("|");
+    if (new RegExp(`(?:让|叫|请|交给|安排|派给?|通知)\\s*(?:${names})`, "i").test(body)) return k;
+  }
+  return null;
 }
 
 /* ------------------------------------------------------------ one answer */
@@ -697,7 +769,7 @@ async function answerOne(input: Chain, key: AgentKey, channel: Channel) {
   const [inProject] = await db
     .select({ scriptId: workProjects.scriptId, videoProjectId: workProjects.videoProjectId })
     .from(workProjects)
-    .where(eq(workProjects.channelId, channelId))
+    .where(and(eq(workProjects.channelId, channelId), isNull(workProjects.deletedAt)))
     .limit(1);
   const scriptId = handoff?.scriptId ?? inProject?.scriptId ?? undefined;
   const projectId = handoff?.projectId ?? inProject?.videoProjectId ?? undefined;
@@ -787,7 +859,7 @@ async function answerOne(input: Chain, key: AgentKey, channel: Channel) {
 
   /* One turn of the employee: what it said, and what its tools did. Every
      attempt is kept, so the thread can be put straight afterwards. */
-  type Attempt = { id: string | null; answer: string; rejected?: string[] };
+  type Attempt = { id: string | null; answer: string; rejected?: string[]; superseded?: boolean };
   const turns: Attempt[] = [];
   const turn = async (content: string) => {
     let answer = "";
@@ -884,7 +956,9 @@ async function answerOne(input: Chain, key: AgentKey, channel: Channel) {
         } else {
           if (recheck) again.record.rejected = problems(recheck, zh, false);
           withheld = problems(recheck ?? verdict, zh, false);
-          const addressee = fromAgent || parseAgentMentions(`@${asker}`).length ? `${asker}，` : `@${asker} `;
+          /* Nobody is tagged, a person included: this is the one message
+             that must not start anything. */
+          const addressee = zh ? `${asker}，` : `${asker}, `;
           const did = receipts.length
             ? zh
               ? `这一轮我实际做了：${receipts.map(receiptLine).join("；")}。`
@@ -892,12 +966,42 @@ async function answerOne(input: Chain, key: AgentKey, channel: Channel) {
             : zh
               ? "这一轮我没有做任何改动。"
               : "I changed nothing this turn.";
+          const why = publicProblems(recheck ?? verdict, zh);
           text = zh
-            ? `${addressee}抱歉，我刚才要说的内容核对不上（${withheld.slice(0, 2).join("；")}），先不下结论，免得说错。${did}需要我做什么，请直接告诉我。`
-            : `${addressee}Sorry, what I was about to say did not check out (${withheld.slice(0, 2).join("; ")}), so I am not saying it. ${did} Tell me what you need and I will do it.`;
+            ? `${addressee}抱歉，我刚才的回答没有通过核对（${why.join("；")}），先不下结论，免得说错。${did}需要我做什么，请直接告诉我。`
+            : `${addressee}sorry, my answer did not pass the check (${why.join("; ")}), so I am not posting it. ${did} Tell me what you need and I will do it.`;
           failure = null;
           posted = { id: null, answer: text };
         }
+      }
+    }
+
+    /*
+     * Asked to hand it on, and did not.
+     *
+     * "@策划 让编剧写个脚本" is answered with one `assign_task`. A reply that
+     * only says "好的，@编剧 请写…" — or "编剧会写的" — reaches nobody: the
+     * `@` is written back as a plain name below, and nothing starts. One more
+     * turn, told exactly that; if it still does not hand it on (it may have
+     * a reason: the script exists already), the first answer stands.
+     */
+    const wantedColleague = text && !fromAgent && input.hop === 0 && !withheld ? delegatedTo(input.body, key) : null;
+    if (wantedColleague && !team.assigned.includes(wantedColleague) && input.hop + 1 <= MAX_HOPS && input.budget.left > 0) {
+      const name = AGENT_LABELS[wantedColleague].nameLocal;
+      const nudge = await turn(
+        zh
+          ? `（系统提示）${asker} 要你把这件事交给${name}，但你还没有交：回答里写名字或 @ 都不会通知任何人。现在调用 assign_task（to: "${wantedColleague}"），把要做的事写具体（主题、时长、平台，原话里有的都带上），然后用一句话告诉${asker}交给了谁，不要 @。如果你判断不该交（比如已经有现成的），就说明原因，不要调用。`
+          : `(System) ${asker} asked you to hand this to ${name}, and you have not: a name or an @ in your reply notifies nobody. Call assign_task (to: "${wantedColleague}") now with the work spelled out (subject, length, platform — whatever the message said), then tell ${asker} in one sentence whom you handed it to, without an @. If you judge it should not be handed on (it exists already, say), say why and do not call it.`,
+      );
+      const said = nudge.answer.trim().slice(0, MAX_REPLY);
+      const check = said ? await verifyReply(said, facts, tenantId) : null;
+      if (check?.ok) {
+        posted.superseded = true;
+        text = said;
+        failure = nudge.failure;
+        posted = nudge.record;
+      } else if (check) {
+        nudge.record.rejected = problems(check, zh, false);
       }
     }
 
@@ -977,7 +1081,11 @@ async function answerOne(input: Chain, key: AgentKey, channel: Channel) {
             ? zh
               ? `（这条回答没有发出：系统核对未通过——${t.rejected.join("；")}。）`
               : `(This reply was not posted: it failed the check — ${t.rejected.join("; ")}.)`
-            : null;
+            : t.superseded
+              ? zh
+                ? "（这条回答没有发出，发出的是后面那一条。）"
+                : "(This reply was not posted; the next one was.)"
+              : null;
       if (content !== null && content !== t.answer) {
         await db.update(agentMessages).set({ content }).where(eq(agentMessages.id, t.id));
       }
