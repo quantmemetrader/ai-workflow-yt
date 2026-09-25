@@ -14,6 +14,7 @@ import { InlineAgentThread, useInlineAgent } from "@/components/shell/InlineAgen
 import { AgentHistory } from "@/components/shell/AgentHistory";
 import { ScriptSheet } from "@/components/research/ScriptSheet";
 import { CreatorMemory } from "@/components/research/CreatorMemory";
+import { startFromTopicAction } from "@/app/(app)/projects/actions";
 import { writeScriptAction } from "@/app/(app)/script/actions";
 import type { CompetitorRow } from "@/lib/social/service";
 import type { CreatorMemoryState } from "@/lib/creator/service";
@@ -341,31 +342,47 @@ export function TrendsView({
           start(async () => {
             setWriting(true);
             setWriteError(null);
-            const done = beginWork(zh ? `正在写“${scriptingTopic.name}”` : `Writing “${scriptingTopic.name}”`);
             try {
-              const res = await writeScriptAction({
-                topicId: scriptingTopic.id,
-                // The topic names the script; the angle is the angle. A script
-                // titled with a fourteen-word angle reads badly in the library.
-                subject: scriptingTopic.name,
-                angle: input.angle,
-                channel: input.channel,
-                aspect: input.aspect,
-                seconds: input.seconds,
-                language: input.language,
-                subtitleLanguage: input.subtitleLanguage,
-              });
+              /* A project around it, like every other start: the topic's
+                 snapshot (summary, angles, headlines) goes with it, the
+                 chips shape the script, and 编剧 writes after the response
+                 while the person watches it land on the script. The topic
+                 names the script; the angle is the angle. */
+              const res = await startFromTopicAction(
+                { kind: "topic", id: scriptingTopic.id },
+                { write: true, chips: { angle: input.angle, channel: input.channel, aspect: input.aspect, seconds: input.seconds, language: input.language, subtitleLanguage: input.subtitleLanguage } },
+              );
               if ("error" in res && res.error) {
-                setWriteError(res.error);
+                if (res.error !== "Not allowed") {
+                  setWriteError(res.error);
+                  return;
+                }
+                /* No Chat, so no project to put it in: the script is written
+                   here and now, on its own, as it was before projects. */
+                const done = beginWork(zh ? `正在写“${scriptingTopic.name}”` : `Writing “${scriptingTopic.name}”`);
+                try {
+                  const old = await writeScriptAction({ topicId: scriptingTopic.id, subject: scriptingTopic.name, ...input });
+                  if ("error" in old && old.error) {
+                    setWriteError(old.error);
+                    return;
+                  }
+                  if ("id" in old && old.id) {
+                    if ("note" in old && old.note) notify(String(old.note));
+                    setScripting(null);
+                    router.push(`/script/${old.id}`);
+                  }
+                } finally {
+                  done();
+                }
                 return;
               }
-              if ("id" in res && res.id) {
-                if ("note" in res && res.note) notify(String(res.note));
+              if ("projectId" in res && res.projectId) {
+                if (res.note) notify(res.note, "info");
+                else if (res.existed && !res.writing) notify(zh ? "这个选题已经有项目了，打开的是它的脚本。" : "This topic already has a project; opening its script.", "info");
                 setScripting(null);
-                router.push(`/script/${res.id}`);
+                router.push(res.scriptId ? `/script/${res.scriptId}${res.writing ? "?writing=1" : ""}` : `/projects/${res.projectId}`);
               }
             } finally {
-              done();
               setWriting(false);
             }
           })

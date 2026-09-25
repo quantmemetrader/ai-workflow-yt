@@ -3,6 +3,7 @@ import { proposalsFor } from "@/lib/agents/proposals";
 import { answeringModel } from "@/lib/ai/models";
 import { LibraryView } from "@/components/script/LibraryView";
 import { libraryCounts, listFolders, listScripts, pendingApprovals, sharedScriptIds, type ScriptListItem } from "@/lib/script/service";
+import { scriptTopicQueue } from "@/lib/script/topics";
 
 export const metadata = { title: "脚本 · Script" };
 
@@ -18,8 +19,8 @@ function isStatus(v: unknown): v is ScriptListItem["status"] {
   return typeof v === "string" && (STATUSES as readonly string[]).includes(v);
 }
 
-type Scope = "all" | "mine" | "awaiting" | "shared";
-const isScope = (v: unknown): v is Scope => v === "all" || v === "mine" || v === "awaiting" || v === "shared";
+type Scope = "all" | "mine" | "awaiting" | "shared" | "topics";
+const isScope = (v: unknown): v is Scope => v === "all" || v === "mine" || v === "awaiting" || v === "shared" || v === "topics";
 
 export default async function ScriptLibraryPage({
   searchParams,
@@ -73,8 +74,14 @@ export default async function ScriptLibraryPage({
           : all;
 
   /* What the page's own employee thinks should be made next, read from
-     what already exists — this morning's plan, the backlog, the audience. */
+     what already exists — this morning's plan, the backlog, the audience —
+     and the 选题 queue: topics chosen elsewhere that are waiting for a
+     script. Both are reads of what exists; nothing is generated here. */
   const proposals = await proposalsFor(viewer, "script");
+  const queue = await scriptTopicQueue(viewer, { proposals }).catch((err) => {
+    console.error("[script] the topics queue could not be read", err);
+    return [];
+  });
 
   return (
     <LibraryView
@@ -88,6 +95,8 @@ export default async function ScriptLibraryPage({
       scope={scope}
       query={query}
       model={answeringModel()}
+      queue={queue}
+      canStart={viewer.modules.includes("chat")}
     />
   );
 }

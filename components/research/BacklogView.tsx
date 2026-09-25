@@ -6,6 +6,7 @@ import { BacklogScreen, type BacklogItem, type Person, type Stage } from "@/comp
 import { InlineAgentThread, useInlineAgent } from "@/components/shell/InlineAgent";
 import { decideAction, moveStageAction, planAction } from "@/app/(app)/research/actions";
 import { scriptFromTopicAction } from "@/app/(app)/script/actions";
+import { startFromTopicAction } from "@/app/(app)/projects/actions";
 import { notify } from "@/lib/client/notify";
 
 /**
@@ -70,19 +71,28 @@ export function BacklogView({
       /**
        * The hand-off to Script.
        *
-       * This used to be an alert box explaining that Script did not exist. It
-       * does now: the topic's name, angle and target channel become a brief,
-       * and the producer lands in it. A second press opens the script that was
-       * already made rather than making another.
+       * The topic becomes a project (its chat, its script, its video), the
+       * script starts with the topic's name, angles and headlines, and 编剧
+       * writes the first draft while the producer lands on it. A second press
+       * opens the project already started from the topic. Without Chat there
+       * is no project to make, so the old hand-off (a brief in Script) is
+       * what that person gets.
        */
       onHandOff={(topicId) =>
         start(async () => {
-          const res = await scriptFromTopicAction(topicId);
+          const res = await startFromTopicAction({ kind: "topic", id: topicId }, { write: true });
           if ("error" in res && res.error) {
-            notify(res.error);
+            if (res.error !== "Not allowed") {
+              notify(res.error);
+              return;
+            }
+            const old = await scriptFromTopicAction(topicId);
+            if ("error" in old && old.error) notify(old.error);
+            else if ("id" in old && old.id) router.push(`/script/${old.id}`);
             return;
           }
-          if ("id" in res && res.id) router.push(`/script/${res.id}`);
+          if ("scriptId" in res && res.scriptId) router.push(`/script/${res.scriptId}${res.writing ? "?writing=1" : ""}`);
+          else if ("projectId" in res && res.projectId) router.push(`/projects/${res.projectId}`);
         })
       }
       onDrop={(topicId) =>

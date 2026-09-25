@@ -25,7 +25,7 @@ import {
   unlock,
 } from "@/lib/script/service";
 import { checkConformance, draftFromBrief, rewriteSelection } from "@/lib/script/ai";
-import { writeScript } from "@/lib/script/from-research";
+import { sourcesForScript, writeScript } from "@/lib/script/from-research";
 
 /**
  * Everything the Script screens can do.
@@ -253,7 +253,11 @@ export async function generateDraftAction(scriptId: unknown) {
     // The draft that is there becomes a version first, so "Generate from
     // brief" can never be the thing that loses somebody's afternoon.
     await cutVersion(viewer, id, { note: "before regenerating from the brief" });
-    const res = await draftFromBrief(viewer, id);
+    /* With the research the first draft had: the project's topic snapshot
+       and the backlog topic's headlines. Without them a regenerate wrote
+       from the title alone. */
+    const sources = await sourcesForScript(viewer, id).catch(() => "");
+    const res = await draftFromBrief(viewer, id, { sources });
     if ("error" in res) return done(res, id);
     await audit(viewer, "script.generate", { objectType: "script", objectId: id, module: "script", meta: { model: res.model } });
     return done(res, id);

@@ -11,10 +11,13 @@ import {
   relationTuples,
   scriptVersions,
   scripts,
+  seriesCache,
   topics,
   users,
+  workProjects,
 } from "@/lib/db/schema";
 import { newId } from "@/lib/ids";
+import { isWriting, type ProjectSource, type SourceEvidence } from "@/lib/projects/topic";
 import { grantOwner } from "@/lib/authz/rebac";
 import type { Viewer } from "@/lib/auth/dal";
 import { handOffToVideo } from "@/lib/agents/handoff";
@@ -87,6 +90,13 @@ export type ScriptListItem = {
   ownerId: string | null;
   ownerName: string | null;
   updatedAt: Date;
+  /** The project this script is the script of, when it is in one. */
+  projectId: string | null;
+  projectTitle: string | null;
+  /** Where the project's topic came from ("晨报信号", "选题储备", a person's name). */
+  sourceLabel: string | null;
+  /** The backlog topic it was written from, when there is one. */
+  topicTitle: string | null;
 };
 
 /**
@@ -126,26 +136,49 @@ export async function listScripts(
       ownerName: users.name,
       ownerNameLocal: users.nameLocal,
       updatedAt: scripts.updatedAt,
+      projectId: workProjects.id,
+      projectTitle: workProjects.title,
+      /* A person's own project is labelled with their name, which says
+         nothing about where the topic came from; only the other kinds. */
+      sourceLabel: sql<string | null>`case when (${workProjects.source} ->> 'kind') = 'person' then null else ${workProjects.source} ->> 'label' end`,
+      topicName: topics.name,
+      topicNameLocal: topics.nameLocal,
     })
     .from(scripts)
     .leftJoin(users, eq(users.id, scripts.ownerId))
+    /* Where each script came from, so a row can say it: its project (and
+       what that project's topic came from) and the backlog topic. */
+    .leftJoin(workProjects, and(eq(workProjects.scriptId, scripts.id), isNull(workProjects.deletedAt)))
+    .leftJoin(topics, and(eq(topics.id, scripts.topicId), eq(topics.tenantId, scripts.tenantId)))
     .where(and(...where))
-    .orderBy(desc(scripts.updatedAt))
+    .orderBy(desc(scripts.updatedAt), workProjects.createdAt)
     .limit(300);
 
   const zh = (viewer.locale ?? "zh-CN").startsWith("zh");
-  return rows.map((r) => ({
-    id: r.id,
-    title: (zh && r.titleLocal) || r.title,
-    status: r.status,
-    version: r.version,
-    folderId: r.folderId,
-    targetChannel: r.targetChannel,
-    aspect: r.aspect,
-    ownerId: r.ownerId,
-    ownerName: (zh && r.ownerNameLocal) || r.ownerName,
-    updatedAt: r.updatedAt,
-  }));
+  /* A script in two projects (the old picker allowed it) is still one row. */
+  const seen = new Set<string>();
+  const out: ScriptListItem[] = [];
+  for (const r of rows) {
+    if (seen.has(r.id)) continue;
+    seen.add(r.id);
+    out.push({
+      id: r.id,
+      title: (zh && r.titleLocal) || r.title,
+      status: r.status,
+      version: r.version,
+      folderId: r.folderId,
+      targetChannel: r.targetChannel,
+      aspect: r.aspect,
+      ownerId: r.ownerId,
+      ownerName: (zh && r.ownerNameLocal) || r.ownerName,
+      updatedAt: r.updatedAt,
+      projectId: r.projectId ?? null,
+      projectTitle: r.projectTitle ?? null,
+      sourceLabel: r.sourceLabel ?? null,
+      topicTitle: (zh && r.topicNameLocal) || r.topicName || null,
+    });
+  }
+  return out;
 }
 
 /** The counts above the library list: All / Briefs / Drafting / Awaiting / Locked. */
@@ -224,6 +257,42 @@ export type ScriptCommentRow = {
   authorNameLocal: string | null;
 };
 
+/**
+ * The topic a script is written from, for the Brief tab's card (the
+ * artboard's "From the topic backlog" and "Research carried over") and the
+ * folding strip above the Draft's beats.
+ *
+ * Built from the backlog topic (heat, the chart's points, who adopted it,
+ * the headlines) and from the project's snapshot (why now, the hook, the
+ * evidence rows with their own numbers), whichever of the two exist.
+ */
+export type ScriptTopic = {
+  title: string;
+  why: string | null;
+  hook: string | null;
+  angle: string | null;
+  format: string | null;
+  risk: string | null;
+  strength: number | null;
+  from: { kind: string; label: string; href: string | null };
+  /** Backlog topics only: the chart's numbers. */
+  heat: number | null;
+  change14d: number | null;
+  /** The chart's values, oldest first, for the sparkline. */
+  points: number[];
+  /** First and last day the chart covers ("2026-08-29"). */
+  range: [string, string] | null;
+  flagged: boolean;
+  flagReason: string | null;
+  adoptedAt: string | null;
+  ownerName: string | null;
+  dueDate: string | null;
+  stage: string | null;
+  evidence: SourceEvidence[];
+  articles: { title: string; url: string; domain: string; at: string }[];
+  project: { id: string; title: string } | null;
+};
+
 /** Everything the Brief, Draft, Versions and Approval tabs read. */
 export type ScriptDetail = {
   script: ScriptRow;
@@ -235,7 +304,81 @@ export type ScriptDetail = {
   owner: { name: string; nameLocal: string | null } | null;
   live: Measurement;
   locked: boolean;
+  topic: ScriptTopic | null;
+  /** 编剧 is writing a draft into it right now (started from the topic). */
+  writing: boolean;
 };
+
+/** The topic card's data for one script (`ScriptTopic`), or null when it has none. */
+export async function scriptTopic(viewer: Viewer, row: Pick<ScriptRow, "id" | "topicId" | "title">): Promise<{ topic: ScriptTopic | null; writing: boolean }> {
+  const zh = (viewer.locale ?? "zh-CN").startsWith("zh");
+  const [project] = await db
+    .select({ id: workProjects.id, title: workProjects.title, brief: workProjects.brief, source: workProjects.source, topicId: workProjects.topicId })
+    .from(workProjects)
+    .where(and(eq(workProjects.tenantId, viewer.tenantId), eq(workProjects.scriptId, row.id), isNull(workProjects.deletedAt)))
+    .orderBy(asc(workProjects.createdAt))
+    .limit(1);
+  const src = (project?.source as ProjectSource | null) ?? null;
+  const candidates = [row.topicId, project?.topicId, src?.topicId].filter((x): x is string => typeof x === "string" && x.length > 0);
+  const [topic] = candidates.length
+    ? await db
+        .select({
+          topic: topics,
+          ownerName: users.name,
+          ownerNameLocal: users.nameLocal,
+          /* When it was adopted or kept: the choice itself, from the log the
+             board writes. `updated_at` moves with every chart refresh. */
+          chosenAt: sql<string | Date | null>`(select max(e.at) from topic_events e where e.topic_id = "topics"."id" and e.action in ('adopt', 'save'))`,
+        })
+        .from(topics)
+        .leftJoin(users, eq(users.id, topics.ownerId))
+        .where(and(eq(topics.tenantId, viewer.tenantId), inArray(topics.id, candidates)))
+        .limit(1)
+    : [];
+  if (!project && !topic) return { topic: null, writing: false };
+
+  const [series] = topic
+    ? await db
+        .select({ points: seriesCache.points, articles: seriesCache.articles })
+        .from(seriesCache)
+        .where(and(eq(seriesCache.query, topic.topic.query), eq(seriesCache.window, "3m")))
+        .limit(1)
+    : [];
+  const points = (series?.points ?? []).slice(-60);
+  const t = topic?.topic;
+  const brief = (project?.brief ?? "").replace(/@\S+/g, "").replace(/\[[A-Z]\d{1,2}\]\s*|（证据\d+）/g, "").trim();
+  const card: ScriptTopic = {
+    title: project?.title ?? ((zh && t?.nameLocal) || t?.name || row.title),
+    why: src?.why ?? (t?.summary ? t.summary.slice(0, 300) : null) ?? (brief ? brief.split("\n")[0].slice(0, 300) : null),
+    hook: src?.hook ?? null,
+    angle: src?.angle ?? t?.angles?.[0] ?? null,
+    format: src?.format ?? null,
+    risk: src?.risk ?? (t?.flagged ? t.flagReason : null) ?? null,
+    strength: typeof src?.strength === "number" ? src.strength : null,
+    from: {
+      kind: src?.kind ?? (t ? "backlog" : "person"),
+      label: src?.label ?? (t ? (zh ? "选题储备" : "Topic backlog") : (zh ? "项目" : "Project")),
+      href: project ? `/projects/${project.id}` : t ? "/research/backlog" : null,
+    },
+    /* A topic whose chart was never read (one just kept from an idea) has
+       a heat of 0 that means "not measured"; the card then leads with
+       where it came from rather than with a zero. */
+    heat: t && (t.lastFetchedAt !== null || t.heat > 0) ? t.heat : null,
+    change14d: t && (t.lastFetchedAt !== null || t.heat > 0) ? t.change14d : null,
+    points: points.map((p) => p.v),
+    range: points.length > 1 ? [points[0].d, points[points.length - 1].d] : null,
+    flagged: t?.flagged ?? false,
+    flagReason: t?.flagReason ?? null,
+    adoptedAt: t && (t.status === "adopted" || t.status === "saved") ? new Date(topic?.chosenAt ?? t.createdAt).toISOString() : null,
+    ownerName: topic ? (zh && topic.ownerNameLocal) || topic.ownerName || null : null,
+    dueDate: t?.dueDate ?? null,
+    stage: t?.stage ?? null,
+    evidence: (src?.evidence ?? []).slice(0, 6),
+    articles: (series?.articles ?? []).slice(0, 6),
+    project: project ? { id: project.id, title: project.title } : null,
+  };
+  return { topic: card, writing: isWriting(src, Date.now()) };
+}
 
 /** One script with everything the Brief, Draft, Versions and Approval tabs need. */
 export async function scriptDetail(viewer: Viewer, scriptId: string): Promise<ScriptDetail | null> {
@@ -247,7 +390,7 @@ export async function scriptDetail(viewer: Viewer, scriptId: string): Promise<Sc
 
   if (!row) return null;
 
-  const [beats, versions, suggestions, approvalRows, comments, owner] = await Promise.all([
+  const [beats, versions, suggestions, approvalRows, comments, owner, about] = await Promise.all([
     db.select().from(scriptBeats).where(eq(scriptBeats.scriptId, scriptId)).orderBy(asc(scriptBeats.ord)),
     db
       .select({
@@ -309,6 +452,10 @@ export async function scriptDetail(viewer: Viewer, scriptId: string): Promise<Sc
     row.ownerId
       ? db.select({ name: users.name, nameLocal: users.nameLocal }).from(users).where(eq(users.id, row.ownerId)).limit(1)
       : Promise.resolve([]),
+    scriptTopic(viewer, row).catch((err) => {
+      console.error("[script] the topic card could not be read", err);
+      return { topic: null, writing: false };
+    }),
   ]);
 
   return {
@@ -323,6 +470,8 @@ export async function scriptDetail(viewer: Viewer, scriptId: string): Promise<Sc
      * rather than for the last version written. */
     live: measure(beats, row),
     locked: row.lockedVersion !== null,
+    topic: about.topic,
+    writing: about.writing,
   };
 }
 
@@ -475,7 +624,12 @@ export async function scriptFromTopic(viewer: Viewer, topicId: string) {
       .where(eq(scripts.id, id));
   }
 
-  await db.update(topics).set({ stage: "handed", updatedAt: new Date() }).where(eq(topics.id, topicId));
+  /* In Script now, so "Scripting" on the board; "Handed to Video" is for
+     when the approved script goes to the edit. */
+  await db
+    .update(topics)
+    .set({ stage: "scripting", updatedAt: new Date() })
+    .where(and(eq(topics.id, topicId), inArray(topics.stage, ["adopted", "briefing"])));
   return id;
 }
 

@@ -1,7 +1,7 @@
 import "server-only";
 import { and, count, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { chatChannels, chatMembers, relationTuples, users, scriptBeats, scripts, timelineItems, videoClips, videoExports, videoProjects, workProjects } from "@/lib/db/schema";
+import { chatChannels, chatMembers, chatMessages, hotSnapshots, ideas, relationTuples, seriesCache, settings, topics, users, scriptBeats, scripts, timelineItems, videoClips, videoExports, videoProjects, workProjects } from "@/lib/db/schema";
 import { newId } from "@/lib/ids";
 import type { Viewer } from "@/lib/auth/types";
 import { createScript } from "@/lib/script/service";
@@ -11,6 +11,8 @@ import { agentKeyFromEmail, type AgentKey } from "@/lib/agents/catalog";
 import { frontierStep } from "@/lib/home/roles";
 import { audit } from "@/lib/audit";
 import { share } from "@/lib/authz/rebac";
+import { TITLE_NOISE, backlogQueryOf, channelNote, fromHotRow, fromIdea, fromSignal, fromTopicRow, type ProjectSource, type SignalLike, type SourceEvidence, type TopicRef, titleCore } from "@/lib/projects/topic";
+import { PLATFORMS, isPlatformKey, type HotRow } from "@/lib/research/platform-catalog";
 
 /**
  * Which projects this person may see: their own, the studio-wide ones
@@ -45,20 +47,50 @@ export type WorkProjectRow = {
  * All three exist from the first moment so every employee knows where to
  * put its work: the chat's description names the script and the video
  * project, and the channel description is read with every question.
+ *
+ * `source` is the topic snapshot (`lib/projects/topic.ts`) when the project
+ * was started from a picked topic: the brief is its clean text, the chat's
+ * description carries its hook and up to three evidence lines, and the new
+ * script starts with the topic's id, angle and must-cover points rather than
+ * with the brief pasted in as its angle.
  */
 export async function createWorkProject(
   viewer: Viewer,
-  input: { title: string; brief?: string | null; mode?: string; source?: { kind: string; label?: string; url?: string | null; evidence?: unknown[] } | null; scriptId?: string },
-): Promise<{ id: string; channelSlug: string }> {
+  input: {
+    title: string;
+    brief?: string | null;
+    mode?: string;
+    source?: ProjectSource | { kind: string; label?: string; url?: string | null; evidence?: unknown[] } | null;
+    scriptId?: string;
+    /** The backlog topic (or idea) this project is about. */
+    topicId?: string | null;
+    /** What the new script starts with, when the project makes one. */
+    script?: { topicId?: string | null; angle?: string | null; mandatoryPoints?: string[]; targetChannel?: string | null; aspect?: string | null; targetSeconds?: number | null; language?: string | null; subtitleLanguage?: string | null };
+  },
+): Promise<{ id: string; channelSlug: string; channelId: string; scriptId: string }> {
   const title = input.title.replace(/\s+/g, " ").trim().slice(0, 80) || "新项目";
   const id = newId("wp");
-  const scriptId = input.scriptId ?? (await createScript(viewer, { title, angle: input.brief ?? null }));
+  const snapshot = (input.source ?? null) as ProjectSource | null;
+  const scriptId =
+    input.scriptId ??
+    (await createScript(viewer, {
+      title,
+      topicId: input.script?.topicId ?? null,
+      angle: input.script?.angle ?? snapshot?.angle ?? null,
+      mandatoryPoints: (input.script?.mandatoryPoints ?? []).map((x) => x.trim()).filter(Boolean).slice(0, 12),
+      targetChannel: input.script?.targetChannel ?? null,
+      aspect: input.script?.aspect ?? null,
+      targetSeconds: input.script?.targetSeconds ?? null,
+      language: input.script?.language ?? null,
+      subtitleLanguage: input.script?.subtitleLanguage ?? null,
+    }));
   const videoProjectId = await createVideoProject(viewer, title, scriptId);
+  const note = channelNote(snapshot, input.brief ?? null);
   const topic = [
     `这是项目《${title}》的对话，只谈这个项目。`,
     `脚本：${scriptId}（/script/${scriptId}）。视频项目：${videoProjectId}（/video?project=${videoProjectId}）。`,
     "写脚本就写进这个脚本；剪辑、找素材、渲染都用这个视频项目。不要新建别的。",
-    input.brief ? `起因：${input.brief.slice(0, 200)}` : "",
+    note ? `选题：${note}` : "",
   ]
     .filter(Boolean)
     .join("");
@@ -78,13 +110,14 @@ export async function createWorkProject(
     brief: input.brief ?? null,
     mode: input.mode ?? "full",
     source: input.source ?? null,
+    topicId: input.topicId ?? null,
     channelId: channel.id,
     scriptId,
     videoProjectId,
     createdBy: viewer.id,
   });
-  await audit(viewer, "project.create", { module: "chat", objectType: "project", objectId: id, meta: { title, mode: input.mode ?? "full" } });
-  return { id, channelSlug: channel.slug ?? "" };
+  await audit(viewer, "project.create", { module: "chat", objectType: "project", objectId: id, meta: { title, mode: input.mode ?? "full", topicId: input.topicId ?? null, from: snapshot?.key ?? snapshot?.kind ?? null } });
+  return { id, channelSlug: channel.slug ?? "", channelId: channel.id, scriptId };
 }
 
 export async function listWorkProjects(viewer: Viewer, limit = 40, order: "activity" | "created" = "activity"): Promise<WorkProjectRow[]> {
@@ -501,4 +534,312 @@ export async function deleteProject(viewer: Viewer, id: string): Promise<void> {
   if (!viewer.isAdmin && p.createdBy !== viewer.id) throw new Error("Only the person who started it, or an admin, can delete it");
   await db.update(workProjects).set({ deletedAt: new Date() }).where(eq(workProjects.id, id));
   await audit(viewer, "project.delete", { module: "chat", objectType: "project", objectId: id });
+}
+
+/* ------------------------------------------------ projects from topics */
+
+/**
+ * What a picked topic resolves to on the server: the project's title, the
+ * snapshot that travels with it, and what its script starts with.
+ *
+ * Buttons send a pointer (`TopicRef`), never the content: a signal by its
+ * brief's date and place, a topic or an idea by id, a hot-list row by its
+ * platform and phrase. Everything shown later (why, hook, evidence and its
+ * numbers) is read here from the stored rows, so a page cannot put words in
+ * the writer's mouth that the research never said.
+ */
+export type ResolvedTopic = {
+  title: string;
+  source: ProjectSource;
+  /** `work_projects.topic_id`: the backlog topic, or the idea. */
+  projectTopicId: string | null;
+  /** `scripts.topic_id`: only ever a real `topics` row. */
+  scriptTopicId: string | null;
+  mandatoryPoints: string[];
+};
+
+const hkToday = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Hong_Kong" }).format(new Date());
+
+/** The morning briefs of the last week, newest first, with their signals. */
+async function recentDigests(tenantId: string, date?: string | null) {
+  const rows = await db
+    .select({ meta: chatMessages.meta, body: chatMessages.body })
+    .from(chatMessages)
+    .innerJoin(chatChannels, eq(chatChannels.id, chatMessages.channelId))
+    .where(
+      and(
+        eq(chatChannels.tenantId, tenantId),
+        isNull(chatMessages.deletedAt),
+        date ? sql`(${chatMessages.meta} -> 'digest' ->> 'date') = ${date}` : sql`(${chatMessages.meta} -> 'digest' ->> 'date') is not null`,
+      ),
+    )
+    .orderBy(desc(chatMessages.createdAt))
+    .limit(date ? 1 : 7);
+  return rows.map((r) => {
+    const d = (r.meta as { digest?: { date?: unknown; signals?: unknown } } | null)?.digest;
+    const signals = Array.isArray(d?.signals) ? (d!.signals as SignalLike[]).filter((x) => x && typeof x.title === "string") : [];
+    return { date: typeof d?.date === "string" ? d.date : "", signals };
+  });
+}
+
+/** A backlog topic with the headlines its chart collected, as a snapshot. */
+export async function topicSource(tenantId: string, topicId: string, zh = true): Promise<ResolvedTopic | null> {
+  const [topic] = await db.select().from(topics).where(and(eq(topics.id, topicId), eq(topics.tenantId, tenantId))).limit(1);
+  if (!topic) return null;
+  const [cached] = await db
+    .select({ articles: seriesCache.articles })
+    .from(seriesCache)
+    .where(and(eq(seriesCache.query, topic.query), eq(seriesCache.window, "3m")))
+    .limit(1);
+  return {
+    title: (zh && topic.nameLocal) || topic.name,
+    source: fromTopicRow(topic, cached?.articles ?? []),
+    projectTopicId: topic.id,
+    scriptTopicId: topic.id,
+    mandatoryPoints: topic.angles.slice(0, 5),
+  };
+}
+
+/** Title a suggestion ("写《X》的脚本", "…：「问题」") by what is inside its quotes. */
+function proposalTitle(text: string): string {
+  const quoted = text.match(/《(.+?)》/)?.[1] ?? text.match(/「(.+?)」/)?.[1] ?? null;
+  return (quoted ?? text.replace(/^(写|做|剪)(一条|一篇|一个)?/, "")).trim().slice(0, 80);
+}
+
+export async function resolveTopicRef(viewer: Viewer, ref: TopicRef): Promise<ResolvedTopic | null> {
+  const zh = (viewer.locale ?? "zh-CN").startsWith("zh");
+  const str = (v: unknown, n: number) => (typeof v === "string" ? v.trim().slice(0, n) : "");
+
+  if (ref.kind === "signal") {
+    /* By the brief's own date when the caller has it: an index alone points
+       into whichever brief is newest, so an old card opened the wrong one. */
+    const date = str(ref.date, 10) || null;
+    const title = str(ref.title, 200);
+    const briefs = await recentDigests(viewer.tenantId, date);
+    for (const b of briefs) {
+      if (!b.date) continue;
+      const at = typeof ref.index === "number" && Number.isInteger(ref.index) ? b.signals[ref.index] : undefined;
+      let index = at && (!title || at.title === title) ? (ref.index as number) : -1;
+      if (index < 0 && title) index = b.signals.findIndex((x) => x.title === title);
+      if (index < 0) continue;
+      const sg = b.signals[index];
+      return { title: sg.title.slice(0, 80), source: fromSignal(sg, b.date, index), projectTopicId: null, scriptTopicId: null, mandatoryPoints: [] };
+    }
+    /* A brief from before signals were stored names its topic only in its
+       text; the title is all there is to carry. */
+    if (title && !date) return { title: title.slice(0, 80), source: { kind: "digest", label: "晨报", key: `digest:${title.slice(0, 120)}` }, projectTopicId: null, scriptTopicId: null, mandatoryPoints: [] };
+    return null;
+  }
+
+  if (ref.kind === "topic") {
+    return str(ref.id, 64) ? topicSource(viewer.tenantId, str(ref.id, 64), zh) : null;
+  }
+
+  if (ref.kind === "idea") {
+    const [row] = await db.select().from(ideas).where(and(eq(ideas.id, str(ref.id, 64)), eq(ideas.tenantId, viewer.tenantId))).limit(1);
+    if (!row) return null;
+    const source = fromIdea({ id: row.id, title: row.title, titles: row.titles, angle: row.angle, why: row.why, hook: row.hook, format: row.format, strength: row.strength, evidence: (row.evidence as SourceEvidence[]) ?? [] });
+    /* An idea kept with "存进选题储备" is also a backlog topic, under its
+       title (`backlogQueryOf`). The script is written from that topic, so
+       the board moves it to Scripting and links the script, and neither the
+       board nor the Script queue offers the same thing a second time. */
+    const [kept] = await db
+      .select({ id: topics.id })
+      .from(topics)
+      .where(and(eq(topics.tenantId, viewer.tenantId), eq(topics.query, backlogQueryOf(row.title)), sql`${topics.status} <> 'rejected'`))
+      .limit(1);
+    if (kept) source.topicId = kept.id;
+    return { title: row.title.slice(0, 80), source, projectTopicId: row.id, scriptTopicId: kept?.id ?? null, mandatoryPoints: [] };
+  }
+
+  if (ref.kind === "own") {
+    const text = str(ref.text, 200);
+    if (!text) return null;
+    /* Today's own picks live in settings; one typed elsewhere is still the
+       person's own topic, just without anybody's name on it. */
+    const [row] = await db.select({ value: settings.value }).from(settings).where(eq(settings.key, `research:own-picks:${viewer.tenantId}`)).limit(1);
+    const today = hkToday();
+    const pick = (Array.isArray(row?.value) ? (row!.value as { text?: string; by?: string; date?: string }[]) : []).find((p) => p.text === text && p.date === today);
+    return {
+      title: text.slice(0, 80),
+      source: { kind: "own", label: pick?.by ? `${pick.by}加的选题` : "自己定的题", key: `own:${pick?.date ?? "text"}:${text.slice(0, 120)}` },
+      projectTopicId: null,
+      scriptTopicId: null,
+      mandatoryPoints: [],
+    };
+  }
+
+  if (ref.kind === "hot") {
+    const platform = str(ref.platform, 40);
+    const phrase = str(ref.phrase, 300);
+    if (!isPlatformKey(platform) || !phrase) return null;
+    /* The stored lists only: never a live (billed) read from a button. */
+    const snaps = await db
+      .select({ rows: hotSnapshots.rows, judged: hotSnapshots.judged })
+      .from(hotSnapshots)
+      .where(eq(hotSnapshots.platform, platform))
+      .orderBy(desc(hotSnapshots.fetchedAt))
+      .limit(24);
+    for (const snap of snaps) {
+      const row = (snap.rows as HotRow[]).find((r) => r && r.phrase === phrase);
+      if (!row) continue;
+      const meta = PLATFORMS.find((p) => p.key === platform);
+      const name = meta ? (zh ? meta.zh : meta.label) : platform;
+      return { title: phrase.slice(0, 80), source: fromHotRow(row, platform, name, snap.judged?.[phrase]?.why ?? null), projectTopicId: null, scriptTopicId: null, mandatoryPoints: [] };
+    }
+    /* A row shown from a live read (the YouTube chart on the "live" tab) is
+       in no stored list: the phrase is the topic, with no numbers claimed. */
+    const meta = PLATFORMS.find((p) => p.key === platform);
+    const name = meta ? (zh ? meta.zh : meta.label) : platform;
+    return { title: phrase.slice(0, 80), source: { kind: "hot", label: `${name}热榜`, key: `hot:${platform}:${phrase.slice(0, 120)}`, evidence: [] }, projectTopicId: null, scriptTopicId: null, mandatoryPoints: [] };
+  }
+
+  if (ref.kind === "proposal") {
+    const text = str(ref.text, 240);
+    if (!text) return null;
+    const title = proposalTitle(text);
+    if (ref.source === "backlog") {
+      const [t] = await db
+        .select({ id: topics.id })
+        .from(topics)
+        .where(and(eq(topics.tenantId, viewer.tenantId), sql`(${topics.name} = ${title} or ${topics.nameLocal} = ${title})`))
+        .limit(1);
+      if (t) return topicSource(viewer.tenantId, t.id, zh);
+    }
+    const kind = ref.source === "audience" ? "audience" : ref.source === "backlog" ? "backlog" : "plan";
+    return {
+      title,
+      source: { kind, label: kind === "audience" ? "观众提问" : kind === "backlog" ? "选题储备" : "今天的计划", key: `proposal:${kind}:${text.slice(0, 120)}`, why: kind === "audience" ? `观众在评论里问：「${title}」` : null },
+      projectTopicId: null,
+      scriptTopicId: null,
+      mandatoryPoints: [],
+    };
+  }
+
+  return null;
+}
+
+/**
+ * The project already started from this topic, if any: by the topic or idea
+ * id, or by the snapshot's key. Choosing the same thing twice opens the same
+ * project rather than a second copy of it.
+ *
+ * Only a project this person may see: somebody else's private project on
+ * the same topic is theirs, and handing its id back would start a draft in
+ * (and send the person to) a project they cannot open.
+ */
+export async function projectForTopic(viewer: Viewer, by: { topicId?: string | null; key?: string | null; title?: string | null; kind?: string | null }) {
+  const core = by.title ? titleCore(by.title) : "";
+  const conds = [
+    by.topicId ? eq(workProjects.topicId, by.topicId) : null,
+    by.key ? sql`(${workProjects.source} ->> 'key') = ${by.key}` : null,
+    /* Projects started before snapshots had keys (from a brief's signal or
+       a pick) are found by their title and kind, so the same signal pressed
+       again does not make a second one. By the title's words only: the live
+       digest project is "X：Y" where its signal is "“X”：Y". */
+    core.length >= 4 && by.kind
+      ? sql`(left(regexp_replace(${workProjects.title}, ${TITLE_NOISE}, '', 'g'), 40) = ${core} and (${workProjects.source} ->> 'kind') = ${by.kind} and (${workProjects.source} ->> 'key') is null)`
+      : null,
+  ].filter((c): c is NonNullable<typeof c> => c !== null);
+  if (!conds.length) return null;
+  const [row] = await db
+    .select({ id: workProjects.id, title: workProjects.title, scriptId: workProjects.scriptId, channelId: workProjects.channelId, source: workProjects.source })
+    .from(workProjects)
+    /* The alternatives in one bracket. Joined bare with " or " they sat
+       beside the tenant, deleted and visibility tests under one "and"
+       (drizzle's `and` does not bracket its parts), and a key or title
+       match in any studio's project, deleted or private, came back. */
+    .where(and(eq(workProjects.tenantId, viewer.tenantId), isNull(workProjects.deletedAt), visibleTo(viewer), sql`(${sql.join(conds.map((c) => sql`(${c})`), sql` or `)})`))
+    .orderBy(workProjects.createdAt)
+    .limit(1);
+  return row ?? null;
+}
+
+/**
+ * Mark a project's draft as being written (an ISO time) or no longer (null).
+ * A jsonb merge, so nothing else in the snapshot is touched.
+ */
+export async function setProjectWriting(projectId: string, at: string | null): Promise<void> {
+  const patch = JSON.stringify({ writing: at ? { at } : null });
+  await db
+    .update(workProjects)
+    .set({ source: sql`coalesce(${workProjects.source}, '{}'::jsonb) || ${patch}::jsonb` })
+    .where(eq(workProjects.id, projectId));
+}
+
+/** The live project a script belongs to, other than `exceptProjectId`. */
+export async function otherProjectWithScript(tenantId: string, scriptId: string, exceptProjectId: string) {
+  const [row] = await db
+    .select({ id: workProjects.id, title: workProjects.title })
+    .from(workProjects)
+    .where(and(eq(workProjects.tenantId, tenantId), isNull(workProjects.deletedAt), eq(workProjects.scriptId, scriptId), sql`${workProjects.id} <> ${exceptProjectId}`))
+    .limit(1);
+  return row ?? null;
+}
+
+/** Scripts that belong to a live project, so pickers can leave them out. */
+export async function scriptsInProjects(tenantId: string): Promise<Map<string, string>> {
+  const rows = await db
+    .select({ scriptId: workProjects.scriptId, id: workProjects.id })
+    .from(workProjects)
+    .where(and(eq(workProjects.tenantId, tenantId), isNull(workProjects.deletedAt), sql`${workProjects.scriptId} is not null`));
+  return new Map(rows.map((r) => [r.scriptId as string, r.id]));
+}
+
+/** One project this person may see, with what starting work on it needs. */
+export async function visibleProject(viewer: Viewer, id: string) {
+  const [row] = await db
+    .select({ id: workProjects.id, title: workProjects.title, brief: workProjects.brief, scriptId: workProjects.scriptId, channelId: workProjects.channelId, videoProjectId: workProjects.videoProjectId, source: workProjects.source, topicId: workProjects.topicId })
+    .from(workProjects)
+    .where(and(eq(workProjects.id, id), eq(workProjects.tenantId, viewer.tenantId), isNull(workProjects.deletedAt), visibleTo(viewer)))
+    .limit(1);
+  return row ?? null;
+}
+
+/**
+ * How many beats a script has, and whether it is locked.
+ *
+ * The subquery names the outer table itself: in a one-table select drizzle
+ * writes columns unqualified, and an unqualified "id" inside the subquery
+ * would be the beat's own id.
+ */
+export async function scriptState(tenantId: string, scriptId: string) {
+  const [row] = await db
+    .select({ locked: scripts.lockedVersion, beats: sql<number>`(select count(*)::int from script_beats b where b.script_id = "scripts"."id")` })
+    .from(scripts)
+    .where(and(eq(scripts.id, scriptId), eq(scripts.tenantId, tenantId), isNull(scripts.deletedAt)))
+    .limit(1);
+  return row ? { beats: Number(row.beats), locked: row.locked !== null } : null;
+}
+
+/**
+ * The project chat's description, rebuilt after its topic changed: the
+ * same rules `createWorkProject` writes, with the new topic's lines.
+ */
+export async function rewriteChannelTopic(projectId: string): Promise<void> {
+  const [p] = await db
+    .select({ title: workProjects.title, brief: workProjects.brief, source: workProjects.source, scriptId: workProjects.scriptId, videoProjectId: workProjects.videoProjectId, channelId: workProjects.channelId })
+    .from(workProjects)
+    .where(eq(workProjects.id, projectId))
+    .limit(1);
+  if (!p) return;
+  const note = channelNote(p.source as ProjectSource | null, p.brief);
+  const topic = [
+    `这是项目《${p.title}》的对话，只谈这个项目。`,
+    `脚本：${p.scriptId}（/script/${p.scriptId}）。视频项目：${p.videoProjectId}（/video?project=${p.videoProjectId}）。`,
+    "写脚本就写进这个脚本；剪辑、找素材、渲染都用这个视频项目。不要新建别的。",
+    note ? `选题：${note}` : "",
+  ]
+    .filter(Boolean)
+    .join("");
+  await db.update(chatChannels).set({ topic }).where(eq(chatChannels.id, p.channelId));
+}
+
+/**
+ * `visibleTo` for queries outside this file that list projects (the Script
+ * module's topics queue): the same rule the sidebar and the project page
+ * use, so a private project never shows up in someone else's list.
+ */
+export function projectsVisibleTo(viewer: Viewer) {
+  return visibleTo(viewer);
 }
