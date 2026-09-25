@@ -305,8 +305,8 @@ export function HomeScreen({
 
   const panels: Record<PanelKey, React.ReactNode> = {
     composer,
-    ideas: <IdeasPanel zh={zh} initial={ideas} canStart={can("chat")} />,
-    suggestion: <SuggestionCard items={suggestions} zh={zh} />,
+    ideas: <IdeasPanel zh={zh} initial={ideas} canStart={can("chat")} canResearch={can("research")} />,
+    suggestion: <SuggestionCard items={suggestions} zh={zh} canResearch={can("research")} />,
     extra: extra ? <RoleExtraPanel extra={extra} zh={zh} /> : null,
     projects: (
       <ProjectProgress

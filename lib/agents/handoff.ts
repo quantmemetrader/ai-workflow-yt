@@ -1,7 +1,7 @@
 import "server-only";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { notifications, scripts } from "@/lib/db/schema";
+import { notifications, scripts, topics } from "@/lib/db/schema";
 import { audit } from "@/lib/audit";
 import { newId } from "@/lib/ids";
 import { viewerById } from "@/lib/auth/viewer-by-id";
@@ -37,11 +37,20 @@ import type { Handoff } from "./mentions";
  */
 export async function handOffToVideo(approver: Viewer, scriptId: string, versionNo: number, approvalId: string) {
   const [script] = await db
-    .select({ id: scripts.id, title: scripts.title, ownerId: scripts.ownerId })
+    .select({ id: scripts.id, title: scripts.title, ownerId: scripts.ownerId, topicId: scripts.topicId })
     .from(scripts)
     .where(and(eq(scripts.id, scriptId), eq(scripts.tenantId, approver.tenantId)))
     .limit(1);
   if (!script) return null;
+
+  // The backlog card moves to "Handed to Video" now, not when the script was
+  // first drafted: approved words are what the editor works from.
+  if (script.topicId) {
+    await db
+      .update(topics)
+      .set({ stage: "handed", updatedAt: new Date() })
+      .where(and(eq(topics.id, script.topicId), eq(topics.tenantId, approver.tenantId)));
+  }
 
   // The owner if they are still here; otherwise whoever approved it, so the
   // project still has somebody who can open it.

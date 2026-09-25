@@ -76,8 +76,10 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
 
   /* Today's suggested video: the morning brief's signals, or its topic. */
   const suggestions = digest?.signals.length
-    ? digest.signals.slice(0, 2).map((sg) => ({
+    ? digest.signals.slice(0, 2).map((sg, i) => ({
         title: sg.title,
+        /* Which brief and which signal, so pressing an old card never opens today's. */
+        signal: digest.date ? { date: digest.date, index: i } : null,
         why: sg.whyNow.replace(/（证据\d+）|\[[A-Z]\d{1,2}\]/g, "").trim() || null,
         hook: sg.hook || null,
         strength: sg.strength || null,
