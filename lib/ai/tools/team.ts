@@ -107,7 +107,7 @@ async function run(ctx: ToolContext, name: string, args: Record<string, unknown>
     return {
       text: [
         `Plan${plan.date ? ` for ${plan.date}` : ""}, posted by 策划 in #${plan.channelName} at ${plan.postedAt.toISOString().slice(0, 16).replace("T", " ")} UTC (message ${plan.messageId}).`,
-        plan.date && plan.date !== today ? `Note: today is ${today}; this is the newest plan there is, not today's.` : "",
+        plan.date && plan.date !== today ? `Note: today in Hong Kong is ${today}; this is the newest plan there is, not today's.` : "",
         focus ? `Focus: ${focus}` : "",
         "To-dos — each is an assignment to the person named, not work already done:",
         ...plan.list.map((t, i) => `${i + 1}. ${ownerName(t.owner)} — ${t.text}${t.why ? ` (why: ${t.why})` : ""}`),

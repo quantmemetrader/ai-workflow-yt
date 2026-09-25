@@ -182,7 +182,7 @@ const agentName = (key: unknown): string =>
  * looks exactly like a colleague's unchecked "@剪辑师" in plain text, so
  * the checked one says what was handed over, by id.
  */
-function notesFor(meta: Record<string, unknown> | null): string[] {
+export function notesFor(meta: Record<string, unknown> | null): string[] {
   if (!meta) return [];
   const notes: string[] = [];
   const plan = meta.plan as { date?: unknown; list?: unknown } | undefined;

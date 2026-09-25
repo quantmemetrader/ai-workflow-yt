@@ -439,6 +439,9 @@ export type Claim = {
   kinds: ArtifactKind[];
   /** Said of the speaker's own work, or of somebody else's. */
   mine: boolean;
+  /** "已交给…": handing over, which any receipt backs — the work that was
+   * handed, or the assignment that handed it. */
+  handing: boolean;
 };
 
 /**
@@ -484,11 +487,16 @@ export function findClaims(text: string, self: AgentKey): Claim[] {
     if (/今天?早上|今早|上午|昨天|昨晚|前天|之前|此前|早些时候|earlier|yesterday|this morning/i.test(before)) continue;
 
     const subject = text.slice(sentenceStart, at);
+    // Quoted, not said: 你说的“已存入脚本库”.
+    const count = (re: RegExp) => subject.match(re)?.length ?? 0;
+    if (count(/[“「『]/g) > count(/[”」』]/g) || count(/"/g) % 2 === 1) continue;
+
     const mine = /我|\bI\b|\bwe\b|我们/i.test(subject) || !otherRe.test(subject);
 
     const plain = sentence.replace(namesRe, "");
-    const kinds = HANDING.test(m[0]) ? [] : [...new Set(KIND_WORDS.filter(([re]) => re.test(plain)).flatMap(([, k]) => k))];
-    claims.push({ claim: text.slice(Math.max(sentenceStart, at - 12), Math.min(sentenceEnd, end + 16)).trim(), kinds, mine });
+    const handing = HANDING.test(m[0]);
+    const kinds = handing ? [] : [...new Set(KIND_WORDS.filter(([re]) => re.test(plain)).flatMap(([, k]) => k))];
+    claims.push({ claim: text.slice(Math.max(sentenceStart, at - 12), Math.min(sentenceEnd, end + 16)).trim(), kinds, mine, handing });
   }
   return claims;
 }
@@ -508,13 +516,18 @@ export function judgeReply(text: string, facts: ReplyFacts, exists: ReadonlySet<
 
   const seenKinds = new Set([...facts.seen].flatMap((id) => KIND_OF_PREFIX[prefixOf(id)] ?? []));
   const receiptKinds = new Set(facts.receipts.map((r) => r.kind));
+  /* Work handed to the worker has begun, not finished: making a whole video
+     is minutes away from being something anybody may call done. */
+  const finished = new Set(facts.receipts.filter((r) => r.action !== "started").map((r) => r.kind));
   const unbacked = findClaims(text, facts.self)
     .filter((c) =>
       c.mine
         ? // Mine: a receipt this turn, of the kind the claim is about.
-          c.kinds.length
-          ? !c.kinds.some((k) => receiptKinds.has(k))
-          : facts.receipts.length === 0
+          c.handing
+          ? facts.receipts.length === 0
+          : c.kinds.length
+            ? !c.kinds.some((k) => finished.has(k))
+            : finished.size === 0
         : // Somebody else's: at least something of that kind was looked at.
           c.kinds.length > 0 && !c.kinds.some((k) => seenKinds.has(k) || receiptKinds.has(k)),
     )
@@ -785,190 +798,196 @@ async function answerOne(input: Chain, key: AgentKey, channel: Channel) {
     return { answer, failure, tools, record };
   };
 
-  const first = await turn(question);
-  let { answer, failure } = first;
-  let posted: Attempt = first.record;
+  /* Whatever happens from here, a colleague this turn assigned work to has
+     a posted request waiting for it, and is started (the `finally` below). */
+  let onward: Handoff | null = null;
+  let body = "";
+  try {
+    const first = await turn(question);
+    let { answer, failure } = first;
+    let posted: Attempt = first.record;
 
-  /* Worked, then said nothing: the turn ended on a tool call. One more turn
-     to say what it found, instead of posting "I could not answer". */
-  if (!answer.trim() && first.tools > 0 && !failure) {
-    const more = await turn(
-      zh ? "（系统提示）把你刚才用工具查到或做到的结果，用两三句话直接告诉提问的人。没有结果就说明缺什么。" : "(System) In two or three sentences, tell the person what your tools just found or did. If nothing, say what is missing.",
-    );
-    if (more.answer.trim()) ({ answer, failure, record: posted } = more);
-  }
-
-  /*
-   * Checked before it is said.
-   *
-   * A reply that quotes an id nothing returned, or one that does not exist,
-   * or says it finished something no tool wrote, goes back once with exactly
-   * what is wrong and exactly what the turn has receipts for. If the second
-   * attempt is no better, the channel gets a plain sentence saying so rather
-   * than either version.
-   */
-  let text = answer.trim().slice(0, MAX_REPLY);
-  let withheld: string[] | null = null;
-  if (text) {
-    const verdict = await verifyReply(text, facts, tenantId);
-    if (!verdict.ok) {
-      posted.rejected = problems(verdict, zh, false);
-      const again = await turn(
-        zh
-          ? [
-              "（系统核实）你刚才的回答没有发出，因为：",
-              ...problems(verdict, true, true).map((p) => `- ${p}`),
-              `你这一回合的回执：${receipts.length ? receipts.map(receiptLine).join("；") : "无——这一回合你没有写入、创建或修改任何东西"}。`,
-              "重新回答：只说工具真的返回了或真的做成了的事；只引用回执里或工具结果里出现过的 id；要说某个东西不存在，就说“找不到”，不要写那个 id。没做的事就说没做，说清楚现在实际有什么、谁能做。不要 @ 同事。",
-              fromAgent ? null : "如果这件事该同事去做，现在就调用 assign_task 交给他们，再说一句交给了谁。",
-            ]
-              .filter((l) => l !== null)
-              .join("\n")
-          : [
-              "(System check) Your reply was not posted, because:",
-              ...problems(verdict, false, true).map((p) => `- ${p}`),
-              `Your receipts this turn: ${receipts.length ? receipts.map((r) => `${r.kind} ${r.id} (${r.action})`).join("; ") : "none — you created or changed nothing this turn"}.`,
-              "Answer again: say only what tools returned or did; quote only ids from your receipts or tool results; to say something does not exist, say you could not find it without writing its id. Do not @ colleagues.",
-              fromAgent ? null : "If a colleague should do it, call assign_task now and then say whom you handed it to.",
-            ]
-              .filter((l) => l !== null)
-              .join("\n"),
+    /* Worked, then said nothing: the turn ended on a tool call. One more turn
+       to say what it found, instead of posting "I could not answer". */
+    if (!answer.trim() && first.tools > 0 && !failure) {
+      const more = await turn(
+        zh ? "（系统提示）把你刚才用工具查到或做到的结果，用两三句话直接告诉提问的人。没有结果就说明缺什么。" : "(System) In two or three sentences, tell the person what your tools just found or did. If nothing, say what is missing.",
       );
-      const second = again.answer.trim().slice(0, MAX_REPLY);
-      const recheck = second ? await verifyReply(second, facts, tenantId) : null;
-      if (recheck?.ok) {
-        text = second;
-        failure = again.failure;
-        posted = again.record;
-      } else {
-        if (recheck) again.record.rejected = problems(recheck, zh, false);
-        withheld = problems(recheck ?? verdict, zh, false);
-        const addressee = fromAgent || parseAgentMentions(`@${asker}`).length ? `${asker}，` : `@${asker} `;
-        const did = receipts.length
-          ? zh
-            ? `这一轮我实际做了：${receipts.map(receiptLine).join("；")}。`
-            : `What I actually did this turn: ${receipts.map((r) => `${r.kind} ${r.id} (${r.action})`).join("; ")}.`
-          : zh
-            ? "这一轮我没有做任何改动。"
-            : "I changed nothing this turn.";
-        text = zh
-          ? `${addressee}抱歉，我刚才要说的内容核对不上（${withheld.slice(0, 2).join("；")}），先不下结论，免得说错。${did}需要我做什么，请直接告诉我。`
-          : `${addressee}Sorry, what I was about to say did not check out (${withheld.slice(0, 2).join("; ")}), so I am not saying it. ${did} Tell me what you need and I will do it.`;
-        failure = null;
-        posted = { id: null, answer: text };
+      if (more.answer.trim()) ({ answer, failure, record: posted } = more);
+    }
+
+    /*
+     * Checked before it is said.
+     *
+     * A reply that quotes an id nothing returned, or one that does not exist,
+     * or says it finished something no tool wrote, goes back once with exactly
+     * what is wrong and exactly what the turn has receipts for. If the second
+     * attempt is no better, the channel gets a plain sentence saying so rather
+     * than either version.
+     */
+    let text = answer.trim().slice(0, MAX_REPLY);
+    let withheld: string[] | null = null;
+    if (text) {
+      const verdict = await verifyReply(text, facts, tenantId);
+      if (!verdict.ok) {
+        posted.rejected = problems(verdict, zh, false);
+        const again = await turn(
+          zh
+            ? [
+                "（系统核实）你刚才的回答没有发出，因为：",
+                ...problems(verdict, true, true).map((p) => `- ${p}`),
+                `你这一回合的回执：${receipts.length ? receipts.map(receiptLine).join("；") : "无——这一回合你没有写入、创建或修改任何东西"}。`,
+                "重新回答：只说工具真的返回了或真的做成了的事；只引用回执里或工具结果里出现过的 id；要说某个东西不存在，就说“找不到”，不要写那个 id。没做的事就说没做，说清楚现在实际有什么、谁能做。不要 @ 同事。",
+                fromAgent ? null : "如果这件事该同事去做，现在就调用 assign_task 交给他们，再说一句交给了谁。",
+              ]
+                .filter((l) => l !== null)
+                .join("\n")
+            : [
+                "(System check) Your reply was not posted, because:",
+                ...problems(verdict, false, true).map((p) => `- ${p}`),
+                `Your receipts this turn: ${receipts.length ? receipts.map((r) => `${r.kind} ${r.id} (${r.action})`).join("; ") : "none — you created or changed nothing this turn"}.`,
+                "Answer again: say only what tools returned or did; quote only ids from your receipts or tool results; to say something does not exist, say you could not find it without writing its id. Do not @ colleagues.",
+                fromAgent ? null : "If a colleague should do it, call assign_task now and then say whom you handed it to.",
+              ]
+                .filter((l) => l !== null)
+                .join("\n"),
+        );
+        const second = again.answer.trim().slice(0, MAX_REPLY);
+        const recheck = second ? await verifyReply(second, facts, tenantId) : null;
+        if (recheck?.ok) {
+          text = second;
+          failure = again.failure;
+          posted = again.record;
+        } else {
+          if (recheck) again.record.rejected = problems(recheck, zh, false);
+          withheld = problems(recheck ?? verdict, zh, false);
+          const addressee = fromAgent || parseAgentMentions(`@${asker}`).length ? `${asker}，` : `@${asker} `;
+          const did = receipts.length
+            ? zh
+              ? `这一轮我实际做了：${receipts.map(receiptLine).join("；")}。`
+              : `What I actually did this turn: ${receipts.map((r) => `${r.kind} ${r.id} (${r.action})`).join("; ")}.`
+            : zh
+              ? "这一轮我没有做任何改动。"
+              : "I changed nothing this turn.";
+          text = zh
+            ? `${addressee}抱歉，我刚才要说的内容核对不上（${withheld.slice(0, 2).join("；")}），先不下结论，免得说错。${did}需要我做什么，请直接告诉我。`
+            : `${addressee}Sorry, what I was about to say did not check out (${withheld.slice(0, 2).join("; ")}), so I am not saying it. ${did} Tell me what you need and I will do it.`;
+          failure = null;
+          posted = { id: null, answer: text };
+        }
       }
     }
-  }
 
-  /*
-   * Who, if anyone, this reply hands on to.
-   *
-   * Only when the turn made something (a receipt that is not itself an
-   * assignment — those have handed on already), only one colleague, only
-   * one not already in this branch or just assigned, and only while the
-   * chain has a hop and an answer left. Every other `@colleague` is written
-   * back as a plain name, so the text says who without starting anybody.
-   */
-  const work = receipts.filter((r) => r.kind !== "assignment");
-  const canHandOn = !withheld && work.length > 0 && input.hop + 1 <= MAX_HOPS && input.budget.left > 0;
-  const target = canHandOn
-    ? (parseAgentMentions(text).find((k) => k !== key && !input.spoken.includes(k) && !team.assigned.includes(k)) ?? null)
-    : null;
-  text = stripAgentMentions(text, target);
+    /*
+     * Who, if anyone, this reply hands on to.
+     *
+     * Only when the turn made something (a receipt that is not itself an
+     * assignment — those have handed on already), only one colleague, only
+     * one not already in this branch or just assigned, and only while the
+     * chain has a hop and an answer left. Every other `@colleague` is written
+     * back as a plain name, so the text says who without starting anybody.
+     */
+    const work = receipts.filter((r) => r.kind !== "assignment");
+    const canHandOn = !withheld && work.length > 0 && input.hop + 1 <= MAX_HOPS && input.budget.left > 0;
+    const target = canHandOn
+      ? (parseAgentMentions(text).find((k) => k !== key && !input.spoken.includes(k) && !team.assigned.includes(k)) ?? null)
+      : null;
+    text = stripAgentMentions(text, target);
 
-  const onward: Handoff | null = target
-    ? {
-        from: key,
-        to: target,
-        artifacts: work.map((r) => ({ kind: r.kind, id: r.id, ...(r.title ? { title: r.title } : {}), ...(hrefFor(r.kind, r.id) ? { href: hrefFor(r.kind, r.id) } : {}) })),
-        verified: true,
-        scriptId: work.find((r) => r.kind === "script")?.id ?? scriptId,
-        projectId: work.find((r) => r.kind === "video_project")?.id ?? projectId,
-      }
-    : null;
+    onward = target
+      ? {
+          from: key,
+          to: target,
+          artifacts: work.map((r) => ({ kind: r.kind, id: r.id, ...(r.title ? { title: r.title } : {}), ...(hrefFor(r.kind, r.id) ? { href: hrefFor(r.kind, r.id) } : {}) })),
+          verified: true,
+          scriptId: work.find((r) => r.kind === "script")?.id ?? scriptId,
+          projectId: work.find((r) => r.kind === "video_project")?.id ?? projectId,
+        }
+      : null;
 
-  /*
-   * Silence is a failure worth saying out loud.
-   *
-   * A tag that produces nothing at all looks exactly like a tag that was never
-   * read — and the two have very different fixes. The commonest cause is the
-   * OpenRouter account being out of credit, which is an admin's job, not a
-   * mystery for whoever typed the tag. An employee is addressed by name, not
-   * tagged, so the apology does not set it off again.
-   */
-  const body = text
-    ? text
-    : fromAgent || parseAgentMentions(`@${asker}`).length
-      ? zh
-        ? `${asker}，我暂时答不上来${failure ? `：${failure}` : "。"}`
-        : `${asker}, I could not answer just now${failure ? `: ${failure}` : "."}`
-      : zh
-        ? `@${asker} 我暂时答不上来${failure ? `：${failure}` : "。"}`
-        : `@${asker} I could not answer just now${failure ? `: ${failure}` : "."}`;
+    /*
+     * Silence is a failure worth saying out loud.
+     *
+     * A tag that produces nothing at all looks exactly like a tag that was never
+     * read — and the two have very different fixes. The commonest cause is the
+     * OpenRouter account being out of credit, which is an admin's job, not a
+     * mystery for whoever typed the tag. An employee is addressed by name, not
+     * tagged, so the apology does not set it off again.
+     */
+    body = text
+      ? text
+      : fromAgent || parseAgentMentions(`@${asker}`).length
+        ? zh
+          ? `${asker}，我暂时答不上来${failure ? `：${failure}` : "。"}`
+          : `${asker}, I could not answer just now${failure ? `: ${failure}` : "."}`
+        : zh
+          ? `@${asker} 我暂时答不上来${failure ? `：${failure}` : "。"}`
+          : `@${asker} I could not answer just now${failure ? `: ${failure}` : "."}`;
 
-  await postMessage(agent, channelId, body, {
-    ...(input.replyMeta ?? {}),
-    agent: key,
-    /** Which tag pulled it in, so the thread can be read back later. */
-    answeringMention: true,
-    hop: input.hop,
-    askedBy: viewer.id,
-    ...(receipts.length ? { receipts } : {}),
-    ...(onward ? { handoff: handoffMeta(onward) } : {}),
-    ...(withheld ? { withheld: true } : {}),
-    ...(text ? {} : { failed: true }),
-  });
-
-  /*
-   * The thread says what the channel says.
-   *
-   * `runAgent` replays an employee's own earlier replies to it on the next
-   * tag. A reply that was checked and not posted stayed in the thread as it
-   * was written — so next time the employee "remembered" finishing a script
-   * nobody ever saw. Each attempt is rewritten to what actually happened.
-   */
-  for (const t of turns) {
-    if (!t.id) continue;
-    const content =
-      t === posted
-        ? body
-        : t.rejected
-          ? zh
-            ? `（这条回答没有发出：系统核对未通过——${t.rejected.join("；")}。）`
-            : `(This reply was not posted: it failed the check — ${t.rejected.join("; ")}.)`
-          : null;
-    if (content !== null && content !== t.answer) {
-      await db.update(agentMessages).set({ content }).where(eq(agentMessages.id, t.id));
-    }
-  }
-  if (withheld) {
-    /* The plain sentence that was posted instead belongs in the thread too,
-       as the last thing this employee said here. */
-    await db.insert(agentMessages).values({ id: newId("am"), conversationId, role: "assistant", content: body, status: "complete", speaker: key });
-  }
-
-  await audit(agent, "agent.mention.reply", {
-    objectType: "channel",
-    objectId: channelId,
-    module: "chat",
-    meta: {
+    await postMessage(agent, channelId, body, {
+      ...(input.replyMeta ?? {}),
       agent: key,
-      askedBy: viewer.id,
+      /** Which tag pulled it in, so the thread can be read back later. */
+      answeringMention: true,
       hop: input.hop,
-      failed: !text,
-      receipts: receipts.length,
-      ...(withheld ? { withheld } : {}),
-      ...(onward ? { handedTo: onward.to } : {}),
-    },
-  });
+      askedBy: viewer.id,
+      ...(receipts.length ? { receipts } : {}),
+      ...(onward ? { handoff: handoffMeta(onward) } : {}),
+      ...(withheld ? { withheld: true } : {}),
+      ...(text ? {} : { failed: true }),
+    });
 
-  /* Colleagues it assigned work to, now that its reply is in the channel.
-     Each one in turn, and one failing does not stop the next. */
-  for (const work of deferred) {
-    try {
-      await work();
-    } catch (err) {
-      console.error(`[agents] ${key}'s assignment could not start`, err);
+    /*
+     * The thread says what the channel says.
+     *
+     * `runAgent` replays an employee's own earlier replies to it on the next
+     * tag. A reply that was checked and not posted stayed in the thread as it
+     * was written — so next time the employee "remembered" finishing a script
+     * nobody ever saw. Each attempt is rewritten to what actually happened.
+     */
+    for (const t of turns) {
+      if (!t.id) continue;
+      const content =
+        t === posted
+          ? body
+          : t.rejected
+            ? zh
+              ? `（这条回答没有发出：系统核对未通过——${t.rejected.join("；")}。）`
+              : `(This reply was not posted: it failed the check — ${t.rejected.join("; ")}.)`
+            : null;
+      if (content !== null && content !== t.answer) {
+        await db.update(agentMessages).set({ content }).where(eq(agentMessages.id, t.id));
+      }
+    }
+    if (withheld) {
+      /* The plain sentence that was posted instead belongs in the thread too,
+         as the last thing this employee said here. */
+      await db.insert(agentMessages).values({ id: newId("am"), conversationId, role: "assistant", content: body, status: "complete", speaker: key });
+    }
+
+    await audit(agent, "agent.mention.reply", {
+      objectType: "channel",
+      objectId: channelId,
+      module: "chat",
+      meta: {
+        agent: key,
+        askedBy: viewer.id,
+        hop: input.hop,
+        failed: !text,
+        receipts: receipts.length,
+        ...(withheld ? { withheld } : {}),
+        ...(onward ? { handedTo: onward.to } : {}),
+      },
+    });
+  } finally {
+    /* Colleagues it assigned work to, now that its reply is in the channel.
+       Each one in turn, and one failing does not stop the next. */
+    for (const work of deferred) {
+      try {
+        await work();
+      } catch (err) {
+        console.error(`[agents] ${key}'s assignment could not start`, err);
+      }
     }
   }
 
