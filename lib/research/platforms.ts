@@ -135,6 +135,14 @@ function meterFor(tenantId: string) {
 }
 
 /**
+ * The studio the collector reads for: its brief is what 研究员's stored
+ * marks (`judged`) cite. The lists themselves are the platforms' and belong
+ * to nobody; the marks quote one studio's own data, so a reader from any
+ * other studio gets them made afresh for itself (`/api/research/hot`).
+ */
+export const HOT_TENANT = process.env.TENANT_ID ?? "tnt_aurafarmers";
+
+/**
  * Read one platform live and store what came back. Used by the collector.
  *
  * The tenant defaults to the studio's own, as every other script does. It
@@ -150,7 +158,7 @@ function meterFor(tenantId: string) {
  */
 export async function collectPlatform(
   platform: PlatformKey,
-  tenantId: string = process.env.TENANT_ID ?? "tnt_aurafarmers",
+  tenantId: string = HOT_TENANT,
   opts: { reuse?: RelevanceMap } = {},
 ): Promise<PlatformHot> {
   const hot = await readLive(platform);

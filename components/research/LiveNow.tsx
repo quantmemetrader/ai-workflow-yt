@@ -147,9 +147,11 @@ export function LiveNow({
 
   /* YouTube is a stored list like every other platform now, with likes and
      comments on each row; the page's own chart is only the fallback. The
-     merged tab has no list of its own: it is drawn from all of them. */
-  const listKey: PlatformKey | null = tab === "focus" ? null : tab === "live" ? "youtube" : tab;
-  const loading: PlatformKey | null = open && listKey && !loaded[listKey] ? listKey : null;
+     merged tab has no list of its own: it is drawn from all of them. (Named
+     apart from `listKey` below, which is always a platform: the list the
+     picked row is on, which is what starting work from a row needs.) */
+  const tabList: PlatformKey | null = tab === "focus" ? null : tab === "live" ? "youtube" : tab;
+  const loading: PlatformKey | null = open && tabList && !loaded[tabList] ? tabList : null;
   /* A tab is asked for on its own only when the one request for every tab
      came back without it (never stored, or storage failed), so opening the
      panel is one request rather than two. */
@@ -174,7 +176,7 @@ export function LiveNow({
     };
   }, [fetchOne, zh]);
 
-  const rowsReady = listKey !== null && (Boolean(loaded[listKey]?.rows.length) || (tab === "live" && videos.length > 0));
+  const rowsReady = tabList !== null && (Boolean(loaded[tabList]?.rows.length) || (tab === "live" && videos.length > 0));
   /* Same shape for the reading: it is being made whenever rows are on
      screen and no judgement has landed for them. Not before the stored
      lists are back, since they carry the marks made at collection, and not
@@ -239,27 +241,30 @@ export function LiveNow({
   }
   const anyMarked = PLATFORMS.some((p) => !p.unavailable && isMarked(p.key));
 
-  const full: ViewRow[] = listKey ? rowsOf(listKey) : merged;
-  const listMarked = listKey ? isMarked(listKey) : anyMarked;
-  const filtering = listKey !== null && focused && listMarked;
+  const full: ViewRow[] = tabList ? rowsOf(tabList) : merged;
+  const listMarked = tabList ? isMarked(tabList) : anyMarked;
+  const filtering = tabList !== null && focused && listMarked;
   const rows: ViewRow[] = filtering ? full.filter((r) => onFocus(r.mark)) : full;
-  const onBeatCount = listKey ? full.filter((r) => onFocus(r.mark)).length : merged.length;
-  const tabMeta = listKey && tab !== "live" ? (PLATFORMS.find((p) => p.key === tab) ?? null) : null;
-  const summary = listKey ? (loaded[listKey]?.summary ?? null) : null;
-  const summaryAt = listKey ? (loaded[listKey]?.fetchedAt ?? null) : null;
+  const onBeatCount = tabList ? full.filter((r) => onFocus(r.mark)).length : merged.length;
+  const tabMeta = tabList && tab !== "live" ? (PLATFORMS.find((p) => p.key === tab) ?? null) : null;
+  const summary = tabList ? (loaded[tabList]?.summary ?? null) : null;
+  const summaryAt = tabList ? (loaded[tabList]?.fetchedAt ?? null) : null;
   const marks: Judged = tab === "focus" ? Object.assign({}, ...Object.values(judged)) : (judged[tab] ?? {});
   /* The bar is against the whole list, so a filtered row keeps its length;
      the merged tab mixes units (plays, search heat) and draws none. */
-  const maxHeat = listKey ? full.reduce((m, r) => Math.max(m, r.heat ?? 0), 0) : 0;
+  const maxHeat = tabList ? full.reduce((m, r) => Math.max(m, r.heat ?? 0), 0) : 0;
   const nameOf = (key: PlatformKey) => {
     const p = PLATFORMS.find((x) => x.key === key)!;
     return zh ? p.zh : p.label;
   };
   const tabName = tab === "focus" ? t("Business & tech · every platform", "财经科技 · 全平台") : tab === "live" ? "YouTube" : nameOf(tab);
   const picked = selected ? (rows.find((r) => r.phrase === selected) ?? null) : null;
-  /* In the merged tab a picked row is described by the platform it is from. */
-  const meta = tab === "focus" ? (picked ? (PLATFORMS.find((p) => p.key === picked.from) ?? null) : null) : tabMeta;
-  const platformName = tab === "focus" && picked ? nameOf(picked.from) : tabName;
+  /* The list the picked row is on: the tab's own, or in the merged tab the
+     one the row came from, so the panel and anything started from the row
+     name the platform the row is really on. */
+  const listKey: PlatformKey = picked?.from ?? tabList ?? "youtube";
+  const meta = picked ? (PLATFORMS.find((p) => p.key === listKey) ?? null) : tabMeta;
+  const platformName = picked ? nameOf(listKey) : tabName;
   /* The count on each tab: rows on the beat, once its list is marked. */
   const tabCount = (key: Tab): number | null => {
     if (key === "focus") return anyMarked ? merged.length : null;
@@ -391,7 +396,11 @@ export function LiveNow({
                   {tab === "focus"
                     ? t("Business and tech, every platform", "各平台的财经科技热点")
                     : tab === "live"
-                      ? t("YouTube · most watched in Science & Tech", "YouTube · 科技类播放最多")
+                      ? /* The collector falls back to the whole chart, with a note,
+                           when Hong Kong has no Science & Tech chart that hour. */
+                        loaded.youtube?.note
+                        ? t("Most watched on YouTube", "YouTube 播放最多")
+                        : t("YouTube · most watched in Science & Tech", "YouTube · 科技类播放最多")
                       : `${tabName} · ${tabMeta!.kind === "video" ? t("pushing now", "此刻在推") : tabMeta!.kind === "note" ? t("creator inspiration", "给创作者的热点灵感") : t("hot search", "热搜榜")}`}
                 </span>
                 <span style={{ fontSize: 11.5, color: "#999999", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0 }}>
@@ -406,12 +415,12 @@ export function LiveNow({
                         : focused
                           ? t(`${rows.length} of ${full.length} · business & tech`, `${rows.length} / ${full.length} 条 · 财经科技`)
                           : t(`${full.length} items · ${onBeatCount} business & tech`, `${full.length} 条 · 其中财经科技 ${onBeatCount} 条`)}
-                  {listKey && loaded[listKey]?.note && full.length ? ` · ${loaded[listKey]!.note}` : ""}
+                  {tabList && loaded[tabList]?.note && full.length ? ` · ${loaded[tabList]!.note}` : ""}
                 </span>
                 <span style={{ flexGrow: 1 }} />
                 {/* Business and tech only, or the whole list. Only where there is a
                     mark to filter on; the merged tab is the beat by definition. */}
-                {listKey && listMarked && full.length ? (
+                {tabList && listMarked && full.length ? (
                   <span role="group" aria-label={t("Which rows", "显示哪些条目")} style={{ display: "inline-flex", flexShrink: 0, gap: 2, padding: 2, border: "1px solid #e8e8e8", borderRadius: 999, background: "#fafafa" }}>
                     {FOCUS_MODES.map((m) => (
                       <button
@@ -442,7 +451,7 @@ export function LiveNow({
                 </div>
               ) : null}
 
-              {(listKey ? loading === listKey : open && !allDone) && !rows.length ? (
+              {(tabList ? loading === tabList : open && !allDone) && !rows.length ? (
                 <div style={{ fontSize: 11.5, color: "#999999", padding: "8px 0" }}>{t("Reading…", "正在读取…")}</div>
               ) : !rows.length && filtering && full.length ? (
                 /* Filtered to nothing: say so, and offer the list rather than a blank. */
@@ -464,7 +473,7 @@ export function LiveNow({
                       )}
                 </div>
               ) : !rows.length ? (
-                <div style={{ fontSize: 11.5, color: "#a35f00", lineHeight: 1.5, padding: "8px 0" }}>{(tab === "live" ? note : listKey ? loaded[listKey]?.note : null) ?? t("Nothing came back.", "刚才没有返回内容。")}</div>
+                <div style={{ fontSize: 11.5, color: "#a35f00", lineHeight: 1.5, padding: "8px 0" }}>{(tab === "live" ? note : tabList ? loaded[tabList]?.note : null) ?? t("Nothing came back.", "刚才没有返回内容。")}</div>
               ) : (
                 <>
                   <div style={{ display: "grid", gridTemplateColumns: cols, gap: 10, padding: "4px 0 3px", fontSize: 10.5, color: "#999999", letterSpacing: ".03em" }}>
@@ -487,7 +496,7 @@ export function LiveNow({
                       const place = tab === "focus" ? i + 1 : r.rank;
                       const top = place <= 3;
                       const beat = onFocus(r.mark);
-                      const dim = !focused && listMarked && listKey !== null && !beat;
+                      const dim = !focused && listMarked && tabList !== null && !beat;
                       return (
                         <div
                           key={`${r.url ?? r.phrase}-${i}`}
@@ -525,7 +534,7 @@ export function LiveNow({
                                 {tab === "focus" ? (
                                   <span style={{ display: "inline-flex", alignItems: "center", gap: 4, flexShrink: 0, color: "#7c7c7c" }}>
                                     <PlatformMark platform={r.from} size={10} />
-                                    {nameOf(r.from)} {t(`#${r.rank}`, `第 ${r.rank}`)}
+                                    {nameOf(r.from)} {t(`#${r.rank}`, `第 ${r.rank} 名`)}
                                   </span>
                                 ) : null}
                                 {beat && r.mark ? <span style={relTag(r.mark.t)}>{relevanceLabel(r.mark, zh)}</span> : null}
@@ -574,7 +583,7 @@ export function LiveNow({
                 <div style={{ fontSize: 13.5, fontWeight: 600, lineHeight: 1.45 }}>{picked.phrase}</div>
                 {marks[picked.phrase] ? <span style={{ ...pill, alignSelf: "flex-start" }}>{marks[picked.phrase].fit}</span> : null}
                 <div style={{ fontSize: 12 }}>
-                  <Kv k={t("Platform", "平台")} v={tab === "focus" ? `${platformName} · ${t(`#${picked.rank}`, `第 ${picked.rank}`)}` : platformName} />
+                  <Kv k={t("Platform", "平台")} v={tab === "focus" ? `${platformName} · ${t(`#${picked.rank}`, `第 ${picked.rank} 名`)}` : platformName} />
                   {picked.mark ? <Kv k={t("Beat", "类别")} v={onFocus(picked.mark, 1) ? relevanceLabel(picked.mark, zh) : t("Not business or tech", "不是财经科技")} /> : null}
                   <Kv k={t("Heat", "热度")} v={picked.heatLabel ?? (picked.heat ? compact(picked.heat) : "—")} strong />
                   {picked.stats?.views != null ? <Kv k={t("Views", "播放")} v={compact(picked.stats.views)} /> : null}
@@ -641,7 +650,7 @@ export function LiveNow({
                     : allDone
                       ? t("Nothing on the business and tech beat across the platforms right now.", "此刻各平台都没有财经科技相关的热点。")
                       : t("Reading the lists…", "正在读各平台的榜单…")
-                  : (summary ?? (loading === listKey ? t("Reading the list…", "正在读这份榜…") : t("The researcher writes a line here at the next hourly collection.", "研究员会在下一次整点收集时在这里写一句总结。")))}
+                  : (summary ?? (loading === tabList ? t("Reading the list…", "正在读这份榜…") : t("The researcher writes a line here at the next hourly collection.", "研究员会在下一次整点收集时在这里写一句总结。")))}
               </div>
               <div style={{ marginTop: 8 }}>
                 <SayToAgent agent="research" about={`${tabName} ${t("list", "榜单")}`} zh={zh} autoFocus={false} compact />

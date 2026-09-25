@@ -303,10 +303,15 @@ async function run(ctx: ToolContext, name: string, args: Record<string, unknown>
         }
       }
       if (!lines.length) {
+        const one = isPlatformKey(only) ? PLATFORMS.find((p) => p.key === only)! : null;
         return {
           text: hidden
-            ? `Nothing on the business or tech beat in the stored lists right now (${hidden} other rows). Ask again with all=true to see everything.`
-            : "No stored hot lists yet; the hourly collector has not run.",
+            ? `Nothing on the business or tech beat in ${one ? `${one.zh}'s stored list` : "the stored lists"} right now (${hidden} other rows). Ask again with all=true to see everything.`
+            : one
+              ? one.unavailable
+                ? `${one.zh} (${one.label}) has no public hot list to collect.`
+                : `No stored list for ${one.zh} (${one.label}) in the last week.`
+              : "No stored hot lists yet; the hourly collector has not run.",
         };
       }
       return {

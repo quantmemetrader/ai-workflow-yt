@@ -39,6 +39,9 @@ export default async function TrendsPage({
   const { cat } = await searchParams;
   const active = cat ? cat.split(",").filter(Boolean) : [];
 
+  /* The stored Google and YouTube lists (see below), read alongside the rest
+     rather than after it: two database reads, never a live one. */
+  const storedLists = Promise.all([storedHot("google").catch(() => null), storedHot("youtube").catch(() => null)]);
   const [topics, sources, decisions, open, competitors, ourMedian, creator, syncJobs] = await Promise.all([
     /*
      * Every topic, not the filtered ones.
@@ -83,7 +86,7 @@ export default async function TrendsPage({
    * `/api/research/hot`, so nothing is lost by filtering here.
    */
   const zhPage = (viewer.locale ?? "zh-CN").startsWith("zh");
-  const [google, youtube] = await Promise.all([storedHot("google").catch(() => null), storedHot("youtube").catch(() => null)]);
+  const [google, youtube] = await storedLists;
   const googleRel = google?.relevance ?? null;
   const trending = (google?.rows ?? [])
     .filter((r) => !googleRel || onFocus(googleRel[r.phrase]))
