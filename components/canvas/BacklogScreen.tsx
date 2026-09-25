@@ -48,6 +48,11 @@ export type BacklogItem = {
   stage: Stage;
   flagged: boolean;
   flagReason: string | null;
+  /** The project started from it, and its script, once there are. */
+  projectId?: string | null;
+  scriptId?: string | null;
+  scriptStatus?: string | null;
+  beats?: number;
 };
 
 export type Person = { id: string; name: string };
@@ -664,6 +669,38 @@ export function BacklogScreen(props: {
                             >
                               {item.name}
                             </div>
+                            {/* Not on the artboard: where the topic has got to
+                                in Script, one press away. The card itself
+                                selects, so the links keep their clicks and
+                                their Enter to themselves. */}
+                            {item.scriptId || item.projectId ? (
+                              <div style={{ display: "flex", gap: 12, marginTop: 6, fontSize: 11.5 }}>
+                                {item.scriptId ? (
+                                  <Link
+                                    prefetch={false}
+                                    href={`/script/${item.scriptId}`}
+                                    onClick={(e) => e.stopPropagation()}
+                                    onKeyDown={(e) => e.stopPropagation()}
+                                    style={{ color: ACCENT, textDecoration: "none" }}
+                                  >
+                                    {zh
+                                      ? `脚本 · ${item.beats ? `${item.beats} 个分镜` : "还没写"} →`
+                                      : `Script · ${item.beats ? `${item.beats} beats` : "not written yet"} →`}
+                                  </Link>
+                                ) : null}
+                                {item.projectId ? (
+                                  <Link
+                                    prefetch={false}
+                                    href={`/projects/${item.projectId}`}
+                                    onClick={(e) => e.stopPropagation()}
+                                    onKeyDown={(e) => e.stopPropagation()}
+                                    style={{ color: "#525252", textDecoration: "none" }}
+                                  >
+                                    {zh ? "项目 →" : "Project →"}
+                                  </Link>
+                                ) : null}
+                              </div>
+                            ) : null}
                             <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 7, rowGap: 4, marginTop: 11 }}>
                               <div
                                 className="av"

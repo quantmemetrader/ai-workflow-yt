@@ -10,13 +10,14 @@ import { useMentions } from "@/components/chat/useMentions";
 import { AccessPicker } from "@/components/files/AccessPicker";
 import { AGENT_COLORS, AGENT_LABELS, agentTag, parseAgentMentions, type AgentKey } from "@/lib/agents/catalog";
 import { pressCardAction, sendChannelMessage } from "@/app/(app)/chat/actions";
-import { deleteProjectAction, renameProjectAction, setProjectAccessAction, setProjectStatusAction, chooseScriptAction, chooseTopicAction } from "@/app/(app)/projects/actions";
+import { deleteProjectAction, renameProjectAction, setProjectAccessAction, setProjectStatusAction, chooseScriptAction, chooseTopicAction, startFromTopicAction } from "@/app/(app)/projects/actions";
 import { addClipAction, addItemAction, autoEditAction, exportAction } from "@/app/(app)/video/actions";
 import { uploadFiles } from "@/lib/client/upload";
 import { beginWork } from "@/lib/client/busy";
 import { notify } from "@/lib/client/notify";
 import { writeRendering } from "@/lib/client/rendering";
 import type { ProjectDetail, ProjectStep } from "@/lib/projects/service";
+import { cleanCodes, type ProjectSource } from "@/lib/projects/topic";
 
 /**
  * One project, worked on in place.
@@ -52,6 +53,57 @@ export function ProjectScreen({ project: p, zh, people }: { project: ProjectDeta
   };
   const anyWorking = (Object.keys(asked) as AgentKey[]).some(working);
   const directing = p.director?.state === "queued" || p.director?.state === "running";
+  /* The topic this project was started from, as the server resolved it
+     (why now, the hook, the evidence with its numbers). */
+  const src = (p.source as ProjectSource | null) ?? null;
+
+  /*
+   * 编剧 writing the draft that was started with the project (from Home,
+   * Research, the backlog or the Script queue), or from the button below.
+   * The mark lives on the project, so arriving from anywhere shows it; the
+   * script's pulse says when it is done (or that an old mark has gone
+   * stale), and the page refreshes once instead of showing "no beats yet"
+   * until somebody reloads it.
+   */
+  const [draftWriting, setDraftWriting] = React.useState(Boolean(src?.writing?.at));
+  const scriptIdForPulse = p.script?.id ?? null;
+  React.useEffect(() => {
+    if (!draftWriting || !scriptIdForPulse) return;
+    const until = Date.now() + 10 * 60_000;
+    let stopped = false;
+    const id = setInterval(async () => {
+      if (stopped) return;
+      if (Date.now() > until) {
+        clearInterval(id);
+        setDraftWriting(false);
+        return;
+      }
+      const r = await fetch(`/api/script/${scriptIdForPulse}/pulse`, { cache: "no-store" }).catch(() => null);
+      const j = r?.ok ? ((await r.json()) as { writing: boolean }) : null;
+      if (!j || stopped || j.writing) return;
+      stopped = true;
+      clearInterval(id);
+      setDraftWriting(false);
+      router.refresh();
+    }, 3000);
+    return () => {
+      stopped = true;
+      clearInterval(id);
+    };
+  }, [draftWriting, scriptIdForPulse, router]);
+
+  /** Write (or rewrite) the project's draft from its topic, after the response. */
+  function writeDraft() {
+    start(async () => {
+      const res = await startFromTopicAction({ kind: "project", id: p.id }, { write: true, rewrite: p.beats.length > 0 });
+      if ("error" in res && res.error) {
+        notify(res.error);
+        return;
+      }
+      if ("writing" in res && res.writing) setDraftWriting(true);
+      else if ("note" in res && res.note) notify(res.note);
+    });
+  }
   const renderLive = p.render?.state === "queued" || p.render?.state === "rendering" || directing;
 
   /* While something is being worked on, ask for the project's state in one
@@ -239,8 +291,12 @@ export function ProjectScreen({ project: p, zh, people }: { project: ProjectDeta
               where the one above it ends, whatever their heights. */}
           <Board>
             {/* ---- topic ---- */}
-            <Workbench icon={<AgentIcon agent="research" size={26} radius={7} />} title={t("选题", "Topic")} sub={p.source?.label ?? t("你定的题", "Your topic")}>
-              {p.brief ? <p style={{ margin: "0 0 10px", fontSize: 13, color: "#525252", lineHeight: 1.6 }}>{p.brief.replace(/@\S+/g, "").replace(/\[[A-Z]\d{1,2}\]\s*|（证据\d+）/g, "").trim().slice(0, 300)}</p> : null}
+            <Workbench icon={<AgentIcon agent="research" size={26} radius={7} />} title={t("选题", "Topic")} sub={src?.label ?? t("你定的题", "Your topic")}>
+              {src?.why || src?.hook || src?.evidence?.length ? (
+                <TopicFacts src={src} zh={zh} />
+              ) : p.brief ? (
+                <p style={{ margin: "0 0 10px", fontSize: 13, color: "#525252", lineHeight: 1.6 }}>{cleanCodes(p.brief).slice(0, 300)}</p>
+              ) : null}
               <AgentOutput msg={latest("research")} working={working("research")} zh={zh} onOpen={(m) => setPopup({ title: t("研究员的结果", "The researcher's findings"), body: <Body text={m.body} /> })} />
               <Actions>
                 <Action icon="spark" label={t("补充证据", "Find evidence")} onClick={() => ask("research", t("为这个项目的选题找 3 条真实数据证据（平台、播放或热度、链接），只用工具查到的数字。", "Find 3 real pieces of evidence for this project's topic (platform, views or heat, link), numbers from tools only."))} disabled={pending} />
@@ -261,7 +317,7 @@ export function ProjectScreen({ project: p, zh, people }: { project: ProjectDeta
                 sub={p.beats.length ? t(`${p.beats.length} 个分镜 · ${scriptStatus(p.script?.status ?? "", zh)}`, `${p.beats.length} beats · ${scriptStatus(p.script?.status ?? "", zh)}`) : t("还没写", "Not written yet")}
                 right={p.script ? <Link prefetch={false} href={`/script/${p.script.id}`} style={{ ...btn(false), height: 28, fontSize: 12, textDecoration: "none" }}>{t("编辑器", "Editor")} <Icon name="external" size={11} /></Link> : null}
               >
-                {working("script") ? <Working agent="script" zh={zh} text={t("编剧正在写…", "The writer is writing…")} /> : null}
+                {working("script") || draftWriting ? <Working agent="script" zh={zh} text={draftWriting ? (p.beats.length ? t("编剧正在按选题重写…", "The writer is rewriting from the topic…") : t("编剧正在写初稿，写好会自动出现在这里…", "The writer is drafting; it appears here when done…")) : t("编剧正在写…", "The writer is writing…")} /> : null}
                 {p.beats.length ? (
                   <div style={{ border: "1px solid #efefef", borderRadius: 10, overflow: "hidden" }}>
                     {p.beats.slice(0, 5).map((b) => (
@@ -275,7 +331,7 @@ export function ProjectScreen({ project: p, zh, people }: { project: ProjectDeta
                       {t(`查看全部 ${p.beats.length} 个分镜`, `See all ${p.beats.length} beats`)}
                     </button>
                   </div>
-                ) : !working("script") ? (
+                ) : !working("script") && !draftWriting ? (
                   <Empty text={t("还没有分镜。让编剧写初稿，或在下面说要什么。", "No beats yet. Ask the writer for a draft, or say what you want below.")} />
                 ) : null}
                 {p.script?.status === "awaiting_approval" ? (
@@ -284,7 +340,10 @@ export function ProjectScreen({ project: p, zh, people }: { project: ProjectDeta
                   </Link>
                 ) : null}
                 <Actions>
-                  <Action primary icon="pen" label={p.beats.length ? t("重写一版", "Rewrite") : t("写初稿", "Write the draft")} onClick={() => ask("script", t("写这个项目的脚本初稿，直接写进项目脚本（用 write_script）。", "Write this project's first draft straight into the project's script (write_script)."))} disabled={pending || p.script?.status === "locked"} />
+                  {/* Straight to the writer with the topic's facts (not a chat
+                      message it has to interpret): the draft is written after
+                      the response and lands on this card. */}
+                  <Action primary icon="pen" label={p.beats.length ? t("按选题重写", "Rewrite from the topic") : t("写初稿", "Write the draft")} onClick={writeDraft} disabled={pending || draftWriting || p.script?.status === "locked" || !p.script} />
                   <Action icon="scissors" label={t("改到 60 秒", "Cut to 60s")} onClick={() => ask("script", t("把项目脚本改到 60 秒以内，保留最有力的三点，写回项目脚本。", "Cut the project's script to under 60 seconds, keeping the three strongest points; write it back."))} disabled={pending || !p.beats.length || p.script?.status === "locked"} />
                   <Action icon="spark" label={t("加强开头", "Stronger hook")} onClick={() => ask("script", t("把项目脚本的开头改得更抓人，前 3 秒给出冲突或数字，写回项目脚本。", "Make the opening grab harder: a conflict or a number in the first 3 seconds; write it back."))} disabled={pending || !p.beats.length || p.script?.status === "locked"} />
                   <Action icon="check" label={t("核查事实", "Fact-check")} onClick={() => ask("research", t("核查这个项目脚本里的每个数字和说法，列出需要改的地方和来源。", "Fact-check every number and claim in this project's script; list what to change, with sources."))} disabled={pending || !p.beats.length} />
@@ -423,8 +482,11 @@ export function ProjectScreen({ project: p, zh, people }: { project: ProjectDeta
               const r = await chooseScriptAction(p.id, items[0].id);
               if (r?.error) notify(r.error);
             } else if (picking === "topics" && items[0]) {
-              const r = await chooseTopicAction(p.id, { title: items[0].title, brief: items[0].brief ?? "", label: items[0].sub ?? undefined });
-              if (r?.error) notify(r.error);
+              /* By the choice's id; the server reads the topic itself. */
+              const r = await chooseTopicAction(p.id, { id: items[0].id, title: items[0].title, brief: items[0].brief ?? "", label: items[0].sub ?? undefined });
+              if (r && "error" in r && r.error) notify(r.error);
+              else if (r && "hasBeats" in r && r.hasBeats) notify(t("选题换好了。脚本已经有分镜，没有动；要按新选题重写，按脚本卡上的「按选题重写」。", "Topic changed. The script already has beats and was left alone; press “Rewrite from the topic” on the script card to rewrite it."), "info");
+              else notify(t("选题换好了，脚本的标题和角度也跟着改了。", "Topic changed; the script's title and angle followed."), "ok");
             }
             router.refresh();
           }}
@@ -435,6 +497,47 @@ export function ProjectScreen({ project: p, zh, people }: { project: ProjectDeta
 }
 
 /* ------------------------------------------------------------- the pieces */
+
+/** The topic card's facts, from the project's snapshot: why now, the hook, the angle, the evidence rows. */
+function TopicFacts({ src, zh }: { src: ProjectSource; zh: boolean }) {
+  const t = (a: string, b: string) => (zh ? a : b);
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 10 }}>
+      {src.why ? <p style={{ margin: 0, fontSize: 13, color: "#383838", lineHeight: 1.6 }}>{cleanCodes(src.why).slice(0, 300)}</p> : null}
+      {src.hook ? <div style={{ fontSize: 12.5, color: "#525252", lineHeight: 1.55 }}>{t(`开头：「${cleanCodes(src.hook)}」`, `Opening: “${cleanCodes(src.hook)}”`)}</div> : null}
+      {src.angle ? <div style={{ fontSize: 12.5, color: "#525252", lineHeight: 1.55 }}>{t(`角度：${cleanCodes(src.angle)}`, `Angle: ${cleanCodes(src.angle)}`)}</div> : null}
+      {src.strength ? (
+        <div style={{ fontSize: 11.5, color: "#7c7c7c", display: "flex", alignItems: "center", gap: 6 }}>
+          {t("信号强度", "Strength")}
+          <span style={{ color: "#c2410c", letterSpacing: 1 }}>{"●".repeat(src.strength)}{"○".repeat(Math.max(0, 5 - src.strength))}</span>
+        </div>
+      ) : null}
+      {src.evidence?.length ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: 3, marginTop: 2 }}>
+          <span style={{ fontSize: 10.5, color: "#999999", letterSpacing: ".04em" }}>{t(`证据 · ${src.evidence.length} 条`, `EVIDENCE · ${src.evidence.length}`)}</span>
+          {src.evidence.slice(0, 5).map((e, i) =>
+            e.url ? (
+              <a key={i} href={e.url} target="_blank" rel="noopener noreferrer" title={e.title} style={{ display: "flex", alignItems: "baseline", gap: 6, fontSize: 12, color: "#171717", textDecoration: "none", minWidth: 0 }}>
+                <span style={{ color: "#0f5bd5", flexShrink: 0 }}>
+                  <Icon name="external" size={11} />
+                </span>
+                <span style={{ color: "#999999", flexShrink: 0 }}>{e.label}</span>
+                <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.title}</span>
+                {e.numbers ? <span style={{ color: "#7c7c7c", flexShrink: 0, fontVariantNumeric: "tabular-nums" }}>{e.numbers.split(" · ").slice(0, 2).join(" · ")}</span> : null}
+              </a>
+            ) : (
+              <span key={i} title={e.title} style={{ display: "flex", alignItems: "baseline", gap: 6, fontSize: 12, color: "#171717", minWidth: 0 }}>
+                <span style={{ color: "#999999", flexShrink: 0 }}>{e.label}</span>
+                <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.title}</span>
+                {e.numbers ? <span style={{ color: "#7c7c7c", flexShrink: 0 }}>{e.numbers.split(" · ").slice(0, 2).join(" · ")}</span> : null}
+              </span>
+            ),
+          )}
+        </div>
+      ) : null}
+    </div>
+  );
+}
 
 type Choice = { id: string; title: string; sub?: string | null; thumb?: string | null; brief?: string };
 

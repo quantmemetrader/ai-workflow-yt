@@ -11,6 +11,8 @@ import { createFolderAction, createScriptAction, deleteScriptAction } from "@/ap
 import { BriefComposer, type BriefDraft } from "@/components/script/BriefComposer";
 import { NameDialog } from "@/components/ui/NameDialog";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { TopicQueue } from "@/components/script/TopicQueue";
+import type { TopicQueueItem } from "@/lib/script/topics";
 
 /**
  * Live wiring for the Script library.
@@ -20,7 +22,7 @@ import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
  * thing to be able to paste into chat.
  */
 type Status = ScriptListItem["status"];
-type Scope = "all" | "mine" | "awaiting" | "shared";
+type Scope = "all" | "mine" | "awaiting" | "shared" | "topics";
 type Sort = "updated" | "title" | "status";
 type View = "list" | "grid";
 
@@ -35,9 +37,15 @@ export function LibraryView({
   query,
   locale,
   model,
+  queue = [],
+  canStart = false,
 }: {
   /** What 编剧 suggests writing next, drawn above the library. */
   proposals: Proposals;
+  /** Topics waiting for a script, for the 选题 scope. */
+  queue?: TopicQueueItem[];
+  /** Holds Chat, so a topic can become a project from here. */
+  canStart?: boolean;
   scripts: ScriptListItem[];
   folders: { id: string; name: string; count: number }[];
   counts: { all: number; brief: number; drafting: number; awaiting: number; locked: number };
@@ -110,6 +118,8 @@ export function LibraryView({
       folderId={folderId}
       status={status}
       scope={scope}
+      topicsView={<TopicQueue items={queue} zh={zh} canStart={canStart} />}
+      topicCount={queue.length}
       sort={sort}
       view={view}
       query={query}

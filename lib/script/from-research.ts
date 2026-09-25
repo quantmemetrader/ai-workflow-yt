@@ -1,9 +1,10 @@
 import "server-only";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { scripts, seriesCache, topics } from "@/lib/db/schema";
+import { scripts, seriesCache, topics, workProjects } from "@/lib/db/schema";
 import type { Viewer } from "@/lib/auth/dal";
 import { audit } from "@/lib/audit";
+import { draftSources, type ProjectSource } from "@/lib/projects/topic";
 import { draftFromBrief } from "./ai";
 import { createScript } from "./service";
 
@@ -35,7 +36,84 @@ export type ScriptRequest = {
   folderId?: string | null;
   /** Write into this script instead of making a new one (a project's own). */
   intoScriptId?: string | null;
+  /**
+   * The facts the writer may use, already written out. When absent and the
+   * draft goes into an existing script, they are read from the script's
+   * topic and its project (`sourcesForScript`).
+   */
+  sources?: string | null;
 };
+
+/* --------------------------------------------------------- the facts */
+
+/** A topic's own summary and the headlines its chart collected. */
+async function topicFacts(tenantId: string, topicId: string): Promise<{ id: string; name: string; facts: string } | null> {
+  const [topic] = await db
+    .select()
+    .from(topics)
+    .where(and(eq(topics.id, topicId), eq(topics.tenantId, tenantId)))
+    .limit(1);
+  if (!topic) return null;
+  const [cached] = await db
+    .select({ articles: seriesCache.articles })
+    .from(seriesCache)
+    .where(and(eq(seriesCache.query, topic.query), eq(seriesCache.window, "3m")))
+    .limit(1);
+  const articles = cached?.articles ?? [];
+  const facts = [
+    topic.summary ? `What is happening: ${topic.summary}` : "",
+    ...articles.slice(0, 30).map((a) => `- ${a.title} (${a.domain}, ${a.at.slice(0, 10)})`),
+  ]
+    .filter(Boolean)
+    .join("\n");
+  return { id: topic.id, name: topic.name, facts };
+}
+
+/**
+ * The project a script belongs to (the first live one), with its snapshot.
+ * Read directly rather than through `lib/projects/service`, which imports
+ * this module's neighbours; one small query is simpler than an import cycle.
+ */
+async function projectOfScript(tenantId: string, scriptId: string) {
+  const [row] = await db
+    .select({ id: workProjects.id, title: workProjects.title, brief: workProjects.brief, source: workProjects.source, topicId: workProjects.topicId, channelId: workProjects.channelId })
+    .from(workProjects)
+    .where(and(eq(workProjects.tenantId, tenantId), eq(workProjects.scriptId, scriptId), isNull(workProjects.deletedAt)))
+    .orderBy(workProjects.createdAt)
+    .limit(1);
+  return row ?? null;
+}
+
+/**
+ * Which backlog topic a script is about: its own `topic_id`, else its
+ * project's (the column, or the snapshot's `topicId`). Only ever a real
+ * `topics` row: a project started from an idea keeps the idea's id there.
+ */
+export async function topicIdForScript(tenantId: string, scriptId: string): Promise<string | null> {
+  const [script] = await db.select({ topicId: scripts.topicId }).from(scripts).where(and(eq(scripts.id, scriptId), eq(scripts.tenantId, tenantId))).limit(1);
+  const project = await projectOfScript(tenantId, scriptId);
+  const candidates = [script?.topicId, project?.topicId, (project?.source as ProjectSource | null)?.topicId].filter((x): x is string => typeof x === "string" && x.length > 0);
+  if (!candidates.length) return null;
+  const found = await db.select({ id: topics.id }).from(topics).where(and(eq(topics.tenantId, tenantId), inArray(topics.id, candidates)));
+  const ids = new Set(found.map((f) => f.id));
+  return candidates.find((c) => ids.has(c)) ?? null;
+}
+
+/**
+ * Everything the writer should have in front of it for this script: the
+ * project's topic snapshot (why now, the hook, the angle, the evidence rows
+ * with their own numbers) and the backlog topic's headlines. "Generate from
+ * brief" and the writer's own tool both read this, so a regenerate no longer
+ * loses the research the first draft was written from.
+ */
+export async function sourcesForScript(viewer: Viewer, scriptId: string, topicId?: string | null): Promise<string> {
+  const project = await projectOfScript(viewer.tenantId, scriptId);
+  const snapshot = (project?.source as ProjectSource | null) ?? null;
+  const tid = topicId ?? (await topicIdForScript(viewer.tenantId, scriptId));
+  const topic = tid ? await topicFacts(viewer.tenantId, tid) : null;
+  const fromProject = draftSources(snapshot) || (project?.brief ? `项目简介：${project.brief.slice(0, 400)}` : "");
+  return [fromProject, topic?.facts ?? ""].filter(Boolean).join("\n\n").slice(0, 4000);
+}
 
 export type ScriptResult =
   | { ok: true; id: string; title: string; beats: number; model: string | null; note: string | null }
@@ -43,32 +121,27 @@ export type ScriptResult =
 
 export async function writeScript(viewer: Viewer, req: ScriptRequest): Promise<ScriptResult> {
   let title = (req.subject ?? "").trim();
-  let sources = "";
+  let sources = (req.sources ?? "").trim();
   let topicId: string | null = null;
 
-  if (req.topicId) {
-    const [topic] = await db
-      .select()
-      .from(topics)
-      .where(and(eq(topics.id, req.topicId), eq(topics.tenantId, viewer.tenantId)))
-      .limit(1);
-    if (!topic) return { ok: false, error: "That topic does not exist." };
-    topicId = topic.id;
-    if (!title) title = req.angle?.trim() || topic.name;
+  /* Inside a project the project knows its topic. The writer's tool matches
+     topics by name, which is a guess; the script's own topic, or the one the
+     project was started from, is not, so it wins. */
+  const intoTopic = req.intoScriptId ? await topicIdForScript(viewer.tenantId, req.intoScriptId) : null;
+  const wantedTopic = intoTopic ?? req.topicId ?? null;
 
-    const [cached] = await db
-      .select()
-      .from(seriesCache)
-      .where(and(eq(seriesCache.query, topic.query), eq(seriesCache.window, "3m")))
-      .limit(1);
-    const articles = cached?.articles ?? [];
-    sources = [
-      topic.summary ? `What is happening: ${topic.summary}` : "",
-      ...articles.slice(0, 30).map((a) => `- ${a.title} (${a.domain}, ${a.at.slice(0, 10)})`),
-    ]
-      .filter(Boolean)
-      .join("\n");
+  if (wantedTopic) {
+    const topic = await topicFacts(viewer.tenantId, wantedTopic);
+    if (!topic && !intoTopic) return { ok: false, error: "That topic does not exist." };
+    if (topic) {
+      topicId = topic.id;
+      if (!title) title = req.angle?.trim() || topic.name;
+      if (!sources && !req.intoScriptId) sources = topic.facts;
+    }
   }
+  /* A project's script: its snapshot's evidence and the topic's headlines,
+     unless the caller already wrote the facts out. */
+  if (!sources && req.intoScriptId) sources = await sourcesForScript(viewer, req.intoScriptId, topicId);
 
   if (!title) return { ok: false, error: "Say what the script is about." };
 
@@ -89,6 +162,9 @@ export async function writeScript(viewer: Viewer, req: ScriptRequest): Promise<S
     await db
       .update(scripts)
       .set({
+        /* The wire the project's script was missing: the draft now says
+           which backlog topic it was written from. */
+        topicId: topicId ?? undefined,
         angle: req.angle?.trim() || undefined,
         targetChannel: req.channel?.trim() || undefined,
         aspect,
@@ -112,8 +188,15 @@ export async function writeScript(viewer: Viewer, req: ScriptRequest): Promise<S
     mandatoryPoints: (req.mandatoryPoints ?? []).map((p) => p.trim()).filter(Boolean).slice(0, 12),
   });
 
+  /* Being written is "Scripting" on the backlog board. "Handed to Video"
+     is for when the script is approved and goes to the edit; it used to be
+     set here, the moment a script existed. A topic already further along
+     stays where it is. */
   if (topicId) {
-    await db.update(topics).set({ stage: "handed", updatedAt: new Date() }).where(eq(topics.id, topicId));
+    await db
+      .update(topics)
+      .set({ stage: "scripting", updatedAt: new Date() })
+      .where(and(eq(topics.id, topicId), inArray(topics.stage, ["adopted", "briefing"])));
   }
 
   let beats = 0;

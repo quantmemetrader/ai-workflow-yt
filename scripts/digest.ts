@@ -208,7 +208,7 @@ async function main() {
       label: signals.length > 1 ? `开项目 · 第 ${i + 1} 个` : "开项目",
       labelEn: signals.length > 1 ? `Start project #${i + 1}` : "Start the project",
       kind: "open" as const,
-      href: `/projects/new?signal=${i}`,
+      href: `/projects/new?signal=${i}&date=${date}`,
       tone: i === 0 ? ("primary" as const) : ("quiet" as const),
     };
   });

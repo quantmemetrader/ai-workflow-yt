@@ -13,6 +13,7 @@ import {
   topics,
   users,
   videoProjects,
+  workProjects,
 } from "@/lib/db/schema";
 import type { Viewer } from "@/lib/auth/types";
 
@@ -72,6 +73,14 @@ export async function scriptRun(viewer: Viewer, scriptId: string, zh: boolean): 
         .where(and(eq(topics.id, script.topicId), eq(topics.tenantId, tenantId)))
         .limit(1)
     : [];
+
+  /* The project it is the script of: the topic links there, where the
+     topic's why and evidence are, rather than to the generic backlog. */
+  const [inProject] = await db
+    .select({ id: workProjects.id })
+    .from(workProjects)
+    .where(and(eq(workProjects.tenantId, tenantId), eq(workProjects.scriptId, scriptId), isNull(workProjects.deletedAt)))
+    .limit(1);
 
   /* The latest plan, and the to-do in it that names this script. */
   const [plan] = await db
@@ -156,7 +165,7 @@ export async function scriptRun(viewer: Viewer, scriptId: string, zh: boolean): 
     status: script.status,
     updatedAt: script.updatedAt.toISOString(),
     recent: Date.now() - script.updatedAt.getTime() < 15 * 60_000,
-    topic: topic ? { name: (zh && topic.nameLocal) || topic.name, href: "/research/backlog" } : null,
+    topic: topic ? { name: (zh && topic.nameLocal) || topic.name, href: inProject ? `/projects/${inProject.id}` : "/research/backlog" } : null,
     plan:
       todo && typeof planMeta?.date === "string"
         ? { date: planMeta.date, text: String(todo.text), href: `/chat/c/${encodeURIComponent(plan!.slug ?? "研究日报")}` }

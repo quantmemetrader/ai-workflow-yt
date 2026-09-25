@@ -1,6 +1,6 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { topics, users } from "@/lib/db/schema";
+import { scripts, topics, users, workProjects } from "@/lib/db/schema";
 import { requireModule } from "@/lib/auth/dal";
 import { answeringModel } from "@/lib/ai/models";
 import { ResearchSidebar } from "@/components/canvas/ResearchSidebar";
@@ -34,6 +34,30 @@ export default async function BacklogPage() {
     decisionCount(viewer),
     openCommentCount(viewer),
   ]);
+
+  /* Where each topic has got to in Script: its project and its script, so a
+     card can open them rather than only say "Scripting". A topic's project
+     is the one started from it (`work_projects.topic_id`); its script is the
+     one written from it (`scripts.topic_id`), else the project's. */
+  const ids = rows.map((r) => r.topic.id);
+  const [projects, written] = ids.length
+    ? await Promise.all([
+        db
+          .select({ id: workProjects.id, topicId: workProjects.topicId, scriptId: workProjects.scriptId })
+          .from(workProjects)
+          .where(and(eq(workProjects.tenantId, viewer.tenantId), isNull(workProjects.deletedAt), inArray(workProjects.topicId, ids)))
+          .orderBy(workProjects.createdAt),
+        db
+          .select({ id: scripts.id, topicId: scripts.topicId, status: scripts.status, beats: sql<number>`(select count(*)::int from script_beats b where b.script_id = ${scripts.id})` })
+          .from(scripts)
+          .where(and(eq(scripts.tenantId, viewer.tenantId), isNull(scripts.deletedAt), inArray(scripts.topicId, ids)))
+          .orderBy(scripts.createdAt),
+      ])
+    : [[], []];
+  const projectOf = new Map<string, { id: string; scriptId: string | null }>();
+  for (const p of projects) if (p.topicId && !projectOf.has(p.topicId)) projectOf.set(p.topicId, { id: p.id, scriptId: p.scriptId });
+  const scriptOf = new Map<string, { id: string; status: string; beats: number }>();
+  for (const sc of written) if (sc.topicId && !scriptOf.has(sc.topicId)) scriptOf.set(sc.topicId, { id: sc.id, status: sc.status, beats: Number(sc.beats) });
 
   return (
     <>
@@ -71,6 +95,10 @@ export default async function BacklogPage() {
         stage: r.topic.stage,
         flagged: r.topic.flagged,
         flagReason: r.topic.flagReason,
+        projectId: projectOf.get(r.topic.id)?.id ?? null,
+        scriptId: scriptOf.get(r.topic.id)?.id ?? projectOf.get(r.topic.id)?.scriptId ?? null,
+        scriptStatus: scriptOf.get(r.topic.id)?.status ?? null,
+        beats: scriptOf.get(r.topic.id)?.beats ?? 0,
       }))}
       />
     </>

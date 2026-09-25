@@ -9,8 +9,7 @@ import { SayToAgent } from "@/components/flow/SayToAgent";
 import { AgentIcon } from "@/components/agents/AgentIcon";
 import { AGENT_COLORS } from "@/lib/agents/catalog";
 import { PLATFORMS, type HotRow, type PlatformKey } from "@/lib/research/platform-catalog";
-import { startProposalAction } from "@/app/(app)/home/actions";
-import { startProjectAction } from "@/app/(app)/projects/actions";
+import { startFromTopicAction } from "@/app/(app)/projects/actions";
 import type { Judged } from "@/lib/research/judge";
 import { notify } from "@/lib/client/notify";
 
@@ -188,18 +187,22 @@ export function LiveNow({
   const narrow = picked !== null;
   const cols = narrow ? COLS_COMPACT : COLS;
 
-  function writeScript(text: string, id: string) {
+  /* A hot-list row becomes a project, its script is started from the row
+     (resolved on the server from the stored list: the phrase, the numbers,
+     研究员's mark) and the person lands on the script while 编剧 writes. It
+     used to post into #制作 with no project at all. */
+  function writeScript(phrase: string, id: string) {
     if (sending) return;
     setSending(id);
     start(async () => {
-      const res = await startProposalAction("script", text);
+      const res = await startFromTopicAction({ kind: "hot", platform: listKey, phrase }, { write: true });
       setSending(null);
       if ("error" in res && res.error) {
         notify(res.error);
         return;
       }
-      notify(t("Handed to the Writer; it answers in #制作", "已交给编剧，在 #制作 里回复"), "ok");
-      router.refresh();
+      if ("scriptId" in res && res.scriptId) router.push(`/script/${res.scriptId}${res.writing ? "?writing=1" : ""}`);
+      else if ("projectId" in res && res.projectId) router.push(`/projects/${res.projectId}`);
     });
   }
 
@@ -434,12 +437,7 @@ export function LiveNow({
                     <button
                       type="button"
                       disabled={sending !== null}
-                      onClick={() =>
-                        writeScript(
-                          `写《${picked.phrase.slice(0, 60)}》的脚本。来源：${platformName}热榜${picked.extra ? `（${picked.extra}）` : ""}${marks[picked.phrase] ? `。研究员的判断：${marks[picked.phrase].why}` : ""}`,
-                          "picked",
-                        )
-                      }
+                      onClick={() => writeScript(picked.phrase, "picked")}
                       style={{ ...smallBtn(true), height: 30, justifyContent: "center" }}
                     >
                       {t("Have the Writer script it", "让编剧写脚本")}
@@ -492,17 +490,24 @@ export function LiveNow({
               onWatch={onWatch}
               onClips={(title, withScript) =>
                 start(async () => {
+                  /* The pick by what it is (a morning signal, somebody's own
+                     topic, a plan to-do), resolved on the server with its why
+                     and sources; "write" lands on the script being written. */
                   const pick = picks.find((x) => x.text === title);
-                  const res = await startProjectAction({
-                    title: title.slice(0, 80),
-                    message: withScript ? `@编剧 按这个选题写脚本初稿：${title}` : undefined,
-                    source: { kind: pick?.source === "mine" ? "person" : "pick", label: pick?.source === "digest" ? "晨报信号" : pick?.source === "mine" ? `${pick.by ?? ""}加的选题` : "今日选题", url: pick?.url ?? null },
-                  });
+                  const ref =
+                    pick?.source === "digest"
+                      ? ({ kind: "signal", title } as const)
+                      : pick?.source === "plan" || pick?.source === "backlog" || pick?.source === "audience"
+                        ? ({ kind: "proposal", text: title, source: pick.source } as const)
+                        : ({ kind: "own", text: title } as const);
+                  const res = await startFromTopicAction(ref, { write: Boolean(withScript) });
                   if ("error" in res && res.error) {
                     notify(res.error);
                     return;
                   }
-                  if ("id" in res && res.id) router.push(`/projects/${res.id}`); setTimeout(() => router.refresh(), 400);
+                  if (withScript && "scriptId" in res && res.scriptId) router.push(`/script/${res.scriptId}${res.writing ? "?writing=1" : ""}`);
+                  else if ("projectId" in res && res.projectId) router.push(`/projects/${res.projectId}`);
+                  setTimeout(() => router.refresh(), 400);
                 })
               }
             />

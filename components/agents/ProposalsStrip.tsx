@@ -7,6 +7,7 @@ import { AgentMark } from "@/components/chat/MentionMenu";
 import { AGENT_LABELS, type AgentKey } from "@/lib/agents/catalog";
 import type { Proposal } from "@/lib/agents/proposals";
 import { startProposalAction } from "@/app/(app)/home/actions";
+import { startFromTopicAction } from "@/app/(app)/projects/actions";
 import { notify } from "@/lib/client/notify";
 
 /**
@@ -50,9 +51,27 @@ export function ProposalsStrip({
         ? t("选题储备", "Topic backlog")
         : t("观众提问", "A viewer asked");
 
-  function go(index: number, text: string) {
+  function go(index: number, text: string, source: Proposal["source"]) {
     if (busy !== null) return;
     setBusy(index);
+    /* 编剧's suggestions become work the way every other topic does: a
+       project, its script started from the suggestion, and the person on the
+       script while it is written. They used to post into #制作 and make no
+       project at all. The other pages' employees still take theirs there. */
+    if (owner === "script") {
+      start(async () => {
+        const res = await startFromTopicAction({ kind: "proposal", text, source }, { write: true });
+        setBusy(null);
+        if ("error" in res && res.error) {
+          notify(res.error);
+          return;
+        }
+        setSent((s) => new Set(s).add(index));
+        if ("scriptId" in res && res.scriptId) router.push(`/script/${res.scriptId}${res.writing ? "?writing=1" : ""}`);
+        else if ("projectId" in res && res.projectId) router.push(`/projects/${res.projectId}`);
+      });
+      return;
+    }
     start(async () => {
       const res = await startProposalAction(owner, text);
       setBusy(null);
@@ -90,7 +109,7 @@ export function ProposalsStrip({
             minWidth: 0,
           }}
         >
-          {t("按一下就开工，它会在 #制作 里回复", "One press starts it; it answers in #制作")}
+          {owner === "script" ? t("按一下就开项目，编剧接着写初稿", "One press starts a project; the writer drafts it") : t("按一下就开工，它会在 #制作 里回复", "One press starts it; it answers in #制作")}
         </span>
         <span style={{ flexGrow: 1 }} />
         <Link
@@ -166,7 +185,7 @@ export function ProposalsStrip({
                 <button
                   type="button"
                   disabled={pending || done}
-                  onClick={() => go(i, p.text)}
+                  onClick={() => go(i, p.text, p.source)}
                   style={{
                     height: 26,
                     padding: "0 11px",

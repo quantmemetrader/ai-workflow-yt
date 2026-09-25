@@ -2,8 +2,10 @@
 
 import { Icon } from "@/components/ui/Icon";
 import * as React from "react";
-import type { Measurement, ScriptDetail, ScriptListItem } from "@/lib/script/service";
+import Link from "next/link";
+import type { Measurement, ScriptDetail, ScriptListItem, ScriptTopic } from "@/lib/script/service";
 import { useResizable } from "@/components/ui/Resizer";
+import { AgentIcon as Face } from "@/components/agents/AgentIcon";
 
 /**
  * ScriptDetailScreen — a transcription of the five Script document artboards,
@@ -24,10 +26,13 @@ import { useResizable } from "@/components/ui/Resizer";
  *
  * What the artboards draw and this file does not, because no prop carries it:
  *
- *   — The brief's "heat 94" card, its sparkline, its adopted/due/sensitivity
- *     rows and the "Research carried over" list. The screen knows a script
- *     came from a topic (`script.topicId`) and nothing else about the topic,
- *     so it says only that.
+ *   — Nothing of the brief's topic card any more: "From the topic backlog"
+ *     with its heat, the sparkline, the adopted/due/sensitivity rows and
+ *     "Research carried over" are drawn from `detail.topic` (the backlog
+ *     topic and the project's snapshot). A topic that came from the morning
+ *     brief or an idea has no heat; its card leads with why and the hook,
+ *     and its evidence rows (with the platforms' own numbers) are the
+ *     research carried over.
  *   — The brief's Tone chips and "Things to avoid" list. There is no column
  *     for either, and a chip that cannot be saved is a lie about state.
  *   — Per-point ticks on the mandatory points. The count covered is real
@@ -41,6 +46,12 @@ import { useResizable } from "@/components/ui/Resizer";
  *   — The editor toolbar's bold/italic/list glyphs. Beats are plain text in
  *     the schema; a formatting button with nothing behind it is worse than no
  *     button (the call Files and Agent already made).
+ *
+ * What this file draws and the artboards do not: a folding "选题" strip above
+ * the Draft's beats (why, the evidence count, "rewrite from the topic"), and
+ * the writing state while 编剧 drafts the script after a topic was chosen
+ * elsewhere. The client's ask was that choosing a topic lands on the script
+ * with the topic in sight; the Draft tab is where that person lands.
  *
  * The script's own words are never translated: `locale` moves the chrome, and
  * whatever language the writer wrote in stays as written.
@@ -90,6 +101,12 @@ export type ScriptDetailScreenProps = {
    * somebody who holds nothing to share with, in which case the button says
    * so rather than opening a sheet that can do nothing. */
   shareSheet?: React.ReactNode;
+  /** The topic it is written from (`detail.topic` unless overridden). */
+  topic?: ScriptTopic | null;
+  /** 编剧 is writing a draft into it right now. */
+  writing?: boolean;
+  /** Write (or rewrite) the draft from the topic. Absent when that cannot be done here. */
+  onRewriteFromTopic?: () => void;
 };
 
 /** The artboards' `accent` prop, at its default (#007BE0). */
@@ -395,6 +412,25 @@ const ZH: Record<string, string> = {
   "Length": "过渡时长",
   "Earlier versions": "更早的版本",
   "Nothing to approve": "没有待审批的内容",
+
+  heat: "热度",
+  Adopted: "采纳",
+  "Due to Video": "交给剪辑",
+  Sensitivity: "敏感度",
+  "None flagged": "没有标记",
+  "Research carried over": "带过来的研究",
+  "Topic from": "选题来自",
+  From: "来自",
+  Opening: "开头",
+  "Why now": "为什么现在做",
+  "pieces of evidence": "条证据",
+  "Rewrite from the topic": "按选题重写",
+  "Write from the topic": "按选题写初稿",
+  "The writer is writing the first draft…": "编剧正在写初稿…",
+  "The writer is rewriting from the topic…": "编剧正在按选题重写…",
+  "It appears here when it lands, usually within a minute. You can leave this page.": "写好会自动出现在这里，一般一分钟内。可以先离开这个页面。",
+  "Signal strength": "信号强度",
+  "Open the project": "打开项目",
 };
 
 /* ------------------------------------------------------------------ format */
@@ -713,9 +749,13 @@ export function ScriptDetailScreen(props: ScriptDetailScreenProps): React.JSX.El
     run,
     shareSheet,
     onMakeVideo,
+    onRewriteFromTopic,
   } = props;
 
   const { script, beats, versions, suggestions, approvals, comments, owner, live, locked } = detail;
+  const topic = props.topic !== undefined ? props.topic : (detail.topic ?? null);
+  const writing = props.writing ?? detail.writing ?? false;
+  const [topicOpen, setTopicOpen] = React.useState(false);
 
   const zh = locale.startsWith("zh");
   const t = (key: string): string => (zh ? (ZH[key] ?? key) : key);
@@ -1527,6 +1567,108 @@ export function ScriptDetailScreen(props: ScriptDetailScreenProps): React.JSX.El
     </div>
   );
 
+  /* The artboard's two cards above Sources: where the topic came from (heat,
+     sparkline, adopted/due/sensitivity) and the research carried over. */
+  const evidenceCount = topic ? topic.evidence.length + topic.articles.length : 0;
+  const topicCard =
+    topic === null ? null : (
+      <>
+        <div className="card" style={{ padding: 14, marginBottom: 12 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+            <svg viewBox="0 0 24 24" style={{ width: 13, height: 13, stroke: "#7c7c7c", fill: "#7c7c7c" }}>
+              <rect x="3.4" y="12.6" width="4.2" height="7.4" rx="1.5" />
+              <rect x="9.9" y="8.4" width="4.2" height="11.6" rx="1.5" />
+              <rect x="16.4" y="4" width="4.2" height="16" rx="1.5" />
+            </svg>
+            <span className="lbl" style={{ padding: 0 }}>
+              {topic.heat !== null ? t("From the topic backlog") : `${t("Topic from")} ${topic.from.label}`}
+            </span>
+          </div>
+          {topic.heat !== null ? (
+            <>
+              <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginTop: 10 }}>
+                <span style={{ fontSize: 24, fontWeight: 500, fontVariantNumeric: "tabular-nums" }}>{Math.round(topic.heat)}</span>
+                <span className="cap">{t("heat")}</span>
+                {topic.change14d === null ? null : (
+                  <span style={{ fontSize: 12, color: topic.change14d >= 0 ? "#278f5e" : "#e03636", marginLeft: "auto", fontVariantNumeric: "tabular-nums" }}>
+                    {`${topic.change14d >= 0 ? "+" : "−"}${Math.abs(topic.change14d * 100).toFixed(1)}% 14 d`}
+                  </span>
+                )}
+              </div>
+              {topic.points.length > 1 ? <Sparkline points={topic.points} /> : null}
+              {topic.range === null ? null : (
+                <div className="cap" style={{ marginTop: 4 }}>{`${topic.range[0].slice(5)} – ${topic.range[1].slice(5)}`}</div>
+              )}
+            </>
+          ) : null}
+          <div style={{ fontSize: 13, fontWeight: 500, lineHeight: 1.45, marginTop: 10 }}>{topic.title}</div>
+          {topic.why === null ? null : <p style={{ fontSize: 12, lineHeight: 1.55, color: "#383838", marginTop: 6 }}>{topic.why}</p>}
+          {topic.hook === null ? null : (
+            <p style={{ fontSize: 12, lineHeight: 1.55, color: "#525252", marginTop: 6 }}>{`${t("Opening")}：「${topic.hook}」`}</p>
+          )}
+          {topic.strength === null ? null : (
+            <div className="kv" style={{ marginTop: 8 }}>
+              <span>{t("Signal strength")}</span>
+              <span style={{ color: "#c2410c", letterSpacing: 1 }}>{"●".repeat(topic.strength)}{"○".repeat(Math.max(0, 5 - topic.strength))}</span>
+            </div>
+          )}
+          {topic.adoptedAt === null ? null : (
+            <div className="kv" style={{ marginTop: topic.strength === null ? 8 : 0 }}>
+              <span>{t("Adopted")}</span>
+              <span>{`${topic.adoptedAt.slice(5, 10)}${topic.ownerName ? ` · ${topic.ownerName}` : ""}`}</span>
+            </div>
+          )}
+          {topic.dueDate === null ? null : (
+            <div className="kv">
+              <span>{t("Due to Video")}</span>
+              <span>{topic.dueDate.slice(5)}</span>
+            </div>
+          )}
+          <div className="kv" style={topic.from.href === null ? { border: "none" } : undefined}>
+            <span>{t("Sensitivity")}</span>
+            <span style={{ textAlign: "right", color: topic.flagged || topic.risk ? "#b25e09" : undefined }}>
+              {topic.flagged ? (topic.flagReason ?? topic.risk ?? "") : (topic.risk ?? t("None flagged"))}
+            </span>
+          </div>
+          {topic.from.href === null ? null : (
+            <div className="kv" style={{ border: "none" }}>
+              <span>{t("From")}</span>
+              <Link prefetch={false} href={topic.from.href} style={{ color: ACCENT, textDecoration: "none", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {topic.project ? topic.project.title : topic.from.label}
+              </Link>
+            </div>
+          )}
+        </div>
+        {evidenceCount === 0 ? null : (
+          <div className="card" style={{ padding: 14, marginBottom: 12 }}>
+            <div className="lbl" style={{ padding: 0, marginBottom: 8 }}>
+              {t("Research carried over")}
+            </div>
+            {topic.evidence.map((e, i) => (
+              <div key={`e${i}`}>
+                {e.url ? (
+                  <a href={e.url} target="_blank" rel="noopener noreferrer" style={{ display: "block", fontSize: 12, lineHeight: 1.55, color: "#383838", textDecoration: "none" }}>
+                    {e.title}
+                  </a>
+                ) : (
+                  <div style={{ fontSize: 12, lineHeight: 1.55, color: "#383838" }}>{e.title}</div>
+                )}
+                <div className="cap" style={{ marginBottom: 8 }}>{`${e.label}${e.numbers ? ` · ${e.numbers}` : ""}`}</div>
+              </div>
+            ))}
+            {topic.articles.map((a, i) => (
+              <div key={`a${i}`}>
+                <a href={a.url} target="_blank" rel="noopener noreferrer" style={{ display: "block", fontSize: 12, lineHeight: 1.55, color: "#383838", textDecoration: "none" }}>
+                  {a.title}
+                </a>
+                <div className="cap" style={{ marginBottom: 8 }}>{`${a.domain} · ${a.at.slice(0, 10)}`}</div>
+              </div>
+            ))}
+          </div>
+        )}
+      </>
+    );
+
   const briefBody = (
     <div style={{ flexGrow: 1, minWidth: 0, display: "flex", gap: 22, padding: "20px 22px 0", overflowY: "auto" }}>
       <form onSubmit={submitBrief} style={{ flexGrow: 1, minWidth: 0 }}>
@@ -1543,7 +1685,10 @@ export function ScriptDetailScreen(props: ScriptDetailScreenProps): React.JSX.El
           </div>
         )}
       </form>
-      <div style={{ width: 262, flexShrink: 0 }}>{briefSources}</div>
+      <div style={{ width: 262, flexShrink: 0, paddingBottom: 20 }}>
+        {topicCard}
+        {briefSources}
+      </div>
     </div>
   );
 
@@ -1806,6 +1951,94 @@ export function ScriptDetailScreen(props: ScriptDetailScreenProps): React.JSX.El
     </div>
   );
 
+  /* 编剧 at work on this script, after a topic was chosen somewhere else. */
+  const writingBanner = !writing ? null : (
+    <div
+      role="status"
+      style={{ display: "flex", alignItems: "center", gap: 11, padding: "10px 13px", borderRadius: 11, background: "#fdf4ec", border: "1px solid #f8dcc6", marginBottom: 14 }}
+    >
+      <Face agent="script" size={28} radius={8} />
+      <div style={{ flexGrow: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 12.5, fontWeight: 500, color: "#171717" }}>
+          {beats.length ? t("The writer is rewriting from the topic…") : t("The writer is writing the first draft…")}
+        </div>
+        <div className="cap" style={{ marginTop: 2, lineHeight: 1.45 }}>
+          {t("It appears here when it lands, usually within a minute. You can leave this page.")}
+        </div>
+      </div>
+      <span style={{ width: 8, height: 8, borderRadius: 4, background: "#b3420e", flexShrink: 0, animation: "auraPulse 1.6s ease-in-out infinite" }} />
+    </div>
+  );
+
+  /* The topic, folded, above the beats: why it is being made and on what
+     evidence, with the one press that writes it again from there. */
+  const topicStrip =
+    topic === null ? null : (
+      <div style={{ border: "1px solid #ededed", borderRadius: 11, background: "#fafbfd", marginBottom: 14, overflow: "hidden" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 10px 7px 12px" }}>
+          <button
+            type="button"
+            onClick={() => setTopicOpen((v) => !v)}
+            aria-expanded={topicOpen}
+            style={{ flexGrow: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 8, border: 0, background: "transparent", padding: 0, cursor: "pointer", fontFamily: "inherit", letterSpacing: "inherit", textAlign: "left" }}
+          >
+            <span className="bd blue" style={{ flexShrink: 0 }}>
+              {t("Topic")}
+            </span>
+            <span style={{ fontSize: 12.5, color: "#383838", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {topic.why ?? topic.title}
+            </span>
+            {evidenceCount > 0 ? (
+              <span className="cap" style={{ flexShrink: 0 }}>
+                {zh ? `${evidenceCount} ${t("pieces of evidence")}` : `${evidenceCount} ${evidenceCount === 1 ? "piece" : "pieces"} of evidence`}
+              </span>
+            ) : null}
+            <svg viewBox="0 0 24 24" style={{ width: 12, height: 12, flexShrink: 0, ...STROKE, stroke: "#999999", strokeWidth: 2, transform: topicOpen ? "rotate(180deg)" : "none", transition: "transform .15s ease" }}>
+              <path d="m6.5 9.5 5.5 5.5 5.5-5.5" />
+            </svg>
+          </button>
+          {onRewriteFromTopic && !locked ? (
+            <button type="button" className="btn s" onClick={onRewriteFromTopic} disabled={busy || writing} style={{ flexShrink: 0 }}>
+              <SparkIcon size={12} color="currentColor" />
+              {beats.length ? t("Rewrite from the topic") : t("Write from the topic")}
+            </button>
+          ) : null}
+        </div>
+        {topicOpen ? (
+          <div style={{ padding: "2px 14px 12px", display: "flex", flexDirection: "column", gap: 6, fontSize: 12.5, lineHeight: 1.6, color: "#383838" }}>
+            <div style={{ fontWeight: 500, color: "#171717" }}>{topic.title}</div>
+            {topic.why === null ? null : <div>{`${t("Why now")}：${topic.why}`}</div>}
+            {topic.hook === null ? null : <div>{`${t("Opening")}：「${topic.hook}」`}</div>}
+            {topic.angle === null ? null : <div>{`${t("Angle")}：${topic.angle}`}</div>}
+            {topic.risk === null ? null : <div style={{ color: "#b25e09" }}>{`${t("Sensitivity")}：${topic.risk}`}</div>}
+            {topic.evidence.map((e, i) =>
+              e.url ? (
+                <a key={i} href={e.url} target="_blank" rel="noopener noreferrer" style={{ display: "flex", gap: 6, alignItems: "baseline", color: "#383838", textDecoration: "none", minWidth: 0 }}>
+                  <span style={{ color: ACCENT, flexShrink: 0 }}>
+                    <Icon name="external" size={11} />
+                  </span>
+                  <span className="cap" style={{ flexShrink: 0 }}>{e.label}</span>
+                  <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.title}</span>
+                  {e.numbers ? <span className="cap" style={{ flexShrink: 0, fontVariantNumeric: "tabular-nums" }}>{e.numbers}</span> : null}
+                </a>
+              ) : (
+                <div key={i} style={{ display: "flex", gap: 6, alignItems: "baseline", minWidth: 0 }}>
+                  <span className="cap" style={{ flexShrink: 0 }}>{e.label}</span>
+                  <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.title}</span>
+                  {e.numbers ? <span className="cap" style={{ flexShrink: 0 }}>{e.numbers}</span> : null}
+                </div>
+              ),
+            )}
+            {topic.from.href === null ? null : (
+              <Link prefetch={false} href={topic.from.href} style={{ color: ACCENT, textDecoration: "none", fontSize: 12, marginTop: 2 }}>
+                {topic.project ? `${t("Open the project")} · ${topic.project.title} →` : `${topic.from.label} →`}
+              </Link>
+            )}
+          </div>
+        ) : null}
+      </div>
+    );
+
   const draftBody = (
     <div style={{ flexGrow: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
       {locked ? null : draftToolbar}
@@ -1888,6 +2121,9 @@ export function ScriptDetailScreen(props: ScriptDetailScreenProps): React.JSX.El
           </span>
         </div>
 
+        {writingBanner}
+        {topicStrip}
+
         <div className="bt" style={{ padding: "8px 0", borderBottom: "1px solid #ededed", borderTop: "1px solid #ededed" }}>
           <div className="bn" style={{ color: "#7c7c7c" }}>
             {t("Beat")}
@@ -1903,12 +2139,30 @@ export function ScriptDetailScreen(props: ScriptDetailScreenProps): React.JSX.El
         </div>
 
         {beatRows.length === 0 ? (
-          <div style={{ padding: "26px 0" }}>
-            <div style={{ fontSize: 12.5, color: "#525252" }}>{t("No beats yet")}</div>
-            <div className="cap" style={{ marginTop: 4, lineHeight: 1.5 }}>
-              {t("Generate from the brief, or write the first beat")}
+          writing ? (
+            <div style={{ padding: "18px 0", display: "flex", flexDirection: "column", gap: 10 }} aria-busy="true">
+              {[0, 1, 2].map((i) => (
+                <div key={i} style={{ display: "grid", gridTemplateColumns: "56px minmax(0,1fr) minmax(0,1.3fr)", gap: 16 }}>
+                  <div className="sk" style={{ height: 14, borderRadius: 4 }} />
+                  <div className="sk" style={{ height: 38, borderRadius: 6 }} />
+                  <div className="sk" style={{ height: 38, borderRadius: 6 }} />
+                </div>
+              ))}
             </div>
-          </div>
+          ) : (
+            <div style={{ padding: "26px 0" }}>
+              <div style={{ fontSize: 12.5, color: "#525252" }}>{t("No beats yet")}</div>
+              <div className="cap" style={{ marginTop: 4, lineHeight: 1.5 }}>
+                {t("Generate from the brief, or write the first beat")}
+              </div>
+              {topic !== null && onRewriteFromTopic && !locked ? (
+                <button type="button" className="btn" onClick={onRewriteFromTopic} disabled={busy} style={{ marginTop: 12, background: "#171717", color: "#fff", fontWeight: 500 }}>
+                  <SparkIcon size={13} color="currentColor" />
+                  {t("Write from the topic")}
+                </button>
+              ) : null}
+            </div>
+          )
         ) : (
           beatRows
         )}
@@ -2961,6 +3215,21 @@ export function ScriptDetailScreen(props: ScriptDetailScreenProps): React.JSX.El
 }
 
 /** The tab strip's running duration against target, the artboard's amber pill. */
+/** The topic card's sparkline: the chart's own points, drawn in the artboard's 230×44 box. */
+function Sparkline({ points }: { points: number[] }): React.JSX.Element {
+  const max = Math.max(...points);
+  const min = Math.min(...points);
+  const span = max - min || 1;
+  const step = 230 / Math.max(1, points.length - 1);
+  const line = points.map((v, i) => `${i === 0 ? "M" : "L"}${(i * step).toFixed(1)} ${(40 - ((v - min) / span) * 36).toFixed(1)}`).join(" ");
+  return (
+    <svg viewBox="0 0 230 44" style={{ width: "100%", height: 44, marginTop: 6 }} aria-hidden>
+      <path d={`${line} L230 44 L0 44Z`} fill={ACCENT} opacity=".08" />
+      <path d={line} fill="none" stroke={ACCENT} strokeWidth="1.6" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 function DurationBadge({ live, t }: { live: Measurement; t: (key: string) => string }): React.JSX.Element {
   if (live.targetSeconds === null) {
     return (

@@ -58,8 +58,12 @@ export type ScriptLibraryScreenProps = {
   sort: "updated" | "title" | "status";
   /** "list" | "grid" — the artboard draws both; default "list" */
   view: "list" | "grid";
-  /** the library filter in the sidebar */
-  scope: "all" | "mine" | "awaiting" | "shared";
+  /** the library filter in the sidebar; "topics" is the 选题 queue */
+  scope: "all" | "mine" | "awaiting" | "shared" | "topics";
+  /** The 选题 queue, drawn in place of the list when `scope` is "topics". */
+  topicsView?: React.ReactNode;
+  /** How many topics are waiting, for the sidebar's badge. */
+  topicCount?: number | null;
   query: string;
   pending: boolean;
   error: string | null;
@@ -197,6 +201,9 @@ const ZH: Record<string, string> = {
   "Assigned to me": "指派给我的",
   "Waiting on approval": "等待审批",
   "Shared with me": "共享给我的",
+  Topics: "选题",
+  Project: "项目",
+  "From the topic": "选题",
   Folders: "文件夹",
   "No folders yet": "还没有文件夹",
   "House style": "团队风格",
@@ -443,6 +450,8 @@ export function ScriptLibraryScreen(props: ScriptLibraryScreenProps): React.JSX.
     sort,
     view,
     scope,
+    topicsView,
+    topicCount,
     query,
     pending,
     error,
@@ -516,6 +525,10 @@ export function ScriptLibraryScreen(props: ScriptLibraryScreenProps): React.JSX.
     { key: "mine", label: t("Assigned to me"), badge: null, alert: false },
     { key: "awaiting", label: t("Waiting on approval"), badge: counts.awaiting, alert: true },
     { key: "shared", label: t("Shared with me"), badge: null, alert: false },
+    /* Not on the artboard: the topics chosen elsewhere (Home, Research, the
+       backlog, today's plan) that are waiting for a script. The client
+       could not find a topic page in Script; this is it. */
+    ...(topicsView ? [{ key: "topics" as const, label: t("Topics"), badge: topicCount ?? null, alert: false }] : []),
   ];
 
   /** The artboard's filter row, in its order, with its dot colours. */
@@ -750,7 +763,7 @@ export function ScriptLibraryScreen(props: ScriptLibraryScreenProps): React.JSX.
         style={{ ...frameStyle, flexGrow: 1, display: "flex", minWidth: 0 }}
       >
       <div style={{ flexGrow: 1, display: "flex", flexDirection: "column", minWidth: 0, minHeight: 0 }}>
-        {proposals ? (
+        {proposals && scope !== "topics" ? (
           <ProposalsStrip owner="script" items={proposals.items} planDate={proposals.planDate} zh={locale.startsWith("zh")} />
         ) : null}
         {/* toolbar */}
@@ -914,8 +927,9 @@ export function ScriptLibraryScreen(props: ScriptLibraryScreenProps): React.JSX.
               transition: "opacity .12s ease",
             }}
           >
+            {scope === "topics" && topicsView ? topicsView : null}
             {/* filter row */}
-            <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 16, flexShrink: 0 }}>
+            <div style={{ display: scope === "topics" && topicsView ? "none" : "flex", alignItems: "center", gap: 6, marginBottom: 16, flexShrink: 0 }}>
               {chips.map((c) => {
                 const on = status === c.key;
                 return (
@@ -966,7 +980,7 @@ export function ScriptLibraryScreen(props: ScriptLibraryScreenProps): React.JSX.
             )}
 
             {/* ============ GRID ============ */}
-            {view === "grid" ? (
+            {scope === "topics" && topicsView ? null : view === "grid" ? (
               <>
                 {folders.length === 0 ? null : (
                   <>
@@ -1109,7 +1123,18 @@ export function ScriptLibraryScreen(props: ScriptLibraryScreenProps): React.JSX.
                       </div>
 
                       {scripts.map((s) => {
-                        const meta = [s.targetChannel, s.aspect].filter((x): x is string => !!x).join(" · ");
+                        /* Where it came from, when it came from somewhere: the
+                           project it is the script of, what that project's
+                           topic came from, and the backlog topic. */
+                        const meta = [
+                          s.projectTitle && s.projectTitle !== s.title ? `${t("Project")} · ${s.projectTitle}` : null,
+                          s.sourceLabel,
+                          s.topicTitle && s.topicTitle !== s.title ? `${t("From the topic")} · ${s.topicTitle}` : null,
+                          s.targetChannel,
+                          s.aspect,
+                        ]
+                          .filter((x): x is string => !!x)
+                          .join(" · ");
                         const st = STATUS[s.status];
                         return (
                           <div
