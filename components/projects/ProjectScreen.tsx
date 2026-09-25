@@ -240,7 +240,7 @@ export function ProjectScreen({ project: p, zh, people }: { project: ProjectDeta
           <Board>
             {/* ---- topic ---- */}
             <Workbench icon={<AgentIcon agent="research" size={26} radius={7} />} title={t("选题", "Topic")} sub={p.source?.label ?? t("你定的题", "Your topic")}>
-              {p.brief ? <p style={{ margin: "0 0 10px", fontSize: 13, color: "#525252", lineHeight: 1.6 }}>{p.brief.replace(/@\S+/g, "").trim().slice(0, 300)}</p> : null}
+              {p.brief ? <p style={{ margin: "0 0 10px", fontSize: 13, color: "#525252", lineHeight: 1.6 }}>{p.brief.replace(/@\S+/g, "").replace(/\[[A-Z]\d{1,2}\]\s*|（证据\d+）/g, "").trim().slice(0, 300)}</p> : null}
               <AgentOutput msg={latest("research")} working={working("research")} zh={zh} onOpen={(m) => setPopup({ title: t("研究员的结果", "The researcher's findings"), body: <Body text={m.body} /> })} />
               <Actions>
                 <Action icon="spark" label={t("补充证据", "Find evidence")} onClick={() => ask("research", t("为这个项目的选题找 3 条真实数据证据（平台、播放或热度、链接），只用工具查到的数字。", "Find 3 real pieces of evidence for this project's topic (platform, views or heat, link), numbers from tools only."))} disabled={pending} />
