@@ -195,6 +195,7 @@ async function run(ctx: ToolContext, name: string, args: Record<string, unknown>
         topic.category ? ` Filed under ${topic.category}.` : ""
       }`,
       changed: true,
+      artifacts: [{ kind: "topic", id: topic.id, title: topic.name, action: "created" }],
     };
   }
 
@@ -234,6 +235,7 @@ async function run(ctx: ToolContext, name: string, args: Record<string, unknown>
     return {
       text: `Angles for "${topic.name}":\n${res.angles.map((a) => `- ${a}`).join("\n")}`,
       changed: true,
+      artifacts: [{ kind: "topic", id: topic.id, title: topic.name, action: "updated" }],
     };
   }
 
@@ -253,6 +255,7 @@ async function run(ctx: ToolContext, name: string, args: Record<string, unknown>
             ? `Rejected "${topic.name}". Future ranking takes that into account.`
             : `Saved "${topic.name}" for later.`,
       changed: true,
+      artifacts: [{ kind: "topic", id: topic.id, title: topic.name, action: "updated" }],
     };
   }
 
@@ -335,7 +338,7 @@ async function run(ctx: ToolContext, name: string, args: Record<string, unknown>
       return { text: "No outside-world key is configured, so nobody else's channel can be read." };
     }
 
-    await addCompetitor(ctx.viewer, {
+    const competitorId = await addCompetitor(ctx.viewer, {
       platform: "youtube",
       externalId: channelId,
       handle: null,
@@ -353,6 +356,7 @@ async function run(ctx: ToolContext, name: string, args: Record<string, unknown>
     return {
       text: `Watching ${str(args.name, 200) || channelId}. Its numbers appear on the Trends dashboard once they are read.`,
       changed: true,
+      artifacts: [{ kind: "competitor", id: competitorId, title: str(args.name, 200) || channelId, action: "created" }],
     };
   }
 

@@ -9,13 +9,15 @@ import { createDocument } from "@/lib/files/service";
 import { budgetState, formatUsd } from "./ledger";
 import { readFileText, searchFiles } from "./retrieval";
 import type { ToolDef } from "./openrouter";
+import { agentKeyFromEmail, type AgentKey } from "@/lib/agents/catalog";
 import { holdsPack, type ToolPack } from "./tools/types";
 import { chatPack } from "./tools/chat";
 import { researchPack } from "./tools/research";
-import { videoPack } from "./tools/video";
+import { VIDEO_READ_ONLY, videoPack } from "./tools/video";
 import { creatorPack } from "./tools/creator";
 import { scriptPack } from "./tools/script";
 import { articlePack } from "./tools/article";
+import { teamPack } from "./tools/team";
 
 /**
  * What the agent can do. Each tool is a thin wrapper over the same service the
@@ -37,7 +39,7 @@ import type { ToolContext, ToolResult } from "./tools/types";
  * the packs they hold, and `runTool` re-checks — a model is perfectly capable
  * of calling something it was never shown.
  */
-const PACKS: ToolPack[] = [chatPack, researchPack, scriptPack, articlePack, videoPack, creatorPack];
+const PACKS: ToolPack[] = [chatPack, teamPack, researchPack, scriptPack, articlePack, videoPack, creatorPack];
 
 export const TOOL_DEFS: ToolDef[] = [
   {
@@ -116,7 +118,18 @@ export async function runTool(
   // `toolsFor` decides what is *offered*; a model is perfectly capable of
   // calling something it was never offered, and nothing downstream would have
   // noticed. The entitlement is enforced here, where the work happens.
-  if (!toolsFor(viewer).some((t) => t.function.name === name)) {
+  const named = (t: ToolDef) => t.function.name === name;
+  if (!toolsFor(viewer, { readOnly: context.readOnly }).some(named)) {
+    /* Held but withheld is worth saying differently from "no such tool": the
+       model then knows the work exists and whose it is, rather than
+       concluding it cannot be done at all. */
+    if (allTools(viewer).some(named)) {
+      return {
+        text: toolsFor(viewer).some(named)
+          ? `${name} changes things, and this turn only looks things up. Say what you found; if something needs doing, say who should do it.`
+          : `${name} is not part of your job. Hand the work to the colleague whose job it is with assign_task.`,
+      };
+    }
     return { text: `Unknown tool ${name}.` };
   }
 
@@ -220,6 +233,8 @@ export async function runTool(
       return {
         text: `Saved as "${doc.name}" (id: ${doc.id}) in their files.`,
         citations: [doc.id],
+        changed: true,
+        artifacts: [{ kind: "file", id: doc.id, title: doc.name, action: "created" }],
       };
     }
 
@@ -250,7 +265,20 @@ export async function runTool(
  * screen, can summarise a channel, watch a topic or cut a video — and that a
  * person without the Video module is not offered a single video tool.
  */
-export function toolsFor(viewer: Viewer): ToolDef[] {
+export function toolsFor(viewer: Viewer, opts: { readOnly?: boolean } = {}): ToolDef[] {
+  const key = agentKeyFromEmail(viewer.email);
+  const denied = key ? DENIED[key] : undefined;
+  return allTools(viewer).filter((t) => {
+    const name = t.function.name;
+    if (opts.readOnly && WRITES.has(name)) return false;
+    if (key && AGENTS_NEVER.has(name)) return false;
+    return !denied?.has(name);
+  });
+}
+
+/** Everything the viewer's modules would bring, before any employee's lane
+ * or a read-only turn narrows it. */
+function allTools(viewer: Viewer): ToolDef[] {
   const base = viewer.modules.includes("files")
     ? TOOL_DEFS
     : TOOL_DEFS.filter(
@@ -261,3 +289,50 @@ export function toolsFor(viewer: Viewer): ToolDef[] {
   const packs = PACKS.filter((p) => holdsPack(viewer.modules, p)).flatMap((p) => p.defs);
   return [...base, ...packs];
 }
+
+/** The video tools that change the project: all of them but the looking. */
+const VIDEO_WRITES = videoPack.defs.map((d) => d.function.name).filter((n) => !VIDEO_READ_ONLY.includes(n));
+
+/**
+ * Every tool that changes something. A read-only turn is offered none of
+ * them. A tool not listed is treated as a read, so a new tool that writes
+ * belongs here too.
+ */
+const WRITES = new Set<string>([
+  "create_document",
+  "send_message",
+  "assign_task",
+  "watch_topic",
+  "suggest_angles",
+  "decide_topic",
+  "watch_channel",
+  "write_script",
+  "write_article",
+  ...VIDEO_WRITES,
+]);
+
+/**
+ * What an AI employee is not given, whatever its modules say.
+ *
+ * Modules are coarse: 策划 holds Script and Video because it has to *read*
+ * the scripts and the projects to plan, and holding them offered it every
+ * writing and cutting tool as well. It used them — and when it had not, it
+ * said it had. The planner decides and assigns; the work itself is the
+ * colleagues', reached through `assign_task`. Removing the module would not
+ * do it (`ensureAgent` only ever adds entitlements, never takes them away),
+ * and would take the reading with it.
+ */
+const DENIED: Partial<Record<AgentKey, ReadonlySet<string>>> = {
+  planning: new Set(["write_script", "write_article", "create_document", ...VIDEO_WRITES]),
+};
+
+/**
+ * What no AI employee is given.
+ *
+ * `send_message` posts straight into a channel, around the check every
+ * employee's reply goes through before it is posted (`lib/agents/mentions.ts`)
+ * — an unverified "done" and an unverified `@` by the side door. An
+ * employee's words reach a channel as its reply, and work reaches a colleague
+ * through `assign_task`.
+ */
+const AGENTS_NEVER: ReadonlySet<string> = new Set(["send_message"]);

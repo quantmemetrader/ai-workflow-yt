@@ -550,7 +550,30 @@ async function retime(ctx: ToolContext & { projectId: string; language: string }
   }
 }
 
-async function dispatch(ctx: ToolContext & { projectId: string; language: string }, name: string, rawArgs: string): Promise<string> {
+/**
+ * A tool that did what it was asked.
+ *
+ * Every tool here answers in a sentence, whether it worked or refused —
+ * "Punch in ×1.15 at 0:12" and "That could not be placed" are both strings —
+ * so the caller could not tell them apart, and marked both as a change. A
+ * success is wrapped in this instead, and only a wrapped answer earns a
+ * receipt: an employee may then say it cut something only when it did.
+ */
+type Done = { text: string; done: true };
+const done = (text: string): Done => ({ text, done: true });
+
+/** The tools that only look. Everything else changes the project, but only
+ * when it answers with `done`. */
+export const VIDEO_READ_ONLY: readonly string[] = [
+  "describe_timeline",
+  "find_in_transcript",
+  "list_clips",
+  "list_pictures",
+  "find_a_picture",
+  "find_footage",
+];
+
+async function dispatch(ctx: ToolContext & { projectId: string; language: string }, name: string, rawArgs: string): Promise<string | Done> {
   let args: Record<string, unknown> = {};
   try {
     args = rawArgs ? (JSON.parse(rawArgs) as Record<string, unknown>) : {};
@@ -630,7 +653,7 @@ async function dispatch(ctx: ToolContext & { projectId: string; language: string
     } catch (err) {
       return err instanceof Error ? err.message : "That could not be started.";
     }
-    return `Making it now: footage → transcribe → cut → design → ${render ? `render ${aspect}` : "no render"}. It takes a few minutes; each step shows on screen, and you can undo the lot afterwards with ⌘Z.`;
+    return done(`Making it now: footage → transcribe → cut → design → ${render ? `render ${aspect}` : "no render"}. It takes a few minutes; each step shows on screen, and you can undo the lot afterwards with ⌘Z.`);
   }
 
   if (name === "list_clips") {
@@ -653,7 +676,7 @@ async function dispatch(ctx: ToolContext & { projectId: string; language: string
     } catch (err) {
       return err instanceof Error ? err.message : "That could not be placed.";
     }
-    return `Punch in ×${zoom.toFixed(2)} at ${clock(startMs)} for ${seconds}s.`;
+    return done(`Punch in ×${zoom.toFixed(2)} at ${clock(startMs)} for ${seconds}s.`);
   }
 
   if (name === "add_broll") {
@@ -682,7 +705,7 @@ async function dispatch(ctx: ToolContext & { projectId: string; language: string
     } catch (err) {
       return err instanceof Error ? err.message : "That could not be placed.";
     }
-    return `Cutaway to ${clip.label} at ${clock(startMs)} for ${seconds}s (${placement}).`;
+    return done(`Cutaway to ${clip.label} at ${clock(startMs)} for ${seconds}s (${placement}).`);
   }
 
   if (name === "set_enter") {
@@ -692,7 +715,7 @@ async function dispatch(ctx: ToolContext & { projectId: string; language: string
     if (g.kind === "punch" || g.kind === "broll") return "A punch-in and a cutaway arrive their own way; this is for the text and picture graphics.";
     const enter = asEntrance(args.enter);
     await db.update(videoGraphics).set({ options: { ...(g.options ?? {}), enter } }).where(eq(videoGraphics.id, g.id));
-    return `The ${g.kind} "${g.text}" now arrives with a ${enter}.`;
+    return done(`The ${g.kind} "${g.text}" now arrives with a ${enter}.`);
   }
 
   if (name === "find_in_transcript") {
@@ -728,7 +751,7 @@ async function dispatch(ctx: ToolContext & { projectId: string; language: string
     }
     const why = str(args.why);
     const line = `Cut ${clock(startMs)}–${clock(endMs)}${why ? ` — ${why}` : ""}`;
-    return `${line}. The video is now ${clock((await timeline(ctx.projectId)).totalMs)}.`;
+    return done(`${line}. The video is now ${clock((await timeline(ctx.projectId)).totalMs)}.`);
   }
 
   if (name === "keep_only") {
@@ -741,7 +764,7 @@ async function dispatch(ctx: ToolContext & { projectId: string; language: string
       return "There is nothing inside that range. Nothing changed.";
     }
     const line = `Kept only ${clock(startMs)}–${clock(endMs)}`;
-    return `${line}. The video is now ${clock((await timeline(ctx.projectId)).totalMs)}.`;
+    return done(`${line}. The video is now ${clock((await timeline(ctx.projectId)).totalMs)}.`);
   }
 
   if (name === "remove_silences") {
@@ -766,12 +789,12 @@ async function dispatch(ctx: ToolContext & { projectId: string; language: string
     }
     const after = (await timeline(ctx.projectId)).totalMs;
     const line = `Removed ${clock(before - after)} of pauses`;
-    return `${line}. ${clock(before)} → ${clock(after)}.`;
+    return done(`${line}. ${clock(before)} → ${clock(after)}.`);
   }
 
   if (name === "first_cut") {
     const r = await autoEdit(ctx.viewer, ctx.projectId, { language: ctx.language });
-    return [
+    const said = [
       `Cut it down to ${r.cuts} piece${r.cuts === 1 ? "" : "s"}, ${clock(r.removedMs)} removed.`,
       r.title ? `Title: "${r.title}".` : "",
       r.drop.length
@@ -781,6 +804,7 @@ async function dispatch(ctx: ToolContext & { projectId: string; language: string
     ]
       .filter(Boolean)
       .join("\n");
+    return r.cuts > 0 ? done(said) : said;
   }
 
   if (name === "add_graphic") {
@@ -803,7 +827,7 @@ async function dispatch(ctx: ToolContext & { projectId: string; language: string
       options: { enter },
     });
     const line = `Added a ${kind} at ${clock(startMs)}: "${text}" (arrives with a ${enter})`;
-    return line;
+    return done(line);
   }
 
   if (name === "remove_graphic") {
@@ -816,7 +840,7 @@ async function dispatch(ctx: ToolContext & { projectId: string; language: string
     if (!g) return `There is no graphic ${num(args.index)}. There are ${gs.length}.`;
     await db.delete(videoGraphics).where(eq(videoGraphics.id, g.id));
     const line = `Removed the ${g.kind} "${g.text}"`;
-    return line;
+    return done(line);
   }
 
   if (name === "set_look") {
@@ -830,7 +854,7 @@ async function dispatch(ctx: ToolContext & { projectId: string; language: string
     const line = [preset ? `Captions set to ${preset}` : null, accent ? `Accent set to ${accent}` : null]
       .filter(Boolean)
       .join(", ");
-    return line;
+    return done(line);
   }
 
   if (name === "list_pictures") {
@@ -915,7 +939,7 @@ async function dispatch(ctx: ToolContext & { projectId: string; language: string
     } catch (err) {
       return err instanceof Error ? err.message : "That clip could not be brought in.";
     }
-    return `Cutaway on at ${clock(startMs)} for ${seconds}s: ${clip.title}. Credit: ${clipAttribution(clip)}.`;
+    return done(`Cutaway on at ${clock(startMs)} for ${seconds}s: ${clip.title}. Credit: ${clipAttribution(clip)}.`);
   }
 
   if (name === "take_picture") {
@@ -951,13 +975,13 @@ async function dispatch(ctx: ToolContext & { projectId: string; language: string
       return err instanceof Error ? err.message : "It came in, but it could not be placed.";
     }
 
-    return [
+    return done([
       `In and on at ${clock(startMs)} for ${seconds}s: ${image.title}.`,
       `Credit: ${attributionFor(image)}`,
       needsCredit(image)
         ? "That licence needs the credit in the video description — say so when you hand this over."
         : "That licence needs no credit, though the file keeps the record anyway.",
-    ].join("\n");
+    ].join("\n"));
   }
 
   if (name === "add_picture") {
@@ -976,7 +1000,7 @@ async function dispatch(ctx: ToolContext & { projectId: string; language: string
     } catch (err) {
       return err instanceof Error ? err.message : "That picture could not be placed.";
     }
-    return `Picture on at ${clock(startMs)} for ${seconds}s.`;
+    return done(`Picture on at ${clock(startMs)} for ${seconds}s.`);
   }
 
   if (name === "add_icon") {
@@ -998,7 +1022,7 @@ async function dispatch(ctx: ToolContext & { projectId: string; language: string
     } catch (err) {
       return err instanceof Error ? err.message : "That icon could not be placed.";
     }
-    return `${args.icon} on at ${clock(startMs)} for ${seconds}s.`;
+    return done(`${args.icon} on at ${clock(startMs)} for ${seconds}s.`);
   }
 
   if (name === "set_transition") {
@@ -1019,9 +1043,11 @@ async function dispatch(ctx: ToolContext & { projectId: string; language: string
       .set({ transition: kind, transitionMs: ms })
       .where(eq(timelineItems.id, item.id));
     await db.update(videoProjects).set({ updatedAt: new Date() }).where(eq(videoProjects.id, ctx.projectId));
-    return kind === "cut"
-      ? `Cut ${index} now arrives on a hard cut.`
-      : `Cut ${index} now arrives on a ${kind === "dip" ? "dip to black" : "dissolve"} of ${ms}ms.`;
+    return done(
+      kind === "cut"
+        ? `Cut ${index} now arrives on a hard cut.`
+        : `Cut ${index} now arrives on a ${kind === "dip" ? "dip to black" : "dissolve"} of ${ms}ms.`,
+    );
   }
 
   if (name === "edit_caption") {
@@ -1038,7 +1064,7 @@ async function dispatch(ctx: ToolContext & { projectId: string; language: string
        stale ones would make the word-by-word preset follow the wrong words. */
     await db.update(captions).set({ text, words: null }).where(eq(captions.id, c.id));
     const line = `Caption at ${clock(c.startMs)} is now "${text}"`;
-    return line;
+    return done(line);
   }
 
   return `Unknown tool ${name}.`;
@@ -1085,22 +1111,45 @@ async function run(ctx: ToolContext, name: string, args: Record<string, unknown>
     .limit(1);
 
   const scoped = { ...ctx, projectId: project.id, language: anyCaption?.language ?? "zh-CN" };
-  const text = await dispatch(scoped, name, JSON.stringify(args));
+  const out = await dispatch(scoped, name, JSON.stringify(args));
+  const text = typeof out === "string" ? out : out.text;
+  const worked = typeof out !== "string";
 
-  // Everything here but the two read-only tools changes the timeline, and the
-  // screen refreshes on that.
-  const readOnly = ["describe_timeline", "find_in_transcript", "list_clips", "list_pictures", "find_a_picture", "find_footage"].includes(name);
+  /* Everything here but the read-only tools changes the timeline, and the
+     screen refreshes on that — but only when the tool said it worked. A
+     refusal ("that would leave nothing, nothing changed") used to come back
+     as a change as well, which is how a failed make_video on a channel with
+     no project read, to the employee's colleagues, as a video being made. */
+  const readOnly = VIDEO_READ_ONLY.includes(name);
   if (!readOnly) {
-    await db.update(videoProjects).set({ updatedAt: new Date() }).where(eq(videoProjects.id, project.id));
+    if (worked) await db.update(videoProjects).set({ updatedAt: new Date() }).where(eq(videoProjects.id, project.id));
     await audit(ctx.viewer, "agent.video", {
       objectType: "video_project",
       objectId: project.id,
       module: "video",
-      meta: { tool: name },
+      meta: { tool: name, ok: worked },
     });
   }
 
-  return { text, changed: !readOnly };
+  const changed = !readOnly && worked;
+  return {
+    text,
+    changed,
+    ...(changed
+      ? {
+          artifacts: [
+            {
+              kind: "video_project" as const,
+              id: project.id,
+              title: project.title,
+              /* make_video hands the whole job to the worker: it has begun,
+                 and it will be minutes before anybody may say it is done. */
+              action: name === "make_video" ? ("started" as const) : ("updated" as const),
+            },
+          ],
+        }
+      : {}),
+  };
 }
 
 export const videoPack: ToolPack = { module: "video", defs, run };

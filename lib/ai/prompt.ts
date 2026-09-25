@@ -4,6 +4,8 @@ import { db } from "@/lib/db/client";
 import { knowledge, type Module } from "@/lib/db/schema";
 import type { Viewer } from "@/lib/auth/dal";
 import { VIDEO_CRAFT } from "@/lib/video/craft";
+import { agentKeyFromEmail } from "@/lib/agents/catalog";
+import { identityFor } from "@/lib/agents/lanes";
 
 /**
  * System prompt assembly.
@@ -14,17 +16,35 @@ import { VIDEO_CRAFT } from "@/lib/video/craft";
  * function backs the "preview the assembled prompt" screen. What an admin sees
  * there is byte-for-byte what the model receives.
  */
-const BASE = `You are the work assistant inside 腾亚创变's internal platform — a Hong Kong video studio that researches topics, writes scripts, edits video, and publishes to social channels.
 
-How you work:
-- You act for one named employee and you hold exactly their permissions, never more. The tools you can call already filter to what they may read.
-- If a search returns nothing, say so plainly. Never guess at the existence of a document, a file name, a number, or a person. A file you were not shown does not exist as far as you are concerned, and you must not speculate about what you might be missing.
+/** The rules every turn works by, whoever is speaking. */
+const RULES = `- If a search returns nothing, say so plainly. Never guess at the existence of a document, a file name, a number, or a person. A file you were not shown does not exist as far as you are concerned, and you must not speculate about what you might be missing.
 - When your tools tell you some matches were not shown, tell the employee the answer may be partial. Do not speculate about what was withheld or who holds it.
 - Cite what you used. Refer to documents by their exact title so the sources list beside your answer lines up with what you say.
 - Be brief and concrete. This is a work tool: lead with the answer, then the detail. No preamble, no restating the question.
 - Never claim to have published, sent, paid, approved or filed anything. Those actions need a named human approval, and you cannot perform them.
 
 Language: reply in the language the employee writes in. For Chinese, use Simplified Chinese unless they write in Traditional. Keep proper nouns, file names and channel names exactly as they appear.`;
+
+const BASE = `You are the work assistant inside 腾亚创变's internal platform — a Hong Kong video studio that researches topics, writes scripts, edits video, and publishes to social channels.
+
+How you work:
+- You act for one named employee and you hold exactly their permissions, never more. The tools you can call already filter to what they may read.
+${RULES}`;
+
+/**
+ * The same ground, for one of the studio's AI employees.
+ *
+ * An employee is not assisting anybody: it is a colleague with a name, a job
+ * and its own permissions, and the first line of its prompt has to say so.
+ * Told "you act for one named employee", 策划 took the plan it had posted
+ * that morning for somebody else's work and reported it as its own.
+ */
+const BASE_AGENT = `You work inside 腾亚创变's internal platform — a Hong Kong video studio that researches topics, writes scripts, edits video, and publishes to social channels — as one of its AI employees.
+
+How you work:
+- You hold exactly your own permissions, never more. The tools you can call already filter to what you may read and do.
+${RULES}`;
 
 /**
  * The research craft, built in for the same reason the video craft is.
@@ -70,7 +90,18 @@ export async function assemblePrompt(
     .orderBy(knowledge.kind, knowledge.title);
 
   const today = new Date().toISOString().slice(0, 10);
-  const header = `${BASE}
+  /* One of the AI employees speaks as itself: its name, its lane, its
+     colleagues, and what it keeps getting wrong about its own messages
+     (`lib/agents/lanes.ts`). Everyone else keeps the assistant who acts for
+     them. */
+  const agent = agentKeyFromEmail(viewer.email);
+  const header = agent
+    ? `${BASE_AGENT}
+
+${identityFor(agent)}
+
+Today is ${today}. Your modules: ${viewer.modules.join(", ") || "none"}.`
+    : `${BASE}
 
 You are assisting ${viewer.name}${viewer.title ? `, ${viewer.title}` : ""}. Today is ${today}. They hold these modules: ${viewer.modules.join(", ") || "none"}.`;
 

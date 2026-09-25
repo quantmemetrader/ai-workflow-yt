@@ -12,7 +12,8 @@ import { BudgetStop, assertBudget, budgetState, notifyBudgetStop, recordUsage, t
 import { labelFor, modelFor } from "./models";
 import { assemblePrompt } from "./prompt";
 import { runTool, toolsFor } from "./tools";
-import type { ToolContext } from "./tools/types";
+import { idsIn, type Artifact, type ToolContext } from "./tools/types";
+import { agentKeyFromEmail } from "@/lib/agents/catalog";
 
 /**
  * One turn of the employee's agent (spec §4.2, §5).
@@ -26,7 +27,21 @@ import type { ToolContext } from "./tools/types";
 export type AgentEvent =
   | { type: "message"; id: string }
   | { type: "delta"; text: string }
-  | { type: "tool"; id: string; name: string; status: "running" | "ok" | "error"; summary?: string }
+  | {
+      type: "tool";
+      id: string;
+      name: string;
+      status: "running" | "ok" | "error";
+      summary?: string;
+      /** On the finished event: whether the tool changed something. */
+      changed?: boolean;
+      /** On the finished event: the tool's receipts — what it really made or
+       * changed. Only a tool that succeeded has any. */
+      artifacts?: Artifact[];
+      /** On the finished event: every studio id in what the tool returned,
+       * so a reply can be checked against what this turn actually saw. */
+      resultIds?: string[];
+    }
   | {
       type: "citations";
       files: { id: string; name: string; kind: string; folder: string | null; relation: string | null }[];
@@ -134,6 +149,9 @@ export async function* runAgent(opts: {
     content: "",
     status: "streaming",
     module: opts.module,
+    /* Which employee is answering, so a thread read back later — in the
+       panel, or by the employee itself — knows whose words these were. */
+    speaker: agentKeyFromEmail(viewer.email),
   });
   yield { type: "message", id: assistantId };
 
@@ -162,7 +180,7 @@ export async function* runAgent(opts: {
       ),
   ];
 
-  const tools = toolsFor(viewer);
+  const tools = toolsFor(viewer, { readOnly: opts.context?.readOnly });
   const citedFileIds = new Set<string>();
   let answer = "";
   let withheldAny = false;
@@ -334,6 +352,9 @@ export async function* runAgent(opts: {
           name: call.name,
           status: failed ? "error" : "ok",
           summary: summarise(call.name, call.arguments, result.text),
+          changed: Boolean(result.changed) && !failed,
+          ...(result.artifacts?.length && !failed ? { artifacts: result.artifacts } : {}),
+          resultIds: idsIn(result.text),
         };
 
         messages.push({ role: "tool", content: result.text, tool_call_id: call.id });

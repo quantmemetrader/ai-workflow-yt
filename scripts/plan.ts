@@ -26,6 +26,10 @@ import { db, pool } from "../lib/db/client";
 import { agentViewer, ensureAgentChannel, ensureAllAgents, postAsAgent } from "../lib/agents";
 import { AGENT_LABELS, agentTag, type AgentKey } from "../lib/agents/catalog";
 import type { CardAction } from "../lib/agents/cards";
+/* Who does what, written once: the same lines every employee's own prompt
+   is built from, so the plan never assigns by a job description chat has
+   never heard of. */
+import { PLAN_COLLEAGUES } from "../lib/agents/lanes";
 import { runTool } from "../lib/ai/tools";
 import { assemblePrompt } from "../lib/ai/prompt";
 import { AiError, complete } from "../lib/ai/openrouter";
@@ -50,10 +54,7 @@ type Owner = (typeof OWNERS)[number];
 const INSTRUCTIONS = `你现在是腾亚创变的「策划」，一名 AI 员工。每天早上，研究员发完晨报之后，你在同一个频道发当天的工作计划。
 
 同事（可以派活给他们）：
-- 研究员：查趋势、对标账号、把一个选题挖深
-- 编剧：写脚本、改脚本
-- 剪辑师：粗剪、字幕、图形、渲染
-- 撰稿人：长文、发布记录、按平台改写
+${PLAN_COLLEAGUES}
 - 人（human）：需要真人做的事——拍摄、审批、对外沟通、决定要不要讲
 
 规则：

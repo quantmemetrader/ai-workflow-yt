@@ -101,6 +101,9 @@ async function run(ctx: ToolContext, name: string, args: Record<string, unknown>
 
     const [row] = await db.select({ title: articles.title }).from(articles).where(eq(articles.id, id)).limit(1);
     return {
+      /* The receipt, only here: a draft that failed above left an empty row
+         behind, which is not an article anybody may say was written. */
+      artifacts: [{ kind: "article", id, title: row?.title ?? subject, action: "created" }],
       text: [
         `Written: "${row?.title ?? subject}" — about ${res.words} words, by ${res.model}.`,
         `Open it at /article?id=${id} (id: ${id}).`,
