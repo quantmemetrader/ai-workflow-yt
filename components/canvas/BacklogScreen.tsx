@@ -7,6 +7,9 @@ import Link from "next/link";
 import { useResizable } from "@/components/ui/Resizer";
 import { AddTopicButton } from "./AddTopicButton";
 import { StatusStrip } from "@/components/ui/kit";
+import { AgentIcon } from "@/components/agents/AgentIcon";
+import { Icon } from "@/components/ui/Icon";
+import { AGENT_TINTS, type AgentKey } from "@/lib/agents/catalog";
 
 /**
  * BacklogScreen — a transcription of design/canvas/Res-Backlog.dc.html.
@@ -62,6 +65,43 @@ export type Stage = "adopted" | "briefing" | "scripting" | "handed";
 /** The artboard's `accent` prop, at its default (#007BE0). */
 const ACCENT = "#007be0";
 
+/*
+ * Whose desk each lane is.
+ *
+ * The four lanes were four identical grey columns, told apart only by their
+ * headings. They are four stages of one hand-off between the studio's
+ * employees — 研究员 adopts, 策划 briefs, 编剧 scripts, 剪辑 takes it to
+ * video — so each lane wears that employee's face and tint (AGENT_TINTS, the
+ * same colours the rest of the studio uses for them): on the lane's header,
+ * on its count, on the drop highlight, and on the stage badge of every card
+ * in it. A card's colour now says where it is before its words do.
+ */
+const STAGE_AGENT: Record<Stage, AgentKey> = {
+  adopted: "research",
+  briefing: "planning",
+  scripting: "script",
+  handed: "video",
+};
+
+/**
+ * "Today", read on the client only.
+ *
+ * Due badges count days from today, and "today" on the server (UTC) is not
+ * "today" in Hong Kong for eight hours of every day, so the server's
+ * "2 天后到期" and the browser's "1 天后到期" disagreed and React threw a
+ * hydration error. The server renders no count; the browser fills it in on
+ * its first pass. useSyncExternalStore is the hydration-safe way to say "a
+ * different value on the client" (no effect, no second render of our own).
+ */
+const noSubscribe = () => () => {};
+function useToday(): number | null {
+  return React.useSyncExternalStore(
+    noSubscribe,
+    () => startOfDay(new Date()),
+    () => null,
+  );
+}
+
 /** A <select> wearing the artboard's chip text, chevron and all. */
 const PICKER: React.CSSProperties = {
   border: "none",
@@ -105,7 +145,7 @@ const CSS = `
 [data-backlog-screen] .h1 { font-size: 15px; font-weight: 500; }
 [data-backlog-screen] .mut { font-size: 12.5px; color: #999999; }
 [data-backlog-screen] .btn { height: 30px; padding: 0 12px; border-radius: 8px; display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; white-space: nowrap; }
-[data-backlog-screen] .btn.p { background: #007be0; color: #fff; font-weight: 500; }
+[data-backlog-screen] .btn.p { background: #171717; color: #fff; font-weight: 500; }
 [data-backlog-screen] .btn.s { border: 1px solid #ededed; color: #525252; }
 [data-backlog-screen] .btn svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 [data-backlog-screen] .chip { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 11px; border: 1px solid #ededed; border-radius: 8px; font-size: 12.5px; color: #4a5763; white-space: nowrap; }
@@ -142,6 +182,19 @@ const CSS = `
 [data-backlog-screen] .btn, [data-backlog-screen] .chip, [data-backlog-screen] .n { cursor: pointer; }
 [data-backlog-screen] .rtab { white-space: nowrap; }
 [data-backlog-screen] .btn { border: 0; font-family: inherit; letter-spacing: inherit; }
+
+/* Additions for the visual pass. The primary button was the artboard's blue,
+   which at half opacity (nothing selected yet) read as a pale, broken button;
+   the studio's primary is near-black (above). Soft borders to match the rest
+   of the app, a hover on cards, and small chips for "open the script / open
+   the project" instead of two coloured text links. */
+[data-backlog-screen] .btn.s { border-color: #e2e2e2; }
+[data-backlog-screen] .chip { border-color: #e2e2e2; color: #525252; }
+[data-backlog-screen] .bcard { transition: border-color .12s ease, box-shadow .12s ease; }
+[data-backlog-screen] .bcard:hover { border-color: #dcdcdc; }
+[data-backlog-screen] .bcard:focus-visible { outline: 2px solid #171717; outline-offset: 2px; }
+[data-backlog-screen] .olink { display: inline-flex; align-items: center; gap: 5px; height: 22px; padding: 0 8px; border-radius: 7px; border: 1px solid #ececec; background: #fff; color: #383838; font-size: 11.5px; white-space: nowrap; }
+[data-backlog-screen] .olink:hover { border-color: #d6d6d6; background: #fafafa; }
 `;
 
 /* ---------------------------------------------------------------- language */
@@ -186,6 +239,7 @@ const ZH: Record<string, string> = {
   "Go to the Trends dashboard": "前往趋势面板",
   "Due date": "截止日期",
   Flagged: "已标记",
+  Stage: "阶段",
 };
 
 /* ------------------------------------------------------------------ format */
@@ -207,11 +261,13 @@ function startOfDay(d: Date): number {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
 }
 
-/** Whole days from today to a due date; negative once it is late. */
-function daysUntil(iso: string): number | null {
+/** Whole days from `today` to a due date; negative once it is late. Null
+ * until the browser knows what today is (useToday). */
+function daysUntil(iso: string, today: number | null): number | null {
+  if (today === null) return null;
   const d = parseDay(iso);
   if (d === null) return null;
-  return Math.round((startOfDay(d) - startOfDay(new Date())) / 86400000);
+  return Math.round((startOfDay(d) - today) / 86400000);
 }
 
 /** "+38.2%" / "−6.7%" — the sign the canvas uses, U+2212 for a fall. */
@@ -295,9 +351,10 @@ export function BacklogScreen(props: {
 
   const selectedId = shown.some((i) => i.id === selected) ? selected : null;
 
+  const today = useToday();
   const dueThisWeek = shown.filter((i) => {
     if (i.dueDate === null) return false;
-    const d = daysUntil(i.dueDate);
+    const d = daysUntil(i.dueDate, today);
     return d !== null && d >= 0 && d <= 7;
   }).length;
 
@@ -305,7 +362,7 @@ export function BacklogScreen(props: {
   const atRisk = items
     .filter((i) => i.dueDate !== null)
     .sort((a, b) => String(a.dueDate).localeCompare(String(b.dueDate)))[0];
-  const atRiskDays = atRisk !== undefined && atRisk.dueDate !== null ? daysUntil(atRisk.dueDate) : null;
+  const atRiskDays = atRisk !== undefined && atRisk.dueDate !== null ? daysUntil(atRisk.dueDate, today) : null;
 
   const agentNote =
     atRisk === undefined || atRisk.dueDate === null || atRiskDays === null
@@ -388,7 +445,13 @@ export function BacklogScreen(props: {
                   ? ("done" as const)
                   : ("running" as const),
           }))}
-          right={zh ? `${count(dueThisWeek, locale)} 个本周到期` : `${count(dueThisWeek, locale)} due this week`}
+          right={
+            today === null
+              ? null
+              : zh
+                ? `${count(dueThisWeek, locale)} 个本周到期`
+                : `${count(dueThisWeek, locale)} due this week`
+          }
         />
 
         <div style={{ flexGrow: 1, display: "flex", minHeight: 0 }}>
@@ -463,27 +526,80 @@ export function BacklogScreen(props: {
                 gridTemplateColumns: "repeat(4, minmax(0,1fr))",
                 gap: 12,
                 padding: "16px 20px",
-                overflow: "hidden",
+                /* It was `overflow: hidden`, so a lane longer than the window
+                   lost its bottom cards with no way to reach them. The board
+                   scrolls as one; the lanes still stretch to the full height,
+                   so an empty lane is still somewhere to drop a card. */
+                overflowY: "auto",
               }}
             >
               {shown.length === 0 ? (
-                <div style={{ gridColumn: "1 / -1", maxWidth: 460 }}>
-                  <div style={{ fontSize: 15, fontWeight: 600 }}>{t("Nothing has been adopted yet.")}</div>
-                  {/* The empty state used to name one way in, and it was the
-                      one on another screen. Both ways are here now, and the
-                      one that works without leaving is first. */}
-                  <p className="mut" style={{ lineHeight: 1.55, marginTop: 6 }}>
-                    {t("Add a topic here, or adopt one on the Trends dashboard and it lands here, ready to plan.")}
-                  </p>
-                  <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-                    <AddTopicButton zh={zh} className="btn p" />
-                    <Link
-                      href="/research"
-                      className="btn s"
-                      style={{ textDecoration: "none", border: "1px solid #ededed" }}
-                    >
-                      {t("Go to the Trends dashboard")}
-                    </Link>
+                /* The empty board was a heading and a paragraph floating in
+                   the top-left of a blank column. It is one calm panel now,
+                   with the four stages it will fill drawn under it, so an
+                   empty backlog still shows what a full one is for. */
+                <div
+                  style={{
+                    gridColumn: "1 / -1",
+                    alignSelf: "start",
+                    border: "1px dashed #e2e2e2",
+                    borderRadius: 14,
+                    background: "#fbfbfa",
+                    padding: "22px 22px 20px",
+                    display: "flex",
+                    gap: 16,
+                    alignItems: "flex-start",
+                  }}
+                >
+                  <AgentIcon agent="research" size={40} radius={11} />
+                  <div style={{ minWidth: 0, maxWidth: 520 }}>
+                    <div style={{ fontSize: 15, fontWeight: 600 }}>{t("Nothing has been adopted yet.")}</div>
+                    {/* The empty state used to name one way in, and it was the
+                        one on another screen. Both ways are here now, and the
+                        one that works without leaving is first. */}
+                    <p className="mut" style={{ lineHeight: 1.6, marginTop: 6, color: "#7c7c7c" }}>
+                      {t("Add a topic here, or adopt one on the Trends dashboard and it lands here, ready to plan.")}
+                    </p>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 14 }}>
+                      <AddTopicButton zh={zh} className="btn p" />
+                      <Link
+                        prefetch={false}
+                        href="/research"
+                        className="btn s"
+                        style={{ textDecoration: "none", border: "1px solid #e2e2e2", color: "#383838" }}
+                      >
+                        {t("Go to the Trends dashboard")}
+                      </Link>
+                    </div>
+                    <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6, marginTop: 18 }}>
+                      {lanes.map((lane, k) => (
+                        <React.Fragment key={lane.key}>
+                          {k > 0 ? (
+                            <span aria-hidden style={{ color: "#c7c7c7", fontSize: 11 }}>
+                              →
+                            </span>
+                          ) : null}
+                          <span
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: 6,
+                              height: 26,
+                              padding: "0 9px 0 4px",
+                              borderRadius: 8,
+                              background: "#fff",
+                              border: "1px solid #ececec",
+                              fontSize: 11.5,
+                              color: "#525252",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            <AgentIcon agent={STAGE_AGENT[lane.key]} size={18} radius={5} />
+                            {lane.name}
+                          </span>
+                        </React.Fragment>
+                      ))}
+                    </div>
                   </div>
                 </div>
               ) : (
@@ -521,26 +637,47 @@ export function BacklogScreen(props: {
                       display: "flex",
                       flexDirection: "column",
                       minWidth: 0,
-                      background: overLane === lane.key ? "#f0f6ff" : "#f8f8f8",
-                      borderRadius: 12,
-                      padding: 10,
-                      outline: overLane === lane.key ? `1.5px dashed ${ACCENT}` : "1.5px dashed transparent",
+                      background: overLane === lane.key ? `${AGENT_TINTS[STAGE_AGENT[lane.key]]}66` : "#f7f7f6",
+                      borderRadius: 14,
+                      padding: 8,
+                      outline:
+                        overLane === lane.key
+                          ? `1.5px dashed ${AGENT_TINTS[STAGE_AGENT[lane.key]]}`
+                          : "1.5px dashed transparent",
                       outlineOffset: -2,
                       transition: "background .12s linear",
                     }}
                   >
-                    <div style={{ display: "flex", alignItems: "center", gap: 7, padding: "2px 4px 10px" }}>
-                      <span style={{ fontSize: 12.5, fontWeight: 600 }}>{lane.name}</span>
-                      <span className="cap">{count(lane.rows.length, locale)}</span>
+                    <div style={{ display: "flex", alignItems: "center", gap: 7, padding: "2px 4px 9px" }}>
+                      <AgentIcon agent={STAGE_AGENT[lane.key]} size={20} radius={6} />
+                      <span style={{ fontSize: 12.5, fontWeight: 600, whiteSpace: "nowrap" }}>{lane.name}</span>
+                      <span
+                        style={{
+                          minWidth: 20,
+                          height: 18,
+                          padding: "0 6px",
+                          borderRadius: 9,
+                          background: AGENT_TINTS[STAGE_AGENT[lane.key]],
+                          color: "#383838",
+                          fontSize: 11,
+                          fontWeight: 600,
+                          display: "inline-flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          fontVariantNumeric: "tabular-nums",
+                        }}
+                      >
+                        {count(lane.rows.length, locale)}
+                      </span>
                       {lane.note === null ? null : (
-                        <span className="cap" style={{ marginLeft: "auto" }}>
+                        <span className="cap" style={{ marginLeft: "auto", whiteSpace: "nowrap" }}>
                           {lane.note}
                         </span>
                       )}
                     </div>
                     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                       {lane.rows.map((item) => {
-                        const days = item.dueDate === null ? null : daysUntil(item.dueDate);
+                        const days = item.dueDate === null ? null : daysUntil(item.dueDate, today);
                         const dueSoon = days !== null && days <= 7;
                         const ownerKnown = people.some((p) => p.id === item.ownerId);
                         const channelKnown =
@@ -570,16 +707,21 @@ export function BacklogScreen(props: {
                               setDragStage(null);
                               setOverLane(null);
                             }}
+                            className="bcard"
                             style={{
-                              border: "1px solid #ededed",
-                              borderRadius: 11,
+                              border: `1px solid ${on ? "#171717" : "#ececec"}`,
+                              borderRadius: 12,
                               background: "#fff",
                               padding: 12,
                               opacity: dragging === item.id ? 0.45 : 1,
-                              // the artboard's card shadow; .focus's ring rides in front of it
+                              /* The selected card had a 3px #EFF6FF ring — a
+                                 blue so pale it vanished on a white card — so
+                                 nobody could see which topic "把所选发给脚本"
+                                 would send. It is the studio's pressed look
+                                 now: a dark border and a soft halo. */
                               boxShadow: on
-                                ? "0 0 0 3px #EFF6FF, 0 1px 1px rgba(5,5,6,.04)"
-                                : "0 1px 1px rgba(5,5,6,.04)",
+                                ? "0 0 0 3px rgba(23,23,23,.07), 0 1px 2px rgba(5,5,6,.05)"
+                                : "0 1px 2px rgba(5,5,6,.04)",
                               cursor: "pointer",
                             }}
                           >
@@ -674,18 +816,20 @@ export function BacklogScreen(props: {
                                 selects, so the links keep their clicks and
                                 their Enter to themselves. */}
                             {item.scriptId || item.projectId ? (
-                              <div style={{ display: "flex", gap: 12, marginTop: 6, fontSize: 11.5 }}>
+                              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
                                 {item.scriptId ? (
                                   <Link
                                     prefetch={false}
                                     href={`/script/${item.scriptId}`}
                                     onClick={(e) => e.stopPropagation()}
                                     onKeyDown={(e) => e.stopPropagation()}
-                                    style={{ color: ACCENT, textDecoration: "none" }}
+                                    className="olink"
+                                    title={zh ? "打开脚本" : "Open the script"}
                                   >
+                                    <Icon name="pen" size={11} color="#7c7c7c" />
                                     {zh
-                                      ? `脚本 · ${item.beats ? `${item.beats} 个分镜` : "还没写"} →`
-                                      : `Script · ${item.beats ? `${item.beats} beats` : "not written yet"} →`}
+                                      ? `脚本 · ${item.beats ? `${item.beats} 个分镜` : "还没写"}`
+                                      : `Script · ${item.beats ? `${item.beats} beats` : "not written yet"}`}
                                   </Link>
                                 ) : null}
                                 {item.projectId ? (
@@ -694,9 +838,11 @@ export function BacklogScreen(props: {
                                     href={`/projects/${item.projectId}`}
                                     onClick={(e) => e.stopPropagation()}
                                     onKeyDown={(e) => e.stopPropagation()}
-                                    style={{ color: "#525252", textDecoration: "none" }}
+                                    className="olink"
+                                    title={zh ? "打开项目" : "Open the project"}
                                   >
-                                    {zh ? "项目 →" : "Project →"}
+                                    <Icon name="film" size={11} color="#7c7c7c" />
+                                    {zh ? "项目" : "Project"}
                                   </Link>
                                 ) : null}
                               </div>
@@ -723,7 +869,7 @@ export function BacklogScreen(props: {
                                 value={item.stage}
                                 onChange={(e) => onMoveStage(item.id, e.target.value as Stage)}
                                 onClick={(e) => e.stopPropagation()}
-                                className="bd gray"
+                                className="bd"
                                 style={{
                                   appearance: "none",
                                   border: 0,
@@ -731,6 +877,8 @@ export function BacklogScreen(props: {
                                   fontFamily: "inherit",
                                   fontSize: 11.5,
                                   marginRight: 6,
+                                  background: AGENT_TINTS[STAGE_AGENT[item.stage]],
+                                  color: "#383838",
                                 }}
                               >
                                 {(["adopted", "briefing", "scripting", "handed"] as Stage[]).map((st) => (
