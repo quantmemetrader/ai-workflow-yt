@@ -46,7 +46,7 @@ export function TopicQueue({ items, zh, canStart }: { items: TopicQueueItem[]; z
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 10, paddingBottom: 24 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 10, paddingBottom: 24, flexShrink: 0, maxWidth: 860 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
         <AgentIcon agent="script" size={26} radius={7} />
         <div style={{ minWidth: 0 }}>

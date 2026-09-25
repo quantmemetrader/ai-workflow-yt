@@ -167,7 +167,10 @@ export async function writeScript(viewer: Viewer, req: ScriptRequest): Promise<S
         topicId: topicId ?? undefined,
         angle: req.angle?.trim() || undefined,
         targetChannel: req.channel?.trim() || undefined,
-        aspect,
+        /* Only when the caller said something about it: a project's script
+           keeps the aspect its brief was given (a rewrite used to reset a
+           9:16 script to 16:9). */
+        aspect: req.aspect || req.channel ? aspect : undefined,
         targetSeconds: seconds ?? undefined,
         language: req.language?.trim() || undefined,
         subtitleLanguage: req.subtitleLanguage?.trim() || undefined,

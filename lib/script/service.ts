@@ -138,7 +138,9 @@ export async function listScripts(
       updatedAt: scripts.updatedAt,
       projectId: workProjects.id,
       projectTitle: workProjects.title,
-      sourceLabel: sql<string | null>`${workProjects.source} ->> 'label'`,
+      /* A person's own project is labelled with their name, which says
+         nothing about where the topic came from; only the other kinds. */
+      sourceLabel: sql<string | null>`case when (${workProjects.source} ->> 'kind') = 'person' then null else ${workProjects.source} ->> 'label' end`,
       topicName: topics.name,
       topicNameLocal: topics.nameLocal,
     })
