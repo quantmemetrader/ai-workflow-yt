@@ -194,7 +194,8 @@ export function notesFor(meta: Record<string, unknown> | null): string[] {
     if (done && typeof done.actionId === "string") {
       const who = typeof done.by === "string" ? done.by : "有人";
       const when = typeof done.at === "string" ? ` 在 ${done.at.slice(0, 16).replace("T", " ")}` : "";
-      notes.push(`${who}${when} 按了它的「${done.actionId.replace(/^hand-/, "交给")}」按钮：只是把待办交了出去，不代表做完。`);
+      const label = done.actionId.startsWith("hand-") ? `交给${agentName(done.actionId.slice(5))}` : done.actionId;
+      notes.push(`${who}${when} 按了它的「${label}」按钮：只是把待办交了出去，不代表做完。`);
     }
   }
   const handoff = meta.handoff as { from?: unknown; to?: unknown; artifacts?: unknown; verified?: unknown } | undefined;

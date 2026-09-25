@@ -102,7 +102,7 @@ async function run(ctx: ToolContext, name: string, args: Record<string, unknown>
     const today = hkToday();
     const focus = plan.body.match(/今天最重要：\**\s*(.+)/)?.[1]?.trim();
     const pressed = plan.done
-      ? `${plan.done.by || "Somebody"} pressed its "${plan.done.actionId.replace(/^hand-/, "hand to ")}" button${plan.done.at ? ` at ${plan.done.at.slice(0, 16).replace("T", " ")} UTC` : ""}. That handed those to-dos over; it does not mean they are finished.`
+      ? `${plan.done.by || "Somebody"} pressed its "${plan.done.actionId.startsWith("hand-") ? `交给${ownerName(plan.done.actionId.slice(5))}` : plan.done.actionId}" button${plan.done.at ? ` at ${plan.done.at.slice(0, 16).replace("T", " ")} UTC` : ""}. That handed those to-dos over; it does not mean they are finished.`
       : "Nobody has pressed its hand-off buttons yet.";
     return {
       text: [
