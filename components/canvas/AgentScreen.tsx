@@ -5,6 +5,10 @@ import { ModelPicker } from "@/components/shell/ModelPicker";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { AgentIcon } from "@/components/agents/AgentIcon";
+import { MentionMenu } from "@/components/chat/MentionMenu";
+import { useMentions } from "@/components/chat/useMentions";
+import { AGENT_LABELS, agentTag, type AgentKey } from "@/lib/agents/catalog";
 import { Markdown } from "@/components/ui/Markdown";
 import { formatTextarea, type Format } from "./composer-format";
 import { FormattedPreview } from "@/components/ui/FormattedPreview";
@@ -43,6 +47,8 @@ export type ThreadMessage = {
   createdAt?: string;
   citations: ThreadCitation[];
   tools: ThreadTool[];
+  /** The employee who answered, when an @ handed the turn to one. */
+  speaker?: AgentKey | null;
 };
 
 const AGENT_MARK = (size: number, stroke = "#fff") => (
@@ -113,6 +119,8 @@ export function AgentScreen({
   const scroller = useRef<HTMLDivElement>(null);
   const box = useRef<HTMLTextAreaElement>(null);
   const format = (f: Format) => formatTextarea(box.current, f, setInput);
+  /* @ an employee to hand them this message; otherwise your assistant answers. */
+  const mentions = useMentions({ people: undefined, zh, draft: input, setDraft: setInput, box });
 
   useEffect(() => {
     const el = scroller.current;
@@ -195,6 +203,9 @@ export function AgentScreen({
             case "conversation":
               created = event.id;
               setConversationId(event.id);
+              break;
+            case "speaker":
+              patchLast((m) => ({ ...m, speaker: event.agent ?? null }));
               break;
             case "message":
               patchLast((m) => ({ ...m, id: event.id }));
@@ -447,19 +458,45 @@ export function AgentScreen({
                   look like once sent. */}
               <FormattedPreview text={input} zh={zh} />
 
+              <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 13px 0", flexWrap: "wrap" }}>
+                <span style={{ fontSize: 11.5, color: "#999999" }}>{zh ? "也可以直接问：" : "Or ask directly:"}</span>
+                {(["research", "planning", "script", "video", "article"] as AgentKey[]).map((k) => (
+                  <button
+                    key={k}
+                    type="button"
+                    onClick={() => {
+                      setInput((d) => (d.startsWith("@") ? d.replace(/^@\S+\s*/, `${agentTag(k)} `) : `${agentTag(k)} ${d}`));
+                      requestAnimationFrame(() => box.current?.focus());
+                    }}
+                    className="chip"
+                    style={{ height: 24, fontSize: 11, gap: 5, cursor: "pointer", borderColor: input.startsWith(agentTag(k)) ? "#171717" : "#ededed", background: "#fff" }}
+                  >
+                    <AgentIcon agent={k} size={13} radius={4} />
+                    {zh ? AGENT_LABELS[k].nameLocal : AGENT_LABELS[k].name}
+                  </button>
+                ))}
+              </div>
+              <div style={{ position: "relative" }}>
+                <MentionMenu matches={mentions.matches} active={mentions.active} zh={zh} onPick={mentions.pick} onHover={mentions.setActive} placement="up" />
+              </div>
               <textarea
                 ref={box}
                 value={input}
-                onChange={(e) => setInput(e.target.value)}
+                onChange={(e) => {
+                  setInput(e.target.value);
+                  mentions.onValue(e.target.value, e.target.selectionStart ?? e.target.value.length);
+                }}
+                onBlur={mentions.close}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
+                  if (mentions.onKeyDown(e)) return;
+                  if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
                     e.preventDefault();
                     void send(input);
                   }
                 }}
                 rows={1}
                 placeholder={
-                  zh ? "给助理发消息，或指定一个模块运行…" : "Message your agent, or name a module to run…"
+                  zh ? "给助理发消息，或 @ 一位同事直接问…" : "Message your assistant, or @ a colleague to ask them…"
                 }
                 style={{
                   width: "100%",
@@ -728,9 +765,10 @@ function UserRow({
 }
 
 function AgentRow({ message, zh, locale }: { message: ThreadMessage; zh: boolean; locale: Locale }) {
+  const sp = message.speaker ?? null;
   return (
     <div className="msg">
-      <div
+      {sp ? <AgentIcon agent={sp} size={36} radius={10} /> : <div
         style={{
           width: 36,
           height: 36,
@@ -743,10 +781,10 @@ function AgentRow({ message, zh, locale }: { message: ThreadMessage; zh: boolean
         }}
       >
         {AGENT_MARK(18)}
-      </div>
+      </div>}
       <div style={{ minWidth: 0, flexGrow: 1 }}>
         <div style={{ display: "flex", alignItems: "baseline" }}>
-          <span className="who">{zh ? "助理" : "Agent"}</span>
+          <span className="who">{sp ? (zh ? AGENT_LABELS[sp].nameLocal : AGENT_LABELS[sp].name) : zh ? "助理" : "Agent"}</span>
           <span className="app">APP</span>
           <span className="when">{time(message.createdAt, locale)}</span>
         </div>

@@ -1,5 +1,7 @@
 "use client";
 
+import { AgentIcon } from "@/components/agents/AgentIcon";
+import { AGENT_COLORS, AGENT_LABELS, SCREEN_AGENT, type AgentKey } from "@/lib/agents/catalog";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Markdown } from "@/components/ui/Markdown";
@@ -34,6 +36,8 @@ export type InlineMessage = {
   tools: InlineTool[];
   withheld?: boolean;
   error?: string;
+  /** Which employee answered; null or absent is the personal assistant. */
+  speaker?: AgentKey | null;
 };
 
 /**
@@ -62,8 +66,12 @@ export function useInlineAgent(
      * kept in the browser, the messages on the server.
      */
     key?: string;
+    /** Who answers by default. Unset: the screen's own employee (see
+     *  SCREEN_AGENT); null: the personal assistant. */
+    agent?: AgentKey | null;
   } = {},
 ) {
+  const defaultAgent: AgentKey | null = opts.agent !== undefined ? opts.agent : context.module ? (SCREEN_AGENT[context.module] ?? null) : null;
   /*
    * The context as it is *now*, read at send time.
    *
@@ -125,6 +133,7 @@ export function useInlineAgent(
             ...(conversationId ? { conversationId } : {}),
             content,
             context: latest.current,
+            ...(defaultAgent ? { agent: defaultAgent } : {}),
           }),
           signal: controller.signal,
         });
@@ -169,6 +178,9 @@ export function useInlineAgent(
             switch (event.type) {
               case "conversation":
                 setConversationId(event.id);
+                break;
+              case "speaker":
+                patchLast((m) => ({ ...m, speaker: event.agent ?? null }));
                 break;
               case "delta":
                 patchLast((m) => ({ ...m, content: m.content + event.text }));
@@ -216,7 +228,7 @@ export function useInlineAgent(
         abort.current = null;
       }
     },
-    [conversationId, patchLast],
+    [conversationId, patchLast, defaultAgent],
   );
 
   const stop = useCallback(() => abort.current?.abort(), []);
@@ -327,6 +339,12 @@ export function InlineAgentThread({
           </div>
         ) : (
           <div key={m.id} style={{ fontSize: 12.5, lineHeight: 1.6, color: "#383838" }}>
+            {m.speaker ? (
+              <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
+                <AgentIcon agent={m.speaker} size={16} radius={4} />
+                <span style={{ fontSize: 11.5, fontWeight: 600, color: AGENT_COLORS[m.speaker] }}>{zh ? AGENT_LABELS[m.speaker].nameLocal : AGENT_LABELS[m.speaker].name}</span>
+              </div>
+            ) : null}
             {m.tools.length > 0 && (
               <div style={{ display: "flex", flexDirection: "column", gap: 3, marginBottom: m.content ? 8 : 4 }}>
                 {m.tools.map((x) => (

@@ -6,6 +6,8 @@ import { getViewer } from "@/lib/auth/dal";
 import type { Module } from "@/lib/db/schema";
 import { runAgent, titleConversation } from "@/lib/ai/agent";
 import { newId } from "@/lib/ids";
+import { AGENT_KEYS, parseAgentMentions, type AgentKey } from "@/lib/agents/catalog";
+import { agentViewer } from "@/lib/agents";
 
 /**
  * The agent turn, streamed.
@@ -27,6 +29,9 @@ export async function POST(request: Request) {
     content?: string;
     /** What is open on screen. Every field is re-checked where it is used. */
     context?: Record<string, unknown>;
+    /** The employee who answers by default on this screen; an @ in the
+     *  message picks another. Absent means the personal assistant. */
+    agent?: string;
   };
   try {
     body = await request.json();
@@ -98,6 +103,18 @@ export async function POST(request: Request) {
     isFirst = true;
   }
 
+  /*
+   * Who answers. "@编剧 …" in the message hands the turn to that employee;
+   * otherwise the screen's own employee answers (the panel on Research is
+   * 研究员's); otherwise the person's own assistant. An employee answers as
+   * itself: its own prompt, its own tools and budget, in the same thread.
+   */
+  const tagged = parseAgentMentions(content)[0] ?? null;
+  const asked = typeof body.agent === "string" && AGENT_KEYS.includes(body.agent as AgentKey) ? (body.agent as AgentKey) : null;
+  const speaker: AgentKey | null = tagged ?? asked;
+  const speakerViewer = speaker ? await agentViewer(viewer.tenantId, speaker) : viewer;
+  const speakerModule: Module = speaker ? ({ research: "research", planning: "research", script: "script", video: "video", article: "script" } as const)[speaker] : (context.module ?? "chat");
+
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
     async start(controller) {
@@ -106,15 +123,16 @@ export async function POST(request: Request) {
       };
 
       send({ type: "conversation", id: conversationId });
+      send({ type: "speaker", agent: speaker });
 
       try {
         for await (const event of runAgent({
-          viewer,
+          viewer: speakerViewer,
           conversationId: conversationId!,
           content,
-          // The screen the question came from, when it came from one: it
-          // decides which module's tuning the prompt carries.
-          module: context.module ?? "chat",
+          // The employee's own trade when one answers; otherwise the screen
+          // the question came from decides which tuning the prompt carries.
+          module: speakerModule,
           context,
           signal: request.signal,
         })) {

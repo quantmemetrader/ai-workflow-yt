@@ -2,7 +2,12 @@
 
 import { ModelPicker } from "@/components/shell/ModelPicker";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
+import { usePathname } from "next/navigation";
+import { MentionMenu } from "@/components/chat/MentionMenu";
+import { useMentions } from "@/components/chat/useMentions";
+import { AgentIcon } from "@/components/agents/AgentIcon";
+import { AGENT_LABELS, agentTag, parseAgentMentions, screenAgentForPath, type AgentKey } from "@/lib/agents/catalog";
 import { useResizable } from "@/components/ui/Resizer";
 
 /**
@@ -88,6 +93,16 @@ export function ResearchAgentPanel({
     ? { flexGrow: 1, minHeight: 0, borderTop: "1px solid #ededed" }
     : { width, flexShrink: 0, borderLeft: "1px solid #ededed" };
 
+  /* Who answers here unless the message tags someone: the screen's own
+     employee, or the personal assistant where the screen has none. */
+  const pathname = usePathname();
+  const home = screenAgentForPath(pathname ?? "");
+  const box = useRef<HTMLTextAreaElement | null>(null);
+  const mentions = useMentions({ people: undefined, zh, draft: ask, setDraft: setAsk, box });
+  const taggedNow = parseAgentMentions(ask)[0] ?? null;
+  const answering: AgentKey | null = taggedNow ?? home;
+  const name = (k: AgentKey) => (zh ? AGENT_LABELS[k].nameLocal : AGENT_LABELS[k].name);
+
   const send = () => {
     if (!ask.trim()) return;
     onAsk(ask.trim());
@@ -168,24 +183,65 @@ export function ResearchAgentPanel({
         {/* History and a new thread sit right above the composer, where the
             hand already is, rather than in the header two panes away. */}
         {tools ? <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 7 }}>{tools}</div> : null}
-        <div style={{ border: "1px solid #e2e2e2", borderRadius: 10, background: "#fff", padding: "9px 10px 7px" }}>
-          <input
+        {/* Who answers, and one press to ask a colleague instead. */}
+        <div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap", marginBottom: 7 }}>
+          <span style={{ fontSize: 11, color: "#999999", marginRight: 2 }}>{zh ? "回答：" : "Answering:"}</span>
+          {answering ? (
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11.5, fontWeight: 600, color: "#171717" }}>
+              <AgentIcon agent={answering} size={14} radius={4} />
+              {name(answering)}
+            </span>
+          ) : (
+            <span style={{ fontSize: 11.5, fontWeight: 600, color: "#171717" }}>{zh ? "你的助理" : "Your assistant"}</span>
+          )}
+          <span style={{ flexGrow: 1 }} />
+          {(["research", "script", "video", "article"] as AgentKey[])
+            .filter((k) => k !== answering)
+            .map((k) => (
+              <button
+                key={k}
+                type="button"
+                title={zh ? `问${name(k)}` : `Ask ${name(k)}`}
+                onClick={() => {
+                  setAsk((d) => (parseAgentMentions(d).length ? d.replace(/^@\S+\s*/, `${agentTag(k)} `) : `${agentTag(k)} ${d}`.trimEnd() + " "));
+                  requestAnimationFrame(() => box.current?.focus());
+                }}
+                style={{ border: "1px solid #ededed", background: "#fff", borderRadius: 6, padding: 2, cursor: "pointer", display: "flex" }}
+              >
+                <AgentIcon agent={k} size={16} radius={4} />
+              </button>
+            ))}
+        </div>
+        <div style={{ position: "relative", border: "1px solid #e2e2e2", borderRadius: 10, background: "#fff", padding: "9px 10px 7px" }}>
+          <MentionMenu matches={mentions.matches} active={mentions.active} zh={zh} onPick={mentions.pick} onHover={mentions.setActive} placement="up" />
+          <textarea
+            ref={box}
+            rows={1}
             value={ask}
-            onChange={(e) => setAsk(e.target.value)}
+            onChange={(e) => {
+              setAsk(e.target.value);
+              mentions.onValue(e.target.value, e.target.selectionStart ?? e.target.value.length);
+              e.target.style.height = "auto";
+              e.target.style.height = `${Math.min(140, e.target.scrollHeight)}px`;
+            }}
+            onBlur={mentions.close}
             onKeyDown={(e) => {
-              if (e.key === "Enter") {
+              if (mentions.onKeyDown(e)) return;
+              if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
                 e.preventDefault();
                 send();
               }
             }}
             aria-label={placeholder}
-            placeholder={placeholder}
+            placeholder={answering ? (zh ? `问${name(answering)}…（@ 叫别的同事）` : `Ask ${name(answering)}… (@ another colleague)`) : placeholder}
             style={{
               width: "100%",
               border: 0,
               outline: "none",
+              resize: "none",
               background: "transparent",
               fontSize: 12,
+              lineHeight: 1.5,
               fontFamily: "inherit",
               letterSpacing: "inherit",
               color: "#171717",

@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, desc, eq, isNull } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { channelPosts, channels, commentDrafts, comments } from "@/lib/db/schema";
 import { getViewer, type Viewer } from "@/lib/auth/dal";
@@ -262,6 +262,17 @@ export async function regenerateDraftAction(commentId: unknown, steer?: unknown)
   const instruction = typeof steer === "string" && steer.trim() ? steer.trim().slice(0, 300) : null;
   const model = modelFor.utility();
 
+  // "Shorter" or "warmer" means this draft, shorter or warmer. Without the
+  // draft in front of it the model wrote a new reply that said something else.
+  const [current] = instruction
+    ? await db
+        .select({ body: commentDrafts.body })
+        .from(commentDrafts)
+        .where(and(eq(commentDrafts.commentId, comment.id), isNull(commentDrafts.sentAt), isNull(commentDrafts.discardedAt)))
+        .orderBy(desc(commentDrafts.createdAt))
+        .limit(1)
+    : [];
+
   try {
     const out = await complete({
       model,
@@ -274,7 +285,12 @@ export async function regenerateDraftAction(commentId: unknown, steer?: unknown)
           content: [
             `Video: ${comment.postTitle || "(untitled)"}`,
             `Comment: ${comment.body.slice(0, 2000)}`,
-            instruction ? `The studio asks for: ${instruction}` : null,
+            current ? `Current draft: ${current.body.slice(0, 1000)}` : null,
+            instruction
+              ? current
+                ? `Rewrite the current draft as the studio asks: ${instruction}\nKeep what it says; do not add claims, facts or promises it did not make.`
+                : `The studio asks for: ${instruction}`
+              : null,
           ]
             .filter(Boolean)
             .join("\n\n"),

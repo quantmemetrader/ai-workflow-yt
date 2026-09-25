@@ -217,3 +217,23 @@ export function splitMentions(body: string): { text: string; agent: AgentKey | n
   if (at < body.length) parts.push({ text: body.slice(at), agent: null, isTag: false });
   return parts;
 }
+
+/**
+ * The employee whose screen it is: the assistant panel on a Research screen
+ * answers as 研究员, on Script as 编剧, on Video as 剪辑师, on Publish as 撰稿人.
+ * Screens not listed (Home, Chat, the business modules) keep the personal
+ * assistant, who acts as the person.
+ */
+export const SCREEN_AGENT: Record<string, AgentKey> = {
+  research: "research",
+  script: "script",
+  article: "article",
+  video: "video",
+  publish: "article",
+};
+
+/** The same, from a path such as "/research/inbox" or "/video". */
+export function screenAgentForPath(pathname: string): AgentKey | null {
+  const seg = pathname.split("/")[1] ?? "";
+  return SCREEN_AGENT[seg] ?? null;
+}

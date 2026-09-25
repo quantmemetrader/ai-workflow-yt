@@ -118,19 +118,6 @@ function sentimentColour(s: string | null): string {
  * like the platform picker: it sifts the rows already in hand. */
 type ListView = "all" | "drafts" | "undrafted" | "unclassified";
 
-/** A <select> wearing the artboard's chip text. */
-const PICKER: React.CSSProperties = {
-  border: "none",
-  background: "transparent",
-  color: "#171717",
-  fontWeight: 500,
-  fontFamily: "inherit",
-  fontSize: "inherit",
-  letterSpacing: "inherit",
-  padding: 0,
-  maxWidth: 150,
-  cursor: "pointer",
-};
 
 /* --------------------------------------------------------------------- css */
 
@@ -180,13 +167,12 @@ const CSS = `
 [data-inbox-screen] .cmt::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--sb, transparent); }
 [data-inbox-screen] .cmt:hover { border-color: #d6d6d6; }
 [data-inbox-screen] .cmt:focus-visible { outline: none; box-shadow: 0 0 0 3px #eff6ff; border-color: var(--ac); }
-[data-inbox-screen] .cmt.on { border-color: #171717; box-shadow: 0 1px 4px rgba(0,0,0,.07); }
+[data-inbox-screen] .cmt.on { border-color: #9cc4f0; background: #fbfdff; box-shadow: 0 0 0 3px #eef5fe; }
 
 /* the product needs a pointer on what it made clickable; the artboard is static */
 [data-inbox-screen] .btn, [data-inbox-screen] .chip { cursor: pointer; }
 [data-inbox-screen] .btn { border: 0; font-family: inherit; letter-spacing: inherit; }
 [data-inbox-screen] .btn:disabled { opacity: .45; cursor: not-allowed; }
-[data-inbox-screen] .chip.pkon { border-color: #171717; background: #f8f8f8; color: #171717; }
 
 /* bulk selection: out of the way until it is wanted */
 [data-inbox-screen] .cbx { opacity: 0; transition: opacity .12s ease; }
@@ -214,22 +200,39 @@ const CSS = `
 [data-inbox-screen] .ib-fchip { display: inline-flex; align-items: center; gap: 7px; height: 28px; padding: 0 10px; border: 1px solid #e2e2e2; border-radius: 8px; background: #fff; font-family: inherit; font-size: 12px; letter-spacing: inherit; color: #525252; white-space: nowrap; cursor: pointer; }
 [data-inbox-screen] .ib-fchip:hover { border-color: #cfcfcf; color: #171717; }
 [data-inbox-screen] .ib-fchip .n { font-size: 11px; font-weight: 500; color: #999999; font-variant-numeric: tabular-nums; }
-[data-inbox-screen] .ib-fchip.on { background: #171717; border-color: #171717; color: #fff; }
-[data-inbox-screen] .ib-fchip.on .n { color: rgba(255,255,255,.7); }
+[data-inbox-screen] .ib-fchip.on { background: #eaf3fe; border-color: #b9d5f5; color: #0f4c8a; font-weight: 500; }
+[data-inbox-screen] .ib-fchip.on .n { color: #3a78bf; }
 [data-inbox-screen] .ib-vr { width: 1px; height: 16px; background: #e2e2e2; margin: 0 4px; flex-shrink: 0; }
-[data-inbox-screen] .ib-sum { flex-shrink: 0; height: 36px; display: flex; align-items: center; gap: 8px; padding: 0 14px 0 20px; border-bottom: 1px solid #ececec; background: #fafafa; }
+[data-inbox-screen] .ib-sum { flex-shrink: 0; height: 40px; display: flex; align-items: center; gap: 8px; padding: 0 14px 0 20px; border-bottom: 1px solid #ececec; background: #fcfcfc; }
 [data-inbox-screen] .ib-sumitems { flex: 1; min-width: 0; display: flex; align-items: center; gap: 2px; overflow-x: auto; scrollbar-width: none; white-space: nowrap; }
 [data-inbox-screen] .ib-sumitems::-webkit-scrollbar { display: none; }
 [data-inbox-screen] .ib-sumk { font-size: 11.5px; font-weight: 500; color: #999999; margin-right: 4px; }
 [data-inbox-screen] .ib-sumi { display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 7px; border: 1px solid transparent; border-radius: 6px; background: transparent; font-family: inherit; font-size: 12px; letter-spacing: inherit; color: #525252; cursor: pointer; white-space: nowrap; }
 [data-inbox-screen] .ib-sumi:hover { background: #f0f0f0; color: #171717; }
-[data-inbox-screen] .ib-sumi.on { background: #fff; border-color: #171717; color: #171717; }
+[data-inbox-screen] .ib-sumi.on { background: #eaf3fe; border-color: #b9d5f5; color: #0f4c8a; }
 [data-inbox-screen] .ib-sumi .n { font-variant-numeric: tabular-nums; color: #999999; }
 [data-inbox-screen] .ib-dot { width: 7px; height: 7px; border-radius: 4px; flex-shrink: 0; }
 [data-inbox-screen] .ib-gh { display: flex; align-items: center; gap: 10px; padding: 12px 12px 7px; }
 [data-inbox-screen] .ib-clamp { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
 [data-inbox-screen] .ib-card { max-width: 780px; background: #fff; border: 1px solid #e2e2e2; border-radius: 14px; overflow: hidden; }
 [data-inbox-screen] .ib-sec { border-top: 1px solid #ececec; }
+[data-inbox-screen] .ib-tabs { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 6px; overflow-x: auto; scrollbar-width: none; }
+[data-inbox-screen] .ib-tabs::-webkit-scrollbar { display: none; }
+[data-inbox-screen] .ib-bulk { flex-shrink: 0; height: 38px; display: flex; align-items: center; gap: 2px; padding: 0 14px 0 12px; border-bottom: 1px solid #d7e7fa; background: #f2f8ff; }
+[data-inbox-screen] .ib-bulk .btn { height: 26px; font-size: 12px; padding: 0 7px; color: #0f4c8a; }
+[data-inbox-screen] .ib-bulk .btn:hover:not(:disabled) { background: #e2eefc; }
+[data-inbox-screen] .ib-tone { display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 10px; border: 1px solid #e6e6e6; border-radius: 13px; background: #fff; font-family: inherit; font-size: 12px; letter-spacing: inherit; color: #525252; cursor: pointer; white-space: nowrap; }
+[data-inbox-screen] .ib-tone:hover:not(:disabled) { border-color: #b9d5f5; background: #f5f9ff; color: #0f4c8a; }
+[data-inbox-screen] .ib-tone:disabled { opacity: .45; cursor: not-allowed; }
+[data-inbox-screen] .ib-steer { flex: 1 1 200px; min-width: 0; height: 30px; border: 1px solid #e6e6e6; border-radius: 8px; padding: 0 10px; font-family: inherit; font-size: 12.5px; letter-spacing: inherit; color: #171717; background: #fff; outline: none; }
+[data-inbox-screen] .ib-steer:focus { border-color: #9cc4f0; box-shadow: 0 0 0 3px #eef5fe; }
+[data-inbox-screen] .ib-nav { width: 26px; height: 26px; border: 1px solid #e6e6e6; border-radius: 7px; background: #fff; display: inline-flex; align-items: center; justify-content: center; color: #525252; cursor: pointer; }
+[data-inbox-screen] .ib-nav:hover:not(:disabled) { border-color: #cfcfcf; color: #171717; }
+[data-inbox-screen] .ib-nav:disabled { opacity: .35; cursor: default; }
+[data-inbox-screen] .ib-nav svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+[data-inbox-screen] .ib-ctx { display: flex; gap: 10px; width: 100%; padding: 9px 16px; border: 0; border-top: 1px solid #f1f1f1; background: transparent; font-family: inherit; letter-spacing: inherit; text-align: left; cursor: pointer; }
+[data-inbox-screen] .ib-ctx:hover { background: #fafcff; }
+[data-inbox-screen] .ib-ai { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 7px; background: #f5d4e6; color: #8a3a66; flex-shrink: 0; }
 `;
 
 /* ---------------------------------------------------------------- language */
@@ -254,6 +257,21 @@ const ZH: Record<string, string> = {
   Flagged: "已标记",
   "Business leads": "商业线索",
   "Bulk:": "批量：",
+  "selected": "已选",
+  "Select all": "全选",
+  "Clear selection": "取消选择",
+  "Reply": "回复",
+  "Warmer": "更亲切",
+  "More formal": "更正式",
+  "Shorter": "更简短",
+  "Say thanks": "表达感谢",
+  "Invite them to follow": "引导关注",
+  "Or tell the AI how to reply…": "或者告诉 AI 怎么回…",
+  "Write": "起草",
+  "Previous comment": "上一条",
+  "Next comment": "下一条",
+  "More on this video": "这条视频下的其他评论",
+  "The AI drafts, you approve. Pick a tone or say what to cover.": "AI 起草，你来批准。选个语气，或者说说要回什么。",
   Hide: "隐藏",
   "Mark as spam": "标记为垃圾",
   "Set aside": "搁置",
@@ -515,6 +533,8 @@ export function InboxScreen(props: InboxScreenProps): React.JSX.Element {
   /** The draft as it stands in the textarea, before it is saved or sent. */
   const [edit, setEdit] = React.useState<{ draftId: string; body: string } | null>(null);
   const draftRef = React.useRef<HTMLTextAreaElement | null>(null);
+  /** What the person typed to steer the next draft. */
+  const [steer, setSteer] = React.useState("");
 
   const sentimentLabel = React.useCallback(
     (key: string): string => {
@@ -691,6 +711,12 @@ export function InboxScreen(props: InboxScreenProps): React.JSX.Element {
       <span className="h1">{t("Comment inbox")}</span>
       <span className="mut">{t("replies require human approval")}</span>
       <div style={{ flexGrow: 1 }} />
+      <span className="cap" style={{ whiteSpace: "nowrap" }} suppressHydrationWarning>
+        {syncLine}
+      </span>
+      <button type="button" className="btn ib-q" onClick={onSyncNow} style={{ flexShrink: 0 }}>
+        {t("Check now")}
+      </button>
       {channelCount === 0 ? null : (
         <div
           style={{
@@ -848,161 +874,55 @@ export function InboxScreen(props: InboxScreenProps): React.JSX.Element {
   ];
 
   const tabRow = (
-    <div className="ib-row" style={{ minHeight: 48, paddingTop: 10, paddingBottom: 10 }}>
-      <div role="group" aria-label={t("Show")} style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", minWidth: 0 }}>
-        {views.map((v) => (
+    <div className="ib-row" style={{ height: 50 }}>
+      <div role="group" aria-label={t("Show")} className="ib-tabs">
+        {views
+          .filter((v) => v.key === "all" || v.n > 0 || view === v.key)
+          .map((v) => (
+            <button
+              key={v.key}
+              type="button"
+              className={`ib-fchip${view === v.key ? " on" : ""}`}
+              aria-pressed={view === v.key}
+              onClick={() => setView(v.key)}
+            >
+              {v.label}
+              <span className="n">{count(v.n, locale)}</span>
+            </button>
+          ))}
+        {waiting.flagged > 0 || waiting.leads > 0 || filters.flagged === true || filters.leads === true ? (
+          <span className="ib-vr" aria-hidden />
+        ) : null}
+        {waiting.flagged > 0 || filters.flagged === true ? (
           <button
-            key={v.key}
             type="button"
-            className={`ib-fchip${view === v.key ? " on" : ""}`}
-            aria-pressed={view === v.key}
-            onClick={() => setView(v.key)}
+            className={`ib-fchip${filters.flagged === true ? " on" : ""}`}
+            aria-pressed={filters.flagged === true}
+            onClick={() => onFilter({ ...filters, flagged: filters.flagged === true ? undefined : true })}
           >
-            {v.label}
-            <span className="n">{count(v.n, locale)}</span>
+            <span className="ib-dot" aria-hidden style={{ background: "#f0a53a" }} />
+            {t("Flagged")}
+            <span className="n">{count(waiting.flagged, locale)}</span>
           </button>
-        ))}
-        <span className="ib-vr" aria-hidden />
-        <button
-          type="button"
-          className={`ib-fchip${filters.flagged === true ? " on" : ""}`}
-          aria-pressed={filters.flagged === true}
-          onClick={() => onFilter({ ...filters, flagged: filters.flagged === true ? undefined : true })}
-        >
-          {t("Flagged")}
-          <span className="n">{count(waiting.flagged, locale)}</span>
-        </button>
-        <button
-          type="button"
-          className={`ib-fchip${filters.leads === true ? " on" : ""}`}
-          aria-pressed={filters.leads === true}
-          onClick={() => onFilter({ ...filters, leads: filters.leads === true ? undefined : true })}
-        >
-          {t("Business leads")}
-          <span className="n">{count(waiting.leads, locale)}</span>
-        </button>
-      </div>
-      <div style={{ flexGrow: 1 }} />
-      <span className="cap" style={{ whiteSpace: "nowrap" }} suppressHydrationWarning>
-        {syncLine}
-      </span>
-      <button type="button" className="btn ib-q" onClick={onSyncNow}>
-        {t("Check now")}
-      </button>
-    </div>
-  );
-
-  const filterRow = (
-    <div className="ib-row" style={{ height: 46 }}>
-      {/* Platform first, because it is the coarsest cut and the one the studio
-          asked for: a reply to a YouTube comment and a reply to a TikTok
-          comment are written by different people in a different register. */}
-      <div className={`chip${platform === "" ? "" : " pkon"}`}>
-        {platform === "" ? null : <PlatformMark platform={platform} size={12} />}
-        {t("Platform")}
-        <select
-          aria-label={t("Platform")}
-          value={platform}
-          onChange={(e) => setPlatform(e.target.value)}
-          style={PICKER}
-        >
-          <option value="">{t("All")}</option>
-          {/* A filter that is on stays selectable even once nothing carries it,
-              otherwise the screen cannot be got out of its own filter. */}
-          {platform !== "" && !platforms.some(([k]) => k === platform) ? (
-            <option value={platform}>{platformLabel(platform)}</option>
-          ) : null}
-          {platforms.map(([key, n]) => (
-            <option key={key} value={key}>
-              {platformLabel(key)} ({count(n, locale)})
-            </option>
-          ))}
-        </select>
-        <svg viewBox="0 0 24 24">
-          <path d="m6.5 9.5 5.5 5.5 5.5-5.5" />
-        </svg>
-      </div>
-      <div className={`chip${currentSentiment === "" ? "" : " pkon"}`}>
-        {currentSentiment === "" || !(SENTIMENTS as readonly string[]).includes(currentSentiment) ? null : (
-          <span className="ib-dot" aria-hidden style={{ background: BAR_COLOUR[currentSentiment as Sentiment] }} />
-        )}
-        {t("Sentiment")}
-        <select
-          aria-label={t("Sentiment")}
-          value={currentSentiment}
-          onChange={(e) => onFilter({ ...filters, sentiment: e.target.value === "" ? undefined : e.target.value })}
-          style={PICKER}
-        >
-          <option value="">{t("All")}</option>
-          {/* A filter that is on stays selectable even once nothing carries it,
-              otherwise the screen cannot be got out of its own filter. */}
-          {currentSentiment !== "" && !sentimentKeys.includes(currentSentiment as Sentiment) ? (
-            <option value={currentSentiment}>{sentimentLabel(currentSentiment)}</option>
-          ) : null}
-          {sentimentKeys.map((k) => (
-            <option key={k} value={k}>
-              {sentimentLabel(k)} ({count(summary.sentiment[k] ?? 0, locale)})
-            </option>
-          ))}
-        </select>
-        <svg viewBox="0 0 24 24">
-          <path d="m6.5 9.5 5.5 5.5 5.5-5.5" />
-        </svg>
-      </div>
-      <div className={`chip${currentLanguage === "" ? "" : " pkon"}`}>
-        {t("Language")}
-        <select
-          aria-label={t("Language")}
-          value={currentLanguage}
-          onChange={(e) => onFilter({ ...filters, language: e.target.value === "" ? undefined : e.target.value })}
-          style={PICKER}
-        >
-          <option value="">{t("All")}</option>
-          {currentLanguage !== "" && summary.language[currentLanguage] === undefined ? (
-            <option value={currentLanguage}>{languageLabel(currentLanguage)}</option>
-          ) : null}
-          {languages.map(([tag, n]) => (
-            <option key={tag} value={tag}>
-              {languageLabel(tag)} ({count(n, locale)})
-            </option>
-          ))}
-        </select>
-        <svg viewBox="0 0 24 24">
-          <path d="m6.5 9.5 5.5 5.5 5.5-5.5" />
-        </svg>
+        ) : null}
+        {waiting.leads > 0 || filters.leads === true ? (
+          <button
+            type="button"
+            className={`ib-fchip${filters.leads === true ? " on" : ""}`}
+            aria-pressed={filters.leads === true}
+            onClick={() => onFilter({ ...filters, leads: filters.leads === true ? undefined : true })}
+          >
+            <span className="ib-dot" aria-hidden style={{ background: "#4a9be8" }} />
+            {t("Business leads")}
+            <span className="n">{count(waiting.leads, locale)}</span>
+          </button>
+        ) : null}
       </div>
       {anyFilter ? (
-        <button type="button" className="btn ib-q" onClick={clearFilters}>
+        <button type="button" className="btn ib-q" onClick={clearFilters} style={{ flexShrink: 0 }}>
           {t("Clear filters")}
         </button>
       ) : null}
-      <div style={{ flexGrow: 1 }} />
-      <span className="cap">{t("Bulk:")}</span>
-      {/* Hiding or reporting what someone said is an action with an author and
-          a target: with nothing ticked there is no target, and the button says
-          so rather than doing nothing when pressed. */}
-      <button
-        type="button"
-        className="btn s"
-        style={{ height: 28, fontSize: 12 }}
-        disabled={!anySelected}
-        title={anySelected ? undefined : t("Tick a comment first")}
-        onClick={() => onBulk("hide")}
-      >
-        {t("Hide")}
-        {anySelected ? ` (${count(selected.length, locale)})` : ""}
-      </button>
-      <button
-        type="button"
-        className="btn s"
-        style={{ height: 28, fontSize: 12 }}
-        disabled={!anySelected}
-        title={anySelected ? undefined : t("Tick a comment first")}
-        onClick={() => onBulk("spam")}
-      >
-        {t("Mark as spam")}
-        {anySelected ? ` (${count(selected.length, locale)})` : ""}
-      </button>
     </div>
   );
 
@@ -1258,43 +1178,83 @@ export function InboxScreen(props: InboxScreenProps): React.JSX.Element {
         * platform answers "how do the two compare" without throwing the rest of
         * the inbox away. This one belongs over the thing it rearranges.
         */}
-      <div
-        style={{
-          flexShrink: 0,
-          height: 38,
-          display: "flex",
-          alignItems: "center",
-          gap: 8,
-          padding: "0 12px",
-          borderBottom: "1px solid #ececec",
-          background: "#fff",
-        }}
-      >
-        <span className="lbl" style={{ padding: 0 }}>
-          {t("Group by")}
-        </span>
-        <div className="tf" role="group" aria-label={t("Group by")}>
+      {anySelected ? (
+        <div className="ib-bulk" role="toolbar" aria-label={t("Bulk:")}>
+          <span style={{ fontSize: 12, fontWeight: 600, color: "#0f4c8a", whiteSpace: "nowrap" }}>
+            {t("selected")} {count(selected.length, locale)}
+          </span>
           <button
             type="button"
-            className={groupBy === "post" ? "on" : ""}
-            aria-pressed={groupBy === "post"}
-            onClick={() => setGroupBy("post")}
+            className="btn ib-q"
+            onClick={() => {
+              for (const g of sections) for (const c of g.comments) if (!selected.includes(c.id)) onToggleSelect(c.id);
+            }}
           >
-            {t("By video")}
+            {t("Select all")}
+          </button>
+          <div style={{ flexGrow: 1 }} />
+          <button type="button" className="btn ib-q" disabled={pending !== null} onClick={() => onBulk("hide")}>
+            {t("Hide")}
+          </button>
+          <button type="button" className="btn ib-q" disabled={pending !== null} onClick={() => onBulk("spam")}>
+            {t("Mark as spam")}
+          </button>
+          <button type="button" className="btn ib-q" disabled={pending !== null} onClick={() => onBulk("ignore")}>
+            {t("Set aside")}
           </button>
           <button
             type="button"
-            className={groupBy === "platform" ? "on" : ""}
-            aria-pressed={groupBy === "platform"}
-            onClick={() => setGroupBy("platform")}
+            className="ib-nav"
+            aria-label={t("Clear selection")}
+            title={t("Clear selection")}
+            onClick={() => {
+              for (const id of selected) onToggleSelect(id);
+            }}
           >
-            {t("By platform")}
+            <svg viewBox="0 0 24 24" aria-hidden>
+              <path d="m7 7 10 10M17 7 7 17" />
+            </svg>
           </button>
         </div>
-        <span className="cap" style={{ marginLeft: "auto", fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>
-          {zh ? `${count(listed, locale)} 条` : `${count(listed, locale)} shown`}
-        </span>
-      </div>
+      ) : (
+      <div
+          style={{
+            flexShrink: 0,
+            height: 38,
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            padding: "0 12px",
+            borderBottom: "1px solid #ececec",
+            background: "#fff",
+          }}
+        >
+          <span className="lbl" style={{ padding: 0 }}>
+            {t("Group by")}
+          </span>
+          <div className="tf" role="group" aria-label={t("Group by")}>
+            <button
+              type="button"
+              className={groupBy === "post" ? "on" : ""}
+              aria-pressed={groupBy === "post"}
+              onClick={() => setGroupBy("post")}
+            >
+              {t("By video")}
+            </button>
+            <button
+              type="button"
+              className={groupBy === "platform" ? "on" : ""}
+              aria-pressed={groupBy === "platform"}
+              onClick={() => setGroupBy("platform")}
+            >
+              {t("By platform")}
+            </button>
+          </div>
+          <span className="cap" style={{ marginLeft: "auto", fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>
+            {zh ? `${count(listed, locale)} 条` : `${count(listed, locale)} shown`}
+          </span>
+        </div>
+      )}
       <div style={{ flexGrow: 1, minHeight: 0, overflowY: "auto", paddingBottom: 10 }}>
       {sections.map((g) => {
         const heading = groupBy === "post" ? (g.title ?? t("no title")) : platformLabel(g.platform);
@@ -1425,6 +1385,11 @@ export function InboxScreen(props: InboxScreenProps): React.JSX.Element {
 
   /* ------------------------------------------------------- the detail pane */
 
+  const order = sections.flatMap((g) => g.comments.map((c) => c.id));
+  const at = selectedId === null ? -1 : order.indexOf(selectedId);
+  const prevId = at > 0 ? order[at - 1] : null;
+  const nextId = at >= 0 && at < order.length - 1 ? order[at + 1] : null;
+
   let detail: React.JSX.Element;
 
   if (open === null) {
@@ -1474,6 +1439,52 @@ export function InboxScreen(props: InboxScreenProps): React.JSX.Element {
       );
     }
 
+    const tones: { label: string; steer: string }[] = [
+      { label: t("Warmer"), steer: zh ? "语气更亲切自然，像朋友聊天，可以轻松一点。" : "Warmer and more natural, like talking to a friend." },
+      { label: t("More formal"), steer: zh ? "语气更正式、专业、礼貌。" : "More formal, professional and polite." },
+      { label: t("Shorter"), steer: zh ? "更简短，一两句话说完。" : "Much shorter, one or two sentences." },
+      { label: t("Say thanks"), steer: zh ? "先真诚感谢对方的评论和支持。" : "Open by sincerely thanking them for the comment and support." },
+      { label: t("Invite them to follow"), steer: zh ? "结尾自然地邀请对方关注频道、看下一期。" : "End by naturally inviting them to follow for the next episode." },
+    ];
+    const toneChips = tones.map((tone) => (
+      <button
+        key={tone.label}
+        type="button"
+        className="ib-tone"
+        disabled={busy}
+        title={tone.steer}
+        onClick={() => onRegenerate(c.id, tone.steer)}
+      >
+        {tone.label}
+      </button>
+    ));
+    const steerLine = (
+      <form
+        style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10 }}
+        onSubmit={(e) => {
+          e.preventDefault();
+          const v = steer.trim();
+          if (v === "" || busy) return;
+          onRegenerate(c.id, v);
+          setSteer("");
+        }}
+      >
+        <input
+          className="ib-steer"
+          value={steer}
+          maxLength={300}
+          onChange={(e) => setSteer(e.target.value)}
+          placeholder={t("Or tell the AI how to reply…")}
+          aria-label={t("Or tell the AI how to reply…")}
+        />
+        <button type="submit" className="btn s" style={{ height: 30 }} disabled={busy || steer.trim() === ""}>
+          {t("Write")}
+        </button>
+      </form>
+    );
+
+    const others = open.group.comments.filter((x) => x.id !== c.id).slice(0, 6);
+
     const approvalNote = (
       <span className="cap" style={{ display: "inline-flex", alignItems: "center", gap: 5, whiteSpace: "nowrap" }}>
         <Icon name="lock" size={12} />
@@ -1501,7 +1512,7 @@ export function InboxScreen(props: InboxScreenProps): React.JSX.Element {
                   title={videoTitle}
                   style={{ display: "flex", alignItems: "center", gap: 5, minWidth: 0, marginTop: 2, color: "#171717", fontSize: 13, fontWeight: 500 }}
                 >
-                  <span className="el" style={{ minWidth: 0 }}>
+                  <span className="ib-clamp" style={{ minWidth: 0, lineHeight: 1.4 }}>
                     {videoTitle}
                   </span>
                   <Icon name="external" size={12} color="#999999" />
@@ -1513,10 +1524,48 @@ export function InboxScreen(props: InboxScreenProps): React.JSX.Element {
               )}
             </div>
             {c.permalink !== null && c.permalink !== "" ? (
-              <a className="btn ib-q" href={c.permalink} target="_blank" rel="noopener noreferrer" style={{ flexShrink: 0 }}>
-                {t("Open on platform")}
-                <Icon name="external" size={12} />
+              <a
+                className="ib-nav"
+                href={c.permalink}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label={t("Open on platform")}
+                title={t("Open on platform")}
+                style={{ flexShrink: 0 }}
+              >
+                <Icon name="external" size={13} />
               </a>
+            ) : null}
+            {at >= 0 ? (
+              <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+                <button
+                  type="button"
+                  className="ib-nav"
+                  disabled={prevId === null}
+                  aria-label={t("Previous comment")}
+                  title={t("Previous comment")}
+                  onClick={() => prevId !== null && onSelect(prevId)}
+                >
+                  <svg viewBox="0 0 24 24" aria-hidden>
+                    <path d="m14.5 6.5-5.5 5.5 5.5 5.5" />
+                  </svg>
+                </button>
+                <span className="cap" style={{ fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>
+                  {count(at + 1, locale)} / {count(order.length, locale)}
+                </span>
+                <button
+                  type="button"
+                  className="ib-nav"
+                  disabled={nextId === null}
+                  aria-label={t("Next comment")}
+                  title={t("Next comment")}
+                  onClick={() => nextId !== null && onSelect(nextId)}
+                >
+                  <svg viewBox="0 0 24 24" aria-hidden>
+                    <path d="m9.5 6.5 5.5 5.5-5.5 5.5" />
+                  </svg>
+                </button>
+              </div>
             ) : null}
           </div>
 
@@ -1583,20 +1632,30 @@ export function InboxScreen(props: InboxScreenProps): React.JSX.Element {
               </div>
             ) : draft === null ? (
               // No draft yet. An empty draft box would read as a reply nobody
-              // wrote.
-              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                <button
-                  type="button"
-                  className="btn p"
-                  style={{ height: 32 }}
-                  disabled={busy}
-                  onClick={() => onRegenerate(c.id)}
-                >
-                  <Icon name="spark" size={13} />
-                  {busy ? `${t("Working")}…` : t("Draft a reply")}
-                </button>
-                <div style={{ flexGrow: 1 }} />
-                {approvalNote}
+              // wrote, so the space says how one gets made instead.
+              <div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+                  <span className="ib-ai" aria-hidden>
+                    <Icon name="spark" size={12} />
+                  </span>
+                  <span style={{ fontSize: 12.5, fontWeight: 600 }}>{t("Reply")}</span>
+                  <span className="cap">{t("The AI drafts, you approve. Pick a tone or say what to cover.")}</span>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                  <button
+                    type="button"
+                    className="btn p"
+                    style={{ height: 32 }}
+                    disabled={busy}
+                    onClick={() => onRegenerate(c.id)}
+                  >
+                    <Icon name="spark" size={13} />
+                    {busy ? `${t("Working")}…` : t("Draft a reply")}
+                  </button>
+                  {toneChips}
+                </div>
+                {steerLine}
+                <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 10 }}>{approvalNote}</div>
               </div>
             ) : (
               <>
@@ -1653,6 +1712,11 @@ export function InboxScreen(props: InboxScreenProps): React.JSX.Element {
                     outline: "none",
                   }}
                 />
+                <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginTop: 10 }}>
+                  <span className="cap" style={{ marginRight: 2 }}>{t("Regenerate")}:</span>
+                  {toneChips}
+                </div>
+                {steerLine}
                 <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
                   <button
                     type="button"
@@ -1723,6 +1787,40 @@ export function InboxScreen(props: InboxScreenProps): React.JSX.Element {
             </div>
           ) : null}
         </article>
+        {others.length === 0 ? null : (
+          <section className="ib-card" style={{ marginTop: 14 }} aria-label={t("More on this video")}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "11px 16px" }}>
+              <Icon name="comment" size={13} color="#7c7c7c" />
+              <span style={{ fontSize: 12.5, fontWeight: 600 }}>{t("More on this video")}</span>
+              <span className="cap">{count(open.group.comments.length - 1, locale)}</span>
+            </div>
+            {others.map((o) => {
+              const oname = displayName(o, zh);
+              const ob = badgeFor(o);
+              return (
+                <button key={o.id} type="button" className="ib-ctx" onClick={() => onSelect(o.id)}>
+                  <Avatar url={o.authorAvatarUrl} label={oname} size={24} />
+                  <span style={{ minWidth: 0, flexGrow: 1 }}>
+                    <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <span className="el" style={{ fontSize: 12, fontWeight: 500, color: "#171717", minWidth: 0 }}>
+                        {oname}
+                      </span>
+                      <span className="cap" suppressHydrationWarning>{shortAgo(o.postedAt, zh)}</span>
+                      {ob === null ? null : (
+                        <span className={`bd ${ob.cls}`} style={{ marginLeft: "auto", flexShrink: 0 }}>
+                          {ob.text}
+                        </span>
+                      )}
+                    </span>
+                    <span className="ib-clamp" style={{ fontSize: 12.5, lineHeight: 1.5, color: "#525252", marginTop: 2 }}>
+                      {o.body}
+                    </span>
+                  </span>
+                </button>
+              );
+            })}
+          </section>
+        )}
       </div>
     );
   }
@@ -1755,7 +1853,6 @@ export function InboxScreen(props: InboxScreenProps): React.JSX.Element {
         <div style={{ flexGrow: 1, display: "flex", minHeight: 0 }}>
           <div style={{ flexGrow: 1, minWidth: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
             {tabRow}
-            {filterRow}
             {/* The artboard had nowhere to put a failure. A platform refusal
                 has to be readable, and in the person's own words, wherever it
                 came from — one comment or a whole selection. */}
