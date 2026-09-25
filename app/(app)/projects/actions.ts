@@ -49,7 +49,7 @@ function titleFrom(text: string): string {
  *
  * Quick on purpose: the model calls run after the response.
  */
-export async function startProjectAction(input: { message?: string; title?: string; brief?: string | null; source?: ProjectSource | { kind: string; label?: string; url?: string | null } | null }) {
+export async function startProjectAction(input: { message?: string; title?: string; brief?: string | null; source?: { kind: string; label?: string; url?: string | null } | null }) {
   const viewer = await getViewer();
   if (!viewer || !viewer.modules.includes("chat")) return { error: "Not allowed" };
   const message = typeof input.message === "string" ? input.message.trim().slice(0, 2000) : "";
@@ -58,9 +58,13 @@ export async function startProjectAction(input: { message?: string; title?: stri
 
   const tagged = message ? parseAgentMentions(message) : [];
   const mode = tagged.length === 1 && tagged[0] === "video" ? "direct:video" : "full";
-  const source = (input.source ?? null) as ProjectSource | null;
+  /* Where it came from, in words only: a page cannot hand in evidence or a
+     "why" for the project to carry. Topics with research behind them start
+     through `startFromTopicAction`, which reads it on the server. */
+  const raw = input.source && typeof input.source === "object" ? input.source : null;
+  const source: ProjectSource | null = raw && typeof raw.kind === "string" ? { kind: raw.kind.slice(0, 20), label: typeof raw.label === "string" ? raw.label.slice(0, 60) : undefined, url: typeof raw.url === "string" ? raw.url.slice(0, 500) : null } : null;
   const typed = message.replace(/@\S+/g, " ").replace(/\s+/g, " ").trim();
-  const brief = (typeof input.brief === "string" && input.brief.trim().slice(0, 1000)) || (source && (source.why || source.hook) ? briefText(source, title) : "") || typed || source?.label || null;
+  const brief = (typeof input.brief === "string" && input.brief.trim().slice(0, 1000)) || typed || source?.label || null;
   let created: { id: string; channelSlug: string; channelId: string };
   try {
     created = await createWorkProject(viewer, { title, brief, mode, source: source ?? { kind: "person", label: viewer.nameLocal || viewer.name } });
