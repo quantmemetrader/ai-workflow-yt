@@ -56,6 +56,12 @@ export const users = pgTable(
      * that serves this key to colleagues. */
     avatarKey: text(),
     title: text(),
+    /**
+     * Which job this person does in the studio, for the Home they land on:
+     * one of the employee keys (research · planning · script · video ·
+     * article). Null is the overview. Not `role`, which is permission.
+     */
+    workRole: text(),
     role: userRoleEnum().notNull().default("member"),
     status: userStatusEnum().notNull().default("invited"),
     /**

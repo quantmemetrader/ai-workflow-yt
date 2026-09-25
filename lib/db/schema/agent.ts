@@ -52,6 +52,9 @@ export const agentMessages = pgTable(
     /** True when the retrieval step dropped matches the viewer may not read.
      * The UI says the answer is partial without naming what was withheld. */
     withheld: boolean().notNull().default(false),
+    /** Which employee answered this turn (research · planning · script ·
+     * video · article); null is the person's own assistant. */
+    speaker: text(),
     createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index("agent_messages_conv_idx").on(t.conversationId, t.createdAt)],

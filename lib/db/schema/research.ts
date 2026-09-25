@@ -147,6 +147,13 @@ export const hotSnapshots = pgTable(
     summary: text(),
     /** 研究员's marks on the rows that are this channel's business, by phrase. */
     judged: jsonb().$type<Record<string, { fit: string; why: string }>>(),
+    /**
+     * Whether each row is business or tech, by phrase: `t` biz · tech ·
+     * other, `s` 0-3 how squarely. Written at collection time so the screen
+     * can show only the studio's beat without asking a model on every view.
+     * Null on lists collected before this existed: show everything.
+     */
+    relevance: jsonb().$type<Record<string, { t: "biz" | "tech" | "other"; s: number; tag?: string }>>(),
   },
   (t) => [index("hot_snapshots_platform_idx").on(t.platform, t.fetchedAt)],
 );

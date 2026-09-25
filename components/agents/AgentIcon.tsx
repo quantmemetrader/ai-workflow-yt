@@ -1,15 +1,16 @@
 import * as React from "react";
 import { AGENT_COLORS, AGENT_TINTS, type AgentKey } from "@/lib/agents/catalog";
+import { spritePaths, spriteScale, spriteTint } from "@/lib/agents/pixel";
 
 /**
- * One drawn mark per AI employee, in that employee's colour.
+ * One face per AI employee, in that employee's colour.
  *
- * The five used to share one black cube, so a thread of three of them
- * talking read as one person changing their mind. Each is a glyph for the
- * job — a lens with a rising line, a clipboard, a pen, a clapperboard, a
- * page — on a square of the colour that follows that employee everywhere
- * else (the stage strip, the flow, the pills). No agent given draws the
- * team's own mark.
+ * Two looks. `pixel` (the default) is a small pixel-art face: the researcher
+ * with glasses and a lens, the planner with a clipboard, the writer in a beret
+ * with a pen, the editor in headphones, the article writer with a quill, and a
+ * little robot for the host's own assistant. `line` is the older glyph for the
+ * job on a tint square, kept for places that mean a stage rather than a person
+ * and for anything under 16px, where a face stops reading as one.
  */
 const GLYPH: Record<AgentKey, React.ReactNode> = {
   research: (
@@ -61,12 +62,54 @@ export function AgentIcon({
   size = 36,
   radius = 10,
   title,
+  variant = "pixel",
 }: {
   agent?: AgentKey | null;
   size?: number;
   radius?: number;
   title?: string;
+  /** "pixel" draws the face; "line" the job glyph. Under 16px is always line. */
+  variant?: "pixel" | "line";
 }) {
+  if (variant === "pixel" && size >= 16) {
+    const key = agent ?? "host";
+    const spr = Math.min(size, 16 * spriteScale(size));
+    return (
+      <div
+        role={title ? "img" : undefined}
+        aria-label={title}
+        style={{
+          width: size,
+          height: size,
+          borderRadius: radius,
+          background: spriteTint(key),
+          position: "relative",
+          overflow: "hidden",
+          flexShrink: 0,
+        }}
+      >
+        <svg
+          viewBox="0 0 16 16"
+          aria-hidden
+          shapeRendering="crispEdges"
+          style={{
+            position: "absolute",
+            left: Math.floor((size - spr) / 2),
+            bottom: 0,
+            width: spr,
+            height: spr,
+            stroke: "none",
+            display: "block",
+          }}
+        >
+          {spritePaths(key).map((p) => (
+            <path key={p.fill} fill={p.fill} d={p.d} />
+          ))}
+        </svg>
+      </div>
+    );
+  }
+
   /* A light square with the glyph in the employee's full colour; the team's
      own mark stays black on white-grey. */
   const color = agent ? AGENT_TINTS[agent] : "#ededed";

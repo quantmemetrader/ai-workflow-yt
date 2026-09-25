@@ -1,4 +1,4 @@
-import { index, jsonb, pgTable, text, timestamp } from "drizzle-orm/pg-core";
+import { index, integer, jsonb, pgTable, text, timestamp } from "drizzle-orm/pg-core";
 
 /**
  * A project: one video, and everything about it in one place.
@@ -27,7 +27,9 @@ export const workProjects = pgTable(
      */
     mode: text().notNull().default("full"),
     /** Where the topic came from: a pick's evidence, or who typed it. */
-    source: jsonb().$type<{ kind: string; label?: string; url?: string | null; evidence?: unknown[] } | null>(),
+    source: jsonb().$type<{ kind: string; label?: string; url?: string | null; evidence?: unknown[]; [k: string]: unknown } | null>(),
+    /** The backlog topic or idea this project was started from, if any. */
+    topicId: text(),
     /**
      * Who can see and work on it, as the Files picker says it: private (the
      * person who started it), everyone in the studio, some groups (roles), or
@@ -42,5 +44,41 @@ export const workProjects = pgTable(
     updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
     deletedAt: timestamp({ withTimezone: true }),
   },
-  (t) => [index("work_projects_tenant_idx").on(t.tenantId, t.updatedAt)],
+  (t) => [index("work_projects_tenant_idx").on(t.tenantId, t.updatedAt), index("work_projects_topic_idx").on(t.tenantId, t.topicId)],
+);
+
+/**
+ * Video ideas 研究员 worked out from the stored research, for Home.
+ *
+ * One press of "generate" is a batch; each row is one idea with its title
+ * options, the angle, why now, and the evidence rows it stands on. Kept so
+ * the panel is instant on the next visit and an idea can become a project
+ * (status "started", projectId set) or be saved for later.
+ */
+export const ideas = pgTable(
+  "ideas",
+  {
+    id: text().primaryKey(),
+    tenantId: text().notNull(),
+    batchId: text().notNull(),
+    createdBy: text().notNull(),
+    /** What the person asked for, if they typed anything. */
+    seed: text(),
+    title: text().notNull(),
+    /** Other ways to title it. */
+    titles: jsonb().$type<string[]>().notNull().default([]),
+    angle: text(),
+    why: text(),
+    hook: text(),
+    format: text(),
+    /** 1-5, how strong 研究员 thinks it is. */
+    strength: integer(),
+    evidence: jsonb().$type<unknown[]>().notNull().default([]),
+    /** new · saved · started · dismissed */
+    status: text().notNull().default("new"),
+    projectId: text(),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("ideas_tenant_idx").on(t.tenantId, t.createdAt)],
 );
