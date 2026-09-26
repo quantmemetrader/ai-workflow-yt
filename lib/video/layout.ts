@@ -615,11 +615,19 @@ export function resolveLayout(input: LayoutInput): LayoutPlan {
   /** How many entity cards one sentence asks for: three or more and they go back to back, shorter. */
   const entityBeatsIn = new Map<string, number>();
   for (const b of input.beats) if ((b.intent === "org" || b.intent === "product" || b.intent === "person") && b.priority < 3) entityBeatsIn.set(b.sentenceId, (entityBeatsIn.get(b.sentenceId) ?? 0) + 1);
+  /*
+   * Where the chosen window starts inside the asset's own file. Sourcing
+   * cuts (local) or imports (files) only the window when it has one —
+   * `asset.window` says so — and then the file begins at the window: its
+   * duration is the whole clip there is, and it is read from 0. Only an
+   * asset imported whole is read from `windowMs[0]`.
+   */
+  const inFileMs = (src: Sourced): number => (src.asset.window ? 0 : Math.max(0, src.windowMs[0]));
   /** How much of a sourced clip is there to play from its window's start. */
   const availableMs = (src: Sourced): number => {
     if (src.kind !== "video") return Infinity;
     const total = src.asset.durationMs ?? src.candidate.durationMs;
-    return total ? Math.max(0, total - Math.max(0, src.windowMs[0])) : src.windowMs[1] - src.windowMs[0];
+    return total ? Math.max(0, total - inFileMs(src)) : src.windowMs[1] - src.windowMs[0];
   };
   const cutawayOf = (beat: DesignBeat, s: Sentence, src: Sourced, slot: { startMs: number; endMs: number }, runId?: string): CutawaySpec => ({
     id: gid("cutaway", beat.id),
@@ -627,7 +635,7 @@ export function resolveLayout(input: LayoutInput): LayoutPlan {
     sentenceId: s.id,
     startMs: slot.startMs,
     endMs: slot.endMs,
-    sourceInMs: Math.max(0, src.windowMs[0]),
+    sourceInMs: inFileMs(src),
     layout: runId ? "run" : src.layout,
     cropX: src.subjectX,
     still: src.kind !== "video",
@@ -800,8 +808,13 @@ export function resolveLayout(input: LayoutInput): LayoutPlan {
     const hit = anchorIn(s, beat.anchor);
     const wantStart = round(clamp((hit?.startMs ?? s.startMs) + TIMING.land[0], 0, totalMs));
     const phraseEnd = round(Math.min(s.endMs, totalMs));
-    /* A visual may arrive up to half a second after its word, or later while the phrase still has 1.2 s to run. */
-    const latest = Math.max(wantStart + 500, phraseEnd - 1200);
+    /*
+     * A visual may arrive up to 1.2 s after its word, or later while the
+     * phrase still has 0.8 s to run. Half a second was too tight on a cut
+     * this dense (a jump cut every 3 s, each blocking 0.8 s either side):
+     * nineteen of forty beats found no slot on the first integrated run.
+     */
+    const latest = Math.max(wantStart + 1200, phraseEnd - 800);
     const crowdedHere = (entityBeatsIn.get(beat.sentenceId) ?? 0) >= 3 && (beat.intent === "org" || beat.intent === "product" || beat.intent === "person");
 
     /* A punchline is a framing move, not a layer; it can ride with anything, and it snaps onto a cut it is nearly on. */

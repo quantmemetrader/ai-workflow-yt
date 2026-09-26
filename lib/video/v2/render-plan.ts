@@ -200,9 +200,9 @@ const round3 = (v: number) => Math.round(v * 1000) / 1000;
 /* ------------------------------------------------------------- cutaways */
 
 /**
- * The layout's cutaways for the compositor. A sourced clip is already the
- * chosen window (sourcing cut it to its own file), so it is read from 0;
- * a cutaway longer than its clip is shortened to the clip rather than
+ * The layout's cutaways for the compositor. A sourced clip is usually the
+ * chosen window already (sourcing cut it to its own file, and the layout
+ * then reads it from 0); a cutaway longer than its clip is shortened to the clip rather than
  * freezing on the last frame. A cutaway whose file is not on this box is
  * left out, with the reason.
  */
@@ -222,7 +222,7 @@ export function toRenderCutaways(
       continue;
     }
     let endMs = c.endMs;
-    if (!c.still && c.asset.durationMs && c.asset.durationMs > 0) endMs = Math.min(endMs, c.startMs + Math.max(400, c.asset.durationMs - 80));
+    if (!c.still && c.asset.durationMs && c.asset.durationMs > 0) endMs = Math.min(endMs, c.startMs + Math.max(400, c.asset.durationMs - c.sourceInMs - 80));
     if (endMs - c.startMs < 400) {
       skipped.push({ id: c.id, reason: "clip too short" });
       continue;
@@ -231,7 +231,7 @@ export function toRenderCutaways(
       file,
       startMs: c.startMs,
       endMs,
-      sourceInMs: 0,
+      sourceInMs: c.sourceInMs,
       cropX: c.cropX,
       still: c.still,
       layout: c.layout,

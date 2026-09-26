@@ -30,7 +30,7 @@
  */
 import { createHash } from "node:crypto";
 import { execFile } from "node:child_process";
-import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import type { Beat, CutPiece, CutReport, FaceTrack, GraphicSpecV2, MotionClip, Retake, Sentence, Silence, Sourced, Word } from "@/lib/video/v2/types";
@@ -271,6 +271,65 @@ type DesignOut = {
   chinY: number;
 };
 
+/**
+ * The English line for every caption, in batches of 20, four at a time.
+ *
+ * The model is asked to echo each Chinese line beside its English, and an
+ * answer is matched back by that echo, not by the index it gives: the
+ * first integrated run numbered its answers its own way and every English
+ * line after the first batch sat under the wrong Chinese one. A batch whose
+ * echoes do not line up is asked once more; what still does not line up is
+ * left without English rather than shown under the wrong words.
+ */
+const TRANSLATE_SYSTEM = `You subtitle a Chinese business creator's vertical reel in English. You get a JSON array of Chinese caption lines. Answer with one JSON object and nothing else: {"lines":[{"zh":"the Chinese line copied exactly","en":"a short natural English subtitle, at most 8 words","kw":"at most one word copied verbatim from the Chinese line worth the accent colour (a name, a figure, the verb it turns on), or empty"}]}, exactly one entry per input line, in the same order. Keep names and figures exactly (Anthropic, Claude, DeepSeek, Kimi, MiniMax, ByteDance, Zhang Yiming, Alibaba, NSA, CISA, FBI). A caption line is often a fragment of a sentence: translate the fragment, do not complete it from its neighbours.`;
+
+const bare = (t: string) => t.replace(/[\s\p{P}\p{S}]/gu, "");
+
+async function translateLines(zh: string[], call: (system: string, user: string) => Promise<string>): Promise<{ second: string | null; keywords: string[] }[]> {
+  const out: { second: string | null; keywords: string[] }[] = zh.map(() => ({ second: null, keywords: [] }));
+  const batches: number[][] = [];
+  for (let i = 0; i < zh.length; i += 20) batches.push(zh.map((_, k) => k).slice(i, i + 20));
+  const attempt = async (idx: number[]): Promise<number[]> => {
+    let text = "";
+    try {
+      text = await call(TRANSLATE_SYSTEM, JSON.stringify(idx.map((i) => zh[i])));
+    } catch (err) {
+      log(`translate: batch failed (${err instanceof Error ? err.message : err})`);
+      return idx;
+    }
+    const a = text.indexOf("{");
+    const b = text.lastIndexOf("}");
+    let rows: { zh?: unknown; en?: unknown; kw?: unknown }[] = [];
+    try {
+      rows = (JSON.parse(text.slice(a, b + 1)) as { lines?: typeof rows }).lines ?? [];
+    } catch {
+      return idx;
+    }
+    const missing: number[] = [];
+    let cursor = 0;
+    for (const i of idx) {
+      /* The echo of this line, searched forward from the last match so a skipped row does not shift the rest. */
+      const want = bare(zh[i]);
+      let hit = -1;
+      for (let k = cursor; k < rows.length; k++) if (bare(String(rows[k].zh ?? "")) === want) { hit = k; break; }
+      if (hit < 0) { missing.push(i); continue; }
+      cursor = hit + 1;
+      const en = String(rows[hit].en ?? "").trim();
+      const kw = String(rows[hit].kw ?? "").trim();
+      out[i] = { second: en || null, keywords: kw && zh[i].includes(kw) ? [kw] : [] };
+    }
+    return missing;
+  };
+  const left = (await pmap(batches, 4, attempt)).flat();
+  if (left.length) {
+    const again: number[][] = [];
+    for (let i = 0; i < left.length; i += 20) again.push(left.slice(i, i + 20));
+    const still = (await pmap(again, 4, attempt)).flat();
+    if (still.length) log(`translate: ${still.length} lines left without English (echo did not match)`);
+  }
+  return out;
+}
+
 async function stageDesign(fixture: Fixture, cut: CutOut): Promise<DesignOut> {
   const file = path.join(OUT, "design.json");
   if (!runs("design")) return readJson<DesignOut>(file);
@@ -280,7 +339,7 @@ async function stageDesign(fixture: Fixture, cut: CutOut): Promise<DesignOut> {
     const { toCaptionLines } = await import("@/lib/video/elevenlabs");
     const { captionPreset } = await import("@/lib/video/presets");
     const { extractTerms, jsonCompletion } = await import("@/lib/video/glossary");
-    const { translateInBatches, furnitureFromBrief } = await import("@/lib/video/director");
+    const { furnitureFromBrief } = await import("@/lib/video/director");
     const { planDesign } = await import("@/lib/video/v2/design");
     const { complete } = await import("@/lib/ai/openrouter");
     const { modelFor } = await import("@/lib/ai/models");
@@ -307,20 +366,14 @@ async function stageDesign(fixture: Fixture, cut: CutOut): Promise<DesignOut> {
     const lines = toCaptionLines(transcript, reel ? { reel: { aimChars: reel.aimChars, maxChars: reel.maxChars, minChars: reel.minChars, minMs: reel.minMs, terms } } : {});
     log(`design: ${lines.length} caption lines`);
 
-    /* English for each line: the director's own batching, five in parallel. */
-    const TRANSLATE_PROMPT = `You subtitle a Chinese business creator's videos in two languages.\n\nYou are given numbered caption lines. Answer with a single JSON object and nothing else, the first character an opening brace:\n{ "lines": [ { "i": 0, "second": "the same line in English, short, natural, under 10 words", "keywords": ["at most one word from the ORIGINAL line worth the accent colour: a product, a name, the verb it turns on"] } ] }\n\nRules:\n - "keywords" must be copied verbatim from the original line, or be an empty list. Never rewrite them.\n - Keep numbers and names exactly (Anthropic, Claude, DeepSeek, Kimi, MiniMax, ByteDance, Zhang Yiming, Alibaba). No quotation marks around the line.`;
-    const tr = await translateInBatches(
-      lines,
-      async (numbered) => {
-        const res = await jsonCompletion(TRANSLATE_MODEL, [{ role: "system", content: TRANSLATE_PROMPT }, { role: "user", content: numbered }], AbortSignal.timeout(120_000), 6000);
-        spent("translate", res.usage.costMicros);
-        return res.text;
-      },
-      5,
-    );
-    log(`design: translated ${tr.lines.length}/${lines.length} (${tr.missing} missing)`);
-    const byIndex = new Map(tr.lines.map((l) => [l.i, l]));
-    const captions: CaptionRow[] = lines.map((l, i) => ({ ...l, second: byIndex.get(i)?.second ?? null, keywords: (byIndex.get(i)?.keywords ?? []).slice(0, 1) }));
+    /* English for each line, matched back by the Chinese it echoes (see `translateLines`). */
+    const english = await translateLines(lines.map((l) => l.text), async (system, user) => {
+      const res = await jsonCompletion(TRANSLATE_MODEL, [{ role: "system", content: system }, { role: "user", content: user }], AbortSignal.timeout(120_000), 6000);
+      spent("translate", res.usage.costMicros);
+      return res.text;
+    });
+    log(`design: translated ${english.filter((e) => e.second).length}/${lines.length}`);
+    const captions: CaptionRow[] = lines.map((l, i) => ({ ...l, second: english[i]?.second ?? null, keywords: english[i]?.keywords ?? [] }));
 
     /* The chin under the plain framing: the captions' top edge keeps 40 px under it. */
     const chinY = Math.round(faceBoxUnder(face, FRAMING.base, FRAMING.eyeY)?.chin ?? 1000);
@@ -362,6 +415,23 @@ async function stageDesign(fixture: Fixture, cut: CutOut): Promise<DesignOut> {
 }
 
 /* ================================================================ source */
+
+/**
+ * The media cache stores a fetched picture as `img0.bin`; the motion
+ * renderer inlines a logo only by a picture extension. A copy with the
+ * extension the bytes say (the mime from the fetch, else the magic) sits
+ * beside it, so the entity card shows the logo instead of a monogram.
+ */
+async function withImageExt(file: string, mime?: string): Promise<string> {
+  if (/\.(png|jpe?g|webp|gif|svg)$/i.test(file)) return file;
+  const head = await readFile(file).then((b) => b.subarray(0, 64), () => Buffer.alloc(0));
+  const sniff = head[0] === 0x89 && head[1] === 0x50 ? "png" : head[0] === 0xff && head[1] === 0xd8 ? "jpg" : head.subarray(8, 12).toString() === "WEBP" ? "webp" : head.subarray(0, 3).toString() === "GIF" ? "gif" : /<svg|<\?xml/i.test(head.toString()) ? "svg" : null;
+  const ext = sniff ?? (mime?.includes("png") ? "png" : mime?.includes("jpeg") ? "jpg" : mime?.includes("webp") ? "webp" : mime?.includes("svg") ? "svg" : null);
+  if (!ext) return file;
+  const out = `${file}.${ext}`;
+  if (!(await exists(out))) await copyFile(file, out);
+  return out;
+}
 
 type SourceOut = { design: DesignResult; traces: unknown[]; misses: unknown[]; spend: { media: unknown; vision: { costMicros: number } }; sourcingMs: number };
 
@@ -423,7 +493,8 @@ async function stageSource(fixture: Fixture, cut: CutOut, d: DesignOut): Promise
         if (!pick) return null;
         const local = await fetchLocal(pick.candidate, { signal: AbortSignal.timeout(60_000) }, media);
         if (!local.file) return null;
-        const asset = localAsset(pick.candidate, { file: local.file, width: local.width, height: local.height });
+        const file = await withImageExt(local.file, local.mime);
+        const asset = localAsset(pick.candidate, { file, width: local.width, height: local.height });
         return { beatId: e.firstSentenceId ?? "s000", asset, candidate: pick.candidate, kind: "logo", score: 9, reasonZh: `${e.name} 标志（${pick.via}）`, windowMs: [0, 0], subjectX: 0.5, dhash: pick.candidate.id, layout: "full", alternatives: [] };
       } catch (err) {
         log(`source: logo ${e.name} failed: ${err instanceof Error ? err.message : err}`);
@@ -470,7 +541,16 @@ async function stageMotion(fixture: Fixture, src: SourceOut): Promise<MotionOut>
   if (!runs("motion")) return readJson<MotionOut>(file);
   return timed("motion", async () => {
     const { renderMotionClips } = await import("@/lib/video/motion");
-    const specs = toMotionSpecs(src.design.plan.graphics);
+    /* Pictures on cards (logos, a headline's article image) named so the renderer will inline them. */
+    const graphics: GraphicSpecV2[] = JSON.parse(JSON.stringify(src.design.plan.graphics)) as GraphicSpecV2[];
+    for (const g of graphics) {
+      const refs = [g.props.logo, g.props.image, ...(Array.isArray(g.props.group) ? (g.props.group as { logo?: unknown }[]).map((m) => m.logo) : [])];
+      for (const ref of refs) {
+        const asset = (ref as { asset?: { localPath?: string } } | null | undefined)?.asset;
+        if (asset?.localPath) asset.localPath = await withImageExt(asset.localPath);
+      }
+    }
+    const specs = toMotionSpecs(graphics);
     const clips = await renderMotionClips(specs, { width: W, height: H, accent: fixture.project.accent, dir: path.join(OUT, "motion"), log: (l) => log(`motion: ${l}`) });
     log(`motion: ${clips.length}/${specs.length} clips`);
     const out: MotionOut = { specs, clips };
@@ -634,7 +714,7 @@ async function stageGrade(fixture: Fixture, tr: TranscribeOut, cut: CutOut, d: D
       layout: c.layout,
       still: c.still,
       file: c.asset.localPath ?? null,
-      sourceInMs: 0,
+      sourceInMs: c.sourceInMs,
       assetIndex: assetIndex(c.asset, c.kind),
       runId: c.runId ?? null,
       box: c.layout === "split" ? [plan.renderHints.split.clip.x, plan.renderHints.split.clip.y, plan.renderHints.split.clip.w, plan.renderHints.split.clip.h] : null,
