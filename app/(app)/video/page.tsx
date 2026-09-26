@@ -101,7 +101,8 @@ export default async function VideoPage({
      what already exists — this morning's plan, the backlog, the audience. */
   const proposals = await proposalsFor(viewer, "video");
 
-  const inProject = project ? await projectFor(viewer.tenantId, { videoProjectId: project.id }) : null;
+  /* The project bar, only for a project this person may see. */
+  const inProject = project ? await projectFor(viewer, { videoProjectId: project.id }) : null;
   const view = (
     <VideoScreen
       proposals={proposals}

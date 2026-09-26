@@ -123,6 +123,10 @@ export async function listScripts(
     where.push(sql`(${scripts.title} ilike ${q} or coalesce(${scripts.titleLocal}, '') ilike ${q})`);
   }
 
+  /* Loaded here rather than at the top: the projects service imports this
+     one (`createScript`), and a cycle between the two is what
+     `lib/script/writing.ts` also steers clear of. */
+  const { projectsVisibleTo } = await import("@/lib/projects/service");
   const rows = await db
     .select({
       id: scripts.id,
@@ -148,8 +152,11 @@ export async function listScripts(
     .from(scripts)
     .leftJoin(users, eq(users.id, scripts.ownerId))
     /* Where each script came from, so a row can say it: its project (and
-       what that project's topic came from) and the backlog topic. */
-    .leftJoin(workProjects, and(eq(workProjects.scriptId, scripts.id), isNull(workProjects.deletedAt)))
+       what that project's topic came from) and the backlog topic. Only a
+       project this person may see: the script itself is the studio's, but a
+       private project's name and id are its members' — outside it the row
+       stays and simply names no project. */
+    .leftJoin(workProjects, and(eq(workProjects.scriptId, scripts.id), isNull(workProjects.deletedAt), projectsVisibleTo(viewer)))
     .leftJoin(topics, and(eq(topics.id, scripts.topicId), eq(topics.tenantId, scripts.tenantId)))
     .where(and(...where))
     .orderBy(desc(scripts.updatedAt), workProjects.createdAt)
@@ -313,10 +320,16 @@ export type ScriptDetail = {
 /** The topic card's data for one script (`ScriptTopic`), or null when it has none. */
 export async function scriptTopic(viewer: Viewer, row: Pick<ScriptRow, "id" | "topicId" | "title">): Promise<{ topic: ScriptTopic | null; writing: boolean }> {
   const zh = (viewer.locale ?? "zh-CN").startsWith("zh");
+  /* The project the script was started for, when this person may see it.
+     Its brief and its topic snapshot (why, hook, angle, evidence) are the
+     project's, and a private project keeps them to its members even though
+     the script's own words are the studio's. (Imported here, not at the
+     top, for the reason `listScripts` gives.) */
+  const { projectsVisibleTo } = await import("@/lib/projects/service");
   const [project] = await db
     .select({ id: workProjects.id, title: workProjects.title, brief: workProjects.brief, source: workProjects.source, topicId: workProjects.topicId })
     .from(workProjects)
-    .where(and(eq(workProjects.tenantId, viewer.tenantId), eq(workProjects.scriptId, row.id), isNull(workProjects.deletedAt)))
+    .where(and(eq(workProjects.tenantId, viewer.tenantId), eq(workProjects.scriptId, row.id), isNull(workProjects.deletedAt), projectsVisibleTo(viewer)))
     .orderBy(asc(workProjects.createdAt))
     .limit(1);
   const src = (project?.source as ProjectSource | null) ?? null;

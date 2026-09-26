@@ -2,6 +2,7 @@ import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { scripts, topics, users, workProjects } from "@/lib/db/schema";
 import { requireModule } from "@/lib/auth/dal";
+import { projectsVisibleTo } from "@/lib/projects/service";
 import { answeringModel } from "@/lib/ai/models";
 import { ResearchSidebar } from "@/components/canvas/ResearchSidebar";
 import { BacklogView } from "@/components/research/BacklogView";
@@ -40,14 +41,19 @@ export default async function BacklogPage() {
      is the one started from it (`work_projects.topic_id`), else the one
      whose script was written from it (an idea kept here and then started
      from Home); its script is the one written from it (`scripts.topic_id`),
-     else the project's. */
+     else the project's.
+
+     Only projects this researcher may see (`projectsVisibleTo`, the rule of
+     the project page itself). A teammate's private project used to show as
+     "项目 →" here and 404 on the click, and handed its id and its script's
+     to everyone with Research. */
   const ids = rows.map((r) => r.topic.id);
-  const [projects, written] = ids.length
+  const [projects, written, writtenProjects] = ids.length
     ? await Promise.all([
         db
           .select({ id: workProjects.id, topicId: workProjects.topicId, scriptId: workProjects.scriptId })
           .from(workProjects)
-          .where(and(eq(workProjects.tenantId, viewer.tenantId), isNull(workProjects.deletedAt), inArray(workProjects.topicId, ids)))
+          .where(and(eq(workProjects.tenantId, viewer.tenantId), isNull(workProjects.deletedAt), inArray(workProjects.topicId, ids), projectsVisibleTo(viewer)))
           .orderBy(workProjects.createdAt),
         db
           .select({
@@ -55,20 +61,40 @@ export default async function BacklogPage() {
             topicId: scripts.topicId,
             status: scripts.status,
             beats: sql<number>`(select count(*)::int from script_beats b where b.script_id = "scripts"."id")`,
-            projectId: sql<string | null>`(select p.id from work_projects p where p.script_id = "scripts"."id" and p.tenant_id = "scripts"."tenant_id" and p.deleted_at is null order by p.created_at limit 1)`,
           })
           .from(scripts)
           .where(and(eq(scripts.tenantId, viewer.tenantId), isNull(scripts.deletedAt), inArray(scripts.topicId, ids)))
           .orderBy(scripts.createdAt),
+        /* The projects those scripts belong to, oldest first, by the same
+           rule. A join rather than a subquery per script, so the rule is
+           written once and not re-spelled against an alias. */
+        db
+          .select({ id: workProjects.id, scriptId: workProjects.scriptId })
+          .from(workProjects)
+          .innerJoin(scripts, eq(scripts.id, workProjects.scriptId))
+          .where(
+            and(
+              eq(workProjects.tenantId, viewer.tenantId),
+              isNull(workProjects.deletedAt),
+              eq(scripts.tenantId, viewer.tenantId),
+              isNull(scripts.deletedAt),
+              inArray(scripts.topicId, ids),
+              projectsVisibleTo(viewer),
+            ),
+          )
+          .orderBy(workProjects.createdAt),
       ])
-    : [[], []];
+    : [[], [], []];
+  const projectOfScript = new Map<string, string>();
+  for (const p of writtenProjects) if (p.scriptId && !projectOfScript.has(p.scriptId)) projectOfScript.set(p.scriptId, p.id);
   const projectOf = new Map<string, { id: string; scriptId: string | null }>();
   for (const p of projects) if (p.topicId && !projectOf.has(p.topicId)) projectOf.set(p.topicId, { id: p.id, scriptId: p.scriptId });
   const scriptOf = new Map<string, { id: string; status: string; beats: number }>();
   for (const sc of written) {
     if (!sc.topicId || scriptOf.has(sc.topicId)) continue;
     scriptOf.set(sc.topicId, { id: sc.id, status: sc.status, beats: Number(sc.beats) });
-    if (sc.projectId && !projectOf.has(sc.topicId)) projectOf.set(sc.topicId, { id: sc.projectId, scriptId: sc.id });
+    const projectId = projectOfScript.get(sc.id);
+    if (projectId && !projectOf.has(sc.topicId)) projectOf.set(sc.topicId, { id: projectId, scriptId: sc.id });
   }
 
   return (

@@ -24,7 +24,11 @@ import { cleanCodes } from "@/lib/projects/topic";
  */
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const viewer = await getViewer();
-  if (!viewer) return Response.json({ error: "Not allowed" }, { status: 403 });
+  /* Chat, like the project page these popups sit on and the actions they
+     feed (`chooseTopicAction`, `chooseScriptAction`). Being able to see a
+     project is not enough: a member with only Accounting, or a guest named
+     on one project, got the backlog, 研究员's ideas and the script list. */
+  if (!viewer || !viewer.modules.includes("chat")) return Response.json({ error: "Not allowed" }, { status: 403 });
   const { id } = await params;
   const p = await workProjectDetail(viewer, id, true, 1);
   if (!p) return Response.json({ error: "Not found" }, { status: 404 });

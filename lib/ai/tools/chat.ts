@@ -1,5 +1,5 @@
 import "server-only";
-import { and, desc, eq, inArray, isNull } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { chatChannels, chatMembers, chatMessages, users } from "@/lib/db/schema";
 import { audit } from "@/lib/audit";
@@ -88,6 +88,27 @@ const defs: ToolDef[] = [
   },
 ];
 
+/**
+ * When an employee answers for somebody (`ctx.asker`), only the channels that
+ * person could read as well: public ones, private ones they are in, and the
+ * room this turn is in (where the answer is posted anyway).
+ *
+ * The employee is a member of every private project's chat, so by its own
+ * membership alone "@研究员 read_channel <id>" in the assistant stream read
+ * a private project's conversation back to someone outside it, and
+ * list_channels handed out the ids to ask with. Undefined — no extra
+ * condition — when the viewer is the person.
+ */
+function askerMayRead(ctx: ToolContext) {
+  const asker = ctx.asker;
+  if (!asker || asker.id === ctx.viewer.id) return undefined;
+  return or(
+    ctx.channelId ? eq(chatChannels.id, ctx.channelId) : undefined,
+    eq(chatChannels.isPrivate, false),
+    sql`exists (select 1 from ${chatMembers} m where m.channel_id = ${chatChannels.id} and m.user_id = ${asker.id})`,
+  );
+}
+
 /** The channels this person is actually in. The only set any tool here may
  * touch, and the reason a private room cannot be probed for. */
 async function myChannels(ctx: ToolContext) {
@@ -106,6 +127,7 @@ async function myChannels(ctx: ToolContext) {
         eq(chatChannels.tenantId, ctx.viewer.tenantId),
         // An archived channel is not somewhere to send.
         isNull(chatChannels.archivedAt),
+        askerMayRead(ctx),
       ),
     )
     .orderBy(desc(chatChannels.lastMessageAt));
@@ -132,6 +154,7 @@ async function resolve(ctx: ToolContext, given: unknown): Promise<{ id: string; 
         eq(chatMembers.userId, ctx.viewer.id),
         eq(chatMembers.channelId, wanted),
         eq(chatChannels.tenantId, ctx.viewer.tenantId),
+        askerMayRead(ctx),
       ),
     )
     .limit(1);
@@ -147,7 +170,7 @@ async function channelNamed(ctx: ToolContext, given: string): Promise<string | n
     .select({ id: chatChannels.id, name: chatChannels.name, slug: chatChannels.slug })
     .from(chatMembers)
     .innerJoin(chatChannels, eq(chatChannels.id, chatMembers.channelId))
-    .where(and(eq(chatMembers.userId, ctx.viewer.id), eq(chatChannels.tenantId, ctx.viewer.tenantId), isNull(chatChannels.archivedAt)));
+    .where(and(eq(chatMembers.userId, ctx.viewer.id), eq(chatChannels.tenantId, ctx.viewer.tenantId), isNull(chatChannels.archivedAt), askerMayRead(ctx)));
   const exact = rows.find((r) => r.name.toLowerCase() === wanted || (r.slug ?? "").toLowerCase() === wanted);
   if (exact) return exact.id;
   const partial = rows.filter((r) => r.name.toLowerCase().includes(wanted));
