@@ -10,12 +10,66 @@ import { newId } from "@/lib/ids";
 import { AGENT_KEYS, parseAgentMentions, type AgentKey } from "@/lib/agents/catalog";
 import { agentViewer } from "@/lib/agents";
 import { CUT_TOOLS, MAX_REPLIES, findStartClaims, later } from "@/lib/agents/mentions";
-import { channelById } from "@/lib/chat/service";
-import { projectById } from "@/lib/video/service";
+import { attachmentsFor, channelById } from "@/lib/chat/service";
+import { bridgeState } from "@/lib/chat/conversation-project";
+import { addClip, projectById } from "@/lib/video/service";
+import { canEditProject } from "@/lib/video/access";
 import { relationOn } from "@/lib/authz/rebac";
 import { clipCount, reachableThroughProjects } from "@/lib/projects/service";
+import { workProjects } from "@/lib/db/schema";
+import { videoClock } from "@/lib/chat/video-card";
 
 type ScreenIds = Pick<ToolContext, "channelId" | "projectId" | "topicId" | "fileId" | "scriptId">;
+
+/**
+ * Files the person put on their message, as lines the employee reads.
+ *
+ * The personal chat has no attachments column: the message is text, and
+ * the employee reads text. So each file the person may actually read
+ * (`attachmentsFor`, checked against them) becomes one line under what
+ * they typed — `[附件] 原片.mp4 (video, 2:31) file id fil_…` — which the
+ * employee's tools can open by id and a reloaded thread draws as a card
+ * (`threadMessagesOf`). A video also goes into the bin of the project this
+ * conversation belongs to (`bridgeState`: the one it was made into, the one
+ * the employees worked in, or the one on screen), as the person, under the
+ * video project's own edit rule, and the line says so — 剪辑师 can cut it
+ * from this same turn.
+ */
+async function describeAttachments(viewer: Viewer, conversationId: string, raw: unknown, hints: { videoProjectId?: string }): Promise<{ text: string; fileIds: string[] }> {
+  const wanted = Array.isArray(raw) ? [...new Set(raw.filter((v): v is string => typeof v === "string" && v.length > 0 && v.length <= 64))].slice(0, 10) : [];
+  if (!wanted.length) return { text: "", fileIds: [] };
+  const readable = await attachmentsFor(viewer, wanted);
+  const files = wanted.flatMap((id) => readable.get(id) ?? []);
+  if (!files.length) return { text: "", fileIds: [] };
+
+  let bin: { videoProjectId: string; title: string } | null = null;
+  if (files.some((f) => f.kind === "video")) {
+    try {
+      const state = await bridgeState(viewer, conversationId, { videoProjectId: hints.videoProjectId ?? null });
+      if (state?.project) {
+        const [wp] = await db.select({ videoProjectId: workProjects.videoProjectId }).from(workProjects).where(eq(workProjects.id, state.project.id)).limit(1);
+        if (wp?.videoProjectId && (await canEditProject(viewer, wp.videoProjectId))) bin = { videoProjectId: wp.videoProjectId, title: state.project.title };
+      }
+    } catch (err) {
+      console.error("[agent] could not find the conversation's project for an attachment", err);
+    }
+  }
+
+  const lines: string[] = [];
+  for (const f of files) {
+    let note = "";
+    if (f.kind === "video" && bin) {
+      try {
+        const clipId = await addClip(viewer, bin.videoProjectId, f.id);
+        note = ` · 已加入项目素材《${bin.title}》(clip id ${clipId})`;
+      } catch (err) {
+        console.error("[agent] could not put an attached video in the project's bin", err);
+      }
+    }
+    lines.push(`[附件] ${f.name} (${f.kind}${f.durationMs ? `, ${videoClock(f.durationMs)}` : ""}) file id ${f.id}${note}`);
+  }
+  return { text: lines.join("\n"), fileIds: files.map((f) => f.id) };
+}
 
 /**
  * What the screen says is open, kept only where the person asking may open
@@ -104,6 +158,9 @@ export async function POST(request: Request) {
     /** The employee who answers by default on this screen; an @ in the
      *  message picks another. Absent means the personal assistant. */
     agent?: string;
+    /** Files already uploaded and confirmed, in the order they were
+     *  attached; each is checked against the person (`describeAttachments`). */
+    attachments?: unknown;
   };
   try {
     body = await request.json();
@@ -112,7 +169,10 @@ export async function POST(request: Request) {
   }
 
   const content = String(body.content ?? "").trim();
-  if (!content) return new Response("Empty message", { status: 400 });
+  /* A file with nothing typed is an ordinary thing to send ("here is the
+     take"); nothing at all is not. */
+  const hasAttachments = Array.isArray(body.attachments) && body.attachments.length > 0;
+  if (!content && !hasAttachments) return new Response("Empty message", { status: 400 });
   // A turn is billed to the studio's OpenRouter account, so the prompt cannot
   // be whatever size the caller feels like posting. 32k characters is longer
   // than anything anyone types and far short of a deliberate bill.
@@ -189,6 +249,9 @@ export async function POST(request: Request) {
   const speakerViewer = speaker ? await agentViewer(viewer.tenantId, speaker) : viewer;
   const speakerModule: Module = speaker ? ({ research: "research", planning: "research", script: "script", video: "video", article: "script" } as const)[speaker] : (context.module ?? "chat");
 
+  /* What the conversation is titled from: the words typed, or the file
+     named when nothing was. */
+  let titleFrom = content;
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
     async start(controller) {
@@ -240,13 +303,21 @@ export async function POST(request: Request) {
            Kept in a variable: a script write that starts a project pins
            the rest of the turn to it (below). */
         const turnContext: Omit<ToolContext, "viewer"> = { ...context, ...ids, asker: viewer, team, privateReply: true };
+        /* The files on the message, as lines under it (and, for a video, in
+           the project's bin): what the employee reads, what the thread keeps
+           and what a reload draws as cards. The first one is also "the file
+           on screen" for tools that read one, unless the screen said which. */
+        const attached = hasAttachments ? await describeAttachments(viewer, conversationId!, body.attachments, { videoProjectId: ids.projectId }) : { text: "", fileIds: [] };
+        const turnContent = attached.text ? (content ? `${content}\n\n${attached.text}` : attached.text) : content;
+        titleFrom = turnContent;
+        if (!turnContext.fileId && attached.fileIds[0]) turnContext.fileId = attached.fileIds[0];
         /* What 剪辑师 said and did this turn, for the check at the end. */
         let said = "";
         let cut = false;
         for await (const event of runAgent({
           viewer: speakerViewer,
           conversationId: conversationId!,
-          content,
+          content: turnContent,
           // The employee's own trade when one answers; otherwise the screen
           // the question came from decides which tuning the prompt carries.
           module: speakerModule,
@@ -310,7 +381,7 @@ export async function POST(request: Request) {
       // mid-flight — leaving the conversation titled "New chat" and the model
       // call unrecorded. `after` keeps the runtime alive for it, the same way
       // "last active" and "mark read" are handled.
-      if (isFirst) after(() => titleConversation(viewer, conversationId!, content));
+      if (isFirst) after(() => titleConversation(viewer, conversationId!, titleFrom));
     },
   });
 

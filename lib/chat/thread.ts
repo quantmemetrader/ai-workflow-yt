@@ -2,48 +2,72 @@ import "server-only";
 import type { Viewer } from "@/lib/auth/types";
 import { AGENT_KEYS, type AgentKey } from "@/lib/agents/catalog";
 import { agentChannelLines, conversationDetail, conversationsWithAgent } from "@/lib/chat/service";
+import { videoRefsOf, type VideoCard } from "@/lib/chat/video-card";
+import { videoCardsFor } from "@/lib/chat/videos";
 import type { AgentHistory, ThreadMessage } from "@/components/canvas/AgentScreen";
 
 /**
  * A person's conversation as the agent screen draws it, shared by the
  * thread page (`/chat/t/[id]`) and an employee's page (`/chat?agent=…`),
  * which opens the newest thread that employee answered in.
+ *
+ * With the renders and video files each turn names, as cards for this
+ * reader: an employee's tools say what they made or found (a render's id in
+ * a result, a file's), and a person's own upload is named in their message
+ * (`[附件] … file id fil_…`, written by the stream route). Nothing on the
+ * `agent_messages` row says "attachment"; the ids in the text and the tool
+ * results are the record, and `lib/chat/videos.ts` checks each against the
+ * reader before it becomes a card.
  */
-export function threadMessagesOf(detail: NonNullable<Awaited<ReturnType<typeof conversationDetail>>>): ThreadMessage[] {
-  return detail.messages
-    .filter((m) => m.role === "user" || m.role === "assistant")
-    .map((m) => ({
-      id: m.id,
-      role: m.role as "user" | "assistant",
-      content: m.content,
-      status: m.status as ThreadMessage["status"],
-      error: m.error,
-      model: m.model,
-      costMicros: Number(m.costMicros ?? 0),
-      withheld: m.withheld,
-      /* Who answered, as stored by the stream route. Without it a reloaded
-         thread drew every employee's answer as the host's. */
-      speaker: asAgentKey(m.speaker),
-      createdAt: m.createdAt.toISOString(),
-      citations: detail.citations
-        .filter((c) => c.messageId === m.id)
-        .map((c) => ({
-          fileId: c.fileId,
-          name: c.name,
-          kind: c.kind,
-          folder: c.folder,
-          relation: c.relation,
-        })),
-      tools: detail.toolCalls
-        .filter((c) => c.messageId === m.id)
-        .map((c) => ({
-          id: c.id,
-          name: c.name,
-          status: c.status,
-          durationMs: c.durationMs,
-          summary: summarise(c.name, c.args as Record<string, unknown>, c.durationMs),
-        })),
-    }));
+export async function threadMessagesOf(viewer: Viewer, detail: NonNullable<Awaited<ReturnType<typeof conversationDetail>>>): Promise<ThreadMessage[]> {
+  const rows = detail.messages.filter((m) => m.role === "user" || m.role === "assistant");
+  const videos = await videoCardsFor(
+    viewer,
+    rows.map((m) => {
+      const said = detail.toolCalls
+        .filter((c) => c.messageId === m.id && c.status === "ok" && typeof c.result === "string")
+        .map((c) => c.result as string)
+        .join("\n");
+      return { key: m.id, ...videoRefsOf(null, `${m.content}\n${said}`) };
+    }),
+  ).catch((err) => {
+    console.error("[chat] could not read the videos in the conversation", err);
+    return new Map<string, VideoCard[]>();
+  });
+
+  return rows.map((m) => ({
+    id: m.id,
+    role: m.role as "user" | "assistant",
+    content: m.content,
+    status: m.status as ThreadMessage["status"],
+    error: m.error,
+    model: m.model,
+    costMicros: Number(m.costMicros ?? 0),
+    withheld: m.withheld,
+    /* Who answered, as stored by the stream route. Without it a reloaded
+       thread drew every employee's answer as the host's. */
+    speaker: asAgentKey(m.speaker),
+    createdAt: m.createdAt.toISOString(),
+    citations: detail.citations
+      .filter((c) => c.messageId === m.id)
+      .map((c) => ({
+        fileId: c.fileId,
+        name: c.name,
+        kind: c.kind,
+        folder: c.folder,
+        relation: c.relation,
+      })),
+    tools: detail.toolCalls
+      .filter((c) => c.messageId === m.id)
+      .map((c) => ({
+        id: c.id,
+        name: c.name,
+        status: c.status,
+        durationMs: c.durationMs,
+        summary: summarise(c.name, c.args as Record<string, unknown>, c.durationMs),
+      })),
+    videos: videos.get(m.id) ?? [],
+  }));
 }
 
 /**

@@ -14,6 +14,10 @@ import { visibleProject } from "@/lib/projects/service";
 import { canEditProject } from "@/lib/video/access";
 import { agentTag } from "@/lib/agents/catalog";
 import { setFileAccess } from "@/lib/files/access";
+import { addClip } from "@/lib/video/service";
+import { and, eq, isNull } from "drizzle-orm";
+import { db } from "@/lib/db/client";
+import { workProjects } from "@/lib/db/schema";
 import { conversationDetail } from "@/lib/chat/service";
 import {
   addChannelMembers,
@@ -119,7 +123,53 @@ export async function sendChannelMessage(
     }
   }
 
-  await postMessage(viewer, channel.id, body, {}, attachments);
+  /*
+   * What the files are, beside the ids (`meta.attachments`): the name, type
+   * and size as the sender saw them, so the employees reading the channel
+   * (`read_channel`) can say "[附件] 原片.mp4 (video, 2:31) file id fil_…"
+   * without a join, and the list can draw a chip for a file it may not
+   * open. The ids in the column stay what a reader's own permission check
+   * runs against; this is description, not grant.
+   */
+  const described = attachments.map((id) => {
+    const f = readable.get(id)!;
+    return { fileId: id, name: f.name, mime: f.mime, size: f.sizeBytes, kind: f.kind, durationMs: f.durationMs };
+  });
+  const meta: Record<string, unknown> = described.length ? { attachments: described } : {};
+
+  /*
+   * A video posted into a project's own chat is that project's footage.
+   *
+   * The owner uploads the host's take wherever the conversation is, and
+   * "上传素材" on the project page is one more place to have to go. So a
+   * video attached here goes into the project's bin as well (`addClip`, as
+   * the sender, with the video project's own edit rule), and the message
+   * says so — 剪辑师 can cut it from the next tag. A file that will not go
+   * (no edit right, still uploading) is still attached; only the bin is
+   * skipped.
+   */
+  const videos = described.filter((f) => f.kind === "video");
+  if (videos.length) {
+    const [wp] = await db
+      .select({ id: workProjects.id, videoProjectId: workProjects.videoProjectId })
+      .from(workProjects)
+      .where(and(eq(workProjects.channelId, channel.id), eq(workProjects.tenantId, viewer.tenantId), isNull(workProjects.deletedAt)))
+      .limit(1);
+    if (wp?.videoProjectId && (await canEditProject(viewer, wp.videoProjectId).catch(() => false))) {
+      const binned: { fileId: string; clipId: string }[] = [];
+      for (const f of videos) {
+        try {
+          const clipId = await addClip(viewer, wp.videoProjectId, f.fileId);
+          binned.push({ fileId: f.fileId, clipId });
+        } catch (err) {
+          console.error("[chat] could not put an attached video in the project's bin", err);
+        }
+      }
+      if (binned.length) meta.binned = { projectId: wp.id, videoProjectId: wp.videoProjectId, clips: binned };
+    }
+  }
+
+  await postMessage(viewer, channel.id, body, meta, attachments);
   revalidatePath(`/chat/c/${slug}`);
 
   /* The agents that were tagged, if any. After the response: each one is a

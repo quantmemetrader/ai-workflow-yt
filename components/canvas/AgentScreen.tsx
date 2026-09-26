@@ -21,6 +21,9 @@ import { AgentTyping, streamStep } from "@/components/agents/AgentTyping";
 import { asksSomething, soft, threadCss, tidyMarkdown } from "@/components/chat/look";
 import { PersonAvatar } from "@/components/ui/PersonAvatar";
 import { ProjectBridge } from "@/components/chat/ProjectBridge";
+import { ATTACH_ACCEPT, bytes, kindOf, uploadToStudio, type Attaching } from "@/components/chat/upload";
+import { VideoCards } from "@/components/chat/VideoCard";
+import type { VideoCard } from "@/lib/chat/video-card";
 import type { Locale } from "@/lib/i18n";
 
 /**
@@ -57,6 +60,12 @@ export type ThreadMessage = {
   tools: ThreadTool[];
   /** The employee who answered, when an @ handed the turn to one. */
   speaker?: AgentKey | null;
+  /** The renders and video files this turn names — a person's upload, an
+   * employee's receipt — as cards this reader may open. */
+  videos?: VideoCard[];
+  /** The files the person put on this message, by name, for the row drawn
+   * before a reload names them from the text. */
+  attachments?: { id: string; name: string; size: number; kind: string }[];
 };
 
 /**
@@ -165,7 +174,11 @@ export function AgentScreen({
   initialAgent = null,
   now,
   history = null,
+  canAttach = true,
 }: {
+  /** False for somebody without the Files module: no paperclip rather than
+   *  one the upload route refuses. */
+  canAttach?: boolean;
   /** An employee's page: their threads with this person and their recent
    *  channel lines, drawn around the conversation (`/chat?agent=…`). */
   history?: AgentHistory | null;
@@ -205,8 +218,45 @@ export function AgentScreen({
   const answering: AgentKey | null = parseAgentMentions(input)[0] ?? null;
   const name = (k: AgentKey) => (zh ? AGENT_LABELS[k].nameLocal : AGENT_LABELS[k].name);
   /* A draft that is only "@编剧 " — the tag this screen puts there itself —
-     has nothing to send yet. */
-  const ready = asksSomething(input);
+     has nothing to send yet. A file on it is something to send. */
+  const [attached, setAttached] = useState<Attaching[]>([]);
+  const picker = useRef<HTMLInputElement>(null);
+  const uploading = attached.some((a) => !a.fileId && !a.error);
+  const ready = (asksSomething(input) || attached.some((a) => a.fileId)) && !uploading;
+
+  /**
+   * Files for the message: to the person's own files (private — it is
+   * their upload; the employee reads it with the id the message carries,
+   * and the stream route puts a video in the conversation's project too).
+   * The same uploader the channel's paperclip uses, multipart past 64 MB.
+   */
+  function attach(list: FileList | null) {
+    const files = Array.from(list ?? []).slice(0, 10 - attached.length);
+    if (!files.length) return;
+    for (const file of files) {
+      const key = `${file.name}-${file.size}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+      setAttached((rest) => [...rest, { key, name: file.name, size: file.size, mime: file.type, progress: 0 }]);
+      void uploadToStudio(file, (fraction) => setAttached((rest) => rest.map((a) => (a.key === key ? { ...a, progress: fraction } : a))), undefined, { access: { mode: "private" } })
+        .then(({ id }) => setAttached((rest) => rest.map((a) => (a.key === key ? { ...a, fileId: id, progress: 1 } : a))))
+        .catch((err: unknown) => setAttached((rest) => rest.map((a) => (a.key === key ? { ...a, error: err instanceof Error ? err.message : zh ? "上传失败" : "Upload failed" } : a))));
+    }
+  }
+
+  /** The cards for a few ids, once the server can name them for this reader. */
+  const patchById = useCallback((id: string, fn: (m: ThreadMessage) => ThreadMessage) => {
+    setMessages((prev) => prev.map((m) => (m.id === id ? fn(m) : m)));
+  }, []);
+  async function cardsFor(ids: string[]): Promise<VideoCard[]> {
+    const wanted = [...new Set(ids)].filter((id) => /^(rnd|fil)_/i.test(id)).slice(0, 20);
+    if (!wanted.length) return [];
+    try {
+      const r = await fetch(`/api/chat/videos?ids=${encodeURIComponent(wanted.join(","))}`, { cache: "no-store" });
+      if (!r.ok) return [];
+      return ((await r.json()) as { videos: VideoCard[] }).videos ?? [];
+    } catch {
+      return [];
+    }
+  }
 
   /* Put a colleague's tag at the front of the draft, replacing one already
      there, and hand the caret back to the box. */
@@ -259,7 +309,10 @@ export function AgentScreen({
   }, []);
 
   async function send(text: string) {
-    if (!asksSomething(text) || busy) return;
+    /* The files that finished uploading go with the text; one still on its
+       way would be a message that arrives without it. */
+    const files = attached.flatMap((a) => (a.fileId ? [{ id: a.fileId, name: a.name, size: a.size, kind: kindOf(a.name, a.mime) }] : []));
+    if ((!asksSomething(text) && !files.length) || busy || uploading) return;
     setBusy(true);
     setNotice(null);
     /* The next draft starts addressed to whoever this one was: a question to
@@ -268,16 +321,25 @@ export function AgentScreen({
        tag in the box — visible, and one × away from the assistant. */
     const to = parseAgentMentions(text)[0] ?? null;
     setInput(to ? `${agentTag(to)} ` : "");
+    setAttached([]);
     const now = new Date().toISOString();
+    const userId = `u-${Date.now()}`;
 
     /* The answer's row goes up at once, typing, under the face of whoever
        will answer — the first employee tagged, else the assistant: the rule
        the stream route applies, so its `speaker` event only confirms it. */
     setMessages((prev) => [
       ...prev,
-      { id: `u-${Date.now()}`, role: "user", content: text, status: "complete", createdAt: now, citations: [], tools: [] },
+      { id: userId, role: "user", content: text, status: "complete", createdAt: now, citations: [], tools: [], attachments: files },
       { id: `a-${Date.now()}`, role: "assistant", content: "", status: "streaming", createdAt: now, citations: [], tools: [], speaker: to },
     ]);
+    /* A video the person just attached is drawn as its card as soon as the
+       server can name it (its poster may take the worker a moment). */
+    const sentVideos = files.filter((f) => f.kind === "video").map((f) => f.id);
+    if (sentVideos.length) void cardsFor(sentVideos).then((videos) => videos.length && patchById(userId, (m) => ({ ...m, videos })));
+    /* What the answer names — a render or a file in a tool's receipt or
+       result — for the card under it once the turn is done. */
+    const named = new Set<string>();
 
     const controller = new AbortController();
     abort.current = controller;
@@ -286,7 +348,7 @@ export function AgentScreen({
       const res = await fetch("/api/agent/stream", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ conversationId, content: text }),
+        body: JSON.stringify({ conversationId, content: text, ...(files.length ? { attachments: files.map((f) => f.id) } : {}) }),
         signal: controller.signal,
       });
       if (!res.ok || !res.body) throw new Error(await res.text());
@@ -339,6 +401,17 @@ export function AgentScreen({
                 else tools.push(entry);
                 return { ...m, tools };
               });
+              /* A render or a file the tool made or found, by id: the turn's
+                 receipts and the ids in its result (the stream's own words
+                 for what happened, `resultIds`). */
+              if (event.status === "ok") {
+                for (const a of Array.isArray(event.artifacts) ? event.artifacts : []) {
+                  if ((a?.kind === "render" || a?.kind === "file") && typeof a.id === "string") named.add(a.id);
+                }
+                for (const id of Array.isArray(event.resultIds) ? event.resultIds : []) {
+                  if (typeof id === "string" && /^(rnd|fil)_/i.test(id)) named.add(id);
+                }
+              }
               break;
             case "citations":
               patchLast((m) => ({ ...m, citations: event.files, withheld: event.withheld }));
@@ -352,6 +425,8 @@ export function AgentScreen({
               break;
             case "done":
               patchLast((m) => ({ ...m, status: "complete" }));
+              /* The card under the answer, for what the turn named. */
+              if (named.size) void cardsFor([...named]).then((videos) => videos.length && patchLast((m) => ({ ...m, videos })));
               break;
             case "error":
               patchLast((m) => ({ ...m, status: "failed", error: event.message }));
@@ -578,6 +653,11 @@ export function AgentScreen({
                     void send(input);
                   }
                 }}
+                onPaste={(e) => {
+                  if (!canAttach || !e.clipboardData.files.length) return;
+                  e.preventDefault();
+                  attach(e.clipboardData.files);
+                }}
                 rows={1}
                 aria-label={zh ? "给助理发消息" : "Message your assistant"}
                 placeholder={
@@ -606,9 +686,51 @@ export function AgentScreen({
                 }}
               />
 
+              {/* What is going up, and how far it has got. */}
+              {attached.length ? (
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6, padding: "4px 11px 0" }}>
+                  {attached.map((a) => (
+                    <span key={a.key} className="chip" style={{ height: 26, fontSize: 11.5, gap: 7, borderColor: a.error ? "#fdc2c2" : "#ededed", background: a.error ? "#fff7f7" : "#fff", color: a.error ? "#b52a2a" : "#4a5763" }}>
+                      <Icon name={kindOf(a.name, a.mime) === "image" ? "image" : kindOf(a.name, a.mime) === "video" ? "clapper" : "doc"} size={12} />
+                      <span style={{ maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.name}</span>
+                      <span style={{ color: a.error ? "#b52a2a" : "#999999" }}>{a.error ? a.error : a.fileId ? bytes(a.size) : `${Math.round(a.progress * 100)}%`}</span>
+                      {!a.fileId && !a.error ? (
+                        <span aria-hidden style={{ width: 44, height: 4, borderRadius: 2, background: "#ececec", overflow: "hidden", display: "inline-block" }}>
+                          <b style={{ display: "block", height: "100%", width: `${Math.max(4, Math.round(a.progress * 100))}%`, background: "#171717", transition: "width .3s ease" }} />
+                        </span>
+                      ) : null}
+                      <button type="button" onClick={() => setAttached((rest) => rest.filter((x) => x.key !== a.key))} aria-label={zh ? `移除 ${a.name}` : `Remove ${a.name}`} style={{ border: 0, background: "transparent", padding: 0, cursor: "pointer", font: "inherit", color: "inherit", lineHeight: 1 }}>
+                        ×
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              ) : null}
+
               {/* One row: who answers (and one press to ask somebody else),
-                  the formatting buttons, send. */}
+                  a file, the formatting buttons, send. */}
               <div className="bar">
+                {canAttach ? (
+                  <>
+                    <input
+                      ref={picker}
+                      type="file"
+                      multiple
+                      hidden
+                      accept={ATTACH_ACCEPT}
+                      onChange={(e) => {
+                        attach(e.target.files);
+                        // So the same file picked twice in a row still fires.
+                        e.target.value = "";
+                      }}
+                    />
+                    <button type="button" className="ico2" onClick={() => picker.current?.click()} aria-label={zh ? "添加文件" : "Attach a file"} title={zh ? "添加文件：视频会进项目素材，员工能直接用" : "Attach a file: a video goes into the project's clips for the employee to use"}>
+                      <svg viewBox="0 0 24 24">
+                        <path d="M16.5 8.5 10 15a2.5 2.5 0 0 0 3.5 3.5l6.5-6.5a4.5 4.5 0 0 0-6.4-6.4L7 12.2" />
+                      </svg>
+                    </button>
+                  </>
+                ) : null}
                 <span
                   className="answer"
                   style={{ background: answering ? soft(AGENT_TINTS[answering], 0.5) : "#f4f4f5" }}
@@ -862,6 +984,10 @@ function UserRow({
   me: { id?: string; name: string; avatarUrl: string | null };
   locale: Locale;
 }) {
+  const zh = locale.startsWith("zh");
+  /* A file drawn as its video card is not also a chip. */
+  const drawn = new Set((message.videos ?? []).map((v) => v.fileId));
+  const chips = (message.attachments ?? []).filter((f) => !drawn.has(f.id));
   return (
     <div className="msg">
       <PersonAvatar className="mav" id={me.id} url={me.avatarUrl} name={me.name} />
@@ -870,7 +996,21 @@ function UserRow({
           <span className="who">{me.name}</span>
           <span className="when">{time(message.createdAt, locale)}</span>
         </div>
-        <div className="txt plain">{message.content}</div>
+        {message.content ? <div className="txt plain">{message.content}</div> : null}
+        {/* The files on it: a video as its card (the poster that plays,
+            下载), anything else as a chip to its page. */}
+        <VideoCards videos={message.videos} zh={zh} />
+        {chips.length ? (
+          <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
+            {chips.map((f) => (
+              <Link key={f.id} href={`/files/${f.id}`} prefetch={false} className="chip" style={{ height: 26, fontSize: 11.5, gap: 6, color: "#0f5bd5", borderColor: "#c9ddf7", background: "#f2f8ff" }}>
+                <Icon name={f.kind === "image" ? "image" : f.kind === "video" ? "clapper" : "doc"} size={12} />
+                <span style={{ maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.name}</span>
+                <span style={{ color: "#7c9bb4" }}>{bytes(f.size)}</span>
+              </Link>
+            ))}
+          </div>
+        ) : null}
       </div>
     </div>
   );
@@ -950,6 +1090,10 @@ function AgentRow({ message, zh, locale }: { message: ThreadMessage; zh: boolean
               <AgentTyping agent={sp} zh={zh} step={streamStep(message.tools)} face={false} />
             </div>
           ) : null}
+
+          {/* A render or a video the answer names: the poster that plays,
+              下载, 打开项目 — "done" with the film under it. */}
+          <VideoCards videos={message.videos} zh={zh} />
 
           {message.error && (
             <div

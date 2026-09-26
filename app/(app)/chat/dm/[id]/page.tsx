@@ -5,6 +5,8 @@ import { ChannelView } from "@/components/chat/ChannelView";
 import { answeringModel } from "@/lib/ai/models";
 import { agentKeyFromEmail } from "@/lib/agents/catalog";
 import { readCardKind, readHandoff } from "@/lib/chat/handoff";
+import { videoRefsOf, type VideoCard } from "@/lib/chat/video-card";
+import { videoCardsFor } from "@/lib/chat/videos";
 
 /** A one-to-one conversation. The room is created the first time either person
  * opens it, so there is no "start a chat" step to get wrong. */
@@ -27,6 +29,16 @@ export default async function DirectMessagePage({ params }: { params: Promise<{ 
       rows.flatMap((r) => r.message.attachments ?? []),
     ),
   ]);
+  /* The renders and video files each message names (an employee pulled
+     into a DM says "渲染好了" here too), as cards this reader may open. */
+  const videos = await videoCardsFor(
+    viewer,
+    rows.map((r) => {
+      const refs = videoRefsOf(r.message.meta, r.message.body);
+      const attached = (r.message.attachments ?? []).filter((id) => attachments.get(id)?.kind === "video");
+      return { key: r.message.id, ...refs, fileIds: [...new Set([...refs.fileIds, ...attached])] };
+    }),
+  ).catch(() => new Map<string, VideoCard[]>());
 
   const zh = (viewer.locale ?? "zh-CN").startsWith("zh");
   const otherName = (zh && dm.other.nameLocal) || dm.other.name;
@@ -70,6 +82,7 @@ export default async function DirectMessagePage({ params }: { params: Promise<{ 
         agentKey: r.authorIsAgent ? agentKeyFromEmail(r.authorEmail) : null,
         roleLabel: r.authorTitle,
         attachments: (r.message.attachments ?? []).flatMap((id) => attachments.get(id) ?? []),
+        videos: videos.get(r.message.id) ?? [],
         handoff: readHandoff(r.message.meta),
         card: readCardKind(r.message.meta),
         body: r.message.body,

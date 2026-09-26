@@ -21,6 +21,8 @@ import { newId } from "@/lib/ids";
 import { readCardActions, readCardDone } from "@/lib/agents/cards";
 import { readCardKind, readHandoff, readJob, readWorkRefs } from "@/lib/chat/handoff";
 import { pendingInChannel } from "@/lib/chat/pending";
+import { videoRefsOf, type VideoCard } from "@/lib/chat/video-card";
+import { videoCardsFor } from "@/lib/chat/videos";
 import type { AgentKey } from "@/lib/agents/catalog";
 
 /** Channels this person is in, plus the public ones they could join. A private
@@ -334,6 +336,9 @@ export async function conversationDetail(viewer: Viewer, conversationId: string)
             name: toolCalls.name,
             status: toolCalls.status,
             args: toolCalls.args,
+            /* What the tool said (its text), for the ids a reply rests on:
+               a render or a file it named becomes a card in the thread. */
+            result: toolCalls.result,
             durationMs: toolCalls.durationMs,
           })
           .from(toolCalls)
@@ -583,6 +588,23 @@ export async function channelThread(viewer: Viewer, slug: string, limit = 80) {
     }),
   ]);
 
+  /* The renders and video files each message names — the worker's
+     "渲染好了", an employee's receipts, a person's upload — as cards, for
+     this reader (`lib/chat/videos.ts`). A video attached to a message is a
+     card too, so it is looked up here with the rest and drawn once. After
+     the attachments, because only the ones this reader may open count. */
+  const videos = await videoCardsFor(
+    viewer,
+    withMessages.map((r) => {
+      const refs = videoRefsOf(r.meta, r.body);
+      const attached = toIds(r.attachments).filter((id) => attachments.get(id)?.kind === "video");
+      return { key: r.message_id!, ...refs, fileIds: [...new Set([...refs.fileIds, ...attached])] };
+    }),
+  ).catch((err) => {
+    console.error("[chat] could not read the videos in the thread", err);
+    return new Map<string, VideoCard[]>();
+  });
+
   return {
     channel: {
       id: first.channel_id,
@@ -618,6 +640,8 @@ export async function channelThread(viewer: Viewer, slug: string, limit = 80) {
          started, for the live chip. */
       refs: readWorkRefs(r.meta),
       job: readJob(r.meta),
+      /* The renders and video files it names, as cards this reader may open. */
+      videos: videos.get(r.message_id!) ?? [],
       createdAt: toDate(r.created_at) ?? new Date(),
     })),
     pending,
@@ -689,7 +713,15 @@ function toIds(raw: unknown): string[] {
   return Array.isArray(raw) ? raw.filter((v): v is string => typeof v === "string" && v.length <= 64) : [];
 }
 
-export type Attachment = { id: string; name: string; kind: string; mime: string | null; sizeBytes: number | null };
+export type Attachment = {
+  id: string;
+  name: string;
+  kind: string;
+  mime: string | null;
+  sizeBytes: number | null;
+  /** A video's length, once the worker has measured it (null until then). */
+  durationMs: number | null;
+};
 
 /**
  * The files behind a message's attachment ids, for one reader.
@@ -710,6 +742,7 @@ export async function attachmentsFor(viewer: Viewer, fileIds: string[]): Promise
       kind: files.kind,
       mime: files.mime,
       sizeBytes: files.sizeBytes,
+      durationMs: files.durationMs,
     })
     .from(files)
     .where(

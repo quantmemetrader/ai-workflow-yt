@@ -13,7 +13,7 @@ export default async function ConversationPage({ params }: { params: Promise<{ i
   const detail = await conversationDetail(viewer, id);
   if (!detail) notFound();
 
-  const messages = threadMessagesOf(detail);
+  const messages = await threadMessagesOf(viewer, detail);
   const zh = (viewer.locale ?? "zh-CN").startsWith("zh");
   const lastModel = [...detail.messages].reverse().find((m) => m.model)?.model;
   /* Picking the thread up again continues with whoever answered last — the
@@ -32,6 +32,9 @@ export default async function ConversationPage({ params }: { params: Promise<{ i
       model={lastModel ?? answeringModel()}
       initialAgent={lastSpeaker}
       history={history}
+      /* The composer's paperclip goes through /api/files/presign, which
+         refuses anybody without the Files module. */
+      canAttach={viewer.modules.includes("files")}
       now={new Date().toISOString()}
       me={{
         id: viewer.id,
