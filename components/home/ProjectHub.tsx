@@ -48,6 +48,11 @@ export function ProjectProgress({
   footer?: React.ReactNode;
 }) {
   const t = (a: string, b: string) => (zh ? a : b);
+  /* One card is enough to see where things stand; the rest are a press away.
+     (Six stacked cards used to push everything else below the fold.) */
+  const [all, setAll] = React.useState(false);
+  const visible = all ? projects : projects.slice(0, 1);
+  const more = projects.length - visible.length;
   return (
     <Fold id="home-projects" title={title ?? t("进行中的项目", "Projects in progress")} sub={sub ?? String(projects.length)} resizable={false} icon={<Icon name="film" size={15} color="#525252" />} right={right} footer={footer}>
       <style dangerouslySetInnerHTML={{ __html: PROGRESS_CSS }} />
@@ -55,7 +60,7 @@ export function ProjectProgress({
         <div style={{ fontSize: 12.5, color: "#999999", padding: "6px 0" }}>{empty ?? t("还没有进行中的项目。在上面交代一件事就会开一个。", "Nothing in progress. Give the team a task above and a project starts.")}</div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {projects.map((p) => {
+          {visible.map((p) => {
             /* Where it has actually got to, by the same rule the role Homes
                filter with — not the first open step, which on a cut whose
                script was never locked is the script. */
@@ -97,6 +102,14 @@ export function ProjectProgress({
               </Link>
             );
           })}
+          {projects.length > 1 ? (
+            <button type="button" className="pp-more" aria-expanded={all} onClick={() => setAll((v) => !v)}>
+              {all ? t("收起", "Show less") : t(`再看 ${more} 个项目`, `Show ${more} more`)}
+              <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden style={{ transform: all ? "rotate(180deg)" : undefined, transition: "transform .15s ease" }}>
+                <path d="m6.5 9.5 5.5 5.5 5.5-5.5" />
+              </svg>
+            </button>
+          ) : null}
         </div>
       )}
     </Fold>
@@ -104,6 +117,8 @@ export function ProjectProgress({
 }
 
 const PROGRESS_CSS = `
+.pp-more { align-self: flex-start; display: inline-flex; align-items: center; gap: 4px; height: 28px; padding: 0 10px; border: 1px solid #ececea; border-radius: 8px; background: #fff; color: #525252; font-family: inherit; font-size: 12px; letter-spacing: inherit; cursor: pointer; }
+.pp-more:hover { border-color: #d9d9d6; color: #171717; }
 .pp-card { display: flex; gap: 14px; padding: 12px 14px 12px 12px; border: 1px solid #efefed; border-radius: 14px; background: #fff; text-decoration: none; color: #171717; box-shadow: 0 1px 2px rgba(0,0,0,.025); transition: border-color .15s ease, box-shadow .15s ease, transform .15s ease; }
 /* The colour again on hover: canvas.css's a:hover turns every link blue, and a card's title is not a text link. */
 .pp-card:hover { color: #171717; border-color: var(--pp-tone, #e3e3e0); box-shadow: 0 4px 14px rgba(20,30,60,.06); }

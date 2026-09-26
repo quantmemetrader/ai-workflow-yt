@@ -78,9 +78,13 @@ export function RoleTabs({ zh, role, defaultRole, canSetDefault }: { zh: boolean
                 whiteSpace: "nowrap",
               }}
             >
-              {/* Words only. The faces are the 同事 panel's: Home drew the five
-                  employees three times over (these tabs, the task box's chips
-                  and the panel), and a tab is a job, not a person. */}
+              {/* Each job's tab wears its employee's pixel face (the overview,
+                  the team's robot): the owner asked for them back here. The
+                  task box keeps one "@ 同事" button, so the faces appear on
+                  the tabs and in the 同事 panel only. */}
+              <span style={{ opacity: on ? 1 : 0.85, display: "inline-flex" }}>
+                <AgentIcon agent={r === "overview" ? null : r} size={18} radius={5} />
+              </span>
               {zh ? <Tr zh={ROLE_LABELS[r].zh} en={TAB_EN[r]} /> : label}
               {r === mine ? (
                 <span style={{ fontSize: 10.5, fontWeight: 500, color: "#8a8a8a", background: on ? "#f3f3f1" : "rgba(255,255,255,0.7)", borderRadius: 999, padding: "0 6px", lineHeight: "16px" }}>{zh ? <Tr zh="我的默认" en="My default" /> : "my default"}</span>
