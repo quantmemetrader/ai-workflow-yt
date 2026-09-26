@@ -249,7 +249,9 @@ export async function renderExport(exportId: string): Promise<{ fileId: string; 
         `[${k}:v]setpts=PTS-STARTPTS,` +
           `scale=${size.w}:${size.h}:force_original_aspect_ratio=decrease,pad=${size.w}:${size.h}:(ow-iw)/2:(oh-ih)/2:color=black,` +
           `fps=${FPS},setsar=1,format=yuv420p[c${n}v]`,
-        sourceHasAudio.get(entry.file.storageKey)
+        /* A cut marked `mute` (the footage under a generated narration,
+           `lib/video/narrate.ts`) contributes silence, not its own sound. */
+        sourceHasAudio.get(entry.file.storageKey) && !(entry.i.options as { mute?: unknown } | null)?.mute
           ? `[${k}:a]asetpts=PTS-STARTPTS,` +
               `aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo[c${n}a]`
           : `anullsrc=channel_layout=stereo:sample_rate=48000,atrim=0:${(lengthMs / 1000).toFixed(3)},asetpts=PTS-STARTPTS[c${n}a]`,
