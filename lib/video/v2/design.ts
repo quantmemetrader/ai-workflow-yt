@@ -157,10 +157,11 @@ Rules:
  - "number": only a figure actually said in that sentence, as she says it (154, 1.51亿, 3500多, 近30万, 十几, 63.5). Never a figure from the brief that is not spoken here.
  - "compare": when two or three figures are set against each other in one breath (63.5% vs 35.5%; 几千万–几亿 vs 几千–几十万). "negative" marks the one to read red, only when the line frames it as the bad one.
  - "list": a build of 3–5 items said across consecutive sentences (2月 → 6月 → 9月). Give the sentence each item is said in; each item's text carries the date or step and the names or figures she says with it ("2月 DeepSeek·月之暗面·MiniMax", "6月 致信参议院 阿里"), ≤ 16 characters, because the list is what the viewer sees of those names while it is up.
+ - "headline": "date" exactly as she or the brief says it (9月8号 → "9月8日"); never add a year nobody said. "outlet" is who issued it (the agency, company or publication that published the statement), never a guess. "quoteZh" is her own words for it, copied from the sentence (it is shown in 「」 as a quote), ≤ 16 chars.
  - "concept": the brief's term cards (with the definition it gives), and the one diagram where the mechanism is explained.
  - "punchline": true on the brief's 金句 and at most one other line per 90 s. A punchline beat may be intent "none".
  - Coverage, which code checks after you: every figure the brief lists and every figure said with a unit (页, 次, 个账号, 条, 倍, %, 成, 美金) gets a "number" or "compare" beat at the sentence where it is said; every entry in "entities" gets a beat at its first mention (several names in one sentence are several beats on that sentence); every term the brief names gets a "concept" beat with "term"; every scene the brief names gets a "scene" beat where the words call for it; a sequence of dated steps (2月 → 6月 → 9月) is one "list" beat on its first sentence with the items; the top-level "diagram" (three steps, on the sentence that explains the mechanism; for distillation 老师模型 → 输出 → 学生模型) is always filled in. A beat left out is a picture the viewer never gets. Aim for 60–80 beats on a five-minute take.
- - Footage: a well edited reel shows real footage 30–40 % of the time, a new picture every 5–8 s. Besides the named things, give a "scene" (or "metaphor") beat, priority 2, to every sentence without a person/org/product/headline beat of its own whose words can be shown: the concrete thing, place or action she is talking about (a US Senate hearing room, a Chinese AI app on a phone, lines of code scrolling, a server room, a GPU chip, a card being swiped, an API dashboard, a courtroom gavel), never a mood. Aim for 25–35 footage beats (person/org/product/headline/scene/metaphor) spread over the whole take, none of two consecutive sentences wanting the same picture.
+ - Footage: a well edited reel shows real footage 30–40 % of the time, a new picture every 5–8 s. Besides the named things, give a "scene" (or "metaphor") beat, priority 2, to every sentence without a person/org/product/headline beat of its own whose words can be shown: the concrete thing, place or action she is talking about (a US Senate hearing room, a Chinese AI app on a phone, lines of code scrolling, a server room, a GPU chip, a card being swiped, an API dashboard, a courtroom gavel), never a mood. Scene "queries" name something a camera filmed, with no abstract noun: "server room racks blinking", "programmer typing code closeup", "Nvidia GPU chip closeup", "credit card payment terminal", "smartphone chat app scrolling", "US Capitol building", "stock market screen" — never "AI model copying", "plot twist", "data theft", "arms race" (nothing to film; they return memes and film clips). Aim for 25–35 footage beats (person/org/product/headline/scene/metaphor) spread over the whole take, none of two consecutive sentences wanting the same picture.
  - Text on screen is Simplified Chinese, in her words and the brief's; never invent a number, a date, a name or a claim.`;
 
 /* ------------------------------------------------------------------ parse */
@@ -760,6 +761,28 @@ export async function planDesign(input: DesignInput, deps: DesignDeps): Promise<
       if (beats.length) outline = { ...outline, beats };
     }
   }
+  /*
+   * A second, narrow call for the footage the outline left out. The
+   * outline is asked for 25–35 footage beats and answers 20 on a good run
+   * (r02 of the integration: 43 beats, 7 scenes, the host alone for 20 s at
+   * a time), because one prompt asking for everything gets the named
+   * things and the numbers first. Every stretch of more than 5 s without a
+   * footage beat gets asked about, sentence by sentence, with nothing else
+   * in the prompt to compete. Skipped with a cached outline; a failed call
+   * leaves the outline as it was.
+   */
+  if (!deps.outline && deps.complete) {
+    const gaps = footageGapSentences(outline.beats, input.sentences);
+    if (gaps.length) {
+      await say(`为 ${gaps.length} 句补充画面`);
+      try {
+        const res = await deps.complete({ ...footageMessages(input, gaps, outline), maxTokens: 6000, temperature: 0.2 });
+        outline = { ...outline, beats: [...outline.beats, ...parseFootage(res.text, input.sentences, gaps, outline)] };
+      } catch {
+        /* The outline's own beats stand. */
+      }
+    }
+  }
   const outlineMs = Date.now() - t0;
 
   /* Defaults from the brief when the model left a field empty; the brief's own block always wins for the hook. */
@@ -768,6 +791,7 @@ export async function planDesign(input: DesignInput, deps: DesignDeps): Promise<
   /* The header's subtitle is the model's distillation of her words when the brief did not write one. */
   const furniture = { ...input.furniture, header: { title: input.furniture.header.title || outline.titleZh, sub: input.furniture.header.sub ?? (outline.subtitleZh || null) } };
 
+  outline.beats = groundHeadlines(outline.beats, input.brief, input.sentences);
   const audited = auditBeats(outline, input.sentences);
   const { beats, dropped } = dedupeBeats(audited.beats, input.sentences, input.captions);
 
@@ -859,6 +883,96 @@ export async function planDesign(input: DesignInput, deps: DesignDeps): Promise<
     .join(" ");
 
   return { outline, beats, sourced, logos, plan, credits, lint, notesZh, timings: { outlineMs, sourcingMs, layoutMs }, dropped: [...dropped, ...plan.stats.skipped], added: audited.added };
+}
+
+/**
+ * A headline card is text the viewer reads as a quote from a record, so
+ * nothing on it may be the model's own. r01 dated a 9月8号 statement
+ * "2024-09-08" (the model's year) and quoted a paraphrase in 「」.
+ *
+ * - The date keeps only what the brief or the transcript says: a year that
+ *   appears in neither is dropped, and an ISO date becomes 9月8日.
+ * - The quote is marked `verbatim` only when it is her words (a substring
+ *   of the sentence or the whole transcript) or the brief's; the card then
+ *   draws it in 「」, and draws a paraphrase without quote marks.
+ *
+ * Pure.
+ */
+export function groundHeadlines(beats: DesignBeat[], brief: string, sentences: readonly Sentence[]): DesignBeat[] {
+  const said = sentences.map((x) => x.text).join("");
+  const plain = (t: string) => t.replace(/[\s，。、,.!?！？「」“”"'：:]/g, "");
+  const corpus = plain(`${brief}${said}`);
+  return beats.map((b) => {
+    if (!b.headline) return b;
+    let date = b.headline.date.trim();
+    const iso = /^(\d{4})[-/.年](\d{1,2})[-/.月](\d{1,2})日?$/.exec(date);
+    if (iso && !corpus.includes(iso[1])) date = `${Number(iso[2])}月${Number(iso[3])}日`;
+    else date = date.replace(/(\d{4})\s*年\s*/g, (m, y: string) => (corpus.includes(y) ? m : ""));
+    const q = plain(b.headline.quoteZh);
+    const verbatim = q.length > 0 && corpus.includes(q);
+    return { ...b, headline: { ...b.headline, date, verbatim } };
+  });
+}
+
+/** The intents that send a beat to sourcing for a picture. */
+const PICTURE_INTENTS = new Set<Intent>(["person", "org", "product", "headline", "scene", "metaphor"]);
+
+/**
+ * The sentences that sit in a stretch of more than `gapMs` with no footage
+ * beat, one per such stretch every `gapMs`, longest first within it. Pure.
+ */
+export function footageGapSentences(beats: readonly DesignBeat[], sentences: readonly Sentence[], gapMs = 5000): Sentence[] {
+  const withFootage = new Set(beats.filter((b) => PICTURE_INTENTS.has(b.intent) && b.queries && b.priority < 3).map((b) => b.sentenceId));
+  const out: Sentence[] = [];
+  let last = -Infinity;
+  for (const x of sentences) {
+    if (withFootage.has(x.id)) {
+      last = x.startMs;
+      continue;
+    }
+    if (x.startMs - last >= gapMs && x.endMs - x.startMs >= 1200) {
+      out.push(x);
+      last = x.startMs;
+    }
+  }
+  return out;
+}
+
+const FOOTAGE_PROMPT = `You pick the B-roll for a Chinese explainer reel. For each sentence listed, give ONE beat: the concrete thing a camera could have filmed that shows what the sentence is about — a place, an object, a screen, an action, or a named organisation's building, people or product. Answer with one JSON object and nothing else:
+{"beats": [ { "sentenceId": "sNNN", "intent": "scene|org|product|person", "priority": 2, "anchor": "the exact word or phrase in the sentence the picture lands on", "entity": "only for org/product/person: a name from the entity list", "queries": { "zh": ["≤ 2 phrases, Chinese"], "en": ["≤ 2 phrases, English"] }, "must": "what the frame must show", "mustNot": "the traps" } ] }
+Rules:
+ - Queries are 2–5 word phrases for something filmed: "server room racks blinking", "programmer typing code closeup", "Nvidia GPU chip closeup", "credit card payment terminal", "smartphone chat app scrolling", "US Capitol building exterior", "Beijing skyline night", "stock ticker screen", "press conference podium microphones". "zh" must contain Han characters; "en" none.
+ - Never an abstract noun with nothing to film (theft, twist, arms race, competition, strategy, efficiency, moat); never a mood; never a word trap (whiskey for 蒸馏).
+ - When the sentence names an organisation, product or person from the entity list, use it (intent org/product/person) — its real building, app screen or face.
+ - Consecutive sentences must not ask for the same picture. Leave a sentence out only when nothing in it can be filmed.`;
+
+function footageMessages(input: DesignInput, gaps: readonly Sentence[], outline: Outline): { system: string; user: string } {
+  const around = (x: Sentence) => {
+    const i = input.sentences.findIndex((y) => y.id === x.id);
+    return `${x.id} ${x.text}  （前：${input.sentences[i - 1]?.text ?? ""} ／ 后：${input.sentences[i + 1]?.text ?? ""}）`;
+  };
+  return {
+    system: FOOTAGE_PROMPT,
+    user: [`What the video is about:\n${input.brief.slice(0, 1500)}`, `Entities: ${outline.entities.map((e) => e.name).join("、")}`, `Sentences that need a picture:\n${gaps.map(around).join("\n")}`].join("\n\n"),
+  };
+}
+
+/** The footage call's beats, checked like the outline's; only the sentences asked about, only picture intents, priority 2, numbered after the sentence's existing beats. */
+function parseFootage(text: string, sentences: readonly Sentence[], gaps: readonly Sentence[], outline: Outline): DesignBeat[] {
+  const asked = new Set(gaps.map((g) => g.id));
+  const parsed = parseOutline(text, sentences, { entities: outline.entities });
+  const taken = new Map<string, number>();
+  for (const b of outline.beats) taken.set(b.sentenceId, Math.max(taken.get(b.sentenceId) ?? 0, Number(b.id.split(".")[1] ?? 1)));
+  const out: DesignBeat[] = [];
+  const seen = new Set<string>();
+  for (const b of parsed.beats) {
+    if (!asked.has(b.sentenceId) || seen.has(b.sentenceId) || !PICTURE_INTENTS.has(b.intent) || b.intent === "headline" || !b.queries) continue;
+    seen.add(b.sentenceId);
+    const n = (taken.get(b.sentenceId) ?? 0) + 1;
+    taken.set(b.sentenceId, n);
+    out.push({ ...b, id: n === 1 ? b.sentenceId : `${b.sentenceId}.${n}`, priority: 2, reasonZh: "补充画面：这一段超过 5 秒没有镜头" });
+  }
+  return out;
 }
 
 /** The frozen `Beat` for sourcing: the layout-only fields stripped. */

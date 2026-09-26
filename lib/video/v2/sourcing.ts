@@ -214,9 +214,13 @@ const MAX_ATTEMPTS = 6;
  * AI-rendered "Anthropic" office with the name misspelt on the facade 10/10
  * in the first review run, because nothing had told it a rendering is not a
  * picture of the thing. Appended to every beat's `mustNot`, for the
- * candidate scoring and the window pick alike.
+ * candidate scoring and the window pick alike. The integrated r01 added the
+ * rest: a 2022 Hong Kong TV frame with a Bank of Japan ticker for MOFCOM's
+ * statement, an App Store ad screenshot for Kimi, a 2016 Nature cover
+ * about a planet for Nature's warning on model collapse — each matched the
+ * name and scored 7–10.
  */
-const STANDING_MUST_NOT = "an AI-generated, rendered or mocked-up picture (garbled or misspelt signage, impossible architecture, plastic-looking people are the tells); a stock actor posing";
+const STANDING_MUST_NOT = "an AI-generated, rendered or mocked-up picture (garbled or misspelt signage, impossible architecture, plastic-looking people are the tells); a stock actor posing; a TV news frame with a burned-in ticker, lower third or subtitles; an app-store, marketing or ad screenshot with its sales headline; a picture of a different event, year or subject that only shares a name, logo or masthead with the line (a magazine cover about another story, a press conference on another topic, a repost about another announcement): score what the picture shows against what the line says, not the name it carries";
 
 function withStandingMustNot(mustNot: string | undefined): string {
   return [mustNot?.trim(), STANDING_MUST_NOT].filter(Boolean).join("; ");
@@ -459,7 +463,8 @@ async function sourceOne(beat: Beat, index: number, prevBeatId: string | undefin
           context,
           entity,
           minScore: gate,
-          allowBurnedText: beat.intent === "headline",
+          /* A headline's text is the point; an app's own screen is text by nature (the judge flags a chat UI as "burned-in text"). Subtitles on anything else still reject it. */
+          allowBurnedText: beat.intent === "headline" || beat.intent === "product",
           visionOpts: ctx.vision,
         });
         if (!verdict.ok) {

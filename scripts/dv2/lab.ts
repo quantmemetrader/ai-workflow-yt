@@ -351,17 +351,34 @@ async function stageDesign(fixture: Fixture, cut: CutOut): Promise<DesignOut> {
 
     const mapped = sentencesOnTimeline(cut.sentences, cut.pieces);
     const timelineWords = wordsOnTimeline(cut.words, cut.pieces);
+    /*
+     * The cut's sentence ends, marked on the words the caption breaker reads.
+     * Whisper's punctuation does not survive every cut (a retake removed, two
+     * takes joined), so r01 had lines running across sentences:
+     * 「你的新经济摆渡人你」「标准那么Anthropic」. A full stop on each sentence's
+     * last word lets the breaker end the line there (it already avoids
+     * reading across one).
+     */
+    const lastWord = new Set<number>();
+    for (const s of mapped.sentences) {
+      let k = -1;
+      timelineWords.forEach((w, i) => {
+        if (w.startMs >= s.startMs - 30 && w.endMs <= s.endMs + 30) k = i;
+      });
+      if (k >= 0) lastWord.add(k);
+    }
+    const captionWords = timelineWords.map((w, i) => (lastWord.has(i) && !/[，。、！？；：,.!?;:…]$/.test(w.text.trim()) ? { ...w, text: `${w.text}。` } : w));
 
     /* Reel caption lines on the cut's clock. */
     const preset = captionPreset(PRESET);
     const reel = preset.style.reel;
     const terms = extractTerms(fixture.brief).map((t) => t.text);
     const transcript: Transcript = {
-      text: timelineWords.map((w) => w.text).join(""),
+      text: captionWords.map((w) => w.text).join(""),
       languageCode: "zh",
       languageProbability: 1,
       durationSecs: mapped.totalMs / 1000,
-      words: timelineWords.map((w) => ({ text: w.text, start: w.startMs / 1000, end: w.endMs / 1000, type: "word" })),
+      words: captionWords.map((w) => ({ text: w.text, start: w.startMs / 1000, end: w.endMs / 1000, type: "word" })),
     };
     const lines = toCaptionLines(transcript, reel ? { reel: { aimChars: reel.aimChars, maxChars: reel.maxChars, minChars: reel.minChars, minMs: reel.minMs, terms } } : {});
     log(`design: ${lines.length} caption lines`);
@@ -401,7 +418,8 @@ async function stageDesign(fixture: Fixture, cut: CutOut): Promise<DesignOut> {
           const out = await complete({ model: modelFor.assistant(), temperature: req.temperature, maxTokens: req.maxTokens, messages: [{ role: "system", content: req.system }, { role: "user", content: req.user }] });
           spent("outline", out.costMicros);
           log(`design: outline ${out.model} ${out.promptTokens}+${out.completionTokens} tokens $${(out.costMicros / 1e6).toFixed(4)} ${sec(Date.now() - t0)} s`);
-          outlineRaw = out.text;
+          /* The outline call, then the footage call for the gaps it left (design.ts). */
+          outlineRaw = outlineRaw ? `${outlineRaw}\n\n--- footage ---\n\n${out.text}` : out.text;
           return { text: out.text, costMicros: out.costMicros };
         },
         sourceBeats: null,
@@ -751,7 +769,10 @@ async function stageGrade(fixture: Fixture, tr: TranscribeOut, cut: CutOut, d: D
         if (ref?.asset?.candidate) assetIndex(ref.asset, field === "logo" ? "logo" : "image");
       }
       const text = Array.isArray(g.props.lines) ? (g.props.lines as string[]).join(" ") : g.props.text == null ? null : String(g.props.text);
-      return { id: g.id, kind: g.kind, startMs: g.startMs, endMs: g.endMs, text, sub: g.props.sub == null ? null : String(g.props.sub), furniture: FURNITURE.has(g.kind), file: stills.get(g.id) ?? null, props: JSON.parse(JSON.stringify(g.props, (k, v) => (k === "asset" ? undefined : v))) as Record<string, unknown> };
+      /* A compare card shows its figures on the bars, not in a sub line: those are what the viewer reads, so they are what the stat check hears for. */
+      const bars = Array.isArray(g.props.bars) ? (g.props.bars as { display?: string }[]).map((b) => b.display ?? "").filter(Boolean).join(" ") : "";
+      const sub = g.props.sub == null ? (bars || null) : String(g.props.sub);
+      return { id: g.id, kind: g.kind, startMs: g.startMs, endMs: g.endMs, text, sub, furniture: FURNITURE.has(g.kind), file: stills.get(g.id) ?? null, props: JSON.parse(JSON.stringify(g.props, (k, v) => (k === "asset" ? undefined : v))) as Record<string, unknown> };
     });
     if (rendered.furniture) for (const g of graphics) if (g.furniture) g.file = rendered.furniture;
 
@@ -764,7 +785,11 @@ async function stageGrade(fixture: Fixture, tr: TranscribeOut, cut: CutOut, d: D
         const cutaway = plan.cutaways.find((c) => c.beatId === b.id);
         const logo = b.entity ? design.logos[b.entity.name] : undefined;
         const resolved: GradeBeat["resolved"] = cutaway ? (PLATFORM_KIND[cutaway.candidate.platform] ?? "web") : logo && carded.has(b.id) ? (PLATFORM_KIND[logo.candidate.platform] ?? "web") : carded.has(b.id) ? "card" : onScreen.has(b.id) ? "web" : "host";
-        return gradeBeat(b.id, resolved)!;
+        const gb = gradeBeat(b.id, resolved)!;
+        /* An asset was sourced for this beat and is neither a cutaway nor on a card: say so, with the layout's reason. */
+        const had = design.sourced.find((x) => x.beatId === b.id);
+        if (had && !cutaway && !carded.has(b.id)) gb.unplaced = plan.stats.skipped.find((x) => x.beatId === b.id)?.reasonZh ?? `${had.kind} 已找到，排版没有位置`;
+        return gb;
       });
 
     const spend = src.spend as { media: { tikhubRequests?: number }; vision: { costMicros: number } };

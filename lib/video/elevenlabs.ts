@@ -729,7 +729,8 @@ function reelLines(words: TranscriptWord[], o: ReelLineOptions): CaptionLine[] {
       else if (gap >= 300) cost -= 3;
     }
     for (let k = j; k < i - 1; k++) {
-      if (units[k].punct === ".") cost += 15;
+      /* Reading across a sentence end joins two thoughts on one line (「还是过于理想主义呢欢迎」): worse than a short line. */
+      if (units[k].punct === ".") cost += 40;
       else if (units[k].punct === ",") cost += 2;
       const gap = (units[k + 1].start - units[k].end) * 1000;
       /* A pause inside a line leaves the first words frozen while she

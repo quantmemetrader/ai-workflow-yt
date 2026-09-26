@@ -607,9 +607,19 @@ export function resolveLayout(input: LayoutInput): LayoutPlan {
   if (zoneT.clears && zoneT.eyeY !== FRAMING.eyeY) notes.push(`上方图形出现时主播眼线降到 ${Math.round(zoneT.eyeY * 100)}% 高度（画面 ${zoneT.scale.toFixed(2)} 倍填满），让人脸避开 T 区；规格的 30–36% 会压在额头上。`);
   if (!zoneT.clears) notes.push("这张脸在任何取景下都无法避开 T 区：上方图形会与人脸框重叠，见 lint。");
 
-  /* Assets by the beat that owns them (`Sourced.beatId` is a design beat id here, see `DesignBeat`); a `split` pick falls back to `run` when this face leaves no room for the split. */
+  /*
+   * Assets by the beat that owns them (`Sourced.beatId` is a design beat id
+   * here, see `DesignBeat`). A `split` pick falls back to `run` when this
+   * face leaves no room for the split. The other way round too: sourcing
+   * answers `run` for a landscape asset under 1280 wide, but the run layout
+   * is a *sequence* of 2–4 clips under the presenter's circle, and a single
+   * picture in it reads as pasted (r01: one upscaled 1280×720 still with the
+   * circle over the backdrop's text). A lone asset goes in the split, where
+   * a 16:9 picture fits its box; only the run pass below puts clips back
+   * in the circle, and only when there are two or more of them.
+   */
   const sourcedByBeat = new Map(
-    input.sourced.map((s) => [s.beatId, split.possible || s.layout !== "split" ? s : { ...s, layout: "run" as Layout }]),
+    input.sourced.map((s) => [s.beatId, !split.possible && s.layout === "split" ? { ...s, layout: "run" as Layout } : split.possible && s.layout === "run" ? { ...s, layout: "split" as Layout } : s]),
   );
   const usedSourced = new Set<string>();
   /** How many entity cards one sentence asks for: three or more and they go back to back, shorter. */
@@ -697,7 +707,14 @@ export function resolveLayout(input: LayoutInput): LayoutPlan {
       lands.push(round(Math.max(lastLand + 250, at ?? Math.max(lastLand + 400, i * 500))));
       lastLand = lands[i];
     });
-    const endMs = round(clamp(lastLand + 900, TIMING.hookMs, Math.min(TIMING.hookMaxMs, totalMs)));
+    /*
+     * The whole block holds 1.2 s after its last line lands (it was 0.9 s
+     * and the full claim was readable for under a second on r01), inside
+     * the 2.5–4 s the spec allows.
+     */
+    const holdEnd = round(clamp(lastLand + 1200, TIMING.hookMs, Math.min(TIMING.hookMaxMs, totalMs)));
+    /* Out on the jump cut just before, when there is one within 0.6 s: the block leaves, the cut and the first picture after it are one change, not three. */
+    const endMs = cutPoints.filter((c) => c >= Math.max(TIMING.hookMs, lastLand + 700) && c <= holdEnd && holdEnd - c <= 600).pop() ?? holdEnd;
     /* The snap push on the hook's last key word (蒸馏), if it is said inside the block. */
     const punchKey = hookLines[hookLines.length - 1].match(/【([^】]+)】/)?.[1];
     const punchAt = punchKey ? (find(punchKey) ?? undefined) : undefined;
@@ -739,15 +756,22 @@ export function resolveLayout(input: LayoutInput): LayoutPlan {
       ledger.take({ id: gid("lower-third", "name"), ...slot, layer: "graphic" });
     } else notes.push("姓名条没有位置（她说名字的那一句被其他图形占满），已略过。");
   }
-  if (!nameInIntro) {
-    /* She only says her name at the end (or never): a small chip at 2–6 s. */
+  /*
+   * She only says her name at the end (or never): a small chip at 2–6 s.
+   * Placed after the footage (see the passes below): on r01 the chip took
+   * 3.7–5.7 s and the NSA / CISA / FBI pictures that open the story, all
+   * verified 9–10/10, found no room. The picture of the thing said wins;
+   * the chip takes what is left of its window.
+   */
+  const placeNameChip = () => {
+    if (nameInIntro) return;
     const hookEnd = graphics.find((g) => g.kind === "hook")?.endMs ?? 0;
     const slot = findSlot(ledger, { startMs: Math.max(TIMING.chipWindow[0], hookEnd), minMs: 1500, maxMs: TIMING.nameChipMs, latestStartMs: TIMING.chipWindow[1] - 1500, hardEndMs: TIMING.chipWindow[1] + 1500 });
     if (slot) {
       graphics.push({ id: gid("chip", "name"), kind: "chip", startMs: slot.startMs, endMs: slot.endMs, zone: "corner", props: { text: input.lowerThird.name, sub: input.lowerThird.sub, enter: "pop", name: true } });
       ledger.take({ id: gid("chip", "name"), ...slot, layer: "graphic" });
     }
-  }
+  };
 
   input.chapters.forEach((ch, i) => {
     const s = sentence.get(ch.sentenceId);
@@ -778,6 +802,8 @@ export function resolveLayout(input: LayoutInput): LayoutPlan {
     .sort((a, b) => spanFirst(a) - spanFirst(b) || a.priority - b.priority || (sentence.get(a.sentenceId)?.startMs ?? 0) - (sentence.get(b.sentenceId)?.startMs ?? 0));
 
   let lastSnap = -Infinity;
+  /** Beats whose sourced picture the footage pass put on screen. */
+  const footageDone = new Set<string>();
   /** Beats whose name went on a group card with their sentence-mates. */
   const groupCarded = new Set<string>();
   /**
@@ -827,6 +853,9 @@ export function resolveLayout(input: LayoutInput): LayoutPlan {
         lastSnap = at;
       }
     }
+
+    /* The footage pass already put this beat's picture up: nothing more to add (a crowded breath still gets its group card). */
+    if (footageDone.has(beat.id) && !crowdedHere) return;
 
     const src = sourcedByBeat.get(beat.id);
     /*
@@ -997,6 +1026,8 @@ export function resolveLayout(input: LayoutInput): LayoutPlan {
           outlet: beat.headline.outlet,
           date: beat.headline.date,
           url: beat.headline.url ?? null,
+          /* 「」 only around her own words or the brief's (design.ts:groundHeadlines). */
+          verbatim: (beat.headline as { verbatim?: boolean }).verbatim !== false,
           image: img ? { asset: img.asset, credit: img.asset.credit || img.candidate.credit, opacity: 0.3 } : null,
           enter: "slide-blur",
         });
@@ -1080,6 +1111,13 @@ export function resolveLayout(input: LayoutInput): LayoutPlan {
    */
   const early = (b: DesignBeat) => b.intent === "list" || (b.intent === "concept" && Boolean(b.diagram?.steps?.length || b.term));
   for (const beat of order) if (early(beat)) placeBeat(beat);
+  /*
+   * Then the figures: a counter must land on its spoken number (a window of
+   * about a second) and compare bars on theirs, while a picture can wait for
+   * the rest of its phrase. Tight windows first is what keeps both.
+   */
+  const tight = (b: DesignBeat) => !early(b) && (b.intent === "number" || b.intent === "compare");
+  for (const beat of order) if (tight(beat)) placeBeat(beat);
 
   /* ---- 4. runs: consecutive footage back to back over the host in the circle ---- */
   /*
@@ -1154,7 +1192,57 @@ export function resolveLayout(input: LayoutInput): LayoutPlan {
     flush();
   }
 
-  for (const beat of order) if (!early(beat)) placeBeat(beat);
+  /*
+   * ---- 5a. the footage, before any other card -------------------------
+   *
+   * Real pictures are the main layer of the reel (30–40 % of the runtime,
+   * PLAN.md §1), so every verified asset gets its slot before an entity
+   * card, a headline or a chip can take the moment. r01 placed cards first
+   * and footage after: 3 of 12 assets reached the screen, 2.9 % coverage.
+   *
+   * Each picture wants its word; it may come up on the jump cut just before
+   * the word (the cut is then hidden under it, one change instead of two)
+   * and as late as the end of its phrase; failing that, anywhere in the
+   * rest of its sentence plus 2.5 s, while the thing is still being talked
+   * about.
+   */
+  const placeFootage = (beat: DesignBeat) => {
+    const s = sentence.get(beat.sentenceId);
+    const src = sourcedByBeat.get(beat.id);
+    if (!s || !src || src.kind === "logo" || usedSourced.has(src.beatId)) return;
+    if (!["person", "org", "product", "scene", "metaphor", "concept"].includes(beat.intent)) return;
+    const hit = anchorIn(s, beat.anchor);
+    const wantStart = round(clamp((hit?.startMs ?? s.startMs) + TIMING.land[0], 0, totalMs));
+    const phraseEnd = round(Math.min(s.endMs, totalMs));
+    const crowdedHere = (entityBeatsIn.get(beat.sentenceId) ?? 0) >= 3 && (beat.intent === "org" || beat.intent === "product" || beat.intent === "person");
+    const still = src.kind !== "video";
+    const isLong = beat.intent === "person" || (beat.intent === "scene" && beat.priority === 1);
+    const minMs = still ? TIMING.cutaway.still[0] : TIMING.cutaway.min;
+    const maxMs = Math.min(crowdedHere ? Math.max(minMs, 2000) : still ? TIMING.cutaway.still[1] : isLong ? TIMING.cutaway.long : TIMING.cutaway.max, availableMs(src));
+    if (maxMs < minMs) return;
+    /* Back onto a cut at most 0.6 s before the word, never before the sentence itself starts. */
+    const snapBackMs = clamp(wantStart - s.startMs + 100, 100, 600);
+    input.trace?.(`${beat.id} footage ${src.candidate.id} (${src.layout}, ${still ? "still" : "video"}) wants ${wantStart}, latest ${Math.max(wantStart + 1200, phraseEnd)}, ${minMs}–${maxMs} ms`);
+    let slot = findSlot(ledger, { startMs: wantStart, minMs, maxMs, latestStartMs: Math.max(wantStart + 1200, phraseEnd), hardEndMs: Math.min(phraseEnd + (crowdedHere ? 400 : 1500), endStart), softEndAfter: (st) => upcomingAfter(st, minMs), snapBackMs }, false, input.trace);
+    if (!slot && !crowdedHere) {
+      const latestStartMs = Math.min(s.endMs + 2500, endStart - minMs);
+      input.trace?.(`${beat.id} footage, later in the sentence: latest ${latestStartMs}`);
+      slot = findSlot(ledger, { startMs: wantStart, minMs, maxMs, latestStartMs, hardEndMs: Math.min(s.endMs + 3500, endStart), softEndAfter: (st) => upcomingAfter(st, minMs) }, false, input.trace);
+    }
+    if (!slot) return;
+    const spec = cutawayOf(beat, s, src, slot);
+    cutaways.push(spec);
+    usedSourced.add(src.beatId);
+    footageDone.add(beat.id);
+    ledger.take({ id: spec.id, startMs: spec.startMs, endMs: spec.endMs, layer: "cutaway" });
+    if (!crowdedHere && (beat.intent === "org" || beat.intent === "product" || beat.intent === "person")) entityCardDone.add(beat.entity?.name ?? beat.anchor ?? beat.id);
+  };
+  const byTime = (a: DesignBeat, b: DesignBeat) => (sentence.get(a.sentenceId)?.startMs ?? 0) - (sentence.get(b.sentenceId)?.startMs ?? 0) || a.priority - b.priority;
+  for (const beat of input.beats.filter((b) => b.priority < 3).sort(byTime)) placeFootage(beat);
+
+  placeNameChip();
+
+  for (const beat of order) if (!early(beat) && !tight(beat)) placeBeat(beat);
 
   /*
    * ---- 5b. footage the first pass had no room for --------------------

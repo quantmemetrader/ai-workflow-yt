@@ -81,6 +81,8 @@ export type GradeBeat = {
   mustNot?: string | null;
   /** What the director resolved the beat to. `platform`/`web` count as resolved for the sourcing gate. */
   resolved?: "platform" | "web" | "stock" | "card" | "host" | "none";
+  /** Sourcing found an asset for this beat but the layout did not put it on screen: why, from the plan (so triage does not read "no asset"). */
+  unplaced?: string | null;
 };
 
 export type GradeCutaway = {
@@ -1313,7 +1315,9 @@ export function evaluateResolution(input: GradeInput, scores: CutawayScore[]): G
       continue;
     }
     const name = b.entity?.name ?? b.id ?? "?";
-    issues.push(issue(at, "sourcing", "med", `${name}: ${!a ? "no asset" : !isWeb ? `generic stock (${a.platform})` : "asset does not show it"}`, `${name}：${!a ? "没有素材" : !isWeb ? `只是通用库存（${a.platform}）` : "素材不是它"}`));
+    const missing = b.unplaced ? `asset found, not placed: ${b.unplaced}` : "no asset";
+    const missingZh = b.unplaced ? `找到了素材但没排上：${b.unplaced}` : "没有素材";
+    issues.push(issue(at, "sourcing", "med", `${name}: ${!a ? missing : !isWeb ? `generic stock (${a.platform})` : "asset does not show it"}`, `${name}：${!a ? missingZh : !isWeb ? `只是通用库存（${a.platform}）` : "素材不是它"}`));
   }
   const share = resolved / beats.length;
   return gate("cutaways.resolved", "≥ 60 % of entity beats resolved to a platform/web asset", "≥ 60 % 的实体镜头来自平台/网络素材", true, share >= 0.6, `${resolved}/${beats.length} (${(share * 100).toFixed(0)} %)`, "≥ 60 %", issues);

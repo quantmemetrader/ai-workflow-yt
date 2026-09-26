@@ -480,7 +480,9 @@ const Headline: React.FC<TemplateProps> = ({ g, accent, text, sub, options, env 
      largest size that holds it in two lines, 68 px at most and 36 at
      least; a headline too long even for that gets a third line, then an
      ellipsis — never a silent cut. */
-  const quote = fitWrappedOrMark(`「${text}」`, innerW, g.px(V2.size.headline), g.px(36), 2);
+  /* Quote marks only around words that are a quote (the layout says so); a paraphrase is set plain. */
+  const verbatim = options.verbatim !== false;
+  const quote = fitWrappedOrMark(verbatim ? `「${text}」` : text, innerW, g.px(V2.size.headline), g.px(36), 2);
   const metaSize = g.px(28);
   return (
     <div
@@ -500,7 +502,8 @@ const Headline: React.FC<TemplateProps> = ({ g, accent, text, sub, options, env 
         filter: p < 1 ? `blur(${((1 - p) * 12).toFixed(1)}px)` : undefined,
       }}
     >
-      {image ? <Img src={image} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", opacity: 0.3 }} /> : null}
+      {/* The article picture is texture, never a second text layer: blurred and dimmed hard so its own words cannot bleed through the quote (r01's x.com repost did). */}
+      {image ? <Img src={image} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", opacity: 0.14, filter: "blur(8px) grayscale(0.4)" }} /> : null}
       <div style={{ position: "relative" }}>
         {/* Outlet and date on the left; the picture's credit on the right of the same line, so it costs no height. */}
         <div style={{ display: "flex", gap: g.px(16), alignItems: "baseline", marginBottom: g.px(14) }}>
