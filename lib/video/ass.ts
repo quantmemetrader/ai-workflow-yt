@@ -517,7 +517,9 @@ function reelUnits(c: AssCue): ReelUnit[] {
 
 /** Units and unit chars that count as a figure: digits with their marks and units, and Han numerals of two or more. */
 const DIGIT_RUN = /[0-9][0-9.,]*[0-9]|[0-9]/g;
-const UNIT_AFTER_DIGITS = "多个页次万亿千百倍成条家年月日号天人元块美金美元%％";
+/** Scale words a figure may run through (3500多, 1.51亿, 30万), then at most one measure or unit (个, 次, 条, 美金, %); the breaker uses the same rule. */
+const FIGURE_SCALE = "万亿千百十多余";
+const FIGURE_UNIT = "个页次倍成条家年月日号天人元块%％";
 const HAN_NUMERAL = /[零一二三四五六七八九十百千万亿几两]{2,}[多余]?/g;
 const NUMBER_PREFIX = /[近约超共达仅逾]/;
 
@@ -536,10 +538,12 @@ export function numberRanges(text: string): [number, number][] {
     let b = u16ToCp[bU16] ?? cps.length;
     if (extendUnits) {
       let n = 0;
-      while (b < cps.length && n < 4 && UNIT_AFTER_DIGITS.includes(cps[b])) {
+      while (b < cps.length && n < 3 && FIGURE_SCALE.includes(cps[b])) {
         b++;
         n++;
       }
+      if (b < cps.length && FIGURE_UNIT.includes(cps[b])) b++;
+      else if (b + 1 < cps.length && cps[b] === "美" && "金元".includes(cps[b + 1])) b += 2;
       if (a > 0 && NUMBER_PREFIX.test(cps[a - 1])) a--;
     }
     ranges.push([a, b]);
@@ -664,9 +668,15 @@ function reelAss(cues: AssCue[], preset: CaptionPreset, opts: AssOptions): strin
     "ScriptType: v4.00+",
     `PlayResX: ${opts.width}`,
     `PlayResY: ${opts.height}`,
-    /* No wrapping: a reel line is one line by construction, and a line the
-       breaker got wrong should show as one long line, not as two. */
-    "WrapStyle: 2",
+    /* Smart wrapping, as a safety net only: a reel line is one line by
+       construction (twelve Han characters at 72 px is 864 px inside the
+       952 px between the margins), so a correct line never wraps. A row
+       that did not come from the reel breaker — a project switched to this
+       preset after it was transcribed, or a 9:16 project transcribed with
+       the flag off, whose rows run to sixteen characters — would be clipped
+       off both edges under WrapStyle 2; wrapped, every character stays on
+       screen. */
+    "WrapStyle: 0",
     "ScaledBorderAndShadow: yes",
     "YCbCr Matrix: TV.709",
     "",

@@ -1,4 +1,5 @@
 import type { TranscriptWord } from "@/lib/video/elevenlabs";
+import { soundsAlike } from "@/lib/video/pinyin";
 
 /**
  * The names, spelled the way the brief spells them.
@@ -20,15 +21,18 @@ import type { TranscriptWord } from "@/lib/video/elevenlabs";
  *   `applyGlossary(words, terms, proposals)`
  *                             pure: deterministic Latin fixes (a case-only
  *                             difference, or a near miss by edit distance
- *                             on a token long enough to be sure) plus
- *                             model-proposed CJK near misses that the code
+ *                             on a token long enough to be sure), Chinese
+ *                             spans that sound like a term (the readings
+ *                             in `pinyin.ts`: 帧流 → 蒸馏, 西雅芳 → 谢亚芳),
+ *                             plus model-proposed fixes that the code
  *                             validates — `to` must be a term, `from` must
- *                             occur in the transcript and look like a
- *                             mishearing of it — and then applies at the
- *                             character level, so the word timings survive.
+ *                             occur in the transcript and look (Latin) or
+ *                             sound (Chinese) like a mishearing of it — and
+ *                             then applies at the character level, so the
+ *                             word timings survive.
  *
- *   `applyGlossaryWithModel`  the thin wrapper that makes the one model
- *                             call and feeds its proposals to the core.
+ *   `applyGlossaryWithModel`  the thin wrapper that asks the models and
+ *                             feeds their proposals to the core.
  *
  * Nothing here decides what a sentence means. A `from` that is not a term's
  * near miss under the rules below is left alone, even when the model is
@@ -42,14 +46,19 @@ export type Term = {
   weight: 1 | 2 | 3;
 };
 
-export type GlossaryProposal = { from: string; to: string };
+export type GlossaryProposal = {
+  from: string;
+  to: string;
+  /** A misheard ordinary word (每方 → 美方) rather than a term; held to the stricter `validateTypo`. */
+  kind?: "typo";
+};
 
 export type GlossaryChange = {
   from: string;
   to: string;
   count: number;
-  /** case: Latin casing; distance: Latin edit distance; near: Han, one character off; model: a validated proposal. */
-  by: "case" | "distance" | "near" | "model";
+  /** case: Latin casing; distance: Latin edit distance; near: Han, sounds like a term (pinyin.ts); model: a validated proposal; typo: a validated homophone fix of an ordinary word. */
+  by: "case" | "distance" | "near" | "model" | "typo";
   /** Character offsets in the transcript text where it was applied. */
   at: number[];
 };
@@ -269,10 +278,16 @@ function toWords(chars: readonly Ch[], original: readonly TranscriptWord[]): Tra
     const w = chars[i].w;
     const text = chars.slice(i, j).map((c) => c.ch).join("");
     const base = w >= 0 ? original[w] : undefined;
+    /* An untouched word keeps its exact times. What is left of a word that
+       lost a span to a fix (the 被 and 指控 around a rewritten name inside
+       one whisper word) gets its own characters' share instead, or the two
+       remainders would both claim the whole word's span and overlap the
+       name between them. */
+    const whole = Boolean(base) && Array.from(base!.text).length === j - i;
     out.push({
       text,
-      start: w >= 0 ? base!.start : round3(chars[i].t0),
-      end: w >= 0 ? base!.end : round3(chars[j - 1].t1),
+      start: whole ? base!.start : round3(chars[i].t0),
+      end: whole ? base!.end : round3(chars[j - 1].t1),
       type: base?.type ?? "word",
       ...(base?.speaker ? { speaker: base.speaker } : {}),
     });
@@ -369,6 +384,11 @@ function latinTokens(chars: readonly Ch[]): { a: number; b: number; text: string
 
 /* ----------------------------------------------------------------- apply */
 
+/** Characters a sound-alike span may not differ from its term by: grammar, not a misheard syllable. */
+const NEAR_NEVER = /[的了着过是在和与及或也都就又还才不没有这那个我你他她它们之其]/;
+/** A sound-alike span that recurs more often than this is a phrase of its own, not a slip. */
+const NEAR_MAX_OCCURRENCES = 3;
+
 export type GlossaryOptions = {
   /** A `from` seen more often than this is a common word the model mistook for a name; refused. */
   maxOccurrences?: number;
@@ -458,44 +478,136 @@ export function applyGlossary(
   }
 
   /*
-   * 2b. Chinese near misses the code can see without a model: a span of
-   * the same length as a *name* of three or more characters that differs
-   * in exactly one of them (月之案面 → 月之暗面). Two of four right is a
-   * guess; three of four, in a take about the thing, is a mishearing.
-   * Names only — the brief's spelling line and term cards (weight 3):
-   * a quoted phrase is ordinary words, and the rule applied to 「暗知识」
-   * rewrote 现有的知识 as 现有暗知识 in the lab. Found first, applied right
-   * to left so offsets hold; a span that is itself a term is left alone.
+   * 2b. Chinese spans that sound like a term, found by the code from each
+   * character's reading (`pinyin.ts`): 帧流 and 蒸瘤 for 蒸馏, 西雅芳 for
+   * 谢亚芳, 百度人 inside 你的新经济百度人, 丝为裂 for 思维链, 月之案面 for
+   * 月之暗面. This is what a mishearing is, and the model, asked to list
+   * them, walked past 帧流 and 蒸瘤 in three calls of five. Every Han term
+   * of two to eight characters, longest first (帧流之战 becomes 蒸馏之战 in
+   * one piece); a span must
+   *   - be the term's length, sound like it (`soundsAlike`: the same
+   *     syllable at every position after the zh/z, eng/en folds, and for a
+   *     name of three or more characters one position only near; a quoted
+   *     phrase gets no leeway, or 有一个细节值得关注 becomes
+   *     有有个细节值得关注 by 一 yi / 有 you),
+   *   - differ from it only in characters that are not grammar (思维的 is
+   *     not 思维链, 这一名 is not 张一鸣: a mishearing swaps a syllable for
+   *     a syllable, not for a particle),
+   *   - start and end on a word boundary of the segmenter, so 百度人工智能
+   *     (百度|人工智能) is never read as 摆渡人工智能,
+   *   - not be a term itself, nor text an earlier fix wrote,
+   *   - and recur no more than a few times: a span the take says over and
+   *     over is a phrase of its own (NEAR_MAX_OCCURRENCES, counted per
+   *     spelling: 帧流 twice and 蒸瘤 twice are two slips each, not four).
+   * Found first, applied right to left so offsets hold.
    */
+  /* Bare text → whether the brief spells it as a name (weight 3). */
+  const hanTerms = new Map<string, boolean>();
   for (const t of terms) {
-    if (t.kind !== "han" || t.weight < 3) continue;
-    const tc = Array.from(t.text.replace(/^《(.*)》$/, "$1"));
-    if (tc.length < 3) continue;
+    if (t.kind !== "han") continue;
+    const bare = t.text.replace(/^《(.*)》$/, "$1");
+    const cs = Array.from(bare);
+    if (cs.length < 2 || cs.length > 8 || !cs.every((c) => HAN.test(c))) continue;
+    hanTerms.set(bare, (hanTerms.get(bare) ?? false) || t.weight >= 3);
+  }
+  const byLength = [...hanTerms.keys()].sort((x, y) => Array.from(y).length - Array.from(x).length);
+  for (const term of byLength) {
+    const name = hanTerms.get(term)!;
+    const tc = Array.from(term);
     const cps = chars.map((c) => c.ch);
+    const edges = wordEdges(cps.join(""));
     const found: number[] = [];
     for (let i = 0; i + tc.length <= cps.length; i++) {
-      let diff = 0;
-      for (let k = 0; k < tc.length && diff < 2; k++) if (cps[i + k] !== tc[k]) diff++;
-      if (diff !== 1) continue;
       const span = chars.slice(i, i + tc.length);
       if (span.some((c) => c.w < 0 || !HAN.test(c.ch))) continue;
       const from = span.map((c) => c.ch).join("");
+      const differ = soundsAlike(from, term, { near: name });
+      if (!differ) continue;
+      if (differ.some((k) => NEAR_NEVER.test(span[k].ch))) continue;
+      if (!edges.has(i) || !edges.has(i + tc.length)) continue;
       if (isTerm(from)) continue;
       found.push(i);
       i += tc.length - 1;
     }
+    const spelling = (at: number) => chars.slice(at, at + tc.length).map((c) => c.ch).join("");
+    const seen = new Map<string, number>();
+    for (const at of found) seen.set(spelling(at), (seen.get(spelling(at)) ?? 0) + 1);
     for (const at of found.reverse()) {
-      const from = chars.slice(at, at + tc.length).map((c) => c.ch).join("");
-      replaceSpan(at, at + tc.length, tc.join(""));
-      record(from, tc.join(""), "near", at);
+      const from = spelling(at);
+      if (seen.get(from)! > NEAR_MAX_OCCURRENCES) continue;
+      replaceSpan(at, at + tc.length, term);
+      record(from, term, "near", at);
     }
   }
 
-  /* 3. The model's proposals, validated one by one against the current text. */
-  for (const p of proposals) {
+  /*
+   * A misheard ordinary word the model pointed out (每方指控 for 美方指控,
+   * 漏洞币源 for 闭源, 躺出心路 for 蹚出新路). Whisper's typos are not names,
+   * so no term vouches for them, and the bar is higher than for a term:
+   * two to four Han characters on both sides, the same length, exact
+   * homophones after the zh/z-style folds (no near syllable), no grammar
+   * character changed (在/再, 的/得 are the model's opinion, not a
+   * mishearing), neither side a term, the span on segmenter word edges,
+   * and said no more than NEAR_MAX_OCCURRENCES times. Anything else is
+   * refused and logged.
+   */
+  const applyTypo = (from: string, to: string): void => {
+    const why = ((): string | null => {
+      const fc = Array.from(from);
+      const tc = Array.from(to);
+      if (fc.length < 2 || fc.length > 4 || tc.length !== fc.length) return "错字修正须同为两到四个字";
+      if (!fc.every((c) => HAN.test(c)) || !tc.every((c) => HAN.test(c))) return "错字修正只改中文";
+      if (isTerm(from) || isTerm(to)) return "名词表里的词不按错字处理";
+      const differ = soundsAlike(from, to, { near: false });
+      if (!differ) return "读音不同，不是同音错字";
+      if (differ.some((k) => NEAR_NEVER.test(fc[k]) || NEAR_NEVER.test(tc[k]))) return "改的是虚词，不是听错";
+      return null;
+    })();
+    if (why) {
+      rejected.push({ from, to, why });
+      return;
+    }
+    const text = chars.map((c) => c.ch).join("");
+    const edges = wordEdges(text);
+    const n = Array.from(from).length;
+    const hits = occurrences(text, from).filter((at) => edges.has(at) && edges.has(at + n) && chars.slice(at, at + n).every((c) => c.w >= 0));
+    if (!hits.length) {
+      rejected.push({ from, to, why: "识别文字里没有这个词（或不在词的边界上）" });
+      return;
+    }
+    if (hits.length > NEAR_MAX_OCCURRENCES) {
+      rejected.push({ from, to, why: `出现 ${hits.length} 次，是常用说法而不是听错` });
+      return;
+    }
+    for (const at of hits.reverse()) {
+      replaceSpan(at, at + n, to);
+      record(from, to, "typo", at);
+    }
+  };
+
+  /* 3. The model's proposals, validated one by one against the current
+     text. Shortest `from` first: once 蒸瘤 has become 蒸馏, a proposal for
+     the longer 蒸瘤洁净 (→ 蒸馏之战, a guess the model also makes) no longer
+     finds its text and is refused, whichever order the model listed them
+     in. The lab saw that refusal depend on the listing order. */
+  const ordered = proposals
+    .map((p, i) => ({ p, i, n: Array.from((p.from ?? "").trim()).length, typo: p.kind === "typo" ? 1 : 0 }))
+    .sort((a, b) => a.typo - b.typo || a.n - b.n || a.i - b.i)
+    .map((x) => x.p);
+  for (const p of ordered) {
     const from = (p.from ?? "").trim();
     const to = (p.to ?? "").trim();
+    if (p.kind === "typo") {
+      applyTypo(from, to);
+      continue;
+    }
     const verdict = validate(from, to, terms, isTerm);
+    /* The model files some ordinary-word typos under the terms (币源 → 闭源,
+       风账号 → 封账号); a Chinese `to` that is no term gets the typo rules. */
+    if (verdict === "to 不在名词表里" && HAN.test(to)) {
+      applyTypo(from, to);
+      continue;
+    }
     if (typeof verdict === "string") {
       rejected.push({ from, to, why: verdict });
       continue;
@@ -538,6 +650,22 @@ export function applyGlossary(
 
   const out = toWords(chars, words);
   return { words: out, text: joinText(out).text, changes, rejected };
+}
+
+/**
+ * The code-point offsets where the segmenter puts a word boundary in
+ * `text` (its start and end included): where a misheard name may begin
+ * and end.
+ */
+function wordEdges(text: string): Set<number> {
+  const edges = new Set<number>([0]);
+  let cp = 0;
+  for (const seg of new Intl.Segmenter("zh", { granularity: "word" }).segment(text)) {
+    edges.add(cp);
+    cp += Array.from(seg.segment).length;
+    edges.add(cp);
+  }
+  return edges;
 }
 
 /** Every start offset of `needle` in `hay`, by code point. */
@@ -594,9 +722,14 @@ function validate(
   if (lf < 2) return "from 太短";
   if (Math.abs(lf - lt) > 2) return "长度相差太多";
   if (term.kind === "han") {
-    const shared = Array.from(from).some((c) => to.includes(c));
-    if (lf !== lt && !shared) return "长度不同且没有共同字";
-    if (!HAN.test(from)) return "中文名词的 from 不是中文";
+    if (!Array.from(from).every((c) => HAN.test(c))) return "中文名词的 from 不全是中文";
+    /* Whisper writes one character per syllable, so a misheard word has
+       the term's length; a longer or shorter `from` is the model rewriting
+       a phrase (整场攻防战 → 蒸馏之战 was applied before this rule). And it
+       must sound like the term, by the code's readings, not the model's
+       word: 帧流 / 蒸馏 pass, 聆讯 / 蒸馏 and 蒸瘤洁净 / 蒸馏之战 do not. */
+    if (lf !== lt) return "中文听错不会改变字数";
+    if (!soundsAlike(from, to)) return "读音不像";
   } else {
     const d = levenshtein(from.toLowerCase(), to.toLowerCase());
     if (d > Math.max(2, Math.floor(lt / 2))) return `拼写相差 ${d} 处，太远`;
@@ -636,10 +769,13 @@ export function proposalMessages(
       role: "system",
       content:
         "你是中文视频字幕的校对。给你一段语音识别出来的口播文字和一份名词表（人名、公司名、产品名、术语）。" +
-        "任务：找出识别文字里被听错、写错的名词表词条，给出应改成名词表里的哪个词。" +
-        "语音识别最常见的错误是同音字、近音字替换：请把名词表里每个词的读音与识别文字逐一比对，凡是读音相同或相近但写法不同的片段都要报告，术语（不只是人名和公司名）同样要查；同一个错法出现几次只报一次。" +
-        "规则：to 必须一字不差地取自名词表；from 必须是识别文字里连续出现的原文；只报告名词表里有的词，别的错字一律不管；" +
-        "确实说的是另一个词的不要改（例如短语和名词表词条只是部分相同）。只输出 JSON，格式：{\"fixes\":[{\"from\":\"原文\",\"to\":\"名词表里的写法\"}]}，没有则输出 {\"fixes\":[]}。",
+        "语音识别最常见的错误是把名词写成同音或近音的别字，例如「蒸馏」被写成「帧流」「蒸瘤」，「谢亚芳」被写成「西雅芳」，「Claude」被写成「Cloud」。" +
+        "任务：逐个词条处理。先默念名词表里每个词的读音，再从头到尾找识别文字里所有读音相同或相近、但写法不同的连续片段，每找到一处报告一条。" +
+        "要点：同一个词可能有好几种错法，每一种都要单独列出（同一种错法出现几次也只列一次）；一个词即使在别处写对了，也要继续找它的别字；已经写对的地方不要列；" +
+        "只是缩写或简称的不要列（如「阿里」之于「阿里巴巴」）；确实说的是另一个词的不要改；不在名词表里的词一律不管。" +
+        "规则：to 必须一字不差地取自名词表；from 必须是识别文字里连续出现的原文。" +
+        "另外单独列出识别文字里其他明显的同音别字（typos）：只限普通词语、读音完全相同、按上下文明显写错的（例如「一码归一码」被写成「一马归一马」则列 from「一马」to「一码」），from 与 to 字数相同、各两到四个字；拿不准的一律不列，不要改用词和语法。" +
+        "只输出 JSON，格式：{\"fixes\":[{\"from\":\"帧流\",\"to\":\"蒸馏\"}],\"typos\":[{\"from\":\"一马\",\"to\":\"一码\"}]}，没有则输出 {\"fixes\":[],\"typos\":[]}。",
     },
     {
       role: "user",
@@ -648,7 +784,7 @@ export function proposalMessages(
   ];
 }
 
-/** The proposals out of whatever the model wrote: the first JSON object, its `fixes` array. */
+/** The proposals out of whatever the model wrote: the first JSON object, its `fixes` array, then its `typos` array. */
 export function parseProposals(answer: string): GlossaryProposal[] {
   const trimmed = answer.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
   const a = trimmed.indexOf("{");
@@ -660,12 +796,14 @@ export function parseProposals(answer: string): GlossaryProposal[] {
   } catch {
     return [];
   }
-  const fixes = (parsed as { fixes?: unknown })?.fixes;
-  if (!Array.isArray(fixes)) return [];
-  return fixes
-    .filter((f): f is Record<string, unknown> => Boolean(f) && typeof f === "object")
-    .map((f) => ({ from: String(f.from ?? ""), to: String(f.to ?? "") }))
-    .filter((f) => f.from && f.to);
+  const list = (key: "fixes" | "typos"): Record<string, unknown>[] => {
+    const v = (parsed as Record<string, unknown> | null)?.[key];
+    return Array.isArray(v) ? v.filter((f): f is Record<string, unknown> => Boolean(f) && typeof f === "object") : [];
+  };
+  return [
+    ...list("fixes").map((f): GlossaryProposal => ({ from: String(f.from ?? ""), to: String(f.to ?? "") })),
+    ...list("typos").map((f): GlossaryProposal => ({ from: String(f.from ?? ""), to: String(f.to ?? ""), kind: "typo" })),
+  ].filter((f) => f.from && f.to);
 }
 
 export type GlossaryModelUsage = {
@@ -694,6 +832,22 @@ export const GLOSSARY_MODELS = (process.env.GLOSSARY_MODELS || "deepseek/deepsee
 const GLOSSARY_TIMEOUT_MS = Number(process.env.GLOSSARY_TIMEOUT_MS || 60_000);
 
 /**
+ * How many of `GLOSSARY_MODELS` are asked at once, their answers pooled.
+ *
+ * One answer is not enough: at temperature 0 the DeepSeek flash found
+ * 帧流→蒸馏 and 蒸瘤→蒸馏 in two of three identical calls in the W2 review
+ * and walked past both in the third and in one full lab run; the Qwen
+ * flash, asked the same, missed them on a different third. Asking the same
+ * model twice does not help — OpenRouter hands both calls to the same
+ * provider and the answers come back byte for byte the same (the misses
+ * track the provider) — so the pool spans models. Every proposal is still
+ * validated one by one, and the shortest-first application below refuses
+ * the one wrong guess the second model adds, so the pool costs nothing in
+ * precision, about $0.0001, and no time, since the calls overlap.
+ */
+const GLOSSARY_POOL = Math.max(1, Math.min(4, Number(process.env.GLOSSARY_POOL || 2)));
+
+/**
  * One JSON-mode completion on OpenRouter, with its own `fetch`: the shared
  * client has no `response_format` and no way to turn reasoning off, and
  * this call needs both. Same rules otherwise — the studio's key, the backup
@@ -704,7 +858,7 @@ export async function jsonCompletion(
   model: string,
   messages: { role: "system" | "user"; content: string }[],
   signal?: AbortSignal,
-  maxTokens = 800,
+  maxTokens = 1200,
 ): Promise<{ text: string; usage: GlossaryModelUsage }> {
   const { env } = await import("@/lib/env");
   const { usdToMicros, AiError } = await import("@/lib/ai/openrouter");
@@ -757,14 +911,15 @@ export async function jsonCompletion(
 }
 
 /**
- * The glossary with its one model call.
+ * The glossary with its model calls.
  *
- * The deterministic pass runs first so the model sees a transcript with
- * the long Latin names already right and only has to judge the short
- * tokens and the Chinese near misses. The call is JSON-mode with reasoning
- * off, with a deadline; a failed call is logged and the deterministic
- * result stands, because a caption with 「帧流」 in it is a lesser fault
- * than a transcription that fails.
+ * The deterministic pass runs first — Latin case and distance fixes and
+ * the Chinese sound-alikes — so the model sees a transcript with most
+ * names already right and only has to judge what sound cannot decide
+ * (Cloud → Claude, a garbled Latin token). The models in the pool are
+ * asked at once, JSON-mode with reasoning off and a deadline; a failed
+ * call is logged and the rest stands, because a caption with a misspelt
+ * name in it is a lesser fault than a transcription that fails.
  */
 export async function applyGlossaryWithModel(
   words: readonly TranscriptWord[],
@@ -795,22 +950,46 @@ export async function applyGlossaryWithModel(
     .map((t) => t.text.replace(/^《(.*)》$/, "$1"))
     .filter((t, i, all) => all.indexOf(t) === i && Array.from(t).length <= 8 && !first.text.includes(t) && !first.text.toLowerCase().includes(t.toLowerCase()));
 
-  let proposals: GlossaryProposal[] = [];
+  const proposals: GlossaryProposal[] = [];
   let usage: GlossaryModelUsage | null = null;
   let raw = "";
   const models = options.model ? [options.model] : GLOSSARY_MODELS;
   const messages = proposalMessages(first.text, terms, hints, absent);
-  for (const model of models) {
-    try {
-      const res = await jsonCompletion(model, messages, options.signal);
-      usage = res.usage;
-      raw = res.text;
-      proposals = parseProposals(res.text);
-      log(`glossary: ${model} proposed ${proposals.length} fix(es) in ${usage.ms} ms (${usage.promptTokens}+${usage.completionTokens} tokens)`);
-      break;
-    } catch (err) {
-      log(`glossary: ${model} failed: ${err instanceof Error ? err.message : String(err)}`);
+  type Answer = Awaited<ReturnType<typeof jsonCompletion>> & { model: string };
+  /** Ask these models at once; every answer that arrives counts. */
+  const ask = async (batch: readonly string[]): Promise<Answer[]> => {
+    const settled = await Promise.allSettled(batch.map((model) => jsonCompletion(model, messages, options.signal).then((r) => ({ ...r, model }))));
+    settled.forEach((r, i) => {
+      if (r.status === "rejected") log(`glossary: ${batch[i]} failed: ${r.reason instanceof Error ? r.reason.message : String(r.reason)}`);
+    });
+    return settled.filter((r): r is PromiseFulfilledResult<Answer> => r.status === "fulfilled").map((r) => r.value);
+  };
+  /* The pool at once; when nothing in it answered, the remaining models one by one. */
+  let answers = await ask(models.slice(0, GLOSSARY_POOL));
+  for (const model of models.slice(GLOSSARY_POOL)) {
+    if (answers.length) break;
+    answers = await ask([model]);
+  }
+  if (answers.length) {
+    const seen = new Set<string>();
+    for (const a of answers) {
+      for (const p of parseProposals(a.text)) {
+        const key = `${p.from}\u0000${p.to}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        proposals.push(p);
+      }
     }
+    usage = {
+      model: answers.map((a) => a.model).join("+"),
+      provider: answers.map((a) => a.usage.provider).filter(Boolean).join("+") || undefined,
+      promptTokens: answers.reduce((n, a) => n + a.usage.promptTokens, 0),
+      completionTokens: answers.reduce((n, a) => n + a.usage.completionTokens, 0),
+      costMicros: answers.reduce((n, a) => n + a.usage.costMicros, 0),
+      ms: Math.max(...answers.map((a) => a.usage.ms)),
+    };
+    raw = answers.map((a) => `${a.model}: ${a.text}`).join("\n");
+    log(`glossary: ${usage.model} proposed ${proposals.length} distinct fix(es) over ${answers.length} answer(s) in ${usage.ms} ms (${usage.promptTokens}+${usage.completionTokens} tokens)`);
   }
   if (!usage) log("glossary: no model answered; keeping the deterministic fixes only");
 

@@ -398,12 +398,15 @@ const REEL_MAX_ATOMIC_TERM = 8;
 
 const HAN_CHAR = /[㐀-䶿一-鿿豈-﫿]/;
 const R_DIGIT_RUN = /[0-9][0-9.,]*[0-9]|[0-9]/g;
-const R_UNIT_AFTER_DIGITS = "多个页次万亿千百倍成条家年月日号天人元块美金美元%％";
+/** Scale words a figure may run through (3500多, 1.51亿, 30万), then at most one measure or unit (个, 次, 条, 美金, %). */
+const R_FIGURE_SCALE = "万亿千百十多余";
+const R_FIGURE_UNIT = "个页次倍成条家年月日号天人元块%％";
 const R_HAN_NUMERAL = /[零一二三四五六七八九十百千万亿几两]{2,}[多余]?/g;
 const R_NUMBER_PREFIX = /[近约超共达仅逾]/;
 const R_LATIN_RUN = /[A-Za-z][A-Za-z0-9'.-]*/g;
 /** A line should not end on the word that opens the next clause (但, 被, 让, 那么…)… */
-const WEAK_END = /(但是|那么|所以|因为|因此|然后|只是|就是|而且|[和与在是把被给让将对从到比而就也都又还才或及于向着过但却则])$/;
+/** …nor on an adverb that modifies what comes next (不等于, 没能, 很难, 更高, 再也)… */
+const WEAK_END = /(但是|那么|所以|因为|因此|然后|只是|就是|而且|[和与在是把被给让将对从到比而就也都又还才或及于向着过但却则不没很更最太再])$/;
 /** …a particle at the end is milder (subtitles end on 的 all the time)… */
 const PARTICLE_END = /[的了地得]$/;
 /** …and it must not start with the particle that belongs to the previous word. */
@@ -414,6 +417,13 @@ const WEAK_START = /^[的了地得着过吗呢吧啊呀]/;
  * know (调|用量, 账|号), and a break beside it is suspect.
  */
 const FUNCTION_CHARS = "的了着过是在和与及或也都就又还才不没要会能可把被让给到从向对比而但并且如因为所以于以之其这那此每各另某几多少有无很更最太再已经将去来说看做用叫";
+/**
+ * The subset of those that are grammar rather than words: particles,
+ * copula, conjunctions, prepositions and demonstratives. A stray single
+ * right after one of these and before a longer word (的|大|模型) opens that
+ * word, so the boundary after it is inside a word.
+ */
+const STRUCTURAL_CHARS = "的了着过是在和与及或也都就又还才不没把被让给对而但并且于之其这那此每各另某吗呢吧啊呀";
 const R_TRAILING_PUNCT = /^(.*?)([，。、！？；：,.!?;:…”」』）)》〉]+)$/;
 const R_LEADING_PUNCT = /^[“「『（(《〈…]+/;
 
@@ -512,11 +522,15 @@ function forbiddenBreaks(plain: string, terms: readonly string[], maxTermChars: 
   const figure = (aU: number, bU: number) => {
     let a = map[aU] ?? 0;
     let b = map[bU] ?? cps.length;
+    /* Scale words, then one unit: 3500多个 stops before 账号, 几百条 before
+       个人信息 (个 and 人 are units too, but a measure word ends a figure). */
     let n = 0;
-    while (b < cps.length && n < 4 && R_UNIT_AFTER_DIGITS.includes(cps[b])) {
+    while (b < cps.length && n < 3 && R_FIGURE_SCALE.includes(cps[b])) {
       b++;
       n++;
     }
+    if (b < cps.length && R_FIGURE_UNIT.includes(cps[b])) b++;
+    else if (b + 1 < cps.length && cps[b] === "美" && "金元".includes(cps[b + 1])) b += 2;
     if (a > 0 && R_NUMBER_PREFIX.test(cps[a - 1])) a--;
     ban(a, b);
   };
@@ -545,9 +559,9 @@ function forbiddenBreaks(plain: string, terms: readonly string[], maxTermChars: 
  * unspaced text, and which of those sit between two single-character Han
  * segments (a word ICU did not know, split into its characters).
  */
-function segmentBoundaries(units: ReelUnit[]): { bounds: Set<number>; weak: Map<number, number> } {
+function segmentBoundaries(units: ReelUnit[], forbidden: ReadonlySet<number>): { bounds: Set<number>; weak: Map<number, number> } {
   const bounds = new Set<number>();
-  /** Boundary → penalty: 16 between two single characters of which one is not a word (口|子), 8 between two function singles, 5 beside one stray single. */
+  /** Boundary → penalty, per the attachment rules below (16 = certainly inside a word, 14 = probably, 3–8 = a little suspect). */
   const weak = new Map<number, number>();
   let spaced = "";
   for (const u of units) spaced += (u.spaceBefore ? " " : "") + u.text;
@@ -582,20 +596,41 @@ function segmentBoundaries(units: ReelUnit[]): { bounds: Set<number>; weak: Map<
     segs.push({ a, b, single: b - a === 1 && HAN_CHAR.test(s.segment) });
   }
   bounds.add(0);
-  /* A single Han character that is not a word on its own is half of a word
-     ICU did not know (账|号, 调|用量), and it belongs to one of its
-     neighbours; which one is not knowable here, so a boundary on either
-     side of it is a little suspect, and one between two such singles is
-     more so. Neither outranks a clause opener left at a line's end. */
-  const stray = (s: Seg) => s.single && !FUNCTION_CHARS.includes(cps[s.a]);
+  /*
+   * A single Han character that is not a word on its own is half of a word
+   * ICU did not know (账|号, 调|用量), and it belongs to one of its
+   * neighbours; which one is not knowable here, so a boundary on either
+   * side of it is a little suspect, and one between two such singles is
+   * more so. Neither outranks a clause opener left at a line's end.
+   *
+   * Two shapes are knowable, and the first lab run showed both split
+   * across lines (第三轮公开声 | 讨了他, 学习头部的大 | 模型): a stray
+   * single before a verb glued to its aspect particle (声|讨了, 藏|着) is
+   * that verb's first character, and a stray single right after a grammar
+   * character and before a longer word (的|大|模型, 就|防|不住) opens that
+   * word. Both get the penalty of a break between two singles. Anything
+   * broader than this (treating every single-character verb as half a
+   * word) was tried and scattered penalties over the whole transcript,
+   * pushing the lines off the clause boundaries the rest of the cost
+   * function finds.
+   */
+  const stray = (s: Seg | undefined) => Boolean(s && s.single && !FUNCTION_CHARS.includes(cps[s.a]));
+  const structural = (s: Seg | undefined) => Boolean(s && s.single && STRUCTURAL_CHARS.includes(cps[s.a]));
+  /** A two-character segment that is a verb with its aspect particle (讨了, 藏着, 做过). */
+  const glue = (s: Seg | undefined) => Boolean(s && s.b - s.a === 2 && HAN_CHAR.test(cps[s.a]) && !FUNCTION_CHARS.includes(cps[s.a]) && "了着过".includes(cps[s.a + 1]));
+  const adjacent = (x: Seg | undefined, y: Seg | undefined) => Boolean(x && y && plainPos[x.b] === plainPos[y.a]);
   for (let i = 0; i < segs.length; i++) {
     const s = segs[i];
     bounds.add(plainPos[s.a]);
     bounds.add(plainPos[s.b]);
     const n = segs[i + 1];
-    if (!n || plainPos[s.b] !== plainPos[n.a]) continue;
-    if (s.single && n.single) weak.set(plainPos[s.b], stray(s) || stray(n) ? 16 : 8);
-    else if (stray(s) || stray(n)) weak.set(plainPos[s.b], 5);
+    if (!adjacent(s, n)) continue;
+    const at = plainPos[s.b];
+    if (forbidden.has(at)) continue;
+    const p = segs[i - 1];
+    if (s.single && n!.single) weak.set(at, stray(s) || stray(n) ? 16 : 8);
+    else if (stray(s) && (glue(n) || (adjacent(p, s) && structural(p)))) weak.set(at, 16);
+    else if (stray(s) || stray(n)) weak.set(at, 5);
   }
   return { bounds, weak };
 }
@@ -620,11 +655,15 @@ function reelLines(words: TranscriptWord[], o: ReelLineOptions): CaptionLine[] {
   const plain = units.map((u) => u.text).join("");
   const offsets: number[] = [0];
   for (const u of units) offsets.push(offsets[offsets.length - 1] + Array.from(u.text).length);
-  const { bounds, weak } = segmentBoundaries(units);
   /* A name is kept whole; a quoted sentence from the brief (十二字的金句) is
      not a name, and forcing it onto one line left the word before it as a
      one-character caption. Eight characters covers every name and term. */
   const forbidden = forbiddenBreaks(plain, o.terms ?? [], Math.min(max, REEL_MAX_ATOMIC_TERM));
+  /* What the highlight lights as one word: figures, Latin tokens and names
+     of up to five characters (美国参议院); a longer quoted phrase is kept on
+     one line but still lit word by word. */
+  const oneWord = forbiddenBreaks(plain, o.terms ?? [], 5);
+  const { bounds, weak } = segmentBoundaries(units, forbidden);
   const widths = units.map(unitWidth);
 
   /*
@@ -725,8 +764,11 @@ function reelLines(words: TranscriptWord[], o: ReelLineOptions): CaptionLine[] {
   /*
    * The caption's own words: the segmenter's words, put back together
    * from the character units, each spanning its characters' time. A Latin
-   * token is a word of its own. This is what the reel renderer lights up
-   * word by word.
+   * token is a word of its own; a name, a figure or a run of digits whisper
+   * split (3|500, 63.|5%) is one word, however the segmenter cut it, so the
+   * spoken-word highlight lights 谢亚芳 and 3500多个 whole rather than a
+   * character at a time. This is what the reel renderer lights up word by
+   * word.
    */
   const regroup = (from: number, to: number): CaptionLine["words"] => {
     const words: CaptionLine["words"] = [];
@@ -735,7 +777,9 @@ function reelLines(words: TranscriptWord[], o: ReelLineOptions): CaptionLine[] {
       const prev = words[words.length - 1];
       const latin = /^[A-Za-z0-9]/.test(u.text);
       const prevLatin = Boolean(prev && /[A-Za-z0-9]$/.test(prev.text));
-      const startsWord = k === from || bounds.has(offsets[k]) || latin || prevLatin || u.spaceBefore;
+      const digitRun = Boolean(prev && /[0-9.]$/.test(prev.text) && /^[0-9%]/.test(u.text));
+      const inside = oneWord.has(offsets[k]) || digitRun;
+      const startsWord = k === from || (!inside && (bounds.has(offsets[k]) || latin || prevLatin || u.spaceBefore));
       if (startsWord || !prev) words.push({ start: u.start, end: u.end, text: (u.spaceBefore && prev ? " " : "") + u.text });
       else {
         prev.text += u.text;

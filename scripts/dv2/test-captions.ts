@@ -12,7 +12,8 @@
  *
  *   1. terms and hotwords from the brief             glossary.json
  *   2. whisper on the raw take with the hotwords     whisper-hotwords.json  (cached; ~60 s)
- *   3. the glossary, deterministic + one model call  glossary.json
+ *   3. the glossary: Latin + sound-alike fixes,      glossary.json
+ *      then the pooled model call (names, typos)
  *   4. reel lines                                    lines.json
  *   5. the checks the acceptance list asks for       report.json
  *   6. English for the render window (one call)      lines-en.json          (cached)
@@ -22,7 +23,8 @@
  *   9. frames: a contact sheet, a 15 fps pop strip,  sheet.jpg, strip.jpg, check.json
  *      and `checkFrame` on five frames
  *
- * Paid: the glossary call, the translation call, five `checkFrame` calls;
+ * Paid: the glossary calls (two models at once), the translation call,
+ * five `checkFrame` calls;
  * about a cent in all. No database, nothing written outside `--out`.
  */
 import { execFile } from "node:child_process";
@@ -157,6 +159,7 @@ async function main() {
   const forbidden = [
     ...new Set([
       "帧流",
+      "蒸瘤",
       "Enterobic",
       "Anthrobic",
       "西雅芳",
