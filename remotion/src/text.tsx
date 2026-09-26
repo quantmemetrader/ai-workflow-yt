@@ -104,6 +104,26 @@ export function packEntries(text: string, emsPerLine: number, maxLines: number):
 }
 
 /**
+ * A credits line at the largest size, at most `max` and never under `min`,
+ * at which `packEntries` holds every source in `maxLines` lines of `width`
+ * pixels. `complete` is false when even `min` cannot: `packEntries` drops
+ * the sources that do not fit, and a credit that vanished without a trace
+ * is exactly what the end card must never do (the line is the on-screen
+ * half of the asset record), so the template says so on the card instead.
+ * Whitespace and the " · " separators are ignored in the comparison, since
+ * a wrapped entry loses the space at its break.
+ */
+export function fitPacked(text: string, width: number, max: number, min: number, maxLines: number): { size: number; lines: string[]; complete: boolean } {
+  const strip = (s: string) => s.replace(/[\s·]/g, "");
+  const whole = strip(text);
+  for (let size = max; size >= min; size -= 2) {
+    const lines = packEntries(text, width / size, maxLines);
+    if (strip(lines.join("")) === whole) return { size, lines, complete: true };
+  }
+  return { size: min, lines: packEntries(text, width / min, maxLines), complete: false };
+}
+
+/**
  * The largest font size, at most `max`, at which the widest of `lines` sets
  * inside `width` pixels; never under `min`. A hook line of eight Han
  * characters at 120 px is 960 px wide and the safe width is 866, so the
@@ -201,11 +221,30 @@ export function wrapLines(text: string, emsPerLine: number, maxLines: number): s
  * makes. A headline that is too long for two lines at 68 px is set at the
  * size where it fits rather than cut off.
  */
-export function fitWrapped(text: string, width: number, max: number, min: number, maxLines: number): { size: number; lines: string[] } {
+export function fitWrapped(text: string, width: number, max: number, min: number, maxLines: number): { size: number; lines: string[]; complete: boolean } {
   const whole = text.replace(/\s+/g, "");
   for (let size = max; size >= min; size -= 2) {
     const lines = wrapLines(text, width / size, maxLines);
-    if (lines.join("").replace(/\s+/g, "") === whole) return { size, lines };
+    if (lines.join("").replace(/\s+/g, "") === whole) return { size, lines, complete: true };
   }
-  return { size: min, lines: wrapLines(text, width / min, maxLines) };
+  const lines = wrapLines(text, width / min, maxLines);
+  return { size: min, lines, complete: lines.join("").replace(/\s+/g, "") === whole };
+}
+
+/**
+ * `fitWrapped`, and when even `min` cannot hold the text in `maxLines`
+ * lines, one line more at `min`; and when that cannot either, the lines at
+ * `min` with the last ending in an ellipsis. `wrapLines` drops what does
+ * not fit, so without this a definition or a headline a few characters
+ * too long lost its last words with nothing on screen to say so — the cut
+ * is now visible, and the director's row is what has to change.
+ */
+export function fitWrappedOrMark(text: string, width: number, max: number, min: number, maxLines: number): { size: number; lines: string[]; complete: boolean } {
+  const fit = fitWrapped(text, width, max, min, maxLines);
+  if (fit.complete) return fit;
+  const more = fitWrapped(text, width, min, min, maxLines + 1);
+  if (more.complete) return more;
+  const lines = [...more.lines];
+  if (lines.length) lines[lines.length - 1] = `${lines[lines.length - 1]}…`;
+  return { ...more, lines, complete: false };
 }

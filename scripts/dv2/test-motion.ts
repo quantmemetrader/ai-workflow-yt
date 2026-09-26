@@ -779,7 +779,14 @@ async function main() {
   console.log(text);
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exitCode = 1;
-});
+/* Exit explicitly. `--vision` imports `lib/video/vision.ts`, whose import
+   graph (`lib/ai/openrouter` → `backend` → `choice`) opens the app's
+   Postgres pool, and an open pool keeps the event loop alive after the last
+   line is printed: without this, a `--vision` run sat in the process table
+   for ever with its connections held (four of them were found that way). */
+main()
+  .then(() => process.exit(process.exitCode ?? 0))
+  .catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });

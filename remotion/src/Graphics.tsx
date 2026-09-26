@@ -28,8 +28,10 @@ import { V2Graphic, envelope, geo, isV2Kind, type Options } from "./v2";
  * 300 ms with a 180 ms exit, for every kind, so a v1 title and a v2 counter
  * cut together; the v1 stills renderer draws frame 20 (667 ms), which is
  * after either curve has settled, so the stills are unchanged in layout.
- * And `statement` moved from the lower left into Zone T (y 230–620 on the
- * 1080×1920 frame), off the face. The ten v2 kinds and an end card that
+ * And `statement` moves from the lower left into Zone T (y 230–620 on the
+ * 1080×1920 frame), off the face, when its row carries `options.zone:
+ * "T"` — the v2 director's rows do; older rows keep the v1 position and
+ * render as they did. The ten v2 kinds and an end card that
  * carries `options.creditsLine` are dispatched to `v2.tsx`; their props are
  * the same `text`/`sub` plus `options`.
  */
@@ -757,12 +759,23 @@ export const Graphic: React.FC<GraphicProps> = ({
        size up. Over the footage with a shadow, not on a scrim: the speaker
        stays visible behind their own claim.
 
-       In Zone T (top at y 230 of 1920) since director v2: it used to hang
-       at the lower left, where on a 9:16 cut it crossed the chin and the
-       captions (the v1 fault list has it at 164/210/258/283 s). */
+       In Zone T (top at y 230 of 1920) when the row says so — `options.zone:
+       "T"`, which director v2 sets on every statement it places (and
+       `lib/video/motion.ts:planClip` copies from the spec's zone): at the
+       lower left it crossed the chin and the captions on a 9:16 cut (the
+       v1 fault list has it at 164/210/258/283 s). A row without the zone
+       keeps the v1 corner, so a project already rendered with the flag off
+       renders byte-identical (PLAN.md §0); the 蒸馏 fixture alone has six. */
+    const zoneT = opts.zone === "T";
     const lines = text.split(/\n|\|/).map((l) => l.trim()).filter(Boolean).slice(0, 3);
     return (
-      <AbsoluteFill style={{ justifyContent: "flex-start", alignItems: "flex-start", padding: `${ratio(height, V2.zones.T.top / V2.frame.height)}px ${ratio(height, 0.05)}px 0` }}>
+      <AbsoluteFill
+        style={
+          zoneT
+            ? { justifyContent: "flex-start", alignItems: "flex-start", padding: `${ratio(height, V2.zones.T.top / V2.frame.height)}px ${ratio(height, 0.05)}px 0` }
+            : { justifyContent: "flex-end", alignItems: "flex-start", padding: `0 ${ratio(height, 0.05)}px ${ratio(height, 0.44)}px` }
+        }
+      >
         <div style={{ opacity: on, transform: `translateY(${(1 - on) * ratio(height, 0.016)}px)` }}>
           <div style={{ width: ratio(height, 0.024), height: ratio(height, 0.006), background: accent, borderRadius: 2, marginBottom: ratio(height, 0.01) }} />
           {lines.map((l, i) => (

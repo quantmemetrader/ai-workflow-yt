@@ -1,7 +1,7 @@
 import React from "react";
 import { AbsoluteFill, Easing, Img, spring } from "remotion";
 import { V2 } from "./theme";
-import { Marked, emWidth, fitSize, fitWrapped, isCjk, packEntries, splitLines, wrapLines } from "./text";
+import { Marked, emWidth, fitPacked, fitSize, fitWrappedOrMark, isCjk, splitLines } from "./text";
 
 /**
  * Director v2's templates: the graphics that make an argument legible with
@@ -365,7 +365,9 @@ const List: React.FC<TemplateProps> = ({ g, accent, options, env }) => {
  */
 const Entity: React.FC<TemplateProps> = ({ g, text, sub, options, env }) => {
   const logo = str(options.logo);
-  const mono = str(options.monogram, text.trim().charAt(0) || "·");
+  /* The monogram is the name's first letter or character, never its
+     opening quote or bracket: 《自然》杂志 is 自 on the tile, not 《. */
+  const mono = str(options.monogram, text.trim().replace(/^[「『（【《〔〈〖〘〚"'(\[{<“‘]+/, "").charAt(0) || text.trim().charAt(0) || "·");
   const tile = g.px(200);
   const nameW = g.safeW - tile - g.px(40);
   return (
@@ -412,11 +414,18 @@ const Entity: React.FC<TemplateProps> = ({ g, text, sub, options, env }) => {
 /**
  * chip — a name in a pill at the top right, for a thing the entity card has
  * already introduced. The one graphic on the spring (damping 14, stiffness
- * 180, mass 0.9); its 12.6 % overshoot is applied at a quarter, so the pill
- * lands with under 3 % and is still on the way in.
+ * 180, mass 0.9); its overshoot is applied at a fifth, so the pill lands
+ * with under 3 % (1.9 % measured) and is still on the way in.
+ *
+ * The spring is fitted to the `in` segment (`durationInFrames: 12`): the
+ * chip is rendered as in + hold + out, the hold being frame 12, and the
+ * natural spring is still 2.9 % from rest there — a pill 0.6 % larger in
+ * the hold than in the `out` part that follows it, which read as a 1–2 px
+ * pop at the seam. Fitted, it is within 0.4 % at frame 12 and at rest by
+ * frame 13, settles to the eye by ~270 ms, and keeps its overshoot.
  */
 const Chip: React.FC<TemplateProps> = ({ g, accent, text, options, env, frame, fps }) => {
-  const s = spring({ frame, fps, config: V2.spring });
+  const s = spring({ frame, fps, config: V2.spring, durationInFrames: V2.inFrames });
   const scale = 0.8 + 0.2 * s;
   const logo = str(options.logo);
   const h = g.px(76);
@@ -468,8 +477,10 @@ const Headline: React.FC<TemplateProps> = ({ g, accent, text, sub, options, env 
   const pad = g.px(32);
   const innerW = g.safeW - pad * 2;
   /* The quote wraps between words (never inside 发布 or a number) at the
-     largest size that holds it in two lines, 68 px at most. */
-  const quote = fitWrapped(`「${text}」`, innerW, g.px(V2.size.headline), g.px(44), 2);
+     largest size that holds it in two lines, 68 px at most and 36 at
+     least; a headline too long even for that gets a third line, then an
+     ellipsis — never a silent cut. */
+  const quote = fitWrappedOrMark(`「${text}」`, innerW, g.px(V2.size.headline), g.px(36), 2);
   const metaSize = g.px(28);
   return (
     <div
@@ -537,7 +548,13 @@ const Term: React.FC<TemplateProps> = ({ g, accent, text, sub, options, env }) =
   const eqSize = g.px(56);
   const defSize = g.px(44);
   const oneLine = definition ? emWidth(text) * termSize + emWidth("＝") * eqSize + emWidth(definition) * defSize <= g.safeW : true;
-  const lines = definition && !oneLine ? wrapLines(definition, g.safeW / defSize, 2) : [];
+  /* Under the term, the definition wraps into two lines at 44 px, or at
+     the largest smaller size (down to 28) that holds all of it: a
+     definition a few characters too long for two lines is set a step
+     smaller, never cut short; one longer still gets a third line, and
+     past that an ellipsis. */
+  const wrapped = definition && !oneLine ? fitWrappedOrMark(definition, g.safeW, defSize, g.px(28), 2) : { size: defSize, lines: [] as string[] };
+  const lines = wrapped.lines;
   const p2 = progress(env.t, 80, V2.enterMs);
   return (
     <div style={{ position: "absolute", left: g.safeLeft, top: g.px(V2.zones.T.top + 4), width: g.safeW, opacity: env.exit }}>
@@ -547,7 +564,7 @@ const Term: React.FC<TemplateProps> = ({ g, accent, text, sub, options, env }) =
         {definition && oneLine ? <span style={{ ...bold(defSize, V2.ink), opacity: p2 }}>{definition}</span> : null}
       </div>
       {lines.map((l, i) => (
-        <div key={i} style={{ ...bold(defSize, V2.ink), lineHeight: 1.25, marginTop: i === 0 ? g.px(8) : 0, opacity: p2, transform: `translateY(${Math.round((1 - p2) * g.px(12))}px)`, whiteSpace: "nowrap" }}>
+        <div key={i} style={{ ...bold(wrapped.size, V2.ink), lineHeight: 1.25, marginTop: i === 0 ? g.px(8) : 0, opacity: p2, transform: `translateY(${Math.round((1 - p2) * g.px(12))}px)`, whiteSpace: "nowrap" }}>
           {l}
         </div>
       ))}
@@ -648,14 +665,18 @@ const Diagram: React.FC<TemplateProps> = ({ g, accent, options, env }) => {
 /**
  * stinger — 「02 中方回应」 for 0.7 s at a real turn: the plate wipes in
  * from the left over 150 ms, the number and the title slide in after it,
- * and the whole thing fades in the last 150 ms.
+ * and the whole thing fades out on the common exit (`env.exit`, 180 ms
+ * measured to the end of the last frame). It used to fade on its own
+ * 150 ms curve measured from the frame's *start*, which left the last
+ * frame at 40 % opacity — the plate popped off at the cut instead of
+ * leaving; `envelope()` already does the end-of-frame arithmetic.
  */
 const Stinger: React.FC<TemplateProps> = ({ g, accent, text, options, env }) => {
   const idx = options.index;
   const label = typeof idx === "number" ? String(idx).padStart(2, "0") : str(idx);
   const pIn = progress(env.t, 0, V2.stingerInMs);
   const pText = progress(env.t, 60, 150);
-  const pOut = 1 - progress(env.t, env.totalMs - V2.stingerOutMs, V2.stingerOutMs, easeIn);
+  const pOut = env.exit;
   const h = g.px(220);
   /* The title takes what the plate leaves after the number: 68 px unless
      a long one (Anthropic为什么急) would run past the plate's edge. */
@@ -698,12 +719,32 @@ const Stinger: React.FC<TemplateProps> = ({ g, accent, text, options, env }) => 
 const EndCard: React.FC<TemplateProps> = ({ g, accent, text, sub, options, env }) => {
   const credits = str(options.creditsLine);
   const logo = str(options.logo);
-  /* Packed by source (never a break inside "Pinterest @xxx"), two lines at
-     most, each held on one line: the estimate errs wide, and a line that
-     did run over would spread a few pixels into both margins rather than
-     wrap into a third line under the footnote band. */
-  const creditLines = packEntries(credits, g.safeW / g.px(V2.size.credits), 2);
-  const subLines = sub ? wrapLines(sub, g.safeW / g.px(V2.size.endSub), 3) : [];
+  /* Packed by source (never a break inside "Pinterest @xxx"): two lines at
+     26 px when every source fits, else two lines a step smaller (down to
+     22), else three lines at 22 — 92 px, which still clears the watermark
+     band above y 1613 — and if even that cannot hold every source, the
+     last line ends in an ellipsis. `packEntries` drops what does not fit,
+     and a credit that vanished from the card with no trace is the one
+     failure this line exists to prevent; W3's `placeCredits` is meant to
+     keep it to two lines at 26 px, and this is what happens when it does
+     not. Each line is held on one line: the estimate errs wide, and a line
+     that did run over would spread a few pixels into both margins rather
+     than wrap into a fourth line under the footnote band. */
+  const creditsFit = (() => {
+    if (!credits) return null;
+    const two = fitPacked(credits, g.safeW, g.px(V2.size.credits), g.px(22), 2);
+    if (two.complete) return two;
+    const three = fitPacked(credits, g.safeW, g.px(22), g.px(22), 3);
+    if (three.complete) return three;
+    const lines = [...three.lines];
+    lines[lines.length - 1] = `${lines[lines.length - 1]} …`;
+    return { ...three, lines };
+  })();
+  const creditLines = creditsFit?.lines ?? [];
+  const creditSize = creditsFit?.size ?? g.px(V2.size.credits);
+  /* The closing question: three lines at 44 px, or smaller (to 32), or a fourth line, rather than cut. */
+  const subFit = sub ? fitWrappedOrMark(sub, g.safeW, g.px(V2.size.endSub), g.px(32), 3) : { size: g.px(V2.size.endSub), lines: [] as string[] };
+  const subLines = subFit.lines;
   return (
     <AbsoluteFill style={{ background: V2.void, opacity: env.on }}>
       <div style={{ position: "absolute", left: g.safeLeft, width: g.safeW, top: g.px(680), textAlign: "center", transform: `translateY(${Math.round((1 - env.enter) * g.px(20))}px)` }}>
@@ -714,7 +755,7 @@ const EndCard: React.FC<TemplateProps> = ({ g, accent, text, sub, options, env }
         )}
         <div style={{ ...heavy(fitSize([text], g.safeW, g.px(V2.size.headline), g.px(44)), V2.ink), textShadow: "none" }}>{text}</div>
         {subLines.map((l, i) => (
-          <div key={i} style={{ ...bold(g.px(V2.size.endSub), V2.quiet), lineHeight: 1.35, textShadow: "none", marginTop: i === 0 ? g.px(28) : 0 }}>
+          <div key={i} style={{ ...bold(subFit.size, V2.quiet), lineHeight: 1.35, textShadow: "none", marginTop: i === 0 ? g.px(28) : 0 }}>
             {l}
           </div>
         ))}
@@ -722,7 +763,7 @@ const EndCard: React.FC<TemplateProps> = ({ g, accent, text, sub, options, env }
       {creditLines.length ? (
         <div style={{ position: "absolute", left: g.safeLeft, width: g.safeW, bottom: g.H - g.px(1745), textAlign: "center" }}>
           {creditLines.map((l, i) => (
-            <div key={i} style={{ ...bold(g.px(V2.size.credits), V2.credits), lineHeight: 1.4, textShadow: "none", whiteSpace: "nowrap" }}>
+            <div key={i} style={{ ...bold(creditSize, V2.credits), lineHeight: 1.4, textShadow: "none", whiteSpace: "nowrap" }}>
               {l}
             </div>
           ))}

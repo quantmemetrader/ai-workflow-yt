@@ -953,14 +953,16 @@ function Still({ graphic: g, accent, r, type, w }: StillProps) {
       /* The channel's claim block: short lines set left, the accent dash
          above, the marked words a size up. Over the footage, no scrim — the
          speaker stays visible behind their own claim. In Zone T (top at
-         230 of 1920) since director v2, as the composition draws it. */
+         230 of 1920) when the row carries `options.zone: "T"`, as director
+         v2's rows do and as the composition draws it; older rows keep the
+         lower-left corner they were rendered in. */
       return (
         <div
           style={{
             ...fill,
-            justifyContent: "flex-start",
-            alignItems: "flex-start",
-            padding: `${r(230 / 1920)}px ${r(0.05)}px 0`,
+            ...(g.options?.zone === "T"
+              ? { justifyContent: "flex-start", alignItems: "flex-start", padding: `${r(230 / 1920)}px ${r(0.05)}px 0` }
+              : { justifyContent: "flex-end", alignItems: "flex-start", padding: `0 ${r(0.05)}px ${r(0.44)}px` }),
           }}
         >
           <div>

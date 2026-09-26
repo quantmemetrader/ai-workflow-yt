@@ -93,9 +93,11 @@ const V2_KINDS: ReadonlySet<string> = new Set(["hook", "counter", "compare", "li
  * template draws them. A v1 kind draws where its own template puts it
  * (`stat` in the middle, `card` at the lower third, `chapter` under the
  * header…), so it gets the whole frame unless it is one this code knows
- * the v2 director moves: `statement` into Zone T, and a `lower-third` with
- * `zone: "lower"` into the lower zone. Cropping a v1 kind to a zone it
- * does not draw in would render an empty clip.
+ * the v2 director moves: a `statement` with `zone: "T"` into Zone T, and a
+ * `lower-third` with `zone: "lower"` into the lower zone (the template
+ * reads the same zone from `options`, which `planClip` fills in from the
+ * spec). Cropping a v1 kind to a zone it does not draw in would render an
+ * empty clip.
  */
 export function boxForZone(zone: string | undefined, kind: string, width: number, height: number): Box {
   const zoned = zone === "full" || zone === "lower" || zone === "corner" ? zone : "T";
@@ -103,7 +105,7 @@ export function boxForZone(zone: string | undefined, kind: string, width: number
     kind === "end-card" ? "full"
     : kind === "chip" ? "corner"
     : V2_KINDS.has(kind) ? zoned
-    : kind === "statement" ? "T"
+    : kind === "statement" && zone === "T" ? "T"
     : kind === "lower-third" && zone === "lower" ? "lower"
     : "full";
   const ref = V2.boxes[name];
@@ -144,7 +146,10 @@ const text = (v: unknown): string => (typeof v === "string" ? v : v == null ? ""
  * box, the mode and the cache key. Pure, so the lab can list what would be
  * drawn without drawing it. `props.text`/`sub`/`icon`/`placement`/`scale`
  * are the row's columns; the whole `props` object rides along as `options`
- * for the template to read its timing and data from.
+ * for the template to read its timing and data from, with the spec's
+ * `zone` copied in when the props do not name one, so a v1 kind the
+ * director places in a zone (`statement` in T, `lower-third` in lower)
+ * draws there and is cropped there from the one field.
  */
 export function planClip(
   spec: GraphicSpecV2,
@@ -152,8 +157,10 @@ export function planClip(
 ): ClipPlan {
   const seconds = Math.max(0.2, Math.round(((spec.endMs - spec.startMs) / 1000) * 1000) / 1000);
   const mode = ctx.mode ?? clipMode(spec.kind, seconds, ctx.fps);
-  const box = boxForZone(spec.zone, spec.kind, ctx.width, ctx.height);
-  const p = spec.props ?? {};
+  const p: Record<string, unknown> = { ...(spec.props ?? {}) };
+  if (typeof p.zone !== "string" && spec.zone) p.zone = spec.zone;
+  const zone = typeof p.zone === "string" ? p.zone : spec.zone;
+  const box = boxForZone(zone, spec.kind, ctx.width, ctx.height);
   const props = {
     graphic: {
       kind: spec.kind,

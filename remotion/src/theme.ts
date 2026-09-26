@@ -129,10 +129,12 @@ export const V2 = {
   barMs: 500,
   /** Headline: slides up 250 ms, blur to sharp. */
   headlineMs: 250,
-  /** Stinger: 0.7 s in all, 150 ms in, 150 ms out. */
+  /** Stinger: 0.7 s in all, 150 ms wipe in; out on the common 180 ms exit, so the
+   *  plate's fade is the same `envelope().exit` every other graphic leaves on
+   *  (measured to the end of the last frame, which is therefore fully out). */
   stingerMs: 700,
   stingerInMs: 150,
-  stingerOutMs: 150,
+  stingerOutMs: 180,
   /** Hook lines: scale 0.92→1.0 over 120 ms, centred on the word. */
   hookLineMs: 120,
 
