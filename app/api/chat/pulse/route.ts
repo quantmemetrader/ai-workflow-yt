@@ -33,6 +33,9 @@ export async function GET(request: Request) {
            (select string_agg(p.id || ':' || coalesce(p.meta -> 'pending' ->> 'step', 'working'), ',' order by p.created_at)
               from chat_messages p
              where p.channel_id = c.id
+               /* Bounded by when it began, so the (channel, created_at)
+                  index answers it: no turn runs for an hour. */
+               and p.created_at > now() - interval '1 hour'
                and p.deleted_at is not null
                and p.meta ? 'pending'
                and coalesce(p.edited_at, p.created_at) > now() - interval '10 minutes') as pending

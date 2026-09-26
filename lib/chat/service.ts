@@ -646,19 +646,41 @@ export async function channelMessage(channelId: string, messageId: string) {
  * Merged into the existing `meta` in one statement rather than read-then-write:
  * two people pressing at the same moment is the ordinary case for an approval
  * card, and the loser of that race should not erase the agent's own buttons.
- * `where meta->'done' is null` makes the first press the one that counts.
+ * `where meta->'done' is null` makes the first press the one that counts,
+ * and the answer says whether this call was that press: a button that
+ * starts a project or a stock-footage run is claimed with this *before* the
+ * work, so two presses at once (a double click, two people, Home and the
+ * channel) start it once, not twice.
  */
 export async function markCardDone(
   channelId: string,
   messageId: string,
   done: { actionId: string; by: string; at: string },
-) {
-  await db.execute(sql`
+): Promise<boolean> {
+  const { rows } = await db.execute<{ id: string }>(sql`
     update ${chatMessages}
        set meta = coalesce(meta, '{}'::jsonb) || ${JSON.stringify({ done })}::jsonb
      where id = ${messageId}
        and channel_id = ${channelId}
        and (meta -> 'done') is null
+    returning id
+  `);
+  return rows.length > 0;
+}
+
+/**
+ * Gives a press back when the work it claimed could not even be posted, so
+ * the card offers its buttons again instead of reading "X chose …" over
+ * nothing. Only that press (the same action at the same moment) is undone.
+ */
+export async function unmarkCardDone(channelId: string, messageId: string, done: { actionId: string; at: string }) {
+  await db.execute(sql`
+    update ${chatMessages}
+       set meta = meta - 'done'
+     where id = ${messageId}
+       and channel_id = ${channelId}
+       and meta -> 'done' ->> 'actionId' = ${done.actionId}
+       and meta -> 'done' ->> 'at' = ${done.at}
   `);
 }
 

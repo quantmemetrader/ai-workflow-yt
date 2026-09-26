@@ -1,5 +1,5 @@
 import { after } from "next/server";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { agentMessages, conversations, files, scripts, topics } from "@/lib/db/schema";
 import { getViewer, type Viewer } from "@/lib/auth/dal";
@@ -9,11 +9,11 @@ import type { ToolContext } from "@/lib/ai/tools/types";
 import { newId } from "@/lib/ids";
 import { AGENT_KEYS, parseAgentMentions, type AgentKey } from "@/lib/agents/catalog";
 import { agentViewer } from "@/lib/agents";
-import { MAX_REPLIES, later } from "@/lib/agents/mentions";
+import { CUT_TOOLS, MAX_REPLIES, findStartClaims, later } from "@/lib/agents/mentions";
 import { channelById } from "@/lib/chat/service";
 import { projectById } from "@/lib/video/service";
 import { relationOn } from "@/lib/authz/rebac";
-import { reachableThroughProjects } from "@/lib/projects/service";
+import { clipCount, reachableThroughProjects } from "@/lib/projects/service";
 
 type ScreenIds = Pick<ToolContext, "channelId" | "projectId" | "topicId" | "fileId" | "scriptId">;
 
@@ -232,6 +232,17 @@ export async function POST(request: Request) {
           origin: viewer.nameLocal || viewer.name,
           later,
         };
+        /* `asker` is the person, whoever answers: an employee's tools
+           check what they pick for somebody against the one who asked,
+           not only against the employee (`ToolContext.asker`). The
+           answer comes back to them alone (`privateReply`), so a list
+           may hold everything they may see, private projects included.
+           Kept in a variable: a script write that starts a project pins
+           the rest of the turn to it (below). */
+        const turnContext: Omit<ToolContext, "viewer"> = { ...context, ...ids, asker: viewer, team, privateReply: true };
+        /* What 剪辑师 said and did this turn, for the check at the end. */
+        let said = "";
+        let cut = false;
         for await (const event of runAgent({
           viewer: speakerViewer,
           conversationId: conversationId!,
@@ -239,14 +250,40 @@ export async function POST(request: Request) {
           // The employee's own trade when one answers; otherwise the screen
           // the question came from decides which tuning the prompt carries.
           module: speakerModule,
-          /* `asker` is the person, whoever answers: an employee's tools
-             check what they pick for somebody against the one who asked,
-             not only against the employee (`ToolContext.asker`). The
-             answer comes back to them alone (`privateReply`), so a list
-             may hold everything they may see, private projects included. */
-          context: { ...context, ...ids, asker: viewer, team, privateReply: true },
+          context: turnContext,
           signal: request.signal,
         })) {
+          if (event.type === "delta") said += event.text;
+          if (event.type === "tool" && event.status === "ok" && event.artifacts?.length) {
+            if (CUT_TOOLS.has(event.name)) cut = true;
+            /* write_script outside any project started one: a second write
+               in this turn goes into that project's script, not a third. */
+            const started = event.name === "write_script" && !turnContext.scriptId ? event.artifacts.find((a) => a.kind === "script") : undefined;
+            if (started && event.artifacts.some((a) => a.kind === "work_project")) turnContext.scriptId = started.id;
+          }
+          /*
+           * "开始粗剪" with nothing begun. In a channel the reply is checked
+           * before it is posted (`judgeReply` in lib/agents/mentions.ts);
+           * here it has already been read as it streamed, so it is put
+           * straight underneath instead, in the answer itself and on its
+           * stored row: 剪辑师 said it was cutting, and no cut started this
+           * turn (`CUT_TOOLS`: no first cut, no make-the-video, nothing taken
+           * out of the edit) — with the bin's real count
+           * when a video project is open.
+           */
+          if (event.type === "done" && speaker === "video" && !cut && findStartClaims(said, "video").length) {
+            const zh = (viewer.locale ?? "zh-CN").startsWith("zh");
+            const clips = ids.projectId ? await clipCount(ids.projectId).catch(() => null) : null;
+            const note = zh
+              ? `\n\n（系统核对：这一回合没有开始剪辑，没有调用粗剪或一键成片。${clips === 0 ? "项目的素材箱里还是 0 段素材，请先把拍好的素材传到项目里（项目页的「素材」卡），传上来会自动转写，再让剪辑师按脚本粗剪。" : clips ? `素材箱里有 ${clips} 段素材，要开剪请让剪辑师现在出粗剪。` : "要开剪，请在项目里让剪辑师来做，项目的素材箱里要先有素材。"}）`
+              : `\n\n(Checked by the system: no editing started this turn; neither the first cut nor make-the-video was run. ${clips === 0 ? "The project's bin still has 0 clips: upload the shot clips to the project (its Clips card); they are transcribed as they land, then ask the editor for the first cut." : clips ? `The bin has ${clips} clips; ask the editor for the first cut now.` : "To cut, ask the editor inside the project, once its bin has clips."})`;
+            send({ type: "delta", text: note });
+            await db
+              .update(agentMessages)
+              .set({ content: sql`${agentMessages.content} || ${note}` })
+              .where(and(eq(agentMessages.id, event.messageId), eq(agentMessages.conversationId, conversationId!)))
+              .catch((err) => console.error("[agent] could not store the check under the answer", err));
+          }
           if (event.type === "message" && speaker && !speakerSaved) {
             speakerSaved = db
               .update(agentMessages)

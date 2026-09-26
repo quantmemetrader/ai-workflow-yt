@@ -64,6 +64,10 @@ export function WorkingPill({ agent, step, zh, compact = false }: { agent: Agent
 
 type JobState = { state: string; step: string | null; percent: number | null; error: string | null };
 
+/** What the chip knows: nothing yet, an answer, or that there is nothing
+ *  for this reader to follow (not theirs to open, or no job at all). */
+type JobView = JobState | "gone" | null;
+
 /**
  * A long job a message started — the director making the whole video, or a
  * render — followed live: its step and percent, asked of `/api/chat/job`
@@ -71,7 +75,7 @@ type JobState = { state: string; step: string | null; percent: number | null; er
  * first answer, on the server and in the browser alike, so hydration agrees.
  */
 export function JobChip({ job, zh, project }: { job: { videoProjectId: string }; zh: boolean; project?: { id: string } | null }) {
-  const [s, setS] = React.useState<JobState | null>(null);
+  const [view, setView] = React.useState<JobView>(null);
   React.useEffect(() => {
     let live = true;
     let timer: ReturnType<typeof setTimeout> | null = null;
@@ -81,11 +85,20 @@ export function JobChip({ job, zh, project }: { job: { videoProjectId: string };
       if (document.visibilityState === "visible") {
         try {
           const r = await fetch(`/api/chat/job?project=${encodeURIComponent(job.videoProjectId)}`, { cache: "no-store" });
-          if (!r.ok) return;
-          const j = (await r.json()) as JobState;
-          if (!live) return;
-          setS(j);
-          if (j.state !== "queued" && j.state !== "running") return;
+          /* A video this reader may not open (a private project's render
+             narrated in #制作), or one that is gone: no chip, rather than
+             "进行中" forever over a link that leads nowhere. */
+          if (r.status === 403 || r.status === 404) {
+            if (live) setView("gone");
+            return;
+          }
+          if (r.ok) {
+            const j = (await r.json()) as JobState;
+            if (!live) return;
+            /* Nothing started, nothing to follow. */
+            setView(j.state === "idle" ? "gone" : j);
+            if (j.state !== "queued" && j.state !== "running") return;
+          }
         } catch {
           // The next tick tries again.
         }
@@ -99,6 +112,8 @@ export function JobChip({ job, zh, project }: { job: { videoProjectId: string };
     };
   }, [job.videoProjectId]);
 
+  if (view === "gone") return null;
+  const s = view;
   const href = project ? `/projects/${project.id}` : `/video?project=${job.videoProjectId}`;
   const failed = s?.state === "failed";
   const frame: React.CSSProperties = {

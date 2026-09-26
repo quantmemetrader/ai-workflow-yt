@@ -23,6 +23,7 @@ import {
   channelMembers,
   channelMessage,
   markCardDone,
+  unmarkCardDone,
   createChannel,
   listConversations,
   postMessage,
@@ -186,24 +187,35 @@ export async function pressCardAction(slug: string, messageId: string, actionId:
   const already = readCardDone(message.meta);
   if (already) return { error: "Somebody already answered this" };
 
+  /* The press is claimed before anything is done for it. "交给编剧" on the
+     plan can start a project (below), and a double click, two people, or
+     Home and the channel pressing at once each used to get past the check
+     above and start one: two projects for one to-do, two 编剧 turns. The
+     first claim wins; the others are told somebody already answered. */
+  const done = { actionId, by: viewer.nameLocal || viewer.name, at: new Date().toISOString() };
+  if (!(await markCardDone(channel.id, messageId, done))) return { error: "Somebody already answered this" };
+
   /* A button that hands checked work on — the approval's "让剪辑师出粗剪" —
      carries it, so the colleague's turn opens inside that script and
      project instead of in a channel that is neither (`pressedHandoff`).
      The morning plan's "交给编剧" hands 编剧 the project its to-do is
      written into, found or started now (`planHandoff`): the plan lives in
      #研究日报, which is no project, and the draft used to land loose. */
-  const handoff =
-    (await pressedHandoff(viewer, message.meta, action.body)) ??
-    (await planHandoff(viewer, message.meta, action.id).catch((err) => {
-      console.error("[chat] could not find or start the plan item's project", err);
-      return null;
-    }));
-  await postMessage(viewer, channel.id, action.body, handoff ? { handoff: handoffMeta(handoff) } : undefined);
-  await markCardDone(channel.id, messageId, {
-    actionId,
-    by: viewer.nameLocal || viewer.name,
-    at: new Date().toISOString(),
-  });
+  let handoff: Awaited<ReturnType<typeof pressedHandoff>> = null;
+  try {
+    handoff =
+      (await pressedHandoff(viewer, message.meta, action.body)) ??
+      (await planHandoff(viewer, message.meta, action.id).catch((err) => {
+        console.error("[chat] could not find or start the plan item's project", err);
+        return null;
+      }));
+    await postMessage(viewer, channel.id, action.body, handoff ? { handoff: handoffMeta(handoff) } : undefined);
+  } catch (err) {
+    /* Nothing was said for the press: give it back so the card can be
+       pressed again, rather than reading "X chose …" over nothing. */
+    await unmarkCardDone(channel.id, messageId, done).catch(() => {});
+    throw err;
+  }
   revalidatePath(`/chat/c/${slug}`);
 
   /* The prepared line nearly always tags a colleague — that is the point of
@@ -256,8 +268,16 @@ async function runCardAction(
   if (!message) return { error: "No such message" };
   if (readCardDone(message.meta)) return { error: "Somebody already answered this" };
 
-  await postMessage(viewer, channel.id, zh ? `先用素材库画面给《${project.title}》做一版。` : `Use stock footage for "${project.title}" for now.`, { ran: { op: "stock-cut", projectId: project.id } });
-  await markCardDone(channel.id, messageId, { actionId: action.id, by: viewer.nameLocal || viewer.name, at: new Date().toISOString() });
+  /* Claimed first, like every press (`pressCardAction`): two presses at
+     once must not import stock footage and start a render twice. */
+  const done = { actionId: action.id, by: viewer.nameLocal || viewer.name, at: new Date().toISOString() };
+  if (!(await markCardDone(channel.id, messageId, done))) return { error: "Somebody already answered this" };
+  try {
+    await postMessage(viewer, channel.id, zh ? `先用素材库画面给《${project.title}》做一版。` : `Use stock footage for "${project.title}" for now.`, { ran: { op: "stock-cut", projectId: project.id } });
+  } catch (err) {
+    await unmarkCardDone(channel.id, messageId, done).catch(() => {});
+    throw err;
+  }
   revalidatePath(`/chat/c/${slug}`);
 
   after(async () => {

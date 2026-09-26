@@ -4,7 +4,7 @@ import { db } from "@/lib/db/client";
 import { scriptBeats, scripts, topics, workProjects } from "@/lib/db/schema";
 import type { ToolDef } from "@/lib/ai/openrouter";
 import { isWriting, type ProjectSource } from "@/lib/projects/topic";
-import { createWorkProject, emptyProjectTitled, setProjectWriting } from "@/lib/projects/service";
+import { createWorkProject, emptyProjectTitled, ensureScriptProject, reachableThroughProjects, setProjectWriting } from "@/lib/projects/service";
 import { agentKeyFromEmail } from "@/lib/agents/catalog";
 import { writeScript } from "@/lib/script/from-research";
 import { listScripts } from "@/lib/script/service";
@@ -25,7 +25,7 @@ const defs: ToolDef[] = [
     function: {
       name: "write_script",
       description:
-        "Write a full shooting script and return its link. Inside a project it is written into the project's own script (never a new one); asked anywhere else, the script gets a project of its own (the studio's project for that subject if one is waiting for its draft, else a new one), so every script lives in a project with its video. Give the subject (a watched topic's name, or anything), and optionally the angle, the channel (YouTube, Shorts, LinkedIn…), the length in seconds, the spoken language and the subtitle language. When the subject is a watched topic, the headlines it collected are used as facts. Takes about half a minute. Costs one drafting-model call.",
+        "Write a full shooting script and return its link. Inside a project it is written into the project's own script (never a new one); asked anywhere else, the script gets a project of its own (the studio's project for that subject if one is waiting for its draft, else a new one), so every script lives in a project with its video. To rewrite a script that already exists — one written earlier (its id is in that result) or one found with list_scripts — pass its script_id: the new draft replaces that script's beats inside its own project, instead of starting another project with the same title. Give the subject (a watched topic's name, or anything), and optionally the angle, the channel (YouTube, Shorts, LinkedIn…), the length in seconds, the spoken language and the subtitle language. When the subject is a watched topic, the headlines it collected are used as facts. Takes about half a minute. Costs one drafting-model call.",
       parameters: {
         type: "object",
         properties: {
@@ -39,6 +39,10 @@ const defs: ToolDef[] = [
           language: { type: "string", description: "Spoken language: Cantonese, Mandarin, English… Optional." },
           subtitle_language: { type: "string", description: "Optional." },
           points: { type: "array", items: { type: "string" }, description: "Things it must cover. Optional." },
+          script_id: {
+            type: "string",
+            description: "Optional. The id (scr_…) of an existing script to rewrite, when no project is open: \"make the opening grab harder\", \"shorten it to 90 seconds\". Leave it out for a new script. Ignored inside a project, where the project's own script is always the one written.",
+          },
         },
         required: ["subject"],
       },
@@ -116,9 +120,35 @@ async function run(ctx: ToolContext, name: string, args: Record<string, unknown>
      */
     let project: { id: string; title: string; created: boolean } | null = null;
     let intoScriptId = ctx.scriptId ?? null;
+    const person = ctx.asker ?? (agentKeyFromEmail(ctx.viewer.email) ? null : ctx.viewer);
+    const starter = person ?? ctx.viewer;
+    /*
+     * A rewrite, asked outside the project: "把最新的脚本开头改得更抓人" on
+     * 编剧's own page, "@编剧 再短一点" in #研究日报. Without the id every
+     * such request started one more project titled like the first, with a
+     * new script beside the old. With it, the draft goes into that script,
+     * inside its project (one is started around a loose older script), for
+     * a script the person asking may reach — a private project's script is
+     * its members' — and never a locked one.
+     */
+    const named = intoScriptId ? "" : str(args.script_id, 64);
+    if (named) {
+      const [target] = await db
+        .select({ id: scripts.id, lockedVersion: scripts.lockedVersion })
+        .from(scripts)
+        .where(and(eq(scripts.id, named), eq(scripts.tenantId, ctx.viewer.tenantId), isNull(scripts.deletedAt)))
+        .limit(1);
+      if (!target) return { text: `There is no script ${named} in the library. Find its id with list_scripts; nothing was written.` };
+      /* Refused before a project is started around it, not after. */
+      if (target.lockedVersion !== null) return { text: "That script is locked: it was approved. Unlock it on its page before writing a new draft. Nothing was written." };
+      if (person && !(await reachableThroughProjects(person, { scriptId: target.id }))) {
+        return { text: "That script is in a project the person asking may not see. Nothing was written." };
+      }
+      const around = await ensureScriptProject(starter, target.id);
+      if (around) project = { id: around.id, title: around.title, created: around.created };
+      intoScriptId = target.id;
+    }
     if (!intoScriptId) {
-      const person = ctx.asker ?? (agentKeyFromEmail(ctx.viewer.email) ? null : ctx.viewer);
-      const starter = person ?? ctx.viewer;
       const title = (topic ? topic.name : subject).slice(0, 80);
       const waiting = await emptyProjectTitled(starter, title);
       if (waiting?.scriptId) {
@@ -149,17 +179,18 @@ async function run(ctx: ToolContext, name: string, args: Record<string, unknown>
         intoScriptId = made.scriptId;
       }
       projects = [project.id];
-    } else if (ctx.scriptId) {
+    } else {
+      /* Into a script that exists: the project's own, or the one named. */
       const [into] = await db
         .select({ targetSeconds: scripts.targetSeconds })
         .from(scripts)
-        .where(and(eq(scripts.id, ctx.scriptId), eq(scripts.tenantId, ctx.viewer.tenantId), isNull(scripts.deletedAt)))
+        .where(and(eq(scripts.id, intoScriptId), eq(scripts.tenantId, ctx.viewer.tenantId), isNull(scripts.deletedAt)))
         .limit(1);
       if (seconds === null && !into?.targetSeconds) seconds = 180;
       const live = await db
         .select({ id: workProjects.id, source: workProjects.source })
         .from(workProjects)
-        .where(and(eq(workProjects.tenantId, ctx.viewer.tenantId), eq(workProjects.scriptId, ctx.scriptId), isNull(workProjects.deletedAt)));
+        .where(and(eq(workProjects.tenantId, ctx.viewer.tenantId), eq(workProjects.scriptId, intoScriptId), isNull(workProjects.deletedAt)));
       /* A draft already on its way. "开项目并写脚本" writes it after the
          response, for half a minute to a minute; a tag in the project's chat
          inside that window used to start a second draft into the same
@@ -204,7 +235,7 @@ async function run(ctx: ToolContext, name: string, args: Record<string, unknown>
        has to find the project by hand. */
     const projectReceipt = project?.created ? [{ kind: "work_project" as const, id: project.id, title: project.title, action: "created" as const }] : [];
     const projectLine = project
-      ? `${project.created ? "Started the project" : "Wrote into the waiting project"} "${project.title}" for it (open it at /projects/${project.id}, id: ${project.id}); its video project is there for the edit.`
+      ? `${project.created ? "Started the project" : "Wrote into the project"} "${project.title}" for it (open it at /projects/${project.id}, id: ${project.id}); its video project is there for the edit.`
       : "";
     if (!res.ok) {
       return { text: [res.error, projectLine].filter(Boolean).join("\n"), ...(projectReceipt.length ? { artifacts: projectReceipt, changed: true } : {}) };
@@ -240,7 +271,7 @@ async function run(ctx: ToolContext, name: string, args: Record<string, unknown>
     return {
       /* The receipt. Inside a project the script already existed and was
          written into; elsewhere it is new. */
-      artifacts: [...projectReceipt, { kind: "script", id: res.id, title: res.title, action: into && !project?.created ? "updated" : "created" }],
+      artifacts: [...projectReceipt, { kind: "script", id: res.id, title: res.title, action: into && (named || !project?.created) ? "updated" : "created" }],
       text: [
         `Written: "${res.title}" — ${res.beats} beat${res.beats === 1 ? "" : "s"}${res.model ? ` by ${res.model}` : ""}.`,
         `Open it at /script/${res.id} (id: ${res.id}).`,

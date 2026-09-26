@@ -318,8 +318,9 @@ export type ReplyFacts = {
    * when it works in one: "starting the rough cut" on an empty bin is not
    * something anybody can be doing. */
   clips?: number;
-  /** Whether a cut really began this turn: `first_cut` or `make_video`
-   * came back with a receipt. Worked out from the receipts when not given. */
+  /** Whether a cut really began this turn: one of `CUT_TOOLS` (`first_cut`,
+   * `make_video`, a range taken out) came back with a receipt. Worked out
+   * from the receipts when not given. */
   cut?: boolean;
 };
 
@@ -653,6 +654,15 @@ export function findClaims(text: string, self: AgentKey): Claim[] {
  * has to rest on a cut this turn really began (`first_cut`, `make_video`),
  * and never on an empty bin.
  */
+/**
+ * The tools whose success means cutting really began this turn: the rough
+ * cut, the whole video, and the tools that take footage out of the edit.
+ * Bringing stock into the bin, a title card or a caption is work, but it is
+ * not "开始剪了" — 剪辑师 fetching two stock clips and then saying it was
+ * cutting would otherwise pass.
+ */
+export const CUT_TOOLS: ReadonlySet<string> = new Set(["first_cut", "make_video", "remove_range", "keep_only", "remove_silences"]);
+
 const START = new RegExp(
   [
     "(?:开始|着手|动手|马上|立刻|立即|现在就?|这就|正在|已经?在)(?:进行|做)?(?:粗剪|精剪|剪辑|剪片|剪视频|剪成片|剪|做视频|制作视频|做成片|出片|拼接)",
@@ -685,7 +695,12 @@ export function findStartClaims(text: string, self: AgentKey): string[] {
     const after = text.slice(end, end + 3);
     const stop = text.slice(sentenceEnd, sentenceEnd + 1);
     if (/[不没未别]|无法|不能|还不|先不|暂不|尚未|才能?|能否|是否|要不要|可以|可不可以$/.test(text.slice(Math.max(sentenceStart, at - 4), at))) continue;
-    if (/等|一到|到了|到位|收到|传好|传上|上传|之后|以后|后[，,\s]*(?:我|就|再)?$|如果|要是|一旦|假如|只要|\b(?:if|once|when|after|as soon as|until)\b/i.test(before)) continue;
+    if (/等|一到|到了|到位|收到|拿到|有了|到手|齐了|传好|传上|上传|之后|以后|后[，,\s]*(?:我|就|再)?$|如果|要是|一旦|假如|只要|\b(?:if|once|when|after|as soon as|until)\b/i.test(before)) continue;
+    /* English puts the condition after: "I'll start the rough cut once the
+       clips land" is the same plan as "素材一到我就开始粗剪". Only the clause
+       right after it: "I'm starting the cut now, and will post it when it is
+       done" is still a start. */
+    if (/\b(?:if|once|when|after|as soon as|until)\b/i.test(text.slice(end, sentenceEnd).split(/[,;，；]/)[0])) continue;
     if (/^(?:前|之前|吗|么|的话|呢)/.test(after) || /[?？]/.test(stop)) continue;
     const opens = (before.match(/[“「『]/g)?.length ?? 0) - (before.match(/[”」』]/g)?.length ?? 0);
     if (opens > 0 || (before.match(/"/g)?.length ?? 0) % 2 === 1) continue;
@@ -749,9 +764,12 @@ export function judgeReply(text: string, facts: ReplyFacts, exists: ReadonlySet<
     )
     .map(({ claim, kinds }) => ({ claim, kinds }));
 
-  /* "开始粗剪": only on a cut begun this turn, and never on an empty bin. */
+  /* "开始粗剪": only on a cut begun this turn, and never on an empty bin.
+     Only 剪辑师's own: 策划 or 研究员 recommending "建议马上做视频" is advice,
+     not a claim, and used to be sent back as if they had said they were
+     cutting (a colleague's cut named by name is skipped in `findStartClaims`). */
   const cut = facts.cut ?? facts.receipts.some((r) => r.kind === "video_project" && r.action === "started");
-  if (!cut || facts.clips === 0) {
+  if (facts.self === "video" && (!cut || facts.clips === 0)) {
     for (const claim of findStartClaims(text, facts.self)) unbacked.push({ claim, kinds: ["video_project"] });
   }
 
@@ -1181,8 +1199,25 @@ async function answerOne(input: Chain, key: AgentKey, channel: Channel) {
         }
         if (event.status === "ok" && event.artifacts?.length) {
           receipts.push(...event.artifacts);
+          /* write_script outside any project started one for the draft. A
+             second write in this turn — the model trying again, or the
+             retry after a rejected reply — goes into that same project's
+             script, not into a third project with the same title. */
+          const started = event.name === "write_script" && !context.scriptId ? event.artifacts.find((a) => a.kind === "work_project") : undefined;
+          if (started) {
+            const [row] = await db
+              .select(projectCols)
+              .from(workProjects)
+              .where(and(eq(workProjects.id, started.id), eq(workProjects.tenantId, tenantId), isNull(workProjects.deletedAt)))
+              .limit(1);
+            if (row) {
+              wp ??= row;
+              if (row.scriptId) context.scriptId = row.scriptId;
+              if (row.videoProjectId) context.projectId = row.videoProjectId;
+            }
+          }
           /* A cut really began: the only thing "开始粗剪" may rest on. */
-          if (event.name === "first_cut" || event.name === "make_video") facts.cut = true;
+          if (CUT_TOOLS.has(event.name)) facts.cut = true;
           /* The whole edit went to the worker: the reply carries a chip that
              follows it, and so does the working row meanwhile. */
           const video = event.artifacts.find((a) => a.kind === "video_project");

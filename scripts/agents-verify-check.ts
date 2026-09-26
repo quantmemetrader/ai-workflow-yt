@@ -147,11 +147,12 @@ async function main() {
 
   /* 6. The planner's tools. */
   const { rows: agents } = await db.execute<{ id: string; email: string }>(
-    sql`select id, email from users where tenant_id = ${TENANT} and email in ('planning@agents.invalid', 'video@agents.invalid')`,
+    sql`select id, email from users where tenant_id = ${TENANT} and email in ('planning@agents.invalid', 'video@agents.invalid', 'script@agents.invalid')`,
   );
   const planner = await viewerById(agents.find((a) => a.email.startsWith("planning"))!.id);
   const editor = await viewerById(agents.find((a) => a.email.startsWith("video"))!.id);
-  if (!planner || !editor) throw new Error("agents missing");
+  const writerAgent = await viewerById(agents.find((a) => a.email.startsWith("script"))!.id);
+  if (!planner || !editor || !writerAgent) throw new Error("agents missing");
   const plannerTools = toolsFor(planner).map((t) => t.function.name);
   console.log("      planner offered:", plannerTools.join(", "));
   check(
@@ -246,11 +247,14 @@ async function main() {
     "要不要先用素材库画面，我这边开始粗剪？",
     "剪辑师开始粗剪了。",
     "Once the clips land I will start the rough cut.",
+    "I'll start the rough cut once the clips land.",
+    "拿到素材我就开始粗剪。",
   ]) {
     const c = findStartClaims(t, t.startsWith("剪辑师") ? "planning" : "video");
     check(`not a start claim of my own: ${t}`, c.length === 0, c);
   }
   check("English 'I'm starting the rough cut' is a start claim", findStartClaims("I'm starting the rough cut now.", "video").length === 1);
+  check("… also with a 'when' further on in the sentence", findStartClaims("I'm starting the rough cut now, and will post it when it is done.", "video").length === 1);
   const askedClips = judgeReply("《特斯拉Optimus产量暴增10倍》的脚本我收到了。素材箱里还没有素材，现在还不能开剪；素材一到我就按脚本分段出粗剪。", { self: "video", receipts: [], seen: handedScript, clips: 0, cut: false }, handedScript);
   check("asking for the clips with an empty bin passes the check", askedClips.ok, askedClips);
 
@@ -264,6 +268,17 @@ async function main() {
     { id: "bad2", label: "y", labelEn: "y", kind: "run", op: "stock-cut", projectId: "../../etc" },
   ] });
   check("a run button keeps only a known operation on a project id", runs.length === 1 && runs[0].op === "stock-cut", runs);
+
+  /* 15. Review of the branch: advice is not a start claim, and a rewrite is
+         not a second project. */
+  const advice = judgeReply("这个题值得现在就做视频，建议马上做视频，先出一版粗剪。", { self: "planning", receipts: [], seen: new Set() }, new Set());
+  check("策划 recommending 'mark this to make now' is not held as a start claim", advice.ok, advice);
+  const editorAdvice = judgeReply("我马上开始粗剪。", { self: "video", receipts: [], seen: new Set() }, new Set());
+  check("… while 剪辑师 saying it is starting, with no cut begun, still is", !editorAdvice.ok, editorAdvice);
+  const writerDef = toolsFor(writerAgent).find((t) => t.function.name === "write_script");
+  check("write_script takes a script_id for rewriting outside a project", Boolean((writerDef?.function.parameters as { properties?: Record<string, unknown> } | undefined)?.properties?.script_id));
+  const noSuch = await runTool(writerAgent, "write_script", JSON.stringify({ subject: "AI模型蒸馏", script_id: FAKE }));
+  check("… and a script_id that does not exist writes nothing and starts no project", /no script/i.test(noSuch.text) && !noSuch.artifacts, noSuch.text);
 
   console.log(failures ? `\n${failures} check(s) failed` : "\nall checks passed");
   process.exitCode = failures ? 1 : 0;

@@ -108,6 +108,9 @@ export async function pendingIn(channelIds: string[]): Promise<PendingRow[]> {
     .where(
       and(
         inArray(chatMessages.channelId, ids),
+        /* Bounded by when the turn began, so the (channel, created_at) index
+           answers it however long the channel is: no turn runs for an hour. */
+        sql`${chatMessages.createdAt} > now() - interval '1 hour'`,
         sql`${chatMessages.deletedAt} is not null`,
         sql`${chatMessages.meta} ? 'pending'`,
         sql`coalesce(${chatMessages.editedAt}, ${chatMessages.createdAt}) > now() - (${STALE_MS} * interval '1 millisecond')`,
