@@ -107,6 +107,12 @@ export function toMotionProps(g: GraphicSpecV2): Record<string, unknown> {
       delete p.group;
       break;
     }
+    case "stinger": {
+      /* The template draws the index itself (「05」 in the accent); the layout's text carries it too. */
+      const title = typeof p.titleZh === "string" && p.titleZh ? p.titleZh : String(p.text ?? "").replace(/^\s*\d{1,2}\s+/, "");
+      p.text = title;
+      break;
+    }
     case "headline": {
       const img = pathOf(p.image);
       const credit = (p.image as AssetRef)?.credit ?? null;
