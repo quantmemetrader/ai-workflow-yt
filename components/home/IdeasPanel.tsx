@@ -253,6 +253,7 @@ export function IdeasPanel({ zh, initial, canStart, canResearch = true }: { zh: 
               zh={zh}
               idea={idea}
               first={i === 0}
+              rank={i + 1}
               open={open === idea.id}
               onToggle={() => toggle(idea.id)}
               canStart={canStart}
@@ -318,6 +319,7 @@ function IdeaRow({
   zh,
   idea,
   first,
+  rank,
   open,
   onToggle,
   canStart,
@@ -333,6 +335,7 @@ function IdeaRow({
   zh: boolean;
   idea: Idea;
   first: boolean;
+  rank: number;
   open: boolean;
   onToggle: () => void;
   canStart: boolean;
@@ -377,6 +380,7 @@ function IdeaRow({
   return (
     <TopicRow
       first={first}
+      rank={rank}
       open={open}
       onToggle={onToggle}
       strength={idea.strength}

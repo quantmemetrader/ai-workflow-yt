@@ -34,8 +34,11 @@ export function TopicRow({
   action,
   children,
   notice,
+  rank,
 }: {
   first: boolean;
+  /** Place in a ranked list (1, 2, 3…), drawn as a big quiet number on the left; unset draws nothing there. */
+  rank?: number;
   open: boolean;
   /** Unset when there is nothing more to show: no chevron, no toggle. */
   onToggle?: () => void;
@@ -60,11 +63,11 @@ export function TopicRow({
       <div className={canOpen ? "tpr-head tpr-can" : "tpr-head"} onClick={onToggle}>
         {canOpen ? (
           <button type="button" className="tpr-hit" aria-expanded={open} aria-controls={open ? detailId : undefined}>
-            <RowText strength={strength} strengthTitle={strengthTitle} title={title} line={open ? null : line} />
+            <RowText rank={rank} strength={strength} strengthTitle={strengthTitle} title={title} line={open ? null : line} />
           </button>
         ) : (
           <span className="tpr-hit">
-            <RowText strength={strength} strengthTitle={strengthTitle} title={title} line={line} />
+            <RowText rank={rank} strength={strength} strengthTitle={strengthTitle} title={title} line={line} />
           </span>
         )}
         {meta}
@@ -80,7 +83,7 @@ export function TopicRow({
         ) : null}
       </div>
       {open && children ? (
-        <div id={detailId} style={{ padding: "0 14px 14px 58px" }}>
+        <div id={detailId} style={{ padding: `0 14px 14px ${rank ? 50 : 14}px` }}>
           {children}
         </div>
       ) : null}
@@ -89,10 +92,19 @@ export function TopicRow({
   );
 }
 
-function RowText({ strength, strengthTitle, title, line }: { strength: number | null; strengthTitle: string; title: string; line?: React.ReactNode }) {
+function RowText({ rank, strength, strengthTitle, title, line }: { rank?: number; strength: number | null; strengthTitle: string; title: string; line?: React.ReactNode }) {
+  /* A ranked list reads like a 热搜 board: a big light number, the top
+     pick's in orange. Five blue dots, then coloured pills, both read as
+     noise to the owner; the strength now lives in the order and the
+     number's tooltip. */
+  const hot = (strength ?? 0) >= 5;
   return (
     <>
-      <span className="tpr-dots">{strength ? <Strength n={strength} title={strengthTitle} size={5} /> : null}</span>
+      {rank ? (
+        <span className="tpr-rank" title={strength ? `${strengthTitle} ${Math.round(strength)}/5` : undefined} style={{ color: hot ? "#e8590c" : "#c4c4c4" }}>
+          {String(rank).padStart(2, "0")}
+        </span>
+      ) : null}
       <span style={{ minWidth: 0, display: "flex", flexDirection: "column" }}>
         <span className="tpr-title" title={title}>
           {title}
@@ -167,38 +179,14 @@ export function RowTag({ children, tone = "grey", title }: { children: React.Rea
  * (a step darker, `EMPTY_DOT`, so it still shows on white) for the rest.
  */
 export function Strength({ n, title }: { n: number; title: string; size?: number }) {
-  /* A word and a meter, not five dots: the owner asked for "something better
-     than dots" — five blue dots read as a rating of nothing in particular.
-     The researcher's 1–5 becomes how hot the idea is, in words anyone reads
-     at a glance, with a small rising-bars mark and a colour that warms with
-     it. `size` is kept for old callers; the chip has one size. */
+  /* Quiet text: "热度 4/5". Dots and then coloured pills were both too loud. */
   const k = Math.max(1, Math.min(5, Math.round(n)));
-  const h = HEAT[k];
   return (
-    <span
-      role="img"
-      aria-label={`${h.zh} ${k}/5`}
-      title={`${title} · ${k}/5`}
-      style={{ display: "inline-flex", alignItems: "center", gap: 4, height: 20, padding: "0 7px 0 5px", borderRadius: 10, background: h.bg, color: h.fg, fontSize: 11, fontWeight: 600, whiteSpace: "nowrap", flexShrink: 0, lineHeight: 1 }}
-    >
-      <svg viewBox="0 0 12 12" width="11" height="11" aria-hidden style={{ display: "block", flexShrink: 0 }}>
-        {[0, 1, 2, 3].map((i) => (
-          <rect key={i} x={i * 3} y={9 - i * 2.4} width="2.2" height={3 + i * 2.4} rx="0.8" fill="currentColor" opacity={i < Math.ceil((k * 4) / 5) ? 1 : 0.25} />
-        ))}
-      </svg>
-      <Tr zh={h.zh} en={h.en} />
+    <span title={title} style={{ fontSize: 11.5, color: "#8a8a8a", whiteSpace: "nowrap", flexShrink: 0, fontVariantNumeric: "tabular-nums" }}>
+      <Tr zh="热度" en="Heat" /> <b style={{ color: k >= 5 ? "#e8590c" : "#171717", fontWeight: 600 }}>{k}</b>/5
     </span>
   );
 }
-
-/** How hot, 1–5: the word and the colours. */
-const HEAT: Record<number, { zh: string; en: string; fg: string; bg: string }> = {
-  5: { zh: "爆款潜力", en: "Viral pick", fg: "#c2361b", bg: "#fdebe6" },
-  4: { zh: "很强", en: "Strong", fg: "#b8540a", bg: "#fdf0e2" },
-  3: { zh: "不错", en: "Good", fg: "#946400", bg: "#fbf4da" },
-  2: { zh: "一般", en: "Fair", fg: "#5f6670", bg: "#f0f1f3" },
-  1: { zh: "偏弱", en: "Weak", fg: "#80868f", bg: "#f3f3f4" },
-};
 
 /**
  * After a start from Home: the project exists and 编剧 may be writing.
@@ -287,7 +275,7 @@ export const IDEAS_CSS = `
 .tpr:not(.tpr-open) > .tpr-can:hover { background: #fafafa; }
 .tpr-hit { flex: 1 1 auto; min-width: 0; display: flex; align-items: flex-start; gap: 10px; padding: 0; border: 0; background: transparent; font: inherit; color: inherit; text-align: left; cursor: inherit; }
 .tpr-hit:focus-visible { outline: 2px solid #171717; outline-offset: 3px; border-radius: 6px; }
-.tpr-dots { width: 74px; height: 20px; display: inline-flex; align-items: center; flex-shrink: 0; }
+.tpr-rank { width: 26px; flex-shrink: 0; font-size: 19px; line-height: 21px; font-weight: 700; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
 .tpr-title { font-size: 13.5px; font-weight: 600; line-height: 20px; color: #171717; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tpr-open .tpr-title { white-space: normal; }
 .tpr-line { font-size: 12px; line-height: 18px; color: #8a8a8a; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
