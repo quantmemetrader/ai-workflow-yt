@@ -51,7 +51,9 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
     readHome(viewer, zh, { runningFor: agent }),
     listPeople(viewer),
     listProjectStages(viewer, { limit: 60, zh }),
-    layoutHas(layout, "ideas") ? latestIdeas(viewer, 6) : Promise.resolve([]),
+    /* Eight: the batch 研究员 wrote, and the topics people had checked from
+       the task box since (they join the latest batch, lib/ideas/check.ts). */
+    layoutHas(layout, "ideas") ? latestIdeas(viewer, 8) : Promise.resolve([]),
     layoutHas(layout, "extra") ? roleExtra(viewer, role) : Promise.resolve(null),
     layoutHas(layout, "suggestion") ? latestDigest(viewer.tenantId) : Promise.resolve(null),
   ]);
