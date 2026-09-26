@@ -3,6 +3,7 @@ import { setFileAccess, type AccessChoice } from "@/lib/files/access";
 import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import {
+  fileMeta,
   fileVersions,
   files,
   folders,
@@ -248,9 +249,61 @@ export async function importPicture(
 
   const body = new Uint8Array(await upstream.arrayBuffer());
   if (body.byteLength === 0) throw new Error("That picture came back empty");
+
+  return importPictureBytes(viewer, { bytes: body, mime, name: input.name, attribution: input.attribution, source: input.source, folderId: input.folderId });
+}
+
+/**
+ * What an importer learned about where a file came from, beyond the one
+ * attribution line: the platform, the permalink, the author, the licence,
+ * the window that was cut. Kept on `file_meta` beside the file. Free-form
+ * on purpose — the media library (`lib/media`) chooses the keys and is the
+ * one that reads them back.
+ */
+export type ImportMeta = Record<string, unknown>;
+
+async function rememberMeta(fileId: string, meta: ImportMeta | undefined) {
+  if (!meta || Object.keys(meta).length === 0) return;
+  await db.insert(fileMeta).values({ fileId, meta }).onConflictDoUpdate({ target: fileMeta.fileId, set: { meta } });
+}
+
+/* Everything brought in from outside is tagged `stock`, which is what keeps
+   it out of the top of Files; a source may add its own tag beside it. */
+const withStockTag = (tags: string[] | undefined) => Array.from(new Set(["stock", ...(tags ?? [])]));
+
+/* `Uint8Array<ArrayBufferLike>` (a Buffer, say) is not `BodyInit` to the
+   compiler though it is to fetch; a view over the same bytes, no copy. */
+const asBody = (bytes: Uint8Array): Uint8Array<ArrayBuffer> => new Uint8Array(bytes.buffer as ArrayBuffer, bytes.byteOffset, bytes.byteLength);
+
+/**
+ * A picture already in hand — downloaded, checked, perhaps converted — into
+ * the store, with the same rules as `importPicture`: the licence written on
+ * the file, the file in its owner's folder. This is the half the media
+ * library calls, since what it fetches has been through a downloader and
+ * a format check that a plain URL fetch cannot do.
+ */
+export async function importPictureBytes(
+  viewer: Viewer,
+  input: {
+    bytes: Uint8Array;
+    mime: string;
+    name: string;
+    attribution: string;
+    source: string;
+    folderId?: string | null;
+    meta?: ImportMeta;
+    tags?: string[];
+    width?: number | null;
+    height?: number | null;
+  },
+): Promise<{ id: string; name: string }> {
+  const mime = input.mime.split(";")[0].trim();
+  if (!mime.startsWith("image/")) throw new Error("That is not a picture");
+  const body = input.bytes;
+  if (body.byteLength === 0) throw new Error("That picture came back empty");
   if (body.byteLength > 25 * 1024 * 1024) throw new Error("That picture is too big to bring in");
 
-  const extension = mime.split("/")[1]?.replace("jpeg", "jpg").slice(0, 5) || "jpg";
+  const extension = mime.split("/")[1]?.replace("jpeg", "jpg").replace("svg+xml", "svg").slice(0, 5) || "jpg";
   const name = `${input.name.replace(/[\\/]+/g, " ").trim().slice(0, 80) || "picture"}.${extension}`;
 
   const { file, storageKey: key } = await beginUpload(viewer, {
@@ -260,14 +313,18 @@ export async function importPicture(
     folderId: input.folderId ?? (await ensureStockFolder(viewer)).id,
   });
 
-  const stored = await putObjectConfirmed(key, body, mime);
+  /* A Buffer read from disk is a view on an ArrayBuffer; TypeScript's lib
+     types it looser than `BodyInit` wants, hence the view. */
+  const stored = await putObjectConfirmed(key, asBody(body), mime);
 
   await db
     .update(files)
     .set({
       // Confirmed here rather than through the browser's complete step.
       checksum: stored.etag,
-      tags: ["stock"],
+      tags: withStockTag(input.tags),
+      width: input.width ?? null,
+      height: input.height ?? null,
       /* `text` is what search reads and what a person sees in the detail
          panel. The licence lives here because a credit that only exists in a
          chat transcript is a credit nobody can find later. */
@@ -276,6 +333,7 @@ export async function importPicture(
       updatedBy: viewer.id,
     })
     .where(eq(files.id, file.id));
+  await rememberMeta(file.id, input.meta);
 
   await audit(viewer, "file.import", {
     objectType: "file",
@@ -312,6 +370,31 @@ export async function importVideo(
 
   const body = new Uint8Array(await upstream.arrayBuffer());
   if (body.byteLength < 1000) throw new Error("That clip came back empty");
+
+  return importVideoBytes(viewer, { bytes: body, name: input.name, attribution: input.attribution, source: input.source, folderId: input.folderId });
+}
+
+/**
+ * A clip already in hand, into the store — the half of `importVideo` after
+ * the download. The media library arrives here with an MP4 it has already
+ * cut, normalised and measured; `localPath` says the bytes are also on disk
+ * so the poster and the probe read them there instead of writing a copy.
+ */
+export async function importVideoBytes(
+  viewer: Viewer,
+  input: {
+    bytes: Uint8Array;
+    localPath?: string;
+    name: string;
+    attribution: string;
+    source: string;
+    folderId?: string | null;
+    meta?: ImportMeta;
+    tags?: string[];
+  },
+): Promise<{ id: string; name: string; durationMs: number | null }> {
+  const body = input.bytes;
+  if (body.byteLength < 1000) throw new Error("That clip came back empty");
   if (body.byteLength > 120 * 1024 * 1024) throw new Error("That clip is too big to bring in");
 
   const name = `${input.name.replace(/[\\/]+/g, " ").trim().slice(0, 80) || "clip"}.mp4`;
@@ -321,25 +404,32 @@ export async function importVideo(
     sizeBytes: body.byteLength,
     folderId: input.folderId ?? (await ensureStockFolder(viewer)).id,
   });
-  const stored = await putObjectConfirmed(key, body, "video/mp4");
+  const stored = await putObjectConfirmed(key, asBody(body), "video/mp4");
 
-  /* Its length, now, from the bytes in hand rather than from the worker later. */
+  /* Its length and frame, now, from the bytes in hand rather than from the
+     worker later. A caller that still has the file on disk says so, and
+     the copy is skipped. */
   let durationMs: number | null = null;
+  let width: number | null = null;
+  let height: number | null = null;
   try {
     const { mkdtemp, writeFile, rm } = await import("node:fs/promises");
     const { tmpdir } = await import("node:os");
     const path = await import("node:path");
-    const dir = await mkdtemp(path.join(tmpdir(), "aura-import-"));
-    const local = path.join(dir, "clip.mp4");
-    await writeFile(local, body);
+    const dir = input.localPath ? null : await mkdtemp(path.join(tmpdir(), "aura-import-"));
+    const local = input.localPath ?? path.join(dir ?? "", "clip.mp4");
+    if (dir) await writeFile(local, body);
     const { probe, posterFromLocal, rememberPoster } = await import("@/lib/files/poster");
-    durationMs = (await probe(local)).durationMs;
+    const measured = await probe(local);
+    durationMs = measured.durationMs;
+    width = measured.width;
+    height = measured.height;
     // The thumbnail too, so Files and the bin show the clip at once rather
     // than after the poster job has had its turn behind a render.
     await posterFromLocal(local, key)
       .then((posterKey) => rememberPoster(file.id, posterKey))
       .catch(() => {});
-    await rm(dir, { recursive: true, force: true });
+    if (dir) await rm(dir, { recursive: true, force: true });
   } catch {
     durationMs = null;
   }
@@ -348,13 +438,16 @@ export async function importVideo(
     .update(files)
     .set({
       checksum: stored.etag,
-      tags: ["stock"],
+      tags: withStockTag(input.tags),
       durationMs,
+      width,
+      height,
       text: [input.attribution, input.source].filter(Boolean).join("\n"),
       updatedAt: new Date(),
       updatedBy: viewer.id,
     })
     .where(eq(files.id, file.id));
+  await rememberMeta(file.id, input.meta);
 
   // The poster, like any other upload's: the bin and Files draw it.
   await enqueue({
