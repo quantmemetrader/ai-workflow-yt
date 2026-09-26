@@ -39,9 +39,9 @@ export function RailAccount({ account, zh, wide }: { account: RailAccountInfo; z
       style={{
         display: "flex",
         alignItems: "center",
-        gap: 8,
-        margin: wide ? "4px 8px 4px" : "4px auto 4px",
-        padding: wide ? "4px 8px 4px 5px" : 3,
+        gap: 6,
+        margin: wide ? "4px 6px 4px" : "4px auto 4px",
+        padding: wide ? "3px 6px 3px 4px" : 3,
         borderRadius: 9,
         border: "1px solid #ececea",
         background: "#ffffff",
@@ -56,9 +56,9 @@ export function RailAccount({ account, zh, wide }: { account: RailAccountInfo; z
       {/* One line, not two: the name, then the role as a small pill. The
           owner found the two-line version too tall for the rail's foot. */}
       {wide ? (
-        <span style={{ display: "flex", alignItems: "center", minWidth: 0, gap: 6, flexGrow: 1 }}>
-          <span style={{ fontSize: 12.5, fontWeight: 600, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{who}</span>
-          <span style={{ marginLeft: "auto", fontSize: 10.5, fontWeight: 500, lineHeight: "16px", padding: "0 6px", borderRadius: 8, background: role.bg, color: role.fg, whiteSpace: "nowrap", flexShrink: 0 }}>
+        <span style={{ display: "flex", alignItems: "center", minWidth: 0, gap: 5, flexGrow: 1 }}>
+          <span style={{ fontSize: 12, fontWeight: 600, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{who}</span>
+          <span style={{ marginLeft: "auto", fontSize: 10, fontWeight: 500, lineHeight: "15px", padding: "0 5px", borderRadius: 8, background: role.bg, color: role.fg, whiteSpace: "nowrap", flexShrink: 0 }}>
             {zh ? <Tr zh={role.zh} en={role.en} /> : role.en}
           </span>
         </span>
@@ -70,10 +70,10 @@ export function RailAccount({ account, zh, wide }: { account: RailAccountInfo; z
 function Picture({ name, url }: { name: string; url: string | null }) {
   if (url) {
     // eslint-disable-next-line @next/next/no-img-element
-    return <img src={url} alt="" style={{ width: 22, height: 22, borderRadius: 11, objectFit: "cover", flexShrink: 0 }} />;
+    return <img src={url} alt="" style={{ width: 20, height: 20, borderRadius: 10, objectFit: "cover", flexShrink: 0 }} />;
   }
   return (
-    <span aria-hidden style={{ width: 22, height: 22, borderRadius: 11, background: "#e2e2e2", color: "#525252", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 600, flexShrink: 0 }}>
+    <span aria-hidden style={{ width: 20, height: 20, borderRadius: 10, background: "#e2e2e2", color: "#525252", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 600, flexShrink: 0 }}>
       {name.slice(0, 1).toUpperCase()}
     </span>
   );
