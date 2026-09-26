@@ -386,48 +386,72 @@ export type RepeatCluster = {
   /** Output ms where the first saying starts and where the second starts. */
   firstMs: number;
   secondMs: number;
-  /** The longest run of characters said twice. */
+  /** The longest run of units (Han characters, Latin words, numbers) said twice. */
   chars: number;
   text: string;
-  /** `retake` at six characters or more; `suspect` at five, which is where parallel rhetoric lives (一轮比一轮官方 / 一轮比一轮激进). */
+  /** `retake` at six units or more; `suspect` at five, which is where parallel rhetoric lives (一轮比一轮官方 / 一轮比一轮激进). */
   kind: "retake" | "suspect";
   runs: number;
 };
 
 /**
+ * One unit of speech for the repeat scan: a Han character, or a whole run
+ * of Latin letters / digits. Counting Latin letter by letter made
+ * 「Anthropic的」 said twice inside twenty seconds a ten-character
+ * "retake" — a name is one thing said, however long it is spelled.
+ */
+const UNIT = /[㐀-䶿一-鿿豈-﫿]|[A-Za-z0-9.%]+/g;
+
+/** Units back into readable text: a space between two Latin/digit runs, nothing between Han. */
+function joinUnits(units: readonly string[]): string {
+  let out = "";
+  for (const u of units) out += (/[A-Za-z0-9]$/.test(out) && /^[A-Za-z0-9]/.test(u) ? " " : "") + u;
+  return out;
+}
+
+/**
  * Phrases said twice within twenty seconds, from word timings alone.
  *
- * Every character gets a time (interpolated across its word), the stream
- * is scanned for five-character runs that recur inside the window, each
- * hit is extended to the longest common run, and hits that belong to the
- * same re-say (first starts within six seconds, same offset within three)
- * are clustered. A restart such as 而且这些账号不是正常注册的… followed by
+ * Every unit gets a time (interpolated across its word), the stream is
+ * scanned for five-unit runs that recur inside the window, each hit is
+ * extended to the longest common run, and hits that belong to the same
+ * re-say (first starts within six seconds, same offset within three) are
+ * clustered. A restart such as 而且这些账号不是正常注册的… followed by
  * 而且这些账号被Anthropic指控不是正常注册的… produces three or four runs
  * that all point at one event; the cluster reports the longest.
+ *
+ * A run has to carry at least `minHan` (four) Han characters to count:
+ * this is a Mandarin take, and a repeated run made of Latin fragments (a
+ * name whisper split into syllables, said twice, plus a two-character
+ * verb) is not a retake. 一轮比一轮 has five and stays a suspect; the
+ * real retakes on the test clip have eleven or more.
  *
  * Deliberately simpler than W1's `findRetakes` — no brief phrases, no
  * model — because its job is to catch what W1 missed, on the *output*.
  */
-export function findRepeats(words: readonly Word[], opts: { windowMs?: number; minChars?: number } = {}): RepeatCluster[] {
+export function findRepeats(words: readonly Word[], opts: { windowMs?: number; minChars?: number; minHan?: number } = {}): RepeatCluster[] {
   const windowMs = opts.windowMs ?? 20_000;
   const minChars = opts.minChars ?? 5;
-  const chars: string[] = [];
+  const minHan = opts.minHan ?? 4;
+  const units: string[] = [];
   const times: number[] = [];
   for (const w of words) {
-    const cs = (w.text.match(KEEP) ?? []).map((c) => c.toLowerCase());
-    if (!cs.length) continue;
+    const us = (w.text.match(UNIT) ?? []).map((c) => c.toLowerCase());
+    if (!us.length) continue;
     const span = Math.max(1, w.endMs - w.startMs);
-    cs.forEach((c, k) => {
-      chars.push(c);
-      times.push(w.startMs + Math.round((span * k) / cs.length));
+    us.forEach((c, k) => {
+      units.push(c);
+      times.push(w.startMs + Math.round((span * k) / us.length));
     });
   }
-  const n = chars.length;
+  const n = units.length;
   const hits: { i: number; j: number; len: number }[] = [];
-  /* Index of every 5-gram's positions, so the scan is linear in practice. */
+  /* Index of every 5-gram's positions, so the scan is linear in practice.
+     The joiner keeps unit boundaries unambiguous (an|thro ≠ ant|hro). */
+  const gram = (i: number) => units.slice(i, i + minChars).join("\u0001");
   const index = new Map<string, number[]>();
   for (let i = 0; i + minChars <= n; i++) {
-    const g = chars.slice(i, i + minChars).join("");
+    const g = gram(i);
     const list = index.get(g);
     if (list) list.push(i);
     else index.set(g, [i]);
@@ -435,12 +459,12 @@ export function findRepeats(words: readonly Word[], opts: { windowMs?: number; m
   const covered = new Set<number>();
   for (let i = 0; i + minChars <= n; i++) {
     if (covered.has(i)) continue;
-    const g = chars.slice(i, i + minChars).join("");
-    const positions = index.get(g) ?? [];
+    const positions = index.get(gram(i)) ?? [];
     const j = positions.find((p) => p >= i + minChars && times[p] - times[i] <= windowMs && times[p] > times[i]);
     if (j === undefined) continue;
     let len = minChars;
-    while (i + len < j && j + len < n && chars[i + len] === chars[j + len]) len++;
+    while (i + len < j && j + len < n && units[i + len] === units[j + len]) len++;
+    if (hanCount(units.slice(i, i + len).join("")) < minHan) continue;
     hits.push({ i, j, len });
     for (let k = i; k < i + len; k++) covered.add(k);
   }
@@ -456,13 +480,13 @@ export function findRepeats(words: readonly Word[], opts: { windowMs?: number; m
       near.runs++;
       if (h.len > near.chars) {
         near.chars = h.len;
-        near.text = chars.slice(h.i, h.i + h.len).join("");
+        near.text = joinUnits(units.slice(h.i, h.i + h.len));
         near.firstMs = Math.min(near.firstMs, firstMs);
       }
       near.kind = near.chars >= 6 ? "retake" : "suspect";
       continue;
     }
-    clusters.push({ firstMs, secondMs, chars: h.len, text: chars.slice(h.i, h.i + h.len).join(""), kind: h.len >= 6 ? "retake" : "suspect", runs: 1 });
+    clusters.push({ firstMs, secondMs, chars: h.len, text: joinUnits(units.slice(h.i, h.i + h.len)), kind: h.len >= 6 ? "retake" : "suspect", runs: 1 });
   }
   return clusters.sort((a, b) => a.firstMs - b.firstMs);
 }
@@ -817,6 +841,38 @@ export async function measureFaces(mp4: string, timesS: number[], opts: { python
   }));
 }
 
+export type FontSelect = { selections: { family: string; weight: number; face: string; file: string }[]; glyphFallbacks: number };
+
+/** libass's own report of the faces it picked, from ffmpeg's verbose log. Pure, so the parsing is testable. */
+export function parseFontSelect(log: string): FontSelect {
+  const selections: FontSelect["selections"] = [];
+  for (const m of log.matchAll(/fontselect: \((.+?), (\d+), \d+\) -> (.+?), \d+, (\S+)/g)) {
+    const [, family, weight, file, face] = m;
+    if (!selections.some((s) => s.family === family && s.weight === Number(weight) && s.face === face)) selections.push({ family, weight: Number(weight), face, file });
+  }
+  const glyphFallbacks = [...log.matchAll(/Glyph 0x[0-9A-Fa-f]+ not found/g)].length;
+  return { selections, glyphFallbacks };
+}
+
+/**
+ * Which faces libass actually draws the captions with: the ASS is burned
+ * onto a black 1080×1920 source at 4 fps up to just past the first event
+ * of every style, and libass's `fontselect` lines are read back. This is
+ * the same fontconfig lookup the export render makes, so a Black face
+ * that is named in the style but missing on the box shows up as the
+ * Regular or Bold face it fell back to. `fontsDir` mirrors a renderer that
+ * passes its own font folder.
+ */
+export async function measureFontSelect(assFile: string, ass: AssFile, opts: { fontsDir?: string | null } = {}): Promise<FontSelect> {
+  const firstMid = new Map<string, number>();
+  for (const e of ass.events) if (!firstMid.has(e.style)) firstMid.set(e.style, (e.startMs + e.endMs) / 2);
+  const until = Math.min(600, Math.max(1, ...[...firstMid.values()].map((ms) => ms / 1000 + 0.5)));
+  const esc = (p: string) => p.replace(/\\/g, "\\\\").replace(/:/g, "\\:").replace(/'/g, "\\'");
+  const filter = `subtitles=filename='${esc(assFile)}'${opts.fontsDir ? `:fontsdir='${esc(opts.fontsDir)}'` : ""}`;
+  const log = await stderrOf("ffmpeg", ["-hide_banner", "-nostats", "-loglevel", "verbose", "-f", "lavfi", "-i", `color=c=black:s=${ass.playResX}x${ass.playResY}:r=4:d=${until.toFixed(2)}`, "-vf", filter, "-f", "null", "-"], FFMPEG_TIMEOUT);
+  return parseFontSelect(log);
+}
+
 /**
  * The output re-transcribed by the local whisper, with the brief's names as
  * hotwords so the anchors are heard the way the brief spells them. Words
@@ -936,16 +992,41 @@ export function evaluateRetakes(outputWords: Word[] | null, cuts: GradeCut[], go
   }
   if (!outputWords) issues.push(issue(null, "cut", "med", "output transcript missing; only the gold spans were checked", "没有成片转写，只核对了已知重说的时间段"));
   const total = retakes.length + kept.length;
-  return gate("cut.retakes", "no retakes in the output", "成片无重说", true, !outputWords && !goldRetakes ? null : total === 0, `${retakes.length} by transcript, ${kept.length} gold spans kept, ${clusters.length - retakes.length} suspect`, "0 retakes", issues, { clusters, kept });
+  /* Without a transcript the gold spans can prove a fault but never its
+     absence: a kept span fails the gate, a clean one leaves it undecided
+     (an empty `retakes: []` in a hold-out gold used to read as a pass). */
+  const pass = outputWords ? total === 0 : kept.length ? false : null;
+  return gate("cut.retakes", "no retakes in the output", "成片无重说", true, pass,`${retakes.length} by transcript, ${kept.length} gold spans kept, ${clusters.length - retakes.length} suspect`, "0 retakes", issues, { clusters, kept });
 }
 
-/** Every brief anchor exactly once in the output transcript. */
-export function evaluateAnchors(outputWords: Word[] | null, anchors: GradeAnchors | null | undefined, glossary: GradeGlossary | null | undefined): Gate {
+/**
+ * Every brief anchor exactly once in the output transcript.
+ *
+ * The transcript is the witness; the burned captions are the second one.
+ * Whisper renders a phrase differently from one pass to the next (the
+ * gold's 「核心就一个词」 comes back as 「核心就有一个词」 on the output),
+ * and a hard gate that fails on that would fail every v2 run for nothing.
+ * So a phrase the transcript does not carry is looked for in the captions
+ * — they follow the cut, so a sentence W1 dropped is gone from them too —
+ * and counted from there with a low-severity note saying so. The
+ * transcript's count wins whenever it is above zero.
+ */
+export function evaluateAnchors(outputWords: Word[] | null, anchors: GradeAnchors | null | undefined, glossary: GradeGlossary | null | undefined, captions: readonly GradeCaption[] | null = null): Gate {
   if (!outputWords || !anchors) return gate("cut.anchors", "every brief anchor exactly once", "简报锚点各出现一次", true, null, "缺输入", "each = 1", [issue(null, "cut", "med", "transcript or anchors missing", "缺成片转写或锚点清单")]);
   const mapped = normaliseWithMap(outputWords, glossary);
   const hay = mapped.text;
+  const capMapped = captions?.length ? normaliseWithMap(captions.map((c) => ({ text: c.text, startMs: c.startMs, endMs: c.endMs })), glossary) : null;
   const issues: Issue[] = [];
-  const rows: { text: string; count: number; atMs: number[] }[] = [];
+  const rows: { text: string; count: number; atMs: number[]; via: "transcript" | "captions" }[] = [];
+  const findAll = (text: string, starts: number[], needle: string): number[] => {
+    const out: number[] = [];
+    let i = text.indexOf(needle);
+    while (needle && i !== -1) {
+      out.push(starts[i] ?? 0);
+      i = text.indexOf(needle, i + needle.length);
+    }
+    return out;
+  };
   const check = (text: string, variants: string[]) => {
     const forms = [text, ...variants].map((v) => normalise(v, glossary)).filter(Boolean);
     let count = 0;
@@ -957,21 +1038,34 @@ export function evaluateAnchors(outputWords: Word[] | null, anchors: GradeAnchor
         best = f;
       }
     }
-    const atMs: number[] = [];
-    let i = hay.indexOf(best);
-    while (best && i !== -1) {
-      atMs.push(mapped.startsMs[i] ?? 0);
-      i = hay.indexOf(best, i + best.length);
+    let atMs = findAll(hay, mapped.startsMs, best);
+    let via: "transcript" | "captions" = "transcript";
+    if (count === 0 && capMapped) {
+      for (const f of forms) {
+        const n = countOccurrences(capMapped.text, f);
+        if (n > count) {
+          count = n;
+          best = f;
+        }
+      }
+      if (count > 0) {
+        via = "captions";
+        atMs = findAll(capMapped.text, capMapped.startsMs, best);
+        issues.push(issue(atMs[0] ?? null, "cut", "low", `anchor 「${text}」 is not in the transcript but the caption at ${atMs.map(fmt).join(", ")} carries it (whisper heard it differently)`, `锚点「${text}」转写里没有，但 ${atMs.map(fmt).join("、")} 的字幕里有（whisper 听成了别的）`));
+      }
     }
-    rows.push({ text, count, atMs });
+    rows.push({ text, count, atMs, via });
     if (count !== 1) {
-      issues.push(issue(atMs[1] ?? atMs[0] ?? null, "cut", count === 0 ? "high" : "med", `anchor 「${text}」 appears ${count} times${atMs.length ? ` (${atMs.map(fmt).join(", ")})` : ""}`, count === 0 ? `锚点「${text}」在成片里消失了` : `锚点「${text}」出现了 ${count} 次（${atMs.map(fmt).join("、")}）`));
+      issues.push(issue(atMs[1] ?? atMs[0] ?? null, "cut", count === 0 ? "high" : "med", `anchor 「${text}」 appears ${count} times${atMs.length ? ` (${atMs.map(fmt).join(", ")})` : ""}${via === "captions" ? " [captions]" : ""}`, count === 0 ? `锚点「${text}」在成片里消失了` : `锚点「${text}」出现了 ${count} 次（${atMs.map(fmt).join("、")}）`));
     }
   };
   for (const p of anchors.quotedPhrases ?? []) check(p.text, (p.mentions ?? []).map((m) => m.asTranscribed ?? ""));
   for (const n of anchors.numbers ?? []) check(n.text, (n.mentions ?? []).map((m) => m.asTranscribed ?? ""));
   const bad = rows.filter((r) => r.count !== 1);
-  return gate("cut.anchors", "every brief anchor exactly once", "简报锚点各出现一次", true, bad.length === 0, `${rows.length - bad.length}/${rows.length} exactly once (${rows.filter((r) => r.count === 0).length} missing, ${rows.filter((r) => r.count > 1).length} repeated)`, "each = 1", issues, { rows });
+  const viaCaptions = rows.filter((r) => r.via === "captions").length;
+  /* A gold with no quoted phrases and no numbers has nothing to check: undecided, not 0/0 passed. */
+  if (!rows.length) issues.push(issue(null, "cut", "med", "the anchors list no quoted phrases or numbers", "锚点清单里没有引语或数字，无从核对"));
+  return gate("cut.anchors", "every brief anchor exactly once", "简报锚点各出现一次", true, rows.length ? bad.length === 0 : null,`${rows.length - bad.length}/${rows.length} exactly once (${rows.filter((r) => r.count === 0).length} missing, ${rows.filter((r) => r.count > 1).length} repeated${viaCaptions ? `, ${viaCaptions} via captions` : ""})`, "each = 1", issues, { rows });
 }
 
 /** Output ms where a phrase is first said, on the glossary-mapped text. */
@@ -991,8 +1085,10 @@ export function evaluatePauses(outputWords: Word[] | null, silences: Silence[] |
   const sum = inner.reduce((a, s) => a + (s.endMs - s.startMs), 0);
   for (const s of inner.slice(0, 80)) issues.push(issue(s.startMs, "cut", s.endMs - s.startMs > 800 ? "med" : "low", `pause of ${((s.endMs - s.startMs) / 1000).toFixed(2)} s`, `停顿 ${((s.endMs - s.startMs) / 1000).toFixed(2)} 秒`));
   const firstWord = outputWords?.[0]?.startMs ?? null;
-  if (firstWord !== null && firstWord > 300) issues.unshift(issue(0, "hook", "med", `first word at ${(firstWord / 1000).toFixed(2)} s`, `第一个字在 ${(firstWord / 1000).toFixed(2)} 秒才出现（应 ≤ 0.3 秒）`));
-  return gate("cut.pauses", "no pause over 0.35 s", "无超过 0.35 秒的停顿", true, inner.length === 0, `${inner.length} pauses ≥ 0.35 s (${(sum / 1000).toFixed(1)} s in total${floor ? `; floor ${floor.floorDb.toFixed(0)} dB, threshold ${floor.thresholdDb.toFixed(0)} dB` : ""}); first word at ${firstWord === null ? "?" : (firstWord / 1000).toFixed(2)} s`, "0 pauses; first word ≤ 0.3 s", issues, { pauses: inner.length, pauseMs: sum, firstWordMs: firstWord, floor });
+  const lateStart = firstWord !== null && firstWord > 300;
+  if (lateStart) issues.unshift(issue(0, "hook", "med", `first word at ${(firstWord / 1000).toFixed(2)} s`, `第一个字在 ${(firstWord / 1000).toFixed(2)} 秒才出现（应 ≤ 0.3 秒）`));
+  /* The lead-in is excluded from the pause scan above, so the first-word rule has to be part of the verdict or a 1 s dead start passes. */
+  return gate("cut.pauses", "no pause over 0.35 s", "无超过 0.35 秒的停顿", true, inner.length === 0 && !lateStart,`${inner.length} pauses ≥ 0.35 s (${(sum / 1000).toFixed(1)} s in total${floor ? `; floor ${floor.floorDb.toFixed(0)} dB, threshold ${floor.thresholdDb.toFixed(0)} dB` : ""}); first word at ${firstWord === null ? "?" : (firstWord / 1000).toFixed(2)} s`, "0 pauses; first word ≤ 0.3 s", issues, { pauses: inner.length, pauseMs: sum, firstWordMs: firstWord, floor });
 }
 
 /**
@@ -1066,9 +1162,13 @@ export function evaluateUniqueness(input: GradeInput, scores: CutawayScore[]): G
     authorOver++;
     issues.push(issue(input.cutaways[idx[2]].startMs, "cutaways", "med", `author ${key} has ${idx.length} assets (cap 2)`, `同一作者 ${key} 的素材 ${idx.length} 条（上限 2）`));
   }
-  /* Near-duplicate frames across different ids: the same footage re-imported as three files. */
+  /* Near-duplicate frames across different ids: the same footage re-imported
+     as three files. Only frames that show the asset itself are compared — a
+     frame grabbed off the render because the asset is not on this box
+     shows the host under a small window, and two of those look alike for
+     the wrong reason. A `full` cutaway's render frame is the asset. */
   let near = 0;
-  const hashed = scores.filter((s) => s.dhash);
+  const hashed = scores.filter((s) => s.dhash && (s.scoredOn === "asset" || input.cutaways[s.index]?.layout === "full"));
   for (let a = 0; a < hashed.length; a++) {
     for (let b = a + 1; b < hashed.length; b++) {
       const ca = input.cutaways[hashed[a].index];
@@ -1185,8 +1285,13 @@ export function evaluateRelevance(input: GradeInput, scores: CutawayScore[]): Ga
     if (a && BANNED_SOURCE_IDS[a.sourceId] !== undefined && BANNED_SOURCE_IDS[a.sourceId]) issues.push(issue(c.startMs, "relevance", "high", `known v1 mispick: ${BANNED_SOURCE_IDS[a.sourceId]}`, `v1 的错误素材又回来了：${a.platform}:${a.sourceId}`));
     if (CHEESY.test(s.reason)) issues.push(issue(c.startMs, "cringe", "med", `vision calls it staged stock: ${s.reason}`, `视觉模型认为是摆拍素材：${s.reason}`));
   }
-  const pass = scored === 0 ? null : ok === scored;
-  return gate("cutaways.relevance", "every cutaway ≥ 7 (people ≥ 8) on re-score", "每个切出镜头相关度 ≥ 7（人物 ≥ 8）", true, pass, scored ? `${ok}/${scored} pass, mean ${(sum / scored).toFixed(1)}` : "not scored", "all ≥ 7 / 8", issues, { scores: scores.map((s) => ({ index: s.index, score: s.score, reason: s.reason, scoredOn: s.scoredOn })) });
+  /* A cutaway the model never scored (no frame, a failed call) is not a
+     pass: one low score fails the gate, otherwise any gap leaves it
+     undecided — 1 scored out of 15 used to read as "all pass". */
+  const unscored = input.cutaways.length - scored;
+  if (unscored > 0) issues.push(issue(null, "relevance", "med", `${unscored} of ${input.cutaways.length} cutaways were not scored`, `${input.cutaways.length} 个切出镜头里有 ${unscored} 个没有打分`));
+  const pass = ok < scored ? false : scored === 0 || unscored > 0 ? null : true;
+  return gate("cutaways.relevance", "every cutaway ≥ 7 (people ≥ 8) on re-score", "每个切出镜头相关度 ≥ 7（人物 ≥ 8）", true, pass, scored ? `${ok}/${scored} pass, mean ${(sum / scored).toFixed(1)}${unscored ? `, ${unscored} unscored` : ""}` : "not scored","all ≥ 7 / 8", issues, { scores: scores.map((s) => ({ index: s.index, score: s.score, reason: s.reason, scoredOn: s.scoredOn })) });
 }
 
 /** ≥ 60 % of entity/person/product beats resolved to a platform/web asset that also scores. */
@@ -1237,15 +1342,28 @@ export function evaluateOverlaps(input: GradeInput): Gate {
   return gate("layout.overlaps", "one non-caption layer at a time", "同一时间只有一层非字幕元素", true, issues.length === 0, `${issues.length} overlaps`, "0", issues);
 }
 
-/** Every non-furniture graphic inside x 64–930 / y 220–1440. */
+/**
+ * Every non-furniture graphic inside x 64–930 / y 220–1440.
+ *
+ * A box that covers the whole frame is an opaque card (the end card, a
+ * stinger's backdrop): its text sits somewhere inside and the alpha box
+ * cannot say where, so it is reported as unmeasured rather than as a
+ * breach of every edge at once.
+ */
 export function evaluateZones(input: GradeInput): Gate {
   const { width: W, height: H } = input;
   const issues: Issue[] = [];
   let measured = 0;
+  let opaque = 0;
   for (const g of input.graphics) {
     if (g.furniture || FURNITURE_KINDS.has(g.kind) || !g.box) continue;
-    measured++;
     const [x, y, w, h] = g.box;
+    if (w * h >= 0.9 * W * H) {
+      opaque++;
+      issues.push(issue(g.startMs, "layout", "low", `${g.kind} 「${(g.text ?? "").slice(0, 20)}」 is a full-frame card; its text was not zone-checked`, `${g.kind}「${(g.text ?? "").slice(0, 20)}」是整幅卡片，文字位置未核对安全区`));
+      continue;
+    }
+    measured++;
     const bad: string[] = [];
     if (y < ZONES.unsafeTop * H - 2) bad.push(`top ${y} < ${Math.round(ZONES.unsafeTop * H)}`);
     if (y + h > ZONES.unsafeBottom * H + 2) bad.push(`bottom ${y + h} > ${Math.round(ZONES.unsafeBottom * H)}`);
@@ -1254,13 +1372,19 @@ export function evaluateZones(input: GradeInput): Gate {
     if (bad.length) issues.push(issue(g.startMs, "layout", "med", `${g.kind} 「${(g.text ?? "").slice(0, 20)}」 leaves the safe area: ${bad.join(", ")}`, `${g.kind}「${(g.text ?? "").slice(0, 20)}」超出安全区：${bad.join("，")}`));
   }
   const unmeasured = input.graphics.filter((g) => !g.furniture && !FURNITURE_KINDS.has(g.kind) && !g.box).length;
-  return gate("layout.zones", "no text in platform UI zones", "文字不进平台 UI 区", true, measured === 0 && unmeasured > 0 ? null : issues.length === 0, `${issues.length} of ${measured} graphics outside the safe area${unmeasured ? ` (${unmeasured} unmeasured)` : ""}`, "0", issues);
+  const breaches = issues.filter((i) => i.severity !== "low").length;
+  return gate("layout.zones", "no text in platform UI zones", "文字不进平台 UI 区", true, measured === 0 && unmeasured + opaque > 0 ? null : breaches === 0, `${breaches} of ${measured} graphics outside the safe area${opaque ? ` (${opaque} full-frame, not measurable)` : ""}${unmeasured ? ` (${unmeasured} unmeasured)` : ""}`, "0", issues);
 }
 
 /**
- * No text on the face: at every sampled host frame, the graphics on screen
- * and the caption must clear the detected face box by 40 px; the caption's
- * top edge must sit 40 px under the chin.
+ * Nothing on the face: at every sampled host frame, the graphics on
+ * screen, any picture that shares the frame with the host (a v1 centred
+ * or corner still) and the caption must clear the detected face box by
+ * 40 px; the caption's top edge must sit 40 px under the chin. Text and
+ * pictures are counted apart in the value so the lead can see which rule
+ * broke. `full`, `split` and `run` moments are not sampled (grade.ts
+ * `hostTimes`): the detector would find the face in the footage, or the
+ * presenter circle, and read the picture as covering it.
  */
 export function evaluateFace(input: GradeInput, faces: FaceSample[], ass: AssFile | null): Gate {
   const { width: W, height: H } = input;
@@ -1269,6 +1393,7 @@ export function evaluateFace(input: GradeInput, faces: FaceSample[], ass: AssFil
   const chinGap = Math.round(ZONES.chinGap * H);
   const issues: Issue[] = [];
   let hits = 0;
+  let pictureHits = 0;
   let checked = 0;
   let chinBad = 0;
   const eyes: number[] = [];
@@ -1286,6 +1411,14 @@ export function evaluateFace(input: GradeInput, faces: FaceSample[], ass: AssFil
         issues.push(issue(tMs, "layout", "high", `${g.kind} 「${(g.text ?? "").slice(0, 20)}」 covers the face at ${f.t.toFixed(1)} s`, `${g.kind}「${(g.text ?? "").slice(0, 20)}」在 ${f.t.toFixed(1)} 秒压在脸上`));
       }
     }
+    input.cutaways.forEach((c, i) => {
+      if (!c.box || tMs < c.startMs || tMs > c.endMs) return;
+      if (intersects(c.box, face)) {
+        hits++;
+        pictureHits++;
+        issues.push(issue(tMs, "layout", "high", `cutaway#${i} (${c.layout}) picture covers the face at ${f.t.toFixed(1)} s`, `切出镜头#${i}（${c.layout}）的画面在 ${f.t.toFixed(1)} 秒压在脸上`));
+      }
+    });
     if (ass) {
       for (const e of ass.events) {
         if (tMs < e.startMs || tMs > e.endMs) continue;
@@ -1303,7 +1436,10 @@ export function evaluateFace(input: GradeInput, faces: FaceSample[], ass: AssFil
     }
   }
   const eyeIn = eyes.filter((e) => e >= 0.3 && e <= 0.38).length;
-  return gate("layout.face", "no text on the face", "文字不压脸", true, hits === 0, `${hits} hits over ${checked} host frames; eye line 30–38 % in ${eyeIn}/${eyes.length}`, "0 hits", issues, { checked, hits, chinBad, eyeLine: { inBand: eyeIn, of: eyes.length, min: eyes.length ? Math.min(...eyes) : null, max: eyes.length ? Math.max(...eyes) : null } });
+  /* Samples came back but none found a face (a broken detector, a wrong
+     script): nothing was checked, so nothing passed. */
+  if (!checked) issues.push(issue(null, "layout", "med", `the detector found no face in ${faces.length} host frames`, `${faces.length} 帧主持人画面里都没检测到人脸`));
+  return gate("layout.face", "nothing on the face", "文字和画面不压脸", true, checked ? hits === 0 : null,`${hits} hits (${hits - pictureHits} text, ${pictureHits} pictures) over ${checked} host frames; eye line 30–38 % in ${eyeIn}/${eyes.length}`, "0 hits", issues, { checked, hits, textHits: hits - pictureHits, pictureHits, chinBad, eyeLine: { inBand: eyeIn, of: eyes.length, min: eyes.length ? Math.min(...eyes) : null, max: eyes.length ? Math.max(...eyes) : null } });
 }
 
 /** Visual change every 2–4 s on average, never > 5 s without one, none closer than 0.8 s. */
@@ -1353,7 +1489,7 @@ export function evaluateCadence(input: GradeInput, sceneChanges: number[] | null
  * characters on screen ≥ 0.5 s, breaks never inside a number or a glossary
  * term, and none of the transcriber's misspellings burned in.
  */
-export function evaluateCaptions(ass: AssFile | null, glossary: GradeGlossary | null | undefined, terms: string[], spec: { size: number; secondSize: number; family: RegExp }): Gate[] {
+export function evaluateCaptions(ass: AssFile | null, glossary: GradeGlossary | null | undefined, terms: string[], spec: { size: number; secondSize: number; family: RegExp }, fonts: FontSelect | null = null): Gate[] {
   if (!ass) {
     const none = [issue(null, "captions", "med", "no ASS file", "没有字幕文件")];
     return [
@@ -1428,24 +1564,48 @@ export function evaluateCaptions(ass: AssFile | null, glossary: GradeGlossary | 
       }
     }
   }
+  /* Misspellings are matched case-folded (whisper writes enterobic as often
+     as Enterobic), and the correct spelling is blanked out first so a form
+     that is part of its own correction (Anthrop inside Anthropic) only
+     counts where it stands alone. */
   const missIssues: Issue[] = [];
   let misses = 0;
   for (const e of main) {
+    const lower = e.text.toLowerCase();
     for (const g of glossary ?? []) {
+      const hay = g.to ? lower.split(g.to.toLowerCase()).join("\u0000") : lower;
       for (const f of g.from) {
-        if (f && e.text.includes(f)) {
+        const lf = f.toLowerCase();
+        if (!lf) continue;
+        if (hay.includes(lf)) {
           misses++;
           missIssues.push(issue(e.startMs, "captions", "high", `「${f}」 burned in (should be 「${g.to}」)`, `字幕里是「${f}」，应为「${g.to}」`));
         }
       }
     }
   }
-  const style = ass.styles.get("Aura") ?? [...ass.styles.values()][0];
-  const second = ass.styles.get("Second");
+  /* v1 names its styles Aura / Second, W2's v2 file Reel / ReelEn; the
+     main-language style is whatever layer 0 uses, the second line the
+     style of layer 1, so neither check silently reads nothing. */
+  const styleOf = (layer: number) => {
+    const name = ass.events.find((e) => e.layer === layer)?.style;
+    return name ? ass.styles.get(name) : undefined;
+  };
+  const style = styleOf(0) ?? ass.styles.get("Aura") ?? [...ass.styles.values()][0];
+  const second = styleOf(1) ?? ass.styles.get("Second");
   const typo: Issue[] = [];
   const sizeOk = style ? Math.abs(style.size - spec.size) <= 3 : false;
   const familyOk = style ? spec.family.test(style.family) : false;
   if (style && !familyOk) typo.push(issue(null, "typography", "med", `caption face is "${style.family}" ${style.bold ? "bold" : "regular"}, not the Black face`, `字幕字体是「${style.family}」${style.bold ? "粗体" : "常规"}，不是 Black`));
+  /* The style can name the Black face and libass still draw Regular when
+     the font is not installed: the face libass actually selected (from
+     `measureFontSelect`) decides, and a glyph it had to borrow from
+     another font counts as a fallback too. */
+  const picked = fonts?.selections.filter((s) => style && s.family.toLowerCase() === style.family.toLowerCase()) ?? [];
+  const fontOk: boolean | null = !fonts || !style ? null : picked.length === 0 ? null : picked.every((s) => spec.family.test(s.face) || /Heavy/i.test(s.face)) && fonts.glyphFallbacks === 0;
+  if (fonts && style && picked.length === 0) typo.push(issue(null, "typography", "low", `libass logged no font selection for "${style.family}"`, `libass 没有记录「${style.family}」选了哪个字体`));
+  for (const s of picked) if (!(spec.family.test(s.face) || /Heavy/i.test(s.face))) typo.push(issue(null, "typography", "high", `"${s.family}" (weight ${s.weight}) resolves to ${s.face}: the Black face is not installed, libass fell back`, `「${s.family}」实际用的是 ${s.face}：Black 字体没装上，libass 回退了`));
+  if (fonts?.glyphFallbacks) typo.push(issue(null, "typography", "high", `${fonts.glyphFallbacks} glyphs missing from the caption face were drawn from another font`, `${fonts.glyphFallbacks} 个字在字幕字体里缺字，用了别的字体`));
   if (style && !sizeOk) typo.push(issue(null, "typography", "med", `caption size ${style.size}, spec ${spec.size}`, `字幕字号 ${style.size}，规格 ${spec.size}`));
   if (second && Math.abs(second.size - spec.secondSize) > 3) typo.push(issue(null, "typography", "low", `second line size ${second.size}, spec ${spec.secondSize}`, `英文行字号 ${second.size}，规格 ${spec.secondSize}`));
   if (multiLine) typo.push(issue(null, "typography", "med", `${multiLine} captions wrap to two lines`, `${multiLine} 条字幕折成两行`));
@@ -1456,7 +1616,7 @@ export function evaluateCaptions(ass: AssFile | null, glossary: GradeGlossary | 
   return [
     gate("captions.splits", "no caption split inside a number or a term", "字幕不在数字或术语中间断行", true, splits === 0 && wordSplits === 0, `${splits} number/term splits, ${wordSplits} word splits over ${main.length} captions`, "0", issues),
     gate("captions.glossary", "no glossary misses in the captions", "字幕无术语拼错", true, misses === 0, `${misses} misses`, "0", missIssues),
-    gate("captions.typography", "one heavy CJK face at the spec size, one line each", "一种粗黑体、规定字号、单行", false, familyOk && sizeOk && multiLine === 0 && tooLong === 0 && shortMs === 0, `${style?.family ?? "?"}${style?.bold ? " bold" : ""} ${style?.size ?? "?"} px, second ${second?.size ?? "-"} px; ${multiLine} two-line, ${tooLong} > 12 chars, ${tooShort} < 4 chars, ${shortMs} < 0.5 s; ${lengths.length ? ((in6to11 / lengths.length) * 100).toFixed(0) : 0} % of lines 6–11 chars`, "Black face, 72/36 px, 1 line, 4–12 chars, ≥ 0.5 s", typo, { family: style?.family, size: style?.size, secondSize: second?.size, lines: lengths.length, in6to11 }),
+    gate("captions.typography", "one heavy CJK face at the spec size, one line each", "一种粗黑体、规定字号、单行", false, familyOk && fontOk !== false && sizeOk && multiLine === 0 && tooLong === 0 && shortMs === 0, `${style?.family ?? "?"}${style?.bold ? " bold" : ""} ${style?.size ?? "?"} px → ${picked.length ? [...new Set(picked.map((p) => p.face))].join("/") : "face not measured"}${fonts?.glyphFallbacks ? ` (+${fonts.glyphFallbacks} borrowed glyphs)` : ""}, second ${second?.size ?? "-"} px; ${multiLine} two-line, ${tooLong} > 12 chars, ${tooShort} < 4 chars, ${shortMs} < 0.5 s; ${lengths.length ? ((in6to11 / lengths.length) * 100).toFixed(0) : 0} % of lines 6–11 chars`, "Black face, 72/36 px, 1 line, 4–12 chars, ≥ 0.5 s", typo, { family: style?.family, resolved: picked, glyphFallbacks: fonts?.glyphFallbacks ?? null, size: style?.size, secondSize: second?.size, lines: lengths.length, in6to11 }),
   ];
 }
 
@@ -1528,9 +1688,11 @@ export function evaluateHook(input: GradeInput, hookBlock: string[] | undefined,
   const linesHit = want.filter((l) => l && shown.includes(l)).length;
   if (!first) issues.push(issue(0, "hook", "high", "no graphic in the first 2.5 s", "开头 2.5 秒没有任何图形"));
   else if (want.length && linesHit < want.length) issues.push(issue(first.startMs, "hook", "high", `first graphic is a ${first.kind} 「${(first.text ?? "").slice(0, 24)}」, not the brief's block (${linesHit}/${want.length} lines)`, `开场是 ${first.kind}「${(first.text ?? "").slice(0, 24)}」，不是简报的论断块（${linesHit}/${want.length} 行）`));
-  if (first && first.kind !== "hook" && first.kind !== "statement") issues.push(issue(first.startMs, "hook", "med", `hook kind is '${first.kind}'`, `开场图形类型是「${first.kind}」`));
+  /* The block is a `hook` (v2) or a v1 `statement`; a `title` topic label is the v1 fault itself, so the kind is part of the verdict — without it a gold with no hookBlock passed any early graphic. */
+  const blockKind = Boolean(first) && (first!.kind === "hook" || first!.kind === "statement");
+  if (first && !blockKind) issues.push(issue(first.startMs, "hook", "med", `hook kind is '${first.kind}'`, `开场图形类型是「${first.kind}」`));
   if (firstWordMs !== null && firstWordMs > 300) issues.push(issue(0, "hook", "med", `first word at ${firstWordMs} ms`, `第一个字在 ${firstWordMs} 毫秒`));
-  const pass = Boolean(first) && (!want.length || linesHit === want.length) && (firstWordMs === null || firstWordMs <= 300);
+  const pass = blockKind && (!want.length || linesHit === want.length) && (firstWordMs === null || firstWordMs <= 300);
   return gate("design.hook", "the brief's block at 0–2.5 s; first word ≤ 0.3 s", "开场是简报论断块；第一个字 ≤ 0.3 秒", true, pass, first ? `${first.kind} at ${first.startMs} ms 「${(first.text ?? "").slice(0, 30)}」; block lines ${linesHit}/${want.length}; first word ${firstWordMs ?? "?"} ms` : "no early graphic", "hook block; ≤ 0.3 s", issues);
 }
 
