@@ -19,6 +19,7 @@ import { Icon } from "@/components/ui/Icon";
 import { AgentName } from "@/components/ui/Tr";
 import { AgentTyping, streamStep } from "@/components/agents/AgentTyping";
 import { asksSomething, initials, soft, threadCss, tidyMarkdown } from "@/components/chat/look";
+import { ProjectBridge } from "@/components/chat/ProjectBridge";
 import type { Locale } from "@/lib/i18n";
 
 /**
@@ -472,6 +473,7 @@ export function AgentScreen({
 
       <div style={{ flexGrow: 1, minHeight: 0, display: "flex" }}>
         <div style={{ flexGrow: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
+          <ProjectBridge conversationId={conversationId} messages={messages} zh={zh} />
           <div
             ref={scroller}
             style={{

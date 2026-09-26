@@ -23,6 +23,7 @@ import type { StepKey } from "@/lib/agents/steps";
 import { AgentTyping } from "@/components/agents/AgentTyping";
 import { AgentName } from "@/components/ui/Tr";
 import { artifactHref } from "@/lib/chat/handoff";
+import { LinkedText } from "@/components/chat/LinkedText";
 
 /**
  * One project, worked on in place.
@@ -1045,7 +1046,7 @@ function ChatDrawer({ project: p, zh, people, onClose }: { project: ProjectDetai
               <div style={{ fontSize: 11, color: "#b3b3b3", textAlign: "right" }}>
                 {m.author} · {ago(m.at, zh)}
               </div>
-              <div style={{ marginTop: 3, background: "#171717", color: "#fff", borderRadius: "12px 4px 12px 12px", padding: "9px 12px", fontSize: 12.5, lineHeight: 1.6, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{m.body}</div>
+              <div style={{ marginTop: 3, background: "#171717", color: "#fff", borderRadius: "12px 4px 12px 12px", padding: "9px 12px", fontSize: 12.5, lineHeight: 1.6, whiteSpace: "pre-wrap", wordBreak: "break-word" }}><LinkedText text={m.body} /></div>
             </div>
           ),
         )}
