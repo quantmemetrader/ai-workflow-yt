@@ -5,6 +5,7 @@ import { AgentIcon } from "@/components/agents/AgentIcon";
 import * as React from "react";
 import { AGENT_COLORS, AGENT_KEYS, AGENT_LABELS, AGENT_TINTS, agentAliases, type AgentKey } from "@/lib/agents/catalog";
 import { initials, soft } from "./look";
+import { AgentName } from "@/components/ui/Tr";
 
 /**
  * The @-picker: who you can tag, people and AI employees together.
@@ -254,7 +255,9 @@ export function MentionMenu({
 
             <span style={{ minWidth: 0, flexGrow: 1 }}>
               <span style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
-                <span style={{ fontSize: 13, fontWeight: 600, color: "#171717" }}>{t.label}</span>
+                {/* An employee's name is translate-proof (`AgentName`): read through
+                    Chrome's translate, 策划 is "Planner", not "plan". */}
+                <span style={{ fontSize: 13, fontWeight: 600, color: "#171717" }}>{t.agent ? <AgentName agent={t.agent} zh={zh} /> : t.label}</span>
                 {t.agent ? (
                   <span
                     style={{

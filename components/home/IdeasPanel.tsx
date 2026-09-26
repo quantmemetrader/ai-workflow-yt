@@ -4,6 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AgentIcon } from "@/components/agents/AgentIcon";
+import { AgentTyping } from "@/components/agents/AgentTyping";
 import { Fold } from "@/components/ui/Fold";
 import { Icon } from "@/components/ui/Icon";
 import { InlineAgentThread, useInlineAgent } from "@/components/shell/InlineAgent";
@@ -155,20 +156,20 @@ export function IdeasPanel({ zh, initial, canStart, canResearch = true }: { zh: 
   const shown = showAll ? visible : visible.slice(0, SHOWN);
   const more = visible.length - SHOWN;
 
+  /* 研究员 writing the batch, typing like everywhere else (`AgentTyping`):
+     its face, the stage it is on, the dots; the seconds beside it. */
   const status = busy ? (
-    <div role="status" style={{ display: "flex", alignItems: "center", gap: 9, padding: "7px 11px", borderRadius: 9, background: "#f3f8fe", border: "1px solid #d5e7fb" }}>
-      <span style={{ width: 7, height: 7, borderRadius: 4, background: "#0f5bd5", flexShrink: 0, animation: "auraPulse 1.6s ease-in-out infinite" }} />
-      <span style={{ fontSize: 12.5, color: "#2b343d", flexGrow: 1, minWidth: 0 }}>{stage}</span>
-      <span style={{ fontSize: 11.5, color: "#7c7c7c", fontVariantNumeric: "tabular-nums" }}>{t(`${elapsed} 秒`, `${elapsed}s`)}</span>
+    <div style={{ display: "flex", alignItems: "center", gap: 9, minWidth: 0 }}>
+      <AgentTyping agent="research" zh={zh} label={stage} style={{ flex: "0 1 auto" }} />
+      <span style={{ fontSize: 11.5, color: "#7c7c7c", fontVariantNumeric: "tabular-nums", flexShrink: 0 }}>{t(`${elapsed} 秒`, `${elapsed}s`)}</span>
     </div>
   ) : null;
   /* With a batch on screen, the same progress as one line in the footer, in
      place of "再看 N 个": the rows do not move down under the pointer while
      a new batch is being written. */
   const statusInline = busy ? (
-    <span role="status" style={{ display: "inline-flex", alignItems: "center", gap: 7, flex: "1 1 auto", minWidth: 0, fontSize: 12, color: "#2b343d" }}>
-      <span style={{ width: 7, height: 7, borderRadius: 4, background: "#0f5bd5", flexShrink: 0, animation: "auraPulse 1.6s ease-in-out infinite" }} />
-      <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{stage}</span>
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 7, flex: "1 1 auto", minWidth: 0 }}>
+      <AgentTyping agent="research" zh={zh} label={stage} size="sm" style={{ flex: "0 1 auto" }} />
       <span style={{ fontSize: 11.5, color: "#7c7c7c", fontVariantNumeric: "tabular-nums", flexShrink: 0 }}>{t(`${elapsed} 秒`, `${elapsed}s`)}</span>
     </span>
   ) : null;

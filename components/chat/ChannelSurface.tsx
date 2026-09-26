@@ -23,7 +23,9 @@ import { Icon, type IconName } from "@/components/ui/Icon";
 import { clock, dayLabel, minutesBetween, sameDay } from "./when";
 import { initials, soft, threadCss, tidyMarkdown, withoutLeadingPictures } from "./look";
 import type { StepKey } from "@/lib/agents/steps";
-import { JobChip, WorkingPill } from "./Working";
+import { JobChip } from "./Working";
+import { AgentTyping } from "@/components/agents/AgentTyping";
+import { AgentName } from "@/components/ui/Tr";
 
 /**
  * The channel's main column: header, messages, composer.
@@ -201,7 +203,7 @@ function Receiver({ agent, zh, quiet = false }: { agent: AgentKey; zh: boolean; 
       style={quiet ? undefined : { background: soft(AGENT_TINTS[agent], 0.55), borderColor: AGENT_TINTS[agent] }}
     >
       <AgentIcon agent={agent} size={16} radius={4} />
-      {zh ? AGENT_LABELS[agent].nameLocal : AGENT_LABELS[agent].name}
+      <AgentName agent={agent} zh={zh} />
     </span>
   );
 }
@@ -315,24 +317,30 @@ function ProjectButton({ project, zh }: { project: { id: string; title: string }
  * An employee at work: its face and name like any message of its, and
  * where the text will be, what it is doing right now — "正在看…", "正在写
  * 脚本", "正在粗剪" — with three dots that breathe. Gone the moment its
- * reply lands.
+ * reply lands. The pill is the shared `AgentTyping`, so the channel, the
+ * assistant screens, Home and the project page all type the same way.
  */
 function WorkingRow({ row, zh, locale }: { row: ChannelPending; zh: boolean; locale: string }) {
   const a = AGENT_LABELS[row.agent];
+  /* No aria-live here: the pill is a status region of its own. */
   return (
-    <div className="msg" aria-live="polite">
+    <div className="msg">
       <div className="face">
         <AgentMark agent={row.agent} />
       </div>
       <div style={{ minWidth: 0, flexGrow: 1 }}>
         <div className="head">
-          <span className="who">{zh ? a.nameLocal : a.name}</span>
+          <span className="who">
+            <AgentName agent={row.agent} zh={zh} />
+          </span>
           <span className="role" style={{ background: soft(AGENT_TINTS[row.agent], 0.75), color: AGENT_COLORS[row.agent] }}>
             {zh ? a.title : a.titleEn}
           </span>
           <span className="when">{clock(row.since, locale)}</span>
         </div>
-        <WorkingPill agent={row.agent} step={row.step} zh={zh} />
+        <div style={{ marginTop: 4 }}>
+          <AgentTyping agent={row.agent} zh={zh} step={row.step} face={false} />
+        </div>
         {row.job ? (
           <div>
             <JobChip job={row.job} zh={zh} />
@@ -1011,7 +1019,9 @@ export function ChannelSurface(props: {
                     <div style={{ minWidth: 0, flexGrow: 1 }}>
                       {cont ? null : (
                         <div className="head">
-                          <span className="who">{m.authorName}</span>
+                          {/* An employee's name is translate-proof: Chrome makes
+                              撰稿人 "Contributor" and 策划 "plan". */}
+                          <span className="who">{m.isAgent === true && m.agentKey ? <AgentName agent={m.agentKey} zh={zh} /> : m.authorName}</span>
                           {/* The role, not "APP". A colleague and an AI
                               employee used to be told apart by a grey pill
                               that said neither; the employee's own colour,

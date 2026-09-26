@@ -1,6 +1,7 @@
 "use client";
 
 import { Icon } from "@/components/ui/Icon";
+import { Tr } from "@/components/ui/Tr";
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { startProjectAction } from "@/app/(app)/projects/actions";
@@ -44,7 +45,8 @@ export function NewProjectButton({ zh, compact = false }: { zh: boolean; compact
     );
   return (
     <button type="button" onClick={() => setOpen(true)} style={{ height: compact ? 28 : 34, padding: "0 12px", borderRadius: 8, border: compact ? "1px dashed #d9d9d9" : 0, background: compact ? "transparent" : "#171717", color: compact ? "#525252" : "#fff", fontFamily: "inherit", fontSize: 12.5, cursor: "pointer", width: compact ? "100%" : undefined, textAlign: compact ? "left" : "center" }}>
-      <Icon name="plus" size={13} /> {t("新项目", "New project")}
+      {/* Translate-proof: it sits in the rail under the projects. */}
+      <Icon name="plus" size={13} /> <Tr zh="新项目" en="New project" inZh={zh} />
     </button>
   );
 }

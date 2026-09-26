@@ -12,6 +12,7 @@ import { notify } from "@/lib/client/notify";
 import type { ProjectDetail } from "@/lib/projects/service";
 import { frontierStep } from "@/lib/home/roles";
 import { StageBadge, StepTrack, stageToneOf } from "@/components/projects/StepTrack";
+import { AgentName } from "@/components/ui/Tr";
 
 /**
  * Home, project by project.
@@ -181,7 +182,7 @@ function ProjectChat({ project: p, zh, first, open, onToggle }: { project: Proje
               <span style={{ width: 18, height: 18, borderRadius: 5, background: "#e8e8e6", fontSize: 9.5, fontWeight: 600, color: "#525252", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{m.author.slice(0, 1).toUpperCase()}</span>
             )}
             <div style={{ fontSize: 12.5, lineHeight: 1.5, color: "#2b343d", minWidth: 0, ...(open ? { whiteSpace: "pre-wrap" } : { overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }) }}>
-              <b style={{ fontWeight: 600, color: m.agent ? AGENT_COLORS[m.agent] : "#171717" }}>{m.agent ? (zh ? AGENT_LABELS[m.agent].nameLocal : AGENT_LABELS[m.agent].name) : m.author}</b> {m.body.replace(/\*\*/g, "").slice(0, open ? 1200 : 200)}
+              <b style={{ fontWeight: 600, color: m.agent ? AGENT_COLORS[m.agent] : "#171717" }}>{m.agent ? <AgentName agent={m.agent} zh={zh} /> : m.author}</b> {m.body.replace(/\*\*/g, "").slice(0, open ? 1200 : 200)}
             </div>
           </div>
         ))}

@@ -4,6 +4,8 @@ import * as React from "react";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { NewProjectButton } from "@/components/projects/NewProjectButton";
+import { Icon } from "@/components/ui/Icon";
+import { Tr } from "@/components/ui/Tr";
 
 export type TreeProject = { id: string; title: string; status: string; scriptId: string | null; videoProjectId: string | null };
 
@@ -13,6 +15,9 @@ export type TreeProject = { id: string; title: string; status: string; scriptId:
  * Each project opens into what it holds: its page (steps, outputs, chat),
  * its script, and its editor. The project you are in stays open; the rest
  * fold. Delivered ones are dimmed, not hidden.
+ *
+ * The heading is translate-proof (`Tr`): Chrome's translate would otherwise
+ * make 项目 whatever it guesses.
  */
 export function ProjectTree({ projects, zh, wide }: { projects: TreeProject[]; zh: boolean; wide: boolean }) {
   const t = (a: string, b: string) => (zh ? a : b);
@@ -41,19 +46,36 @@ export function ProjectTree({ projects, zh, wide }: { projects: TreeProject[]; z
     <div style={{ display: "flex", flexDirection: "column", gap: 1, margin: "4px 0 6px" }}>
       <div style={{ display: "flex", alignItems: "center", padding: "6px 9px 4px" }}>
         <Link prefetch={false} href="/projects" style={{ fontSize: 11.5, fontWeight: 600, color: pathname === "/projects" ? "#171717" : "#999999", textDecoration: "none", letterSpacing: ".03em", flexGrow: 1 }}>
-          {t("项目", "PROJECTS")}
+          {zh ? <Tr zh="项目" en="PROJECTS" /> : "PROJECTS"}
         </Link>
         <span style={{ fontSize: 11, color: "#c7c7c7" }}>{projects.length || ""}</span>
       </div>
       {list.map((p) => {
         const inside = isIn(p);
+        const here = pathname === `/projects/${p.id}`;
+        /* Each project is a folder, in the same 17px column and at the same
+           9px inset as the rail's own icons above it, so the titles line up
+           with 首页 and 聊天. It was a 7px blue square: "don't just add a
+           blue dot, have it as a folder icon, it's prettier". The one you
+           are in is open and inked; the others closed on a soft grey tint;
+           delivered and archived ones a step fainter again. */
+        const dim = p.status === "done" || p.status === "archived";
+        const ink = inside ? "#171717" : dim ? "#c9c9c9" : "#9b9b9b";
+        const fill = inside ? "#f0f0ef" : dim ? "none" : "#ededec";
         return (
           <div key={p.id}>
-            <div style={{ display: "flex", alignItems: "center", height: 29, borderRadius: 7, background: pathname === `/projects/${p.id}` ? "#fff" : "transparent", boxShadow: pathname === `/projects/${p.id}` ? "0 1px 2px rgba(0,0,0,.1)" : "none" }}>
-              <span style={{ width: 10, flexShrink: 0 }} />
-              <Link prefetch={false} href={`/projects/${p.id}`} title={p.title} style={{ flexGrow: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 7, fontSize: 13, color: p.status === "active" ? "#171717" : "#999999", textDecoration: "none", paddingRight: 8 }}>
-                <span style={{ width: 7, height: 7, borderRadius: 2, flexShrink: 0, background: p.status === "done" ? "#278f5e" : p.status === "archived" ? "#d9d9d9" : "#0f5bd5" }} />
-                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: inside ? 600 : 400 }}>{p.title}</span>
+            <div style={{ display: "flex", alignItems: "center", height: 30, borderRadius: 8, background: here ? "#fff" : "transparent", boxShadow: here ? "0 1px 2px rgba(0,0,0,.1)" : "none" }}>
+              <Link
+                prefetch={false}
+                href={`/projects/${p.id}`}
+                title={p.title}
+                className="pt-row"
+                style={{ flexGrow: 1, minWidth: 0, height: "100%", display: "flex", alignItems: "center", gap: 9, padding: "0 9px", fontSize: 12.5, color: inside ? "#171717" : dim ? "#a3a3a3" : "#525252", textDecoration: "none" }}
+              >
+                <span aria-hidden style={{ width: 17, height: 17, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <Icon name={inside ? "folderOpen" : "folder"} size={16} color={ink} strokeWidth={1.7} style={{ fill, verticalAlign: 0 }} />
+                </span>
+                <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: inside ? 600 : 400 }}>{p.title}</span>
               </Link>
             </div>
           </div>
