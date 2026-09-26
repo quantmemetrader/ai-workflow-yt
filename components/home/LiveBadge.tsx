@@ -83,10 +83,18 @@ export function LiveLine({ projectId, zh, fallback }: { projectId: string; zh: b
   const p = useLiveProject(projectId);
   const { at: polled } = useLiveSnapshot();
   const now = useNow(1000, p?.state === "armed");
-  if (!p) return <>{fallback}</>;
+  /* Each side in its own keyed span: the server's line is a bare string,
+     and swapping a bare text node for the live words makes React remove
+     that node — which Chrome's translate has already replaced with its own
+     <font>, so the removal throws and takes the page down. Replacing a
+     whole element is safe. */
   const at = now ?? polled;
-  if (!isRunning(p) && p.state !== "armed" && !isRecent(p, at)) return <>{fallback}</>;
+  if (!p || (!isRunning(p) && p.state !== "armed" && !isRecent(p, at))) return <span key="server">{fallback}</span>;
   const words = liveWords(p, at);
   const text = isRunning(p) || p.state === "armed" ? { zh: `剪辑师${words.zh}`, en: `The editor is ${words.en.toLowerCase()}` } : p.state === "done" ? { zh: "成片已出 · 看看", en: "The film is out · watch it" } : { zh: `渲染没成功 · 重试`, en: "The render failed · try again" };
-  return <Tr zh={text.zh} en={text.en} inZh={zh} />;
+  return (
+    <span key="live">
+      <Tr zh={text.zh} en={text.en} inZh={zh} />
+    </span>
+  );
 }

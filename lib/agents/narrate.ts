@@ -27,6 +27,9 @@ type Job = {
   tenantId: string;
   type: string;
   attempts: number;
+  /** How many attempts the queue gives it (`JobRow.maxAttempts`); a failed
+   *  attempt below this is retried after a backoff. */
+  maxAttempts?: number;
   payload: Record<string, unknown> | null;
 };
 
@@ -143,7 +146,11 @@ async function say(job: Job, phase: "start" | "done" | "failed", text: string, r
      * row following the worker. Skipped when the project's chat is #制作
      * itself.
      */
-    if (phase !== "start") {
+    /* A failed attempt the queue will try again is not the outcome yet: the
+       project's chat hears only the last one (the live row says "正在自动重试"
+       meanwhile), or a clip that cannot be read posts "没成功" three times. */
+    const final = phase !== "failed" || job.maxAttempts === undefined || job.attempts >= job.maxAttempts;
+    if (phase !== "start" && final) {
       const wp = await workProjectRowOf(videoProjectId);
       if (wp) {
         const production = await ensureAgentChannel(job.tenantId, "production");

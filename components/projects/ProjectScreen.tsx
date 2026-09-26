@@ -16,7 +16,8 @@ import { uploadFiles } from "@/lib/client/upload";
 import { beginWork } from "@/lib/client/busy";
 import { notify } from "@/lib/client/notify";
 import { writeRendering } from "@/lib/client/rendering";
-import { bumpLive } from "@/lib/client/live";
+import { bumpLive, useLiveProject } from "@/lib/client/live";
+import { isRunning } from "@/lib/projects/live-types";
 import { ClipsNextStep } from "@/components/projects/ClipsNextStep";
 import { LivePill, useLiveRow } from "@/components/chat/LivePill";
 import type { ProjectDetail, ProjectStep } from "@/lib/projects/service";
@@ -189,6 +190,12 @@ export function ProjectScreen({
   const busyLive = renderLive || directing;
   const renderFailed = !directing && p.render?.state === "failed";
   const cutReady = !busyLive && !(p.render?.state === "done" && p.render.fileId) && (p.video?.items ?? 0) > 0;
+  /* The row says "failed" while the worker still holds a job to try again
+     (the queue's backoff between attempts): the studio-wide store knows
+     (`LiveProject.retrying`). The page keeps asking meanwhile, and does not
+     offer 重试 over a retry that is already coming. */
+  const liveNow = useLiveProject(p.id);
+  const retrying = liveNow?.retrying === true && isRunning(liveNow);
 
   /*
    * Ask for the project's state in one short string and refresh only when
@@ -207,7 +214,7 @@ export function ProjectScreen({
      asking so the count, its cancel, and the moment it starts all show. */
   const armed = p.autoCut.dueAt !== null;
   React.useEffect(() => {
-    const live = anyWorking || busyLive || armed;
+    const live = anyWorking || busyLive || armed || retrying;
     let until = Date.now() + 8 * 60_000;
     let last: string | null = null;
     let stopped = false;
@@ -240,7 +247,7 @@ export function ProjectScreen({
       document.removeEventListener("visibilitychange", onVisible);
       window.removeEventListener("focus", onVisible);
     };
-  }, [anyWorking, busyLive, armed, router, p.id]);
+  }, [anyWorking, busyLive, armed, retrying, router, p.id]);
 
   /** Ask one employee something from its card; the answer comes back there. */
   function ask(agent: AgentKey, text: string) {
@@ -651,7 +658,7 @@ export function ProjectScreen({
                     video card's render button is the next press instead —
                     unless more clips landed with 传完自动开始剪 on and its
                     minute is counting: the countdown and its 取消 stay here. */}
-                {p.video && p.video.clips > 0 && !busyLive && ((!rendered && p.director?.state !== "done") || armed) ? (
+                {p.video && p.video.clips > 0 && !busyLive && !retrying && ((!rendered && p.director?.state !== "done") || armed) ? (
                   <ClipsNextStep
                     zh={zh}
                     clips={p.video.clips}

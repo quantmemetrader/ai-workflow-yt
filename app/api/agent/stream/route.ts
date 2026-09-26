@@ -17,7 +17,7 @@ import { projectById } from "@/lib/video/service";
 import { canEditProject } from "@/lib/video/access";
 import { relationOn, share } from "@/lib/authz/rebac";
 import { clipCount, projectFor, reachableThroughProjects } from "@/lib/projects/service";
-import { looksLikeDone } from "@/lib/projects/done-phrases";
+import { holdsTheCut, looksLikeDone } from "@/lib/projects/done-phrases";
 import { describeOutcome, startCutForProject, type StartCutOutcome } from "@/lib/projects/start-cut";
 import { workProjects } from "@/lib/db/schema";
 import { videoClock } from "@/lib/chat/video-card";
@@ -323,7 +323,9 @@ export async function POST(request: Request) {
            may hold everything they may see, private projects included.
            Kept in a variable: a script write that starts a project pins
            the rest of the turn to it (below). */
-        const turnContext: Omit<ToolContext, "viewer"> = { ...context, ...ids, asker: viewer, team, privateReply: true };
+        /* "还没传好" / "再补一段" to 剪辑师 with a project open: no cut starts
+           this turn, whatever the model makes of the bin (`holdsTheCut`). */
+        const turnContext: Omit<ToolContext, "viewer"> = { ...context, ...ids, asker: viewer, team, privateReply: true, ...(ids.projectId && holdsTheCut(content) ? { holdCut: true } : {}) };
         /* The files on the message, as lines under it (and, for a video, in
            the project's bin): what the employee reads, what the thread keeps
            and what a reload draws as cards. The first one is also "the file

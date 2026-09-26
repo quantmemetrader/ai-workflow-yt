@@ -147,6 +147,10 @@ export type MentionDispatch = {
   /** Added to the `meta` of each reply this dispatch produces — the buttons
    * under an employee's answer to an approval, say. */
   replyMeta?: Record<string, unknown>;
+  /** The person said more footage is coming, or not to start yet, or
+   * dropped a take into the project's chat: no cut starts in this chain
+   * (`ToolContext.holdCut`). */
+  holdCut?: boolean;
   /** Agents that have already spoken in this branch. */
   spoken?: AgentKey[];
   hop?: number;
@@ -944,7 +948,7 @@ const WORKS_IN: Record<AgentKey, Module> = {
 };
 
 type Chain = Required<Pick<MentionDispatch, "viewer" | "channelId" | "body" | "spoken" | "hop" | "budget">> &
-  Pick<MentionDispatch, "handoff" | "replyMeta"> & { origin: string | null; asker: Viewer | null };
+  Pick<MentionDispatch, "handoff" | "replyMeta" | "holdCut"> & { origin: string | null; asker: Viewer | null };
 
 /** The block a colleague's turn opens with when work was handed to it.
  * `facts` are lines the dispatcher looked up itself (how many clips are in
@@ -1042,7 +1046,9 @@ async function answerOne(input: Chain, key: AgentKey, channel: Channel) {
   const clipRule =
     clips === undefined
       ? null
-      : clips === 0
+      : input.holdCut && clips > 0
+        ? "- 对方说素材还没传完、还要再传，或者刚把一段素材发进来（消息下面有「素材传好了 · 开始剪」）：这一回合不要调用 first_cut 或 make_video，不要说“开始剪”。告诉对方你等着，传完说一声“传好了”或按那个按钮就开始。"
+        : clips === 0
         ? "- 素材箱是空的，没有素材就不能粗剪：不要说“开始粗剪”“开始剪辑”“正在剪”。如果对方要的就是素材库画面，用 find_footage、take_footage 找来放进素材箱再做；否则请主持人把拍好的素材传到项目里，并说清楚素材一到你会做什么（按脚本分段粗剪、配字幕、出一版给大家看）。你的回答下面会自动出现上传和素材库两个按钮：回答里不要提按钮、不要写链接，也不要写“（系统已附…）”这类说明。"
         : `- 素材箱里有 ${clips} 段素材。要粗剪就现在调用 first_cut（或用 make_video 一次做完），做了再说结果；没做就不要说“开始粗剪”。`;
 
@@ -1131,6 +1137,7 @@ async function answerOne(input: Chain, key: AgentKey, channel: Channel) {
        look things up, not to start work. Every hand-off this file makes now
        carries its checked contents, so this is the guard, not the rule. */
     readOnly: input.hop >= 1 && !handoff,
+    ...(input.holdCut ? { holdCut: true } : {}),
     team,
     ...(input.asker ? { asker: input.asker } : {}),
   };

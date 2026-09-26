@@ -129,6 +129,13 @@ export type ToolContext = {
    */
   readOnly?: boolean;
   /**
+   * The person said more footage is coming, or not to start yet ("还没传好",
+   * "再补一段", `holdsTheCut`), or dropped a take into the project's chat —
+   * whose own "素材传好了 · 开始剪" press is the start. The tools that start a
+   * cut (`make_video`, `first_cut`) refuse this turn and say why.
+   */
+  holdCut?: boolean;
+  /**
    * The person the turn is working for, when there is one: whoever typed the
    * question into their assistant, or tagged the employee in a channel, or
    * started the chain of hand-offs this turn is part of.

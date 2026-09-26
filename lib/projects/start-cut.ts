@@ -1,6 +1,7 @@
 import "server-only";
+import { sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { chatMembers } from "@/lib/db/schema";
+import { chatMembers, workProjects } from "@/lib/db/schema";
 import type { Viewer } from "@/lib/auth/types";
 import { agentViewer } from "@/lib/agents";
 import type { CardAction } from "@/lib/agents/cards";
@@ -95,10 +96,35 @@ export async function startCutForProject(viewer: Viewer, project: CutProject, op
     return { kind: "running", label };
   }
 
+  /* Two starts in the same moment — the auto-cut's minute running out as
+     the person presses 现在开始, a double click, two tabs — both see nothing
+     running above, because the director's row is written a beat later. The
+     queue would still hold one job (its dedupe key), but both would post
+     "开始剪". So one claim on the project, for twenty seconds: the start
+     that takes it goes on, the other stands down without a word. */
+  const claimAt = new Date().toISOString();
+  const claimed = await db
+    .update(workProjects)
+    .set({ source: sql`coalesce(${workProjects.source}, '{}'::jsonb) || jsonb_build_object('cutClaim', ${claimAt}::text)` })
+    .where(
+      sql`${workProjects.id} = ${project.id} and ${workProjects.tenantId} = ${viewer.tenantId}
+          and coalesce(${workProjects.source} ->> 'cutClaim', '') < ${new Date(Date.now() - 20_000).toISOString()}`,
+    )
+    .returning({ id: workProjects.id });
+  if (!claimed.length) return { kind: "running", label: "正在开始" };
+  const release = () =>
+    db
+      .update(workProjects)
+      .set({ source: sql`${workProjects.source} - 'cutClaim'` })
+      .where(sql`${workProjects.id} = ${project.id} and ${workProjects.source} ->> 'cutClaim' = ${claimAt}`)
+      .catch(() => null);
+
   const pendingId = await startPending(editor, project.channelId, "video", "looking");
   try {
     const res = await oneGo(viewer, project.id, { prompt: opts.prompt, narrate: opts.narrate, voiceId: opts.voiceId ?? undefined });
     if (!res.ok) {
+      /* Nothing started: the next press may try at once. */
+      await release();
       await postMessage(editor, project.channelId, `${name}没能开始剪：${res.error}`, {
         agent: "video",
         project: { id: project.id, title: project.title },
@@ -142,6 +168,7 @@ export async function startCutForProject(viewer: Viewer, project: CutProject, op
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err);
     console.error("[start-cut] could not start", err);
+    await release();
     await postMessage(editor, project.channelId, `${name}没能开始剪：${error.slice(0, 200)}`, { agent: "video", project: { id: project.id, title: project.title }, failed: true }).catch(() => null);
     return { kind: "error", error };
   } finally {

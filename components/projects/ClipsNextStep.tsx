@@ -81,7 +81,10 @@ export function ClipsNextStep({
       <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
         <span style={{ flex: "1 1 220px", minWidth: 0 }}>
           <span style={{ display: "block", fontSize: 13, fontWeight: 600 }}>
-            {justLanded ? t("素材传好了？", "Clips uploaded?") : retry ? t("上次没做成，再来一次？", "The last try stopped. Again?") : t(`${clips} 段素材在项目里`, `${clips} clips in the project`)}
+            {/* Words that change in place go through `Tr`: under Chrome's
+                translate a bare text node that changes stays frozen on its
+                first translation (the countdown would sit at one number). */}
+            {justLanded ? <Tr zh="素材传好了？" en="Clips uploaded?" inZh={zh} /> : retry ? <Tr zh="上次没做成，再来一次？" en="The last try stopped. Again?" inZh={zh} /> : <Tr zh={`${clips} 段素材在项目里`} en={`${clips} clips in the project`} inZh={zh} />}
           </span>
           <span style={{ display: "block", fontSize: 11.5, color: "#525252", marginTop: 2, lineHeight: 1.5 }}>
             {t("按一下就开始剪：转写 → 按脚本粗剪 → 图形 → 渲染 9:16。进度在这页、首页和项目对话里都能看到，好了会提醒你。", "One press starts the cut: transcribe → cut to the script → design → render 9:16. Progress shows here, on Home and in the project chat; you are told when it is out.")}
@@ -90,7 +93,7 @@ export function ClipsNextStep({
         <span style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
           <button type="button" onClick={onStart} disabled={disabled || starting} style={{ ...btn(true), height: 34, opacity: disabled || starting ? 0.6 : 1 }}>
             <Icon name="scissors" size={13} />
-            {starting ? t("开始中…", "Starting…") : retry && !justLanded ? t("重试 · 重新开始剪", "Try again · start the cut") : t("素材传好了 · 开始剪", "Clips are in · start the cut")}
+            {starting ? <Tr zh="开始中…" en="Starting…" inZh={zh} /> : retry && !justLanded ? <Tr zh="重试 · 重新开始剪" en="Try again · start the cut" inZh={zh} /> : <Tr zh="素材传好了 · 开始剪" en="Clips are in · start the cut" inZh={zh} />}
           </button>
           <button type="button" onClick={onMore} disabled={disabled} className="pj-quiet" style={{ ...btn(false), border: "1px solid transparent", background: "transparent", color: "#525252", height: 34 }}>
             <Icon name="upload" size={13} />
@@ -108,7 +111,7 @@ export function ClipsNextStep({
           {armed && secs !== null ? (
             <span style={{ display: "inline-flex", alignItems: "center", gap: 8, fontSize: 12, color: "#1f5fbf", fontVariantNumeric: "tabular-nums", flexWrap: "wrap" }}>
               <span aria-hidden style={{ width: 6, height: 6, borderRadius: 3, background: "#4a90e2", animation: "auraPulse 1.4s ease-in-out infinite" }} />
-              {secs > 0 ? t(`${secs} 秒后自动开始剪`, `Starts in ${secs}s`) : t("正在开始…", "Starting…")}
+              <span>{secs > 0 ? <Tr zh={`${secs} 秒后自动开始剪`} en={`Starts in ${secs}s`} inZh={zh} /> : <Tr zh="正在开始…" en="Starting…" inZh={zh} />}</span>
               <button type="button" onClick={onStartNow} disabled={disabled || starting} className="pj-quiet" style={quietBtn("#171717")}>
                 {t("现在开始", "Start now")}
               </button>

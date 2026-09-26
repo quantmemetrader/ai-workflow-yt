@@ -15,7 +15,7 @@ import { canEditProject } from "@/lib/video/access";
 import { agentTag } from "@/lib/agents/catalog";
 import { setFileAccess } from "@/lib/files/access";
 import { binVideo } from "@/lib/chat/bin";
-import { looksLikeDone } from "@/lib/projects/done-phrases";
+import { holdsTheCut, looksLikeDone } from "@/lib/projects/done-phrases";
 import { startCutForProject } from "@/lib/projects/start-cut";
 import { armAutoCut } from "@/lib/projects/live";
 import { readAutoCut } from "@/lib/projects/live-types";
@@ -213,13 +213,18 @@ export async function sendChannelMessage(
     return { answering: "video" as const };
   }
 
+  /* "还没传好" / "再补一段", or a take dropped into the project's chat (its
+     own 开始剪 press is under it): whoever answers must not start the cut
+     on their own (`holdsTheCut`, `ToolContext.holdCut`). */
+  const holdCut = Boolean(wp?.videoProjectId) && (holdsTheCut(body) || videos.length > 0);
+
   /* The agents that were tagged, if any. After the response: each one is a
      model call with tool use behind it, and nobody pressing enter should wait
      for that. */
   if (parseAgentMentions(body).length) {
     after(async () => {
       try {
-        await dispatchAgentMentions({ viewer, channelId: channel.id, body });
+        await dispatchAgentMentions({ viewer, channelId: channel.id, body, holdCut });
       } catch (err) {
         console.error("[chat] a tagged agent could not be reached", err);
       }
@@ -233,7 +238,7 @@ export async function sendChannelMessage(
   if (to) {
     after(async () => {
       try {
-        await dispatchAgentMentions({ viewer, channelId: channel.id, body: `${agentTag(to)} ${body}` });
+        await dispatchAgentMentions({ viewer, channelId: channel.id, body: `${agentTag(to)} ${body}`, holdCut });
       } catch (err) {
         console.error("[chat] the employee being answered could not be reached", err);
       }

@@ -15,7 +15,7 @@ import { parseAgentMentions } from "../lib/agents/catalog";
 import { stepForTool } from "../lib/agents/steps";
 import { readCardActions } from "../lib/agents/cards";
 import { readBinned, readCutPressed, readWorkRefs } from "../lib/chat/handoff";
-import { looksLikeDone } from "../lib/projects/done-phrases";
+import { holdsTheCut, looksLikeDone } from "../lib/projects/done-phrases";
 import { staleWork } from "../lib/projects/service";
 import { liveAutoCut } from "../lib/projects/live-types";
 import {
@@ -295,6 +295,15 @@ async function main() {
      a clause that is not a hand-over beside one that is. */
   for (const t of ["可以剪吗？", "素材还没传完", "还没传好", "还要传两个", "先别剪", "等一下再剪", "传好了吗", "把开头剪短一点，节奏快一些，然后重新渲染一版，字幕用黄色，再加一个片头的标题和三个数据图形", "not yet, wait", "上传功能怎么用", "可以剪短一点", "剪一下开头", "开始做封面", "素材上面的字幕改一下", "传好了，帮我把开头剪快一点", "cut it shorter", "let's cut the intro", "I uploaded the wrong file", "is it ready", "好的"]) {
     check(`not a hand-over: ${t}`, !looksLikeDone(t));
+  }
+
+  /* 16b. "More is coming": the turn that answers it may not start a cut,
+          and a hand-over never reads as one. */
+  for (const t of ["还没传好，等我一下", "再补一段", "还要再传两个", "等一下", "先别剪", "素材还没传完", "还有一段", "wait, one more clip", "not yet"]) {
+    check(`holds the cut: ${t}`, holdsTheCut(t) && !looksLikeDone(t));
+  }
+  for (const t of ["传好了", "素材上传完了", "done", "开始剪", "可以剪了", "把开头剪短一点"]) {
+    check(`does not hold the cut: ${t}`, !holdsTheCut(t));
   }
 
   /* 17. "正在渲染" only with a job behind it: a row that says it is at work

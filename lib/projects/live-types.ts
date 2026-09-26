@@ -55,6 +55,9 @@ export type LiveProject = {
   finishedAt: string | null;
   /** When the armed auto-cut fires (ISO). */
   dueAt: string | null;
+  /** The last attempt failed and the worker has it queued to try again
+   *  (a backoff, then a fresh attempt): still being made, not failed yet. */
+  retrying?: boolean;
 };
 
 /** How long a finished (or failed) film keeps its chip, its toast and its
@@ -88,7 +91,7 @@ export function isActive(p: Pick<LiveProject, "state"> | null | undefined): bool
 export function liveWords(p: LiveProject, now: number): { zh: string; en: string } {
   switch (p.state) {
     case "queued":
-      return { zh: "排队中，马上开始", en: "Queued, starting soon" };
+      return p.retrying ? { zh: "上次没成功，正在自动重试", en: "Failed once, retrying" } : { zh: "排队中，马上开始", en: "Queued, starting soon" };
     case "directing": {
       if (p.step === "render") {
         const pct = p.percent !== null ? ` ${p.percent}%` : "";

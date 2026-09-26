@@ -152,9 +152,23 @@ function announce(projects: LiveProject[]) {
   const now = Date.now();
   const told = new Set(toldKeys());
   const zh = !(document.documentElement.lang || "zh").startsWith("en");
+  /* A hidden tab (it polls while a film is being made) sends only the
+     browser notification, once for all tabs (keyed); the toast is left for
+     a tab the person is looking at, which says it when they come back
+     inside the window. Otherwise a background tab would use the toast up
+     and the tab in front would never show it. */
+  const hidden = document.visibilityState !== "visible";
   for (const p of projects) {
     if (!isRecent(p, now)) continue;
     const key = p.state === "done" ? `done:${p.exportId ?? p.id}` : `failed:${p.id}:${p.finishedAt ?? ""}`;
+    if (hidden) {
+      if (!notificationsGranted() || told.has(key) || told.has(`pushed:${key}`)) continue;
+      markTold(`pushed:${key}`);
+      const title = p.state === "done" ? (zh ? `《${p.title}》成片已出` : `“${p.title}” is out`) : zh ? `《${p.title}》渲染没成功` : `“${p.title}” failed to render`;
+      const body = p.state === "done" ? (zh ? "点开看成片，或到项目页下载。" : "Open it to watch, or download it from the project.") : friendlyError(p.error, zh);
+      pushNotification(title, body, `/projects/${p.id}`, key);
+      continue;
+    }
     if (told.has(key)) continue;
     markTold(key);
     const name = `《${p.title}》`;
@@ -169,7 +183,7 @@ function announce(projects: LiveProject[]) {
           ...(p.fileId ? [{ label: zh ? "下载" : "Download", href: `/api/files/${p.fileId}/download?download=1`, download: true }] : []),
         ],
       });
-      pushNotification(zh ? `${name}成片已出` : `“${p.title}” is out`, zh ? "点开看成片，或到项目页下载。" : "Open it to watch, or download it from the project.", `/projects/${p.id}`, key);
+      if (!told.has(`pushed:${key}`)) pushNotification(zh ? `${name}成片已出` : `“${p.title}” is out`, zh ? "点开看成片，或到项目页下载。" : "Open it to watch, or download it from the project.", `/projects/${p.id}`, key);
     } else {
       notifyRich({
         kind: "error",
@@ -178,7 +192,7 @@ function announce(projects: LiveProject[]) {
         actions: [{ label: zh ? "重试" : "Try again", href: `/projects/${p.id}` }],
         hold: 20_000,
       });
-      pushNotification(zh ? `${name}渲染没成功` : `“${p.title}” failed to render`, friendlyError(p.error, zh), `/projects/${p.id}`, key);
+      if (!told.has(`pushed:${key}`)) pushNotification(zh ? `${name}渲染没成功` : `“${p.title}” failed to render`, friendlyError(p.error, zh), `/projects/${p.id}`, key);
     }
   }
 }

@@ -48,6 +48,23 @@ const FILLER = /^(好|好的|好了|好啦|好嘞|ok|okay|嗯|嗯嗯|行|那|那
 /** A question, or a "not yet": not a hand-over, whatever else it says. */
 const NOT_A_HANDOVER = /[?？]|吗|么|怎么|为什么|什么时候|还没|没有|没传|还要|再传|先别|别剪|不要|暂时|先不|等等|等一下|稍等|\bnot\b|\bdon'?t\b|\bwait\b|\blater\b/i;
 
+/**
+ * "还没传好" · "还要再传一段" · "再补一段" · "等我一下" · "先别剪": the person
+ * says more footage is coming, or not to start yet.
+ *
+ * The opposite of a hand-over, and it has to hold in code too: such a
+ * message in a project's chat still goes to 剪辑师 as a reply (the channel's
+ * reply routing), whose prompt says to cut when the bin has clips — so
+ * "再补一段" with a video attached once started a cut on its own. With this,
+ * the turn it starts cannot start one (`ToolContext.holdCut`).
+ */
+const MORE_COMING = /还没|没传完|没传好|没上传完|还在传|还要(传|补|发|加|上传)|再(传|补|发|上传)|补(一|两|几|个)|还有(一|两|几)?(段|个|条)|等(我|一下|一会|会儿|等)|稍等|先别|别(剪|急|动)|不要(剪|急|开始)|暂时(别|不)|先不|\bnot yet\b|\bwait\b|\bhold on\b|\bmore (clips?|footage|coming)\b|\bone more\b/i;
+
+export function holdsTheCut(body: string): boolean {
+  const text = body.replace(TAGS, " ").replace(/\s+/g, " ").trim();
+  return MORE_COMING.test(text);
+}
+
 /** The longest message that is still a hand-over rather than a brief. */
 const MAX_LENGTH = 80;
 

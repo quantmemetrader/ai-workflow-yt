@@ -55,7 +55,7 @@ export function RenderWatch({ locale }: { locale: string }) {
   const { at: polledAt, projects: live } = useLiveSnapshot();
   /* Ticks while there is a countdown or a window to count down; the poll's
      own clock otherwise, so nothing here reads the time during a render. */
-  const ticking = useNow(1000, live.length > 0);
+  const ticking = useNow(1000, live.some((p) => p.state === "armed" || isRecent(p, polledAt)));
   const now = ticking ?? polledAt;
 
   /* The one to show: something running first, then an armed countdown,

@@ -110,7 +110,9 @@ export async function projectsLiveWithSpent(viewer: Viewer, options: { ids?: str
              )})`
            : sql`(
                vp.director ->> 'state' in ('queued', 'running')
+               or exists (select 1 from jobs j where j.type = 'video.direct' and j.status in ('queued','running') and j.payload ->> 'projectId' = vp.id)
                or e.state in ('queued', 'rendering')
+               or (e.state = 'failed' and exists (select 1 from jobs j where j.type = 'video.export' and j.status in ('queued','running') and j.payload ->> 'exportId' = e.id))
                or e.finished_at > now() - interval '3 minutes'
                or coalesce(vp.director ->> 'finishedAt', '') > ${recentIso}
                or (wp.source -> 'autoCut' ->> 'dueAt') is not null
@@ -200,6 +202,17 @@ function resolve(r: Row, now: number, dueAt: string | null): LiveProject {
       percent: r.e_state === "queued" ? null : pct,
       startedAt: iso(r.e_started),
     };
+  }
+  /* The last attempt failed, but the worker holds a job to try again (the
+     queue's backoff between attempts): that is a film still being made, not
+     a failed one. Said as a retry, so no "渲染没成功" toast, chip or chat line
+     fires once per attempt — only when the attempts run out and no job is
+     left behind it. */
+  if (r.d_state === "failed" && r.d_job) {
+    return { ...base, state: "queued", retrying: true, error: r.d_error, startedAt: r.d_started };
+  }
+  if (r.e_state === "failed" && r.e_job) {
+    return { ...base, state: "queued", retrying: true, step: "render", error: r.e_error, startedAt: iso(r.e_started) };
   }
   if (base.dueAt) return { ...base, state: "armed" };
 
