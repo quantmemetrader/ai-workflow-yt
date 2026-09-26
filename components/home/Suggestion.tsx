@@ -6,7 +6,7 @@ import { AgentIcon } from "@/components/agents/AgentIcon";
 import { Fold } from "@/components/ui/Fold";
 import { Icon } from "@/components/ui/Icon";
 import { startFromTopicAction } from "@/app/(app)/projects/actions";
-import { EvidenceChips, Facts, RowTag, StartedNotice, TopicRow, smallBtn } from "@/components/home/TopicRow";
+import { EvidenceChips, Facts, StartedNotice, TopicRow, smallBtn } from "@/components/home/TopicRow";
 import { DetailLink } from "@/components/home/DetailLink";
 import { notify } from "@/lib/client/notify";
 
@@ -85,8 +85,22 @@ export function SuggestionCard({ items, zh, canResearch = false }: { items: Toda
             strength={s.strength}
             strengthTitle={t("信号强度", "Signal strength")}
             title={s.title}
-            line={s.why}
-            meta={s.evidence.length ? <RowTag title={s.evidence.map((e) => `${e.label} ${e.numbers}`.trim()).join(" · ")}>{t(`${s.evidence.length} 条证据`, `${s.evidence.length} sources`)}</RowTag> : null}
+            /* How much evidence leads the grey line rather than sitting as
+               a tag beside the two presses: at 1280 the tag cost the title
+               its last words. */
+            line={
+              s.why || s.evidence.length ? (
+                <>
+                  {s.evidence.length ? (
+                    <span title={s.evidence.map((e) => `${e.label} ${e.numbers}`.trim()).join(" · ")} style={{ color: "#6b6b6b" }}>
+                      {t(`${s.evidence.length} 条证据`, `${s.evidence.length} sources`)}
+                      {s.why ? " · " : ""}
+                    </span>
+                  ) : null}
+                  {s.why}
+                </>
+              ) : null
+            }
             action={
               done ? null : (
                 <>

@@ -43,8 +43,8 @@ export function TopicRow({
   strengthTitle: string;
   title: string;
   /** The one grey line under the title (hidden while open, where the details say it in full). */
-  line?: string | null;
-  /** Small tags before the press: the format, "已存", the evidence count. */
+  line?: React.ReactNode;
+  /** Small tags before the press: the format, "已存". */
   meta?: React.ReactNode;
   /** The press on the right. */
   action?: React.ReactNode;
@@ -89,7 +89,7 @@ export function TopicRow({
   );
 }
 
-function RowText({ strength, strengthTitle, title, line }: { strength: number | null; strengthTitle: string; title: string; line?: string | null }) {
+function RowText({ strength, strengthTitle, title, line }: { strength: number | null; strengthTitle: string; title: string; line?: React.ReactNode }) {
   return (
     <>
       <span className="tpr-dots">{strength ? <Strength n={strength} title={strengthTitle} size={5} /> : null}</span>
@@ -152,7 +152,7 @@ export function EvidenceChips({ items }: { items: { label: string; title?: strin
   );
 }
 
-/** A small grey tag in a row: the format, the evidence count. */
+/** A small tag in a row: the format, "已存". */
 export function RowTag({ children, tone = "grey", title }: { children: React.ReactNode; tone?: "grey" | "ok"; title?: string }) {
   return (
     <span title={title} className={tone === "ok" ? "tpr-tag tpr-tag-ok" : "tpr-tag"}>

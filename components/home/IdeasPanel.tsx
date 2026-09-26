@@ -353,21 +353,21 @@ function IdeaRow({
      answers an idea whose project was deleted as new (so it can be started
      again), and one whose project is private to others as started with no
      id: said, not linked, so nothing here leads to a 404. */
-  const startedMark =
+  const startedMark = (full: boolean) =>
     isStarted && projectId ? (
-      <Link prefetch={false} href={`/projects/${projectId}`} className="ip-quiet" style={{ ...smallBtn(), textDecoration: "none" }}>
-        <Icon name="check" size={12} color="#278f5e" /> {t("已开项目 · 打开", "Started · open")}
+      <Link prefetch={false} href={`/projects/${projectId}`} className="ip-quiet" style={{ ...(full ? tintBtn() : smallBtn()), textDecoration: "none" }}>
+        <Icon name="check" size={full ? 13 : 12} color="#278f5e" /> {t("已开项目 · 打开", "Started · open")}
       </Link>
     ) : isStarted ? (
-      <span style={{ display: "inline-flex", alignItems: "center", gap: 5, height: 26, fontSize: 12, color: "#7c7c7c", whiteSpace: "nowrap" }}>
-        <Icon name="check" size={12} /> {t("同事已开项目", "A colleague started it")}
+      <span style={{ display: "inline-flex", alignItems: "center", gap: 5, height: full ? 30 : 26, fontSize: 12, color: "#7c7c7c", whiteSpace: "nowrap" }}>
+        <Icon name="check" size={full ? 13 : 12} /> {t("同事已开项目", "A colleague started it")}
       </span>
     ) : null;
 
   /* The row's one press, while shut; open, the full row of presses below
      carries it. In 编剧's tint, not black: a list of ideas used to carry a
      black button each, and the eye had nowhere to land. */
-  const rowAction = open || done ? null : startedMark ?? (canStart ? (
+  const rowAction = open || done ? null : startedMark(false) ?? (canStart ? (
     <button type="button" className="ip-go" disabled={working !== null} onClick={onStart} title={t("开项目，编剧接着写初稿", "Start a project; the writer drafts it")} style={{ ...smallBtn(), opacity: startingThis ? 0.6 : 1 }}>
       <Icon name="pen" size={12} /> {startingThis ? t("开项目…", "Starting…") : t("开项目", "Start")}
     </button>
@@ -397,7 +397,18 @@ function IdeaRow({
     >
       <Facts
         rows={[
-          [t("备选", "Or"), idea.titles.length ? <span style={{ color: "#525252" }}>{idea.titles.join(" / ")}</span> : null],
+          /* One title a line: joined with " / ", two titles that wrap
+             read as one long sentence. */
+          [
+            t("备选", "Or"),
+            idea.titles.length ? (
+              <span style={{ display: "flex", flexDirection: "column", color: "#525252" }}>
+                {idea.titles.map((x, k) => (
+                  <span key={k}>{x}</span>
+                ))}
+              </span>
+            ) : null,
+          ],
           [t("角度", "Angle"), idea.angle],
           [t("理由", "Why now"), idea.why ? <span style={{ color: "#525252" }}>{idea.why}</span> : null],
           [t("开头", "Opening"), idea.hook ? <span style={{ color: "#525252" }}>{t(`「${idea.hook}」`, `“${idea.hook}”`)}</span> : null],
@@ -406,7 +417,7 @@ function IdeaRow({
       />
       {done ? null : (
         <div style={{ display: "flex", gap: 6, marginTop: 12, flexWrap: "wrap", alignItems: "center" }}>
-          {startedMark ??
+          {startedMark(true) ??
             (canStart ? (
               <button type="button" className="ip-go" disabled={working !== null} onClick={onStart} style={{ ...tintBtn(), opacity: startingThis ? 0.6 : 1 }}>
                 <Icon name="pen" size={13} /> {startingThis ? t("正在开项目…", "Starting…") : t("开项目并写脚本", "Start it and write the script")}
