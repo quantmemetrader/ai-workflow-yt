@@ -6,6 +6,7 @@
  *     scripts/dv2/grade.ts --input <run>/grade-input.json --out /tmp/dv2_lab/W7/rNN \
  *       [--gold /tmp/dv2_lab/fixture/zhengliu.gold.json] [--prev /tmp/dv2_lab/W7/rMM/report.json] \
  *       [--skip whisper,face,vision,frames,scene] [--max-frames 150] [--concurrency 8] [--label rNN]
+ *       [--fonts-dir <dir>]   (default <cwd>/remotion/public/fonts, as render.ts)
  *
  *   # the v1 baseline, straight from the fixture and W5's `renderTimeline` output:
  *     scripts/dv2/grade.ts --v1 --fixture /tmp/dv2_lab/fixture/zhengliu.json --mp4 /tmp/dv2_lab/W5/a_v1.mp4 \
@@ -78,6 +79,7 @@ import {
   evaluateSound,
   greyThumb,
   measureFaces,
+  measureFontSelect,
   measureLoudness,
   measureSceneChanges,
   measureSilences,
@@ -93,6 +95,7 @@ import {
   type ChecklistItem,
   type CutawayScore,
   type FaceSample,
+  type FontSelect,
   type Gate,
   type GradeAnchors,
   type GradeAsset,
@@ -127,6 +130,13 @@ const CONCURRENCY = Number(arg("--concurrency", "8")) || 8;
 const FACE_PYTHON = process.env.FACE_PYTHON || "/home/ubuntu/.venvs/dv2face/bin/python";
 const FACE_SCRIPT = arg("--face-script", process.env.FACE_SCRIPT || "");
 const CACHE = arg("--cache", path.join(path.dirname(OUT), "cache"));
+/**
+ * The font folder the export render hands libass (`render.ts` FONTS_DIR:
+ * `<cwd>/remotion/public/fonts`, where the Black OTF lives — it is not a
+ * system font on the box). The font check must look where the renderer
+ * looks, or it reports a fallback the render never had.
+ */
+const FONTS_DIR = arg("--fonts-dir", path.join(process.cwd(), "remotion", "public", "fonts"));
 
 const exists = async (p: string) => Boolean(await stat(p).catch(() => null));
 const fmt = (ms: number) => `${Math.floor(ms / 60000)}:${String(Math.floor((ms % 60000) / 1000)).padStart(2, "0")}.${String(Math.floor((ms % 1000) / 100))}`;
@@ -262,8 +272,10 @@ async function inputFromFixtureV1(fixture: Fixture, gold: Gold | null, opts: { m
 
 async function cached<T>(file: string, compute: () => Promise<T>): Promise<T> {
   const hit = await readJson<T>(file);
-  if (hit) return hit;
+  if (hit && !(Array.isArray(hit) && hit.length === 0)) return hit;
   const v = await compute();
+  /* An empty answer (the face detector missing) is not remembered, so the next run tries again. */
+  if (Array.isArray(v) && v.length === 0) return v;
   await mkdir(path.dirname(file), { recursive: true });
   await writeFile(file, JSON.stringify(v), "utf8");
   return v;
@@ -513,6 +525,8 @@ async function main() {
     ...(input.anchors?.lowerThird ? [input.anchors.lowerThird.name, input.anchors.lowerThird.sub ?? ""] : []),
   ].filter((s, i, a) => s && a.indexOf(s) === i).slice(0, 30);
   const mp4Key = await fileKey(input.mp4);
+  /* The hotwords shape the transcription, so a gold file with new names must not be served an old transcript. */
+  const whisperKey = `${mp4Key}-${createHash("sha1").update(hotwords.join("、")).digest("hex").slice(0, 8)}`;
   const rawFile = input.cuts.find((c) => c.file)?.file ?? null;
   /* W5 owns face.py; a worktree that has it (after the merge) uses its own copy, W5's branch is the fallback until then. */
   const ownFace = path.join(process.cwd(), "scripts", "dv2", "face.py");
@@ -527,7 +541,7 @@ async function main() {
   const [whisper, loud, scenes, frameSet, sourceSilences, cutFrames, faces, pcm] = await Promise.all([
     SKIP.has("whisper")
       ? readJson<{ text: string; words: Word[] }>(path.join(OUT, "whisper.json"))
-      : timed("whisper", () => cached(path.join(CACHE, `whisper-${mp4Key}.json`), () => transcribeOutput(input.mp4, path.join(OUT, "audio.wav"), hotwords))),
+      : timed("whisper", () => cached(path.join(CACHE, `whisper-${whisperKey}.json`), () => transcribeOutput(input.mp4, path.join(OUT, "audio.wav"), hotwords))),
     timed("loudness", () => measureLoudness(input.mp4)),
     SKIP.has("scene") ? Promise.resolve(null) : timed("scene", () => cached(path.join(CACHE, `scene-${mp4Key}.json`), () => measureSceneChanges(input.mp4, 0.3))),
     SKIP.has("frames") ? Promise.resolve<FrameSet>({ frames: [], sheets: [], strips: [], tiles: [] }) : timed("frames", () => sampleFrames(input.mp4, input, { out: OUT, max: MAX_FRAMES, concurrency: CONCURRENCY })),
@@ -552,6 +566,13 @@ async function main() {
   const scores = await timed("relevance", () => scoreCutaways(input, cutFrames, words, context));
   const checks = SKIP.has("vision") ? [] : await timed("checkFrame", () => checkFrames(frameSet.frames));
   const ass = input.assFile && (await exists(input.assFile)) ? parseAss(await readFile(input.assFile, "utf8")) : null;
+  const fonts: FontSelect | null =
+    ass && input.assFile
+      ? await timed("fontselect", async () => measureFontSelect(input.assFile!, ass, { fontsDir: (await exists(FONTS_DIR)) ? FONTS_DIR : null })).catch((err) => {
+          console.warn(`  fontselect failed: ${err instanceof Error ? err.message : String(err)}`);
+          return null;
+        })
+      : null;
 
   /* ---- gates ---- */
   const clicks = clickCheck(pcm, cutBoundaries(input.cuts));
@@ -559,7 +580,7 @@ async function main() {
   const terms = [...(input.anchors?.terms ?? []).map((t) => t.term), ...(input.anchors?.entities ?? []).map((e) => e.name), ...(input.glossary ?? []).map((g) => g.to)];
   const gates: Gate[] = [
     evaluateRetakes(words, input.cuts, input.goldRetakes),
-    evaluateAnchors(words, input.anchors, transcriptGlossary),
+    evaluateAnchors(words, input.anchors, transcriptGlossary, input.captions),
     evaluateBoundaries(input.cuts, input.sourceWords, input.sourceSilences),
     evaluatePauses(words, silences, total, { floorDb: pauses.floorDb, thresholdDb: pauses.thresholdDb }),
     evaluateCutReport(input.cutReport, total),
@@ -573,7 +594,7 @@ async function main() {
     evaluateZones(input),
     evaluateFace(input, faces, ass),
     evaluateCadence(input, scenes),
-    ...evaluateCaptions(ass, input.glossary, terms, { size: 72, secondSize: 36, family: /Black/ }),
+    ...evaluateCaptions(ass, input.glossary, terms, { size: 72, secondSize: 36, family: /Black/ }, fonts),
     ...evaluateSound(loud, clicks, input.audio?.voiceChain),
     ...evaluateCredits(input),
     evaluateHook(input, input.anchors?.hookBlock, firstWordMs),
