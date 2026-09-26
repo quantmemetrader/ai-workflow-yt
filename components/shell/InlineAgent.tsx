@@ -7,6 +7,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Markdown } from "@/components/ui/Markdown";
 import { conversationMessagesAction } from "@/app/(app)/chat/actions";
 import { tidyMarkdown } from "@/components/chat/look";
+import { ProjectBridge } from "@/components/chat/ProjectBridge";
 
 /**
  * The agent, answering inside the module you are already in.
@@ -327,6 +328,7 @@ export function InlineAgentThread({
         gap: 12,
       }}
     >
+      <ProjectBridge compact conversationId={conversationId} messages={messages} zh={zh} />
       {messages.map((m) =>
         m.role === "user" ? (
           <div
