@@ -19,7 +19,7 @@ import { audit } from "@/lib/audit";
 import { canReadFiles, relationOn } from "@/lib/authz/rebac";
 import { newId } from "@/lib/ids";
 import { readCardActions, readCardDone } from "@/lib/agents/cards";
-import { readCardKind, readHandoff, readJob, readWorkRefs } from "@/lib/chat/handoff";
+import { readCardKind, readHandoff, readJob, readWorkRefs, readBinned, readCutPressed } from "@/lib/chat/handoff";
 import { pendingInChannel } from "@/lib/chat/pending";
 import { videoRefsOf, type VideoCard } from "@/lib/chat/video-card";
 import { videoCardsFor } from "@/lib/chat/videos";
@@ -640,6 +640,10 @@ export async function channelThread(viewer: Viewer, slug: string, limit = 80) {
          started, for the live chip. */
       refs: readWorkRefs(r.meta),
       job: readJob(r.meta),
+      /* A take a person dropped into a project's chat (so, into its bin):
+         the message offers 开始剪, once. */
+      binned: readBinned(r.meta),
+      cutPressed: readCutPressed(r.meta),
       /* The renders and video files it names, as cards this reader may open. */
       videos: videos.get(r.message_id!) ?? [],
       createdAt: toDate(r.created_at) ?? new Date(),

@@ -10,12 +10,29 @@
  * A dispatched event rather than a context: every call site is inside a
  * different tree, the toaster lives in the app layout above all of them, and
  * an event costs one line at each call site instead of a provider each.
+ *
+ * A notice can carry a title and a press or two (`notifyRich`): "《蒸馏之战》
+ * 成片已出" with 打开 and 下载 under it, when a film lands while you are on
+ * another page (`lib/client/live.ts`). Plain `notify` is the same event with
+ * text alone.
  */
 export const NOTIFY_EVENT = "aura:notify";
 
 export type NoticeKind = "error" | "ok" | "info";
 
-export type Notice = { id: number; kind: NoticeKind; text: string };
+export type NoticeAction = { label: string; href: string; /** A file to save rather than a page to open. */ download?: boolean };
+
+export type Notice = {
+  id: number;
+  kind: NoticeKind;
+  text: string;
+  /** A bold first line above the text. */
+  title?: string;
+  /** Small buttons under the text; each is a link inside this app or a file. */
+  actions?: NoticeAction[];
+  /** How long it stays, in ms; 0 is until dismissed. Defaults per kind. */
+  hold?: number;
+};
 
 let seq = 0;
 
@@ -24,4 +41,9 @@ export function notify(text: string, kind: NoticeKind = "error") {
   window.dispatchEvent(
     new CustomEvent<Notice>(NOTIFY_EVENT, { detail: { id: ++seq, kind, text } }),
   );
+}
+
+export function notifyRich(notice: Omit<Notice, "id">) {
+  if (typeof window === "undefined" || (!notice.text && !notice.title)) return;
+  window.dispatchEvent(new CustomEvent<Notice>(NOTIFY_EVENT, { detail: { ...notice, id: ++seq } }));
 }

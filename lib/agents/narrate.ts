@@ -1,8 +1,10 @@
 import "server-only";
 import { sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { postAsAgent } from "@/lib/agents";
+import { chatMembers } from "@/lib/db/schema";
+import { agentViewer, ensureAgentChannel, postAsAgent } from "@/lib/agents";
 import type { AgentKey } from "@/lib/agents/catalog";
+import { postMessage } from "@/lib/chat/service";
 import { clock } from "@/lib/video/length";
 
 /**
@@ -89,10 +91,18 @@ async function renderOf(exportId: string | null | undefined): Promise<Rendered |
 
 /** The project page a video project belongs to, for "打开项目". */
 async function workProjectOf(videoProjectId: string | null): Promise<string | null> {
+  return (await workProjectRowOf(videoProjectId))?.id ?? null;
+}
+
+/** The project, with its own chat: where the film's outcome is said as well. */
+async function workProjectRowOf(videoProjectId: string | null): Promise<{ id: string; title: string; channelId: string } | null> {
   if (!videoProjectId) return null;
   try {
-    const { rows } = await db.execute<{ id: string }>(sql`select id from work_projects where video_project_id = ${videoProjectId} and deleted_at is null order by created_at desc limit 1`);
-    return rows[0]?.id ?? null;
+    const { rows } = await db.execute<{ id: string; title: string; channel_id: string }>(
+      sql`select id, title, channel_id from work_projects where video_project_id = ${videoProjectId} and deleted_at is null order by created_at desc limit 1`,
+    );
+    const r = rows[0];
+    return r ? { id: r.id, title: r.title, channelId: r.channel_id } : null;
   } catch {
     return null;
   }
@@ -115,11 +125,35 @@ async function say(job: Job, phase: "start" | "done" | "failed", text: string, r
        the video card under it — the poster that plays, 下载, 打开项目 —
        and an employee reading the channel can name the file. */
     const videoProjectId = await videoProjectOf(job);
-    await postAsAgent(job.tenantId, who, "production", text, {
+    const meta = {
       narration: { jobId: job.id, type: job.type, phase },
       ...(videoProjectId ? { job: { videoProjectId } } : {}),
       ...(rendered ? { render: { exportId: rendered.exportId, fileId: rendered.fileId, aspect: rendered.aspect, durationMs: rendered.durationMs, sizeBytes: rendered.sizeBytes } } : {}),
-    });
+    };
+    await postAsAgent(job.tenantId, who, "production", text, meta);
+
+    /*
+     * And in the project's own chat, when the film is out or stopped.
+     *
+     * The person waiting for the film is in the project — its page, its
+     * chat, Home's card of it — not in #制作. The 渲染好了 line with the
+     * card, and the 没成功 line, go there too, so the film lands where it
+     * was asked for; #制作 keeps the studio-wide record. The start line stays
+     * in #制作 alone: the project's chat has 剪辑师's own "开始剪" and a live
+     * row following the worker. Skipped when the project's chat is #制作
+     * itself.
+     */
+    if (phase !== "start") {
+      const wp = await workProjectRowOf(videoProjectId);
+      if (wp) {
+        const production = await ensureAgentChannel(job.tenantId, "production");
+        if (wp.channelId !== production) {
+          const editor = await agentViewer(job.tenantId, who);
+          await db.insert(chatMembers).values({ channelId: wp.channelId, userId: editor.id }).onConflictDoNothing();
+          await postMessage(editor, wp.channelId, text, { ...meta, agent: who, project: { id: wp.id, title: wp.title } });
+        }
+      }
+    }
   } catch (err) {
     // Narration must never fail the job it is narrating.
     console.error("[narrate] could not post", err);

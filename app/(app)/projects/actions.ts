@@ -28,6 +28,10 @@ import { briefText, formatHints, isWriting, refFromChoice, type ProjectSource, t
 import { draftInBackground } from "@/lib/script/background";
 import { scriptWriting } from "@/lib/script/writing";
 import { markPublished, unmarkPublished, type PublishInput } from "@/lib/projects/published";
+import { armAutoCut, disarmAutoCut, setAutoCut } from "@/lib/projects/live";
+import { describeOutcome, startCutForProject } from "@/lib/projects/start-cut";
+import { canEditProject } from "@/lib/video/access";
+import { parseVoiceId } from "@/lib/video/tts/voices";
 
 /** A title from what somebody typed: the tags and the filler taken out. */
 function titleFrom(text: string): string {
@@ -483,4 +487,80 @@ export async function chooseTopicAction(projectId: string, input: { id?: string;
   if (ref.kind === "idea") await db.update(ideas).set({ status: "started", projectId: p.id, updatedAt: new Date() }).where(and(eq(ideas.id, ref.id), eq(ideas.tenantId, viewer.tenantId)));
   await rewriteChannelTopic(p.id);
   return { scriptUpdated, hasBeats: !scriptUpdated && Boolean(p.scriptId) };
+}
+
+/* --------------------------------------------- 素材传好了 · 开始剪 */
+
+/** A project this person may see and whose video they may edit, with what
+ *  starting the cut needs; the reason otherwise. */
+async function cuttable(viewer: Viewer, projectId: string, zh: boolean) {
+  if (typeof projectId !== "string" || !/^wp_[0-9a-z]{10,40}$/i.test(projectId)) return { error: zh ? "没有这个项目" : "No such project" } as const;
+  if (!viewer.modules.includes("video")) return { error: zh ? "需要视频模块的权限" : "This needs the Video module" } as const;
+  const p = await visibleProject(viewer, projectId);
+  if (!p?.videoProjectId) return { error: zh ? "没有这个项目" : "No such project" } as const;
+  if (!(await canEditProject(viewer, p.videoProjectId))) {
+    return { error: zh ? "这个项目的视频只分享给你查看，请找负责人要编辑权限。" : "This project's video was shared with you to view. Ask its owner for edit access." } as const;
+  }
+  return { project: { id: p.id, title: p.title, channelId: p.channelId, videoProjectId: p.videoProjectId } } as const;
+}
+
+/**
+ * The clips card's "素材传好了 · 开始剪": the one-go from the project page,
+ * through the same starter the chat uses (`lib/projects/start-cut.ts`), so
+ * 剪辑师 says in the project's chat what it is doing and the chat follows
+ * it. The page's own prompt and voice choices travel with it, as they do
+ * on the video card's button.
+ */
+export async function startCutFromPageAction(projectId: string, input: { prompt?: unknown; narrate?: unknown; voiceId?: unknown } = {}) {
+  const viewer = await getViewer();
+  if (!viewer || !viewer.modules.includes("chat")) return { error: "Not allowed" };
+  const zh = (viewer.locale ?? "zh-CN").startsWith("zh");
+  const ok = await cuttable(viewer, projectId, zh);
+  if ("error" in ok) return { error: ok.error };
+  const narrate = input.narrate === "on" || input.narrate === "off" ? input.narrate : "auto";
+  const voiceId = typeof input.voiceId === "string" && parseVoiceId(input.voiceId) ? input.voiceId.slice(0, 64) : null;
+  const prompt = typeof input.prompt === "string" ? input.prompt.trim().slice(0, 2000) : undefined;
+  const outcome = await startCutForProject(viewer, ok.project, { via: "page", prompt: prompt || undefined, narrate, voiceId, quietWhenEmpty: true });
+  const note = describeOutcome(outcome, ok.project.title, zh);
+  if (outcome.kind === "error") return { error: outcome.error };
+  if (outcome.kind === "no-clips") return { error: note };
+  return { ok: true as const, kind: outcome.kind, note };
+}
+
+/** "传完自动开始剪", on or off, kept on the project. */
+export async function setAutoCutAction(projectId: string, on: boolean) {
+  const viewer = await getViewer();
+  if (!viewer || !viewer.modules.includes("chat")) return { error: "Not allowed" };
+  const zh = (viewer.locale ?? "zh-CN").startsWith("zh");
+  const ok = await cuttable(viewer, projectId, zh);
+  if ("error" in ok) return { error: ok.error };
+  await setAutoCut(viewer, ok.project.id, Boolean(on));
+  if (!on) await disarmAutoCut(viewer, ok.project.id);
+  return {};
+}
+
+/**
+ * An upload landed in the project's bin (the clips card): when the setting
+ * is on, the cut is due a minute from now — a minute from the last one to
+ * land, since every file moves it. Says when, so the card can count down.
+ */
+export async function clipLandedAction(projectId: string) {
+  const viewer = await getViewer();
+  if (!viewer || !viewer.modules.includes("chat")) return { error: "Not allowed" };
+  const zh = (viewer.locale ?? "zh-CN").startsWith("zh");
+  const ok = await cuttable(viewer, projectId, zh);
+  if ("error" in ok) return { error: ok.error };
+  const dueAt = await armAutoCut(viewer, ok.project.id);
+  return { dueAt };
+}
+
+/** "取消": the armed cut will not fire; the setting stays. */
+export async function cancelAutoCutAction(projectId: string) {
+  const viewer = await getViewer();
+  if (!viewer || !viewer.modules.includes("chat")) return { error: "Not allowed" };
+  const zh = (viewer.locale ?? "zh-CN").startsWith("zh");
+  const ok = await cuttable(viewer, projectId, zh);
+  if ("error" in ok) return { error: ok.error };
+  await disarmAutoCut(viewer, ok.project.id);
+  return {};
 }

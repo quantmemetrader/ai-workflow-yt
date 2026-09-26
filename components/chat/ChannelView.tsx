@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation";
 import { ChannelSurface, type ChannelMember, type ChannelMessage, type ChannelPending, type SentFile } from "@/components/chat/ChannelSurface";
 import { pendingStamp } from "@/lib/agents/steps";
 import { parseAgentMentions } from "@/lib/agents/catalog";
-import { pressCardAction, sendChannelMessage } from "@/app/(app)/chat/actions";
+import { pressCardAction, sendChannelMessage, startCutFromChatAction } from "@/app/(app)/chat/actions";
+import { bumpLive } from "@/lib/client/live";
 import { MembersSheet } from "@/components/chat/MembersSheet";
 import { AgentDock } from "@/components/shell/AgentDock";
 
@@ -46,8 +47,11 @@ export function ChannelView({
   directAvatar = null,
   directId = null,
   pending: workingRows = [],
+  project = null,
 }: {
   slug: string;
+  /** The project this chat belongs to, when it is a project's own. */
+  project?: { id: string; title: string; videoProjectId: string | null } | null;
   /** The employees at work in this channel, each on its current step. */
   pending?: ChannelPending[];
   /** Who is typing: the name the optimistic row is signed with while the
@@ -102,6 +106,8 @@ export function ChannelView({
   /** The card button waiting on the server, so it reads as busy and the
    *  rest of them are not pressed underneath it. */
   const [pressing, setPressing] = useState<string | null>(null);
+  /** The dropped take whose 开始剪 press is on its way to the server. */
+  const [cutting, setCutting] = useState<string | null>(null);
   const [seen, setSeen] = useState(messages);
   if (seen !== messages) {
     setSeen(messages);
@@ -188,6 +194,31 @@ export function ChannelView({
          the response (the turn runs after it), so look once more soon
          rather than leaving the room still for a whole poll. */
       if (parseAgentMentions(body).length || ("answering" in res && res.answering)) setTimeout(() => router.refresh(), 1500);
+      /* "传好了" may have started the cut: the live row wants to know now. */
+      if ("answering" in res && res.answering === "video") setTimeout(bumpLive, 2500);
+    });
+  }
+
+  /**
+   * "素材传好了 · 开始剪" under a take dropped here. The server posts the
+   * person's own line and starts the cut after its response; the refresh
+   * draws the line, the next one 剪辑师's reply with its chip, and the
+   * live store the row that follows the worker.
+   */
+  function startCut(messageId: string) {
+    if (cutting) return;
+    setFailed(null);
+    setCutting(messageId);
+    start(async () => {
+      const res = await startCutFromChatAction(slug, messageId);
+      setCutting(null);
+      if (res?.error) {
+        setFailed({ body: "", error: res.error });
+        return;
+      }
+      router.refresh();
+      setTimeout(() => router.refresh(), 1500);
+      setTimeout(bumpLive, 2500);
     });
   }
 
@@ -229,6 +260,9 @@ export function ChannelView({
           onSend={send}
           onPress={press}
           pressing={pressing}
+          project={project}
+          onStartCut={project ? startCut : undefined}
+          cutting={cutting}
           people={mentionPeople ?? studioPeople}
           canAttach={canAttach}
           failed={failed}

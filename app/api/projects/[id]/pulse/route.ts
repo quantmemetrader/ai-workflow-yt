@@ -41,6 +41,9 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     p.director?.finishedAt ?? "",
     p.narration?.trackId ?? "",
     p.narration?.state ?? "",
+    /* An armed auto-cut (or its cancel), so the countdown on the clips
+       card follows what the server holds. */
+    p.autoCut.dueAt ?? "",
   ].join("|");
   return Response.json({ stamp }, { headers: { "Cache-Control": "no-store" } });
 }

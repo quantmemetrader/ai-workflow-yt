@@ -10,12 +10,15 @@ import { useMentions } from "@/components/chat/useMentions";
 import { AccessPicker } from "@/components/files/AccessPicker";
 import { AGENT_COLORS, AGENT_TINTS, agentTag, parseAgentMentions, type AgentKey } from "@/lib/agents/catalog";
 import { pressCardAction, sendChannelMessage } from "@/app/(app)/chat/actions";
-import { deleteProjectAction, renameProjectAction, setProjectAccessAction, setProjectStatusAction, chooseScriptAction, chooseTopicAction, startFromTopicAction, unpublishAction } from "@/app/(app)/projects/actions";
+import { cancelAutoCutAction, clipLandedAction, deleteProjectAction, renameProjectAction, setAutoCutAction, setProjectAccessAction, setProjectStatusAction, chooseScriptAction, chooseTopicAction, startCutFromPageAction, startFromTopicAction, unpublishAction } from "@/app/(app)/projects/actions";
 import { addClipAction, addItemAction, autoEditAction, exportAction } from "@/app/(app)/video/actions";
 import { uploadFiles } from "@/lib/client/upload";
 import { beginWork } from "@/lib/client/busy";
 import { notify } from "@/lib/client/notify";
 import { writeRendering } from "@/lib/client/rendering";
+import { bumpLive } from "@/lib/client/live";
+import { ClipsNextStep } from "@/components/projects/ClipsNextStep";
+import { LivePill, useLiveRow } from "@/components/chat/LivePill";
 import type { ProjectDetail, ProjectStep } from "@/lib/projects/service";
 import { cleanCodes, type ProjectSource } from "@/lib/projects/topic";
 import { JobChip } from "@/components/chat/Working";
@@ -86,6 +89,10 @@ export function ProjectScreen({
     JSON.stringify({ prompt: videoPrompt, narrate: aiVoice ? "on" : "auto", voiceId, ...extra });
   const [busyAction, setBusyAction] = React.useState<string | null>(null);
   const [picking, setPicking] = React.useState<null | "clips" | "scripts" | "topics">(null);
+  /* An upload from this page just landed: the clips card leads with the
+     next press, loud, until the film starts. */
+  const [justLanded, setJustLanded] = React.useState(false);
+  const fileInput = React.useRef<HTMLInputElement | null>(null);
   /* The 已发布 popover, and which button opened it: the delivery step's in
      the row of steps, the delivery card's, or the one under the finished
      film on the 成片 card. */
@@ -196,8 +203,11 @@ export function ProjectScreen({
    * the editor tab, or by 剪辑师 from the chat, shows the moment the owner
    * looks here again rather than after a reload.
    */
+  /* An armed "传完自动开始剪" counts down on the server: the page keeps
+     asking so the count, its cancel, and the moment it starts all show. */
+  const armed = p.autoCut.dueAt !== null;
   React.useEffect(() => {
-    const live = anyWorking || busyLive;
+    const live = anyWorking || busyLive || armed;
     let until = Date.now() + 8 * 60_000;
     let last: string | null = null;
     let stopped = false;
@@ -230,7 +240,7 @@ export function ProjectScreen({
       document.removeEventListener("visibilitychange", onVisible);
       window.removeEventListener("focus", onVisible);
     };
-  }, [anyWorking, busyLive, router, p.id]);
+  }, [anyWorking, busyLive, armed, router, p.id]);
 
   /** Ask one employee something from its card; the answer comes back there. */
   function ask(agent: AgentKey, text: string) {
@@ -261,7 +271,42 @@ export function ProjectScreen({
     if (p.video) writeRendering({ projectId: p.video.id, title: p.title });
     notify(t(`已开始：${label}`, `Started: ${label}`), "ok");
     setAsked((m) => ({ ...m, video: new Date().toISOString() }));
+    setJustLanded(false);
+    /* Home's card, the sidebar and the corner chip follow at once. */
+    setTimeout(bumpLive, 1500);
     router.refresh();
+  }
+
+  /**
+   * "素材传好了 · 开始剪" on the clips card: the one-go through the shared
+   * starter (`startCutFromPageAction`), so 剪辑师 says in the project's
+   * chat what it is doing and the chat's chip follows it. Same prompt and
+   * voice choices as the video card's button.
+   */
+  const startCut = () =>
+    runTool("cut", t("剪辑", "the cut"), async () => {
+      const r = await startCutFromPageAction(p.id, { prompt: videoPrompt, narrate: aiVoice ? "on" : "auto", voiceId });
+      return "error" in r && r.error ? { error: r.error } : {};
+    });
+
+  /** "传完自动开始剪", kept on the project; the page refreshes to its state. */
+  function toggleAutoCut(on: boolean) {
+    start(async () => {
+      const r = await setAutoCutAction(p.id, on);
+      if (r?.error) notify(r.error);
+      else notify(on ? t("好，最后一段传完 60 秒后会自动开始剪。", "On: the cut starts a minute after the last upload lands.") : t("已关闭自动开始。", "Auto-start is off."), "ok");
+      router.refresh();
+    });
+  }
+
+  function cancelAutoCut() {
+    start(async () => {
+      const r = await cancelAutoCutAction(p.id);
+      if (r?.error) notify(r.error);
+      else notify(t("已取消这次自动开始；设置还在。", "Cancelled this time; the setting stays."), "info");
+      setTimeout(bumpLive, 500);
+      router.refresh();
+    });
   }
 
   async function upload(list: FileList) {
@@ -274,9 +319,16 @@ export function ProjectScreen({
         onDone: async (fileId) => {
           const res = await addClipAction(videoId, fileId);
           if ("id" in res && res.id) await addItemAction(videoId, "clip", res.id, "");
+          /* "传完自动开始剪": every landing moves the minute; the last one
+             is the one that counts (`clipLandedAction`). */
+          await clipLandedAction(p.id).catch(() => null);
         },
       });
-      if (out.uploaded) notify(t(`已上传 ${out.uploaded} 段素材`, `Uploaded ${out.uploaded} clip(s)`), "ok");
+      if (out.uploaded) {
+        notify(t(`已上传 ${out.uploaded} 段素材`, `Uploaded ${out.uploaded} clip(s)`), "ok");
+        setJustLanded(true);
+      }
+      setTimeout(bumpLive, 500);
       router.refresh();
     } finally {
       done();
@@ -584,7 +636,7 @@ export function ProjectScreen({
                   {/* White: the whole dashed box is the press, and a black
                       block in it made the card's loudest thing a label. */}
                   <span style={{ ...btn(false), height: 30, fontSize: 12, borderColor: "#c9d8f3", color: "#0f5bd5" }}>{t("选择文件", "Choose files")}</span>
-                  <input type="file" multiple accept="video/*,audio/*,image/*" style={{ display: "none" }} onChange={(e) => {
+                  <input ref={fileInput} type="file" multiple accept="video/*,audio/*,image/*" style={{ display: "none" }} onChange={(e) => {
                     if (e.target.files?.length) void upload(e.target.files);
                     e.target.value = "";
                   }} />
@@ -592,6 +644,30 @@ export function ProjectScreen({
                 <Actions>
                   <Action icon="film" label={t("从已上传的素材里选", "Choose from uploaded clips")} onClick={() => setPicking("clips")} disabled={pending} />
                 </Actions>
+                {/* Clips in, and no film being made or out of them yet: the
+                    next press is here, on the card the clips landed on —
+                    loud right after an upload — with 传完自动开始剪 beside
+                    it (`ClipsNextStep`). Once the director has cut, the
+                    video card's render button is the next press instead —
+                    unless more clips landed with 传完自动开始剪 on and its
+                    minute is counting: the countdown and its 取消 stay here. */}
+                {p.video && p.video.clips > 0 && !busyLive && ((!rendered && p.director?.state !== "done") || armed) ? (
+                  <ClipsNextStep
+                    zh={zh}
+                    clips={p.video.clips}
+                    hasBeats={p.beats.length > 0}
+                    justLanded={justLanded}
+                    retry={p.director?.state === "failed" || p.render?.state === "failed"}
+                    autoCut={p.autoCut}
+                    starting={busyAction === "cut"}
+                    disabled={pending || busyAction !== null}
+                    onStart={startCut}
+                    onMore={() => fileInput.current?.click()}
+                    onToggleAuto={toggleAutoCut}
+                    onStartNow={startCut}
+                    onCancelAuto={cancelAutoCut}
+                  />
+                ) : null}
                 {p.video && p.video.clips === 0 && p.beats.length > 0 ? (
                   <p style={{ margin: "10px 0 0", fontSize: 12, color: "#7c6a3a", lineHeight: 1.55 }}>
                     {t("剪辑师在等主持人的素材：传上来会自动转写，然后按脚本分段粗剪。", "The editor is waiting for the host's clips: they are transcribed as they land, then cut by the script's sections.")}
@@ -1288,6 +1364,7 @@ function ChatDrawer({ project: p, zh, people, onClose }: { project: ProjectDetai
   const scroller = React.useRef<HTMLDivElement | null>(null);
   const lastId = p.messages[p.messages.length - 1]?.id;
   const working = p.pending.map((r) => `${r.id}:${r.step}`).join(",");
+  const liveRow = useLiveRow(p.id, (exportId) => p.messages.some((m) => m.videos.some((v) => v.kind === "render" && v.id === exportId)));
   React.useEffect(() => {
     const el = scroller.current;
     if (el) el.scrollTop = el.scrollHeight;
@@ -1356,7 +1433,9 @@ function ChatDrawer({ project: p, zh, people, onClose }: { project: ProjectDetai
                   {/* "渲染好了" with the film under it: the poster that
                       plays, 下载, 在剪辑台打开 — right here in the drawer. */}
                   <VideoCards videos={m.videos} zh={zh} here={{ projectId: p.id }} />
-                  {m.job ? (
+                  {/* The live row at the foot follows this film while it
+                      is made; the message's own chip stands down meanwhile. */}
+                  {m.job && !(liveRow && p.video?.id === m.job.videoProjectId) ? (
                     <div>
                       <JobChip job={m.job} zh={zh} project={{ id: p.id }} />
                     </div>
@@ -1406,6 +1485,23 @@ function ChatDrawer({ project: p, zh, people, onClose }: { project: ProjectDetai
             </div>
           ),
         )}
+        {/* The film, live: 剪辑师's row that follows the worker (转写 →
+            剪辑 → 设计图形 → 渲染 42% → 成片已出), from the studio-wide
+            store, patched in place; gone once the worker's own 渲染好了
+            line with the card is here. */}
+        {liveRow ? (
+          <div style={{ display: "flex", gap: 9, alignItems: "flex-start" }} aria-live="polite">
+            <AgentIcon agent="video" size={26} radius={7} />
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 11.5, fontWeight: 600, color: AGENT_COLORS.video }}>
+                <AgentName agent="video" zh={zh} />
+              </div>
+              <div style={{ marginTop: 4 }}>
+                <LivePill p={liveRow} zh={zh} size="sm" />
+              </div>
+            </div>
+          </div>
+        ) : null}
         {/* The employees at work here right now, on the step each is on.
             Gone as soon as its reply lands. */}
         {p.pending.map((r) => (

@@ -6,6 +6,8 @@ import { usePathname, useSearchParams } from "next/navigation";
 import { NewProjectButton } from "@/components/projects/NewProjectButton";
 import { Icon } from "@/components/ui/Icon";
 import { Tr } from "@/components/ui/Tr";
+import { useLiveSnapshot } from "@/lib/client/live";
+import { isRecent, isRunning } from "@/lib/projects/live-types";
 
 export type TreeProject = { id: string; title: string; status: string; scriptId: string | null; videoProjectId: string | null };
 
@@ -25,6 +27,13 @@ export function ProjectTree({ projects, zh, wide }: { projects: TreeProject[]; z
   const params = useSearchParams();
   const openProjectParam = params.get("project");
   const [showAll, setShowAll] = React.useState(false);
+  /* The films being made right now (`lib/client/live.ts`): a folder whose
+     film is rendering gets a small moving dot, and a still green one for two
+     minutes after the film lands — the sidebar used to say nothing at all
+     while the worker was twenty minutes into a render. Empty on the server
+     and at hydration, so the first paint agrees. */
+  const { at: polledAt, projects: live } = useLiveSnapshot();
+  const liveOf = (id: string) => live.find((x) => x.id === id) ?? null;
 
   const isIn = (p: TreeProject) =>
     pathname === `/projects/${p.id}` ||
@@ -84,7 +93,9 @@ export function ProjectTree({ projects, zh, wide }: { projects: TreeProject[]; z
                     <span style={{ position: "absolute", right: -3, bottom: -2, width: 10, height: 10, borderRadius: 5, background: "#23a15f", boxShadow: "0 0 0 1.5px #f7f7f6", display: "flex", alignItems: "center", justifyContent: "center" }}>
                       <Icon name="check" size={7} color="#fff" strokeWidth={3.4} />
                     </span>
-                  ) : null}
+                  ) : (
+                    <LiveDot state={liveOf(p.id)} at={polledAt} />
+                  )}
                 </span>
                 <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: inside ? 600 : 400 }}>{p.title}</span>
               </Link>
@@ -109,5 +120,24 @@ export function ProjectTree({ projects, zh, wide }: { projects: TreeProject[]; z
         <NewProjectButton zh={zh} compact />
       </div>
     </div>
+  );
+}
+
+/**
+ * The small dot on a folder's corner: moving (blue) while its film is
+ * being made or its auto-cut counts down, still green for two minutes once
+ * the film is out, red when the render failed. Nothing otherwise.
+ */
+function LiveDot({ state, at }: { state: ReturnType<typeof useLiveSnapshot>["projects"][number] | null; at: number }) {
+  if (!state) return null;
+  const running = isRunning(state) || state.state === "armed";
+  if (!running && !isRecent(state, at)) return null;
+  const color = running ? "#4a90e2" : state.state === "done" ? "#23a15f" : "#d9534f";
+  return (
+    <span
+      aria-hidden
+      title={running ? "正在制作" : state.state === "done" ? "成片已出" : "渲染没成功"}
+      style={{ position: "absolute", right: -3, bottom: -2, width: 8, height: 8, borderRadius: 4, background: color, boxShadow: "0 0 0 1.5px #f7f7f6", animation: running ? "auraPulse 1.4s ease-in-out infinite" : undefined }}
+    />
   );
 }
