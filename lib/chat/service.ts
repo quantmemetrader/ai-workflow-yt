@@ -19,7 +19,9 @@ import { audit } from "@/lib/audit";
 import { canReadFiles, relationOn } from "@/lib/authz/rebac";
 import { newId } from "@/lib/ids";
 import { readCardActions, readCardDone } from "@/lib/agents/cards";
-import { readCardKind, readHandoff } from "@/lib/chat/handoff";
+import { readCardKind, readHandoff, readJob, readWorkRefs } from "@/lib/chat/handoff";
+import { pendingInChannel } from "@/lib/chat/pending";
+import type { AgentKey } from "@/lib/agents/catalog";
 
 /** Channels this person is in, plus the public ones they could join. A private
  * channel they are not in is not listed — the same rule as files. */
@@ -218,6 +220,80 @@ export async function listConversations(viewer: Viewer, limit = 20) {
     .where(and(eq(conversations.userId, viewer.id), isNull(conversations.archivedAt)))
     .orderBy(desc(conversations.updatedAt))
     .limit(limit);
+}
+
+/**
+ * This person's own conversations in which one employee answered, newest
+ * first, with the employee's last line in each.
+ *
+ * "Press on an AI 同事 and see their texts, not a blank box": `/chat?agent=…`
+ * opens the newest of these, and lists the rest. Only the person's own
+ * threads (`conversations.user_id`), the same rule the thread page keeps; an
+ * employee's own threads in the channels are its, and what it said there is
+ * `agentChannelLines` below.
+ */
+export async function conversationsWithAgent(viewer: Viewer, key: AgentKey, limit = 12) {
+  const { rows } = await db.execute<{ id: string; title: string; updated_at: unknown; last: string | null; last_at: unknown }>(sql`
+    select c.id, c.title, c.updated_at, l.content as last, l.created_at as last_at
+      from ${conversations} c
+      join lateral (
+        select am.content, am.created_at
+          from ${agentMessages} am
+         where am.conversation_id = c.id and am.speaker = ${key} and am.role = 'assistant' and am.content <> ''
+         order by am.created_at desc
+         limit 1
+      ) l on true
+     where c.user_id = ${viewer.id} and c.archived_at is null
+     order by greatest(c.updated_at, l.created_at) desc
+     limit ${Math.min(Math.max(limit, 1), 40)}
+  `);
+  return rows.map((r) => ({
+    id: r.id,
+    title: r.title,
+    updatedAt: (toDate(r.last_at) ?? toDate(r.updated_at) ?? new Date()).toISOString(),
+    last: (r.last ?? "").replace(/\s+/g, " ").trim().slice(0, 140),
+  }));
+}
+
+/**
+ * What one employee said lately in the channels this person can read:
+ * public rooms and the private ones they are in, direct messages aside.
+ * A project's chat is named as its project, so the link opens the project
+ * page, where that chat lives. Placeholders are never among them (deleted
+ * from birth), nor anything deleted.
+ */
+export async function agentChannelLines(viewer: Viewer, key: AgentKey, limit = 6) {
+  const { rows } = await db.execute<{
+    id: string;
+    body: string;
+    created_at: unknown;
+    channel_id: string;
+    channel_name: string;
+    slug: string | null;
+    project_id: string | null;
+    project_title: string | null;
+  }>(sql`
+    select m.id, m.body, m.created_at, c.id as channel_id, c.name as channel_name, c.slug,
+           wp.id as project_id, wp.title as project_title
+      from ${chatMessages} m
+      join ${users} u on u.id = m.author_id and u.tenant_id = ${viewer.tenantId} and u.email = ${`${key}@agents.invalid`}
+      join ${chatChannels} c on c.id = m.channel_id and c.tenant_id = ${viewer.tenantId}
+      left join work_projects wp on wp.channel_id = c.id and wp.deleted_at is null
+     where m.deleted_at is null
+       and m.body <> ''
+       and c.archived_at is null
+       and c.kind in ('channel', 'announce')
+       and (c.is_private = false or exists (
+            select 1 from ${chatMembers} cm where cm.channel_id = c.id and cm.user_id = ${viewer.id}))
+     order by m.created_at desc
+     limit ${Math.min(Math.max(limit, 1), 20)}
+  `);
+  return rows.map((r) => ({
+    id: r.id,
+    body: r.body.replace(/\s+/g, " ").trim().slice(0, 220),
+    at: (toDate(r.created_at) ?? new Date()).toISOString(),
+    where: r.project_title ? { kind: "project" as const, name: r.project_title, href: `/projects/${r.project_id}` } : { kind: "channel" as const, name: r.channel_name, href: r.slug ? `/chat/c/${encodeURIComponent(r.slug)}` : "/chat" },
+  }));
 }
 
 /** A conversation with everything the screen must show: the answer, what it
@@ -492,10 +568,20 @@ export async function channelThread(viewer: Viewer, slug: string, limit = 80) {
   // *this* reader. A file shared with the channel yesterday and unshared today
   // drops out here, which is the correct behaviour — the poster's access is
   // not the reader's.
-  const attachments = await attachmentsFor(
-    viewer,
-    withMessages.flatMap((r) => toIds(r.attachments)),
-  );
+  /* And the employees at work in the room right now: their placeholder
+     rows are "deleted" from birth, so the thread above never includes
+     them, and they are drawn after the last message instead
+     (`lib/chat/pending.ts`). */
+  const [attachments, pending] = await Promise.all([
+    attachmentsFor(
+      viewer,
+      withMessages.flatMap((r) => toIds(r.attachments)),
+    ),
+    pendingInChannel(first.channel_id).catch((err) => {
+      console.error("[chat] could not read who is at work", err);
+      return [];
+    }),
+  ]);
 
   return {
     channel: {
@@ -527,8 +613,14 @@ export async function channelThread(viewer: Viewer, slug: string, limit = 80) {
          is. Both read defensively: the column is jsonb. */
       handoff: readHandoff(r.meta),
       card: readCardKind(r.meta),
+      /* The project, script and video ids it names, for the page to turn
+         into an "打开项目" button (`projectLinks`), and a long job it
+         started, for the live chip. */
+      refs: readWorkRefs(r.meta),
+      job: readJob(r.meta),
       createdAt: toDate(r.created_at) ?? new Date(),
     })),
+    pending,
   };
 }
 
@@ -554,19 +646,41 @@ export async function channelMessage(channelId: string, messageId: string) {
  * Merged into the existing `meta` in one statement rather than read-then-write:
  * two people pressing at the same moment is the ordinary case for an approval
  * card, and the loser of that race should not erase the agent's own buttons.
- * `where meta->'done' is null` makes the first press the one that counts.
+ * `where meta->'done' is null` makes the first press the one that counts,
+ * and the answer says whether this call was that press: a button that
+ * starts a project or a stock-footage run is claimed with this *before* the
+ * work, so two presses at once (a double click, two people, Home and the
+ * channel) start it once, not twice.
  */
 export async function markCardDone(
   channelId: string,
   messageId: string,
   done: { actionId: string; by: string; at: string },
-) {
-  await db.execute(sql`
+): Promise<boolean> {
+  const { rows } = await db.execute<{ id: string }>(sql`
     update ${chatMessages}
        set meta = coalesce(meta, '{}'::jsonb) || ${JSON.stringify({ done })}::jsonb
      where id = ${messageId}
        and channel_id = ${channelId}
        and (meta -> 'done') is null
+    returning id
+  `);
+  return rows.length > 0;
+}
+
+/**
+ * Gives a press back when the work it claimed could not even be posted, so
+ * the card offers its buttons again instead of reading "X chose …" over
+ * nothing. Only that press (the same action at the same moment) is undone.
+ */
+export async function unmarkCardDone(channelId: string, messageId: string, done: { actionId: string; at: string }) {
+  await db.execute(sql`
+    update ${chatMessages}
+       set meta = meta - 'done'
+     where id = ${messageId}
+       and channel_id = ${channelId}
+       and meta -> 'done' ->> 'actionId' = ${done.actionId}
+       and meta -> 'done' ->> 'at' = ${done.at}
   `);
 }
 

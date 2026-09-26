@@ -18,6 +18,9 @@ import { notify } from "@/lib/client/notify";
 import { writeRendering } from "@/lib/client/rendering";
 import type { ProjectDetail, ProjectStep } from "@/lib/projects/service";
 import { cleanCodes, type ProjectSource } from "@/lib/projects/topic";
+import { JobChip, WorkingPill } from "@/components/chat/Working";
+import { stepLabel } from "@/lib/agents/steps";
+import { artifactHref } from "@/lib/chat/handoff";
 
 /**
  * One project, worked on in place.
@@ -47,11 +50,21 @@ export function ProjectScreen({ project: p, zh, people, writing }: { project: Pr
   const [asked, setAsked] = React.useState<Partial<Record<AgentKey, string>>>({});
 
   const latest = (a: AgentKey): Msg | null => [...p.messages].reverse().find((m) => m.agent === a) ?? null;
+  /* An employee at work in this project's chat, as the server knows it (its
+     working row, `lib/chat/pending.ts`): what the card says it is doing. */
+  const busyRow = (a: AgentKey) => p.pending.find((r) => r.agent === a) ?? null;
   const working = (a: AgentKey) => {
+    if (busyRow(a)) return true;
     const since = asked[a];
     return Boolean(since && !p.messages.some((m) => m.agent === a && m.at > since));
   };
-  const anyWorking = (Object.keys(asked) as AgentKey[]).some(working);
+  /* What a card says while its employee works: the real step when there is
+     one, else the card's own words. */
+  const doing = (a: AgentKey, fallback: string) => {
+    const row = busyRow(a);
+    return row ? `${zh ? AGENT_LABELS[a].nameLocal : AGENT_LABELS[a].name} · ${stepLabel(row.step, zh)}` : fallback;
+  };
+  const anyWorking = (Object.keys(asked) as AgentKey[]).some(working) || p.pending.length > 0;
   const directing = p.director?.state === "queued" || p.director?.state === "running";
   /* The topic this project was started from, as the server resolved it
      (why now, the hook, the evidence with its numbers). */
@@ -321,7 +334,7 @@ export function ProjectScreen({ project: p, zh, people, writing }: { project: Pr
               ) : p.brief ? (
                 <p style={{ margin: "0 0 10px", fontSize: 13, color: "#525252", lineHeight: 1.6 }}>{cleanCodes(p.brief).slice(0, 300)}</p>
               ) : null}
-              <AgentOutput msg={latest("research")} working={working("research")} zh={zh} onOpen={(m) => setPopup({ title: t("研究员的结果", "The researcher's findings"), body: <Body text={m.body} /> })} />
+              <AgentOutput msg={latest("research")} working={working("research")} step={doing("research", t("正在处理…", "Working on it…"))} zh={zh} onOpen={(m) => setPopup({ title: t("研究员的结果", "The researcher's findings"), body: <Body text={m.body} /> })} />
               <Actions>
                 <Action icon="spark" label={t("补充证据", "Find evidence")} onClick={() => ask("research", t("为这个项目的选题找 3 条真实数据证据（平台、播放或热度、链接），只用工具查到的数字。", "Find 3 real pieces of evidence for this project's topic (platform, views or heat, link), numbers from tools only."))} disabled={pending} />
                 <Action icon="bulb" label={t("3 个角度", "3 angles")} onClick={() => ask("research", t("给这个项目 3 个适合本频道的切入角度，每个一句话，说明为什么。", "Give 3 angles for this project that suit our channel, one line each, with why."))} disabled={pending} />
@@ -343,7 +356,7 @@ export function ProjectScreen({ project: p, zh, people, writing }: { project: Pr
                   </span>
                 }
               >
-                {working("script") || draftWriting ? <Working agent="script" zh={zh} text={draftWriting ? (p.beats.length ? t("编剧正在按选题重写…", "The writer is rewriting from the topic…") : t("编剧正在写初稿，写好会自动出现在这里…", "The writer is drafting; it appears here when done…")) : t("编剧正在写…", "The writer is writing…")} /> : null}
+                {working("script") || draftWriting ? <Working agent="script" zh={zh} text={draftWriting ? (p.beats.length ? t("编剧正在按选题重写…", "The writer is rewriting from the topic…") : t("编剧正在写初稿，写好会自动出现在这里…", "The writer is drafting; it appears here when done…")) : doing("script", t("编剧正在写…", "The writer is writing…"))} /> : null}
                 {p.beats.length ? (
                   <div style={{ border: "1px solid #efefef", borderRadius: 10, overflow: "hidden" }}>
                     {p.beats.slice(0, 5).map((b) => (
@@ -381,6 +394,7 @@ export function ProjectScreen({ project: p, zh, people, writing }: { project: Pr
             {/* ---- clips ---- */}
             {!skipped("clips") ? (
               <Workbench
+                anchor="clips"
                 icon={<span style={{ width: 26, height: 26, borderRadius: 7, background: "#171717", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center" }}><Icon name="clapper" size={15} /></span>}
                 title={t("素材", "Clips")}
                 sub={p.video ? t(`${p.video.clips} 段 · 时间线 ${p.video.items} 段`, `${p.video.clips} clips · ${p.video.items} on the timeline`) : "—"}
@@ -414,7 +428,12 @@ export function ProjectScreen({ project: p, zh, people, writing }: { project: Pr
                 <Actions>
                   <Action icon="film" label={t("从已上传的素材里选", "Choose from uploaded clips")} onClick={() => setPicking("clips")} disabled={pending} />
                 </Actions>
-                {working("video") && !renderLive ? <Working agent="video" zh={zh} text={t("剪辑师正在找画面…", "The editor is finding footage…")} /> : null}
+                {p.video && p.video.clips === 0 && p.beats.length > 0 ? (
+                  <p style={{ margin: "10px 0 0", fontSize: 12, color: "#7c6a3a", lineHeight: 1.55 }}>
+                    {t("剪辑师在等主持人的素材：传上来会自动转写，然后按脚本分段粗剪。", "The editor is waiting for the host's clips: they are transcribed as they land, then cut by the script's sections.")}
+                  </p>
+                ) : null}
+                {working("video") && !renderLive ? <Working agent="video" zh={zh} text={doing("video", t("剪辑师正在找画面…", "The editor is finding footage…"))} /> : null}
                 <AskBox people={people} zh={zh} placeholder={t("描述想从素材库找的画面，例如：交易屏幕、香港夜景…", "Describe stock shots to find, e.g. trading screens, Hong Kong at night…")} onSend={(v) => ask("video", `从素材库找这类画面放进项目素材箱：${v}`)} disabled={pending} />
               </Workbench>
             ) : null}
@@ -471,12 +490,12 @@ export function ProjectScreen({ project: p, zh, people, writing }: { project: Pr
                   <Action icon="spark" label={t("换开头", "New opening")} onClick={() => ask("video", t("换一个更抓人的开头，重新渲染。", "Try a stronger opening, and render again."))} disabled={pending} />
                 </Actions>
               ) : null}
-              <AgentOutput msg={latest("video")} working={working("video")} zh={zh} compact onOpen={(m) => setPopup({ title: t("剪辑师说", "The video agent says"), body: <Body text={m.body} /> })} />
+              <AgentOutput msg={latest("video")} working={working("video")} step={doing("video", t("正在处理…", "Working on it…"))} zh={zh} compact onOpen={(m) => setPopup({ title: t("剪辑师说", "The video agent says"), body: <Body text={m.body} /> })} />
             </Workbench>
 
             {/* ---- captions & delivery ---- */}
             <Workbench icon={<AgentIcon agent="article" size={26} radius={7} />} title={t("文案与交付", "Captions & delivery")} sub={p.status === "done" ? t("已交付", "Delivered") : t("标题、简介、标签", "Titles, descriptions, tags")}>
-              <AgentOutput msg={latest("article")} working={working("article")} zh={zh} copyable onOpen={(m) => setPopup({ title: t("文案", "Copy"), body: <Body text={m.body} copy /> })} />
+              <AgentOutput msg={latest("article")} working={working("article")} step={doing("article", t("正在处理…", "Working on it…"))} zh={zh} copyable onOpen={(m) => setPopup({ title: t("文案", "Copy"), body: <Body text={m.body} copy /> })} />
               <Actions>
                 <Action primary icon="pen" label={t("写各平台文案", "Platform copy")} onClick={() => ask("article", t("为这个项目写 YouTube、小红书、抖音、微博的标题、简介和标签，各一版。", "Write titles, descriptions and tags for YouTube, Rednote, Douyin and Weibo for this project."))} disabled={pending} />
                 <Action icon="bulb" label={t("封面标题", "Thumbnail lines")} onClick={() => ask("article", t("给这个项目 5 个封面大字标题，每个不超过 10 个字。", "Give 5 thumbnail headlines for this project, 10 characters or fewer each."))} disabled={pending} />
@@ -694,9 +713,14 @@ function Board({ children }: { children: React.ReactNode }) {
   );
 }
 
-function Workbench({ icon, title, sub, right, children }: { icon: React.ReactNode; title: string; sub?: string; right?: React.ReactNode; children: React.ReactNode }) {
+/**
+ * One card. `anchor` makes it a place a link can open at — 剪辑师's "上传素材"
+ * goes to `/projects/<id>#clips` — and the card is outlined for a moment when
+ * it is the one opened (`:target` in `PROJECT_CSS`).
+ */
+function Workbench({ icon, title, sub, right, children, anchor }: { icon: React.ReactNode; title: string; sub?: string; right?: React.ReactNode; children: React.ReactNode; anchor?: string }) {
   return (
-    <section style={{ background: "#fff", border: "1px solid #e2e2e2", borderRadius: 14, padding: "14px 16px 16px", minWidth: 0, boxShadow: "0 1px 2px rgba(0,0,0,0.03)" }}>
+    <section id={anchor} className={anchor ? "pj-card" : undefined} style={{ background: "#fff", border: "1px solid #e2e2e2", borderRadius: 14, padding: "14px 16px 16px", minWidth: 0, boxShadow: "0 1px 2px rgba(0,0,0,0.03)", scrollMarginTop: 16 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14, minWidth: 0 }}>
         {icon}
         <span style={{ fontSize: 14.5, fontWeight: 600 }}>{title}</span>
@@ -783,9 +807,9 @@ function AskBox({ people, zh, placeholder, onSend, disabled }: { people: Mention
 }
 
 /** What an employee last said about this card's work, on the card. */
-function AgentOutput({ msg, working, zh, onOpen, copyable = false, compact = false }: { msg: Msg | null; working: boolean; zh: boolean; onOpen: (m: Msg) => void; copyable?: boolean; compact?: boolean }) {
+function AgentOutput({ msg, working, zh, onOpen, copyable = false, compact = false, step }: { msg: Msg | null; working: boolean; zh: boolean; onOpen: (m: Msg) => void; copyable?: boolean; compact?: boolean; step?: string }) {
   const t = (a: string, b: string) => (zh ? a : b);
-  if (working && msg?.agent) return <Working agent={msg.agent} zh={zh} text={t("正在处理…", "Working on it…")} />;
+  if (working && msg?.agent) return <Working agent={msg.agent} zh={zh} text={step ?? t("正在处理…", "Working on it…")} />;
   if (working) return <div style={{ fontSize: 12.5, color: "#525252", padding: "6px 0" }}>{t("正在处理…", "Working on it…")}</div>;
   if (!msg) return null;
   const text = clean(msg.body);
@@ -887,10 +911,11 @@ function ChatDrawer({ project: p, zh, people, onClose }: { project: ProjectDetai
   const [pressing, setPressing] = React.useState<string | null>(null);
   const scroller = React.useRef<HTMLDivElement | null>(null);
   const lastId = p.messages[p.messages.length - 1]?.id;
+  const working = p.pending.map((r) => `${r.id}:${r.step}`).join(",");
   React.useEffect(() => {
     const el = scroller.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [lastId]);
+  }, [lastId, working]);
   const say = (text: string) =>
     start(async () => {
       const res = await sendChannelMessage(p.channel.slug, text);
@@ -927,6 +952,36 @@ function ChatDrawer({ project: p, zh, people, onClose }: { project: ProjectDetai
                 </div>
                 <div style={{ marginTop: 3, background: "#f7f8fb", border: `1px solid ${AGENT_TINTS[m.agent]}`, borderRadius: "4px 12px 12px 12px", padding: "9px 12px", fontSize: 12.5, lineHeight: 1.65, color: "#2b343d", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
                   {clean(m.body)}
+                  {/* What it handed over, as links (this project itself is
+                      already on screen), another project it names, and the
+                      live chip of an edit it started. */}
+                  {(m.handoff?.artifacts.filter((a) => !(a.kind === "work_project" && a.id === p.id)).length || m.otherProject) ? (
+                    <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
+                      {m.otherProject ? (
+                        <Link prefetch={false} href={`/projects/${m.otherProject.id}`} style={{ ...btn(true), height: 24, fontSize: 11.5, textDecoration: "none", maxWidth: 260 }}>
+                          <Icon name="spark" size={11} />
+                          <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{t(`打开项目《${m.otherProject.title}》`, `Open “${m.otherProject.title}”`)}</span>
+                        </Link>
+                      ) : null}
+                      {m.handoff?.artifacts
+                        .filter((a) => !(a.kind === "work_project" && a.id === p.id))
+                        .map((a) => {
+                          const href = a.href ?? artifactHref(a.kind, a.id);
+                          const label = a.kind === "script" ? t("打开脚本", "Open the script") : a.kind === "video_project" || a.kind === "video" ? t("打开剪辑台", "Open the editor") : a.title ?? a.kind;
+                          return href ? (
+                            <Link key={`${a.kind}-${a.id}`} prefetch={false} href={href} style={{ ...btn(false), height: 24, fontSize: 11.5, textDecoration: "none" }}>
+                              <Icon name={a.kind === "script" ? "pen" : "clapper"} size={11} />
+                              {label}
+                            </Link>
+                          ) : null;
+                        })}
+                    </div>
+                  ) : null}
+                  {m.job ? (
+                    <div>
+                      <JobChip job={m.job} zh={zh} project={{ id: p.id }} />
+                    </div>
+                  ) : null}
                   {m.actions.length && !m.done ? (
                     <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
                       {m.actions.map((a, i) =>
@@ -934,6 +989,13 @@ function ChatDrawer({ project: p, zh, people, onClose }: { project: ProjectDetai
                           <Link key={a.id} href={a.href ?? "#"} style={{ ...btn(false), height: 26, fontSize: 11.5, textDecoration: "none" }}>
                             {zh ? a.label : a.labelEn}
                           </Link>
+                        ) : a.kind === "run" && a.op === "stock-cut" ? (
+                          /* On its own project's page the stock one-go is the
+                             video card's own button; the press here is the
+                             same thing, through the chat so it is recorded. */
+                          <button key={a.id} type="button" disabled={pending} onClick={() => { setPressing(m.id + a.id); start(async () => { const r = await pressCardAction(p.channel.slug, m.id, a.id); if (r?.error) notify(r.error); setPressing(null); router.refresh(); }); }} style={{ ...btn(false), height: 26, fontSize: 11.5, opacity: pressing === m.id + a.id ? 0.55 : 1 }}>
+                            {zh ? a.label : a.labelEn}
+                          </button>
                         ) : (
                           <button key={a.id} type="button" disabled={pending} onClick={() => { setPressing(m.id + a.id); start(async () => { await pressCardAction(p.channel.slug, m.id, a.id); setPressing(null); router.refresh(); }); }} style={{ ...btn(i === 0), height: 26, fontSize: 11.5, opacity: pressing === m.id + a.id ? 0.55 : 1 }}>
                             {zh ? a.label : a.labelEn}
@@ -954,6 +1016,18 @@ function ChatDrawer({ project: p, zh, people, onClose }: { project: ProjectDetai
             </div>
           ),
         )}
+        {/* The employees at work here right now, on the step each is on.
+            Gone as soon as its reply lands. */}
+        {p.pending.map((r) => (
+          <div key={r.id} style={{ display: "flex", gap: 9, alignItems: "flex-start" }} aria-live="polite">
+            <AgentIcon agent={r.agent} size={26} radius={7} />
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 11.5, fontWeight: 600, color: AGENT_COLORS[r.agent] }}>{zh ? AGENT_LABELS[r.agent].nameLocal : AGENT_LABELS[r.agent].name}</div>
+              <WorkingPill agent={r.agent} step={r.step} zh={zh} compact />
+              {r.job ? <div><JobChip job={r.job} zh={zh} project={{ id: p.id }} /></div> : null}
+            </div>
+          </div>
+        ))}
       </div>
       <div style={{ borderTop: "1px solid #f0f0f0", padding: "0 12px 12px" }}>
         <AskBox people={people} zh={zh} placeholder={t("@ 一位同事…", "@ a colleague…")} onSend={say} disabled={pending} />
@@ -1069,6 +1143,9 @@ function quiet(color: string): React.CSSProperties {
 }
 
 const PROJECT_CSS = `
+.pj-card:target { animation: pjTarget 2.4s ease-out 1; }
+@keyframes pjTarget { 0%, 40% { box-shadow: 0 0 0 3px rgba(15,91,213,.28); border-color: #9fb8e8; } 100% { box-shadow: 0 1px 2px rgba(0,0,0,0.03); } }
+@media (prefers-reduced-motion: reduce) { .pj-card:target { animation: none; border-color: #9fb8e8; } }
 .pj-quiet { transition: background-color .15s ease, color .15s ease; }
 .pj-quiet:hover:not(:disabled) { background: rgba(0,0,0,0.045) !important; color: #171717 !important; }
 .pj-danger:hover:not(:disabled) { background: #fdecea !important; color: #b42318 !important; }

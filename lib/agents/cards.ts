@@ -17,11 +17,22 @@
  *   — **open**: a link. Approving a script, granting access, spending money —
  *     anything with a real gate behind it — is a link to the screen that holds
  *     the gate, never a button that pretends to be it.
+ *   — **run**: one of a short, fixed list of operations a screen already
+ *     offers as its own button, by name (`RUN_OPS`), about one project. The
+ *     press is checked exactly as that screen's route checks it — the same
+ *     module, the same "may you edit this project" — so it reaches nothing
+ *     the presser could not start from the project page. 剪辑师 asking for
+ *     the host's clips offers "先用素材库画面": the project page's stock
+ *     footage one-go, one press from where the question was asked.
  *
  * Kept out of `lib/agents/index.ts` because the message list has to draw these
  * and that file is `server-only`.
  */
-export type CardActionKind = "say" | "open";
+export type CardActionKind = "say" | "open" | "run";
+
+/** The operations a `run` button may name. Anything else is dropped. */
+export const RUN_OPS = ["stock-cut"] as const;
+export type RunOp = (typeof RUN_OPS)[number];
 
 export type CardAction = {
   /** Unique within its message; what the press names. */
@@ -33,6 +44,9 @@ export type CardAction = {
   body?: string;
   /** `open`: where it goes, always a path inside this app. */
   href?: string;
+  /** `run`: which operation, and the project (`wp_…`) it is about. */
+  op?: RunOp;
+  projectId?: string;
   tone?: "primary" | "quiet";
 };
 
@@ -80,6 +94,11 @@ export function readCardActions(meta: unknown): CardAction[] {
       // link to somewhere the studio did not agree to go.
       if (!href || !href.startsWith("/") || href.startsWith("//")) continue;
       out.push({ id, label, labelEn, kind: "open", href, tone: tone(a.tone) });
+    } else if (a.kind === "run") {
+      const op = (RUN_OPS as readonly string[]).includes(String(a.op)) ? (a.op as RunOp) : null;
+      const projectId = str(a.projectId, 64);
+      if (!op || !projectId || !/^wp_[0-9a-z]{10,40}$/i.test(projectId)) continue;
+      out.push({ id, label, labelEn, kind: "run", op, projectId, tone: tone(a.tone) });
     }
   }
   return out;

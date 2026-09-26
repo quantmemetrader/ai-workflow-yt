@@ -10,6 +10,10 @@ import type { Module } from "@/lib/db/schema";
 import { runAgent } from "@/lib/ai/agent";
 import { idsIn, type Artifact, type ArtifactKind, type ToolContext } from "@/lib/ai/tools/types";
 import { postMessage } from "@/lib/chat/service";
+import { endPending, startPending, stepPending } from "@/lib/chat/pending";
+import { clipCount, ensureScriptProject, projectFor, type ProjectHandle } from "@/lib/projects/service";
+import { readCardActions, type CardAction } from "./cards";
+import { stepForTool, type StepKey } from "./steps";
 import {
   AGENT_KEYS,
   AGENT_LABELS,
@@ -310,6 +314,14 @@ export type ReplyFacts = {
    * when it is true (`verifyReply`). Dropped once the turn calls
    * `write_script`: from then on only that write's receipt backs a claim. */
   scriptId?: string;
+  /** How many clips are in the bin of the video project this turn works in,
+   * when it works in one: "starting the rough cut" on an empty bin is not
+   * something anybody can be doing. */
+  clips?: number;
+  /** Whether a cut really began this turn: one of `CUT_TOOLS` (`first_cut`,
+   * `make_video`, a range taken out) came back with a receipt. Worked out
+   * from the receipts when not given. */
+  cut?: boolean;
 };
 
 export type ReplyVerdict = {
@@ -632,6 +644,76 @@ export function findClaims(text: string, self: AgentKey): Claim[] {
   return claims;
 }
 
+/**
+ * Words that say the editing has begun, or begins now.
+ *
+ * 剪辑师, handed a script in #研究日报 with no project and nothing in any
+ * bin, answered "已读脚本《…》。开始粗剪，将严格按3分钟时长…执行" — having
+ * called no tool at all. `CLAIM` only knew finished work ("粗剪完成"), so a
+ * start that never happened went out as said. A start is a claim too: it
+ * has to rest on a cut this turn really began (`first_cut`, `make_video`),
+ * and never on an empty bin.
+ */
+/**
+ * The tools whose success means cutting really began this turn: the rough
+ * cut, the whole video, and the tools that take footage out of the edit.
+ * Bringing stock into the bin, a title card or a caption is work, but it is
+ * not "开始剪了" — 剪辑师 fetching two stock clips and then saying it was
+ * cutting would otherwise pass.
+ */
+export const CUT_TOOLS: ReadonlySet<string> = new Set(["first_cut", "make_video", "remove_range", "keep_only", "remove_silences"]);
+
+const START = new RegExp(
+  [
+    "(?:开始|着手|动手|马上|立刻|立即|现在就?|这就|正在|已经?在)(?:进行|做)?(?:粗剪|精剪|剪辑|剪片|剪视频|剪成片|剪|做视频|制作视频|做成片|出片|拼接)",
+    "开剪|开工剪",
+    "(?:粗剪|精剪|剪辑)(?:这就|马上|现在|已经?)(?:开始|开工|进行)",
+    "\\b(?:I'm|I am|we're|we are)\\s+(?:now\\s+)?(?:starting|beginning|working on|making|cutting)\\b[^.!?\\n]{0,24}?\\b(?:cut|edit|video)\\b",
+    "\\bstart(?:ing)? (?:on )?(?:the |a )?(?:rough |first )?cut\\b",
+  ].join("|"),
+  "gi",
+);
+
+/**
+ * The places a reply says the speaker is starting to cut, with a little
+ * around each. Not a plan on a condition ("素材一到我就开始粗剪", "等你上传后
+ * 再开剪"), a refusal ("还不能开始粗剪"), a question, something quoted, or a
+ * colleague ("剪辑师开始粗剪了" said by somebody else).
+ */
+export function findStartClaims(text: string, self: AgentKey): string[] {
+  const others = AGENT_KEYS.filter((k) => k !== self).flatMap((k) => EMPLOYEE_NAMES[k]);
+  const otherRe = new RegExp(others.map(escape).join("|"), "i");
+  const bounds = text.replace(/《[^《》\n]*》/g, (t) => t.replace(/[。！？!?，,；;：:]/g, "·"));
+  const out: string[] = [];
+  for (const m of text.matchAll(START)) {
+    const at = m.index ?? 0;
+    const end = at + m[0].length;
+    const sentenceStart = Math.max(...["。", "！", "？", "!", "?", "\n"].map((p) => bounds.lastIndexOf(p, at - 1))) + 1;
+    const nextStop = bounds.slice(end).search(/[。！？!?\n]/);
+    const sentenceEnd = nextStop < 0 ? text.length : end + nextStop;
+    const before = text.slice(sentenceStart, at);
+    const after = text.slice(end, end + 3);
+    const stop = text.slice(sentenceEnd, sentenceEnd + 1);
+    if (/[不没未别]|无法|不能|还不|先不|暂不|尚未|才能?|能否|是否|要不要|可以|可不可以$/.test(text.slice(Math.max(sentenceStart, at - 4), at))) continue;
+    if (/等|一到|到了|到位|收到|拿到|有了|到手|齐了|传好|传上|上传|之后|以后|后[，,\s]*(?:我|就|再)?$|如果|要是|一旦|假如|只要|\b(?:if|once|when|after|as soon as|until)\b/i.test(before)) continue;
+    /* English puts the condition after: "I'll start the rough cut once the
+       clips land" is the same plan as "素材一到我就开始粗剪". Only the clause
+       right after it: "I'm starting the cut now, and will post it when it is
+       done" is still a start. */
+    if (/\b(?:if|once|when|after|as soon as|until)\b/i.test(text.slice(end, sentenceEnd).split(/[,;，；]/)[0])) continue;
+    if (/^(?:前|之前|吗|么|的话|呢)/.test(after) || /[?？]/.test(stop)) continue;
+    const opens = (before.match(/[“「『]/g)?.length ?? 0) - (before.match(/[”」』]/g)?.length ?? 0);
+    if (opens > 0 || (before.match(/"/g)?.length ?? 0) % 2 === 1) continue;
+    const lastMe = Math.max(before.lastIndexOf("我"), before.search(/\b(?:I|we)\b/i));
+    const other = before.search(otherRe);
+    if (other >= 0 && other > lastMe) continue;
+    let from = Math.max(sentenceStart, at - 12);
+    while (from > sentenceStart && /[0-9a-z_]/i.test(text[from - 1])) from--;
+    out.push(text.slice(from, Math.min(sentenceEnd, end + 14)).trim());
+  }
+  return out;
+}
+
 /** A claim that could be a plain report on the turn's own script having a
  * draft: no id of its own, not a change, and about nothing but the script. */
 const draftReport = (c: Claim) => c.ids.length === 0 && !c.change && c.kinds.length > 0 && c.kinds.every((k) => k === "script");
@@ -681,6 +763,15 @@ export function judgeReply(text: string, facts: ReplyFacts, exists: ReadonlySet<
           c.kinds.length > 0 && !c.kinds.some((k) => seenKinds.has(k) || receiptKinds.has(k)),
     )
     .map(({ claim, kinds }) => ({ claim, kinds }));
+
+  /* "开始粗剪": only on a cut begun this turn, and never on an empty bin.
+     Only 剪辑师's own: 策划 or 研究员 recommending "建议马上做视频" is advice,
+     not a claim, and used to be sent back as if they had said they were
+     cutting (a colleague's cut named by name is skipped in `findStartClaims`). */
+  const cut = facts.cut ?? facts.receipts.some((r) => r.kind === "video_project" && r.action === "started");
+  if (facts.self === "video" && (!cut || facts.clips === 0)) {
+    for (const claim of findStartClaims(text, facts.self)) unbacked.push({ claim, kinds: ["video_project"] });
+  }
 
   return { ok: !unseen.length && !missing.length && !unbacked.length, unseen, missing, unbacked };
 }
@@ -855,8 +946,10 @@ const WORKS_IN: Record<AgentKey, Module> = {
 type Chain = Required<Pick<MentionDispatch, "viewer" | "channelId" | "body" | "spoken" | "hop" | "budget">> &
   Pick<MentionDispatch, "handoff" | "replyMeta"> & { origin: string | null; asker: Viewer | null };
 
-/** The block a colleague's turn opens with when work was handed to it. */
-function handoffBlock(h: Handoff, origin: string | null): string {
+/** The block a colleague's turn opens with when work was handed to it.
+ * `facts` are lines the dispatcher looked up itself (how many clips are in
+ * the bin), said as plainly as the rest. */
+function handoffBlock(h: Handoff, origin: string | null, facts: string[] = []): string {
   const from = h.from === "human" ? `人${origin ? `（${origin}）` : ""}` : AGENT_LABELS[h.from].nameLocal;
   return [
     "交接内容（系统已核实）：",
@@ -864,6 +957,7 @@ function handoffBlock(h: Handoff, origin: string | null): string {
     h.task ? `- 要你做的：${h.task}` : null,
     ...h.artifacts.map((a) => `- ${KIND_ZH[a.kind]}${a.title ? `《${a.title}》` : ""}：${a.id}${a.href ? `（${a.href}）` : ""}`),
     ...(h.notes ?? []).map((n) => `- ${n}`),
+    ...facts.map((n) => `- ${n}`),
   ]
     .filter((l) => l !== null)
     .join("\n");
@@ -899,13 +993,58 @@ async function answerOne(input: Chain, key: AgentKey, channel: Channel) {
      and its video project are the ones open, so "no project is open" cannot
      happen and nothing lands anywhere else. A hand-off that names its own
      script and project wins: it is the specific thing being passed on. */
+  const projectCols = { id: workProjects.id, title: workProjects.title, channelId: workProjects.channelId, scriptId: workProjects.scriptId, videoProjectId: workProjects.videoProjectId };
   const [inProject] = await db
-    .select({ scriptId: workProjects.scriptId, videoProjectId: workProjects.videoProjectId })
+    .select(projectCols)
     .from(workProjects)
     .where(and(eq(workProjects.channelId, channelId), isNull(workProjects.deletedAt)))
     .limit(1);
-  const scriptId = handoff?.scriptId ?? inProject?.scriptId ?? undefined;
-  const projectId = handoff?.projectId ?? inProject?.videoProjectId ?? undefined;
+
+  /*
+   * The project this turn's work belongs to, wherever it is asked.
+   *
+   * Everything lives under a project: the one a hand-off names, the one
+   * whose chat this is, or the one the handed script or video belongs to.
+   * 剪辑师 handed a script that is in no project at all — an older draft,
+   * the one 编剧 wrote loose in #研究日报 — gets one started around it
+   * (`ensureScriptProject`): cutting needs a video project, and a video
+   * project with no project around it is one nobody can find.
+   */
+  let wp: Pick<ProjectHandle, "id" | "title" | "scriptId" | "videoProjectId"> | null = null;
+  if (handoff?.workProjectId) {
+    const [named] = await db
+      .select(projectCols)
+      .from(workProjects)
+      .where(and(eq(workProjects.id, handoff.workProjectId), eq(workProjects.tenantId, tenantId), isNull(workProjects.deletedAt)))
+      .limit(1);
+    wp = named ?? null;
+  }
+  wp ??= inProject ?? null;
+  if (!wp && handoff?.scriptId) wp = await projectFor(tenantId, { scriptId: handoff.scriptId });
+  if (!wp && handoff?.projectId) wp = await projectFor(tenantId, { videoProjectId: handoff.projectId });
+  if (!wp && key === "video" && handoff?.scriptId) {
+    wp = await ensureScriptProject(input.asker ?? agent, handoff.scriptId).catch((err) => {
+      console.error("[agents] could not start a project around the handed script", err);
+      return null;
+    });
+  }
+  const scriptId = handoff?.scriptId ?? inProject?.scriptId ?? wp?.scriptId ?? undefined;
+  const projectId = handoff?.projectId ?? inProject?.videoProjectId ?? wp?.videoProjectId ?? undefined;
+
+  /* What 剪辑师 has to cut from, counted rather than assumed: it was handed
+     a script with nothing in any bin and said it was starting the rough cut.
+     Said in the hand-off block and held by the reply check (`clips`). */
+  const clips = key === "video" && projectId ? await clipCount(projectId) : undefined;
+  const clipFacts =
+    clips === undefined
+      ? []
+      : [clips === 0 ? `素材：项目${wp ? `《${wp.title}》` : ""}的素材箱里现在是 0 段素材（主持人还没上传）。` : `素材：项目${wp ? `《${wp.title}》` : ""}的素材箱里有 ${clips} 段素材。`];
+  const clipRule =
+    clips === undefined
+      ? null
+      : clips === 0
+        ? "- 素材箱是空的，没有素材就不能粗剪：不要说“开始粗剪”“开始剪辑”“正在剪”。如果对方要的就是素材库画面，用 find_footage、take_footage 找来放进素材箱再做；否则请主持人把拍好的素材传到项目里，并说清楚素材一到你会做什么（按脚本分段粗剪、配字幕、出一版给大家看）。系统会在你的回答下面放「上传素材」和「先用素材库画面」两个按钮，不用写链接。"
+        : `- 素材箱里有 ${clips} 段素材。要粗剪就现在调用 first_cut（或用 make_video 一次做完），做了再说结果；没做就不要说“开始粗剪”。`;
 
   const rules = fromAgent
     ? [
@@ -941,14 +1080,15 @@ async function answerOne(input: Chain, key: AgentKey, channel: Channel) {
     "原话：",
     input.body,
     "",
-    handoff ? handoffBlock(handoff, origin) : null,
-    handoff ? "" : null,
+    handoff ? handoffBlock(handoff, origin, clipFacts) : clipFacts.length ? clipFacts.map((f) => `（系统核实）${f}`).join("\n") : null,
+    handoff || clipFacts.length ? "" : null,
     "怎么回：",
     /* It wrote a status report — "已回复 #频道。做了什么：…" — because it
        thought it was talking to an operator rather than to the room. */
     "- 你写的回答会被自动发到这个频道里。像同事在群里说话那样直接说内容，不要写“已回复”“做了什么”这类汇报格式。",
     "- 先用 read_channel 看看上下文。用中文，简短。",
     ...rules,
+    clipRule,
     "- 只说你这一回合真的用工具做成的事。没做的、没有工具做的，一律不要说“已完成”“已存入”“已交给”。回答里的 id 只能是这一回合工具返回的、或者上面原话和交接里给的。系统会在发出前逐条核对，对不上的回答不会发出。",
   ]
     .filter((line) => line !== null)
@@ -964,7 +1104,11 @@ async function answerOne(input: Chain, key: AgentKey, channel: Channel) {
     ...(scriptId ? [scriptId.toLowerCase()] : []),
     ...(projectId ? [projectId.toLowerCase()] : []),
   ]);
-  const facts: ReplyFacts = { self: key, receipts, seen, ...(scriptId ? { scriptId } : {}) };
+  if (wp) seen.add(wp.id.toLowerCase());
+  const facts: ReplyFacts = { self: key, receipts, seen, ...(scriptId ? { scriptId } : {}), ...(clips !== undefined ? { clips, cut: false } : {}) };
+  /* A long job the turn started (make_video hands the whole edit to the
+     worker), for the reply's live chip. */
+  let job: { videoProjectId: string } | null = null;
 
   /* Colleagues this turn hands work to through `assign_task`. Their turns
      wait until this reply is posted, so the channel reads in order. */
@@ -991,11 +1135,29 @@ async function answerOne(input: Chain, key: AgentKey, channel: Channel) {
     ...(input.asker ? { asker: input.asker } : {}),
   };
 
+  /*
+   * The employee at work, in the room.
+   *
+   * A row in the channel from now until the reply is posted, whose step
+   * follows the turn: "正在看…" while the model thinks, "正在输入…" while it
+   * writes, and each tool call's own step ("正在写脚本", "正在粗剪", …,
+   * `lib/agents/steps.ts`). Written only when the step changes. Taken down
+   * in the `finally` below however the turn ends (`lib/chat/pending.ts`).
+   */
+  const pendingId = await startPending(agent, channelId, key);
+  let step: StepKey = "thinking";
+  const setStep = (next: StepKey, jobRef?: { videoProjectId: string }) => {
+    if (!pendingId || (next === step && !jobRef)) return;
+    step = next;
+    void stepPending(pendingId, next, jobRef).catch((err) => console.error("[agents] could not move the working row on", err));
+  };
+
   /* One turn of the employee: what it said, and what its tools did. Every
      attempt is kept, so the thread can be put straight afterwards. */
   type Attempt = { id: string | null; answer: string; rejected?: string[]; superseded?: boolean };
   const turns: Attempt[] = [];
   const turn = async (content: string) => {
+    let inTool = false;
     let answer = "";
     let failure: string | null = null;
     let tools = 0;
@@ -1011,21 +1173,61 @@ async function answerOne(input: Chain, key: AgentKey, channel: Channel) {
       context,
     })) {
       if (event.type === "message") id = event.id;
-      else if (event.type === "delta") answer += event.text;
-      else if (event.type === "error") failure = event.message;
+      else if (event.type === "delta") {
+        answer += event.text;
+        if (!inTool && event.text.trim()) setStep("typing");
+      } else if (event.type === "error") failure = event.message;
       else if (event.type === "tool" && event.status === "running") {
         /* Everything said before a tool call is the model talking to itself;
            only what it says after the last tool it ran is the reply. */
         answer = "";
         tools++;
+        inTool = true;
+        setStep(stepForTool(event.name));
         /* It set out to write the script this turn. Whatever it now says
            about the script rests on that write's receipt, not on the beats an
            earlier draft left behind: a draft that came back empty, or was
            refused, must not read as "脚本写好了" (`judgeReply`). */
         if (event.name === "write_script") delete facts.scriptId;
       } else if (event.type === "tool") {
+        inTool = false;
         for (const seenId of event.resultIds ?? []) seen.add(seenId);
-        if (event.status === "ok" && event.artifacts?.length) receipts.push(...event.artifacts);
+        /* Stock footage brought into the bin this turn: the bin is no
+           longer empty, and "starting the cut" may rest on a cut again. */
+        if (event.name === "take_footage" && event.status === "ok" && projectId && facts.clips !== undefined) {
+          facts.clips = await clipCount(projectId).catch(() => facts.clips);
+        }
+        if (event.status === "ok" && event.artifacts?.length) {
+          receipts.push(...event.artifacts);
+          /* write_script outside any project started one for the draft. A
+             second write in this turn — the model trying again, or the
+             retry after a rejected reply — goes into that same project's
+             script, not into a third project with the same title. */
+          const started = event.name === "write_script" && !context.scriptId ? event.artifacts.find((a) => a.kind === "work_project") : undefined;
+          if (started) {
+            const [row] = await db
+              .select(projectCols)
+              .from(workProjects)
+              .where(and(eq(workProjects.id, started.id), eq(workProjects.tenantId, tenantId), isNull(workProjects.deletedAt)))
+              .limit(1);
+            if (row) {
+              wp ??= row;
+              if (row.scriptId) context.scriptId = row.scriptId;
+              if (row.videoProjectId) context.projectId = row.videoProjectId;
+            }
+          }
+          /* A cut really began: the only thing "开始粗剪" may rest on. */
+          if (CUT_TOOLS.has(event.name)) facts.cut = true;
+          /* The whole edit went to the worker: the reply carries a chip that
+             follows it, and so does the working row meanwhile. */
+          const video = event.artifacts.find((a) => a.kind === "video_project");
+          if (event.name === "make_video" && video) {
+            job = { videoProjectId: video.id };
+            setStep("making", job);
+            continue;
+          }
+        }
+        setStep("thinking");
       }
     }
     const record: Attempt = { id, answer };
@@ -1066,6 +1268,7 @@ async function answerOne(input: Chain, key: AgentKey, channel: Channel) {
       const verdict = await verifyReply(text, facts, tenantId);
       if (!verdict.ok) {
         posted.rejected = problems(verdict, zh, false);
+        setStep("checking");
         const again = await turn(
           zh
             ? [
@@ -1160,6 +1363,52 @@ async function answerOne(input: Chain, key: AgentKey, channel: Channel) {
      * chain has a hop and an answer left. Every other `@colleague` is written
      * back as a plain name, so the text says who without starting anybody.
      */
+    /* The project a new script was written into, when 编剧 started one
+       with this turn's write (`write_script` outside any project), so the
+       reply and whatever it hands on carry it. */
+    if (!wp) {
+      const made = receipts.find((r) => r.kind === "work_project");
+      if (made) {
+        const [row] = await db
+          .select(projectCols)
+          .from(workProjects)
+          .where(and(eq(workProjects.id, made.id), eq(workProjects.tenantId, tenantId), isNull(workProjects.deletedAt)))
+          .limit(1);
+        wp = row ?? null;
+      }
+    }
+
+    /*
+     * 剪辑师, a script and an empty bin.
+     *
+     * It must not say it is cutting (the check above holds that), and the
+     * reply ends on the two things that can move it on: "上传素材", the
+     * project page's clips card, and "先用素材库画面", the project page's own
+     * stock-footage one-go (`lib/projects/one-go.ts`). They replace the
+     * hand-off's "让剪辑师出粗剪", whose line says the footage is already in
+     * the project. When both attempts at a reply failed the check, what is
+     * posted is not the apology but the plain facts: the script is here, the
+     * bin is empty, this is what happens when the clips arrive.
+     */
+    const scriptTitle = handoff?.artifacts.find((a) => a.kind === "script")?.title ?? wp?.title ?? null;
+    const clipsAsk = key === "video" && Boolean(projectId) && facts.clips === 0 && !facts.cut && Boolean(scriptId);
+    let heldBack: string[] | null = null;
+    if (clipsAsk && withheld) {
+      heldBack = withheld;
+      withheld = null;
+      text = askForClips(zh, scriptTitle);
+      posted = { id: null, answer: text };
+    }
+    const askActions: CardAction[] = clipsAsk
+      ? [
+          { id: "upload-clips", label: "上传素材", labelEn: "Upload the clips", kind: "open", href: wp ? `/projects/${wp.id}#clips` : `/video?project=${projectId}`, tone: "primary" },
+          ...(wp ? [{ id: "stock-cut", label: "先用素材库画面", labelEn: "Use stock footage for now", kind: "run" as const, op: "stock-cut" as const, projectId: wp.id, tone: "quiet" as const }] : []),
+        ]
+      : [];
+    const replyActions = clipsAsk
+      ? [...askActions, ...readCardActions(input.replyMeta ?? {}).filter((a) => a.id !== "rough-cut")].slice(0, 4)
+      : null;
+
     const work = receipts.filter((r) => r.kind !== "assignment");
     const canHandOn = !withheld && work.length > 0 && input.hop + 1 <= MAX_HOPS && input.budget.left > 0;
     const target = canHandOn
@@ -1167,14 +1416,20 @@ async function answerOne(input: Chain, key: AgentKey, channel: Channel) {
       : null;
     text = stripAgentMentions(text, target);
 
+    /* What goes on: the project first (so the colleague works inside it and
+       its reply can say "打开项目"), then what this turn made. */
     onward = target
       ? {
           from: key,
           to: target,
-          artifacts: work.map((r) => ({ kind: r.kind, id: r.id, ...(r.title ? { title: r.title } : {}), ...(hrefFor(r.kind, r.id) ? { href: hrefFor(r.kind, r.id) } : {}) })),
+          artifacts: [
+            ...(wp && !work.some((r) => r.kind === "work_project" && r.id === wp!.id) ? [{ kind: "work_project" as const, id: wp.id, title: wp.title, href: hrefFor("work_project", wp.id) }] : []),
+            ...work.map((r) => ({ kind: r.kind, id: r.id, ...(r.title ? { title: r.title } : {}), ...(hrefFor(r.kind, r.id) ? { href: hrefFor(r.kind, r.id) } : {}) })),
+          ],
           verified: true,
           scriptId: work.find((r) => r.kind === "script")?.id ?? scriptId,
-          projectId: work.find((r) => r.kind === "video_project")?.id ?? projectId,
+          projectId: work.find((r) => r.kind === "video_project")?.id ?? projectId ?? wp?.videoProjectId ?? undefined,
+          ...(wp ? { workProjectId: wp.id } : {}),
         }
       : null;
 
@@ -1199,6 +1454,12 @@ async function answerOne(input: Chain, key: AgentKey, channel: Channel) {
 
     await postMessage(agent, channelId, body, {
       ...(input.replyMeta ?? {}),
+      ...(replyActions ? { actions: replyActions } : {}),
+      /* The project this reply's work is in: the chat draws "打开项目" from
+         it (`readWorkRefs`), for whoever may see that project. */
+      ...(wp ? { project: { id: wp.id, title: wp.title } } : {}),
+      /* The edit it started on the worker, followed by a live chip. */
+      ...(job ? { job } : {}),
       agent: key,
       /** Which tag pulled it in, so the thread can be read back later. */
       answeringMention: true,
@@ -1241,7 +1502,7 @@ async function answerOne(input: Chain, key: AgentKey, channel: Channel) {
         await db.update(agentMessages).set({ content }).where(eq(agentMessages.id, t.id));
       }
     }
-    if (withheld) {
+    if (withheld || heldBack) {
       /* The plain sentence that was posted instead belongs in the thread too,
          as the last thing this employee said here. */
       await db.insert(agentMessages).values({ id: newId("am"), conversationId, role: "assistant", content: body, status: "complete", speaker: key });
@@ -1257,11 +1518,15 @@ async function answerOne(input: Chain, key: AgentKey, channel: Channel) {
         hop: input.hop,
         failed: !text,
         receipts: receipts.length,
-        ...(withheld ? { withheld } : {}),
+        ...(withheld || heldBack ? { withheld: withheld ?? heldBack } : {}),
+        ...(clipsAsk ? { askedForClips: true } : {}),
         ...(onward ? { handedTo: onward.to } : {}),
       },
     });
   } finally {
+    /* The working row comes down once the reply is up (or the turn failed):
+       never left behind, and gone before any colleague starts its own. */
+    await endPending(pendingId);
     /* Colleagues it assigned work to, now that its reply is in the channel.
        Each one in turn, and one failing does not stop the next. */
     for (const work of deferred) {
@@ -1289,6 +1554,19 @@ async function answerOne(input: Chain, key: AgentKey, channel: Channel) {
       asker: input.asker,
     });
   }
+}
+
+/**
+ * 剪辑师's answer when it was handed a script and the bin is empty, and its
+ * own attempts did not pass the check: only what is true — the script is in
+ * hand, there is nothing to cut yet, what happens when the clips arrive —
+ * with the buttons under it doing the asking.
+ */
+function askForClips(zh: boolean, title: string | null): string {
+  const name = title ? `《${title}》` : zh ? "这份" : "the";
+  return zh
+    ? `${name}脚本我收到了。项目的素材箱里还没有素材，现在还不能开剪。请把拍好的素材传到项目里（点下面的「上传素材」）；素材一到会自动转写，我就按脚本的分段出一版粗剪、配好字幕给大家看。想先看看节奏，也可以点「先用素材库画面」拼一版。`
+    : `I have ${title ? `the script for "${title}"` : "the script"}. The project's bin is still empty, so there is nothing to cut yet. Please upload the shot clips to the project (the "Upload the clips" button below); they are transcribed as they land, and I will then cut a first version by the script's sections, with captions. To see the pace sooner, "Use stock footage for now" puts one together from the stock library.`;
 }
 
 /**

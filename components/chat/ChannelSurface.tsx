@@ -22,6 +22,8 @@ import { AgentIcon } from "@/components/agents/AgentIcon";
 import { Icon, type IconName } from "@/components/ui/Icon";
 import { clock, dayLabel, minutesBetween, sameDay } from "./when";
 import { initials, soft, threadCss, tidyMarkdown, withoutLeadingPictures } from "./look";
+import type { StepKey } from "@/lib/agents/steps";
+import { JobChip, WorkingPill } from "./Working";
 
 /**
  * The channel's main column: header, messages, composer.
@@ -67,6 +69,21 @@ export type ChannelMessage = {
   /** On screen but not yet acknowledged by the server. Drawn a shade back, so
    * "sent" and "sending" are not the same picture. */
   pending?: boolean;
+  /** The project this message's work is in, when the reader may see it:
+   * drawn as an "打开项目" button. */
+  project?: { id: string; title: string } | null;
+  /** A director run or a render it started, followed by a live chip. */
+  job?: { videoProjectId: string } | null;
+};
+
+/** An employee at work in the room right now (`lib/chat/pending.ts`). */
+export type ChannelPending = {
+  id: string;
+  agent: AgentKey;
+  step: StepKey;
+  /** When the turn started (ISO). */
+  since: string;
+  job?: { videoProjectId: string } | null;
 };
 
 export type ChannelMember = { name: string; avatar: string | null };
@@ -104,6 +121,10 @@ ${threadCss("[data-chat-surface]")}
 [data-chat-surface] .handoff .art { display: inline-flex; align-items: center; gap: 5px; height: 24px; max-width: 260px; padding: 0 9px; border-radius: 8px; border: 1px solid #e5e5e5; background: #fff; font-size: 12px; color: #404040; text-decoration: none; }
 [data-chat-surface] .handoff .art span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 [data-chat-surface] a.art:hover { border-color: #c7c7c7; color: #171717; }
+[data-chat-surface] .proj { display: inline-flex; align-items: center; gap: 6px; height: 24px; max-width: 320px; padding: 0 10px 0 8px; border-radius: 8px; border: 1px solid #d4d4d4; background: #fff; color: #171717; font-size: 12px; font-weight: 500; text-decoration: none; }
+[data-chat-surface] .proj svg { color: #525252; flex-shrink: 0; }
+[data-chat-surface] .proj span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+[data-chat-surface] a.proj:hover { border-color: #a3a3a3; background: #fafafa; }
 [data-chat-surface] .hdr-btn { background: transparent; border: 0; cursor: pointer; padding: 0; }
 [data-chat-surface] .hdr-btn:hover, [data-chat-surface] .ico2.note:hover { background: #f4f4f5; }
 `;
@@ -233,29 +254,37 @@ function Handoff({
   tags,
   byAgent,
   zh,
+  project,
 }: {
   handoff: ChatHandoff | null | undefined;
   tags: AgentKey[];
   byAgent: boolean;
   zh: boolean;
+  /** The project the message's work is in, as its own button. */
+  project?: { id: string; title: string } | null;
 }) {
+  /* One way to the project: the button, not also a chip beside it. */
+  const button = project ? <ProjectButton project={project} zh={zh} /> : null;
   if (handoff) {
+    const items = project ? handoff.artifacts.filter((a) => !((a.kind === "work_project" || a.kind === "project") && a.id === project.id)) : handoff.artifacts;
     return (
       <div className="handoff">
+        {button}
         <span className="lbl2">
           <HandoffArrow />
           {zh ? "交给" : "Over to"}
         </span>
         <Receiver agent={handoff.to} zh={zh} />
-        {handoff.artifacts.map((a) => (
+        {items.map((a) => (
           <Artifact key={`${a.kind}-${a.id}`} item={a} zh={zh} />
         ))}
       </div>
     );
   }
-  if (!tags.length) return null;
+  if (!tags.length) return button ? <div className="handoff">{button}</div> : null;
   return (
     <div className={byAgent ? "handoff quiet" : "handoff"}>
+      {button}
       <span className="lbl2">
         {byAgent ? null : <HandoffArrow />}
         {byAgent ? (zh ? "提到" : "Mentions") : zh ? "交给" : "Over to"}
@@ -263,6 +292,53 @@ function Handoff({
       {tags.map((key) => (
         <Receiver key={key} agent={key} zh={zh} quiet={byAgent} />
       ))}
+    </div>
+  );
+}
+
+/**
+ * "打开项目": the project a message's work is in, one press away. Everything
+ * lives under a project, and a reply in #研究日报 about a script written
+ * for one should not leave anybody hunting for where it went.
+ */
+function ProjectButton({ project, zh }: { project: { id: string; title: string }; zh: boolean }) {
+  const label = zh ? `打开项目《${project.title}》` : `Open the project “${project.title}”`;
+  return (
+    <Link href={`/projects/${project.id}`} prefetch={false} className="proj" title={label}>
+      <Icon name="spark" size={12} />
+      <span>{label}</span>
+    </Link>
+  );
+}
+
+/**
+ * An employee at work: its face and name like any message of its, and
+ * where the text will be, what it is doing right now — "正在看…", "正在写
+ * 脚本", "正在粗剪" — with three dots that breathe. Gone the moment its
+ * reply lands.
+ */
+function WorkingRow({ row, zh, locale }: { row: ChannelPending; zh: boolean; locale: string }) {
+  const a = AGENT_LABELS[row.agent];
+  return (
+    <div className="msg" aria-live="polite">
+      <div className="face">
+        <AgentMark agent={row.agent} />
+      </div>
+      <div style={{ minWidth: 0, flexGrow: 1 }}>
+        <div className="head">
+          <span className="who">{zh ? a.nameLocal : a.name}</span>
+          <span className="role" style={{ background: soft(AGENT_TINTS[row.agent], 0.75), color: AGENT_COLORS[row.agent] }}>
+            {zh ? a.title : a.titleEn}
+          </span>
+          <span className="when">{clock(row.since, locale)}</span>
+        </div>
+        <WorkingPill agent={row.agent} step={row.step} zh={zh} />
+        {row.job ? (
+          <div>
+            <JobChip job={row.job} zh={zh} />
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -456,6 +532,8 @@ export function ChannelSurface(props: {
   onDismissFailure?: () => void;
   /** The server render's clock, so the day pills hydrate to the same words. */
   now?: string;
+  /** The employees at work here right now, drawn after the last message. */
+  pending?: ChannelPending[];
   /** A one-to-one conversation: the header is the other person, not a #room. */
   isDirect?: boolean;
   /** The other person's picture, in a direct message. */
@@ -475,12 +553,15 @@ export function ChannelSurface(props: {
      whenever one arrives — unless you have scrolled up to read, in which case
      the view stays where you put it. */
   const lastId = props.messages[props.messages.length - 1]?.id ?? null;
+  /* An employee starting work, or moving to its next step, grows the list
+     at the bottom too. */
+  const working = (props.pending ?? []).map((r) => `${r.id}:${r.step}`).join(",");
   const stuck = React.useRef(true);
   React.useEffect(() => {
     const el = list.current;
     if (!el) return;
     if (stuck.current) el.scrollTop = el.scrollHeight;
-  }, [lastId]);
+  }, [lastId, working]);
   React.useEffect(() => {
     const el = list.current;
     if (!el) return;
@@ -970,12 +1051,20 @@ export function ChannelSurface(props: {
                         busy={props.pressing ?? null}
                         onPress={(id) => props.onPress?.(m.id, id)}
                       />
-                      <Handoff handoff={m.handoff} tags={tags} byAgent={m.isAgent === true} zh={zh} />
+                      <Handoff handoff={m.handoff} tags={tags} byAgent={m.isAgent === true} zh={zh} project={m.project ?? null} />
+                      {m.job ? (
+                        <div>
+                          <JobChip job={m.job} zh={zh} project={m.project ?? null} />
+                        </div>
+                      ) : null}
                     </div>
                   </div>
                 </React.Fragment>
               );
             })}
+            {(props.pending ?? []).map((row) => (
+              <WorkingRow key={row.id} row={row} zh={zh} locale={props.locale} />
+            ))}
           </div>
           {/* A channel somebody may not post in gets a line saying so rather
               than a composer that refuses on submit. The rule is enforced in

@@ -114,8 +114,10 @@ function AssistantRowsLive({ zh }: { zh: boolean }) {
 
 function AssistantRowList({ zh, picked }: { zh: boolean; picked: AgentKey | null }) {
   const pathname = usePathname();
-  const onChat = pathname === "/chat";
-  const onAgent = (onChat && !picked) || pathname.startsWith("/chat/t/");
+  /* A thread opened from an employee's page carries `?agent=` too, so the
+     employee's row stays the selected one while you read their thread. */
+  const onChat = pathname === "/chat" || pathname.startsWith("/chat/t/");
+  const onAgent = onChat && !picked;
   return (
     <>
       <Link href="/chat" className={`ws${onAgent ? " on" : ""}`} style={{ gap: 9, height: 32 }}>

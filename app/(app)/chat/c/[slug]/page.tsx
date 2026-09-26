@@ -5,6 +5,7 @@ import { announcementsChannel, channelMembers, channelThread, listPeople, markRe
 import { ChannelView } from "@/components/chat/ChannelView";
 import { answeringModel } from "@/lib/ai/models";
 import { agentKeyFromEmail } from "@/lib/agents/catalog";
+import { projectLinks } from "@/lib/projects/service";
 
 export default async function ChannelPage({ params }: { params: Promise<{ slug: string }> }) {
   /* The segment can arrive still percent-encoded: a channel named 研究日报
@@ -33,7 +34,13 @@ export default async function ChannelPage({ params }: { params: Promise<{ slug: 
    * one it showed the people who are specifically not in it. These are the
    * channel's own members.
    */
-  const members = await channelMembers(viewer, channel.id);
+  /* The project each message is about, for its "打开项目" button: named
+     outright or through the script and video it handed over, and only the
+     projects this person may see (`projectLinks`). */
+  const [members, links] = await Promise.all([
+    channelMembers(viewer, channel.id),
+    projectLinks(viewer, thread.messages.map((m) => ({ messageId: m.id, ...m.refs }))),
+  ]);
 
   // Marking the channel read is a write nobody should wait on.
   after(() => markRead(viewer, channel.id));
@@ -82,9 +89,14 @@ export default async function ChannelPage({ params }: { params: Promise<{ slug: 
         done: m.done,
         handoff: m.handoff,
         card: m.card,
+        project: links.get(m.id) ?? null,
+        job: m.job,
         body: m.body,
         createdAt: m.createdAt.toISOString(),
       }))}
+      /* The employees at work here right now, drawn after the last message
+         with the step each one is on. */
+      pending={thread.pending.map((r) => ({ id: r.id, agent: r.agent, step: r.step, since: r.since, job: r.job ?? null }))}
       /* The server's "now", so "今天" and "昨天" are worked out once and
          hydrate to the same words. */
       now={new Date().toISOString()}

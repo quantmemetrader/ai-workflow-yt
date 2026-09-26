@@ -12,10 +12,14 @@ import { runTool, toolsFor } from "../lib/ai/tools";
 import { assemblePrompt } from "../lib/ai/prompt";
 import { notesFor } from "../lib/ai/tools/chat";
 import { parseAgentMentions } from "../lib/agents/catalog";
+import { stepForTool } from "../lib/agents/steps";
+import { readCardActions } from "../lib/agents/cards";
+import { readWorkRefs } from "../lib/chat/handoff";
 import {
   delegatedTo,
   existingIds,
   findClaims,
+  findStartClaims,
   judgeReply,
   publicProblems,
   stripAgentMentions,
@@ -143,11 +147,12 @@ async function main() {
 
   /* 6. The planner's tools. */
   const { rows: agents } = await db.execute<{ id: string; email: string }>(
-    sql`select id, email from users where tenant_id = ${TENANT} and email in ('planning@agents.invalid', 'video@agents.invalid')`,
+    sql`select id, email from users where tenant_id = ${TENANT} and email in ('planning@agents.invalid', 'video@agents.invalid', 'script@agents.invalid')`,
   );
   const planner = await viewerById(agents.find((a) => a.email.startsWith("planning"))!.id);
   const editor = await viewerById(agents.find((a) => a.email.startsWith("video"))!.id);
-  if (!planner || !editor) throw new Error("agents missing");
+  const writerAgent = await viewerById(agents.find((a) => a.email.startsWith("script"))!.id);
+  if (!planner || !editor || !writerAgent) throw new Error("agents missing");
   const plannerTools = toolsFor(planner).map((t) => t.function.name);
   console.log("      planner offered:", plannerTools.join(", "));
   check(
@@ -219,6 +224,61 @@ async function main() {
     const refusedProject = await runTool(planner, "assign_task", JSON.stringify({ to: "script", task: "测试", project_id: gone[0].id }), { channelId: CHANNEL });
     check("assign_task into a deleted project is refused, nothing posted", /no such project/i.test(refusedProject.text) && !refusedProject.artifacts, refusedProject.text);
   }
+
+  /* 13. 剪辑师 in #研究日报, 2026-09-26: handedScript a loose script, no project,
+         nothing in any bin, no tool called — "开始粗剪". */
+  const { rows: cutting } = await db.execute<{ body: string }>(sql`select body from chat_messages where id = 'msg_01m3e8aces1eb36sjs8bzq9bja'`);
+  const editorReply = cutting[0]?.body ?? "已读脚本《特斯拉Optimus产量暴增10倍：机器人取代快递员还远吗？》（scr_01m3e88cssrtyzvwyrj4cdyzwh）。\n开始粗剪，将严格按3分钟时长、反差钩子和“普通人机会点”结构执行。";
+  check("the editor's real reply was found", editorReply.includes("开始粗剪"), editorReply.slice(0, 60));
+  const handedScript = new Set(["scr_01m3e88cssrtyzvwyrj4cdyzwh"]);
+  const startClaims = findStartClaims(editorReply, "video");
+  check("'开始粗剪' is read as the editor's own start", startClaims.length === 1, startClaims);
+  const heldEmpty = judgeReply(editorReply, { self: "video", receipts: [], seen: handedScript, clips: 0, cut: false }, handedScript);
+  check("… held with an empty bin and no cut begun", !heldEmpty.ok && heldEmpty.unbacked.some((c) => c.claim.includes("开始粗剪")), heldEmpty);
+  const heldNoCut = judgeReply(editorReply, { self: "video", receipts: [], seen: handedScript, clips: 4, cut: false }, handedScript);
+  check("… held with clips in the bin but no first_cut / make_video this turn", !heldNoCut.ok, heldNoCut);
+  const cutReceipt: Artifact = { kind: "video_project", id: "prj_01m3byhf3eyss1wved6fh538bp", action: "updated" };
+  const backed = judgeReply("开始粗剪了，先按脚本分段剪出第一版。", { self: "video", receipts: [cutReceipt], seen: new Set(), clips: 4, cut: true }, new Set());
+  check("… and accepted once first_cut really ran on a bin with clips", backed.ok, backed);
+  for (const t of [
+    "素材一到我就开始粗剪，先按脚本分段。",
+    "等主持人上传素材后，我再开始粗剪。",
+    "现在还不能开始粗剪：素材箱是空的。",
+    "要不要先用素材库画面，我这边开始粗剪？",
+    "剪辑师开始粗剪了。",
+    "Once the clips land I will start the rough cut.",
+    "I'll start the rough cut once the clips land.",
+    "拿到素材我就开始粗剪。",
+  ]) {
+    const c = findStartClaims(t, t.startsWith("剪辑师") ? "planning" : "video");
+    check(`not a start claim of my own: ${t}`, c.length === 0, c);
+  }
+  check("English 'I'm starting the rough cut' is a start claim", findStartClaims("I'm starting the rough cut now.", "video").length === 1);
+  check("… also with a 'when' further on in the sentence", findStartClaims("I'm starting the rough cut now, and will post it when it is done.", "video").length === 1);
+  const askedClips = judgeReply("《特斯拉Optimus产量暴增10倍》的脚本我收到了。素材箱里还没有素材，现在还不能开剪；素材一到我就按脚本分段出粗剪。", { self: "video", receipts: [], seen: handedScript, clips: 0, cut: false }, handedScript);
+  check("asking for the clips with an empty bin passes the check", askedClips.ok, askedClips);
+
+  /* 14. Steps, project refs and the run button, as the chat reads them. */
+  check("tool steps follow the real tool names", stepForTool("write_script") === "writing_script" && stepForTool("first_cut") === "rough_cut" && stepForTool("find_footage") === "footage" && stepForTool("edit_caption") === "captions" && stepForTool("make_video") === "making" && stepForTool("read_channel") === "channel" && stepForTool("no_such_tool") === "working");
+  const refs = readWorkRefs({ project: { id: "wp_01m3e8aces1eb36sjs8bzq9bja" }, handoff: { artifacts: [{ kind: "script", id: "scr_01m3e88cssrtyzvwyrj4cdyzwh" }, { kind: "video_project", id: "prj_01m3byhf3eyss1wved6fh538bp" }] }, receipts: [{ kind: "work_project", id: "wp_01m3e8aces1eb36sjs8bzq9bjb" }] });
+  check("a message's project, script and video refs are read from meta", refs.projectIds.length === 2 && refs.scriptIds.length === 1 && refs.videoIds.length === 1, refs);
+  const runs = readCardActions({ actions: [
+    { id: "stock-cut", label: "先用素材库画面", labelEn: "Stock", kind: "run", op: "stock-cut", projectId: "wp_01m3e8aces1eb36sjs8bzq9bja" },
+    { id: "bad", label: "x", labelEn: "x", kind: "run", op: "delete-everything", projectId: "wp_01m3e8aces1eb36sjs8bzq9bja" },
+    { id: "bad2", label: "y", labelEn: "y", kind: "run", op: "stock-cut", projectId: "../../etc" },
+  ] });
+  check("a run button keeps only a known operation on a project id", runs.length === 1 && runs[0].op === "stock-cut", runs);
+
+  /* 15. Review of the branch: advice is not a start claim, and a rewrite is
+         not a second project. */
+  const advice = judgeReply("这个题值得现在就做视频，建议马上做视频，先出一版粗剪。", { self: "planning", receipts: [], seen: new Set() }, new Set());
+  check("策划 recommending 'mark this to make now' is not held as a start claim", advice.ok, advice);
+  const editorAdvice = judgeReply("我马上开始粗剪。", { self: "video", receipts: [], seen: new Set() }, new Set());
+  check("… while 剪辑师 saying it is starting, with no cut begun, still is", !editorAdvice.ok, editorAdvice);
+  const writerDef = toolsFor(writerAgent).find((t) => t.function.name === "write_script");
+  check("write_script takes a script_id for rewriting outside a project", Boolean((writerDef?.function.parameters as { properties?: Record<string, unknown> } | undefined)?.properties?.script_id));
+  const noSuch = await runTool(writerAgent, "write_script", JSON.stringify({ subject: "AI模型蒸馏", script_id: FAKE }));
+  check("… and a script_id that does not exist writes nothing and starts no project", /no script/i.test(noSuch.text) && !noSuch.artifacts, noSuch.text);
 
   console.log(failures ? `\n${failures} check(s) failed` : "\nall checks passed");
   process.exitCode = failures ? 1 : 0;

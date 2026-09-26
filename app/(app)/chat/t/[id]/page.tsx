@@ -2,8 +2,8 @@ import { notFound } from "next/navigation";
 import { requireModule } from "@/lib/auth/dal";
 import { conversationDetail } from "@/lib/chat/service";
 import { answeringModel } from "@/lib/ai/models";
-import { AgentScreen, type ThreadMessage } from "@/components/canvas/AgentScreen";
-import { AGENT_KEYS, type AgentKey } from "@/lib/agents/catalog";
+import { AgentScreen } from "@/components/canvas/AgentScreen";
+import { agentHistoryFor, threadMessagesOf } from "@/lib/chat/thread";
 
 export default async function ConversationPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -13,46 +13,16 @@ export default async function ConversationPage({ params }: { params: Promise<{ i
   const detail = await conversationDetail(viewer, id);
   if (!detail) notFound();
 
-  const messages: ThreadMessage[] = detail.messages
-    .filter((m) => m.role === "user" || m.role === "assistant")
-    .map((m) => ({
-      id: m.id,
-      role: m.role as "user" | "assistant",
-      content: m.content,
-      status: m.status as ThreadMessage["status"],
-      error: m.error,
-      model: m.model,
-      costMicros: Number(m.costMicros ?? 0),
-      withheld: m.withheld,
-      /* Who answered, as stored by the stream route. Without it a reloaded
-         thread drew every employee's answer as the host's. */
-      speaker: asAgentKey(m.speaker),
-      createdAt: m.createdAt.toISOString(),
-      citations: detail.citations
-        .filter((c) => c.messageId === m.id)
-        .map((c) => ({
-          fileId: c.fileId,
-          name: c.name,
-          kind: c.kind,
-          folder: c.folder,
-          relation: c.relation,
-        })),
-      tools: detail.toolCalls
-        .filter((c) => c.messageId === m.id)
-        .map((c) => ({
-          id: c.id,
-          name: c.name,
-          status: c.status,
-          durationMs: c.durationMs,
-          summary: summarise(c.name, c.args as Record<string, unknown>, c.durationMs),
-        })),
-    }));
-
+  const messages = threadMessagesOf(detail);
   const zh = (viewer.locale ?? "zh-CN").startsWith("zh");
   const lastModel = [...detail.messages].reverse().find((m) => m.model)?.model;
   /* Picking the thread up again continues with whoever answered last — the
      composer starts with their tag, which one × takes back off. */
   const lastSpeaker = [...messages].reverse().find((m) => m.role === "assistant")?.speaker ?? null;
+  /* A thread an employee answered in is one of that employee's: the page
+     shows the person's other threads with them, and what they said lately
+     in the channels, the same as `/chat?agent=…` does. */
+  const history = lastSpeaker ? await agentHistoryFor(viewer, lastSpeaker, id) : null;
 
   return (
     <AgentScreen
@@ -61,6 +31,7 @@ export default async function ConversationPage({ params }: { params: Promise<{ i
       locale={viewer.locale ?? "zh-CN"}
       model={lastModel ?? answeringModel()}
       initialAgent={lastSpeaker}
+      history={history}
       now={new Date().toISOString()}
       me={{
         name: zh && viewer.nameLocal ? viewer.nameLocal : viewer.name,
@@ -68,28 +39,4 @@ export default async function ConversationPage({ params }: { params: Promise<{ i
       }}
     />
   );
-}
-
-/** A stored speaker, if it still names an employee. */
-function asAgentKey(value: string | null): AgentKey | null {
-  return value && (AGENT_KEYS as readonly string[]).includes(value) ? (value as AgentKey) : null;
-}
-
-/** The one-line trace the artboard shows beside a tool chip. */
-function summarise(name: string, args: Record<string, unknown>, ms: number | null): string {
-  const secs = ms ? ` · ${(ms / 1000).toFixed(1)} s` : "";
-  switch (name) {
-    case "search_files":
-      return `Searched files for “${args.query ?? ""}”${secs}`;
-    case "read_file":
-      return `Read a document${secs}`;
-    case "list_recent_files":
-      return `Listed recent files${secs}`;
-    case "create_document":
-      return `Wrote “${args.title ?? "a document"}”${secs}`;
-    case "check_ai_spend":
-      return `Checked AI spend${secs}`;
-    default:
-      return name + secs;
-  }
 }

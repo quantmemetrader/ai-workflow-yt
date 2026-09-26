@@ -10,7 +10,7 @@ import { ensureAgentChannel } from "@/lib/agents";
 import { AGENT_KEYS, agentTag, type AgentKey } from "@/lib/agents/catalog";
 import { dispatchAgentMentions, handoffMeta, type Handoff } from "@/lib/agents/mentions";
 import { postMessage } from "@/lib/chat/service";
-import { projectFromScript } from "@/lib/video/service";
+import { ensureScriptProject } from "@/lib/projects/service";
 import { audit } from "@/lib/audit";
 
 const MAX_TEXT = 600;
@@ -66,6 +66,11 @@ export async function startProposalAction(owner: AgentKey, text: string) {
  * id — and 剪辑师 is started with the same, so its turn opens inside that
  * project. It used to get the sentence only, and in #制作, which is not a
  * project's chat, every cutting tool answered "no video project is open".
+ *
+ * The video project is the one inside the script's project, which is
+ * started around the script when it has none (`ensureScriptProject`):
+ * everything lives under a project, and a bare video project beside a
+ * loose script was an edit no project page knew about.
  */
 export async function sendScriptToVideoAction(scriptId: string) {
   const viewer = await getViewer();
@@ -81,12 +86,14 @@ export async function sendScriptToVideoAction(scriptId: string) {
     .limit(1);
   if (!script) return { error: "No such script" };
 
-  let projectId: string;
+  let work: Awaited<ReturnType<typeof ensureScriptProject>>;
   try {
-    projectId = await projectFromScript(viewer, scriptId);
+    work = await ensureScriptProject(viewer, scriptId);
   } catch (err) {
     return { error: err instanceof Error ? err.message : "Could not make the project" };
   }
+  if (!work?.videoProjectId) return { error: "Could not make the project" };
+  const projectId = work.videoProjectId;
 
   const href = `/video?project=${projectId}`;
   const channelId = await ensureAgentChannel(viewer.tenantId, "production");
@@ -94,6 +101,7 @@ export async function sendScriptToVideoAction(scriptId: string) {
     from: "human",
     to: "video",
     artifacts: [
+      { kind: "work_project", id: work.id, title: work.title, href: `/projects/${work.id}` },
       { kind: "script", id: scriptId, title: script.title, href: `/script/${scriptId}` },
       { kind: "video_project", id: projectId, href },
     ],
@@ -101,11 +109,12 @@ export async function sendScriptToVideoAction(scriptId: string) {
     task: `按《${script.title}》的脚本做视频。`,
     scriptId,
     projectId,
+    workProjectId: work.id,
   };
   const body = [
     `${agentTag("video")} 《${script.title}》的脚本准备好了，请开始做视频。`,
+    `- [打开项目](/projects/${work.id})`,
     `- [打开脚本](/script/${scriptId})`,
-    `- [打开视频项目](${href})`,
     "素材一进时间线就会自动转写；按脚本的段落来剪。",
   ].join("\n");
   await postMessage(viewer, channelId, body, { handoff: handoffMeta(handoff), via: "script-page" });
@@ -124,7 +133,7 @@ export async function sendScriptToVideoAction(scriptId: string) {
     module: "script",
     objectType: "script",
     objectId: scriptId,
-    meta: { projectId, from: "script", to: "video", by: "page" },
+    meta: { projectId, workProjectId: work.id, from: "script", to: "video", by: "page" },
   });
   return { projectId, channelSlug: PRODUCTION_SLUG };
 }
