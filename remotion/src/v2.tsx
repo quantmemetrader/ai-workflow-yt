@@ -1,7 +1,7 @@
 import React from "react";
 import { AbsoluteFill, Easing, Img, spring } from "remotion";
 import { V2 } from "./theme";
-import { Marked, emWidth, fitSize, fitWrapped, isCjk, splitLines, wrapLines } from "./text";
+import { Marked, emWidth, fitSize, fitWrapped, isCjk, packEntries, splitLines, wrapLines } from "./text";
 
 /**
  * Director v2's templates: the graphics that make an argument legible with
@@ -698,7 +698,11 @@ const Stinger: React.FC<TemplateProps> = ({ g, accent, text, options, env }) => 
 const EndCard: React.FC<TemplateProps> = ({ g, accent, text, sub, options, env }) => {
   const credits = str(options.creditsLine);
   const logo = str(options.logo);
-  const creditLines = wrapLines(credits, g.safeW / g.px(V2.size.credits), 2);
+  /* Packed by source (never a break inside "Pinterest @xxx"), two lines at
+     most, each held on one line: the estimate errs wide, and a line that
+     did run over would spread a few pixels into both margins rather than
+     wrap into a third line under the footnote band. */
+  const creditLines = packEntries(credits, g.safeW / g.px(V2.size.credits), 2);
   const subLines = sub ? wrapLines(sub, g.safeW / g.px(V2.size.endSub), 3) : [];
   return (
     <AbsoluteFill style={{ background: V2.void, opacity: env.on }}>
@@ -718,7 +722,7 @@ const EndCard: React.FC<TemplateProps> = ({ g, accent, text, sub, options, env }
       {creditLines.length ? (
         <div style={{ position: "absolute", left: g.safeLeft, width: g.safeW, bottom: g.H - g.px(1745), textAlign: "center" }}>
           {creditLines.map((l, i) => (
-            <div key={i} style={{ ...bold(g.px(V2.size.credits), V2.credits), lineHeight: 1.4, textShadow: "none" }}>
+            <div key={i} style={{ ...bold(g.px(V2.size.credits), V2.credits), lineHeight: 1.4, textShadow: "none", whiteSpace: "nowrap" }}>
               {l}
             </div>
           ))}

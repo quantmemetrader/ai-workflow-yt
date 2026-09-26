@@ -48,10 +48,11 @@ export const splitLines = (text: string, max: number): string[] =>
  * How wide a line sets, in ems of its font size.
  *
  * Noto Sans CJK sets every Han character and fullwidth mark on exactly one
- * em; its Latin is proportional, and Inter's is a little narrower still.
- * The figures below are the averages measured on both faces at the heavy
- * weights, plus three per cent, so a line the estimate says fits does fit.
- * The 【】 marks are not drawn and do not count.
+ * em; its Latin is proportional and, at the Bold weight, wider than
+ * Inter's. The figures below are calibrated on a rendered credits line
+ * (素材来源：抖音 @xxx · B站 @xxx · YouTube @Anthropic ·, 742 px at 26 px
+ * in the Bold) and err four to five per cent wide, so a line the estimate
+ * says fits does fit. The 【】 marks are not drawn and do not count.
  */
 export function emWidth(text: string): number {
   let w = 0;
@@ -60,14 +61,46 @@ export function emWidth(text: string): number {
     if (c >= 0x3400 && c <= 0x9fff) w += 1; // Han
     else if (c >= 0xff00 && c <= 0xffef) w += 1; // fullwidth forms and punctuation
     else if (c >= 0x3000 && c <= 0x303f) w += 1; // CJK punctuation 「」、。
-    else if (c >= 0x30 && c <= 0x39) w += 0.62; // digits (tabular)
-    else if (c >= 0x41 && c <= 0x5a) w += 0.7; // capitals
-    else if (c >= 0x61 && c <= 0x7a) w += 0.56; // lowercase
-    else if (ch === " ") w += 0.28;
+    else if (c >= 0x30 && c <= 0x39) w += 0.64; // digits (tabular)
+    else if (c >= 0x41 && c <= 0x5a) w += 0.76; // capitals
+    else if (c >= 0x61 && c <= 0x7a) w += 0.62; // lowercase
+    else if (ch === " ") w += 0.3;
     else if ("%.,:;·-–—".includes(ch)) w += 0.36;
-    else w += 0.6;
+    else if (ch === "@") w += 0.95;
+    else w += 0.64;
   }
   return w * 1.03;
+}
+
+/**
+ * A credits line packed by its entries — `素材来源：抖音 @xxx · B站 @xxx ·
+ * YouTube @Anthropic` splits on the " · " between sources — into at most
+ * `maxLines` lines of `emsPerLine`, so a break never lands inside a
+ * source's own words (Pinterest | @xxx). An entry too long for a line
+ * on its own is wrapped by `wrapLines`.
+ */
+export function packEntries(text: string, emsPerLine: number, maxLines: number): string[] {
+  const entries = text.split(/\s*·\s*/).map((e) => e.trim()).filter(Boolean);
+  const out: string[] = [];
+  let line = "";
+  for (const entry of entries) {
+    if (out.length >= maxLines) break;
+    const next = line ? `${line} · ${entry}` : entry;
+    if (emWidth(next) <= emsPerLine) {
+      line = next;
+      continue;
+    }
+    if (line) out.push(line);
+    line = "";
+    if (emWidth(entry) <= emsPerLine) line = entry;
+    else {
+      const parts = wrapLines(entry, emsPerLine, maxLines - out.length);
+      out.push(...parts.slice(0, -1));
+      line = parts[parts.length - 1] ?? "";
+    }
+  }
+  if (line && out.length < maxLines) out.push(line);
+  return out.slice(0, maxLines);
 }
 
 /**
