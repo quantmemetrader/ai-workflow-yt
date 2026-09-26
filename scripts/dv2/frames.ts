@@ -126,7 +126,12 @@ export function keyMoments(input: GradeInput): { name: string; nameZh: string; t
   add("stinger", "章节转场", g(["stinger", "chapter"]));
   const first = [...input.cutaways].sort((a, b) => a.startMs - b.startMs)[0];
   if (first) out.push({ name: "cutaway", nameZh: "切出镜头入场", tMs: first.startMs, kind: `cutaway:${first.layout}` });
-  add("entity", "机构卡", g(["entity", "image", "chip"]));
+  /* An entity card; on a v1 render, whose pictures are cutaways rather than
+     graphics, the first still cutaway stands in. */
+  const entity = g(["entity", "chip"]);
+  const still = [...input.cutaways].filter((c) => c.still).sort((a, b) => a.startMs - b.startMs)[0];
+  if (entity) add("entity", "机构卡", entity);
+  else if (still) out.push({ name: "entity", nameZh: "机构卡（v1 贴图）", tMs: still.startMs, kind: `cutaway:${still.layout} still` });
   return out;
 }
 
