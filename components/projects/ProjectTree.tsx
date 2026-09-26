@@ -41,7 +41,10 @@ export function ProjectTree({ projects, zh, wide }: { projects: TreeProject[]; z
     );
   }
 
-  const list = showAll ? projects : projects.slice(0, 8);
+  /* Four at a glance; the rest a press away. Eight was the old cut-off,
+     and with a busy studio the list pushed the rail's foot off the screen. */
+  const SHOWN = 4;
+  const list = showAll ? projects : projects.slice(0, SHOWN);
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 1, margin: "4px 0 6px" }}>
       <div style={{ display: "flex", alignItems: "center", padding: "6px 9px 4px" }}>
@@ -89,9 +92,17 @@ export function ProjectTree({ projects, zh, wide }: { projects: TreeProject[]; z
           </div>
         );
       })}
-      {projects.length > 8 ? (
-        <button type="button" onClick={() => setShowAll((v) => !v)} style={{ border: 0, background: "transparent", padding: "3px 9px", textAlign: "left", cursor: "pointer", font: "inherit", fontSize: 11.5, color: "#7c7c7c" }}>
-          {showAll ? t("收起", "Show fewer") : t(`＋ 另外 ${projects.length - 8} 个`, `+ ${projects.length - 8} more`)}
+      {projects.length > SHOWN ? (
+        <button
+          type="button"
+          onClick={() => setShowAll((v) => !v)}
+          aria-expanded={showAll}
+          style={{ display: "flex", alignItems: "center", gap: 4, border: 0, background: "transparent", padding: "4px 9px 2px 35px", textAlign: "left", cursor: "pointer", fontFamily: "inherit", letterSpacing: "inherit", fontSize: 11.5, color: "#7c7c7c" }}
+        >
+          {showAll ? t("收起", "Show fewer") : t(`再看 ${projects.length - SHOWN} 个`, `${projects.length - SHOWN} more`)}
+          <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden style={{ transform: showAll ? "rotate(180deg)" : undefined }}>
+            <path d="m6.5 9.5 5.5 5.5 5.5-5.5" />
+          </svg>
         </button>
       ) : null}
       <div style={{ padding: "2px 2px 0" }}>

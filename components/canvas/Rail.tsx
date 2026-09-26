@@ -101,6 +101,25 @@ export function Rail({ modules, locale, projects = [], account }: { modules: Mod
       {/* Only while it is open: there is nothing to drag a 52px strip to. */}
       {open ? handle : null}
 
+      {/* Everything above the foot scrolls when the studio has more projects
+          than the screen has height; 历史记录, 收起 and the account stay put. */}
+      <div
+        className="rail-scroll"
+        style={{
+          flex: "1 1 auto",
+          minHeight: 0,
+          overflowY: "auto",
+          overflowX: "hidden",
+          overscrollBehavior: "contain",
+          scrollbarWidth: "none",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: open ? "stretch" : "center",
+          gap: 3,
+          margin: "0 -2px",
+          padding: "0 2px",
+        }}
+      >
       <Link
         href="/home"
         aria-label="腾亚创变"
@@ -177,7 +196,7 @@ export function Rail({ modules, locale, projects = [], account }: { modules: Mod
         );
       })}
 
-      <div style={{ flexGrow: 1 }} />
+      </div>
 
       {/* Your own history with the assistant, from any screen. */}
       <HistoryButton locale={locale} wide={open} />
