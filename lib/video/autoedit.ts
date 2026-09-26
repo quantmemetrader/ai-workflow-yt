@@ -825,7 +825,9 @@ export function parsePlanV2(text: string, ids: ReadonlySet<string>): PlanV2 {
  * digits-and-unit string the brief wrote (154页, 1.51亿次); proper nouns as
  * the brief's spelling and — for Latin names whisper mangles — as any Latin
  * token of the same length within one letter, which is what a person
- * reading Anthrobic does.
+ * reading Anthrobic does. Only names of five letters or more get that
+ * latitude: two edits on a three-letter name make FBI, API and AI one
+ * another, and every sentence with an AI in it became an "anchor".
  */
 export type BriefAnchors = { phrases: string[]; numbers: string[]; names: string[] };
 
@@ -874,7 +876,7 @@ export function anchorsIn(textIn: string, anchors: BriefAnchors): string[] {
   for (const n of anchors.names) {
     if (HAN_RUN.test(n)) {
       if (t.includes(n)) hits.push(n);
-    } else if (latin.some((w) => w === n || (Math.abs(w.length - n.length) <= 1 && editDistance(w, n) <= 2))) {
+    } else if (latin.some((w) => w === n || (n.length >= 5 && Math.abs(w.length - n.length) <= 1 && editDistance(w, n) <= 2))) {
       hits.push(n);
     }
   }
@@ -935,12 +937,23 @@ export const CUT_DEFAULTS = {
   snapMs: 400,
   /** And to reach a gap between syllables in the fine list. */
   fineSnapMs: 150,
+  /**
+   * How far after a take's first syllable a *fine* gap may begin and still
+   * count as the quiet before it. A proper pause (the 250 ms list) may start
+   * up to `fineSnapMs` late, because whisper starts words early and
+   * `alignWords` has already reconciled the long pauses; a gap of 80–200 ms
+   * that begins 100 ms into the syllable is the gap *after* it, and a cut
+   * placed by it would take the first syllable of the kept take with it.
+   */
+  fineLateMs: 40,
   /** A stand-alone filler at least this long goes. */
   fillerMs: 250,
   /** Slack over the budget that still counts as fitting: two per cent is six seconds on a five-minute brief. */
   slack: 0.02,
   /** A sentence longer than this is not a filler, whatever the model says. */
   fillerMaxHan: 8,
+  /** A piece with no word in it shorter than this is noise between two pauses and goes; longer, it may be speech and stays. */
+  noiseMaxMs: 820,
 };
 
 export type DropSpan = { startMs: number; endMs: number; reason: CutReport["removed"][number]["reason"]; sentenceIds: string[]; text: string; why: string };
@@ -964,6 +977,12 @@ export type PlanCutResult = {
   /** Retakes the rules or the model wanted gone but no measured quiet allows a clean cut at; kept. */
   refusedRetakes: { retake: Retake; text: string; whyZh: string }[];
   optionalDropped: OptionalDrop[];
+  /**
+   * The sentence the model would open on, when it named one that exists and
+   * is still in the cut. The pieces are *not* reordered for it (see
+   * `assemble`); the director decides what to do with it.
+   */
+  coldOpenId: string | null;
 };
 
 const FILLERS = new Set(["嗯", "呃", "额", "那个", "嗯嗯", "呃呃"]);
@@ -1014,7 +1033,7 @@ export function planCut(input: PlanCutInput): PlanCutResult {
    * breath on both sides.
    */
   const head = Math.max(0, o.trimTo - o.guard);
-  const pick = (list: readonly Silence[], ms: number, edge: "start" | "end", shift: number): Silence | null => {
+  const pick = (list: readonly Silence[], ms: number, edge: "start" | "end", shift: number, lateMs: number): Silence | null => {
     let best: Silence | null = null;
     let bestGap = Infinity;
     const lo = edge === "start" ? ms - shift : ms - o.fineSnapMs;
@@ -1022,8 +1041,8 @@ export function planCut(input: PlanCutInput): PlanCutResult {
     for (const s of list) {
       if (s.startMs > hi) break;
       if (s.endMs < lo) continue;
-      /* The quiet must reach the onset: begin no later than the tolerance after it, end no earlier than the tolerance before it. */
-      if (s.startMs > ms + o.fineSnapMs || s.endMs < ms - o.fineSnapMs) continue;
+      /* The quiet must reach the onset: begin no later than `lateMs` after it, end no earlier than the tolerance before it. */
+      if (s.startMs > ms + lateMs || s.endMs < ms - o.fineSnapMs) continue;
       const gap = Math.abs(s.endMs - ms);
       if (gap < bestGap) {
         bestGap = gap;
@@ -1033,11 +1052,11 @@ export function planCut(input: PlanCutInput): PlanCutResult {
     return best;
   };
   const snapStart = (ms: number): number => {
-    const s = pick(silences, ms, "start", o.snapMs) ?? pick(fine, ms, "start", o.fineSnapMs);
+    const s = pick(silences, ms, "start", o.snapMs, o.fineSnapMs) ?? pick(fine, ms, "start", o.fineSnapMs, o.fineLateMs);
     return s ? Math.min(s.endMs, s.startMs + o.guard) : ms;
   };
   const snapEnd = (ms: number): number => {
-    const s = pick(silences, ms, "end", o.snapMs) ?? pick(fine, ms, "end", o.fineSnapMs);
+    const s = pick(silences, ms, "end", o.snapMs, o.fineSnapMs) ?? pick(fine, ms, "end", o.fineSnapMs, o.fineLateMs);
     return s ? Math.max(s.startMs, s.endMs - head) : ms;
   };
 
@@ -1045,7 +1064,12 @@ export function planCut(input: PlanCutInput): PlanCutResult {
     joinWords(words.filter((w) => (w.startMs + w.endMs) / 2 >= startMs && (w.startMs + w.endMs) / 2 < endMs));
 
   const drops: DropSpan[] = [];
+  /* Both end up in `report.restored` (the frozen shape has one list); the
+     note tells them apart, because a suggestion turned down before anything
+     was cut and a sentence put back after the audit found it missing are
+     different facts for the person reading it. */
   const restored: string[] = [];
+  const auditRestored: string[] = [];
   const refused: PlanCutResult["refused"] = [];
   const refusedRetakes: PlanCutResult["refusedRetakes"] = [];
   const inQuiet = (ms: number) => fine.some((s) => ms >= s.startMs - 20 && ms <= s.endMs + 20);
@@ -1132,6 +1156,13 @@ export function planCut(input: PlanCutInput): PlanCutResult {
     }
     const span = sentenceSpan(s);
     if (span.endMs <= span.startMs) continue;
+    /* The same gate the retakes pass: a sentence whose edges cannot be moved
+       into measured quiet (punctuation with no pause behind it) would be cut
+       out of the middle of a syllable. It stays. */
+    if (!inQuiet(span.startMs) || !inQuiet(span.endMs)) {
+      refuse("句子两头没有可下刀的静音");
+      continue;
+    }
     if (d.priority === 1) {
       drops.push({ ...span, reason: d.reason, sentenceIds: [d.id], text: s.text, why: d.why || REASON_ZH[d.reason] });
     } else {
@@ -1163,21 +1194,41 @@ export function planCut(input: PlanCutInput): PlanCutResult {
     sentenceEnds,
   });
 
+  /*
+   * The pieces stay in take order. The model names a cold-open sentence and
+   * it is passed on (`coldOpenId`), but the take is not reordered here: every
+   * consumer of the pieces — `mapTime` for the captions and graphics,
+   * `mergeRanges` in `autoEdit`, W6's layout — walks them as a sorted list,
+   * and a piece moved to the front made `mapTime` return null for every
+   * moment before it, which deleted every caption up to the cold open. If
+   * the director wants to open on a later line it must map times in cut
+   * order; until it does, opening out of order loses captions.
+   */
   const assemble = (dropList: readonly DropSpan[]): Range[] => {
     const kept = subtract([{ startMs: 0, endMs: total }], dropList);
-    let pieces = intersectExact(kept, speech, 150);
-    /* The cold open: the chosen sentence's pieces move to the front. */
-    const cold = plan.coldOpen ? byId.get(plan.coldOpen) : null;
-    if (cold && cold.id !== sentences[0]?.id && !dropList.some((d) => d.sentenceIds.includes(cold.id))) {
-      const span = sentenceSpan(cold);
-      const inside = intersectExact(pieces, [span], 150);
-      if (inside.length) pieces = [...inside, ...subtract(pieces, [span])];
-    }
-    return pieces;
+    return intersectExact(kept, speech, 150);
   };
 
   let pieces = assemble(drops);
   const length = (list: readonly Range[]) => list.reduce((sum, r) => sum + (r.endMs - r.startMs), 0);
+
+  /*
+   * 4b. Noise between pauses. silencedetect keeps anything above −32 dB, and
+   * a laugh, a cough or a pair of lip noises between two pauses comes
+   * through as a piece with no word in it: on the 蒸馏 take, 550 ms at
+   * 163.6 s between 侵权实锤 and 而中方, which played as a second of dead
+   * air with a noise in the middle. A piece no word touches, shorter than
+   * `noiseMaxMs`, goes as a pause. The ceiling matters: a swallowed repeat
+   * that `fillHoles` could not confirm is at least 700 ms of voice and
+   * stays, because a wordless piece that long may be speech whisper missed
+   * and keeping speech is the mistake this planner is allowed to make.
+   */
+  const touched = (p: Range) => words.some((w) => Math.min(p.endMs, w.endMs) - Math.max(p.startMs, w.startMs) >= 20);
+  const noise = pieces.filter((p) => p.endMs - p.startMs < o.noiseMaxMs && p.startMs > 0 && p.endMs < total && !touched(p));
+  if (noise.length) {
+    for (const p of noise) drops.push({ startMs: p.startMs, endMs: p.endMs, reason: "pause", sentenceIds: [], text: "无字的杂音", why: "两段停顿之间没有词的杂音" });
+    pieces = assemble(drops);
+  }
 
   /* 5. the budget: only what the model offered, never an anchor */
   const fit = fitSentencesToBudget({
@@ -1215,6 +1266,7 @@ export function planCut(input: PlanCutInput): PlanCutResult {
       if (back.length) {
         pieces = mergeRanges([...pieces, ...back], 0);
         restored.push(s.id);
+        auditRestored.push(s.id);
         keptSentenceIds.push(s.id);
       }
     }
@@ -1235,15 +1287,19 @@ export function planCut(input: PlanCutInput): PlanCutResult {
   const pauseMs = pauses.reduce((sum, p) => sum + p.removedMs, 0);
   const sentenceDrops = drops.filter((d) => d.reason !== "retake" && d.sentenceIds.length > 0);
   const fillerCount = drops.filter((d) => d.reason === "filler" && d.sentenceIds.length === 0).length;
+  const noiseCount = drops.filter((d) => d.reason === "pause" && d.sentenceIds.length === 0).length;
   const parts = [
     retakeCount ? `删掉 ${retakeCount} 处重复口误` : "",
     pauses.length ? `${pauses.length} 处停顿（共 ${Math.round(pauseMs / 1000)} 秒）` : "",
     fillerCount ? `${fillerCount} 个口头语` : "",
+    noiseCount ? `${noiseCount} 处无字的杂音` : "",
   ].filter(Boolean);
+  const refusedCount = restored.length - auditRestored.length;
   const noteZh = [
     parts.length ? parts.join("、") : "没有可删的口误或停顿",
     sentenceDrops.length ? `另按模型建议删去 ${sentenceDrops.length} 句（${sentenceDrops.map((d) => REASON_ZH[d.reason as DropReason] ?? d.reason).join("、")}）` : "未删减内容",
-    restored.length ? `恢复了 ${restored.length} 句没有理由的删除` : "",
+    refusedCount > 0 ? `驳回了模型 ${refusedCount} 条理由不足的删句建议` : "",
+    auditRestored.length ? `补回了 ${auditRestored.length} 句被剪掉却没有理由的内容` : "",
     refusedRetakes.length ? `${refusedRetakes.length} 处疑似重说因没有停顿而保留` : "",
     fit.overBudgetMs > 0 ? `成片 ${clock(lengthMs)} 超出简报 ${Math.round(fit.overBudgetMs / 1000)} 秒，未为凑时长删句` : "",
   ]
@@ -1273,6 +1329,7 @@ export function planCut(input: PlanCutInput): PlanCutResult {
     refused,
     refusedRetakes,
     optionalDropped: fit.dropped,
+    coldOpenId: plan.coldOpen && byId.has(plan.coldOpen) && keptSentenceIds.includes(plan.coldOpen) ? plan.coldOpen : null,
   };
 }
 

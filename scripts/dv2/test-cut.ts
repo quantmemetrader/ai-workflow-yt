@@ -16,7 +16,7 @@
  * 0.6 s in, so a person can hear each join on its own).
  */
 import { execFile } from "node:child_process";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import { complete } from "../../lib/ai/openrouter";
@@ -101,15 +101,17 @@ async function main() {
   /* ---- 2. whisper's holes ----------------------------------------- */
   t = Date.now();
   let holes: { startMs: number; endMs: number; kind: string; text: string }[] = [];
+  let rejectedHoles: typeof holes = [];
   if (!NO_HOLES) {
     const filled = await fillHoles(words, silences, holeTranscriber(RAW, "zh"));
     words = filled.words;
     holes = filled.holes;
+    rejectedHoles = filled.rejected;
   }
   lap("holesMs", t);
   /* Whisper hangs pauses on the word after them; the silences say where the words really are. */
   words = alignWords(words, fine);
-  console.log(`holes: ${holes.length} filled (${timings.holesMs} ms)${holes.map((h) => ` ${h.kind} ${sec(h.startMs)}–${sec(h.endMs)} → ${h.text}`).join(";")}`);
+  console.log(`holes: ${holes.length} filled (${timings.holesMs} ms)${holes.map((h) => ` ${h.kind} ${sec(h.startMs)}–${sec(h.endMs)} → ${h.text}`).join(";")}${rejectedHoles.length ? `; rejected as not a repeat:${rejectedHoles.map((h) => ` ${sec(h.startMs)}–${sec(h.endMs)} ${h.text}`).join(";")}` : ""}`);
 
   /* ---- 3. sentences and retakes ----------------------------------- */
   t = Date.now();
@@ -266,6 +268,9 @@ async function main() {
     }
   }
 
+  /* Pieces with no word in them: a breath or a container tail kept as a piece of nothing. Reported, not gated. */
+  const emptyPieces = pieces.filter((p) => !words.some((w) => (w.startMs + w.endMs) / 2 >= p.startMs && (w.startMs + w.endMs) / 2 < p.endMs));
+
   /* Sentences removed without a reason. */
   const keptIds = new Set(cut.keptSentenceIds);
   const reasoned = new Set(cut.drops.flatMap((d) => d.sentenceIds));
@@ -291,7 +296,9 @@ async function main() {
     renderedPauses = left.length;
     await writeFile(path.join(OUT, "pauses-left.json"), JSON.stringify(left, null, 1));
 
+    /* One file per join of *this* cut: a run with fewer pieces must not leave the previous run's joins beside its own. */
     const dir = path.join(OUT, "boundaries");
+    await rm(dir, { recursive: true, force: true });
     await mkdir(dir, { recursive: true });
     const jobs: Promise<unknown>[] = [];
     for (let i = 0; i + 1 < pieces.length; i++) {
@@ -339,6 +346,7 @@ async function main() {
         drops: cut.drops,
         pauses: cut.pauses,
         holes,
+        rejectedHoles,
         decisions: decisions.map((d) => ({ id: d.id, drop: d.drop, decidedBy: d.decidedBy, whyZh: d.whyZh, kind: d.candidate.kind, dropStartMs: d.candidate.dropStartMs, dropEndMs: d.candidate.dropEndMs, coverage: d.candidate.coverage, lcs: d.candidate.lcs, hasPause: d.candidate.hasPause, briefHit: d.candidate.briefHit, first: d.candidate.firstText, second: d.candidate.secondText })),
         retakes,
         plan,
@@ -347,6 +355,8 @@ async function main() {
         anchorIds: cut.anchorIds,
         refused: cut.refused,
         refusedRetakes: cut.refusedRetakes,
+        coldOpenId: cut.coldOpenId,
+        emptyPieces,
         sentences: sentences.map((s) => ({ id: s.id, startMs: s.startMs, endMs: s.endMs, text: s.text, kept: keptIds.has(s.id) })),
       },
       null,
@@ -363,10 +373,10 @@ async function main() {
     { item: "Anthropic为什么急呢 intact", pass: intact, value: intact ? "present, no cut inside" : "missing or cut" },
     { item: "100% of boundaries inside a silence or on a word boundary with ≥ 40 ms gap", pass: badBoundaries.length === 0, value: `${boundaryChecks.length - badBoundaries.length}/${boundaryChecks.length} (${boundaryChecks.filter((b) => b.inSilence).length} in silence, ${boundaryChecks.filter((b) => !b.inSilence && b.onWordBoundary).length} on word boundary)${badBoundaries.length ? "; bad: " + badBoundaries.map((b) => sec(b.ms)).join(",") : ""}` },
     { item: "no pause > 0.35 s remains", pass: pausesLeft.length === 0 && (renderedPauses ?? 0) === 0, value: `${pausesLeft.length} by arithmetic; ${renderedPauses === null ? "audio not rendered" : `${renderedPauses} in the rendered cut (silencedetect d=0.35)`}` },
-    { item: `total ${expectedLen[0] / 1000}–${expectedLen[1] / 1000} s`, pass: cut.lengthMs >= expectedLen[0] && cut.lengthMs <= expectedLen[1], value: `${sec(cut.lengthMs)} s, ${cut.pieces.length} pieces (expected ${gold?.totals.expectedCuts?.join("–") ?? "70–100"} cuts)` },
+    { item: `total ${expectedLen[0] / 1000}–${expectedLen[1] / 1000} s`, pass: cut.lengthMs >= expectedLen[0] && cut.lengthMs <= expectedLen[1], value: `${sec(cut.lengthMs)} s, ${cut.pieces.length} pieces (expected ${gold?.totals.expectedCuts?.join("–") ?? "70–100"} cuts); ${emptyPieces.length} piece(s) without a word${emptyPieces.length ? ": " + emptyPieces.map((p) => `${sec(p.startMs)}–${sec(p.endMs)}`).join(", ") : ""}; over budget by ${sec(cut.report.overBudgetMs)} s` },
     { item: "≤ 20 s + one model call", pass: pureMs + (timings.holesMs ?? 0) <= 20_000 && modelCalls <= 2, value: `pure ${pureMs} ms (silences ${timings.silencesMs}, retakes ${timings.retakesMs}, planCut ${timings.planCutMs}) + holes ${timings.holesMs ?? 0} ms; ${modelCalls} model call(s) (${timings.decideMs} + ${timings.planCallMs} ms); wall ${wallMs} ms` },
   ];
-  const report = { acceptance, goldMatches, goldStrict, ambiguousLogged, falsePositives: falsePositives.map((p) => ({ startMs: p.startMs, endMs: p.endMs, text: p.text })), phraseCounts, boundaries: boundaryChecks, pausesLeft, unexplained: unexplained.map((s) => s.id), timings, modelCalls, lengthMs: cut.lengthMs, pieces: cut.pieces.length, holes, restored: cut.report.restored, overBudgetMs: cut.report.overBudgetMs, noteZh: cut.report.noteZh };
+  const report = { acceptance, goldMatches, goldStrict, ambiguousLogged, falsePositives: falsePositives.map((p) => ({ startMs: p.startMs, endMs: p.endMs, text: p.text })), phraseCounts, boundaries: boundaryChecks, pausesLeft, emptyPieces, unexplained: unexplained.map((s) => s.id), timings, modelCalls, lengthMs: cut.lengthMs, pieces: cut.pieces.length, holes, restored: cut.report.restored, overBudgetMs: cut.report.overBudgetMs, noteZh: cut.report.noteZh };
   await writeFile(path.join(OUT, "report.json"), JSON.stringify(report, null, 1));
 
   const lines = acceptance.map((a) => `${a.pass ? "PASS" : "FAIL"}  ${a.item}\n      ${a.value}`);

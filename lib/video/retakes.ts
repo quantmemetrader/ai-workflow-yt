@@ -625,25 +625,54 @@ export function spliceWords(words: readonly Word[], hole: Hole, found: readonly 
   return out;
 }
 
+/** The unit texts of a run of words, for the hole check below. */
+function unitTexts(words: readonly Word[]): string[] {
+  return words.flatMap((w) => (toSimplified(w.text).replace(PUNCT, "").match(TOKEN) ?? []).map((t) => (HAN.test(t) ? t : t.toLowerCase())));
+}
+
+/**
+ * Whether what whisper heard in a hole is what a hole is expected to hold.
+ *
+ * The holes exist because whisper suppresses a *repeat*: the words it finds
+ * in one should read like the words beside it. Given a window with no
+ * speech in it — a laugh, a cough, two loud lip noises between 实锤 and
+ * 而中方 on the 蒸馏 take — whisper answers anyway, and what it answers is
+ * the stock hallucination of the language (中方，谢谢观看). Spliced in, that
+ * would be a phantom sentence for the model to read and a phantom caption
+ * for W2 to burn in. So a hole's words are kept only when at least half of
+ * them are a subsequence of the fourteen units before or after the hole;
+ * anything else is reported and left out, which loses nothing — the audio
+ * is still in the cut, only the words are not.
+ */
+export function holeLooksRepeated(found: readonly Word[], before: readonly Word[], after: readonly Word[]): boolean {
+  const f = unitTexts(found);
+  if (f.length < 2) return false;
+  const need = Math.ceil(f.length * 0.5);
+  return lcsLength(f, unitTexts(before).slice(-14)) >= need || lcsLength(f, unitTexts(after).slice(0, 14)) >= need;
+}
+
 /**
  * Transcribe every hole and splice the words in. `transcribe` returns words
  * in *source* milliseconds for the window it was given; the lab passes an
  * ffmpeg-extract-plus-whisper function, the director passes the same thing
  * through `lib/video/whisper.ts`. At most `maxHoles` are filled (each costs
  * a model load, ~5 s on the box); the rest stay as they are, which loses
- * nothing — the audio is still in the cut.
+ * nothing — the audio is still in the cut. A hole whose words do not repeat
+ * the words around it (`holeLooksRepeated`) is returned in `rejected`
+ * rather than spliced.
  */
 export async function fillHoles(
   words: readonly Word[],
   silences: readonly Silence[],
   transcribe: (startMs: number, endMs: number) => Promise<Word[]>,
   opts: { maxHoles?: number; padMs?: number } = {},
-): Promise<{ words: Word[]; holes: (Hole & { text: string })[] }> {
+): Promise<{ words: Word[]; holes: (Hole & { text: string })[]; rejected: (Hole & { text: string })[] }> {
   const maxHoles = opts.maxHoles ?? 4;
   const pad = opts.padMs ?? 80;
   const holes = findHoles(words, silences).slice(0, maxHoles);
   let out = [...words];
   const filled: (Hole & { text: string })[] = [];
+  const rejected: (Hole & { text: string })[] = [];
   /* Later holes first, so earlier splices do not shift the indices of the rest. */
   for (const h of [...holes].sort((a, b) => b.wordIndex - a.wordIndex)) {
     let found: Word[] = [];
@@ -653,9 +682,13 @@ export async function fillHoles(
       console.warn("[retakes] hole transcription failed:", err instanceof Error ? err.message : err);
       continue;
     }
+    if (!holeLooksRepeated(found, out.slice(0, h.wordIndex + 1), out.slice(h.wordIndex + 1))) {
+      rejected.unshift({ ...h, text: found.map((w) => w.text).join("") });
+      continue;
+    }
     const before = out.length;
     out = spliceWords(out, h, found);
     filled.unshift({ ...h, text: out.slice(h.wordIndex + 1, h.wordIndex + 1 + (out.length - before)).map((w) => w.text).join("") });
   }
-  return { words: out, holes: filled };
+  return { words: out, holes: filled, rejected };
 }

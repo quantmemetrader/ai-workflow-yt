@@ -148,9 +148,18 @@ export type SpeechFromSilencesOptions = {
   sentenceEnds?: readonly number[];
   /** How near a sentence end must be to a silence's start to count as beside it. */
   sentenceSnapMs?: number;
+  /**
+   * A silence that begins within this of 0, or ends within this of `totalMs`,
+   * is the lead-in or the tail rather than a pause. Containers report a
+   * duration a few frames past the last audio sample (the 蒸馏 master says
+   * 379.287 s, its audio 379.264 s), and without this the closing silence was
+   * treated as a pause to shorten: a cut inside it, then a 163 ms piece of
+   * nothing at the end of the timeline.
+   */
+  edgeMs?: number;
 };
 
-const SPEECH_DEFAULTS = { minPause: 300, trimTo: 120, endTrimTo: 200, guard: 60, sentenceSnapMs: 600 } as const;
+const SPEECH_DEFAULTS = { minPause: 300, trimTo: 120, endTrimTo: 200, guard: 60, sentenceSnapMs: 600, edgeMs: 150 } as const;
 
 /**
  * The parts of a take that stay when every long pause is shortened.
@@ -196,11 +205,11 @@ export function speechFromSilences(
   let cursor = 0;
   for (const s of sorted) {
     const length = s.endMs - s.startMs;
-    if (s.startMs <= 0) {
+    if (s.startMs <= o.edgeMs) {
       cursor = Math.max(0, s.endMs - o.guard);
       continue;
     }
-    if (s.endMs >= totalMs) {
+    if (s.endMs >= totalMs - o.edgeMs) {
       const endMs = Math.min(totalMs, s.startMs + o.endTrimTo);
       if (endMs > cursor) out.push({ startMs: cursor, endMs });
       cursor = totalMs;

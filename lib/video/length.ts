@@ -161,6 +161,12 @@ export type SentenceFit = {
   /** Offered drops that were refused because the sentence holds a brief anchor. */
   refused: OptionalDrop[];
   lengthMs: number;
+  /**
+   * How far past the brief's ceiling the cut still is, slack or no slack.
+   * The slack decides whether anything is *cut* for length; it never hides
+   * an overrun from the report, because a 5:05 cut against a 5:00 brief is
+   * a fact the producer reads, not a rounding the code makes for them.
+   */
   overBudgetMs: number;
 };
 
@@ -182,7 +188,7 @@ export function fitSentencesToBudget(input: SentenceBudget): SentenceFit {
   const dropped: OptionalDrop[] = [];
   const refused: OptionalDrop[] = [];
   if (input.budgetMs === null || lengthMs <= Math.round(input.budgetMs * (1 + slack))) {
-    return { dropped, refused, lengthMs, overBudgetMs: 0 };
+    return { dropped, refused, lengthMs, overBudgetMs: input.budgetMs === null ? 0 : Math.max(0, lengthMs - input.budgetMs) };
   }
   const order = [...input.optional].sort((a, b) => a.priority - b.priority || a.id.localeCompare(b.id));
   for (const d of order) {
