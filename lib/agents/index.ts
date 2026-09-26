@@ -109,7 +109,7 @@ export async function ensureAgent(tenantId: string, key: AgentKey): Promise<stri
      alone (the channel header's faces, the members sheet). A route rather than
      the SVG itself — see app/api/agent/avatar/[key]. Bump `v` when a face
      changes: the route is cached for a year. */
-  const avatarUrl = `/api/agent/avatar/${key}?v=1`;
+  const avatarUrl = `/api/agent/avatar/${key}?v=2`;
 
   let id = existing?.id;
   if (existing && !existing.isAgent) {
