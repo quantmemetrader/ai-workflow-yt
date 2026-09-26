@@ -463,8 +463,13 @@ async function sourceOne(beat: Beat, index: number, prevBeatId: string | undefin
           context,
           entity,
           minScore: gate,
-          /* A headline's text is the point; an app's own screen is text by nature (the judge flags a chat UI as "burned-in text"). Subtitles on anything else still reject it. */
-          allowBurnedText: beat.intent === "headline" || beat.intent === "product",
+          /*
+           * A headline's text is the point. Not a product's: r02 tried letting
+           * an app's own screen through (the judge calls a chat UI "burned-in
+           * text") and a Bilibili tutorial with 「然后我们点击这个」 burned across
+           * the bottom went on screen for Claude.
+           */
+          allowBurnedText: beat.intent === "headline",
           visionOpts: ctx.vision,
         });
         if (!verdict.ok) {
