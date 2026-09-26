@@ -9,6 +9,8 @@ import {
   publishPosts,
   publishTargets,
   users,
+  videoExports,
+  videoProjects,
 } from "@/lib/db/schema";
 import type { Viewer } from "@/lib/auth/dal";
 import { audit } from "@/lib/audit";
@@ -326,6 +328,38 @@ export async function listPosts(
   });
 }
 
+/**
+ * The 素材来源 block under a post that comes from a directed video.
+ *
+ * Director v2 takes clips and pictures from anywhere on the internet,
+ * credited rather than licensed (PLAN.md §4), and the credit is only a
+ * defence if it is published with the video. So a post made from a
+ * project whose director run recorded credits gets the block appended to
+ * its body here, in `createPost`, before any target or approval sees it:
+ * a person can still edit it out, but they have to do it on purpose.
+ * Pure, and idempotent: a body that already carries the block is left
+ * alone.
+ */
+export function withCredits(body: string, project: { director?: Record<string, unknown> | null } | null | undefined): string {
+  const credits = (project?.director as { credits?: { block?: unknown } } | null | undefined)?.credits;
+  const block = typeof credits?.block === "string" ? credits.block.trim() : "";
+  if (!block) return body;
+  if (body.includes(block)) return body;
+  const headed = /^素材来源|^Sources/m.test(block) ? block : `素材来源 / Sources\n${block}`;
+  return `${body.trimEnd()}${body.trim() ? "\n\n" : ""}${headed}`;
+}
+
+/** The project a rendered file belongs to, when it is a render at all. Reads only; null when it is not. */
+async function projectForFile(viewer: Viewer, fileId: string): Promise<{ director: Record<string, unknown> | null } | null> {
+  const [row] = await db
+    .select({ director: videoProjects.director })
+    .from(videoExports)
+    .innerJoin(videoProjects, eq(videoProjects.id, videoExports.projectId))
+    .where(and(eq(videoExports.fileId, fileId), eq(videoProjects.tenantId, viewer.tenantId)))
+    .limit(1);
+  return row ? { director: row.director ?? null } : null;
+}
+
 export async function createPost(
   viewer: Viewer,
   input: { title: string; body?: string; tags?: string[]; fileId?: string | null; channelIds: string[] },
@@ -334,12 +368,15 @@ export async function createPost(
   if (!title) throw new Error("A post needs a title");
   if (title.length > 300) throw new Error("That title is too long");
 
+  /* A post made from a render carries the video's 素材来源 block (a lookup that cannot fail the post). */
+  const project = input.fileId ? await projectForFile(viewer, input.fileId).catch(() => null) : null;
+
   const id = newId("post");
   await db.insert(publishPosts).values({
     id,
     tenantId: viewer.tenantId,
     title,
-    body: (input.body ?? "").slice(0, 20_000),
+    body: withCredits(input.body ?? "", project).slice(0, 20_000),
     tags: (input.tags ?? []).slice(0, 30),
     fileId: input.fileId ?? null,
     ownerId: viewer.id,

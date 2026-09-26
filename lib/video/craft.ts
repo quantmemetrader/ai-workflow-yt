@@ -226,3 +226,34 @@ Measured from 蒸馏之战 (the creator's own raw take and finished edit, 2026-0
 - Captions: bold zh centred at 0.71 of the height, small en at 0.73, watermark 0.79,
   footnote 0.91; one or two accent keywords on about half the lines. Name card once near
   the end (right side, 4 s). End card: logo on black, 3 s.`;
+
+/**
+ * The reel rules of director v2 (PLAN.md §1), in prompt form.
+ *
+ * Its own constant rather than lines added to `VIDEO_CRAFT` or
+ * `HOUSE_FORMAT`, because those two are the v1 director's system prompt
+ * byte for byte, and the flag-off path has to keep producing the rows it
+ * produces today. v2's outline call reads this instead: the same channel
+ * identity (accent, bilingual captions, header / watermark / footnote,
+ * the sign-off), the `run` layout numbers `HOUSE_FORMAT` already measured,
+ * and the numbers the code enforces, stated so the model's *what* fits the
+ * code's *when and where* and it stops asking for what the layout will
+ * refuse.
+ */
+export const REEL_SPEC = `# The reel (谢亚芳 · 创变派), director v2
+
+Frame 1080×1920 at 30 fps, 4–5 minutes, one presenter to camera. Accent #d6e64f; white type; Noto Sans CJK SC Black/Bold for Chinese, Inter for numerals; colours #0E0E10 / #FFFFFF / the accent, red #FF453A only for a negative bar. No music, no sound effects, no emoji, no spins or glitches, no fake screenshots.
+
+Furniture, placed by code: the header top-left from 0 s (title + one-line subtitle), the watermark 腾亚创变 bottom-centre, the grey footnote at the very bottom. Bilingual captions: one Chinese line of 4–12 characters at about 71 % of the height, the spoken word in the accent, numbers always in the accent; the English small under it.
+
+Zones: text lives in Zone T (the upper band, y 230–620) or in a corner; never on the face; captions have their own band. One non-caption layer at a time.
+
+Rhythm, enforced by code: something changes on screen every 2–4 s, never more than 5 s without a change, nothing closer than 0.8 s. Cutaways cover 30–40 % of the runtime, each 1.5–3.5 s (up to 4.5 s for an interview clip, an establishing shot or a headline); the host stays visible at least 55 % of the time. The first cutaway by 3–5 s, then one every 5–8 s.
+
+What a cutaway shows, in order of preference: (1) the literal named thing — the person on camera, the logo, the building, the product's UI; (2) the number as a counter; (3) the event as a headline card (outlet, date, the quoted headline); (4) a concrete scene; (5) a metaphor; (6) a designed card. A designed card always beats a weak clip. Footage comes from anywhere on the internet with credit (Douyin, TikTok, Bilibili, YouTube, Pinterest, Bing, stock), the most relevant wins, and every asset is checked by a vision model against the spoken line before it is used. Never the same clip, picture or author twice.
+
+Three cutaway layouts, chosen by code from the source: full frame (portrait sources); split (a landscape clip in the upper band with the presenter framed below it — how reels show interviews and news); run (the presenter in a circle at (0.74, 0.31), 0.28 of the width, over full-frame darkened footage, 2–4 clips back to back, 6–12 s, at most 30 % of the video).
+
+Graphics: a hook block at 0 s from the brief's statement (≤ 3 lines × 8 characters, landing word by word); counters that count up for 0.7 s and land on the spoken figure; comparison bars growing one after another; a list that builds an item at a time; an entity card (logo, name, one-line descriptor) at the first mention of a company, agency or product, then a small chip; a headline card for a dated announcement; a term card (3 s) for the words the argument turns on; one diagram of the mechanism; a 0.7 s chapter stinger at each real turn (4–6 a video); a lower third once where she says her name; an end card with her closing question and the 素材来源 line. Every number on screen was said within 1.5 s of where it lands. Nothing on screen the viewer has to pause to read.
+
+Framing: 1.00 and 1.12 alternate on the jump cuts; a slow push on long takes; a snap push on a 金句, held to the end of the sentence, at most one per 15 s.`;
