@@ -17,7 +17,8 @@ import {
   workProjects,
 } from "@/lib/db/schema";
 import { newId } from "@/lib/ids";
-import { isWriting, type ProjectSource, type SourceEvidence } from "@/lib/projects/topic";
+import type { ProjectSource, SourceEvidence } from "@/lib/projects/topic";
+import { scriptWriting } from "@/lib/script/writing";
 import { grantOwner } from "@/lib/authz/rebac";
 import type { Viewer } from "@/lib/auth/dal";
 import { handOffToVideo } from "@/lib/agents/handoff";
@@ -377,7 +378,9 @@ export async function scriptTopic(viewer: Viewer, row: Pick<ScriptRow, "id" | "t
     articles: (series?.articles ?? []).slice(0, 6),
     project: project ? { id: project.id, title: project.title } : null,
   };
-  return { topic: card, writing: isWriting(src, Date.now()) };
+  /* Writing by any live project on the script, not only the oldest one read
+     above: the pulse and the flow panel answer the same way. */
+  return { topic: card, writing: (await scriptWriting(viewer.tenantId, row.id)).writing };
 }
 
 /** One script with everything the Brief, Draft, Versions and Approval tabs need. */

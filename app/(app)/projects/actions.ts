@@ -25,6 +25,7 @@ import { share } from "@/lib/authz/rebac";
 import { and, eq } from "drizzle-orm";
 import { briefText, formatHints, isWriting, refFromChoice, type ProjectSource, type ScriptChips, type TopicRef } from "@/lib/projects/topic";
 import { draftInBackground } from "@/lib/script/background";
+import { scriptWriting } from "@/lib/script/writing";
 
 /** A title from what somebody typed: the tags and the filler taken out. */
 function titleFrom(text: string): string {
@@ -141,7 +142,10 @@ async function writeFromTopic(
 ): Promise<{ writing: boolean; note?: string }> {
   if (!project.scriptId) return { writing: false, note: "这个项目没有脚本。" };
   const src = (project.source as ProjectSource | null) ?? null;
-  if (isWriting(src, Date.now())) return { writing: true };
+  /* A draft already on its way into this script: from this project, or from
+     another live project that shares the script (a pair made before sharing
+     was refused), which would otherwise get a second writer at once. */
+  if (isWriting(src, Date.now()) || (await scriptWriting(viewer.tenantId, project.scriptId)).writing) return { writing: true };
   const state = await scriptState(viewer.tenantId, project.scriptId);
   if (!state) return { writing: false, note: "脚本不见了。" };
   if (state.locked) return { writing: false, note: "脚本已锁定，先解锁再重写。" };
