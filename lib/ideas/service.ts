@@ -372,10 +372,16 @@ const s = (v: unknown, n: number) => (typeof v === "string" ? toSimplified(v.rep
  * in the writer's sources they mean nothing; the evidence chips carry the
  * rows themselves.
  *
- * Only this pool's own ids, and only standing alone, so "B2B", "P2P" or a
+ * Only the ids given, and only standing alone, so "B2B", "P2P" or a
  * model name keeps its letters; a run of them with the 、 / 和 between goes
  * as one, and a bracket or a "见" left empty goes with it. A half-year
  * ("2025年H1", "H1营收") is left alone even when the pool has an H1.
+ *
+ * The caller passes the ids the idea itself cites in `evidence`, not the
+ * whole pool: the hot rows alone run H1 to H60 and more, and "英伟达H20",
+ * "H5页面", "哈弗H6" or "C1驾照" are words an idea may well use; with every
+ * pool id they lost their names. An id the model writes in the prose is one
+ * it cites, so the codes still go.
  */
 export function withoutPoolIds(text: string, ids: readonly string[]): string {
   if (!text || !ids.length) return text;
@@ -471,13 +477,14 @@ export async function generateIdeas(viewer: Viewer, opts: { seed?: string | null
   /* The evidence check: an idea keeps only the rows that are really in the
      pool, and an idea with none left is dropped. */
   const byId = new Map(pool.rows.map((r) => [r.id, r]));
-  const ids = [...byId.keys()];
-  const prose = (v: unknown, max: number) => withoutPoolIds(cleanCodes(s(v, max)), ids);
+  const prose = (v: unknown, max: number, cited: readonly string[]) => withoutPoolIds(cleanCodes(s(v, max)), cited);
   const batchId = `ib_${ulid()}`;
   const now = new Date();
   const kept = raw
     .map((r) => {
       const title = s(r.title, 80);
+      /* The pool ids this idea cites: the only codes taken out of its prose. */
+      const cited = (Array.isArray(r.evidence) ? r.evidence : []).map((e) => String(e).trim().replace(/^\[|\]$/g, "")).filter((id) => byId.has(id));
       const evidence = (Array.isArray(r.evidence) ? r.evidence : [])
         .map((e) => byId.get(String(e).trim().replace(/^\[|\]$/g, "")))
         .filter((e): e is PoolRow => Boolean(e))
@@ -494,9 +501,9 @@ export async function generateIdeas(viewer: Viewer, opts: { seed?: string | null
         titles: (Array.isArray(r.titles) ? r.titles : []).map((x) => s(x, 80)).filter((x) => x && x !== title).slice(0, 3),
         /* The pool's ids ("[H10]", or bare: "晨报S1指出") mean nothing on
            Home; the evidence chips carry the rows themselves. */
-        angle: prose(r.angle, 200) || null,
-        why: prose(r.why, 300) || null,
-        hook: prose(r.hook, 120) || null,
+        angle: prose(r.angle, 200, cited) || null,
+        why: prose(r.why, 300, cited) || null,
+        hook: prose(r.hook, 120, cited) || null,
         format: s(r.format, 40) || null,
         strength: Number.isFinite(strength) ? Math.max(1, Math.min(5, Math.round(strength))) : null,
         evidence,
