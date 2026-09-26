@@ -1,8 +1,10 @@
 import "server-only";
 import { and, asc, desc, eq, ilike, isNull, or } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { scriptBeats, scripts, topics } from "@/lib/db/schema";
+import { scriptBeats, scripts, topics, workProjects } from "@/lib/db/schema";
 import type { ToolDef } from "@/lib/ai/openrouter";
+import { isWriting, type ProjectSource } from "@/lib/projects/topic";
+import { setProjectWriting } from "@/lib/projects/service";
 import { writeScript } from "@/lib/script/from-research";
 import { listScripts } from "@/lib/script/service";
 import { num, str, type ToolContext, type ToolPack, type ToolResult } from "./types";
@@ -29,7 +31,10 @@ const defs: ToolDef[] = [
           subject: { type: "string", description: "What it is about, or a watched topic's name." },
           angle: { type: "string", description: "The way in. Optional." },
           channel: { type: "string", description: "YouTube, Shorts, LinkedIn, Instagram… Optional." },
-          seconds: { type: "number", description: "Target length in seconds. Optional; default 180." },
+          seconds: {
+            type: "number",
+            description: "Target length in seconds. Optional: inside a project (or with a script open) the script keeps the length it already has unless you give one; a new script defaults to 180.",
+          },
           language: { type: "string", description: "Spoken language: Cantonese, Mandarin, English… Optional." },
           subtitle_language: { type: "string", description: "Optional." },
           points: { type: "array", items: { type: "string" }, description: "Things it must cover. Optional." },
@@ -80,24 +85,101 @@ async function run(ctx: ToolContext, name: string, args: Record<string, unknown>
       rows.find((t) => wanted.includes(t.name.toLowerCase()) || t.name.toLowerCase().includes(wanted)) ??
       null;
 
+    /*
+     * The length, only when it was asked for.
+     *
+     * The model leaves `seconds` out more often than not, and it used to
+     * become 180 whatever the script was: "@编剧 开头再抓人一点" in a project
+     * whose topic had made it an eight-minute video (480 s) wrote 180 onto
+     * the script and drafted three minutes. Writing into a script, no length
+     * means "keep its own" (`writeScript` leaves `targetSeconds` alone on
+     * null); only a new script, or one that never had a length, gets 180.
+     */
+    const asked = num(args.seconds, 0);
+    let seconds: number | null = asked > 0 ? asked : null;
+    /* The live projects this script is the draft of: their "being written"
+       mark is what the topic's background draft sets (`lib/script/background.ts`). */
+    let projects: string[] = [];
+    if (ctx.scriptId) {
+      const [into] = await db
+        .select({ targetSeconds: scripts.targetSeconds })
+        .from(scripts)
+        .where(and(eq(scripts.id, ctx.scriptId), eq(scripts.tenantId, ctx.viewer.tenantId), isNull(scripts.deletedAt)))
+        .limit(1);
+      if (seconds === null && !into?.targetSeconds) seconds = 180;
+      const live = await db
+        .select({ id: workProjects.id, source: workProjects.source })
+        .from(workProjects)
+        .where(and(eq(workProjects.tenantId, ctx.viewer.tenantId), eq(workProjects.scriptId, ctx.scriptId), isNull(workProjects.deletedAt)));
+      /* A draft already on its way. "开项目并写脚本" writes it after the
+         response, for half a minute to a minute; a tag in the project's chat
+         inside that window used to start a second draft into the same
+         script, both were billed, and whichever saved last replaced the
+         other — under a "初稿写好了" that then described beats that were gone. */
+      const now = Date.now();
+      if (live.some((p) => isWriting(p.source as ProjectSource | null, now))) {
+        return {
+          text: "A draft of this script is already being written (started from the project's topic); it lands in a minute or so and is announced in the project's chat. Nothing was written now: say that the draft is on its way, and offer to change it once it has landed.",
+        };
+      }
+      projects = live.map((p) => p.id);
+    } else if (seconds === null) {
+      seconds = 180;
+    }
+
     const points = Array.isArray(args.points) ? args.points.filter((p): p is string => typeof p === "string") : [];
-    const res = await writeScript(ctx.viewer, {
-      /* Inside a project, always its own script. */
-      intoScriptId: ctx.scriptId ?? null,
-      topicId: topic?.id ?? null,
-      subject: topic ? topic.name : subject,
-      angle: str(args.angle, 300) || null,
-      channel: str(args.channel, 60) || null,
-      seconds: num(args.seconds, 180),
-      language: str(args.language, 40) || null,
-      subtitleLanguage: str(args.subtitle_language, 40) || null,
-      mandatoryPoints: points,
-    });
+    /* And this draft carries the same mark while it is written, so the
+       topic's "写初稿" / "按选题重写" wait for it rather than racing it, and
+       the project and script pages show it being written. Cleared however
+       the draft ends. */
+    const started = new Date().toISOString();
+    await Promise.all(projects.map((id) => setProjectWriting(id, started)));
+    let res: Awaited<ReturnType<typeof writeScript>>;
+    try {
+      res = await writeScript(ctx.viewer, {
+        /* Inside a project, always its own script. */
+        intoScriptId: ctx.scriptId ?? null,
+        topicId: topic?.id ?? null,
+        subject: topic ? topic.name : subject,
+        angle: str(args.angle, 300) || null,
+        channel: str(args.channel, 60) || null,
+        seconds,
+        language: str(args.language, 40) || null,
+        subtitleLanguage: str(args.subtitle_language, 40) || null,
+        mandatoryPoints: points,
+      });
+    } finally {
+      await Promise.all(projects.map((id) => setProjectWriting(id, null).catch(() => {})));
+    }
     if (!res.ok) return { text: res.error };
+    /* Written into the script it was asked to write into, or (that one gone)
+       a new one. */
+    const into = Boolean(ctx.scriptId) && res.id === ctx.scriptId;
+    /*
+     * No beats, no receipt.
+     *
+     * The drafting model sometimes answers with nothing readable, twice, and
+     * `writeScript` then returns ok with 0 beats and the reason in `note`.
+     * This used to come back as "Written: … — 0 beats" with a script
+     * receipt, and "已经重写好了" was posted as backed by it. Now it says
+     * what the background draft says when it happens there: nothing was
+     * written, and why.
+     */
+    if (res.beats === 0) {
+      return {
+        text: [
+          `No draft was written: ${(res.note ?? "the drafting model returned nothing readable").replace(/[.。]\s*$/, "")}.`,
+          into
+            ? `The script's beats are as they were (/script/${res.id}, id: ${res.id}).`
+            : `An empty script "${res.title}" was left in the library (/script/${res.id}, id: ${res.id}).`,
+          "Say that it did not work and why; it can be tried again.",
+        ].join("\n"),
+      };
+    }
     return {
       /* The receipt. Inside a project the script already existed and was
          written into; elsewhere it is new. */
-      artifacts: [{ kind: "script", id: res.id, title: res.title, action: ctx.scriptId ? "updated" : "created" }],
+      artifacts: [{ kind: "script", id: res.id, title: res.title, action: into ? "updated" : "created" }],
       text: [
         `Written: "${res.title}" — ${res.beats} beat${res.beats === 1 ? "" : "s"}${res.model ? ` by ${res.model}` : ""}.`,
         `Open it at /script/${res.id} (id: ${res.id}).`,

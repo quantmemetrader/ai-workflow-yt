@@ -156,8 +156,13 @@ export async function writeScript(viewer: Viewer, req: ScriptRequest): Promise<S
   /* In a project the draft goes into the project's own script; a new one
      each time left the project's script empty and scattered drafts about. */
   const [into] = req.intoScriptId
-    ? await db.select({ id: scripts.id, title: scripts.title }).from(scripts).where(and(eq(scripts.id, req.intoScriptId), eq(scripts.tenantId, viewer.tenantId), isNull(scripts.deletedAt))).limit(1)
+    ? await db.select({ id: scripts.id, title: scripts.title, lockedVersion: scripts.lockedVersion }).from(scripts).where(and(eq(scripts.id, req.intoScriptId), eq(scripts.tenantId, viewer.tenantId), isNull(scripts.deletedAt))).limit(1)
     : [];
+  /* Approved words are read-only, and every other write path refuses a
+     locked script before touching it. This one used to rewrite its angle,
+     channel and length first and only then have the draft refused, leaving
+     an approved version's brief changed with nothing to show for it. */
+  if (into && into.lockedVersion !== null) return { ok: false, error: "That script is locked: it was approved. Unlock it on its page before writing a new draft." };
   if (into) {
     await db
       .update(scripts)

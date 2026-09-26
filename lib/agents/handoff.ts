@@ -1,12 +1,13 @@
 import "server-only";
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { notifications, scripts, topics } from "@/lib/db/schema";
+import { notifications, scripts, topics, videoProjects } from "@/lib/db/schema";
 import { audit } from "@/lib/audit";
 import { newId } from "@/lib/ids";
 import { viewerById } from "@/lib/auth/viewer-by-id";
 import type { Viewer } from "@/lib/auth/types";
 import { projectFromScript } from "@/lib/video/service";
+import { parseAgentMentions } from "./catalog";
 import { agentViewer, ensureAgentChannel, postAsAgent, tag } from "./index";
 import type { Handoff } from "./mentions";
 
@@ -104,6 +105,14 @@ export async function handOffToVideo(approver: Viewer, scriptId: string, version
       spoken: ["script"],
       origin: approverName,
       replyMeta: {
+        /* The work its buttons hand on. "让剪辑师出粗剪" is pressed in #制作
+           or on Home, neither of which is the project's chat, and the line
+           it posts is only a sentence: 剪辑师 was started with no project,
+           and every cutting tool answered "no video project is open". The
+           press reads this back, checks it and hands it on
+           (`pressedHandoff`). Not `handoff`, which the chat draws as a chip
+           under this reply. */
+        work: { to: "video", scriptId, projectId, task: `按锁定的第 ${versionNo} 版脚本出一版粗剪` },
         /* The hand-off ends on something to press rather than on a sentence.
            Both are the ordinary card kinds: one posts a line as whoever pressed
            it, the other is a link. */
@@ -159,4 +168,58 @@ export async function handOffToVideo(approver: Viewer, scriptId: string, version
   });
 
   return projectId;
+}
+
+/**
+ * The checked work a pressed button hands on, when its message carries some.
+ *
+ * A "say" button posts a line as the person who pressed it, and that is all
+ * a line is: a sentence. The approval's "让剪辑师出粗剪" is about one script
+ * and one video project, and a sentence in #制作 does not open either — the
+ * same dead end `sendScriptToVideoAction` fixed by passing its hand-off. So
+ * the message the button sits under keeps the two ids and whom they are
+ * for (`meta.work`, written by `handOffToVideo` above, never by a client),
+ * and the press turns them into a hand-off to that colleague, once the line
+ * tags them and both ids are checked to still be in the presser's studio
+ * and still belong together. As on the script page's "交给剪辑师", only for
+ * somebody with Video: a video project is theirs to start work on. Anything
+ * that does not check out is no hand-off at all: the line is still posted,
+ * as typed words would be.
+ */
+export async function pressedHandoff(viewer: Viewer, meta: unknown, line: string): Promise<Handoff | null> {
+  const work = (meta as { work?: unknown } | null)?.work;
+  if (!work || typeof work !== "object") return null;
+  if (!viewer.modules.includes("video")) return null;
+  const w = work as Record<string, unknown>;
+  const scriptId = typeof w.scriptId === "string" && w.scriptId.length <= 64 ? w.scriptId : null;
+  const projectId = typeof w.projectId === "string" && w.projectId.length <= 64 ? w.projectId : null;
+  const to = parseAgentMentions(line)[0];
+  if (!scriptId || !projectId || !to || w.to !== to) return null;
+
+  const [[script], [project]] = await Promise.all([
+    db
+      .select({ id: scripts.id, title: scripts.title })
+      .from(scripts)
+      .where(and(eq(scripts.id, scriptId), eq(scripts.tenantId, viewer.tenantId), isNull(scripts.deletedAt)))
+      .limit(1),
+    db
+      .select({ id: videoProjects.id, scriptId: videoProjects.scriptId })
+      .from(videoProjects)
+      .where(and(eq(videoProjects.id, projectId), eq(videoProjects.tenantId, viewer.tenantId), isNull(videoProjects.deletedAt)))
+      .limit(1),
+  ]);
+  if (!script || !project || project.scriptId !== script.id) return null;
+
+  return {
+    from: "human",
+    to,
+    artifacts: [
+      { kind: "script", id: script.id, title: script.title, href: `/script/${script.id}` },
+      { kind: "video_project", id: project.id, href: `/video?project=${project.id}` },
+    ],
+    verified: true,
+    ...(typeof w.task === "string" && w.task ? { task: w.task.slice(0, 300) } : {}),
+    scriptId: script.id,
+    projectId: project.id,
+  };
 }

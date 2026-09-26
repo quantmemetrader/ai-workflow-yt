@@ -2,7 +2,7 @@ import "server-only";
 import { after } from "next/server";
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { agentMessages, chatChannels, chatMembers, chatMessages, conversations, users, workProjects } from "@/lib/db/schema";
+import { agentMessages, chatChannels, chatMembers, chatMessages, conversations, scriptBeats, scripts, users, workProjects } from "@/lib/db/schema";
 import { audit } from "@/lib/audit";
 import { newId } from "@/lib/ids";
 import type { Viewer } from "@/lib/auth/types";
@@ -298,6 +298,10 @@ export type ReplyFacts = {
   /** Every studio id this turn was shown: in tool results, in the message it
    * is answering, in a hand-off, in the channel's description. */
   seen: ReadonlySet<string>;
+  /** The script this turn works in — the project's own, or the one handed
+   * over. "初稿写好了" with no id is about this one, and is a report on it
+   * when it is true (`verifyReply`). */
+  scriptId?: string;
 };
 
 export type ReplyVerdict = {
@@ -446,6 +450,13 @@ const EMPLOYEE_NAMES: Record<AgentKey, string[]> = {
 
 const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
+/** Who acts in the world outside the studio: a platform's officials, charts
+ * and rules, the press, the trade. "抖音财经榜刚更新了" and "B站官方已发布了…"
+ * are about them. A platform's name alone is not: "B站那条已经发布了" is
+ * about our video there. */
+const OUTSIDE =
+  /官方|榜|热搜|媒体|报道|新闻|行业|竞品|对手|同行|厂商|机构|政府|监管|(?:抖音|快手|B站|哔哩哔哩|小红书|视频号|微博|知乎|YouTube|TikTok|平台)的?(?:算法|规则|政策|后台|数据)/i;
+
 export type Claim = {
   /** The words that make the claim, with a little around them. */
   claim: string;
@@ -461,6 +472,9 @@ export type Claim = {
   explicit: boolean;
   /** Ids in the same sentence, the thing a report would be about. */
   ids: string[];
+  /** A change rather than a state: "改好了", "已更新", "重写好了". A report on
+   * how a thing stands cannot back one; only a receipt can. */
+  change: boolean;
 };
 
 /**
@@ -475,8 +489,15 @@ export type Claim = {
 export function findClaims(text: string, self: AgentKey): Claim[] {
   const others = AGENT_KEYS.filter((k) => k !== self).flatMap((k) => EMPLOYEE_NAMES[k]);
   const allNames = AGENT_KEYS.flatMap((k) => EMPLOYEE_NAMES[k]);
-  const otherRe = new RegExp(`${others.map(escape).join("|")}|他们|她们|他|她|大家|有人|同事|\\b(?:he|she|they)\\b`, "i");
+  /* "他" but not the "他" of "其他": "其他分镜已经写好了" is not about a colleague. */
+  const otherAll = new RegExp(`${others.map(escape).join("|")}|他们|她们|(?<!其)他|(?<!其)她|大家|有人|同事|\\b(?:he|she|they)\\b`, "gi");
   const namesRe = new RegExp(allNames.map(escape).join("|"), "gi");
+  /* Where sentences and clauses end, with the punctuation inside a title
+     taken out: 《AI方言已现，你的工作会被“口音”淘汰吗？》 is one title, and
+     cutting the sentence at its "？" left "刚写好《…" about nothing in
+     particular, which any receipt at all then backed. Same length as the
+     text, so every index into one is an index into the other. */
+  const bounds = text.replace(/《[^《》\n]*》/g, (t) => t.replace(/[。！？!?，,；;：:]/g, "·"));
   const claims: Claim[] = [];
 
   for (const m of text.matchAll(CLAIM)) {
@@ -484,12 +505,12 @@ export function findClaims(text: string, self: AgentKey): Claim[] {
     const end = at + m[0].length;
 
     /* The sentence and the clause the words sit in. */
-    const sentenceStart = Math.max(...["。", "！", "？", "!", "?", "\n"].map((p) => text.lastIndexOf(p, at - 1))) + 1;
-    const nextStop = text.slice(end).search(/[。！？!?\n]/);
+    const sentenceStart = Math.max(...["。", "！", "？", "!", "?", "\n"].map((p) => bounds.lastIndexOf(p, at - 1))) + 1;
+    const nextStop = bounds.slice(end).search(/[。！？!?\n]/);
     const sentenceEnd = nextStop < 0 ? text.length : end + nextStop;
     const sentence = text.slice(sentenceStart, sentenceEnd);
-    const clauseStart = Math.max(sentenceStart, ...["，", ",", "；", ";", "：", ":"].map((p) => text.lastIndexOf(p, at - 1) + 1));
-    const clauseStop = text.slice(end).search(/[，,；;。！？!?\n]/);
+    const clauseStart = Math.max(sentenceStart, ...["，", ",", "；", ";", "：", ":"].map((p) => bounds.lastIndexOf(p, at - 1) + 1));
+    const clauseStop = bounds.slice(end).search(/[，,；;。！？!?\n]/);
     const clause = text.slice(clauseStart, clauseStop < 0 ? text.length : end + clauseStop + 1);
     const before = text.slice(clauseStart, at);
     const after = text.slice(end, end + 3);
@@ -500,20 +521,22 @@ export function findClaims(text: string, self: AgentKey): Claim[] {
     // the promise "写好会在这里说" — said after handing the work on, it is
     // a plan about the colleague's work, not a report of it.
     if (/^(?:后|之后|以后|再|就|的话|吗|么|没|了吗|了没|了么|会|才|时|前|之前)/.test(after)) continue;
+    // Describing a thing, not claiming the work: "编剧写好的脚本",
+    // "已经写好的初稿在脚本页". Unless the speaker is at the verb: "我刚写好的
+    // 脚本" and "我写好的初稿" still say who did it.
+    if (/^的/.test(after) && !/^(?:刚|我)/.test(m[0]) && !/(?:我|我们|刚刚?)$/.test(before)) continue;
     if (/等|如果|要是|一旦|假如|只要|\b(?:before|after|once|when|if)\b/i.test(before)) continue;
     // Asked, or offered: "写好了吗？", "我可以写好…", "请存入…".
     if (/[?？]\s*$/.test(clause)) continue;
     if (/请|要|会|将|准备|打算|可以|帮我|让|说|称|以为|\b(?:will|would|can|could|should|going to|said|says)\b/i.test(text.slice(Math.max(clauseStart, at - 5), at))) continue;
-    // Something that happened before this turn, said as such: "今早已发布".
-    if (/今天?早上|今早|上午|昨天|昨晚|前天|之前|此前|早些时候|earlier|yesterday|this morning/i.test(before)) continue;
+    // Something that happened before this turn, said as such: "今早已发布",
+    // "我们上周那条视频已发布 3 天".
+    if (/今天?早上|今早|上午|昨天|昨晚|前天|之前|此前|早些时候|上周|上星期|上个?月|上次|前几天|前些天|去年|earlier|yesterday|this morning|last (?:week|month|time)|\bago\b/i.test(before)) continue;
 
     const subject = text.slice(sentenceStart, at);
-    const firstPerson = /我|\bI\b|\bwe\b|我们/i.test(subject);
     // Quoted, not said: 你说的“已存入脚本库”.
     const count = (re: RegExp) => subject.match(re)?.length ?? 0;
     if (count(/[“「『]/g) > count(/[”」』]/g) || count(/"/g) % 2 === 1) continue;
-
-    const mine = firstPerson || !otherRe.test(subject);
 
     const plain = sentence.replace(namesRe, "");
     const handing = HANDING.test(m[0]);
@@ -522,6 +545,42 @@ export function findClaims(text: string, self: AgentKey): Claim[] {
        thing whose id it quotes. */
     const worded = KIND_WORDS.filter(([re]) => re.test(plain)).flatMap(([, k]) => k);
     const kinds = handing ? [] : [...new Set(worded.length ? worded : ids.flatMap((id) => KIND_OF_PREFIX[prefixOf(id)] ?? []))];
+    /* The work is the reply itself: "下面是三个平台的标题和简介，写好了请过目".
+       Titles, a caption, a list written out in the answer need no receipt —
+       they are right there — as long as the sentence names no kind of studio
+       work a tool would have made ("脚本写好了，如下" still needs one). */
+    if (!kinds.length && !handing && /下面|以下|如下|下列|\b(?:below|as follows|here (?:is|are))\b/i.test(sentence)) continue;
+
+    /*
+     * Whose work it is, from the words nearest the verb.
+     *
+     * A first person anywhere earlier in the sentence used to make it the
+     * speaker's: "收到，我看了编剧写好的脚本" read as 剪辑师 claiming 编剧's
+     * script. The last one named before the verb decides — a colleague after
+     * the last "我" is theirs ("我看到编剧已经写好了"), unless the two are
+     * named together ("我和编剧已经写好了" is still the speaker's too).
+     */
+    const lastOf = (re: RegExp) => {
+      let hit: RegExpMatchArray | null = null;
+      for (const x of subject.matchAll(re)) hit = x;
+      return hit;
+    };
+    const lastMe = lastOf(/我们|我|\bI\b|\bwe\b/gi);
+    const lastOther = lastOf(otherAll);
+    const theirs =
+      !/^(?:我|I\b)/.test(m[0]) &&
+      lastOther !== null &&
+      (lastMe === null ||
+        ((lastOther.index ?? 0) > (lastMe.index ?? 0) &&
+          !/^\s*(?:和|跟|与|及|同|还有|、|and|&)\s*$/i.test(subject.slice((lastMe.index ?? 0) + lastMe[0].length, lastOther.index ?? 0))));
+    const firstPerson = !theirs && lastMe !== null;
+    /* Somebody outside the studio, with nothing of ours named: "B站官方已发布
+       了新的创作者激励数据", "抖音财经榜刚更新了". No receipt of ours could back
+       it, and it claims nothing of ours. A sentence that names a kind of our
+       work ("抖音版视频已发布") is still read as the speaker's. */
+    const outside = !firstPerson && !handing && kinds.length === 0 && OUTSIDE.test(before);
+    const mine = !theirs && !outside;
+
     /* The words, with a little around them, never cutting through an id:
        half an id quoted back is a new near-miss id of its own. */
     let from = Math.max(sentenceStart, at - 12);
@@ -533,8 +592,9 @@ export function findClaims(text: string, self: AgentKey): Claim[] {
       kinds,
       mine,
       handing,
-      explicit: firstPerson || /^(?:刚|我|I)/.test(m[0]),
+      explicit: mine && (firstPerson || /^(?:刚|我|I)/.test(m[0])),
       ids,
+      change: /改|更新|调整|替换|修/.test(m[0]) || /(?:重新?|又)$/.test(before),
     });
   }
   return claims;
@@ -544,10 +604,11 @@ export function findClaims(text: string, self: AgentKey): Claim[] {
  * Whether a reply may be posted, given what its turn did and saw.
  *
  * The pure half of `verifyReply`, so it can be run against a real reply with
- * the database answer supplied: `exists` is the set of checkable ids that are
- * really there.
+ * the database answers supplied: `exists` is the set of checkable ids that
+ * are really there, and `drafted` whether the turn's own script
+ * (`facts.scriptId`) has beats.
  */
-export function judgeReply(text: string, facts: ReplyFacts, exists: ReadonlySet<string>): ReplyVerdict {
+export function judgeReply(text: string, facts: ReplyFacts, exists: ReadonlySet<string>, drafted = false): ReplyVerdict {
   const receiptIds = new Set(facts.receipts.map((r) => r.id.toLowerCase()));
   const ids = idsIn(text);
   const unseen = ids.filter((id) => !facts.seen.has(id) && !receiptIds.has(id));
@@ -561,9 +622,15 @@ export function judgeReply(text: string, facts: ReplyFacts, exists: ReadonlySet<
   /* "《测试》（scr_…）已经写好了", with that script just looked up: a report on
      a real thing's state, not a claim to have made it. Only without an "I"
      or a "just" — "刚完成《…》（scr_…）" is a claim whatever it points at. */
+  /* And "《X》的初稿已经写好了：13 个分镜" with no id, in the project whose
+     script the background writer drafted and announced in 编剧's name: which
+     script is meant is not in doubt, and the report is true when that script
+     has beats. Only a state — "改好了", "重写好了" is a change, which a
+     script that already had beats cannot back. */
   const reportsOn = (c: Claim) =>
     !c.explicit &&
-    c.ids.some((id) => facts.seen.has(id) && (KIND_OF_PREFIX[prefixOf(id)] ?? []).some((k) => c.kinds.includes(k)));
+    (c.ids.some((id) => facts.seen.has(id) && (KIND_OF_PREFIX[prefixOf(id)] ?? []).some((k) => c.kinds.includes(k))) ||
+      (c.ids.length === 0 && !c.change && c.kinds.includes("script") && Boolean(facts.scriptId) && drafted));
   const unbacked = findClaims(text, facts.self)
     .filter((c) =>
       c.mine
@@ -588,7 +655,23 @@ export function judgeReply(text: string, facts: ReplyFacts, exists: ReadonlySet<
 export async function verifyReply(text: string, facts: ReplyFacts, tenantId: string): Promise<ReplyVerdict> {
   const ids = idsIn(text);
   const exists = ids.some(isCheckable) ? await existingIds(tenantId, ids) : new Set<string>();
-  return judgeReply(text, facts, exists);
+  /* Only looked up when a report on the turn's own script could rest on it. */
+  const drafted =
+    facts.scriptId && findClaims(text, facts.self).some((c) => !c.explicit && !c.change && !c.ids.length && c.kinds.includes("script"))
+      ? await hasBeats(tenantId, facts.scriptId)
+      : false;
+  return judgeReply(text, facts, exists, drafted);
+}
+
+/** Whether a script in this studio has any beats: a draft that exists. */
+async function hasBeats(tenantId: string, scriptId: string): Promise<boolean> {
+  const [row] = await db
+    .select({ id: scriptBeats.id })
+    .from(scriptBeats)
+    .innerJoin(scripts, eq(scripts.id, scriptBeats.scriptId))
+    .where(and(eq(scripts.id, scriptId), eq(scripts.tenantId, tenantId), isNull(scripts.deletedAt)))
+    .limit(1);
+  return Boolean(row);
 }
 
 /**
@@ -706,6 +789,19 @@ export function delegatedTo(body: string, self: AgentKey): AgentKey | null {
     if (new RegExp(`(?:让|叫|请|交给|安排|派给?|通知)\\s*(?:${names})`, "i").test(body)) return k;
   }
   return null;
+}
+
+/**
+ * Whether the nudge's reply is posted instead of the first answer: when the
+ * nudge handed the work on, or when the first answer was only the promise
+ * the nudge exists to replace — it names the colleague ("好的，@编剧 请写…",
+ * "编剧会写的") or says it is arranging it ("马上安排"). A first answer that
+ * is an answer ("已有《…》脚本，不用重写") stands.
+ */
+export function nudgeWins(first: string, wanted: AgentKey, handedOn: boolean): boolean {
+  if (handedOn) return true;
+  if (new RegExp(EMPLOYEE_NAMES[wanted].map(escape).join("|"), "i").test(first)) return true;
+  return /安排|交给|转给|转交|通知|马上|立刻|这就|稍等|稍后|\b(?:I will|I'll|right away|on it)\b/i.test(first);
 }
 
 /* ------------------------------------------------------------ one answer */
@@ -831,7 +927,7 @@ async function answerOne(input: Chain, key: AgentKey, channel: Channel) {
     ...(scriptId ? [scriptId.toLowerCase()] : []),
     ...(projectId ? [projectId.toLowerCase()] : []),
   ]);
-  const facts: ReplyFacts = { self: key, receipts, seen };
+  const facts: ReplyFacts = { self: key, receipts, seen, ...(scriptId ? { scriptId } : {}) };
 
   /* Colleagues this turn hands work to through `assign_task`. Their turns
      wait until this reply is posted, so the channel reads in order. */
@@ -982,26 +1078,32 @@ async function answerOne(input: Chain, key: AgentKey, channel: Channel) {
      * "@策划 让编剧写个脚本" is answered with one `assign_task`. A reply that
      * only says "好的，@编剧 请写…" — or "编剧会写的" — reaches nobody: the
      * `@` is written back as a plain name below, and nothing starts. One more
-     * turn, told exactly that; if it still does not hand it on (it may have
-     * a reason: the script exists already), the first answer stands.
+     * turn, told exactly that. Its reply is posted when it handed the work
+     * on, or when the first answer was that empty promise (it names the
+     * colleague, or says it is arranging it). Otherwise the first answer
+     * stands: "已有《…》脚本，不用重写" was the answer, and a decline written
+     * to the system's reminder is a thinner one; it is kept in the thread as
+     * not posted.
      */
     const wantedColleague = text && !fromAgent && input.hop === 0 && !withheld ? delegatedTo(input.body, key) : null;
     if (wantedColleague && !team.assigned.includes(wantedColleague) && input.hop + 1 <= MAX_HOPS && input.budget.left > 0) {
       const name = AGENT_LABELS[wantedColleague].nameLocal;
+      const assignedBefore = team.assigned.length;
       const nudge = await turn(
         zh
-          ? `（系统提示）${asker} 要你把这件事交给${name}，但你还没有交：回答里写名字或 @ 都不会通知任何人。现在调用 assign_task（to: "${wantedColleague}"），把要做的事写具体（主题、时长、平台，原话里有的都带上），然后用一句话告诉${asker}交给了谁，不要 @。如果你判断不该交（比如已经有现成的），就说明原因，不要调用。`
-          : `(System) ${asker} asked you to hand this to ${name}, and you have not: a name or an @ in your reply notifies nobody. Call assign_task (to: "${wantedColleague}") now with the work spelled out (subject, length, platform — whatever the message said), then tell ${asker} in one sentence whom you handed it to, without an @. If you judge it should not be handed on (it exists already, say), say why and do not call it.`,
+          ? `（系统提示）${asker} 要你把这件事交给${name}，但你还没有交：回答里写名字或 @ 都不会通知任何人。现在调用 assign_task（to: "${wantedColleague}"），把要做的事写具体（主题、时长、平台，原话里有的都带上），然后用一句话告诉${asker}交给了谁，不要 @。如果你判断不该交（比如已经有现成的），就不要调用，直接对${asker}完整说明为什么不交，把你刚才回答里的要点也带上，不要写成只接着上一条说。`
+          : `(System) ${asker} asked you to hand this to ${name}, and you have not: a name or an @ in your reply notifies nobody. Call assign_task (to: "${wantedColleague}") now with the work spelled out (subject, length, platform — whatever the message said), then tell ${asker} in one sentence whom you handed it to, without an @. If you judge it should not be handed on (it exists already, say), do not call it: tell ${asker} in full why not, with the points of your answer just now, so it reads on its own.`,
       );
       const said = nudge.answer.trim().slice(0, MAX_REPLY);
       const check = said ? await verifyReply(said, facts, tenantId) : null;
-      if (check?.ok) {
+      if (check?.ok && nudgeWins(text, wantedColleague, team.assigned.length > assignedBefore)) {
         posted.superseded = true;
         text = said;
         failure = nudge.failure;
         posted = nudge.record;
       } else if (check) {
-        nudge.record.rejected = problems(check, zh, false);
+        if (!check.ok) nudge.record.rejected = problems(check, zh, false);
+        nudge.record.superseded = true;
       }
     }
 
@@ -1072,8 +1174,13 @@ async function answerOne(input: Chain, key: AgentKey, channel: Channel) {
      * was written — so next time the employee "remembered" finishing a script
      * nobody ever saw. Each attempt is rewritten to what actually happened.
      */
-    for (const t of turns) {
+    /* Where the posted one sits: a reply the nudge's was not preferred to
+       comes before it, not after. A withheld reply's apology is added after
+       all of them. */
+    const postedAt = turns.indexOf(posted);
+    for (const [i, t] of turns.entries()) {
       if (!t.id) continue;
+      const earlier = postedAt >= 0 && postedAt < i;
       const content =
         t === posted
           ? body
@@ -1083,8 +1190,8 @@ async function answerOne(input: Chain, key: AgentKey, channel: Channel) {
               : `(This reply was not posted: it failed the check — ${t.rejected.join("; ")}.)`
             : t.superseded
               ? zh
-                ? "（这条回答没有发出，发出的是后面那一条。）"
-                : "(This reply was not posted; the next one was.)"
+                ? `（这条回答没有发出，发出的是${earlier ? "前面" : "后面"}那一条。）`
+                : `(This reply was not posted; the ${earlier ? "earlier" : "next"} one was.)`
               : null;
       if (content !== null && content !== t.answer) {
         await db.update(agentMessages).set({ content }).where(eq(agentMessages.id, t.id));
