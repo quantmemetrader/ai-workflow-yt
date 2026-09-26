@@ -55,8 +55,13 @@ export function PublishPopover({
   }, [onClose]);
 
   React.useEffect(() => {
+    /* A press outside closes it — but not a press on a button that opens it
+       (`data-pub-opener`): that button toggles, and closing here first made
+       its click open the popover straight back up. */
     const away = (e: MouseEvent) => {
-      if (root.current && !root.current.contains(e.target as Node)) close.current();
+      const target = e.target as Element | null;
+      if (target?.closest?.("[data-pub-opener]")) return;
+      if (root.current && !root.current.contains(target as Node)) close.current();
     };
     const key = (e: KeyboardEvent) => {
       if (e.key === "Escape") close.current();
@@ -77,6 +82,11 @@ export function PublishPopover({
   const bad = new Set<string>();
   for (const k of picked) if (cleanLink(links[k] ?? "") === undefined) bad.add(k);
   if (!picked.length && cleanLink(oneLink) === undefined) bad.add("one");
+
+  /* Enter confirms — but not the Enter that ends a Chinese IME composition. */
+  const enter = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter" && !e.nativeEvent.isComposing && e.keyCode !== 229) confirm();
+  };
 
   function confirm() {
     if (bad.size || pending) return;
@@ -172,7 +182,7 @@ export function PublishPopover({
                 <input
                   value={links[k] ?? ""}
                   onChange={(e) => setLinks((m) => ({ ...m, [k]: e.target.value }))}
-                  onKeyDown={(e) => e.key === "Enter" && confirm()}
+                  onKeyDown={enter}
                   placeholder={t(`${publishPlatformName(k, true)} 的链接`, `${publishPlatformName(k, false)} link`)}
                   aria-label={t(`${publishPlatformName(k, true)} 的链接`, `${publishPlatformName(k, false)} link`)}
                   inputMode="url"
@@ -182,7 +192,7 @@ export function PublishPopover({
           ) : (
             <label className="pub-field" data-bad={bad.has("one") ? "" : undefined}>
               <Icon name="link" size={15} color="#8a8a8a" />
-              <input value={oneLink} onChange={(e) => setOneLink(e.target.value)} onKeyDown={(e) => e.key === "Enter" && confirm()} placeholder={t("粘贴发布后的链接", "Paste the post's link")} aria-label={t("发布链接", "Post link")} inputMode="url" />
+              <input value={oneLink} onChange={(e) => setOneLink(e.target.value)} onKeyDown={enter} placeholder={t("粘贴发布后的链接", "Paste the post's link")} aria-label={t("发布链接", "Post link")} inputMode="url" />
             </label>
           )}
           {bad.size ? <span style={{ fontSize: 11.5, color: "#b42318" }}>{t("链接要以 http:// 或 https:// 开头", "Links start with http:// or https://")}</span> : null}

@@ -28,6 +28,22 @@
  * parsing, and the server needs the same rules to clean what the page sends.
  */
 
+/**
+ * Who may mark a project published (and undo it): the people who manage the
+ * project — the studio's owner and admins, and whoever started it — the same
+ * people who may archive, share, rename or delete it (`canManage` on
+ * `ProjectDetail`). Finishing a project takes it off everybody's lists, so it
+ * is not every viewer's press. Never a guest, even on a project of their own:
+ * a guest's "it went out" is the studio's to confirm. The project page offers
+ * the button to exactly these people (`canPublish`); the actions check again
+ * (`markPublished` / `unmarkPublished` in lib/projects/published.ts). Here,
+ * not there, so `workProjectDetail` can use the same rule without a cycle.
+ */
+export function mayPublish(viewer: { id: string; isAdmin: boolean; role: string }, createdBy: string): boolean {
+  if (viewer.role === "guest") return false;
+  return viewer.isAdmin || createdBy === viewer.id;
+}
+
 /** The places a video goes, in the order the popover offers them. */
 export const PUBLISH_PLATFORMS = [
   { key: "youtube", zh: "YouTube", en: "YouTube" },
@@ -73,23 +89,36 @@ export type Publication = {
 
 /** The longest link and note kept. */
 export const LINK_MAX = 600;
+/** The longest link kept once encoded (what the browser would open). */
+export const LINK_STORED_MAX = 2048;
 export const NOTE_MAX = 500;
 
 /**
- * A link as typed, cleaned: trimmed, "https://" put in front of a bare
- * "youtu.be/…", and only http(s). Empty is null (no link, which is fine);
+ * A link as typed, cleaned: trimmed, the address picked out of an app's
+ * share blurb, "https://" put in front of a bare "youtu.be/…", and only
+ * http(s). Empty is null (no link, which is fine);
  * anything that is not a web address is `undefined`, so the popover can say
  * so and the server can refuse it rather than store a `javascript:` link.
  */
 export function cleanLink(raw: unknown): string | null | undefined {
   if (typeof raw !== "string") return null;
-  const s = raw.trim();
-  if (!s) return null;
+  const typed = raw.trim();
+  if (!typed) return null;
+  /* 抖音 and 小红书 copy a whole blurb, not a link ("7.43 复制打开抖音，看看
+     【…】 https://v.douyin.com/iAbC/ …"): the address inside it is the link.
+     It ends at the first space or non-ASCII character (the blurb's "，");
+     a bare "youtu.be/…" has none inside and is read as typed. */
+  const inside = /\s/.test(typed) || !/^https?:\/\//i.test(typed) ? typed.match(/https?:\/\/[!-~]+/i)?.[0]?.replace(/[)\]}>.,;!'"]+$/, "") : undefined;
+  const s = inside ?? typed;
   const withScheme = /^[a-z][a-z0-9+.-]*:/i.test(s) ? s : /^[\w-]+(\.[\w-]+)+([/?#].*)?$/.test(s) ? `https://${s}` : null;
   if (!withScheme || withScheme.length > LINK_MAX) return undefined;
   try {
     const u = new URL(withScheme);
-    return u.protocol === "https:" || u.protocol === "http:" ? u.toString() : undefined;
+    if (u.protocol !== "https:" && u.protocol !== "http:") return undefined;
+    /* A cap on what is kept, too: `toString()` percent-encodes, so a link
+       with Chinese in it grows up to nine times over what was typed. */
+    const out = u.toString();
+    return out.length > LINK_STORED_MAX ? undefined : out;
   } catch {
     return undefined;
   }

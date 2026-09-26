@@ -15,7 +15,7 @@ import { share } from "@/lib/authz/rebac";
 import { TITLE_NOISE, backlogQueryOf, channelNote, fromHotRow, fromIdea, fromSignal, fromTopicRow, type ProjectSource, type SignalLike, type SourceEvidence, type TopicRef, titleCore } from "@/lib/projects/topic";
 import { isListKey, listName, type HotRow } from "@/lib/research/platform-catalog";
 import { HOT_TENANT } from "@/lib/research/platforms";
-import { platformsLine, readPublication, type Publication } from "@/lib/projects/publication";
+import { mayPublish, platformsLine, readPublication, type Publication } from "@/lib/projects/publication";
 
 /**
  * Which projects this person may see: their own, the studio-wide ones
@@ -432,7 +432,7 @@ export type ProjectDetail = {
   mode: string;
   access: { mode: "private" | "everyone" | "groups" | "people"; groups?: string[]; userIds?: string[] };
   canManage: boolean;
-  /** May mark it published and undo that (`mayPublish` in lib/projects/published.ts). */
+  /** May mark it published and undo that (`mayPublish` in lib/projects/publication.ts). */
   canPublish: boolean;
   /** Where it went, once marked published; null while it is not done. */
   published: Publication | null;
@@ -627,9 +627,8 @@ export async function workProjectDetail(viewer: Viewer, id: string, zh: boolean,
     mode: p.mode,
     access: p.access ?? { mode: "everyone" },
     canManage: viewer.isAdmin || p.createdBy === viewer.id,
-    /* The rule in `mayPublish` (lib/projects/published.ts), written out here
-       because that file imports this one. */
-    canPublish: viewer.isAdmin || p.createdBy === viewer.id || viewer.role !== "guest",
+    /* `mayPublish`: the managers (admin or creator), never a guest. */
+    canPublish: mayPublish(viewer, p.createdBy),
     published,
     source: (p.source as ProjectDetail["source"]) ?? null,
     createdAt: p.createdAt.toISOString(),
@@ -658,15 +657,30 @@ export async function workProjectDetail(viewer: Viewer, id: string, zh: boolean,
 }
 
 /**
- * Mark a project active, done or archived. Only one this person may see:
- * the action is reachable with any id, and a private project is not
- * somebody else's to close. False when nothing was changed.
+ * Archive a project or bring it back (the header's 归档 / 恢复). Only one
+ * this person may see and manage — an admin, or whoever started it, the
+ * people the page offers the press to (`canManage`): the action is
+ * reachable with any id, and a project is not every viewer's to close.
+ * False when nothing was changed.
+ *
+ * Done (已发布) is not set here: it goes through `markPublished`
+ * (lib/projects/published.ts), which keeps where it went. Put back to
+ * active, a project drops any 已发布 record it still carries (one archived
+ * after it was published), so an active project never holds one.
  */
-export async function setProjectStatus(viewer: Viewer, id: string, status: "active" | "done" | "archived"): Promise<boolean> {
+export async function setProjectStatus(viewer: Viewer, id: string, status: "active" | "archived"): Promise<boolean> {
   const rows = await db
     .update(workProjects)
-    .set({ status, updatedAt: new Date() })
-    .where(and(eq(workProjects.id, id), eq(workProjects.tenantId, viewer.tenantId), isNull(workProjects.deletedAt), visibleTo(viewer)))
+    .set(status === "active" ? { status, source: sql`${workProjects.source} - 'published'`, updatedAt: new Date() } : { status, updatedAt: new Date() })
+    .where(
+      and(
+        eq(workProjects.id, id),
+        eq(workProjects.tenantId, viewer.tenantId),
+        isNull(workProjects.deletedAt),
+        visibleTo(viewer),
+        viewer.isAdmin ? undefined : eq(workProjects.createdBy, viewer.id),
+      ),
+    )
     .returning({ id: workProjects.id });
   return rows.length > 0;
 }

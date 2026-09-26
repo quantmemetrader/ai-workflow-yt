@@ -268,12 +268,15 @@ export async function startFromTopicAction(rawRef: TopicRef, opts: { write?: boo
   return { projectId: created.id, scriptId: created.scriptId, existed: false, writing, note: denied };
 }
 
-export async function setProjectStatusAction(id: string, status: "active" | "done" | "archived") {
+export async function setProjectStatusAction(id: string, status: "active" | "archived") {
   const viewer = await getViewer();
   if (!viewer || !viewer.modules.includes("chat")) return { error: "Not allowed" };
-  if (!["active", "done", "archived"].includes(status)) return { error: "No such status" };
-  /* Only a project this person may see (`setProjectStatus` checks): an
-     action can be called with any id, not just the ones on screen. */
+  /* Not "done": finishing a project is 「已发布 · 标记完成」
+     (`markPublishedAction`), which checks who may and keeps where it went —
+     this action would be a way round both. */
+  if (!["active", "archived"].includes(status)) return { error: "No such status" };
+  /* Only a project this person may see and manage (`setProjectStatus`
+     checks): an action can be called with any id, not just the ones on screen. */
   if (!(await setProjectStatus(viewer, String(id ?? ""), status))) {
     return { error: (viewer.locale ?? "zh-CN").startsWith("zh") ? "没有这个项目" : "No such project" };
   }

@@ -344,7 +344,7 @@ export function ProjectScreen({ project: p, zh, people, writing }: { project: Pr
                     n={i + 1}
                     zh={zh}
                     published={p.status === "done" ? p.published : null}
-                    onPublish={p.canPublish && s.state === "you" ? () => setPublishing((v) => (v === "step" ? null : "step")) : undefined}
+                    onPublish={p.canPublish && p.status === "active" && s.state === "you" ? () => setPublishing((v) => (v === "step" ? null : "step")) : undefined}
                   />
                   {publishing === "step" ? publishPopover("right") : null}
                 </div>
@@ -1211,7 +1211,7 @@ function StepCard({ step: s, n, zh, published = null, onPublish }: { step: Proje
         /* White on the black "your turn" card, the green check on it: the
            one thing left to do, and what it will say when done. */
         <div style={{ marginTop: "auto", paddingTop: 9 }}>
-          <button type="button" onClick={onPublish} className="pj-publish">
+          <button type="button" onClick={onPublish} className="pj-publish" data-pub-opener="">
             <PublishedCheck size={14} />
             <Tr zh="已发布 · 标记完成" en="Mark as published" inZh={zh} />
           </button>
@@ -1296,7 +1296,9 @@ function Delivery({
       </div>
     );
   }
-  if (!p.canPublish) return null;
+  /* Offered to the project's managers only (`canPublish`), and only while it
+     is active: an archived one is read-only (the server refuses it too). */
+  if (!p.canPublish || p.status !== "active") return null;
   return rendered ? (
     <div style={{ position: "relative", marginBottom: 12, display: "flex", alignItems: "center", gap: 12, padding: "11px 12px 11px 14px", borderRadius: 12, background: "#fafaf9", border: "1px solid #ececea", flexWrap: "wrap" }}>
       <span style={{ flex: "1 1 200px", minWidth: 0 }}>
@@ -1305,7 +1307,7 @@ function Delivery({
           {t("发出去后按这里，项目就算完成。", "Posted it? Press this and the project is done.")}
         </span>
       </span>
-      <button type="button" onClick={onToggle} disabled={disabled} aria-expanded={open} style={{ ...btn(true), height: 34, gap: 7 }}>
+      <button type="button" onClick={onToggle} disabled={disabled} aria-expanded={open} data-pub-opener="" style={{ ...btn(true), height: 34, gap: 7 }}>
         <PublishedCheck size={15} />
         <Tr zh="已发布 · 标记完成" en="Mark as published" inZh={zh} />
       </button>
@@ -1313,7 +1315,7 @@ function Delivery({
     </div>
   ) : (
     <div style={{ position: "relative", marginBottom: 10, display: "flex" }}>
-      <button type="button" className="pj-quiet" onClick={onToggle} disabled={disabled} aria-expanded={open} style={{ ...quiet("#7c7c7c"), height: 26, padding: "0 8px", marginLeft: -8 }}>
+      <button type="button" className="pj-quiet" onClick={onToggle} disabled={disabled} aria-expanded={open} data-pub-opener="" style={{ ...quiet("#7c7c7c"), height: 26, padding: "0 8px", marginLeft: -8 }}>
         <Icon name="check" size={12} />
         <Tr zh="没有成片也标记完成" en="Mark done without a cut" inZh={zh} />
       </button>

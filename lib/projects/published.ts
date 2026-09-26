@@ -5,7 +5,7 @@ import { videoExports, workProjects } from "@/lib/db/schema";
 import type { Viewer } from "@/lib/auth/types";
 import { audit } from "@/lib/audit";
 import { projectsVisibleTo } from "@/lib/projects/service";
-import { NOTE_MAX, cleanLink, isPublishPlatform, publishPlatformName, readPublication, type Publication, type PublishedPlace } from "@/lib/projects/publication";
+import { NOTE_MAX, cleanLink, isPublishPlatform, mayPublish, publishPlatformName, readPublication, type Publication, type PublishedPlace } from "@/lib/projects/publication";
 
 /**
  * Marking a project published, undoing it, and reading it back.
@@ -15,17 +15,6 @@ import { NOTE_MAX, cleanLink, isPublishPlatform, publishPlatformName, readPublic
  * status and record together, so a project can never read 已发布 with no
  * record behind it or keep a record after it was put back in progress.
  */
-
-/**
- * Who may mark a project published (and undo it): anybody who can see it and
- * works in the studio — the person who uploads is often the editor or the
- * host, not whoever started it — but not a guest, unless it is their own.
- * The same people the project page offers the button to (`canPublish` on
- * `ProjectDetail`); the actions check it again.
- */
-export function mayPublish(viewer: Pick<Viewer, "id" | "isAdmin" | "role">, createdBy: string): boolean {
-  return viewer.isAdmin || createdBy === viewer.id || viewer.role !== "guest";
-}
 
 export type PublishInput = { platforms?: { key?: unknown; url?: unknown }[]; note?: unknown };
 
@@ -51,7 +40,10 @@ export async function markPublished(viewer: Viewer, id: string, input: PublishIn
   const t = (a: string, b: string) => (zh ? a : b);
   const p = await projectToPublish(viewer, id);
   if (!p) return { error: t("没有这个项目", "No such project") };
-  if (!mayPublish(viewer, p.createdBy)) return { error: t("只有工作室成员可以标记发布", "Only studio members can mark it published") };
+  if (!mayPublish(viewer, p.createdBy)) return { error: t("只有项目负责人或管理员可以标记发布", "Only the project's owner or an admin can mark it published") };
+  /* An archived project is read-only: marking it published would quietly
+     unarchive it. It is restored first, then marked. */
+  if (p.status === "archived") return { error: t("项目已归档，先恢复再标记发布", "The project is archived; restore it first") };
 
   const platforms: PublishedPlace[] = [];
   for (const raw of Array.isArray(input.platforms) ? input.platforms.slice(0, 20) : []) {
@@ -86,7 +78,7 @@ export async function markPublished(viewer: Viewer, id: string, input: PublishIn
     .set({
       status: "done",
       /* A jsonb merge: the topic snapshot and a draft's writing mark stay. */
-      source: sql`coalesce(${workProjects.source}, '{}'::jsonb) || jsonb_build_object('published', ${JSON.stringify(publication)}::jsonb)`,
+      source: sql`(case when jsonb_typeof(${workProjects.source}) = 'object' then ${workProjects.source} else '{}'::jsonb end) || jsonb_build_object('published', ${JSON.stringify(publication)}::jsonb)`,
       updatedAt: new Date(),
     })
     .where(and(eq(workProjects.id, p.id), eq(workProjects.tenantId, viewer.tenantId), isNull(workProjects.deletedAt)))
@@ -104,12 +96,15 @@ export async function unmarkPublished(viewer: Viewer, id: string, zh: boolean): 
   const t = (a: string, b: string) => (zh ? a : b);
   const p = await projectToPublish(viewer, id);
   if (!p) return { error: t("没有这个项目", "No such project") };
-  if (!mayPublish(viewer, p.createdBy)) return { error: t("只有工作室成员可以撤回", "Only studio members can undo it") };
+  if (!mayPublish(viewer, p.createdBy)) return { error: t("只有项目负责人或管理员可以撤回", "Only the project's owner or an admin can undo it") };
+  /* Only a published (done) project is put back: the action takes any id,
+     and an archived one must not come back to life through "undo". */
+  if (p.status !== "done") return { error: t("这个项目没有标记为已发布", "This project is not marked published") };
   const was = readPublication(p.source);
   await db
     .update(workProjects)
     .set({ status: "active", source: sql`${workProjects.source} - 'published'`, updatedAt: new Date() })
-    .where(and(eq(workProjects.id, p.id), eq(workProjects.tenantId, viewer.tenantId), isNull(workProjects.deletedAt)));
+    .where(and(eq(workProjects.id, p.id), eq(workProjects.tenantId, viewer.tenantId), isNull(workProjects.deletedAt), eq(workProjects.status, "done")));
   await audit(viewer, "project.unpublish", { module: "chat", objectType: "project", objectId: p.id, meta: { was: was ? { at: was.at, platforms: was.platforms.map((x) => x.key) } : null } });
   return { ok: true };
 }
