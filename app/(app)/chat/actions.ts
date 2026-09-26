@@ -24,6 +24,7 @@ import { and, eq, isNull, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { workProjects } from "@/lib/db/schema";
 import { conversationDetail } from "@/lib/chat/service";
+import { startFromTopicAction } from "@/app/(app)/projects/actions";
 import {
   addChannelMembers,
   attachmentsFor,
@@ -298,13 +299,17 @@ export async function pressCardAction(slug: string, messageId: string, actionId:
      written into, found or started now (`planHandoff`): the plan lives in
      #研究日报, which is no project, and the draft used to land loose. */
   let handoff: Awaited<ReturnType<typeof pressedHandoff>> = null;
+  /* Set when the hand-off is the morning plan's "交给编剧" (`planHandoff`). */
+  let planned = false;
   try {
-    handoff =
-      (await pressedHandoff(viewer, message.meta, action.body)) ??
-      (await planHandoff(viewer, message.meta, action.id).catch((err) => {
+    handoff = await pressedHandoff(viewer, message.meta, action.body);
+    if (!handoff) {
+      handoff = await planHandoff(viewer, message.meta, action.id).catch((err) => {
         console.error("[chat] could not find or start the plan item's project", err);
         return null;
-      }));
+      });
+      planned = handoff !== null;
+    }
     await postMessage(viewer, channel.id, action.body, handoff ? { handoff: handoffMeta(handoff) } : undefined);
   } catch (err) {
     /* Nothing was said for the press: give it back so the card can be
@@ -313,6 +318,30 @@ export async function pressCardAction(slug: string, messageId: string, actionId:
     throw err;
   }
   revalidatePath(`/chat/c/${slug}`);
+
+  /* "交给编剧" on the morning plan: the draft is written by code, into the
+     project the press just found or started — not by a 编剧 model turn in
+     #研究日报. That turn once went off and watched a trend topic instead
+     ("Watching … now", in English), and the owner found an empty project
+     and nothing anywhere: "it just disappeared". Now the press starts the
+     same background draft as 开项目 on an idea (`startFromTopicAction` with
+     `write`), and 编剧 says in this channel where it is writing, with the
+     project linked; the project's own chat gets the "写好了" line. */
+  if (planned && handoff?.to === "script" && handoff.workProjectId && handoff.task) {
+    const title = handoff.artifacts.find((a) => a.kind === "work_project")?.title ?? "";
+    const started = await startFromTopicAction({ kind: "proposal", text: handoff.task, source: "plan" }, { write: true }).catch((err) => ({ error: err instanceof Error ? err.message : String(err) }));
+    const failed = "error" in started && started.error ? started.error : null;
+    const writing = !failed && "writing" in started && started.writing;
+    const line = failed
+      ? `《${title}》的项目开好了，但初稿没能开始：${failed}。在项目页按「写初稿」再试一次。`
+      : writing
+        ? `好的，《${title}》的初稿我在项目里写，一两分钟后出现在项目的脚本里。`
+        : `《${title}》的项目里已经有脚本了，去项目里看。`;
+    const writer = await agentViewer(viewer.tenantId, "script");
+    await postMessage(writer, channel.id, line, { agent: "script", project: { id: handoff.workProjectId, title } }).catch((err) => console.error("[chat] could not say where the draft is", err));
+    revalidatePath(`/chat/c/${slug}`);
+    return {};
+  }
 
   /* The prepared line nearly always tags a colleague — that is the point of
      "hand it to the editor" being one press. Same path as a typed tag, after
