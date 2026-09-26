@@ -458,8 +458,22 @@ async function stageSource(fixture: Fixture, cut: CutOut, d: DesignOut): Promise
     let sourcingMs = 0;
     const contextEn = `A Chinese business-explainer reel titled 「${d.outline.titleZh}」. ${fixture.brief.replace(/\s+/g, " ").slice(0, 260)}`;
 
+    /*
+     * The sourcing answer is kept per beat list in the run directory, so a
+     * layout change re-runs from `source` in seconds instead of re-judging
+     * every candidate; `--resource` asks again.
+     */
+    const answerFile = (beats: Beat[]) => path.join(workDir, `answer-${createHash("sha1").update(JSON.stringify(beats)).digest("hex").slice(0, 12)}.json`);
     const sourceBeats = async (beats: Beat[]): Promise<Sourced[]> => {
       const t0 = Date.now();
+      const kept = answerFile(beats);
+      if (!flag("--resource") && (await exists(kept))) {
+        const again = await readJson<{ sourced: Sourced[]; traces: unknown[]; misses: unknown[] }>(kept);
+        traces.push(...again.traces);
+        misses.push(...again.misses);
+        log(`source: ${again.sourced.length}/${beats.length} beats from the kept answer ${path.basename(kept)}`);
+        return again.sourced;
+      }
       const report = await sourceBeatsReport(beats, {
         sentences: d.timelineSentences,
         into: "local",
@@ -473,6 +487,7 @@ async function stageSource(fixture: Fixture, cut: CutOut, d: DesignOut): Promise
         onProgress: (m) => log(`source: ${m}`),
       });
       sourcingMs += Date.now() - t0;
+      await writeJson(kept, { sourced: report.sourced, traces: report.traces, misses: report.misses });
       traces.push(...report.traces);
       misses.push(...report.misses);
       log(`source: ${report.sourced.length}/${beats.length} beats sourced in ${sec(report.ms)} s; ${report.misses.length} misses`);
@@ -486,7 +501,16 @@ async function stageSource(fixture: Fixture, cut: CutOut, d: DesignOut): Promise
     };
 
     /* One logo per entity for its card: the resolver's first mark, fetched to this box. */
+    const logoFile = path.join(workDir, "logos.json");
+    const logosKept: Record<string, Sourced | null> = !flag("--resource") && (await exists(logoFile)) ? await readJson<Record<string, Sourced | null>>(logoFile) : {};
     const logoFor = async (e: OutlineEntity): Promise<Sourced | null> => {
+      if (e.name in logosKept) return logosKept[e.name];
+      const found = await logoFresh(e);
+      logosKept[e.name] = found;
+      await writeJson(logoFile, logosKept);
+      return found;
+    };
+    async function logoFresh(e: OutlineEntity): Promise<Sourced | null> {
       try {
         const visuals = await entityVisual(e, { cacheDir: CACHE, timeoutMs: 20_000 });
         const pick = visuals.find((v) => v.isMark) ?? (e.kind === "person" ? visuals[0] : null);
@@ -500,7 +524,7 @@ async function stageSource(fixture: Fixture, cut: CutOut, d: DesignOut): Promise
         log(`source: logo ${e.name} failed: ${err instanceof Error ? err.message : err}`);
         return null;
       }
-    };
+    }
 
     const traceLines: string[] = [];
     const design = await planDesign(

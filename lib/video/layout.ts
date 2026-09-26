@@ -1156,6 +1156,43 @@ export function resolveLayout(input: LayoutInput): LayoutPlan {
 
   for (const beat of order) if (!early(beat)) placeBeat(beat);
 
+  /*
+   * ---- 5b. footage the first pass had no room for --------------------
+   *
+   * The first pass lands every visual on its own word, cards first, and a
+   * clip that lost its word to a counter or a list is dropped. On a dense
+   * cut that was most of them (the first integrated run: 14 assets sourced,
+   * 4 on screen, 4 % coverage). A verified picture of the thing said is
+   * still the best thing to show a few seconds later, while the sentence
+   * or the one after it is running, so each unplaced asset gets a second
+   * look at the rest of its sentence plus 2.5 s, in time order.
+   */
+  const secondLook = input.beats
+    .filter((b) => {
+      const src = sourcedByBeat.get(b.id);
+      return Boolean(src && src.kind !== "logo" && !usedSourced.has(src.beatId) && b.priority < 3 && ["person", "org", "product", "scene", "metaphor", "concept", "headline"].includes(b.intent));
+    })
+    .sort((a, b) => (sentence.get(a.sentenceId)?.startMs ?? 0) - (sentence.get(b.sentenceId)?.startMs ?? 0));
+  for (const beat of secondLook) {
+    const src = sourcedByBeat.get(beat.id)!;
+    const s = sentence.get(beat.sentenceId);
+    if (!s || usedSourced.has(src.beatId)) continue;
+    const still = src.kind !== "video";
+    const minMs = still ? TIMING.cutaway.still[0] : TIMING.cutaway.min;
+    const maxMs = Math.min(still ? TIMING.cutaway.still[1] : TIMING.cutaway.max, availableMs(src));
+    if (maxMs < minMs) continue;
+    const latestStartMs = Math.min(s.endMs + 2500, endStart - minMs);
+    input.trace?.(`${beat.id} second look ${src.candidate.id} (${src.layout}) from ${s.startMs}, latest ${latestStartMs}`);
+    const slot = findSlot(ledger, { startMs: s.startMs, minMs, maxMs, latestStartMs, hardEndMs: Math.min(s.endMs + 3500, endStart), softEndAfter: (st) => upcomingAfter(st, minMs) }, false, input.trace);
+    if (!slot) continue;
+    const spec = cutawayOf(beat, s, src, slot);
+    cutaways.push(spec);
+    usedSourced.add(src.beatId);
+    ledger.take({ id: spec.id, startMs: spec.startMs, endMs: spec.endMs, layer: "cutaway" });
+    const k = skipped.findIndex((x) => x.beatId === beat.id && /素材没有位置/.test(x.reasonZh));
+    if (k >= 0) skipped.splice(k, 1);
+  }
+
 
   /* ---- 6. chips on later mentions where the cadence needs them ------- */
   const mentionChips: { name: string; s: Sentence }[] = [];
