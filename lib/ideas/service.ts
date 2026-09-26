@@ -1,7 +1,7 @@
 import "server-only";
-import { and, desc, eq, gte, ne, sql } from "drizzle-orm";
+import { and, desc, eq, gte, isNull, ne, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { chatChannels, chatMessages, creatorVideos, ideas, settings, topics } from "@/lib/db/schema";
+import { chatChannels, chatMessages, creatorVideos, ideas, settings, topics, workProjects } from "@/lib/db/schema";
 import { ulid } from "@/lib/ids";
 import type { Viewer } from "@/lib/auth/types";
 import type { Idea, IdeaEvidence, IdeaStatus } from "@/lib/ideas/types";
@@ -14,6 +14,7 @@ import { guessBeat } from "@/lib/research/service";
 import { PLATFORMS, type HotRow } from "@/lib/research/platform-catalog";
 import { toSimplified } from "@/lib/text/simplified";
 import { backlogQueryOf, cleanCodes, numbersOf } from "@/lib/projects/topic";
+import { projectsVisibleTo } from "@/lib/projects/service";
 
 /**
  * Video ideas worked out by 研究员 from the research the studio already has.
@@ -65,6 +66,37 @@ function toIdea(r: IdeaRow): Idea {
 }
 
 /**
+ * An idea with its project as this person can have it.
+ *
+ * `ideas.status` says "started" for good once a project was made from it,
+ * but the project can go: deleted (kept in the database, off every list),
+ * or private to people this person is not among. A started idea whose
+ * project is deleted reads as new again, so Home offers to start it rather
+ * than an "open" that 404s and no way back; one whose project is live but
+ * hidden from this person stays started, without the project's id, so
+ * nothing links to a page they cannot open and nobody starts a second
+ * project from it.
+ */
+function ideaFor(r: { idea: IdeaRow; live: boolean; seen: boolean | null }): Idea {
+  const idea = toIdea(r.idea);
+  if (idea.status !== "started") return idea;
+  if (!r.live) return { ...idea, status: "new", projectId: null };
+  return r.seen === true ? idea : { ...idea, projectId: null };
+}
+
+/** The columns `ideaFor` reads: the idea, and whether its project is live and visible. */
+function ideaColumns(viewer: Viewer) {
+  return {
+    idea: ideas,
+    live: sql<boolean>`(${workProjects.id} is not null)`,
+    seen: sql<boolean | null>`(${workProjects.id} is not null and ${projectsVisibleTo(viewer)})`,
+  };
+}
+
+/** Only a live project matches; a deleted one leaves the idea unmatched. */
+const liveProject = and(eq(workProjects.id, ideas.projectId), isNull(workProjects.deletedAt));
+
+/**
  * The ideas Home shows: the latest batch 研究员 generated for this studio,
  * strongest first, without the dismissed ones.
  */
@@ -77,17 +109,23 @@ export async function latestIdeas(viewer: Viewer, limit = 6): Promise<Idea[]> {
     .limit(1);
   if (!latest) return [];
   const rows = await db
-    .select()
+    .select(ideaColumns(viewer))
     .from(ideas)
+    .leftJoin(workProjects, liveProject)
     .where(and(eq(ideas.tenantId, viewer.tenantId), eq(ideas.batchId, latest.batchId), ne(ideas.status, "dismissed")))
     .orderBy(sql`${ideas.strength} desc nulls last`, ideas.createdAt)
     .limit(Math.max(1, Math.min(20, limit)));
-  return rows.map(toIdea);
+  return rows.map(ideaFor);
 }
 
 export async function ideaById(viewer: Viewer, id: string): Promise<Idea | null> {
-  const [row] = await db.select().from(ideas).where(and(eq(ideas.id, id), eq(ideas.tenantId, viewer.tenantId))).limit(1);
-  return row ? toIdea(row) : null;
+  const [row] = await db
+    .select(ideaColumns(viewer))
+    .from(ideas)
+    .leftJoin(workProjects, liveProject)
+    .where(and(eq(ideas.id, id), eq(ideas.tenantId, viewer.tenantId)))
+    .limit(1);
+  return row ? ideaFor(row) : null;
 }
 
 /**
@@ -97,12 +135,25 @@ export async function ideaById(viewer: Viewer, id: string): Promise<Idea | null>
  * which is what "存进选题储备" says: it then shows on /research/backlog and in
  * the Script module's topics. The row is written directly rather than
  * through `createTopic`, which would also queue a chart refresh at once.
+ *
+ * A started idea stays started, unless its project has been deleted since:
+ * Home shows that one as new again (`ideaFor`), so keeping or dropping it
+ * has to work too, and it lets go of the deleted project's id. The columns
+ * are named with the table, as `scriptState` does: in a one-table
+ * statement drizzle writes them bare, and a bare "id" in the subquery would
+ * be the project's own.
  */
 export async function setIdeaStatus(viewer: Viewer, id: string, status: "saved" | "dismissed" | "new"): Promise<Idea | null> {
   const [row] = await db
     .update(ideas)
-    .set({ status, updatedAt: new Date() })
-    .where(and(eq(ideas.id, id), eq(ideas.tenantId, viewer.tenantId), ne(ideas.status, "started")))
+    .set({ status, projectId: sql`case when "ideas"."status" = 'started' then null else "ideas"."project_id" end`, updatedAt: new Date() })
+    .where(
+      and(
+        eq(ideas.id, id),
+        eq(ideas.tenantId, viewer.tenantId),
+        sql`("ideas"."status" <> 'started' or not exists (select 1 from work_projects p where p.id = "ideas"."project_id" and p.deleted_at is null))`,
+      ),
+    )
     .returning();
   if (!row) return ideaById(viewer, id);
   if (status === "saved") await backlogFromIdea(viewer, row).catch((err) => console.error("[ideas] could not add to the backlog", err));
@@ -312,6 +363,40 @@ function parseIdeas(text: string): RawIdea[] {
 
 const s = (v: unknown, n: number) => (typeof v === "string" ? toSimplified(v.replace(/\s+/g, " ").trim()).slice(0, n) : "");
 
+/**
+ * Takes the pool's ids out of an idea's prose.
+ *
+ * `cleanCodes` takes the bracketed ones ("[H10]", "（证据2）"), but the model
+ * also writes them bare: "今早晨报S1指出…", "H3、H5 都显示…", "（B2）". On
+ * Home, on the project's topic card, in the project chat's description and
+ * in the writer's sources they mean nothing; the evidence chips carry the
+ * rows themselves.
+ *
+ * Only the ids given, and only standing alone, so "B2B", "P2P" or a
+ * model name keeps its letters; a run of them with the 、 / 和 between goes
+ * as one, and a bracket or a "见" left empty goes with it. A half-year
+ * ("2025年H1", "H1营收") is left alone even when the pool has an H1.
+ *
+ * The caller passes the ids the idea itself cites in `evidence`, not the
+ * whole pool: the hot rows alone run H1 to H60 and more, and "英伟达H20",
+ * "H5页面", "哈弗H6" or "C1驾照" are words an idea may well use; with every
+ * pool id they lost their names. An id the model writes in the prose is one
+ * it cites, so the codes still go.
+ */
+export function withoutPoolIds(text: string, ids: readonly string[]): string {
+  if (!text || !ids.length) return text;
+  const one = `(?:${[...ids].sort((a, b) => b.length - a.length).join("|")})`;
+  const run = new RegExp(`(?<![A-Za-z0-9年])${one}(?:\\s*[、,，/和及与]\\s*${one})*(?![A-Za-z0-9]|财|营|业绩|净|利润|收入|季)`, "g");
+  return text
+    .replace(run, "")
+    .replace(/[（(【\[]\s*(?:见|参见|详见|据|来源|证据)?\s*[：:]?\s*[）)】\]]/g, "")
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/\s+([，。；、：！？）])/g, "$1")
+    .replace(/([，,、；])\s*[，,、]/g, "$1")
+    .replace(/^[\s、，,；]+/, "")
+    .trim();
+}
+
 export type GenerateResult = { ok: true; ideas: Idea[]; model: string; batchId: string } | { ok: false; error: string };
 
 /**
@@ -350,6 +435,7 @@ export async function generateIdeas(viewer: Viewer, opts: { seed?: string | null
     "3. 不编数字、不编事实。why 里提到的数字必须是证据里有的。",
     "4. 不要和选题储备里已有的题重复；可以换角度。",
     "5. 标题像本频道的标题：具体、有冲突或数字，简体中文，20 字左右。",
+    "6. title、angle、why、hook 里不要写证据编号（H3、S1 这类），编号只放在 evidence 数组里。",
     "",
     "只回答一个 JSON 对象，不要任何别的文字：",
     '{"ideas":[{"title":"主标题","titles":["备选标题1","备选标题2"],"angle":"切入角度，一句话","why":"为什么是现在，一两句，引用证据里的数字","hook":"视频第一句话","format":"竖版 60 秒 / 横版 8 分钟 之类","strength":1到5的整数,"evidence":["H3","S1"]}]}',
@@ -391,11 +477,14 @@ export async function generateIdeas(viewer: Viewer, opts: { seed?: string | null
   /* The evidence check: an idea keeps only the rows that are really in the
      pool, and an idea with none left is dropped. */
   const byId = new Map(pool.rows.map((r) => [r.id, r]));
+  const prose = (v: unknown, max: number, cited: readonly string[]) => withoutPoolIds(cleanCodes(s(v, max)), cited);
   const batchId = `ib_${ulid()}`;
   const now = new Date();
   const kept = raw
     .map((r) => {
       const title = s(r.title, 80);
+      /* The pool ids this idea cites: the only codes taken out of its prose. */
+      const cited = (Array.isArray(r.evidence) ? r.evidence : []).map((e) => String(e).trim().replace(/^\[|\]$/g, "")).filter((id) => byId.has(id));
       const evidence = (Array.isArray(r.evidence) ? r.evidence : [])
         .map((e) => byId.get(String(e).trim().replace(/^\[|\]$/g, "")))
         .filter((e): e is PoolRow => Boolean(e))
@@ -410,11 +499,11 @@ export async function generateIdeas(viewer: Viewer, opts: { seed?: string | null
         seed,
         title,
         titles: (Array.isArray(r.titles) ? r.titles : []).map((x) => s(x, 80)).filter((x) => x && x !== title).slice(0, 3),
-        /* The pool's ids ("[H10]") mean nothing on Home; the evidence chips
-           carry the rows themselves. */
-        angle: cleanCodes(s(r.angle, 200)) || null,
-        why: cleanCodes(s(r.why, 300)) || null,
-        hook: cleanCodes(s(r.hook, 120)) || null,
+        /* The pool's ids ("[H10]", or bare: "晨报S1指出") mean nothing on
+           Home; the evidence chips carry the rows themselves. */
+        angle: prose(r.angle, 200, cited) || null,
+        why: prose(r.why, 300, cited) || null,
+        hook: prose(r.hook, 120, cited) || null,
         format: s(r.format, 40) || null,
         strength: Number.isFinite(strength) ? Math.max(1, Math.min(5, Math.round(strength))) : null,
         evidence,

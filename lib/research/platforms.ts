@@ -18,6 +18,7 @@ import { trendingNearby } from "@/lib/research/trending";
 import { trendingVideos } from "@/lib/research/youtube";
 import { summarizeHot } from "@/lib/research/summary";
 import { judgeHot, type Judged } from "@/lib/research/judge";
+import { studioBrief, type StudioBrief } from "@/lib/research/studio";
 import { FOCUS_FALLBACK, channelFocus, classifyHot } from "@/lib/research/relevance";
 import { recordUsage } from "@/lib/ai/ledger";
 
@@ -155,11 +156,17 @@ export const HOT_TENANT = process.env.TENANT_ID ?? "tnt_aurafarmers";
  * the noise the studio complained about, restated. With fewer than three
  * rows on the beat the marks look at the whole list, since there is too
  * little to judge otherwise; the screen's filter still hides what is off it.
+ * A list with no business or tech row at all is not judged: the judge is
+ * told to mark only those, so the only answer it could give is none (the
+ * researcher's line skips its model call for the same list, `NOTHING_ON_BEAT`).
+ *
+ * `brief` hands in the studio's brief when a run judges many lists
+ * (`collectAll` builds it once, and only if some list is judged).
  */
 export async function collectPlatform(
   platform: PlatformKey,
   tenantId: string = HOT_TENANT,
-  opts: { reuse?: RelevanceMap } = {},
+  opts: { reuse?: RelevanceMap; brief?: () => Promise<StudioBrief> } = {},
 ): Promise<PlatformHot> {
   const hot = await readLive(platform);
   if (hot.rows.length) {
@@ -178,9 +185,15 @@ export async function collectPlatform(
       console.log(`[research] ${platform} relevance: not marked (${counts.missing} rows no model would mark); stored unfiltered`);
     }
     const focus = relevance ? hot.rows.filter((r) => onFocus(relevance[r.phrase])) : hot.rows;
+    /* Nothing on the beat even weakly (every row marked other): the judge,
+       told to mark only business and tech, has nothing it may mark. `{}` is
+       what it would have stored, without the model call and the brief. */
+    const nothingToJudge = !!relevance && !hot.rows.some((r) => onFocus(relevance[r.phrase], 1));
     const [summary, judged] = await Promise.all([
       summarizeHot(platform, hot.rows, relevance),
-      judgeHot(tenantId, platform, relevance && focus.length >= 3 ? focus : hot.rows, hot.fetchedAt).catch(() => null),
+      nothingToJudge
+        ? Promise.resolve<Judged>({})
+        : judgeHot(tenantId, platform, relevance && focus.length >= 3 ? focus : hot.rows, hot.fetchedAt, { brief: opts.brief }).catch(() => null),
     ]);
     hot.summary = summary;
     hot.judged = judged;
@@ -242,6 +255,16 @@ export async function collectAll(
   /* What this run has already marked, so a video on two 抖音 lists is
      classified once. */
   const seen: RelevanceMap = {};
+  /* The studio's brief for the judge (channels, 200 of its videos, comments,
+     rivals): the same for every list in the run, so read once, when the
+     first list is judged, rather than once per list. A failed read is
+     forgotten, so the next list tries again instead of every list failing. */
+  let brief: Promise<StudioBrief> | null = null;
+  const briefOnce = () =>
+    (brief ??= studioBrief(HOT_TENANT).catch((err: unknown) => {
+      brief = null;
+      throw err;
+    }));
   for (const p of PLATFORMS) {
     if (p.unavailable) continue;
     if (!opts.force) {
@@ -252,7 +275,7 @@ export async function collectAll(
         continue;
       }
     }
-    const hot = await collectPlatform(p.key, undefined, { reuse: seen });
+    const hot = await collectPlatform(p.key, undefined, { reuse: seen, brief: briefOnce });
     Object.assign(seen, hot.relevance ?? {});
     out.push({ platform: p.key, rows: hot.rows.length, note: hot.note });
   }

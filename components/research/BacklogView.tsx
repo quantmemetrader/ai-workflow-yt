@@ -15,6 +15,11 @@ import { notify } from "@/lib/client/notify";
  * Hand-off to Script now actually hands off: the topic becomes a brief in the
  * Script module and the producer is taken to it. Someone without the Script
  * module gets told that, rather than a button that silently fails.
+ *
+ * `canWriteScripts` is whether this person holds the Script module. Without
+ * it the press stops here with that said: it used to start a project (its
+ * chat, script and video) that nobody asked for, and then send them to a
+ * script page that bounced them to Home without a word.
  */
 export function BacklogView({
   items,
@@ -23,6 +28,7 @@ export function BacklogView({
   locale,
   region,
   model,
+  canWriteScripts,
 }: {
   items: BacklogItem[];
   people: Person[];
@@ -30,7 +36,9 @@ export function BacklogView({
   locale: string;
   region: string;
   model: string;
+  canWriteScripts: boolean;
 }) {
+  const zh = locale.startsWith("zh");
   const router = useRouter();
   /* The agent answers here. Asking used to push to /chat, which took the
    * screen you were asking about off the screen. */
@@ -78,7 +86,11 @@ export function BacklogView({
        * is no project to make, so the old hand-off (a brief in Script) is
        * what that person gets.
        */
-      onHandOff={(topicId) =>
+      onHandOff={(topicId) => {
+        if (!canWriteScripts) {
+          notify(zh ? "把选题交给脚本需要脚本模块的权限，没有开项目。请管理员开通后再试。" : "Handing a topic to Script needs the Script module, so no project was started. Ask an admin to turn it on.");
+          return;
+        }
         start(async () => {
           const res = await startFromTopicAction({ kind: "topic", id: topicId }, { write: true });
           if ("error" in res && res.error) {
@@ -91,10 +103,14 @@ export function BacklogView({
             else if ("id" in old && old.id) router.push(`/script/${old.id}`);
             return;
           }
+          /* Why no draft is coming (the script is locked, or Script was taken
+             away since the page was drawn) is said, not dropped; the notice
+             lives in the layout, so it stays up across the move. */
+          if ("note" in res && res.note) notify(res.note, "info");
           if ("scriptId" in res && res.scriptId) router.push(`/script/${res.scriptId}${res.writing ? "?writing=1" : ""}`);
           else if ("projectId" in res && res.projectId) router.push(`/projects/${res.projectId}`);
-        })
-      }
+        });
+      }}
       onDrop={(topicId) =>
         start(async () => {
           await decideAction(topicId, "save");

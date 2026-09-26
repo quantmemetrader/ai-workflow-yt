@@ -1,7 +1,7 @@
 import "server-only";
 import { complete } from "@/lib/ai/openrouter";
 import { modelFor } from "@/lib/ai/models";
-import { studioBrief } from "@/lib/research/studio";
+import { studioBrief, type StudioBrief } from "@/lib/research/studio";
 import type { HotRow, PlatformKey } from "@/lib/research/platform-catalog";
 import { toSimplified } from "@/lib/text/simplified";
 
@@ -43,14 +43,16 @@ export async function judgeHot(
   platform: PlatformKey,
   rows: HotRow[],
   fetchedAt: number,
-  opts: { borrow?: boolean } = {},
+  /* `brief`: the studio's brief from the caller, when it judges many lists
+     for one studio (the collector builds it once per run); otherwise read here. */
+  opts: { borrow?: boolean; brief?: () => Promise<StudioBrief> } = {},
 ): Promise<Judged> {
   const key = `${tenantId}:${platform}:${fetchedAt}:${rows.length}:${opts.borrow ? "b" : "f"}`;
   const hit = cache.get(key);
   if (hit && Date.now() - hit.at < TTL_MS) return hit.judged;
   if (!rows.length) return {};
 
-  const brief = await studioBrief(tenantId);
+  const brief = await (opts.brief ? opts.brief() : studioBrief(tenantId));
   const list = rows.slice(0, MAX_ROWS).map((r, i) => `${i + 1}. ${r.phrase}${r.extra ? `（${r.extra}）` : ""}`);
 
   const prompt = [
