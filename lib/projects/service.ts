@@ -4,6 +4,7 @@ import { db } from "@/lib/db/client";
 import { chatChannels, chatMembers, chatMessages, hotSnapshots, ideas, relationTuples, seriesCache, settings, topics, users, scriptBeats, scripts, timelineItems, videoClips, videoExports, videoProjects, workProjects } from "@/lib/db/schema";
 import { newId } from "@/lib/ids";
 import type { Viewer } from "@/lib/auth/types";
+import { viewerById } from "@/lib/auth/viewer-by-id";
 import { createScript } from "@/lib/script/service";
 import { createProject as createVideoProject } from "@/lib/video/service";
 import { channelThread, createChannel } from "@/lib/chat/service";
@@ -63,12 +64,16 @@ export async function createWorkProject(
     mode?: string;
     source?: ProjectSource | { kind: string; label?: string; url?: string | null; evidence?: unknown[] } | null;
     scriptId?: string;
+    /** A video project that already goes with that script (one made by an
+     *  older hand-off), so the project takes it over instead of starting a
+     *  second, empty one beside it. */
+    videoProjectId?: string;
     /** The backlog topic (or idea) this project is about. */
     topicId?: string | null;
     /** What the new script starts with, when the project makes one. */
     script?: { topicId?: string | null; angle?: string | null; mandatoryPoints?: string[]; targetChannel?: string | null; aspect?: string | null; targetSeconds?: number | null; language?: string | null; subtitleLanguage?: string | null };
   },
-): Promise<{ id: string; channelSlug: string; channelId: string; scriptId: string }> {
+): Promise<{ id: string; channelSlug: string; channelId: string; scriptId: string; videoProjectId: string }> {
   const title = input.title.replace(/\s+/g, " ").trim().slice(0, 80) || "新项目";
   const id = newId("wp");
   const snapshot = (input.source ?? null) as ProjectSource | null;
@@ -85,7 +90,7 @@ export async function createWorkProject(
       language: input.script?.language ?? null,
       subtitleLanguage: input.script?.subtitleLanguage ?? null,
     }));
-  const videoProjectId = await createVideoProject(viewer, title, scriptId);
+  const videoProjectId = input.videoProjectId ?? (await createVideoProject(viewer, title, scriptId));
   const note = channelNote(snapshot, input.brief ?? null);
   const topic = [
     `这是项目《${title}》的对话，只谈这个项目。`,
@@ -118,7 +123,135 @@ export async function createWorkProject(
     createdBy: viewer.id,
   });
   await audit(viewer, "project.create", { module: "chat", objectType: "project", objectId: id, meta: { title, mode: input.mode ?? "full", topicId: input.topicId ?? null, from: snapshot?.key ?? snapshot?.kind ?? null } });
-  return { id, channelSlug: channel.slug ?? "", channelId: channel.id, scriptId };
+  return { id, channelSlug: channel.slug ?? "", channelId: channel.id, scriptId, videoProjectId };
+}
+
+/** What starting work inside a project needs from it. */
+export type ProjectHandle = { id: string; title: string; channelId: string; scriptId: string | null; videoProjectId: string | null };
+
+/**
+ * The project a script's work belongs to, made when there is none.
+ *
+ * Everything lives under a project. A script written or approved outside
+ * one — an older draft from the Script library, an approval hand-off, the
+ * script page's "交给剪辑师" — used to get a bare video project beside it
+ * (`projectFromScript`), which no project page, no project chat and no
+ * sidebar entry knew about: 剪辑师 was handed a cut nobody could find. Now
+ * the script's live project is used, or one is started around it (the
+ * studio can see it, as any project started from a pick), taking over the
+ * video project the script already has, if any.
+ *
+ * Started as the script's owner when that is somebody who still exists, so
+ * the script and the video are shared with the studio by someone allowed to
+ * share them; otherwise as `viewer`.
+ */
+export async function ensureScriptProject(viewer: Viewer, scriptId: string): Promise<(ProjectHandle & { created: boolean }) | null> {
+  const [existing] = await db
+    .select({ id: workProjects.id, title: workProjects.title, channelId: workProjects.channelId, scriptId: workProjects.scriptId, videoProjectId: workProjects.videoProjectId })
+    .from(workProjects)
+    .where(and(eq(workProjects.tenantId, viewer.tenantId), eq(workProjects.scriptId, scriptId), isNull(workProjects.deletedAt)))
+    .orderBy(workProjects.createdAt)
+    .limit(1);
+  if (existing) return { ...existing, created: false };
+
+  const [script] = await db
+    .select({ id: scripts.id, title: scripts.title, angle: scripts.angle, topicId: scripts.topicId, ownerId: scripts.ownerId })
+    .from(scripts)
+    .where(and(eq(scripts.id, scriptId), eq(scripts.tenantId, viewer.tenantId), isNull(scripts.deletedAt)))
+    .limit(1);
+  if (!script) return null;
+  const [video] = await db
+    .select({ id: videoProjects.id })
+    .from(videoProjects)
+    .where(and(eq(videoProjects.scriptId, scriptId), eq(videoProjects.tenantId, viewer.tenantId), isNull(videoProjects.deletedAt)))
+    .orderBy(desc(videoProjects.updatedAt))
+    .limit(1);
+
+  const owner = (script.ownerId && script.ownerId !== viewer.id ? await viewerById(script.ownerId) : null) ?? viewer;
+  const created = await createWorkProject(owner, {
+    title: script.title,
+    brief: script.angle ?? null,
+    mode: "full",
+    source: { kind: "script", label: "从脚本开始" },
+    scriptId,
+    ...(video ? { videoProjectId: video.id } : {}),
+    topicId: script.topicId ?? null,
+  });
+  return { id: created.id, title: script.title.replace(/\s+/g, " ").trim().slice(0, 80) || "新项目", channelId: created.channelId, scriptId, videoProjectId: created.videoProjectId, created: true };
+}
+
+/**
+ * A live project to write a new script into, by its exact title: one this
+ * person may see, whose script is still empty and not locked. So "写《X》的
+ * 脚本" asked outside a project fills the project somebody already started
+ * for X (from a morning brief, a pick, the plan) instead of starting a
+ * second one beside it. A project whose script already has a draft is not
+ * rewritten from outside it; a new project is started instead.
+ */
+export async function emptyProjectTitled(viewer: Viewer, title: string): Promise<ProjectHandle | null> {
+  const wanted = title.replace(/\s+/g, " ").trim().slice(0, 80);
+  if (!wanted) return null;
+  const [row] = await db
+    .select({ id: workProjects.id, title: workProjects.title, channelId: workProjects.channelId, scriptId: workProjects.scriptId, videoProjectId: workProjects.videoProjectId })
+    .from(workProjects)
+    .innerJoin(scripts, and(eq(scripts.id, workProjects.scriptId), isNull(scripts.deletedAt)))
+    .where(
+      and(
+        eq(workProjects.tenantId, viewer.tenantId),
+        isNull(workProjects.deletedAt),
+        eq(workProjects.status, "active"),
+        visibleTo(viewer),
+        sql`lower(${workProjects.title}) = lower(${wanted})`,
+        sql`${scripts.lockedVersion} is null`,
+        sql`not exists (select 1 from ${scriptBeats} b where b.script_id = ${scripts.id})`,
+      ),
+    )
+    .orderBy(workProjects.createdAt)
+    .limit(1);
+  return row ?? null;
+}
+
+/** How many clips are in a video project's bin: what 剪辑师 has to cut from. */
+export async function clipCount(videoProjectId: string): Promise<number> {
+  const [row] = await db.select({ n: count() }).from(videoClips).where(eq(videoClips.projectId, videoProjectId));
+  return Number(row?.n ?? 0);
+}
+
+/**
+ * The project each chat message is about, for the "打开项目" button — only
+ * projects this person may see.
+ *
+ * A message names a project outright (`meta.project`, a hand-off's or a
+ * receipt's work project), or through the script or the video project it
+ * handed over, which is how every hand-off from before projects existed
+ * still finds its way to the project it belongs to.
+ */
+export async function projectLinks(
+  viewer: Viewer,
+  refs: { messageId: string; projectIds: string[]; scriptIds: string[]; videoIds: string[] }[],
+): Promise<Map<string, { id: string; title: string }>> {
+  const out = new Map<string, { id: string; title: string }>();
+  const projectIds = [...new Set(refs.flatMap((r) => r.projectIds))].slice(0, 200);
+  const scriptIds = [...new Set(refs.flatMap((r) => r.scriptIds))].slice(0, 200);
+  const videoIds = [...new Set(refs.flatMap((r) => r.videoIds))].slice(0, 200);
+  if (!projectIds.length && !scriptIds.length && !videoIds.length) return out;
+  const anyOf = [
+    projectIds.length ? inArray(workProjects.id, projectIds) : null,
+    scriptIds.length ? inArray(workProjects.scriptId, scriptIds) : null,
+    videoIds.length ? inArray(workProjects.videoProjectId, videoIds) : null,
+  ].filter((c): c is NonNullable<typeof c> => c !== null);
+  const rows = await db
+    .select({ id: workProjects.id, title: workProjects.title, scriptId: workProjects.scriptId, videoProjectId: workProjects.videoProjectId })
+    .from(workProjects)
+    .where(and(eq(workProjects.tenantId, viewer.tenantId), isNull(workProjects.deletedAt), visibleTo(viewer), sql`(${sql.join(anyOf.map((c) => sql`(${c})`), sql` or `)})`));
+  for (const r of refs) {
+    const hit =
+      rows.find((p) => r.projectIds.includes(p.id)) ??
+      rows.find((p) => p.scriptId !== null && r.scriptIds.includes(p.scriptId)) ??
+      rows.find((p) => p.videoProjectId !== null && r.videoIds.includes(p.videoProjectId));
+    if (hit) out.set(r.messageId, { id: hit.id, title: hit.title });
+  }
+  return out;
 }
 
 export async function listWorkProjects(viewer: Viewer, limit = 40, order: "activity" | "created" = "activity"): Promise<WorkProjectRow[]> {
@@ -294,7 +427,23 @@ export type ProjectDetail = {
   /** Where the director has got to, when it is at work on this project. */
   director: { state: string; step: string | null; error: string | null } | null;
   steps: ProjectStep[];
-  messages: { id: string; author: string; agent: AgentKey | null; body: string; at: string; actions: import("@/lib/agents/cards").CardAction[]; done: import("@/lib/agents/cards").CardDone | null }[];
+  messages: {
+    id: string;
+    author: string;
+    agent: AgentKey | null;
+    body: string;
+    at: string;
+    actions: import("@/lib/agents/cards").CardAction[];
+    done: import("@/lib/agents/cards").CardDone | null;
+    /** What it handed over (the script, the video), drawn as links. */
+    handoff: import("@/lib/chat/handoff").ChatHandoff | null;
+    /** Another project it names, when that is not this one. */
+    otherProject: { id: string; title: string } | null;
+    /** A long job it started, for the live chip. */
+    job: { videoProjectId: string } | null;
+  }[];
+  /** The employees at work in this project's chat right now, and on what. */
+  pending: import("@/lib/chat/pending").PendingRow[];
 };
 
 /** What the five steps are worked out from. Everything a project's own rows
@@ -416,6 +565,11 @@ export async function workProjectDetail(viewer: Viewer, id: string, zh: boolean,
     channelThread(viewer, ch.slug, messageLimit),
   ]);
 
+  /* A message in this chat that names some other project (a hand-off
+     that came from elsewhere) gets a way there; this project's own is
+     already on screen. */
+  const links = thread ? await projectLinks(viewer, thread.messages.map((m) => ({ messageId: m.id, ...m.refs }))) : new Map<string, { id: string; title: string }>();
+
   const steps = buildSteps(
     {
       mode: p.mode,
@@ -456,7 +610,11 @@ export async function workProjectDetail(viewer: Viewer, id: string, zh: boolean,
       at: m.createdAt.toISOString(),
       actions: m.actions,
       done: m.done,
+      handoff: m.handoff,
+      otherProject: links.get(m.id) && links.get(m.id)!.id !== p.id ? links.get(m.id)! : null,
+      job: m.job,
     })),
+    pending: thread?.pending ?? [],
   };
 }
 

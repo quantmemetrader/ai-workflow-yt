@@ -6,7 +6,12 @@ import { getViewer } from "@/lib/auth/dal";
 import { AGENT_KEYS, parseAgentMentions, type AgentKey } from "@/lib/agents/catalog";
 import { readCardActions, readCardDone } from "@/lib/agents/cards";
 import { dispatchAgentMentions, handoffMeta, replyTarget } from "@/lib/agents/mentions";
-import { pressedHandoff } from "@/lib/agents/handoff";
+import { planHandoff, pressedHandoff } from "@/lib/agents/handoff";
+import { agentViewer } from "@/lib/agents";
+import { endPending, startPending, stepPending } from "@/lib/chat/pending";
+import { oneGo } from "@/lib/projects/one-go";
+import { visibleProject } from "@/lib/projects/service";
+import { canEditProject } from "@/lib/video/access";
 import { agentTag } from "@/lib/agents/catalog";
 import { setFileAccess } from "@/lib/files/access";
 import { conversationDetail } from "@/lib/chat/service";
@@ -175,6 +180,7 @@ export async function pressCardAction(slug: string, messageId: string, actionId:
   if (!message) return { error: "No such message" };
 
   const action = readCardActions(message.meta).find((a) => a.id === actionId);
+  if (action?.kind === "run") return runCardAction(viewer, channel, message.id, action, slug);
   if (!action || action.kind !== "say" || !action.body) return { error: "No such button" };
 
   const already = readCardDone(message.meta);
@@ -182,8 +188,16 @@ export async function pressCardAction(slug: string, messageId: string, actionId:
 
   /* A button that hands checked work on — the approval's "让剪辑师出粗剪" —
      carries it, so the colleague's turn opens inside that script and
-     project instead of in a channel that is neither (`pressedHandoff`). */
-  const handoff = await pressedHandoff(viewer, message.meta, action.body);
+     project instead of in a channel that is neither (`pressedHandoff`).
+     The morning plan's "交给编剧" hands 编剧 the project its to-do is
+     written into, found or started now (`planHandoff`): the plan lives in
+     #研究日报, which is no project, and the draft used to land loose. */
+  const handoff =
+    (await pressedHandoff(viewer, message.meta, action.body)) ??
+    (await planHandoff(viewer, message.meta, action.id).catch((err) => {
+      console.error("[chat] could not find or start the plan item's project", err);
+      return null;
+    }));
   await postMessage(viewer, channel.id, action.body, handoff ? { handoff: handoffMeta(handoff) } : undefined);
   await markCardDone(channel.id, messageId, {
     actionId,
@@ -206,6 +220,71 @@ export async function pressCardAction(slug: string, messageId: string, actionId:
     });
   }
 
+  return {};
+}
+
+/**
+ * A `run` button: one of the operations a screen already offers, pressed
+ * from the chat (`RUN_OPS` in lib/agents/cards).
+ *
+ * "先用素材库画面", under 剪辑师's request for the host's clips, is the
+ * project page's stock-footage one-go (`lib/projects/one-go.ts`) and is
+ * checked as that page's route checks it: the Video module, a project this
+ * person may see, edit rights on its video. The press is recorded on the
+ * card and said in the channel as the person who pressed it, like any
+ * other; the work runs after the response — importing clips takes a while —
+ * with 剪辑师's working row up meanwhile ("正在找素材", then "正在渲染"),
+ * and ends in a message from 剪辑师 saying what was done, with a live chip
+ * on the render. Nothing a model decides: the words are what the code did.
+ */
+async function runCardAction(
+  viewer: NonNullable<Awaited<ReturnType<typeof getViewer>>>,
+  channel: { id: string; kind: string },
+  messageId: string,
+  action: { id: string; op?: string; projectId?: string },
+  slug: string,
+) {
+  const zh = (viewer.locale ?? "zh-CN").startsWith("zh");
+  if (action.op !== "stock-cut" || !action.projectId) return { error: "No such button" };
+  if (!viewer.modules.includes("video")) return { error: zh ? "需要视频模块的权限" : "This needs the Video module" };
+  const project = await visibleProject(viewer, action.projectId);
+  if (!project?.videoProjectId) return { error: zh ? "没有这个项目" : "No such project" };
+  if (!(await canEditProject(viewer, project.videoProjectId))) {
+    return { error: zh ? "这个项目的视频只分享给你查看，请找负责人要编辑权限。" : "This project's video was shared with you to view. Ask its owner for edit access." };
+  }
+  const message = await channelMessage(channel.id, messageId);
+  if (!message) return { error: "No such message" };
+  if (readCardDone(message.meta)) return { error: "Somebody already answered this" };
+
+  await postMessage(viewer, channel.id, zh ? `先用素材库画面给《${project.title}》做一版。` : `Use stock footage for "${project.title}" for now.`, { ran: { op: "stock-cut", projectId: project.id } });
+  await markCardDone(channel.id, messageId, { actionId: action.id, by: viewer.nameLocal || viewer.name, at: new Date().toISOString() });
+  revalidatePath(`/chat/c/${slug}`);
+
+  after(async () => {
+    const editor = await agentViewer(viewer.tenantId, "video");
+    const pendingId = await startPending(editor, channel.id, "video", "footage");
+    try {
+      const res = await oneGo(viewer, project.id, {});
+      if (pendingId && res.ok) await stepPending(pendingId, "rendering", { videoProjectId: res.videoProjectId }).catch(() => {});
+      const text = res.ok
+        ? res.brought > 0
+          ? `从素材库找了 ${res.brought} 段画面放进《${project.title}》的素材箱，按描述拼成了一版，正在渲染（9:16）。渲染完就能在项目里播放；主持人的素材到了，我再按脚本重新剪。`
+          : res.way === "director"
+            ? `《${project.title}》的素材箱里已经有素材，交给导演按脚本一次做完，正在进行：转写、粗剪、字幕、渲染。`
+            : `用《${project.title}》素材箱里的画面拼成了一版，正在渲染（9:16）。`
+        : `没能用素材库画面给《${project.title}》做一版：${res.error}`;
+      await postMessage(editor, channel.id, text, {
+        agent: "video",
+        project: { id: project.id, title: project.title },
+        ...(res.ok ? { job: { videoProjectId: res.videoProjectId } } : { failed: true }),
+      });
+    } catch (err) {
+      console.error("[chat] the stock-footage one-go failed", err);
+      await postMessage(editor, channel.id, `没能用素材库画面给《${project.title}》做一版，请到项目页再试一次。`, { agent: "video", project: { id: project.id, title: project.title }, failed: true }).catch(() => null);
+    } finally {
+      await endPending(pendingId);
+    }
+  });
   return {};
 }
 

@@ -13,7 +13,9 @@ import { Markdown } from "@/components/ui/Markdown";
 import { formatTextarea, type Format } from "./composer-format";
 import { FormattedPreview } from "@/components/ui/FormattedPreview";
 import { useResizable } from "@/components/ui/Resizer";
-import { clock, dayLabel } from "@/components/chat/when";
+import { clock, dayLabel, sameDay } from "@/components/chat/when";
+import { ROSTER } from "@/lib/agents/lanes";
+import { Icon } from "@/components/ui/Icon";
 import { asksSomething, initials, soft, threadCss, tidyMarkdown } from "@/components/chat/look";
 import type { Locale } from "@/lib/i18n";
 
@@ -54,6 +56,52 @@ export type ThreadMessage = {
 };
 
 /**
+ * An employee's page (`/chat?agent=…`, or a thread one of them answered):
+ * this person's conversations with that employee, and what the employee
+ * said lately in the channels this person can read.
+ */
+export type AgentHistory = {
+  agent: AgentKey;
+  /** The thread on screen, when there is one. */
+  currentId: string | null;
+  conversations: { id: string; title: string; updatedAt: string; last: string }[];
+  lines: { id: string; body: string; at: string; where: { kind: "project" | "channel"; name: string; href: string } }[];
+};
+
+/**
+ * Three things worth asking each employee, for an employee's page with no
+ * conversation yet. Pressing one puts it in the box, tagged, to send or to
+ * finish ("……" is for the person to fill in).
+ */
+const SUGGESTIONS: Record<AgentKey, [string, string][]> = {
+  research: [
+    ["今天有什么值得做的选题？给我三个，说明为什么是现在", "What is worth making today? Three topics, and why now"],
+    ["看看我们频道最近哪条视频表现最好，为什么", "Which of our recent videos did best, and why?"],
+    ["对标账号这周都在做什么题材？", "What are the channels we watch making this week?"],
+  ],
+  planning: [
+    ["今天的计划是什么？每件事谁负责？", "What is today's plan, and who has each part?"],
+    ["现在在做的项目都到哪一步了？", "Where has each project in progress got to?"],
+    ["这周先做哪个选题最划算？", "Which topic should we make first this week?"],
+  ],
+  script: [
+    ["帮我写一个 3 分钟的 YouTube 脚本，主题：……", "Write a 3-minute YouTube script about …"],
+    ["脚本库里最近写了哪些脚本？", "Which scripts were written lately?"],
+    ["把最新的脚本开头改得更抓人", "Make the newest script's opening grab harder"],
+  ],
+  video: [
+    ["现在哪些项目在等素材？", "Which projects are waiting for footage?"],
+    ["最新的项目可以出粗剪了吗？缺什么？", "Can the newest project be cut yet? What is missing?"],
+    ["用素材库画面给最新的项目拼一版 15 秒的预告", "Put a 15-second teaser together for the newest project from stock footage"],
+  ],
+  article: [
+    ["把最新的脚本改写成一篇 LinkedIn 短文", "Turn the newest script into a short LinkedIn post"],
+    ["最近都发布了哪些内容？", "What did we publish lately?"],
+    ["给最新的项目写各平台的标题和简介", "Write titles and descriptions per platform for the newest project"],
+  ],
+};
+
+/**
  * The thread's rules: the shared ones every chat thread uses (`threadCss`),
  * plus this screen's own — the employee cards on the empty screen, the
  * "who answers" chip and the faces beside it in the composer.
@@ -71,6 +119,15 @@ ${threadCss("[data-agent-screen]")}
 [data-agent-screen] .faces { display: flex; align-items: center; gap: 3px; margin-left: 2px; }
 [data-agent-screen] .faces button { border: 1px solid transparent; background: transparent; border-radius: 7px; padding: 2px; cursor: pointer; display: flex; opacity: .8; transition: opacity .15s, border-color .15s; }
 [data-agent-screen] .faces button:hover { opacity: 1; border-color: #e5e5e5; }
+[data-agent-screen] .hist { display: block; padding: 8px 10px; border-radius: 9px; color: #171717; text-decoration: none; border: 1px solid transparent; }
+[data-agent-screen] .hist:hover { background: #f4f4f5; }
+[data-agent-screen] .hist.on { background: #fff; border-color: #e5e5e5; }
+[data-agent-screen] .hist .t { font-size: 12.5px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+[data-agent-screen] .hist .l { font-size: 11.5px; color: #8a8a8a; margin-top: 2px; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; line-height: 1.45; }
+[data-agent-screen] .said { display: flex; gap: 10px; padding: 10px 12px; border: 1px solid #ececec; border-radius: 11px; background: #fff; text-decoration: none; color: #171717; }
+[data-agent-screen] .said:hover { border-color: #d4d4d4; }
+[data-agent-screen] .ask { display: flex; align-items: center; gap: 8px; width: 100%; padding: 9px 12px; border: 1px solid #ececec; border-radius: 10px; background: #fff; cursor: pointer; text-align: left; font: inherit; font-size: 13px; color: #262626; letter-spacing: inherit; }
+[data-agent-screen] .ask:hover { border-color: #d4d4d4; background: #fafafa; }
 [data-agent-screen] .tool { display: inline-flex; align-items: center; gap: 7px; height: 26px; padding: 0 10px; border: 1px solid #ececec; border-radius: 8px; background: #fafafa; margin: 2px 6px 8px 0; font-size: 12px; color: #525252; }
 `;
 
@@ -103,7 +160,11 @@ export function AgentScreen({
   initialPrompt,
   initialAgent = null,
   now,
+  history = null,
 }: {
+  /** An employee's page: their threads with this person and their recent
+   *  channel lines, drawn around the conversation (`/chat?agent=…`). */
+  history?: AgentHistory | null;
   conversationId: string | null;
   initialMessages: ThreadMessage[];
   locale: Locale;
@@ -292,7 +353,7 @@ export function AgentScreen({
         }
       }
 
-      if (created && !initialId) router.replace(`/chat/t/${created}`);
+      if (created && !initialId) router.replace(`/chat/t/${created}${history ? `?agent=${history.agent}` : ""}`);
       else router.refresh();
     } catch (err) {
       if ((err as Error).name === "AbortError") patchLast((m) => ({ ...m, status: "stopped" }));
@@ -320,6 +381,10 @@ export function AgentScreen({
     edge: "left",
   });
   const today = now ?? messages[0]?.createdAt ?? "1970-01-01T00:00:00.000Z";
+  /* The employee's side rail: their other threads with this person, and —
+     beside a conversation — their latest lines in the channels. With no
+     conversation yet those lines are the page itself (`AgentEmpty`). */
+  const showRail = Boolean(history && (history.conversations.length > 0 || (messages.length > 0 && history.lines.length > 0)));
 
   return (
     <div data-agent-screen="" style={{ flexGrow: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
@@ -339,10 +404,15 @@ export function AgentScreen({
         {/* The host's own assistant is the little pixel robot, next to the
             employees' pixel faces — it used to be a black cube that looked
             like nothing else in the product. */}
-        <AgentIcon agent={null} size={32} radius={9} />
+        <AgentIcon agent={history?.agent ?? null} size={32} radius={9} />
         <div style={{ minWidth: 0 }}>
           <div style={{ fontSize: 15, fontWeight: 600, display: "flex", alignItems: "center", gap: 7 }}>
-            {zh ? "你的助理" : "Your agent"}
+            {history ? name(history.agent) : zh ? "你的助理" : "Your agent"}
+            {history ? (
+              <span className="role" style={{ background: soft(AGENT_TINTS[history.agent], 0.75), color: AGENT_COLORS[history.agent] }}>
+                {zh ? AGENT_LABELS[history.agent].title : AGENT_LABELS[history.agent].titleEn}
+              </span>
+            ) : null}
             <span className="role" style={{ background: "#f4f4f5", color: "#525252" }}>
               {zh ? "私密" : "Private"}
             </span>
@@ -357,9 +427,13 @@ export function AgentScreen({
               textOverflow: "ellipsis",
             }}
           >
-            {zh
-              ? "只有你能看到 · 权限与你完全一致 · @ 一位 AI 同事就由他来回答"
-              : "Only you can see this · works with exactly your permissions · @ an AI teammate to have them answer"}
+            {history
+              ? zh
+                ? `你和${name(history.agent)}的对话，只有你能看到 · ${name(history.agent)}用自己的权限回答`
+                : `Your conversations with the ${name(history.agent)}, only you can see them · it answers with its own permissions`
+              : zh
+                ? "只有你能看到 · 权限与你完全一致 · @ 一位 AI 同事就由他来回答"
+                : "Only you can see this · works with exactly your permissions · @ an AI teammate to have them answer"}
           </div>
         </div>
         <div style={{ flexGrow: 1 }} />
@@ -407,13 +481,35 @@ export function AgentScreen({
               // of nothing between the greeting and the box you type in —
               // "ui looks bad since its so up from input bar" — which reads as
               // a page that failed to load rather than one waiting for you.
-              justifyContent: messages.length === 0 ? "flex-end" : "flex-start",
+              // Bottom-aligned by a spacer rather than `flex-end`: an
+              // employee's page can open taller than the pane, and flex-end
+              // pushes the top of an overflowing column out of reach.
+              justifyContent: "flex-start",
               paddingBottom: 10,
             }}
           >
+            {messages.length === 0 ? <div style={{ flexGrow: 1 }} /> : null}
             {messages.length === 0 ? (
               <div style={{ paddingTop: 22 }}>
-                <Empty zh={zh} picked={answering} onPick={ask} />
+                {history ? (
+                  <AgentEmpty
+                    history={history}
+                    zh={zh}
+                    locale={locale}
+                    today={today}
+                    onAsk={(text) => {
+                      setInput(`${agentTag(history.agent)} ${text}`);
+                      requestAnimationFrame(() => {
+                        const el = box.current;
+                        if (!el) return;
+                        el.focus();
+                        el.setSelectionRange(el.value.length, el.value.length);
+                      });
+                    }}
+                  />
+                ) : (
+                  <Empty zh={zh} picked={answering} onPick={ask} />
+                )}
               </div>
             ) : (
               <>
@@ -622,7 +718,7 @@ export function AgentScreen({
           that should not be drawn: it appears the moment an answer rests on a
           file, and takes the width back when it does not.
         */}
-        {sources.length > 0 ? (
+        {sources.length > 0 || showRail ? (
           <div
             style={{
               width: sourcesWidth,
@@ -635,6 +731,9 @@ export function AgentScreen({
             }}
           >
             {sourcesHandle}
+            {history && showRail ? <HistoryRail history={history} zh={zh} locale={locale} today={today} /> : null}
+            {sources.length > 0 ? (
+            <>
             <div
               style={{
                 height: 44,
@@ -643,6 +742,7 @@ export function AgentScreen({
                 alignItems: "center",
                 padding: "0 16px",
                 borderBottom: "1px solid #ededed",
+                borderTop: history && showRail ? "1px solid #ededed" : undefined,
               }}
             >
               <span className="lbl" style={{ padding: 0 }}>
@@ -719,6 +819,8 @@ export function AgentScreen({
                 </p>
               )}
             </div>
+            </>
+            ) : null}
           </div>
         ) : null}
       </div>
@@ -967,6 +1069,160 @@ function Empty({ zh, picked, onPick }: { zh: boolean; picked: AgentKey | null; o
           </button>
         ))}
       </div>
+    </div>
+  );
+}
+
+/** "09:38" today, "昨天"/"周三"/"9月20日" before, in the studio's zone. */
+function whenLabel(iso: string, today: string, locale: Locale): string {
+  return sameDay(iso, today) ? clock(iso, locale) : dayLabel(iso, today, locale);
+}
+
+/**
+ * The side rail of an employee's page: this person's threads with them
+ * (the one on screen marked, and a way to start another), then what the
+ * employee said lately in the channels, each with where it was said.
+ */
+function HistoryRail({ history, zh, locale, today }: { history: AgentHistory; zh: boolean; locale: Locale; today: string }) {
+  const who = zh ? AGENT_LABELS[history.agent].nameLocal : AGENT_LABELS[history.agent].name;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", minHeight: 0, overflowY: "auto" }}>
+      <div style={{ height: 44, flexShrink: 0, display: "flex", alignItems: "center", gap: 8, padding: "0 12px 0 16px", borderBottom: "1px solid #ededed" }}>
+        <span className="lbl" style={{ padding: 0, flexGrow: 1 }}>
+          {zh ? `和${who}的对话` : `With the ${who}`} · {history.conversations.length}
+        </span>
+        <Link
+          href={`/chat?agent=${history.agent}&fresh=1`}
+          prefetch={false}
+          className="chip"
+          style={{ height: 26, fontSize: 11.5, gap: 5 }}
+          title={zh ? "开一个新对话" : "Start a new conversation"}
+        >
+          <Icon name="plus" size={12} />
+          {zh ? "新对话" : "New"}
+        </Link>
+      </div>
+      <div style={{ padding: "8px 8px 4px", display: "flex", flexDirection: "column", gap: 2 }}>
+        {history.conversations.length === 0 ? (
+          <p className="mut" style={{ padding: "4px 8px", fontSize: 12 }}>
+            {zh ? "还没有对话。" : "No conversations yet."}
+          </p>
+        ) : (
+          history.conversations.map((c) => (
+            <Link key={c.id} href={`/chat/t/${c.id}?agent=${history.agent}`} prefetch={false} className={`hist${c.id === history.currentId ? " on" : ""}`}>
+              <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
+                <span className="t" style={{ flexGrow: 1, minWidth: 0 }}>
+                  {c.title === "New chat" ? (zh ? "新对话" : "New chat") : c.title}
+                </span>
+                <span style={{ fontSize: 11, color: "#a3a3a3", flexShrink: 0 }}>{whenLabel(c.updatedAt, today, locale)}</span>
+              </div>
+              {c.last ? <div className="l">{c.last}</div> : null}
+            </Link>
+          ))
+        )}
+      </div>
+      {history.lines.length ? (
+        <>
+          <div style={{ padding: "12px 16px 6px" }}>
+            <span className="lbl" style={{ padding: 0 }}>
+              {zh ? "最近在频道里" : "Lately in the channels"}
+            </span>
+          </div>
+          <div style={{ padding: "0 8px 12px", display: "flex", flexDirection: "column", gap: 2 }}>
+            {history.lines.slice(0, 5).map((l) => (
+              <Link key={l.id} href={l.where.href} prefetch={false} className="hist">
+                <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
+                  <span style={{ fontSize: 11.5, color: "#525252", flexGrow: 1, minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    {l.where.kind === "project" ? (zh ? `项目 · ${l.where.name}` : `Project · ${l.where.name}`) : `#${l.where.name}`}
+                  </span>
+                  <span style={{ fontSize: 11, color: "#a3a3a3", flexShrink: 0 }}>{whenLabel(l.at, today, locale)}</span>
+                </div>
+                <div className="l">{l.body}</div>
+              </Link>
+            ))}
+          </div>
+        </>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * An employee's page with no conversation on screen: who they are and what
+ * they do, three things to ask, and — so the page is never blank — what
+ * they said lately in the channels this person can read, each a link to
+ * where it was said.
+ */
+function AgentEmpty({
+  history,
+  zh,
+  locale,
+  today,
+  onAsk,
+}: {
+  history: AgentHistory;
+  zh: boolean;
+  locale: Locale;
+  today: string;
+  onAsk: (text: string) => void;
+}) {
+  const k = history.agent;
+  const a = AGENT_LABELS[k];
+  const who = zh ? a.nameLocal : a.name;
+  return (
+    <div style={{ padding: "0 24px 18px", maxWidth: 760 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <AgentIcon agent={k} size={44} radius={12} />
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontSize: 17, fontWeight: 600 }}>{zh ? `问${who}` : `Ask the ${who}`}</div>
+          <div className="mut" style={{ marginTop: 3, lineHeight: 1.55 }}>
+            {zh ? `${who}负责：${ROSTER[k]}。` : `${a.hintEn}.`}
+          </div>
+        </div>
+      </div>
+      <p className="mut" style={{ marginTop: 10, lineHeight: 1.6 }}>
+        {history.conversations.length
+          ? zh
+            ? `这里是一个新对话；你和${who}之前的对话在右边。`
+            : `This is a new conversation; your earlier ones with the ${who} are on the right.`
+          : zh
+            ? `你还没有单独问过${who}。在下面直接写，或者从这几个开始：`
+            : `You have not asked the ${who} anything here yet. Write below, or start with one of these:`}
+      </p>
+      <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 10 }}>
+        {SUGGESTIONS[k].map(([zhText, enText]) => (
+          <button key={zhText} type="button" className="ask" onClick={() => onAsk(zh ? zhText : enText)}>
+            <span style={{ color: AGENT_COLORS[k], display: "flex" }}>
+              <Icon name="comment" size={14} />
+            </span>
+            <span style={{ minWidth: 0 }}>{zh ? zhText : enText}</span>
+          </button>
+        ))}
+      </div>
+      {history.lines.length ? (
+        <div style={{ marginTop: 20 }}>
+          <div className="lbl" style={{ padding: 0, marginBottom: 8 }}>
+            {zh ? `${who}最近在频道里说的` : `What the ${who} said lately in the channels`}
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {history.lines.slice(0, 4).map((l) => (
+              <Link key={l.id} href={l.where.href} prefetch={false} className="said">
+                <AgentIcon agent={k} size={26} radius={7} />
+                <div style={{ minWidth: 0, flexGrow: 1 }}>
+                  <div style={{ display: "flex", alignItems: "baseline", gap: 7, fontSize: 11.5 }}>
+                    <span style={{ fontWeight: 600, color: AGENT_COLORS[k] }}>{who}</span>
+                    <span style={{ color: "#525252", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0 }}>
+                      {l.where.kind === "project" ? (zh ? `在项目《${l.where.name}》` : `in the project “${l.where.name}”`) : zh ? `在 #${l.where.name}` : `in #${l.where.name}`}
+                    </span>
+                    <span style={{ color: "#a3a3a3", marginLeft: "auto", flexShrink: 0 }}>{whenLabel(l.at, today, locale)}</span>
+                  </div>
+                  <div style={{ fontSize: 13, lineHeight: 1.55, marginTop: 3, color: "#2b343d", overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical" }}>{l.body}</div>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

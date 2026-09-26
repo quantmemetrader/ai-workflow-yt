@@ -256,7 +256,10 @@ export async function readHome(viewer: Viewer, zh: boolean, opts: { runningFor?:
      that has been waiting longest is the thing to do next. */
   const decisions: Decision[] = [];
   for (const m of recent) {
-    const actions = readCardActions(m.meta).filter((a) => a.kind === "say");
+    /* A decision is a press that does something: a line to a colleague, or
+       one of the project page's own operations (剪辑师's "先用素材库画面"
+       beside "上传素材" when it is waiting for the host's clips). */
+    const actions = readCardActions(m.meta).filter((a) => a.kind === "say" || a.kind === "run");
     if (!actions.length || readCardDone(m.meta)) continue;
     const channel = byId.get(m.channelId);
     if (!channel) continue;

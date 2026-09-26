@@ -2,7 +2,9 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { ChannelSurface, type ChannelMember, type ChannelMessage } from "@/components/chat/ChannelSurface";
+import { ChannelSurface, type ChannelMember, type ChannelMessage, type ChannelPending } from "@/components/chat/ChannelSurface";
+import { pendingStamp } from "@/lib/agents/steps";
+import { parseAgentMentions } from "@/lib/agents/catalog";
 import { pressCardAction, sendChannelMessage } from "@/app/(app)/chat/actions";
 import { MembersSheet } from "@/components/chat/MembersSheet";
 import { AgentDock } from "@/components/shell/AgentDock";
@@ -42,8 +44,11 @@ export function ChannelView({
   now,
   isDirect = false,
   directAvatar = null,
+  pending: workingRows = [],
 }: {
   slug: string;
+  /** The employees at work in this channel, each on its current step. */
+  pending?: ChannelPending[];
   /** Who is typing: the name the optimistic row is signed with while the
    * server's copy is on its way. It was the channel's name. */
   me: { name: string; avatarUrl: string | null };
@@ -104,8 +109,12 @@ export function ChannelView({
   // the thread when the answer changes. An idle open channel therefore costs a
   // single indexed read every few seconds, not a page render.
   const latest = messages.length ? messages[messages.length - 1].id : null;
+  /* Who is at work and on which step, as the pulse fingerprints it: a step
+     moving on ("正在看…" → "正在写脚本") is news too, though no message is. */
+  const working = pendingStamp(workingRows);
   useEffect(() => {
     let known = latest;
+    let knownWork = working;
     let stop = false;
 
     async function poll() {
@@ -115,9 +124,10 @@ export function ChannelView({
           cache: "no-store",
         });
         if (!res.ok) return;
-        const { latest: newest } = await res.json();
-        if (newest && newest !== known) {
+        const { latest: newest, pending: work = "" } = (await res.json()) as { latest: string | null; pending?: string };
+        if ((newest && newest !== known) || work !== knownWork) {
           known = newest;
+          knownWork = work;
           router.refresh();
         }
       } catch {
@@ -125,12 +135,14 @@ export function ChannelView({
       }
     }
 
-    const id = setInterval(poll, 5000);
+    /* Quicker while an employee is at work, so its steps are seen as they
+       happen; the ordinary pace otherwise. */
+    const id = setInterval(poll, working ? 2500 : 5000);
     return () => {
       stop = true;
       clearInterval(id);
     };
-  }, [router, slug, latest]);
+  }, [router, slug, latest, working]);
 
   function send(body: string, attachmentIds: string[]) {
     /*
@@ -165,6 +177,10 @@ export function ChannelView({
         return;
       }
       router.refresh();
+      /* An employee was brought in: its working row goes up a moment after
+         the response (the turn runs after it), so look once more soon
+         rather than leaving the room still for a whole poll. */
+      if (parseAgentMentions(body).length || ("answering" in res && res.answering)) setTimeout(() => router.refresh(), 1500);
     });
   }
 
@@ -187,6 +203,8 @@ export function ChannelView({
         return;
       }
       router.refresh();
+      /* Most presses start an employee; its working row follows shortly. */
+      setTimeout(() => router.refresh(), 1500);
     });
   }
 
@@ -199,6 +217,7 @@ export function ChannelView({
           memberCount={memberCount}
           members={members}
           messages={[...messages, ...optimistic]}
+          pending={workingRows}
           sending={pending}
           onSend={send}
           onPress={press}

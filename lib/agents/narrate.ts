@@ -55,12 +55,30 @@ async function projectTitle(job: Job): Promise<string | null> {
   return null;
 }
 
+/** The video project a job is about: named in its payload, or through its export. */
+async function videoProjectOf(job: Job): Promise<string | null> {
+  const payload = job.payload ?? {};
+  if (typeof payload.projectId === "string") return payload.projectId;
+  if (typeof payload.exportId !== "string") return null;
+  try {
+    const { rows } = await db.execute<{ project_id: string }>(sql`select project_id from video_exports where id = ${payload.exportId} limit 1`);
+    return rows[0]?.project_id ?? null;
+  } catch {
+    return null;
+  }
+}
+
 async function say(job: Job, phase: "start" | "done" | "failed", text: string) {
   const who = SPEAKS[job.type];
   if (!who) return;
   try {
+    /* "开始渲染…" carries the job, so the chat draws a live chip under it
+       (state and percent, `/api/chat/job`) and an "打开项目" button, instead
+       of twenty minutes of the same sentence. */
+    const videoProjectId = await videoProjectOf(job);
     await postAsAgent(job.tenantId, who, "production", text, {
       narration: { jobId: job.id, type: job.type, phase },
+      ...(videoProjectId ? { job: { videoProjectId } } : {}),
     });
   } catch (err) {
     // Narration must never fail the job it is narrating.

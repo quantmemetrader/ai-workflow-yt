@@ -1,7 +1,8 @@
 import "server-only";
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, isNull } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { captions, videoProjects } from "@/lib/db/schema";
+import { captions, videoProjects, workProjects } from "@/lib/db/schema";
+import { postMessage } from "@/lib/chat/service";
 import { agentViewer, postAsAgent } from "@/lib/agents";
 import { AGENT_LABELS, agentTag, type AgentKey } from "@/lib/agents/catalog";
 import type { CardAction } from "@/lib/agents/cards";
@@ -51,8 +52,10 @@ function clock(ms: number): string {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 }
 
-/** The buttons: hand it to the two colleagues who could start on it now. */
-function buttons(projectId: string, title: string): CardAction[] {
+/** The buttons: hand it to the two colleagues who could start on it now.
+ * Inside a project, "打开项目" opens the project page, where its clips,
+ * script and chat are; otherwise the video editor. */
+function buttons(projectId: string, title: string, workProjectId: string | null = null): CardAction[] {
   const hand = (key: AgentKey, what: string, tone: CardAction["tone"]): CardAction => ({
     id: `footage-${key}`,
     label: `交给${AGENT_LABELS[key].nameLocal}`,
@@ -64,13 +67,13 @@ function buttons(projectId: string, title: string): CardAction[] {
 
   return [
     hand("script", `《${title}》的素材已经转写好了，按上面这段，先写一版脚本。`, "primary"),
-    hand("video", `《${title}》的素材已经转写好了，先出一版粗剪。项目：/video?project=${projectId}`, "quiet"),
+    hand("video", `《${title}》的素材已经转写好了，先出一版粗剪。项目：${workProjectId ? `/projects/${workProjectId}` : `/video?project=${projectId}`}`, "quiet"),
     {
       id: "footage-open",
       label: "打开项目",
       labelEn: "Open the project",
       kind: "open",
-      href: `/video?project=${projectId}`,
+      href: workProjectId ? `/projects/${workProjectId}#clips` : `/video?project=${projectId}`,
       tone: "quiet",
     },
   ];
@@ -155,15 +158,31 @@ export async function proposeFromFootage(projectId: string): Promise<{ posted: s
   const body = (out?.text ?? "").replace(/<think>[\s\S]*?<\/think>/g, "").trim();
   if (!body) return { posted: null, why: "no model produced a read of the footage" };
 
-  const id = await postAsAgent(
-    project.tenantId,
-    setting.agent,
-    "production",
-    `🎬 **新素材 ·《${project.title}》**\n\n${body}`,
-    {
-      footage: { projectId, lines: lines.length, model: out!.model, costMicros: out!.costMicros },
-      actions: buttons(projectId, project.title),
-    },
-  );
+  /*
+   * Where the studio hears it: in the project's own chat when the footage
+   * is a project's — the host uploaded it on the project page, maybe after
+   * 剪辑师 asked for it there or in a channel — so the project page shows it
+   * and "交给剪辑师" hands 剪辑师 that project, script and video by id
+   * (`meta.work`, read by `pressedHandoff`), not a sentence to re-read.
+   * Footage outside any project is still told in #制作.
+   */
+  const [wp] = await db
+    .select({ id: workProjects.id, title: workProjects.title, channelId: workProjects.channelId, scriptId: workProjects.scriptId })
+    .from(workProjects)
+    .where(and(eq(workProjects.videoProjectId, projectId), eq(workProjects.tenantId, project.tenantId), isNull(workProjects.deletedAt)))
+    .limit(1);
+  const text = `**新素材 ·《${project.title}》**\n\n${body}`;
+  const meta = {
+    footage: { projectId, lines: lines.length, model: out!.model, costMicros: out!.costMicros },
+    actions: buttons(projectId, project.title, wp?.id ?? null),
+  };
+  const id = wp
+    ? await postMessage(viewer, wp.channelId, text, {
+        ...meta,
+        agent: setting.agent,
+        project: { id: wp.id, title: wp.title },
+        ...(wp.scriptId ? { work: { to: "video", scriptId: wp.scriptId, projectId, task: `素材到了（${lines.length} 句转写），按脚本出一版粗剪` } } : {}),
+      })
+    : await postAsAgent(project.tenantId, setting.agent, "production", text, meta);
   return { posted: id };
 }
