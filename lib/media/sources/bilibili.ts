@@ -85,8 +85,10 @@ async function viaWebApi(keyword: string, opts: SearchOpts): Promise<Candidate[]
       author: { name, url: r.mid ? `https://space.bilibili.com/${r.mid}` : undefined, id: r.mid ? String(r.mid) : undefined },
       thumb: pic,
       durationMs,
-      /* The search does not say; B站 uploads are landscape almost without exception. */
-      orientation: "landscape",
+      /* The search does not say which way up a video is, and B站 has plenty of
+         vertical uploads now; a guess here would be read as a fact by a picker.
+         The fetch measures the real frame. */
+      orientation: undefined,
       stats: { views: asCount(r.play), likes: asCount(r.like) },
       publishedAt: isoFromEpoch(r.pubdate),
       handle: { via: "yt-dlp", url: permalink },
@@ -145,7 +147,7 @@ async function viaYtDlp(keyword: string, opts: SearchOpts): Promise<Candidate[]>
       durationMs,
       width: e.width,
       height: e.height,
-      orientation: orientationOf(e.width, e.height) ?? "landscape",
+      orientation: orientationOf(e.width, e.height),
       stats: { views: asCount(e.view_count), likes: asCount(e.like_count) },
       publishedAt: isoFromEpoch(e.timestamp),
       handle: { via: "yt-dlp", url: permalink },

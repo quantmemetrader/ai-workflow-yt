@@ -165,10 +165,11 @@ export async function searchMedia(query: MediaQuery, opts: SearchMediaOpts): Pro
     let kept = 0;
     for (const c of row.candidates) {
       const u = permalinkKey(c.url);
-      const t = thumbKey(c.thumb);
-      if (seenUrl.has(u) || seenThumb.has(t)) continue;
+      /* No thumbnail is no evidence of sameness; without the guard every thumb-less candidate would be "the same" as the first. */
+      const t = c.thumb ? thumbKey(c.thumb) : null;
+      if (seenUrl.has(u) || (t && seenThumb.has(t))) continue;
       seenUrl.add(u);
-      seenThumb.add(t);
+      if (t) seenThumb.add(t);
       candidates.push(c);
       kept++;
     }

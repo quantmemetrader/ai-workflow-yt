@@ -41,6 +41,25 @@ export class ToolError extends Error {
 }
 
 /**
+ * The environment a child tool runs in: its own PATH with deno on it, a
+ * HOME for yt-dlp's and deno's caches, the locale and temp settings, and a
+ * proxy if the box has one. Not the whole of `process.env`, which holds
+ * every key the app has — a downloader has no business seeing them, and a
+ * child that crashes and prints its environment should print nothing worth
+ * reading.
+ */
+const CHILD_ENV_KEYS = ["HOME", "LANG", "LC_ALL", "LC_CTYPE", "TMPDIR", "TMP", "TEMP", "XDG_CACHE_HOME", "SSL_CERT_FILE", "SSL_CERT_DIR", "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "http_proxy", "https_proxy", "no_proxy"];
+
+function childEnv(): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = { NODE_ENV: process.env.NODE_ENV, PATH: `${DENO_DIR}:${process.env.PATH ?? "/usr/local/bin:/usr/bin:/bin"}` };
+  for (const k of CHILD_ENV_KEYS) if (process.env[k] !== undefined) env[k] = process.env[k];
+  return env;
+}
+
+/* Said once a process, not once a search: a tool that is not installed is a deployment fault, and the log should name it. */
+const missingSaid = new Set<string>();
+
+/**
  * Run a tool to completion. Killed outright at the timeout or when the
  * caller's signal fires: a search that has blown its budget should not keep
  * a Python process alive behind the answer.
@@ -60,12 +79,17 @@ export function run(
         signal: opts.signal,
         maxBuffer: opts.maxBuffer ?? 32 * 1024 * 1024,
         cwd: opts.cwd,
-        env: { ...process.env, PATH: `${DENO_DIR}:${process.env.PATH ?? "/usr/bin:/bin"}` },
+        env: childEnv(),
         windowsHide: true,
       },
       (err, stdout, stderr) => {
         if (err) {
-          const why = (err as NodeJS.ErrnoException).code === "ENOENT" ? `${cmd} is not installed` : `${path.basename(cmd)} failed: ${String(stderr).trim().split("\n").slice(-3).join(" | ").slice(0, 400) || err.message}`;
+          const missing = (err as NodeJS.ErrnoException).code === "ENOENT";
+          if (missing && !missingSaid.has(cmd)) {
+            missingSaid.add(cmd);
+            console.warn(`[media] ${path.basename(cmd)} is not installed at ${cmd}; every source that needs it will answer empty`);
+          }
+          const why = missing ? `${cmd} is not installed` : `${path.basename(cmd)} failed: ${String(stderr).trim().split("\n").slice(-3).join(" | ").slice(0, 400) || err.message}`;
           reject(new ToolError(why, String(stderr).slice(-2000)));
           return;
         }
@@ -73,6 +97,32 @@ export function run(
       },
     );
   });
+}
+
+/**
+ * A URL this module will fetch: http(s) to a public host. The addresses
+ * here come from other sites' search results, and a result that pointed at
+ * localhost or a private range would otherwise have the server fetch its
+ * own neighbours. A literal address is checked; a name that resolves inward
+ * is not, which is as far as a check without a resolver goes.
+ */
+export function assertFetchable(url: string): URL {
+  let u: URL;
+  try {
+    u = new URL(url);
+  } catch {
+    throw new ToolError("not a URL");
+  }
+  if (u.protocol !== "https:" && u.protocol !== "http:") throw new ToolError(`refusing to fetch a ${u.protocol.replace(":", "")} address`);
+  const host = u.hostname.replace(/^\[|\]$/g, "").toLowerCase();
+  const v4 = host.match(/^(\d+)\.(\d+)\.(\d+)\.(\d+)$/);
+  const privateV4 = v4 && (v4[1] === "10" || v4[1] === "127" || v4[1] === "0" || (v4[1] === "172" && Number(v4[2]) >= 16 && Number(v4[2]) <= 31) || (v4[1] === "192" && v4[2] === "168") || (v4[1] === "169" && v4[2] === "254") || (v4[1] === "100" && Number(v4[2]) >= 64 && Number(v4[2]) <= 127));
+  const privateV6 = host === "::1" || host === "::" || /^(fc|fd|fe[89ab])[0-9a-f]{0,2}:/.test(host) || host.startsWith("::ffff:");
+  const bareName = !host.includes(".") && !host.includes(":");
+  if (host === "localhost" || host.endsWith(".localhost") || host.endsWith(".local") || host.endsWith(".internal") || bareName || privateV4 || privateV6) {
+    throw new ToolError("refusing to fetch a private address");
+  }
+  return u;
 }
 
 /** A promise with a deadline. Past it the fallback is returned and the
@@ -88,6 +138,11 @@ export function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Pr
 
 export async function fetchText(url: string, init: RequestInit & { timeoutMs?: number } = {}): Promise<string | null> {
   const { timeoutMs = 10_000, ...rest } = init;
+  try {
+    assertFetchable(url);
+  } catch {
+    return null;
+  }
   const res = await fetch(url, { ...rest, signal: AbortSignal.timeout(timeoutMs), cache: "no-store" }).catch(() => null);
   if (!res?.ok) return null;
   return res.text().catch(() => null);
@@ -113,11 +168,16 @@ export async function downloadToFile(
   dest: string,
   opts: { headers?: Record<string, string>; timeoutMs?: number; maxBytes?: number } = {},
 ): Promise<{ contentType: string; bytes: number }> {
+  assertFetchable(url);
   const res = await fetch(url, {
     headers: { "user-agent": BROWSER_UA, ...opts.headers },
     signal: AbortSignal.timeout(opts.timeoutMs ?? 120_000),
     redirect: "follow",
     cache: "no-store",
+  }).catch((err: unknown) => {
+    /* undici's "fetch failed" says nothing; its cause (a timeout, a refused connection, a DNS miss) does. */
+    const cause = err instanceof Error && err.cause instanceof Error ? err.cause.message : err instanceof Error ? err.message : String(err);
+    throw new ToolError(`download failed: ${cause}`);
   });
   if (!res.ok || !res.body) throw new ToolError(`download failed: HTTP ${res.status}`);
   const max = opts.maxBytes ?? 200 * 1024 * 1024;

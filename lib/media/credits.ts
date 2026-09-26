@@ -84,23 +84,39 @@ function sorted(items: Creditable[]): UsedAsset[] {
   return items.map(used).sort((a, b) => ORDER.indexOf(a.platform) - ORDER.indexOf(b.platform));
 }
 
-/** The end card's line. One entry per source account, in reading order, never repeated. */
+/* A credit without its platform label: "抖音 @作者" → "@作者", "YouTube · 频道" → "频道". */
+function accountOf(a: UsedAsset): string {
+  const label = PLATFORM_LABEL[a.platform];
+  const rest = a.credit.startsWith(label) ? a.credit.slice(label.length).replace(/^\s*·\s*/, "").trim() : a.credit.trim();
+  return rest || a.author.name;
+}
+
+/**
+ * The end card's line: one group per platform, in reading order, the
+ * accounts inside it named once each — "素材来源：抖音 @甲、@乙 · YouTube
+ * CNBC · Pinterest Alex (via forbes.com)". Grouped because a credit carries
+ * its own "·" ("YouTube · CNBC"), and a flat join of those reads as one
+ * long unbroken list.
+ */
 export function creditLine(assets: Creditable | Creditable[]): string {
   const list = sorted(Array.isArray(assets) ? assets : [assets]);
-  const seen = new Set<string>();
-  const parts: string[] = [];
+  const groups = new Map<Platform, string[]>();
   for (const a of list) {
-    if (seen.has(a.credit)) continue;
-    seen.add(a.credit);
-    parts.push(a.credit);
+    const names = groups.get(a.platform) ?? [];
+    const name = accountOf(a);
+    if (!names.includes(name)) names.push(name);
+    groups.set(a.platform, names);
   }
+  const parts = ORDER.filter((p) => groups.has(p)).map((p) => `${PLATFORM_LABEL[p]} ${groups.get(p)!.join("、")}`);
   return parts.length ? `素材来源：${parts.join(" · ")}` : "";
 }
 
 function lineFor(a: UsedAsset): string {
   const title = a.title ? `《${a.title.slice(0, 80)}》` : "";
-  /* A licensed picture names its licence, as CC BY asks; a platform clip names its account. */
-  const licence = a.licence && !a.licence.startsWith("stock:") ? ` — ${a.licence}` : "";
+  /* A licensed picture names its licence, as CC BY asks; a platform clip
+     names its account. An Openverse credit already carries the licence in
+     brackets, and once is enough. */
+  const licence = a.licence && !a.licence.startsWith("stock:") && !a.credit.includes(a.licence) ? ` — ${a.licence}` : "";
   return `· ${a.credit}${title}${licence} ${a.permalink}`;
 }
 

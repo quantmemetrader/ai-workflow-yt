@@ -7,7 +7,7 @@
  *
  *   TSX_TSCONFIG_PATH=$PWD/tsconfig.json node --env-file=.env.local --dns-result-order=ipv4first \
  *     --conditions=react-server --import tsx scripts/media-probe.ts "特斯拉 Optimus 工厂" \
- *     [--en "Tesla Optimus factory"] [--kind video|image] [--portrait|--landscape] [--limit 5] \
+ *     [--en "Tesla Optimus factory"] [--kind video|image] [--portrait|--landscape] [--limit 5] [--max 120] \
  *     [--providers douyin,youtube] [--cc] [--budget 8000] \
  *     [--fetch N --user <userId> [--folder "<name>"] [--window 10-20] [--project <projectId>] [--cleanup]]
  *
@@ -30,7 +30,7 @@ import type { Asset, Candidate } from "@/lib/media/types";
 
 /* ------------------------------------------------------------------- args */
 
-type Args = { query: string; en?: string; kind: "video" | "image"; orientation: "portrait" | "landscape" | "any"; limit: number; providers?: ProviderKey[]; cc: boolean; budget: number; fetch: number; user?: string; folder?: string; window?: { start: number; end: number }; project?: string; cleanup: boolean };
+type Args = { query: string; en?: string; kind: "video" | "image"; orientation: "portrait" | "landscape" | "any"; limit: number; max?: number; providers?: ProviderKey[]; cc: boolean; budget: number; fetch: number; user?: string; folder?: string; window?: { start: number; end: number }; project?: string; cleanup: boolean };
 
 function parseArgs(argv: string[]): Args {
   const args: Args = { query: "", kind: "video", orientation: "any", limit: 5, cc: false, budget: 8_000, fetch: 0, cleanup: false };
@@ -43,6 +43,7 @@ function parseArgs(argv: string[]): Args {
     else if (a === "--portrait") args.orientation = "portrait";
     else if (a === "--landscape") args.orientation = "landscape";
     else if (a === "--limit") args.limit = Number(next()) || 5;
+    else if (a === "--max") args.max = Number(next()) || undefined;
     else if (a === "--providers") args.providers = next().split(",").map((s) => s.trim()).filter(Boolean) as ProviderKey[];
     else if (a === "--cc") args.cc = true;
     else if (a === "--budget") args.budget = Number(next()) || 8_000;
@@ -114,7 +115,7 @@ async function main() {
   const query = args.en ? { zh: args.query, en: args.en } : args.query;
   console.log(`search: ${JSON.stringify(query)}  kind=${args.kind} orientation=${args.orientation} limit=${args.limit}/provider budget=${args.budget}ms${args.cc ? " licence=cc" : ""}`);
 
-  const result = await searchMedia(query, { kind: args.kind, orientation: args.orientation, limit: args.limit, budgetMs: args.budget, providers: args.providers, licence: args.cc ? "cc" : "any" });
+  const result = await searchMedia(query, { kind: args.kind, orientation: args.orientation, limit: args.limit, maxDurationS: args.max, budgetMs: args.budget, providers: args.providers, licence: args.cc ? "cc" : "any" });
   console.log(`\n${result.candidates.length} candidates in ${result.ms} ms`);
   for (const p of result.providers) {
     console.log(`  ${fit(p.provider, 10)} ${String(p.count).padStart(2)} in ${String(p.ms).padStart(5)} ms  q="${p.query}"${p.timedOut ? "  TIMED OUT" : ""}${p.error ? `  error: ${p.error}` : ""}`);

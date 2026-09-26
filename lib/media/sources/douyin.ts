@@ -52,8 +52,11 @@ export async function searchDouyin(query: string, opts: SearchOpts): Promise<Can
         cursor: 0,
         sort_type: "0",
         publish_time: "0",
-        /* 抖音's own buckets: under a minute, one to five, over five. */
-        filter_duration: max <= 60 ? "0-1" : max <= 300 ? "1-5" : "0",
+        /* 抖音's buckets are "0-1" (under a minute), "1-5", "5-10000" and "0"
+           for any length. Only the first is a cap: "1-5" would drop every
+           clip under a minute, which for a cutaway is the best kind, so a
+           limit above a minute asks for everything and filters below. */
+        filter_duration: max <= 60 ? "0-1" : "0",
         content_type: "1",
         search_id: "",
         backtrace: "",

@@ -11,6 +11,7 @@ import { importPictureBytes, importVideoBytes } from "@/lib/files/service";
 import { PLATFORM_LABEL } from "@/lib/media/credits";
 import type { Asset, Candidate } from "@/lib/media/types";
 import { downloadToFile, run, workDir, ToolError, GALLERY_DL, YT_DLP } from "@/lib/media/tools";
+import { tmpdir as osTmpdir } from "node:os";
 
 /**
  * A candidate into the studio's own Files.
@@ -32,7 +33,13 @@ import { downloadToFile, run, workDir, ToolError, GALLERY_DL, YT_DLP } from "@/l
  *
  * At most three fetches run at once, and a clip fetched once in a run is
  * not fetched again: a small on-disk cache maps permalink + window to the
- * file it already became.
+ * file it already became, and two callers asking for the same clip at the
+ * same moment share the one download in flight.
+ *
+ * The normalised clip stays on disk for the caller (`localPath`) as long as
+ * its cache entry lives, six hours; work directories older than that are
+ * swept on the next fetch. A picture's directory goes as soon as the bytes
+ * are in Files, since nothing reads it afterwards.
  */
 
 export type FetchOpts = {
@@ -49,8 +56,10 @@ export type FetchOpts = {
 
 const MAX_CLIP_S = 60;
 const CONCURRENCY = 3;
+const WORK_PREFIX = "tengya-media-";
 const CACHE_DIR = path.join(tmpdir(), "tengya-media-cache");
 const CACHE_TTL_MS = 6 * 3600_000;
+const SWEEP_EVERY_MS = 10 * 60_000;
 
 /* ------------------------------------------------------------ concurrency */
 
@@ -99,6 +108,38 @@ async function remember(key: string, asset: Asset): Promise<void> {
     await writeFile(path.join(CACHE_DIR, `${key}.json`), JSON.stringify({ at: Date.now(), asset }));
   } catch {
     /* A cache that cannot be written is a cache miss next time, nothing more. */
+  }
+}
+
+/* The same clip asked for twice while the first fetch is still running shares that fetch. */
+const inFlight = new Map<string, Promise<Asset>>();
+
+let lastSweep = 0;
+
+/**
+ * Work directories and cache entries older than the cache's life are
+ * nobody's any more: the entry that pointed at the clip has expired with
+ * them. Run at most every ten minutes, never in the caller's way.
+ */
+async function sweep(): Promise<void> {
+  if (Date.now() - lastSweep < SWEEP_EVERY_MS) return;
+  lastSweep = Date.now();
+  const cutoff = Date.now() - CACHE_TTL_MS;
+  try {
+    const base = osTmpdir();
+    for (const name of await readdir(base)) {
+      if (!name.startsWith(WORK_PREFIX) || name === path.basename(CACHE_DIR)) continue;
+      const full = path.join(base, name);
+      const s = await stat(full).catch(() => null);
+      if (s?.isDirectory() && s.mtimeMs < cutoff) await rm(full, { recursive: true, force: true }).catch(() => {});
+    }
+    for (const name of await readdir(CACHE_DIR).catch(() => [] as string[])) {
+      const full = path.join(CACHE_DIR, name);
+      const s = await stat(full).catch(() => null);
+      if (s?.isFile() && s.mtimeMs < cutoff) await rm(full, { force: true }).catch(() => {});
+    }
+  } catch {
+    /* A sweep that fails leaves a few directories for the next one. */
   }
 }
 
@@ -166,6 +207,20 @@ async function viaYtDlp(url: string, dir: string, window: FetchOpts["windowS"], 
   return file;
 }
 
+/**
+ * An HLS playlist (a Pinterest pin video's fallback) is not a file to save;
+ * ffmpeg reads the segments and writes one MP4. Only as much as the cut
+ * can use is pulled — the end of the window, or the cap.
+ */
+async function viaHls(url: string, dir: string, window: FetchOpts["windowS"], signal?: AbortSignal): Promise<string> {
+  const file = path.join(dir, "src.mp4");
+  const take = window ? window.end : MAX_CLIP_S;
+  await run("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-i", url, "-t", String(take), "-c", "copy", "-bsf:a", "aac_adtstoasc", "-movflags", "+faststart", file], { timeoutMs: 180_000, signal });
+  return file;
+}
+
+const looksLikeHls = (url: string) => /\.m3u8(\?|$)/i.test(url);
+
 async function downloadVideo(candidate: Candidate, dir: string, window: FetchOpts["windowS"], signal?: AbortSignal): Promise<{ file: string; windowed: boolean }> {
   const h = candidate.handle;
   if (h.via === "yt-dlp") {
@@ -174,6 +229,7 @@ async function downloadVideo(candidate: Candidate, dir: string, window: FetchOpt
     } catch (err) {
       if (!h.fallbackUrl) throw err;
       /* The tool could not reach it (a region-locked TikTok post, say); the platform's own file address still may. */
+      if (looksLikeHls(h.fallbackUrl)) return { file: await viaHls(h.fallbackUrl, dir, window, signal), windowed: false };
       const file = path.join(dir, "src.mp4");
       await downloadToFile(h.fallbackUrl, file, { timeoutMs: 180_000 });
       return { file, windowed: false };
@@ -278,9 +334,19 @@ export async function fetchAsset(viewer: Viewer, candidate: Candidate, opts: Fet
   const hit = await cached(key);
   if (hit) return hit;
 
+  const running = inFlight.get(key);
+  if (running) return running.then((a) => ({ ...a, cached: true }));
+  const job = fetchFresh(viewer, candidate, key, window, maxS, opts).finally(() => inFlight.delete(key));
+  inFlight.set(key, job);
+  return job;
+}
+
+async function fetchFresh(viewer: Viewer, candidate: Candidate, key: string, window: FetchOpts["windowS"], maxS: number, opts: FetchOpts): Promise<Asset> {
   await acquire();
-  const dir = await workDir();
+  let dir: string | undefined;
   try {
+    void sweep();
+    dir = await workDir(WORK_PREFIX);
     const fetchedAt = new Date().toISOString();
     const meta = {
       source: candidate.platform,
@@ -314,6 +380,8 @@ export async function fetchAsset(viewer: Viewer, candidate: Candidate, opts: Fet
       });
       const asset: Asset = { fileId: id, candidate, credit: candidate.credit, fetchedAt, width: size?.width ?? candidate.width, height: size?.height ?? candidate.height };
       await remember(key, asset);
+      /* The bytes are in Files; nothing reads the copy on disk. */
+      await rm(dir, { recursive: true, force: true }).catch(() => {});
       return asset;
     }
 
@@ -357,7 +425,7 @@ export async function fetchAsset(viewer: Viewer, candidate: Candidate, opts: Fet
     await remember(key, asset);
     return asset;
   } catch (err) {
-    await rm(dir, { recursive: true, force: true }).catch(() => {});
+    if (dir) await rm(dir, { recursive: true, force: true }).catch(() => {});
     throw err;
   } finally {
     release();
