@@ -4,6 +4,7 @@ Where the presenter's face is, sampled through a video.
 
     python face.py VIDEO [--every 2] [--width 540] [--start S] [--end S]
                          [--times 1.5,8.0,...] [--model PATH] [--min-score 0.6]
+                         [--min-top 0.44]
 
 Prints one JSON object on stdout:
 
@@ -112,11 +113,18 @@ def make_detector(model, w, h, min_score):
     return cv2.FaceDetectorYN.create(model, "", (w, h), min_score, 0.3, 5000)
 
 
-def detect(detector, frame):
-    """The largest face in the frame as normalised numbers, or None."""
+def detect(detector, frame, min_top=0.0):
+    """The largest face in the frame as normalised numbers, or None.
+
+    `min_top` (a share of the height) ignores any face whose top is above
+    it: a finished `split` frame has the clip's own faces in the band, and
+    the question there is where the host below the band is."""
     h, w = frame.shape[:2]
     _, faces = detector.detect(frame)
     if faces is None or len(faces) == 0:
+        return None
+    faces = [f for f in faces if float(f[1]) / h >= min_top]
+    if not faces:
         return None
     # YuNet rows: x, y, w, h, right-eye x/y, left-eye x/y, nose, mouth corners, score.
     best = max(faces, key=lambda f: float(f[2]) * float(f[3]))
@@ -140,6 +148,7 @@ def main():
     ap.add_argument("--times", type=str, default=None, help="comma-separated seconds; one seek each")
     ap.add_argument("--model", type=str, default=DEFAULT_MODEL)
     ap.add_argument("--min-score", type=float, default=0.6)
+    ap.add_argument("--min-top", type=float, default=0.0, help="ignore faces whose top is above this share of the height")
     args = ap.parse_args()
 
     if not os.path.exists(args.model):
@@ -158,7 +167,7 @@ def main():
             total += 1
             got = None
             for frame in read_frames(args.video, out_w, out_h, f"scale={out_w}:{out_h}", ["-ss", f"{t:.3f}"], limit=1):
-                got = detect(detector, frame)
+                got = detect(detector, frame, args.min_top)
             samples.append({"t": round(t, 3), **(got or {"box": None, "eyeY": None, "chinY": None, "score": 0})})
     else:
         extra = []
@@ -170,7 +179,7 @@ def main():
         t0 = args.start or 0.0
         for i, frame in enumerate(read_frames(args.video, out_w, out_h, vf, extra)):
             total += 1
-            got = detect(detector, frame)
+            got = detect(detector, frame, args.min_top)
             samples.append({"t": round(t0 + i * args.every, 3), **(got or {"box": None, "eyeY": None, "chinY": None, "score": 0})})
 
     hits = [s for s in samples if s["box"] is not None]

@@ -145,10 +145,14 @@ export function faceTrackFor(track: FaceTrack & { series?: FaceSample[] }, inMs:
  * The face at given moments of a file — one seek each — for checking a
  * finished render: is the eye line where the framing rules put it.
  */
-export async function faceSamples(file: string, timesS: number[], opts: { width?: number; timeoutMs?: number } = {}): Promise<FaceSample[]> {
+export async function faceSamples(
+  file: string,
+  timesS: number[],
+  opts: { width?: number; timeoutMs?: number; /** Ignore faces whose top is above this share of the height (a clip's own faces in a `split` band). */ minTop?: number } = {},
+): Promise<FaceSample[]> {
   if (!timesS.length) return [];
   const parsed = await runFace(
-    [file, "--times", timesS.map((t) => t.toFixed(3)).join(","), "--width", String(opts.width ?? 540)],
+    [file, "--times", timesS.map((t) => t.toFixed(3)).join(","), "--width", String(opts.width ?? 540), ...(opts.minTop ? ["--min-top", opts.minTop.toFixed(4)] : [])],
     opts.timeoutMs ?? Math.max(120_000, timesS.length * 3_000),
   );
   return parsed.samples;

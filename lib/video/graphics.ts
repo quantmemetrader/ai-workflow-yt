@@ -759,6 +759,29 @@ export async function makeMasks(opts: { width: number; height: number; dir: stri
   return { rounded, circle };
 }
 
+/**
+ * An overlay's window on the film, as the `t` of the frames it covers.
+ *
+ * A frame at n/30 s has a `t` that is n/30 in the output's timebase and not
+ * always in floating point: a cutaway asked for at 17.100 s tested
+ * `between(t,17.100,…)` on a frame whose `t` came out 17.0999… and landed a
+ * frame late, and every cutaway and motion clip in the lab render did (14 of
+ * 14, measured). The window is opened half a frame early and closed half a
+ * frame early instead, which makes the first frame the *nearest* frame to
+ * `startMs` and the last the frame before the nearest to `endMs` — the same
+ * count of frames, on the plan's clock. The overlay stream itself is moved
+ * by the same half frame so `overlay` has its first frame in hand when the
+ * window opens (it takes the overlay frame nearest below the main frame's
+ * `t`, and a stream that starts exactly on the window would miss by the
+ * same rounding).
+ */
+export function windowOf(startMs: number, endMs: number): { s: string; e: string; enable: string } {
+  const half = 1 / 60;
+  const s = Math.max(0, startMs / 1000 - half).toFixed(4);
+  const e = Math.max(0, endMs / 1000 - half).toFixed(4);
+  return { s, e, enable: `enable='between(t,${s},${e})'` };
+}
+
 /** A piece of the host read straight from the source for a cutaway window. */
 export type HostInsert = {
   /** ffmpeg input index of the seeked source piece. */
@@ -775,6 +798,9 @@ export type HostInsert = {
 export type CutawayInput = RenderPlan["cutaways"][number] & {
   /** ffmpeg input index of the clip or still. */
   input: number;
+  /** `split`: the host's zoom and eye line under the band, when the planner overrides §1's (see `RenderCutaway`). */
+  hostZoom?: number;
+  hostEyeY?: number;
   /** `split` / `run`: the host pieces under this window (a run's circle rides on the group's last item, after every clip of the run). */
   hosts?: HostInsert[];
   /** The mask input for this layout: the rounded band for `split`, the circle for `run`. */
@@ -819,10 +845,8 @@ export function cutawayFilter(
 
   specs.forEach((c, i) => {
     const last = i === specs.length - 1;
-    const s = (c.startMs / 1000).toFixed(3);
-    const e = (c.endMs / 1000).toFixed(3);
+    const { s, enable: win } = windowOf(c.startMs, c.endMs);
     const dur = Math.max(0.2, (c.endMs - c.startMs) / 1000);
-    const win = `enable='between(t,${s},${e})'`;
     const cropX = clamp(Number.isFinite(c.cropX) ? c.cropX : 0.5, 0, 1);
     const still = Boolean(c.still);
     const layout: Layout = c.layout ?? "full";
@@ -843,23 +867,23 @@ export function cutawayFilter(
          `splitEyeY`, cropped to what is visible and laid over the frame; the
          clip's band then covers the seam. */
       for (const [j, h] of (c.hosts ?? []).entries()) {
-        const z = LAYOUT.splitHostZoom;
+        const z = clamp(c.hostZoom ?? LAYOUT.splitHostZoom, 1, ZOOM_MAX);
+        const eyeY = clamp(c.hostEyeY ?? LAYOUT.splitEyeY, 0.3, 0.8);
         const sw = even(Math.round(W * z));
         const sh = even(Math.round(H * z));
         const xOff = Math.round(W / 2 - h.anchor[0] * sw);
-        const yOff = Math.round(H * LAYOUT.splitEyeY - h.anchor[1] * sh);
+        const yOff = Math.round(H * eyeY - h.anchor[1] * sh);
         const vx0 = Math.max(0, -xOff);
         const vy0 = Math.max(0, -yOff);
         const vw = even(Math.min(sw, W - Math.max(0, xOff)) - vx0);
         const vh = even(Math.min(sh, H - Math.max(0, yOff)) - vy0);
-        const hs = (h.startMs / 1000).toFixed(3);
-        const he = (h.endMs / 1000).toFixed(3);
+        const hw = windowOf(h.startMs, h.endMs);
         parts.push(
           `[${h.input}:v]setpts=PTS-STARTPTS,${normalise(W, H)}scale=${sw}:${sh}:flags=bicubic,crop=${vw}:${vh}:${vx0}:${vy0},` +
-            `fps=30,setsar=1,format=yuv420p,setpts=PTS-STARTPTS+${hs}/TB[ch${i}_${j}]`,
+            `fps=30,setsar=1,format=yuv420p,setpts=PTS-STARTPTS+${hw.s}/TB[ch${i}_${j}]`,
         );
         const label = next(false);
-        parts.push(`${chain}[ch${i}_${j}]overlay=x=${Math.max(0, xOff)}:y=${Math.max(0, yOff)}:eof_action=pass:enable='between(t,${hs},${he})'${label}`);
+        parts.push(`${chain}[ch${i}_${j}]overlay=x=${Math.max(0, xOff)}:y=${Math.max(0, yOff)}:eof_action=pass:${hw.enable}${label}`);
         chain = label;
       }
       const { x, y, w, h } = g.split;
@@ -901,15 +925,14 @@ export function cutawayFilter(
       const side = even(Math.round(clamp(h.faceHeight * H * 1.6, W * 0.4, W * 0.7)));
       const sx = Math.round(clamp(h.anchor[0] * W - side / 2, 0, W - side));
       const sy = Math.round(clamp(h.anchor[1] * H - side * 0.38, 0, H - side));
-      const hs = (h.startMs / 1000).toFixed(3);
-      const he = (h.endMs / 1000).toFixed(3);
+      const hw = windowOf(h.startMs, h.endMs);
       parts.push(
         `[${h.input}:v]setpts=PTS-STARTPTS,${normalise(W, H)}crop=${side}:${side}:${sx}:${sy},scale=${inner}:${inner}:flags=bicubic,` +
           `pad=${d}:${d}:${ring}:${ring}:color=white,fps=30,setsar=1,format=yuva420p` +
-          `${masked ? `[cc${i}_${j}];[cc${i}_${j}][cm${i}_${j}]alphamerge` : ""},setpts=PTS-STARTPTS+${hs}/TB[ch${i}_${j}]`,
+          `${masked ? `[cc${i}_${j}];[cc${i}_${j}][cm${i}_${j}]alphamerge` : ""},setpts=PTS-STARTPTS+${hw.s}/TB[ch${i}_${j}]`,
       );
       const label = next(last && j === hosts.length - 1);
-      parts.push(`${chain}[ch${i}_${j}]overlay=x=${x}:y=${y}:eof_action=pass:enable='between(t,${hs},${he})'${label}`);
+      parts.push(`${chain}[ch${i}_${j}]overlay=x=${x}:y=${y}:eof_action=pass:${hw.enable}${label}`);
       chain = label;
     }
   });
@@ -950,13 +973,12 @@ export function motionFilter(clips: MotionInput[], opts: { from: string; out: st
     }
   }
   layers.forEach((l, i) => {
-    const s = (l.fromMs / 1000).toFixed(3);
-    const e = (l.toMs / 1000).toFixed(3);
+    const { s, enable } = windowOf(l.fromMs, l.toMs);
     const label = i === layers.length - 1 ? opts.out : `[mv${i}]`;
     parts.push(`[${l.input}:v]${l.still ? "format=rgba," : ""}setpts=PTS-STARTPTS+${s}/TB[mc${i}]`);
     /* A still is one frame: `overlay`'s default `eof_action=repeat` keeps
        it for the window; a clip passes the picture through after its end. */
-    parts.push(`${chain}[mc${i}]overlay=x=${l.x}:y=${l.y}${l.still ? "" : ":eof_action=pass"}:enable='between(t,${s},${e})'${label}`);
+    parts.push(`${chain}[mc${i}]overlay=x=${l.x}:y=${l.y}${l.still ? "" : ":eof_action=pass"}:${enable}${label}`);
     chain = label;
   });
   return parts.join(";");

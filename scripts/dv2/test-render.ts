@@ -59,6 +59,8 @@ const FONTS = path.join(process.cwd(), "remotion", "public", "fonts");
 const BLACK = path.join(FONTS, "NotoSansCJKsc-Black.otf");
 const W = 1080;
 const H = 1920;
+/** The top of the zh caption line as the `bilingual` preset draws it (bottom-aligned at MarginV 518 with 69 px glyphs). */
+const CAPTION_TOP_PX = 1320;
 
 /* ------------------------------------------------------------ fixture */
 
@@ -314,6 +316,18 @@ async function planV2(fixture: Fixture, dir: string, assFile: string, track: Fac
     return cut;
   });
 
+  /* The host under a `split` band, framed so the chin clears the caption
+     line: §1's 1.12 / y 1150 put this presenter's chin at y ≈ 1430, under
+     the zh line (measured on the first lab render), so the zoom is 1.00 and
+     the eye line is worked back from the caption's top less the 40 px
+     margin and 10 px for the chin's movement within a cut, which for 蒸馏
+     comes to y ≈ 1020 with the head clear of the band's bottom edge (838).
+     What W6's layout.ts does per project. */
+  const splitHost = {
+    hostZoom: 1,
+    hostEyeY: Math.round(((CAPTION_TOP_PX - 50) / H - (track.chinY - track.eyeY) * 1) * 10000) / 10000,
+  };
+
   const clips = await localClips(fixture, dir);
   const stills = fixture.graphics.filter((g) => g.kind === "image" && g.file).map((g) => assetPath(dir, g.file!.storageKey));
   const stillFiles: string[] = [];
@@ -345,6 +359,7 @@ async function planV2(fixture: Fixture, dir: string, assFile: string, track: Fac
     cutaways.push({
       file: isStill ? stillFiles[Math.floor(i / 7) % stillFiles.length] : clip.path,
       startMs: t, endMs: t + dur, sourceInMs: isStill ? 0 : 1200, cropX: 0.5, still: isStill, layout,
+      ...(layout === "split" ? splitHost : {}),
     });
     t += dur + 10500;
   }
@@ -757,6 +772,66 @@ async function main() {
       const off = circles.map((c) => Math.max(Math.abs(c.cx - 0.74), Math.abs(c.cy - 0.31)));
       m.runCircle = { checked: circles.length, within2pct: off.filter((o) => o <= 0.02).length, worstOffset: Math.max(...off, 0), samples: circles };
       console.log(`  run circles within 2 %: ${(m.runCircle as { within2pct: number }).within2pct}/${circles.length} (worst ${Math.max(...off, 0).toFixed(4)})`);
+
+      /* The film's clock against the plan's: the output's length, and the
+         frame on which each full/split cutaway first appears (the band
+         region changes most between two frames) against the frame its
+         startMs names. A drift here is every caption and graphic landing
+         off the word by the end. */
+      const probe = await run("ffprobe", ["-v", "error", "-show_entries", "stream=codec_type,nb_frames,duration", "-of", "csv=p=0", bOut]);
+      const streams = Object.fromEntries(probe.stdout.trim().split("\n").map((l) => l.split(",")).map(([type, dur, frames]) => [type, { durationMs: Math.round(Number(dur) * 1000), frames: Number(frames) }]));
+      const landings: { layout: string; planFrame: number; seenFrame: number }[] = [];
+      for (const c of bPlan.cutaways.filter((c) => c.layout === "full" || c.layout === "split")) {
+        const planFrame = Math.round((c.startMs / 1000) * 30);
+        const y0 = c.layout === "split" ? geo.split.y + 40 : 40;
+        const y1 = c.layout === "split" ? geo.split.y + geo.split.h - 40 : H - 40;
+        /* `-ss t` returns the first frame whose pts is at or after t, so a
+           seek half a frame before n/30 returns frame n whatever the
+           millisecond rounding of n/30 does. */
+        let prev = await greyFrame(bOut, (planFrame - 4 - 0.5) / 30, W, H);
+        let best = { n: -1, d: 0 };
+        for (let n = planFrame - 3; n <= planFrame + 3; n++) {
+          const g = await greyFrame(bOut, (n - 0.5) / 30, W, H);
+          let d = 0;
+          let k = 0;
+          for (let y = y0; y < y1; y += 4) for (let x = 0; x < W; x += 4) {
+            d += Math.abs(g[y * W + x] - prev[y * W + x]);
+            k++;
+          }
+          if (d / k > best.d) best = { n, d: d / k };
+          prev = g;
+        }
+        landings.push({ layout: c.layout, planFrame, seenFrame: best.n });
+      }
+      /* The drift is read from the picture's frame count: the audio
+         stream's container duration carries the AAC encoder's priming and
+         padding (about 60 ms), not content. A cutaway a frame early is the
+         constant-rate encoder absorbing the sub-frame remainders of the
+         cuts' lengths (a cut is floor(length × 30) frames); the sound is
+         exact, so the picture is never more than a frame from it. */
+      const frames = streams.video?.frames ?? 0;
+      m.clock = {
+        plannedMs: total,
+        videoMs: streams.video?.durationMs, audioMs: streams.audio?.durationMs, frames,
+        driftMs: Math.round((frames / 30) * 1000) - total,
+        landings, onFrame: landings.filter((l) => l.seenFrame === l.planFrame).length, withinOneFrame: landings.filter((l) => Math.abs(l.seenFrame - l.planFrame) <= 1).length,
+      };
+      console.log(`  clock: ${frames} frames for a ${total} ms plan (drift ${(m.clock as { driftMs: number }).driftMs} ms); cutaways on their frame ${(m.clock as { onFrame: number }).onFrame}/${landings.length}, within one ${(m.clock as { withinOneFrame: number }).withinOneFrame}/${landings.length}`);
+
+      /* split: the host under the band — chin above the caption's top less
+         the margin, head below the band's bottom edge. Faces inside the band
+         (the clip's own) are ignored. */
+      const splitMids = splits.map((c) => (c.startMs + c.endMs) / 2000);
+      const hostFaces = await faceSamples(bOut, splitMids, { minTop: (geo.split.y + geo.split.h) / H });
+      const bandBottom = geo.split.y + geo.split.h;
+      const splitFace = hostFaces.map((s) => ({ t: s.t, eyePx: s.eyeY === null ? null : Math.round(s.eyeY * H), chinPx: s.chinY === null ? null : Math.round(s.chinY * H), headTopPx: s.box ? Math.round(s.box[1] * H) : null }));
+      m.splitFace = {
+        checked: splitFace.length, detected: splitFace.filter((s) => s.chinPx !== null).length,
+        chinClearOfCaption: splitFace.filter((s) => s.chinPx !== null && s.chinPx <= CAPTION_TOP_PX - 40).length,
+        headClearOfBand: splitFace.filter((s) => s.headTopPx !== null && s.headTopPx >= bandBottom).length,
+        captionTopPx: CAPTION_TOP_PX, bandBottomPx: bandBottom, samples: splitFace,
+      };
+      console.log(`  split host: chin clear of the caption ${(m.splitFace as { chinClearOfCaption: number }).chinClearOfCaption}/${splitFace.length}, head clear of the band ${(m.splitFace as { headClearOfBand: number }).headClearOfBand}/${splitFace.length}`);
 
       /* loudness + clicks. */
       const loud = await timed("ebur128", () => ebur128(bOut));

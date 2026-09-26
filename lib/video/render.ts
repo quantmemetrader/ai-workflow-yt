@@ -134,8 +134,25 @@ export type TrackInput = { path: string; startMs: number; gain: number; duck: bo
  * fields carry the v1 editor's layers so the worker's existing projects go
  * through the same function unchanged.
  */
-export type RenderInput = Omit<RenderPlan, "cuts"> & {
+/**
+ * One cutaway as the renderer takes it: the plan's, plus — for `split` —
+ * where the host under the band is framed when §1's numbers do not fit the
+ * presenter. §1 puts the host at 1.12 with the eye line at y ≈ 1150, which
+ * lands a face whose eyes are 0.13 of the frame above its chin (蒸馏) with
+ * the chin at y ≈ 1430, under the caption line; the planner that knows the
+ * face track and the caption's top sets these so the chin clears it
+ * (`hostEyeY = (captionTop − 40)/H − (chinY − eyeY)·hostZoom`).
+ */
+export type RenderCutaway = RenderPlan["cutaways"][number] & {
+  /** `split`: the host's zoom under the band (default `LAYOUT.splitHostZoom`, 1.12). */
+  hostZoom?: number;
+  /** `split`: where the host's eye line lands, as a share of the height (default `LAYOUT.splitEyeY`, 1150/1920). */
+  hostEyeY?: number;
+};
+
+export type RenderInput = Omit<RenderPlan, "cuts" | "cutaways"> & {
   cuts: RenderCut[];
+  cutaways: RenderCutaway[];
   /** `v1` keeps the old command byte for byte: no framing, no fades, TP −1.5. Default `v2`. */
   mode?: "v1" | "v2";
   accent?: string;
@@ -781,38 +798,67 @@ export async function renderTimeline(
     const tail = `fps=${FPS},setsar=1,format=yuv420p`;
 
     /*
+     * v2: every cut is exactly as long as the plan says, to the frame and to
+     * the sample.
+     *
+     * ffmpeg's input `-t` on its own leaves each cut's picture up to a frame
+     * long — the frame that covers the seek point is kept, and the last one
+     * runs past `-t` — and `concat` stretches the film by the longest stream
+     * of every segment. Measured: 11 cuts came out 193 ms long, and the
+     * 70–100 cuts of a v2 edit would come out well over a second long, with
+     * every caption, cutaway and motion clip placed on the plan's clock
+     * landing early by that much by the end. So the picture is cut to
+     * floor(length × fps) frames and the sound to the length exactly: the
+     * sound sets each segment's length, the picture is never longer than it,
+     * and the frame it may be short is repeated by the encoder's constant
+     * frame rate at the cut, where nobody sees a held frame. The plan's clock
+     * and the film's are then the same clock. The v1 path keeps its own
+     * command (and its 127 ms), byte for byte.
+     */
+    const exact = mode === "v2";
+    const cutFrames = Math.floor((lengthMs * FPS) / 1000 + 1e-6);
+    const frameTrim = (frames: number) => (exact ? `,trim=end_frame=${Math.max(1, frames)}` : "");
+    /* A few frames of decode slack past the trim, so the trim always has
+       the frames it counts to. */
+    const slack = exact ? 3 / FPS : 0;
+
+    /*
      * The push, as its own segment. The window is cut out of the cut, the
      * per-frame scale runs on those frames only, and the three pieces are
      * joined back; the audio is read once for the whole cut from a separate
-     * demuxer so the segment seams never touch it.
+     * demuxer so the segment seams never touch it. The frames are shared
+     * out so the three pieces sum to the cut's own count.
      */
     const push = mode === "v2" && cut.push ? clampPush(cut.push, cut.inMs, cut.outMs) : null;
     if (push) {
       const bounds = [cut.inMs, push.fromMs, push.toMs, cut.outMs];
+      const kept: { a: number; b: number; s: number }[] = [];
+      for (let s = 0; s < 3; s++) if (bounds[s + 1] - bounds[s] >= 34) kept.push({ a: bounds[s], b: bounds[s + 1], s });
       const segs: string[] = [];
-      for (let s = 0; s < 3; s++) {
-        const a = bounds[s];
-        const b = bounds[s + 1];
-        if (b - a < 34) continue;
+      let assigned = 0;
+      kept.forEach(({ a, b, s }, idx) => {
+        const last = idx === kept.length - 1;
+        const frames = last ? Math.max(1, cutFrames - assigned) : Math.floor(((b - a) * FPS) / 1000 + 1e-6);
+        assigned += frames;
         const k = inputs.length;
-        inputs.push({ path: cut.file, ss: a / 1000, t: (b - a) / 1000 });
+        inputs.push({ path: cut.file, ss: a / 1000, t: (b - a) / 1000 + slack });
         const chain = s === 1 ? pushChain(framing, push.to, (push.rampMs ?? push.toMs - push.fromMs) / 1000, { width: size.w, height: size.h }) : framingChain(framing, { width: size.w, height: size.h });
-        pre.push(`[${k}:v]setpts=PTS-STARTPTS,${normalise(size.w, size.h)}${chain}${tail}[c${n}s${s}]`);
+        pre.push(`[${k}:v]setpts=PTS-STARTPTS,${normalise(size.w, size.h)}${chain}${tail}${frameTrim(frames)}[c${n}s${s}]`);
         segs.push(`[c${n}s${s}]`);
-      }
+      });
       pre.push(segs.length === 1 ? `${segs[0]}null[c${n}v]` : `${segs.join("")}concat=n=${segs.length}:v=1:a=0[c${n}v]`);
       const ka = inputs.length;
       inputs.push({ path: cut.file, ss: inSec, t: outSec - inSec, audioOnly: true });
-      pre.push(audioChain(ka, sourceHasAudio.get(cut.file) ?? false, lengthMs, fade, `[c${n}a]`));
+      pre.push(audioChain(ka, sourceHasAudio.get(cut.file) ?? false, lengthMs, fade, exact, `[c${n}a]`));
     } else {
       // The window is cut at the demuxer by `-ss`/`-t` in buildArgs, so this
       // input carries only the cut's own frames and starts near zero; the
       // setpts still zeroes the residue left by seeking to a keyframe.
       const k = inputs.length;
-      inputs.push({ path: cut.file, ss: inSec, t: outSec - inSec });
+      inputs.push({ path: cut.file, ss: inSec, t: outSec - inSec + slack });
       const chain = mode === "v2" ? framingChain(framing, { width: size.w, height: size.h }) : "";
-      pre.push(`[${k}:v]setpts=PTS-STARTPTS,${normalise(size.w, size.h)}${chain}${tail}[c${n}v]`);
-      pre.push(audioChain(k, sourceHasAudio.get(cut.file) ?? false, lengthMs, fade, `[c${n}a]`));
+      pre.push(`[${k}:v]setpts=PTS-STARTPTS,${normalise(size.w, size.h)}${chain}${tail}${frameTrim(cutFrames)}[c${n}v]`);
+      pre.push(audioChain(k, sourceHasAudio.get(cut.file) ?? false, lengthMs, fade, exact, `[c${n}a]`));
     }
     cuts.push({ v: `[c${n}v]`, a: `[c${n}a]`, lengthMs, join: arrive });
     filmMs -= overlapOf(arrive, cuts);
@@ -870,9 +916,14 @@ export async function renderTimeline(
   /* The voice chain's loudness in two passes when asked for: the first
      measures the joined speech, the second normalises linearly against it,
      which lands on −16 LUFS where the one-pass mode drifts with the
-     material. A measurement that fails leaves the one-pass filter in. */
+     material. A measurement that fails leaves the one-pass filter in. Only
+     when the voice is the whole mix: the measurement is of the speech alone,
+     and a linear gain worked out from it would be wrong for a mix with a
+     music bed or an editor's track under it — those keep the one-pass
+     normaliser on the mix, as v1 does. */
   let args = finalArgs;
-  if (mode === "v2" && plan.audio.voiceChain && !opts.dryRun) {
+  const voiceIsTheMix = !(plan.tracks?.length) && !plan.audio.music && !(plan.audio.sfx?.length);
+  if (mode === "v2" && plan.audio.voiceChain && voiceIsTheMix && !opts.dryRun) {
     const measured = await measureLoudness(inputs, pre, joinedA).catch((err) => {
       console.warn("[render] loudness measurement failed; one-pass loudnorm:", err instanceof Error ? err.message : err);
       return null;
@@ -895,11 +946,18 @@ function clampPush(push: NonNullable<RenderCut["push"]>, inMs: number, outMs: nu
   return { ...push, fromMs, toMs };
 }
 
-/** The per-cut audio chain, with the v2 12 ms fades when `fade` is set. */
-function audioChain(input: number, hasSound: boolean, lengthMs: number, fade: number, label: string): string {
-  if (!hasSound) return `anullsrc=channel_layout=stereo:sample_rate=48000,atrim=0:${(lengthMs / 1000).toFixed(3)},asetpts=PTS-STARTPTS${label}`;
+/**
+ * The per-cut audio chain, with the v2 12 ms fades when `fade` is set, and
+ * — when `exact` — padded and trimmed to the cut's length to the sample, so
+ * the sound is what sets the length of every segment of the join (see the
+ * cut loop in `renderTimeline`), and the fade-out ends on the last sample.
+ */
+function audioChain(input: number, hasSound: boolean, lengthMs: number, fade: number, exact: boolean, label: string): string {
+  const len = (lengthMs / 1000).toFixed(3);
+  if (!hasSound) return `anullsrc=channel_layout=stereo:sample_rate=48000,atrim=0:${len},asetpts=PTS-STARTPTS${label}`;
+  const trim = exact ? `,apad,atrim=end=${len}` : "";
   const fades = fade > 0 ? `,afade=t=in:st=0:d=${fade.toFixed(3)},afade=t=out:st=${Math.max(0, lengthMs / 1000 - fade).toFixed(3)}:d=${fade.toFixed(3)}` : "";
-  return `[${input}:a]asetpts=PTS-STARTPTS,aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo${fades}${label}`;
+  return `[${input}:a]asetpts=PTS-STARTPTS,aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo${trim}${fades}${label}`;
 }
 
 /** How much a dissolve into this cut eats of the running length. */
@@ -911,7 +969,7 @@ function overlapOf(join: Join, cuts: { lengthMs: number }[]): number {
 }
 
 /** A cutaway of the plan with what the renderer adds before it is an input. */
-type PreparedCutaway = RenderPlan["cutaways"][number] & {
+type PreparedCutaway = RenderCutaway & {
   hosts: { file: string; inMs: number; outMs: number; startMs: number; endMs: number; anchor: [number, number]; faceHeight: number }[];
   mask: string | null;
 };
@@ -984,15 +1042,37 @@ async function prepareMotion(clips: RenderPlan["motion"]): Promise<PreparedMotio
 
 /* ------------------------------------------------------------- ffmpeg */
 
-/** Whether a source carries a sound track at all. */
-async function hasAudio(file: string): Promise<boolean> {
+/**
+ * ffprobe's stdout, or "" when it will not start, fails, or does not answer
+ * within the limit. A probe of a local file answers in well under a second;
+ * one that has not answered in a minute is stuck on a broken file or a dead
+ * mount, and a render that waits on it for ever is a worker that never
+ * takes the next job.
+ */
+function probe(args: string[], timeoutMs = 60_000): Promise<string> {
   return new Promise((resolve) => {
-    const child = spawn("ffprobe", ["-v", "error", "-select_streams", "a", "-show_entries", "stream=codec_type", "-of", "csv=p=0", file]);
+    const child = spawn("ffprobe", ["-v", "error", ...args], { stdio: ["ignore", "pipe", "ignore"] });
     let out = "";
     child.stdout.on("data", (c) => (out += String(c)));
-    child.on("error", () => resolve(false));
-    child.on("close", () => resolve(out.includes("audio")));
+    const timer = setTimeout(() => {
+      child.kill("SIGKILL");
+      resolve("");
+    }, timeoutMs);
+    child.on("error", () => {
+      clearTimeout(timer);
+      resolve("");
+    });
+    child.on("close", (code) => {
+      clearTimeout(timer);
+      resolve(code === 0 ? out : "");
+    });
   });
+}
+
+/** Whether a source carries a sound track at all. */
+async function hasAudio(file: string): Promise<boolean> {
+  const out = await probe(["-select_streams", "a", "-show_entries", "stream=codec_type", "-of", "csv=p=0", file]);
+  return out.includes("audio");
 }
 
 /**
@@ -1002,16 +1082,10 @@ async function hasAudio(file: string): Promise<boolean> {
  * (a flash of nothing) or late (two layers of the same card).
  */
 async function clipLengthMs(file: string): Promise<number> {
-  const text = await new Promise<string>((resolve) => {
-    const child = spawn("ffprobe", [
-      "-v", "error", "-select_streams", "v:0", "-count_packets",
-      "-show_entries", "stream=nb_read_packets,r_frame_rate:format=duration", "-of", "json", file,
-    ], { stdio: ["ignore", "pipe", "ignore"] });
-    let out = "";
-    child.stdout.on("data", (c) => (out += String(c)));
-    child.on("error", () => resolve(""));
-    child.on("close", () => resolve(out));
-  });
+  const text = await probe([
+    "-select_streams", "v:0", "-count_packets",
+    "-show_entries", "stream=nb_read_packets,r_frame_rate:format=duration", "-of", "json", file,
+  ]);
   try {
     const parsed = JSON.parse(text) as { streams?: { nb_read_packets?: string; r_frame_rate?: string }[]; format?: { duration?: string } };
     const s = parsed.streams?.[0];
@@ -1089,11 +1163,13 @@ function joinCuts(cuts: { v: string; a: string; lengthMs: number; join: Join }[]
 const VOICE_CHAIN = "highpass=f=80,acompressor=threshold=-18dB:ratio=3:attack=10:release=120,deesser=i=0.4:m=0.5:f=0.5";
 /**
  * §1 asks for a true peak of −1 dBTP on the delivered file. The AAC encode
- * overshoots the normaliser's own ceiling by a few tenths (measured −0.9
- * on the decode against a −1 target), so the filter aims a third of a dB
- * under and the file lands at or below −1.
+ * overshoots the normaliser's own ceiling by a few tenths — measured −0.9
+ * on the decode against a −1 target, and −1.0 or −0.9 from one render to
+ * the next against −1.3 — so the filter aims half a decibel under and the
+ * file lands at or below −1 with margin to spare. The integrated loudness
+ * is set by the linear gain, not by the ceiling, so −16 LUFS holds.
  */
-const LOUDNORM_V2 = "loudnorm=I=-16:TP=-1.3:LRA=11";
+const LOUDNORM_V2 = "loudnorm=I=-16:TP=-1.5:LRA=11";
 
 /**
  * One FFmpeg command for the whole film.
