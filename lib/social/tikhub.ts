@@ -77,6 +77,16 @@ async function get<T>(path: string, query: Query = {}, body?: unknown): Promise<
   return (parsed.data ?? parsed) as T;
 }
 
+/**
+ * The raw call, for the media library (`lib/media/sources`).
+ *
+ * The readers below collapse every platform to `HotRow` for research, and
+ * drop the things a clip fetch needs — play addresses, lengths, author ids.
+ * The media sources read the full payload themselves through this; same
+ * token, same timeout, same billing, and still nothing but reads.
+ */
+export const tikhubRequest = get;
+
 /** Whoever the key belongs to, and what it is allowed to reach. Used by the
  * Admin "channels & credentials" screen to show a key's state without ever
  * showing the key. */
