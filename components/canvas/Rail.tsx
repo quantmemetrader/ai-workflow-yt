@@ -4,6 +4,7 @@ import Link, { useLinkStatus } from "next/link";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { HistoryButton } from "@/components/shell/HistoryButton";
+import { RailAccount, type RailAccountInfo } from "@/components/shell/RailAccount";
 import { BrandMark } from "@/components/brand/BrandMark";
 import { useLocalPreference } from "@/lib/client/preference";
 import { useResizable } from "@/components/ui/Resizer";
@@ -35,7 +36,7 @@ const RAIL_MAX = 268;
 const RAIL_DEFAULT = 186;
 const COLLAPSED = 52;
 
-export function Rail({ modules, locale, projects = [] }: { modules: Module[]; locale: string; projects?: TreeProject[] }) {
+export function Rail({ modules, locale, projects = [], account }: { modules: Module[]; locale: string; projects?: TreeProject[]; account?: RailAccountInfo }) {
   const pathname = usePathname();
   const zh = locale.startsWith("zh");
   const [state, setState] = useLocalPreference("aura:rail", ["open", "icons"] as const, "open");
@@ -209,10 +210,10 @@ export function Rail({ modules, locale, projects = [] }: { modules: Module[]; lo
         )}
       </button>
 
-      {/* The signed-in person used to be a bare avatar at the foot of this
-        * column, which said who you were and never what you were. Both now
-        * live in the top bar (components/shell/TopBar.tsx), named and with the
-        * role beside them; two avatars on one screen was one too many. */}
+      {/* The signed-in person, at the foot as well as in the top bar: the
+        * owner asked for it here, beside 历史记录 and 收起. Named and with the
+        * role (the old bare avatar said who you were, never what you were). */}
+      {account ? <RailAccount account={account} zh={zh} wide={open} /> : null}
 
       {tip && (
         <span

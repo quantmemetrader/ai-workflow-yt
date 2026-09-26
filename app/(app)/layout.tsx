@@ -57,6 +57,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <Rail
         modules={viewer.modules}
         locale={viewer.locale ?? "zh-CN"}
+        account={{ name: viewer.name, nameLocal: viewer.nameLocal, role: viewer.role, avatarUrl: viewer.avatarUrl }}
         projects={viewer.modules.includes("chat") ? (await listWorkProjects(viewer, 30, "created")).map((p) => ({ id: p.id, title: p.title, status: p.status, scriptId: p.scriptId, videoProjectId: p.videoProjectId })) : []}
       />
 
