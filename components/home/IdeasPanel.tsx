@@ -4,13 +4,20 @@ import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AgentIcon } from "@/components/agents/AgentIcon";
+import { Fold } from "@/components/ui/Fold";
 import { Icon } from "@/components/ui/Icon";
 import { InlineAgentThread, useInlineAgent } from "@/components/shell/InlineAgent";
 import { DetailLink } from "@/components/home/DetailLink";
+import { EvidenceChips, Facts, RowTag, StartedNotice, TopicRow, btn, smallBtn, tintBtn } from "@/components/home/TopicRow";
 import { AGENT_COLORS } from "@/lib/agents/catalog";
 import { startFromTopicAction } from "@/app/(app)/projects/actions";
 import { notify } from "@/lib/client/notify";
 import type { Idea } from "@/lib/ideas/types";
+
+export { IDEAS_CSS, Strength } from "@/components/home/TopicRow";
+
+/** Rows shown before "再看 N 个". */
+const SHOWN = 3;
 
 /**
  * Home's ideas module: researched video ideas, each one a project away.
@@ -21,6 +28,13 @@ import type { Idea } from "@/lib/ideas/types";
  * channel's own numbers, the backlog; see `lib/ideas/service.ts`), each with
  * the rows it stands on and their numbers, and a person can talk it through
  * with 研究员 before anything is written.
+ *
+ * Compact on purpose (the owner: "super filled ... looking super ugly"): a
+ * `Fold` like every other panel on Home, three one-line rows (`TopicRow`)
+ * and "再看 N 个" for the rest; a row opens in place, one at a time, for the
+ * other titles, angle, why, opening, evidence and every press, and the box
+ * to ask 研究员 shows only once 问研究员 is pressed. The direction box and
+ * the new-batch press sit small in the panel's footer.
  *
  * Starting one makes the project and starts 编剧 on the draft, and then asks
  * rather than moves: open the project (or the script being written), or stay
@@ -39,6 +53,8 @@ export function IdeasPanel({ zh, initial, canStart, canResearch = true }: { zh: 
   const [error, setError] = React.useState<string | null>(null);
   const [started, setStarted] = React.useState<Record<string, { projectId: string; scriptId: string | null; writing: boolean; existed: boolean }>>({});
   const [working, setWorking] = React.useState<string | null>(null);
+  const [open, setOpen] = React.useState<string | null>(null);
+  const [showAll, setShowAll] = React.useState(false);
   const [asking, setAsking] = React.useState<string | null>(null);
   const [question, setQuestion] = React.useState("");
   /* One thread with 研究员 for the panel, started fresh for each idea asked
@@ -67,6 +83,9 @@ export function IdeasPanel({ zh, initial, canStart, canResearch = true }: { zh: 
       }
       setItems(j.items);
       setStarted({});
+      setOpen(null);
+      setAsking(null);
+      setShowAll(false);
     } catch {
       setError(t("连不上服务器，再试一次。", "Could not reach the server; try again."));
     } finally {
@@ -124,330 +143,303 @@ export function IdeasPanel({ zh, initial, canStart, canResearch = true }: { zh: 
     setQuestion("");
   }
 
+  function toggle(id: string) {
+    setOpen((cur) => (cur === id ? null : id));
+    /* The ask box belongs to the open idea; another row opening closes it
+       (the thread itself is reset only when a different idea is asked). */
+    if (asking && asking !== id) setAsking(null);
+  }
+
   const stage = elapsed < 6 ? t("读存下来的热榜和晨报…", "Reading the stored hot lists and the brief…") : elapsed < 14 ? t("对照本频道的数据和选题储备…", "Checking against the channel's numbers and the backlog…") : elapsed < 40 ? t("研究员在想选题…", "The researcher is working out ideas…") : t("核对每个选题的证据…", "Checking each idea's evidence…");
   const visible = items.filter((x) => x.status !== "dismissed");
+  const shown = showAll ? visible : visible.slice(0, SHOWN);
+  const more = visible.length - SHOWN;
 
-  return (
-    <section style={TINT_PANEL}>
-      <div style={TINT_PANEL_HEAD}>
-        <AgentIcon agent="research" size={18} radius={5} />
-        <span style={{ fontSize: 13.5, fontWeight: 600, whiteSpace: "nowrap" }}>{t("选题灵感 · 研究员", "Ideas · the researcher")}</span>
-        <span style={{ fontSize: 12, color: "#999999", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t("从存下来的热榜、晨报和本频道数据里挑的", "from the stored hot lists, the brief and the channel's own numbers")}</span>
-        <span style={{ flexGrow: 1 }} />
-        {canResearch ? <DetailLink zh={zh} href="/research/backlog" /> : null}
-      </div>
-
-      <div style={TINT_PANEL_BODY}>
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            void generate();
-          }}
-          style={{ display: "flex", gap: 8, alignItems: "center" }}
-        >
-          <input
-            value={seed}
-            onChange={(e) => setSeed(e.target.value)}
-            disabled={busy}
-            maxLength={200}
-            placeholder={t("想做什么方向？可不填", "Any direction in mind? Optional")}
-            style={{ flexGrow: 1, minWidth: 0, height: 32, border: "1px solid #e2e2e2", borderRadius: 9, padding: "0 11px", fontFamily: "inherit", fontSize: 12.5, outline: "none", background: busy ? "#fafafa" : "#fff" }}
-          />
-          {/* Black only while it is the panel's one thing to do (no ideas
-              yet). With a batch on screen the ideas are the point, and a
-              second batch is a white button with the researcher's blue spark. */}
-          <button
-            type="submit"
-            disabled={busy}
-            style={{
-              ...btn(!visible.length),
-              height: 32,
-              padding: "0 13px",
-              borderRadius: 9,
-              fontSize: 12.5,
-              flexShrink: 0,
-              cursor: busy ? "default" : "pointer",
-              opacity: busy ? 0.7 : 1,
-            }}
-          >
-            <Icon name="spark" size={13} color={visible.length ? AGENT_COLORS.research : undefined} /> {busy ? t("生成中…", "Working…") : visible.length ? t("再出一批", "New batch") : t("生成选题", "Generate ideas")}
-          </button>
-        </form>
-
-        {busy ? (
-          <div role="status" style={{ display: "flex", alignItems: "center", gap: 9, marginTop: 10, padding: "9px 11px", borderRadius: 10, background: "#f3f8fe", border: "1px solid #d5e7fb" }}>
-            <span style={{ width: 7, height: 7, borderRadius: 4, background: "#0f5bd5", flexShrink: 0, animation: "auraPulse 1.6s ease-in-out infinite" }} />
-            <span style={{ fontSize: 12.5, color: "#2b343d", flexGrow: 1 }}>{stage}</span>
-            <span style={{ fontSize: 11.5, color: "#7c7c7c", fontVariantNumeric: "tabular-nums" }}>{t(`${elapsed} 秒`, `${elapsed}s`)}</span>
-          </div>
-        ) : null}
-        {error ? <div style={{ marginTop: 10, fontSize: 12.5, color: "#c42b2b", lineHeight: 1.55 }}>{error}</div> : null}
-
-        {!visible.length && !busy ? (
-          <div style={{ marginTop: 12, padding: "12px 14px", borderRadius: 12, background: "#fafbfd", border: "1px dashed #dfe6f1" }}>
-            <div style={{ fontSize: 12.5, fontWeight: 600, color: "#171717" }}>{t("先有研究，再写脚本", "Research first, then the script")}</div>
-            <p style={{ fontSize: 12.5, color: "#525252", lineHeight: 1.65, margin: "4px 0 0" }}>
-              {t(
-                "按「生成选题」，研究员会从已经采集的热榜、今早的晨报、本频道视频的表现和选题储备里，挑出几个值得拍的题。每个都带标题备选、角度、为什么是现在和证据（平台自己的数字）。满意的一键开项目，编剧接着写初稿；也可以先问研究员。",
-                "Press Generate and the researcher picks a few topics worth filming from the hot lists already collected, this morning's brief, how the channel's videos did and the backlog. Each comes with title options, an angle, why now and the evidence (the platforms' own numbers). Start one and the writer drafts it; or ask the researcher first.",
-              )}
-            </p>
-          </div>
-        ) : null}
-
-        {visible.length ? (
-          <div style={{ display: "flex", flexDirection: "column", gap: 14, marginTop: 14 }}>
-            {visible.map((idea, i) => {
-              const done = started[idea.id];
-              const projectId = done?.projectId ?? idea.projectId;
-              return (
-                <div key={idea.id} style={{ borderTop: i ? "1px solid #f0f0f0" : "none", paddingTop: i ? 14 : 0 }}>
-                  {/* The title wraps; the strength and the format stay on its
-                      first line (a box as tall as that line, centred in it). */}
-                  <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
-                    <span style={{ fontSize: 15, fontWeight: 600, lineHeight: 1.4, color: "#171717", minWidth: 0 }}>{idea.title}</span>
-                    <span style={{ display: "inline-flex", alignItems: "center", gap: 8, height: 21, flexShrink: 0 }}>
-                      {idea.strength ? <Strength n={idea.strength} title={t("研究员觉得有多强", "How strong the researcher thinks it is")} /> : null}
-                      {idea.format ? <span style={{ fontSize: 11, color: "#7c7c7c", background: "#f3f3f1", borderRadius: 999, padding: "0 7px", lineHeight: "18px" }}>{idea.format}</span> : null}
-                    </span>
-                  </div>
-                  {idea.titles.length ? <div style={{ fontSize: 12, color: "#8a8a8a", marginTop: 3, lineHeight: 1.5 }}>{t("也可以叫：", "Or: ")}{idea.titles.join(" / ")}</div> : null}
-                  {/* Angle, why now and the opening as three labelled lines in
-                      one column, so the eye can run down the labels instead of
-                      reading three sentences run together. */}
-                  {idea.angle || idea.why || idea.hook ? (
-                    <div style={FACTS}>
-                      {idea.angle ? (
-                        <>
-                          <span style={FACT_LABEL}>{t("角度", "Angle")}</span>
-                          <span style={{ color: "#2b343d" }}>{idea.angle}</span>
-                        </>
-                      ) : null}
-                      {idea.why ? (
-                        <>
-                          <span style={FACT_LABEL}>{t("理由", "Why now")}</span>
-                          <span style={{ color: "#525252" }}>{idea.why}</span>
-                        </>
-                      ) : null}
-                      {idea.hook ? (
-                        <>
-                          <span style={FACT_LABEL}>{t("开头", "Opening")}</span>
-                          <span style={{ color: "#525252" }}>{t(`「${idea.hook}」`, `“${idea.hook}”`)}</span>
-                        </>
-                      ) : null}
-                    </div>
-                  ) : null}
-                  {idea.evidence.length ? (
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
-                      {idea.evidence.map((e, k) =>
-                        e.url ? (
-                          <a key={k} href={e.url} target="_blank" rel="noopener noreferrer" title={e.title} style={chip}>
-                            <Icon name="external" size={10} />
-                            <span style={{ color: "#7c7c7c" }}>{e.label}</span>
-                            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 180 }}>{e.title}</span>
-                            {e.numbers ? <span style={{ fontVariantNumeric: "tabular-nums" }}>{e.numbers.split(" · ").slice(0, 2).join(" · ")}</span> : null}
-                          </a>
-                        ) : (
-                          <span key={k} title={e.title} style={chip}>
-                            <span style={{ color: "#7c7c7c" }}>{e.label}</span>
-                            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 180 }}>{e.title}</span>
-                            {e.numbers ? <span>{e.numbers.split(" · ").slice(0, 2).join(" · ")}</span> : null}
-                          </span>
-                        ),
-                      )}
-                    </div>
-                  ) : null}
-
-                  {done ? (
-                    <StartedNotice zh={zh} title={idea.title} projectId={done.projectId} scriptId={done.scriptId} writing={done.writing} existed={done.existed} onStay={() => setStarted((m) => { const next = { ...m }; delete next[idea.id]; return next; })} />
-                  ) : (
-                    <div style={{ display: "flex", gap: 6, marginTop: 12, flexWrap: "wrap", alignItems: "center" }}>
-                      {/* Started: a link only to a project this person can open.
-                          The server answers an idea whose project was deleted
-                          as new (so it can be started again), and one whose
-                          project is private to others as started with no id:
-                          said, not linked, so nothing here leads to a 404. */}
-                      {idea.status === "started" && projectId ? (
-                        <Link prefetch={false} href={`/projects/${projectId}`} style={{ ...btn(false), textDecoration: "none" }}>
-                          <Icon name="check" size={13} /> {t("已开项目 · 打开", "Started · open it")}
-                        </Link>
-                      ) : idea.status === "started" ? (
-                        <span style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 30, fontSize: 12, color: "#7c7c7c" }}>
-                          <Icon name="check" size={13} /> {t("已有同事开了项目", "A colleague has started a project from it")}
-                        </span>
-                      ) : canStart ? (
-                        /* In 编剧's tint, not black: five ideas used to carry
-                           five black buttons, and the eye had nowhere to land. */
-                        <button type="button" className="ip-go" disabled={working !== null} onClick={() => startOne(idea)} style={{ ...tintBtn(), opacity: working === idea.id ? 0.6 : 1 }}>
-                          <Icon name="pen" size={13} /> {working === idea.id ? t("正在开项目…", "Starting…") : t("开项目并写脚本", "Start it and write the script")}
-                        </button>
-                      ) : null}
-                      {idea.status !== "started" ? (
-                        <button type="button" disabled={idea.status === "saved"} onClick={() => void mark(idea, "saved")} style={{ ...btn(false), color: idea.status === "saved" ? "#278f5e" : "#171717", cursor: idea.status === "saved" ? "default" : "pointer" }}>
-                          <Icon name={idea.status === "saved" ? "check" : "plus"} size={13} /> {idea.status === "saved" ? t("已存进选题储备", "In the backlog") : t("存进选题储备", "Save to the backlog")}
-                        </button>
-                      ) : null}
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (asking !== idea.id && agent.messages.length) agent.reset();
-                          setAsking(asking === idea.id ? null : idea.id);
-                        }}
-                        style={{ ...btn(false), borderColor: asking === idea.id ? "#0f5bd5" : "#e2e2e2" }}
-                      >
-                        <Icon name="chat" size={13} /> {t("问研究员", "Ask the researcher")}
-                      </button>
-                      <span style={{ flexGrow: 1 }} />
-                      {idea.status !== "started" ? (
-                        <button type="button" onClick={() => void mark(idea, "dismissed")} style={{ border: 0, background: "transparent", padding: "0 4px", fontFamily: "inherit", fontSize: 12, color: "#999999", cursor: "pointer" }}>
-                          {t("不要", "Not this")}
-                        </button>
-                      ) : null}
-                    </div>
-                  )}
-
-                  {asking === idea.id ? (
-                    <div style={{ marginTop: 8, border: "1px solid #e4e9f3", borderRadius: 11, background: "#fafbfd", overflow: "hidden" }}>
-                      {agent.messages.length ? (
-                        <div style={{ maxHeight: 280, display: "flex", flexDirection: "column" }}>
-                          <InlineAgentThread messages={agent.messages} notice={agent.notice} conversationId={agent.conversationId} zh={zh} />
-                        </div>
-                      ) : null}
-                      <form
-                        onSubmit={(e) => {
-                          e.preventDefault();
-                          ask(idea);
-                        }}
-                        style={{ display: "flex", gap: 6, padding: 8 }}
-                      >
-                        <input
-                          autoFocus
-                          value={question}
-                          onChange={(e) => setQuestion(e.target.value)}
-                          placeholder={t("比如：这个题对标账号怎么拍的？数据站得住吗？", "e.g. How did rivals film this? Do the numbers hold?")}
-                          style={{ flexGrow: 1, minWidth: 0, height: 30, border: "1px solid #e2e2e2", borderRadius: 8, padding: "0 10px", fontFamily: "inherit", fontSize: 12.5, outline: "none", background: "#fff" }}
-                        />
-                        <button type="submit" disabled={agent.busy || !question.trim()} style={{ ...btn(true), height: 30 }}>
-                          {agent.busy ? t("回答中…", "Answering…") : t("问", "Ask")}
-                        </button>
-                      </form>
-                    </div>
-                  ) : null}
-                </div>
-              );
-            })}
-          </div>
-        ) : null}
-      </div>
-    </section>
-  );
-}
-
-/**
- * How strong the researcher thinks a topic is, as five dots in the
- * researcher's own colours: the blue for the strength it has, the light tint
- * (a step darker, `EMPTY_DOT`, so it still shows on white) for the rest. (It was "●●●○○" in orange, which matched nothing else on the
- * page and drew in whatever size the font gave those two characters.)
- */
-export function Strength({ n, title }: { n: number; title: string }) {
-  const k = Math.max(0, Math.min(5, Math.round(n)));
-  return (
-    <span role="img" aria-label={`${k}/5`} title={title} style={{ display: "inline-flex", alignItems: "center", gap: 3, flexShrink: 0 }}>
-      {[0, 1, 2, 3, 4].map((i) => (
-        <span key={i} style={{ width: 6, height: 6, borderRadius: 3, background: i < k ? AGENT_COLORS.research : EMPTY_DOT }} />
-      ))}
-    </span>
-  );
-}
-
-/**
- * The frame the researcher's two Home panels share (these ideas and today's
- * suggestion): the same radius, header and body padding as a `Fold`, so the
- * wide column reads as one set of panels, with the research-to-planning tint
- * on the edge as the only thing that marks them as the researcher's.
- */
-export const TINT_PANEL: React.CSSProperties = {
-  borderRadius: 14,
-  border: "1px solid transparent",
-  background: "linear-gradient(#ffffff, #ffffff) padding-box, linear-gradient(135deg, #d5e7fb, #dcd6fb 55%, #d5e7fb) border-box",
-  boxShadow: "0 1px 2px rgba(0,0,0,0.03)",
-  minWidth: 0,
-};
-export const TINT_PANEL_HEAD: React.CSSProperties = { display: "flex", alignItems: "center", gap: 8, padding: "11px 14px", borderBottom: "1px solid #eef1f6", minWidth: 0 };
-export const TINT_PANEL_BODY: React.CSSProperties = { padding: "12px 14px 14px" };
-
-/**
- * The start press on an idea or a suggestion, in 编剧's tint (it starts the
- * writer), darkening on hover. Drawn once by Home, beside `DETAIL_LINK_CSS`.
- */
-export const IDEAS_CSS = `
-.ip-go { background: #fdefe4; border: 1px solid #f4d5bd; color: #8f3510; transition: background-color .15s ease, border-color .15s ease; }
-.ip-go:hover:not(:disabled) { background: #f8dcc6; border-color: #ecbf9c; color: #7a2c0b; }
-.ip-go:focus-visible { outline: 2px solid #b3420e; outline-offset: 1px; }
-.ip-go:disabled { cursor: default; }
-`;
-
-/** 研究员's tint (`AGENT_TINTS.research`), a step darker so an empty dot still shows on white. */
-const EMPTY_DOT = "#c4d8f4";
-
-const FACTS: React.CSSProperties = { display: "grid", gridTemplateColumns: "auto minmax(0, 1fr)", columnGap: 10, rowGap: 3, marginTop: 7, fontSize: 12.5, lineHeight: 1.6 };
-const FACT_LABEL: React.CSSProperties = { fontSize: 11.5, lineHeight: "20px", color: "#a3a3a3", whiteSpace: "nowrap" };
-
-/**
- * After a start from Home: the project exists and 编剧 may be writing.
- * The person chooses where to be; the page does not move on its own.
- */
-export function StartedNotice({ zh, title, projectId, scriptId, writing, existed, onStay }: { zh: boolean; title: string; projectId: string; scriptId: string | null; writing: boolean; existed: boolean; onStay: () => void }) {
-  const t = (a: string, b: string) => (zh ? a : b);
-  return (
-    <div role="status" style={{ marginTop: 12, padding: "10px 12px", borderRadius: 12, background: "#f4fbf8", border: "1px solid #c3e6e0", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-      <AgentIcon agent={writing ? "script" : "research"} size={24} radius={7} />
-      <div style={{ flexGrow: 1, minWidth: 180 }}>
-        <div style={{ fontSize: 12.5, fontWeight: 600, color: "#171717" }}>
-          {existed ? t(`这个选题已经有项目了：《${title}》`, `This topic already has a project: “${title}”`) : t(`项目已开：《${title}》`, `Project started: “${title}”`)}
-        </div>
-        <div style={{ fontSize: 12, color: "#525252", marginTop: 2 }}>
-          {writing ? t("编剧正在写初稿，写好会出现在脚本里。", "The writer is drafting it; the draft lands in the script.") : t("去项目里接着做，或者留在这里。", "Carry on in the project, or stay here.")}
-        </div>
-      </div>
-      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-        {writing && scriptId ? (
-          <Link prefetch={false} href={`/script/${scriptId}?writing=1`} style={{ ...btn(true), textDecoration: "none" }}>
-            <Icon name="pen" size={13} /> {t("去看脚本", "Watch the script")}
-          </Link>
-        ) : null}
-        <Link prefetch={false} href={`/projects/${projectId}`} style={{ ...btn(!(writing && scriptId)), textDecoration: "none" }}>
-          {t("打开项目", "Open the project")}
-        </Link>
-        <button type="button" onClick={onStay} style={btn(false)}>
-          {t("留在这里", "Stay here")}
-        </button>
-      </div>
+  const status = busy ? (
+    <div role="status" style={{ display: "flex", alignItems: "center", gap: 9, padding: "7px 11px", borderRadius: 9, background: "#f3f8fe", border: "1px solid #d5e7fb" }}>
+      <span style={{ width: 7, height: 7, borderRadius: 4, background: "#0f5bd5", flexShrink: 0, animation: "auraPulse 1.6s ease-in-out infinite" }} />
+      <span style={{ fontSize: 12.5, color: "#2b343d", flexGrow: 1, minWidth: 0 }}>{stage}</span>
+      <span style={{ fontSize: 11.5, color: "#7c7c7c", fontVariantNumeric: "tabular-nums" }}>{t(`${elapsed} 秒`, `${elapsed}s`)}</span>
     </div>
+  ) : null;
+  /* With a batch on screen, the same progress as one line in the footer, in
+     place of "再看 N 个": the rows do not move down under the pointer while
+     a new batch is being written. */
+  const statusInline = busy ? (
+    <span role="status" style={{ display: "inline-flex", alignItems: "center", gap: 7, flex: "1 1 auto", minWidth: 0, fontSize: 12, color: "#2b343d" }}>
+      <span style={{ width: 7, height: 7, borderRadius: 4, background: "#0f5bd5", flexShrink: 0, animation: "auraPulse 1.6s ease-in-out infinite" }} />
+      <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{stage}</span>
+      <span style={{ fontSize: 11.5, color: "#7c7c7c", fontVariantNumeric: "tabular-nums", flexShrink: 0 }}>{t(`${elapsed} 秒`, `${elapsed}s`)}</span>
+    </span>
+  ) : null;
+  const errorLine = error ? <div style={{ fontSize: 12.5, color: "#c42b2b", lineHeight: 1.55 }}>{error}</div> : null;
+
+  /* The direction box and the press, on one line: the panel's one black
+     press while there is nothing else to do, a white one with the
+     researcher's blue spark once there is a batch to look at. */
+  const form = (compact: boolean) => (
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        void generate();
+      }}
+      style={{ display: "flex", gap: 6, alignItems: "center", minWidth: 0, flex: compact ? "0 1 340px" : "1 1 auto" }}
+    >
+      <input
+        value={seed}
+        onChange={(e) => setSeed(e.target.value)}
+        disabled={busy}
+        maxLength={200}
+        aria-label={t("选题方向（可不填）", "Direction (optional)")}
+        placeholder={t("想做什么方向？可不填", "Any direction? Optional")}
+        style={{ flex: "1 1 auto", minWidth: 0, height: 28, border: "1px solid #e6e6e6", borderRadius: 8, padding: "0 10px", fontFamily: "inherit", fontSize: 12, outline: "none", background: busy ? "#fafafa" : "#fff" }}
+      />
+      <button
+        type="submit"
+        disabled={busy}
+        className={compact ? "ip-quiet" : undefined}
+        style={{ ...(compact ? tintBtn() : btn(true)), height: 28, padding: "0 11px", flexShrink: 0, cursor: busy ? "default" : "pointer", opacity: busy ? 0.7 : 1 }}
+      >
+        <Icon name="spark" size={12} color={compact ? AGENT_COLORS.research : undefined} /> {busy ? t("生成中…", "Working…") : compact ? t("再出一批", "New batch") : t("生成选题", "Generate ideas")}
+      </button>
+    </form>
+  );
+
+  return (
+    <Fold
+      id="home-ideas"
+      title={t("选题灵感 · 研究员", "Ideas · the researcher")}
+      sub={t("从存下来的热榜、晨报和本频道数据里挑的", "from the stored hot lists, the brief and the channel's own numbers")}
+      icon={<AgentIcon agent="research" size={18} radius={5} />}
+      resizable={false}
+      flush
+      right={canResearch ? <DetailLink zh={zh} href="/research/backlog" /> : null}
+      footer={
+        visible.length ? (
+          <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 14px", minWidth: 0 }}>
+            {statusInline ?? (more > 0 ? (
+              <button type="button" className="ip-more" aria-expanded={showAll} onClick={() => setShowAll((v) => !v)}>
+                {showAll ? t("收起", "Show fewer") : t(`再看 ${more} 个`, `${more} more`)}
+                <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden style={{ transform: showAll ? "rotate(-90deg)" : "rotate(90deg)", transition: "transform .15s ease" }}>
+                  <path d="m9.5 6.5 5.5 5.5-5.5 5.5" />
+                </svg>
+              </button>
+            ) : null)}
+            {statusInline ? null : <span style={{ flexGrow: 1 }} />}
+            {form(true)}
+          </div>
+        ) : null
+      }
+    >
+      {!visible.length ? (
+        /* Nothing yet: one line on what this is, and the press. */
+        <div style={{ padding: "12px 14px", display: "flex", flexDirection: "column", gap: 10 }}>
+          {status ?? (
+            <div style={{ fontSize: 12.5, color: "#7c7c7c", lineHeight: 1.55 }}>
+              <span style={{ color: "#171717", fontWeight: 600 }}>{t("先有研究，再写脚本。", "Research first, then the script.")}</span>
+              {t("研究员从热榜、晨报和本频道数据里挑值得拍的题。", " The researcher picks topics from the hot lists, the brief and your numbers.")}
+            </div>
+          )}
+          {errorLine}
+          {form(false)}
+        </div>
+      ) : (
+        <>
+          {errorLine ? <div style={{ padding: "9px 14px", borderBottom: "1px solid #f0f0f0" }}>{errorLine}</div> : null}
+          {shown.map((idea, i) => (
+            <IdeaRow
+              key={idea.id}
+              zh={zh}
+              idea={idea}
+              first={i === 0}
+              open={open === idea.id}
+              onToggle={() => toggle(idea.id)}
+              canStart={canStart}
+              working={working}
+              done={started[idea.id]}
+              onStart={() => startOne(idea)}
+              onMark={(s) => void mark(idea, s)}
+              onStay={() =>
+                setStarted((m) => {
+                  const next = { ...m };
+                  delete next[idea.id];
+                  return next;
+                })
+              }
+              asking={asking === idea.id}
+              onAsk={() => {
+                if (asking !== idea.id && agent.messages.length) agent.reset();
+                setAsking(asking === idea.id ? null : idea.id);
+              }}
+              askBox={
+                asking === idea.id ? (
+                  <div style={{ marginTop: 10, border: "1px solid #e4e9f3", borderRadius: 11, background: "#fff", overflow: "hidden" }}>
+                    {agent.messages.length ? (
+                      <div style={{ maxHeight: 280, display: "flex", flexDirection: "column" }}>
+                        <InlineAgentThread messages={agent.messages} notice={agent.notice} conversationId={agent.conversationId} zh={zh} />
+                      </div>
+                    ) : null}
+                    <form
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        ask(idea);
+                      }}
+                      style={{ display: "flex", gap: 6, padding: 8 }}
+                    >
+                      <input
+                        autoFocus
+                        value={question}
+                        onChange={(e) => setQuestion(e.target.value)}
+                        placeholder={t("比如：这个题对标账号怎么拍的？数据站得住吗？", "e.g. How did rivals film this? Do the numbers hold?")}
+                        style={{ flexGrow: 1, minWidth: 0, height: 30, border: "1px solid #e2e2e2", borderRadius: 8, padding: "0 10px", fontFamily: "inherit", fontSize: 12.5, outline: "none", background: "#fff" }}
+                      />
+                      <button type="submit" disabled={agent.busy || !question.trim()} style={{ ...btn(true), height: 30 }}>
+                        {agent.busy ? t("回答中…", "Answering…") : t("问", "Ask")}
+                      </button>
+                    </form>
+                  </div>
+                ) : null
+              }
+            />
+          ))}
+        </>
+      )}
+    </Fold>
   );
 }
 
-const chip: React.CSSProperties = { display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11.5, color: "#525252", background: "#f5f7fb", borderRadius: 999, padding: "2px 9px", textDecoration: "none", maxWidth: "100%", minWidth: 0 };
+/**
+ * One idea: shut, a row with its strength, title, one grey line of why, the
+ * format and the one start press; open, the other titles, angle, why and
+ * opening as labelled lines, up to three pieces of evidence, and every press.
+ */
+function IdeaRow({
+  zh,
+  idea,
+  first,
+  open,
+  onToggle,
+  canStart,
+  working,
+  done,
+  onStart,
+  onMark,
+  onStay,
+  asking,
+  onAsk,
+  askBox,
+}: {
+  zh: boolean;
+  idea: Idea;
+  first: boolean;
+  open: boolean;
+  onToggle: () => void;
+  canStart: boolean;
+  working: string | null;
+  done: { projectId: string; scriptId: string | null; writing: boolean; existed: boolean } | undefined;
+  onStart: () => void;
+  onMark: (status: "saved" | "dismissed") => void;
+  onStay: () => void;
+  asking: boolean;
+  onAsk: () => void;
+  askBox: React.ReactNode;
+}) {
+  const t = (a: string, b: string) => (zh ? a : b);
+  const projectId = done?.projectId ?? idea.projectId;
+  const isStarted = idea.status === "started";
+  const startingThis = working === idea.id;
 
-/** `btn` without its colours, which the `ip-go` class supplies (inline colours would beat its hover). */
-export function tintBtn(): React.CSSProperties {
-  return { ...btn(false), background: undefined, border: undefined, color: undefined };
-}
+  /* Started: a link only to a project this person can open. The server
+     answers an idea whose project was deleted as new (so it can be started
+     again), and one whose project is private to others as started with no
+     id: said, not linked, so nothing here leads to a 404. */
+  const startedMark = (full: boolean) =>
+    isStarted && projectId ? (
+      <Link prefetch={false} href={`/projects/${projectId}`} className="ip-quiet" style={{ ...(full ? tintBtn() : smallBtn()), textDecoration: "none" }}>
+        <Icon name="check" size={full ? 13 : 12} color="#278f5e" /> {t("已开项目 · 打开", "Started · open")}
+      </Link>
+    ) : isStarted ? (
+      <span style={{ display: "inline-flex", alignItems: "center", gap: 5, height: full ? 30 : 26, fontSize: 12, color: "#7c7c7c", whiteSpace: "nowrap" }}>
+        <Icon name="check" size={full ? 13 : 12} /> {t("同事已开项目", "A colleague started it")}
+      </span>
+    ) : null;
 
-function btn(primary: boolean): React.CSSProperties {
-  return {
-    height: 30,
-    padding: "0 12px",
-    borderRadius: 8,
-    border: primary ? "1px solid #171717" : "1px solid #e2e2e2",
-    background: primary ? "#171717" : "#fff",
-    color: primary ? "#fff" : "#171717",
-    fontFamily: "inherit",
-    fontSize: 12,
-    cursor: "pointer",
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 6,
-    whiteSpace: "nowrap",
-  };
+  /* The row's one press, while shut; open, the full row of presses below
+     carries it. In 编剧's tint, not black: a list of ideas used to carry a
+     black button each, and the eye had nowhere to land. */
+  const rowAction = open || done ? null : startedMark(false) ?? (canStart ? (
+    <button type="button" className="ip-go" disabled={working !== null} onClick={onStart} title={t("开项目，编剧接着写初稿", "Start a project; the writer drafts it")} style={{ ...smallBtn(), opacity: startingThis ? 0.6 : 1 }}>
+      <Icon name="pen" size={12} /> {startingThis ? t("开项目…", "Starting…") : t("开项目", "Start")}
+    </button>
+  ) : null);
+
+  return (
+    <TopicRow
+      first={first}
+      open={open}
+      onToggle={onToggle}
+      strength={idea.strength}
+      strengthTitle={t("研究员觉得有多强", "How strong the researcher thinks it is")}
+      title={idea.title}
+      line={idea.why ?? idea.angle}
+      meta={
+        <>
+          {idea.status === "saved" ? (
+            <RowTag tone="ok" title={t("已存进选题储备", "In the backlog")}>
+              <Icon name="check" size={10} /> {t("已存", "Saved")}
+            </RowTag>
+          ) : null}
+          {idea.format ? <RowTag>{idea.format}</RowTag> : null}
+        </>
+      }
+      action={rowAction}
+      notice={done ? <StartedNotice zh={zh} title={idea.title} projectId={done.projectId} scriptId={done.scriptId} writing={done.writing} existed={done.existed} onStay={onStay} /> : null}
+    >
+      <Facts
+        rows={[
+          /* One title a line: joined with " / ", two titles that wrap
+             read as one long sentence. */
+          [
+            t("备选", "Or"),
+            idea.titles.length ? (
+              <span style={{ display: "flex", flexDirection: "column", color: "#525252" }}>
+                {idea.titles.map((x, k) => (
+                  <span key={k}>{x}</span>
+                ))}
+              </span>
+            ) : null,
+          ],
+          [t("角度", "Angle"), idea.angle],
+          [t("理由", "Why now"), idea.why ? <span style={{ color: "#525252" }}>{idea.why}</span> : null],
+          [t("开头", "Opening"), idea.hook ? <span style={{ color: "#525252" }}>{t(`「${idea.hook}」`, `“${idea.hook}”`)}</span> : null],
+          [t("证据", "Evidence"), idea.evidence.length ? <EvidenceChips items={idea.evidence} /> : null],
+        ]}
+      />
+      {done ? null : (
+        <div style={{ display: "flex", gap: 6, marginTop: 12, flexWrap: "wrap", alignItems: "center" }}>
+          {startedMark(true) ??
+            (canStart ? (
+              <button type="button" className="ip-go" disabled={working !== null} onClick={onStart} style={{ ...tintBtn(), opacity: startingThis ? 0.6 : 1 }}>
+                <Icon name="pen" size={13} /> {startingThis ? t("正在开项目…", "Starting…") : t("开项目并写脚本", "Start it and write the script")}
+              </button>
+            ) : null)}
+          {!isStarted ? (
+            <button type="button" disabled={idea.status === "saved"} onClick={() => onMark("saved")} style={{ ...btn(false), color: idea.status === "saved" ? "#278f5e" : "#171717", cursor: idea.status === "saved" ? "default" : "pointer" }}>
+              <Icon name={idea.status === "saved" ? "check" : "plus"} size={13} /> {idea.status === "saved" ? t("已存进选题储备", "In the backlog") : t("存进选题储备", "Save to the backlog")}
+            </button>
+          ) : null}
+          <button type="button" onClick={onAsk} aria-expanded={asking} style={{ ...btn(false), borderColor: asking ? "#0f5bd5" : "#e2e2e2" }}>
+            <Icon name="chat" size={13} /> {t("问研究员", "Ask the researcher")}
+          </button>
+          <span style={{ flexGrow: 1 }} />
+          {!isStarted ? (
+            <button type="button" onClick={() => onMark("dismissed")} style={{ border: 0, background: "transparent", padding: "0 4px", fontFamily: "inherit", fontSize: 12, color: "#999999", cursor: "pointer" }}>
+              {t("不要", "Not this")}
+            </button>
+          ) : null}
+        </div>
+      )}
+      {askBox}
+    </TopicRow>
+  );
 }
