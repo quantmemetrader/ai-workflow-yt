@@ -127,9 +127,11 @@ export type LayoutPace = "calm" | "channel" | "hype";
 /**
  * A beat as the design step hands it over: the frozen `Beat` plus what the
  * layout needs and W3's sourcing does not. `id` is the sentence id for the
- * first beat of a sentence and `sNNN.2`, `sNNN.3` for the rest; sourcing
- * keys by `sentenceId`, so at most one beat per sentence is ever sent to
- * it (the one that wants footage) and `Sourced.beatId` is unambiguous.
+ * first beat of a sentence and `sNNN.2`, `sNNN.3` for the rest. The design
+ * step rewrites every `Sourced.beatId` to one of these ids before the plan
+ * is laid out (W3 answers with its own `bNN-sNNN-intent` ids, see
+ * `design.ts:sourcedForLayout`), so here an asset belongs to exactly one
+ * beat and a sentence may own several.
  */
 export type DesignBeat = Beat & {
   id: string;
@@ -245,13 +247,6 @@ export type LayoutInput = {
   credits?: Credits | null;
   /** The entity mentions per sentence for chips (name → sentence ids after the first). */
   mentions?: Record<string, string[]>;
-  /**
-   * Which beat of a sentence the sourced asset was found for (sentence id →
-   * beat id). Sourcing keys by sentence, so when a sentence carries several
-   * beats only one of them owns the asset; without this map the first beat
-   * of the sentence is assumed.
-   */
-  sourcedBeat?: Record<string, string>;
   /**
    * Logos resolved per entity (name → the sourced logo), from W3's
    * `entityVisual`. A logo rides on the entity's card; it is never a
@@ -511,7 +506,7 @@ const SNAP_OVERRUN_MS = 500;
 
 function findSlot(
   ledger: Ledger,
-  want: { startMs: number; minMs: number; maxMs: number; latestStartMs: number; hardEndMs: number; softEndAfter?: (startMs: number) => number },
+  want: { startMs: number; minMs: number; maxMs: number; latestStartMs: number; hardEndMs: number; softEndAfter?: (startMs: number) => number; snapBackMs?: number },
   exempt = false,
   trace?: (line: string) => void,
 ): { startMs: number; endMs: number } | null {
@@ -523,8 +518,16 @@ function findSlot(
   }
   const gap = TIMING.minChangeGapMs;
   const starts = new Set<number>([earliest]);
-  /* A change up to three frames before the wanted moment (a cut she made just before the word) is the better start. */
-  for (const c of ledger.changes) if (c >= earliest - 100 && c <= want.latestStartMs) starts.add(Math.max(0, c));
+  /*
+   * A change just before the wanted moment (a cut she made before the word)
+   * is the better start: the entrance and the cut are one event. Three
+   * frames by default; a layer whose landing is not its entrance (a counter
+   * counts up to its word) may reach back as far as `snapBackMs`, which is
+   * how a counter wanted 150 ms after a jump cut lands on the cut instead of
+   * waiting 0.8 s and missing its figure.
+   */
+  const back = Math.max(100, want.snapBackMs ?? 0);
+  for (const c of ledger.changes) if (c >= earliest - back && c <= want.latestStartMs) starts.add(Math.max(0, c));
   for (const s of ledger.slots) if (s.endMs > earliest && s.endMs <= want.latestStartMs) starts.add(s.endMs);
   for (let at = earliest + 400; at <= want.latestStartMs; at += 400) starts.add(at);
   const sorted = Array.from(starts).sort((a, b) => a - b);
@@ -604,12 +607,11 @@ export function resolveLayout(input: LayoutInput): LayoutPlan {
   if (zoneT.clears && zoneT.eyeY !== FRAMING.eyeY) notes.push(`上方图形出现时主播眼线降到 ${Math.round(zoneT.eyeY * 100)}% 高度（画面 ${zoneT.scale.toFixed(2)} 倍填满），让人脸避开 T 区；规格的 30–36% 会压在额头上。`);
   if (!zoneT.clears) notes.push("这张脸在任何取景下都无法避开 T 区：上方图形会与人脸框重叠，见 lint。");
 
+  /* Assets by the beat that owns them (`Sourced.beatId` is a design beat id here, see `DesignBeat`); a `split` pick falls back to `run` when this face leaves no room for the split. */
   const sourcedByBeat = new Map(
     input.sourced.map((s) => [s.beatId, split.possible || s.layout !== "split" ? s : { ...s, layout: "run" as Layout }]),
   );
   const usedSourced = new Set<string>();
-  /** The beat of a sentence that owns the sentence's sourced asset. */
-  const ownsAsset = (b: DesignBeat) => (input.sourcedBeat?.[b.sentenceId] ?? b.sentenceId) === b.id;
   /** How many entity cards one sentence asks for: three or more and they go back to back, shorter. */
   const entityBeatsIn = new Map<string, number>();
   for (const b of input.beats) if ((b.intent === "org" || b.intent === "product" || b.intent === "person") && b.priority < 3) entityBeatsIn.set(b.sentenceId, (entityBeatsIn.get(b.sentenceId) ?? 0) + 1);
@@ -813,7 +815,7 @@ export function resolveLayout(input: LayoutInput): LayoutPlan {
       }
     }
 
-    const src = sourcedByBeat.get(beat.sentenceId);
+    const src = sourcedByBeat.get(beat.id);
     /*
      * A headline's image goes behind its card and a logo on its entity's
      * card; neither is a cutaway of its own. Three names in one breath get
@@ -823,7 +825,7 @@ export function resolveLayout(input: LayoutInput): LayoutPlan {
     const wantsFootage = ["person", "org", "product", "scene", "metaphor", "concept"].includes(beat.intent) && src?.kind !== "logo";
 
     /* a. the sourced cutaway */
-    if (src && wantsFootage && !usedSourced.has(src.beatId) && ownsAsset(beat)) {
+    if (src && wantsFootage && !usedSourced.has(src.beatId)) {
       const still = src.kind !== "video";
       const isLong = beat.intent === "person" || (beat.intent === "scene" && beat.priority === 1);
       /* Three names in a breath: the owner's clip is a two-second glimpse, then the group card names them all. */
@@ -846,7 +848,7 @@ export function resolveLayout(input: LayoutInput): LayoutPlan {
 
     /* b. the designed graphic for the intent */
     /* A card holds its own length from the word it lands on, past the phrase end when the word comes late in the sentence (技术套利 is the last word of its line); spans pass their own end. */
-    const place = (kind: string, minMs: number, maxMs: number, zone: GraphicSpecV2["zone"], props: Record<string, unknown>, opts: { startMs?: number; latest?: number; hardEnd?: number } = {}) => {
+    const place = (kind: string, minMs: number, maxMs: number, zone: GraphicSpecV2["zone"], props: Record<string, unknown>, opts: { startMs?: number; latest?: number; hardEnd?: number; snapBackMs?: number } = {}) => {
       const startMs = opts.startMs ?? wantStart;
       const latestStartMs = opts.latest ?? latest;
       input.trace?.(`${beat.id} ${kind} 「${String(props.text ?? "")}」 wants ${startMs}, latest ${latestStartMs}, ${minMs}–${maxMs} ms`);
@@ -860,6 +862,7 @@ export function resolveLayout(input: LayoutInput): LayoutPlan {
           /* The hold is measured from wherever the card actually starts, so a card that waited for the one before keeps its length; a span (list, compare, diagram) passes its own end and is not cut by what comes next. */
           hardEndMs: Math.min(opts.hardEnd ?? Math.max(phraseEnd + 600, latestStartMs + maxMs), endStart),
           softEndAfter: opts.hardEnd === undefined ? (st) => upcomingAfter(st, minMs) : undefined,
+          snapBackMs: opts.snapBackMs,
         },
         false,
         input.trace,
@@ -878,16 +881,37 @@ export function resolveLayout(input: LayoutInput): LayoutPlan {
       case "number": {
         if (!beat.number) break;
         /* The count-up ends on the spoken figure: the graphic starts 0.7 s before the word, and no later than 0.4 s after it. */
-        const landMs = round(beat.number.saidAtMs || hit?.startMs || s.startMs);
-        const startMs = Math.max(0, landMs - TIMING.counter.countUp);
-        place("counter", 1800, TIMING.counter.hold + TIMING.counter.countUp, "T", {
+        const wantedLand = round(beat.number.saidAtMs || hit?.startMs || s.startMs);
+        const startMs = Math.max(0, wantedLand - TIMING.counter.countUp);
+        const props: Record<string, unknown> = {
           text: beat.number.value,
           unit: beat.number.unit,
           sub: beat.number.labelZh,
-          landMs,
+          landMs: wantedLand,
           countUpMs: TIMING.counter.countUp,
           enter: "pop",
-        }, { startMs, latest: Math.max(startMs, landMs + 400), hardEnd: Math.min(landMs + TIMING.counter.hold + 400, totalMs) });
+        };
+        /* Onto a jump cut up to 0.4 s before the count-up would start: the counter enters on the cut and shows its zero for at most that long before counting. */
+        const slot = place("counter", 1800, TIMING.counter.hold + TIMING.counter.countUp, "T", props, {
+          startMs,
+          latest: Math.max(startMs, wantedLand + 400),
+          hardEnd: Math.min(wantedLand + TIMING.counter.hold + 400, totalMs),
+          snapBackMs: 400,
+        });
+        /*
+         * The slot may open later than the count-up wanted (a change just
+         * before it, another card leaving): the count-up is shortened to what
+         * is left before the word, never under 200 ms, so the figure still
+         * lands on it; and a graphic that could only start after the word
+         * lands 200 ms in, rather than carrying a landing before its own
+         * first frame. The props are edited in place: `place` pushed them.
+         */
+        if (slot) {
+          const landMs = Math.max(wantedLand, slot.startMs + 200);
+          props.landMs = landMs;
+          props.countUpMs = Math.min(TIMING.counter.countUp, landMs - slot.startMs);
+          if (landMs !== wantedLand) props.landLateMs = landMs - wantedLand;
+        }
         break;
       }
       case "compare": {
@@ -944,7 +968,8 @@ export function resolveLayout(input: LayoutInput): LayoutPlan {
           const steps = beat.diagram.steps.slice(0, 3);
           const span = Math.min(TIMING.diagramMax, Math.max(3000, phraseEnd - wantStart));
           const stepsMs = steps.map((_, i) => round((span * (i + 0.15)) / steps.length));
-          const diagramSlot = place("diagram", 3000, span, "T", { steps, stepsMs, text: beat.term?.term ?? "", enter: "rise" });
+          /* The row's text is what the editor lists: the term when the beat carries one, else the mechanism spelt out (老师模型 → 输出 → 学生模型). */
+          const diagramSlot = place("diagram", 3000, span, "T", { steps, stepsMs, text: beat.term?.term || steps.join(" → "), enter: "rise" });
           if (diagramSlot) for (const st of stepsMs.slice(1)) if (diagramSlot.startMs + st < diagramSlot.endMs) ledger.addStep(diagramSlot.startMs + st);
         } else if (beat.term) {
           place("term", 2200, TIMING.termMs, "T", { text: beat.term.term, sub: beat.term.definitionZh, enter: "rise" });
@@ -953,7 +978,7 @@ export function resolveLayout(input: LayoutInput): LayoutPlan {
       }
       case "headline": {
         if (!beat.headline) break;
-        const img = src && src.kind === "image" && !usedSourced.has(src.beatId) && ownsAsset(beat) ? src : null;
+        const img = src && src.kind === "image" && !usedSourced.has(src.beatId) ? src : null;
         const slot = place("headline", TIMING.headline[0], TIMING.headline[1], "T", {
           text: beat.headline.quoteZh,
           outlet: beat.headline.outlet,
@@ -973,7 +998,7 @@ export function resolveLayout(input: LayoutInput): LayoutPlan {
         if (groupCarded.has(beat.id)) break;
         if (!entityCardDone.has(name)) {
           /* The logo comes from the entity resolver (per entity), or from this beat's own sourcing when that found one. */
-          const fromBeat = src && src.kind === "logo" && !usedSourced.has(src.beatId) && ownsAsset(beat) ? src : null;
+          const fromBeat = src && src.kind === "logo" && !usedSourced.has(src.beatId) ? src : null;
           const logo = input.logos?.[name] ?? fromBeat;
           const crowded = (entityBeatsIn.get(beat.sentenceId) ?? 1) >= 3;
           /*
@@ -1059,9 +1084,9 @@ export function resolveLayout(input: LayoutInput): LayoutPlan {
    */
   const listSentences = new Set(input.beats.filter((b) => b.intent === "list" && b.items?.length).flatMap((b) => [b.sentenceId, ...b.items!.map((it) => it.sentenceId)]));
   const runEligible = (b: DesignBeat) => {
-    const s = sourcedByBeat.get(b.sentenceId);
+    const s = sourcedByBeat.get(b.id);
     /* A sentence inside a list build keeps its Zone T for the list; its clip stays single, if it fits at all. */
-    return Boolean(s && ownsAsset(b) && b.priority < 3 && s.kind === "video" && !listSentences.has(b.sentenceId) && b.intent !== "person" && b.intent !== "headline" && ["scene", "org", "product", "concept", "metaphor"].includes(b.intent));
+    return Boolean(s && b.priority < 3 && s.kind === "video" && !listSentences.has(b.sentenceId) && b.intent !== "person" && b.intent !== "headline" && ["scene", "org", "product", "concept", "metaphor"].includes(b.intent));
   };
   {
     const ordered = input.beats.filter(runEligible).sort((a, b) => (sentence.get(a.sentenceId)?.startMs ?? 0) - (sentence.get(b.sentenceId)?.startMs ?? 0));
@@ -1079,7 +1104,7 @@ export function resolveLayout(input: LayoutInput): LayoutPlan {
           const clips: CutawaySpec[] = [];
           let at = startMs;
           for (const b of group) {
-            const src = sourcedByBeat.get(b.sentenceId)!;
+            const src = sourcedByBeat.get(b.id)!;
             if (at + TIMING.run.clipEvery[0] > wantEnd || clips.length >= TIMING.run.clips[1]) break;
             const len = clamp(Math.min(availableMs(src), TIMING.run.clipEvery[1]), TIMING.run.clipEvery[0], TIMING.run.clipEvery[1]);
             let end = Math.min(wantEnd, at + len);
@@ -1097,7 +1122,7 @@ export function resolveLayout(input: LayoutInput): LayoutPlan {
             ledger.take({ id, startMs, endMs: at, layer: "cutaway" });
             for (const c of clips.slice(1)) ledger.addChange(c.startMs);
             for (const c of clips) {
-              usedSourced.add(sourcedByBeat.get(c.sentenceId)!.beatId);
+              usedSourced.add(c.beatId);
               const b = group.find((x) => x.id === c.beatId)!;
               if (b.intent === "org" || b.intent === "product") entityCardDone.add(b.entity?.name ?? b.anchor ?? b.id);
             }
@@ -1159,7 +1184,7 @@ export function resolveLayout(input: LayoutInput): LayoutPlan {
       if (coverageOf() >= TIMING.coverage[0]) break;
       if (c.runId) continue;
       const s = sentence.get(c.sentenceId)!;
-      const src = sourcedByBeat.get(c.sentenceId);
+      const src = sourcedByBeat.get(c.beatId);
       const cap = Math.min(c.still ? TIMING.cutaway.still[1] : TIMING.cutaway.long, src ? availableMs(src) : Infinity);
       const next = ledger.slots.filter((x) => x.id !== c.id && x.startMs >= c.endMs).sort((a, b) => a.startMs - b.startMs)[0];
       const nextChange = ledger.changes.find((x) => x > c.endMs + TIMING.sameMomentMs);

@@ -44,6 +44,17 @@ const PLATFORM_ZH: Record<string, string> = {
   flickr: "Flickr",
 };
 
+/** A link the panel will open: the platform's own http(s) permalink, nothing else (an asset record is data fetched from the internet). */
+function webHref(url: string | undefined): string | null {
+  if (!url) return null;
+  try {
+    const u = new URL(url);
+    return u.protocol === "https:" || u.protocol === "http:" ? u.href : null;
+  } catch {
+    return null;
+  }
+}
+
 export function Credits({ director, zh }: { director: DirectorState; zh: boolean }) {
   const t = (en: string, cn: string) => (zh ? cn : en);
   const assets = (Array.isArray(director.assets) ? director.assets : []) as AssetLike[];
@@ -85,13 +96,15 @@ export function Credits({ director, zh }: { director: DirectorState; zh: boolean
       {assets.map((a, i) => {
         const c = a.candidate ?? {};
         const platform = c.platform ? (PLATFORM_ZH[c.platform] ?? c.platform) : "";
+        const authorHref = webHref(c.author?.url);
+        const sourceHref = webHref(c.url);
         return (
           <Row key={a.fileId ?? i}>
             <span style={{ width: 92, ...clip }}>{platform ? <Badge tone="quiet">{platform}</Badge> : null}</span>
             <span style={{ width: 150, ...clip }} title={c.author?.name}>
-              {c.author?.url ? (
-                <a href={c.author.url} target="_blank" rel="noreferrer" style={{ color: "#171717" }}>
-                  {c.author.name}
+              {authorHref ? (
+                <a href={authorHref} target="_blank" rel="noreferrer" style={{ color: "#171717" }}>
+                  {c.author?.name}
                 </a>
               ) : (
                 c.author?.name ?? ""
@@ -105,8 +118,8 @@ export function Credits({ director, zh }: { director: DirectorState; zh: boolean
               {c.licence ?? t("credited, not licensed", "引用并注明来源")}
             </span>
             <span style={{ width: 52, textAlign: "right" }}>
-              {c.url ? (
-                <a href={c.url} target="_blank" rel="noreferrer" style={{ color: "#007be0", fontSize: 11.5 }}>
+              {sourceHref ? (
+                <a href={sourceHref} target="_blank" rel="noreferrer" style={{ color: "#007be0", fontSize: 11.5 }}>
                   {t("open", "打开")}
                 </a>
               ) : null}

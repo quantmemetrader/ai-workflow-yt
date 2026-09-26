@@ -866,13 +866,23 @@ async function directV2(
       return { text: out.text, costMicros: out.costMicros };
     },
     /*
-     * Stage 2 wires W3 here: `sourceBeats(beats, { used, hashes,
-     * tenantRecent, budget })` from `@/lib/video/v2/sourcing` with a
-     * limiter of 6, `entityVisual` from `@/lib/video/v2/entities` (once
-     * per entity, for the logo on its card) and `placeCredits` from
-     * `@/lib/video/v2/credits`. On this branch none of them exists, and
-     * the plan's own fallback applies: a beat with no asset becomes a
-     * designed card, or stays on the host; a card goes up without a logo.
+     * Stage 2 wires W3 here. Its signatures as built on `wt-dv2-W3`, which
+     * differ from the plan's sketch:
+     *   - `sourceBeats(beats, ctx: SourcingCtx)` from `@/lib/video/v2/sourcing`:
+     *     `ctx` carries `workDir`, `into: "files"` with the `viewer`, a
+     *     `limiter` (6), the `outline`, and `used` / `hashes` / `tenantRecent`
+     *     (from its `recentSourceIds`). Each `Sourced.beatId` is
+     *     `bNN-sNNN-intent` (`beatIdOf`), NN the pick's position in the list
+     *     given; `design.ts:sourcedForLayout` maps that back to the beat, so
+     *     several beats of one sentence may be sent.
+     *   - `entityVisual(entity, ctx)` from `@/lib/video/v2/entities` answers
+     *     with `EntityVisual[]` (candidates with `file`, `via`, `isMark`),
+     *     not an asset: the adapter here fetches the first with the media
+     *     library and shapes a `Sourced` of kind "logo", or returns null.
+     *   - `placeCredits(sourced, { maxLineUnits })` from `@/lib/video/v2/credits`.
+     * On this branch none of them is imported and the plan's own fallback
+     * applies: a beat with no asset becomes a designed card, or stays on the
+     * host; a card goes up without a logo; `fallbackCredits` writes the line.
      */
     sourceBeats: null,
     entityVisual: null,
@@ -944,33 +954,67 @@ export function furnitureFromBrief(brief: string, projectTitle: string, tenantNa
  * line verbatim). The cues are split into three roughly equal parts that
  * run together, so the wall-clock is one call's, and the rows go to the
  * database in three statements (`writeTranslation`) instead of one per
- * row. A batch that fails leaves its lines plain; the rest still get
- * theirs.
+ * row. The lines a batch failed to answer (a truncated or malformed
+ * answer: the lab saw one batch of 28 lines come back empty, a third of
+ * the video with no English) are asked for once more in two smaller
+ * batches; only what fails twice is left plain.
  */
 async function translateCuesV2(viewer: Viewer, projectId: string, language: string, cues: (typeof captions.$inferSelect)[]): Promise<void> {
   const other = /^zh/.test(language) ? "en" : "zh-CN";
   if (!cues.length) return;
-  const parts = 3;
-  const size = Math.ceil(cues.length / parts);
-  const batches = Array.from({ length: parts }, (_, k) => ({ at: k * size, cues: cues.slice(k * size, (k + 1) * size) })).filter((b) => b.cues.length);
-  const settled = await Promise.allSettled(
-    batches.map(async (b) => {
-      const res = await complete({
-        model: modelFor.utility(),
-        temperature: 0.2,
-        maxTokens: 8000,
-        messages: [
-          { role: "system", content: TRANSLATE_PROMPT },
-          { role: "user", content: b.cues.map((c, j) => `${b.at + j}. ${c.text}`).join("\n") },
-        ],
-      });
-      await recordUsage({ viewer, module: "video", provider: res.provider ?? "openrouter", model: res.model, promptTokens: res.promptTokens, completionTokens: res.completionTokens, costMicros: res.costMicros, requestId: res.requestId });
-      return parseTranslation(res.text, cues);
-    }),
-  );
-  const lines: TranslatedLine[] = [];
-  for (const r of settled) if (r.status === "fulfilled") lines.push(...r.value);
+  const { lines, retried, missing } = await translateInBatches(cues, async (numbered) => {
+    const res = await complete({
+      model: modelFor.utility(),
+      temperature: 0.2,
+      maxTokens: 8000,
+      messages: [
+        { role: "system", content: TRANSLATE_PROMPT },
+        { role: "user", content: numbered },
+      ],
+    });
+    await recordUsage({ viewer, module: "video", provider: res.provider ?? "openrouter", model: res.model, promptTokens: res.promptTokens, completionTokens: res.completionTokens, costMicros: res.costMicros, requestId: res.requestId });
+    return res.text;
+  });
+  if (retried || missing) console.warn(`[director ${projectId}] translation: ${retried} lines asked for again, ${missing} left without a second language`);
   await writeTranslation(projectId, cues, other, lines, newId);
+}
+
+/**
+ * The translation, batched: `parts` batches in parallel, then one more
+ * round of two batches for the lines that came back missing or empty.
+ * `call` takes the numbered lines (`12. 原句`) and returns the model's
+ * text; it may throw, and a batch that throws is simply a batch of missing
+ * lines. Pure apart from `call`, so the lab times it without the database.
+ */
+export async function translateInBatches(
+  cues: { text: string }[],
+  call: (numbered: string) => Promise<string>,
+  parts = 3,
+): Promise<{ lines: TranslatedLine[]; batches: number; retried: number; missing: number }> {
+  const numbered = (idx: number[]) => idx.map((i) => `${i}. ${cues[i].text}`).join("\n");
+  const ask = async (idx: number[]): Promise<TranslatedLine[]> => {
+    if (!idx.length) return [];
+    try {
+      const asked = new Set(idx);
+      return parseTranslation(await call(numbered(idx)), cues).filter((l) => asked.has(l.i));
+    } catch {
+      return [];
+    }
+  };
+  const all = cues.map((_, i) => i);
+  const size = Math.max(1, Math.ceil(all.length / parts));
+  const batches: number[][] = [];
+  for (let at = 0; at < all.length; at += size) batches.push(all.slice(at, at + size));
+  const got = new Map<number, TranslatedLine>();
+  const answered = (l: TranslatedLine) => Boolean(l.second) || l.keywords.length > 0;
+  for (const lines of await Promise.all(batches.map(ask))) for (const l of lines) if (answered(l)) got.set(l.i, l);
+  const missing = all.filter((i) => !got.has(i));
+  if (missing.length) {
+    const half = Math.ceil(missing.length / 2);
+    for (const lines of await Promise.all([missing.slice(0, half), missing.slice(half)].map(ask))) for (const l of lines) if (answered(l) && !got.has(l.i)) got.set(l.i, l);
+  }
+  const lines = Array.from(got.values()).sort((a, b) => a.i - b.i);
+  return { lines, batches: batches.length, retried: missing.length, missing: all.length - lines.length };
 }
 
 /** The translation answer, checked line by line: an index that exists, a keyword that is in the line. */

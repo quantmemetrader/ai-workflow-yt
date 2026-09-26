@@ -50,7 +50,7 @@ import { toSentences } from "../../lib/video/sentences";
 import { FRAME, ZONES, faceBoxUnder, saidNear, sentencesOnTimeline, type LayoutPlan } from "../../lib/video/layout";
 import { hookFromBrief, outlineMessages, parseOutline, planDesign, type DesignInput, type DesignResult, type Outline, type OutlineEntity } from "../../lib/video/v2/design";
 import { toRows } from "../../lib/video/v2/persist";
-import { furnitureFromBrief, parseTranslation } from "../../lib/video/director";
+import { furnitureFromBrief, translateInBatches } from "../../lib/video/director";
 
 const run = promisify(execFile);
 const argv = process.argv.slice(2);
@@ -251,12 +251,15 @@ function layoutFor(width: number, height: number, kind: Sourced["kind"]): Layout
   return "run";
 }
 
-function toSourced(b: Beat, pick: StubPick, n: number): Sourced {
+/** W3's own id for a pick (`sourcing.ts:beatIdOf`): the beat's position in the list it was given, its sentence, its intent. The design step maps it back. */
+const beatIdOf = (b: Beat, index: number) => `b${String(index).padStart(2, "0")}-${b.sentenceId}-${b.intent}`;
+
+function toSourced(b: Beat, index: number, pick: StubPick, n: number): Sourced {
   const need = 2500 + (n % 4) * 500; // 2.5–4 s windows, as W3's `pickWindow` returns
   const inMs = pick.durationMs && pick.durationMs > need + 2000 ? Math.min(Math.max(1000, Math.round(pick.durationMs * 0.2)), pick.durationMs - need - 1000) : 0;
   const window: [number, number] = [inMs, inMs + (pick.kind === "video" ? need : 0)];
   return {
-    beatId: b.sentenceId,
+    beatId: beatIdOf(b, index),
     asset: { fileId: pick.fileId, candidate: pick.cand, localPath: pick.localPath, credit: pick.cand.credit, fetchedAt: new Date().toISOString(), durationMs: pick.durationMs, width: pick.width, height: pick.height, window: { start: window[0], end: window[1] } },
     candidate: pick.cand,
     kind: pick.kind,
@@ -277,7 +280,7 @@ function makeStubSourcer(fixture: Fixture, log: string[]) {
   let n = 0;
   return async (beats: Beat[]): Promise<Sourced[]> => {
     const out: Sourced[] = [];
-    for (const b of beats) {
+    for (const [index, b] of beats.entries()) {
       n++;
       const ok = (p: StubPick) => !usedIds.has(p.cand.id) && (perAuthor.get(p.cand.author.name) ?? 0) < 2;
       let pick = honest.find((p) => ok(p) && p.match(b)) ?? null;
@@ -291,9 +294,9 @@ function makeStubSourcer(fixture: Fixture, log: string[]) {
       }
       usedIds.add(pick.cand.id);
       perAuthor.set(pick.cand.author.name, (perAuthor.get(pick.cand.author.name) ?? 0) + 1);
-      const s = toSourced(b, pick, n);
+      const s = toSourced(b, index, pick, n);
       out.push(s);
-      log.push(`  ✓ ${b.sentenceId} ${b.intent} ${b.entity?.name ?? b.queries?.zh[0] ?? ""} → ${pick.cand.id} ${pick.width}×${pick.height} ${s.layout} ${(s.windowMs[1] - s.windowMs[0]) / 1000}s${pick.stub ? " [stub]" : ""}`);
+      log.push(`  ✓ ${s.beatId} ${b.entity?.name ?? b.queries?.zh[0] ?? ""} → ${pick.cand.id} ${pick.width}×${pick.height} ${s.layout} ${(s.windowMs[1] - s.windowMs[0]) / 1000}s${pick.stub ? " [stub]" : ""}`);
     }
     return out;
   };
@@ -619,7 +622,7 @@ async function designCut(cut: "v1" | "gold", fixture: Fixture, gold: Gold | null
     { item: "§1 shot list: end card with the question and the credits line", pass: Boolean(endCard && String(endCard.props.sub).includes("蒸馏") && String(endCard.props.creditsLine).trim()), value: endCard ? `${(endCard.startMs / 1000).toFixed(1)}–${(endCard.endMs / 1000).toFixed(1)} s 「${endCard.props.sub}」 credits: ${String(endCard.props.creditsLine).slice(0, 100)}` : "none" },
     { item: "Every used asset has a credit; the end card carries the line", pass: creditsOk && used > 0, value: `${plan.cutaways.length} cutaways credited, ${used} assets in director.assets (${platformAssets.length} platform/web, ${design.sourced.length - platformAssets.length} stock)` },
     { item: "Cadence: mean change 2–4 s, max gap ≤ 5 s, none < 0.8 s", pass: !lintBy("cadence").length, value: `mean ${(plan.stats.meanChangeMs / 1000).toFixed(2)} s, max gap ${(plan.stats.maxGapMs / 1000).toFixed(1)} s, ${plan.stats.changes} changes, ${plan.stats.gapsOver5s.length} gaps > 5 s, ${lintBy("cadence").filter((v) => /800/.test(v.detailZh)).length} too close` },
-    { item: "Cutaways 30–40 %, host visible ≥ 55 %, run ≤ 30 %", pass: !lintBy("coverage").length, value: `coverage ${(plan.stats.coverage * 100).toFixed(1)}%, host ${(plan.stats.hostVisible * 100).toFixed(1)}%, run ${(plan.stats.runShare * 100).toFixed(1)}%; supply: ${footageBeats.length} footage beats on ${new Set(footageBeats.map((b) => b.sentenceId)).size} sentences → ${design.sourced.length} sourced (one per sentence; stub misses every 8th) → ${plan.cutaways.length} cutaways, ${plan.stats.skipped.filter((s) => /素材没有位置/.test(s.reasonZh)).length} without room` },
+    { item: "Cutaways 30–40 %, host visible ≥ 55 %, run ≤ 30 %", pass: !lintBy("coverage").length, value: `coverage ${(plan.stats.coverage * 100).toFixed(1)}%, host ${(plan.stats.hostVisible * 100).toFixed(1)}%, run ${(plan.stats.runShare * 100).toFixed(1)}%; supply: ${footageBeats.length} footage beats on ${new Set(footageBeats.map((b) => b.sentenceId)).size} sentences → ${design.sourced.length} sourced (up to two per sentence; stub misses every 8th) → ${plan.cutaways.length} cutaways, ${plan.stats.skipped.filter((s) => /素材没有位置/.test(s.reasonZh)).length} without room` },
     { item: "One layer at a time; nothing on the face; captions clear of the chin", pass: !lintBy("overlap").length && !lintBy("face").length && !lintBy("caption").length && !lintBy("zone").length, value: `overlap ${lintBy("overlap").length}, face ${lintBy("face").length}, caption ${lintBy("caption").length}, zone ${lintBy("zone").length}` },
     { item: "Director ≤ 5 min before render (design here)", pass: designMs < 300_000, value: `design ${(designMs / 1000).toFixed(1)} s (outline ${(design.timings.outlineMs / 1000).toFixed(1)} s, sourcing stub ${design.timings.sourcingMs} ms, layout ${design.timings.layoutMs} ms); model spend so far $${(spend.cost / 1e6).toFixed(4)}` },
   ];
@@ -673,19 +676,19 @@ async function main() {
   if (has("--translate") && zh.length) {
     const [{ complete }, { modelFor }] = await Promise.all([import("../../lib/ai/openrouter"), import("../../lib/ai/models")]);
     const TRANSLATE_PROMPT = `You subtitle a Chinese business creator's videos in two languages.\n\nYou are given numbered caption lines. Answer with a single JSON object and nothing else, the first character an opening brace:\n{ "lines": [ { "i": 0, "second": "the same line in the other language, short, natural, under 12 words", "keywords": ["one to three words from the ORIGINAL line worth the accent colour: a product, a number, the verb it turns on"] } ] }\n\nRules:\n - "keywords" must be copied verbatim from the original line, or be an empty list. Never rewrite them.\n - If the line is Chinese, "second" is English. If the line is English, "second" is Simplified Chinese.\n - Keep numbers and names exactly. No quotation marks around the line.`;
-    const size = Math.ceil(zh.length / 3);
     const t = Date.now();
-    const settled = await Promise.allSettled(
-      [0, 1, 2].map(async (k) => {
-        const batch = zh.slice(k * size, (k + 1) * size);
-        const res = await complete({ model: modelFor.utility(), temperature: 0.2, maxTokens: 8000, messages: [{ role: "system", content: TRANSLATE_PROMPT }, { role: "user", content: batch.map((c, j) => `${k * size + j}. ${c.text}`).join("\n") }] });
-        spend.cost += res.costMicros;
-        return parseTranslation(res.text, zh);
-      }),
-    );
+    /* The director's own batching (`translateInBatches`): three in parallel, then one more round for what came back missing. */
+    const calls: { ms: number; lines: number; chars: number }[] = [];
+    const result = await translateInBatches(zh, async (numbered) => {
+      const t1 = Date.now();
+      const res = await complete({ model: modelFor.utility(), temperature: 0.2, maxTokens: 8000, messages: [{ role: "system", content: TRANSLATE_PROMPT }, { role: "user", content: numbered }] });
+      spend.cost += res.costMicros;
+      calls.push({ ms: Date.now() - t1, lines: numbered.split("\n").length, chars: res.text.length });
+      return res.text;
+    });
     translateMs = Date.now() - t;
-    for (const r of settled) if (r.status === "fulfilled") translated += r.value.length;
-    console.log(`\ntranslation: 3 batches in parallel, ${translateMs} ms, ${translated}/${zh.length} lines`);
+    translated = result.lines.length;
+    console.log(`\ntranslation: ${result.batches} batches in parallel${result.retried ? ` + ${result.retried} lines retried in 2` : ""}, ${translateMs} ms, ${translated}/${zh.length} lines (${result.missing} missing); calls ${calls.map((c) => `${c.lines} lines ${c.ms} ms ${c.chars} chars`).join(" | ")}`);
   }
 
   const report = {

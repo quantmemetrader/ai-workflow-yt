@@ -204,7 +204,7 @@ const strings = (v: unknown, max: number, each = 80) => (Array.isArray(v) ? v.fi
  * must carry a value; entity references must resolve. What does not check
  * out is dropped, not repaired — a repaired guess is still a guess.
  */
-export function parseOutline(text: string, sentences: readonly Sentence[]): Outline {
+export function parseOutline(text: string, sentences: readonly Sentence[], seed?: { entities: OutlineEntity[] }): Outline {
   const raw = lastJsonObject(text) ?? {};
   const ids = new Set(sentences.map((x) => x.id));
   const sid = (v: unknown): string | null => (typeof v === "string" && ids.has(v.trim()) ? v.trim() : null);
@@ -212,8 +212,21 @@ export function parseOutline(text: string, sentences: readonly Sentence[]): Outl
   const hookRaw = (raw.hook ?? {}) as Record<string, unknown>;
   const hook = { lines: strings(hookRaw.lines, 3, 16), landOn: strings(hookRaw.landOn, 3, 24) };
 
+  /*
+   * A detail window (a take over 150 sentences) is asked to answer with
+   * beats only and an empty entity list; its beats still name the
+   * entities of the whole-video outline, so those are the seed here. Without
+   * it every `"entity": "Anthropic"` in a window would fail to resolve, the
+   * beat would lose its entity, and the audit would then add a second,
+   * generic beat for the same name.
+   */
   const entities: OutlineEntity[] = [];
   const seenEntity = new Set<string>();
+  for (const e of seed?.entities ?? []) {
+    if (seenEntity.has(e.name)) continue;
+    seenEntity.add(e.name);
+    entities.push(e);
+  }
   for (const e of list(raw.entities)) {
     const name = s(e.name, 40);
     const kind = String(e.kind);
@@ -648,15 +661,7 @@ export function fallbackCredits(sourced: Sourced[]): Credits {
     seenFile.add(x.asset.fileId);
     assets.push(x.asset);
   }
-  const seen = new Set<string>();
-  const parts: string[] = [];
-  for (const a of assets) {
-    const who = a.credit || a.candidate.credit || `${a.candidate.platform} @${a.candidate.author.name}`;
-    if (seen.has(who)) continue;
-    seen.add(who);
-    parts.push(who);
-  }
-  const line = parts.length ? `素材来源：${parts.join(" · ")}` : "";
+  const line = assets.length ? creditsLineOf(assets) : "";
   const block = assets.length
     ? [
         "素材来源 / Sources",
@@ -665,6 +670,36 @@ export function fallbackCredits(sourced: Sourced[]): Credits {
       ].join("\n")
     : "";
   return { line, block, assets };
+}
+
+const PLATFORM_ZH: Record<string, string> = { douyin: "抖音", tiktok: "TikTok", bilibili: "B站", youtube: "YouTube", pinterest: "Pinterest", bing: "Bing", pexels: "Pexels", unsplash: "Unsplash", openverse: "Openverse" };
+
+/** Display width in half-width units: a CJK character (U+2E80 and up) is two, anything else one, which is what fits on a 26 px line. */
+const units = (text: string) => Array.from(text).reduce((n, ch) => n + (ch.codePointAt(0)! >= 0x2e80 ? 2 : 1), 0);
+
+/**
+ * The end card's 素材来源 line, at most two lines of 26 px (about 72
+ * units each, inside the 64 px margins): every source once, in the order
+ * first used, grouped by platform; when that does not fit, the first
+ * account per platform and 「等 N 位」; when even that does not fit, the
+ * counts alone. W3's `placeCredits` does the same with the library's own
+ * labels; this is the line when it is not wired.
+ */
+export function creditsLineOf(assets: readonly Sourced["asset"][], maxUnits = 144): string {
+  const groups = new Map<string, string[]>();
+  for (const a of assets) {
+    const platform = a.candidate.platform;
+    const who = (a.credit || a.candidate.credit || "").replace(/^[^@·]*[@·]\s*/, "").trim() || a.candidate.author.name;
+    const names = groups.get(platform) ?? [];
+    if (!names.includes(who)) names.push(who);
+    groups.set(platform, names);
+  }
+  const label = (p: string) => PLATFORM_ZH[p] ?? p;
+  const full = `素材来源：${Array.from(groups, ([p, names]) => `${label(p)} ${names.map((n) => `@${n}`).join(" · ")}`).join(" · ")}`;
+  if (units(full) <= maxUnits) return full;
+  const compact = `素材来源：${Array.from(groups, ([p, names]) => `${label(p)} @${names[0]}${names.length > 1 ? ` 等${names.length}位` : ""}`).join(" · ")}`;
+  if (units(compact) <= maxUnits) return compact;
+  return `素材来源：${Array.from(groups, ([p, names]) => `${label(p)} ${names.length}位`).join(" · ")}`;
 }
 
 /** The assets the plan put on screen: cutaways, logos on entity cards, images behind headline cards. */
@@ -718,7 +753,7 @@ export async function planDesign(input: DesignInput, deps: DesignDeps): Promise<
       const beats: DesignBeat[] = [];
       results.forEach((r, i) => {
         if (r.status !== "fulfilled") return;
-        const part = parseOutline(r.value.text, windows[i]);
+        const part = parseOutline(r.value.text, windows[i], { entities: outline.entities });
         beats.push(...part.beats);
       });
       if (beats.length) outline = { ...outline, beats };
@@ -735,27 +770,22 @@ export async function planDesign(input: DesignInput, deps: DesignDeps): Promise<
   const audited = auditBeats(outline, input.sentences);
   const { beats, dropped } = dedupeBeats(audited.beats, input.sentences, input.captions);
 
-  /* ---- sourcing: one beat per sentence, the one that wants footage ---- */
+  /* ---- sourcing: the footage beats, in time order ------------------- */
   /*
-   * `Sourced.beatId` is a sentence id (the frozen `Beat` carries no id of
-   * its own), so a sentence sends at most one beat to sourcing: its best
-   * footage beat by priority. A concept beat that carries a term card or
-   * the diagram is not sent — the designed card beats a weak explainer
-   * clip by the plan's own order — and the entity logos are resolved per
-   * entity, not per beat, so the three other names in 「DeepSeek、月之暗面和
-   * MiniMax」 still get their logos on their cards.
+   * Every beat that wants footage goes, up to two per sentence, in time
+   * order (W3 alternates media type across consecutive picks by the order
+   * it is given). Not sent: a concept beat that carries a term card or the
+   * diagram (the designed card beats a weak explainer clip by the plan's
+   * own order); the second and later names of a crowded breath (「DeepSeek、
+   * 月之暗面和MiniMax」 gets one glimpse and then the group card, whose logos
+   * come from `entityVisual` per entity, so a clip per name would be fetched
+   * and never shown); anything demoted to priority 3. W3 answers with its
+   * own ids; `sourcedForLayout` maps them back to these beats.
    */
   const t1 = Date.now();
   let sourced: Sourced[] = [];
-  const forSourcing: Beat[] = [];
-  const sourcedBeat: Record<string, string> = {};
-  for (const b of beats.slice().sort((a, b) => a.priority - b.priority)) {
-    if (!FOOTAGE_INTENTS.has(b.intent) || !b.queries || sourcedBeat[b.sentenceId]) continue;
-    if (b.priority === 3) continue;
-    if (b.intent === "concept" && (b.term || b.diagram)) continue;
-    sourcedBeat[b.sentenceId] = b.id;
-    forSourcing.push(stripBeat(b));
-  }
+  const picked = pickForSourcing(beats, input.sentences);
+  const forSourcing = picked.map((b) => stripBeat(b));
   const logos: Record<string, Sourced> = {};
   const jobs: Promise<void>[] = [];
   if (deps.sourceBeats && forSourcing.length) {
@@ -781,6 +811,9 @@ export async function planDesign(input: DesignInput, deps: DesignDeps): Promise<
     jobs.push(...Array.from({ length: Math.min(6, queue.length) }, worker));
   }
   await Promise.all(jobs);
+  const mapped = sourcedForLayout(sourced, picked);
+  sourced = mapped.sourced;
+  dropped.push(...mapped.dropped);
   if (sourced.length) await say(`核对 ${sourced.length} 个镜头的相关度`);
   const sourcingMs = Date.now() - t1;
 
@@ -801,7 +834,6 @@ export async function planDesign(input: DesignInput, deps: DesignDeps): Promise<
     endCard: outline.endCard,
     furniture,
     mentions: entityMentions(outline.entities, input.sentences),
-    sourcedBeat,
     logos,
   };
   /* Two passes: the first to learn which assets the plan uses, the second with the credits line those assets make (the end card carries it). Only the second is traced. */
@@ -831,6 +863,70 @@ export async function planDesign(input: DesignInput, deps: DesignDeps): Promise<
 /** The frozen `Beat` for sourcing: the layout-only fields stripped. */
 function stripBeat(b: DesignBeat): Beat {
   return { sentenceId: b.sentenceId, intent: b.intent, priority: b.priority, punchline: b.punchline, queries: b.queries, must: b.must, mustNot: b.mustNot, entity: b.entity, number: b.number, items: b.items, headline: b.headline };
+}
+
+const ENTITY_INTENTS = new Set<Intent>(["person", "org", "product"]);
+
+/** The beats to send to sourcing, in time order, at most two per sentence and one entity beat per crowded breath (see `planDesign`). */
+export function pickForSourcing(beats: readonly DesignBeat[], sentences: readonly Sentence[]): DesignBeat[] {
+  const startOf = new Map(sentences.map((s) => [s.id, s.startMs]));
+  const entityBeatsIn = new Map<string, number>();
+  for (const b of beats) if (ENTITY_INTENTS.has(b.intent) && b.priority < 3) entityBeatsIn.set(b.sentenceId, (entityBeatsIn.get(b.sentenceId) ?? 0) + 1);
+  const perSentence = new Map<string, number>();
+  const entitySent = new Set<string>();
+  const out: DesignBeat[] = [];
+  const ordered = beats.slice().sort((a, b) => (startOf.get(a.sentenceId) ?? 0) - (startOf.get(b.sentenceId) ?? 0) || a.priority - b.priority);
+  for (const b of ordered) {
+    if (!FOOTAGE_INTENTS.has(b.intent) || !b.queries || b.priority === 3) continue;
+    if (b.intent === "concept" && (b.term || b.diagram)) continue;
+    if ((perSentence.get(b.sentenceId) ?? 0) >= 2) continue;
+    if (ENTITY_INTENTS.has(b.intent) && (entityBeatsIn.get(b.sentenceId) ?? 0) >= 3) {
+      if (entitySent.has(b.sentenceId)) continue;
+      entitySent.add(b.sentenceId);
+    }
+    perSentence.set(b.sentenceId, (perSentence.get(b.sentenceId) ?? 0) + 1);
+    out.push(b);
+  }
+  return out;
+}
+
+/**
+ * W3's picks keyed by the design beat they were found for.
+ *
+ * The frozen `Beat` has no id, so W3 names each pick by its position in
+ * the list it was given — `bNN-sNNN-intent` (`sourcing.ts:beatIdOf`) — and
+ * the lab's stubs, or an older adapter, may answer with the bare sentence
+ * id. All three are read: the index (checked against the sentence it
+ * names), a design beat id as is, a sentence id as that sentence's first
+ * beat sent. A pick that names nothing sent is left out and written down
+ * rather than silently dropped, and a second pick for the same beat is
+ * too — one asset per beat.
+ */
+export function sourcedForLayout(sourced: readonly Sourced[], sent: readonly DesignBeat[]): { sourced: Sourced[]; dropped: { beatId: string; reasonZh: string }[] } {
+  const out: Sourced[] = [];
+  const dropped: { beatId: string; reasonZh: string }[] = [];
+  const taken = new Set<string>();
+  for (const s of sourced) {
+    let id: string | null = null;
+    const byIndex = /^b(\d+)-(s\d+)/.exec(s.beatId);
+    if (byIndex) {
+      const beat = sent[Number(byIndex[1])];
+      if (beat && beat.sentenceId === byIndex[2]) id = beat.id;
+    }
+    if (!id && sent.some((b) => b.id === s.beatId)) id = s.beatId;
+    if (!id) id = sent.find((b) => b.sentenceId === s.beatId)?.id ?? null;
+    if (!id) {
+      dropped.push({ beatId: s.beatId, reasonZh: `素材「${s.candidate.title.slice(0, 20)}」对应的镜头（${s.beatId}）不在送去找素材的列表里，未使用` });
+      continue;
+    }
+    if (taken.has(id)) {
+      dropped.push({ beatId: s.beatId, reasonZh: `镜头 ${id} 已有素材，第二个「${s.candidate.title.slice(0, 20)}」未使用` });
+      continue;
+    }
+    taken.add(id);
+    out.push(s.beatId === id ? s : { ...s, beatId: id });
+  }
+  return { sourced: out, dropped };
 }
 
 /** The brief's statement block, when it writes one as 「A | B | C」 or "A | B | C". */

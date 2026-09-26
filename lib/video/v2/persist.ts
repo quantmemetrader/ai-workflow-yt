@@ -203,8 +203,14 @@ export async function writeTranslation(
 
   const keyworded = lines.filter((l) => cues[l.i] && l.keywords.length);
   if (keyworded.length) {
-    /* One statement: UPDATE captions SET keywords = v.kw FROM (VALUES (id, kw[]), …) v WHERE captions.id = v.id */
-    const values = keyworded.map((l) => sql`(${cues[l.i].id}, ${sql`${l.keywords}::text[]`})`);
+    /*
+     * One statement: UPDATE captions SET keywords = v.kw FROM (VALUES (id,
+     * array[…]::text[]), …) v WHERE captions.id = v.id. Each keyword is its
+     * own parameter inside an `array[]` constructor: a JavaScript array
+     * given to the `sql` tag as one value is expanded to a tuple
+     * (`($2, $3)::text[]`), which Postgres refuses.
+     */
+    const values = keyworded.map((l) => sql`(${cues[l.i].id}, array[${sql.join(l.keywords.map((k) => sql`${k}`), sql`, `)}]::text[])`);
     await db.execute(sql`update captions set keywords = v.kw from (values ${sql.join(values, sql`, `)}) as v(id, kw) where captions.id = v.id`);
   }
   return { inserted: inserts.length, keyworded: keyworded.length };
