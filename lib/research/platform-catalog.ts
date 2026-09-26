@@ -33,22 +33,32 @@ export const isPlatformKey = (v: unknown): v is PlatformKey =>
 /* ------------------------------------------------------------ the beats */
 
 /**
- * The four subjects the studio makes videos about.
+ * A beat's key: one of the subjects the studio makes videos about.
  *
  * The owner's words: "keep it related to business and tech & crypto, AI and
  * stuff". Business and tech alone was the first cut (`Relevance` below still
- * reads those marks); AI and crypto are their own beats now because they are
+ * reads those marks); AI and crypto became their own beats because they are
  * most of what the channel films and a viewer looking for "加密" should not
  * have to find it under 科技.
+ *
+ * A plain string since the list became the studio's own ("let me be able to
+ * change this list too", `lib/research/beats.ts`): the four defaults are ai,
+ * crypto, tech and biz, and a beat the studio adds gets a key of its own
+ * ("hkstocks"). A row keeps the key it was stored under; a key the studio's
+ * list no longer has (switched off, deleted) is hidden by the beat views.
  */
-export type Beat = "ai" | "crypto" | "tech" | "biz";
+export type Beat = string;
+/** The four defaults' names, for readers that do not load the studio's list
+ *  (the live list is `readBeats`, `lib/research/beat-store.ts`). */
 export const BEATS: readonly { key: Beat; zh: string; en: string }[] = [
   { key: "ai", zh: "AI", en: "AI" },
   { key: "crypto", zh: "加密", en: "Crypto" },
   { key: "tech", zh: "科技", en: "Tech" },
   { key: "biz", zh: "商业", en: "Business" },
 ];
-export const isBeat = (v: unknown): v is Beat => v === "ai" || v === "crypto" || v === "tech" || v === "biz";
+/** Shaped like a beat key (`BEAT_KEY_RE` in beats.ts); whether the studio has
+ *  that beat is the caller's to check against its list. */
+export const isBeat = (v: unknown): v is Beat => typeof v === "string" && /^[a-z][a-z0-9]{1,15}$/.test(v) && v !== "other" && v !== "all";
 
 /**
  * The beat feeds: per platform, what the studio's own subjects are doing
@@ -174,16 +184,20 @@ export type HotStats = {
  * row is marked once, when the list is collected (`lib/research/relevance.ts`),
  * and the screen, the morning brief and the Research agent read the mark.
  *
- *   t  ai · crypto · tech · biz · other. Lists marked before AI and crypto
- *      were beats of their own say only biz or tech; `beatOf` reads those.
+ *   t  a beat key (ai · crypto · tech · biz, or one the studio added) or
+ *      other. Lists marked before AI and crypto were beats of their own say
+ *      only biz or tech; `beatOf` reads those.
  *   s  how squarely: 0 unrelated, 1 touches it (a summit that may move trade,
  *      a tycoon's gossip), 2 plainly on the beat, 3 the channel could film it
  *      today (a rate move, a chip price, a model launch, a bitcoin high)
  *   tag  two to four characters naming the corner of it: 宏观, 芯片, 大模型
+ *   v  which beats the mark was made against (`beatsSignature`), absent for
+ *      the four defaults: a mark made before the studio added or switched
+ *      off a beat is asked again instead of reused
  *
  * Here rather than in the classifier because the browser draws the filter.
  */
-export type Relevance = { t: Beat | "other"; s: 0 | 1 | 2 | 3; tag?: string };
+export type Relevance = { t: Beat | "other"; s: 0 | 1 | 2 | 3; tag?: string; v?: string };
 /** Keyed by the row's phrase, the same way `judged` is. */
 export type RelevanceMap = Record<string, Relevance>;
 
@@ -217,11 +231,15 @@ export function beatOf(r: Relevance | null | undefined): Beat | null {
  */
 export const onFocus = (r: Relevance | null | undefined, min: 1 | 2 | 3 = 2): boolean => !!r && r.t !== "other" && r.s >= min;
 
-/** The words a mark is shown in: 商业 · 宏观, AI · 大模型, 加密 · 比特币. */
-export function relevanceLabel(r: Relevance, zh: boolean): string {
+/**
+ * The words a mark is shown in: 商业 · 宏观, AI · 大模型, 加密 · 比特币.
+ * `beats` is the studio's list (names as it wrote them); without it, the
+ * four defaults' names. A key the list does not have reads 其他.
+ */
+export function relevanceLabel(r: Relevance, zh: boolean, beats: readonly { key: string; zh: string; en: string }[] = BEATS): string {
   const b = beatOf(r);
-  const meta = b ? BEATS.find((x) => x.key === b)! : null;
+  const meta = b ? (beats.find((x) => x.key === b) ?? null) : null;
   const kind = meta ? (zh ? meta.zh : meta.en) : zh ? "其他" : "Other";
-  // A tag that only repeats the kind ("科技 · 科技", "AI · AI") is left off.
-  return r.tag && !/^(财经|商业|科技|其他|ai|加密)$/i.test(r.tag) ? `${kind} · ${r.tag}` : kind;
+  // A tag that only repeats the kind ("科技 · 科技", "AI · AI", "港股 · 港股") is left off.
+  return r.tag && !/^(财经|商业|科技|其他|ai|加密)$/i.test(r.tag) && r.tag !== meta?.zh && r.tag !== meta?.en ? `${kind} · ${r.tag}` : kind;
 }

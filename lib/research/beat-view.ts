@@ -12,11 +12,17 @@
  *   上榜  the rows of the platform's own hourly charts that are on a beat —
  *         the platform itself is pushing them. First, with the chart's name
  *         and the rank on it.
- *   feed  the platform's beat feed: what searching it for AI, crypto, tech
- *         and business found, thirty of them, ranked by how they did and how
- *         recent they are. The rank shown is the feed's own.
+ *   feed  the platform's beat feed: what searching it for the studio's
+ *         beats found, thirty or so, ranked by how they did and how recent
+ *         they are. The rank shown is the feed's own.
  *
  * A post on both is shown once, among the 上榜 rows, with its feed rank too.
+ *
+ * The beats are the studio's own (`lib/research/beats.ts`). A reader that
+ * passes its list's keys (`beats`, the ones switched on) sees only rows on
+ * those beats: a row stored under a beat the studio has since switched off
+ * or deleted is hidden rather than shown under a chip that no longer
+ * exists. A reader that passes none sees every row, as before.
  *
  * Pure functions over plain data; no fetching, safe in the browser.
  */
@@ -131,9 +137,14 @@ export function chartRows(feed: BeatFeedKey, lists: Lists): BeatRow[] {
  *
  * `beat` narrows both to one beat (the chips). `chartCap` keeps the 上榜
  * block from pushing the feed off the first screen on a day 抖音's five
- * charts all carry the beat; the rest are in the raw charts.
+ * charts all carry the beat; the rest are in the raw charts. `beats` keeps
+ * only the rows on the studio's beats that are switched on.
  */
-export function tabRows(tab: BeatTab, lists: Lists, opts: { beat?: Beat | null; chartCap?: number } = {}): { charted: BeatRow[]; feed: BeatRow[]; chartedHidden: number } {
+export function tabRows(
+  tab: BeatTab,
+  lists: Lists,
+  opts: { beat?: Beat | null; chartCap?: number; beats?: readonly Beat[] | null } = {},
+): { charted: BeatRow[]; feed: BeatRow[]; chartedHidden: number } {
   const meta = feedOfTab(tab);
   const feed = feedRows(meta.key, lists);
   const byLink = new Map<string, BeatRow>();
@@ -159,7 +170,8 @@ export function tabRows(tab: BeatTab, lists: Lists, opts: { beat?: Beat | null; 
       charted.push({ ...inFeed, chart: c.chart, feedRank: inFeed.rank, mark: inFeed.mark ?? c.mark, beat: inFeed.beat ?? c.beat });
     } else charted.push(c);
   }
-  const want = (r: BeatRow) => !opts.beat || r.beat === opts.beat;
+  const allowed = opts.beats ? new Set(opts.beats) : null;
+  const want = (r: BeatRow) => (!allowed || (r.beat != null && allowed.has(r.beat))) && (!opts.beat || r.beat === opts.beat);
   const chartedAll = charted.filter(want);
   const cap = opts.chartCap ?? chartedAll.length;
   return {
@@ -169,10 +181,13 @@ export function tabRows(tab: BeatTab, lists: Lists, opts: { beat?: Beat | null; 
   };
 }
 
-/** How many rows of a tab are on each beat, for the chips. */
-export function beatCounts(rows: BeatRow[]): Record<Beat | "all", number> {
-  const out: Record<Beat | "all", number> = { all: rows.length, ai: 0, crypto: 0, tech: 0, biz: 0 };
-  for (const r of rows) if (r.beat) out[r.beat]++;
+/** How many rows of a tab are on each beat, for the chips. `keys` start at
+ *  zero (a beat with no rows yet still has a count); a row's beat outside
+ *  them is counted under its own key. */
+export function beatCounts(rows: BeatRow[], keys: readonly Beat[] = []): Record<Beat | "all", number> {
+  const out: Record<Beat | "all", number> = { all: rows.length };
+  for (const k of keys) out[k] = 0;
+  for (const r of rows) if (r.beat) out[r.beat] = (out[r.beat] ?? 0) + 1;
   return out;
 }
 
@@ -186,9 +201,9 @@ export function beatCounts(rows: BeatRow[]): Record<Beat | "all", number> {
  * pretending they are. One copy of each post across platforms. The coin
  * market is its own tab and not mixed in: it is prices, not content.
  */
-export function acrossPlatforms(lists: Lists, opts: { beat?: Beat | null; limit?: number } = {}): BeatRow[] {
+export function acrossPlatforms(lists: Lists, opts: { beat?: Beat | null; limit?: number; beats?: readonly Beat[] | null } = {}): BeatRow[] {
   const queues = BEAT_TABS.filter((t) => t !== "crypto").map((t) => {
-    const { charted, feed } = tabRows(t, lists, { beat: opts.beat });
+    const { charted, feed } = tabRows(t, lists, { beat: opts.beat, beats: opts.beats });
     return [...charted, ...feed];
   });
   const out: BeatRow[] = [];

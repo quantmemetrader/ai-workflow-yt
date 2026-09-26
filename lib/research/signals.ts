@@ -1,6 +1,8 @@
 import "server-only";
-import { latestStored, platformHot } from "@/lib/research/platforms";
-import { onFocus, relevanceLabel, type BeatFeedKey, type HotRow, type ListKey, type PlatformKey, type Relevance } from "@/lib/research/platform-catalog";
+import { HOT_TENANT, latestStored, platformHot } from "@/lib/research/platforms";
+import { beatOf, onFocus, relevanceLabel, type BeatFeedKey, type HotRow, type ListKey, type PlatformKey, type Relevance } from "@/lib/research/platform-catalog";
+import { readBeats } from "@/lib/research/beat-store";
+import { DEFAULT_BEATS } from "@/lib/research/beats";
 
 /**
  * The evidence the morning signal is chosen from, with numbers nobody typed.
@@ -25,6 +27,11 @@ import { onFocus, relevanceLabel, type BeatFeedKey, type HotRow, type ListKey, t
  * handful of business rows a day's charts happen to carry. The charts
  * follow, their on-beat rows only: a subject on both a feed and a chart is
  * being pushed by the platform itself, which is the strongest sign there is.
+ *
+ * The beats are the studio's own list (`readBeats`, for the collector's
+ * studio, whose feeds these are): a row under a beat it switched off or
+ * deleted stays out, and a row's beat is named as the studio named it
+ * ("港股 · 恒指"), so the brief reads a beat the studio added by its name.
  */
 export type Evidence = {
   id: string;
@@ -40,6 +47,8 @@ export type Evidence = {
   stats: HotRow["stats"] | null;
   /** The row's business / tech mark, when its list was classified. */
   rel?: Relevance | null;
+  /** The mark in words with the studio's own beat names ("港股 · 恒指"). */
+  label?: string | null;
 };
 
 /** The beat feeds: which, how many rows of each (in the feed's own order,
@@ -73,27 +82,42 @@ export async function evidencePool(): Promise<{ rows: Evidence[]; fetchedAt: Rec
   /* The feeds from storage only (they are the collector's to read, never a
      brief's); the charts as before. A feed older than a day is left out
      rather than passed off as today's. */
-  const [feeds, lists] = await Promise.all([
+  const [feeds, lists, beats] = await Promise.all([
     Promise.all(FEEDS.map((f) => latestStored(f.platform).catch(() => null))),
     Promise.all(POOL.map((p) => platformHot(p.platform).catch(() => null))),
+    readBeats(HOT_TENANT).catch(() => [...DEFAULT_BEATS]),
   ]);
+  const followed = new Set(beats.filter((b) => b.enabled).map((b) => b.key));
+  const label = (mark: Relevance | null) => (mark ? relevanceLabel(mark, true, beats) : null);
   const rows: Evidence[] = [];
   const fetchedAt: Record<string, number> = {};
   FEEDS.forEach((f, i) => {
     const feed = feeds[i];
     if (!feed || Date.now() - feed.fetchedAt > 26 * 3_600_000) return;
     fetchedAt[f.platform] = feed.fetchedAt;
-    feed.rows.slice(0, f.take).forEach((r, j) => {
-      const mark = feed.relevance?.[r.phrase] ?? (r.beat ? { t: r.beat, s: 2 as const } : null);
-      rows.push({ id: `${f.letter}${j + 1}`, platform: f.platform, source: f.source, phrase: r.phrase, url: r.url, thumbnail: r.thumbnail, extra: r.extra, heat: r.heat, heatLabel: r.heatLabel, stats: r.stats ?? null, rel: mark });
-    });
+    const markOf = (r: HotRow): Relevance | null => feed.relevance?.[r.phrase] ?? (r.beat ? { t: r.beat, s: 2 as const } : null);
+    feed.rows
+      .filter((r) => {
+        const b = r.beat ?? beatOf(markOf(r));
+        return !b || followed.has(b);
+      })
+      .slice(0, f.take)
+      .forEach((r, j) => {
+        const mark = markOf(r);
+        rows.push({ id: `${f.letter}${j + 1}`, platform: f.platform, source: f.source, phrase: r.phrase, url: r.url, thumbnail: r.thumbnail, extra: r.extra, heat: r.heat, heatLabel: r.heatLabel, stats: r.stats ?? null, rel: mark, label: label(mark) });
+      });
   });
   POOL.forEach((p, i) => {
     const hot = lists[i];
     if (!hot) return;
     fetchedAt[p.platform] = hot.fetchedAt;
     const rel = hot.relevance ?? null;
-    const kept = rel ? hot.rows.filter((r) => onFocus(rel[r.phrase], 1)) : hot.rows;
+    const kept = rel
+      ? hot.rows.filter((r) => {
+          const b = beatOf(rel[r.phrase]);
+          return onFocus(rel[r.phrase], 1) && !!b && followed.has(b);
+        })
+      : hot.rows;
     kept.slice(0, p.take).forEach((r, j) => {
       rows.push({
         id: `${p.letter}${j + 1}`,
@@ -107,6 +131,7 @@ export async function evidencePool(): Promise<{ rows: Evidence[]; fetchedAt: Rec
         heatLabel: r.heatLabel,
         stats: r.stats ?? null,
         rel: rel?.[r.phrase] ?? null,
+        label: label(rel?.[r.phrase] ?? null),
       });
     });
   });
@@ -158,7 +183,7 @@ export function evidenceForModel(rows: Evidence[]): string {
       out.push(`\n### ${e.source}`);
       last = e.source;
     }
-    out.push(`[${e.id}] ${e.phrase.slice(0, 80)}${e.extra ? ` ｜ ${e.extra.slice(0, 30)}` : ""} ｜ ${evidenceNumbers(e) || "—"}${e.rel ? ` ｜ ${relevanceLabel(e.rel, true)}` : ""}`);
+    out.push(`[${e.id}] ${e.phrase.slice(0, 80)}${e.extra ? ` ｜ ${e.extra.slice(0, 30)}` : ""} ｜ ${evidenceNumbers(e) || "—"}${e.rel ? ` ｜ ${e.label ?? relevanceLabel(e.rel, true)}` : ""}`);
   }
   return out.join("\n");
 }

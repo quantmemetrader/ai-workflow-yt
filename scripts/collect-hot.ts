@@ -24,7 +24,9 @@
  *   hourly), 17 TikHub requests a run (up to 22) under a hard cap of 30,
  *   two YouTube searches (204 units), free Google News and CoinGecko reads.
  *   About 145 TikHub requests (136-176) and 1,632 YouTube units a day. Each
- *   run leaves a "beat_run" row in hot_snapshots with its counts.
+ *   run leaves a "beat_run" row in hot_snapshots with its counts. The beats
+ *   are the studio's own list (Research → 管理赛道, `lib/research/beats.ts`);
+ *   more beats share the same searches, so the counts above do not move.
  *
  * Flags:
  *   --force         re-read every chart now, ignoring the age guard (billed;
@@ -45,7 +47,7 @@
  */
 import { collectAll } from "@/lib/research/platforms";
 import { collectBeats } from "@/lib/research/beat-feeds";
-import { BEATS, isBeatFeedKey, type BeatFeedKey, type RelevanceMap } from "@/lib/research/platform-catalog";
+import { isBeatFeedKey, type BeatFeedKey, type RelevanceMap } from "@/lib/research/platform-catalog";
 
 const arg = (name: string) => process.argv.includes(name);
 const FORCE = arg("--force");
@@ -83,6 +85,7 @@ async function main() {
       const paid = res.planned.filter((p) => p.paid === "tikhub").length;
       console.log(`[beats] dry run, slot ${res.slot}: ${res.planned.length} requests planned (${paid} TikHub, cap ${res.tikhubCap}); nothing called`);
       console.log(`[beats]   channel subjects: ${res.pillars.join(" / ")}`);
+      console.log(`[beats]   beats: ${res.beats.join(" / ")}`);
       for (const p of res.planned) console.log(`[beats]   ${p.feed.padEnd(16)} ${p.paid.padEnd(7)} ${p.beat ?? "-"}  ${p.what}`);
       for (const r of res.reports) if (r.skipped) console.log(`[beats]   ${r.feed.padEnd(16)} would be skipped, ${r.skipped}`);
     } else {
@@ -91,7 +94,7 @@ async function main() {
           console.log(`[beats] ${r.feed.padEnd(16)}   - skipped, ${r.skipped}`);
           continue;
         }
-        const beats = BEATS.map((b) => `${b.en} ${r.byBeat[b.key]}`).join(" · ");
+        const beats = res.beats.map((k) => `${k} ${r.byBeat[k] ?? 0}`).join(" · ");
         console.log(
           `[beats] ${r.feed.padEnd(16)} ${String(r.rows).padStart(3)} rows (${beats}) · kept ${r.kept}/${r.classified} on a beat · ${r.carried} carried · ${r.model} marked by model · TikHub ${r.tikhub}${r.youtubeUnits ? ` · YouTube ${r.youtubeUnits}u` : ""}${r.free ? ` · free ${r.free}` : ""}${r.note ? ` · ${r.note}` : ""}${r.errors.length ? ` · ${r.errors.length} errors` : ""}`,
         );

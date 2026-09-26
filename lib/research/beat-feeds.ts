@@ -1,5 +1,5 @@
 import "server-only";
-import { and, desc, eq, or, sql } from "drizzle-orm";
+import { and, desc, eq, gte, like, or, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { hotSnapshots } from "@/lib/db/schema";
 import { newId } from "@/lib/ids";
@@ -15,8 +15,24 @@ import {
 } from "@/lib/social/tikhub";
 import { channelsById, searchVideos } from "@/lib/research/youtube";
 import { cryptoMarket, googleNewsSearch, type NewsEdition } from "@/lib/research/beat-sources";
-import { BEAT_EVERY_HOURS_DEFAULT, beatSlot, planBeatRun, planNews, planYouTube, type PlannedSearch } from "@/lib/research/beats";
-import { BEAT_FEEDS, BEATS, beatOf, type Beat, type BeatFeedKey, type HotRow, type RelevanceMap } from "@/lib/research/platform-catalog";
+import {
+  BEAT_EVERY_HOURS_DEFAULT,
+  NOW_EVERY_MS,
+  NOW_TIKHUB_CAP,
+  activeBeats,
+  beatSlot,
+  beatWords,
+  planBeatNow,
+  planBeatRun,
+  planNews,
+  planYouTube,
+  weiboTechList,
+  type BeatConfig,
+  type PlannedSearch,
+} from "@/lib/research/beats";
+import { readBeats } from "@/lib/research/beat-store";
+import { toTraditional } from "@/lib/research/traditional";
+import { BEAT_FEEDS, beatOf, type Beat, type BeatFeedKey, type HotRow, type RelevanceMap } from "@/lib/research/platform-catalog";
 import { acrossPlatforms, foreignScript, type Lists } from "@/lib/research/beat-view";
 import { FOCUS_FALLBACK, channelFocus, classifyHot } from "@/lib/research/relevance";
 import { summarizeHot } from "@/lib/research/summary";
@@ -76,6 +92,27 @@ import { HOT_TENANT, latestStored, meterFor, storedAll } from "@/lib/research/pl
  *   Google News, CoinGecko: free, 8 and 2 requests a run.
  *   Models   the classifier on new rows only (rows kept from the last run
  *            keep their marks), one summary and one set of marks per feed.
+ *
+ * The beats are the studio's own list (`readBeats`, set on the Research page;
+ * `lib/research/beats.ts`), read for the collector's studio (`HOT_TENANT`):
+ * the feeds are shared, the list that decides what they search is that
+ * studio's. A beat switched off is not searched and not classified into; a
+ * beat added joins the rotation. The costs above do not move with the
+ * number of beats: the TikHub searches and the two YouTube searches per run
+ * are fixed and shared out among the beats switched on (with five beats,
+ * each is searched on a given platform a little less often), and the cap is
+ * checked before every call as before. Only the free Google News reads grow,
+ * two per beat per run. With 科技 off, 微博's 科技 list is not read and its
+ * request becomes one more search; with 加密 off, CoinGecko is not read.
+ *
+ * "现在收集" (`startBeatNow`, `runBeatNow`): one beat, once, when the studio has just
+ * added it and does not want to wait for its turn. 8 TikHub searches (up to
+ * 10 with 抖音's fallback) under a cap of 12, one YouTube search (102 units),
+ * two free news reads; at most once per beat per half hour and eight runs a
+ * day per studio (at most 96 TikHub requests on top of the regular ~145, and
+ * only when someone presses it). What it finds is
+ * added to the stored feeds, never replacing what they hold, and is filed
+ * so the regular runs keep their three-hour rhythm (see there).
  */
 
 const FEED_SIZE = 30;
@@ -109,6 +146,9 @@ const hashtagsOnly = (phrase: string) => phrase.replace(/[#@]\S+/g, "").replace(
 
 /** A carried row's numbers are at most this old. */
 const CARRY_MS = 24 * 3_600_000;
+
+/** A count per beat, every beat of the list at zero. */
+const zeroCounts = (keys: readonly string[]): Record<Beat, number> => Object.fromEntries(keys.map((k) => [k, 0]));
 
 type Candidate = HotRow & {
   /** The beat the search was for: the fallback when the classifier is down. */
@@ -392,8 +432,31 @@ function echoesOf(ranked: Candidate[]): Set<Candidate> {
 /** What each feed will ask this run, for the dry run and the log. */
 export type PlannedRequest = { feed: BeatFeedKey; paid: "tikhub" | "youtube" | "free"; what: string; beat: Beat | null };
 
-function planned(slot: number, pillars: string[]): { requests: PlannedRequest[]; searches: PlannedSearch[] } {
-  const searches = planBeatRun(slot, pillars);
+/**
+ * The run's plan: the TikHub searches, YouTube's two, the news queries, and
+ * whether the 微博 科技 list and the coin market are read (only while 科技
+ * and 加密 are switched on).
+ */
+type RunPlan = {
+  searches: PlannedSearch[];
+  youtube: { beats: Beat[]; q: string; lang: "zh" | "en" }[];
+  news: { beat: Beat; q: string }[];
+  weiboList: boolean;
+  crypto: boolean;
+};
+
+function planRun(slot: number, pillars: string[], beats: readonly BeatConfig[]): RunPlan {
+  return {
+    searches: planBeatRun(slot, pillars, beats),
+    youtube: planYouTube(slot, beats, toTraditional),
+    news: planNews(slot, beats, toTraditional),
+    weiboList: weiboTechList(beats),
+    crypto: activeBeats(beats).some((b) => b.key === "crypto"),
+  };
+}
+
+function planned(plan: RunPlan): PlannedRequest[] {
+  const { searches } = plan;
   const requests: PlannedRequest[] = [];
   const feedOf: Record<PlannedSearch["source"], BeatFeedKey> = {
     douyin: "beat_douyin",
@@ -411,12 +474,12 @@ function planned(slot: number, pillars: string[]): { requests: PlannedRequest[];
     tiktok: "GET /api/v1/tiktok/app/v3/fetch_video_search_result {keyword, sort_type:1, publish_time:7, count:30, region:US}",
     weibo: "GET /api/v1/weibo/app/fetch_search_all {query, search_type:60}",
   };
-  requests.push({ feed: "beat_weibo", paid: "tikhub", what: "GET /api/v1/weibo/app/fetch_hot_search {category:technologynav, count:50}", beat: "tech" });
+  if (plan.weiboList) requests.push({ feed: "beat_weibo", paid: "tikhub", what: "GET /api/v1/weibo/app/fetch_hot_search {category:technologynav, count:50}", beat: "tech" });
   for (const s of searches) requests.push({ feed: feedOf[s.source], paid: "tikhub", what: `${endpoint[s.source]} · "${s.query}"`, beat: s.beat });
-  for (const y of planYouTube(slot)) requests.push({ feed: "beat_youtube", paid: "youtube", what: `search.list q="${y.q}" publishedAfter=72h order=viewCount regionCode=HK relevanceLanguage=${y.lang === "zh" ? "zh-Hant" : "en"} + videos.list + channels.list`, beat: null });
-  for (const n of planNews(slot)) for (const ed of ["HK", "TW"]) requests.push({ feed: "beat_news", paid: "free", what: `Google News ${ed} "${n.q}"`, beat: n.beat });
-  requests.push({ feed: "beat_crypto", paid: "free", what: "CoinGecko /coins/markets top 100 + /search/trending", beat: "crypto" });
-  return { requests, searches };
+  for (const y of plan.youtube) requests.push({ feed: "beat_youtube", paid: "youtube", what: `search.list q="${y.q}" publishedAfter=72h order=viewCount regionCode=HK relevanceLanguage=${y.lang === "zh" ? "zh-Hant" : "en"} + videos.list + channels.list`, beat: y.beats.length === 1 ? y.beats[0] : null });
+  for (const n of plan.news) for (const ed of ["HK", "TW"]) requests.push({ feed: "beat_news", paid: "free", what: `Google News ${ed} "${n.q}"`, beat: n.beat });
+  if (plan.crypto) requests.push({ feed: "beat_crypto", paid: "free", what: "CoinGecko /coins/markets top 100 + /search/trending", beat: "crypto" });
+  return requests;
 }
 
 /** Run one paid or free call, counting it and never letting it throw. */
@@ -434,7 +497,7 @@ async function call(label: string, errors: string[], fn: () => Promise<HotRow[]>
 /** Read one feed's sources this run. */
 async function fetchFeed(
   feed: BeatFeedKey,
-  ctx: { searches: PlannedSearch[]; slot: number; budget: Budget; errors: string[] },
+  ctx: { plan: RunPlan; budget: Budget; errors: string[] },
 ): Promise<{ rows: Candidate[]; tikhub: number; youtubeUnits: number; free: number }> {
   const { budget, errors } = ctx;
   const out: Candidate[] = [];
@@ -444,7 +507,7 @@ async function fetchFeed(
   const add = (rows: HotRow[], hint: Beat | null, group: string, query: string | null, origin: "search" | "hot") => {
     for (const r of rows) out.push({ ...r, hint, group, query, origin: r.origin ?? origin });
   };
-  const mine = (source: PlannedSearch["source"]) => ctx.searches.filter((s) => s.source === source);
+  const mine = (source: PlannedSearch["source"]) => ctx.plan.searches.filter((s) => s.source === source);
   const paid = async (s: PlannedSearch, fn: () => Promise<HotRow[]>) => {
     if (!env.tikhub.configured) return [];
     if (!budget.takeTikhub(`${feed} "${s.query}"`)) return [];
@@ -476,15 +539,18 @@ async function fetchFeed(
       break;
     case "beat_weibo": {
       /* 微博's own 科技 hot list: fifty tech topics with their search index,
-         the platform's own answer to "what in tech is hot". */
-      const list: PlannedSearch = { source: "weibo", beat: "tech", query: "科技热搜", lang: "zh" };
-      add(await paid(list, () => weiboHotSearch("technologynav", 50)), "tech", "weibo:hot", null, "hot");
+         the platform's own answer to "what in tech is hot". Only while the
+         studio follows 科技. */
+      if (ctx.plan.weiboList) {
+        const list: PlannedSearch = { source: "weibo", beat: "tech", query: "科技热搜", lang: "zh" };
+        add(await paid(list, () => weiboHotSearch("technologynav", 50)), "tech", "weibo:hot", null, "hot");
+      }
       for (const s of mine("weibo")) add(await paid(s, () => weiboHotPosts(s.query)), s.beat, `weibo:${s.query}`, s.query, "search");
       break;
     }
     case "beat_youtube":
       if (!env.youtube.configured) break;
-      for (const y of planYouTube(ctx.slot)) {
+      for (const y of ctx.plan.youtube) {
         if (!budget.takeYouTube(`${feed} "${y.q}"`)) continue;
         youtubeUnits += 102;
         const vids = await call(`youtube "${y.q}"`, errors, async () => {
@@ -503,11 +569,11 @@ async function fetchFeed(
             stats: { views: v.views, likes: v.likes, comments: v.comments, likeRate: v.views ? v.likes / v.views : null, fans: subs.get(v.channelId) || null, publishedAt: v.publishedAt },
           }));
         });
-        add(vids, null, `youtube:${y.lang}`, y.q, "search");
+        add(vids, y.beats.length === 1 ? y.beats[0] : null, `youtube:${y.lang}`, y.q, "search");
       }
       break;
     case "beat_news":
-      for (const n of planNews(ctx.slot)) {
+      for (const n of ctx.plan.news) {
         for (const ed of ["HK", "TW"] as NewsEdition[]) {
           free++;
           add(await call(`news ${ed} "${n.q}"`, errors, () => googleNewsSearch(n.q, ed, 30)), n.beat, `news:${n.beat}`, n.q, "search");
@@ -515,6 +581,7 @@ async function fetchFeed(
       }
       break;
     case "beat_crypto":
+      if (!ctx.plan.crypto) break;
       free += 2;
       add(await call("coingecko", errors, () => cryptoMarket(FEED_SIZE)), "crypto", "crypto", null, "hot");
       break;
@@ -554,8 +621,8 @@ const NOTES: Partial<Record<BeatFeedKey, string>> = {
 async function buildFeed(
   feed: BeatFeedKey,
   ctx: {
-    searches: PlannedSearch[];
-    slot: number;
+    plan: RunPlan;
+    beats: readonly BeatConfig[];
     budget: Budget;
     pillars: string[];
     seen: RelevanceMap;
@@ -565,11 +632,11 @@ async function buildFeed(
   },
 ): Promise<BeatReport> {
   const errors: string[] = [];
-  const got = await fetchFeed(feed, { searches: ctx.searches, slot: ctx.slot, budget: ctx.budget, errors });
+  const got = await fetchFeed(feed, { plan: ctx.plan, budget: ctx.budget, errors });
   const report: BeatReport = {
     feed,
     rows: 0,
-    byBeat: { ai: 0, crypto: 0, tech: 0, biz: 0 },
+    byBeat: zeroCounts(activeBeats(ctx.beats).map((b) => b.key)),
     classified: 0,
     kept: 0,
     carried: 0,
@@ -624,6 +691,7 @@ async function buildFeed(
   const { relevance, counts } = await classifyHot(feed, top, {
     prev: { ...ctx.seen, ...(prev?.relevance ?? {}) },
     pillars,
+    beats: ctx.beats,
     onUsage: meterFor(ctx.tenantId),
   });
   report.model = counts.model;
@@ -632,12 +700,15 @@ async function buildFeed(
 
   /* On a beat at score 2 or more first; score 1 ("touches it") only to fill.
      With no marks at all (the classifier was down), the search's own beat
-     stands, and the list is stored unmarked so the screen says so. */
+     stands, and the list is stored unmarked so the screen says so. A beat
+     the studio no longer follows (an old legacy mark read by `beatOf`) is
+     not kept. */
+  const followed = new Set(activeBeats(ctx.beats).map((b) => b.key));
   const marked = top
     .map((c) => {
       const mark = relevance?.[c.phrase] ?? null;
       const beat = relevance ? beatOf(mark) : c.hint;
-      return { c, mark, beat };
+      return { c, mark, beat: beat && followed.has(beat) ? beat : null };
     })
     .filter((x) => x.beat !== null);
   report.kept = marked.length;
@@ -659,11 +730,11 @@ async function buildFeed(
     return { ...row, beat };
   });
   const rel: RelevanceMap | null = relevance ? Object.fromEntries(rows.filter((r) => relevance[r.phrase]).map((r) => [r.phrase, relevance[r.phrase]])) : null;
-  for (const r of rows) if (r.beat) report.byBeat[r.beat]++;
+  for (const r of rows) if (r.beat) report.byBeat[r.beat] = (report.byBeat[r.beat] ?? 0) + 1;
   report.rows = rows.length;
   report.examples = rows.slice(0, 3);
   if (!rows.length) {
-    report.note = "搜到的内容都不在四个赛道上。";
+    report.note = "搜到的内容都不在频道的赛道上。";
     return report;
   }
 
@@ -709,6 +780,8 @@ export type BeatRunResult = {
   slot: number;
   /** The channel's subjects this run searched with (Creator voice note). */
   pillars: string[];
+  /** The beats this run searched for (the studio's list, switched-on ones). */
+  beats: string[];
   reports: BeatReport[];
   tikhub: number;
   tikhubCap: number;
@@ -744,24 +817,29 @@ export async function collectBeats(
   const ytCap = opts.ytSearches ?? (Number(process.env.RESEARCH_BEAT_YOUTUBE_SEARCHES) || 2);
   const tenantId = opts.tenantId ?? HOT_TENANT;
   const slot = opts.slot ?? beatSlot(now, everyHours);
-  const pillars = await channelFocus(tenantId).catch(() => FOCUS_FALLBACK);
-  const { requests, searches } = planned(slot, pillars);
+  const [pillars, beats] = await Promise.all([channelFocus(tenantId).catch(() => FOCUS_FALLBACK), readBeats(tenantId, { fresh: true })]);
+  const plan = planRun(slot, pillars, beats);
+  const requests = planned(plan);
+  const keys = activeBeats(beats).map((b) => b.key);
 
   const gap = Math.max(20, everyHours * 60 - 10) * 60_000;
-  const feeds = BEAT_FEEDS.map((f) => f.key).filter((k) => !opts.only?.length || opts.only.includes(k));
+  /* The coin market is the 加密 beat's own list; with 加密 off it is not read. */
+  const feeds = BEAT_FEEDS.map((f) => f.key)
+    .filter((k) => k !== "beat_crypto" || plan.crypto)
+    .filter((k) => !opts.only?.length || opts.only.includes(k));
   const due: BeatFeedKey[] = [];
   const skipped: BeatReport[] = [];
   for (const feed of feeds) {
     const last = opts.force ? null : await lastTried(feed).catch(() => null);
     if (last && now - last.at < gap) {
       const ago = Math.round((now - last.at) / 60_000);
-      skipped.push({ feed, rows: 0, byBeat: { ai: 0, crypto: 0, tech: 0, biz: 0 }, classified: 0, kept: 0, carried: 0, tikhub: 0, youtubeUnits: 0, free: 0, model: 0, skipped: last.stored ? `stored ${ago} min ago` : `tried ${ago} min ago (nothing stored)`, examples: [], errors: [] });
+      skipped.push({ feed, rows: 0, byBeat: zeroCounts(keys), classified: 0, kept: 0, carried: 0, tikhub: 0, youtubeUnits: 0, free: 0, model: 0, skipped: last.stored ? `stored ${ago} min ago` : `tried ${ago} min ago (nothing stored)`, examples: [], errors: [] });
     } else due.push(feed);
   }
   const plannedDue = requests.filter((r) => due.includes(r.feed));
   const budget = new Budget(tikhubCap, ytCap);
   if (opts.dry || !due.length) {
-    return { slot, pillars, reports: skipped, tikhub: 0, tikhubCap, youtubeUnits: 0, free: 0, planned: plannedDue, refused: [] };
+    return { slot, pillars, beats: keys, reports: skipped, tikhub: 0, tikhubCap, youtubeUnits: 0, free: 0, planned: plannedDue, refused: [] };
   }
 
   /* The studio's brief for the researcher's marks, read once for the run. */
@@ -783,9 +861,9 @@ export async function collectBeats(
      overspend it. */
   const reports = await Promise.all(
     due.map((feed) =>
-      buildFeed(feed, { searches, slot, budget, pillars, seen, tenantId, brief: briefOnce, now }).catch((err: unknown) => {
+      buildFeed(feed, { plan, beats, budget, pillars, seen, tenantId, brief: briefOnce, now }).catch((err: unknown) => {
         console.error(`[beats] ${feed} failed`, err);
-        return { feed, rows: 0, byBeat: { ai: 0, crypto: 0, tech: 0, biz: 0 }, classified: 0, kept: 0, carried: 0, tikhub: 0, youtubeUnits: 0, free: 0, model: 0, note: "failed", examples: [], errors: [String(err).slice(0, 200)] } as BeatReport;
+        return { feed, rows: 0, byBeat: zeroCounts(keys), classified: 0, kept: 0, carried: 0, tikhub: 0, youtubeUnits: 0, free: 0, model: 0, note: "failed", examples: [], errors: [String(err).slice(0, 200)] } as BeatReport;
       }),
     ),
   );
@@ -795,7 +873,7 @@ export async function collectBeats(
      what is now stored (charts and feeds), the same way the page builds it. */
   try {
     const lists = (await storedAll()) as Lists;
-    const top = acrossPlatforms(lists, { limit: 40 }).map((r) => {
+    const top = acrossPlatforms(lists, { limit: 40, beats: keys }).map((r) => {
       const { from, rank: listRank, mark: _m, chart: _c, feedRank: _f, ...row } = r;
       void _m;
       void _c;
@@ -804,7 +882,9 @@ export async function collectBeats(
     });
     if (top.length) {
       const summary = await summarizeHot("beat_all", top, null);
-      const byBeat = BEATS.map((b) => `${b.zh} ${top.filter((r) => r.beat === b.key).length}`).join(" · ");
+      const byBeat = activeBeats(beats)
+        .map((b) => `${b.zh} ${top.filter((r) => r.beat === b.key).length}`)
+        .join(" · ");
       await db.insert(hotSnapshots).values({ id: newId("hot"), platform: "beat_all", rows: top, note: byBeat, summary, judged: null, relevance: null, fetchedAt: new Date(now) });
     }
   } catch (err) {
@@ -824,6 +904,7 @@ export async function collectBeats(
   return {
     slot,
     pillars,
+    beats: keys,
     reports: [...reports, ...skipped],
     tikhub: budget.tikhub,
     tikhubCap,
@@ -832,4 +913,284 @@ export async function collectBeats(
     planned: plannedDue,
     refused: budget.refused,
   };
+}
+
+/** When the last regular beat run started (its `beat_run` row), for "the
+ *  next collection is in about N minutes". */
+export async function lastBeatRunAt(): Promise<number | null> {
+  const [row] = await db
+    .select({ at: hotSnapshots.fetchedAt })
+    .from(hotSnapshots)
+    .where(eq(hotSnapshots.platform, RUN_KEY))
+    .orderBy(desc(hotSnapshots.fetchedAt))
+    .limit(1);
+  return row ? row.at.getTime() : null;
+}
+
+/* ------------------------------------------------------------ 现在收集 */
+
+/**
+ * "现在收集": one beat, now, on every platform, once.
+ *
+ * A beat the studio has just added waits for its turn in the rotation, which
+ * with five beats can be a run or two on some platforms; the button under
+ * its empty chip collects it now instead (`planBeatNow`: 8 TikHub searches,
+ * up to 10, under a cap of 12; one YouTube search; two free news reads).
+ *
+ * What it finds is added to each stored feed, never put in place of it: the
+ * rows are ranked and classified as a regular run does (against the studio's
+ * whole list, so a post that is really 商业 is not filed under the new beat),
+ * up to ten of the new beat's per feed are kept, and a new copy of the feed
+ * is written holding everything it held plus those. That copy is dated one
+ * millisecond after the one it extends, not now, so the collector's age
+ * guard (`lastTried`) sees the feed exactly as old as before and the regular
+ * three-hour runs keep their rhythm; the rows carry their own `seenAt`. A
+ * regular run that lands while this one is reading is not lost either: the
+ * feed is read again just before writing, and the new rows go onto whatever
+ * is newest then.
+ *
+ * Each run leaves a row of its own (platform `beat_now`, note
+ * "<tenant>:<beat>"), written before the first request: the half-hour
+ * limit per beat is read from it, and its summary is the cost line and what
+ * the page polls to know the run has landed.
+ */
+export const NOW_KEY = "beat_now";
+/** New rows one "现在收集" adds to a feed, at most. */
+const NOW_PER_FEED = 10;
+/** "现在收集" runs per studio per day, all beats together. */
+const NOW_PER_DAY = 8;
+
+export type BeatNowRun = {
+  beat: Beat;
+  at: number;
+  /** Still reading (a run older than ten minutes that never finished counts
+   *  as over). */
+  running: boolean;
+  /** Rows it added across the feeds, once it is over. */
+  rows: number | null;
+  failed: boolean;
+};
+
+/** The latest "现在收集" of each beat of a studio, from the last day. */
+export async function beatNowRuns(tenantId: string): Promise<BeatNowRun[]> {
+  const found = await db
+    .select({ at: hotSnapshots.fetchedAt, note: hotSnapshots.note, summary: hotSnapshots.summary })
+    .from(hotSnapshots)
+    .where(and(eq(hotSnapshots.platform, NOW_KEY), like(hotSnapshots.note, `${tenantId}:%`), gte(hotSnapshots.fetchedAt, new Date(Date.now() - 86_400_000))))
+    .orderBy(desc(hotSnapshots.fetchedAt))
+    .limit(60);
+  const out = new Map<string, BeatNowRun>();
+  for (const r of found) {
+    if (!r.note?.startsWith(`${tenantId}:`)) continue;
+    const beat = r.note.slice(tenantId.length + 1);
+    if (!beat || out.has(beat)) continue;
+    const at = r.at.getTime();
+    const summary = r.summary ?? "";
+    const running = summary.startsWith("running") && Date.now() - at < 10 * 60_000;
+    const n = /(\d+) rows/.exec(summary);
+    out.set(beat, { beat, at, running, rows: n ? Number(n[1]) : null, failed: summary.startsWith("failed") });
+  }
+  return [...out.values()];
+}
+
+/**
+ * Claim a "现在收集" for one beat: checks, then the run's row, written only
+ * if the beat has none from the last half hour (in the same statement, so
+ * two presses from two tabs make one run). The work itself is `runBeatNow`,
+ * which the route runs after answering.
+ */
+export async function startBeatNow(
+  tenantId: string,
+  beatKey: string,
+): Promise<{ ok: true; runId: string; at: number } | { error: string; errorEn: string; retryAt?: number; status: number }> {
+  /* The feeds are shared and searched for the collector's studio; its list
+     decides what they hold (see the top of this file). */
+  if (tenantId !== HOT_TENANT) return { error: "赛道内容按收集器所属工作室的赛道收集，这里不能单独收集。", errorEn: "The feeds are collected for the collector's studio; this studio cannot collect one on its own.", status: 409 };
+  const beats = await readBeats(tenantId, { fresh: true });
+  const beat = beats.find((b) => b.key === beatKey);
+  if (!beat) return { error: "没有这个赛道，先保存再收集。", errorEn: "There is no such beat; save it first.", status: 404 };
+  if (!beat.enabled) return { error: "这个赛道关着，先打开再收集。", errorEn: "This beat is switched off; switch it on first.", status: 409 };
+  const note = `${tenantId}:${beatKey}`;
+  const runId = newId("hot");
+  const now = new Date();
+  const since = new Date(now.getTime() - NOW_EVERY_MS);
+  const day = new Date(now.getTime() - 86_400_000);
+  /* Two limits, checked in the statement that claims the run: once per beat
+     per half hour, and at most `NOW_PER_DAY` runs per studio per day across
+     all its beats (at most 8 × 12 TikHub requests, about two thirds of a
+     day of the regular runs), so pressing through beats that find nothing
+     cannot run the bill up. */
+  const { rows } = await db.execute<{ id: string }>(sql`
+    insert into hot_snapshots (id, platform, rows, note, summary, fetched_at)
+    select ${runId}, ${NOW_KEY}, '[]'::jsonb, ${note}, 'running', ${now}
+    where not exists (
+      select 1 from hot_snapshots where platform = ${NOW_KEY} and note = ${note} and fetched_at > ${since}
+    )
+    and (
+      select count(*) from hot_snapshots where platform = ${NOW_KEY} and note like ${`${tenantId}:%`} and fetched_at > ${day}
+    ) < ${NOW_PER_DAY}
+    returning id`);
+  if (!rows.length) {
+    const runs = await beatNowRuns(tenantId);
+    const last = runs.find((r) => r.beat === beatKey);
+    if (!last || now.getTime() - last.at >= NOW_EVERY_MS) {
+      return { error: `今天已经手动收集了 ${NOW_PER_DAY} 次，明天再按，或等下一轮定时收集。`, errorEn: `${NOW_PER_DAY} manual collections already today; try tomorrow, or wait for the next regular collection.`, status: 429 };
+    }
+    const retryAt = (last?.at ?? now.getTime()) + NOW_EVERY_MS;
+    const hk = new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Hong_Kong", hour: "2-digit", minute: "2-digit" }).format(new Date(retryAt));
+    return { error: `这个赛道半小时内收集过，${hk} 以后可以再收集。`, errorEn: `This beat was collected in the last half hour; again after ${hk}.`, retryAt, status: 429 };
+  }
+  return { ok: true, runId, at: now.getTime() };
+}
+
+/** Link-or-words keys of the posts a feed already holds. */
+function heldKeys(rows: HotRow[]): { links: Set<string>; words: Set<string> } {
+  const links = new Set<string>();
+  const words = new Set<string>();
+  for (const r of rows) {
+    const lk = linkKey(r.url);
+    if (lk) links.add(lk);
+    const wk = wordsKey(r.phrase);
+    if (wk) words.add(wk);
+  }
+  return { links, words };
+}
+const isHeld = (held: { links: Set<string>; words: Set<string> }, r: Pick<HotRow, "url" | "phrase">) => {
+  const lk = linkKey(r.url);
+  const wk = wordsKey(r.phrase);
+  return (!!lk && held.links.has(lk)) || (!!wk && held.words.has(wk));
+};
+
+type NowReport = { feed: BeatFeedKey; added: number; classified: number; tikhub: number; youtubeUnits: number; free: number; note?: string; errors: string[] };
+
+/** One feed's part of "现在收集": search, rank, classify, add. */
+async function addToFeed(
+  feed: BeatFeedKey,
+  ctx: { plan: RunPlan; beats: readonly BeatConfig[]; beat: BeatConfig; budget: Budget; pillars: string[]; tenantId: string; now: number },
+): Promise<NowReport> {
+  const errors: string[] = [];
+  const got = await fetchFeed(feed, { plan: ctx.plan, budget: ctx.budget, errors });
+  const report: NowReport = { feed, added: 0, classified: 0, tikhub: got.tikhub, youtubeUnits: got.youtubeUnits, free: got.free, errors };
+  const seenAt = new Date(ctx.now).toISOString();
+  const windowMs = FRESH_DAYS[feed] * 86_400_000;
+  const prev = await latestStored(feed).catch(() => null);
+  const held = heldKeys(prev?.rows ?? []);
+  const merged = dedupe(got.rows.map((r) => ({ ...r, seenAt }))).filter((c) => !foreignScript(c) && !hashtagsOnly(c.phrase));
+  const fresh = (feed === "beat_news" ? clusterNews(merged) : merged).filter((c) => {
+    if (isHeld(held, c)) return false;
+    const h = ageHours(c, ctx.now);
+    return !windowMs || h === null || h * 3_600_000 <= windowMs;
+  });
+  if (!fresh.length) {
+    report.note = got.rows.length ? "搜到的都已经在列表里或不够新" : errors.length ? "这个平台这次没给数据" : "这次什么都没搜到";
+    return report;
+  }
+  const ranked = rank(feed, fresh, ctx.now);
+  const echoes = echoesOf(ranked);
+  const top = spread([...ranked.filter((c) => !echoes.has(c)), ...ranked.filter((c) => echoes.has(c))], FEED_SIZE);
+  report.classified = top.length;
+  const { relevance } = await classifyHot(feed, top, { pillars: ctx.pillars, beats: ctx.beats, onUsage: meterFor(ctx.tenantId) });
+  /* Nothing is stored unmarked: a row under a beat only this studio knows,
+     with no mark to read, would be a row no older reader can place. */
+  if (!relevance) {
+    report.note = "分类没成功，这次不存";
+    return report;
+  }
+  const mine = top.filter((c) => beatOf(relevance[c.phrase]) === ctx.beat.key);
+  const strong = mine.filter((c) => (relevance[c.phrase]?.s ?? 0) >= 2);
+  const weak = mine.filter((c) => (relevance[c.phrase]?.s ?? 0) < 2);
+  const own = (c: Candidate) => !echoes.has(c);
+  const chosen = [...strong.filter(own), ...weak.filter(own), ...strong.filter((c) => !own(c)), ...weak.filter((c) => !own(c))].slice(0, NOW_PER_FEED);
+  if (!chosen.length) {
+    report.note = "搜到的都不属于这个赛道";
+    return report;
+  }
+  const rows: HotRow[] = chosen.map((c) => {
+    const { hint: _hint, group: _group, carried: _carried, ...row } = c;
+    void _hint;
+    void _group;
+    void _carried;
+    return { ...row, beat: ctx.beat.key };
+  });
+  const rel: RelevanceMap = Object.fromEntries(rows.map((r) => [r.phrase, relevance[r.phrase]]));
+
+  /* Onto the newest copy, read again now: a regular run may have stored the
+     feed while this one was searching. */
+  const latest = await latestStored(feed).catch(() => null);
+  const base = latest?.rows ?? [];
+  const again = heldKeys(base);
+  const add = rows.filter((r) => !isHeld(again, r));
+  if (!add.length) {
+    report.note = "搜到的都已经在列表里";
+    return report;
+  }
+  /* One millisecond after the copy it extends (see above); a feed with no
+     copy in the last week is dated a run ago, so it is due at the next run. */
+  const gap = BEAT_EVERY_HOURS_DEFAULT * 3_600_000;
+  const at = latest ? new Date(latest.fetchedAt + 1) : new Date(ctx.now - gap);
+  await db.insert(hotSnapshots).values({
+    id: newId("hot"),
+    platform: feed,
+    rows: [...base, ...add],
+    note: latest?.note ?? null,
+    summary: latest?.summary ?? null,
+    judged: latest?.judged ?? null,
+    relevance: { ...(latest?.relevance ?? {}), ...rel },
+    fetchedAt: at,
+  });
+  report.added = add.length;
+  return report;
+}
+
+export type BeatNowResult = { beat: Beat; tikhub: number; tikhubCap: number; youtubeUnits: number; free: number; rows: number; reports: NowReport[] };
+
+/** The work of a claimed "现在收集" (`startBeatNow`). Never throws; the
+ *  run's row says how it went. */
+export async function runBeatNow(tenantId: string, beatKey: string, runId: string): Promise<BeatNowResult | null> {
+  const now = Date.now();
+  const finish = (summary: string) =>
+    db
+      .update(hotSnapshots)
+      .set({ summary })
+      .where(eq(hotSnapshots.id, runId))
+      .catch((err: unknown) => console.error("[beats] now run row", err));
+  try {
+    const [beats, pillars] = await Promise.all([readBeats(tenantId, { fresh: true }), channelFocus(tenantId).catch(() => FOCUS_FALLBACK)]);
+    const beat = beats.find((b) => b.key === beatKey && b.enabled);
+    if (!beat) {
+      await finish("failed: the beat is gone or switched off");
+      return null;
+    }
+    const w = beatWords(beat, toTraditional);
+    const plan: RunPlan = {
+      searches: planBeatNow(beat),
+      /* One YouTube search, both languages at once (Traditional and English
+         words OR-ed), and one news query per edition. */
+      youtube: [{ beats: [beat.key], q: [...new Set([...w.hk.slice(0, 2), ...w.en.slice(0, 2)])].join("|"), lang: "zh" }],
+      news: [{ beat: beat.key, q: `${[...new Set(w.hk.slice(0, 4))].join(" OR ")} when:2d` }],
+      weiboList: false,
+      crypto: false,
+    };
+    const cap = Math.min(NOW_TIKHUB_CAP, Number(process.env.RESEARCH_BEAT_TIKHUB_CAP) || NOW_TIKHUB_CAP);
+    const budget = new Budget(cap, 1);
+    const feeds: BeatFeedKey[] = ["beat_douyin", "beat_xiaohongshu", "beat_bilibili", "beat_weibo", "beat_tiktok", "beat_youtube", "beat_news"];
+    const reports = await Promise.all(
+      feeds.map((feed) =>
+        addToFeed(feed, { plan, beats, beat, budget, pillars, tenantId, now }).catch((err: unknown): NowReport => {
+          console.error(`[beats] now ${feed} failed`, err);
+          return { feed, added: 0, classified: 0, tikhub: 0, youtubeUnits: 0, free: 0, note: "failed", errors: [String(err).slice(0, 200)] };
+        }),
+      ),
+    );
+    const rows = reports.reduce((n, r) => n + r.added, 0);
+    const youtubeUnits = reports.reduce((n, r) => n + r.youtubeUnits, 0);
+    const free = reports.reduce((n, r) => n + r.free, 0);
+    const per = reports.filter((r) => r.added).map((r) => `${r.feed.replace("beat_", "")} ${r.added}`);
+    await finish(`done: TikHub ${budget.tikhub}/${cap} · YouTube ${youtubeUnits}u · free ${free} · ${rows} rows${per.length ? ` (${per.join(", ")})` : ""}`);
+    return { beat: beat.key, tikhub: budget.tikhub, tikhubCap: cap, youtubeUnits, free, rows, reports };
+  } catch (err) {
+    console.error("[beats] now run", err);
+    await finish(`failed: ${String(err).slice(0, 120)}`);
+    return null;
+  }
 }

@@ -5,7 +5,9 @@ import React from "react";
 import { useRouter } from "next/navigation";
 import { useLocalPreference } from "@/lib/client/preference";
 import { PlatformMark } from "@/components/ui/PlatformMark";
-import { BEATS, BEAT_FEEDS, listName, onFocus, relevanceLabel, beatOf, type Beat, type BeatTab, type Relevance, type RelevanceMap } from "@/lib/research/platform-catalog";
+import { BEAT_FEEDS, listName, onFocus, relevanceLabel, beatOf, type Beat, type BeatTab, type Relevance, type RelevanceMap } from "@/lib/research/platform-catalog";
+import { DEFAULT_BEATS, beatColor, type BeatConfig } from "@/lib/research/beats";
+import { BeatsEditor } from "@/components/research/BeatsEditor";
 import { SayToAgent } from "@/components/flow/SayToAgent";
 import { AgentIcon } from "@/components/agents/AgentIcon";
 import { AGENT_COLORS } from "@/lib/agents/catalog";
@@ -34,9 +36,17 @@ import { notify } from "@/lib/client/notify";
  *   2. The list. On a platform tab, first the rows of the platform's own
  *      hourly charts that are on a beat, marked 上榜 (the platform itself is
  *      pushing them), then the feed, ranked by the feed's own order. Chips
- *      (全部 / AI / 加密 / 科技 / 商业) narrow both. The platform's raw chart
- *      is one press away ("看平台热榜原榜"), unfiltered, for when the chart
- *      itself is the question.
+ *      (全部, then the studio's beats: AI / 加密 / 科技 / 商业 by default)
+ *      narrow both. The platform's raw chart is one press away
+ *      ("看平台热榜原榜"), unfiltered, for when the chart itself is the
+ *      question.
+ *   The beats are the studio's own. "管理赛道" beside the chips opens the
+ *   editor (`BeatsEditor.tsx`; the owner: "let me be able to change this
+ *   list too"). A beat with no rows yet says when it will fill ("下一轮收集后
+ *   出现（约 N 分钟）") and offers "现在收集", which collects just that beat
+ *   in the background; the chip fills when it lands (the page asks every
+ *   twelve seconds while it runs). Rows under a beat switched off or
+ *   deleted are hidden.
  *   3. 研究员's line on the list, written when it was collected, and the
  *      morning's picks folded underneath.
  *
@@ -56,8 +66,18 @@ const BEAT_KEY = "aura:research:beat";
 
 type Tab = "focus" | BeatTab;
 const TABS: readonly Tab[] = ["focus", ...BEAT_TABS];
-const CHIPS = ["all", "ai", "crypto", "tech", "biz"] as const;
-type Chip = (typeof CHIPS)[number];
+/** "all" or a beat key from the studio's list. */
+type Chip = string;
+/** What `/api/research/beats` says besides the list. */
+type BeatsInfo = {
+  nextRunAt: number | null;
+  runs: { beat: string; at: number; running: boolean; rows: number | null; failed: boolean }[];
+  canCollect: boolean;
+};
+/** How long after a run starts its rows are usually stored. */
+const RUN_LANDS_MS = 4 * 60_000;
+/** "现在收集" may run once per beat per half hour (`NOW_EVERY_MS`). */
+const NOW_EVERY_MS = 30 * 60_000;
 /** The 上榜 rows shown above a feed before "and N more on the charts": few
  *  enough that the feed itself starts on the first screen. */
 const CHART_CAP = 6;
@@ -70,6 +90,36 @@ type ViewRow = BeatRow & { place: number };
 export const throughUs = (url: string | null) => (url ? `/api/img?u=${encodeURIComponent(url)}` : null);
 
 type Stored = { rows: HotRow[]; note: string | null; summary?: string | null; fetchedAt?: number; judged?: Judged | null; relevance?: RelevanceMap | null };
+
+/** Every stored list and its marks (`/api/research/hot?platform=all`).
+ *  `fresh` goes past the browser's minute of cache. */
+async function fetchLists(fresh: boolean): Promise<{ lists: Lists; marks: Record<string, Judged> } | null> {
+  const res = (await fetch(`/api/research/hot?platform=all${fresh ? `&at=${Date.now()}` : ""}`, fresh ? { cache: "no-store" } : undefined)
+    .then((r) => (r.ok ? r.json() : null))
+    .catch(() => null)) as { lists: Record<string, Stored | undefined> } | null;
+  if (!res) return null;
+  const lists: Lists = {};
+  const marks: Record<string, Judged> = {};
+  for (const [k, v] of Object.entries(res.lists ?? {})) {
+    if (!v) continue;
+    lists[k] = { rows: v.rows ?? [], note: v.note ?? null, summary: v.summary ?? null, fetchedAt: v.fetchedAt ?? null, relevance: v.relevance ?? null };
+    if (v.judged) marks[k] = v.judged;
+  }
+  return { lists, marks };
+}
+
+type BeatsAnswer = { beats: BeatConfig[] } & BeatsInfo;
+/** The studio's beats and what goes with them (`/api/research/beats`). */
+async function fetchBeats(): Promise<BeatsAnswer | null> {
+  return (await fetch("/api/research/beats", { cache: "no-store" })
+    .then((r) => (r.ok ? r.json() : null))
+    .catch(() => null)) as BeatsAnswer | null;
+}
+
+/** Whether a beat has any row on any platform yet. */
+function beatHasRows(lists: Lists, keys: string[], key: string): boolean {
+  return acrossPlatforms(lists, { beat: key, limit: 1, beats: keys }).length > 0;
+}
 
 export function LiveNow({
   searches,
@@ -96,11 +146,38 @@ export function LiveNow({
   const [, start] = React.useTransition();
   const [state, setState] = useLocalPreference<"open" | "shut">(KEY, ["open", "shut"], "open");
   const open = state === "open";
-  const [tab, setTab] = useLocalPreference<Tab>(PLATFORM_KEY, TABS, "focus");
+  /* The studio's beats. The defaults until `/api/research/beats` answers,
+     which is also what the server renders, so nothing differs on hydration;
+     the chips wait for the answer, so the defaults never flash. */
+  const [beats, setBeats] = React.useState<BeatConfig[]>(() => [...DEFAULT_BEATS]);
+  const [beatsInfo, setBeatsInfo] = React.useState<BeatsInfo | null>(null);
+  const [beatsDone, setBeatsDone] = React.useState(false);
+  const [editing, setEditing] = React.useState(false);
+  const [collecting, setCollecting] = React.useState<string | null>(null);
+  const active = React.useMemo(() => beats.filter((b) => b.enabled), [beats]);
+  const activeKeys = React.useMemo(() => active.map((b) => b.key), [active]);
+  const chips = React.useMemo<Chip[]>(() => ["all", ...activeKeys], [activeKeys]);
+  /* The coin market tab is the 加密 beat's own list: with 加密 switched off
+     the collector stops reading it (`beat-feeds.ts`), so the tab goes too
+     rather than sitting empty or stale. The server renders the defaults, so
+     the tabs match on hydration. */
+  const tabs = React.useMemo<readonly Tab[]>(() => (activeKeys.includes("crypto") ? TABS : TABS.filter((k) => k !== "crypto")), [activeKeys]);
+  const [tab, setTab] = useLocalPreference<Tab>(PLATFORM_KEY, tabs, "focus");
   /* Which beat, remembered in this browser and kept across tabs: someone
      reading crypto today reads it on every platform. */
-  const [chip, setChip] = useLocalPreference<Chip>(BEAT_KEY, CHIPS, "all");
+  const [chip, setChip] = useLocalPreference<Chip>(BEAT_KEY, chips, "all");
   const beat: Beat | null = chip === "all" ? null : chip;
+  const metaOf = (k: string) => beats.find((b) => b.key === k) ?? null;
+  const beatName = (k: string) => {
+    const m = metaOf(k);
+    return m ? (zh ? m.zh : m.en) : k;
+  };
+  /* A beat's wash and ink from its colour; 全部 and anything unknown in the
+     page's neutral grey. */
+  const colorOf = (k: string | null | undefined) => beatColor(k ? metaOf(k)?.color : null);
+  /* The beats' names in a line ("AI · 加密 · 科技 · 商业"), cut short past
+     five so a tab label stays a label. */
+  const beatLine = active.length > 5 ? `${active.slice(0, 4).map((b) => beatName(b.key)).join(" · ")} …` : active.map((b) => beatName(b.key)).join(" · ");
   /* The platform's own chart, unfiltered, instead of the tab's beat rows. */
   const [rawOn, setRawOn] = React.useState(false);
   const [rawPick, setRawPick] = React.useState<PlatformKey | null>(null);
@@ -118,33 +195,133 @@ export function LiveNow({
 
   /* Every list — the platforms' charts, the beat feeds, the cross-platform
      top — and 研究员's stored marks, in one request when the panel opens, so
-     switching tabs never waits. Storage only; nothing here reads a platform. */
+     switching tabs never waits. Storage only; nothing here reads a platform.
+     Asked again (past the browser's minute of cache) when a beat collection
+     has just landed. */
+  const applyLists = React.useCallback((got: { lists: Lists; marks: Record<string, Judged> } | null) => {
+    if (!got) return;
+    setLists(got.lists);
+    setJudged(got.marks);
+  }, []);
   React.useEffect(() => {
     if (!open) return;
     let cancelled = false;
-    void fetch("/api/research/hot?platform=all")
-      .then((r) => (r.ok ? r.json() : { lists: {} }))
-      .then((res: { lists: Record<string, Stored | undefined> }) => {
-        if (cancelled) return;
-        const got = res.lists ?? {};
-        const next: Lists = {};
-        const marks: Record<string, Judged> = {};
-        for (const [k, v] of Object.entries(got)) {
-          if (!v) continue;
-          next[k] = { rows: v.rows ?? [], note: v.note ?? null, summary: v.summary ?? null, fetchedAt: v.fetchedAt ?? null, relevance: v.relevance ?? null };
-          if (v.judged) marks[k] = v.judged;
-        }
-        setLists(next);
-        setJudged(marks);
+    void fetchLists(false)
+      .then((got) => {
+        if (!cancelled) applyLists(got);
       })
-      .catch(() => {})
       .finally(() => {
         if (!cancelled) setAllDone(true);
       });
     return () => {
       cancelled = true;
     };
-  }, [open]);
+  }, [open, applyLists]);
+
+  /* The studio's beats, when the next collection is, and any "现在收集"
+     under way. `clock` is when that was read (and, while a beat waits, the
+     minute since), for "约 N 分钟" without reading the time during render. */
+  const [clock, setClock] = React.useState<number | null>(null);
+  const applyBeats = React.useCallback((res: BeatsAnswer | null) => {
+    if (!res?.beats?.length) return;
+    setBeats(res.beats);
+    setBeatsInfo({ nextRunAt: res.nextRunAt ?? null, runs: res.runs ?? [], canCollect: !!res.canCollect });
+    setClock(Date.now());
+  }, []);
+  React.useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    void fetchBeats()
+      .then((res) => {
+        if (!cancelled) applyBeats(res);
+      })
+      .finally(() => {
+        if (!cancelled) setBeatsDone(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, applyBeats]);
+
+  /* While a "现在收集" runs, ask how it is going every twelve seconds; when
+     it is over, read the lists again so its chip fills. Light: one small
+     request, only while something is running, for a few minutes at most. */
+  const runningKey = (beatsInfo?.runs ?? [])
+    .filter((r) => r.running)
+    .map((r) => r.beat)
+    .join(",");
+  React.useEffect(() => {
+    if (!open || !runningKey) return;
+    let stopped = false;
+    const id = window.setInterval(() => {
+      void fetchBeats().then(async (res) => {
+        if (stopped) return;
+        applyBeats(res);
+        if (res && !(res.runs ?? []).some((r) => r.running)) applyLists(await fetchLists(true));
+      });
+    }, 12_000);
+    return () => {
+      stopped = true;
+      window.clearInterval(id);
+    };
+  }, [open, runningKey, applyBeats, applyLists]);
+
+  /* A beat waiting for the next collection: the minutes move on, and once
+     the collection should have landed the lists are read again (then every
+     five minutes for a while, in case the run was late). */
+  const waitingKey = allDone && beatsDone ? activeKeys.filter((k) => !beatHasRows(lists, activeKeys, k)).join(",") : "";
+  const nextRunAt = beatsInfo?.nextRunAt ?? null;
+  React.useEffect(() => {
+    if (!open || !waitingKey) return;
+    let stopped = false;
+    const id = window.setInterval(() => {
+      const now = Date.now();
+      setClock(now);
+      const landed = nextRunAt !== null && now > nextRunAt + RUN_LANDS_MS;
+      const minute = Math.floor(now / 60_000);
+      if (landed && minute % 5 === 0 && now < (nextRunAt ?? 0) + 60 * 60_000) {
+        void fetchLists(true).then((got) => {
+          if (!stopped) applyLists(got);
+        });
+        void fetchBeats().then((res) => {
+          if (!stopped) applyBeats(res);
+        });
+      }
+    }, 60_000);
+    return () => {
+      stopped = true;
+      window.clearInterval(id);
+    };
+  }, [open, waitingKey, nextRunAt, applyBeats, applyLists]);
+
+  /* 管理赛道 edits the list the page read from the server. If that read
+     failed, the page is showing the defaults, and saving an edit of them
+     would drop the studio's own beats — so the list is read again first,
+     and the editor opens only on the studio's real list. */
+  async function openEditor() {
+    if (beatsInfo) {
+      setEditing(true);
+      return;
+    }
+    const res = await fetchBeats();
+    if (!res?.beats?.length) {
+      notify(t("Could not read the beats. Try again in a moment.", "赛道列表没读到，稍后再试。"));
+      return;
+    }
+    applyBeats(res);
+    setEditing(true);
+  }
+
+  async function collectNow(key: string) {
+    if (collecting) return;
+    setCollecting(key);
+    const res = await fetch("/api/research/beats/collect", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ key }) }).catch(() => null);
+    const body = (await res?.json().catch(() => null)) as { error?: string; errorEn?: string } | null;
+    setCollecting(null);
+    if (!res?.ok) notify((zh ? body?.error : body?.errorEn) ?? t("Could not start the collection.", "没能开始收集。"));
+    else notify(t(`Collecting ${beatName(key)} now; it fills in a minute or two.`, `正在收集「${beatName(key)}」，一两分钟后出现。`), "info");
+    applyBeats(await fetchBeats());
+  }
 
   /* The tab's feed and charts. */
   const feedMeta = tab === "focus" ? null : feedOfTab(tab);
@@ -195,26 +372,29 @@ export function LiveNow({
   type Section = { beat: Beat | null; rows: ViewRow[] };
   let sections: Section[] = [];
   let chartedHidden = 0;
-  let counts: Record<Beat | "all", number> = { all: 0, ai: 0, crypto: 0, tech: 0, biz: 0 };
+  let counts: Record<Beat | "all", number> = beatCounts([], activeKeys);
+  /* Every platform together, per beat: whether a beat has any rows yet. */
+  const everywhere = beatCounts(acrossPlatforms(lists, { limit: 999, beats: activeKeys }), activeKeys);
   if (tab === "focus") {
-    const all = acrossPlatforms(lists, { limit: 999 });
-    counts = beatCounts(all);
+    counts = everywhere;
     sections = beat
-      ? [{ beat, rows: acrossPlatforms(lists, { beat, limit: 40 }).map((r, i) => ({ ...r, place: i + 1 })) }]
-      : BEATS.map((b) => ({ beat: b.key, rows: acrossPlatforms(lists, { beat: b.key, limit: 8 }).map((r, i) => ({ ...r, place: i + 1 })) })).filter((s) => s.rows.length);
+      ? [{ beat, rows: acrossPlatforms(lists, { beat, limit: 40, beats: activeKeys }).map((r, i) => ({ ...r, place: i + 1 })) }]
+      : active.map((b) => ({ beat: b.key, rows: acrossPlatforms(lists, { beat: b.key, limit: 8, beats: activeKeys }).map((r, i) => ({ ...r, place: i + 1 })) })).filter((s) => s.rows.length);
   } else if (rawList) {
     const rows = rawRows(rawList);
-    counts = beatCounts(rows.filter((r) => onFocus(r.mark)));
+    counts = beatCounts(rows.filter((r) => onFocus(r.mark) && !!r.beat && activeKeys.includes(r.beat)), activeKeys);
     counts.all = rows.length;
     sections = [{ beat: null, rows: rows.map((r) => ({ ...r, place: r.rank })) }];
   } else {
-    const whole = tabRows(tab, lists, { chartCap: 200 });
-    counts = beatCounts([...whole.charted, ...whole.feed]);
-    const part = tabRows(tab, lists, { beat, chartCap: CHART_CAP });
+    const whole = tabRows(tab, lists, { chartCap: 200, beats: activeKeys });
+    counts = beatCounts([...whole.charted, ...whole.feed], activeKeys);
+    const part = tabRows(tab, lists, { beat, chartCap: CHART_CAP, beats: activeKeys });
     chartedHidden = part.chartedHidden;
     sections = [{ beat: null, rows: [...part.charted, ...part.feed].map((r) => ({ ...r, place: r.feedRank ?? r.rank })) }];
   }
   const shown: ViewRow[] = sections.flatMap((s) => s.rows);
+  /* Rows on any of the studio's beats (the raw chart's header line). */
+  const onBeats = activeKeys.reduce((n, k) => n + (counts[k] ?? 0), 0);
   const rowId = (r: BeatRow) => `${r.from}|${r.phrase}`;
   const picked = selected ? (shown.find((r) => rowId(r) === selected) ?? null) : null;
   /* The list the picked row is on: what starting work from it resolves on
@@ -226,12 +406,12 @@ export function LiveNow({
   /* The count on each tab: how many rows it has on the beats. */
   const tabCount = (key: Tab): number | null => {
     if (!allDone) return null;
-    if (key === "focus") return feedsStored || Object.keys(lists).length ? acrossPlatforms(lists, { limit: 999 }).length : null;
-    const r = tabRows(key, lists, { chartCap: 999 });
+    if (key === "focus") return feedsStored || Object.keys(lists).length ? acrossPlatforms(lists, { limit: 999, beats: activeKeys }).length : null;
+    const r = tabRows(key, lists, { chartCap: 999, beats: activeKeys });
     return r.charted.length + r.feed.length;
   };
   const tabLabel = (key: Tab) => {
-    if (key === "focus") return t("AI · Crypto · Tech · Business · all", "AI · 加密 · 科技 · 商业 · 全平台");
+    if (key === "focus") return `${beatLine} · ${t("all", "全平台")}`;
     const f = feedOfTab(key);
     return zh ? f.zh : f.label;
   };
@@ -300,7 +480,7 @@ export function LiveNow({
 
         {open ? (
           <div style={{ display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap" }}>
-            {TABS.map((key) => {
+            {tabs.map((key) => {
               const on = tab === key;
               const n = tabCount(key);
               return (
@@ -377,18 +557,18 @@ export function LiveNow({
                 <TabMark tab={tab} on={false} size={12} />
                 <span style={{ fontSize: 12.5, fontWeight: 600, whiteSpace: "nowrap" }}>
                   {tab === "focus"
-                    ? t("The beats, every platform", "各平台的 AI · 加密 · 科技 · 商业")
+                    ? t(`The beats, every platform: ${beatLine}`, `各平台的 ${beatLine}`)
                     : rawList
                       ? `${chartName(rawList)} · ${t("the platform's own chart", "平台热榜原榜")}`
                       : tab === "crypto"
                         ? t("Crypto market · CoinGecko trending and movers", "加密市场 · CoinGecko 热搜与涨跌")
-                        : `${tabName} · ${t("AI, crypto, tech, business", "AI · 加密 · 科技 · 商业")}`}
+                        : `${tabName} · ${beatLine}`}
                 </span>
                 <span style={{ fontSize: 11.5, color: "#999999", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0, flex: "1 1 120px" }}>
                   {!allDone
                     ? ""
                     : rawList
-                      ? t(`${counts.all} items · ${counts.ai + counts.crypto + counts.tech + counts.biz} on the beats`, `${counts.all} 条 · 其中赛道相关 ${counts.ai + counts.crypto + counts.tech + counts.biz} 条`)
+                      ? t(`${counts.all} items · ${onBeats} on the beats`, `${counts.all} 条 · 其中赛道相关 ${onBeats} 条`)
                       : `${t(`${counts.all} items`, `${counts.all} 条`)}${feedAt ? ` · ${clockHK(feedAt)} ${t("collected", "收集")}` : ""}${feedNote ? ` · ${feedNote}` : ""}`}
                 </span>
                 {/* The chart itself, unfiltered, one press away; and back. */}
@@ -408,32 +588,85 @@ export function LiveNow({
               </div>
 
               {/* Chips: which beat (the tab's rows), or which chart (raw). The
-                  coin market is one beat by definition and has none. */}
-              {allDone && !rawList && tab !== "crypto" ? (
-                <div role="group" aria-label={t("Which beat", "哪个赛道")} style={{ display: "flex", gap: 4, flexWrap: "wrap", paddingBottom: 6 }}>
-                  {CHIPS.map((c) => {
+                  coin market is one beat by definition and has none. The
+                  beats are the studio's; 管理赛道 at the end edits them. */}
+              {allDone && beatsDone && !rawList && tab !== "crypto" ? (
+                <div role="group" aria-label={t("Which beat", "哪个赛道")} style={{ display: "flex", gap: 4, flexWrap: "wrap", alignItems: "center", paddingBottom: 6 }}>
+                  {chips.map((c) => {
                     const on = chip === c;
-                    const n = counts[c];
-                    const meta = c === "all" ? null : BEATS.find((b) => b.key === c)!;
+                    const n = counts[c] ?? 0;
+                    const col = colorOf(c === "all" ? null : c);
+                    const waiting = c !== "all" && !everywhere[c];
                     return (
                       <button
                         key={c}
                         type="button"
                         aria-pressed={on}
+                        title={waiting ? t("Nothing collected for this beat yet", "这个赛道还没收集到内容") : undefined}
                         onClick={() => {
                           setChip(c);
                           setSelected(null);
                         }}
-                        style={{ display: "inline-flex", alignItems: "center", gap: 5, height: 22, padding: "0 9px", borderRadius: 999, border: `1px solid ${on ? beatInk(c) : "#e6e6e6"}`, background: on ? beatTint(c) : "#ffffff", color: on ? beatInk(c) : "#525252", fontSize: 11, fontFamily: "inherit", letterSpacing: "inherit", cursor: "pointer", whiteSpace: "nowrap" }}
+                        style={{ display: "inline-flex", alignItems: "center", gap: 5, height: 22, padding: "0 9px", borderRadius: 999, border: `1px ${waiting && !on ? "dashed" : "solid"} ${on ? col.ink : "#e6e6e6"}`, background: on ? col.tint : "#ffffff", color: on ? col.ink : "#525252", fontSize: 11, fontFamily: "inherit", letterSpacing: "inherit", cursor: "pointer", whiteSpace: "nowrap" }}
                       >
-                        {meta ? <span style={{ width: 6, height: 6, borderRadius: 3, background: beatInk(c) }} /> : null}
-                        {meta ? (zh ? meta.zh : meta.en) : t("All", "全部")}
-                        <span style={{ color: on ? beatInk(c) : "#a3a3a3", fontVariantNumeric: "tabular-nums" }}>{n}</span>
+                        {c !== "all" ? <span style={{ width: 6, height: 6, borderRadius: 3, background: col.ink }} /> : null}
+                        {c === "all" ? t("All", "全部") : beatName(c)}
+                        <span style={{ color: on ? col.ink : "#a3a3a3", fontVariantNumeric: "tabular-nums" }}>{n}</span>
                       </button>
                     );
                   })}
+                  <button
+                    type="button"
+                    onClick={() => void openEditor()}
+                    style={{ display: "inline-flex", alignItems: "center", gap: 4, height: 22, padding: "0 6px", marginLeft: 2, border: 0, background: "transparent", color: "#8a8a8a", fontSize: 11, fontFamily: "inherit", cursor: "pointer", whiteSpace: "nowrap" }}
+                  >
+                    <svg viewBox="0 0 24 24" aria-hidden style={{ width: 12, height: 12, fill: "none", stroke: "currentColor", strokeWidth: 1.9, strokeLinecap: "round", strokeLinejoin: "round" }}>
+                      <path d="M4 7h9M17 7h3M4 17h3M11 17h9" />
+                      <circle cx="15" cy="7" r="2" />
+                      <circle cx="9" cy="17" r="2" />
+                    </svg>
+                    {t("Manage beats", "管理赛道")}
+                  </button>
                 </div>
               ) : null}
+              {/* A beat with nothing collected yet (just added, or its words
+                  found nothing): when it will fill, and "现在收集". */}
+              {allDone && beatsDone && !rawList && tab !== "crypto" && beatsInfo
+                ? active
+                    .filter((b) => !everywhere[b.key])
+                    .map((b) => {
+                      const run = beatsInfo.runs.find((r) => r.beat === b.key) ?? null;
+                      const col = colorOf(b.key);
+                      const now = clock ?? 0;
+                      const retryAt = run ? run.at + NOW_EVERY_MS : 0;
+                      const mins = beatsInfo.nextRunAt ? Math.max(1, Math.round((beatsInfo.nextRunAt + RUN_LANDS_MS - now) / 60_000)) : null;
+                      const when = mins === null ? "" : mins >= 90 ? t(`about ${Math.round(mins / 60)} h`, `约 ${Math.round(mins / 60)} 小时`) : t(`about ${mins} min`, `约 ${mins} 分钟`);
+                      return (
+                        <div key={b.key} style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", fontSize: 11.5, color: "#7c7c7c", padding: "0 0 6px" }}>
+                          <span style={{ width: 6, height: 6, borderRadius: 3, background: col.ink }} />
+                          <span style={{ color: col.ink, fontWeight: 500 }}>{beatName(b.key)}</span>
+                          <span>
+                            {run?.running || collecting === b.key
+                              ? t("Collecting now; it fills in a minute or two…", "正在收集，一两分钟后出现…")
+                              : run && !run.failed && run.rows === 0 && now < retryAt
+                                ? t(`Just collected: nothing on this beat this time. It is searched again at the next collection${when ? ` (${when})` : ""}.`, `刚才收集没找到这个赛道的内容，下一轮收集会再搜${when ? `（${when}）` : ""}。`)
+                                : t(`Appears after the next collection${when ? ` (${when})` : ""}.`, `下一轮收集后出现${when ? `（${when}）` : ""}。`)}
+                          </span>
+                          {beatsInfo.canCollect && !run?.running ? (
+                            <button
+                              type="button"
+                              disabled={collecting !== null || now < retryAt}
+                              title={now < retryAt ? t(`Once per half hour per beat; again after ${clockHK(retryAt)}`, `每个赛道半小时收集一次，${clockHK(retryAt)} 以后可以再收集`) : t("Search every platform for this beat now (a few paid requests)", "现在就按这个赛道搜一遍各平台（会用到少量付费请求）")}
+                              onClick={() => void collectNow(b.key)}
+                              style={{ ...smallBtn(false), height: 22, fontSize: 11, opacity: collecting !== null || now < retryAt ? 0.5 : 1, cursor: collecting !== null || now < retryAt ? "default" : "pointer" }}
+                            >
+                              {t("Collect now", "现在收集")}
+                            </button>
+                          ) : null}
+                        </div>
+                      );
+                    })
+                : null}
               {rawList && charts.length > 1 ? (
                 <div role="group" aria-label={t("Which chart", "哪份榜")} style={{ display: "flex", gap: 4, flexWrap: "wrap", paddingBottom: 6 }}>
                   {charts.map((c) => (
@@ -451,7 +684,9 @@ export function LiveNow({
                   {rawList
                     ? ((lists[rawList]?.note ?? note) || t("This chart has not been collected yet.", "这份榜还没收集到。"))
                     : beat
-                      ? t("Nothing on this beat here right now.", "这里此刻没有这个赛道的内容。")
+                      ? everywhere[beat]
+                        ? t("Nothing on this beat here right now.", "这里此刻没有这个赛道的内容。")
+                        : t("Nothing collected for this beat yet.", "这个赛道还没收集到内容。")
                       : feedsStored
                         ? t("Nothing collected for this platform's beats yet.", "这个平台的赛道内容还没收集到。")
                         : t("The beat feeds are collected every three hours; the first collection has not run yet.", "赛道内容每三小时收集一次，第一次收集还没跑。")}
@@ -480,9 +715,9 @@ export function LiveNow({
                     {sections.map((sec) => (
                       <React.Fragment key={sec.beat ?? "rows"}>
                         {tab === "focus" && !beat && sec.beat ? (
-                          <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 0 4px", fontSize: 11, fontWeight: 600, color: beatInk(sec.beat), borderTop: "1px solid #f3f3f3" }}>
-                            <span style={{ width: 6, height: 6, borderRadius: 3, background: beatInk(sec.beat) }} />
-                            {zh ? BEATS.find((b) => b.key === sec.beat)!.zh : BEATS.find((b) => b.key === sec.beat)!.en}
+                          <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 0 4px", fontSize: 11, fontWeight: 600, color: colorOf(sec.beat).ink, borderTop: "1px solid #f3f3f3" }}>
+                            <span style={{ width: 6, height: 6, borderRadius: 3, background: colorOf(sec.beat).ink }} />
+                            {beatName(sec.beat)}
                             <button type="button" onClick={() => setChip(sec.beat!)} style={{ border: 0, background: "transparent", padding: 0, fontSize: 11, color: "#999999", cursor: "pointer", fontFamily: "inherit", fontWeight: 400 }}>
                               {t(`all ${counts[sec.beat]} ›`, `全部 ${counts[sec.beat]} 条 ›`)}
                             </button>
@@ -537,7 +772,7 @@ export function LiveNow({
                                       {tab === "focus" && r.chart ? <span style={chartBadge}>{t("Chart", "上榜")}</span> : null}
                                     </span>
                                   ) : null}
-                                  {beatOn && r.beat && tab !== "crypto" ? <span style={relTag(r.beat)}>{r.mark ? relevanceLabel(r.mark, zh) : zh ? BEATS.find((b) => b.key === r.beat)!.zh : BEATS.find((b) => b.key === r.beat)!.en}</span> : null}
+                                  {beatOn && r.beat && tab !== "crypto" ? <span style={relTag(colorOf(r.beat))}>{r.mark ? relevanceLabel(r.mark, zh, beats) : beatName(r.beat)}</span> : null}
                                   {r.extra ? <span style={{ overflow: "hidden", textOverflow: "ellipsis", flexShrink: 1, minWidth: 0 }}>{r.extra}</span> : null}
                                   <StatLine stats={r.stats} zh={zh} />
                                 </div>
@@ -590,7 +825,7 @@ export function LiveNow({
                 {marksFor(picked) ? <span style={{ ...pill, alignSelf: "flex-start" }}>{marksFor(picked)!.fit}</span> : null}
                 <div style={{ fontSize: 12 }}>
                   <Kv k={t("Where", "位置")} v={whereLine(picked)} />
-                  {picked.beat ? <Kv k={t("Beat", "赛道")} v={picked.mark ? relevanceLabel(picked.mark, zh) : zh ? BEATS.find((b) => b.key === picked.beat)!.zh : BEATS.find((b) => b.key === picked.beat)!.en} /> : picked.mark ? <Kv k={t("Beat", "赛道")} v={t("None of the four", "不在四个赛道")} /> : null}
+                  {picked.beat ? <Kv k={t("Beat", "赛道")} v={picked.mark ? relevanceLabel(picked.mark, zh, beats) : beatName(picked.beat)} /> : picked.mark ? <Kv k={t("Beat", "赛道")} v={t("None of the studio's beats", "不在频道的赛道里")} /> : null}
                   {picked.stats?.price != null ? <Kv k={t("Price", "价格")} v={usd(picked.stats.price)} strong /> : <Kv k={t("Heat", "热度")} v={headline(picked)} strong />}
                   {picked.stats?.change24h != null ? <Kv k={t("24h", "24 小时")} v={`${picked.stats.change24h >= 0 ? "+" : ""}${picked.stats.change24h.toFixed(1)}%`} /> : null}
                   {picked.stats?.marketCap != null ? <Kv k={t("Market cap", "市值")} v={`${usd(picked.stats.marketCap)}${picked.stats.capRank ? ` · ${t(`#${picked.stats.capRank}`, `第 ${picked.stats.capRank}`)}` : ""}`} /> : null}
@@ -690,6 +925,28 @@ export function LiveNow({
           />
         </div>
       ) : null}
+
+      {/* ---- 管理赛道: the studio's beats, in a side sheet ------------- */}
+      {editing ? (
+        <BeatsEditor
+          zh={zh}
+          beats={beats}
+          counts={beatCounts(
+            acrossPlatforms(lists, { limit: 999, beats: beats.map((b) => b.key) }),
+            beats.map((b) => b.key),
+          )}
+          onClose={() => setEditing(false)}
+          onSaved={(saved) => {
+            /* The chips follow at once; a beat just added shows "下一轮收集后
+               出现" until its rows land. */
+            setBeats(saved);
+            setEditing(false);
+            if (chip !== "all" && !saved.some((b) => b.key === chip && b.enabled)) setChip("all");
+            notify(t("Beats saved. New words are searched from the next collection.", "赛道已保存，新的关键词从下一轮收集开始搜。"), "ok");
+            void fetchBeats().then(applyBeats);
+          }}
+        />
+      ) : null}
     </div>
   );
 }
@@ -749,13 +1006,6 @@ function usd(n: number): string {
   return `$${n.toPrecision(3)}`;
 }
 
-/** Each beat's colour: a light tint behind, a deeper ink for the words. */
-function beatTint(b: Chip | Beat): string {
-  return b === "ai" ? "#f1ecfd" : b === "crypto" ? "#fdf5dc" : b === "tech" ? "#e8f0fc" : b === "biz" ? "#fbefe3" : "#f3f3f1";
-}
-function beatInk(b: Chip | Beat): string {
-  return b === "ai" ? "#6b3fd0" : b === "crypto" ? "#8a6400" : b === "tech" ? "#0f5bd5" : b === "biz" ? "#9a5b13" : "#383838";
-}
 
 /** The 上榜 badge: on the platform's own chart right now. */
 const chartBadge: React.CSSProperties = {
@@ -777,16 +1027,17 @@ const COLS = "30px 48px minmax(0, 1fr) 118px 112px 46px 10px";
    pill and the watch button move into the panel, the number stays. */
 const COLS_COMPACT = "30px 48px minmax(0, 1fr) 76px 10px";
 
-/** The small beat label on a row's second line, in the beat's own colour. */
-function relTag(kind: Beat): React.CSSProperties {
+/** The small beat label on a row's second line, in the beat's own colour
+ *  (its tint behind, its ink for the words; `beatColor`). */
+function relTag(col: { tint: string; ink: string }): React.CSSProperties {
   return {
     flexShrink: 0,
     padding: "0 5px",
     borderRadius: 4,
     lineHeight: "15px",
     fontSize: 10,
-    background: beatTint(kind),
-    color: beatInk(kind),
+    background: col.tint,
+    color: col.ink,
   };
 }
 
