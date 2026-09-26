@@ -23,7 +23,7 @@ import {
   transcriptionRunning,
 } from "@/lib/video/service";
 import { env } from "@/lib/env";
-import { voices as listVoices } from "@/lib/video/elevenlabs";
+import { voicesForUi } from "@/lib/video/tts";
 import { VideoScreen } from "@/components/video/VideoScreen";
 import { HEAVY_JOBS_PAUSED } from "@/lib/jobs/heavy";
 
@@ -99,12 +99,13 @@ export default async function VideoPage({
   const renders = exports.map((e) => ({ ...e, proxyFileId: proxyByExport.get(e.id) ?? null }));
 
   /*
-   * The voices the studio can use. Read here rather than in the browser: the
-   * key never leaves the server, and a list that is the same for everybody
-   * should not be fetched once per person who opens the tab. The library has
-   * no audio on it, so it does not pay for this at all.
+   * The voices the studio can use: its own (the speech engine on this
+   * server, `lib/video/tts`), and ElevenLabs' library only while ElevenLabs
+   * answers this server. Read here rather than in the browser, and cached in
+   * the module, so opening the tab costs no vendor round trip. The library
+   * has no audio on it, so it does not pay for this at all.
    */
-  const voices = project && env.elevenlabs.configured ? await cachedVoices() : [];
+  const voices = project ? await voicesForUi().catch(() => []) : [];
 
   /* What the page's own employee thinks should be made next, read from
      what already exists — this morning's plan, the backlog, the audience. */
@@ -144,19 +145,4 @@ export default async function VideoPage({
       <div style={{ flexGrow: 1, minHeight: 0, display: "flex" }}>{view}</div>
     </div>
   );
-}
-
-/*
- * The voice list, once an hour for the whole server.
- *
- * It was fetched from ElevenLabs on every render of this page — a round trip
- * to a vendor before the editor could draw, for a list that changes when
- * somebody adds a voice, which is never.
- */
-let voiceCache: { at: number; rows: Awaited<ReturnType<typeof listVoices>> } | null = null;
-async function cachedVoices() {
-  if (voiceCache && Date.now() - voiceCache.at < 3_600_000) return voiceCache.rows;
-  const rows = await listVoices().catch(() => voiceCache?.rows ?? []);
-  voiceCache = { at: Date.now(), rows };
-  return rows;
 }

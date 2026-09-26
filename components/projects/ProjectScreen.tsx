@@ -28,6 +28,9 @@ import { publishPlatformName, publishedDay, type Publication } from "@/lib/proje
 import { artifactHref } from "@/lib/chat/handoff";
 import { LinkedText } from "@/components/chat/LinkedText";
 import { PersonAvatar } from "@/components/ui/PersonAvatar";
+import { VoicePicker } from "@/components/video/VoicePicker";
+import type { UiVoice } from "@/lib/video/tts/types";
+import { DEFAULT_VOICE_ZH, voiceLabel } from "@/lib/video/tts/voices";
 
 /**
  * One project, worked on in place.
@@ -41,7 +44,20 @@ import { PersonAvatar } from "@/components/ui/PersonAvatar";
  */
 type Msg = ProjectDetail["messages"][number];
 
-export function ProjectScreen({ project: p, zh, people, writing }: { project: ProjectDetail; zh: boolean; people: MentionPerson[]; writing: boolean }) {
+export function ProjectScreen({
+  project: p,
+  zh,
+  people,
+  writing,
+  voices = [],
+}: {
+  project: ProjectDetail;
+  zh: boolean;
+  people: MentionPerson[];
+  writing: boolean;
+  /** The narration voices (`lib/video/tts`), for the video card's AI 配音. */
+  voices?: UiVoice[];
+}) {
   const t = (a: string, b: string) => (zh ? a : b);
   const router = useRouter();
   const [pending, start] = React.useTransition();
@@ -51,6 +67,14 @@ export function ProjectScreen({ project: p, zh, people, writing }: { project: Pr
   const [chatOpen, setChatOpen] = React.useState(false);
   const [popup, setPopup] = React.useState<{ title: string; body: React.ReactNode } | null>(null);
   const [videoPrompt, setVideoPrompt] = React.useState((p.brief ?? p.title).replace(/@\S+/g, "").trim());
+  /* AI 配音: on means the script's 旁白 is voiced and the video cut to it even
+     when the clips have sound; off (the default) still voices it when the
+     clips turn out to be silent. The voice starts as the one used last. */
+  const [aiVoice, setAiVoice] = React.useState(false);
+  const [voiceId, setVoiceId] = React.useState(p.narration?.voiceId?.replace(/@.*$/, "") || voices.find((v) => v.lang === "zh")?.id || DEFAULT_VOICE_ZH);
+  const hasNarration = p.beats.some((b) => b.voiceover.trim().length > 0);
+  const oneGoBody = (extra: Record<string, unknown> = {}) =>
+    JSON.stringify({ prompt: videoPrompt, narrate: aiVoice ? "on" : "auto", voiceId, ...extra });
   const [busyAction, setBusyAction] = React.useState<string | null>(null);
   const [picking, setPicking] = React.useState<null | "clips" | "scripts" | "topics">(null);
   /* The 已发布 popover, and which button opened it: the delivery step's in
@@ -534,11 +558,13 @@ export function ProjectScreen({ project: p, zh, people, writing }: { project: Pr
                 <div style={{ padding: "10px 12px", borderRadius: 12, background: "#fdf3f2", border: "1px solid #f6d5d1", marginBottom: 10 }}>
                   <div style={{ fontSize: 12.5, color: "#a3281c", lineHeight: 1.55 }}>
                     {/no words|no sound|transcribe|转写|声音/i.test(p.director.error)
-                      ? t("素材里没有人说话，导演没法按口播剪。可以直接用这些画面拼成片。", "There is no speech in the footage, so the director cannot cut on it. The shots can be put together directly instead.")
+                      ? hasNarration
+                        ? t("素材里没有人说话。可以用脚本的旁白做 AI 配音，按配音剪成片。", "There is no speech in the footage. The script's narration can be voiced and the video cut to it.")
+                        : t("素材里没有人说话，导演没法按口播剪。可以直接用这些画面拼成片。", "There is no speech in the footage, so the director cannot cut on it. The shots can be put together directly instead.")
                       : `${t("上次没做成：", "Last try stopped: ")}${p.director.error}`}
                   </div>
-                  <button type="button" disabled={busyAction !== null} onClick={() => runTool("assemble", t("用画面拼成片", "build from the shots"), async () => { const r = await fetch(`/api/projects/${p.id}/one-go`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ prompt: videoPrompt, way: "assemble" }) }); const j = (await r.json().catch(() => ({}))) as { error?: string }; return r.ok ? {} : { error: j.error ?? t("没能开始", "Could not start") }; })} style={{ ...btn(true), height: 30, fontSize: 12, marginTop: 8 }}>
-                    <Icon name="film" size={13} /> {t("用这些画面直接拼成片", "Build it from the shots instead")}
+                  <button type="button" disabled={busyAction !== null} onClick={() => runTool("assemble", t("用画面拼成片", "build from the shots"), async () => { const r = await fetch(`/api/projects/${p.id}/one-go`, { method: "POST", headers: { "content-type": "application/json" }, body: oneGoBody({ way: "assemble" }) }); const j = (await r.json().catch(() => ({}))) as { error?: string }; return r.ok ? {} : { error: j.error ?? t("没能开始", "Could not start") }; })} style={{ ...btn(true), height: 30, fontSize: 12, marginTop: 8 }}>
+                    <Icon name="film" size={13} /> {hasNarration ? t("用旁白配音，按配音剪成片", "Voice the narration and cut to it") : t("用这些画面直接拼成片", "Build it from the shots instead")}
                   </button>
                 </div>
               ) : null}
@@ -549,9 +575,48 @@ export function ProjectScreen({ project: p, zh, people, writing }: { project: Pr
                   <div style={{ fontSize: 11.5, color: "#7c7c7c", marginTop: 5 }}>{t("完成后会直接在这里播放", "It plays right here when done")}</div>
                 </div>
               ) : null}
+              {/* The narration the director (or the editor) made: listen to it here. */}
+              {p.narration && !directing ? (
+                p.narration.state === "ready" && p.narration.fileId ? (
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", borderRadius: 10, background: "#f6f7fb", border: "1px solid #e7e9f2", marginBottom: 10, flexWrap: "wrap" }}>
+                    <span style={{ fontSize: 12, color: "#404040", fontWeight: 500 }}>
+                      {t("AI 配音", "AI voice-over")} · {voiceLabel(p.narration.voiceId, zh, voices.map((v) => ({ id: v.id, name: zh ? v.name.zh : v.name.en })))}
+                      {p.narration.durationMs ? ` · ${clock(p.narration.durationMs)}` : ""}
+                    </span>
+                    <audio controls preload="none" src={`/api/files/${p.narration.fileId}/download`} style={{ height: 30, flexGrow: 1, minWidth: 200 }} />
+                  </div>
+                ) : p.narration.state === "pending" || p.narration.state === "speaking" ? (
+                  <div style={{ marginBottom: 10 }}>
+                    <AgentTyping agent="video" zh={zh} name label={{ zh: "正在配音", en: "Voicing the narration" }} />
+                  </div>
+                ) : null
+              ) : null}
+              {/* AI 配音: the script's 旁白 read by one of the studio's voices, the cut timed to it. */}
+              <div style={{ padding: "10px 12px", borderRadius: 12, border: "1px solid #ececec", background: aiVoice ? "#fafafa" : "#ffffff", marginBottom: 10 }}>
+                <label style={{ display: "flex", alignItems: "flex-start", gap: 9, cursor: hasNarration ? "pointer" : "default" }}>
+                  <input type="checkbox" checked={aiVoice} disabled={!hasNarration || voices.length === 0} onChange={(e) => setAiVoice(e.target.checked)} style={{ marginTop: 3, accentColor: "#171717" }} />
+                  <span style={{ flexGrow: 1 }}>
+                    <span style={{ display: "block", fontSize: 13, fontWeight: 600, color: "#171717" }}>{t("AI 配音", "AI voice-over")}</span>
+                    <span style={{ display: "block", fontSize: 11.5, color: "#7c7c7c", marginTop: 2, lineHeight: 1.55 }}>
+                      {!hasNarration
+                        ? t("脚本还没有旁白。写好旁白后，可以用它生成配音。", "The script has no narration yet. Once it does, it can be voiced.")
+                        : voices.length === 0
+                          ? t("本服务器上暂无可用的语音引擎。", "No speech engine is available on this server.")
+                          : aiVoice
+                            ? t("用脚本旁白生成配音，按配音的节奏剪辑，字幕跟着配音走。", "The script's narration is voiced, the cut follows its rhythm, and the captions follow the voice.")
+                            : t("不勾选时：素材里没有人声（比如素材库画面）会自动用旁白配音。", "Unticked: footage with no speech (stock shots, say) is voiced from the narration automatically.")}
+                    </span>
+                  </span>
+                </label>
+                {aiVoice || (!p.video?.clips && hasNarration) ? (
+                  <div style={{ marginTop: 10 }}>
+                    <VoicePicker voices={voices} value={voiceId} onChange={setVoiceId} zh={zh} compact />
+                  </div>
+                ) : null}
+              </div>
               <textarea value={videoPrompt} onChange={(e) => setVideoPrompt(e.target.value)} rows={3} placeholder={t("描述你要的成片：长度、节奏、画面、字幕…", "Describe the video: length, pace, shots, captions…")} style={{ width: "100%", border: "1px solid #e2e2e2", borderRadius: 10, padding: "9px 11px", fontFamily: "inherit", fontSize: 13, lineHeight: 1.55, resize: "vertical", outline: "none", boxSizing: "border-box" }} />
               <Actions>
-                <Action primary icon="spark" label={busyAction === "direct" ? t("开始中…", "Starting…") : t("按描述一键成片", "Make it from this")} onClick={() => runTool("direct", t("一键成片", "one-go video"), async () => { const r = await fetch(`/api/projects/${p.id}/one-go`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ prompt: videoPrompt }) }); const j = (await r.json().catch(() => ({}))) as { error?: string }; return r.ok ? {} : { error: j.error ?? t("没能开始", "Could not start") }; })} disabled={pending || renderLive || !videoPrompt.trim()} />
+                <Action primary icon="spark" label={busyAction === "direct" ? t("开始中…", "Starting…") : t("按描述一键成片", "Make it from this")} onClick={() => runTool("direct", t("一键成片", "one-go video"), async () => { const r = await fetch(`/api/projects/${p.id}/one-go`, { method: "POST", headers: { "content-type": "application/json" }, body: oneGoBody() }); const j = (await r.json().catch(() => ({}))) as { error?: string }; return r.ok ? {} : { error: j.error ?? t("没能开始", "Could not start") }; })} disabled={pending || renderLive || !videoPrompt.trim()} />
                 <Action icon="scissors" label={t("自动粗剪", "Auto rough cut")} onClick={() => p.video && runTool("autoedit", t("自动粗剪", "auto rough cut"), () => autoEditAction(p.video!.id, zh ? "zh-CN" : "en"))} disabled={pending || !p.video?.clips} />
                 <Action icon="play" label={t("渲染 9:16", "Render 9:16")} onClick={() => p.video && runTool("r916", t("渲染 9:16", "render 9:16"), () => exportAction(p.video!.id, { aspect: "9:16", burnCaptions: true, captionLanguage: "zh-CN" }))} disabled={pending || renderLive || !p.video?.items} />
                 <Action icon="play" label={t("渲染 16:9", "Render 16:9")} onClick={() => p.video && runTool("r169", t("渲染 16:9", "render 16:9"), () => exportAction(p.video!.id, { aspect: "16:9", burnCaptions: true, captionLanguage: "zh-CN" }))} disabled={pending || renderLive || !p.video?.items} />
@@ -1350,6 +1415,7 @@ function scriptStatus(s: string, zh: boolean): string {
 
 function stepName(step: string | null, zh: boolean): string {
   const m: Record<string, [string, string]> = {
+    voice: ["配音", "voicing the narration"],
     transcribe: ["转写素材", "transcribing the footage"],
     plan: ["规划剪辑", "planning the cut"],
     cut: ["剪辑", "cutting"],

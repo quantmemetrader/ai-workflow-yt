@@ -46,7 +46,12 @@ import {
   updateProjectAction,
   updateTrackAction,
   voiceOverAction,
+  captionsFromTrackAction,
 } from "@/app/(app)/video/actions";
+import { AgentTyping } from "@/components/agents/AgentTyping";
+import { PACES, VoicePicker, withPace } from "@/components/video/VoicePicker";
+import type { UiVoice } from "@/lib/video/tts/types";
+import { voiceLabel } from "@/lib/video/tts/voices";
 import type { ProjectSnapshot } from "@/lib/video/history";
 import { InlineAgentThread, useInlineAgent } from "@/components/shell/InlineAgent";
 import { AgentHistory } from "@/components/shell/AgentHistory";
@@ -149,7 +154,8 @@ export function VideoScreen({
   /** Scripts a cut can be tied to, when this person holds Script. */
   scripts?: { id: string; title: string; status: string }[];
   audio: AudioRow[];
-  voices: { id: string; name: string; description: string | null }[];
+  /** The voices a voice-over can be spoken in (`lib/video/tts`). */
+  voices: UiVoice[];
   /** A transcription is queued or running for this project. */
   transcribing: boolean;
   /** Whether this deployment holds a transcription key at all. */
@@ -712,6 +718,9 @@ export function VideoScreen({
               }),
             )
           }
+          /* "AI" beside the Audio track's +: the voice-over is written, not
+             uploaded, so it opens the audio tab where the voices are. */
+          onVoiceOver={() => setTab("audio")}
           /* One conversation for this project, not two. It used to be an
              AgentDock with a hook of its own, so a prompt sent from the
              inspector's chips and a question typed in the panel were two
@@ -818,7 +827,8 @@ export function VideoScreen({
                 onAddMusic={(fileId, gain) => run(() => addMusicAction(project.id, fileId, gain))}
                 onUpdate={(trackId, input) => edit(() => updateTrackAction(trackId, input))}
                 onRemove={(trackId) => edit(() => removeTrackAction(trackId))}
-                onSpeak={(input) => run(() => voiceOverAction(project.id, input))}
+                onSpeak={(input, done) => run(() => voiceOverAction(project.id, input), done)}
+                onCaption={(trackId) => edit(() => captionsFromTrackAction(trackId))}
               />
 
               {/* Captions live here too: tracks and subtitles are the same
@@ -2236,21 +2246,26 @@ function AudioTracks({
   onUpdate,
   onRemove,
   onSpeak,
+  onCaption,
 }: {
   tracks: AudioRow[];
-  voices: { id: string; name: string; description: string | null }[];
+  voices: UiVoice[];
   footage: { id: string; name: string; kind: string; durationMs: number | null }[];
   zh: boolean;
   busy: boolean;
   onAddMusic: (fileId: string, gain: number) => void;
   onUpdate: (trackId: string, input: { gain?: number; startMs?: number; duckUnderSpeech?: boolean }) => void;
   onRemove: (trackId: string) => void;
-  onSpeak: (input: { text: string; voiceId: string; label: string; startMs: number; gain: number }) => void;
+  /** `done` runs only when the voice-over was accepted, so a refused one keeps its text. */
+  onSpeak: (input: { text: string; voiceId: string; label: string; startMs: number; gain: number }, done?: () => void) => void;
+  onCaption: (trackId: string) => void;
 }) {
   const t = (en: string, cn: string) => (zh ? cn : en);
   const [musicId, setMusicId] = useState("");
   const [voiceId, setVoiceId] = useState(voices[0]?.id ?? "");
+  const [pace, setPace] = useState<number>(1);
   const [script, setScript] = useState("");
+  const voiceNames = voices.map((v) => ({ id: v.id, name: zh ? v.name.zh : v.name.en }));
   const audioFiles = footage.filter((f) => f.kind === "audio");
 
   return (
@@ -2272,10 +2287,38 @@ function AudioTracks({
             </Badge>
             <span style={{ flexGrow: 1, ...clip }} title={a.label}>
               {a.label}
-              {a.state === "pending" && <span style={{ color: "#a35f00", marginLeft: 8 }}>{t("queued", "排队中")}</span>}
-              {a.state === "speaking" && <span style={{ color: "#a35f00", marginLeft: 8 }}>{t("speaking…", "合成中…")}</span>}
+              {a.kind === "voiceover" && a.voiceId ? (
+                <span style={{ color: "#8a8a8a", marginLeft: 8, fontSize: 11.5 }}>
+                  {/* The director's label already names the voice. */}
+                  {[a.label.includes(voiceLabel(a.voiceId, zh, voiceNames)) ? null : voiceLabel(a.voiceId, zh, voiceNames), a.durationMs ? clock(a.durationMs) : null]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </span>
+              ) : null}
+              {/* Being spoken: the same typing pill every AI step draws. */}
+              {a.state === "pending" || a.state === "speaking" ? (
+                <AgentTyping
+                  agent="video"
+                  zh={zh}
+                  face={false}
+                  size="sm"
+                  label={a.state === "pending" ? { zh: "排队配音", en: "Queued to voice" } : { zh: "正在配音", en: "Voicing" }}
+                  style={{ marginLeft: 8, verticalAlign: "middle" }}
+                />
+              ) : null}
               {a.state === "failed" && <span style={{ color: "#e03636", marginLeft: 8 }}>{a.error}</span>}
             </span>
+            {a.kind === "voiceover" && a.state === "ready" && a.fileId ? (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => onCaption(a.id)}
+                title={t("Replace the captions with this voice-over's own timings", "用这段配音的时间轴替换字幕")}
+                style={{ ...ghost, height: 24, fontSize: 11.5, padding: "0 8px" }}
+              >
+                {t("Captions from it", "按配音出字幕")}
+              </button>
+            ) : null}
             <label style={{ display: "flex", gap: 5, alignItems: "center", fontSize: 11.5, color: "#7c7c7c" }}>
               {t("from", "起始")}
               <input
@@ -2362,49 +2405,63 @@ function AudioTracks({
         </div>
       )}
 
-      <Label>{t("Record a voice-over", "生成配音")}</Label>
+      <Label>{t("AI voice-over", "AI 配音")}</Label>
       {voices.length === 0 ? (
         <p style={{ fontSize: 12, color: "#999999", margin: 0, lineHeight: 1.6 }}>
           {t(
-            "No speech key is configured on this deployment, so a voice-over has to be recorded elsewhere and uploaded as a file.",
-            "本部署尚未配置语音密钥，配音需在别处录制后作为文件上传。",
+            "No speech engine is available on this deployment, so a voice-over has to be recorded elsewhere and uploaded as a file.",
+            "本部署暂无可用的语音引擎，配音需在别处录制后作为文件上传。",
           )}
         </p>
       ) : (
         <>
-          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 8 }}>
-            <select value={voiceId} onChange={(e) => setVoiceId(e.target.value)} style={{ ...field, width: 320, height: 32 }}>
-              {voices.map((v) => (
-                <option key={v.id} value={v.id}>
-                  {v.name}
-                </option>
-              ))}
-            </select>
+          <p style={{ fontSize: 11.5, color: "#8a8a8a", margin: "0 0 8px", lineHeight: 1.6 }}>
+            {t(
+              "Spoken on this server from the text below. Press Listen to hear a voice before choosing it.",
+              "由本服务器按下方文字合成。选之前可以先点“试听”。",
+            )}
+          </p>
+          <VoicePicker voices={voices} value={voiceId} onChange={setVoiceId} zh={zh} />
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", margin: "10px 0 8px" }}>
+            <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 11.5, color: "#7c7c7c" }}>
+              {t("Pace", "语速")}
+              <select value={pace} onChange={(e) => setPace(Number(e.target.value))} style={{ ...field, width: 96, height: 30 }}>
+                {PACES.map((p) => (
+                  <option key={p.value} value={p.value}>
+                    {zh ? p.zh : p.en}
+                  </option>
+                ))}
+              </select>
+            </label>
             <button
               type="button"
               disabled={busy || !script.trim() || !voiceId}
               onClick={() => {
                 onSpeak({
                   text: script,
-                  voiceId,
-                  label: script.trim().slice(0, 40),
+                  voiceId: withPace(voiceId, pace),
+                  label: script.trim().replace(/\s+/g, " ").slice(0, 40),
                   startMs: 0,
                   gain: 1,
-                });
-                setScript("");
+                }, () => setScript(""));
+                // Cleared only once it is accepted: a refusal (an English voice
+                // for Chinese text, say) used to throw the typed script away.
               }}
               style={{ ...solid, opacity: busy || !script.trim() ? 0.45 : 1 }}
             >
-              {t("Speak it", "生成")}
+              {t("Speak it", "生成配音")}
             </button>
-            <span style={{ fontSize: 11, color: "#c7c7c7" }}>
+            <span style={{ fontSize: 11, color: "#a3a3a3" }}>
               {script.trim().length} {t("characters", "个字符")}
+              {script.trim()
+                ? ` · ${t("about", "约")} ${clock(Math.round((script.replace(/\s+/g, "").length / (/[\u4e00-\u9fff]/.test(script) ? 4.3 : 14)) * 1000))}`
+                : ""}
             </span>
           </div>
           <textarea
             value={script}
             onChange={(e) => setScript(e.target.value)}
-            placeholder={t("What should be said?", "配音内容")}
+            placeholder={t("What should be said? A blank line starts a new paragraph (a longer pause).", "配音内容。空一行表示换段落（停顿更长）。")}
             style={{ ...field, minHeight: 110, resize: "vertical", lineHeight: 1.7, padding: "10px 12px", maxWidth: 680 }}
           />
         </>

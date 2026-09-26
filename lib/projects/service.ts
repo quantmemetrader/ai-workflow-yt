@@ -1,7 +1,7 @@
 import "server-only";
 import { and, count, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { chatChannels, chatMembers, chatMessages, hotSnapshots, ideas, relationTuples, seriesCache, settings, topics, users, scriptBeats, scripts, timelineItems, videoClips, videoExports, videoProjects, workProjects } from "@/lib/db/schema";
+import { audioTracks, chatChannels, chatMembers, chatMessages, hotSnapshots, ideas, relationTuples, seriesCache, settings, topics, users, scriptBeats, scripts, timelineItems, videoClips, videoExports, videoProjects, workProjects } from "@/lib/db/schema";
 import { newId } from "@/lib/ids";
 import type { Viewer } from "@/lib/auth/types";
 import { viewerById } from "@/lib/auth/viewer-by-id";
@@ -448,6 +448,8 @@ export type ProjectDetail = {
   render: { fileId: string | null; state: string; progress: number; at: string } | null;
   /** Where the director has got to, when it is at work on this project. */
   director: { state: string; step: string | null; error: string | null } | null;
+  /** The latest voice-over on the cut (AI 配音), for the video card's player. */
+  narration: { trackId: string; fileId: string | null; voiceId: string | null; durationMs: number | null; state: string; error: string | null } | null;
   steps: ProjectStep[];
   messages: {
     id: string;
@@ -587,7 +589,7 @@ export async function workProjectDetail(viewer: Viewer, id: string, zh: boolean,
     script ? db.select({ ord: scriptBeats.ord, visual: scriptBeats.visual, voiceover: scriptBeats.voiceover }).from(scriptBeats).where(eq(scriptBeats.scriptId, script.id)).orderBy(scriptBeats.ord) : Promise.resolve([]),
     video ? db.select({ id: videoClips.id, fileId: videoClips.fileId, label: videoClips.label, durationMs: videoClips.durationMs }).from(videoClips).where(eq(videoClips.projectId, video.id)).limit(40) : Promise.resolve([]),
   ]);
-  const [[beats], [clips], [items], [render], thread] = await Promise.all([
+  const [[beats], [clips], [items], [render], thread, [narration]] = await Promise.all([
     script ? db.select({ n: count() }).from(scriptBeats).where(eq(scriptBeats.scriptId, script.id)) : Promise.resolve([{ n: 0 }]),
     video ? db.select({ n: count() }).from(videoClips).where(eq(videoClips.projectId, video.id)) : Promise.resolve([{ n: 0 }]),
     video ? db.select({ n: count() }).from(timelineItems).where(eq(timelineItems.projectId, video.id)) : Promise.resolve([{ n: 0 }]),
@@ -600,6 +602,14 @@ export async function workProjectDetail(viewer: Viewer, id: string, zh: boolean,
           .limit(1)
       : Promise.resolve([]),
     channelThread(viewer, ch.slug, messageLimit),
+    video
+      ? db
+          .select({ trackId: audioTracks.id, fileId: audioTracks.fileId, voiceId: audioTracks.voiceId, durationMs: audioTracks.durationMs, state: audioTracks.state, error: audioTracks.error })
+          .from(audioTracks)
+          .where(and(eq(audioTracks.projectId, video.id), eq(audioTracks.kind, "voiceover")))
+          .orderBy(desc(audioTracks.createdAt))
+          .limit(1)
+      : Promise.resolve([]),
   ]);
 
   /* A message in this chat that names some other project (a hand-off
@@ -643,6 +653,7 @@ export async function workProjectDetail(viewer: Viewer, id: string, zh: boolean,
     video: video ? { id: video.id, title: video.title, clips: clips.n, items: items.n } : null,
     director: video?.director && typeof (video.director as { state?: unknown }).state === "string" ? { state: String((video.director as { state: string }).state), step: ((video.director as { step?: string }).step ?? null), error: ((video.director as { error?: string }).error ?? null) } : null,
     render: render ? { fileId: render.fileId, state: render.state, progress: render.progress, at: render.at.toISOString() } : null,
+    narration: narration ?? null,
     steps,
     messages: (thread?.messages ?? []).map((m) => ({
       id: m.id,

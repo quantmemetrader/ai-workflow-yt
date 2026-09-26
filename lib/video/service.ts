@@ -27,6 +27,10 @@ import { presignDownload } from "@/lib/storage/r2";
 import { probe } from "@/lib/files/poster";
 import { isIconName, isPlacement } from "@/lib/video/icons";
 import type { DirectorState } from "@/lib/video/director";
+import { providerFor } from "@/lib/video/tts";
+import { CANNOT_READ_CHINESE, parseVoiceId, voiceCanRead, voiceLanguage } from "@/lib/video/tts/voices";
+import { hanPerLine, narrationCaptionLines } from "@/lib/video/tts/captions";
+import { trackTimings } from "@/lib/video/voiceover";
 
 /**
  * Video Edit (spec §4.5), as an assembly module.
@@ -1301,7 +1305,16 @@ export async function requestAutoEdit(viewer: Viewer, projectId: string, languag
 export async function requestDirector(
   viewer: Viewer,
   projectId: string,
-  input: { brief: string; aspect?: string; render?: boolean; language?: string | null; pace?: string | null },
+  input: {
+    brief: string;
+    aspect?: string;
+    render?: boolean;
+    language?: string | null;
+    pace?: string | null;
+    /** AI 配音: "on" narrates the script, "off" never, "auto" when the footage is silent. */
+    narrate?: string | null;
+    voiceId?: string | null;
+  },
 ) {
   const project = await projectById(viewer, projectId);
   if (!project) throw new Error("That project does not exist");
@@ -1321,6 +1334,11 @@ export async function requestDirector(
     render: input.render !== false,
     language: input.language ?? undefined,
     pace: input.pace === "calm" || input.pace === "hype" ? input.pace : "channel",
+    narrate: input.narrate === "on" || input.narrate === "off" ? input.narrate : "auto",
+    voiceId: input.voiceId && parseVoiceId(input.voiceId) ? input.voiceId : undefined,
+    // Carried over so a re-run replaces the narration it made rather than
+    // stacking a second voice under the first.
+    narration: current.narration,
     log: [],
   };
   await db.update(videoProjects).set({ director, updatedAt: new Date() }).where(eq(videoProjects.id, projectId));
@@ -1341,7 +1359,7 @@ export async function requestDirector(
     objectType: "video_project",
     objectId: projectId,
     module: "video",
-    meta: { aspect: director.aspect, render: director.render, brief: director.brief?.slice(0, 200) },
+    meta: { aspect: director.aspect, render: director.render, brief: director.brief?.slice(0, 200), narrate: director.narrate, voiceId: director.voiceId },
   });
 }
 
@@ -1602,12 +1620,15 @@ export async function removeTrack(viewer: Viewer, trackId: string) {
 }
 
 /**
- * A voice-over, spoken by ElevenLabs.
+ * A voice-over, spoken from text.
  *
- * Queued, because synthesis of a long read is minutes and the result has to be
- * written into the file store. The row is created first, in `pending`, so the
- * screen has something to show while the worker is at it — the same shape the
- * upload flow uses.
+ * Queued, because synthesis and filing belong in the worker. The row is
+ * created first, in `pending`, so the screen has something to show while the
+ * worker is at it — the same shape the upload flow uses.
+ *
+ * Which engine speaks is the voice's business (`lib/video/tts`): the studio's
+ * own voices (`kokoro:…`) run on this server and need nobody's permission;
+ * an ElevenLabs voice only works while ElevenLabs answers this server.
  */
 export async function requestVoiceOver(
   viewer: Viewer,
@@ -1624,20 +1645,20 @@ export async function requestVoiceOver(
   /*
    * Say no now rather than in twenty minutes.
    *
-   * ElevenLabs redirects this server's address away from its API, so a
-   * voice-over queued here fails in the worker after the person has left the
-   * screen — and the track sits in the timeline as "pending" for ever. Speech
-   * to text moved onto this box (Whisper, `lib/video/whisper.ts`) and needs
-   * nobody's permission; speech *out* is a different model and still does.
-   *
-   * `VOICEOVER_ENABLED=1` turns it back on the day there is an egress they
-   * accept, without a deploy.
+   * A voice whose engine cannot speak — the local one not installed, or
+   * ElevenLabs refusing this server's address, which it does — would fail in
+   * the worker after the person has left the screen and leave the track
+   * "pending" in the timeline for ever. Asked here, the answer is on screen.
+   * `VOICEOVER_ENABLED=0` still switches voice-over off entirely.
    */
-  if (process.env.VOICEOVER_ENABLED !== "1") {
-    throw new Error(
-      "\u914d\u97f3\u6682\u65f6\u4e0d\u53ef\u7528\uff1aElevenLabs \u62d2\u7edd\u4e86\u672c\u670d\u52a1\u5668\u7684\u51fa\u53e3 IP\u3002" +
-        "\u8f6c\u5199\u5b57\u5e55\u4e0d\u53d7\u5f71\u54cd\uff08\u672c\u673a Whisper\uff09\uff0c\u5176\u4ed6\u529f\u80fd\u7167\u5e38\u3002",
-    );
+  if (process.env.VOICEOVER_ENABLED === "0") {
+    throw new Error("配音已关闭（VOICEOVER_ENABLED=0）。Voice-over is switched off on this deployment.");
+  }
+  if (!parseVoiceId(input.voiceId)) throw new Error("Choose a voice");
+  if (!voiceCanRead(input.voiceId, text)) throw new Error(CANNOT_READ_CHINESE);
+  const engine = await providerFor(input.voiceId);
+  if (!engine.ok) {
+    throw new Error(`这个声音暂时不可用，请换一个工作室自己的声音。${engine.reason}`);
   }
 
   const id = newId("rnd");
@@ -1654,6 +1675,9 @@ export async function requestVoiceOver(
     // Speech does not duck under speech.
     duckUnderSpeech: false,
     state: "pending",
+    // Whose file the finished voice-over becomes (speakTrack files it under
+    // them); without it the project's owner got a file somebody else made.
+    createdBy: viewer.id,
   });
 
   await enqueue({
@@ -1673,4 +1697,52 @@ export async function requestVoiceOver(
     meta: { characters: text.length, voiceId: input.voiceId },
   });
   return id;
+}
+
+/**
+ * Captions from a voice-over: the narration's own timings, cut into lines.
+ *
+ * For a cut whose words are a generated voice-over, transcribing the render
+ * back would be asking Whisper what we already know to the character: the
+ * speech engine measured when every character is said while it spoke, and
+ * those timings are filed beside the audio (`lib/video/voiceover.ts`). They
+ * are moved by the track's own start, broken into lines the way every other
+ * caption is (`narrationCaptionLines`), and replace this language's captions.
+ */
+export async function captionsFromTrack(viewer: Viewer, trackId: string): Promise<{ lines: number; language: string }> {
+  const [row] = await db
+    .select({ t: audioTracks, key: files.storageKey, director: videoProjects.director })
+    .from(audioTracks)
+    .innerJoin(videoProjects, eq(videoProjects.id, audioTracks.projectId))
+    .leftJoin(files, eq(files.id, audioTracks.fileId))
+    .where(and(eq(audioTracks.id, trackId), eq(audioTracks.tenantId, viewer.tenantId)))
+    .limit(1);
+  if (!row) throw new Error("That track does not exist");
+  await assertCanEdit(viewer, row.t.projectId);
+  if (row.t.kind !== "voiceover" || row.t.state !== "ready" || !row.key) throw new Error("Only a finished voice-over has timings to caption from");
+
+  const timings = await trackTimings(row.key);
+  if (!timings) throw new Error("This voice-over was made before timings were kept. Speak it again to caption from it.");
+
+  const aspect = (row.director as { aspect?: string } | null)?.aspect ?? "16:9";
+  const lines = narrationCaptionLines(timings.sentences, { offsetMs: row.t.startMs, maxChars: hanPerLine(aspect) });
+  if (!lines.length) throw new Error("There was nothing to caption");
+  const language = voiceLanguage(row.t.voiceId) === "zh" ? "zh-CN" : "en";
+
+  await db.delete(captions).where(and(eq(captions.projectId, row.t.projectId), eq(captions.language, language)));
+  await db.insert(captions).values(
+    lines.map((l, i) => ({
+      id: newId("beat"),
+      projectId: row.t.projectId,
+      startMs: l.startMs,
+      endMs: l.endMs,
+      text: l.text,
+      words: l.words,
+      language,
+      ord: i,
+    })),
+  );
+  await touch(viewer, row.t.projectId);
+  await audit(viewer, "video.captions.from_voiceover", { module: "video", objectType: "audio_track", objectId: trackId, meta: { lines: lines.length, language } });
+  return { lines: lines.length, language };
 }
