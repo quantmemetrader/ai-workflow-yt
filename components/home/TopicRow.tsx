@@ -4,7 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { AgentIcon } from "@/components/agents/AgentIcon";
 import { Icon } from "@/components/ui/Icon";
-import { AGENT_COLORS } from "@/lib/agents/catalog";
+import { Tr } from "@/components/ui/Tr";
 
 /**
  * One topic on Home (a researcher's idea, a suggestion from the brief) as a
@@ -166,19 +166,39 @@ export function RowTag({ children, tone = "grey", title }: { children: React.Rea
  * researcher's own colours: the blue for the strength it has, the light tint
  * (a step darker, `EMPTY_DOT`, so it still shows on white) for the rest.
  */
-export function Strength({ n, title, size = 6 }: { n: number; title: string; size?: number }) {
-  const k = Math.max(0, Math.min(5, Math.round(n)));
+export function Strength({ n, title }: { n: number; title: string; size?: number }) {
+  /* A word and a meter, not five dots: the owner asked for "something better
+     than dots" — five blue dots read as a rating of nothing in particular.
+     The researcher's 1–5 becomes how hot the idea is, in words anyone reads
+     at a glance, with a small rising-bars mark and a colour that warms with
+     it. `size` is kept for old callers; the chip has one size. */
+  const k = Math.max(1, Math.min(5, Math.round(n)));
+  const h = HEAT[k];
   return (
-    <span role="img" aria-label={`${k}/5`} title={title} style={{ display: "inline-flex", alignItems: "center", gap: size > 5 ? 3 : 2, flexShrink: 0 }}>
-      {[0, 1, 2, 3, 4].map((i) => (
-        <span key={i} style={{ width: size, height: size, borderRadius: size / 2, background: i < k ? AGENT_COLORS.research : EMPTY_DOT }} />
-      ))}
+    <span
+      role="img"
+      aria-label={`${h.zh} ${k}/5`}
+      title={`${title} · ${k}/5`}
+      style={{ display: "inline-flex", alignItems: "center", gap: 4, height: 20, padding: "0 7px 0 5px", borderRadius: 10, background: h.bg, color: h.fg, fontSize: 11, fontWeight: 600, whiteSpace: "nowrap", flexShrink: 0, lineHeight: 1 }}
+    >
+      <svg viewBox="0 0 12 12" width="11" height="11" aria-hidden style={{ display: "block", flexShrink: 0 }}>
+        {[0, 1, 2, 3].map((i) => (
+          <rect key={i} x={i * 3} y={9 - i * 2.4} width="2.2" height={3 + i * 2.4} rx="0.8" fill="currentColor" opacity={i < Math.ceil((k * 4) / 5) ? 1 : 0.25} />
+        ))}
+      </svg>
+      <Tr zh={h.zh} en={h.en} />
     </span>
   );
 }
 
-/** 研究员's tint (`AGENT_TINTS.research`), a step darker so an empty dot still shows on white. */
-const EMPTY_DOT = "#c4d8f4";
+/** How hot, 1–5: the word and the colours. */
+const HEAT: Record<number, { zh: string; en: string; fg: string; bg: string }> = {
+  5: { zh: "爆款潜力", en: "Viral pick", fg: "#c2361b", bg: "#fdebe6" },
+  4: { zh: "很强", en: "Strong", fg: "#b8540a", bg: "#fdf0e2" },
+  3: { zh: "不错", en: "Good", fg: "#946400", bg: "#fbf4da" },
+  2: { zh: "一般", en: "Fair", fg: "#5f6670", bg: "#f0f1f3" },
+  1: { zh: "偏弱", en: "Weak", fg: "#80868f", bg: "#f3f3f4" },
+};
 
 /**
  * After a start from Home: the project exists and 编剧 may be writing.
@@ -267,7 +287,7 @@ export const IDEAS_CSS = `
 .tpr:not(.tpr-open) > .tpr-can:hover { background: #fafafa; }
 .tpr-hit { flex: 1 1 auto; min-width: 0; display: flex; align-items: flex-start; gap: 10px; padding: 0; border: 0; background: transparent; font: inherit; color: inherit; text-align: left; cursor: inherit; }
 .tpr-hit:focus-visible { outline: 2px solid #171717; outline-offset: 3px; border-radius: 6px; }
-.tpr-dots { width: 34px; height: 20px; display: inline-flex; align-items: center; flex-shrink: 0; }
+.tpr-dots { min-width: 0; height: 20px; display: inline-flex; align-items: center; flex-shrink: 0; }
 .tpr-title { font-size: 13.5px; font-weight: 600; line-height: 20px; color: #171717; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tpr-open .tpr-title { white-space: normal; }
 .tpr-line { font-size: 12px; line-height: 18px; color: #8a8a8a; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
