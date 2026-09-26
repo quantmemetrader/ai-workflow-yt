@@ -300,7 +300,8 @@ export type ReplyFacts = {
   seen: ReadonlySet<string>;
   /** The script this turn works in — the project's own, or the one handed
    * over. "初稿写好了" with no id is about this one, and is a report on it
-   * when it is true (`verifyReply`). */
+   * when it is true (`verifyReply`). Dropped once the turn calls
+   * `write_script`: from then on only that write's receipt backs a claim. */
   scriptId?: string;
 };
 
@@ -453,9 +454,12 @@ const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 /** Who acts in the world outside the studio: a platform's officials, charts
  * and rules, the press, the trade. "抖音财经榜刚更新了" and "B站官方已发布了…"
  * are about them. A platform's name alone is not: "B站那条已经发布了" is
- * about our video there. */
+ * about our video there. Only as the one doing the verb — the words right
+ * before it, give or take an adverb: "新闻稿已写好", "竞品分析已完成" and
+ * "行业报告已生成" are our own work about the outside world, and still need
+ * a receipt. */
 const OUTSIDE =
-  /官方|榜|热搜|媒体|报道|新闻|行业|竞品|对手|同行|厂商|机构|政府|监管|(?:抖音|快手|B站|哔哩哔哩|小红书|视频号|微博|知乎|YouTube|TikTok|平台)的?(?:算法|规则|政策|后台|数据)/i;
+  /(?:官方|榜单?|热搜|媒体|报道|新闻|行业|竞品|对手|同行|厂商|机构|政府|监管|平台|算法|规则|政策|(?:抖音|快手|B站|哔哩哔哩|小红书|视频号|微博|知乎|YouTube|TikTok)的?(?:算法|规则|政策|后台|数据))(?:们)?\s*(?:今天|今早|刚才|最近|本周|这周)?(?:又|也|都|还)?\s*$/i;
 
 export type Claim = {
   /** The words that make the claim, with a little around them. */
@@ -523,8 +527,14 @@ export function findClaims(text: string, self: AgentKey): Claim[] {
     if (/^(?:后|之后|以后|再|就|的话|吗|么|没|了吗|了没|了么|会|才|时|前|之前)/.test(after)) continue;
     // Describing a thing, not claiming the work: "编剧写好的脚本",
     // "已经写好的初稿在脚本页". Unless the speaker is at the verb: "我刚写好的
-    // 脚本" and "我写好的初稿" still say who did it.
-    if (/^的/.test(after) && !/^(?:刚|我)/.test(m[0]) && !/(?:我|我们|刚刚?)$/.test(before)) continue;
+    // 脚本", "我写好的初稿" and "我帮你写好的脚本" still say who did it —
+    // only "我看了写好的脚本", with a verb of its own between, is a reader.
+    if (
+      /^的/.test(after) &&
+      !/^(?:刚|我)/.test(m[0]) &&
+      !/(?:(?:我们?)(?:刚刚?|已经?|都)?(?:(?:帮|给|为|替)(?:你们?|您|大家))?(?:刚刚?|已经?)?|刚刚?)$/.test(before)
+    )
+      continue;
     if (/等|如果|要是|一旦|假如|只要|\b(?:before|after|once|when|if)\b/i.test(before)) continue;
     // Asked, or offered: "写好了吗？", "我可以写好…", "请存入…".
     if (/[?？]\s*$/.test(clause)) continue;
@@ -549,7 +559,16 @@ export function findClaims(text: string, self: AgentKey): Claim[] {
        Titles, a caption, a list written out in the answer need no receipt —
        they are right there — as long as the sentence names no kind of studio
        work a tool would have made ("脚本写好了，如下" still needs one). */
-    if (!kinds.length && !handing && /下面|以下|如下|下列|\b(?:below|as follows|here (?:is|are))\b/i.test(sentence)) continue;
+    /* Only for words written: "已发布，链接如下" and "已存入，以下是地址" say
+       something happened somewhere else, which the reply cannot show. */
+    if (
+      !kinds.length &&
+      !handing &&
+      /写|起草|做好|做完|完成|written|drafted|finished/i.test(m[0]) &&
+      !/发布|上传|存入|存进|保存|导出|渲染|提交|上线|推送|发出|published|uploaded|saved|exported|rendered/i.test(sentence) &&
+      /下面|以下|如下|下列|\b(?:below|as follows|here (?:is|are))\b/i.test(sentence)
+    )
+      continue;
 
     /*
      * Whose work it is, from the words nearest the verb.
@@ -594,11 +613,21 @@ export function findClaims(text: string, self: AgentKey): Claim[] {
       handing,
       explicit: mine && (firstPerson || /^(?:刚|我|I)/.test(m[0])),
       ids,
-      change: /改|更新|调整|替换|修/.test(m[0]) || /(?:重新?|又)$/.test(before),
+      /* "新版写好了", "按新角度写好了" and "重写好了" are changes too: a
+         script that had beats before this turn is no evidence of them.
+         Titles aside: 《AI改变了什么》的初稿 is a first draft. */
+      change:
+        /改|更新|调整|替换|修/.test(m[0]) ||
+        /(?:重新?|又)$/.test(before) ||
+        /新版|新一版|新的一版|新稿|重写|重新|改|调整|新角度/.test(subject.replace(/《[^《》]*》/g, "")),
     });
   }
   return claims;
 }
+
+/** A claim that could be a plain report on the turn's own script having a
+ * draft: no id of its own, not a change, and about nothing but the script. */
+const draftReport = (c: Claim) => c.ids.length === 0 && !c.change && c.kinds.length > 0 && c.kinds.every((k) => k === "script");
 
 /**
  * Whether a reply may be posted, given what its turn did and saw.
@@ -626,11 +655,12 @@ export function judgeReply(text: string, facts: ReplyFacts, exists: ReadonlySet<
      script the background writer drafted and announced in 编剧's name: which
      script is meant is not in doubt, and the report is true when that script
      has beats. Only a state — "改好了", "重写好了" is a change, which a
-     script that already had beats cannot back. */
+     script that already had beats cannot back — and only about the script:
+     "按脚本的粗剪已经做好了" names a cut too, which beats do not show. */
   const reportsOn = (c: Claim) =>
     !c.explicit &&
     (c.ids.some((id) => facts.seen.has(id) && (KIND_OF_PREFIX[prefixOf(id)] ?? []).some((k) => c.kinds.includes(k))) ||
-      (c.ids.length === 0 && !c.change && c.kinds.includes("script") && Boolean(facts.scriptId) && drafted));
+      (draftReport(c) && Boolean(facts.scriptId) && drafted));
   const unbacked = findClaims(text, facts.self)
     .filter((c) =>
       c.mine
@@ -657,7 +687,7 @@ export async function verifyReply(text: string, facts: ReplyFacts, tenantId: str
   const exists = ids.some(isCheckable) ? await existingIds(tenantId, ids) : new Set<string>();
   /* Only looked up when a report on the turn's own script could rest on it. */
   const drafted =
-    facts.scriptId && findClaims(text, facts.self).some((c) => !c.explicit && !c.change && !c.ids.length && c.kinds.includes("script"))
+    facts.scriptId && findClaims(text, facts.self).some((c) => !c.explicit && draftReport(c))
       ? await hasBeats(tenantId, facts.scriptId)
       : false;
   return judgeReply(text, facts, exists, drafted);
@@ -979,6 +1009,11 @@ async function answerOne(input: Chain, key: AgentKey, channel: Channel) {
            only what it says after the last tool it ran is the reply. */
         answer = "";
         tools++;
+        /* It set out to write the script this turn. Whatever it now says
+           about the script rests on that write's receipt, not on the beats an
+           earlier draft left behind: a draft that came back empty, or was
+           refused, must not read as "脚本写好了" (`judgeReply`). */
+        if (event.name === "write_script") delete facts.scriptId;
       } else if (event.type === "tool") {
         for (const seenId of event.resultIds ?? []) seen.add(seenId);
         if (event.status === "ok" && event.artifacts?.length) receipts.push(...event.artifacts);

@@ -119,7 +119,7 @@ async function run(ctx: ToolContext, name: string, args: Record<string, unknown>
       const now = Date.now();
       if (live.some((p) => isWriting(p.source as ProjectSource | null, now))) {
         return {
-          text: "A draft of this script is already being written (started from the project's topic); it lands in a minute or so and is announced in the project's chat. Nothing was written now: say that the draft is on its way, and offer to change it once it has landed.",
+          text: "A draft of this script is already being written (from the project's topic, or another request to the writer); it lands within a few minutes. Nothing was written now: say that a draft is on its way, and offer to change it once it has landed.",
         };
       }
       projects = live.map((p) => p.id);

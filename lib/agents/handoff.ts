@@ -7,6 +7,7 @@ import { newId } from "@/lib/ids";
 import { viewerById } from "@/lib/auth/viewer-by-id";
 import type { Viewer } from "@/lib/auth/types";
 import { projectFromScript } from "@/lib/video/service";
+import { canEditProject } from "@/lib/video/access";
 import { parseAgentMentions } from "./catalog";
 import { agentViewer, ensureAgentChannel, postAsAgent, tag } from "./index";
 import type { Handoff } from "./mentions";
@@ -182,9 +183,12 @@ export async function handOffToVideo(approver: Viewer, scriptId: string, version
  * and the press turns them into a hand-off to that colleague, once the line
  * tags them and both ids are checked to still be in the presser's studio
  * and still belong together. As on the script page's "交给剪辑师", only for
- * somebody with Video: a video project is theirs to start work on. Anything
- * that does not check out is no hand-off at all: the line is still posted,
- * as typed words would be.
+ * somebody with Video — and only for somebody who may edit that video
+ * project (`canEditProject`): projects are private to their owner until
+ * shared, and a press starts 剪辑师 cutting in it on the presser's say-so,
+ * which is no more than they could ask for inside the project themselves.
+ * Anything that does not check out is no hand-off at all: the line is still
+ * posted, as typed words would be.
  */
 export async function pressedHandoff(viewer: Viewer, meta: unknown, line: string): Promise<Handoff | null> {
   const work = (meta as { work?: unknown } | null)?.work;
@@ -209,6 +213,7 @@ export async function pressedHandoff(viewer: Viewer, meta: unknown, line: string
       .limit(1),
   ]);
   if (!script || !project || project.scriptId !== script.id) return null;
+  if (!(await canEditProject(viewer, project.id))) return null;
 
   return {
     from: "human",
