@@ -5,63 +5,70 @@ import React from "react";
 import { useRouter } from "next/navigation";
 import { useLocalPreference } from "@/lib/client/preference";
 import { PlatformMark } from "@/components/ui/PlatformMark";
-import { onFocus, relevanceLabel, type Relevance, type RelevanceMap } from "@/lib/research/platform-catalog";
+import { BEATS, BEAT_FEEDS, listName, onFocus, relevanceLabel, beatOf, type Beat, type BeatTab, type Relevance, type RelevanceMap } from "@/lib/research/platform-catalog";
 import { SayToAgent } from "@/components/flow/SayToAgent";
 import { AgentIcon } from "@/components/agents/AgentIcon";
 import { AGENT_COLORS } from "@/lib/agents/catalog";
 import { PLATFORMS, type HotRow, type PlatformKey } from "@/lib/research/platform-catalog";
+import { BEAT_TABS, acrossPlatforms, anyFeed, beatCounts, feedOfTab, tabRows, type BeatRow, type Lists } from "@/lib/research/beat-view";
 import { startFromTopicAction } from "@/app/(app)/projects/actions";
 import type { Judged } from "@/lib/research/judge";
 import { notify } from "@/lib/client/notify";
 
 /**
- * What is hot right now, on whichever platform, read by 研究员.
+ * What is hot right now on the studio's beats, platform by platform, read
+ * by 研究员.
  *
- * Three things, top to bottom:
+ * The owner, on the tabs reading "抖音财经 3 / 28", "小红书 0 / 20": "keep it
+ * related to business and tech & crypto, AI and stuff, and in content don't
+ * just have 2-3 stuff — frontend filtered, don't do that." So the tabs are
+ * no longer a platform's whole chart with most of it hidden. Each platform
+ * tab is that platform's beat feed (`lib/research/beat-feeds.ts`): the
+ * platform searched for AI, crypto, tech and business every three hours,
+ * the thirty posts that did best recently, each with its own numbers.
  *
- *   1. The platform switch — Google + YouTube for the region, then each of
- *      抖音, 小红书, 微博, B站 and TikTok on its own tab (metered, read when
- *      picked, cached half an hour). WeChat has no public list and says so.
- *   2. What 研究员 picked this morning, with the two presses that follow:
- *      write the script, or watch the topic.
- *   3. The platform's own list as a table: cover, title, the platform's own
- *      heat, and — the column that makes it research rather than a feed —
- *      研究员's mark on the rows that are this channel's business, with the
- *      reason on the side when a row is picked.
+ *   1. The switch. First "AI · 加密 · 科技 · 商业 · 全平台": the top of every
+ *      platform together, by beat. Then 抖音, 小红书, 微博, B站, YouTube,
+ *      TikTok, 新闻 (Google News, Hong Kong and Taiwan) and 加密市场
+ *      (CoinGecko), each with its row count.
+ *   2. The list. On a platform tab, first the rows of the platform's own
+ *      hourly charts that are on a beat, marked 上榜 (the platform itself is
+ *      pushing them), then the feed, ranked by the feed's own order. Chips
+ *      (全部 / AI / 加密 / 科技 / 商业) narrow both. The platform's raw chart
+ *      is one press away ("看平台热榜原榜"), unfiltered, for when the chart
+ *      itself is the question.
+ *   3. 研究员's line on the list, written when it was collected, and the
+ *      morning's picks folded underneath.
  *
- * Every number is the platform's; every mark cites the channel's own data.
- *
- * Business and tech only, unless asked. Every stored list arrives with a
- * mark per row (`relevance`: biz · tech · other, made at collection), and
- * the table shows the rows on the beat by default, with their rank on the
- * platform's own list kept, so "#10" still means tenth there. One switch
- * shows the whole list; a list nobody has marked is shown whole. The first
- * tab puts the on-beat rows of every list together, because the platform
- * that has the day's business story is different every day.
+ * Every number is the platform's own; every rank is the list's own. A post
+ * on both a chart and the feed is shown once, among the 上榜 rows, with
+ * both ranks.
  */
 export type LiveSearch = { phrase: string; traffic: string | null; headline: string | null; region?: string };
 export type LiveVideo = { id: string; title: string; channelTitle: string; thumbnail: string | null; views: number; rel?: Relevance | null };
 export type Pick = { by?: string; text: string; why: string | null; source: "digest" | "plan" | "backlog" | "audience" | "mine"; thumbnail?: string | null; url?: string | null; evidence?: string[]; strength?: number; sources?: { label: string; title: string; url: string | null; numbers: string }[] };
 
 const KEY = "aura:research:livenow";
-/* A new key, so people who were left on the old default ("live", Google and
-   YouTube's whole charts, the noisiest tab) open on the focused one. */
-const PLATFORM_KEY = "aura:research:platform-v2";
-const FOCUS_KEY = "aura:research:focus";
+/* A new key again: the tabs are different ones now (one per platform, not
+   per chart), and a stored "dy_finance" would otherwise open nothing. */
+const PLATFORM_KEY = "aura:research:platform-v3";
+const BEAT_KEY = "aura:research:beat";
 
-type Tab = "focus" | "live" | PlatformKey;
-const TABS: readonly Tab[] = ["focus", "live", ...PLATFORMS.filter((p) => p.key !== "google" && p.key !== "youtube").map((p) => p.key)];
-const FOCUS_MODES = ["focus", "all"] as const;
+type Tab = "focus" | BeatTab;
+const TABS: readonly Tab[] = ["focus", ...BEAT_TABS];
+const CHIPS = ["all", "ai", "crypto", "tech", "biz"] as const;
+type Chip = (typeof CHIPS)[number];
+/** The 上榜 rows shown above a feed before "and N more on the charts": few
+ *  enough that the feed itself starts on the first screen. */
+const CHART_CAP = 6;
 
-/** A row as the table draws it: where it came from, its place on that
- *  platform's own list, and its business / tech mark. */
-type ViewRow = HotRow & { rank: number; from: PlatformKey; mark: Relevance | null };
+/** A row as the table draws it. */
+type ViewRow = BeatRow & { place: number };
 
 /** Pictures come through this app, not straight from the platform: the CDNs
  *  are unreachable from mainland China and a fair number of office networks. */
 export const throughUs = (url: string | null) => (url ? `/api/img?u=${encodeURIComponent(url)}` : null);
 
-type Loaded = { rows: HotRow[]; note: string | null; summary: string | null; fetchedAt: number | null; relevance: RelevanceMap | null };
 type Stored = { rows: HotRow[]; note: string | null; summary?: string | null; fetchedAt?: number; judged?: Judged | null; relevance?: RelevanceMap | null };
 
 export function LiveNow({
@@ -90,50 +97,45 @@ export function LiveNow({
   const [state, setState] = useLocalPreference<"open" | "shut">(KEY, ["open", "shut"], "open");
   const open = state === "open";
   const [tab, setTab] = useLocalPreference<Tab>(PLATFORM_KEY, TABS, "focus");
-  /* Business and tech only, or the whole list. Remembered in this browser. */
-  const [focusMode, setFocusMode] = useLocalPreference<(typeof FOCUS_MODES)[number]>(FOCUS_KEY, FOCUS_MODES, "focus");
-  const focused = focusMode === "focus";
+  /* Which beat, remembered in this browser and kept across tabs: someone
+     reading crypto today reads it on every platform. */
+  const [chip, setChip] = useLocalPreference<Chip>(BEAT_KEY, CHIPS, "all");
+  const beat: Beat | null = chip === "all" ? null : chip;
+  /* The platform's own chart, unfiltered, instead of the tab's beat rows. */
+  const [rawOn, setRawOn] = React.useState(false);
+  const [rawPick, setRawPick] = React.useState<PlatformKey | null>(null);
   /* "Picked for today" sits under the list and starts folded. */
   const [picksFold, setPicksFold] = useLocalPreference<"open" | "shut">("aura:fold:research-picks-v2", ["open", "shut"], "shut");
   const picksOpen = picksFold === "open";
   const [openPick, setOpenPick] = React.useState<number | null>(null);
 
-  const [loaded, setLoaded] = React.useState<Partial<Record<PlatformKey, Loaded>>>({});
-  /* The one request for every tab has come back (or failed): until then a
-     tab is not fetched on its own, and the merged tab says it is reading. */
+  const [lists, setLists] = React.useState<Lists>({});
+  /* The one request for every list has come back (or failed). */
   const [allDone, setAllDone] = React.useState(false);
-  const [judged, setJudged] = React.useState<Partial<Record<Tab, Judged>>>({});
+  const [judged, setJudged] = React.useState<Record<string, Judged>>({});
   const [selected, setSelected] = React.useState<string | null>(null);
   const [sending, setSending] = React.useState<string | null>(null);
 
-  /* The list first, then 研究员's reading of it. */
-  /* One read per platform per visit. "Loading" is derived — a tab that is
-     open and has nothing loaded is loading — rather than set from the effect. */
-  /* Every tab's stored list and 研究员's marks, in one request when the
-     panel opens, so switching platforms never waits. */
+  /* Every list — the platforms' charts, the beat feeds, the cross-platform
+     top — and 研究员's stored marks, in one request when the panel opens, so
+     switching tabs never waits. Storage only; nothing here reads a platform. */
   React.useEffect(() => {
     if (!open) return;
     let cancelled = false;
     void fetch("/api/research/hot?platform=all")
       .then((r) => (r.ok ? r.json() : { lists: {} }))
-      .then((res: { lists: Partial<Record<PlatformKey, Stored>> }) => {
+      .then((res: { lists: Record<string, Stored | undefined> }) => {
         if (cancelled) return;
-        const lists = res.lists ?? {};
-        setLoaded((m) => {
-          const next = { ...m };
-          for (const [k, v] of Object.entries(lists)) {
-            if (v && !next[k as PlatformKey]) next[k as PlatformKey] = { rows: v.rows, note: v.note, summary: v.summary ?? null, fetchedAt: v.fetchedAt ?? null, relevance: v.relevance ?? null };
-          }
-          return next;
-        });
-        setJudged((m) => {
-          const next = { ...m };
-          for (const [k, v] of Object.entries(lists)) {
-            const tabKey = (k === "youtube" ? "live" : k) as Tab;
-            if (v?.judged && !next[tabKey]) next[tabKey] = v.judged;
-          }
-          return next;
-        });
+        const got = res.lists ?? {};
+        const next: Lists = {};
+        const marks: Record<string, Judged> = {};
+        for (const [k, v] of Object.entries(got)) {
+          if (!v) continue;
+          next[k] = { rows: v.rows ?? [], note: v.note ?? null, summary: v.summary ?? null, fetchedAt: v.fetchedAt ?? null, relevance: v.relevance ?? null };
+          if (v.judged) marks[k] = v.judged;
+        }
+        setLists(next);
+        setJudged(marks);
       })
       .catch(() => {})
       .finally(() => {
@@ -144,50 +146,21 @@ export function LiveNow({
     };
   }, [open]);
 
-  /* YouTube is a stored list like every other platform now, with likes and
-     comments on each row; the page's own chart is only the fallback. The
-     merged tab has no list of its own: it is drawn from all of them. (Named
-     apart from `listKey` below, which is always a platform: the list the
-     picked row is on, which is what starting work from a row needs.) */
-  const tabList: PlatformKey | null = tab === "focus" ? null : tab === "live" ? "youtube" : tab;
-  const loading: PlatformKey | null = open && tabList && !loaded[tabList] ? tabList : null;
-  /* A tab is asked for on its own only when the one request for every tab
-     came back without it (never stored, or storage failed), so opening the
-     panel is one request rather than two. */
-  const fetchOne: PlatformKey | null = allDone ? loading : null;
-  React.useEffect(() => {
-    if (!fetchOne) return;
-    let cancelled = false;
-    const key = fetchOne;
-    const failed = zh ? "这个平台刚才读不到。" : "Could not read this platform just now.";
-    /* A GET, not a server action: the router queues navigations behind an
-       in-flight action, and a metered read can take seconds. */
-    void fetch(`/api/research/hot?platform=${key}`, { cache: "no-store" })
-      .then(async (r) => (r.ok ? ((await r.json()) as Stored) : { rows: [] as HotRow[], note: failed }))
-      .catch(() => ({ rows: [] as HotRow[], note: failed }))
-      .then((res) => {
-        if (cancelled) return;
-        const r = res as Stored;
-        setLoaded((m) => ({ ...m, [key]: { rows: r.rows, note: r.note, summary: r.summary ?? null, fetchedAt: r.fetchedAt ?? null, relevance: r.relevance ?? null } }));
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [fetchOne, zh]);
+  /* The tab's feed and charts. */
+  const feedMeta = tab === "focus" ? null : feedOfTab(tab);
+  const charts: PlatformKey[] = feedMeta ? [...(feedMeta.hot as readonly PlatformKey[])] : [];
+  const rawList: PlatformKey | null = rawOn && charts.length ? (rawPick && charts.includes(rawPick) ? rawPick : charts[0]) : null;
+  const feedsStored = anyFeed(lists);
 
-  const rowsReady = tabList !== null && (Boolean(loaded[tabList]?.rows.length) || (tab === "live" && videos.length > 0));
-  /* Same shape for the reading: it is being made whenever rows are on
-     screen and no judgement has landed for them. Not before the stored
-     lists are back, since they carry the marks made at collection, and not
-     for the merged tab, which shows the marks of the lists it is made of. */
-  const judging: Tab | null = open && allDone && rowsReady && !judged[tab] ? tab : null;
+  /* 研究员's marks for the raw chart, when the stored copy has none (a
+     studio other than the collector's, `/api/research/hot`). The beat tabs
+     read the marks stored with each list and never ask a model here. */
+  const judging: PlatformKey | null = open && allDone && rawList && lists[rawList]?.rows.length && !judged[rawList] ? rawList : null;
   React.useEffect(() => {
     if (!judging) return;
     let cancelled = false;
     const key = judging;
-    /* Same: 研究员's reading is a model call of up to half a minute, and
-       it must never hold the rail hostage. */
-    void fetch(`/api/research/hot?platform=${key === "live" ? "youtube" : key}&judge=1`, { cache: "no-store" })
+    void fetch(`/api/research/hot?platform=${key}&judge=1`, { cache: "no-store" })
       .then(async (r) => (r.ok ? ((await r.json()) as { judged: Judged }) : { judged: {} as Judged }))
       .catch(() => ({ judged: {} as Judged }))
       .then((res) => {
@@ -199,96 +172,85 @@ export function LiveNow({
     };
   }, [judging]);
 
-  if (searches.length === 0 && videos.length === 0 && !note && tab === "live" && picks.length === 0) return null;
+  /* ---- the rows ---------------------------------------------------- */
 
-  /* Every row of a list with where it came from, its rank there and its mark. */
-  const rowsOf = (key: PlatformKey): ViewRow[] => {
-    const l = loaded[key];
-    if (l?.rows.length) return l.rows.map((r, i) => ({ ...r, rank: i + 1, from: key, mark: l.relevance?.[r.phrase] ?? null }));
+  /* A raw chart: every row as the platform ranked it, its beat mark if any. */
+  const rawRows = (key: PlatformKey): BeatRow[] => {
+    const l = lists[key];
+    if (l?.rows.length) {
+      return l.rows.map((r, i) => {
+        const mark = l.relevance?.[r.phrase] ?? null;
+        return { ...r, from: key, rank: i + 1, mark, beat: beatOf(mark), chart: { list: key, rank: i + 1 }, feedRank: null };
+      });
+    }
+    /* Nothing stored for the chart yet: the page's own reads, if any. */
     if (key === "youtube")
-      return videos.map((v, i) => ({
-        phrase: v.title,
-        heat: v.views,
-        heatLabel: null,
-        url: `https://www.youtube.com/watch?v=${v.id}`,
-        thumbnail: v.thumbnail,
-        extra: v.channelTitle,
-        rank: i + 1,
-        from: "youtube" as const,
-        mark: v.rel ?? null,
-      }));
+      return videos.map((v, i) => ({ phrase: v.title, heat: v.views, heatLabel: null, url: `https://www.youtube.com/watch?v=${v.id}`, thumbnail: v.thumbnail, extra: v.channelTitle, from: "youtube" as const, rank: i + 1, mark: v.rel ?? null, beat: beatOf(v.rel), chart: { list: "youtube" as const, rank: i + 1 }, feedRank: null }));
+    if (key === "google")
+      return searches.map((s, i) => ({ phrase: s.phrase, heat: null, heatLabel: s.traffic, url: null, thumbnail: null, extra: s.headline, from: "google" as const, rank: i + 1, mark: null, beat: null, chart: { list: "google" as const, rank: i + 1 }, feedRank: null }));
     return [];
   };
-  /* Whether a list was marked at all. One that was not (collected before
-     the classifier, or it failed) is shown whole rather than emptied. */
-  const isMarked = (key: PlatformKey) => (loaded[key] ? Boolean(loaded[key]!.relevance) : key === "youtube" && videos.some((v) => v.rel));
-  const beatOf = (key: PlatformKey) => rowsOf(key).filter((r) => onFocus(r.mark));
-  /* The merged tab: every list's rows on the beat, one row per phrase,
-     squarest first and then by rank on its own platform. */
-  const merged: ViewRow[] = [];
-  {
-    const seen = new Set<string>();
-    for (const p of PLATFORMS) {
-      if (p.unavailable) continue;
-      for (const r of beatOf(p.key)) {
-        if (seen.has(r.phrase)) continue;
-        seen.add(r.phrase);
-        merged.push(r);
-      }
-    }
-    merged.sort((a, b) => (b.mark?.s ?? 0) - (a.mark?.s ?? 0) || a.rank - b.rank);
-  }
-  const anyMarked = PLATFORMS.some((p) => !p.unavailable && isMarked(p.key));
 
-  const full: ViewRow[] = tabList ? rowsOf(tabList) : merged;
-  const listMarked = tabList ? isMarked(tabList) : anyMarked;
-  const filtering = tabList !== null && focused && listMarked;
-  const rows: ViewRow[] = filtering ? full.filter((r) => onFocus(r.mark)) : full;
-  const onBeatCount = tabList ? full.filter((r) => onFocus(r.mark)).length : merged.length;
-  const tabMeta = tabList && tab !== "live" ? (PLATFORMS.find((p) => p.key === tab) ?? null) : null;
-  const summary = tabList ? (loaded[tabList]?.summary ?? null) : null;
-  const summaryAt = tabList ? (loaded[tabList]?.fetchedAt ?? null) : null;
-  const marks: Judged = tab === "focus" ? Object.assign({}, ...Object.values(judged)) : (judged[tab] ?? {});
-  /* The bar is against the whole list, so a filtered row keeps its length;
-     the merged tab mixes units (plays, search heat) and draws none. */
-  const maxHeat = tabList ? full.reduce((m, r) => Math.max(m, r.heat ?? 0), 0) : 0;
-  const nameOf = (key: PlatformKey) => {
-    const p = PLATFORMS.find((x) => x.key === key)!;
-    return zh ? p.zh : p.label;
-  };
-  const tabName = tab === "focus" ? t("Business & tech · every platform", "财经科技 · 全平台") : tab === "live" ? "YouTube" : nameOf(tab);
-  const picked = selected ? (rows.find((r) => r.phrase === selected) ?? null) : null;
-  /* The list the picked row is on: the tab's own, or in the merged tab the
-     one the row came from, so the panel and anything started from the row
-     name the platform the row is really on. */
-  const listKey: PlatformKey = picked?.from ?? tabList ?? "youtube";
-  const meta = picked ? (PLATFORMS.find((p) => p.key === listKey) ?? null) : tabMeta;
-  const platformName = picked ? nameOf(listKey) : tabName;
-  /* The count on each tab: rows on the beat, once its list is marked. */
+  /* What the table shows, in sections (the first tab groups by beat under 全部). */
+  type Section = { beat: Beat | null; rows: ViewRow[] };
+  let sections: Section[] = [];
+  let chartedHidden = 0;
+  let counts: Record<Beat | "all", number> = { all: 0, ai: 0, crypto: 0, tech: 0, biz: 0 };
+  if (tab === "focus") {
+    const all = acrossPlatforms(lists, { limit: 999 });
+    counts = beatCounts(all);
+    sections = beat
+      ? [{ beat, rows: acrossPlatforms(lists, { beat, limit: 40 }).map((r, i) => ({ ...r, place: i + 1 })) }]
+      : BEATS.map((b) => ({ beat: b.key, rows: acrossPlatforms(lists, { beat: b.key, limit: 8 }).map((r, i) => ({ ...r, place: i + 1 })) })).filter((s) => s.rows.length);
+  } else if (rawList) {
+    const rows = rawRows(rawList);
+    counts = beatCounts(rows.filter((r) => onFocus(r.mark)));
+    counts.all = rows.length;
+    sections = [{ beat: null, rows: rows.map((r) => ({ ...r, place: r.rank })) }];
+  } else {
+    const whole = tabRows(tab, lists, { chartCap: 200 });
+    counts = beatCounts([...whole.charted, ...whole.feed]);
+    const part = tabRows(tab, lists, { beat, chartCap: CHART_CAP });
+    chartedHidden = part.chartedHidden;
+    sections = [{ beat: null, rows: [...part.charted, ...part.feed].map((r) => ({ ...r, place: r.feedRank ?? r.rank })) }];
+  }
+  const shown: ViewRow[] = sections.flatMap((s) => s.rows);
+  const rowId = (r: BeatRow) => `${r.from}|${r.phrase}`;
+  const picked = selected ? (shown.find((r) => rowId(r) === selected) ?? null) : null;
+  /* The list the picked row is on: what starting work from it resolves on
+     the server (a beat feed's row by its feed, a chart's by its chart). */
+  const listKey = picked?.from ?? feedMeta?.key ?? "beat_douyin";
+  const marksFor = (r: BeatRow) => judged[r.from]?.[r.phrase] ?? null;
+  const marked = shown.filter((r) => marksFor(r)).length;
+
+  /* The count on each tab: how many rows it has on the beats. */
   const tabCount = (key: Tab): number | null => {
-    if (key === "focus") return anyMarked ? merged.length : null;
-    const keys: PlatformKey[] = key === "live" ? ["youtube", "google"] : [key];
-    const known = keys.filter(isMarked);
-    return known.length ? known.reduce((n, k) => n + beatOf(k).length, 0) : null;
+    if (!allDone) return null;
+    if (key === "focus") return feedsStored || Object.keys(lists).length ? acrossPlatforms(lists, { limit: 999 }).length : null;
+    const r = tabRows(key, lists, { chartCap: 999 });
+    return r.charted.length + r.feed.length;
   };
-  /* Google's searches for the first tab: the stored list once it is here
-     (filtered like the table), the page's already-filtered ones before. */
-  const googleList = loaded.google;
-  const chipsAll: (LiveSearch & { mark: Relevance | null })[] = googleList?.rows.length
-    ? googleList.rows.map((r) => {
-        const from = /^([A-Z]{2}) · ([\s\S]*)$/.exec(r.extra ?? "");
-        return { phrase: r.phrase, traffic: r.heatLabel, headline: (from ? from[2] : r.extra) || null, region: from ? from[1] : region, mark: googleList.relevance?.[r.phrase] ?? null };
-      })
-    : searches.map((x) => ({ ...x, mark: null }));
-  const chips = focused && googleList?.relevance ? chipsAll.filter((c) => onFocus(c.mark)) : chipsAll;
-  const marked = rows.filter((r) => marks[r.phrase]).length;
+  const tabLabel = (key: Tab) => {
+    if (key === "focus") return t("AI · Crypto · Tech · Business · all", "AI · 加密 · 科技 · 商业 · 全平台");
+    const f = feedOfTab(key);
+    return zh ? f.zh : f.label;
+  };
+  const tabName = tab === "focus" ? t("Every platform", "全平台") : tabLabel(tab);
+  const summaryKey = tab === "focus" ? "beat_all" : rawList ?? feedMeta!.key;
+  /* Before the first beat run a platform tab has only its charts; their
+     line stands in. */
+  const summaryList = lists[summaryKey]?.rows.length ? lists[summaryKey] : feedMeta && !rawList ? lists[charts[0] ?? ""] : undefined;
+  const summary = summaryList?.summary ?? null;
+  const summaryAt = summaryList?.fetchedAt ?? null;
+  const feedAt = feedMeta ? (lists[feedMeta.key]?.fetchedAt ?? null) : (lists.beat_all?.fetchedAt ?? null);
+  const feedNote = feedMeta && !rawList ? (lists[feedMeta.key]?.note ?? null) : null;
   const narrow = picked !== null;
   const cols = narrow ? COLS_COMPACT : COLS;
+  const maxHeat = rawList ? shown.reduce((m, r) => Math.max(m, r.heat ?? 0), 0) : 0;
 
-  /* A hot-list row becomes a project, its script is started from the row
-     (resolved on the server from the stored list: the phrase, the numbers,
-     研究员's mark) and the person lands on the script while 编剧 writes. It
-     used to post into #制作 with no project at all. */
+  /* A row becomes a project, its script is started from the row (resolved
+     on the server from the stored list: the phrase, the numbers, 研究员's
+     mark) and the person lands on the script while 编剧 writes. */
   function writeScript(phrase: string, id: string) {
     if (sending) return;
     setSending(id);
@@ -304,11 +266,24 @@ export function LiveNow({
     });
   }
 
+  const chartName = (key: PlatformKey) => {
+    const p = PLATFORMS.find((x) => x.key === key)!;
+    return zh ? p.zh : p.label;
+  };
+  const feedName = (key: string) => {
+    const f = BEAT_FEEDS.find((x) => x.key === key);
+    return f ? (zh ? f.zh : f.label) : listName(key, zh);
+  };
+  /* Where a row stands, in words: "抖音财经 第 3 名 · 上榜", "小红书 第 12 名". */
+  const whereLine = (r: BeatRow) =>
+    r.chart
+      ? `${chartName(r.chart.list)} ${t(`#${r.chart.rank}`, `第 ${r.chart.rank} 名`)}${r.feedRank ? ` · ${t(`beats #${r.feedRank}`, `赛道第 ${r.feedRank}`)}` : ""}`
+      : `${feedName(r.from)} ${t(`#${r.rank}`, `第 ${r.rank} 名`)}`;
+
+  const empty = !shown.length;
+
   return (
     <div style={{ flexShrink: 0, minHeight: "calc(100vh - 150px)", borderBottom: "1px solid #ededed", background: "#fcfcfc" }}>
-      {/* Scrolls inside itself: the list, the researcher's line and the picks
-       are taller than the space above the board, and the page does not
-       scroll, so without this the picks were cut off at the bottom. */}
       {/* ---- the switch ------------------------------------------------ */}
       <div style={{ display: "flex", alignItems: "center", gap: 9, padding: "9px 20px 0", flexWrap: "wrap" }}>
         <button
@@ -326,10 +301,8 @@ export function LiveNow({
         {open ? (
           <div style={{ display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap" }}>
             {TABS.map((key) => {
-              const p = key === "live" || key === "focus" ? null : PLATFORMS.find((x) => x.key === key)!;
               const on = tab === key;
-              const off = p?.unavailable ?? false;
-              const n = off ? null : tabCount(key);
+              const n = tabCount(key);
               return (
                 <button
                   key={key}
@@ -337,9 +310,17 @@ export function LiveNow({
                   onClick={() => {
                     setTab(key);
                     setSelected(null);
+                    setRawOn(false);
+                    setRawPick(null);
                   }}
                   aria-pressed={on}
-                  title={off ? t("No public list", "没有公开热榜") : n !== null ? t(`${n} business or tech`, `${n} 条财经科技`) : undefined}
+                  title={
+                    key === "news"
+                      ? t(`Google News, ${region} and Taiwan editions`, `Google 新闻 · ${region} 与台湾版`)
+                      : n !== null
+                        ? t(`${n} on the beats`, `${n} 条赛道内容`)
+                        : undefined
+                  }
                   style={{
                     display: "inline-flex",
                     alignItems: "center",
@@ -347,9 +328,9 @@ export function LiveNow({
                     height: 26,
                     padding: "0 10px",
                     borderRadius: 999,
-                    border: `1px ${off ? "dashed" : "solid"} ${on ? "#171717" : "#dddddd"}`,
+                    border: `1px solid ${on ? "#171717" : "#dddddd"}`,
                     background: on ? "#171717" : "#ffffff",
-                    color: on ? "#ffffff" : off ? "#b3b3b3" : "#525252",
+                    color: on ? "#ffffff" : "#525252",
                     fontSize: 11.5,
                     fontWeight: on ? 500 : 400,
                     fontFamily: "inherit",
@@ -357,9 +338,8 @@ export function LiveNow({
                     cursor: "pointer",
                   }}
                 >
-                  {p ? <PlatformMark platform={p.key} size={11} mono={on} /> : key === "focus" ? <Icon name="spark" size={11} color={on ? "#ffffff" : "#c2410c"} /> : <PlatformMark platform="youtube" size={11} mono={on} />}
-                  {key === "focus" ? t("Business & tech · all", "财经科技 · 全平台") : key === "live" ? `${region} · Google + YouTube` : zh ? p!.zh : p!.label}
-                  {off ? <span style={{ fontSize: 10.5 }}>· {t("no list", "无公开热榜")}</span> : null}
+                  <TabMark tab={key} on={on} />
+                  {tabLabel(key)}
                   {n !== null ? (
                     <span style={{ minWidth: 16, height: 16, padding: "0 5px", borderRadius: 999, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontVariantNumeric: "tabular-nums", background: on ? "rgba(255,255,255,.18)" : n ? "#fbeee0" : "#f3f3f1", color: on ? "#ffffff" : n ? "#9a5b13" : "#b3b3b3" }}>
                       {n}
@@ -372,16 +352,16 @@ export function LiveNow({
         ) : null}
 
         <span style={{ flexGrow: 1 }} />
-        {open ? (
+        {open && allDone ? (
           <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11.5, color: "#7c7c7c" }}>
             <AgentIcon agent="research" size={14} radius={4} />
-            {judging === tab
+            {judging
               ? t("Researcher is reading this list…", "研究员正在读这份榜…")
-              : judged[tab] || (tab === "focus" && rows.length && Object.keys(judged).length)
-                ? marked
-                  ? t(`Researcher marked ${marked} for this channel`, `研究员标了 ${marked} 条跟频道有关的`)
-                  : t("Researcher found nothing for this channel here", "研究员没看到跟频道有关的")
-                : ""}
+              : marked
+                ? t(`Researcher marked ${marked} for this channel`, `研究员标了 ${marked} 条跟频道有关的`)
+                : shown.length
+                  ? t("Researcher found nothing tied to the channel here", "研究员没看到跟频道直接有关的")
+                  : ""}
           </span>
         ) : null}
       </div>
@@ -393,187 +373,210 @@ export function LiveNow({
           {/* ---- the list, and the reading of it ------------------------ */}
           <div style={{ display: "flex", gap: 12, alignItems: "stretch", minWidth: 0 }}>
             <div style={{ flexGrow: 1, minWidth: 0, border: "1px solid #ededed", borderRadius: 12, background: "#fff", padding: "10px 14px 8px", display: "flex", flexDirection: "column" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4, minWidth: 0 }}>
-                {tab === "focus" ? <Icon name="spark" size={12} color="#c2410c" /> : tab === "live" ? <PlatformMark platform="youtube" size={12} /> : <PlatformMark platform={tabMeta!.key} size={12} />}
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, minWidth: 0, flexWrap: "wrap" }}>
+                <TabMark tab={tab} on={false} size={12} />
                 <span style={{ fontSize: 12.5, fontWeight: 600, whiteSpace: "nowrap" }}>
                   {tab === "focus"
-                    ? t("Business and tech, every platform", "各平台的财经科技热点")
-                    : tab === "live"
-                      ? /* The collector falls back to the whole chart, with a note,
-                           when Hong Kong has no Science & Tech chart that hour. */
-                        loaded.youtube?.note
-                        ? t("Most watched on YouTube", "YouTube 播放最多")
-                        : t("YouTube · most watched in Science & Tech", "YouTube · 科技类播放最多")
-                      : `${tabName} · ${tabMeta!.kind === "video" ? t("pushing now", "此刻在推") : tabMeta!.kind === "note" ? t("creator inspiration", "给创作者的热点灵感") : t("hot search", "热搜榜")}`}
+                    ? t("The beats, every platform", "各平台的 AI · 加密 · 科技 · 商业")
+                    : rawList
+                      ? `${chartName(rawList)} · ${t("the platform's own chart", "平台热榜原榜")}`
+                      : tab === "crypto"
+                        ? t("Crypto market · CoinGecko trending and movers", "加密市场 · CoinGecko 热搜与涨跌")
+                        : `${tabName} · ${t("AI, crypto, tech, business", "AI · 加密 · 科技 · 商业")}`}
                 </span>
-                <span style={{ fontSize: 11.5, color: "#999999", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0 }}>
-                  {tab === "focus"
-                    ? merged.length
-                      ? t(`${merged.length} from ${new Set(merged.map((r) => r.from)).size} platforms`, `${merged.length} 条 · 来自 ${new Set(merged.map((r) => r.from)).size} 个平台`)
-                      : ""
-                    : !full.length
-                      ? ""
-                      : !listMarked
-                        ? t(`${full.length} items · not sorted by topic yet`, `${full.length} 条 · 还没按财经科技分类`)
-                        : focused
-                          ? t(`${rows.length} of ${full.length} · business & tech`, `${rows.length} / ${full.length} 条 · 财经科技`)
-                          : t(`${full.length} items · ${onBeatCount} business & tech`, `${full.length} 条 · 其中财经科技 ${onBeatCount} 条`)}
-                  {tabList && loaded[tabList]?.note && full.length ? ` · ${loaded[tabList]!.note}` : ""}
+                <span style={{ fontSize: 11.5, color: "#999999", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0, flex: "1 1 120px" }}>
+                  {!allDone
+                    ? ""
+                    : rawList
+                      ? t(`${counts.all} items · ${counts.ai + counts.crypto + counts.tech + counts.biz} on the beats`, `${counts.all} 条 · 其中赛道相关 ${counts.ai + counts.crypto + counts.tech + counts.biz} 条`)
+                      : `${t(`${counts.all} items`, `${counts.all} 条`)}${feedAt ? ` · ${clockHK(feedAt)} ${t("collected", "收集")}` : ""}${feedNote ? ` · ${feedNote}` : ""}`}
                 </span>
-                <span style={{ flexGrow: 1 }} />
-                {/* Business and tech only, or the whole list. Only where there is a
-                    mark to filter on; the merged tab is the beat by definition. */}
-                {tabList && listMarked && full.length ? (
-                  <span role="group" aria-label={t("Which rows", "显示哪些条目")} style={{ display: "inline-flex", flexShrink: 0, gap: 2, padding: 2, border: "1px solid #e8e8e8", borderRadius: 999, background: "#fafafa" }}>
-                    {FOCUS_MODES.map((m) => (
-                      <button
-                        key={m}
-                        type="button"
-                        aria-pressed={focusMode === m}
-                        onClick={() => setFocusMode(m)}
-                        style={{ height: 20, padding: "0 9px", border: 0, borderRadius: 999, background: focusMode === m ? "#171717" : "transparent", color: focusMode === m ? "#ffffff" : "#525252", fontSize: 11, fontFamily: "inherit", letterSpacing: "inherit", cursor: "pointer", whiteSpace: "nowrap" }}
-                      >
-                        {m === "focus" ? t("Business & tech", "只看财经科技") : t(`All ${full.length}`, `全部 ${full.length}`)}
-                      </button>
-                    ))}
-                  </span>
+                {/* The chart itself, unfiltered, one press away; and back. */}
+                {charts.length ? (
+                  <button
+                    type="button"
+                    aria-pressed={rawOn}
+                    onClick={() => {
+                      setRawOn(!rawOn);
+                      setSelected(null);
+                    }}
+                    style={{ ...smallBtn(false), height: 22, fontSize: 11, flexShrink: 0, background: rawOn ? "#f3f3f1" : "#ffffff" }}
+                  >
+                    {rawOn ? t("Back to the beats", "回到赛道内容") : t("Platform's own chart", "看平台热榜原榜")}
+                  </button>
                 ) : null}
               </div>
 
-              {/* Google's searches, as a strip: no covers, no heat unit, one press to watch. */}
-              {tab === "live" && chips.length ? (
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 5, padding: "4px 0 8px", borderBottom: "1px solid #f3f3f3", marginBottom: 4 }}>
-                  <span style={{ fontSize: 11, color: "#999999", alignSelf: "center", marginRight: 2 }}>{t("Searching", "热搜")}</span>
-                  {chips.slice(0, 12).map((s) => (
-                    <button key={s.phrase} type="button" onClick={() => onWatch(s.phrase)} title={s.headline ?? undefined} style={{ ...smallBtn(false), height: 22, fontSize: 11, gap: 5 }}>
-                      {s.phrase}
-                      {s.traffic ? <span style={{ color: "#999999" }}>{s.traffic}</span> : null}
-                      {s.region && s.region !== region ? <span style={{ color: "#b3b3b3" }}>{s.region}</span> : null}
+              {/* Chips: which beat (the tab's rows), or which chart (raw). The
+                  coin market is one beat by definition and has none. */}
+              {allDone && !rawList && tab !== "crypto" ? (
+                <div role="group" aria-label={t("Which beat", "哪个赛道")} style={{ display: "flex", gap: 4, flexWrap: "wrap", paddingBottom: 6 }}>
+                  {CHIPS.map((c) => {
+                    const on = chip === c;
+                    const n = counts[c];
+                    const meta = c === "all" ? null : BEATS.find((b) => b.key === c)!;
+                    return (
+                      <button
+                        key={c}
+                        type="button"
+                        aria-pressed={on}
+                        onClick={() => {
+                          setChip(c);
+                          setSelected(null);
+                        }}
+                        style={{ display: "inline-flex", alignItems: "center", gap: 5, height: 22, padding: "0 9px", borderRadius: 999, border: `1px solid ${on ? beatInk(c) : "#e6e6e6"}`, background: on ? beatTint(c) : "#ffffff", color: on ? beatInk(c) : "#525252", fontSize: 11, fontFamily: "inherit", letterSpacing: "inherit", cursor: "pointer", whiteSpace: "nowrap" }}
+                      >
+                        {meta ? <span style={{ width: 6, height: 6, borderRadius: 3, background: beatInk(c) }} /> : null}
+                        {meta ? (zh ? meta.zh : meta.en) : t("All", "全部")}
+                        <span style={{ color: on ? beatInk(c) : "#a3a3a3", fontVariantNumeric: "tabular-nums" }}>{n}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : null}
+              {rawList && charts.length > 1 ? (
+                <div role="group" aria-label={t("Which chart", "哪份榜")} style={{ display: "flex", gap: 4, flexWrap: "wrap", paddingBottom: 6 }}>
+                  {charts.map((c) => (
+                    <button key={c} type="button" aria-pressed={rawList === c} onClick={() => { setRawPick(c); setSelected(null); }} style={{ ...smallBtn(false), height: 22, fontSize: 11, background: rawList === c ? "#171717" : "#ffffff", color: rawList === c ? "#ffffff" : "#383838", borderColor: rawList === c ? "#171717" : "#e2e2e2" }}>
+                      {chartName(c)} <span style={{ opacity: 0.6 }}>{lists[c]?.rows.length ?? 0}</span>
                     </button>
                   ))}
                 </div>
               ) : null}
 
-              {(tabList ? loading === tabList : open && !allDone) && !rows.length ? (
+              {!allDone ? (
                 <div style={{ fontSize: 11.5, color: "#999999", padding: "8px 0" }}>{t("Reading…", "正在读取…")}</div>
-              ) : !rows.length && filtering && full.length ? (
-                /* Filtered to nothing: say so, and offer the list rather than a blank. */
-                <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", fontSize: 12, color: "#7c7c7c", lineHeight: 1.5, padding: "10px 0" }}>
-                  {tab === "live"
-                    ? t("Nothing on YouTube's list is business or tech right now.", "YouTube 这份榜此刻没有财经科技相关的条目。")
-                    : t("Nothing on this list is business or tech right now.", "这份榜此刻没有财经科技相关的条目。")}
-                  <button type="button" onClick={() => setFocusMode("all")} style={{ ...smallBtn(false), height: 24 }}>
-                    {t(`Show all ${full.length}`, `显示全部 ${full.length} 条`)}
-                  </button>
+              ) : empty ? (
+                <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", fontSize: 12, color: "#7c7c7c", lineHeight: 1.6, padding: "10px 0" }}>
+                  {rawList
+                    ? ((lists[rawList]?.note ?? note) || t("This chart has not been collected yet.", "这份榜还没收集到。"))
+                    : beat
+                      ? t("Nothing on this beat here right now.", "这里此刻没有这个赛道的内容。")
+                      : feedsStored
+                        ? t("Nothing collected for this platform's beats yet.", "这个平台的赛道内容还没收集到。")
+                        : t("The beat feeds are collected every three hours; the first collection has not run yet.", "赛道内容每三小时收集一次，第一次收集还没跑。")}
+                  {beat ? (
+                    <button type="button" onClick={() => setChip("all")} style={{ ...smallBtn(false), height: 24 }}>
+                      {t("Show every beat", "看全部赛道")}
+                    </button>
+                  ) : charts.length && !rawOn ? (
+                    <button type="button" onClick={() => setRawOn(true)} style={{ ...smallBtn(false), height: 24 }}>
+                      {t("Platform's own chart", "看平台热榜原榜")}
+                    </button>
+                  ) : null}
                 </div>
-              ) : !rows.length && tab === "focus" ? (
-                <div style={{ fontSize: 12, color: "#7c7c7c", lineHeight: 1.6, padding: "10px 0" }}>
-                  {anyMarked
-                    ? t("No list has anything on business or tech right now. Each platform's tab still has its whole list.", "各平台此刻都没有财经科技相关的条目。点上面的平台可以看它的完整榜单。")
-                    : t(
-                        "The lists have not been sorted by topic yet; after the next hourly collection this tab gathers every platform's business and tech rows. Each platform's tab has its whole list meanwhile.",
-                        "榜单还没按财经科技分过类。下一次整点收集后，这里会把各平台的财经科技条目放在一起；在那之前，点上面的平台看完整榜单。",
-                      )}
-                </div>
-              ) : !rows.length ? (
-                <div style={{ fontSize: 11.5, color: "#a35f00", lineHeight: 1.5, padding: "8px 0" }}>{(tab === "live" ? note : tabList ? loaded[tabList]?.note : null) ?? t("Nothing came back.", "刚才没有返回内容。")}</div>
               ) : (
                 <>
                   <div style={{ display: "grid", gridTemplateColumns: cols, gap: 10, padding: "4px 0 3px", fontSize: 10.5, color: "#999999", letterSpacing: ".03em" }}>
                     <span>#</span>
                     <span />
                     <span>{t("Title", "标题")}</span>
-                    <span style={{ textAlign: "right" }}>{t("Heat", "热度")}</span>
+                    <span style={{ textAlign: "right" }}>{tab === "crypto" ? t("24h", "24 小时") : t("Heat", "热度")}</span>
                     {narrow ? null : <span>{t("Researcher", "研究员判断")}</span>}
                     {narrow ? null : <span />}
                     <span />
                   </div>
-                  <div style={{ maxHeight: "52vh", overflowY: "auto", margin: "0 -8px", padding: "0 8px" }}>
-                    {rows.map((r, i) => {
-                      const mark = marks[r.phrase];
-                      const on = selected === r.phrase;
-                      const pct = r.heat && maxHeat ? Math.max(6, Math.round((100 * r.heat) / maxHeat)) : null;
-                      /* The platform's own rank, kept through the filter; the
-                         merged tab numbers its own order and names the rank
-                         on the second line. */
-                      const place = tab === "focus" ? i + 1 : r.rank;
-                      const top = place <= 3;
-                      const beat = onFocus(r.mark);
-                      const dim = !focused && listMarked && tabList !== null && !beat;
-                      return (
-                        <div
-                          key={`${r.url ?? r.phrase}-${i}`}
-                          onClick={() => setSelected(on ? null : r.phrase)}
-                          style={{
-                            display: "grid",
-                            gridTemplateColumns: cols,
-                            gap: 10,
-                            alignItems: "center",
-                            padding: "5px 8px",
-                            margin: "0 -8px",
-                            borderTop: "1px solid #f3f3f3",
-                            background: on ? "#f7f7f5" : mark ? "#fbfcff" : "transparent",
-                            boxShadow: on ? "inset 2px 0 0 #0f5bd5" : undefined,
-                            cursor: "pointer",
-                          }}
-                        >
-                          <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11.5, color: top ? "#171717" : "#999999", fontWeight: top ? 600 : 400, fontVariantNumeric: "tabular-nums" }}>
-                            {place}
-                            {narrow && mark ? <span title={mark.fit} style={{ width: 5, height: 5, borderRadius: 3, background: "#0b7a63" }} /> : null}
-                          </span>
-                          <Cover src={throughUs(r.thumbnail)} platform={r.from} />
-                          <div style={{ minWidth: 0 }}>
-                            <a
-                              href={r.url ?? "#"}
-                              target={r.url ? "_blank" : undefined}
-                              rel="noopener noreferrer"
-                              onClick={(e) => e.stopPropagation()}
-                              style={{ fontSize: 12.5, color: dim ? "#8a8a8a" : "#171717", textDecoration: "none", display: "block", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}
+                  <div style={{ maxHeight: "56vh", overflowY: "auto", margin: "0 -8px", padding: "0 8px" }}>
+                    {sections.map((sec) => (
+                      <React.Fragment key={sec.beat ?? "rows"}>
+                        {tab === "focus" && !beat && sec.beat ? (
+                          <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 0 4px", fontSize: 11, fontWeight: 600, color: beatInk(sec.beat), borderTop: "1px solid #f3f3f3" }}>
+                            <span style={{ width: 6, height: 6, borderRadius: 3, background: beatInk(sec.beat) }} />
+                            {zh ? BEATS.find((b) => b.key === sec.beat)!.zh : BEATS.find((b) => b.key === sec.beat)!.en}
+                            <button type="button" onClick={() => setChip(sec.beat!)} style={{ border: 0, background: "transparent", padding: 0, fontSize: 11, color: "#999999", cursor: "pointer", fontFamily: "inherit", fontWeight: 400 }}>
+                              {t(`all ${counts[sec.beat]} ›`, `全部 ${counts[sec.beat]} 条 ›`)}
+                            </button>
+                          </div>
+                        ) : null}
+                        {sec.rows.map((r, i) => {
+                          const mark = marksFor(r);
+                          const id = rowId(r);
+                          const on = selected === id;
+                          const pct = rawList && r.heat && maxHeat ? Math.max(6, Math.round((100 * r.heat) / maxHeat)) : null;
+                          const top = r.place <= 3;
+                          const beatOn = !!r.beat && onFocus(r.mark ?? { t: r.beat, s: 2 });
+                          const dim = !!rawList && !beatOn;
+                          const change = r.stats?.change24h;
+                          return (
+                            <div
+                              key={`${id}-${i}`}
+                              onClick={() => setSelected(on ? null : id)}
+                              style={{
+                                display: "grid",
+                                gridTemplateColumns: cols,
+                                gap: 10,
+                                alignItems: "center",
+                                padding: "5px 8px",
+                                margin: "0 -8px",
+                                borderTop: "1px solid #f3f3f3",
+                                background: on ? "#f7f7f5" : mark ? "#fbfcff" : "transparent",
+                                boxShadow: on ? "inset 2px 0 0 #0f5bd5" : undefined,
+                                cursor: "pointer",
+                              }}
                             >
-                              {r.phrase}
-                            </a>
-                            {r.extra || r.stats || beat || tab === "focus" ? (
-                              <div style={{ fontSize: 10.5, color: "#999999", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", display: "flex", gap: 8, alignItems: "center" }}>
-                                {tab === "focus" ? (
-                                  <span style={{ display: "inline-flex", alignItems: "center", gap: 4, flexShrink: 0, color: "#7c7c7c" }}>
-                                    <PlatformMark platform={r.from} size={10} />
-                                    {nameOf(r.from)} {t(`#${r.rank}`, `第 ${r.rank} 名`)}
+                              <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11.5, color: top ? "#171717" : "#999999", fontWeight: top ? 600 : 400, fontVariantNumeric: "tabular-nums" }}>
+                                {r.chart && !rawList && tab !== "focus" ? <span title={whereLine(r)} style={chartBadge}>{t("Chart", "上榜")}</span> : r.place}
+                                {narrow && mark ? <span title={mark.fit} style={{ width: 5, height: 5, borderRadius: 3, background: "#0b7a63" }} /> : null}
+                              </span>
+                              <Cover src={throughUs(r.thumbnail)} placeholder={<Placeholder from={r.from} />} />
+                              <div style={{ minWidth: 0 }}>
+                                <a
+                                  href={r.url ?? "#"}
+                                  target={r.url ? "_blank" : undefined}
+                                  rel="noopener noreferrer"
+                                  onClick={(e) => e.stopPropagation()}
+                                  style={{ fontSize: 12.5, color: dim ? "#8a8a8a" : "#171717", textDecoration: "none", display: "block", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}
+                                >
+                                  {r.phrase}
+                                </a>
+                                <div style={{ fontSize: 10.5, color: "#999999", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", display: "flex", gap: 8, alignItems: "center" }}>
+                                  {tab === "focus" || (r.chart && !rawList) ? (
+                                    <span style={{ display: "inline-flex", alignItems: "center", gap: 4, flexShrink: 0, color: r.chart ? "#b23b3b" : "#7c7c7c" }}>
+                                      {tab === "focus" ? <PlatformMark platform={markOf(r.from)} size={10} /> : null}
+                                      {whereLine(r)}
+                                      {tab === "focus" && r.chart ? <span style={chartBadge}>{t("Chart", "上榜")}</span> : null}
+                                    </span>
+                                  ) : null}
+                                  {beatOn && r.beat && tab !== "crypto" ? <span style={relTag(r.beat)}>{r.mark ? relevanceLabel(r.mark, zh) : zh ? BEATS.find((b) => b.key === r.beat)!.zh : BEATS.find((b) => b.key === r.beat)!.en}</span> : null}
+                                  {r.extra ? <span style={{ overflow: "hidden", textOverflow: "ellipsis", flexShrink: 1, minWidth: 0 }}>{r.extra}</span> : null}
+                                  <StatLine stats={r.stats} zh={zh} />
+                                </div>
+                              </div>
+                              <span style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 7, fontSize: 11.5, color: change != null ? (change >= 0 ? "#0b7a63" : "#c0392b") : "#525252", fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>
+                                {pct !== null && !narrow ? (
+                                  <span style={{ width: 54, height: 4, background: "#ededed", borderRadius: 2, position: "relative", flexShrink: 0 }}>
+                                    <span style={{ position: "absolute", left: 0, top: 0, height: 4, width: `${pct}%`, background: top ? "#171717" : "#a9a6a0", borderRadius: 2 }} />
                                   </span>
                                 ) : null}
-                                {beat && r.mark ? <span style={relTag(r.mark.t)}>{relevanceLabel(r.mark, zh)}</span> : null}
-                                {r.extra ? <span style={{ overflow: "hidden", textOverflow: "ellipsis", flexShrink: 1, minWidth: 0 }}>{r.extra}</span> : null}
-                                <StatLine stats={r.stats} zh={zh} />
-                              </div>
-                            ) : null}
-                          </div>
-                          <span style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 7, fontSize: 11.5, color: "#525252", fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>
-                            {pct !== null && !narrow ? (
-                              <span style={{ width: 54, height: 4, background: "#ededed", borderRadius: 2, position: "relative", flexShrink: 0 }}>
-                                <span style={{ position: "absolute", left: 0, top: 0, height: 4, width: `${pct}%`, background: top ? "#171717" : "#a9a6a0", borderRadius: 2 }} />
+                                <span style={{ minWidth: 48, textAlign: "right" }}>{headline(r)}</span>
                               </span>
-                            ) : null}
-                            <span style={{ minWidth: 48, textAlign: "right" }}>{r.heatLabel ?? (r.heat ? compact(r.heat) : "—")}</span>
-                          </span>
-                          {narrow ? null : (
-                            <span style={{ minWidth: 0 }}>
-                              {mark ? (
-                                <span style={pill}>{mark.fit}</span>
-                              ) : judging === tab ? (
-                                <span style={{ fontSize: 10.5, color: "#c7c7c7" }}>…</span>
-                              ) : (
-                                <span style={{ fontSize: 11, color: "#c7c7c7" }}>—</span>
+                              {narrow ? null : (
+                                <span style={{ minWidth: 0 }}>
+                                  {mark ? (
+                                    <span style={pill}>{mark.fit}</span>
+                                  ) : judging === r.from ? (
+                                    <span style={{ fontSize: 10.5, color: "#c7c7c7" }}>…</span>
+                                  ) : (
+                                    <span style={{ fontSize: 11, color: "#c7c7c7" }}>—</span>
+                                  )}
+                                </span>
                               )}
-                            </span>
-                          )}
-                          {narrow ? null : (
-                            <button type="button" onClick={(e) => { e.stopPropagation(); onWatch(r.phrase.slice(0, 40)); }} style={{ ...smallBtn(false), height: 22, padding: "0 8px", fontSize: 11 }}>
-                              {t("Watch", "关注")}
-                            </button>
-                          )}
-                          <span style={{ color: "#c7c7c7", fontSize: 12 }}>›</span>
-                        </div>
-                      );
-                    })}
+                              {narrow ? null : (
+                                <button type="button" onClick={(e) => { e.stopPropagation(); onWatch(r.phrase.slice(0, 40)); }} style={{ ...smallBtn(false), height: 22, padding: "0 8px", fontSize: 11 }}>
+                                  {t("Watch", "关注")}
+                                </button>
+                              )}
+                              <span style={{ color: "#c7c7c7", fontSize: 12 }}>›</span>
+                            </div>
+                          );
+                        })}
+                      </React.Fragment>
+                    ))}
+                    {chartedHidden ? (
+                      <button type="button" onClick={() => setRawOn(true)} style={{ display: "block", width: "100%", textAlign: "left", border: 0, borderTop: "1px solid #f3f3f3", background: "transparent", padding: "6px 0", fontSize: 11, color: "#999999", cursor: "pointer", fontFamily: "inherit" }}>
+                        {t(`${chartedHidden} more on the platform's charts ›`, `平台热榜上还有 ${chartedHidden} 条赛道相关的 ›`)}
+                      </button>
+                    ) : null}
                   </div>
                 </>
               )}
@@ -582,36 +585,39 @@ export function LiveNow({
             {/* ---- the row somebody picked -------------------------------- */}
             {picked ? (
               <aside style={{ width: 250, flexShrink: 0, border: "1px solid #ededed", borderRadius: 12, background: "#fff", padding: "12px 14px", display: "flex", flexDirection: "column", gap: 8 }}>
-                <div style={{ fontSize: 10.5, color: "#999999", letterSpacing: ".04em", textTransform: "uppercase" }}>{t("Selected", "选中的热点")}</div>
+                <div style={{ fontSize: 10.5, color: "#999999", letterSpacing: ".04em", textTransform: "uppercase" }}>{t("Selected", "选中的内容")}</div>
                 <div style={{ fontSize: 13.5, fontWeight: 600, lineHeight: 1.45 }}>{picked.phrase}</div>
-                {marks[picked.phrase] ? <span style={{ ...pill, alignSelf: "flex-start" }}>{marks[picked.phrase].fit}</span> : null}
+                {marksFor(picked) ? <span style={{ ...pill, alignSelf: "flex-start" }}>{marksFor(picked)!.fit}</span> : null}
                 <div style={{ fontSize: 12 }}>
-                  <Kv k={t("Platform", "平台")} v={tab === "focus" ? `${platformName} · ${t(`#${picked.rank}`, `第 ${picked.rank} 名`)}` : platformName} />
-                  {picked.mark ? <Kv k={t("Beat", "类别")} v={onFocus(picked.mark, 1) ? relevanceLabel(picked.mark, zh) : t("Not business or tech", "不是财经科技")} /> : null}
-                  <Kv k={t("Heat", "热度")} v={picked.heatLabel ?? (picked.heat ? compact(picked.heat) : "—")} strong />
+                  <Kv k={t("Where", "位置")} v={whereLine(picked)} />
+                  {picked.beat ? <Kv k={t("Beat", "赛道")} v={picked.mark ? relevanceLabel(picked.mark, zh) : zh ? BEATS.find((b) => b.key === picked.beat)!.zh : BEATS.find((b) => b.key === picked.beat)!.en} /> : picked.mark ? <Kv k={t("Beat", "赛道")} v={t("None of the four", "不在四个赛道")} /> : null}
+                  {picked.stats?.price != null ? <Kv k={t("Price", "价格")} v={usd(picked.stats.price)} strong /> : <Kv k={t("Heat", "热度")} v={headline(picked)} strong />}
+                  {picked.stats?.change24h != null ? <Kv k={t("24h", "24 小时")} v={`${picked.stats.change24h >= 0 ? "+" : ""}${picked.stats.change24h.toFixed(1)}%`} /> : null}
+                  {picked.stats?.marketCap != null ? <Kv k={t("Market cap", "市值")} v={`${usd(picked.stats.marketCap)}${picked.stats.capRank ? ` · ${t(`#${picked.stats.capRank}`, `第 ${picked.stats.capRank}`)}` : ""}`} /> : null}
+                  {picked.stats?.volume != null ? <Kv k={t("24h volume", "24 小时成交")} v={usd(picked.stats.volume)} /> : null}
                   {picked.stats?.views != null ? <Kv k={t("Views", "播放")} v={compact(picked.stats.views)} /> : null}
                   {picked.stats?.likes != null ? <Kv k={t("Likes", "点赞")} v={`${compact(picked.stats.likes)}${picked.stats.likeRate != null ? ` · ${(picked.stats.likeRate * 100).toFixed(1)}%` : ""}`} /> : null}
                   {picked.stats?.comments != null ? <Kv k={t("Comments", "评论")} v={compact(picked.stats.comments)} /> : null}
                   {picked.stats?.shares != null ? <Kv k={t("Shares", "分享")} v={compact(picked.stats.shares)} /> : null}
+                  {picked.stats?.saves != null ? <Kv k={t("Saves", "收藏")} v={compact(picked.stats.saves)} /> : null}
                   {picked.stats?.fans != null ? <Kv k={t("Followers", "账号粉丝")} v={compact(picked.stats.fans)} /> : null}
-                  {picked.stats?.fans && picked.stats?.views ? <Kv k={t("Past its audience", "粉丝倍数")} v={`×${compact(Math.round(picked.stats.views / picked.stats.fans))}`} strong /> : null}
+                  {/* Only when it travelled past its own audience: a big account's
+                      video at a fifth of its followers is not "×0". */}
+                  {picked.stats?.fans && picked.stats?.views && picked.stats.views >= picked.stats.fans ? <Kv k={t("Past its audience", "粉丝倍数")} v={`×${compact(Math.round(picked.stats.views / picked.stats.fans))}`} strong /> : null}
                   {picked.stats?.videos != null ? <Kv k={t("Videos on it", "相关视频")} v={compact(picked.stats.videos)} /> : null}
                   {picked.stats?.rankUp ? <Kv k={t("Climbed", "排名上升")} v={`↑${picked.stats.rankUp}`} /> : null}
                   {picked.stats?.publishedAt ? <Kv k={t("Posted", "发布")} v={since(picked.stats.publishedAt, zh)} /> : null}
-                  {picked.extra ? <Kv k={tab === "live" || meta?.kind === "video" ? t("Channel", "账号") : t("Note", "备注")} v={picked.extra} /> : null}
+                  {picked.query ? <Kv k={t("Found by", "搜索词")} v={picked.query.replace(/ when:\d+d$/, "")} /> : null}
+                  {picked.seenAt ? <Kv k={t("Numbers as of", "数据时间")} v={since(picked.seenAt, zh)} /> : null}
+                  {picked.extra ? <Kv k={t("Account", "账号 / 来源")} v={picked.extra} /> : null}
                 </div>
                 <div style={{ padding: "8px 10px", borderLeft: `2px solid ${AGENT_COLORS.research}`, background: "#fafafa", fontSize: 12, lineHeight: 1.55 }}>
                   <span style={{ fontWeight: 600, color: AGENT_COLORS.research }}>{t("Researcher", "研究员")}</span>{" "}
-                  {marks[picked.phrase]?.why ?? (judging === tab ? t("is reading this list…", "正在读这份榜…") : t("could not tie this to the channel's own data.", "在频道数据里没找到跟它相关的依据。"))}
+                  {marksFor(picked)?.why ?? (judging === picked.from ? t("is reading this list…", "正在读这份榜…") : t("could not tie this to the channel's own data.", "在频道数据里没找到跟它相关的依据。"))}
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: "auto" }}>
-                  {canWriteScripts ? (
-                    <button
-                      type="button"
-                      disabled={sending !== null}
-                      onClick={() => writeScript(picked.phrase, "picked")}
-                      style={{ ...smallBtn(true), height: 30, justifyContent: "center" }}
-                    >
+                  {canWriteScripts && tab !== "crypto" ? (
+                    <button type="button" disabled={sending !== null} onClick={() => writeScript(picked.phrase, "picked")} style={{ ...smallBtn(true), height: 30, justifyContent: "center" }}>
                       {t("Have the Writer script it", "让编剧写脚本")}
                     </button>
                   ) : null}
@@ -635,85 +641,152 @@ export function LiveNow({
             <AgentIcon agent="research" size={30} radius={9} />
             <div style={{ minWidth: 0, flexGrow: 1 }}>
               <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
-                <span style={{ fontSize: 12, fontWeight: 600, color: "#0f5bd5" }}>{t("Researcher · what is going viral", "研究员 · 这里在火什么")}</span>
-                <span style={{ fontSize: 11, color: "#b3b3b3" }}>{tabName}{summaryAt ? ` · ${clockHK(summaryAt)} ${t("updated", "更新")}` : ""}</span>
+                <span style={{ fontSize: 12, fontWeight: 600, color: "#0f5bd5" }}>{t("Researcher · what is doing well", "研究员 · 这里什么在火")}</span>
+                <span style={{ fontSize: 11, color: "#b3b3b3" }}>{rawList ? chartName(rawList) : tabName}{summaryAt ? ` · ${clockHK(summaryAt)} ${t("updated", "更新")}` : ""}</span>
               </div>
-              <div style={{ fontSize: 13.5, lineHeight: 1.6, color: summary || (tab === "focus" && merged.length) ? "#171717" : "#999999", marginTop: 3 }}>
-                {tab === "focus"
-                  ? merged.length
-                    ? t(
-                        `${merged.length} business and tech items across the platforms right now, squarest first. Each platform's tab has the researcher's line on that list.`,
-                        `此刻各平台共有 ${merged.length} 条财经科技相关的热点，最贴题的排在前面。每个平台的标签里有研究员对那份榜的总结。`,
-                      )
-                    : allDone
-                      ? t("Nothing on the business and tech beat across the platforms right now.", "此刻各平台都没有财经科技相关的热点。")
-                      : t("Reading the lists…", "正在读各平台的榜单…")
-                  : (summary ?? (loading === tabList ? t("Reading the list…", "正在读这份榜…") : t("The researcher writes a line here at the next hourly collection.", "研究员会在下一次整点收集时在这里写一句总结。")))}
+              <div style={{ fontSize: 13.5, lineHeight: 1.6, color: summary ? "#171717" : "#999999", marginTop: 3 }}>
+                {summary ?? (allDone ? t("The researcher writes a line here at the next collection.", "研究员会在下一次收集时在这里写一句总结。") : t("Reading the lists…", "正在读各平台的榜单…"))}
               </div>
               <div style={{ marginTop: 8 }}>
-                <SayToAgent agent="research" about={`${tabName} ${t("list", "榜单")}`} zh={zh} autoFocus={false} compact />
+                <SayToAgent agent="research" about={`${rawList ? chartName(rawList) : tabName} ${t("list", "榜单")}`} zh={zh} autoFocus={false} compact />
               </div>
             </div>
           </div>
 
           {/* ---- what was picked this morning, folded under the list ----- */}
-          {true ? (
-            <PicksList
-              zh={zh}
-              picks={picks}
-              open={picksOpen}
-              onToggle={() => setPicksFold(picksOpen ? "shut" : "open")}
-              openPick={openPick}
-              setOpenPick={setOpenPick}
-              canWriteScripts={canWriteScripts}
-              sending={sending}
-              onWrite={writeScript}
-              onWatch={onWatch}
-              onClips={(title, withScript) =>
-                start(async () => {
-                  /* The pick by what it is (a morning signal, somebody's own
-                     topic, a plan to-do), resolved on the server with its why
-                     and sources; "write" lands on the script being written. */
-                  const pick = picks.find((x) => x.text === title);
-                  const ref =
-                    pick?.source === "digest"
-                      ? ({ kind: "signal", title } as const)
-                      : pick?.source === "plan" || pick?.source === "backlog" || pick?.source === "audience"
-                        ? ({ kind: "proposal", text: title, source: pick.source } as const)
-                        : ({ kind: "own", text: title } as const);
-                  const res = await startFromTopicAction(ref, { write: Boolean(withScript) });
-                  if ("error" in res && res.error) {
-                    notify(res.error);
-                    return;
-                  }
-                  if (withScript && "scriptId" in res && res.scriptId) router.push(`/script/${res.scriptId}${res.writing ? "?writing=1" : ""}`);
-                  else if ("projectId" in res && res.projectId) router.push(`/projects/${res.projectId}`);
-                  setTimeout(() => router.refresh(), 400);
-                })
-              }
-            />
-          ) : null}
+          <PicksList
+            zh={zh}
+            picks={picks}
+            open={picksOpen}
+            onToggle={() => setPicksFold(picksOpen ? "shut" : "open")}
+            openPick={openPick}
+            setOpenPick={setOpenPick}
+            canWriteScripts={canWriteScripts}
+            sending={sending}
+            onWrite={writeScript}
+            onWatch={onWatch}
+            onClips={(title, withScript) =>
+              start(async () => {
+                /* The pick by what it is (a morning signal, somebody's own
+                   topic, a plan to-do), resolved on the server with its why
+                   and sources; "write" lands on the script being written. */
+                const pick = picks.find((x) => x.text === title);
+                const ref =
+                  pick?.source === "digest"
+                    ? ({ kind: "signal", title } as const)
+                    : pick?.source === "plan" || pick?.source === "backlog" || pick?.source === "audience"
+                      ? ({ kind: "proposal", text: title, source: pick.source } as const)
+                      : ({ kind: "own", text: title } as const);
+                const res = await startFromTopicAction(ref, { write: Boolean(withScript) });
+                if ("error" in res && res.error) {
+                  notify(res.error);
+                  return;
+                }
+                if (withScript && "scriptId" in res && res.scriptId) router.push(`/script/${res.scriptId}${res.writing ? "?writing=1" : ""}`);
+                else if ("projectId" in res && res.projectId) router.push(`/projects/${res.projectId}`);
+                setTimeout(() => router.refresh(), 400);
+              })
+            }
+          />
         </div>
       ) : null}
     </div>
   );
 }
 
-const COLS = "20px 48px minmax(0, 1fr) 118px 112px 46px 10px";
+/** The platform mark a list draws with: a beat feed draws its platform's. */
+function markOf(from: string): string {
+  const f = BEAT_FEEDS.find((x) => x.key === from);
+  return f ? f.mark : from;
+}
+
+/** A row's picture slot when it has no picture: the news glyph for a news
+ *  story, the platform's mark otherwise. */
+function Placeholder({ from }: { from: string }) {
+  const tab = BEAT_FEEDS.find((x) => x.key === from)?.tab ?? (from === "google" ? "news" : null);
+  return tab === "news" || tab === "crypto" ? <TabMark tab={tab} on={false} size={13} /> : <PlatformMark platform={markOf(from)} size={13} />;
+}
+
+/** A tab's mark: the platform's logo, a line icon for news and the coin market. */
+function TabMark({ tab, on, size = 11 }: { tab: Tab; on: boolean; size?: number }) {
+  const ink = on ? "#ffffff" : "#7c7c7c";
+  if (tab === "focus") return <Icon name="spark" size={size} color={on ? "#ffffff" : "#c2410c"} />;
+  if (tab === "news")
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden style={{ width: size, height: size, flexShrink: 0, fill: "none", stroke: ink, strokeWidth: 1.8, strokeLinecap: "round", strokeLinejoin: "round" }}>
+        <path d="M5 5h11v14H6a1 1 0 0 1-1-1z" />
+        <path d="M16 9h3v8.5a1.5 1.5 0 0 1-3 0" />
+        <path d="M8 9h5M8 12.5h5M8 16h3" />
+      </svg>
+    );
+  if (tab === "crypto")
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden style={{ width: size, height: size, flexShrink: 0, fill: "none", stroke: on ? "#ffffff" : "#b7791f", strokeWidth: 1.8, strokeLinecap: "round", strokeLinejoin: "round" }}>
+        <circle cx="12" cy="12" r="8" />
+        <path d="M10 8.5h3a1.75 1.75 0 0 1 0 3.5h-3zM10 12h3.5a1.75 1.75 0 0 1 0 3.5H10zM10 7v10M12 7v1.5M12 15.5V17" />
+      </svg>
+    );
+  return <PlatformMark platform={feedOfTab(tab).mark} size={size} mono={on} />;
+}
+
+/** The number in the heat column: a coin's 24-hour move, a story's outlets,
+ *  a post's plays or likes, a chart's own heat. */
+function headline(r: HotRow): string {
+  const s = r.stats ?? {};
+  if (s.change24h != null) return `${s.change24h >= 0 ? "+" : ""}${s.change24h.toFixed(1)}%`;
+  if (r.heatLabel) return r.heatLabel;
+  if (s.views != null) return compact(s.views);
+  if (s.likes != null) return compact(s.likes);
+  return r.heat ? compact(r.heat) : "—";
+}
+
+/** US dollars, short: $83,894 · $0.079 · $1.7T. */
+function usd(n: number): string {
+  if (n >= 1e12) return `$${(n / 1e12).toFixed(2)}T`;
+  if (n >= 1e9) return `$${(n / 1e9).toFixed(1)}B`;
+  if (n >= 1e6) return `$${(n / 1e6).toFixed(1)}M`;
+  if (n >= 1) return `$${n.toLocaleString("en-US", { maximumFractionDigits: n >= 100 ? 0 : 2 })}`;
+  return `$${n.toPrecision(3)}`;
+}
+
+/** Each beat's colour: a light tint behind, a deeper ink for the words. */
+function beatTint(b: Chip | Beat): string {
+  return b === "ai" ? "#f1ecfd" : b === "crypto" ? "#fdf5dc" : b === "tech" ? "#e8f0fc" : b === "biz" ? "#fbefe3" : "#f3f3f1";
+}
+function beatInk(b: Chip | Beat): string {
+  return b === "ai" ? "#6b3fd0" : b === "crypto" ? "#8a6400" : b === "tech" ? "#0f5bd5" : b === "biz" ? "#9a5b13" : "#383838";
+}
+
+/** The 上榜 badge: on the platform's own chart right now. */
+const chartBadge: React.CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  padding: "0 4px",
+  borderRadius: 4,
+  lineHeight: "15px",
+  fontSize: 10,
+  fontWeight: 500,
+  background: "#fdecec",
+  color: "#b23b3b",
+  whiteSpace: "nowrap",
+};
+
+/* The first column is wide enough for the 上榜 badge. */
+const COLS = "30px 48px minmax(0, 1fr) 118px 112px 46px 10px";
 /* With the side panel open the table is half as wide: the bar, the mark
    pill and the watch button move into the panel, the number stays. */
-const COLS_COMPACT = "20px 48px minmax(0, 1fr) 76px 10px";
+const COLS_COMPACT = "30px 48px minmax(0, 1fr) 76px 10px";
 
-/** The small business / tech label on a row's second line. */
-function relTag(kind: Relevance["t"]): React.CSSProperties {
+/** The small beat label on a row's second line, in the beat's own colour. */
+function relTag(kind: Beat): React.CSSProperties {
   return {
     flexShrink: 0,
     padding: "0 5px",
     borderRadius: 4,
     lineHeight: "15px",
     fontSize: 10,
-    background: kind === "tech" ? "#e6effc" : "#fbeee0",
-    color: kind === "tech" ? "#0f5bd5" : "#9a5b13",
+    background: beatTint(kind),
+    color: beatInk(kind),
   };
 }
 
@@ -764,14 +837,16 @@ function Kv({ k, v, strong }: { k: string; v: string; strong?: boolean }) {
 }
 
 /** The cover, or a quiet grey square when the platform gave none. */
-function Cover({ src, platform }: { src: string | null; platform?: string }) {
+function Cover({ src, placeholder }: { src: string | null; placeholder?: React.ReactNode }) {
   const [broken, setBroken] = React.useState(false);
   /* A list of phrases has no pictures; its row shows the platform's own
-     mark in the same slot, so every list reads the same way. */
+     mark in the same slot, so every list reads the same way. A cover that
+     fails to load (a signed link that expired, a CDN that refused) falls
+     back to the same mark rather than an empty box. */
   if (!src || broken)
     return (
-      <span style={{ width: 48, height: 30, borderRadius: 4, background: "#f5f5f3", display: "flex", alignItems: "center", justifyContent: "center" }}>
-        {platform ? <PlatformMark platform={platform} size={13} /> : null}
+      <span style={{ width: 48, height: 30, borderRadius: 4, background: "#f5f5f3", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+        {placeholder ?? null}
       </span>
     );
   return (
@@ -801,6 +876,9 @@ function StatLine({ stats, zh }: { stats?: HotRow["stats"]; zh: boolean }) {
   if (stats.likes != null) bits.push(<span key="l"><Icon name="heart" size={10} /> {compact(stats.likes)}{stats.likeRate != null ? <span style={{ color: stats.likeRate >= 0.05 ? "#0b7a63" : "#999999" }}> {(stats.likeRate * 100).toFixed(1)}%</span> : null}</span>);
   if (stats.comments != null) bits.push(<span key="c"><Icon name="comment" size={10} /> {compact(stats.comments)}</span>);
   if (stats.shares != null) bits.push(<span key="s"><Icon name="share" size={10} /> {compact(stats.shares)}</span>);
+  if (stats.saves != null) bits.push(<span key="f">{zh ? "收藏" : "saves"} {compact(stats.saves)}</span>);
+  if (stats.price != null) bits.push(<span key="$">{usd(stats.price)}</span>);
+  if (stats.marketCap != null) bits.push(<span key="m">{zh ? "市值" : "cap"} {usd(stats.marketCap)}{stats.capRank ? ` · #${stats.capRank}` : ""}</span>);
   if (ratio !== null && ratio >= 10) bits.push(<span key="r" title={zh ? "播放 ÷ 账号粉丝" : "views ÷ followers"} style={{ color: "#fff", background: ratio >= 100 ? "#c2410c" : "#a35f00", borderRadius: 3, padding: "0 4px", fontWeight: 600 }}>×{compact(ratio)}{zh ? " 粉丝量" : " fans"}</span>);
   if (stats.videos != null) bits.push(<span key="n">{compact(stats.videos)} {zh ? "条视频" : "videos"}</span>);
   if (stats.rankUp) bits.push(<span key="u" style={{ color: "#0b7a63" }}>↑{stats.rankUp}</span>);

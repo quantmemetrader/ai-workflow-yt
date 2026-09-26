@@ -182,10 +182,17 @@ export async function douyinHotSearch(): Promise<HotRow[]> {
  */
 const WEIBO_CHROME = /^(查看更多|更多$|开启定位)/;
 
-export async function weiboHotSearch(): Promise<HotRow[]> {
+/**
+ * `category` is one of the app's own hot-list tabs (TikHub's documentation
+ * of `fetch_hot_search`): realtimehot is the main list, technologynav the 科技
+ * list the beat feed reads — fifty tech topics with their search index, which
+ * is what "微博 on the studio's beat" is, where the main list is celebrities.
+ * One request either way.
+ */
+export async function weiboHotSearch(category?: "realtimehot" | "technologynav", count?: number): Promise<HotRow[]> {
   const res = await get<{
     items?: { items?: { data?: { desc?: string; desc_extr?: string; scheme?: string } }[] }[];
-  }>("/api/v1/weibo/app/fetch_hot_search");
+  }>("/api/v1/weibo/app/fetch_hot_search", category ? { category, page: 1, count: count ?? 50 } : {});
   const rows: HotRow[] = [];
   for (const group of res.items ?? []) {
     for (const cell of group.items ?? []) {
@@ -421,4 +428,281 @@ export async function douyinRising(size = 30): Promise<HotRow[]> {
         publishedAt: o.create_at ? new Date(o.create_at * 1000).toISOString() : null,
       },
     }));
+}
+
+// ------------------------------------------------------------ beat searches
+
+/*
+ * The searches the beat feeds make (`lib/research/beat-feeds.ts`): a word of
+ * one of the studio's beats, on one platform, the posts that did best
+ * recently, each with its own numbers. One request each, billed; the feeds
+ * count them against a per-run cap before calling.
+ *
+ * Endpoints and parameters are from TikHub's own documentation
+ * (api.tikhub.io/openapi.json), and each was tried once against the live API
+ * before being used here (09-26): what came back is noted on each.
+ */
+
+const ago = (sec: unknown) => {
+  const n = typeof sec === "number" ? sec : typeof sec === "string" ? Number(sec) : NaN;
+  // Seconds or milliseconds, whichever the platform sent.
+  return Number.isFinite(n) && n > 0 ? new Date(n > 1e12 ? n : n * 1000).toISOString() : null;
+};
+const stripTags = (t: string) => t.replace(/<[^>]+>/g, "").replace(/&quot;/g, '"').replace(/&amp;/g, "&").replace(/&#39;/g, "'").trim();
+
+/**
+ * 抖音's creator billboard, filtered to titles with the keyword: up to 30
+ * videos ranked by heat over the window, with plays, likes, the account's
+ * followers. Richer than 抖音's own search, which returns eight videos and
+ * no play counts. "大模型" over 72 hours came back with 27 videos, nearly
+ * all on the subject; a loose word ("AI") came back with AI-drawn cats,
+ * which is why the beat words are specific.
+ */
+export async function douyinBillboardSearch(keyword: string, opts: { hours?: 24 | 72 | 168; size?: number } = {}): Promise<HotRow[]> {
+  const res = await get<{ data?: { objs?: BillboardVideo[] } }>(
+    "/api/v1/douyin/billboard/fetch_hot_total_video_list",
+    {},
+    { page: 1, page_size: opts.size ?? 30, date_window: opts.hours ?? 72, sub_type: 1001, keyword, tags: [] },
+  );
+  return (res.data?.objs ?? []).filter((v) => v.item_id).map(billboardRow);
+}
+
+type DouyinAweme = {
+  aweme_id?: string;
+  desc?: string;
+  create_time?: number;
+  author?: { nickname?: string; follower_count?: number };
+  statistics?: { play_count?: number; digg_count?: number; comment_count?: number; share_count?: number; collect_count?: number };
+  video?: { cover?: { url_list?: string[] } };
+};
+
+/**
+ * 抖音's own video search, most liked within `days` (1 or 7). Eight videos a
+ * page, matched by what they are about rather than by title; 抖音 does not
+ * return play counts here (always 0), so likes, comments, shares and saves
+ * are the numbers. The beat feed's fallback when the billboard search has
+ * little for a word.
+ */
+export async function douyinVideoSearch(keyword: string, opts: { days?: 1 | 7 } = {}): Promise<HotRow[]> {
+  const res = await get<{ data?: { aweme_info?: DouyinAweme }[] }>(
+    "/api/v1/douyin/search/fetch_video_search_v1",
+    {},
+    { keyword, cursor: 0, sort_type: "1", publish_time: String(opts.days ?? 7), filter_duration: "0", content_type: "0", search_id: "", backtrace: "" },
+  );
+  return (res.data ?? [])
+    .map((x) => x.aweme_info)
+    .filter((a): a is DouyinAweme => Boolean(a?.aweme_id && (a.desc ?? "").trim()))
+    .map((a) => {
+      const s = a.statistics ?? {};
+      return {
+        phrase: (a.desc ?? "").replace(/\s*#\S+/g, "").replace(/\s+/g, " ").trim().slice(0, 200) || `${a.author?.nickname ?? ""} 的视频`,
+        heat: asNumber(s.digg_count),
+        heatLabel: null,
+        url: `https://www.douyin.com/video/${a.aweme_id}`,
+        thumbnail: a.video?.cover?.url_list?.[0] ?? null,
+        extra: a.author?.nickname ?? null,
+        stats: {
+          likes: asNumber(s.digg_count),
+          comments: asNumber(s.comment_count),
+          shares: asNumber(s.share_count),
+          saves: asNumber(s.collect_count),
+          fans: asNumber(a.author?.follower_count),
+          publishedAt: ago(a.create_time),
+        },
+      };
+    });
+}
+
+type TikTokAweme = {
+  aweme_id?: string;
+  desc?: string;
+  create_time?: number;
+  author?: { unique_id?: string; nickname?: string; follower_count?: number };
+  statistics?: { play_count?: number; digg_count?: number; comment_count?: number; share_count?: number; collect_count?: number };
+  video?: { cover?: { url_list?: string[] }; origin_cover?: { url_list?: string[] } };
+};
+
+/**
+ * TikTok's video search, most liked first, within `days` (1, 7, 30). Thirty
+ * videos with plays, likes, comments, shares and the account's followers.
+ * Region is the market searched; TikTok is not in Hong Kong, so the US.
+ */
+export async function tiktokVideoSearch(keyword: string, opts: { days?: 1 | 7 | 30; count?: number; region?: string } = {}): Promise<HotRow[]> {
+  const res = await get<{ search_item_list?: { aweme_info?: TikTokAweme }[] }>("/api/v1/tiktok/app/v3/fetch_video_search_result", {
+    keyword,
+    offset: 0,
+    count: opts.count ?? 30,
+    sort_type: 1,
+    publish_time: opts.days ?? 7,
+    region: opts.region ?? "US",
+  });
+  return (res.search_item_list ?? [])
+    .map((x) => x.aweme_info)
+    .filter((a): a is TikTokAweme => Boolean(a?.aweme_id && (a.desc ?? "").trim()))
+    .map((a) => {
+      const s = a.statistics ?? {};
+      const handle = a.author?.unique_id ?? null;
+      const views = asNumber(s.play_count);
+      const likes = asNumber(s.digg_count);
+      return {
+        phrase: (a.desc ?? "").replace(/\s+/g, " ").trim().slice(0, 200),
+        heat: views,
+        heatLabel: null,
+        url: handle ? `https://www.tiktok.com/@${handle}/video/${a.aweme_id}` : null,
+        thumbnail: a.video?.cover?.url_list?.[0] ?? a.video?.origin_cover?.url_list?.[0] ?? null,
+        extra: handle ? `@${handle}` : (a.author?.nickname ?? null),
+        stats: {
+          views,
+          likes,
+          comments: asNumber(s.comment_count),
+          shares: asNumber(s.share_count),
+          saves: asNumber(s.collect_count),
+          likeRate: rate(likes, views),
+          fans: asNumber(a.author?.follower_count),
+          publishedAt: ago(a.create_time),
+        },
+      };
+    });
+}
+
+type XhsNote = {
+  id?: string;
+  title?: string;
+  desc?: string;
+  type?: string;
+  liked_count?: unknown;
+  collected_count?: unknown;
+  comments_count?: unknown;
+  shared_count?: unknown;
+  images_list?: { url?: string }[];
+  user?: { nickname?: string };
+  timestamp?: unknown;
+};
+
+/**
+ * 小红书 note search: 20 notes, with likes, saves, comments and shares (no
+ * view counts; 小红书 does not publish them). `sort` "popularity_descending"
+ * is most liked; `time` "一周内" is meant to keep it to the last week, but
+ * a few older notes still come back, so the feed checks the date itself.
+ * The defaults are what "Search & compare" has always asked for.
+ */
+export async function xiaohongshuSearchNotes(
+  keyword: string,
+  opts: { sort?: "general" | "popularity_descending" | "time_descending"; time?: "不限" | "一天内" | "一周内" | "半年内" } = {},
+): Promise<HotRow[]> {
+  const res = await get<{ data?: { items?: { note?: XhsNote }[] } }>("/api/v1/xiaohongshu/app_v2/search_notes", {
+    keyword,
+    page: 1,
+    sort_type: opts.sort ?? "popularity_descending",
+    time_filter: opts.time,
+  });
+  return (res.data?.items ?? [])
+    .map((i) => i.note)
+    .filter((x): x is XhsNote => Boolean(x?.id && (x.title || x.desc)))
+    .map((x) => {
+      const likes = asNumber(x.liked_count);
+      return {
+        phrase: (x.title || (x.desc ?? "").split(/\n/)[0] || "").replace(/\s+/g, " ").trim().slice(0, 120),
+        heat: likes,
+        heatLabel: null,
+        url: `https://www.xiaohongshu.com/explore/${x.id}`,
+        thumbnail: x.images_list?.[0]?.url ?? null,
+        extra: x.user?.nickname ?? null,
+        stats: {
+          likes,
+          comments: asNumber(x.comments_count),
+          shares: asNumber(x.shared_count),
+          saves: asNumber(x.collected_count),
+          publishedAt: ago(x.timestamp),
+        },
+      };
+    });
+}
+
+type BiliResult = { title?: string; play?: unknown; like?: unknown; review?: unknown; favorites?: unknown; danmaku?: unknown; pic?: string; author?: string; bvid?: string; pubdate?: unknown; typename?: string };
+
+/**
+ * B站 search. `order` "click" is most played; `sinceHours` keeps it to videos
+ * published within that many hours (B站's own pubtime filter). About forty
+ * videos a request with plays, likes, comments and saves. The row's second
+ * line carries B站's own section name ("计算机技术", "单机游戏"), which the
+ * classifier reads: an AI-made short drama is filed under 影视, not 科技.
+ * The defaults are what "Search & compare" has always asked for.
+ */
+export async function bilibiliSearchVideos(keyword: string, opts: { order?: "totalrank" | "click" | "pubdate"; sinceHours?: number; size?: number } = {}): Promise<HotRow[]> {
+  const now = Math.floor(Date.now() / 1000);
+  const res = await get<{ data?: { result?: BiliResult[] } }>("/api/v1/bilibili/web/fetch_general_search", {
+    keyword,
+    order: opts.order ?? "totalrank",
+    page: 1,
+    page_size: opts.size ?? 12,
+    pubtime_begin_s: opts.sinceHours ? now - Math.round(opts.sinceHours * 3600) : undefined,
+    pubtime_end_s: opts.sinceHours ? now : undefined,
+  });
+  const list = Array.isArray(res.data?.result) ? res.data!.result! : [];
+  return list
+    .filter((r) => r && r.title)
+    .map((r) => {
+      const views = asNumber(r.play);
+      const likes = asNumber(r.like);
+      const author = r.author ?? null;
+      return {
+        phrase: stripTags(r.title!),
+        heat: views,
+        heatLabel: null,
+        url: r.bvid ? `https://www.bilibili.com/video/${r.bvid}` : null,
+        thumbnail: r.pic ? (r.pic.startsWith("//") ? `https:${r.pic}` : r.pic) : null,
+        extra: [author, r.typename].filter(Boolean).join(" · ") || null,
+        stats: { views, likes, comments: asNumber(r.review), saves: asNumber(r.favorites), likeRate: rate(likes, views), publishedAt: ago(r.pubdate) },
+      };
+    });
+}
+
+type WeiboPost = {
+  mblogid?: string;
+  id?: string | number;
+  text?: string;
+  text_raw?: string;
+  created_at?: string;
+  attitudes_count?: unknown;
+  comments_count?: unknown;
+  reposts_count?: unknown;
+  pic_ids?: string[];
+  page_info?: { page_pic?: { url?: string } };
+  user?: { id?: string | number; screen_name?: string; followers_count?: unknown };
+};
+
+/**
+ * 微博's search, "热门" tab (`search_type` 60): ten posts that did best for
+ * the keyword, with likes, comments, reposts and the account's followers.
+ * Not strictly recent (a July post can still rank for 人工智能), so the feed
+ * checks the date.
+ */
+export async function weiboHotPosts(keyword: string): Promise<HotRow[]> {
+  const res = await get<{ items?: { category?: string; data?: WeiboPost }[] }>("/api/v1/weibo/app/fetch_search_all", { query: keyword, page: 1, search_type: 60 });
+  const rows: HotRow[] = [];
+  for (const it of res.items ?? []) {
+    const d = it.data;
+    if (!d || d.attitudes_count === undefined || !(d.text || d.text_raw)) continue;
+    const text = stripTags(d.text_raw ?? d.text ?? "").replace(/\s+/g, " ").replace(/\s*展开c?$/, "").trim();
+    if (text.length < 6) continue;
+    const likes = asNumber(d.attitudes_count);
+    const at = d.created_at ? new Date(d.created_at) : null;
+    rows.push({
+      phrase: text.slice(0, 140),
+      heat: likes,
+      heatLabel: null,
+      url: d.user?.id && d.mblogid ? `https://weibo.com/${d.user.id}/${d.mblogid}` : null,
+      thumbnail: d.page_info?.page_pic?.url ?? (d.pic_ids?.[0] ? `https://wx1.sinaimg.cn/orj360/${d.pic_ids[0]}.jpg` : null),
+      extra: d.user?.screen_name ?? null,
+      stats: {
+        likes,
+        comments: asNumber(d.comments_count),
+        shares: asNumber(d.reposts_count),
+        fans: asNumber(d.user?.followers_count),
+        publishedAt: at && !Number.isNaN(at.getTime()) ? at.toISOString() : null,
+      },
+    });
+  }
+  return rows;
 }

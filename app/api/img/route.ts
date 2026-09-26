@@ -44,6 +44,9 @@ const ALLOWED_SUFFIXES = [
   ".douyinpic.com",
   ".hdslb.com",
   ".sinaimg.cn",
+  /* The 加密市场 tab's coin logos (CoinGecko's own picture hosts). */
+  "coin-images.coingecko.com",
+  "assets.coingecko.com",
 ];
 
 const allowed = (host: string) => ALLOWED.has(host) || ALLOWED_SUFFIXES.some((s) => host === s || host.endsWith(s));

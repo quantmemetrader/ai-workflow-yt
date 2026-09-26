@@ -2,7 +2,7 @@ import "server-only";
 import { complete } from "@/lib/ai/openrouter";
 import { modelFor } from "@/lib/ai/models";
 import { studioBrief, type StudioBrief } from "@/lib/research/studio";
-import type { HotRow, PlatformKey } from "@/lib/research/platform-catalog";
+import { listName, type HotRow, type ListKey } from "@/lib/research/platform-catalog";
 import { toSimplified } from "@/lib/text/simplified";
 
 /**
@@ -38,9 +38,46 @@ const TTL_MS = 30 * 60_000;
 const cache = new Map<string, { at: number; judged: Judged }>();
 const MAX_ROWS = 30;
 
+/** A title reduced to what two copies of it share: no spacing, punctuation,
+ *  hashtags or case, and simplified characters. */
+const bare = (s: string) =>
+  toSimplified(s)
+    .toLowerCase()
+    .replace(/#\S+/g, "")
+    .replace(/[\s\p{P}\p{S}]+/gu, "");
+
+/**
+ * The row a mark is about.
+ *
+ * The model answers with the row's number and, since 09-26, the opening
+ * words of its title (`t`). The number alone was not enough: on the stored
+ * 抖音 and 新闻 beat feeds the model numbered its own picks 1, 2, 3, 4 instead
+ * of citing the list, so "加密赛道 — 比特币行情可直接覆盖" landed on an AI
+ * jobs video and "香港楼市" on a story about AI taking office jobs. So the
+ * echo is checked against the numbered row; when they disagree the row
+ * whose title the echo opens is used instead, and a mark that matches no
+ * row is dropped rather than pinned on the wrong one. An answer without an
+ * echo (an older prompt, a model that ignored it) is taken by number, as
+ * before.
+ */
+function rowFor(rows: HotRow[], n: number, echo: string): HotRow | null {
+  const byNumber = Number.isInteger(n) && n >= 1 ? (rows[n - 1] ?? null) : null;
+  const e = bare(echo).slice(0, 12);
+  if (e.length < 2) return byNumber;
+  const opens = (r: HotRow) => {
+    const b = bare(r.phrase);
+    // The echo is the title's start; allow a model that skipped a leading
+    // bracket or two characters by also accepting it a little way in.
+    const at = b.indexOf(e.slice(0, Math.min(6, e.length)));
+    return at >= 0 && at <= 4;
+  };
+  if (byNumber && opens(byNumber)) return byNumber;
+  return rows.find(opens) ?? null;
+}
+
 export async function judgeHot(
   tenantId: string,
-  platform: PlatformKey,
+  platform: ListKey,
   rows: HotRow[],
   fetchedAt: number,
   /* `brief`: the studio's brief from the caller, when it judges many lists
@@ -66,44 +103,52 @@ export async function judgeHot(
           "每条标注要说清依据：①②要引用频道数据里的具体东西（哪条视频、哪位观众、哪个对标账号）；③要说清借什么、套到哪个选题。",
         ]
       : [
-          "只标财经、商业、科技方面的条目；娱乐、体育、明星、节日这类，哪怕形式好看也不标。",
+          "只标 AI、加密、科技、商业财经方面的条目；娱乐、体育、明星、节日这类，哪怕形式好看也不标。",
           "每条标注要说清依据：引用频道数据里的具体东西（哪条视频、哪位观众、哪个对标账号）。",
         ]),
     "宁可少标，不要硬凑；一份 20 条的榜通常标 2–5 条。",
-    `输出 JSON 数组，每项 {"n": 序号, "fit": "2到6个字的标签，如 可接RWA选题 / 观众问过 / 香港本地${opts.borrow ? " / 形式可借" : ""}", "why": "一句话依据"}。没有就输出 []。只输出 JSON。`,
+    `输出 JSON 数组，每项 {"n": 序号, "t": "该条标题的前 12 个字，照抄", "fit": "2到6个字的标签，如 可接RWA选题 / 观众问过 / 香港本地${opts.borrow ? " / 形式可借" : ""}", "why": "一句话依据"}。n 必须是该条在下面列表里的序号，不是你挑出来的第几条。没有就输出 []。只输出 JSON。`,
     "",
     "# 频道数据",
     brief.text,
     "",
-    `# ${platform} 热榜`,
+    `# ${listName(platform, true)}${platform.startsWith("beat_") ? "（按赛道搜出来的热门内容）" : " 热榜"}`,
     ...list,
   ].join("\n");
 
+  /*
+   * The answer budget. It was 900 tokens, and the utility model reasons
+   * before it answers: on a thirty-row list the reasoning used the lot and
+   * the answer came back empty, which read as "nothing here is the
+   * channel's" — every stored list on 09-26 had zero marks for that reason,
+   * not for want of fits. 3,000 leaves room for both. An answer with no
+   * array at all (cut off, or refused) goes to the assistant model once.
+   */
   let judged: Judged = {};
-  try {
-    const res = await complete({
-      model: modelFor.utility(),
-      messages: [{ role: "user", content: prompt }],
-      temperature: 0.2,
-      maxTokens: 900,
-    });
-    const text = res.text.trim();
-    const start = text.indexOf("[");
-    const end = text.lastIndexOf("]");
-    const parsed = start >= 0 && end > start ? (JSON.parse(text.slice(start, end + 1)) as unknown) : [];
-    if (Array.isArray(parsed)) {
-      for (const item of parsed) {
-        const n = Number((item as { n?: unknown })?.n);
-        const fit = String((item as { fit?: unknown })?.fit ?? "").trim();
-        const why = String((item as { why?: unknown })?.why ?? "").trim();
-        const row = rows[n - 1];
-        if (!row || !fit || fit.length > 12) continue;
-        judged[row.phrase] = { fit: toSimplified(fit), why: toSimplified(why).slice(0, 160) };
+  for (const model of [...new Set([modelFor.utility(), modelFor.assistant()])]) {
+    try {
+      const res = await complete({ model, messages: [{ role: "user", content: prompt }], temperature: 0.2, maxTokens: 3000 });
+      const text = res.text.replace(/<think>[\s\S]*?<\/think>/g, "").trim();
+      const start = text.indexOf("[");
+      const end = text.lastIndexOf("]");
+      if (start < 0 || end <= start) continue;
+      const parsed = JSON.parse(text.slice(start, end + 1)) as unknown;
+      if (Array.isArray(parsed)) {
+        for (const item of parsed) {
+          const n = Number((item as { n?: unknown })?.n);
+          const echo = String((item as { t?: unknown })?.t ?? "").trim();
+          const fit = String((item as { fit?: unknown })?.fit ?? "").trim();
+          const why = String((item as { why?: unknown })?.why ?? "").trim();
+          const row = rowFor(rows.slice(0, MAX_ROWS), n, echo);
+          if (!row || !fit || fit.length > 12) continue;
+          judged[row.phrase] = { fit: toSimplified(fit), why: toSimplified(why).slice(0, 160) };
+        }
       }
+      break;
+    } catch (err) {
+      console.error(`[research] 研究员 could not read the hot list (${model})`, err);
+      judged = {};
     }
-  } catch (err) {
-    console.error("[research] 研究员 could not read the hot list", err);
-    judged = {};
   }
 
   cache.set(key, { at: Date.now(), judged });
