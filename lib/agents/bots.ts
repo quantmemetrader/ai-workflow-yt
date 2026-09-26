@@ -6,12 +6,16 @@ import type { AgentKey } from "@/lib/agents/catalog";
  * shot ("bot avatars bit more like this vibe"): bold flat shapes, a black
  * visor, glowing eyes, one big prop, the body cut off by the circle.
  *
- *   研究员  blue    magnifying glass over a chart on its chest
- *   策划    lime    lightbulb antenna, clipboard with ticks
- *   编剧    orange  a typewriter head with the page coming out of it
- *   剪辑师  teal    headphones and a clapperboard
- *   撰稿人  pink    a pen-nib antenna and a newspaper
- *   助理    violet  a round white bot with a headset, smiling
+ *   研究员  blue    a magnifying glass with a face, beside a rising chart
+ *   策划    lime    a lit lightbulb head over a ticked clipboard
+ *   编剧    orange  a typewriter, the page standing out of the roller
+ *   剪辑师  teal    a film camera: two reels, one big lens eye, a tripod
+ *   撰稿人  pink    a newspaper page with a face, a fountain pen across it
+ *   助理    violet  a speech bubble wearing a headset
+ *
+ * The first version put the same helmet on all six with different props;
+ * the owner: "they all look the same — they should look like the task they
+ * do". Now the job object is the character, so each has its own silhouette.
  *
  * Drawn on a 96 box so the shapes stay chunky at 18px, where the circle's
  * colour and the silhouette do the work. Ids are per key, so six different
@@ -32,113 +36,98 @@ const BG: Record<BotKey, string> = {
 };
 
 const BODY: Record<BotKey, string> = {
+  /* A magnifying glass that is the face: dark glass with the eyes in it, a
+     thick gold rim, the handle down to the right; a rising chart beside it. */
   research: `
-    <rect x="21" y="72" width="54" height="40" rx="12" fill="#eef1f5"/>
-    <path d="M60 72h3a12 12 0 0 1 12 12v28H60z" fill="#cfd6e0"/>
-    <rect x="41" y="61" width="14" height="13" fill="#8e98a8"/>
-    <rect x="26" y="25" width="44" height="39" rx="13" fill="#eef1f5"/>
-    <path d="M58 25a13 13 0 0 1 12 13v13a13 13 0 0 1-12 13z" fill="#cfd6e0"/>
-    <rect x="19" y="37" width="8" height="16" rx="4" fill="#ffae1f"/>
-    <rect x="69" y="37" width="8" height="16" rx="4" fill="#ffae1f"/>
-    <rect x="31" y="35" width="34" height="20" rx="9" fill="${K}"/>
-    <rect x="37" y="41" width="8" height="7" rx="3.5" fill="#3dffb4"/>
-    <rect x="51" y="41" width="8" height="7" rx="3.5" fill="#3dffb4"/>
-    <rect x="30" y="80" width="26" height="17" rx="4" fill="${K}"/>
-    <path d="M34 93l6-6 5 3 7-7" fill="none" stroke="#3dffb4" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
-    <path d="M73 76l12 12" stroke="${K}" stroke-width="8" stroke-linecap="round"/>
-    <circle cx="64" cy="67" r="13" fill="#bfe8ff" fill-opacity=".55" stroke="#ffd21f" stroke-width="5.5"/>
-    <path d="M57 62a8 8 0 0 1 7-4" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round"/>`,
+    <rect x="12" y="80" width="8" height="22" rx="2" fill="#ffffff"/>
+    <rect x="23" y="73" width="8" height="29" rx="2" fill="#ffffff"/>
+    <rect x="34" y="78" width="8" height="24" rx="2" fill="#bfe8ff"/>
+    <path d="M60 58l20 24" stroke="${K}" stroke-width="12" stroke-linecap="round"/>
+    <path d="M58 55l7 8" stroke="#ffd21f" stroke-width="13" stroke-linecap="butt"/>
+    <circle cx="42" cy="38" r="25" fill="${K}" stroke="#ffd21f" stroke-width="8"/>
+    <rect x="30" y="34" width="9" height="10" rx="4.5" fill="#3dffb4"/>
+    <rect x="46" y="34" width="9" height="10" rx="4.5" fill="#3dffb4"/>
+    <path d="M26 30a17 17 0 0 1 12-11" fill="none" stroke="#ffffff" stroke-width="3.2" stroke-linecap="round" stroke-opacity=".85"/>`,
+  /* A lightbulb head, lit: eyes and a smile on the glass, the screw base as
+     its neck, rays around it, a clipboard of ticked-off steps below. */
   planning: `
-    <rect x="21" y="72" width="54" height="40" rx="12" fill="#7a3cff"/>
-    <path d="M60 72h3a12 12 0 0 1 12 12v28H60z" fill="#5b25db"/>
-    <rect x="41" y="61" width="14" height="13" fill="#3b1a91"/>
-    <path d="M48 17v14" stroke="${K}" stroke-width="3.5"/>
-    <rect x="43" y="17" width="10" height="6" rx="2" fill="#9aa3b2"/>
-    <circle cx="48" cy="11" r="8.5" fill="#ffd400"/>
-    <path d="M45 8.5a4 4 0 0 1 3-2" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"/>
-    <path d="M36 6l-4-3M60 6l4-3M35 13h-5M61 13h5" stroke="${K}" stroke-width="2.6" stroke-linecap="round"/>
-    <rect x="25" y="29" width="46" height="35" rx="15" fill="#7a3cff"/>
-    <path d="M58 29a15 15 0 0 1 13 15v5a15 15 0 0 1-13 15z" fill="#5b25db"/>
-    <rect x="31" y="37" width="34" height="19" rx="9" fill="${K}"/>
-    <rect x="37" y="42" width="8" height="8" rx="4" fill="#ffe14d"/>
-    <rect x="51" y="42" width="8" height="8" rx="4" fill="#ffe14d"/>
-    <rect x="29" y="73" width="38" height="34" rx="4" fill="#ffffff"/>
-    <rect x="39" y="69" width="18" height="8" rx="2.5" fill="${K}"/>
-    <path d="M35 84l3.5 3.5 6-6M35 96l3.5 3.5 6-6" fill="none" stroke="#7a3cff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-    <path d="M49 85h12M49 97h9" stroke="#d4d4d4" stroke-width="3" stroke-linecap="round"/>`,
+    <path d="M18 14l-6-5M78 14l6-5M11 34H4M85 34h7M48 4V0" stroke="${K}" stroke-width="3.2" stroke-linecap="round"/>
+    <path d="M48 10a24 24 0 0 1 14 43.5V60H34v-6.5A24 24 0 0 1 48 10z" fill="#ffd400"/>
+    <path d="M60 14a24 24 0 0 1 2 39.5V60h-6V16z" fill="#f2b300"/>
+    <rect x="37" y="30" width="7" height="10" rx="3.5" fill="${K}"/>
+    <rect x="52" y="30" width="7" height="10" rx="3.5" fill="${K}"/>
+    <circle cx="42" cy="32.5" r="1.6" fill="#ffffff"/>
+    <circle cx="57" cy="32.5" r="1.6" fill="#ffffff"/>
+    <path d="M42 46q6 5 12 0" fill="none" stroke="${K}" stroke-width="2.8" stroke-linecap="round"/>
+    <rect x="34" y="60" width="28" height="5" rx="2" fill="#8e98a8"/>
+    <rect x="35" y="65" width="26" height="5" rx="2" fill="#6b7585"/>
+    <rect x="37" y="70" width="22" height="5" rx="2" fill="#8e98a8"/>
+    <rect x="18" y="78" width="60" height="30" rx="6" fill="#7a3cff"/>
+    <rect x="26" y="81" width="44" height="26" rx="3" fill="#ffffff"/>
+    <rect x="39" y="77" width="18" height="7" rx="2.5" fill="${K}"/>
+    <path d="M31 92l3.5 3.5 6-6" fill="none" stroke="#7a3cff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M45 93h19" stroke="#d4d4d4" stroke-width="3" stroke-linecap="round"/>`,
+  /* A typewriter: the page standing tall out of the roller, the face in the
+     body's window, two rows of keys. */
   script: `
-    <rect x="21" y="72" width="54" height="40" rx="12" fill="#ffc21f"/>
-    <path d="M60 72h3a12 12 0 0 1 12 12v28H60z" fill="#e89a00"/>
-    <rect x="41" y="61" width="14" height="13" fill="#b86f00"/>
-    <path d="M33 8h30v28H33z" fill="#ffffff"/>
-    <path d="M63 8c3 0 5 2 5 5h-5z" fill="#d9d9d9"/>
-    <path d="M38 15h18M38 21h20M38 27h13" stroke="#9a9a9a" stroke-width="2.4" stroke-linecap="round"/>
-    <rect x="23" y="30" width="50" height="33" rx="9" fill="#ffc21f"/>
-    <path d="M60 30h4a9 9 0 0 1 9 9v15a9 9 0 0 1-9 9h-4z" fill="#e89a00"/>
-    <rect x="23" y="30" width="50" height="7" rx="3.5" fill="#e89a00"/>
-    <circle cx="19" cy="47" r="6.5" fill="#5b2a17"/>
-    <circle cx="77" cy="47" r="6.5" fill="#5b2a17"/>
-    <circle cx="78" cy="47" r="3" fill="#ffd84d"/>
-    <rect x="31" y="40" width="34" height="14" rx="6" fill="${K}"/>
-    <rect x="37" y="44" width="8" height="6" rx="3" fill="#3dffb4"/>
-    <rect x="51" y="44" width="8" height="6" rx="3" fill="#3dffb4"/>
-    <rect x="40" y="57" width="16" height="3" rx="1.5" fill="${K}"/>
-    <rect x="28" y="80" width="40" height="16" rx="4" fill="${K}"/>
-    <path d="M33 85h3M40 85h3M47 85h3M54 85h3M61 85h2M35 91h26" stroke="#3dffb4" stroke-width="2.4" stroke-linecap="round"/>`,
+    <path d="M30 4h36v34H30z" fill="#ffffff"/>
+    <path d="M36 12h24M36 19h24M36 26h16" stroke="#9a9a9a" stroke-width="2.6" stroke-linecap="round"/>
+    <rect x="14" y="32" width="68" height="11" rx="5.5" fill="${K}"/>
+    <circle cx="12" cy="37.5" r="6" fill="#ffd84d"/>
+    <circle cx="84" cy="37.5" r="6" fill="#ffd84d"/>
+    <path d="M22 43h52l8 50H14z" fill="#243154"/>
+    <path d="M62 43h12l8 50H66z" fill="#18213b"/>
+    <rect x="27" y="49" width="42" height="13" rx="6.5" fill="${K}"/>
+    <rect x="35" y="52" width="8" height="7" rx="3.5" fill="#ffd84d"/>
+    <rect x="53" y="52" width="8" height="7" rx="3.5" fill="#ffd84d"/>
+    <circle cx="28" cy="72" r="3.4" fill="#fff2c7"/><circle cx="38" cy="72" r="3.4" fill="#fff2c7"/><circle cx="48" cy="72" r="3.4" fill="#fff2c7"/><circle cx="58" cy="72" r="3.4" fill="#fff2c7"/><circle cx="68" cy="72" r="3.4" fill="#fff2c7"/>
+    <circle cx="25" cy="82" r="3.4" fill="#fff2c7"/><circle cx="35" cy="82" r="3.4" fill="#fff2c7"/><circle cx="45" cy="82" r="3.4" fill="#fff2c7"/><circle cx="55" cy="82" r="3.4" fill="#fff2c7"/><circle cx="65" cy="82" r="3.4" fill="#fff2c7"/><circle cx="72" cy="82" r="3.4" fill="#fff2c7"/>`,
+  /* A film camera: two reels on top, one big lens for an eye, on a tripod. */
   video: `
-    <rect x="21" y="72" width="54" height="40" rx="12" fill="#2d323b"/>
-    <path d="M60 72h3a12 12 0 0 1 12 12v28H60z" fill="#1d2127"/>
-    <rect x="41" y="61" width="14" height="13" fill="#15181d"/>
-    <rect x="27" y="27" width="42" height="37" rx="13" fill="#2d323b"/>
-    <rect x="32" y="35" width="32" height="21" rx="8" fill="${K}"/>
-    <rect x="37" y="41" width="8" height="8" rx="4" fill="#c8ff3d"/>
-    <rect x="51" y="41" width="8" height="8" rx="4" fill="#c8ff3d"/>
-    <path d="M24 46c0-30 48-30 48 0" fill="none" stroke="#ff3d8b" stroke-width="6.5" stroke-linecap="round"/>
-    <rect x="16" y="37" width="13" height="20" rx="6" fill="#ff3d8b"/>
-    <rect x="67" y="37" width="13" height="20" rx="6" fill="#ff3d8b"/>
-    <rect x="19" y="41" width="4" height="12" rx="2" fill="#ffffff" fill-opacity=".55"/>
-    <rect x="42" y="80" width="38" height="24" rx="3" fill="${K}"/>
-    <g transform="rotate(-12 42 80)">
-      <rect x="42" y="71" width="38" height="8" rx="1.5" fill="#ffffff"/>
-      <path d="M48 71l-5 8M57 71l-5 8M66 71l-5 8M75 71l-5 8" stroke="${K}" stroke-width="4"/>
-    </g>
-    <path d="M48 89h26M48 96h16" stroke="#ffffff" stroke-opacity=".35" stroke-width="2.4" stroke-linecap="round"/>`,
+    <circle cx="33" cy="22" r="13" fill="${K}"/>
+    <circle cx="63" cy="20" r="15" fill="${K}"/>
+    <circle cx="33" cy="22" r="3" fill="#11c4a6"/><circle cx="33" cy="14" r="2.6" fill="#3a404b"/><circle cx="26" cy="25" r="2.6" fill="#3a404b"/><circle cx="40" cy="25" r="2.6" fill="#3a404b"/>
+    <circle cx="63" cy="20" r="3.4" fill="#11c4a6"/><circle cx="63" cy="11" r="3" fill="#3a404b"/><circle cx="55" cy="24" r="3" fill="#3a404b"/><circle cx="71" cy="24" r="3" fill="#3a404b"/>
+    <path d="M48 76L30 104M48 76l18 28M48 76v28" stroke="${K}" stroke-width="4.5" stroke-linecap="round"/>
+    <rect x="18" y="36" width="60" height="42" rx="9" fill="#ff3d8b"/>
+    <path d="M64 36h5a9 9 0 0 1 9 9v24a9 9 0 0 1-9 9h-5z" fill="#e0206f"/>
+    <circle cx="70" cy="44" r="3" fill="#fff36b"/>
+    <circle cx="46" cy="57" r="16" fill="#2d323b"/>
+    <circle cx="46" cy="57" r="11" fill="${K}"/>
+    <circle cx="46" cy="57" r="6" fill="#c8ff3d"/>
+    <circle cx="43.5" cy="54.5" r="2" fill="#ffffff"/>`,
+  /* A newspaper page with a face in the headline story, a fountain pen
+     across it. */
   article: `
-    <rect x="21" y="72" width="54" height="40" rx="12" fill="#fff4e3"/>
-    <path d="M60 72h3a12 12 0 0 1 12 12v28H60z" fill="#efd7b4"/>
-    <rect x="41" y="61" width="14" height="13" fill="#caa678"/>
-    <path d="M48 30V19" stroke="${K}" stroke-width="3.5"/>
-    <path d="M48 3l7 10-7 9-7-9z" fill="${K}"/>
-    <path d="M48 12v7" stroke="#ff2e7e" stroke-width="2"/>
-    <circle cx="48" cy="11" r="1.8" fill="#ff2e7e"/>
-    <rect x="25" y="29" width="46" height="35" rx="14" fill="#fff4e3"/>
-    <path d="M58 29a14 14 0 0 1 13 14v7a14 14 0 0 1-13 14z" fill="#efd7b4"/>
-    <rect x="31" y="37" width="34" height="19" rx="9" fill="${K}"/>
-    <rect x="37" y="42" width="8" height="8" rx="4" fill="#29d8ff"/>
-    <rect x="51" y="42" width="8" height="8" rx="4" fill="#29d8ff"/>
-    <g transform="rotate(-6 48 90)">
-      <rect x="25" y="73" width="46" height="34" rx="2" fill="#ffffff"/>
-      <rect x="29" y="77" width="38" height="6" fill="${K}"/>
-      <rect x="29" y="87" width="15" height="12" fill="#29d8ff"/>
-      <path d="M48 88h19M48 93h19M48 98h13" stroke="#b8b8b8" stroke-width="2.4" stroke-linecap="round"/>
-    </g>`,
+    <g transform="rotate(-7 48 46)">
+      <rect x="22" y="12" width="52" height="66" rx="3" fill="#ffffff"/>
+      <path d="M62 12h9a3 3 0 0 1 3 3v60a3 3 0 0 1-3 3h-9z" fill="#e9e9e9"/>
+      <rect x="27" y="17" width="42" height="9" rx="1" fill="${K}"/>
+      <rect x="34" y="34" width="8" height="11" rx="4" fill="${K}"/>
+      <rect x="52" y="34" width="8" height="11" rx="4" fill="${K}"/>
+      <circle cx="38.5" cy="37" r="1.6" fill="#ffffff"/>
+      <circle cx="56.5" cy="37" r="1.6" fill="#ffffff"/>
+      <path d="M42 50q5 4 10 0" fill="none" stroke="${K}" stroke-width="2.6" stroke-linecap="round"/>
+      <rect x="27" y="57" width="18" height="15" fill="#29d8ff"/>
+      <path d="M50 59h19M50 65h19M50 71h13" stroke="#b8b8b8" stroke-width="2.6" stroke-linecap="round"/>
+    </g>
+    <path d="M60 102l22-34" stroke="#243154" stroke-width="10" stroke-linecap="round"/>
+    <path d="M73 82l6-9" stroke="#ffd21f" stroke-width="10.5"/>
+    <path d="M83 58l4 8-8 3z" fill="${K}"/>`,
+  /* A speech bubble with a headset: the one you talk to. */
   host: `
-    <rect x="21" y="72" width="54" height="40" rx="16" fill="#ffffff"/>
-    <path d="M60 72h-1a16 16 0 0 1 16 16v24H60z" fill="#d9dce8"/>
-    <rect x="41" y="61" width="14" height="13" fill="#b9bdcc"/>
-    <circle cx="40" cy="86" r="2.6" fill="${K}"/>
-    <circle cx="48" cy="86" r="2.6" fill="#3de0ff"/>
-    <circle cx="56" cy="86" r="2.6" fill="${K}"/>
-    <rect x="24" y="26" width="48" height="38" rx="19" fill="#ffffff"/>
-    <path d="M56 26a19 19 0 0 1 16 19v0a19 19 0 0 1-16 19z" fill="#d9dce8"/>
-    <rect x="30" y="34" width="36" height="22" rx="11" fill="${K}"/>
-    <path d="M37 47q4.5-6 9 0M50 47q4.5-6 9 0" fill="none" stroke="#3de0ff" stroke-width="3" stroke-linecap="round"/>
-    <path d="M44 51q4 3.5 8 0" fill="none" stroke="#3de0ff" stroke-width="2.6" stroke-linecap="round"/>
-    <path d="M22 44c0-27 52-27 52 0" fill="none" stroke="${K}" stroke-width="4" stroke-linecap="round"/>
-    <rect x="16" y="38" width="10" height="16" rx="5" fill="#ffc21f"/>
-    <rect x="70" y="38" width="10" height="16" rx="5" fill="#ffc21f"/>
-    <path d="M75 53q0 11-14 11" fill="none" stroke="${K}" stroke-width="3" stroke-linecap="round"/>
-    <circle cx="59" cy="64" r="3.4" fill="${K}"/>`,
+    <path d="M28 58l-8 20 24-18z" fill="#ffffff"/>
+    <rect x="16" y="18" width="64" height="46" rx="21" fill="#ffffff"/>
+    <path d="M60 18a21 21 0 0 1 20 21v4a21 21 0 0 1-20 21z" fill="#dcdcf0"/>
+    <rect x="27" y="28" width="42" height="26" rx="13" fill="${K}"/>
+    <path d="M35 43q4.5-6 9 0M52 43q4.5-6 9 0" fill="none" stroke="#3de0ff" stroke-width="3.2" stroke-linecap="round"/>
+    <path d="M43 48q5 4 10 0" fill="none" stroke="#3de0ff" stroke-width="2.6" stroke-linecap="round"/>
+    <path d="M12 40c0-34 72-34 72 0" fill="none" stroke="${K}" stroke-width="4.5" stroke-linecap="round"/>
+    <rect x="6" y="33" width="11" height="18" rx="5.5" fill="#ffc21f"/>
+    <rect x="79" y="33" width="11" height="18" rx="5.5" fill="#ffc21f"/>
+    <path d="M85 51q0 20-22 20" fill="none" stroke="${K}" stroke-width="3.4" stroke-linecap="round"/>
+    <circle cx="61" cy="71" r="4" fill="${K}"/>
+    <circle cx="40" cy="86" r="4" fill="#ffc21f"/><circle cx="52" cy="86" r="4" fill="#ffffff"/><circle cx="64" cy="86" r="4" fill="#ffc21f"/>`,
 };
 
 export const BOT_BG = BG;
