@@ -430,6 +430,10 @@ export type ProjectDetail = {
   messages: {
     id: string;
     author: string;
+    /** The author's user id and own picture, so a colleague is drawn with
+     * their face (or the default their id picks, `lib/avatars/default`). */
+    authorId: string | null;
+    authorAvatar: string | null;
     agent: AgentKey | null;
     body: string;
     at: string;
@@ -605,6 +609,8 @@ export async function workProjectDetail(viewer: Viewer, id: string, zh: boolean,
     messages: (thread?.messages ?? []).map((m) => ({
       id: m.id,
       author: (zh && m.authorNameLocal) || m.authorName || "—",
+      authorId: m.authorId,
+      authorAvatar: m.authorAvatar,
       agent: m.authorIsAgent ? agentKeyFromEmail(m.authorEmail) : null,
       body: m.body,
       at: m.createdAt.toISOString(),

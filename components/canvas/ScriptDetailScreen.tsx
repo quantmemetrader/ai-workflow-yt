@@ -6,6 +6,7 @@ import Link from "next/link";
 import type { Measurement, ScriptDetail, ScriptListItem, ScriptTopic } from "@/lib/script/service";
 import { useResizable } from "@/components/ui/Resizer";
 import { AgentIcon as Face } from "@/components/agents/AgentIcon";
+import { PersonAvatar } from "@/components/ui/PersonAvatar";
 
 /**
  * ScriptDetailScreen — a transcription of the five Script document artboards,
@@ -63,9 +64,11 @@ export type ScriptDetailScreenProps = {
   /** the "Jump to a script" rail, grouped by status */
   siblings: Record<string, ScriptListItem[]>;
   /** people who may be asked to approve (never includes the current viewer) */
-  approvers: { id: string; name: string }[];
+  approvers: { id: string; name: string; avatarUrl?: string | null }[];
   /** the signed-in person, for "you are the designated approver" */
   viewerId: string;
+  /** their own picture, for the lines they wrote */
+  viewerAvatar?: string | null;
   tab: "brief" | "draft" | "versions" | "approval";
   /** version being previewed on the Versions tab, or null for the current draft */
   compareVersion: number | null;
@@ -525,15 +528,6 @@ function shortChecksum(checksum: string | null): string | null {
   return `sha256 ${hex.slice(0, 8)}…${hex.slice(-4)}`;
 }
 
-/** No avatar URL anywhere on ScriptDetail, so the artboards' circles carry initials. */
-function initials(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return "";
-  const first = parts[0]?.[0] ?? "";
-  const last = parts.length > 1 ? (parts[parts.length - 1]?.[0] ?? "") : "";
-  return (first + last).toUpperCase();
-}
-
 /** "01" — the beat column. */
 function ord2(n: number): string {
   return n < 10 ? `0${n}` : String(n);
@@ -750,6 +744,7 @@ export function ScriptDetailScreen(props: ScriptDetailScreenProps): React.JSX.El
     siblings,
     approvers,
     viewerId,
+    viewerAvatar = null,
     tab,
     compareVersion,
     model,
@@ -886,6 +881,14 @@ export function ScriptDetailScreen(props: ScriptDetailScreenProps): React.JSX.El
     if (id === viewerId) return zh ? "你" : "you";
     if (id === script.ownerId && ownerName !== null) return ownerName;
     return approvers.find((p) => p.id === id)?.name ?? null;
+  };
+  /** The same people's own pictures; a null draws the default their id picks
+   * (`PersonAvatar`), so only ids this screen cannot place look generic. */
+  const pictureOf = (id: string | null): string | null => {
+    if (id === null) return null;
+    if (id === viewerId) return viewerAvatar;
+    if (id === script.ownerId && owner !== null) return owner.avatarUrl;
+    return approvers.find((p) => p.id === id)?.avatarUrl ?? null;
   };
 
   const latest = versions.length > 0 ? versions[0] : null;
@@ -1117,26 +1120,15 @@ export function ScriptDetailScreen(props: ScriptDetailScreenProps): React.JSX.El
       )}
       <div style={{ flexGrow: 1 }}></div>
       {ownerName === null ? null : (
-        <div
+        <PersonAvatar
           className="av"
+          id={script.ownerId}
+          url={owner?.avatarUrl}
+          name={ownerName}
           title={ownerName}
-          style={{
-            width: 24,
-            height: 24,
-            borderRadius: 12,
-            background: "#f3f3f3",
-            color: "#7c7c7c",
-            fontSize: 9.5,
-            fontWeight: 500,
-            letterSpacing: 0,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            boxShadow: "0 0 0 2px #fff",
-          }}
-        >
-          {initials(ownerName)}
-        </div>
+          size={24}
+          style={{ boxShadow: "0 0 0 2px #fff", fontSize: 9.5 }}
+        />
       )}
       {onMakeVideo ? (
         /* The other end of the pipeline: a cut in Video Edit tied to this
@@ -1330,25 +1322,7 @@ export function ScriptDetailScreen(props: ScriptDetailScreenProps): React.JSX.El
               <span className="dot" style={{ background: STATUS_DOT[s.status] ?? "#c7c7c7" }}></span>
               <span>{s.title}</span>
               {s.ownerName === null ? null : (
-                <span
-                  className="dot"
-                  title={s.ownerName}
-                  style={{
-                    width: 16,
-                    height: 16,
-                    borderRadius: 8,
-                    background: "#f3f3f3",
-                    color: "#7c7c7c",
-                    fontSize: 8,
-                    fontWeight: 500,
-                    letterSpacing: 0,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  {initials(s.ownerName)}
-                </span>
+                <PersonAvatar id={s.ownerId} url={s.ownerAvatar} name={s.ownerName} title={s.ownerName} size={16} style={{ fontSize: 8, flexGrow: 0 }} />
               )}
             </button>
           ))}
@@ -2122,24 +2096,7 @@ export function ScriptDetailScreen(props: ScriptDetailScreenProps): React.JSX.El
         >
           {ownerName === null ? null : (
             <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <span
-                className="av"
-                style={{
-                  width: 16,
-                  height: 16,
-                  borderRadius: 8,
-                  background: "#f3f3f3",
-                  color: "#7c7c7c",
-                  fontSize: 8,
-                  fontWeight: 500,
-                  letterSpacing: 0,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                {initials(ownerName)}
-              </span>
+              <PersonAvatar className="av" id={script.ownerId} url={owner?.avatarUrl} name={ownerName} size={16} style={{ fontSize: 8 }} />
               {ownerName}
             </span>
           )}
@@ -2550,24 +2507,14 @@ export function ScriptDetailScreen(props: ScriptDetailScreenProps): React.JSX.El
               background: "#fff",
             }}
           >
-            <div
+            <PersonAvatar
               className="av"
-              style={{
-                width: 28,
-                height: 28,
-                borderRadius: 14,
-                background: "#f3f3f3",
-                color: "#7c7c7c",
-                fontSize: 11.5,
-                fontWeight: 500,
-                letterSpacing: 0,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              {initials(nameOf(requested.requestedBy) ?? "?")}
-            </div>
+              id={requested.requestedBy}
+              url={pictureOf(requested.requestedBy)}
+              name={nameOf(requested.requestedBy) ?? "?"}
+              size={28}
+              style={{ fontSize: 11.5 }}
+            />
             <div style={{ minWidth: 0 }}>
               <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
                 <span style={{ fontSize: 12.5, fontWeight: 500 }}>{nameOf(requested.requestedBy) ?? "—"}</span>
@@ -2932,24 +2879,14 @@ export function ScriptDetailScreen(props: ScriptDetailScreenProps): React.JSX.El
             background: "#fff",
           }}
         >
-          <div
+          <PersonAvatar
             className="av"
-            style={{
-              width: 28,
-              height: 28,
-              borderRadius: 14,
-              background: "#f3f3f3",
-              color: "#7c7c7c",
-              fontSize: 11.5,
-              fontWeight: 500,
-              letterSpacing: 0,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            {initials(nameOf(approvedRecord.decidedBy ?? approvedRecord.approverId) ?? "?")}
-          </div>
+            id={approvedRecord.decidedBy ?? approvedRecord.approverId}
+            url={pictureOf(approvedRecord.decidedBy ?? approvedRecord.approverId)}
+            name={nameOf(approvedRecord.decidedBy ?? approvedRecord.approverId) ?? "?"}
+            size={28}
+            style={{ fontSize: 11.5 }}
+          />
           <div style={{ flexGrow: 1 }}>
             <div style={{ fontSize: 12.5, fontWeight: 500 }}>
               {nameOf(approvedRecord.decidedBy ?? approvedRecord.approverId) ?? "—"}
@@ -3079,21 +3016,7 @@ export function ScriptDetailScreen(props: ScriptDetailScreenProps): React.JSX.El
           const author = (zh && c.authorNameLocal) || c.authorName;
           return (
             <div key={c.id} className="li">
-              <div
-                className="av"
-                style={{
-                  background: "#f3f3f3",
-                  color: "#7c7c7c",
-                  fontSize: 9,
-                  fontWeight: 500,
-                  letterSpacing: 0,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                {initials(author ?? "?")}
-              </div>
+              <PersonAvatar className="av" id={c.authorId} url={c.authorAvatar} name={author ?? "?"} style={{ fontSize: 9 }} />
               <div style={{ flexGrow: 1, minWidth: 0 }}>
                 <div className="a" style={{ whiteSpace: "pre-wrap", lineHeight: 1.5 }}>
                   {c.body}

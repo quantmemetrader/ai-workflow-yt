@@ -40,13 +40,14 @@ export default async function DirectMessagePage({ params }: { params: Promise<{ 
       topic={dm.other.title}
       isDirect
       directAvatar={dm.other.avatarUrl}
+      directId={dm.other.id}
       canAttach={viewer.modules.includes("files")}
-      me={{ name: (zh && viewer.nameLocal) || viewer.name, avatarUrl: viewer.avatarUrl }}
+      me={{ id: viewer.id, name: (zh && viewer.nameLocal) || viewer.name, avatarUrl: viewer.avatarUrl }}
       locale={viewer.locale ?? "zh-CN"}
       memberCount={2}
       members={[
-        { name: (zh && viewer.nameLocal) || viewer.name, avatar: viewer.avatarUrl },
-        { name: otherName, avatar: dm.other.avatarUrl },
+        { id: viewer.id, name: (zh && viewer.nameLocal) || viewer.name, avatar: viewer.avatarUrl },
+        { id: dm.other.id, name: otherName, avatar: dm.other.avatarUrl },
       ]}
       /* A direct message has two people in it and no list to manage, so the
          header's pill stays a label — but the composer still needs names to
@@ -59,6 +60,7 @@ export default async function DirectMessagePage({ params }: { params: Promise<{ 
       }))}
       messages={rows.map((r) => ({
         id: r.message.id,
+        authorId: r.message.authorId,
         authorName: (zh && r.authorNameLocal) || r.authorName || "—",
         authorAvatar: r.authorAvatar,
         isAgent: r.authorIsAgent === true,

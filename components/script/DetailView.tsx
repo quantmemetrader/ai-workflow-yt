@@ -44,6 +44,7 @@ export function DetailView({
   siblings,
   approvers,
   viewerId,
+  viewerAvatar = null,
   locale,
   model,
   shareSheet,
@@ -54,8 +55,10 @@ export function DetailView({
   flow?: ScriptRun | null;
   detail: ScriptDetail;
   siblings: Record<string, ScriptListItem[]>;
-  approvers: { id: string; name: string }[];
+  approvers: { id: string; name: string; avatarUrl?: string | null }[];
   viewerId: string;
+  /** The signed-in person's own picture, for the lines they wrote. */
+  viewerAvatar?: string | null;
   locale: string;
   model: string;
   /** Holds the Video module, so the script can be handed to a cut. */
@@ -184,6 +187,7 @@ export function DetailView({
       siblings={siblings}
       approvers={approvers}
       viewerId={viewerId}
+      viewerAvatar={viewerAvatar}
       shareSheet={shareSheet}
       topic={detail.topic ?? null}
       writing={writing}

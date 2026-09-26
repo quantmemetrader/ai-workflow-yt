@@ -45,8 +45,9 @@ export default async function ScriptPage({ params }: { params: Promise<{ id: str
       locale={viewer.locale ?? "zh-CN"}
       detail={detail}
       siblings={siblings}
-      approvers={approvers.map((a) => ({ id: a.id, name: (zh && a.nameLocal) || a.name }))}
+      approvers={approvers.map((a) => ({ id: a.id, name: (zh && a.nameLocal) || a.name, avatarUrl: a.avatarUrl }))}
       viewerId={viewer.id}
+      viewerAvatar={viewer.avatarUrl}
       model={modelFor.drafting()}
       canMakeVideo={viewer.modules.includes("video")}
       flow={run}

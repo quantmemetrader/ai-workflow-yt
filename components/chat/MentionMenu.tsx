@@ -4,7 +4,8 @@ import { AgentIcon } from "@/components/agents/AgentIcon";
 
 import * as React from "react";
 import { AGENT_COLORS, AGENT_KEYS, AGENT_LABELS, AGENT_TINTS, agentAliases, type AgentKey } from "@/lib/agents/catalog";
-import { initials, soft } from "./look";
+import { soft } from "./look";
+import { PersonAvatar } from "@/components/ui/PersonAvatar";
 import { AgentName } from "@/components/ui/Tr";
 
 /**
@@ -29,6 +30,8 @@ export type MentionTarget = {
   /** The role line under the name. */
   sub: string | null;
   avatarUrl: string | null;
+  /** A person's user id, for their default picture; absent for an employee. */
+  personId?: string | null;
   /** Set for an AI employee; null for a person. */
   agent: AgentKey | null;
   /**
@@ -74,6 +77,7 @@ export function mentionTargets(people: MentionPerson[], zh: boolean): MentionTar
     label: p.name,
     sub: p.title ?? null,
     avatarUrl: p.avatarUrl,
+    personId: p.id,
     agent: null,
     aliases: words([p.name, p.name.replace(/\s+/g, ""), ...p.name.split(/\s+/), p.email?.split("@")[0] ?? ""]),
   }));
@@ -226,31 +230,8 @@ export function MentionMenu({
           >
             {t.agent ? (
               <AgentMark agent={t.agent} size={26} radius={8} />
-            ) : t.avatarUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={t.avatarUrl}
-                alt=""
-                style={{ width: 26, height: 26, borderRadius: 8, objectFit: "cover", flexShrink: 0 }}
-              />
             ) : (
-              <div
-                style={{
-                  width: 26,
-                  height: 26,
-                  borderRadius: 8,
-                  background: "#e2e2e2",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  fontSize: 9.5,
-                  fontWeight: 600,
-                  color: "#525252",
-                  flexShrink: 0,
-                }}
-              >
-                {initials(t.label)}
-              </div>
+              <PersonAvatar id={t.personId} url={t.avatarUrl} name={t.label} size={26} radius={8} />
             )}
 
             <span style={{ minWidth: 0, flexGrow: 1 }}>

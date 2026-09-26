@@ -34,6 +34,7 @@ export default async function ConversationPage({ params }: { params: Promise<{ i
       history={history}
       now={new Date().toISOString()}
       me={{
+        id: viewer.id,
         name: zh && viewer.nameLocal ? viewer.nameLocal : viewer.name,
         avatarUrl: viewer.avatarUrl,
       }}

@@ -1,6 +1,7 @@
 "use client";
 
 import { Icon } from "@/components/ui/Icon";
+import { PersonAvatar } from "@/components/ui/PersonAvatar";
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -147,7 +148,7 @@ export function MembersSheet({
         <div style={{ overflowY: "auto", padding: "8px 10px", minHeight: 0 }}>
           {(state?.members ?? []).map((m) => (
             <div key={m.id} style={row}>
-              <Avatar name={m.name} url={m.avatarUrl} />
+              <Avatar id={m.id} name={m.name} url={m.avatarUrl} />
               <span style={{ fontSize: 13 }}>{m.name}</span>
               {m.title && <span style={{ fontSize: 11, color: "#999999" }}>{m.title}</span>}
               {state?.canManage && (
@@ -176,7 +177,7 @@ export function MembersSheet({
                     disabled={busy}
                     style={{ ...row, width: "100%", border: 0, background: "transparent", cursor: "pointer", textAlign: "left" }}
                   >
-                    <Avatar name={p.name} url={p.avatarUrl} />
+                    <Avatar id={p.id} name={p.name} url={p.avatarUrl} />
                     <span style={{ fontSize: 13 }}>{p.name}</span>
                     <span style={{ marginLeft: "auto", fontSize: 11.5, color: "#007be0" }}>
                       {zh ? "加入" : "add"}
@@ -214,30 +215,10 @@ export function MembersSheet({
   );
 }
 
-function Avatar({ name, url }: { name: string; url: string | null }) {
-  if (url) {
-    // eslint-disable-next-line @next/next/no-img-element
-    return <img src={url} alt="" style={{ width: 24, height: 24, borderRadius: 7, objectFit: "cover", flexShrink: 0 }} />;
-  }
-  return (
-    <span
-      style={{
-        width: 24,
-        height: 24,
-        borderRadius: 7,
-        background: "#e2e2e2",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        fontSize: 9,
-        fontWeight: 600,
-        color: "#525252",
-        flexShrink: 0,
-      }}
-    >
-      {name.split(/\s+/).map((p) => p[0]).slice(0, 2).join("").toUpperCase()}
-    </span>
-  );
+/* A member's picture, or the default their id picks; an AI employee in the
+   channel carries its pixel face in `avatarUrl`. */
+function Avatar({ id, name, url }: { id: string; name: string; url: string | null }) {
+  return <PersonAvatar id={id} url={url} name={name} size={24} radius={7} />;
 }
 
 const row: React.CSSProperties = {

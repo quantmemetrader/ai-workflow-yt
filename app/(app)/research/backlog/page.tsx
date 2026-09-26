@@ -21,7 +21,7 @@ export default async function BacklogPage() {
 
   const [rows, people, sources, decisions, open] = await Promise.all([
     db
-      .select({ topic: topics, ownerName: users.name, ownerNameLocal: users.nameLocal })
+      .select({ topic: topics, ownerName: users.name, ownerNameLocal: users.nameLocal, ownerAvatar: users.avatarUrl })
       .from(topics)
       .leftJoin(users, eq(users.id, topics.ownerId))
       .where(and(eq(topics.tenantId, viewer.tenantId), inArray(topics.status, ["adopted", "saved"])))
@@ -126,6 +126,7 @@ export default async function BacklogPage() {
         summary: r.topic.summary,
         ownerName: (zh && r.ownerNameLocal) || r.ownerName,
         ownerId: r.topic.ownerId,
+        ownerAvatar: r.ownerAvatar,
         targetChannel: r.topic.targetChannel,
         dueDate: r.topic.dueDate,
         heat: r.topic.heat,

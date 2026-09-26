@@ -1,7 +1,9 @@
 import type { FileRow } from "@/components/canvas/FilesScreen";
 import type { files, Relation } from "@/lib/db/schema";
 
-type Row = { file: typeof files.$inferSelect; ownerName: string };
+/** `ownerAvatar` is optional so a caller with only the name still fits; the
+ * row then draws the default the owner's id picks. */
+type Row = { file: typeof files.$inferSelect; ownerName: string; ownerAvatar?: string | null };
 
 /** The one place a database row becomes a table row, so every Files view shows
  * the same columns from the same fields.
@@ -25,6 +27,8 @@ export function toRows(
     kind: r.file.kind,
     sizeBytes: r.file.sizeBytes,
     ownerName: r.ownerName,
+    ownerId: r.file.ownerId,
+    ownerAvatar: r.ownerAvatar ?? null,
     updatedAt: (r.file.deletedAt ?? r.file.updatedAt).toISOString(),
     durationMs: r.file.durationMs,
     version: r.file.version,

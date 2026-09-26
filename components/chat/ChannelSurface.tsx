@@ -21,7 +21,8 @@ import type { ChatCardKind, ChatHandoff, HandoffArtifact } from "@/lib/chat/hand
 import { AgentIcon } from "@/components/agents/AgentIcon";
 import { Icon, type IconName } from "@/components/ui/Icon";
 import { clock, dayLabel, minutesBetween, sameDay } from "./when";
-import { initials, soft, threadCss, tidyMarkdown, withoutLeadingPictures } from "./look";
+import { soft, threadCss, tidyMarkdown, withoutLeadingPictures } from "./look";
+import { PersonAvatar } from "@/components/ui/PersonAvatar";
 import type { StepKey } from "@/lib/agents/steps";
 import { JobChip } from "./Working";
 import { AgentTyping } from "@/components/agents/AgentTyping";
@@ -49,6 +50,9 @@ export type ChannelAttachment = { id: string; name: string; kind: string; sizeBy
 
 export type ChannelMessage = {
   id: string;
+  /** The author's user id, for their default picture when they have not
+   * chosen one (`lib/avatars/default.ts`). */
+  authorId?: string | null;
   authorName: string;
   authorAvatar: string | null;
   body: string;
@@ -88,7 +92,8 @@ export type ChannelPending = {
   job?: { videoProjectId: string } | null;
 };
 
-export type ChannelMember = { name: string; avatar: string | null };
+/** `id` picks the default picture for a member who has not chosen one. */
+export type ChannelMember = { id?: string | null; name: string; avatar: string | null };
 
 /**
  * How long a run of messages from one person stays one block. Within it the
@@ -546,6 +551,8 @@ export function ChannelSurface(props: {
   isDirect?: boolean;
   /** The other person's picture, in a direct message. */
   directAvatar?: string | null;
+  /** And their user id, for their default picture. */
+  directId?: string | null;
 }): React.JSX.Element {
   const zh = props.locale.startsWith("zh");
   /* Falls back to the newest message rather than the clock, so a caller that
@@ -744,28 +751,7 @@ export function ChannelSurface(props: {
         }}
       >
         {props.isDirect ? (
-          props.directAvatar ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={props.directAvatar} alt="" style={{ width: 32, height: 32, borderRadius: 9, objectFit: "cover", flexShrink: 0 }} />
-          ) : (
-            <div
-              style={{
-                width: 32,
-                height: 32,
-                borderRadius: 9,
-                background: "#ececec",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontSize: 12,
-                fontWeight: 600,
-                color: "#525252",
-                flexShrink: 0,
-              }}
-            >
-              {initials(props.name)}
-            </div>
-          )
+          <PersonAvatar id={props.directId} url={props.directAvatar} name={props.name} size={32} radius={9} />
         ) : (
           <div
             style={{
@@ -841,50 +827,23 @@ export function ChannelSurface(props: {
             {/* The employees in a channel now have faces here too: their rows
                 carry `/api/agent/avatar/<key>`, the same pixel face as in the
                 message list. */}
-            {props.members.slice(0, 5).map((member, i) =>
-              member.avatar === null ? (
-                <div
-                  key={member.name + i}
-                  title={member.name}
-                  style={{
-                    width: "24px",
-                    height: "24px",
-                    borderRadius: "7px",
-                    border: "2px solid #fff",
-                    marginLeft: i === 0 ? "0px" : "-7px",
-                    background: "#e5e5e5",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    fontSize: "9.5px",
-                    fontWeight: 600,
-                    color: "#525252",
-                    flexShrink: 0,
-                    boxSizing: "border-box",
-                  }}
-                >
-                  {initials(member.name)}
-                </div>
-              ) : (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  key={member.name + i}
-                  src={member.avatar}
-                  alt=""
-                  title={member.name}
-                  style={{
-                    width: "24px",
-                    height: "24px",
-                    borderRadius: "7px",
-                    objectFit: "cover",
-                    border: "2px solid #fff",
-                    marginLeft: i === 0 ? "0px" : "-7px",
-                    boxSizing: "border-box",
-                    background: "#fff",
-                  }}
-                />
-              ),
-            )}
+            {props.members.slice(0, 5).map((member, i) => (
+              <PersonAvatar
+                key={(member.id ?? member.name) + i}
+                id={member.id}
+                url={member.avatar}
+                name={member.name}
+                title={member.name}
+                size={24}
+                radius={7}
+                style={{
+                  border: "2px solid #fff",
+                  marginLeft: i === 0 ? "0px" : "-7px",
+                  boxSizing: "border-box",
+                  fontSize: "9.5px",
+                }}
+              />
+            ))}
           </div>
           <span style={{ fontSize: "12px", color: "#525252", paddingRight: "4px", fontVariantNumeric: "tabular-nums" }}>
             {props.memberCount}
@@ -973,24 +932,10 @@ export function ChannelSurface(props: {
                   <div className="face">
                     <AgentMark agent={m.agentKey ?? null} />
                   </div>
-                ) : m.authorAvatar === null ? (
-                  <div
-                    className="mav"
-                    style={{
-                      background: "#ececec",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      fontSize: "12px",
-                      fontWeight: 600,
-                      color: "#525252",
-                    }}
-                  >
-                    {initials(m.authorName)}
-                  </div>
                 ) : (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img className="mav" src={m.authorAvatar} alt="" />
+                  /* A colleague: their picture, or the default their id picks.
+                     `.mav` sizes it, so a grouped line can still fold it away. */
+                  <PersonAvatar className="mav" id={m.authorId} url={m.authorAvatar} name={m.authorName} />
                 );
 
               const tags = parseAgentMentions(m.body);

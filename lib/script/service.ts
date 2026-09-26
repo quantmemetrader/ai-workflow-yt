@@ -90,6 +90,8 @@ export type ScriptListItem = {
   aspect: string | null;
   ownerId: string | null;
   ownerName: string | null;
+  /** The owner's own picture; null draws their default (`lib/avatars/default`). */
+  ownerAvatar: string | null;
   updatedAt: Date;
   /** The project this script is the script of, when it is in one. */
   projectId: string | null;
@@ -140,6 +142,7 @@ export async function listScripts(
       ownerId: scripts.ownerId,
       ownerName: users.name,
       ownerNameLocal: users.nameLocal,
+      ownerAvatar: users.avatarUrl,
       updatedAt: scripts.updatedAt,
       projectId: workProjects.id,
       projectTitle: workProjects.title,
@@ -179,6 +182,7 @@ export async function listScripts(
       aspect: r.aspect,
       ownerId: r.ownerId,
       ownerName: (zh && r.ownerNameLocal) || r.ownerName,
+      ownerAvatar: r.ownerAvatar ?? null,
       updatedAt: r.updatedAt,
       projectId: r.projectId ?? null,
       projectTitle: r.projectTitle ?? null,
@@ -261,8 +265,11 @@ export type ScriptCommentRow = {
   body: string;
   createdAt: Date;
   resolvedAt: Date | null;
+  /** Who wrote it, and their own picture, so it is drawn with their face. */
+  authorId: string | null;
   authorName: string | null;
   authorNameLocal: string | null;
+  authorAvatar: string | null;
 };
 
 /**
@@ -309,7 +316,8 @@ export type ScriptDetail = {
   suggestions: SuggestionRow[];
   approvals: ApprovalRow[];
   comments: ScriptCommentRow[];
-  owner: { name: string; nameLocal: string | null } | null;
+  /** With the id and own picture, so the owner is drawn with their face. */
+  owner: { id: string; name: string; nameLocal: string | null; avatarUrl: string | null } | null;
   live: Measurement;
   locked: boolean;
   topic: ScriptTopic | null;
@@ -458,15 +466,21 @@ export async function scriptDetail(viewer: Viewer, scriptId: string): Promise<Sc
         body: scriptComments.body,
         createdAt: scriptComments.createdAt,
         resolvedAt: scriptComments.resolvedAt,
+        authorId: scriptComments.authorId,
         authorName: users.name,
         authorNameLocal: users.nameLocal,
+        authorAvatar: users.avatarUrl,
       })
       .from(scriptComments)
       .leftJoin(users, eq(users.id, scriptComments.authorId))
       .where(eq(scriptComments.scriptId, scriptId))
       .orderBy(asc(scriptComments.createdAt)),
     row.ownerId
-      ? db.select({ name: users.name, nameLocal: users.nameLocal }).from(users).where(eq(users.id, row.ownerId)).limit(1)
+      ? db
+          .select({ id: users.id, name: users.name, nameLocal: users.nameLocal, avatarUrl: users.avatarUrl })
+          .from(users)
+          .where(eq(users.id, row.ownerId))
+          .limit(1)
       : Promise.resolve([]),
     scriptTopic(viewer, row).catch((err) => {
       console.error("[script] the topic card could not be read", err);
@@ -1063,7 +1077,7 @@ export async function replaceSuggestions(
  * requester, since a version cannot be approved by its own author. */
 export async function possibleApprovers(viewer: Viewer) {
   return db
-    .select({ id: users.id, name: users.name, nameLocal: users.nameLocal })
+    .select({ id: users.id, name: users.name, nameLocal: users.nameLocal, avatarUrl: users.avatarUrl })
     .from(users)
     .where(
       and(

@@ -39,6 +39,7 @@ import { notify } from "@/lib/client/notify";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { AGENT_KEYS } from "@/lib/agents/catalog";
 import { ROLE_LABELS } from "@/lib/home/roles";
+import { PersonAvatar } from "@/components/ui/PersonAvatar";
 
 /**
  * Admin (spec §4.8, §8), transcribed from the seven `Adm-*` artboards.
@@ -543,32 +544,7 @@ function People({
               }}
             >
               <span style={{ display: "flex", alignItems: "center", gap: 9, minWidth: 0 }}>
-                {p.avatarUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={p.avatarUrl}
-                    alt=""
-                    style={{ width: 24, height: 24, borderRadius: 12, objectFit: "cover", flexShrink: 0 }}
-                  />
-                ) : (
-                  <span
-                    style={{
-                      width: 24,
-                      height: 24,
-                      borderRadius: 12,
-                      background: "#f3f3f3",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      fontSize: 10,
-                      fontWeight: 600,
-                      color: "#7c7c7c",
-                      flexShrink: 0,
-                    }}
-                  >
-                    {(zh && p.nameLocal ? p.nameLocal : p.name).slice(0, 2)}
-                  </span>
-                )}
+                <PersonAvatar id={p.id} url={p.avatarUrl} name={(zh && p.nameLocal) || p.name} size={24} />
                 <span style={{ minWidth: 0 }}>
                   <span style={{ display: "block", fontWeight: 500, ...clip }}>
                     {(zh && p.nameLocal) || p.name}
