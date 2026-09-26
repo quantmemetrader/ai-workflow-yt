@@ -1,6 +1,8 @@
 import React from "react";
-import { AbsoluteFill, interpolate, spring, useCurrentFrame, useVideoConfig } from "remotion";
-import { THEME, ratio } from "./theme";
+import { AbsoluteFill, useCurrentFrame, useVideoConfig } from "remotion";
+import { THEME, V2, ratio } from "./theme";
+import { Marked, isCjk } from "./text";
+import { V2Graphic, envelope, geo, isV2Kind, type Options } from "./v2";
 
 /**
  * The graphics the product offers, and deliberately no more.
@@ -16,9 +18,20 @@ import { THEME, ratio } from "./theme";
  *   1. **Nothing moves after it arrives.** Motion carries meaning on the way
  *      in and then stops. A title that keeps drifting is a title being read
  *      twice.
- *   2. **One spring, one direction.** Everything enters from the same side
- *      with the same physics, so a sequence of graphics feels like one hand.
- *   3. **Out is faster than in.** ~0.25s, because leaving is not the idea.
+ *   2. **One curve, one direction.** Everything enters from the same side on
+ *      the same curve, so a sequence of graphics feels like one hand.
+ *   3. **Out is faster than in.** 300 ms in, 180 ms out (PLAN.md §1),
+ *      because leaving is not the idea.
+ *
+ * Director v2 (PLAN.md §2 W4) changed two things here and added the rest in
+ * `v2.tsx`. The entrance is now the plan's `cubic-bezier(.2,.8,.2,1)` over
+ * 300 ms with a 180 ms exit, for every kind, so a v1 title and a v2 counter
+ * cut together; the v1 stills renderer draws frame 20 (667 ms), which is
+ * after either curve has settled, so the stills are unchanged in layout.
+ * And `statement` moved from the lower left into Zone T (y 230–620 on the
+ * 1080×1920 frame), off the face. The ten v2 kinds and an end card that
+ * carries `options.creditsLine` are dispatched to `v2.tsx`; their props are
+ * the same `text`/`sub` plus `options`.
  */
 export type GraphicKind =
   | "title"
@@ -44,7 +57,18 @@ export type GraphicKind =
   | "watermark"
   | "footnote"
   /** A white card with dark text, for an aside. */
-  | "card";
+  | "card"
+  /* Director v2 (`v2.tsx`): the templates that make an argument legible with the sound off. */
+  | "hook"
+  | "counter"
+  | "compare"
+  | "list"
+  | "entity"
+  | "chip"
+  | "headline"
+  | "term"
+  | "diagram"
+  | "stinger";
 
 /**
  * The icons, on a 24×24 grid, stroked in the accent colour.
@@ -121,32 +145,19 @@ export type GraphicProps = {
   placement?: string | null;
   /** Share of the frame height, 5–90. */
   scale?: number | null;
-};
-
-/** Whether a line is mostly Chinese, which picks the face and the tracking. */
-const isCjk = (text: string) => (text.match(/[\u3400-\u9fff]/g) ?? []).length > text.length / 3;
-
-/**
- * A line with its keywords set in the accent colour.
- *
- * The channel marks the words that matter in its yellow-green: "一枚智能戒指"
- * with 智能 lit. The director writes them as 【智能】; this draws them.
- */
-const Marked: React.FC<{ text: string; accent: string; scale?: number }> = ({ text, accent, scale = 1.08 }) => {
-  const parts = text.split(/(【[^】]+】)/g).filter(Boolean);
-  return (
-    <>
-      {parts.map((p, i) =>
-        p.startsWith("【") && p.endsWith("】") ? (
-          <span key={i} style={{ color: accent, fontSize: `${Math.round(scale * 100)}%` }}>
-            {p.slice(1, -1)}
-          </span>
-        ) : (
-          <span key={i}>{p}</span>
-        ),
-      )}
-    </>
-  );
+  /**
+   * The row's `options` (jsonb): what a v2 template reads its timing and
+   * data from (`landMs`, `stepsMs`, `bars`, `items`, `logo`, `creditsLine`…),
+   * and `zone` for a v1 kind the v2 director places differently.
+   */
+  options?: Options | null;
+  /**
+   * The frame this graphic is laid out for, when the composition is not
+   * that size: a motion clip is rendered cropped to the graphic's own box
+   * (`Root.tsx:Clip`), so the video config says 1080×500 while the layout
+   * must still be the 1080×1920 frame's.
+   */
+  frame?: { width: number; height: number } | null;
 };
 
 export const Graphic: React.FC<GraphicProps> = ({
@@ -158,22 +169,54 @@ export const Graphic: React.FC<GraphicProps> = ({
   icon,
   placement,
   scale,
+  options,
+  frame: frameSize,
 }) => {
   const frame = useCurrentFrame();
-  const { fps, height } = useVideoConfig();
+  const config = useVideoConfig();
+  const fps = config.fps;
+  const height = frameSize?.height ?? config.height;
+  const width = frameSize?.width ?? config.width;
 
-  // One spring for everything, so a run of graphics reads as one hand.
-  const arrive = spring({ frame, fps, config: { damping: 200, mass: 0.6 }, durationInFrames: Math.round(fps * 0.45) });
-  const leaveAt = Math.max(0, seconds * fps - fps * 0.25);
-  const leave = interpolate(frame, [leaveAt, seconds * fps], [1, 0], {
-    extrapolateLeft: "clamp",
-    extrapolateRight: "clamp",
-  });
-  const on = arrive * leave;
+  /* One curve for everything, so a run of graphics reads as one hand:
+     300 ms in, 180 ms out, on the plan's bezier. `on` is what every v1
+     kind below drives its opacity and its settle with. */
+  const env = envelope(frame, fps, seconds);
+  const on = env.on;
+  const opts: Options = options ?? {};
+
+  if (isV2Kind(kind) || (kind === "end-card" && options && "creditsLine" in options)) {
+    return (
+      <V2Graphic
+        kind={kind as Parameters<typeof V2Graphic>[0]["kind"]}
+        g={geo(width, height)}
+        accent={accent}
+        text={text}
+        sub={sub ?? null}
+        options={opts}
+        env={env}
+        frame={frame}
+        fps={fps}
+      />
+    );
+  }
 
   if (kind === "lower-third") {
+    /* In a portrait v2 cut the name card sits in the "lower" zone — above
+       the captions and below the chin (y 1080–1290 on the 1920 frame) —
+       because the bottom-left corner is under the watermark and inside the
+       platform's UI band there. A row without `options.zone` keeps the v1
+       corner, so nothing already rendered moves. */
+    const lowerZone = opts.zone === "lower";
+    const paddingBottom = lowerZone ? height - ratio(height, V2.zones.lower.bottom / V2.frame.height) : ratio(height, 0.085);
     return (
-      <AbsoluteFill style={{ justifyContent: "flex-end", alignItems: "flex-start", padding: ratio(height, 0.085) }}>
+      <AbsoluteFill
+        style={{
+          justifyContent: "flex-end",
+          alignItems: "flex-start",
+          padding: `${ratio(height, 0.085)}px ${ratio(height, 0.085)}px ${paddingBottom}px ${lowerZone ? Math.round((V2.side * width) / V2.frame.width) : ratio(height, 0.085)}px`,
+        }}
+      >
         <div style={{ display: "flex", alignItems: "stretch", gap: ratio(height, 0.016), opacity: on }}>
           {/* A rule, not a box. The name is the graphic; the rule only says
               where it starts. */}
@@ -712,10 +755,14 @@ export const Graphic: React.FC<GraphicProps> = ({
     /* The channel's claim block: two or three short lines set left, the
        accent dash above, the words that matter in the accent colour and a
        size up. Over the footage with a shadow, not on a scrim: the speaker
-       stays visible behind their own claim. */
+       stays visible behind their own claim.
+
+       In Zone T (top at y 230 of 1920) since director v2: it used to hang
+       at the lower left, where on a 9:16 cut it crossed the chin and the
+       captions (the v1 fault list has it at 164/210/258/283 s). */
     const lines = text.split(/\n|\|/).map((l) => l.trim()).filter(Boolean).slice(0, 3);
     return (
-      <AbsoluteFill style={{ justifyContent: "flex-end", alignItems: "flex-start", padding: `0 ${ratio(height, 0.05)}px ${ratio(height, 0.44)}px` }}>
+      <AbsoluteFill style={{ justifyContent: "flex-start", alignItems: "flex-start", padding: `${ratio(height, V2.zones.T.top / V2.frame.height)}px ${ratio(height, 0.05)}px 0` }}>
         <div style={{ opacity: on, transform: `translateY(${(1 - on) * ratio(height, 0.016)}px)` }}>
           <div style={{ width: ratio(height, 0.024), height: ratio(height, 0.006), background: accent, borderRadius: 2, marginBottom: ratio(height, 0.01) }} />
           {lines.map((l, i) => (
