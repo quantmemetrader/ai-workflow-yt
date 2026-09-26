@@ -9,7 +9,7 @@ import { files } from "@/lib/db/schema";
 import type { Viewer } from "@/lib/auth/types";
 import { importPictureBytes, importVideoBytes } from "@/lib/files/service";
 import { PLATFORM_LABEL } from "@/lib/media/credits";
-import type { Asset, Candidate } from "@/lib/media/types";
+import type { Asset, Candidate, MediaKind } from "@/lib/media/types";
 import { downloadToFile, run, workDir, ToolError, GALLERY_DL, YT_DLP } from "@/lib/media/tools";
 import { tmpdir as osTmpdir } from "node:os";
 
@@ -197,8 +197,8 @@ async function firstFile(dir: string, prefix: string): Promise<string | null> {
   return path.join(dir, pick);
 }
 
-async function viaYtDlp(url: string, dir: string, window: FetchOpts["windowS"], signal?: AbortSignal): Promise<string> {
-  const args = ["-f", YTDLP_FORMAT, "--no-playlist", "--no-warnings", "--merge-output-format", "mp4", "-o", path.join(dir, "src.%(ext)s")];
+async function viaYtDlp(url: string, dir: string, window: FetchOpts["windowS"], signal?: AbortSignal, format = YTDLP_FORMAT): Promise<string> {
+  const args = ["-f", format, "--no-playlist", "--no-warnings", "--merge-output-format", "mp4", "-o", path.join(dir, "src.%(ext)s")];
   if (window) args.push("--download-sections", `*${window.start}-${window.end}`);
   args.push(url);
   await run(YT_DLP, args, { timeoutMs: 240_000, signal });
@@ -221,11 +221,11 @@ async function viaHls(url: string, dir: string, window: FetchOpts["windowS"], si
 
 const looksLikeHls = (url: string) => /\.m3u8(\?|$)/i.test(url);
 
-async function downloadVideo(candidate: Candidate, dir: string, window: FetchOpts["windowS"], signal?: AbortSignal): Promise<{ file: string; windowed: boolean }> {
+async function downloadVideo(candidate: Candidate, dir: string, window: FetchOpts["windowS"], signal?: AbortSignal, format?: string): Promise<{ file: string; windowed: boolean }> {
   const h = candidate.handle;
   if (h.via === "yt-dlp") {
     try {
-      return { file: await viaYtDlp(h.url, dir, window, signal), windowed: Boolean(window) };
+      return { file: await viaYtDlp(h.url, dir, window, signal, format), windowed: Boolean(window) };
     } catch (err) {
       if (!h.fallbackUrl) throw err;
       /* The tool could not reach it (a region-locked TikTok post, say); the platform's own file address still may. */
@@ -446,4 +446,49 @@ export async function fetchAssets(
     else failed.push({ candidate: candidates[i], error: r.reason instanceof Error ? r.reason.message : String(r.reason) });
   });
   return { assets, failed };
+}
+
+/* ---------------------------------------------------------------- to disk */
+
+/** What `fetchToDisk` hands back: the bytes where they landed, measured, and nothing imported. */
+export type DiskFetch = {
+  file: string;
+  kind: MediaKind;
+  /** For a picture: the type the bytes turned out to be. */
+  mime?: string;
+  durationMs?: number;
+  width?: number;
+  height?: number;
+  /** True when only the asked-for window was downloaded (the yt-dlp sources); false when the whole file came and still needs cutting. */
+  windowed: boolean;
+};
+
+/**
+ * A candidate onto this machine's disk, and no further.
+ *
+ * The same download and probe as `fetchAsset`, without the Files import,
+ * the viewer, the cache or the normalising: the director's sourcing step
+ * (PLAN.md §2 W3, Stage 0 item 9 ask (a)) has to look at a clip before it
+ * decides whether to keep it — sample frames, ask the vision model for the
+ * window, hash a frame against the ones already chosen — and a clip it then
+ * rejects must never have become a row in Files. The lab runs the same way
+ * with no database at all. The caller owns `dir` and cleans it up.
+ *
+ * `format` is a yt-dlp format string for the sources yt-dlp fetches; unset,
+ * it is the 720p H.264 default above. A picture is downloaded and sniffed
+ * exactly as `fetchAsset` does it (HEIC and SVG bytes are refused).
+ */
+export async function fetchToDisk(
+  candidate: Candidate,
+  opts: { dir: string; windowS?: FetchOpts["windowS"]; signal?: AbortSignal; format?: string },
+): Promise<DiskFetch> {
+  if (candidate.kind === "image") {
+    const { file, mime } = await downloadImage(candidate, opts.dir);
+    const size = await probe(file).catch(() => null);
+    return { file, kind: "image", mime, width: size?.width ?? candidate.width, height: size?.height ?? candidate.height, windowed: false };
+  }
+  const { file, windowed } = await downloadVideo(candidate, opts.dir, opts.windowS, opts.signal, opts.format);
+  const p = await probe(file);
+  if (!p.durationMs) throw new ToolError("the download has no playable video in it");
+  return { file, kind: "video", durationMs: p.durationMs, width: p.width, height: p.height, windowed };
 }
