@@ -11,7 +11,7 @@ import { assertBudget, BudgetStop, recordUsage } from "@/lib/ai/ledger";
 import { agentViewer } from "@/lib/agents";
 import { creatorVoiceText } from "@/lib/creator/service";
 import { guessBeat } from "@/lib/research/service";
-import { PLATFORMS, type HotRow } from "@/lib/research/platform-catalog";
+import { BEAT_FEEDS, PLATFORMS, isBeatFeedKey, type HotRow } from "@/lib/research/platform-catalog";
 import { toSimplified } from "@/lib/text/simplified";
 import { backlogQueryOf, cleanCodes, numbersOf } from "@/lib/projects/topic";
 import { projectsVisibleTo } from "@/lib/projects/service";
@@ -28,9 +28,13 @@ import { projectsVisibleTo } from "@/lib/projects/service";
  *
  * The pool is read from what is stored, with no live (billed) platform read:
  *
- *   — the latest hot list of each platform (`hot_snapshots`), only the rows
- *     marked business or tech when the list has been classified
- *     (`relevance`), every row when it has not;
+ *   — the beat feeds first (`lib/research/beat-feeds.ts`): each platform
+ *     searched for AI, crypto, tech and business, its best recent posts with
+ *     their numbers — the full, on-beat research the ideas are meant to be
+ *     built on;
+ *   — then the latest hot list of each platform (`hot_snapshots`), only the
+ *     rows marked on a beat when the list has been classified (`relevance`),
+ *     every row when it has not: the 上榜 signal;
  *   — this morning's signals from the brief, and today's own picks;
  *   — the creator's own subjects (the "Creator voice" note) and how the
  *     channel's recent uploads did (`creator_videos`);
@@ -194,10 +198,31 @@ async function backlogFromIdea(viewer: Viewer, idea: IdeaRow): Promise<string | 
 
 type PoolRow = IdeaEvidence & { id: string; note?: string };
 
-const PLATFORM_NAME = Object.fromEntries(PLATFORMS.map((p) => [p.key, p.zh])) as Record<string, string>;
+const PLATFORM_NAME = Object.fromEntries([...PLATFORMS.map((p) => [p.key, p.zh]), ...BEAT_FEEDS.map((f) => [f.key, `${f.zh}赛道`])]) as Record<string, string>;
 
-/** Rows per list; the video lists (with plays and likes) carry more. */
-const TAKE: Record<string, number> = { dy_breakout: 8, dy_finance: 8, dy_tech: 8, dy_rising: 6, douyin: 6, weibo: 6, bilibili: 5, xiaohongshu: 4, google: 5, youtube: 4, tiktok: 3 };
+/** Rows per list. The beat feeds lead and carry the most (they are on the
+ *  beats by construction, with numbers); the charts add their on-beat rows. */
+const TAKE: Record<string, number> = {
+  beat_douyin: 8,
+  beat_weibo: 6,
+  beat_xiaohongshu: 5,
+  beat_bilibili: 5,
+  beat_youtube: 5,
+  beat_tiktok: 4,
+  beat_news: 6,
+  beat_crypto: 3,
+  dy_breakout: 5,
+  dy_finance: 4,
+  dy_tech: 4,
+  dy_rising: 4,
+  douyin: 4,
+  weibo: 4,
+  bilibili: 3,
+  xiaohongshu: 3,
+  google: 3,
+  youtube: 3,
+  tiktok: 2,
+};
 
 const hkToday = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Hong_Kong" }).format(new Date());
 
@@ -221,28 +246,45 @@ export async function evidencePool(viewer: Viewer): Promise<{ rows: PoolRow[]; t
      order by platform, fetched_at desc
   `);
   let n = 0;
-  for (const list of lists) {
+  /* Beat feeds first, in the Research page's tab order (抖音 before the coin
+     market), then the charts, whatever order the query returned. */
+  const feedOrder = (key: string) => {
+    const i = BEAT_FEEDS.findIndex((f) => f.key === key);
+    return i < 0 ? 99 : i;
+  };
+  const ordered = [...lists].sort((a, b) => feedOrder(a.platform) - feedOrder(b.platform));
+  for (const list of ordered) {
     const name = PLATFORM_NAME[list.platform];
     if (!name) continue;
+    const feed = isBeatFeedKey(list.platform);
     const all = (Array.isArray(list.rows) ? (list.rows as HotRow[]) : []).filter((r) => r && typeof r.phrase === "string" && r.phrase.trim());
     const rel = (list.relevance ?? null) as Record<string, { t?: string; s?: number }> | null;
-    /* Classified lists: the business and tech rows, the most squarely on
-       the beat first, platform order kept among equals. Unclassified (null):
-       every row, as the platform ranked them. */
-    const picked = rel
+    /* A beat feed: its own order, which is already best first. A classified
+       chart: the rows on one of the four beats (AI, crypto, tech, business —
+       older lists say only biz or tech), the most squarely on it first,
+       platform order kept among equals. Unclassified (null): every row, as
+       the platform ranked them. */
+    const picked = feed
       ? all
-          .map((r, i) => ({ r, i, m: rel[r.phrase] }))
-          .filter((x) => x.m && (x.m.t === "biz" || x.m.t === "tech") && (x.m.s ?? 0) >= 1)
-          .sort((a, b) => (b.m!.s ?? 0) - (a.m!.s ?? 0) || a.i - b.i)
-          .map((x) => x.r)
-      : all;
+      : rel
+        ? all
+            .map((r, i) => ({ r, i, m: rel[r.phrase] }))
+            .filter((x) => x.m && x.m.t !== "other" && (x.m.s ?? 0) >= 1)
+            .sort((a, b) => (b.m!.s ?? 0) - (a.m!.s ?? 0) || a.i - b.i)
+            .map((x) => x.r)
+        : all;
     const take = picked.slice(0, TAKE[list.platform] ?? 4);
     if (!take.length) continue;
     counts[list.platform] = take.length;
-    lines.push(`\n### ${name}${rel ? "（已筛财经科技）" : ""}`);
+    lines.push(`\n### ${name}${feed ? "（AI/加密/科技/商业赛道，按互动排序）" : rel ? "（已筛四个赛道）" : ""}`);
     for (const r of take) {
       const id = `H${++n}`;
-      const numbers = numbersOf(r.stats, r.heat, r.heatLabel);
+      /* A coin's numbers are a price and a move, not plays or heat. */
+      const st = r.stats ?? {};
+      const numbers =
+        st.change24h != null
+          ? [st.price != null ? `价格 $${st.price >= 1 ? Math.round(st.price).toLocaleString("en-US") : st.price.toPrecision(3)}` : "", `24小时 ${st.change24h >= 0 ? "+" : ""}${st.change24h.toFixed(1)}%`, st.capRank ? `市值第 ${st.capRank}` : ""].filter(Boolean).join(" · ")
+          : numbersOf(r.stats, r.heat, r.heatLabel);
       const phrase = r.phrase.replace(/\s+/g, " ").trim();
       const extra = (r.extra ?? "").replace(/\s+/g, " ").trim();
       rows.push({ id, label: name, title: phrase.slice(0, 80), url: r.url ?? null, numbers, thumbnail: r.thumbnail ?? null, platform: list.platform });
@@ -424,13 +466,14 @@ export async function generateIdeas(viewer: Viewer, opts: { seed?: string | null
   const prompt = [
     "你是一家香港财经科技自媒体工作室的研究员。主持人要拍短视频，请你根据下面这些已经存下来的研究证据，给出选题。",
     pillars ? `本频道已经验证过的题材：\n${pillars}` : "本频道的题材：香港机会、Web3 与 AI、投资与职涯、财经科技、人物对话。",
+    "证据里的「赛道」部分是各平台按 AI、加密、科技、商业搜出来、最近表现最好的内容，数字最全，是主要依据；各平台热榜的条目说明平台自己也在推。",
     seed ? `这次主持人想做的方向：「${seed}」。选题要贴着这个方向，但仍然只能用下面的证据。` : "",
     "",
     "证据（每条前面是编号；数字是平台自己的，不要改）：",
     pool.text,
     "",
     `给出 ${n} 个选题。规则：`,
-    "1. 只做财经、商业、科技相关的题；娱乐、体育、节日、明星、段子一律不要。",
+    "1. 只做 AI、加密、科技、商业财经相关的题；娱乐、体育、节日、明星、段子一律不要。",
     "2. 每个选题引 1 到 3 条证据编号，每条都必须直接支持这个选题；无关的不要硬引，只有一条就只引一条。",
     "3. 不编数字、不编事实。why 里提到的数字必须是证据里有的。",
     "4. 不要和选题储备里已有的题重复；可以换角度。",

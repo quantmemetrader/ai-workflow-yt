@@ -11,7 +11,8 @@ import { suggestAngles } from "@/lib/research/angles";
 import { trendingSearches } from "@/lib/research/trending";
 import { channelsForPhrase, trendingVideos } from "@/lib/research/youtube";
 import { storedAll } from "@/lib/research/platforms";
-import { PLATFORMS, isPlatformKey, onFocus, relevanceLabel } from "@/lib/research/platform-catalog";
+import { BEATS, PLATFORMS, isBeat, isPlatformKey, onFocus, relevanceLabel, type Beat, type BeatTab } from "@/lib/research/platform-catalog";
+import { BEAT_TABS, acrossPlatforms, feedOfTab, tabRows, type BeatRow, type Lists } from "@/lib/research/beat-view";
 import { addCompetitor, listCompetitors } from "@/lib/social/service";
 import { num, str, type ToolContext, type ToolPack, type ToolResult } from "./types";
 
@@ -28,6 +29,16 @@ import { num, str, type ToolContext, type ToolPack, type ToolResult } from "./ty
  * YouTube key's 10,000 daily units. Both say so in their descriptions, because
  * a model that knows a call is expensive makes fewer of them.
  */
+/** The Research tab a list belongs to: a feed's own, or the feed whose
+ *  platform a chart is on. */
+function tabOf(from: string): BeatTab {
+  for (const t of BEAT_TABS) {
+    const f = feedOfTab(t);
+    if (f.key === from || (f.hot as readonly string[]).includes(from)) return t;
+  }
+  return "news";
+}
+
 const defs: ToolDef[] = [
   {
     type: "function",
@@ -108,17 +119,20 @@ const defs: ToolDef[] = [
     function: {
       name: "trending_now",
       description:
-        "What is hot right now on every platform the studio collects hourly (抖音 billboards, rising topics and hot search, 微博, B站, 小红书, TikTok, YouTube and Google for Hong Kong), " +
-        "business and tech rows only unless all=true, each with its rank on the platform's own list. Reads stored lists: free and instant. " +
+        "What is doing well right now on the studio's four beats (AI, crypto, tech, business), platform by platform: 抖音, 小红书, 微博, B站, YouTube, TikTok, Hong Kong/Taiwan news and the crypto market. " +
+        "Each platform is searched for the beats every three hours and its best recent posts kept with their numbers (plays, likes, comments, followers); rows also on the platform's own chart are marked 上榜. " +
+        "Reads stored lists: free and instant. beat= narrows to one beat. all=true reads the platforms' raw hourly charts instead, every row. " +
         "A region other than HK reads Google and YouTube for that market live instead, unfiltered.",
       parameters: {
         type: "object",
         properties: {
           platform: {
             type: "string",
-            description: "One list only: google, youtube, dy_breakout, dy_finance, dy_tech, dy_rising, douyin, weibo, bilibili, xiaohongshu or tiktok. Default every list.",
+            description:
+              "One platform only: douyin, xiaohongshu, weibo, bilibili, youtube, tiktok, news or crypto (the coin market). With all=true, a raw chart: google, youtube, dy_breakout, dy_finance, dy_tech, dy_rising, douyin, weibo, bilibili, xiaohongshu or tiktok. Default every platform.",
           },
-          all: { type: "boolean", description: "Include the rows that are not business or tech (entertainment, sport, festivals). Default false." },
+          beat: { type: "string", enum: ["ai", "crypto", "tech", "biz"], description: "One beat only. Default all four." },
+          all: { type: "boolean", description: "The platforms' raw hourly charts, every row including entertainment and sport. Default false." },
           region: { type: "string", description: "HK, TW, SG, US, GB or JP. Default HK." },
         },
         required: [],
@@ -280,51 +294,81 @@ async function run(ctx: ToolContext, name: string, args: Record<string, unknown>
     if (region === "HK") {
       const everything = args.all === true || args.all === "true";
       const only = str(args.platform, 20);
-      const keys = isPlatformKey(only) ? [only] : PLATFORMS.filter((p) => !p.unavailable).map((p) => p.key);
-      const lists = await storedAll();
-      const lines: string[] = [];
-      let hidden = 0;
-      for (const key of keys) {
-        const hot = lists[key];
-        if (!hot?.rows.length) continue;
-        const rel = hot.relevance ?? null;
-        const ranked = hot.rows.map((r, i) => ({ r, rank: i + 1, mark: rel?.[r.phrase] ?? null }));
-        const shown = everything || !rel ? ranked : ranked.filter((x) => onFocus(x.mark));
-        hidden += ranked.length - shown.length;
-        if (!shown.length) continue;
-        const meta = PLATFORMS.find((p) => p.key === key)!;
-        const age = Math.max(1, Math.round((Date.now() - hot.fetchedAt) / 60_000));
-        lines.push(`\n${meta.zh} (${meta.label}), stored ${age} min ago${rel ? "" : ", not yet sorted by topic so shown whole"}:`);
-        for (const x of shown.slice(0, everything ? 15 : 10)) {
-          const views = x.r.stats?.views;
-          const heat = views != null ? `${views.toLocaleString("en-US")} views` : (x.r.heatLabel ?? (x.r.heat != null ? `heat ${x.r.heat.toLocaleString("en-US")}` : ""));
-          const tag = x.mark && x.mark.t !== "other" ? ` [${relevanceLabel(x.mark, true)}]` : "";
-          /* A search list's link is only the phrase searched again; a
-             video's or a news story's is the source. */
-          const link = x.r.url && (meta.kind !== "search" || key === "google") ? ` · ${x.r.url}` : "";
-          lines.push(`- #${x.rank} ${x.r.phrase.replace(/\s+/g, " ").slice(0, 90)}${tag}${heat ? ` · ${heat}` : ""}${link}`);
+      const beat: Beat | null = isBeat(args.beat) ? args.beat : null;
+      const stored = await storedAll();
+      const lists = stored as Lists;
+      const views = (x: BeatRow) => {
+        const st = x.stats ?? {};
+        if (st.change24h != null) return `${st.price != null ? `$${st.price >= 1 ? Math.round(st.price).toLocaleString("en-US") : st.price.toPrecision(3)} · ` : ""}24h ${st.change24h >= 0 ? "+" : ""}${st.change24h.toFixed(1)}%`;
+        const bits = [
+          st.views != null ? `${st.views.toLocaleString("en-US")} views` : st.likes != null ? `${st.likes.toLocaleString("en-US")} likes` : (x.heatLabel ?? (x.heat != null ? `heat ${x.heat.toLocaleString("en-US")}` : "")),
+          st.views != null && st.likes != null ? `${st.likes.toLocaleString("en-US")} likes` : "",
+          st.comments != null ? `${st.comments.toLocaleString("en-US")} comments` : "",
+          st.fans != null ? `account ${st.fans.toLocaleString("en-US")} followers` : "",
+          st.publishedAt ? `posted ${Math.max(1, Math.round((Date.now() - Date.parse(st.publishedAt)) / 3_600_000))}h ago` : "",
+        ];
+        return bits.filter(Boolean).join(" · ");
+      };
+      const line = (x: BeatRow, n: number) => {
+        const where = x.chart ? `上榜 ${PLATFORMS.find((p) => p.key === x.chart!.list)?.zh ?? x.chart.list} #${x.chart.rank}${x.feedRank ? `, beats #${x.feedRank}` : ""}` : `#${n}`;
+        const tag = x.mark && x.mark.t !== "other" ? ` [${relevanceLabel(x.mark, true)}]` : x.beat ? ` [${BEATS.find((b) => b.key === x.beat)!.zh}]` : "";
+        const nums = views(x);
+        const link = x.url && !/\/search|[?&]q=|keyword=/.test(x.url) ? ` · ${x.url}` : "";
+        return `- ${where} ${x.phrase.replace(/\s+/g, " ").slice(0, 90)}${tag}${x.extra ? ` (${x.extra.slice(0, 30)})` : ""}${nums ? ` · ${nums}` : ""}${link}`;
+      };
+
+      /* The raw charts, as the platforms ranked them: the old reading, for
+         when the chart itself is the question. */
+      if (everything) {
+        const keys = isPlatformKey(only) ? [only] : PLATFORMS.filter((p) => !p.unavailable).map((p) => p.key);
+        const out: string[] = [];
+        for (const key of keys) {
+          const hot = stored[key];
+          if (!hot?.rows.length) continue;
+          const meta = PLATFORMS.find((p) => p.key === key)!;
+          out.push(`\n${meta.zh} (${meta.label}) chart, stored ${Math.max(1, Math.round((Date.now() - hot.fetchedAt) / 60_000))} min ago:`);
+          hot.rows.slice(0, 15).forEach((r, i) => {
+            const mark = hot.relevance?.[r.phrase] ?? null;
+            out.push(`- #${i + 1} ${r.phrase.replace(/\s+/g, " ").slice(0, 90)}${mark && onFocus(mark, 1) ? ` [${relevanceLabel(mark, true)}]` : ""}${r.stats?.views != null ? ` · ${r.stats.views.toLocaleString("en-US")} views` : r.heatLabel ? ` · ${r.heatLabel}` : r.heat != null ? ` · heat ${r.heat.toLocaleString("en-US")}` : ""}`);
+          });
+        }
+        return { text: out.length ? ["The platforms' own charts, every row (the # is the rank on that chart):", ...out].join("\n") : "No stored charts yet; the hourly collector has not run." };
+      }
+
+      /* The beats, platform by platform: each tab's 上榜 rows, then its feed. */
+      const tabs: BeatTab[] = (BEAT_TABS as readonly string[]).includes(only) ? [only as BeatTab] : [...BEAT_TABS];
+      const out: string[] = [];
+      if (tabs.length > 1) {
+        const top = acrossPlatforms(lists, { beat, limit: 12 });
+        const allLine = stored.beat_all?.summary;
+        if (top.length) {
+          out.push(`\nAcross platforms${beat ? ` (${BEATS.find((b) => b.key === beat)!.en})` : ""}${allLine ? `. Researcher: ${allLine}` : ""}`);
+          // Each with its platform, and its rank in that platform's feed.
+          top.forEach((x) => out.push(`- ${feedOfTab(tabOf(x.from)).zh} ${line(x, x.feedRank ?? x.rank).slice(2)}`));
         }
       }
-      if (!lines.length) {
-        const one = isPlatformKey(only) ? PLATFORMS.find((p) => p.key === only)! : null;
+      for (const tab of tabs) {
+        const { charted, feed } = tabRows(tab, lists, { beat, chartCap: 5 });
+        const rows = [...charted, ...feed].slice(0, tabs.length > 1 ? 8 : 25);
+        if (!rows.length) continue;
+        const meta = feedOfTab(tab);
+        const f = stored[meta.key];
+        const age = f ? Math.max(1, Math.round((Date.now() - f.fetchedAt) / 60_000)) : null;
+        out.push(`\n${meta.zh} (${meta.label})${age ? `, collected ${age} min ago` : ""}${f?.summary ? `. Researcher: ${f.summary}` : ""}`);
+        rows.forEach((x) => out.push(line(x, x.feedRank ?? x.rank)));
+      }
+      if (!out.length) {
         return {
-          text: hidden
-            ? `Nothing on the business or tech beat in ${one ? `${one.zh}'s stored list` : "the stored lists"} right now (${hidden} other rows). Ask again with all=true to see everything.`
-            : one
-              ? one.unavailable
-                ? `${one.zh} (${one.label}) has no public hot list to collect.`
-                : `No stored list for ${one.zh} (${one.label}) in the last week.`
-              : "No stored hot lists yet; the hourly collector has not run.",
+          text: beat
+            ? `Nothing stored on the ${BEATS.find((b) => b.key === beat)!.en} beat${tabs.length === 1 ? ` for ${feedOfTab(tabs[0]).zh}` : ""} right now. Try without beat=, or all=true for the raw charts.`
+            : "No beat feeds stored yet (they are collected every three hours); all=true reads the platforms' raw charts.",
         };
       }
       return {
         text: [
-          everything ? "What is hot right now (every row):" : "Business and tech rows on each list right now (the # is the rank on that platform's own list):",
-          ...lines,
-          !everything && hidden ? `\n${hidden} rows about entertainment, sport and the like were left out; all=true shows them.` : "",
-        ]
-          .filter(Boolean)
-          .join("\n"),
+          "What is doing well on the studio's beats (AI, crypto, tech, business). # is the rank in that platform's beat feed (ranked by engagement and recency); 上榜 rows are also on the platform's own chart, with that rank.",
+          ...out,
+        ].join("\n"),
       };
     }
 

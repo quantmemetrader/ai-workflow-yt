@@ -170,10 +170,13 @@ export async function trendingVideos(regionCode = "HK", limit = 20, opts: { cate
  */
 export async function searchVideos(
   query: string,
-  opts: { days?: number; limit?: number; regionCode?: string } = {},
+  /* `hours` narrows the window below a day (the beat feeds ask for 72);
+     `relevanceLanguage` ("zh-Hant", "en") is YouTube's own hint for which
+     language's results to prefer. */
+  opts: { days?: number; hours?: number; limit?: number; regionCode?: string; relevanceLanguage?: string } = {},
 ): Promise<YouTubeVideo[]> {
-  const days = opts.days ?? 30;
-  const publishedAfter = new Date(Date.now() - days * 86_400_000).toISOString();
+  const ms = opts.hours ? opts.hours * 3_600_000 : (opts.days ?? 30) * 86_400_000;
+  const publishedAfter = new Date(Date.now() - ms).toISOString();
 
   const found = await get<{ items?: VideoListItem[] }>("search", {
     part: "snippet",
@@ -182,6 +185,7 @@ export async function searchVideos(
     order: "viewCount",
     publishedAfter,
     regionCode: opts.regionCode?.toUpperCase(),
+    relevanceLanguage: opts.relevanceLanguage,
     maxResults: Math.min(50, opts.limit ?? 25),
   });
 

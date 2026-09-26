@@ -2,7 +2,7 @@ import "server-only";
 import { complete } from "@/lib/ai/openrouter";
 import { modelFor } from "@/lib/ai/models";
 import { studioBrief, type StudioBrief } from "@/lib/research/studio";
-import type { HotRow, PlatformKey } from "@/lib/research/platform-catalog";
+import { listName, type HotRow, type ListKey } from "@/lib/research/platform-catalog";
 import { toSimplified } from "@/lib/text/simplified";
 
 /**
@@ -40,7 +40,7 @@ const MAX_ROWS = 30;
 
 export async function judgeHot(
   tenantId: string,
-  platform: PlatformKey,
+  platform: ListKey,
   rows: HotRow[],
   fetchedAt: number,
   /* `brief`: the studio's brief from the caller, when it judges many lists
@@ -66,7 +66,7 @@ export async function judgeHot(
           "每条标注要说清依据：①②要引用频道数据里的具体东西（哪条视频、哪位观众、哪个对标账号）；③要说清借什么、套到哪个选题。",
         ]
       : [
-          "只标财经、商业、科技方面的条目；娱乐、体育、明星、节日这类，哪怕形式好看也不标。",
+          "只标 AI、加密、科技、商业财经方面的条目；娱乐、体育、明星、节日这类，哪怕形式好看也不标。",
           "每条标注要说清依据：引用频道数据里的具体东西（哪条视频、哪位观众、哪个对标账号）。",
         ]),
     "宁可少标，不要硬凑；一份 20 条的榜通常标 2–5 条。",
@@ -75,35 +75,42 @@ export async function judgeHot(
     "# 频道数据",
     brief.text,
     "",
-    `# ${platform} 热榜`,
+    `# ${listName(platform, true)}${platform.startsWith("beat_") ? "（按赛道搜出来的热门内容）" : " 热榜"}`,
     ...list,
   ].join("\n");
 
+  /*
+   * The answer budget. It was 900 tokens, and the utility model reasons
+   * before it answers: on a thirty-row list the reasoning used the lot and
+   * the answer came back empty, which read as "nothing here is the
+   * channel's" — every stored list on 09-26 had zero marks for that reason,
+   * not for want of fits. 3,000 leaves room for both. An answer with no
+   * array at all (cut off, or refused) goes to the assistant model once.
+   */
   let judged: Judged = {};
-  try {
-    const res = await complete({
-      model: modelFor.utility(),
-      messages: [{ role: "user", content: prompt }],
-      temperature: 0.2,
-      maxTokens: 900,
-    });
-    const text = res.text.trim();
-    const start = text.indexOf("[");
-    const end = text.lastIndexOf("]");
-    const parsed = start >= 0 && end > start ? (JSON.parse(text.slice(start, end + 1)) as unknown) : [];
-    if (Array.isArray(parsed)) {
-      for (const item of parsed) {
-        const n = Number((item as { n?: unknown })?.n);
-        const fit = String((item as { fit?: unknown })?.fit ?? "").trim();
-        const why = String((item as { why?: unknown })?.why ?? "").trim();
-        const row = rows[n - 1];
-        if (!row || !fit || fit.length > 12) continue;
-        judged[row.phrase] = { fit: toSimplified(fit), why: toSimplified(why).slice(0, 160) };
+  for (const model of [...new Set([modelFor.utility(), modelFor.assistant()])]) {
+    try {
+      const res = await complete({ model, messages: [{ role: "user", content: prompt }], temperature: 0.2, maxTokens: 3000 });
+      const text = res.text.replace(/<think>[\s\S]*?<\/think>/g, "").trim();
+      const start = text.indexOf("[");
+      const end = text.lastIndexOf("]");
+      if (start < 0 || end <= start) continue;
+      const parsed = JSON.parse(text.slice(start, end + 1)) as unknown;
+      if (Array.isArray(parsed)) {
+        for (const item of parsed) {
+          const n = Number((item as { n?: unknown })?.n);
+          const fit = String((item as { fit?: unknown })?.fit ?? "").trim();
+          const why = String((item as { why?: unknown })?.why ?? "").trim();
+          const row = rows[n - 1];
+          if (!row || !fit || fit.length > 12) continue;
+          judged[row.phrase] = { fit: toSimplified(fit), why: toSimplified(why).slice(0, 160) };
+        }
       }
+      break;
+    } catch (err) {
+      console.error(`[research] 研究员 could not read the hot list (${model})`, err);
+      judged = {};
     }
-  } catch (err) {
-    console.error("[research] 研究员 could not read the hot list", err);
-    judged = {};
   }
 
   cache.set(key, { at: Date.now(), judged });

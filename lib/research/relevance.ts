@@ -2,10 +2,18 @@ import "server-only";
 import { complete } from "@/lib/ai/openrouter";
 import { modelFor } from "@/lib/ai/models";
 import { creatorVoiceText } from "@/lib/creator/service";
-import type { HotRow, PlatformKey, Relevance, RelevanceMap } from "@/lib/research/platform-catalog";
+import type { HotRow, ListKey, Relevance, RelevanceMap } from "@/lib/research/platform-catalog";
 
 /**
- * Which rows of a hot list are business or tech, marked once at collection.
+ * Which rows of a list are on the studio's beats (AI, crypto, tech,
+ * business), marked once at collection.
+ *
+ * Two kinds of list come through here. The platforms' own hot lists, read
+ * hourly, where most rows are off the beat and the mark is the filter; and
+ * the beat feeds (`lib/research/beat-feeds.ts`), which were searched for the
+ * beats in the first place, where the mark catches what a search word
+ * dragged in (an AI-drawn cat found by "AI", a cartoon found by "bitcoin")
+ * and names the beat for the screen's chips.
  *
  * The client's words: "for the research, keep it related to business and
  * tech, now there is still a bit too many noise". Reading every row of the
@@ -68,8 +76,21 @@ const RISING_OTHER = new Set([
   "明星",
 ]);
 
+/**
+ * B站's own sections that are never the beat, whatever the title says: an
+ * AI-made short drama is filed under 影视, a game made with AI under 游戏.
+ * The section is the second half of a B站 beat row's second line.
+ */
+const BILI_OTHER = /(影视|剧集|电影|动画|番剧|国创|综艺|游戏|电竞|音乐|舞蹈|鬼畜|仿妆|cos|萌宠|动物|美食|搞笑|明星|情感|亲子|运动|足球|篮球|健身|旅游|出行|时尚|美妆|手工|绘画|VLOG)/i;
+
 /** A row the rules can decide, or null for the model. */
-function byRule(platform: PlatformKey, row: HotRow): Relevance | null {
+function byRule(platform: ListKey, row: HotRow): Relevance | null {
+  // The coin market list is crypto by construction.
+  if (platform === "beat_crypto") return { t: "crypto", s: 2, tag: "行情" };
+  if (platform === "beat_bilibili") {
+    const section = (row.extra ?? "").split(" · ").pop() ?? "";
+    return section && BILI_OTHER.test(section) ? { t: "other", s: 0 } : null;
+  }
   if (platform !== "dy_rising") return null;
   const tag = (row.extra ?? "").trim();
   if (tag === "财经") return { t: "biz", s: 2 };
@@ -81,7 +102,7 @@ function byRule(platform: PlatformKey, row: HotRow): Relevance | null {
 }
 
 /** What the second line of a row is, per list, so the model reads it right. */
-function hintFor(platform: PlatformKey, row: HotRow): string {
+function hintFor(platform: ListKey, row: HotRow): string {
   const extra = (row.extra ?? "").trim();
   if (!extra) return "";
   switch (platform) {
@@ -99,13 +120,23 @@ function hintFor(platform: PlatformKey, row: HotRow): string {
       return `抖音分类：${extra}`;
     case "tiktok":
       return `账号与标签：${extra}`;
+    case "beat_bilibili":
+      return `UP主与分区：${extra}`;
+    case "beat_news":
+      return `媒体：${extra}`;
+    case "beat_douyin":
+    case "beat_tiktok":
+    case "beat_xiaohongshu":
+    case "beat_weibo":
+    case "beat_youtube":
+      return `账号：${extra}`;
     default:
       // 抖音热搜's "1 条视频在讨论" and 小红书's "Hot" say nothing about the topic.
       return "";
   }
 }
 
-const NAMES: Partial<Record<PlatformKey, string>> = {
+const NAMES: Partial<Record<ListKey, string>> = {
   google: "Google 香港热搜",
   youtube: "YouTube 香港热门",
   dy_breakout: "抖音低粉爆款",
@@ -117,25 +148,36 @@ const NAMES: Partial<Record<PlatformKey, string>> = {
   weibo: "微博热搜",
   bilibili: "B站热搜",
   tiktok: "TikTok 推荐",
+  beat_douyin: "抖音赛道搜索（按关键词找到的热门视频）",
+  beat_xiaohongshu: "小红书赛道搜索（按关键词找到的热门笔记）",
+  beat_weibo: "微博科技热搜与赛道搜索",
+  beat_bilibili: "B站赛道搜索（按关键词找到的热门视频）",
+  beat_tiktok: "TikTok 赛道搜索（英文关键词）",
+  beat_youtube: "YouTube 赛道搜索（近三天播放最多）",
+  beat_news: "港台新闻搜索",
 };
 
-function prompt(platform: PlatformKey, lines: string[], pillars: string[]): string {
+function prompt(platform: ListKey, lines: string[], pillars: string[]): string {
   return [
-    "你是一家香港财经科技自媒体工作室的研究员。任务：给下面热榜的每一条分类，判断它说的是不是「财经/商业」或「科技」话题。",
+    "你是一家香港财经科技自媒体工作室的研究员。频道只做四个赛道：AI、加密、科技、商业财经。任务：给下面列表的每一条分类，判断它属于哪个赛道，或者都不属于。",
     pillars.length ? `频道做过、观众认可的方向（只作参考，判断仍按下面的定义）：${pillars.join("、")}` : "",
     "",
     "定义：",
-    "- biz（财经/商业）：宏观经济与政策对经济的影响、央行与利率汇率、股市楼市、黄金作为投资、油价等大宗商品价格、公司经营与商业模式、品牌与消费趋势、创业融资、投资理财、就业与薪资、贸易与关税。",
-    "- tech（科技）：AI 与大模型、芯片半导体、互联网平台与 App 功能、移动支付与金融科技（包括现金、支付方式的变化）、手机电脑等消费电子新品、机器人与自动化、新能源车与智能驾驶、航天与科研突破、Web3 与加密货币。",
-    "- other：娱乐明星、影视综艺、音乐演唱会、体育赛事、节日祝福、美食旅行、萌宠、段子玩梗、情感生活、游戏、一般社会新闻。时政外交也算 other，除非条目本身直接说到市场、贸易、关税、制裁或科技。",
+    "- ai（AI）：AI 与大模型、AI 产品和工具的发布与用法、AI 公司（OpenAI、DeepSeek、英伟达的 AI 业务等）、智能体、AI 对就业、教育、社会的影响、AI 监管与风险。",
+    "- crypto（加密）：比特币、以太坊等加密货币的行情与事件、交易所、稳定币、Web3、区块链、链上项目、数字资产监管、币圈人物。",
+    "- tech（科技）：芯片半导体、手机电脑等消费电子新品、互联网平台与 App 功能、移动支付、新能源车与智能驾驶、机器人与自动化、航天与科研突破、通信。",
+    "- biz（商业财经）：宏观经济与政策对经济的影响、央行与利率汇率、股市楼市、黄金作为投资、油价等大宗商品、公司经营与商业模式、品牌与消费趋势、创业融资、投资理财、就业与薪资、贸易与关税。",
+    "- other：娱乐明星、影视综艺、音乐、体育、节日祝福、美食旅行、萌宠、段子玩梗、情感生活、游戏、一般社会新闻。时政外交也算 other，除非条目本身直接说到市场、贸易、关税、制裁或科技。",
     "",
-    "打分 s：3 = 频道今天就能拍的财经科技硬话题（政策、价格、公司、产品的实际变化）；2 = 明确是财经或科技话题；1 = 只是沾边（元首会谈可能影响贸易、企业家的私生活、生活视频里出现了新手机）；0 = 无关，t 必须是 other。",
+    "打分 s：3 = 频道今天就能拍的硬话题（政策、价格、公司、产品、模型的实际变化）；2 = 明确属于这个赛道；1 = 只是沾边；0 = 无关，t 必须是 other。",
     "",
     "注意：",
-    "- 只看条目本身在说什么，不看账号名、不看它在哪个榜。抖音的「财经」「科技」榜是按账号类目收的，里面大量是段子。",
-    "- 借用金融或科技词汇玩梗、晒东西、炫富的，不算（如「我有超长纯金条」「A3可以适当提高exposure」）。",
-    "- 只有账号名、看不出内容的（「某某 的视频」「哇哦」「拿下」），算 other 0。",
-    "- tag 用 2 到 4 个字说是哪一块，例如：宏观、央行、股市、楼市、黄金、能源、消费、零售、公司、创业、就业、贸易、AI、芯片、手机、互联网、机器人、自动化、汽车、航天、加密。other 不写 tag。",
+    "- 只看条目本身在说什么，不看账号名、不看它在哪个榜或用什么词搜到的。",
+    "- 用 AI 做出来的娱乐内容不算 AI 赛道：AI 生成的短剧、动画、萌宠、水果故事、恐怖片、翻唱，都是 other。讲 AI 怎么做这些、AI 工具评测、AIGC 行业，才算 ai。",
+    "- 借用金融或科技词汇玩梗、晒东西、炫富的，不算（如「我有超长纯金条」「A3可以适当提高exposure」）。以比特币为道具的动画故事也不算 crypto。",
+    "- 只有账号名、看不出内容的（「某某 的视频」「哇哦」「拿下」），或者只有话题标签没有内容的（「#apple」「#iphone18 #apple」），算 other 0。",
+    "- 一条同时沾两个赛道时，选它主要在讲的那个（「AI 芯片」是 tech 还是 ai 看重点：讲芯片算 tech，讲模型算 ai；「比特币 ETF 资金流入」算 crypto）。",
+    "- tag 用 2 到 4 个字说是哪一块，例如：大模型、AI工具、AI就业、比特币、以太坊、稳定币、交易所、芯片、手机、汽车、机器人、宏观、央行、股市、楼市、能源、消费、公司、创业、就业、贸易。other 不写 tag。",
     "",
     "例子：",
     '都有超长蛋挞是吧？我有超长纯金条 ｜账号：二十 → {"t":"other","s":0}',
@@ -143,13 +185,17 @@ function prompt(platform: PlatformKey, lines: string[], pillars: string[]): stri
     '今晚24时油价上调 国家对成品油价格实施调控 少涨约52% ｜账号：央广网 → {"t":"biz","s":3,"tag":"能源"}',
     '捡快递的工种都快不用人了 → {"t":"tech","s":2,"tag":"自动化"}',
     '台积电明年1月晶圆代工或再涨价 → {"t":"tech","s":3,"tag":"芯片"}',
+    '小米开源MiMoV2.6大模型 登顶全球开源榜首 → {"t":"ai","s":3,"tag":"大模型"}',
+    '应届生就敢开到三万五 还不用担心被AI取代 → {"t":"ai","s":2,"tag":"AI就业"}',
+    '#AI萌猫舞蹈教学 #抖音ai创作 → {"t":"other","s":0}',
+    '比特币破8.4万美元 创1月以来新高 12.6万人被爆仓 → {"t":"crypto","s":3,"tag":"比特币"}',
+    'Part 1 - The Seal of Bitcoins #animation #storytime #fruits → {"t":"other","s":0}',
     '中美元首会谈 → {"t":"biz","s":1,"tag":"贸易"}',
     '中秋消费新风向 → {"t":"biz","s":2,"tag":"消费"}',
     '陈妤颉亚运会百米夺冠 → {"t":"other","s":0}',
     '马斯克的家人究竟有多奇葩 → {"t":"other","s":0}',
-    '你怎么跟我比，我出场自带bgm ｜账号：我不说 → {"t":"other","s":0}',
     "",
-    '输出一个 JSON 数组，每一条都要有、按序号：[{"n":1,"t":"other","s":0},{"n":2,"t":"biz","s":3,"tag":"能源"}]。只输出 JSON，不要解释。',
+    '输出一个 JSON 数组，每一条都要有、按序号：[{"n":1,"t":"other","s":0},{"n":2,"t":"ai","s":3,"tag":"大模型"}]。只输出 JSON，不要解释。',
     "",
     `# ${NAMES[platform] ?? platform}`,
     ...lines,
@@ -177,7 +223,7 @@ export function parseMarks(text: string, size: number): Map<number, Relevance> {
     }
     const n = Number(item.n);
     if (!Number.isInteger(n) || n < 1 || n > size || out.has(n)) continue;
-    const t = item.t === "biz" || item.t === "tech" || item.t === "other" ? item.t : null;
+    const t = item.t === "ai" || item.t === "crypto" || item.t === "biz" || item.t === "tech" || item.t === "other" ? item.t : null;
     if (!t) continue;
     const s = Math.max(0, Math.min(3, Math.round(Number(item.s) || 0))) as Relevance["s"];
     /* "other" is 0 whatever score came with it, and a business or tech mark
@@ -188,7 +234,7 @@ export function parseMarks(text: string, size: number): Map<number, Relevance> {
     }
     const raw = typeof item.tag === "string" ? item.tag.trim().replace(/["“”「」]/g, "").slice(0, 6) : "";
     // "科技 · 科技" says nothing twice; a tag that only names the type is dropped.
-    const tag = /^(财经|商业|科技|biz|tech|business)$/i.test(raw) ? "" : raw;
+    const tag = /^(财经|商业|科技|加密|ai|crypto|biz|tech|business)$/i.test(raw) ? "" : raw;
     out.set(n, tag ? { t, s, tag } : { t, s });
   }
   return out;
@@ -198,7 +244,7 @@ const BATCH = 50;
 
 /** One batch through the model chain. Null when no model would mark it. */
 async function markBatch(
-  platform: PlatformKey,
+  platform: ListKey,
   rows: HotRow[],
   pillars: string[],
   onUsage?: (res: Usage) => Promise<void> | void,
@@ -235,7 +281,7 @@ async function markBatch(
  * (`channelFocus`), given to the model as context.
  */
 export async function classifyHot(
-  platform: PlatformKey,
+  platform: ListKey,
   rows: HotRow[],
   opts: { prev?: RelevanceMap | null; pillars?: string[]; onUsage?: (res: Usage) => Promise<void> | void } = {},
 ): Promise<ClassifyResult> {
@@ -253,7 +299,7 @@ export async function classifyHot(
       continue;
     }
     const known = opts.prev?.[row.phrase];
-    if (known && (known.t === "biz" || known.t === "tech" || known.t === "other")) {
+    if (known && (known.t === "ai" || known.t === "crypto" || known.t === "biz" || known.t === "tech" || known.t === "other")) {
       map[row.phrase] = known;
       counts.reused++;
       continue;

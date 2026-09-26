@@ -6,10 +6,12 @@
  *
  * The studio's ask: "just 1 or 2 as base, most important signal, so the head
  * of the account will create her video clip for it". So this is not a news
- * round-up. It reads every stored hot list (`hot_snapshots`, filled hourly by
- * `scripts/collect-hot.ts`), led by 抖音's 财经/科技 billboards and the
- * small-account breakouts, next to the channel's own numbers, and one model
- * call chooses. The model names evidence by id; the numbers printed are the
+ * round-up. It reads the stored beat feeds first — every platform searched
+ * for AI, crypto, tech and business every three hours, thirty posts each
+ * with their own numbers (`lib/research/beat-feeds.ts`) — then the on-beat
+ * rows of the platforms' own charts (`hot_snapshots`, filled hourly by
+ * `scripts/collect-hot.ts`, the 上榜 signal), next to the channel's own
+ * numbers, and one model call chooses. The model names evidence by id; the numbers printed are the
  * rows' own (`lib/research/signals.ts`), so none of them can be invented.
  *
  * Billed to the Research agent's own user row, so the AI ledger and
@@ -50,9 +52,10 @@ const hkDate = (d = new Date()) =>
  * not from this file: they were typed here once ("香港机会、Web3 与 AI…")
  * and the note, written from the channel's own uploads, has moved on since.
  *
- * Business and tech only. The client: "keep it related to business and
- * tech". Politics only where it moves markets, trade or tech, because a
- * summit is on every list for days and is almost never this channel's video.
+ * The four beats only. The owner: "keep it related to business and tech &
+ * crypto, AI and stuff". Politics only where it moves markets, trade or
+ * tech, because a summit is on every list for days and is almost never this
+ * channel's video.
  *
  * One to three pieces of evidence, each of which has to be about the topic.
  * "至少引 2 条" with a pool that was mostly noise made the model pad: the
@@ -61,11 +64,13 @@ const hkDate = (d = new Date()) =>
  */
 const instructions = (pillars: string[]) => `你现在是腾亚创变的「研究员」，全世界最好的内容研究员。每天早上你只做一件事：替这个频道的主持人挑出今天最值得拍的 1 个选题（最多 2 个），并把证据摆出来，让她看完就能去拍。
 
+外部数据分两块：前面是「赛道内容」——各平台按 AI、加密、科技、商业四个赛道搜出来、最近几天表现最好的内容（抖音、微博、小红书、B站、YouTube、TikTok、港台新闻、加密市场），每个平台已按互动和新近程度排好序；后面是各平台自己的热榜里跟这四个赛道相关的条目（上榜）。
+
 怎么挑（按重要性）：
-1. 已经被验证的需求：抖音「低粉爆款」里，小账号的播放是粉丝的几十、几百倍，说明是题目本身在带流量，不是账号。这是最强的信号。
-2. 多个平台同时出现：同一件事在两个以上的平台（抖音、微博、小红书、B站、YouTube、Google）同时在热，比只在一个平台上热更可靠。
-3. 正在上升：抖音上升热点、刚发出几小时就破百万的视频。
-4. 只选财经、商业、科技：宏观与政策、市场与投资、公司与商业模式、创业与就业、AI、芯片、互联网、Web3 这类。时政外交只有在直接影响市场、贸易或科技时才可以选，而且要从这个影响切入。娱乐、体育、明星八卦、节日、一般社会新闻，一律不选。
+1. 已经被验证的需求：小账号的播放是粉丝的几十、几百倍（抖音「低粉爆款」、赛道内容里粉丝少播放高的），说明是题目本身在带流量，不是账号。这是最强的信号。
+2. 多个平台同时出现：同一件事在两个以上的平台同时有高互动的内容，或者赛道内容里的题同时上了平台热榜，比只在一个平台上热更可靠。
+3. 正在上升：刚发出一两天就破百万的视频、上升热点、多家媒体同时报道的新闻、加密市场里大涨大跌的币。
+4. 只选 AI、加密、科技、商业财经：AI 与大模型、加密货币与 Web3、芯片与消费电子、宏观与政策、市场与投资、公司与商业模式、创业与就业这类。时政外交只有在直接影响市场、贸易或科技时才可以选，而且要从这个影响切入。娱乐、体育、明星八卦、节日、一般社会新闻，一律不选。
    同时要接得上本频道：能连到这个频道已经验证过的方向（${pillars.join("、")}），最好能引本频道自己的数字或观众原话。
 5. 主持人今天拍得了：一个人对着镜头、加一些素材就能讲清楚。
 
@@ -74,7 +79,7 @@ const instructions = (pillars: string[]) => `你现在是腾亚创变的「研�
 证据规则（非常重要）：
 - 下面每条外部数据前面有编号，例如 [B3]、[F1]。你只能用编号引用证据，不要自己写任何播放、点赞、粉丝数字，系统会按编号把真实数字印出来。
 - 每个选题引 1 到 3 条证据，每一条都必须直接支持这个选题（说的是同一件事、同一家公司或同一个趋势）。无关的条目不能拿来凑数：只有一条就只引一条。能来自不同平台更好。同一条视频出现在两个榜单里只算一条，不要重复引用。
-- 外部数据每行末尾标了它属于财经还是科技，没标的是没分过类的，要自己判断是不是财经科技。
+- 外部数据每行末尾标了它属于哪个赛道（AI、加密、科技、商业），没标的是没分过类的，要自己判断是不是在这四个赛道里。
 - why_now 里也不要写数字，只写编号和判断。
 - 引用本频道数据时（channel_fit），可以写本频道数据段里出现过的具体数字或观众原话，原样照抄，不要改。
 - 不要编造新闻或来源。传闻写明是传闻。

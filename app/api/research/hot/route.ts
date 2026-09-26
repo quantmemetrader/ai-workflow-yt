@@ -1,8 +1,8 @@
 import { type NextRequest } from "next/server";
 import { getViewer } from "@/lib/auth/dal";
-import { HOT_TENANT, isPlatformKey, platformHot, storedAll } from "@/lib/research/platforms";
+import { HOT_TENANT, isPlatformKey, latestStored, platformHot, storedAll } from "@/lib/research/platforms";
 import { judgeHot } from "@/lib/research/judge";
-import { onFocus } from "@/lib/research/platform-catalog";
+import { isBeatFeedKey, onFocus } from "@/lib/research/platform-catalog";
 
 /**
  * A platform's hot list, and 研究员's reading of it, as plain GETs.
@@ -20,6 +20,11 @@ import { onFocus } from "@/lib/research/platform-catalog";
  * The stored `judged` marks cite the collector's studio's own videos,
  * viewers and rivals (`HOT_TENANT`), so they go only to that studio; anyone
  * else gets none here and the `judge=1` read makes theirs from their brief.
+ *
+ * `platform=all` also carries the beat feeds (`beat_douyin` …) and their
+ * cross-platform top (`beat_all`), which the Research tabs are built from.
+ * A single beat feed is read from storage only: the feeds are the
+ * collector's to read, never a page's, since each read is paid searches.
  */
 export async function GET(request: NextRequest) {
   const viewer = await getViewer();
@@ -33,6 +38,18 @@ export async function GET(request: NextRequest) {
     return Response.json({ lists: all }, { headers: { "Cache-Control": "private, max-age=60" } });
   }
   const platform = request.nextUrl.searchParams.get("platform");
+  if (isBeatFeedKey(platform)) {
+    const feed = await latestStored(platform);
+    if (!feed) return Response.json({ rows: [], note: null, fetchedAt: null, summary: null, relevance: null }, { headers: { "Cache-Control": "private, no-store" } });
+    if (request.nextUrl.searchParams.get("judge") === "1") {
+      const judged = (own ? feed.judged : null) ?? (feed.rows.length ? await judgeHot(viewer.tenantId, platform, feed.rows, feed.fetchedAt) : {});
+      return Response.json({ judged }, { headers: { "Cache-Control": "private, no-store" } });
+    }
+    return Response.json(
+      { rows: feed.rows, note: feed.note, fetchedAt: feed.fetchedAt, summary: feed.summary ?? null, relevance: feed.relevance ?? null },
+      { headers: { "Cache-Control": "private, no-store" } },
+    );
+  }
   if (!isPlatformKey(platform)) return Response.json({ error: "No such platform" }, { status: 400 });
 
   const hot = await platformHot(platform);

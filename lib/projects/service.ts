@@ -12,7 +12,7 @@ import { frontierStep } from "@/lib/home/roles";
 import { audit } from "@/lib/audit";
 import { share } from "@/lib/authz/rebac";
 import { TITLE_NOISE, backlogQueryOf, channelNote, fromHotRow, fromIdea, fromSignal, fromTopicRow, type ProjectSource, type SignalLike, type SourceEvidence, type TopicRef, titleCore } from "@/lib/projects/topic";
-import { PLATFORMS, isPlatformKey, type HotRow } from "@/lib/research/platform-catalog";
+import { isListKey, listName, type HotRow } from "@/lib/research/platform-catalog";
 
 /**
  * Which projects this person may see: their own, the studio-wide ones
@@ -683,7 +683,9 @@ export async function resolveTopicRef(viewer: Viewer, ref: TopicRef): Promise<Re
   if (ref.kind === "hot") {
     const platform = str(ref.platform, 40);
     const phrase = str(ref.phrase, 300);
-    if (!isPlatformKey(platform) || !phrase) return null;
+    /* A platform's own chart or a beat feed (`beat_douyin` …): both are
+       stored lists, read the same way. */
+    if (!isListKey(platform) || !phrase) return null;
     /* The stored lists only: never a live (billed) read from a button. */
     const snaps = await db
       .select({ rows: hotSnapshots.rows, judged: hotSnapshots.judged })
@@ -694,14 +696,11 @@ export async function resolveTopicRef(viewer: Viewer, ref: TopicRef): Promise<Re
     for (const snap of snaps) {
       const row = (snap.rows as HotRow[]).find((r) => r && r.phrase === phrase);
       if (!row) continue;
-      const meta = PLATFORMS.find((p) => p.key === platform);
-      const name = meta ? (zh ? meta.zh : meta.label) : platform;
-      return { title: phrase.slice(0, 80), source: fromHotRow(row, platform, name, snap.judged?.[phrase]?.why ?? null), projectTopicId: null, scriptTopicId: null, mandatoryPoints: [] };
+      return { title: phrase.slice(0, 80), source: fromHotRow(row, platform, listName(platform, zh), snap.judged?.[phrase]?.why ?? null), projectTopicId: null, scriptTopicId: null, mandatoryPoints: [] };
     }
     /* A row shown from a live read (the YouTube chart on the "live" tab) is
        in no stored list: the phrase is the topic, with no numbers claimed. */
-    const meta = PLATFORMS.find((p) => p.key === platform);
-    const name = meta ? (zh ? meta.zh : meta.label) : platform;
+    const name = listName(platform, zh);
     return { title: phrase.slice(0, 80), source: { kind: "hot", label: `${name}热榜`, key: `hot:${platform}:${phrase.slice(0, 120)}`, evidence: [] }, projectTopicId: null, scriptTopicId: null, mandatoryPoints: [] };
   }
 

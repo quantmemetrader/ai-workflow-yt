@@ -38,11 +38,13 @@ import { recordUsage } from "@/lib/ai/ledger";
  * Every row is the platform's own list, read as published. The unit of
  * "heat" is kept as the platform gave it. WeChat has no public list.
  */
-export { PLATFORMS, isPlatformKey, type PlatformKey } from "@/lib/research/platform-catalog";
-import { PLATFORMS, onFocus, type PlatformKey, type HotRow, type RelevanceMap } from "@/lib/research/platform-catalog";
+export { PLATFORMS, isPlatformKey, isListKey, type PlatformKey, type ListKey } from "@/lib/research/platform-catalog";
+import { BEAT_FEEDS, PLATFORMS, onFocus, type ListKey, type PlatformKey, type HotRow, type RelevanceMap } from "@/lib/research/platform-catalog";
 
 export type PlatformHot = {
-  platform: PlatformKey;
+  /** A platform's own list, a beat feed, or "beat_all" (the feeds' top across
+   *  platforms, `lib/research/beat-feeds.ts`). */
+  platform: ListKey | "beat_all";
   rows: HotRow[];
   /** Why the list is empty or thin, in the studio's language. */
   note: string | null;
@@ -80,7 +82,11 @@ export async function platformHot(platform: PlatformKey): Promise<PlatformHot> {
   return hot;
 }
 
-async function latestStored(platform: PlatformKey): Promise<PlatformHot | null> {
+/**
+ * The newest stored copy of any list, a week at most. Exported for the beat
+ * feeds, which carry recent rows forward from their own last copy.
+ */
+export async function latestStored(platform: ListKey | "beat_all"): Promise<PlatformHot | null> {
   const [row] = await db
     .select()
     .from(hotSnapshots)
@@ -116,7 +122,7 @@ async function newestAt(platform: PlatformKey): Promise<number | null> {
  * up once per list and only when a model was actually asked; a studio whose
  * agent is switched off still gets its marks, just unmetered.
  */
-function meterFor(tenantId: string) {
+export function meterFor(tenantId: string) {
   let viewer: Promise<{ id: string; tenantId: string } | null> | null = null;
   return async (res: { model: string; provider?: string; promptTokens: number; completionTokens: number; costMicros: number; requestId?: string }) => {
     viewer ??= import("@/lib/agents").then((m) => m.agentViewer(tenantId, "research")).catch(() => null);
@@ -214,14 +220,19 @@ export async function storedHot(platform: PlatformKey): Promise<PlatformHot | nu
   return latestStored(platform);
 }
 
-/** Every platform's newest stored list at once, for a page that wants all
- *  its tabs ready before anybody clicks one. Storage only, never a live read. */
-export async function storedAll(): Promise<Partial<Record<PlatformKey, PlatformHot>>> {
-  const out: Partial<Record<PlatformKey, PlatformHot>> = {};
+/**
+ * Every list's newest stored copy at once, for a page that wants all its
+ * tabs ready before anybody clicks one: the platforms' own lists, the beat
+ * feeds, and the feeds' cross-platform top ("beat_all"). Storage only, never
+ * a live read — a beat feed is only ever read by the collector.
+ */
+export async function storedAll(): Promise<Partial<Record<ListKey | "beat_all", PlatformHot>>> {
+  const out: Partial<Record<ListKey | "beat_all", PlatformHot>> = {};
+  const keys: (ListKey | "beat_all")[] = [...PLATFORMS.filter((p) => !p.unavailable).map((p) => p.key), ...BEAT_FEEDS.map((f) => f.key), "beat_all"];
   await Promise.all(
-    PLATFORMS.filter((p) => !p.unavailable).map(async (p) => {
-      const hot = await latestStored(p.key);
-      if (hot) out[p.key] = hot;
+    keys.map(async (key) => {
+      const hot = await latestStored(key);
+      if (hot) out[key] = hot;
     }),
   );
   return out;
@@ -249,12 +260,14 @@ const SLOW = new Set<PlatformKey>(["dy_breakout", "dy_finance", "dy_tech"]);
 
 /** Every platform that has a list, one after another. */
 export async function collectAll(
-  opts: { force?: boolean } = {},
+  /* `seen` collects what this run marked, handed back to the caller so the
+     beat feeds that follow in the same run reuse the marks. */
+  opts: { force?: boolean; seen?: RelevanceMap } = {},
 ): Promise<{ platform: PlatformKey; rows: number; note: string | null; skipped?: string }[]> {
   const out: { platform: PlatformKey; rows: number; note: string | null; skipped?: string }[] = [];
   /* What this run has already marked, so a video on two 抖音 lists is
      classified once. */
-  const seen: RelevanceMap = {};
+  const seen: RelevanceMap = opts.seen ?? {};
   /* The studio's brief for the judge (channels, 200 of its videos, comments,
      rivals): the same for every list in the run, so read once, when the
      first list is judged, rather than once per list. A failed read is
