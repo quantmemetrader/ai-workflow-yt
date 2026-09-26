@@ -5,6 +5,7 @@ import {
   captions,
   files,
   scriptBeats,
+  tenants,
   timelineItems,
   videoClips,
   videoExports,
@@ -31,6 +32,13 @@ import { asEntrance, CAPTION_PRESETS, FURNITURE_KINDS, isGraphicKind } from "./p
 import { canKaraoke } from "./ass";
 import { dropNarration, footageHasSound, narratedCut, narrationOf } from "./narrate";
 import { targetFromBrief } from "./length";
+import { directorV2ForTenant } from "./v2/flag";
+import { planDesign, type DesignInput } from "./v2/design";
+import { directorRecord, persistDesign, toRows, writeTranslation, type TranslatedLine } from "./v2/persist";
+import { toSentences } from "./sentences";
+import type { Credits, CutReport } from "./v2/types";
+
+export { planDesign } from "./v2/design";
 
 /**
  * The director: a brief in, a finished video out.
@@ -139,6 +147,16 @@ export type DirectorState = {
   /** Set when the worker was restarted under the render: the design is on
    * the timeline already, so the next run goes straight to the encoder. */
   resume?: "render";
+  /**
+   * Director v2's record of the run (`lib/video/v2/persist.ts`): the cut
+   * report, every fetched asset with its credit, the credits line and
+   * block, and the framing and stats the lab and the grader read. A
+   * project the v1 director made has none of these.
+   */
+  cut?: CutReport | null;
+  assets?: Credits["assets"];
+  credits?: { line: string; block: string };
+  v2?: Record<string, unknown>;
   result?: {
     cuts: number;
     graphics: number;
@@ -239,6 +257,9 @@ export async function direct(viewer: Viewer, projectId: string, jobId?: string):
   const wantRender = asked.render !== false;
   const pace: Pace = asked.pace === "calm" || asked.pace === "hype" ? asked.pace : "channel";
   const P = PACES[pace];
+  /* Read once, here, and never again: a tenant that has not opted in is
+     not touched by anything under `lib/video/v2/`. */
+  const v2 = await directorV2ForTenant(viewer.tenantId);
 
   const say = async (step: DirectorState["step"], text: string) => {
     console.log(`[director ${projectId}] ${step}: ${text}`);
@@ -394,6 +415,13 @@ export async function direct(viewer: Viewer, projectId: string, jobId?: string):
         const r = await autoEdit(viewer, projectId, { language, brief });
         await say("cut", `Cut to ${r.cuts} piece${r.cuts === 1 ? "" : "s"}, ${(r.removedMs / 1000).toFixed(1)}s removed${r.note ? ` (${r.note})` : ""}`);
       }
+    }
+
+    /* ---- v2: one plan for the whole video ---------------------------- */
+    if (v2) {
+      const result = await directV2(viewer, project, { brief, aspect, language, pace, wantRender, say });
+      await finish(viewer, projectId, jobId, result);
+      return result;
     }
 
     /* ---- 4. design -------------------------------------------------- */
@@ -862,6 +890,257 @@ export async function direct(viewer: Viewer, projectId: string, jobId?: string):
 }
 
 type Say = (step: DirectorState["step"], text: string) => Promise<void>;
+
+/* ------------------------------------------------------------ director v2 */
+
+/**
+ * The v2 path: design → translate → write → render.
+ *
+ * What differs from v1, step by step (PLAN.md §2 W6):
+ *
+ *   - One outline call over the whole transcript by sentence id, not six
+ *     blind sixty-second windows; the model chooses *what* and writes the
+ *     search queries; `lib/video/layout.ts` chooses when and where.
+ *   - Dedupe (queries, stats, entities) and a stat check against the
+ *     captions within ±1.5 s of the graphic, in `lib/video/v2/design.ts`.
+ *   - Sourcing through W3's `sourceBeats`, once wired (see `v2Deps`);
+ *     until then every footage beat becomes a designed card or stays on
+ *     the host, which is the plan's own fallback.
+ *   - Translation in three batches in parallel and three statements to
+ *     the database, where v1 made forty-line serial calls and 165 writes.
+ *   - The rows, the cut report, the assets and the credits persisted
+ *     together; every fetched asset carries its record on its row.
+ *
+ * The sentences come from the caption words, which after the cut are on
+ * the timeline clock (v1's `autoEdit` rewrites them so; W1's `planCut`
+ * will hand over sentences directly once merged).
+ */
+async function directV2(
+  viewer: Viewer,
+  project: typeof videoProjects.$inferSelect,
+  ctx: { brief: string; aspect: string; language: string; pace: Pace; wantRender: boolean; say: Say },
+): Promise<DirectResult> {
+  const { brief, language, pace, say } = ctx;
+  const projectId = project.id;
+  const started = Date.now();
+
+  const { rows: cutRows, totalMs } = await timelineOf(projectId);
+  const cues = await db
+    .select()
+    .from(captions)
+    .where(and(eq(captions.projectId, projectId), eq(captions.language, language)))
+    .orderBy(asc(captions.startMs));
+  const words = cues.flatMap((c) => c.words ?? []);
+  if (!words.length) throw new Error("字幕没有逐词时间轴，无法规划画面；请重新转写。");
+  const sentences = toSentences(words, cues.map((c) => ({ startMs: c.startMs, endMs: c.endMs })), { clipId: cutRows[0]?.clipId ?? "src" });
+  const pieces = cutRows.map((r) => ({ inMs: r.atMs, outMs: r.atMs + r.lengthMs }));
+  const voice = await creatorVoiceText(viewer.tenantId);
+  const [tenant] = await db.select({ name: tenants.name }).from(tenants).where(eq(tenants.id, viewer.tenantId)).limit(1);
+
+  const input: DesignInput = {
+    brief,
+    sentences,
+    pieces,
+    totalMs,
+    captions: cues.map((c) => ({ startMs: c.startMs, endMs: c.endMs, text: c.text })),
+    face: null,
+    pace,
+    accent: project.accent,
+    language,
+    furniture: furnitureFromBrief(brief, project.title, tenant?.name ?? null),
+    voice,
+  };
+
+  const design = await planDesign(input, {
+    complete: async (req) => {
+      const out = await complete({
+        model: modelFor.assistant(),
+        temperature: req.temperature,
+        maxTokens: req.maxTokens,
+        messages: [
+          { role: "system", content: req.system },
+          { role: "user", content: req.user },
+        ],
+      });
+      await recordUsage({ viewer, module: "video", provider: out.provider ?? "openrouter", model: out.model, promptTokens: out.promptTokens, completionTokens: out.completionTokens, costMicros: out.costMicros, requestId: out.requestId });
+      return { text: out.text, costMicros: out.costMicros };
+    },
+    /*
+     * Stage 2 wires W3 here. Its signatures as built on `wt-dv2-W3`, which
+     * differ from the plan's sketch:
+     *   - `sourceBeats(beats, ctx: SourcingCtx)` from `@/lib/video/v2/sourcing`:
+     *     `ctx` carries `workDir`, `into: "files"` with the `viewer`, a
+     *     `limiter` (6), the `outline`, and `used` / `hashes` / `tenantRecent`
+     *     (from its `recentSourceIds`). Each `Sourced.beatId` is
+     *     `bNN-sNNN-intent` (`beatIdOf`), NN the pick's position in the list
+     *     given; `design.ts:sourcedForLayout` maps that back to the beat, so
+     *     several beats of one sentence may be sent.
+     *   - `entityVisual(entity, ctx)` from `@/lib/video/v2/entities` answers
+     *     with `EntityVisual[]` (candidates with `file`, `via`, `isMark`),
+     *     not an asset: the adapter here fetches the first with the media
+     *     library and shapes a `Sourced` of kind "logo", or returns null.
+     *   - `placeCredits(sourced, { maxLineUnits })` from `@/lib/video/v2/credits`.
+     * On this branch none of them is imported and the plan's own fallback
+     * applies: a beat with no asset becomes a designed card, or stays on the
+     * host; a card goes up without a logo; `fallbackCredits` writes the line.
+     */
+    sourceBeats: null,
+    entityVisual: null,
+    placeCredits: null,
+    say: (text) => say("design", text),
+  });
+
+  /* ---- translate, three batches in parallel, three statements ------ */
+  await say("write", "翻译字幕、选关键词");
+  const t = Date.now();
+  await translateCuesV2(viewer, projectId, language, cues);
+  const translateMs = Date.now() - t;
+
+  /* ---- write -------------------------------------------------------- */
+  await say("write", "写入时间线");
+  /* Each fetched video asset goes in the bin once, so the cutaway row can name a clip. */
+  const clipIds = new Map<string, string>();
+  for (const s of design.sourced) {
+    if (s.kind !== "video" || clipIds.has(s.asset.fileId)) continue;
+    try {
+      clipIds.set(s.asset.fileId, await addClip(viewer, projectId, s.asset.fileId));
+    } catch {
+      // A clip that would not go in the bin is a cutaway not made; the rest stand.
+    }
+  }
+  const rows = toRows(design.plan, projectId, clipIds).map((r) => ({ ...r, id: newId("gfx"), options: { ...r.options, planId: r.id } as Record<string, unknown> }));
+  const record = directorRecord(design.plan, design.credits, null, design.lint.map((v) => ({ rule: v.rule, atMs: v.atMs, detailZh: v.detailZh })), design.notesZh);
+  await persistDesign(projectId, rows, record);
+
+  const wantedPreset = CAPTION_PRESETS.some((p) => p.key === "bilingual-reel") ? "bilingual-reel" : "bilingual";
+  const title = design.outline.titleZh && (project.title.startsWith("Untitled") || /^new project|^未命名/i.test(project.title)) ? design.outline.titleZh.slice(0, 120) : project.title;
+  await db.update(videoProjects).set({ captionPreset: wantedPreset, title, updatedAt: new Date() }).where(eq(videoProjects.id, projectId));
+
+  const cutawayCount = rows.filter((r) => r.kind === "broll" || (r.kind === "image" && r.options.layout)).length;
+  const result: DirectResult = {
+    cuts: cutRows.length,
+    graphics: rows.filter((r) => r.kind !== "punch" && r.kind !== "broll").length,
+    punches: rows.filter((r) => r.kind === "punch").length,
+    broll: rows.filter((r) => r.kind === "broll").length,
+    pictures: rows.filter((r) => r.kind === "image").length,
+    title,
+    notes: [design.notesZh, `规划 ${((Date.now() - started) / 1000).toFixed(0)} 秒（大纲 ${(design.timings.outlineMs / 1000).toFixed(0)} 秒、翻译 ${(translateMs / 1000).toFixed(0)} 秒）；${cutawayCount} 个空镜。`].filter(Boolean).join(" "),
+  };
+  console.log(`[director ${projectId}] v2 design in ${Date.now() - started} ms: outline ${design.timings.outlineMs}, sourcing ${design.timings.sourcingMs}, layout ${design.timings.layoutMs}, translate ${translateMs}; lint ${design.lint.length}`);
+
+  await patch(projectId, (d) => ({ ...d, result, language }));
+  if (ctx.wantRender) await renderStep(viewer, projectId, ctx.aspect, language, result, say);
+  return result;
+}
+
+/**
+ * The furniture the brief asks for: 主标题「…」, 副标题, 水印「…」, 脚注「…」.
+ * What the brief does not say comes from the project and the tenant; the
+ * footnote defaults to the channel's own line, measured in `HOUSE_FORMAT`.
+ */
+export function furnitureFromBrief(brief: string, projectTitle: string, tenantName: string | null): DesignInput["furniture"] {
+  const grab = (re: RegExp) => re.exec(brief)?.[1]?.trim() ?? null;
+  const title = grab(/主标题[「“"『]([^」”"』]{1,40})[」”"』]/) ?? projectTitle;
+  const sub = grab(/副标题[「“"『]([^」”"』]{1,60})[」”"』]/);
+  const watermark = grab(/水印[「“"『]([^」”"』]{1,30})[」”"』]/) ?? tenantName;
+  const footnote = grab(/脚注[「“"『]([^」”"』]{1,120})[」”"』]/) ?? "注：视频信息来自公开资料整理，仅作为观点分析，不构成任何投资建议。";
+  return { header: { title, sub }, watermark, footnote };
+}
+
+/**
+ * The second-language track and the keywords, three batches in parallel.
+ *
+ * Same prompt as v1, same validation (a keyword must be in the original
+ * line verbatim). The cues are split into three roughly equal parts that
+ * run together, so the wall-clock is one call's, and the rows go to the
+ * database in three statements (`writeTranslation`) instead of one per
+ * row. The lines a batch failed to answer (a truncated or malformed
+ * answer: the lab saw one batch of 28 lines come back empty, a third of
+ * the video with no English) are asked for once more in two smaller
+ * batches; only what fails twice is left plain.
+ */
+async function translateCuesV2(viewer: Viewer, projectId: string, language: string, cues: (typeof captions.$inferSelect)[]): Promise<void> {
+  const other = /^zh/.test(language) ? "en" : "zh-CN";
+  if (!cues.length) return;
+  const { lines, retried, missing } = await translateInBatches(cues, async (numbered) => {
+    const res = await complete({
+      model: modelFor.utility(),
+      temperature: 0.2,
+      maxTokens: 8000,
+      messages: [
+        { role: "system", content: TRANSLATE_PROMPT },
+        { role: "user", content: numbered },
+      ],
+    });
+    await recordUsage({ viewer, module: "video", provider: res.provider ?? "openrouter", model: res.model, promptTokens: res.promptTokens, completionTokens: res.completionTokens, costMicros: res.costMicros, requestId: res.requestId });
+    return res.text;
+  });
+  if (retried || missing) console.warn(`[director ${projectId}] translation: ${retried} lines asked for again, ${missing} left without a second language`);
+  await writeTranslation(projectId, cues, other, lines, newId);
+}
+
+/**
+ * The translation, batched: `parts` batches in parallel, then one more
+ * round of two batches for the lines that came back missing or empty.
+ * `call` takes the numbered lines (`12. 原句`) and returns the model's
+ * text; it may throw, and a batch that throws is simply a batch of missing
+ * lines. Pure apart from `call`, so the lab times it without the database.
+ */
+export async function translateInBatches(
+  cues: { text: string }[],
+  call: (numbered: string) => Promise<string>,
+  parts = 3,
+): Promise<{ lines: TranslatedLine[]; batches: number; retried: number; missing: number }> {
+  const numbered = (idx: number[]) => idx.map((i) => `${i}. ${cues[i].text}`).join("\n");
+  const ask = async (idx: number[]): Promise<TranslatedLine[]> => {
+    if (!idx.length) return [];
+    try {
+      const asked = new Set(idx);
+      return parseTranslation(await call(numbered(idx)), cues).filter((l) => asked.has(l.i));
+    } catch {
+      return [];
+    }
+  };
+  const all = cues.map((_, i) => i);
+  const size = Math.max(1, Math.ceil(all.length / parts));
+  const batches: number[][] = [];
+  for (let at = 0; at < all.length; at += size) batches.push(all.slice(at, at + size));
+  const got = new Map<number, TranslatedLine>();
+  const answered = (l: TranslatedLine) => Boolean(l.second) || l.keywords.length > 0;
+  for (const lines of await Promise.all(batches.map(ask))) for (const l of lines) if (answered(l)) got.set(l.i, l);
+  const missing = all.filter((i) => !got.has(i));
+  if (missing.length) {
+    const half = Math.ceil(missing.length / 2);
+    for (const lines of await Promise.all([missing.slice(0, half), missing.slice(half)].map(ask))) for (const l of lines) if (answered(l) && !got.has(l.i)) got.set(l.i, l);
+  }
+  const lines = Array.from(got.values()).sort((a, b) => a.i - b.i);
+  return { lines, batches: batches.length, retried: missing.length, missing: all.length - lines.length };
+}
+
+/** The translation answer, checked line by line: an index that exists, a keyword that is in the line. */
+export function parseTranslation(text: string, cues: { text: string }[]): TranslatedLine[] {
+  const body = text.replace(/<\/?think(?:ing)?>/gi, "\n");
+  const start = body.indexOf("{");
+  const end = body.lastIndexOf("}");
+  if (start < 0 || end <= start) return [];
+  let parsed: { lines?: { i?: unknown; second?: unknown; keywords?: unknown }[] };
+  try {
+    parsed = JSON.parse(body.slice(start, end + 1)) as typeof parsed;
+  } catch {
+    return [];
+  }
+  const out: TranslatedLine[] = [];
+  for (const l of parsed.lines ?? []) {
+    const i = Number(l.i);
+    if (!Number.isInteger(i) || !cues[i]) continue;
+    const second = typeof l.second === "string" ? l.second.trim().slice(0, 200) : "";
+    const keywords = Array.isArray(l.keywords)
+      ? l.keywords.filter((k): k is string => typeof k === "string" && k.trim().length > 0 && cues[i].text.includes(k.trim())).map((k) => k.trim()).slice(0, 3)
+      : [];
+    out.push({ i, second, keywords });
+  }
+  return out;
+}
 
 async function renderStep(viewer: Viewer, projectId: string, aspect: string, language: string, result: DirectResult, say: Say) {
   await say("render", `Rendering ${aspect} with the captions burnt in. Minutes on a long cut.`);

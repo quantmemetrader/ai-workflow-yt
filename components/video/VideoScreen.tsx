@@ -65,6 +65,7 @@ import { Trim } from "@/components/video/Trim";
 import { Editor } from "@/components/video/Editor";
 import { Inspector } from "@/components/video/Inspector";
 import { Director } from "@/components/video/Director";
+import { Credits } from "@/components/video/Credits";
 import { uploadFiles } from "@/lib/client/upload";
 import { beginWork } from "@/lib/client/busy";
 import { notify } from "@/lib/client/notify";
@@ -852,19 +853,23 @@ export function VideoScreen({
           )}
 
           {tab === "graphics" && (
-            <Graphics
-              graphics={graphics}
-              pictures={pictures}
-              captionPreset={project.captionPreset}
-              accent={project.accent}
-              totalMs={totalMs}
-              zh={zh}
-              busy={busy}
-              onAdd={(input) => edit(() => addGraphicAction(project.id, input))}
-              onUpdate={(id, input) => edit(() => updateGraphicAction(id, input))}
-              onRemove={(id) => edit(() => removeGraphicAction(id))}
-              onLook={(input) => edit(() => setLookAction(project.id, input))}
-            />
+            <>
+              <Graphics
+                graphics={graphics}
+                pictures={pictures}
+                captionPreset={project.captionPreset}
+                accent={project.accent}
+                totalMs={totalMs}
+                zh={zh}
+                busy={busy}
+                onAdd={(input) => edit(() => addGraphicAction(project.id, input))}
+                onUpdate={(id, input) => edit(() => updateGraphicAction(id, input))}
+                onRemove={(id) => edit(() => removeGraphicAction(id))}
+                onLook={(input) => edit(() => setLookAction(project.id, input))}
+              />
+              {/* 素材来源: the fetched assets of a director v2 run, with the credits text. Nothing for a v1 project. */}
+              <Credits director={project.director ?? {}} zh={zh} />
+            </>
           )}
 
           {tab === "preview" && <Preview renders={done} zh={zh} />}
