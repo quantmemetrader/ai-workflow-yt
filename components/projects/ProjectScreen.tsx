@@ -153,22 +153,53 @@ export function ProjectScreen({ project: p, zh, people, writing }: { project: Pr
   const renderFailed = !directing && p.render?.state === "failed";
   const cutReady = !busyLive && !(p.render?.state === "done" && p.render.fileId) && (p.video?.items ?? 0) > 0;
 
-  /* While something is being worked on, ask for the project's state in one
-     short string and refresh only when it changes: re-rendering on a timer
-     read as the page reloading itself. */
+  /*
+   * Ask for the project's state in one short string and refresh only when
+   * it changes: re-rendering on a timer read as the page reloading itself.
+   *
+   * Every three seconds while something is being worked on. The clock on
+   * that restarts each time the stamp moves (a render's percent is in it),
+   * so a film that takes longer than the deadline keeps its bar going and
+   * still turns the card over when it lands; only a job that has said
+   * nothing new for eight minutes stops being asked about. And once when
+   * the tab comes back into view, whatever the state: a render started in
+   * the editor tab, or by 剪辑师 from the chat, shows the moment the owner
+   * looks here again rather than after a reload.
+   */
   React.useEffect(() => {
-    if (!(anyWorking || busyLive)) return;
-    const until = Date.now() + 8 * 60_000;
+    const live = anyWorking || busyLive;
+    let until = Date.now() + 8 * 60_000;
     let last: string | null = null;
-    const id = setInterval(async () => {
-      if (Date.now() > until) return clearInterval(id);
+    let stopped = false;
+    const pulse = async () => {
       const r = await fetch(`/api/projects/${p.id}/pulse`, { cache: "no-store" }).catch(() => null);
       const j = r?.ok ? ((await r.json()) as { stamp: string }) : null;
-      if (!j) return;
-      if (last !== null && j.stamp !== last) router.refresh();
+      if (!j || stopped) return;
+      if (last !== null && j.stamp !== last) {
+        until = Date.now() + 8 * 60_000;
+        router.refresh();
+      }
       last = j.stamp;
-    }, 3000);
-    return () => clearInterval(id);
+    };
+    /* The stamp this page was drawn from, so the first change is seen. */
+    void pulse();
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void pulse();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onVisible);
+    const id = live
+      ? setInterval(() => {
+          if (Date.now() > until) return;
+          void pulse();
+        }, 3000)
+      : null;
+    return () => {
+      stopped = true;
+      if (id) clearInterval(id);
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onVisible);
+    };
   }, [anyWorking, busyLive, router, p.id]);
 
   /** Ask one employee something from its card; the answer comes back there. */
@@ -689,6 +720,16 @@ export function ProjectScreen({ project: p, zh, people, writing }: { project: Pr
                     <span style={{ display: "block", fontSize: 11.5, color: "#7c7c7c", marginTop: 2, lineHeight: 1.5 }}>
                       {t(`${p.video?.items ?? 0} 段${p.video?.graphics ? `、${p.video.graphics} 个图形` : ""}${burnCaptions ? "、字幕压进画面" : ""}。按渲染出成片，几分钟；好了会在这里播放。`, `${p.video?.items ?? 0} pieces${p.video?.graphics ? `, ${p.video.graphics} graphics` : ""}${burnCaptions ? ", captions burnt in" : ""}. Press render for the film; it takes minutes and plays here when done.`)}
                     </span>
+                    {/* The director stopped part-way through this cut (the
+                        step says "看成片卡"): what stopped it, here, so the
+                        owner can decide whether to render what is there or
+                        ask 剪辑师 again. */}
+                    {p.director?.state === "failed" && p.director.error ? (
+                      <span style={{ display: "block", fontSize: 11.5, color: "#a3281c", marginTop: 6, lineHeight: 1.5, overflowWrap: "anywhere" }}>
+                        {t("剪辑师上次没做完：", "The editor stopped last time: ")}
+                        {p.director.error.slice(0, 240)}
+                      </span>
+                    ) : null}
                   </span>
                   <span style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                     <button type="button" onClick={() => render("9:16")} disabled={busyAction !== null || pending} style={{ ...btn(true), height: 34, opacity: busyAction ? 0.6 : 1 }}>
@@ -1613,7 +1654,7 @@ function RenderPlayer({ render, zh }: { render: NonNullable<ProjectDetail["rende
   const [proxyFailed, setProxyFailed] = React.useState(false);
   const fileId = render.fileId!;
   const playing = proxyFailed ? fileId : (render.proxyFileId ?? fileId);
-  const tall = render.aspect === "9:16";
+  const shape = render.aspect === "9:16" ? TALL_SHAPE : WIDE_SHAPE;
   return (
     <video
       key={playing}
@@ -1626,10 +1667,16 @@ function RenderPlayer({ render, zh }: { render: NonNullable<ProjectDetail["rende
         if (!proxyFailed && render.proxyFileId) setProxyFailed(true);
       }}
       aria-label={zh ? "成片" : "The video"}
-      style={{ width: "100%", maxHeight: tall ? 520 : 420, aspectRatio: render.aspect.replace(":", " / "), objectFit: "contain", borderRadius: 12, background: "#000", display: "block" }}
+      style={{ display: "block", aspectRatio: render.aspect.replace(":", " / "), objectFit: "contain", borderRadius: 12, background: "#000", ...shape }}
     />
   );
 }
+
+/** A vertical film is a phone screen: 480 tall and as wide as that makes
+ * it, centred — not the whole column's width of black with a thin picture
+ * in the middle. A wide one takes the column. */
+const TALL_SHAPE: React.CSSProperties = { height: 480, width: "auto", maxWidth: "100%", margin: "0 auto" };
+const WIDE_SHAPE: React.CSSProperties = { width: "100%", maxHeight: 420 };
 
 function clean(body: string): string {
   return body.replace(/\*\*/g, "").replace(/^#+\s*/gm, "").replace(/@\S+\s?/g, "").trim();

@@ -2,7 +2,7 @@ import "server-only";
 import type { Viewer } from "@/lib/auth/types";
 import { AGENT_KEYS, type AgentKey } from "@/lib/agents/catalog";
 import { agentChannelLines, conversationDetail, conversationsWithAgent } from "@/lib/chat/service";
-import { videoRefsOf, type VideoCard } from "@/lib/chat/video-card";
+import { resultVideoRefs, videoRefsOf, type VideoCard, type VideoRefs } from "@/lib/chat/video-card";
 import { videoCardsFor } from "@/lib/chat/videos";
 import type { AgentHistory, ThreadMessage } from "@/components/canvas/AgentScreen";
 
@@ -12,23 +12,27 @@ import type { AgentHistory, ThreadMessage } from "@/components/canvas/AgentScree
  * which opens the newest thread that employee answered in.
  *
  * With the renders and video files each turn names, as cards for this
- * reader: an employee's tools say what they made or found (a render's id in
- * a result, a file's), and a person's own upload is named in their message
- * (`[附件] … file id fil_…`, written by the stream route). Nothing on the
- * `agent_messages` row says "attachment"; the ids in the text and the tool
- * results are the record, and `lib/chat/videos.ts` checks each against the
- * reader before it becomes a card.
+ * reader: what the answer itself writes, what a tool of the turn looked up
+ * (one thing, not a listing — `resultVideoRefs`), and a person's own upload
+ * named in their message (`[附件] … file id fil_…`, written by the stream
+ * route). Nothing on the `agent_messages` row says "attachment"; the ids in
+ * the text and the tool results are the record, and `lib/chat/videos.ts`
+ * checks each against the reader before it becomes a card. The same rule
+ * the screen applies to a live turn (`AgentScreen`, `resultIds`).
  */
 export async function threadMessagesOf(viewer: Viewer, detail: NonNullable<Awaited<ReturnType<typeof conversationDetail>>>): Promise<ThreadMessage[]> {
   const rows = detail.messages.filter((m) => m.role === "user" || m.role === "assistant");
   const videos = await videoCardsFor(
     viewer,
     rows.map((m) => {
-      const said = detail.toolCalls
-        .filter((c) => c.messageId === m.id && c.status === "ok" && typeof c.result === "string")
-        .map((c) => c.result as string)
-        .join("\n");
-      return { key: m.id, ...videoRefsOf(null, `${m.content}\n${said}`) };
+      const refs: VideoRefs = videoRefsOf(null, m.content);
+      for (const c of detail.toolCalls) {
+        if (c.messageId !== m.id || c.status !== "ok" || typeof c.result !== "string") continue;
+        const found = resultVideoRefs(c.result);
+        refs.exportIds.push(...found.exportIds);
+        refs.fileIds.push(...found.fileIds);
+      }
+      return { key: m.id, exportIds: [...new Set(refs.exportIds)], fileIds: [...new Set(refs.fileIds)], jobIds: refs.jobIds };
     }),
   ).catch((err) => {
     console.error("[chat] could not read the videos in the conversation", err);

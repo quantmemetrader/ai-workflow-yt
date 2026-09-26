@@ -23,7 +23,7 @@ import { PersonAvatar } from "@/components/ui/PersonAvatar";
 import { ProjectBridge } from "@/components/chat/ProjectBridge";
 import { ATTACH_ACCEPT, bytes, kindOf, uploadToStudio, type Attaching } from "@/components/chat/upload";
 import { VideoCards } from "@/components/chat/VideoCard";
-import type { VideoCard } from "@/lib/chat/video-card";
+import { RESULT_VIDEOS_MAX, videoRefsOf, type VideoCard } from "@/lib/chat/video-card";
 import type { Locale } from "@/lib/i18n";
 
 /**
@@ -235,9 +235,13 @@ export function AgentScreen({
     if (!files.length) return;
     for (const file of files) {
       const key = `${file.name}-${file.size}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-      setAttached((rest) => [...rest, { key, name: file.name, size: file.size, mime: file.type, progress: 0 }]);
-      void uploadToStudio(file, (fraction) => setAttached((rest) => rest.map((a) => (a.key === key ? { ...a, progress: fraction } : a))), undefined, { access: { mode: "private" } })
-        .then(({ id }) => setAttached((rest) => rest.map((a) => (a.key === key ? { ...a, fileId: id, progress: 1 } : a))))
+      /* The × on the chip while the bytes move aborts the request, and the
+         uploader abandons its row — not a chip that goes while the file
+         quietly finishes into the person's list. */
+      const controller = new AbortController();
+      setAttached((rest) => [...rest, { key, name: file.name, size: file.size, mime: file.type, progress: 0, cancel: () => controller.abort() }]);
+      void uploadToStudio(file, (fraction) => setAttached((rest) => rest.map((a) => (a.key === key ? { ...a, progress: fraction } : a))), controller.signal, { access: { mode: "private" } })
+        .then(({ id }) => setAttached((rest) => rest.map((a) => (a.key === key ? { ...a, fileId: id, progress: 1, cancel: undefined } : a))))
         .catch((err: unknown) => setAttached((rest) => rest.map((a) => (a.key === key ? { ...a, error: err instanceof Error ? err.message : zh ? "上传失败" : "Upload failed" } : a))));
     }
   }
@@ -340,6 +344,8 @@ export function AgentScreen({
     /* What the answer names — a render or a file in a tool's receipt or
        result — for the card under it once the turn is done. */
     const named = new Set<string>();
+    /* The answer's words as they arrive, for the ids it writes itself. */
+    let answer = "";
 
     const controller = new AbortController();
     abort.current = controller;
@@ -390,6 +396,7 @@ export function AgentScreen({
               patchLast((m) => ({ ...m, id: event.id }));
               break;
             case "delta":
+              answer += event.text;
               patchLast((m) => ({ ...m, content: m.content + event.text }));
               break;
             case "tool":
@@ -402,15 +409,15 @@ export function AgentScreen({
                 return { ...m, tools };
               });
               /* A render or a file the tool made or found, by id: the turn's
-                 receipts and the ids in its result (the stream's own words
-                 for what happened, `resultIds`). */
+                 receipts, and the ids in its result (`resultIds`) when it
+                 looked one thing up rather than listed many — the rule a
+                 reloaded thread applies too (`resultVideoRefs`). */
               if (event.status === "ok") {
                 for (const a of Array.isArray(event.artifacts) ? event.artifacts : []) {
                   if ((a?.kind === "render" || a?.kind === "file") && typeof a.id === "string") named.add(a.id);
                 }
-                for (const id of Array.isArray(event.resultIds) ? event.resultIds : []) {
-                  if (typeof id === "string" && /^(rnd|fil)_/i.test(id)) named.add(id);
-                }
+                const inResult = (Array.isArray(event.resultIds) ? event.resultIds : []).filter((id: unknown): id is string => typeof id === "string" && /^(rnd|fil)_/i.test(id));
+                if (inResult.length <= RESULT_VIDEOS_MAX) for (const id of inResult) named.add(id);
               }
               break;
             case "citations":
@@ -423,11 +430,15 @@ export function AgentScreen({
               setLiveModel(event.model);
               patchLast((m) => ({ ...m, costMicros: event.costMicros, model: event.model }));
               break;
-            case "done":
+            case "done": {
               patchLast((m) => ({ ...m, status: "complete" }));
-              /* The card under the answer, for what the turn named. */
+              /* The card under the answer, for what the turn named: what the
+                 answer itself wrote, and what its tools made or looked up. */
+              const written = videoRefsOf(null, answer);
+              for (const id of [...written.exportIds, ...written.fileIds]) named.add(id);
               if (named.size) void cardsFor([...named]).then((videos) => videos.length && patchLast((m) => ({ ...m, videos })));
               break;
+            }
             case "error":
               patchLast((m) => ({ ...m, status: "failed", error: event.message }));
               break;
@@ -699,7 +710,7 @@ export function AgentScreen({
                           <b style={{ display: "block", height: "100%", width: `${Math.max(4, Math.round(a.progress * 100))}%`, background: "#171717", transition: "width .3s ease" }} />
                         </span>
                       ) : null}
-                      <button type="button" onClick={() => setAttached((rest) => rest.filter((x) => x.key !== a.key))} aria-label={zh ? `移除 ${a.name}` : `Remove ${a.name}`} style={{ border: 0, background: "transparent", padding: 0, cursor: "pointer", font: "inherit", color: "inherit", lineHeight: 1 }}>
+                      <button type="button" onClick={() => { a.cancel?.(); setAttached((rest) => rest.filter((x) => x.key !== a.key)); }} aria-label={zh ? `移除 ${a.name}` : `Remove ${a.name}`} style={{ border: 0, background: "transparent", padding: 0, cursor: "pointer", font: "inherit", color: "inherit", lineHeight: 1 }}>
                         ×
                       </button>
                     </span>

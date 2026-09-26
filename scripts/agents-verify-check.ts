@@ -171,8 +171,11 @@ async function main() {
   const projects = await runTool(planner, "list_projects", "{}");
   console.log(`      list_projects:\n${projects.text.split("\n").slice(0, 6).map((l) => `        ${l}`).join("\n")}`);
   check("list_projects lists projects with their ids", /wp_/.test(projects.text));
-  const search = await runTool(planner, "list_scripts", JSON.stringify({ query: "蒸馏" }));
-  console.log(`      list_scripts 蒸馏:\n${search.text.split("\n").map((l) => `        ${l}`).join("\n")}`);
+  /* A title nobody would give a script: "蒸馏" used to be that, until the
+     studio made 《蒸馏之战》 and this check started failing on real data. */
+  const nothing = "zq-没有这样的脚本-xv";
+  const search = await runTool(planner, "list_scripts", JSON.stringify({ query: nothing }));
+  console.log(`      list_scripts ${nothing}:\n${search.text.split("\n").map((l) => `        ${l}`).join("\n")}`);
   check("list_scripts with a query that matches nothing says what the library holds", /No script matches/.test(search.text) && /scr_/.test(search.text));
   const found = await runTool(planner, "list_scripts", JSON.stringify({ query: real.title.slice(0, 2) }));
   check("list_scripts with a query finds a script by title", found.text.includes(real.id), found.text.split("\n").slice(0, 3).join(" | "));

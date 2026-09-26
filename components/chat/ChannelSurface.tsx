@@ -662,13 +662,19 @@ export function ChannelSurface(props: {
 
     for (const file of files) {
       const key = `${file.name}-${file.size}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-      setAttached((rest) => [...rest, { key, name: file.name, size: file.size, mime: file.type, progress: 0 }]);
+      /* The × on the chip while the bytes move: the request is aborted and
+         the uploader abandons its row (`uploadToStudio`), instead of the
+         chip going and the file quietly finishing into the list. */
+      const controller = new AbortController();
+      setAttached((rest) => [...rest, { key, name: file.name, size: file.size, mime: file.type, progress: 0, cancel: () => controller.abort() }]);
 
-      void uploadToStudio(file, (fraction) =>
-        setAttached((rest) => rest.map((a) => (a.key === key ? { ...a, progress: fraction } : a))),
+      void uploadToStudio(
+        file,
+        (fraction) => setAttached((rest) => rest.map((a) => (a.key === key ? { ...a, progress: fraction } : a))),
+        controller.signal,
       )
         .then(({ id }) =>
-          setAttached((rest) => rest.map((a) => (a.key === key ? { ...a, fileId: id, progress: 1 } : a))),
+          setAttached((rest) => rest.map((a) => (a.key === key ? { ...a, fileId: id, progress: 1, cancel: undefined } : a))),
         )
         .catch((err: unknown) =>
           setAttached((rest) =>
@@ -1197,7 +1203,10 @@ export function ChannelSurface(props: {
                         </span>
                         <button
                           type="button"
-                          onClick={() => setAttached((rest) => rest.filter((x) => x.key !== a.key))}
+                          onClick={() => {
+                            a.cancel?.();
+                            setAttached((rest) => rest.filter((x) => x.key !== a.key));
+                          }}
                           aria-label={zh ? `移除 ${a.name}` : `Remove ${a.name}`}
                           style={{
                             border: 0,

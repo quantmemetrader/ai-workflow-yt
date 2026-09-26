@@ -14,7 +14,7 @@ import { visibleProject } from "@/lib/projects/service";
 import { canEditProject } from "@/lib/video/access";
 import { agentTag } from "@/lib/agents/catalog";
 import { setFileAccess } from "@/lib/files/access";
-import { addClip } from "@/lib/video/service";
+import { binVideo } from "@/lib/chat/bin";
 import { and, eq, isNull } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { workProjects } from "@/lib/db/schema";
@@ -159,7 +159,8 @@ export async function sendChannelMessage(
       const binned: { fileId: string; clipId: string }[] = [];
       for (const f of videos) {
         try {
-          const clipId = await addClip(viewer, wp.videoProjectId, f.fileId);
+          /* Once: a take already in the bin is named, not added again. */
+          const { clipId } = await binVideo(viewer, wp.videoProjectId, f.fileId);
           binned.push({ fileId: f.fileId, clipId });
         } catch (err) {
           console.error("[chat] could not put an attached video in the project's bin", err);

@@ -105,6 +105,24 @@ export function videoRefsOf(meta: unknown, body: string | null | undefined): Vid
   return { exportIds: [...exportIds], fileIds: [...fileIds], jobIds: [...jobIds] };
 }
 
+/**
+ * What a tool's result names, when it names one thing.
+ *
+ * A reply rests on what its tools returned, so a render or a file found
+ * by a tool ("the latest render is rnd_…") belongs under the answer. But
+ * a tool that *listed* — read_channel over #制作 with its month of
+ * "渲染好了" lines, list_recent_files — names everything it saw, and six
+ * cards under "I could not find it" is noise. So a result counts only when
+ * it names at most `RESULT_VIDEOS_MAX` renders and files: a lookup, not a
+ * listing. What the reply itself writes always counts (`videoRefsOf`).
+ */
+export const RESULT_VIDEOS_MAX = 2;
+
+export function resultVideoRefs(text: string | null | undefined): VideoRefs {
+  const refs = videoRefsOf(null, text);
+  return refs.exportIds.length + refs.fileIds.length <= RESULT_VIDEOS_MAX ? refs : { exportIds: [], fileIds: [], jobIds: [] };
+}
+
 /** Whether a message names anything worth looking up. */
 export function hasVideoRefs(refs: VideoRefs): boolean {
   return refs.exportIds.length > 0 || refs.fileIds.length > 0 || refs.jobIds.length > 0;

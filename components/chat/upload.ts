@@ -54,6 +54,10 @@ export type Attaching = {
   /** Set when the upload finished — this is what the message carries. */
   fileId?: string;
   error?: string;
+  /** Stops the bytes while they are still moving (the chip's ×): the
+   * uploader aborts its request and abandons the row, so a file nobody
+   * wanted does not sit in the list. Nothing to stop once it has landed. */
+  cancel?: () => void;
 };
 
 /**

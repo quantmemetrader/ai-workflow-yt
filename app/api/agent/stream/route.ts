@@ -12,9 +12,10 @@ import { agentViewer } from "@/lib/agents";
 import { CUT_TOOLS, MAX_REPLIES, findStartClaims, later } from "@/lib/agents/mentions";
 import { attachmentsFor, channelById } from "@/lib/chat/service";
 import { bridgeState } from "@/lib/chat/conversation-project";
-import { addClip, projectById } from "@/lib/video/service";
+import { binVideo } from "@/lib/chat/bin";
+import { projectById } from "@/lib/video/service";
 import { canEditProject } from "@/lib/video/access";
-import { relationOn } from "@/lib/authz/rebac";
+import { relationOn, share } from "@/lib/authz/rebac";
 import { clipCount, reachableThroughProjects } from "@/lib/projects/service";
 import { workProjects } from "@/lib/db/schema";
 import { videoClock } from "@/lib/chat/video-card";
@@ -34,13 +35,30 @@ type ScreenIds = Pick<ToolContext, "channelId" | "projectId" | "topicId" | "file
  * the employees worked in, or the one on screen), as the person, under the
  * video project's own edit rule, and the line says so — 剪辑师 can cut it
  * from this same turn.
+ *
+ * The employee answering is given the file to read (`share`, a viewer
+ * grant from the person, who must hold the file to give it). Its tools run
+ * under its own permissions, and an upload is private to the uploader:
+ * without this the line names a file `read_file` would then say does not
+ * exist. The assistant answers as the person and needs nothing.
  */
-async function describeAttachments(viewer: Viewer, conversationId: string, raw: unknown, hints: { videoProjectId?: string }): Promise<{ text: string; fileIds: string[] }> {
+async function describeAttachments(viewer: Viewer, conversationId: string, raw: unknown, hints: { videoProjectId?: string; reader?: Viewer | null }): Promise<{ text: string; fileIds: string[] }> {
   const wanted = Array.isArray(raw) ? [...new Set(raw.filter((v): v is string => typeof v === "string" && v.length > 0 && v.length <= 64))].slice(0, 10) : [];
   if (!wanted.length) return { text: "", fileIds: [] };
   const readable = await attachmentsFor(viewer, wanted);
   const files = wanted.flatMap((id) => readable.get(id) ?? []);
   if (!files.length) return { text: "", fileIds: [] };
+
+  const reader = hints.reader && hints.reader.id !== viewer.id ? hints.reader : null;
+  if (reader) {
+    for (const f of files) {
+      const r = await share(viewer, { type: "file", id: f.id }, "viewer", { type: "user", id: reader.id }).catch((err: unknown) => {
+        console.error("[agent] could not open an attachment to the employee", err);
+        return null;
+      });
+      if (r && !r.ok) console.warn(`[agent] attachment ${f.id} not opened to the employee: ${r.reason}`);
+    }
+  }
 
   let bin: { videoProjectId: string; title: string } | null = null;
   if (files.some((f) => f.kind === "video")) {
@@ -60,7 +78,8 @@ async function describeAttachments(viewer: Viewer, conversationId: string, raw: 
     let note = "";
     if (f.kind === "video" && bin) {
       try {
-        const clipId = await addClip(viewer, bin.videoProjectId, f.id);
+        /* Once: a take already in the bin is named, not added again. */
+        const { clipId } = await binVideo(viewer, bin.videoProjectId, f.id);
         note = ` · 已加入项目素材《${bin.title}》(clip id ${clipId})`;
       } catch (err) {
         console.error("[agent] could not put an attached video in the project's bin", err);
@@ -307,8 +326,16 @@ export async function POST(request: Request) {
            the project's bin): what the employee reads, what the thread keeps
            and what a reload draws as cards. The first one is also "the file
            on screen" for tools that read one, unless the screen said which. */
-        const attached = hasAttachments ? await describeAttachments(viewer, conversationId!, body.attachments, { videoProjectId: ids.projectId }) : { text: "", fileIds: [] };
+        const attached = hasAttachments ? await describeAttachments(viewer, conversationId!, body.attachments, { videoProjectId: ids.projectId, reader: speaker ? speakerViewer : null }) : { text: "", fileIds: [] };
         const turnContent = attached.text ? (content ? `${content}\n\n${attached.text}` : attached.text) : content;
+        /* Nothing typed, and none of the files named is one this person may
+           read (a stale id, an upload that never finished): there is no
+           turn to run, and the model is not asked an empty question. */
+        if (!turnContent) {
+          send({ type: "error", kind: "client", message: "那个文件没法附上（没上传完，或不是你能打开的）。" });
+          controller.close();
+          return;
+        }
         titleFrom = turnContent;
         if (!turnContext.fileId && attached.fileIds[0]) turnContext.fileId = attached.fileIds[0];
         /* What 剪辑师 said and did this turn, for the check at the end. */
