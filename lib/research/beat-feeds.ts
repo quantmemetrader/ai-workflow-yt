@@ -108,7 +108,9 @@ import { HOT_TENANT, latestStored, meterFor, storedAll } from "@/lib/research/pl
  * "现在收集" (`startBeatNow`, `runBeatNow`): one beat, once, when the studio has just
  * added it and does not want to wait for its turn. 8 TikHub searches (up to
  * 10 with 抖音's fallback) under a cap of 12, one YouTube search (102 units),
- * two free news reads; at most once per beat per half hour. What it finds is
+ * two free news reads; at most once per beat per half hour and eight runs a
+ * day per studio (at most 96 TikHub requests on top of the regular ~145, and
+ * only when someone presses it). What it finds is
  * added to the stored feeds, never replacing what they hold, and is filed
  * so the regular runs keep their three-hour rhythm (see there).
  */
@@ -955,6 +957,8 @@ export async function lastBeatRunAt(): Promise<number | null> {
 export const NOW_KEY = "beat_now";
 /** New rows one "现在收集" adds to a feed, at most. */
 const NOW_PER_FEED = 10;
+/** "现在收集" runs per studio per day, all beats together. */
+const NOW_PER_DAY = 8;
 
 export type BeatNowRun = {
   beat: Beat;
@@ -1010,15 +1014,28 @@ export async function startBeatNow(
   const runId = newId("hot");
   const now = new Date();
   const since = new Date(now.getTime() - NOW_EVERY_MS);
+  const day = new Date(now.getTime() - 86_400_000);
+  /* Two limits, checked in the statement that claims the run: once per beat
+     per half hour, and at most `NOW_PER_DAY` runs per studio per day across
+     all its beats (at most 8 × 12 TikHub requests, about two thirds of a
+     day of the regular runs), so pressing through beats that find nothing
+     cannot run the bill up. */
   const { rows } = await db.execute<{ id: string }>(sql`
     insert into hot_snapshots (id, platform, rows, note, summary, fetched_at)
     select ${runId}, ${NOW_KEY}, '[]'::jsonb, ${note}, 'running', ${now}
     where not exists (
       select 1 from hot_snapshots where platform = ${NOW_KEY} and note = ${note} and fetched_at > ${since}
     )
+    and (
+      select count(*) from hot_snapshots where platform = ${NOW_KEY} and note like ${`${tenantId}:%`} and fetched_at > ${day}
+    ) < ${NOW_PER_DAY}
     returning id`);
   if (!rows.length) {
-    const last = (await beatNowRuns(tenantId)).find((r) => r.beat === beatKey);
+    const runs = await beatNowRuns(tenantId);
+    const last = runs.find((r) => r.beat === beatKey);
+    if (!last || now.getTime() - last.at >= NOW_EVERY_MS) {
+      return { error: `今天已经手动收集了 ${NOW_PER_DAY} 次，明天再按，或等下一轮定时收集。`, errorEn: `${NOW_PER_DAY} manual collections already today; try tomorrow, or wait for the next regular collection.`, status: 429 };
+    }
     const retryAt = (last?.at ?? now.getTime()) + NOW_EVERY_MS;
     const hk = new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Hong_Kong", hour: "2-digit", minute: "2-digit" }).format(new Date(retryAt));
     return { error: `这个赛道半小时内收集过，${hk} 以后可以再收集。`, errorEn: `This beat was collected in the last half hour; again after ${hk}.`, retryAt, status: 429 };

@@ -146,7 +146,6 @@ export function LiveNow({
   const [, start] = React.useTransition();
   const [state, setState] = useLocalPreference<"open" | "shut">(KEY, ["open", "shut"], "open");
   const open = state === "open";
-  const [tab, setTab] = useLocalPreference<Tab>(PLATFORM_KEY, TABS, "focus");
   /* The studio's beats. The defaults until `/api/research/beats` answers,
      which is also what the server renders, so nothing differs on hydration;
      the chips wait for the answer, so the defaults never flash. */
@@ -158,6 +157,12 @@ export function LiveNow({
   const active = React.useMemo(() => beats.filter((b) => b.enabled), [beats]);
   const activeKeys = React.useMemo(() => active.map((b) => b.key), [active]);
   const chips = React.useMemo<Chip[]>(() => ["all", ...activeKeys], [activeKeys]);
+  /* The coin market tab is the 加密 beat's own list: with 加密 switched off
+     the collector stops reading it (`beat-feeds.ts`), so the tab goes too
+     rather than sitting empty or stale. The server renders the defaults, so
+     the tabs match on hydration. */
+  const tabs = React.useMemo<readonly Tab[]>(() => (activeKeys.includes("crypto") ? TABS : TABS.filter((k) => k !== "crypto")), [activeKeys]);
+  const [tab, setTab] = useLocalPreference<Tab>(PLATFORM_KEY, tabs, "focus");
   /* Which beat, remembered in this browser and kept across tabs: someone
      reading crypto today reads it on every platform. */
   const [chip, setChip] = useLocalPreference<Chip>(BEAT_KEY, chips, "all");
@@ -288,6 +293,24 @@ export function LiveNow({
       window.clearInterval(id);
     };
   }, [open, waitingKey, nextRunAt, applyBeats, applyLists]);
+
+  /* 管理赛道 edits the list the page read from the server. If that read
+     failed, the page is showing the defaults, and saving an edit of them
+     would drop the studio's own beats — so the list is read again first,
+     and the editor opens only on the studio's real list. */
+  async function openEditor() {
+    if (beatsInfo) {
+      setEditing(true);
+      return;
+    }
+    const res = await fetchBeats();
+    if (!res?.beats?.length) {
+      notify(t("Could not read the beats. Try again in a moment.", "赛道列表没读到，稍后再试。"));
+      return;
+    }
+    applyBeats(res);
+    setEditing(true);
+  }
 
   async function collectNow(key: string) {
     if (collecting) return;
@@ -457,7 +480,7 @@ export function LiveNow({
 
         {open ? (
           <div style={{ display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap" }}>
-            {TABS.map((key) => {
+            {tabs.map((key) => {
               const on = tab === key;
               const n = tabCount(key);
               return (
@@ -594,7 +617,7 @@ export function LiveNow({
                   })}
                   <button
                     type="button"
-                    onClick={() => setEditing(true)}
+                    onClick={() => void openEditor()}
                     style={{ display: "inline-flex", alignItems: "center", gap: 4, height: 22, padding: "0 6px", marginLeft: 2, border: 0, background: "transparent", color: "#8a8a8a", fontSize: 11, fontFamily: "inherit", cursor: "pointer", whiteSpace: "nowrap" }}
                   >
                     <svg viewBox="0 0 24 24" aria-hidden style={{ width: 12, height: 12, fill: "none", stroke: "currentColor", strokeWidth: 1.9, strokeLinecap: "round", strokeLinejoin: "round" }}>
@@ -908,7 +931,10 @@ export function LiveNow({
         <BeatsEditor
           zh={zh}
           beats={beats}
-          counts={everywhere}
+          counts={beatCounts(
+            acrossPlatforms(lists, { limit: 999, beats: beats.map((b) => b.key) }),
+            beats.map((b) => b.key),
+          )}
           onClose={() => setEditing(false)}
           onSaved={(saved) => {
             /* The chips follow at once; a beat just added shows "下一轮收集后

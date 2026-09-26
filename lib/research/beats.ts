@@ -268,10 +268,17 @@ export function beatWords(b: BeatConfig, trad: (s: string) => string = (s) => s)
   const uniq = (list: string[]) => [...new Set(list)];
   if (isDefaultBeat(b.key)) {
     /* The hand-picked Traditional words stay; a word the studio added to a
-       default beat joins them in Traditional. */
+       default beat joins them in Traditional. A word the studio took out of
+       a default beat goes from the news search too (港股 taken out of 商业
+       takes 港股 out of its Google News query); the region's own words with
+       no Simplified twin in the list (晶片, 虛擬資產) stay while the beat is
+       on. With the words untouched this is exactly the hand-picked list. */
     const base = BEAT_WORDS[b.key];
     const added = b.keywords_zh.filter((w) => !base.zh.includes(w));
-    return { zh, hk: uniq([...base.hk, ...added.map(trad)]), en };
+    const removed = base.zh.filter((w) => !b.keywords_zh.includes(w));
+    const kept = base.hk.filter((h) => !removed.some((r) => r === h || trad(r) === h));
+    const hk = uniq([...kept, ...added.map(trad)]);
+    return { zh, hk: hk.length ? hk : uniq(zh.map(trad)), en };
   }
   return { zh, hk: uniq(zh.map(trad)), en };
 }
@@ -420,12 +427,15 @@ export function timesAsked(slot: number, pos: number, n: number, cycle: number):
  *
  * `slot` is `beatSlot()`: the same slot always plans the same searches.
  * A platform that asks n searches of N beats takes n beats starting at a
- * point that moves by one each run, so no beat is skipped two runs in a
- * row, and each time a beat is asked it takes the beat's next word
- * (`timesAsked`). With more searches than beats (抖音's five over four), the
- * extra ones are a second word of a beat, three along. With the four
- * defaults this plans exactly what the collector planned before beats were
- * editable.
+ * point that moves by one each run, and each time a beat is asked it takes
+ * the beat's next word (`timesAsked`). So a beat is skipped at most N − n
+ * runs in a row on that platform: with the four defaults and three searches,
+ * never two in a row; with five beats, two runs (six hours) on 小红书, B站
+ * and TikTok, whose feeds keep what earlier runs found for days, while 抖音
+ * and the news still search every beat every run. With more searches than
+ * beats (抖音's five over four), the extra ones are a second word of a beat,
+ * three along. With the four defaults this plans exactly what the collector
+ * planned before beats were editable.
  */
 export function planBeatRun(slot: number, pillars: string[] = [], beats: readonly BeatConfig[] = DEFAULT_BEATS): PlannedSearch[] {
   const active = activeBeats(beats);

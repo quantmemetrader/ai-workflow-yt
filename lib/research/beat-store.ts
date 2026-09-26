@@ -63,6 +63,15 @@ export async function saveBeats(viewer: Viewer, input: unknown): Promise<{ beats
   const parsed = normalizeBeats(input);
   if (!("beats" in parsed)) return parsed;
   const value = parsed.beats;
+  /* The four defaults can be switched off, never deleted (the editor offers
+     no delete for them, and "恢复默认" brings them back by key); a list sent
+     without one is refused here too, so the rule holds for any caller. */
+  const missing = DEFAULT_BEATS.filter((d) => !value.some((b) => b.key === d.key));
+  if (missing.length)
+    return {
+      error: `默认赛道（${missing.map((d) => d.zh).join("、")}）不能删除，可以关掉。`,
+      errorEn: `The default beats (${missing.map((d) => d.en).join(", ")}) cannot be deleted; switch them off instead.`,
+    };
   await db
     .insert(settings)
     .values({ key: key(viewer.tenantId), value, updatedBy: viewer.id })

@@ -9,8 +9,8 @@ import { runBeatNow, startBeatNow } from "@/lib/research/beat-feeds";
  * caps in `lib/research/beats.ts`: at most 12 TikHub requests, one YouTube
  * search) run after the response, and the page polls `/api/research/beats`
  * until the run's row says it is done, then reads the lists again. At most
- * once per beat per half hour, checked in the same statement that claims the
- * run (`startBeatNow`).
+ * once per beat per half hour and eight times a day per studio, checked in
+ * the same statement that claims the run (`startBeatNow`).
  */
 export async function POST(request: NextRequest) {
   const viewer = await getViewer();
