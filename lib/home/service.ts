@@ -278,8 +278,14 @@ export async function readHome(viewer: Viewer, zh: boolean, opts: { runningFor?:
 
   const agents: AgentState[] = AGENT_KEYS.map((key) => {
     const label = AGENT_LABELS[key];
-    const last = recent.find((m) => m.authorId && keyByUserId.get(m.authorId) === key);
-    const channel = last ? byId.get(last.channelId) : undefined;
+    const theirs = recent.filter((m) => m.authorId && keyByUserId.get(m.authorId) === key);
+    const last = theirs[0];
+    /* The line under the name is the last thing it said that says
+       something. "你好！请问有什么需要我协助的吗？" — its answer to somebody
+       saying hello — is not where its work got to; the line before it is.
+       Only when it has said nothing else does the greeting stand. */
+    const shown = theirs.find((m) => !isGreeting(firstLine(m.body))) ?? last;
+    const channel = shown ? byId.get(shown.channelId) : undefined;
     const asking = last ? decisions.some((d) => d.messageId === last.id) : false;
     return {
       key,
@@ -287,7 +293,7 @@ export async function readHome(viewer: Viewer, zh: boolean, opts: { runningFor?:
       nameLocal: label.nameLocal,
       title: zh ? label.title : label.titleEn,
       status: busy.has(key) ? "working" : asking ? "waiting" : "idle",
-      line: last ? firstLine(last.body) : null,
+      line: shown ? firstLine(shown.body) : null,
       channelSlug: channel?.slug ?? null,
       at: last?.createdAt ?? null,
     };
@@ -436,6 +442,22 @@ function firstLine(body: string): string {
     if (line) return line.slice(0, 120);
   }
   return "";
+}
+
+/**
+ * An empty greeting: a hello and an offer to help, and nothing else — what
+ * an employee answers to "你好" ("你好！请问需要我写脚本，还是协助处理某个
+ * 具体项目？"). Short on purpose: a line that opens with 你好 and goes on to
+ * report work is not one.
+ */
+const HELLO = /^(?:你好|您好|嗨|哈喽|(?:hi|hello|hey)(?=[\s!,.！，。~]|$))[\s!,.！，。~]*/i;
+const OFFER = /请问|有什么|需要我|可以帮|能帮|帮你|帮您|协助|what can i|how can i|anything/i;
+
+function isGreeting(line: string): boolean {
+  const m = HELLO.exec(line.trim());
+  if (!m) return false;
+  const rest = line.trim().slice(m[0].length);
+  return rest.length === 0 || (rest.length <= 60 && OFFER.test(rest));
 }
 
 /** Unused import guard: `sql` is kept for the query above if it grows a

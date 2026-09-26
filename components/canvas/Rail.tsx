@@ -11,6 +11,7 @@ import { NAV } from "@/lib/nav";
 import { Suspense } from "react";
 import { ProjectTree, type TreeProject } from "@/components/projects/ProjectTree";
 import type { Module } from "@/lib/db/schema";
+import { Tr, TR_EN } from "@/components/ui/Tr";
 
 /**
  * The module rail.
@@ -46,7 +47,7 @@ export function Rail({ modules, locale, projects = [] }: { modules: Module[]; lo
     edge: "right",
   });
 
-  const [tip, setTip] = useState<{ text: string; top: number } | null>(null);
+  const [tip, setTip] = useState<{ text: string; en: string; top: number } | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const warm = useRef(0);
 
@@ -60,7 +61,7 @@ export function Rail({ modules, locale, projects = [] }: { modules: Module[]; lo
   // The clock is read inside the timer callback rather than in the handler
   // body: these run on pointer events, never during render, and reading it
   // here keeps that obvious to both a reader and the compiler's lint rule.
-  const show = useCallback((e: React.MouseEvent<HTMLElement>, text: string) => {
+  const show = useCallback((e: React.MouseEvent<HTMLElement>, text: string, en: string) => {
     const rect = e.currentTarget.getBoundingClientRect();
     const top = rect.top + rect.height / 2;
     if (timer.current) clearTimeout(timer.current);
@@ -68,7 +69,7 @@ export function Rail({ modules, locale, projects = [] }: { modules: Module[]; lo
     // Instant when the pointer is already travelling down the rail; a beat's
     // delay on first hover so the tooltip never flickers past.
     timer.current = setTimeout(
-      () => setTip({ text, top }),
+      () => setTip({ text, en, top }),
       performance.now() - warm.current < 400 ? 0 : 350,
     );
   }, []);
@@ -132,6 +133,11 @@ export function Rail({ modules, locale, projects = [] }: { modules: Module[]; lo
       {items.map((item) => {
         const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
         const label = zh ? item.labelZh : item.label;
+        /* The name as it shows: in Chinese, translate-proof — the short
+           English from `TR_EN` is what a page translated by Chrome shows,
+           instead of its "front page" for 首页. */
+        const en = TR_EN[item.labelZh] ?? item.label;
+        const shown = zh ? <Tr zh={item.labelZh} en={en} /> : label;
         return (
           <span key={`${item.module}${item.secondary ? ":2" : ""}`} style={{ display: "contents" }}>
             <Link
@@ -142,12 +148,12 @@ export function Rail({ modules, locale, projects = [] }: { modules: Module[]; lo
               className={`r${active ? " on" : ""}${open ? " wide" : ""}`}
               aria-label={label}
               aria-current={active ? "page" : undefined}
-              onMouseEnter={open ? undefined : (e: React.MouseEvent<HTMLElement>) => show(e, label)}
+              onMouseEnter={open ? undefined : (e: React.MouseEvent<HTMLElement>) => show(e, label, en)}
               onMouseLeave={open ? undefined : hide}
               onClick={hide}
             >
               <svg viewBox="0 0 24 24" dangerouslySetInnerHTML={{ __html: item.icon }} />
-              {open && <span>{label}</span>}
+              {open && <span>{shown}</span>}
               <RailSpinner wide={open} />
             </Link>
             {/* Right under Home: the projects, as a tree. */}
@@ -182,7 +188,9 @@ export function Rail({ modules, locale, projects = [] }: { modules: Module[]; lo
         aria-label={open ? (zh ? "收起侧栏" : "Collapse sidebar") : zh ? "展开侧栏" : "Expand sidebar"}
         aria-expanded={open}
         className={`r${open ? " wide" : ""}`}
-        style={{ border: 0, background: "transparent", cursor: "pointer", font: "inherit" }}
+        /* The family only: a whole `font: inherit` also brought in the
+           page's 16px and made 收起 the largest word in the rail. */
+        style={{ border: 0, background: "transparent", cursor: "pointer", fontFamily: "inherit", letterSpacing: "inherit" }}
       >
         <svg viewBox="0 0 24 24" aria-hidden>
           <path
@@ -194,7 +202,11 @@ export function Rail({ modules, locale, projects = [] }: { modules: Module[]; lo
             strokeLinejoin="round"
           />
         </svg>
-        {open && <span>{zh ? "收起" : "Collapse"}</span>}
+        {open && (
+          <span>
+            <Tr zh="收起" en="Collapse" inZh={zh} />
+          </span>
+        )}
       </button>
 
       {/* The signed-in person used to be a bare avatar at the foot of this
@@ -223,7 +235,7 @@ export function Rail({ modules, locale, projects = [] }: { modules: Module[]; lo
             whiteSpace: "nowrap",
           }}
         >
-          {tip.text}
+          {zh ? <Tr zh={tip.text} en={tip.en} /> : tip.text}
         </span>
       )}
     </nav>

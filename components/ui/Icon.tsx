@@ -26,7 +26,9 @@ export type IconName =
   | "eye"
   | "pause"
   | "scissors"
-  | "lock";
+  | "lock"
+  | "folder"
+  | "folderOpen";
 
 const PATHS: Record<IconName, React.ReactNode> = {
   chat: <path d="M20.5 11.6a7.9 7.9 0 0 1-8.5 7.8 8.9 8.9 0 0 1-2.6-.4L4.5 20.4l1.3-3.8a7.7 7.7 0 0 1-1.8-5A7.9 7.9 0 0 1 12 3.8a7.9 7.9 0 0 1 8.5 7.8z" />,
@@ -92,6 +94,16 @@ const PATHS: Record<IconName, React.ReactNode> = {
     <>
       <rect x="5.5" y="10.5" width="13" height="9" rx="2" />
       <path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5" />
+    </>
+  ),
+  /* A project in the rail. Closed for the ones you are not in; open for
+     the one you are. Same outline, so switching reads as the folder opening
+     rather than as a different thing. */
+  folder: <path d="M3.5 7.2a2 2 0 0 1 2-2h3.4a2 2 0 0 1 1.52.7l1.18 1.4h6.9a2 2 0 0 1 2 2v7.5a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z" />,
+  folderOpen: (
+    <>
+      <path d="M4.6 18.8a1.6 1.6 0 0 1-1.1-1.5V7.2a2 2 0 0 1 2-2h3.4a2 2 0 0 1 1.52.7l1.18 1.4h5.4a2 2 0 0 1 2 2v1.1" />
+      <path d="M4.6 18.8h12.1a2 2 0 0 0 1.86-1.28l2.07-5.35a1 1 0 0 0-.93-1.37H8.5a2 2 0 0 0-1.86 1.28z" />
     </>
   ),
   eye: (

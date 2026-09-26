@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { MentionMenu, type MentionPerson } from "@/components/chat/MentionMenu";
 import { useMentions } from "@/components/chat/useMentions";
 import { AgentIcon } from "@/components/agents/AgentIcon";
-import { AGENT_KEYS, AGENT_LABELS, AGENT_TINTS, agentTag, parseAgentMentions, type AgentKey } from "@/lib/agents/catalog";
+import { AGENT_COLORS, AGENT_KEYS, AGENT_TINTS, agentTag, parseAgentMentions, type AgentKey } from "@/lib/agents/catalog";
 import type { AgentState, Decision, RoleExtra, Running } from "@/lib/home/service";
 import { pressCardAction, sendChannelMessage } from "@/app/(app)/chat/actions";
 import { ProjectChats, ProjectProgress } from "@/components/home/ProjectHub";
@@ -22,16 +22,20 @@ import { HOME_LAYOUT, type HomeRole, type PanelKey } from "@/lib/home/roles";
 import { startProjectAction } from "@/app/(app)/projects/actions";
 import { Fold } from "@/components/ui/Fold";
 import { Icon } from "@/components/ui/Icon";
+import { AgentName, Tr } from "@/components/ui/Tr";
+import { AgentTyping } from "@/components/agents/AgentTyping";
+import { soft } from "@/components/chat/look";
 import { SayToAgent } from "@/components/flow/SayToAgent";
 import type { ThreadMessage } from "@/components/home/Echo";
 
 /**
  * 首页 — where the day is driven from, not a page that sends you elsewhere.
  *
- * Built back over the earlier Home, with its pieces: the rounded task box
- * with each employee's own mark, the cards waiting on you, the team with a
- * line to give each work, and the assistant panel on the right (the page
- * passes it in). What is new is that the work happens here:
+ * Built back over the earlier Home, with its pieces: the rounded task box,
+ * the cards waiting on you, the team with a line to give each work, and the
+ * assistant panel on the right (the page passes it in). The employees'
+ * faces are drawn once, in the team panel; the job tabs and the task box
+ * name them in words. What is new is that the work happens here:
  *
  *   - the conversation in #制作 is on the page, answers and buttons included,
  *     so saying something and hearing back no longer means leaving;
@@ -99,19 +103,27 @@ export function HomeScreen({
   const router = useRouter();
   const layout = HOME_LAYOUT[role];
   const can = (m: Module) => modules.includes(m);
-  /* The job's employee is tagged in the box from the start — the editor's
-     task goes to 剪辑师 unless they say otherwise. The page remounts this
-     screen per job (`key`), so switching tabs re-seeds it. */
-  const seed = layout.agent ? `${agentTag(layout.agent)} ` : "";
+  /* The job's employee is addressed from the start — the editor's task goes
+     to 剪辑师 unless they say otherwise — as a token at the front of the box
+     ("@剪辑师 ×") rather than as text in it: it goes out in front of what is
+     typed, and one press (or Backspace in an empty box) takes it off. The
+     page remounts this screen per job (`key`), so switching tabs re-seeds it. */
+  const [token, setToken] = React.useState<AgentKey | null>(layout.agent);
   const [pending, start] = React.useTransition();
   const [pressing, setPressing] = React.useState<string | null>(null);
-  const [draft, setDraft] = React.useState(seed);
+  const [draft, setDraft] = React.useState("");
+  /* What the box says, token included: every rule below reads this. */
+  const full = token ? `${agentTag(token)} ${draft}` : draft;
   /* The project the box just started: offered, not opened. */
   const [created, setCreated] = React.useState<{ id: string; what: string; tagged: boolean } | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const box = React.useRef<HTMLTextAreaElement | null>(null);
   const mentions = useMentions({ people, zh, draft, setDraft, box });
   const [giveTo, setGiveTo] = React.useState<AgentKey | null>(null);
+  /* When each colleague was given work from the 同事 panel. Its row shows it
+     typing (`AgentTyping`) until its reply lands — the last thing it said is
+     newer than this — or the watch below runs out. */
+  const [asked, setAsked] = React.useState<Partial<Record<AgentKey, string>>>({});
   /* Which project the task box sends to: a new one unless one is chosen. */
   const [target, setTarget] = React.useState<string>("new");
   /* The topic 研究员 is checking (or has checked) under the box, if any. */
@@ -122,10 +134,20 @@ export function HomeScreen({
      half, then stop. */
   const [watching, setWatching] = React.useState(false);
   const [sentAt, setSentAt] = React.useState<string | null>(null);
-  const answered = thread.some((m) => m.agent && sentAt !== null && m.at > sentAt);
+  const spokeSince = (key: AgentKey, since: string) => {
+    const a = agents.find((x) => x.key === key);
+    return Boolean(a?.at && new Date(a.at).toISOString() > since);
+  };
+  const waitingOn = (key: AgentKey) => {
+    const since = asked[key];
+    return watching && since !== undefined && !spokeSince(key, since);
+  };
+  /* Settled once somebody answered in the thread and every colleague given
+     work from the panel has spoken since. */
+  const answered = (sentAt === null || thread.some((m) => m.agent && m.at > sentAt)) && !agents.some((a) => waitingOn(a.key));
   React.useEffect(() => {
     if (!watching || answered) return;
-    const until = Date.now() + 90_000;
+    const until = Date.now() + 120_000;
     const id = setInterval(() => {
       if (Date.now() >= until) {
         clearInterval(id);
@@ -158,7 +180,7 @@ export function HomeScreen({
   /* A box holding nothing but a tag has nothing to start: the seeded tag
      alone must not make a project called "@剪辑师". */
   const said = (text: string) => AGENT_KEYS.reduce((rest, k) => rest.split(agentTag(k)).join(""), text).trim();
-  const ready = said(draft).length > 0;
+  const ready = said(full).length > 0;
 
   /* Research before the script. A new project whose text does not hand the
      work to a colleague by name (研究员 tagged, or nobody) goes to 研究员
@@ -168,8 +190,32 @@ export function HomeScreen({
      employee for something, so the work starts at once, and for the writers
      a quiet line under the box offers the check anyway. */
   const writesNow = (text: string) => parseAgentMentions(text).some((k) => k === "planning" || k === "script" || k === "video" || k === "article");
-  const researchFirst = target === "new" && !writesNow(draft);
-  const offerCheck = target === "new" && ready && parseAgentMentions(draft).some((k) => k === "script" || k === "article");
+  const researchFirst = target === "new" && !writesNow(full);
+  const offerCheck = target === "new" && ready && parseAgentMentions(full).some((k) => k === "script" || k === "article");
+
+  /* Back to how the box started: empty, addressed to the job's employee. */
+  function resetBox() {
+    setDraft("");
+    setToken(layout.agent);
+  }
+
+  /* "@ 同事": the same picker typing @ opens. An @ goes in at the caret
+     (with a space before it when it would otherwise start mid-word, where
+     it would not count as a tag) and the picker lists everybody. */
+  function openMentions() {
+    const el = box.current;
+    const at = el && document.activeElement === el ? (el.selectionStart ?? draft.length) : draft.length;
+    const before = draft.slice(0, at);
+    const pad = before && !/\s$/.test(before) ? " " : "";
+    const next = `${before}${pad}@${draft.slice(at)}`;
+    const caret = at + pad.length + 1;
+    setDraft(next);
+    mentions.onValue(next, caret);
+    requestAnimationFrame(() => {
+      el?.focus();
+      el?.setSelectionRange(caret, caret);
+    });
+  }
 
   function askResearcher(body: string) {
     const text = body.trim();
@@ -177,7 +223,7 @@ export function HomeScreen({
     setError(null);
     setCreated(null);
     setCheckAsk({ original: text, text: trim(said(text), 200), nonce: Date.now() });
-    setDraft(seed);
+    resetBox();
   }
 
   /* A new project from the words as typed: the box's own start, and the
@@ -207,7 +253,7 @@ export function HomeScreen({
     setError(null);
     start(async () => {
       if (target === "new") {
-        if (await startNew(text)) setDraft(seed);
+        if (await startNew(text)) resetBox();
         return;
       }
       const p = projects.find((x) => x.id === target);
@@ -230,58 +276,80 @@ export function HomeScreen({
         ? t("没有要你决定的，同事还在做手上的活。", "Nothing waiting on you; the team is still working.")
         : t("今天没有待办。在下面说一句就能开工。", "Nothing on today. Say a word below and the team starts.");
 
-  /* The task box. Under the text, two rows: who it is for (the five
-     employees, each lit in its own tint once tagged), then where it goes
-     (the project picker) with 开工 at the right. It was one row that wrapped
-     wherever the width ran out, which left the picker alone on a second line
-     under the chips and 开工 floating between the two. */
+  /* The task box: the text, with the job's employee as a token in front of
+     it, and under it one row — "@ 同事" (the picker typing @ opens), where
+     it goes (the project picker), and 开工 at the right. It had a row of
+     the five employees' faces as chips too; the faces live in the 同事
+     panel now, and Home drew them three times. */
   const composer = (
     <div style={{ position: "relative" }}>
       <MentionMenu matches={mentions.matches} active={mentions.active} zh={zh} onPick={mentions.pick} onHover={mentions.setActive} placement="down" />
       <div style={{ border: "1px solid #e2e2e2", borderRadius: 14, background: "#fff", padding: "12px 14px", boxShadow: "0 1px 2px rgba(0,0,0,0.03)" }}>
-        <textarea
-          ref={box}
-          value={draft}
-          rows={2}
-          onChange={(e) => {
-            setDraft(e.target.value);
-            mentions.onValue(e.target.value, e.target.selectionStart ?? e.target.value.length);
-            e.target.style.height = "auto";
-            e.target.style.height = `${Math.min(180, e.target.scrollHeight)}px`;
-          }}
-          onBlur={mentions.close}
-          onKeyDown={(e) => {
-            if (mentions.onKeyDown(e)) return;
-            if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
-              e.preventDefault();
-              startWork(draft);
-            }
-          }}
-          placeholder={t("想做什么题？写下来，研究员先查热榜和对标；想直接写就 @编剧", "What topic? The researcher checks the lists and rivals first; tag @writer to go straight to the script")}
-          style={{ width: "100%", border: 0, outline: "none", resize: "none", fontSize: 14.5, lineHeight: 1.6, fontFamily: "inherit", letterSpacing: "inherit", color: "#171717", background: "transparent" }}
-        />
-        <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginTop: 6 }}>
-          {(["research", "planning", "script", "video", "article"] as AgentKey[]).map((key) => {
-            const tagged = draft.includes(agentTag(key));
-            return (
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+          {token ? (
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 2, height: 24, padding: "0 3px 0 8px", borderRadius: 7, background: soft(AGENT_TINTS[token], 0.55), color: AGENT_COLORS[token], fontSize: 12.5, fontWeight: 600, flexShrink: 0, whiteSpace: "nowrap" }}>
+              @<AgentName agent={token} zh={zh} />
               <button
-                key={key}
                 type="button"
                 onClick={() => {
-                  setDraft((d) => (d.includes(agentTag(key)) ? d : `${agentTag(key)} ${d}`.trim()));
+                  setToken(null);
                   requestAnimationFrame(() => box.current?.focus());
                 }}
-                className="chip"
-                aria-pressed={tagged}
-                style={{ height: 28, fontSize: 12, gap: 6, cursor: "pointer", borderColor: tagged ? AGENT_TINTS[key] : "#ededed", background: tagged ? `${AGENT_TINTS[key]}73` : "#fff", color: tagged ? "#171717" : undefined, fontWeight: tagged ? 600 : undefined }}
+                aria-label={t("不交给这位同事", "Remove this colleague")}
+                title={t("移除", "Remove")}
+                style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 18, height: 18, marginLeft: 2, border: 0, borderRadius: 5, background: "transparent", color: "inherit", cursor: "pointer", padding: 0, opacity: 0.7 }}
               >
-                <AgentIcon agent={key} size={16} radius={5} />
-                {zh ? AGENT_LABELS[key].nameLocal : AGENT_LABELS[key].name}
+                <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" aria-hidden>
+                  <path d="M7 7l10 10M17 7 7 17" />
+                </svg>
               </button>
-            );
-          })}
+            </span>
+          ) : null}
+          <textarea
+            ref={box}
+            value={draft}
+            rows={2}
+            onChange={(e) => {
+              setDraft(e.target.value);
+              mentions.onValue(e.target.value, e.target.selectionStart ?? e.target.value.length);
+              e.target.style.height = "auto";
+              e.target.style.height = `${Math.min(180, e.target.scrollHeight)}px`;
+            }}
+            onBlur={mentions.close}
+            onKeyDown={(e) => {
+              if (mentions.onKeyDown(e)) return;
+              if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+                e.preventDefault();
+                startWork(full);
+                return;
+              }
+              /* Backspace at the very start of the box takes the token off,
+                 the way a recipient comes off an address line. */
+              if (e.key === "Backspace" && token && e.currentTarget.selectionStart === 0 && e.currentTarget.selectionEnd === 0) {
+                e.preventDefault();
+                setToken(null);
+              }
+            }}
+            placeholder={t("想做什么题？写下来，研究员先查热榜和对标；想直接写就 @编剧", "What topic? The researcher checks the lists and rivals first; tag @writer to go straight to the script")}
+            style={{ flexGrow: 1, minWidth: 0, width: "100%", border: 0, outline: "none", resize: "none", fontSize: 14.5, lineHeight: 1.6, fontFamily: "inherit", letterSpacing: "inherit", color: "#171717", background: "transparent", padding: 0 }}
+          />
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 10 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10 }}>
+          <button
+            type="button"
+            /* The caret stays in the box: a blur would close the picker
+               before it opened. */
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={openMentions}
+            className="chip"
+            aria-haspopup="listbox"
+            aria-expanded={mentions.open}
+            title={t("叫一位同事（也可以直接输入 @）", "Tag a colleague (or type @)")}
+            style={{ height: 30, fontSize: 12, gap: 5, cursor: "pointer", flexShrink: 0 }}
+          >
+            <span aria-hidden style={{ fontWeight: 600, fontSize: 13, lineHeight: 1 }}>@</span>
+            {zh ? <Tr zh="同事" en="Colleague" /> : "Colleague"}
+          </button>
           <select
             value={target}
             onChange={(e) => setTarget(e.target.value)}
@@ -301,7 +369,7 @@ export function HomeScreen({
           <button
             type="button"
             disabled={pending || !ready}
-            onClick={() => startWork(draft)}
+            onClick={() => startWork(full)}
             style={{ height: 34, marginLeft: 6, padding: "0 18px", borderRadius: 10, border: 0, background: ready ? "#171717" : "#ededed", color: ready ? "#fff" : "#999999", fontSize: 13, fontWeight: 500, fontFamily: "inherit", flexShrink: 0, cursor: ready ? "pointer" : "default" }}
           >
             {t("开工", "Start")}
@@ -311,7 +379,7 @@ export function HomeScreen({
       {/* One quiet line on where 开工 sends a new topic, or, when the text
           names the writer, the offer to have it checked first. */}
       {offerCheck ? (
-        <button type="button" className="hc-hint" onClick={() => askResearcher(draft)}>
+        <button type="button" className="hc-hint" onClick={() => askResearcher(full)}>
           <AgentIcon agent="research" size={14} radius={4} />
           {t("先让研究员看看标题？", "Have the researcher check the title first?")}
         </button>
@@ -389,7 +457,7 @@ export function HomeScreen({
               <article key={d.messageId} style={GRADIENT_CARD}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   {d.agent ? <AgentIcon agent={d.agent} size={22} radius={6} /> : null}
-                  <span style={{ fontSize: 13, fontWeight: 600 }}>{d.author}</span>
+                  <span style={{ fontSize: 13, fontWeight: 600 }}>{d.agent ? <AgentName agent={d.agent} zh={zh} /> : d.author}</span>
                   <Link href={`/chat/c/${encodeURIComponent(d.channelSlug)}`} prefetch={false} style={{ fontSize: 11.5, color: "#999999", textDecoration: "none" }}>
                     #{d.channelName}
                   </Link>
@@ -418,33 +486,47 @@ export function HomeScreen({
     running: running.length > 0 ? <RunningPanel zh={zh} running={running} names={runningNames} right={can("chat") ? <DetailLink zh={zh} href="/flow" /> : null} /> : null,
     chats: <ProjectChats projects={hub} zh={zh} right={can("chat") ? <DetailLink zh={zh} href="/projects" /> : null} />,
     team: (
-      <Fold id="home-team" title={t("同事", "The team")} height={300} right={can("chat") ? <DetailLink zh={zh} href="/flow" /> : null}>
+      <Fold id="home-team" title={zh ? <Tr zh="同事" en="The team" /> : "The team"} height={300} right={can("chat") ? <DetailLink zh={zh} href="/flow" /> : null}>
         {/* Five rows that fit the panel's 300px without a scrollbar: the
             first and last rows give their outer padding to the panel's own,
             and the last line said is grey under the name, not a second
-            line of body text. */}
+            line of body text. The one place on Home with the employees'
+            faces and status; the tabs and the task box are words. */}
         {team.map((a, idx) => {
           const on = giveTo === a.key;
+          const typing = waitingOn(a.key);
           return (
             <div key={a.key} style={{ borderTop: idx ? "1px solid #f3f3f3" : "none", paddingTop: idx ? 8 : 0, paddingBottom: idx === team.length - 1 ? 0 : 8 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                 <AgentIcon agent={a.key} size={28} radius={8} />
                 <div style={{ minWidth: 0, flexGrow: 1 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-                    <span style={{ fontSize: 13, fontWeight: 600 }}>{zh ? a.nameLocal : a.name}</span>
+                    <span style={{ fontSize: 13, fontWeight: 600 }}>
+                      <AgentName agent={a.key} zh={zh} />
+                    </span>
                     <Status status={a.status} zh={zh} />
                   </div>
-                  <div title={a.line ?? undefined} style={{ fontSize: 12, color: a.line ? "#7c7c7c" : "#c7c7c7", marginTop: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                    {a.line ? trim(a.line, 90) : t("还没说过话", "Has not spoken yet")}
-                  </div>
+                  {/* Given work from here: typing, in the line's place, until
+                      its answer lands. */}
+                  {typing ? (
+                    <div style={{ marginTop: 2 }}>
+                      <AgentTyping agent={a.key} zh={zh} face={false} size="sm" />
+                    </div>
+                  ) : (
+                    <div title={a.line ?? undefined} style={{ fontSize: 12, color: a.line ? "#7c7c7c" : "#c7c7c7", marginTop: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                      {a.line ? trim(a.line, 90) : t("还没说过话", "Has not spoken yet")}
+                    </div>
+                  )}
                 </div>
+                {/* 派任务 / Assign. It said 交代, which Chrome's translate
+                    reads as "Explanation"; the English beside it is ours. */}
                 <button
                   type="button"
                   onClick={() => setGiveTo(on ? null : a.key)}
                   aria-expanded={on}
                   style={{ height: 26, padding: "0 10px", borderRadius: 8, border: `1px solid ${on ? "#171717" : "#e6e6e6"}`, background: on ? "#f5f5f4" : "#fff", color: "#3d3d3d", fontFamily: "inherit", fontSize: 12, cursor: "pointer", flexShrink: 0 }}
                 >
-                  {on ? t("收起", "Close") : t("交代", "Give work")}
+                  {on ? (zh ? <Tr zh="收起" en="Close" /> : "Close") : zh ? <Tr zh="派任务" en="Assign" /> : "Assign"}
                 </button>
               </div>
               {on ? (
@@ -453,8 +535,12 @@ export function HomeScreen({
                     agent={a.key}
                     zh={zh}
                     onDone={() => {
-                      setSentAt(new Date().toISOString());
+                      const now = new Date().toISOString();
+                      setAsked((m) => ({ ...m, [a.key]: now }));
+                      setSentAt(now);
                       setWatching(true);
+                      /* The box closes; the row types until the answer. */
+                      setGiveTo(null);
                     }}
                   />
                 </div>
@@ -532,7 +618,7 @@ function RunningPanel({ zh, running, names, right }: { zh: boolean; running: (Ru
                 <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
                   <span style={{ fontSize: 13, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{name(j)}</span>
                   <span style={{ fontSize: 11.5, color: "#999999", whiteSpace: "nowrap" }}>
-                    {o ? (zh ? AGENT_LABELS[o].nameLocal : AGENT_LABELS[o].name) : ""}
+                    {o ? <AgentName agent={o} zh={zh} /> : null}
                     {j.who ? ` · ${t("由", "for ")}${j.who}${t("发起", "")}` : ""} · {ago(j.at, zh)}
                   </span>
                   <span style={{ flexGrow: 1 }} />

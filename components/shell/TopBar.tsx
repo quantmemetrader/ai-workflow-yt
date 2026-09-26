@@ -6,6 +6,7 @@ import { locate } from "@/lib/nav";
 import { Pulse } from "@/components/shell/Pulse";
 import { makeT, type Locale } from "@/lib/i18n";
 import type { Viewer } from "@/lib/auth/types";
+import { Tr, TR_EN } from "@/components/ui/Tr";
 
 /**
  * The strip across the top of every module: where you are, and who you are.
@@ -67,7 +68,8 @@ export function TopBar({
       {here.module && (
         <span style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0 }}>
           <span style={{ fontSize: 12.5, fontWeight: 500, color: "#171717", whiteSpace: "nowrap" }}>
-            {zh ? here.module.labelZh : here.module.label}
+            {/* Translate-proof, like the rail: 首页 must not become "front page". */}
+            {zh ? <Tr zh={here.module.labelZh} en={TR_EN[here.module.labelZh] ?? here.module.label} /> : here.module.label}
           </span>
           {here.screen && (
             <>

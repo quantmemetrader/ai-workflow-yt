@@ -10,6 +10,7 @@ import { asksSomething } from "@/components/chat/look";
 import { AgentIcon } from "@/components/agents/AgentIcon";
 import { AGENT_LABELS, agentTag, parseAgentMentions, screenAgentForPath, type AgentKey } from "@/lib/agents/catalog";
 import { useResizable } from "@/components/ui/Resizer";
+import { AgentName } from "@/components/ui/Tr";
 
 /**
  * The 312px Agent panel every Market Research artboard draws down its right
@@ -150,7 +151,7 @@ export function ResearchAgentPanel({
             cube in the screen's accent colour that stood for nobody. */}
         <div className="rtab on" style={{ gap: 7 }}>
           <AgentIcon agent={home} size={18} radius={5} />
-          {home ? name(home) : zh ? "助理" : "Agent"}
+          {home ? <AgentName agent={home} zh={zh} /> : zh ? "助理" : "Agent"}
         </div>
         <div style={{ flexGrow: 1 }} />
         {corner ? <span className="cap">{corner}</span> : null}
@@ -180,6 +181,8 @@ export function ResearchAgentPanel({
           `data-agent-empty`, and while it has nothing in it the note shows in
           its place. A browser without :has() simply shows the empty thread,
           as before. */}
+      {/* An answer on its way is drawn by the thread itself: the shared
+          typing pill (`AgentTyping`, inside `InlineAgentThread`). */}
       {thread ? (
         <>
           <div className="ap-note">
@@ -202,7 +205,7 @@ export function ResearchAgentPanel({
           <span style={{ fontSize: 11.5, color: "#999999", marginRight: 1 }}>{zh ? "回答：" : "Answering:"}</span>
           <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12, fontWeight: 600, color: "#171717" }}>
             <AgentIcon agent={answering} size={16} radius={4} />
-            {answering ? name(answering) : zh ? "你的助理" : "Your assistant"}
+            {answering ? <AgentName agent={answering} zh={zh} /> : zh ? "你的助理" : "Your assistant"}
           </span>
           <span style={{ flexGrow: 1 }} />
           {(["research", "script", "video", "article"] as AgentKey[])

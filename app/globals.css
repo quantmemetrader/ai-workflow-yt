@@ -27,3 +27,51 @@ body {
   font-feature-settings: "cv10" 1, "ss03" 1;
   -webkit-font-smoothing: antialiased;
 }
+
+/*
+ * Translate-proof labels (components/ui/Tr.tsx).
+ *
+ * Every <Tr> writes the Chinese and, hidden beside it, the English we chose,
+ * marked translate="no". Chrome adds `translated-ltr` / `translated-rtl` to
+ * <html> while it translates the page; while it is there the Chinese (which
+ * Chrome would render as "front page", "Explanation", "plan") steps aside
+ * and our English shows instead. Untranslated, nothing changes.
+ */
+.tr-en { display: none; }
+html.translated-ltr .tr-zh,
+html.translated-rtl .tr-zh { display: none; }
+html.translated-ltr .tr-en,
+html.translated-rtl .tr-en { display: inline; }
+
+/*
+ * An AI employee answering (components/agents/AgentTyping.tsx): the face, a
+ * soft pill in the employee's tint saying what it is doing, and three dots
+ * that breathe. CSS only — no timer in React — so the first render on the
+ * server and in the browser are the same markup.
+ */
+.agent-typing { display: inline-flex; align-items: center; gap: 8px; max-width: 100%; min-width: 0; vertical-align: middle; }
+.agent-typing-pill { display: inline-flex; align-items: center; gap: 7px; min-width: 0; height: 28px; padding: 0 12px; border-radius: 999px; font-size: 12.5px; font-weight: 500; line-height: 1; white-space: nowrap; }
+.agent-typing.sm { gap: 7px; }
+.agent-typing.sm .agent-typing-pill { height: 24px; padding: 0 10px; gap: 6px; font-size: 12px; }
+.agent-typing-name { font-weight: 600; }
+/* Its own line height: at the pill's 1, overflow: hidden cut the tails
+   off "Typing" and "Writing" in a translated page. */
+.agent-typing-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; line-height: 1.45; }
+.agent-typing-dots { display: inline-flex; align-items: center; gap: 3px; flex-shrink: 0; }
+.agent-typing-dots i { display: block; width: 4px; height: 4px; border-radius: 50%; background: currentColor; opacity: .25; animation: agentTypingDot 1.2s ease-in-out infinite; }
+.agent-typing-dots i:nth-child(2) { animation-delay: .15s; }
+.agent-typing-dots i:nth-child(3) { animation-delay: .3s; }
+.agent-typing-bar { display: inline-block; width: 56px; height: 4px; border-radius: 2px; background: rgba(0, 0, 0, .08); overflow: hidden; flex-shrink: 0; }
+.agent-typing-bar b { display: block; height: 100%; border-radius: 2px; background: currentColor; transition: width .4s ease; }
+.agent-typing-pct { font-variant-numeric: tabular-nums; font-weight: 600; flex-shrink: 0; }
+.agent-typing-face { flex-shrink: 0; animation: agentTypingFace 2.4s ease-in-out infinite; }
+@keyframes agentTypingDot { 0%, 80%, 100% { opacity: .25; transform: translateY(0); } 40% { opacity: 1; transform: translateY(-2px); } }
+@keyframes agentTypingFace { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-1px); } }
+@media (prefers-reduced-motion: reduce) {
+  .agent-typing-dots i { animation: none; opacity: .6; }
+  .agent-typing-face { animation: none; }
+}
+
+/* A project row in the rail (components/projects/ProjectTree.tsx). */
+.pt-row { border-radius: 8px; transition: background-color .15s ease, color .15s ease; }
+.pt-row:hover { background: rgba(0, 0, 0, .035); color: #171717 !important; }

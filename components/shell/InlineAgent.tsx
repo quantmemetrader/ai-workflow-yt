@@ -1,7 +1,9 @@
 "use client";
 
 import { AgentIcon } from "@/components/agents/AgentIcon";
-import { AGENT_COLORS, AGENT_LABELS, SCREEN_AGENT, type AgentKey } from "@/lib/agents/catalog";
+import { AGENT_COLORS, SCREEN_AGENT, parseAgentMentions, type AgentKey } from "@/lib/agents/catalog";
+import { AgentTyping, streamStep } from "@/components/agents/AgentTyping";
+import { AgentName } from "@/components/ui/Tr";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Markdown } from "@/components/ui/Markdown";
@@ -111,10 +113,14 @@ export function useInlineAgent(
       setBusy(true);
       setNotice(null);
       const stamp = Date.now();
+      /* The answer's row goes up at once, typing under the face of whoever
+         will answer: the employee tagged, else the one this panel belongs
+         to. The stream's `speaker` event confirms or corrects it. */
+      const speaker = parseAgentMentions(content)[0] ?? defaultAgent;
       setMessages((prev) => [
         ...prev,
         { id: `u-${stamp}`, role: "user", content, status: "complete", citations: [], tools: [] },
-        { id: `a-${stamp}`, role: "assistant", content: "", status: "streaming", citations: [], tools: [] },
+        { id: `a-${stamp}`, role: "assistant", content: "", status: "streaming", citations: [], tools: [], speaker },
       ]);
 
       const controller = new AbortController();
@@ -352,13 +358,7 @@ export function InlineAgentThread({
             <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 5 }}>
               <AgentIcon agent={m.speaker ?? null} size={18} radius={5} />
               <span style={{ fontSize: 12, fontWeight: 600, color: m.speaker ? AGENT_COLORS[m.speaker] : "#171717" }}>
-                {m.speaker
-                  ? zh
-                    ? AGENT_LABELS[m.speaker].nameLocal
-                    : AGENT_LABELS[m.speaker].name
-                  : zh
-                    ? "你的助理"
-                    : "Your agent"}
+                {m.speaker ? <AgentName agent={m.speaker} zh={zh} /> : zh ? "你的助理" : "Your agent"}
               </span>
             </div>
             {m.tools.length > 0 && (
@@ -390,18 +390,15 @@ export function InlineAgentThread({
                 ))}
               </div>
             )}
-            {m.content ? (
-              <Markdown text={tidyMarkdown(m.content)} />
-            ) : m.status === "streaming" && !m.tools.some((x) => x.status === "running") ? (
-              /* The agent's waiting belongs to the agent's panel, where its
-                 answer will appear — not to an indicator somewhere else. */
-              <span style={{ display: "inline-flex", alignItems: "center", gap: 7, color: "#999999" }}>
-                <svg viewBox="0 0 24 24" style={{ width: 12, height: 12, animation: "auraSpin 1s linear infinite" }}>
-                  <circle cx="12" cy="12" r="8.6" stroke="#ededed" strokeWidth="3" fill="none" />
-                  <path d="M12 3.4a8.6 8.6 0 0 1 8.6 8.6" stroke="#007be0" strokeWidth="3" fill="none" strokeLinecap="round" />
-                </svg>
-                {zh ? "正在思考…" : "thinking…"}
-              </span>
+            {m.content ? <Markdown text={tidyMarkdown(m.content)} /> : null}
+            {/* The agent's waiting belongs to the agent's panel, where its
+                answer will appear — not to an indicator somewhere else. The
+                shared typing pill (`AgentTyping`): until the first word, and
+                while a tool runs, on that tool's step. */}
+            {m.status === "streaming" && (!m.content || m.tools.some((x) => x.status === "running")) ? (
+              <div style={{ marginTop: m.content ? 6 : 0 }}>
+                <AgentTyping agent={m.speaker ?? null} zh={zh} step={streamStep(m.tools)} face={false} size="sm" />
+              </div>
             ) : null}
 
             {m.status === "failed" && (

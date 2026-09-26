@@ -14,6 +14,7 @@ import { AGENT_KEYS, AGENT_LABELS, type AgentKey } from "@/lib/agents/catalog";
 import { shortDay } from "@/components/chat/when";
 import { initials } from "@/components/chat/look";
 import type { Locale } from "@/lib/i18n";
+import { AgentName } from "@/components/ui/Tr";
 
 /**
  * The 256px workspace sidebar, transcribed from design/canvas/Main.dc.html and
@@ -146,7 +147,11 @@ function AssistantRowList({ zh, picked }: { zh: boolean; picked: AgentKey | null
               title={zh ? `问${a.nameLocal}：${a.hint}` : `Ask the ${a.name}: ${a.hintEn}`}
             >
               <AgentIcon agent={k} size={20} radius={6} />
-              <span className="nm">{zh ? a.nameLocal : a.name.replace(/ agent$/, "")}</span>
+              {/* Translate-proof: Chrome renders 策划 as "plan" and 撰稿人 as
+                  "Contributor"; the page translated shows Planner and Writer. */}
+              <span className="nm">
+                <AgentName agent={k} zh={zh} />
+              </span>
               <span className="hint">{zh ? a.hint : a.hintEn}</span>
               <NavSpinner />
             </Link>

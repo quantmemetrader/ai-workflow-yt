@@ -21,6 +21,11 @@ export const AGENT_KEYS = ["research", "planning", "script", "video", "article"]
 export type AgentLabel = {
   name: string;
   nameLocal: string;
+  /** The name as a person would say it in English — "Researcher", not
+   *  "Research agent". What `<AgentName>` shows beside the Chinese when
+   *  Chrome translates the page (components/ui/Tr.tsx), and what the English
+   *  UI prints where an employee is named. */
+  nameEn: string;
   /** What the message list prints beside the name, so "who is this" is
    * answered without clicking anything. */
   title: string;
@@ -34,6 +39,7 @@ export const AGENT_LABELS: Record<AgentKey, AgentLabel> = {
   research: {
     name: "Research agent",
     nameLocal: "研究员",
+    nameEn: "Researcher",
     title: "AI 员工 · 研究",
     titleEn: "AI employee · Research",
     hint: "趋势、选题、对标账号、每日晨报",
@@ -42,6 +48,7 @@ export const AGENT_LABELS: Record<AgentKey, AgentLabel> = {
   planning: {
     name: "Planning agent",
     nameLocal: "策划",
+    nameEn: "Planner",
     title: "AI 员工 · 策划",
     titleEn: "AI employee · Planning",
     hint: "把调研变成计划：今日待办、选题决定、派活",
@@ -50,6 +57,7 @@ export const AGENT_LABELS: Record<AgentKey, AgentLabel> = {
   script: {
     name: "Script agent",
     nameLocal: "编剧",
+    nameEn: "Scriptwriter",
     title: "AI 员工 · 脚本",
     titleEn: "AI employee · Script",
     hint: "写脚本、改脚本、审批前的检查",
@@ -58,6 +66,7 @@ export const AGENT_LABELS: Record<AgentKey, AgentLabel> = {
   video: {
     name: "Video agent",
     nameLocal: "剪辑师",
+    nameEn: "Editor",
     title: "AI 员工 · 视频",
     titleEn: "AI employee · Video",
     hint: "粗剪、字幕、图形、渲染",
@@ -66,6 +75,7 @@ export const AGENT_LABELS: Record<AgentKey, AgentLabel> = {
   article: {
     name: "Article agent",
     nameLocal: "撰稿人",
+    nameEn: "Writer",
     title: "AI 员工 · 文章",
     titleEn: "AI employee · Writing",
     hint: "长文、发布记录、按平台改写",

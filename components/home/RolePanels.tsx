@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AgentIcon } from "@/components/agents/AgentIcon";
 import { Icon } from "@/components/ui/Icon";
+import { Tr } from "@/components/ui/Tr";
 import { Fold } from "@/components/ui/Fold";
 import { DetailLink } from "@/components/home/DetailLink";
 import { HOME_ROLES, ROLE_LABELS, type HomeRole } from "@/lib/home/roles";
@@ -53,7 +54,7 @@ export function RoleTabs({ zh, role, defaultRole, canSetDefault }: { zh: boolean
       <nav aria-label={t("按岗位查看首页", "Home by job")} style={{ display: "inline-flex", alignItems: "center", gap: 2, flexWrap: "wrap", padding: 3, borderRadius: 12, background: "#ecebe6", border: "1px solid #e3e1db" }}>
         {HOME_ROLES.map((r) => {
           const on = r === role;
-          const label = zh ? ROLE_LABELS[r].zh : ROLE_LABELS[r].en;
+          const label = zh ? ROLE_LABELS[r].zh : TAB_EN[r];
           return (
             <Link
               key={r}
@@ -66,7 +67,7 @@ export function RoleTabs({ zh, role, defaultRole, canSetDefault }: { zh: boolean
                 alignItems: "center",
                 gap: 6,
                 height: 30,
-                padding: r === "overview" ? "0 12px" : "0 12px 0 6px",
+                padding: "0 12px",
                 borderRadius: 9,
                 background: on ? "#ffffff" : "transparent",
                 boxShadow: on ? "0 1px 2px rgba(0,0,0,0.08), 0 0 0 1px rgba(0,0,0,0.03)" : "none",
@@ -77,10 +78,12 @@ export function RoleTabs({ zh, role, defaultRole, canSetDefault }: { zh: boolean
                 whiteSpace: "nowrap",
               }}
             >
-              {r !== "overview" ? <AgentIcon agent={r} size={20} radius={6} /> : null}
-              {label}
+              {/* Words only. The faces are the 同事 panel's: Home drew the five
+                  employees three times over (these tabs, the task box's chips
+                  and the panel), and a tab is a job, not a person. */}
+              {zh ? <Tr zh={ROLE_LABELS[r].zh} en={TAB_EN[r]} /> : label}
               {r === mine ? (
-                <span style={{ fontSize: 10.5, fontWeight: 500, color: "#8a8a8a", background: on ? "#f3f3f1" : "rgba(255,255,255,0.7)", borderRadius: 999, padding: "0 6px", lineHeight: "16px" }}>{t("我的默认", "my default")}</span>
+                <span style={{ fontSize: 10.5, fontWeight: 500, color: "#8a8a8a", background: on ? "#f3f3f1" : "rgba(255,255,255,0.7)", borderRadius: 999, padding: "0 6px", lineHeight: "16px" }}>{zh ? <Tr zh="我的默认" en="My default" /> : "my default"}</span>
               ) : null}
             </Link>
           );
@@ -94,12 +97,26 @@ export function RoleTabs({ zh, role, defaultRole, canSetDefault }: { zh: boolean
           style={{ height: 30, padding: "0 11px", borderRadius: 9, border: "1px dashed #cfcfcb", background: "transparent", color: "#525252", fontFamily: "inherit", fontSize: 12, cursor: pending ? "default" : "pointer", opacity: pending ? 0.6 : 1, display: "inline-flex", alignItems: "center", gap: 5 }}
         >
           <Icon name="check" size={12} />
-          {t("设为我的默认", "Make this my default")}
+          {zh ? <Tr zh="设为我的默认" en="Make this my default" /> : "Make this my default"}
         </button>
       ) : null}
     </div>
   );
 }
+
+/**
+ * The tabs' English when Chrome translates the page (`Tr`): its own guesses
+ * were "plan" for 策划 and "Contributor/Publish" for 撰稿/发布. Also what the
+ * English UI shows, so both readings say the same thing.
+ */
+const TAB_EN: Record<HomeRole, string> = {
+  overview: "All",
+  research: "Research",
+  planning: "Planning",
+  script: "Script",
+  video: "Editing",
+  article: "Writing & publishing",
+};
 
 /** The tabs' hover, drawn once by Home beside `DETAIL_LINK_CSS`. */
 export const ROLE_TABS_CSS = `

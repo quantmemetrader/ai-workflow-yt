@@ -16,6 +16,8 @@ import { useResizable } from "@/components/ui/Resizer";
 import { clock, dayLabel, sameDay } from "@/components/chat/when";
 import { ROSTER } from "@/lib/agents/lanes";
 import { Icon } from "@/components/ui/Icon";
+import { AgentName } from "@/components/ui/Tr";
+import { AgentTyping, streamStep } from "@/components/agents/AgentTyping";
 import { asksSomething, initials, soft, threadCss, tidyMarkdown } from "@/components/chat/look";
 import type { Locale } from "@/lib/i18n";
 
@@ -266,10 +268,13 @@ export function AgentScreen({
     setInput(to ? `${agentTag(to)} ` : "");
     const now = new Date().toISOString();
 
+    /* The answer's row goes up at once, typing, under the face of whoever
+       will answer — the first employee tagged, else the assistant: the rule
+       the stream route applies, so its `speaker` event only confirms it. */
     setMessages((prev) => [
       ...prev,
       { id: `u-${Date.now()}`, role: "user", content: text, status: "complete", createdAt: now, citations: [], tools: [] },
-      { id: `a-${Date.now()}`, role: "assistant", content: "", status: "streaming", createdAt: now, citations: [], tools: [] },
+      { id: `a-${Date.now()}`, role: "assistant", content: "", status: "streaming", createdAt: now, citations: [], tools: [], speaker: to },
     ]);
 
     const controller = new AbortController();
@@ -407,7 +412,7 @@ export function AgentScreen({
         <AgentIcon agent={history?.agent ?? null} size={32} radius={9} />
         <div style={{ minWidth: 0 }}>
           <div style={{ fontSize: 15, fontWeight: 600, display: "flex", alignItems: "center", gap: 7 }}>
-            {history ? name(history.agent) : zh ? "你的助理" : "Your agent"}
+            {history ? <AgentName agent={history.agent} zh={zh} /> : zh ? "你的助理" : "Your agent"}
             {history ? (
               <span className="role" style={{ background: soft(AGENT_TINTS[history.agent], 0.75), color: AGENT_COLORS[history.agent] }}>
                 {zh ? AGENT_LABELS[history.agent].title : AGENT_LABELS[history.agent].titleEn}
@@ -607,7 +612,7 @@ export function AgentScreen({
                 >
                   <AgentIcon agent={answering} size={20} radius={5} />
                   {zh ? "回答：" : "Answering: "}
-                  <b>{answering ? name(answering) : zh ? "你的助理" : "Your agent"}</b>
+                  <b>{answering ? <AgentName agent={answering} zh={zh} /> : zh ? "你的助理" : "Your agent"}</b>
                   {/* Back to the assistant: drop the tag at the front. A tag
                       further into the sentence is the writer's own business. */}
                   {answering && input.startsWith("@") ? (
@@ -894,6 +899,7 @@ function UserRow({
  */
 function AgentRow({ message, zh, locale }: { message: ThreadMessage; zh: boolean; locale: Locale }) {
   const sp = message.speaker ?? null;
+  const typing = message.status === "streaming" && (!message.content || message.tools.some((x) => x.status === "running"));
   return (
     <div className="msg">
       <div className="face">
@@ -901,7 +907,7 @@ function AgentRow({ message, zh, locale }: { message: ThreadMessage; zh: boolean
       </div>
       <div style={{ minWidth: 0, flexGrow: 1 }}>
         <div className="head">
-          <span className="who">{sp ? (zh ? AGENT_LABELS[sp].nameLocal : AGENT_LABELS[sp].name) : zh ? "你的助理" : "Your agent"}</span>
+          <span className="who">{sp ? <AgentName agent={sp} zh={zh} /> : zh ? "你的助理" : "Your agent"}</span>
           {sp ? (
             <span className="role" style={{ background: soft(AGENT_TINTS[sp], 0.75), color: AGENT_COLORS[sp] }}>
               {zh ? AGENT_LABELS[sp].title : AGENT_LABELS[sp].titleEn}
@@ -949,10 +955,15 @@ function AgentRow({ message, zh, locale }: { message: ThreadMessage; zh: boolean
             </div>
           ))}
 
-          {message.content ? (
-            <Markdown text={tidyMarkdown(message.content)} />
-          ) : message.status === "streaming" ? (
-            <span style={{ color: "#a3a3a3" }}>{zh ? "思考中…" : "Thinking…"}</span>
+          {message.content ? <Markdown text={tidyMarkdown(message.content)} /> : null}
+          {/* Typing, from the moment it was asked until the first word, and
+              again while a tool runs — saying which step the tool is
+              (正在查资料, 正在写脚本, 正在剪辑…). The row already draws the
+              face, so the pill sits where the words will be. */}
+          {typing ? (
+            <div style={{ marginTop: message.content ? 6 : 2 }}>
+              <AgentTyping agent={sp} zh={zh} step={streamStep(message.tools)} face={false} />
+            </div>
           ) : null}
 
           {message.error && (
@@ -1060,7 +1071,7 @@ function Empty({ zh, picked, onPick }: { zh: boolean; picked: AgentKey | null; o
             <AgentIcon agent={k} size={32} radius={9} />
             <span style={{ minWidth: 0 }}>
               <span className="nm" style={{ display: "block" }}>
-                {zh ? AGENT_LABELS[k].nameLocal : AGENT_LABELS[k].name}
+                <AgentName agent={k} zh={zh} />
               </span>
               <span className="hn" style={{ display: "block" }}>
                 {zh ? AGENT_LABELS[k].hint : AGENT_LABELS[k].hintEn}
