@@ -12,7 +12,7 @@ import { AgentIcon } from "@/components/agents/AgentIcon";
 import { Icon } from "@/components/ui/Icon";
 import { AGENT_KEYS, AGENT_LABELS, type AgentKey } from "@/lib/agents/catalog";
 import { shortDay } from "@/components/chat/when";
-import { initials } from "@/components/chat/look";
+import { PersonAvatar } from "@/components/ui/PersonAvatar";
 import type { Locale } from "@/lib/i18n";
 import { AgentName } from "@/components/ui/Tr";
 
@@ -187,7 +187,7 @@ export function WorkspaceSidebar({
   people: SidebarPerson[];
   /** This person's own past conversations with the agent, newest first. */
   conversations?: SidebarConversation[];
-  me: { name: string; avatarUrl: string | null; status: string };
+  me: { id: string; name: string; avatarUrl: string | null; status: string };
   locale: Locale;
   /** The server render's clock, for "today / weekday / date" beside a thread. */
   now: string;
@@ -411,32 +411,7 @@ export function WorkspaceSidebar({
                 style={{ gap: 9 }}
               >
                 <span className="pr">
-                  {p.avatarUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={p.avatarUrl}
-                      alt=""
-                      style={{ width: 20, height: 20, borderRadius: 6, objectFit: "cover" }}
-                    />
-                  ) : (
-                    <div
-                      style={{
-                        width: 20,
-                        height: 20,
-                        borderRadius: 6,
-                        background: "#e5e5e5",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        fontSize: 9,
-                        fontWeight: 600,
-                        color: "#525252",
-                        flexShrink: 0,
-                      }}
-                    >
-                      {initials(p.name)}
-                    </div>
-                  )}
+                  <PersonAvatar id={p.id} url={p.avatarUrl} name={p.name} size={20} radius={6} />
                   <i className={`on-${p.presence}`} />
                 </span>
                 <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
@@ -466,31 +441,7 @@ export function WorkspaceSidebar({
         }}
       >
         <Link href="/settings" className="pr">
-          {me.avatarUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={me.avatarUrl}
-              alt=""
-              style={{ width: 30, height: 30, borderRadius: 9, objectFit: "cover" }}
-            />
-          ) : (
-            <div
-              style={{
-                width: 30,
-                height: 30,
-                borderRadius: 9,
-                background: "#e2e2e2",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontSize: 11.5,
-                fontWeight: 600,
-                color: "#525252",
-              }}
-            >
-              {initials(me.name)}
-            </div>
-          )}
+          <PersonAvatar id={me.id} url={me.avatarUrl} name={me.name} size={30} radius={9} />
           <i className="on-g" />
         <NavSpinner /></Link>
         <div style={{ minWidth: 0, flexGrow: 1 }}>

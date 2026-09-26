@@ -9,6 +9,7 @@ import { AddTopicButton } from "./AddTopicButton";
 import { StatusStrip } from "@/components/ui/kit";
 import { AgentIcon } from "@/components/agents/AgentIcon";
 import { Icon } from "@/components/ui/Icon";
+import { PersonAvatar } from "@/components/ui/PersonAvatar";
 import { AGENT_TINTS, type AgentKey } from "@/lib/agents/catalog";
 
 /**
@@ -42,6 +43,8 @@ export type BacklogItem = {
   summary: string | null;
   ownerName: string | null;
   ownerId: string | null;
+  /** The owner's own picture; left out or null draws their default. */
+  ownerAvatar?: string | null;
   targetChannel: string | null;
   dueDate: string | null; // "2026-09-30" or null
   heat: number;
@@ -281,15 +284,6 @@ function pct(change: number, locale: string): string {
 
 function count(n: number, locale: string): string {
   return new Intl.NumberFormat(locale).format(n);
-}
-
-/** No avatar URL on BacklogItem, so the artboard's 20px circle carries initials. */
-function initials(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return "";
-  const first = parts[0]?.[0] ?? "";
-  const last = parts.length > 1 ? (parts[parts.length - 1]?.[0] ?? "") : "";
-  return (first + last).toUpperCase();
 }
 
 /* --------------------------------------------------------------- component */
@@ -848,22 +842,19 @@ export function BacklogScreen(props: {
                               </div>
                             ) : null}
                             <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 7, rowGap: 4, marginTop: 11 }}>
-                              <div
-                                className="av"
-                                title={item.ownerName ?? t("Unassigned")}
-                                style={{
-                                  display: "flex",
-                                  alignItems: "center",
-                                  justifyContent: "center",
-                                  background: "#f3f3f3",
-                                  color: "#7c7c7c",
-                                  fontSize: 9.5,
-                                  fontWeight: 500,
-                                  letterSpacing: 0,
-                                }}
-                              >
-                                {item.ownerName === null ? "" : initials(item.ownerName)}
-                              </div>
+                              {item.ownerName === null ? (
+                                /* Nobody yet: the empty circle the artboard draws. */
+                                <div className="av" title={t("Unassigned")} style={{ background: "#f3f3f3" }} />
+                              ) : (
+                                <PersonAvatar
+                                  className="av"
+                                  id={item.ownerId}
+                                  url={item.ownerAvatar}
+                                  name={item.ownerName}
+                                  title={item.ownerName}
+                                  style={{ fontSize: 9.5 }}
+                                />
+                              )}
                               <select
                                 aria-label={`${t("Stage")} — ${item.name}`}
                                 value={item.stage}

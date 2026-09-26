@@ -73,6 +73,11 @@ export const TR_EN: Record<string, string> = {
   同事: "Colleagues",
   // A finished project (lib/projects/publication.ts)
   已发布: "Published",
+  // The picture chooser
+  头像: "Profile picture",
+  上传照片: "Upload a photo",
+  用默认: "Use the default",
+  完成: "Done",
 };
 
 /**

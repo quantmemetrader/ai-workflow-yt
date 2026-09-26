@@ -27,6 +27,7 @@ import { PUBLISHED_TONE, PublishedCheck, PublishedMark, PublishedMarks, Publishe
 import { publishPlatformName, publishedDay, type Publication } from "@/lib/projects/publication";
 import { artifactHref } from "@/lib/chat/handoff";
 import { LinkedText } from "@/components/chat/LinkedText";
+import { PersonAvatar } from "@/components/ui/PersonAvatar";
 
 /**
  * One project, worked on in place.
@@ -899,7 +900,7 @@ function AgentOutput({ agent, msg, working, zh, onOpen, copyable = false, compac
   return (
     <div style={{ marginTop: 2, padding: "10px 12px", borderRadius: 12, background: "#f7f8fb", border: "1px solid #eef0f5" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11.5, color: msg.agent ? AGENT_COLORS[msg.agent] : "#525252", fontWeight: 600 }}>
-        {msg.agent ? <AgentIcon agent={msg.agent} size={16} radius={4} /> : null}
+        {msg.agent ? <AgentIcon agent={msg.agent} size={16} radius={4} /> : <PersonAvatar id={msg.authorId} url={msg.authorAvatar} name={msg.author} size={16} radius={4} />}
         {msg.agent ? <AgentName agent={msg.agent} zh={zh} /> : msg.author}
         <span style={{ fontWeight: 400, color: "#b3b3b3" }}>{ago(msg.at, zh)}</span>
         <span style={{ flexGrow: 1 }} />
@@ -1102,8 +1103,14 @@ function ChatDrawer({ project: p, zh, people, onClose }: { project: ProjectDetai
             </div>
           ) : (
             <div key={m.id} style={{ alignSelf: "flex-end", maxWidth: "86%" }}>
-              <div style={{ fontSize: 11, color: "#b3b3b3", textAlign: "right" }}>
-                {m.author} · {ago(m.at, zh)}
+              {/* A colleague's line: their face beside their name, as the chat
+                  draws it — it was a name alone, so people read as "not the
+                  employees" rather than as themselves. */}
+              <div style={{ fontSize: 11, color: "#b3b3b3", display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 5 }}>
+                <span>
+                  {m.author} · {ago(m.at, zh)}
+                </span>
+                <PersonAvatar id={m.authorId} url={m.authorAvatar} name={m.author} size={18} radius={5} />
               </div>
               <div style={{ marginTop: 3, background: "#171717", color: "#fff", borderRadius: "12px 4px 12px 12px", padding: "9px 12px", fontSize: 12.5, lineHeight: 1.6, whiteSpace: "pre-wrap", wordBreak: "break-word" }}><LinkedText text={m.body} /></div>
             </div>

@@ -60,10 +60,10 @@ export default async function ChannelPage({ params }: { params: Promise<{ slug: 
          refuses anybody without the Files module. Better not drawn than
          drawn and refused. */
       canAttach={viewer.modules.includes("files")}
-      me={{ name: (zh && viewer.nameLocal) || viewer.name, avatarUrl: viewer.avatarUrl }}
+      me={{ id: viewer.id, name: (zh && viewer.nameLocal) || viewer.name, avatarUrl: viewer.avatarUrl }}
       locale={viewer.locale ?? "zh-CN"}
       memberCount={members.length}
-      members={members.map((m) => ({ name: (zh && m.nameLocal) || m.name, avatar: m.avatarUrl }))}
+      members={members.map((m) => ({ id: m.id, name: (zh && m.nameLocal) || m.name, avatar: m.avatarUrl }))}
       studioPeople={people.map((p) => ({
         id: p.id,
         name: (zh && p.nameLocal) || p.name,
@@ -75,6 +75,7 @@ export default async function ChannelPage({ params }: { params: Promise<{ slug: 
       }))}
       messages={thread.messages.map((m) => ({
         id: m.id,
+        authorId: m.authorId,
         authorName: (zh && m.authorNameLocal) || m.authorName || "—",
         authorAvatar: m.authorAvatar,
         /* An AI employee's messages say so, and say which one. Without this

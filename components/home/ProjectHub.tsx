@@ -15,6 +15,7 @@ import { StageBadge, StepTrack, stageToneOf } from "@/components/projects/StepTr
 import { AgentName, Tr } from "@/components/ui/Tr";
 import { PUBLISHED_TONE, PublishedMarks } from "@/components/projects/Published";
 import { publishedDay } from "@/lib/projects/publication";
+import { PersonAvatar } from "@/components/ui/PersonAvatar";
 
 /**
  * Home, project by project.
@@ -211,7 +212,7 @@ function ProjectChat({ project: p, zh, first, open, onToggle }: { project: Proje
             {m.agent ? (
               <AgentIcon agent={m.agent} size={18} radius={5} />
             ) : (
-              <span style={{ width: 18, height: 18, borderRadius: 5, background: "#e8e8e6", fontSize: 9.5, fontWeight: 600, color: "#525252", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{m.author.slice(0, 1).toUpperCase()}</span>
+              <PersonAvatar id={m.authorId} url={m.authorAvatar} name={m.author} size={18} radius={5} />
             )}
             <div style={{ fontSize: 12.5, lineHeight: 1.5, color: "#2b343d", minWidth: 0, ...(open ? { whiteSpace: "pre-wrap" } : { overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }) }}>
               <b style={{ fontWeight: 600, color: m.agent ? AGENT_COLORS[m.agent] : "#171717" }}>{m.agent ? <AgentName agent={m.agent} zh={zh} /> : m.author}</b> {m.body.replace(/\*\*/g, "").slice(0, open ? 1200 : 200)}

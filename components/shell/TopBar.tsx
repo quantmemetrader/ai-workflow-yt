@@ -1,5 +1,6 @@
 "use client";
 
+import * as React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { locate } from "@/lib/nav";
@@ -7,6 +8,8 @@ import { Pulse } from "@/components/shell/Pulse";
 import { makeT, type Locale } from "@/lib/i18n";
 import type { Viewer } from "@/lib/auth/types";
 import { Tr, TR_EN } from "@/components/ui/Tr";
+import { PersonAvatar } from "@/components/ui/PersonAvatar";
+import { AvatarSheet } from "@/components/shell/AvatarSheet";
 
 /**
  * The strip across the top of every module: where you are, and who you are.
@@ -29,6 +32,7 @@ import { Tr, TR_EN } from "@/components/ui/Tr";
  * word twice.
  */
 export function TopBar({
+  userId,
   name,
   nameLocal,
   title,
@@ -36,6 +40,8 @@ export function TopBar({
   avatarUrl,
   locale,
 }: {
+  /** Whose bar this is: picks the default picture, and the chooser saves to it. */
+  userId: string;
   name: string;
   nameLocal: string | null;
   /** The job title on the account, if there is one. Shown in the tooltip. */
@@ -51,6 +57,7 @@ export function TopBar({
 
   const who = zh && nameLocal ? nameLocal : name;
   const roleLabel = t(role);
+  const [choosing, setChoosing] = React.useState(false);
 
   return (
     <header
@@ -99,11 +106,13 @@ export function TopBar({
 
       <div style={{ width: 4 }} />
 
-      {/* One target, not two: the avatar, the name and the role are the same
-        * link to Settings, which is also where the role can be read in full. */}
-      <Link
-        href="/settings"
-        title={title ? `${who} · ${title}` : who}
+      {/* One pill, two targets. Your face opens the picture chooser — the
+        * studio's "default them to good pfps, and have multiple choices" —
+        * and the name and role still go to Settings, where the role can be
+        * read in full. Two siblings rather than a button inside the link: a
+        * button nested in an <a> is invalid and reads as one control. */}
+      <style dangerouslySetInnerHTML={{ __html: "[data-face-button]:hover > *{box-shadow:0 0 0 2px #d4d4d4}[data-face-button]:focus-visible > *{box-shadow:0 0 0 2px #171717}" }} />
+      <div
         style={{
           display: "flex",
           alignItems: "center",
@@ -117,20 +126,40 @@ export function TopBar({
           maxWidth: 260,
         }}
       >
-        <Avatar name={who} url={avatarUrl} />
-        <span
-          style={{
-            fontSize: 12.5,
-            fontWeight: 500,
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
-          }}
+        <button
+          type="button"
+          data-face-button=""
+          onClick={() => setChoosing(true)}
+          aria-haspopup="dialog"
+          aria-label={zh ? "更换头像" : "Change your picture"}
+          title={zh ? "更换头像" : "Change your picture"}
+          style={{ display: "flex", padding: 0, border: 0, borderRadius: 11, background: "transparent", cursor: "pointer", flexShrink: 0, outline: "none" }}
         >
-          {who}
-        </span>
-        <RoleBadge role={role} label={roleLabel} />
-      </Link>
+          <PersonAvatar id={userId} url={avatarUrl} name={who} size={22} style={{ transition: "box-shadow .12s ease" }} />
+        </button>
+        <Link
+          href="/settings"
+          title={title ? `${who} · ${title}` : who}
+          style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0, color: "#171717" }}
+        >
+          <span
+            style={{
+              fontSize: 12.5,
+              fontWeight: 500,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {who}
+          </span>
+          <RoleBadge role={role} label={roleLabel} />
+        </Link>
+      </div>
+
+      {choosing ? (
+        <AvatarSheet userId={userId} name={who} avatarUrl={avatarUrl} zh={zh} onClose={() => setChoosing(false)} />
+      ) : null}
     </header>
   );
 }
@@ -170,52 +199,4 @@ function RoleBadge({ role, label }: { role: Viewer["role"]; label: string }) {
       {label}
     </span>
   );
-}
-
-function Avatar({ name, url }: { name: string; url: string | null }) {
-  if (url) {
-    return (
-      // eslint-disable-next-line @next/next/no-img-element
-      <img
-        src={url}
-        alt=""
-        style={{ width: 22, height: 22, borderRadius: 11, objectFit: "cover", flexShrink: 0 }}
-      />
-    );
-  }
-  return (
-    <span
-      style={{
-        width: 22,
-        height: 22,
-        borderRadius: 11,
-        background: "#e2e2e2",
-        color: "#525252",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        fontSize: 10,
-        fontWeight: 600,
-        flexShrink: 0,
-      }}
-    >
-      {initials(name)}
-    </span>
-  );
-}
-
-/**
- * The same rule the rail used: the first letter of the first two words.
- *
- * Chinese names are written without spaces, so `split` returns one part and
- * this takes one glyph — which is the right answer. A 姓名 rendered as two
- * full-width characters in a 22px circle does not fit.
- */
-function initials(name: string): string {
-  return name
-    .split(/\s+/)
-    .map((p) => p[0])
-    .slice(0, 2)
-    .join("")
-    .toUpperCase();
 }

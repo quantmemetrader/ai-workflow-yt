@@ -1,8 +1,11 @@
 "use client";
 
-import { useActionState, useRef, useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { useActionState, useState } from "react";
 import { updateProfileAction, type ProfileState } from "./actions";
+import { catalogAvatar } from "@/lib/avatars/catalog";
+import { PersonAvatar } from "@/components/ui/PersonAvatar";
+import { AvatarSheet } from "@/components/shell/AvatarSheet";
+import { Tr } from "@/components/ui/Tr";
 
 /**
  * Your own name and face.
@@ -12,13 +15,17 @@ import { updateProfileAction, type ProfileState } from "./actions";
  * everybody is a grey circle with two initials is a studio where nobody reads
  * the sender of a message.
  *
- * The picture goes straight to storage and comes back through a route that
- * serves it to colleagues in the same studio — not through Files, because a
- * profile picture is meant to be seen by everyone you work with and a file is
- * meant to be seen by whoever it was shared with.
+ * The picture is the 头像 row: it opens the same chooser as your face in the
+ * top bar (`components/shell/AvatarSheet.tsx`) — the pictures on offer, an
+ * upload for a photo of your own, and the default. An uploaded photo goes
+ * straight to storage and comes back through a route that serves it to
+ * colleagues in the same studio — not through Files, because a profile
+ * picture is meant to be seen by everyone you work with and a file is meant to
+ * be seen by whoever it was shared with.
  */
 export function ProfileCard({
   zh,
+  userId,
   name,
   nameLocal,
   title,
@@ -26,6 +33,7 @@ export function ProfileCard({
   avatarUrl,
 }: {
   zh: boolean;
+  userId: string;
   name: string;
   nameLocal: string | null;
   title: string | null;
@@ -33,67 +41,45 @@ export function ProfileCard({
   avatarUrl: string | null;
 }) {
   const t = (en: string, cn: string) => (zh ? cn : en);
-  const router = useRouter();
   const [state, action, pending] = useActionState<ProfileState, FormData>(updateProfileAction, {});
-  const picker = useRef<HTMLInputElement | null>(null);
-  const [uploading, startUpload] = useTransition();
-  const [picture, setPicture] = useState(avatarUrl);
-  const [problem, setProblem] = useState<string | null>(null);
-
-  function upload(file: File) {
-    setProblem(null);
-    startUpload(async () => {
-      try {
-        const res = await fetch("/api/avatar", {
-          method: "POST",
-          headers: { "Content-Type": file.type },
-          body: file,
-        });
-        if (!res.ok) throw new Error(await res.text());
-        const { avatarUrl: next } = (await res.json()) as { avatarUrl: string };
-        setPicture(next);
-        router.refresh();
-      } catch (err) {
-        setProblem(err instanceof Error ? err.message : "That picture would not upload");
-      }
-    });
-  }
+  const [choosing, setChoosing] = useState(false);
+  const shownName = (zh && nameLocal) || name;
+  const pictureKind =
+    avatarUrl === null
+      ? t("Your automatic picture", "自动分配的默认头像")
+      : catalogAvatar(avatarUrl)
+        ? t("Picked from the set", "从图库里选的")
+        : avatarUrl.startsWith("/api/avatar/")
+          ? t("Your uploaded photo", "你上传的照片")
+          : t("Your current picture", "当前的头像");
 
   return (
     <section className="rounded-xl border border-outline-gray-1 p-4">
       <h2 className="mb-3 text-sm font-semibold text-ink-gray-9">{t("You", "个人资料")}</h2>
 
-      <div className="flex items-start gap-4">
-        <div className="flex flex-col items-center gap-2">
-          {picture ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={picture} alt="" className="h-16 w-16 rounded-full object-cover" />
-          ) : (
-            <span className="flex h-16 w-16 items-center justify-center rounded-full bg-surface-gray-3 text-base text-ink-gray-7">
-              {name.slice(0, 2).toUpperCase()}
-            </span>
-          )}
-          <button
-            type="button"
-            disabled={uploading}
-            onClick={() => picker.current?.click()}
-            className="text-[11px] text-ink-gray-6 underline-offset-2 hover:underline disabled:opacity-50"
-          >
-            {uploading ? t("Uploading…", "上传中…") : picture ? t("Change", "更换") : t("Add a photo", "上传照片")}
-          </button>
-          <input
-            ref={picker}
-            type="file"
-            accept="image/png,image/jpeg,image/webp,image/gif"
-            className="hidden"
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file) upload(file);
-              e.target.value = "";
-            }}
-          />
+      {/* 头像: the picture everybody sees beside your name. */}
+      <div className="mb-4 flex items-center gap-3 rounded-lg border border-outline-gray-1 px-3 py-2.5">
+        <PersonAvatar id={userId} url={avatarUrl} name={shownName} size={44} />
+        <div className="min-w-0 flex-1">
+          <div className="text-xs text-ink-gray-6">
+            <Tr zh="头像" inZh={zh} />
+          </div>
+          <div className="truncate text-[13px] text-ink-gray-9">{pictureKind}</div>
         </div>
+        <button
+          type="button"
+          onClick={() => setChoosing(true)}
+          aria-haspopup="dialog"
+          className="h-8 rounded-lg border border-outline-gray-2 px-3 text-xs text-ink-gray-7 hover:bg-surface-gray-2"
+        >
+          {t("Change", "更换")}
+        </button>
+      </div>
+      {choosing ? (
+        <AvatarSheet userId={userId} name={shownName} avatarUrl={avatarUrl} zh={zh} onClose={() => setChoosing(false)} />
+      ) : null}
 
+      <div className="flex items-start gap-4">
         <form action={action} className="flex min-w-0 flex-1 flex-col gap-2">
           <div className="flex flex-wrap gap-2">
             <label className="flex min-w-[150px] flex-1 flex-col gap-1">
@@ -136,9 +122,9 @@ export function ProfileCard({
             )}
           </p>
 
-          {state.error || problem ? (
+          {state.error ? (
             <p role="alert" className="text-xs text-ink-red-3">
-              {state.error ?? problem}
+              {state.error}
             </p>
           ) : null}
           {state.ok && !state.error ? (

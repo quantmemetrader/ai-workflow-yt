@@ -73,6 +73,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         */}
       <div style={{ flexGrow: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
         <TopBar
+          userId={viewer.id}
           name={viewer.name}
           nameLocal={viewer.nameLocal}
           title={viewer.title}

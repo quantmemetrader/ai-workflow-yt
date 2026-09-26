@@ -25,6 +25,8 @@ import {
   type AutomationKey,
 } from "@/lib/automations/service";
 import { audit } from "@/lib/audit";
+import { isCatalogAvatar } from "@/lib/avatars/catalog";
+import { deleteObject } from "@/lib/storage/r2";
 import { LANG_COOKIE, LANG_COOKIE_MAX_AGE, type Locale } from "@/lib/i18n";
 import { cookies } from "next/headers";
 
@@ -108,6 +110,45 @@ export async function updateProfileAction(
   await audit(viewer, "user.profile.change", { meta: { name } });
   revalidatePath("/", "layout");
   return { ok: true };
+}
+
+export type AvatarResult = { avatarUrl: string | null; error?: undefined } | { error: string };
+
+/**
+ * Your own picture, from the chooser: one of the catalog's, or `null` to go
+ * back to the default your id picks (`lib/avatars/default.ts`). An uploaded
+ * photo goes through `POST /api/avatar` instead, which stores the file.
+ *
+ * Only ever your own, like the name above: there is no user id in the
+ * arguments. And only a picture on offer — a value off the wire is checked
+ * against the catalog, so this cannot point everybody's screens at an
+ * arbitrary URL (a tracking pixel, a colleague's photo route).
+ *
+ * A photo it replaces is deleted from storage and its key cleared. The photo
+ * route serves whatever key the row holds, so leaving it would keep handing
+ * colleagues the face this person just took down. The saved value is the
+ * catalog file's path, so a new choice is a new URL and shows on the next
+ * render without any cache to wait out.
+ */
+export async function setAvatarAction(choice: string | null): Promise<AvatarResult> {
+  const viewer = await getViewer();
+  if (!viewer) return { error: "Not signed in" };
+  if (choice !== null && !isCatalogAvatar(choice)) {
+    return { error: "That is not one of the pictures on offer." };
+  }
+
+  const [before] = await db
+    .select({ key: users.avatarKey })
+    .from(users)
+    .where(eq(users.id, viewer.id))
+    .limit(1);
+
+  await db.update(users).set({ avatarUrl: choice, avatarKey: null }).where(eq(users.id, viewer.id));
+  if (before?.key) await deleteObject(before.key).catch(() => {});
+
+  await audit(viewer, "user.avatar.change", { meta: { choice: choice ?? "default" } });
+  revalidatePath("/", "layout");
+  return { avatarUrl: choice };
 }
 
 export type PasswordState = { error?: string; ok?: boolean };

@@ -9,6 +9,7 @@ import { useResizable } from "@/components/ui/Resizer";
 import { Poster, Waiting } from "@/components/files/Poster";
 import { EyeOffGlyph, GlobeGlyph, PeopleGlyph, PersonGlyph, visibilityLabel } from "@/components/files/AccessPicker";
 import { AgentIcon } from "@/components/agents/AgentIcon";
+import { PersonAvatar } from "@/components/ui/PersonAvatar";
 /**
  * FilesScreen — a transcription of design/canvas/FilesDesktop.dc.html.
  *
@@ -32,6 +33,9 @@ export type FileRow = {
   kind: "doc" | "sheet" | "pdf" | "image" | "video" | "audio" | "archive" | "other";
   sizeBytes: number;
   ownerName: string;
+  /** The owner's id and own picture, for their face beside the name. */
+  ownerId?: string | null;
+  ownerAvatar?: string | null;
   updatedAt: string; // ISO
   durationMs?: number | null;
   posterUrl?: string | null; // thumbnail for media, if the artboard shows one
@@ -195,15 +199,6 @@ function formatRelative(iso: string, locale: string): string {
     }
   }
   return "";
-}
-
-/** No avatar URL on FileRow, so the artboard's 20px .av circle carries initials. */
-function initials(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return "";
-  const first = parts[0]?.[0] ?? "";
-  const last = parts.length > 1 ? (parts[parts.length - 1]?.[0] ?? "") : "";
-  return (first + last).toUpperCase();
 }
 
 /* ------------------------------------------------------------------- icons */
@@ -1171,22 +1166,14 @@ export function FilesScreen(props: {
                         {f.version && f.version > 1 ? `v${f.version}` : ""}
                       </div>
                       <div className="c" style={{ gap: 8 }}>
-                        <div
+                        <PersonAvatar
                           className="av"
+                          id={f.ownerId}
+                          url={f.ownerAvatar}
+                          name={f.ownerName}
                           title={f.ownerName}
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            background: "#f3f3f3",
-                            color: "#7c7c7c",
-                            fontSize: 9.5,
-                            fontWeight: 500,
-                            letterSpacing: 0,
-                          }}
-                        >
-                          {initials(f.ownerName)}
-                        </div>
+                          style={{ fontSize: 9.5 }}
+                        />
                         <span
                           style={{
                             overflow: "hidden",

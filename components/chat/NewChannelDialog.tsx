@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { createChannelAction } from "@/app/(app)/chat/actions";
+import { PersonAvatar } from "@/components/ui/PersonAvatar";
 
 /**
  * Starting a channel, or a private group.
@@ -183,27 +184,7 @@ export function NewChannelDialog({
                   }}
                 >
                   <Check on={on} />
-                  {p.avatarUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={p.avatarUrl} alt="" style={{ width: 24, height: 24, borderRadius: 7, objectFit: "cover" }} />
-                  ) : (
-                    <span
-                      style={{
-                        width: 24,
-                        height: 24,
-                        borderRadius: 7,
-                        background: "#e2e2e2",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        fontSize: 9,
-                        fontWeight: 600,
-                        color: "#525252",
-                      }}
-                    >
-                      {initials(p.name)}
-                    </span>
-                  )}
+                  <PersonAvatar id={p.id} url={p.avatarUrl} name={p.name} size={24} radius={7} />
                   <span style={{ fontSize: 13 }}>{p.name}</span>
                   {p.title && (
                     <span style={{ fontSize: 11, color: "#999999", marginLeft: "auto" }}>{p.title}</span>
@@ -284,10 +265,6 @@ function Check({ on, onToggle }: { on: boolean; onToggle?: () => void }) {
       )}
     </span>
   );
-}
-
-function initials(name: string) {
-  return name.split(/\s+/).map((p) => p[0]).slice(0, 2).join("").toUpperCase();
 }
 
 const field: React.CSSProperties = {

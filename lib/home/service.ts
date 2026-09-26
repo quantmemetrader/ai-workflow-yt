@@ -49,6 +49,10 @@ export type Decision = {
   channelName: string;
   agent: AgentKey | null;
   author: string;
+  /** For a card a colleague posted: who, and their own picture, so it is
+   * drawn with their face (or their default, `lib/avatars/default`). */
+  authorId: string | null;
+  authorAvatar: string | null;
   body: string;
   actions: CardAction[];
   at: Date;
@@ -197,6 +201,7 @@ export async function readHome(viewer: Viewer, zh: boolean, opts: { runningFor?:
           createdAt: chatMessages.createdAt,
           authorName: users.name,
           authorNameLocal: users.nameLocal,
+          authorAvatar: users.avatarUrl,
         })
         .from(chatMessages)
         .leftJoin(users, eq(users.id, chatMessages.authorId))
@@ -269,6 +274,8 @@ export async function readHome(viewer: Viewer, zh: boolean, opts: { runningFor?:
       channelName: channel.name,
       agent: m.authorId ? (keyByUserId.get(m.authorId) ?? null) : null,
       author: (zh && m.authorNameLocal) || m.authorName || "—",
+      authorId: m.authorId,
+      authorAvatar: m.authorAvatar,
       body: m.body,
       actions: readCardActions(m.meta),
       at: m.createdAt,

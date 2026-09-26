@@ -18,7 +18,8 @@ import { ROSTER } from "@/lib/agents/lanes";
 import { Icon } from "@/components/ui/Icon";
 import { AgentName } from "@/components/ui/Tr";
 import { AgentTyping, streamStep } from "@/components/agents/AgentTyping";
-import { asksSomething, initials, soft, threadCss, tidyMarkdown } from "@/components/chat/look";
+import { asksSomething, soft, threadCss, tidyMarkdown } from "@/components/chat/look";
+import { PersonAvatar } from "@/components/ui/PersonAvatar";
 import { ProjectBridge } from "@/components/chat/ProjectBridge";
 import type { Locale } from "@/lib/i18n";
 
@@ -171,7 +172,7 @@ export function AgentScreen({
   conversationId: string | null;
   initialMessages: ThreadMessage[];
   locale: Locale;
-  me: { name: string; avatarUrl: string | null };
+  me: { id?: string; name: string; avatarUrl: string | null };
   model: string;
   /** A question handed over from another screen (Files asks here). */
   initialPrompt?: string;
@@ -858,30 +859,12 @@ function UserRow({
   locale,
 }: {
   message: ThreadMessage;
-  me: { name: string; avatarUrl: string | null };
+  me: { id?: string; name: string; avatarUrl: string | null };
   locale: Locale;
 }) {
   return (
     <div className="msg">
-      {me.avatarUrl ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img className="mav" src={me.avatarUrl} alt="" />
-      ) : (
-        <div
-          className="mav"
-          style={{
-            background: "#ececec",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            fontSize: 12,
-            fontWeight: 600,
-            color: "#525252",
-          }}
-        >
-          {initials(me.name)}
-        </div>
-      )}
+      <PersonAvatar className="mav" id={me.id} url={me.avatarUrl} name={me.name} />
       <div style={{ minWidth: 0, flexGrow: 1 }}>
         <div className="head">
           <span className="who">{me.name}</span>

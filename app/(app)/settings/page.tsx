@@ -68,6 +68,7 @@ export default async function SettingsPage() {
         <div className="flex max-w-[720px] flex-col gap-4">
           <ProfileCard
             zh={zh}
+            userId={viewer.id}
             name={viewer.name}
             nameLocal={viewer.nameLocal}
             title={viewer.title}

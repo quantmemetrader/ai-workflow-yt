@@ -24,6 +24,7 @@ import { startProjectAction } from "@/app/(app)/projects/actions";
 import { Fold } from "@/components/ui/Fold";
 import { Icon } from "@/components/ui/Icon";
 import { AgentName, Tr } from "@/components/ui/Tr";
+import { PersonAvatar } from "@/components/ui/PersonAvatar";
 import { AgentTyping } from "@/components/agents/AgentTyping";
 import { soft, withoutLeadingPictures } from "@/components/chat/look";
 import { SayToAgent } from "@/components/flow/SayToAgent";
@@ -454,7 +455,7 @@ export function HomeScreen({
             {decisions.map((d) => (
               <article key={d.messageId} style={GRADIENT_CARD}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  {d.agent ? <AgentIcon agent={d.agent} size={22} radius={6} /> : null}
+                  {d.agent ? <AgentIcon agent={d.agent} size={22} radius={6} /> : <PersonAvatar id={d.authorId} url={d.authorAvatar} name={d.author} size={22} radius={6} />}
                   <span style={{ fontSize: 13, fontWeight: 600 }}>{d.agent ? <AgentName agent={d.agent} zh={zh} /> : d.author}</span>
                   <Link href={`/chat/c/${encodeURIComponent(d.channelSlug)}`} prefetch={false} style={{ fontSize: 11.5, color: "#999999", textDecoration: "none" }}>
                     #{d.channelName}

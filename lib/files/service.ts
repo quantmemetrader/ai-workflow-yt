@@ -137,6 +137,8 @@ export async function listFolder(viewer: Viewer, folderId: string | null) {
       .select({
         file: files,
         ownerName: users.name,
+        /* The owner's own picture, for their face on the row. */
+        ownerAvatar: users.avatarUrl,
       })
       .from(files)
       .innerJoin(users, eq(users.id, files.ownerId))
@@ -750,7 +752,7 @@ export async function sharesWithNames(objectType: SharedObject, objectId: string
  */
 export async function listRecent(viewer: Viewer, limit = 100) {
   return db
-    .select({ file: files, ownerName: users.name })
+    .select({ file: files, ownerName: users.name, ownerAvatar: users.avatarUrl })
     .from(files)
     .innerJoin(users, eq(users.id, files.ownerId))
     // The stock stays in its own folder here too: forty licensed pictures the
@@ -767,7 +769,7 @@ export async function listRecent(viewer: Viewer, limit = 100) {
 export async function listSharedWithMe(viewer: Viewer, limit = 100) {
   const subjects = viewer.subjects.filter((s) => !s.startsWith("tenant:"));
   return db
-    .select({ file: files, ownerName: users.name })
+    .select({ file: files, ownerName: users.name, ownerAvatar: users.avatarUrl })
     .from(files)
     .innerJoin(users, eq(users.id, files.ownerId))
     .where(
@@ -795,7 +797,7 @@ export async function listSharedWithMe(viewer: Viewer, limit = 100) {
  * — by anyone who could have deleted them. */
 export async function listTrash(viewer: Viewer, limit = 100) {
   return db
-    .select({ file: files, ownerName: users.name })
+    .select({ file: files, ownerName: users.name, ownerAvatar: users.avatarUrl })
     .from(files)
     .innerJoin(users, eq(users.id, files.ownerId))
     .where(and(sql`${files.deletedAt} is not null`, canReadFiles(viewer)))

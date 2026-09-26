@@ -7,6 +7,7 @@ import { ResearchAgentPanel } from "./ResearchAgentPanel";
 import type { ScriptListItem } from "@/lib/script/service";
 import { useResizable } from "@/components/ui/Resizer";
 import { StatusStrip } from "@/components/ui/kit";
+import { PersonAvatar } from "@/components/ui/PersonAvatar";
 
 /**
  * ScriptLibraryScreen — a transcription of design/canvas/Script-Library.dc.html.
@@ -290,15 +291,6 @@ function fullStamp(value: Date, locale: string): string {
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return "";
   return new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short" }).format(d);
-}
-
-/** No avatar URL on ScriptListItem, so the artboard's Owner circle carries initials. */
-function initials(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return "";
-  const first = parts[0]?.[0] ?? "";
-  const last = parts.length > 1 ? (parts[parts.length - 1]?.[0] ?? "") : "";
-  return (first + last).toUpperCase();
 }
 
 /* ------------------------------------------------------------------ status */
@@ -1224,24 +1216,15 @@ export function ScriptLibraryScreen(props: ScriptLibraryScreenProps): React.JSX.
                                 <span style={{ color: "#c7c7c7" }}>–</span>
                               ) : (
                                 <>
-                                  <span
+                                  <PersonAvatar
                                     className="av"
+                                    id={s.ownerId}
+                                    url={s.ownerAvatar}
+                                    name={s.ownerName}
                                     title={s.ownerName}
-                                    style={{
-                                      display: "flex",
-                                      alignItems: "center",
-                                      justifyContent: "center",
-                                      width: 18,
-                                      height: 18,
-                                      background: "#f3f3f3",
-                                      color: "#7c7c7c",
-                                      fontSize: 9,
-                                      fontWeight: 500,
-                                      letterSpacing: 0,
-                                    }}
-                                  >
-                                    {initials(s.ownerName)}
-                                  </span>
+                                    size={18}
+                                    style={{ fontSize: 9 }}
+                                  />
                                   <span className="el">{s.ownerName}</span>
                                 </>
                               )}

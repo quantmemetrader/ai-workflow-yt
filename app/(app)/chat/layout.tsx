@@ -50,6 +50,7 @@ export default async function ChatLayout({ children }: { children: React.ReactNo
           unread: p.unread,
         }))}
         me={{
+          id: viewer.id,
           name: zh && viewer.nameLocal ? viewer.nameLocal : viewer.name,
           avatarUrl: viewer.avatarUrl,
           status: viewer.title ?? (zh ? "在线" : "Online"),

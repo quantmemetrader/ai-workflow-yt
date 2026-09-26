@@ -44,6 +44,7 @@ export function ChannelView({
   now,
   isDirect = false,
   directAvatar = null,
+  directId = null,
   pending: workingRows = [],
 }: {
   slug: string;
@@ -51,7 +52,7 @@ export function ChannelView({
   pending?: ChannelPending[];
   /** Who is typing: the name the optimistic row is signed with while the
    * server's copy is on its way. It was the channel's name. */
-  me: { name: string; avatarUrl: string | null };
+  me: { id?: string; name: string; avatarUrl: string | null };
   name: string;
   topic: string | null;
   isPrivate?: boolean;
@@ -83,6 +84,8 @@ export function ChannelView({
   isDirect?: boolean;
   /** In a direct message, the other person's picture for the header. */
   directAvatar?: string | null;
+  /** And their user id, for their default picture. */
+  directId?: string | null;
 }) {
   const router = useRouter();
   const zh = locale.startsWith("zh");
@@ -160,6 +163,7 @@ export function ChannelView({
      */
     const mine: ChannelMessage = {
       id: `pending-${Date.now()}`,
+      authorId: me.id ?? null,
       authorName: me.name,
       authorAvatar: me.avatarUrl,
       body,
@@ -238,6 +242,7 @@ export function ChannelView({
           now={now}
           isDirect={isDirect}
           directAvatar={directAvatar}
+          directId={directId}
           onOpenMembers={studioPeople ? () => setShowMembers(true) : undefined}
         />
 

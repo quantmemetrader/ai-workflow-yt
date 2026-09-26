@@ -51,6 +51,7 @@ export default async function NewChatPage({
       history={history ? { ...history, currentId: detail ? openId : null } : null}
       now={new Date().toISOString()}
       me={{
+        id: viewer.id,
         name: zh && viewer.nameLocal ? viewer.nameLocal : viewer.name,
         avatarUrl: viewer.avatarUrl,
       }}
