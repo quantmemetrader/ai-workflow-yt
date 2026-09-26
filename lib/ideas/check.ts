@@ -263,6 +263,7 @@ async function listMatches(groups: Groups): Promise<{ found: Omit<Found, "id">[]
         from hot_snapshots
        where fetched_at > now() - ${since}
          and platform not like 'search:%'
+         and platform <> 'beat_run'
        group by platform
     `),
   ]);
