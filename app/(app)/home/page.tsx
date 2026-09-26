@@ -123,7 +123,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
         suggestions={suggestions}
         ideas={ideas}
         extra={extra}
-        projects={stages.filter((x) => x.status !== "archived").slice(0, 30).map((x) => ({ id: x.id, title: x.title, channelSlug: x.channelSlug }))}
+        projects={stages.filter((x) => x.status !== "archived").slice(0, 30).map((x) => ({ id: x.id, title: x.title, channelSlug: x.channelSlug, status: x.status, updatedAt: x.updatedAt, step: x.frontier ? { line: x.frontier.line, owner: x.frontier.owner } : null }))}
         thread={thread}
         people={people.map((p) => ({
           id: p.id,

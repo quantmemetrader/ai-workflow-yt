@@ -1,5 +1,6 @@
 "use client";
 
+import { ProjectPicker, type PickerProject } from "@/components/home/ProjectPicker";
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -76,7 +77,7 @@ export function HomeScreen({
    * and latest messages. */
   hub: ProjectDetail[];
   /** Where a task can go: an existing project, or a new one. */
-  projects: { id: string; title: string; channelSlug: string | null }[];
+  projects: (PickerProject & { channelSlug: string | null })[];
   /** Which job's Home this is, and which one this person lands on. */
   role: HomeRole;
   defaultRole: HomeRole;
@@ -360,20 +361,7 @@ export function HomeScreen({
             <span aria-hidden style={{ fontWeight: 600, fontSize: 13, lineHeight: 1 }}>@</span>
             {zh ? <Tr zh="同事" en="Colleague" /> : "Colleague"}
           </button>
-          <select
-            value={target}
-            onChange={(e) => setTarget(e.target.value)}
-            aria-label={t("交给哪个项目", "Which project")}
-            style={{ height: 30, padding: "0 8px", border: "1px solid #e2e2e2", borderRadius: 8, background: "#fafafa", fontFamily: "inherit", fontSize: 12, color: "#171717", minWidth: 0, maxWidth: 260 }}
-          >
-            <option value="new">{t("＋ 新项目", "+ New project")}</option>
-            {projects.map((p) => (
-              <option key={p.id} value={p.id}>
-                {t("项目：", "Project: ")}
-                {p.title}
-              </option>
-            ))}
-          </select>
+          <ProjectPicker zh={zh} value={target} projects={projects} onChange={setTarget} />
           <span style={{ flexGrow: 1 }} />
           {can("chat") ? <DetailLink zh={zh} href="/projects/new" label="新建项目" labelEn="New project" /> : null}
           <button
