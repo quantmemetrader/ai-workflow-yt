@@ -12,7 +12,9 @@ import { notify } from "@/lib/client/notify";
 import type { ProjectDetail } from "@/lib/projects/service";
 import { frontierStep } from "@/lib/home/roles";
 import { StageBadge, StepTrack, stageToneOf } from "@/components/projects/StepTrack";
-import { AgentName } from "@/components/ui/Tr";
+import { AgentName, Tr } from "@/components/ui/Tr";
+import { PUBLISHED_TONE, PublishedMarks } from "@/components/projects/Published";
+import { publishedDay } from "@/lib/projects/publication";
 
 /**
  * Home, project by project.
@@ -85,12 +87,27 @@ export function ProjectProgress({
                 <span style={{ minWidth: 0, flexGrow: 1, display: "flex", flexDirection: "column", gap: 9 }}>
                   <span style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
                     <span style={{ fontSize: 13.5, fontWeight: 600, minWidth: 0, flexGrow: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.title}</span>
-                    <StageBadge now={now} zh={zh} />
+                    <StageBadge now={now} zh={zh} status={p.status} />
                   </span>
                   <StepTrack steps={p.steps} current={now?.key ?? null} />
                   <span style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 11.5, color: "#7c7c7c", minWidth: 0 }}>
-                    {now && now.owner !== "you" ? <AgentIcon agent={now.owner} size={16} radius={5} /> : now ? <Icon name="upload" size={13} color="#b07a1f" /> : <Icon name="check" size={13} color="#1e7a4f" />}
-                    <span style={{ minWidth: 0, flexGrow: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{now ? now.line : t("已交付", "Delivered")}</span>
+                    {/* A published one (the researcher's "just published")
+                        says when, and where it went as marks — not links, the
+                        card is one. */}
+                    {p.status === "done" ? (
+                      <>
+                        <span style={{ minWidth: 0, flexGrow: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: PUBLISHED_TONE.ink }}>
+                          <Tr zh="已发布" en="Published" inZh={zh} />
+                          {p.published ? <span style={{ color: "#7f9a8b" }}>{` · ${publishedDay(p.published.at, zh)}`}</span> : null}
+                        </span>
+                        {p.published?.platforms.length ? <PublishedMarks platforms={p.published.platforms} zh={zh} size={14} gap={4} /> : null}
+                      </>
+                    ) : (
+                      <>
+                        {now && now.owner !== "you" ? <AgentIcon agent={now.owner} size={16} radius={5} /> : now ? <Icon name="upload" size={13} color="#b07a1f" /> : <Icon name="check" size={13} color="#1e7a4f" />}
+                        <span style={{ minWidth: 0, flexGrow: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{now ? now.line : t("已完成", "Done")}</span>
+                      </>
+                    )}
                     <span className="pp-open">
                       {t("打开", "Open")}
                       <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>

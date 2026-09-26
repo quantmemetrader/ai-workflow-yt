@@ -41,6 +41,7 @@ const BRAND: Record<string, string> = {
   douyin: "#000000",
   xiaohongshu: "#ff2442",
   reddit: "#ff4500",
+  shipinhao: "#fa9d3b",
 };
 
 export function platformColor(platform: string): string {
@@ -64,6 +65,7 @@ export function platformLabel(platform: string): string {
     douyin: "Douyin",
     xiaohongshu: "Xiaohongshu",
     reddit: "Reddit",
+    shipinhao: "WeChat Channels",
   };
   /* The 抖音 billboards (dy_finance, dy_breakout, …) are 抖音's own lists. */
   const key = platform.trim().toLowerCase().replace(/^dy_.*/, "douyin");
@@ -234,4 +236,11 @@ const PATHS: Record<string, (fill: string) => React.JSX.Element> = {
   ),
 };
 
+/* 视频号 (WeChat Channels): its two orange wings, simplified to read at 14px. */
+PATHS.shipinhao = (f) => (
+  <>
+    <path fill={f} d="M11.2 14.6 7.6 5.3a1.6 1.6 0 0 0-3 .1L2.2 13.6a4.2 4.2 0 0 0 4 5.4c2.2 0 4.2-1.6 5-4.4z" />
+    <path fill={f} d="m12.8 14.6 3.6-9.3a1.6 1.6 0 0 1 3 .1l2.4 8.2a4.2 4.2 0 0 1-4 5.4c-2.2 0-4.2-1.6-5-4.4z" />
+  </>
+);
 PATHS.twitter = PATHS.x;

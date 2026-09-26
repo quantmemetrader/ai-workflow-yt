@@ -5,6 +5,8 @@ import { AgentIcon } from "@/components/agents/AgentIcon";
 import { Icon } from "@/components/ui/Icon";
 import { Tr } from "@/components/ui/Tr";
 import type { AgentKey } from "@/lib/agents/catalog";
+import type { PublishedPlace } from "@/lib/projects/publication";
+import { PublishedCheck, PublishedMarks, PUBLISHED_TONE } from "@/components/projects/Published";
 
 /**
  * Where the Home task box sends its text: a new project, or one already
@@ -28,6 +30,8 @@ export type PickerProject = {
   /** The step it is at, if known: its line ("等编剧开写") and whose it is. */
   step?: { line: string; owner: AgentKey | "you" } | null;
   updatedAt?: string;
+  /** Marked published: where it went ("YouTube、抖音" and the marks). Listed last, dimmed. */
+  published?: { platforms: PublishedPlace[]; line: string } | null;
 };
 
 export function ProjectPicker({
@@ -170,9 +174,14 @@ export function ProjectPicker({
               }
               const on = row.id === value;
               const dim = row.status === "done" || row.status === "archived";
+              /* The page lists the published ones last; the first of them
+                 gets its own small heading, so the line between reads. */
+              const prev = rows[i - 1];
+              const firstPublished = row.status === "done" && (prev === "new" || !prev || prev.status !== "done");
               return (
                 <React.Fragment key={row.id}>
                   {!needle && i === 1 ? <div className="pjp-label">{t("交给已有项目", "Into a project")}</div> : null}
+                  {!needle && firstPublished ? <div className="pjp-label">{zh ? <Tr zh="已发布" en="Published" /> : "Published"}</div> : null}
                   <button type="button" role="option" aria-selected={on} data-row={i} className={`pjp-row${hi === i ? " hi" : ""}${dim ? " dim" : ""}`} onMouseEnter={() => setHi(i)} onClick={() => pick(row)}>
                     <span className="pjp-ico">
                       <Icon name={on ? "folderOpen" : "folder"} size={15} color={on ? "#171717" : "#8a8a8a"} />
@@ -180,13 +189,22 @@ export function ProjectPicker({
                     <span className="pjp-text">
                       <span className="pjp-title">{row.title}</span>
                       <span className="pjp-sub">
-                        {row.step ? (
+                        {row.status === "done" ? (
+                          <>
+                            <PublishedCheck size={12} />
+                            <span className="pjp-ell" style={{ color: PUBLISHED_TONE.ink }}>
+                              {zh ? <Tr zh="已发布" en="Published" /> : "Published"}
+                              {row.published?.line ? ` · ${row.published.line}` : ""}
+                            </span>
+                            {row.published?.platforms.length ? <PublishedMarks platforms={row.published.platforms} zh={zh} size={12} gap={3} /> : null}
+                          </>
+                        ) : row.step ? (
                           <>
                             {row.step.owner !== "you" ? <AgentIcon agent={row.step.owner} size={14} radius={4} /> : <Icon name="upload" size={11} color="#b07a1f" />}
                             <span className="pjp-ell">{row.step.line}</span>
                           </>
                         ) : (
-                          <span className="pjp-ell">{row.status === "done" ? t("已交付", "Delivered") : t("进行中", "In progress")}</span>
+                          <span className="pjp-ell">{row.status === "done" ? t("已发布", "Published") : t("进行中", "In progress")}</span>
                         )}
                         {row.updatedAt ? <span className="pjp-when">{ago(row.updatedAt, zh)}</span> : null}
                       </span>

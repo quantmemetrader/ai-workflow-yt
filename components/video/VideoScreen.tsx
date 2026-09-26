@@ -69,6 +69,12 @@ import { timeAgo } from "@/lib/time";
 import type { Locale } from "@/lib/i18n";
 import { Poster } from "@/components/files/Poster";
 import { Badge, Empty, Label, ModuleHeader, Row, Tabs, clip, field, ghost, solid, useAction } from "@/components/ui/kit";
+import { Tr } from "@/components/ui/Tr";
+import { PUBLISHED_TONE, PublishedCheck, PublishedMarks } from "@/components/projects/Published";
+import type { PublishedPlace } from "@/lib/projects/publication";
+
+/** A cut whose project is marked 已发布: where it went, when (ISO and as the day, formatted on the server). */
+export type VideoPublished = { projectId: string; platforms: PublishedPlace[]; at: string; day: string };
 
 /**
  * Video Edit (spec §4.5), as an assembly module.
@@ -105,6 +111,7 @@ type Render = ExportRow & { proxyFileId: string | null };
 export function VideoScreen({
   proposals,
   projects,
+  published = {},
   project,
   clips,
   items,
@@ -126,6 +133,8 @@ export function VideoScreen({
   /** What 剪辑师 suggests cutting next, drawn above the project list. */
   proposals?: Proposals;
   projects: ProjectRow[];
+  /** The published ones, by video project id (`publicationsByVideo`). */
+  published?: Record<string, VideoPublished>;
   project: ProjectRow | null;
   clips: ClipRow[];
   items: ItemRow[];
@@ -572,6 +581,7 @@ export function VideoScreen({
           ) : (
             <Library
               projects={projects}
+              published={published}
               /* The cut that is open, marked 当前 in the list: the list is a
                  tab now, so it is read with the editor still one tab away. */
               current={project}
@@ -1886,10 +1896,23 @@ const LIBRARY_CSS = `
 .vlib-card:not(.on):hover { border-color: #d6d6d6 !important; }
 .vlib-card:focus-visible { outline: 2px solid #171717; outline-offset: 2px; }
 .vlib-act:hover { color: #171717 !important; }
+.vlib-pubchip { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 10px 0 7px; border-radius: 999px; border: 1px solid #e2e2e2; background: #fff; color: #3f3f3f; font-family: inherit; font-size: 12px; cursor: pointer; flex-shrink: 0; transition: border-color .15s ease, background-color .15s ease; }
+.vlib-pubchip:hover:not(:disabled) { border-color: #9fd6b6; }
+.vlib-pubchip[data-on] { background: #e7f6ee; border-color: #3fb57a; color: #1e7a4f; font-weight: 500; }
+.vlib-pubchip:disabled { opacity: .5; cursor: default; }
+.vlib-pubchip:focus-visible { outline: 2px solid #171717; outline-offset: 1px; }
+.vlib-pubchip-n { font-size: 11px; color: #9aa9a0; font-variant-numeric: tabular-nums; }
+.vlib-pubtag { position: absolute; left: 7px; top: 7px; height: 22px; padding: 0 9px 0 4px; border-radius: 999px; background: rgba(255,255,255,.93); box-shadow: 0 1px 4px rgba(0,0,0,.18); color: #1e7a4f; font-size: 11.5px; font-weight: 600; display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; backdrop-filter: blur(4px); }
+.vlib-pub { display: flex; align-items: center; gap: 10px; margin-top: 10px; padding: 8px 10px; border-radius: 10px; background: linear-gradient(135deg, #effaf3, #f6fcf8); border: 1px solid #d3ecdd; }
+.vlib-pub a { transition: transform .12s ease; }
+.vlib-pub a:hover { transform: translateY(-1px); }
+.vlib-pub a:focus-visible { outline: 2px solid #1e7a4f; outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { .vlib-pub a:hover { transform: none; } }
 `;
 
 function Library({
   projects,
+  published,
   current,
   zh,
   locale,
@@ -1899,6 +1922,7 @@ function Library({
   onDelete,
 }: {
   projects: ProjectRow[];
+  published: Record<string, VideoPublished>;
   /** The cut already open, when the library is shown from inside the editor. */
   current: ProjectRow | null;
   zh: boolean;
@@ -1916,11 +1940,11 @@ function Library({
   const [sharing, setSharing] = useState<ProjectRow | null>(null);
   /* Sort, remembered per browser. Recently edited first is what a working
      studio wants; the rest are there for finding one cut among many. */
-  type SortKey = "updated" | "created" | "title" | "length" | "rendered";
+  type SortKey = "updated" | "created" | "title" | "length" | "rendered" | "published";
   const [sort, setSort] = useState<SortKey>(() => {
     try {
       const v = localStorage.getItem("aura:video:sort");
-      return v === "created" || v === "title" || v === "length" || v === "rendered" ? v : "updated";
+      return v === "created" || v === "title" || v === "length" || v === "rendered" || v === "published" ? v : "updated";
     } catch {
       return "updated";
     }
@@ -1931,7 +1955,12 @@ function Library({
       localStorage.setItem("aura:video:sort", v);
     } catch {}
   };
-  const sorted = [...projects].sort((a, b) => {
+  /* 已发布 as a filter beside the sort: only the cuts that went out. Not
+     remembered — a filter left on from last week reads as cuts gone missing. */
+  const [onlyPublished, setOnlyPublished] = useState(false);
+  const publishedCount = projects.filter((p) => published[p.id]).length;
+  const sorted = [...projects].filter((p) => !onlyPublished || published[p.id]).sort((a, b) => {
+    if (sort === "published") return (published[b.id]?.at ?? "").localeCompare(published[a.id]?.at ?? "") || b.updatedAt.getTime() - a.updatedAt.getTime();
     if (sort === "title") return a.title.localeCompare(b.title, zh ? "zh" : "en");
     if (sort === "length") return b.durationMs - a.durationMs;
     if (sort === "created") return b.createdAt.getTime() - a.createdAt.getTime();
@@ -1959,7 +1988,22 @@ function Library({
         <span style={{ fontSize: 12, color: "#999999", ...clip }}>
           {t("yours, and the ones shared with you", "你的项目，以及分享给你的")}
         </span>
-        <label style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "#7c7c7c", flexShrink: 0 }}>
+        {/* The 已发布 filter, as a chip: green and pressed while it is on. */}
+        <button
+          type="button"
+          aria-pressed={onlyPublished}
+          onClick={() => setOnlyPublished((v) => !v)}
+          disabled={publishedCount === 0 && !onlyPublished}
+          className="vlib-pubchip"
+          data-on={onlyPublished ? "" : undefined}
+          title={publishedCount === 0 ? t("Nothing is marked published yet", "还没有标记为已发布的片子") : undefined}
+          style={{ marginLeft: "auto" }}
+        >
+          <PublishedCheck size={14} />
+          {zh ? <Tr zh="已发布" en="Published" /> : "Published"}
+          <span className="vlib-pubchip-n">{publishedCount}</span>
+        </button>
+        <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "#7c7c7c", flexShrink: 0 }}>
           {t("Sort", "排序")}
           <select value={sort} onChange={(e) => pickSort(e.target.value as SortKey)} style={{ ...field, height: 30, borderRadius: 8, fontSize: 12, width: 140, cursor: "pointer" }}>
             <option value="updated">{t("Recently edited", "最近编辑")}</option>
@@ -1967,6 +2011,7 @@ function Library({
             <option value="title">{t("Title A–Z", "按标题 A–Z")}</option>
             <option value="length">{t("Longest first", "最长优先")}</option>
             <option value="rendered">{t("Rendered first", "已渲染优先")}</option>
+            <option value="published">{t("Published first", "已发布优先")}</option>
           </select>
         </label>
         {/* The module's only New-project button while the list is showing —
@@ -1980,8 +2025,15 @@ function Library({
       {/* 260px at the least: at 240 a 1280 screen fitted four columns of
           252px, and the card's footer (who, when, three actions) cut the
           time off. Now three there, four at 1440. */}
+      {onlyPublished && sorted.length === 0 ? (
+        <div style={{ padding: "28px 16px", border: "1px dashed #d9e9df", borderRadius: 12, textAlign: "center", fontSize: 12.5, color: "#6f8a7b", background: "#fbfefc" }}>
+          {t("Nothing is marked published yet. Mark a project published on its page once the cut is out.", "还没有标记为已发布的片子。成片发出去后，在项目页标记「已发布」。")}
+        </div>
+      ) : null}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 14 }}>
-        {sorted.map((p) => (
+        {sorted.map((p) => {
+          const pub = published[p.id] ?? null;
+          return (
           <div
             key={p.id}
             className={p.id === current?.id ? "vlib-card on" : "vlib-card"}
@@ -2023,6 +2075,13 @@ function Library({
                   {clock(p.durationMs)}
                 </span>
               )}
+              {/* Published: a frosted pill on the frame, readable on any picture. */}
+              {pub ? (
+                <span className="vlib-pubtag">
+                  <PublishedCheck size={14} />
+                  {zh ? <Tr zh="已发布" en="Published" /> : "Published"}
+                </span>
+              ) : null}
             </div>
             {renaming?.id === p.id ? (
               <input
@@ -2055,6 +2114,22 @@ function Library({
             <span style={{ fontSize: 11.5, color: "#999999", display: "block", marginTop: 4, fontVariantNumeric: "tabular-nums" }}>
               {clock(p.durationMs)} · {p.itemCount} {t("cuts", "个片段")} · {p.clipCount} {t("in the bin", "个素材")}
             </span>
+            {/* Where it went and when, the marks as links to the posts (a
+                press on one opens the post, not the cut). */}
+            {pub ? (
+              <span className="vlib-pub">
+                <span style={{ display: "flex", flexDirection: "column", minWidth: 0, flexGrow: 1 }}>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: PUBLISHED_TONE.ink, display: "flex", alignItems: "center", gap: 6 }}>
+                    {zh ? <Tr zh="已发布" en="Published" /> : "Published"}
+                    <span style={{ fontWeight: 400, color: "#6f9a82", fontVariantNumeric: "tabular-nums" }}>{pub.day}</span>
+                  </span>
+                  <span style={{ fontSize: 11, color: "#7f9a8b", marginTop: 1, ...clip }}>
+                    {pub.platforms.some((x) => x.url) ? t("Press a mark to open the post", "点平台图标打开发布链接") : pub.platforms.length ? t("No links noted", "没有记下链接") : t("No platform noted", "没有记下平台")}
+                  </span>
+                </span>
+                <PublishedMarks platforms={pub.platforms} zh={zh} size={18} links gap={6} />
+              </span>
+            ) : null}
             <span style={{ display: "flex", gap: 5, marginTop: 9, marginBottom: 11, flexWrap: "wrap" }}>
               {p.masterFileId ? (
                 <Badge tone="good">{t("rendered", "已渲染")}</Badge>
@@ -2114,7 +2189,8 @@ function Library({
               </button>
             </span>
           </div>
-        ))}
+          );
+        })}
       </div>
 
       {sharing ? <AccessDialog projectId={sharing.id} title={sharing.title} zh={zh} onClose={() => setSharing(null)} /> : null}

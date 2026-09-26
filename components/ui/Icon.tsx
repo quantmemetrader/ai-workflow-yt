@@ -28,7 +28,9 @@ export type IconName =
   | "scissors"
   | "lock"
   | "folder"
-  | "folderOpen";
+  | "folderOpen"
+  | "link"
+  | "undo";
 
 const PATHS: Record<IconName, React.ReactNode> = {
   chat: <path d="M20.5 11.6a7.9 7.9 0 0 1-8.5 7.8 8.9 8.9 0 0 1-2.6-.4L4.5 20.4l1.3-3.8a7.7 7.7 0 0 1-1.8-5A7.9 7.9 0 0 1 12 3.8a7.9 7.9 0 0 1 8.5 7.8z" />,
@@ -110,6 +112,20 @@ const PATHS: Record<IconName, React.ReactNode> = {
     <>
       <path d="M2.8 12s3.4-6.2 9.2-6.2 9.2 6.2 9.2 6.2-3.4 6.2-9.2 6.2S2.8 12 2.8 12z" />
       <circle cx="12" cy="12" r="2.6" />
+    </>
+  ),
+  /* A posted link (a platform the list has no mark for, "其他"). */
+  link: (
+    <>
+      <path d="M10.2 13.8a3.6 3.6 0 0 0 5.1 0l3-3a3.6 3.6 0 0 0-5.1-5.1l-1.2 1.2" />
+      <path d="M13.8 10.2a3.6 3.6 0 0 0-5.1 0l-3 3a3.6 3.6 0 0 0 5.1 5.1l1.2-1.2" />
+    </>
+  ),
+  /* Take a mark back (撤回). */
+  undo: (
+    <>
+      <path d="M8.5 5.5 4.5 9.5l4 4" />
+      <path d="M4.5 9.5h9.8a5 5 0 0 1 0 10H10" />
     </>
   ),
 };

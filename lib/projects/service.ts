@@ -15,6 +15,7 @@ import { share } from "@/lib/authz/rebac";
 import { TITLE_NOISE, backlogQueryOf, channelNote, fromHotRow, fromIdea, fromSignal, fromTopicRow, type ProjectSource, type SignalLike, type SourceEvidence, type TopicRef, titleCore } from "@/lib/projects/topic";
 import { isListKey, listName, type HotRow } from "@/lib/research/platform-catalog";
 import { HOT_TENANT } from "@/lib/research/platforms";
+import { platformsLine, readPublication, type Publication } from "@/lib/projects/publication";
 
 /**
  * Which projects this person may see: their own, the studio-wide ones
@@ -41,6 +42,8 @@ export type WorkProjectRow = {
   channelSlug: string | null;
   createdBy: string;
   access: string;
+  /** Where it went, once it is marked published (`lib/projects/publication.ts`). */
+  published?: Publication | null;
 };
 
 /**
@@ -268,13 +271,20 @@ export async function listWorkProjects(viewer: Viewer, limit = 40, order: "activ
       lastMessageAt: chatChannels.lastMessageAt,
       createdBy: workProjects.createdBy,
       access: sql<string>`${workProjects.access} ->> 'mode'`,
+      published: sql<unknown>`${workProjects.source} -> 'published'`,
     })
     .from(workProjects)
     .leftJoin(chatChannels, eq(chatChannels.id, workProjects.channelId))
     .where(and(eq(workProjects.tenantId, viewer.tenantId), isNull(workProjects.deletedAt), visibleTo(viewer)))
     .orderBy(order === "created" ? desc(workProjects.createdAt) : desc(sql`greatest(${workProjects.updatedAt}, coalesce(${chatChannels.lastMessageAt}, ${workProjects.updatedAt}))`))
     .limit(limit);
-  return rows.map((r) => ({ ...r, updatedAt: (r.lastMessageAt && r.lastMessageAt > r.updatedAt ? r.lastMessageAt : r.updatedAt).toISOString() }));
+  return rows.map((r) => ({
+    ...r,
+    updatedAt: (r.lastMessageAt && r.lastMessageAt > r.updatedAt ? r.lastMessageAt : r.updatedAt).toISOString(),
+    /* Only a done project reads as published: an archived one keeps its
+       record in the row but is shown as archived. */
+    published: r.status === "done" ? readPublication({ published: r.published }) : null,
+  }));
 }
 
 export type ProjectStageRow = WorkProjectRow & {
@@ -292,6 +302,10 @@ export type ProjectStageRow = WorkProjectRow & {
    * gradient and the clapper.
    */
   thumbFileId: string | null;
+  /** Where it went, when it is marked published; null otherwise. */
+  published: Publication | null;
+  /** `published.at`, for `inHandFor` (the researcher's "just published"). */
+  publishedAt: string | null;
 };
 
 /**
@@ -363,6 +377,7 @@ export async function listProjectStages(
     /* pg hands a json column back parsed; a driver that returns the text
        instead is read the same way. */
     const render = typeof r.render === "string" ? (JSON.parse(r.render) as typeof r.render) : r.render;
+    const published = r.status === "done" ? readPublication(r.source) : null;
     const steps = buildSteps(
       {
         mode: r.mode,
@@ -373,6 +388,7 @@ export async function listProjectStages(
         clips: Number(r.clips ?? 0),
         items: Number(r.items ?? 0),
         render: render ? { state: String(render.state), progress: Number(render.progress ?? 0), fileId: render.fileId ?? null } : null,
+        published,
       },
       zh,
     );
@@ -393,6 +409,8 @@ export async function listProjectStages(
       steps,
       frontier: frontierStep(steps),
       thumbFileId: r.firstClipFileId ?? (render?.state === "done" ? (render.fileId ?? null) : null),
+      published,
+      publishedAt: published?.at ?? null,
     };
   });
 }
@@ -414,6 +432,10 @@ export type ProjectDetail = {
   mode: string;
   access: { mode: "private" | "everyone" | "groups" | "people"; groups?: string[]; userIds?: string[] };
   canManage: boolean;
+  /** May mark it published and undo that (`mayPublish` in lib/projects/published.ts). */
+  canPublish: boolean;
+  /** Where it went, once marked published; null while it is not done. */
+  published: Publication | null;
   source: { kind: string; label?: string; url?: string | null } | null;
   createdAt: string;
   channel: { id: string; slug: string; name: string };
@@ -459,6 +481,8 @@ export type StepFacts = {
   items: number;
   /** The latest render. */
   render: { state: string; progress: number; fileId: string | null } | null;
+  /** Where it went, when it has been marked published. */
+  published?: Publication | null;
 };
 
 /**
@@ -525,7 +549,16 @@ export function buildSteps(f: StepFacts, zh: boolean): ProjectStep[] {
       label: t("批准交付", "Approve & deliver"),
       owner: "you",
       state: f.status === "done" ? "done" : rendered ? "you" : "todo",
-      line: f.status === "done" ? t("已交付", "Delivered") : rendered ? t("看成片，满意就交付", "Watch it; deliver when happy") : t("剪完之后", "After the edit"),
+      /* Done is 已发布 now: the owner marks it once the cut is up, and the
+         line names where it went ("已发布 · YouTube、抖音"). */
+      line:
+        f.status === "done"
+          ? f.published?.platforms.length
+            ? `${t("已发布", "Published")} · ${platformsLine(f.published.platforms, zh)}`
+            : t("已发布", "Published")
+          : rendered
+            ? t("看成片，发布后标记完成", "Watch it; mark it once it is posted")
+            : t("剪完之后", "After the edit"),
     },
   ];
 }
@@ -570,6 +603,7 @@ export async function workProjectDetail(viewer: Viewer, id: string, zh: boolean,
      already on screen. */
   const links = thread ? await projectLinks(viewer, thread.messages.map((m) => ({ messageId: m.id, ...m.refs }))) : new Map<string, { id: string; title: string }>();
 
+  const published = p.status === "done" ? readPublication(p.source) : null;
   const steps = buildSteps(
     {
       mode: p.mode,
@@ -580,6 +614,7 @@ export async function workProjectDetail(viewer: Viewer, id: string, zh: boolean,
       clips: clips.n,
       items: items.n,
       render: render ? { state: render.state, progress: render.progress, fileId: render.fileId } : null,
+      published,
     },
     zh,
   );
@@ -592,6 +627,10 @@ export async function workProjectDetail(viewer: Viewer, id: string, zh: boolean,
     mode: p.mode,
     access: p.access ?? { mode: "everyone" },
     canManage: viewer.isAdmin || p.createdBy === viewer.id,
+    /* The rule in `mayPublish` (lib/projects/published.ts), written out here
+       because that file imports this one. */
+    canPublish: viewer.isAdmin || p.createdBy === viewer.id || viewer.role !== "guest",
+    published,
     source: (p.source as ProjectDetail["source"]) ?? null,
     createdAt: p.createdAt.toISOString(),
     channel: { id: ch.id, slug: ch.slug, name: ch.name },
