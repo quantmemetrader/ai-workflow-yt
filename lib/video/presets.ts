@@ -12,6 +12,49 @@
  * never the three stacked — and word-by-word highlighting only where it is
  * honest.
  */
+/**
+ * Director v2's reel captions (PLAN.md §1 "Captions"): the numbers behind
+ * the `reel` presets. `ass.ts` takes its reel path whenever a preset carries
+ * one of these; `elevenlabs.ts:toCaptionLines` breaks lines to `aimChars`
+ * / `maxChars` for it. Everything is stated for a 1080×1920 frame and scaled
+ * by the frame's height at render time.
+ */
+export type ReelCaptionStyle = {
+  /** Han characters per line: what the breaker aims for, the most it allows, the fewest it likes. */
+  aimChars: number;
+  maxChars: number;
+  minChars: number;
+  /** The pop: 0 → `peak` % → 100 % over `popMs` milliseconds. */
+  popMs: number;
+  peak: number;
+  /** The spoken word's scale while it is being said, per cent. */
+  spokenScale: number;
+  /** Outline width in px, its colour, and the outline blur. */
+  outlinePx: number;
+  outlineColour: string;
+  blur: number;
+  /** The zh line's visual centre, in px from the top; and the lowest it may be pushed to clear the chin. */
+  centreY: number;
+  maxCentreY: number;
+  /** The gap the line keeps below the speaker's chin, when a face track is given. */
+  chinGap: number;
+  /** Number runs are always in the accent; at most this many other keywords per line. */
+  maxKeywords: number;
+  /** The least time a line stays up. */
+  minMs: number;
+  /** The second-language line, when the preset has one. */
+  second?: {
+    sizePx: number;
+    /** 0–1. */
+    opacity: number;
+    /** It fades in this long after the zh line lands. */
+    delayMs: number;
+    centreY: number;
+    bold: boolean;
+    outlinePx: number;
+  };
+};
+
 export type CaptionPreset = {
   key: string;
   name: string;
@@ -54,7 +97,33 @@ export type CaptionPreset = {
     keywords?: boolean;
     /** A second-language line under the first, small and light. */
     second?: { family: string; sizeRatio: number };
+    /** Present on the reel presets only; see `ReelCaptionStyle`. */
+    reel?: ReelCaptionStyle;
   };
+};
+
+/**
+ * The reel look, once, shared by both reel presets (PLAN.md §1): 72 px
+ * Black, 5 px #0E0E10 outline with a 1.5 blur, centre y 1360, a pop of
+ * 0→108→100 % in 160 ms, the spoken word at 110 %, half a second on screen
+ * at least. `maxCentreY` 1400 keeps the line out of the bottom platform
+ * band (y > 1440) even when a low chin pushes it down.
+ */
+const REEL: ReelCaptionStyle = {
+  aimChars: 8,
+  maxChars: 12,
+  minChars: 4,
+  popMs: 160,
+  peak: 108,
+  spokenScale: 110,
+  outlinePx: 5,
+  outlineColour: "#0E0E10",
+  blur: 1.5,
+  centreY: 1360,
+  maxCentreY: 1400,
+  chinGap: 40,
+  maxKeywords: 1,
+  minMs: 500,
 };
 
 export const CAPTION_PRESETS: CaptionPreset[] = [
@@ -168,6 +237,64 @@ export const CAPTION_PRESETS: CaptionPreset[] = [
       marginRatio: 0.44,
       karaoke: false,
       uppercase: false,
+    },
+  },
+
+  /*
+   * Director v2's captions for a vertical reel (PLAN.md §1 "Captions").
+   *
+   * One heavy line of four to twelve characters, broken where a phrase
+   * ends and never inside a name or a number, popping in with the voice;
+   * the word being said and every number in the accent colour. The family
+   * is the static Black OTF that `scripts/fetch-cjk-font.sh` fetches: the
+   * variable NotoSansSC.ttf falls back to DejaVu at this weight in libass
+   * (Stage 0), so the face has to be on the box. `karaoke` is off because
+   * the reel renderer lights words with its own tags and degrades to a
+   * plain pop when a row has no timings, so `render.ts` never needs to
+   * swap the preset out.
+   */
+  {
+    key: "reel",
+    name: "Reel",
+    nameZh: "短视频字幕",
+    note: "One heavy line, four to twelve characters, broken at phrase boundaries, popping in with the voice; the spoken word and every number in the accent colour. Director v2's caption for a vertical reel.",
+    noteZh: "单行黑体大字，四到十二字，按语义断句，随语音弹出；正在说的词和所有数字用强调色。导演 v2 竖屏短视频的字幕。",
+    style: {
+      family: "Noto Sans CJK SC Black",
+      weight: 900,
+      sizeRatio: 0.0375,
+      fill: "#ffffff",
+      treatment: "outline",
+      lines: 1,
+      marginRatio: 0.2755,
+      karaoke: false,
+      uppercase: false,
+      keywords: true,
+      reel: REEL,
+    },
+  },
+  {
+    key: "bilingual-reel",
+    name: "Bilingual reel",
+    nameZh: "双语短视频字幕",
+    note: "The reel caption with the English under it: 36 px, three-quarter opacity, fading in a beat after the Chinese lands. For the channel's bilingual reels.",
+    noteZh: "短视频字幕加下方一行英文：36 像素、七五折透明度，比中文晚一拍淡入。频道的双语短视频用这个。",
+    style: {
+      family: "Noto Sans CJK SC Black",
+      weight: 900,
+      sizeRatio: 0.0375,
+      fill: "#ffffff",
+      treatment: "outline",
+      lines: 1,
+      marginRatio: 0.2755,
+      karaoke: false,
+      uppercase: false,
+      keywords: true,
+      second: { family: "Noto Sans CJK SC", sizeRatio: 0.01875 },
+      reel: {
+        ...REEL,
+        second: { sizePx: 36, opacity: 0.75, delayMs: 80, centreY: 1420, bold: true, outlinePx: 2 },
+      },
     },
   },
 ];

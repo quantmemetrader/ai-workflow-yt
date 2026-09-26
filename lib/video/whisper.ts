@@ -53,7 +53,63 @@ export class WhisperUnavailable extends Error {
 }
 
 /**
- * Transcribe an audio Blob locally.
+ * The prompt `/opt/whisper/transcribe.py` uses when nobody sets one: a short
+ * sample in the register the output should have (Simplified, punctuated).
+ * Kept identical to the script's own default so a run with no hotwords is
+ * the run it always was.
+ */
+export const WHISPER_DEFAULT_PROMPT = "以下是普通话和粤语的句子，使用简体中文，并加上逗号、句号和问号。";
+
+/**
+ * The initial prompt with the brief's names in it.
+ *
+ * Whisper's prompt is the documented way to steer spellings: a decoder that
+ * has just read 「Anthropic、Claude、DeepSeek」 writes Anthropic where it
+ * would otherwise write Anthrobic. `/opt/whisper/transcribe.py` reads it
+ * from `WHISPER_PROMPT` (its `initial_prompt`), so nothing under /opt
+ * changes. The list follows the default sample, so the register cue stays.
+ *
+ * Two limits, both measured on the box (W2, Stage 1). The decoder keeps the
+ * last 223 tokens of a prompt; the default sample is 42 tokens and a Han
+ * character is about one, so 200 characters in all fits. And with the
+ * script's `condition_on_previous_text=False` the initial prompt conditions
+ * the first 30 s window only — later windows start from nothing — so on a
+ * six-minute take it fixes the opening and the glossary
+ * (`lib/video/glossary.ts`) fixes the rest. faster-whisper 1.2 also has a
+ * `hotwords=` argument that is applied to every window; `WHISPER_HOTWORDS`
+ * is set below for the day the script reads it (one line there), and is
+ * inert until then.
+ */
+export function whisperPrompt(hotwords: readonly string[], maxChars = 200): string {
+  const seen = new Set<string>();
+  let text = `${WHISPER_DEFAULT_PROMPT}本期提到：`;
+  let count = 0;
+  for (const raw of hotwords) {
+    const h = raw.trim().replace(/[、，,。\n]/g, "");
+    if (!h || seen.has(h)) continue;
+    const piece = count ? `、${h}` : h;
+    if (Array.from(text).length + Array.from(piece).length + 1 > maxChars) break;
+    text += piece;
+    seen.add(h);
+    count++;
+  }
+  return count ? `${text}。` : WHISPER_DEFAULT_PROMPT;
+}
+
+export type TranscribeLocalOptions = {
+  diarize?: boolean;
+  languageCode?: string | null;
+  /** Names and terms the brief spells out, in the order it trusts them; see `whisperPrompt`. */
+  hotwords?: readonly string[];
+};
+
+/**
+ * Transcribe audio locally: a Blob, or the path of a file already on disk.
+ *
+ * A path is read in place and left alone — the lab hands over a 16 kHz wav
+ * it extracted itself, and copying a raw take through a temp dir would be
+ * hundreds of megabytes for nothing. A Blob is written to a temp dir that
+ * is removed afterwards, as before.
  *
  * `diarize` is accepted only so the call site reads the same as the ElevenLabs
  * one; it is ignored. faster-whisper does not diarize — that needs a separate
@@ -63,17 +119,18 @@ export class WhisperUnavailable extends Error {
  * simply never breaks on it, and no other caller reads it.
  */
 export async function transcribeLocal(
-  audio: Blob,
+  audio: Blob | string,
   filename: string,
-  options: { diarize?: boolean; languageCode?: string | null } = {},
+  options: TranscribeLocalOptions = {},
 ): Promise<Transcript> {
   // The CLI takes a path, not a stream: Whisper seeks around the file to
   // detect the language and to window the decode, so it needs it on disk.
-  const dir = await mkdtemp(path.join(tmpdir(), "aura-whisper-"));
-  const audioPath = path.join(dir, path.basename(filename) || "audio.mp3");
+  const fromPath = typeof audio === "string";
+  const dir = fromPath ? null : await mkdtemp(path.join(tmpdir(), "aura-whisper-"));
+  const audioPath = fromPath ? audio : path.join(dir!, path.basename(filename) || "audio.mp3");
 
   try {
-    await writeFile(audioPath, Buffer.from(await audio.arrayBuffer()));
+    if (!fromPath) await writeFile(audioPath, Buffer.from(await audio.arrayBuffer()));
 
     const args = [SCRIPT, audioPath];
     // Omitted means auto-detect, which is the normal case here: this studio
@@ -84,7 +141,7 @@ export async function transcribeLocal(
 
     // spawn with an argv array, never a shell string: `filename` comes from a
     // caller and a temp path could otherwise be read as shell syntax.
-    const raw = await runPython(args);
+    const raw = await runPython(args, options.hotwords ?? []);
 
     let parsed: unknown;
     try {
@@ -99,7 +156,7 @@ export async function transcribeLocal(
   } finally {
     // The audio is a copy of a cut that already exists on disk upstream, and
     // this box is also the web server. It does not get to accumulate.
-    await rm(dir, { recursive: true, force: true }).catch(() => {});
+    if (dir) await rm(dir, { recursive: true, force: true }).catch(() => {});
   }
 }
 
@@ -114,7 +171,7 @@ export async function localTranscriberInstalled(): Promise<boolean> {
   }
 }
 
-function runPython(args: string[]): Promise<string> {
+function runPython(args: string[], hotwords: readonly string[]): Promise<string> {
   return new Promise((resolve, reject) => {
     const child = spawn(PYTHON, args, {
       stdio: ["ignore", "pipe", "pipe"],
@@ -130,6 +187,11 @@ function runPython(args: string[]): Promise<string> {
         /* The weights live beside the venv, not in the home directory of
            whichever user the worker happens to run as. */
         HF_HOME: process.env.WHISPER_CACHE || "/opt/whisper/models",
+        /* The brief's spellings, when there are any; otherwise whatever the
+           environment already says, so a run without hotwords is unchanged. */
+        ...(hotwords.length
+          ? { WHISPER_PROMPT: whisperPrompt(hotwords), WHISPER_HOTWORDS: hotwords.map((h) => h.trim()).filter(Boolean).join("、") }
+          : {}),
       },
     });
 

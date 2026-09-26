@@ -246,10 +246,29 @@ export async function speak(
  * comfortable two seconds of reading; the same 16 characters of English is
  * three words. `maxChars` is therefore applied per script, not as one number.
  */
+export type CaptionLine = { startMs: number; endMs: number; text: string; words: { start: number; end: number; text: string }[] };
+
+/**
+ * Director v2's reel lines (PLAN.md §1 "Captions"): one line of 4–12 Han
+ * characters aimed at 8, broken only where the segmenter says a word ends,
+ * never inside a figure or a glossary term, punctuation stripped.
+ */
+export type ReelLineOptions = {
+  aimChars?: number;
+  maxChars?: number;
+  minChars?: number;
+  /** Names and terms a break must never fall inside. */
+  terms?: readonly string[];
+  /** The least a line stays up; a shorter one is stretched into the gap after it. */
+  minMs?: number;
+  /** A pause this long inside a line is penalised; twice it, the line ends there. */
+  pauseMs?: number;
+};
+
 export function toCaptionLines(
   transcript: Transcript,
-  options: { maxChars?: number; maxMs?: number; pauseMs?: number } = {},
-): { startMs: number; endMs: number; text: string; words: { start: number; end: number; text: string }[] }[] {
+  options: { maxChars?: number; maxMs?: number; pauseMs?: number; reel?: ReelLineOptions | true } = {},
+): CaptionLine[] {
   const words = transcript.words.filter((w) => w.type === "word" && w.text.trim());
   if (!words.length) return [];
 
@@ -262,8 +281,15 @@ export function toCaptionLines(
    * phone and wastes most of a 16:9 one. The caller passes the aspect's budget
    * -- about 16 for 9:16, about 24 for 16:9 -- and this is the fallback for
    * anything that does not.
+   *
+   * The reel breaker takes a Chinese transcript first (director v2). A Latin
+   * transcript asked for reel lines gets this breaker at the reel's width,
+   * about two and a half Latin characters per Han one; a word-boundary DP
+   * for English is not something this studio's reels have needed yet.
    */
-  const maxChars = options.maxChars ?? (cjk ? 20 : 46);
+  const reel = options.reel === true ? {} : options.reel;
+  if (reel && cjk) return reelLines(words, reel);
+  const maxChars = options.maxChars ?? (reel ? Math.round((reel.maxChars ?? REEL_DEFAULTS.maxChars) * 2.5) : cjk ? 20 : 46);
   const maxMs = options.maxMs ?? 6000;
   const pauseMs = options.pauseMs ?? 700;
   /*
@@ -341,5 +367,325 @@ export function toCaptionLines(
   }
 
   flush();
+  return lines.filter((l) => l.text && l.endMs > l.startMs);
+}
+
+/* ------------------------------------------------------------------ reel */
+
+/**
+ * Lines for a reel, by dynamic programming over the transcript's words.
+ *
+ * v1 counted to sixteen and cut, which put breaks inside 罕见联|手, 1.|51亿次
+ * and 63.|5%. This breaker allows a break only at a position that is all of:
+ * a boundary between two of whisper's words, a word boundary for
+ * `Intl.Segmenter('zh')`, and outside every figure (digits with their
+ * marks and units, Han numerals of two or more), every Latin token and
+ * every glossary term. Among the allowed breaks it picks the set that
+ * makes the best lines, judged by: distance from `aimChars` (squared),
+ * a sentence or clause mark or a measured pause at the end (good), one
+ * inside the line (bad), a particle at either edge (bad: 阿里相关的 |
+ * 3500多个账号 reads wrong both ways), fewer than `minChars` (bad), and
+ * less than `minMs` on screen (bad). A pause of twice `pauseMs` always
+ * ends a line, and a break between two single-character segments costs
+ * extra, because that is how ICU splits a word it does not know (账|号).
+ *
+ * The widths count a Han character as 1 and a Latin letter or digit as
+ * 0.5, roughly what they take up in Noto Sans CJK at one size.
+ */
+const REEL_DEFAULTS = { aimChars: 8, maxChars: 12, minChars: 4, minMs: 500, pauseMs: 700 } as const;
+
+const HAN_CHAR = /[㐀-䶿一-鿿豈-﫿]/;
+const R_DIGIT_RUN = /[0-9][0-9.,]*[0-9]|[0-9]/g;
+const R_UNIT_AFTER_DIGITS = "多个页次万亿千百倍成条家年月日号天人元块美金美元%％";
+const R_HAN_NUMERAL = /[零一二三四五六七八九十百千万亿几两]{2,}[多余]?/g;
+const R_NUMBER_PREFIX = /[近约超共达仅逾]/;
+const R_LATIN_RUN = /[A-Za-z][A-Za-z0-9'.-]*/g;
+const WEAK_END = /[的了和与在是把被给对从到比而就也都又或及于向着过地得]$/;
+const WEAK_START = /^[的了地得着过吗呢吧啊呀]/;
+const R_TRAILING_PUNCT = /^(.*?)([，。、！？；：,.!?;:…”」』）)》〉]+)$/;
+const R_LEADING_PUNCT = /^[“「『（(《〈…]+/;
+
+type ReelUnit = { text: string; start: number; end: number; punct: "" | "," | "."; spaceBefore: boolean };
+
+/**
+ * Whisper's words as units: trailing punctuation lifted off into a
+ * boundary strength (a full stop outranks a comma), leading quotes
+ * dropped, a decimal point kept ("1." + "51"), Latin fragments that abut
+ * in time joined into one token (An·th·rop·ic), and a space remembered
+ * between two Latin words a real gap separates.
+ */
+function reelUnitsOf(words: TranscriptWord[]): ReelUnit[] {
+  const out: ReelUnit[] = [];
+  for (let i = 0; i < words.length; i++) {
+    const w = words[i];
+    let text = w.text.trim();
+    let punct: ReelUnit["punct"] = "";
+    const nextText = words[i + 1]?.text.trim() ?? "";
+    const m = R_TRAILING_PUNCT.exec(text);
+    if (m) {
+      const decimal = /[0-9]$/.test(m[1]) && /^[.,]$/.test(m[2]) && /^[0-9]/.test(nextText);
+      if (!decimal) {
+        text = m[1];
+        punct = /[。！？.!?…]/.test(m[2]) ? "." : ",";
+      }
+    }
+    text = text.replace(R_LEADING_PUNCT, "");
+    const prev = out[out.length - 1];
+    if (!text) {
+      if (prev && punct) prev.punct = punct === "." || prev.punct === "." ? "." : ",";
+      continue;
+    }
+    const latin = Boolean(prev && /[A-Za-z]$/.test(prev.text) && /^[A-Za-z]/.test(text));
+    if (latin && prev.punct === "" && w.start - prev.end <= 0.04) {
+      prev.text += text;
+      prev.end = Math.max(prev.end, w.end);
+      prev.punct = punct;
+      continue;
+    }
+    out.push({ text, start: w.start, end: Math.max(w.start, w.end), punct, spaceBefore: latin });
+  }
+  return out;
+}
+
+/** UTF-16 offset → code point offset, for a string's regex matches. */
+function cpIndex(text: string): number[] {
+  const cps = Array.from(text);
+  const map: number[] = [];
+  for (let i = 0, u = 0; i < cps.length; i++) {
+    map[u] = i;
+    u += cps[i].length;
+    map[u] = i + 1;
+  }
+  return map;
+}
+
+/**
+ * Code point positions a break may never fall on: inside a figure, a Latin
+ * token or a term. A term longer than `maxTermChars` (a quoted sentence
+ * from the brief) is not kept whole: it could not fit a line anyway.
+ */
+function forbiddenBreaks(plain: string, terms: readonly string[], maxTermChars: number): Set<number> {
+  const cps = Array.from(plain);
+  const map = cpIndex(plain);
+  const out = new Set<number>();
+  const ban = (a: number, b: number) => {
+    for (let p = a + 1; p < b; p++) out.add(p);
+  };
+  const figure = (aU: number, bU: number) => {
+    let a = map[aU] ?? 0;
+    let b = map[bU] ?? cps.length;
+    let n = 0;
+    while (b < cps.length && n < 4 && R_UNIT_AFTER_DIGITS.includes(cps[b])) {
+      b++;
+      n++;
+    }
+    if (a > 0 && R_NUMBER_PREFIX.test(cps[a - 1])) a--;
+    ban(a, b);
+  };
+  for (const m of plain.matchAll(R_DIGIT_RUN)) figure(m.index!, m.index! + m[0].length);
+  for (const m of plain.matchAll(R_HAN_NUMERAL)) figure(m.index!, m.index! + m[0].length);
+  for (const m of plain.matchAll(R_LATIN_RUN)) ban(map[m.index!], map[m.index! + m[0].length]);
+  for (const raw of terms) {
+    const t = Array.from(raw.trim().replace(/^《(.*)》$/, "$1"));
+    if (t.length < 2 || t.length > maxTermChars) continue;
+    for (let i = 0; i + t.length <= cps.length; i++) {
+      let ok = true;
+      for (let k = 0; k < t.length; k++) {
+        if (cps[i + k] !== t[k]) {
+          ok = false;
+          break;
+        }
+      }
+      if (ok) ban(i, i + t.length);
+    }
+  }
+  return out;
+}
+
+/**
+ * Where `Intl.Segmenter` ends a word, as code point positions in the
+ * unspaced text, and which of those sit between two single-character Han
+ * segments (a word ICU did not know, split into its characters).
+ */
+function segmentBoundaries(units: ReelUnit[]): { bounds: Set<number>; weak: Set<number> } {
+  const bounds = new Set<number>();
+  const weak = new Set<number>();
+  let spaced = "";
+  for (const u of units) spaced += (u.spaceBefore ? " " : "") + u.text;
+  if (typeof Intl === "undefined" || typeof (Intl as { Segmenter?: unknown }).Segmenter !== "function") {
+    /* No segmenter on this runtime: every unit boundary is a boundary. The
+       figure and term guards still hold. */
+    let acc = 0;
+    for (const u of units) {
+      acc += Array.from(u.text).length;
+      bounds.add(acc);
+    }
+    return { bounds, weak };
+  }
+  const seg = new Intl.Segmenter("zh", { granularity: "word" });
+  const cps = Array.from(spaced);
+  /* Position in the unspaced text for each code point index of the spaced one. */
+  const plainPos: number[] = [];
+  let p = 0;
+  for (const ch of cps) {
+    plainPos.push(p);
+    if (ch !== " ") p++;
+  }
+  plainPos.push(p);
+  const map = cpIndex(spaced);
+  type Seg = { a: number; b: number; single: boolean };
+  const segs: Seg[] = [];
+  for (const s of seg.segment(spaced)) {
+    const a = map[s.index] ?? 0;
+    const b = a + Array.from(s.segment).length;
+    if (s.segment === " ") continue;
+    segs.push({ a, b, single: b - a === 1 && HAN_CHAR.test(s.segment) });
+  }
+  bounds.add(0);
+  for (let i = 0; i < segs.length; i++) {
+    const s = segs[i];
+    bounds.add(plainPos[s.a]);
+    bounds.add(plainPos[s.b]);
+    const n = segs[i + 1];
+    if (n && s.single && n.single && plainPos[s.b] === plainPos[n.a]) weak.add(plainPos[s.b]);
+  }
+  return { bounds, weak };
+}
+
+function unitWidth(u: ReelUnit): number {
+  let w = 0;
+  for (const ch of Array.from(u.text)) w += HAN_CHAR.test(ch) ? 1 : ch === " " ? 0 : 0.5;
+  return w;
+}
+
+function reelLines(words: TranscriptWord[], o: ReelLineOptions): CaptionLine[] {
+  const aim = o.aimChars ?? REEL_DEFAULTS.aimChars;
+  const max = o.maxChars ?? REEL_DEFAULTS.maxChars;
+  const min = o.minChars ?? REEL_DEFAULTS.minChars;
+  const minMs = o.minMs ?? REEL_DEFAULTS.minMs;
+  const pauseMs = o.pauseMs ?? REEL_DEFAULTS.pauseMs;
+
+  const units = reelUnitsOf(words);
+  const n = units.length;
+  if (!n) return [];
+
+  const plain = units.map((u) => u.text).join("");
+  const offsets: number[] = [0];
+  for (const u of units) offsets.push(offsets[offsets.length - 1] + Array.from(u.text).length);
+  const { bounds, weak } = segmentBoundaries(units);
+  const forbidden = forbiddenBreaks(plain, o.terms ?? [], max);
+  const widths = units.map(unitWidth);
+
+  /*
+   * Which unit boundaries may end a line: a segmenter boundary outside
+   * every figure, Latin token and term. Then, wherever those leave more
+   * than a line's width with no way to break (a name whisper split around
+   * a pause, a figure glued to a term), the least bad boundary inside that
+   * stretch is allowed as well — the last one outside the figures and
+   * terms, or failing that the one at the end of the stretch. Relaxed
+   * *there*, never globally: the first version fell back to "any boundary"
+   * for the whole transcript when one spot was unreachable, and every
+   * other line paid for it (一|份, 核|心).
+   */
+  const allowed = new Array<boolean>(n + 1).fill(false);
+  allowed[0] = true;
+  allowed[n] = true;
+  for (let i = 1; i < n; i++) allowed[i] = !forbidden.has(offsets[i]) && bounds.has(offsets[i]);
+  {
+    let last = 0;
+    let width = 0;
+    let lastFree = -1;
+    for (let i = 1; i <= n; i++) {
+      width += widths[i - 1];
+      if (allowed[i]) {
+        last = i;
+        width = 0;
+        lastFree = -1;
+        continue;
+      }
+      if (!forbidden.has(offsets[i])) lastFree = i;
+      if (width > max) {
+        const k = lastFree > last ? lastFree : i;
+        allowed[k] = true;
+        last = k;
+        lastFree = -1;
+        width = 0;
+        for (let m = k; m < i; m++) width += widths[m];
+      }
+    }
+  }
+
+  const lineCost = (j: number, i: number, lineW: number): number => {
+    let cost = (lineW - aim) ** 2;
+    if (lineW < min) cost += 30;
+    if (lineW > max) cost += (lineW - max) * 20;
+    const first = units[j];
+    const last = units[i - 1];
+    if ((last.end - first.start) * 1000 < minMs) cost += 40;
+    if (i < n && WEAK_END.test(last.text)) cost += 4;
+    if (WEAK_START.test(first.text)) cost += 6;
+    if (i < n && weak.has(offsets[i]) && last.punct === "") cost += 8;
+    if (last.punct === ".") cost -= 4;
+    else if (last.punct === ",") cost -= 2;
+    if (i < n) {
+      const gap = (units[i].start - last.end) * 1000;
+      if (gap >= 600) cost -= 6;
+      else if (gap >= 300) cost -= 3;
+    }
+    for (let k = j; k < i - 1; k++) {
+      if (units[k].punct === ".") cost += 15;
+      else if (units[k].punct === ",") cost += 2;
+      const gap = (units[k + 1].start - units[k].end) * 1000;
+      /* A pause inside a line leaves the first words frozen while she
+         breathes; twice `pauseMs` is a pause nobody should read across. */
+      if (gap >= pauseMs) cost += gap >= pauseMs * 2 ? 60 : 25;
+    }
+    return cost;
+  };
+
+  const dp = new Array<number>(n + 1).fill(Infinity);
+  const prev = new Array<number>(n + 1).fill(-1);
+  dp[0] = 0;
+  for (let i = 1; i <= n; i++) {
+    if (!allowed[i]) continue;
+    let lineW = 0;
+    for (let j = i - 1; j >= 0; j--) {
+      lineW += widths[j];
+      if (lineW > max && i - j > 1) break;
+      if (!allowed[j] || dp[j] === Infinity) continue;
+      const cost = dp[j] + lineCost(j, i, lineW);
+      if (cost < dp[i]) {
+        dp[i] = cost;
+        prev[i] = j;
+      }
+    }
+  }
+  const cuts: number[] = [];
+  for (let i = n; i > 0; i = prev[i]) cuts.push(i);
+  cuts.reverse();
+  if (!cuts.length || cuts[cuts.length - 1] !== n) cuts.push(n);
+
+  const lines: CaptionLine[] = [];
+  let from = 0;
+  for (const to of cuts) {
+    const us = units.slice(from, to);
+    from = to;
+    if (!us.length) continue;
+    const text = us.map((u, k) => (k > 0 && u.spaceBefore ? " " : "") + u.text).join("");
+    lines.push({
+      startMs: Math.round(us[0].start * 1000),
+      endMs: Math.round(us[us.length - 1].end * 1000),
+      text,
+      words: us.map((u) => ({ start: u.start, end: u.end, text: u.text })),
+    });
+  }
+
+  /* Half a second on screen at least, stretched into the gap after the line
+     and never over the next one. */
+  for (let i = 0; i < lines.length; i++) {
+    const l = lines[i];
+    const next = lines[i + 1];
+    if (l.endMs - l.startMs < minMs) l.endMs = Math.max(l.endMs, Math.min(l.startMs + minMs, next ? next.startMs : l.startMs + minMs));
+  }
   return lines.filter((l) => l.text && l.endMs > l.startMs);
 }
