@@ -221,7 +221,10 @@ async function main() {
   if (report.misses.length) console.log(`misses: ${report.misses.map((m) => `${nameOf(m.beatId)}: ${m.reasonZh}`).join(" | ")}`);
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exitCode = 1;
-});
+/* The media library's fetcher imports the database client, whose idle pool keeps the event loop alive; the run is written, so leave. */
+main()
+  .catch((err) => {
+    console.error(err);
+    process.exitCode = 1;
+  })
+  .finally(() => process.exit(process.exitCode ?? 0));
