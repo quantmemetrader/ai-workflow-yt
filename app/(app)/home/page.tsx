@@ -8,6 +8,7 @@ import { latestDigest } from "@/lib/home/pulse";
 import { latestIdeas } from "@/lib/ideas/service";
 import { HOME_LAYOUT, homeRoleOf, isHomeRole, layoutHas, projectsInHand } from "@/lib/home/roles";
 import { evidenceNumbers, type Evidence } from "@/lib/research/signals";
+import { platformsLine } from "@/lib/projects/publication";
 
 export const metadata = { title: "首页 · Home" };
 
@@ -72,7 +73,10 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
 
   /* The projects in hand for this job, from one batched query; the full
      detail (beats, clips, last words) only for the six that are drawn. */
+  /* A published project is in no one's hands but the researcher's, whose
+     list is the latest published first (the others keep latest activity). */
   const inHand = projectsInHand(role, stages);
+  if (role === "research") inHand.sort((a, b) => (b.publishedAt ?? b.updatedAt).localeCompare(a.publishedAt ?? a.updatedAt));
   const hub = (await Promise.all(inHand.slice(0, HUB_SIZE).map((x) => workProjectDetail(viewer, x.id, zh, 12)))).filter((x): x is NonNullable<typeof x> => x !== null);
   const allActiveCount = stages.filter((p) => p.status === "active").length;
 
@@ -123,7 +127,22 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
         suggestions={suggestions}
         ideas={ideas}
         extra={extra}
-        projects={stages.filter((x) => x.status !== "archived").slice(0, 30).map((x) => ({ id: x.id, title: x.title, channelSlug: x.channelSlug, status: x.status, updatedAt: x.updatedAt, step: x.frontier ? { line: x.frontier.line, owner: x.frontier.owner } : null }))}
+        /* The task box's project picker: the ones under way first (latest
+           activity first, as listed), the published ones after them, dimmed,
+           with where they went. */
+        projects={stages
+          .filter((x) => x.status !== "archived")
+          .sort((a, b) => Number(a.status === "done") - Number(b.status === "done"))
+          .slice(0, 30)
+          .map((x) => ({
+            id: x.id,
+            title: x.title,
+            channelSlug: x.channelSlug,
+            status: x.status,
+            updatedAt: x.updatedAt,
+            step: x.frontier ? { line: x.frontier.line, owner: x.frontier.owner } : null,
+            published: x.status === "done" ? { platforms: x.published?.platforms ?? [], line: platformsLine(x.published?.platforms ?? [], zh) } : null,
+          }))}
         thread={thread}
         people={people.map((p) => ({
           id: p.id,

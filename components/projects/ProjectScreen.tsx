@@ -10,7 +10,7 @@ import { useMentions } from "@/components/chat/useMentions";
 import { AccessPicker } from "@/components/files/AccessPicker";
 import { AGENT_COLORS, AGENT_TINTS, agentTag, parseAgentMentions, type AgentKey } from "@/lib/agents/catalog";
 import { pressCardAction, sendChannelMessage } from "@/app/(app)/chat/actions";
-import { deleteProjectAction, renameProjectAction, setProjectAccessAction, setProjectStatusAction, chooseScriptAction, chooseTopicAction, startFromTopicAction } from "@/app/(app)/projects/actions";
+import { deleteProjectAction, renameProjectAction, setProjectAccessAction, setProjectStatusAction, chooseScriptAction, chooseTopicAction, startFromTopicAction, unpublishAction } from "@/app/(app)/projects/actions";
 import { addClipAction, addItemAction, autoEditAction, exportAction } from "@/app/(app)/video/actions";
 import { uploadFiles } from "@/lib/client/upload";
 import { beginWork } from "@/lib/client/busy";
@@ -21,7 +21,10 @@ import { cleanCodes, type ProjectSource } from "@/lib/projects/topic";
 import { JobChip } from "@/components/chat/Working";
 import type { StepKey } from "@/lib/agents/steps";
 import { AgentTyping } from "@/components/agents/AgentTyping";
-import { AgentName } from "@/components/ui/Tr";
+import { AgentName, Tr } from "@/components/ui/Tr";
+import { PublishPopover } from "@/components/projects/PublishPopover";
+import { PUBLISHED_TONE, PublishedCheck, PublishedMark, PublishedMarks, PublishedPill } from "@/components/projects/Published";
+import { publishPlatformName, publishedDay, type Publication } from "@/lib/projects/publication";
 import { artifactHref } from "@/lib/chat/handoff";
 import { LinkedText } from "@/components/chat/LinkedText";
 
@@ -49,6 +52,9 @@ export function ProjectScreen({ project: p, zh, people, writing }: { project: Pr
   const [videoPrompt, setVideoPrompt] = React.useState((p.brief ?? p.title).replace(/@\S+/g, "").trim());
   const [busyAction, setBusyAction] = React.useState<string | null>(null);
   const [picking, setPicking] = React.useState<null | "clips" | "scripts" | "topics">(null);
+  /* The 已发布 popover, and which button opened it: the delivery step's in
+     the row of steps, or the delivery card's. */
+  const [publishing, setPublishing] = React.useState<null | "step" | "card">(null);
   /* When each employee was last asked from a card, so its card can show it working. */
   const [asked, setAsked] = React.useState<Partial<Record<AgentKey, string>>>({});
 
@@ -199,6 +205,30 @@ export function ProjectScreen({ project: p, zh, people, writing }: { project: Pr
 
   const rendered = p.render?.state === "done" && p.render.fileId ? p.render.fileId : null;
   const lastMsg = p.messages[p.messages.length - 1] ?? null;
+
+  /** 「撤回，改回进行中」: back in progress, the platforms and links cleared. */
+  function undoPublish() {
+    if (!window.confirm(t("撤回「已发布」？项目回到进行中，记下的平台和链接会清掉。", "Undo “published”? The project goes back to in progress, and the platforms and links noted are cleared."))) return;
+    start(async () => {
+      const r = await unpublishAction(p.id);
+      if (r?.error) notify(r.error);
+      else notify(t("已改回进行中", "Back in progress"), "ok");
+      router.refresh();
+    });
+  }
+  const publishPopover = (align: "left" | "right") => (
+    <PublishPopover
+      projectId={p.id}
+      zh={zh}
+      rendered={Boolean(rendered)}
+      align={align}
+      onClose={() => setPublishing(null)}
+      onDone={() => {
+        setPublishing(null);
+        router.refresh();
+      }}
+    />
+  );
   const skipped = (k: ProjectStep["key"]) => p.steps.find((s) => s.key === k)?.state === "skipped";
   const pct = p.render ? Math.round(p.render.progress > 1 ? p.render.progress : p.render.progress * 100) : 0;
 
@@ -276,7 +306,8 @@ export function ProjectScreen({ project: p, zh, people, writing }: { project: Pr
                 {p.title}
               </h1>
             )}
-            <StatusPill status={p.status} zh={zh} />
+            {/* Published: the green pill with where it went, each mark a link to the post. */}
+            {p.status === "done" ? <PublishedPill zh={zh} platforms={p.published?.platforms ?? []} size="md" links /> : <StatusPill status={p.status} zh={zh} />}
           </div>
 
           {sharing ? (
@@ -303,7 +334,23 @@ export function ProjectScreen({ project: p, zh, people, writing }: { project: Pr
           <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) 22px minmax(0,1fr) 22px minmax(0,1fr) 22px minmax(0,1fr) 22px minmax(0,1fr)", alignItems: "stretch" }}>
             {p.steps.flatMap((s, i) => [
               ...(i ? [<StepArrow key={`a${i}`} live={s.state === "running" || s.state === "you"} done={p.steps[i - 1].state === "done" || p.steps[i - 1].state === "skipped"} />] : []),
-              <StepCard key={s.key} step={s} n={i + 1} />,
+              s.key === "deliver" ? (
+                /* The last step carries the one press that finishes the
+                   project once the cut is out (「已发布 · 标记完成」), and
+                   afterwards where it went; its popover opens under it. */
+                <div key={s.key} style={{ position: "relative", minWidth: 0, display: "flex" }}>
+                  <StepCard
+                    step={s}
+                    n={i + 1}
+                    zh={zh}
+                    published={p.status === "done" ? p.published : null}
+                    onPublish={p.canPublish && p.status === "active" && s.state === "you" ? () => setPublishing((v) => (v === "step" ? null : "step")) : undefined}
+                  />
+                  {publishing === "step" ? publishPopover("right") : null}
+                </div>
+              ) : (
+                <StepCard key={s.key} step={s} n={i + 1} zh={zh} />
+              ),
             ])}
           </div>
 
@@ -518,13 +565,25 @@ export function ProjectScreen({ project: p, zh, people, writing }: { project: Pr
             </Workbench>
 
             {/* ---- captions & delivery ---- */}
-            <Workbench icon={<AgentIcon agent="article" size={26} radius={7} />} title={t("文案与交付", "Captions & delivery")} sub={p.status === "done" ? t("已交付", "Delivered") : t("标题、简介、标签", "Titles, descriptions, tags")}>
+            <Workbench icon={<AgentIcon agent="article" size={26} radius={7} />} title={t("文案与交付", "Captions & delivery")} sub={p.status === "done" ? t("已发布", "Published") : t("标题、简介、标签", "Titles, descriptions, tags")}>
+              <Delivery
+                project={p}
+                zh={zh}
+                rendered={Boolean(rendered)}
+                open={publishing === "card"}
+                onToggle={() => setPublishing((v) => (v === "card" ? null : "card"))}
+                popover={publishPopover}
+                onUndo={undoPublish}
+                disabled={pending}
+              />
               <AgentOutput agent="article" msg={latest("article")} working={working("article")} typing={doing("article", "正在写稿", "Writing")} zh={zh} copyable onOpen={(m) => setPopup({ title: t("文案", "Copy"), body: <Body text={m.body} copy /> })} />
               <Actions>
                 <Action primary icon="pen" label={t("写各平台文案", "Platform copy")} onClick={() => ask("article", t("为这个项目写 YouTube、小红书、抖音、微博的标题、简介和标签，各一版。", "Write titles, descriptions and tags for YouTube, Rednote, Douyin and Weibo for this project."))} disabled={pending} />
                 <Action icon="bulb" label={t("封面标题", "Thumbnail lines")} onClick={() => ask("article", t("给这个项目 5 个封面大字标题，每个不超过 10 个字。", "Give 5 thumbnail headlines for this project, 10 characters or fewer each."))} disabled={pending} />
                 <Action icon="comment" label={t("置顶评论", "Pinned comment")} onClick={() => ask("article", t("写一条引导讨论的置顶评论。", "Write a pinned comment that starts a discussion."))} disabled={pending} />
-                <Action icon="check" label={p.status === "done" ? t("已交付", "Delivered") : t("标记交付", "Mark delivered")} onClick={() => start(async () => { await setProjectStatusAction(p.id, p.status === "done" ? "active" : "done"); router.refresh(); })} disabled={pending} />
+                {/* 「标记交付」 was a bare status toggle here; marking it done
+                    is now 「已发布 · 标记完成」 above, which also keeps where
+                    it went. */}
               </Actions>
               <AskBox people={people} zh={zh} placeholder={t("文案要求，例如：更口语、加 3 个话题标签…", "What the copy should be, e.g. more casual, add 3 hashtags…")} onSend={(v) => ask("article", v)} disabled={pending} />
             </Workbench>
@@ -1086,11 +1145,19 @@ function StepArrow({ live, done }: { live: boolean; done: boolean }) {
   );
 }
 
-function StepCard({ step: s, n }: { step: ProjectStep; n: number }) {
+/**
+ * One step in the row. The delivery step also takes `onPublish` (the white
+ * 「已发布 · 标记完成」 press inside its black "your turn" card) and
+ * `published` (once marked: a green card, the date, and the platforms' marks,
+ * each a link to the post).
+ */
+function StepCard({ step: s, n, zh, published = null, onPublish }: { step: ProjectStep; n: number; zh: boolean; published?: Publication | null; onPublish?: () => void }) {
   const you = s.owner === "you";
   const color = you ? "#171717" : AGENT_COLORS[s.owner as AgentKey];
-  const frame: React.CSSProperties =
-    s.state === "you"
+  const isPublished = s.key === "deliver" && s.state === "done";
+  const frame: React.CSSProperties = isPublished
+    ? { border: `1px solid ${PUBLISHED_TONE.line}`, background: "#f3fbf6" }
+    : s.state === "you"
       ? { background: "#171717", color: "#fff", border: "1px solid #171717" }
       : s.state === "running"
         ? { border: "1px solid transparent", background: "linear-gradient(#fff,#fff) padding-box, linear-gradient(135deg,#278f5e,#0f5bd5) border-box" }
@@ -1104,7 +1171,7 @@ function StepCard({ step: s, n }: { step: ProjectStep; n: number }) {
      prefix; it was all one 11px grey caption, the same weight as the line
      under it, so five cards read as five grey smudges. */
   return (
-    <div style={{ ...frame, borderRadius: 12, padding: "10px 12px", minWidth: 0, overflow: "hidden" }}>
+    <div style={{ ...frame, borderRadius: 12, padding: "10px 12px", minWidth: 0, flexGrow: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
         <span style={{ opacity: dim ? 0.5 : 1, display: "flex", flexShrink: 0 }}>
           <AgentIcon agent={you ? null : (s.owner as AgentKey)} size={22} radius={6} />
@@ -1113,18 +1180,158 @@ function StepCard({ step: s, n }: { step: ProjectStep; n: number }) {
           <span style={{ fontWeight: 500, color: s.state === "you" ? "#8a8a8a" : "#b3b3b3", marginRight: 5, fontVariantNumeric: "tabular-nums" }}>{n}</span>
           {s.label}
         </span>
-        {s.state === "done" ? <span style={{ marginLeft: "auto", color: "#278f5e", display: "flex", flexShrink: 0 }}><Icon name="check" size={13} strokeWidth={2.4} /></span> : null}
+        {isPublished ? (
+          <span style={{ marginLeft: "auto", display: "flex", flexShrink: 0 }}>
+            <PublishedCheck size={15} />
+          </span>
+        ) : s.state === "done" ? (
+          <span style={{ marginLeft: "auto", color: "#278f5e", display: "flex", flexShrink: 0 }}>
+            <Icon name="check" size={13} strokeWidth={2.4} />
+          </span>
+        ) : null}
       </div>
-      <div style={{ fontSize: 11.5, marginTop: 7, lineHeight: 1.4, color: s.state === "you" ? "#fff" : s.state === "running" ? color : dim ? "#b3b3b3" : "#525252", fontWeight: s.state === "running" || s.state === "you" ? 500 : 400, overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>
-        {s.line}
-      </div>
+      {isPublished ? (
+        <>
+          <div style={{ fontSize: 11.5, marginTop: 7, lineHeight: 1.4, color: PUBLISHED_TONE.ink, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+            <Tr zh="已发布" en="Published" inZh={zh} />
+            {published ? <span style={{ fontWeight: 400, color: "#5f7f6d" }}>{` · ${publishedDay(published.at, zh)}`}</span> : null}
+          </div>
+          {published?.platforms.length ? (
+            <div style={{ marginTop: 7 }}>
+              <PublishedMarks platforms={published.platforms} zh={zh} size={16} links gap={5} />
+            </div>
+          ) : null}
+        </>
+      ) : (
+        <div style={{ fontSize: 11.5, marginTop: 7, lineHeight: 1.4, color: s.state === "you" ? "#fff" : s.state === "running" ? color : dim ? "#b3b3b3" : "#525252", fontWeight: s.state === "running" || s.state === "you" ? 500 : 400, overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>
+          {s.line}
+        </div>
+      )}
+      {onPublish ? (
+        /* White on the black "your turn" card, the green check on it: the
+           one thing left to do, and what it will say when done. */
+        <div style={{ marginTop: "auto", paddingTop: 9 }}>
+          <button type="button" onClick={onPublish} className="pj-publish" data-pub-opener="">
+            <PublishedCheck size={14} />
+            <Tr zh="已发布 · 标记完成" en="Mark as published" inZh={zh} />
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 }
 
+/**
+ * The delivery card's head: before, the press that marks it published (or,
+ * with no cut yet, a quiet "mark it done anyway"); after, where it went —
+ * each platform with its link, who marked it and when, the note — and a
+ * quiet way back to in progress.
+ */
+function Delivery({
+  project: p,
+  zh,
+  rendered,
+  open,
+  onToggle,
+  popover,
+  onUndo,
+  disabled,
+}: {
+  project: ProjectDetail;
+  zh: boolean;
+  rendered: boolean;
+  open: boolean;
+  onToggle: () => void;
+  popover: (align: "left" | "right") => React.ReactNode;
+  onUndo: () => void;
+  disabled: boolean;
+}) {
+  const t = (a: string, b: string) => (zh ? a : b);
+  if (p.status === "done") {
+    const pub = p.published;
+    return (
+      <div style={{ marginBottom: 12, padding: "12px 14px", borderRadius: 12, background: "#f3fbf6", border: `1px solid ${PUBLISHED_TONE.line}` }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <PublishedCheck size={18} />
+          <span style={{ fontSize: 13.5, fontWeight: 600, color: PUBLISHED_TONE.ink }}>
+            <Tr zh="已发布" en="Published" inZh={zh} />
+          </span>
+          {pub ? (
+            <span style={{ fontSize: 12, color: "#5f7f6d" }}>
+              {publishedDay(pub.at, zh)}
+              {pub.byName ? ` · ${pub.byName}` : ""}
+            </span>
+          ) : null}
+          <span style={{ flexGrow: 1 }} />
+          {p.canPublish ? (
+            <button type="button" className="pj-quiet" onClick={onUndo} disabled={disabled} style={{ ...quiet("#5f6f66"), height: 26, padding: "0 8px" }}>
+              <Icon name="undo" size={12} />
+              <Tr zh="撤回，改回进行中" en="Undo, back to in progress" inZh={zh} />
+            </button>
+          ) : null}
+        </div>
+        {pub?.platforms.length ? (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 10 }}>
+            {pub.platforms.map((pl) =>
+              pl.url ? (
+                <a key={pl.key} href={pl.url} target="_blank" rel="noopener noreferrer" className="pj-pub-link" title={pl.url}>
+                  <PublishedMark platform={pl.key} size={15} zh={zh} />
+                  <span style={{ fontWeight: 500, color: "#171717" }}>{publishPlatformName(pl.key, zh)}</span>
+                  <span style={{ color: "#7c8a82", minWidth: 0, maxWidth: 170, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{shortUrl(pl.url)}</span>
+                  <Icon name="external" size={11} color="#7c8a82" />
+                </a>
+              ) : (
+                <span key={pl.key} className="pj-pub-link" data-nolink="">
+                  <PublishedMark platform={pl.key} size={15} zh={zh} />
+                  <span style={{ fontWeight: 500, color: "#171717" }}>{publishPlatformName(pl.key, zh)}</span>
+                  <span style={{ color: "#a3a3a3" }}>{t("没有链接", "no link")}</span>
+                </span>
+              ),
+            )}
+          </div>
+        ) : (
+          <div style={{ marginTop: 8, fontSize: 12, color: "#6f8a7b" }}>{t("标记完成时没有记下平台。", "No platform was noted when it was marked.")}</div>
+        )}
+        {pub?.note ? <p style={{ margin: "9px 0 0", fontSize: 12.5, color: "#3f5247", lineHeight: 1.55, whiteSpace: "pre-wrap" }}>{pub.note}</p> : null}
+      </div>
+    );
+  }
+  /* Offered to the project's managers only (`canPublish`), and only while it
+     is active: an archived one is read-only (the server refuses it too). */
+  if (!p.canPublish || p.status !== "active") return null;
+  return rendered ? (
+    <div style={{ position: "relative", marginBottom: 12, display: "flex", alignItems: "center", gap: 12, padding: "11px 12px 11px 14px", borderRadius: 12, background: "#fafaf9", border: "1px solid #ececea", flexWrap: "wrap" }}>
+      <span style={{ flex: "1 1 200px", minWidth: 0 }}>
+        <span style={{ display: "block", fontSize: 13, fontWeight: 600 }}>{t("成片好了", "The cut is ready")}</span>
+        <span style={{ display: "block", fontSize: 11.5, color: "#7c7c7c", marginTop: 2, lineHeight: 1.5 }}>
+          {t("发出去后按这里，项目就算完成。", "Posted it? Press this and the project is done.")}
+        </span>
+      </span>
+      <button type="button" onClick={onToggle} disabled={disabled} aria-expanded={open} data-pub-opener="" style={{ ...btn(true), height: 34, gap: 7 }}>
+        <PublishedCheck size={15} />
+        <Tr zh="已发布 · 标记完成" en="Mark as published" inZh={zh} />
+      </button>
+      {open ? popover("right") : null}
+    </div>
+  ) : (
+    <div style={{ position: "relative", marginBottom: 10, display: "flex" }}>
+      <button type="button" className="pj-quiet" onClick={onToggle} disabled={disabled} aria-expanded={open} data-pub-opener="" style={{ ...quiet("#7c7c7c"), height: 26, padding: "0 8px", marginLeft: -8 }}>
+        <Icon name="check" size={12} />
+        <Tr zh="没有成片也标记完成" en="Mark done without a cut" inZh={zh} />
+      </button>
+      {open ? popover("left") : null}
+    </div>
+  );
+}
+
+/** "youtu.be/abc123" — a link without its scheme and "www.", for a chip. */
+function shortUrl(url: string): string {
+  return url.replace(/^https?:\/\//, "").replace(/^www\./, "").replace(/\/$/, "");
+}
+
 function StatusPill({ status, zh }: { status: string; zh: boolean }) {
   const [label, color, bg] =
-    status === "done" ? [zh ? "已交付" : "Delivered", "#0b7a63", "#e3f4ee"] : status === "archived" ? [zh ? "已归档" : "Archived", "#7c7c7c", "#f0f0f0"] : [zh ? "进行中" : "In progress", "#0f5bd5", "#e6effd"];
+    status === "done" ? [zh ? "已发布" : "Published", "#0b7a63", "#e3f4ee"] : status === "archived" ? [zh ? "已归档" : "Archived", "#7c7c7c", "#f0f0f0"] : [zh ? "进行中" : "In progress", "#0f5bd5", "#e6effd"];
   return <span style={{ fontSize: 11.5, fontWeight: 500, color, background: bg, borderRadius: 999, padding: "0 9px", lineHeight: "22px", whiteSpace: "nowrap", flexShrink: 0 }}>{label}</span>;
 }
 
@@ -1188,6 +1395,11 @@ const PROJECT_CSS = `
 .pj-quiet:hover:not(:disabled) { background: rgba(0,0,0,0.045) !important; color: #171717 !important; }
 .pj-danger:hover:not(:disabled) { background: #fdecea !important; color: #b42318 !important; }
 .pj-quiet:focus-visible { outline: 2px solid #171717; outline-offset: 1px; }
+.pj-publish { display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%; height: 28px; border: 0; border-radius: 8px; background: #fff; color: #171717; font-family: inherit; font-size: 12px; font-weight: 600; cursor: pointer; white-space: nowrap; transition: background-color .15s ease; }
+.pj-publish:hover { background: #eef8f2; }
+.pj-publish:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.pj-pub-link { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 10px 0 8px; border-radius: 9px; background: #fff; border: 1px solid #d9eee2; font-size: 12px; text-decoration: none; color: #171717; min-width: 0; transition: border-color .15s ease, box-shadow .15s ease; }
+a.pj-pub-link:hover { border-color: #9fd6b6; box-shadow: 0 2px 8px rgba(30,122,79,.08); color: #171717; }
 `;
 
 const PAPER: React.CSSProperties = { backgroundColor: "#f4f3f0", backgroundImage: "radial-gradient(#d8d5cf 1px, transparent 1px)", backgroundSize: "22px 22px" };

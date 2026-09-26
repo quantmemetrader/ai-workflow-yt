@@ -71,6 +71,8 @@ export const TR_EN: Record<string, string> = {
   // The team
   派任务: "Assign",
   同事: "Colleagues",
+  // A finished project (lib/projects/publication.ts)
+  已发布: "Published",
 };
 
 /**

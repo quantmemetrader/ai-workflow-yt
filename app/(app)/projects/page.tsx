@@ -1,6 +1,7 @@
 import { requireModule } from "@/lib/auth/dal";
 import { listProjectStages } from "@/lib/projects/service";
 import { ProjectsList } from "@/components/projects/ProjectsList";
+import { publishedDay } from "@/lib/projects/publication";
 
 export const metadata = { title: "项目 · Projects" };
 
@@ -34,6 +35,8 @@ export default async function ProjectsPage() {
           steps: r.steps,
           frontier: r.frontier,
           thumbFileId: r.thumbFileId,
+          /* The day as text from here, like `when`, so the card never formats a date itself. */
+          published: r.published ? { platforms: r.published.platforms, day: publishedDay(r.published.at, zh), byName: r.published.byName } : null,
         }))}
       />
     </div>

@@ -48,7 +48,7 @@ const defs: ToolDef[] = [
     function: {
       name: "list_projects",
       description:
-        "The studio's projects, most recently active first. Each project is one video: its own chat, its script (with its status) and its video project, with their ids. Give a query to find one by name.",
+        "The studio's projects, most recently active first. Each project is one video: its own chat, its script (with its status) and its video project, with their ids; a finished one (status done) also says when it was published, on which platforms and with which links. Give a query to find one by name.",
       parameters: {
         type: "object",
         properties: {
@@ -243,8 +243,15 @@ async function run(ctx: ToolContext, name: string, args: Record<string, unknown>
       text: [
         ...rows.map((r) => {
           const sc = r.scriptId ? byId.get(r.scriptId) : undefined;
+          /* Where a finished one went, as the owner marked it (「已发布」):
+             so 研究员 asked "how did the last video do" knows the platform
+             and the link to look at. */
+          const pub = r.published;
+          const went = pub
+            ? ` · published ${pub.at.slice(0, 10)}${pub.platforms.length ? ` on ${pub.platforms.map((x) => (x.url ? `${x.key} (${x.url})` : x.key)).join(", ")}` : ""}${pub.note ? ` — note: ${pub.note.slice(0, 120)}` : ""}`
+            : "";
           return [
-            `- 《${r.title}》 (id: ${r.id}) — ${r.status}${r.mode !== "full" ? ` · ${r.mode}` : ""} · active ${r.updatedAt.slice(0, 10)}`,
+            `- 《${r.title}》 (id: ${r.id}) — ${r.status}${r.mode !== "full" ? ` · ${r.mode}` : ""} · active ${r.updatedAt.slice(0, 10)}${went}`,
             `  script: ${sc ? `${sc.title} (id: ${sc.id}, ${sc.status})` : r.scriptId ? `${r.scriptId} (deleted)` : "none"} · video project: ${r.videoProjectId ?? "none"}${r.channelSlug ? ` · chat #${r.channelSlug}` : ""}`,
           ].join("\n");
         }),

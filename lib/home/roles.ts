@@ -122,16 +122,16 @@ export const HOME_LAYOUT: Record<HomeRole, HomeLayout> = {
     emptyEn: "Nothing in progress. Give the team a task above and a project starts.",
   },
   /* The researcher's work comes before a project exists (the brief, the
-     ideas, the backlog) and after it is delivered (how it did, what people
-     said). So the brief leads, and the projects are the delivered ones. */
+     ideas, the backlog) and after it is published (how it did, what people
+     said). So the brief leads, and the projects are the published ones. */
   research: {
     main: ["composer", "projects", "suggestion", "ideas", "extra", "decisions", "running"],
     side: SIDE,
     agent: "research",
-    projectsZh: "刚交付 · 看反馈",
-    projectsEn: "Just delivered · watch the response",
-    emptyZh: "最近 7 天没有交付的片子。交付之后在这里看反馈。",
-    emptyEn: "Nothing delivered in the last 7 days. Delivered videos come here for their response.",
+    projectsZh: "刚发布 · 看反馈",
+    projectsEn: "Just published · watch the response",
+    emptyZh: "最近 7 天没有发布的片子。项目标记「已发布」之后在这里看反馈。",
+    emptyEn: "Nothing published in the last 7 days. A project marked published comes here for its response.",
   },
   planning: {
     main: ["composer", "projects", "suggestion", "ideas", "decisions", "running"],
@@ -208,9 +208,11 @@ export type StageFacts = {
   beats: number;
   directorState: string | null;
   updatedAt: string;
+  /** When it was marked published (`lib/projects/publication.ts`), if it was. */
+  publishedAt?: string | null;
 };
 
-/** How long a delivered video stays on the researcher's Home. */
+/** How long a published video stays on the researcher's Home. */
 const DELIVERED_WINDOW_MS = 7 * 86_400_000;
 
 /**
@@ -218,13 +220,16 @@ const DELIVERED_WINDOW_MS = 7 * 86_400_000;
  * studio records who started a project, never who is on it, so two editors
  * see the same list.
  *
- *   research  delivered in the last 7 days (the response is theirs to read)
+ *   research  published in the last 7 days (the response is theirs to read),
+ *             counted from the day it was marked published — a later
+ *             message in its chat does not keep it there longer
  *   planning  at the script step with nothing written: brief, no beats
  *   script    at the script step (to write, being written, or awaiting OK)
  *   video     at the clips or edit step, or the director failed on a cut
  *             that has not finished yet
- *   article   rendered and waiting to be delivered
- *   overview  everything active
+ *   article   rendered and waiting to be published
+ *   overview  everything active — a published (done) project is never in
+ *             hand for anyone but the researcher
  *
  * A failed director counts only while the edit is unfinished. 测试 has a
  * failed director and a finished render — a later re-run went wrong — and
@@ -234,7 +239,7 @@ const DELIVERED_WINDOW_MS = 7 * 86_400_000;
  */
 export function inHandFor(role: HomeRole, p: StageFacts, now: number): boolean {
   if (role === "research") {
-    const at = Date.parse(p.updatedAt);
+    const at = Date.parse(p.publishedAt ?? p.updatedAt);
     return p.status === "done" && Number.isFinite(at) && now - at <= DELIVERED_WINDOW_MS;
   }
   if (p.status !== "active") return false;

@@ -60,6 +60,9 @@ export function ProjectTree({ projects, zh, wide }: { projects: TreeProject[]; z
            are in is open and inked; the others closed on a soft grey tint;
            delivered and archived ones a step fainter again. */
         const dim = p.status === "done" || p.status === "archived";
+        /* Published (done): a small green check on the folder's corner, so
+           a finished project reads as finished, not only as faint. */
+        const published = p.status === "done";
         const ink = inside ? "#171717" : dim ? "#c9c9c9" : "#9b9b9b";
         const fill = inside ? "#f0f0ef" : dim ? "none" : "#ededec";
         return (
@@ -68,12 +71,17 @@ export function ProjectTree({ projects, zh, wide }: { projects: TreeProject[]; z
               <Link
                 prefetch={false}
                 href={`/projects/${p.id}`}
-                title={p.title}
+                title={published ? `${p.title} · ${t("已发布", "Published")}` : p.title}
                 className="pt-row"
                 style={{ flexGrow: 1, minWidth: 0, height: "100%", display: "flex", alignItems: "center", gap: 9, padding: "0 9px", fontSize: 12.5, color: inside ? "#171717" : dim ? "#a3a3a3" : "#525252", textDecoration: "none" }}
               >
-                <span aria-hidden style={{ width: 17, height: 17, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <span aria-hidden style={{ position: "relative", width: 17, height: 17, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
                   <Icon name={inside ? "folderOpen" : "folder"} size={16} color={ink} strokeWidth={1.7} style={{ fill, verticalAlign: 0 }} />
+                  {published ? (
+                    <span style={{ position: "absolute", right: -3, bottom: -2, width: 10, height: 10, borderRadius: 5, background: "#23a15f", boxShadow: "0 0 0 1.5px #f7f7f6", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      <Icon name="check" size={7} color="#fff" strokeWidth={3.4} />
+                    </span>
+                  ) : null}
                 </span>
                 <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: inside ? 600 : 400 }}>{p.title}</span>
               </Link>

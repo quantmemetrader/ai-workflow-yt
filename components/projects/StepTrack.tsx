@@ -2,6 +2,8 @@ import * as React from "react";
 import { Icon } from "@/components/ui/Icon";
 import { AGENT_COLORS, AGENT_TINTS, type AgentKey } from "@/lib/agents/catalog";
 import type { ProjectStep } from "@/lib/projects/service";
+import type { PublishedPlace } from "@/lib/projects/publication";
+import { PublishedPill } from "@/components/projects/Published";
 
 /**
  * Where a project stands, drawn the same way wherever a project is a card.
@@ -15,7 +17,8 @@ import type { ProjectStep } from "@/lib/projects/service";
  *                 employee's light tint (AGENT_TINTS), the host's own steps in
  *                 a warm one, the step it has got to ringed.
  *   `StageBadge`  the soft pill beside a title: 等你 / 进行中 / 下一步 /
- *                 已完成, and on the list also 已交付 and 已归档.
+ *                 已完成, and for a finished project the green 已发布 pill
+ *                 (with where it went) or a grey 已归档.
  *   `STAGE_TONE`  the four tints both of them and the cards' hover borders
  *                 read from.
  *
@@ -50,13 +53,15 @@ const YOU_INK = "#95590a";
 /**
  * The soft status pill.
  *
- * `status` is the project's own status, when the caller has it: a delivered
- * project says 已交付 and an archived one 已归档 in grey, whatever its steps
- * say. Without it (Home only lists active projects) the pill is read from
- * the step alone, as it always was.
+ * `status` is the project's own status, when the caller has it: a done
+ * project is 已发布 — the green pill from `Published.tsx`, with the marks of
+ * where it went (`published`) — and an archived one 已归档 in grey, whatever
+ * its steps say. Without it the pill is read from the step alone, as it
+ * always was.
  */
-export function StageBadge({ now, zh, status }: { now: Pick<ProjectStep, "state"> | null; zh: boolean; status?: string }) {
+export function StageBadge({ now, zh, status, published }: { now: Pick<ProjectStep, "state"> | null; zh: boolean; status?: string; published?: readonly PublishedPlace[] | null }) {
   const t = (a: string, b: string) => (zh ? a : b);
+  if (status === "done") return <PublishedPill zh={zh} platforms={published ?? []} />;
   const archived = status === "archived";
   const tone = archived ? STAGE_TONE.todo : status === "done" ? STAGE_TONE.done : stageToneOf(now);
   const label = archived

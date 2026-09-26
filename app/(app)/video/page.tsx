@@ -1,4 +1,6 @@
 import { projectFor } from "@/lib/projects/service";
+import { publicationsByVideo } from "@/lib/projects/published";
+import { publishedDay } from "@/lib/projects/publication";
 import { ProjectBar } from "@/components/projects/ProjectBar";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
@@ -56,6 +58,13 @@ export default async function VideoPage({
     availablePictures(viewer),
     scriptsForPicker(viewer),
   ]);
+  /* Which cuts went out: each video project's work project, when it is
+     marked 已发布, with where it went and the day (formatted here, so the
+     card and the server's HTML agree). */
+  const zhDates = (viewer.locale ?? "zh-CN").startsWith("zh");
+  const published = Object.fromEntries(
+    Object.entries(await publicationsByVideo(viewer, projects.map((p) => p.id))).map(([videoId, pub]) => [videoId, { projectId: pub.projectId, platforms: pub.platforms, at: pub.at, day: publishedDay(pub.at, zhDates) }]),
+  );
   /* A link to a cut that has since been deleted, or that this person cannot
      read, lands on the library rather than on an error. */
   const project = (wanted ? projects.find((p) => p.id === wanted) : undefined) ?? null;
@@ -107,6 +116,7 @@ export default async function VideoPage({
     <VideoScreen
       proposals={proposals}
       projects={projects}
+      published={published}
       project={project}
       clips={clips}
       items={items}

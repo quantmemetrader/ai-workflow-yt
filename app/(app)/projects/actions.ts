@@ -27,6 +27,7 @@ import { and, eq, isNull, sql } from "drizzle-orm";
 import { briefText, formatHints, isWriting, refFromChoice, type ProjectSource, type ScriptChips, type TopicRef } from "@/lib/projects/topic";
 import { draftInBackground } from "@/lib/script/background";
 import { scriptWriting } from "@/lib/script/writing";
+import { markPublished, unmarkPublished, type PublishInput } from "@/lib/projects/published";
 
 /** A title from what somebody typed: the tags and the filler taken out. */
 function titleFrom(text: string): string {
@@ -267,15 +268,48 @@ export async function startFromTopicAction(rawRef: TopicRef, opts: { write?: boo
   return { projectId: created.id, scriptId: created.scriptId, existed: false, writing, note: denied };
 }
 
-export async function setProjectStatusAction(id: string, status: "active" | "done" | "archived") {
+export async function setProjectStatusAction(id: string, status: "active" | "archived") {
   const viewer = await getViewer();
   if (!viewer || !viewer.modules.includes("chat")) return { error: "Not allowed" };
-  if (!["active", "done", "archived"].includes(status)) return { error: "No such status" };
-  /* Only a project this person may see (`setProjectStatus` checks): an
-     action can be called with any id, not just the ones on screen. */
+  /* Not "done": finishing a project is 「已发布 · 标记完成」
+     (`markPublishedAction`), which checks who may and keeps where it went —
+     this action would be a way round both. */
+  if (!["active", "archived"].includes(status)) return { error: "No such status" };
+  /* Only a project this person may see and manage (`setProjectStatus`
+     checks): an action can be called with any id, not just the ones on screen. */
   if (!(await setProjectStatus(viewer, String(id ?? ""), status))) {
     return { error: (viewer.locale ?? "zh-CN").startsWith("zh") ? "没有这个项目" : "No such project" };
   }
+  revalidatePath("/", "layout");
+  return {};
+}
+
+/**
+ * 「已发布 · 标记完成」: the project is done, and where it went is kept
+ * (platforms, links, a note; who and when are added here). Checked and
+ * cleaned in `markPublished`: a project this person may see, not a guest's
+ * to close unless it is theirs, links only http(s).
+ *
+ * The whole app is revalidated like any status change: the sidebar, Home and
+ * the projects list all move it out of "in progress".
+ */
+export async function markPublishedAction(id: string, input: PublishInput) {
+  const viewer = await getViewer();
+  if (!viewer || !viewer.modules.includes("chat")) return { error: "Not allowed" };
+  const zh = (viewer.locale ?? "zh-CN").startsWith("zh");
+  const res = await markPublished(viewer, String(id ?? ""), input && typeof input === "object" ? input : {}, zh);
+  if ("error" in res) return { error: res.error };
+  revalidatePath("/", "layout");
+  return { at: res.publication.at };
+}
+
+/** 「撤回，改回进行中」: undo 已发布 — back in progress, the record gone. */
+export async function unpublishAction(id: string) {
+  const viewer = await getViewer();
+  if (!viewer || !viewer.modules.includes("chat")) return { error: "Not allowed" };
+  const zh = (viewer.locale ?? "zh-CN").startsWith("zh");
+  const res = await unmarkPublished(viewer, String(id ?? ""), zh);
+  if ("error" in res) return { error: res.error };
   revalidatePath("/", "layout");
   return {};
 }
@@ -384,7 +418,10 @@ export async function chooseScriptAction(projectId: string, scriptId: string) {
 function keepWriting(next: ProjectSource | { kind: string; label?: string }) {
   const rest: Record<string, unknown> = { ...next };
   delete rest.writing;
-  return sql`${JSON.stringify(rest)}::jsonb || jsonb_build_object('writing', coalesce(${workProjects.source} -> 'writing', 'null'::jsonb))`;
+  delete rest.published;
+  /* The 已发布 record rides in the same column (lib/projects/publication.ts)
+     and is not the topic's: changing the topic keeps it, read the same way. */
+  return sql`${JSON.stringify(rest)}::jsonb || jsonb_build_object('writing', coalesce(${workProjects.source} -> 'writing', 'null'::jsonb)) || (case when ${workProjects.source} ? 'published' then jsonb_build_object('published', ${workProjects.source} -> 'published') else '{}'::jsonb end)`;
 }
 
 /**

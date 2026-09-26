@@ -5,8 +5,11 @@ import Link from "next/link";
 import { AgentIcon } from "@/components/agents/AgentIcon";
 import { Icon } from "@/components/ui/Icon";
 import { NewProjectButton } from "@/components/projects/NewProjectButton";
+import { Tr } from "@/components/ui/Tr";
 import { StageBadge, StepTrack, STAGE_TONE, stageToneOf } from "@/components/projects/StepTrack";
 import type { ProjectStep } from "@/lib/projects/service";
+import type { PublishedPlace } from "@/lib/projects/publication";
+import { PUBLISHED_TONE, PublishedCheck, PublishedMarks } from "@/components/projects/Published";
 
 export type ProjectListRow = {
   id: string;
@@ -23,6 +26,8 @@ export type ProjectListRow = {
   frontier: ProjectStep | null;
   /** The first clip (or the render) for the picture; null draws the gradient. */
   thumbFileId: string | null;
+  /** Once marked published: where it went, and the day (formatted on the server). */
+  published: { platforms: PublishedPlace[]; day: string; byName: string } | null;
 };
 
 type StatusFilter = "active" | "done" | "archived" | "all";
@@ -86,7 +91,7 @@ export function ProjectsList({ rows, zh }: { rows: ProjectListRow[]; zh: boolean
         </label>
         <nav className="plc-segs" aria-label={t("按状态", "By status")}>
           {seg("active", status, setStatus, t("进行中", "In progress"), count("active"))}
-          {seg("done", status, setStatus, t("已交付", "Delivered"), count("done"))}
+          {seg("done", status, setStatus, t("已发布", "Published"), count("done"))}
           {seg("archived", status, setStatus, t("归档", "Archived"), count("archived"))}
           {seg("all", status, setStatus, t("全部", "All"), count("all"))}
         </nav>
@@ -154,9 +159,20 @@ function ProjectCard({ row: r, zh }: { row: ProjectListRow; zh: boolean }) {
   const pct = r.status === "done" ? 100 : Math.round((done / Math.max(1, r.steps.length)) * 100);
   /* The line along the bottom: whose turn it is and what happens next — the
      employee's own face when it is theirs, the upload glyph when it is the
-     host's. A delivered or archived project says so instead. */
+     host's. A published project says where it went and when (the marks are
+     not links here: the whole card is one); an archived one says so. */
   const next =
-    now && r.status === "active" ? (
+    r.status === "done" ? (
+      <>
+        <PublishedCheck size={16} />
+        <span className="plc-next" style={{ color: PUBLISHED_TONE.ink, fontWeight: 500 }}>
+          <Tr zh="已发布" en="Published" inZh={zh} />
+          {r.published?.day ? <span style={{ color: "#7f9a8b", fontWeight: 400 }}>{` · ${r.published.day}`}</span> : null}
+          {r.published?.byName ? <span style={{ color: "#9aaea2", fontWeight: 400 }}>{` · ${r.published.byName}`}</span> : null}
+        </span>
+        {r.published?.platforms.length ? <PublishedMarks platforms={r.published.platforms} zh={zh} size={14} gap={4} /> : null}
+      </>
+    ) : now && r.status === "active" ? (
       <>
         {now.owner !== "you" ? <AgentIcon agent={now.owner} size={18} radius={5} /> : <span className="plc-you"><Icon name="upload" size={11} color="#95590a" strokeWidth={2} /></span>}
         <span className="plc-next">{now.line}</span>
@@ -166,11 +182,11 @@ function ProjectCard({ row: r, zh }: { row: ProjectListRow; zh: boolean }) {
         <span className="plc-you" style={{ background: archived ? "#f1f1ef" : STAGE_TONE.done.bg }}>
           <Icon name={archived ? "lock" : "check"} size={11} color={archived ? "#8a8a86" : STAGE_TONE.done.ink} strokeWidth={2.2} />
         </span>
-        <span className="plc-next">{archived ? t("已归档，只读", "Archived; read only") : t("已交付", "Delivered")}</span>
+        <span className="plc-next">{archived ? t("已归档，只读", "Archived; read only") : t("已完成", "Done")}</span>
       </>
     );
   return (
-    <Link href={`/projects/${r.id}`} prefetch={false} className="plc-card" data-archived={archived ? "" : undefined} style={{ ["--plc-tone" as string]: tone.line } as React.CSSProperties}>
+    <Link href={`/projects/${r.id}`} prefetch={false} className="plc-card" data-archived={archived ? "" : undefined} data-published={r.status === "done" ? "" : undefined} style={{ ["--plc-tone" as string]: tone.line } as React.CSSProperties}>
       <span className="plc-thumb">
         <Thumb fileId={r.thumbFileId} />
         <span className="plc-chip">{r.mode.startsWith("direct:") ? t("直接交代", "Direct") : t("完整流程", "Full line")}</span>
@@ -181,10 +197,12 @@ function ProjectCard({ row: r, zh }: { row: ProjectListRow; zh: boolean }) {
         <span className="plc-pct" aria-hidden>
           <span style={{ width: `${pct}%`, background: r.status === "done" ? STAGE_TONE.done.dot : "#7fb0ea" }} />
         </span>
+
       </span>
       <span className="plc-body">
         <span style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
           <span className="plc-title">{r.title}</span>
+          {/* The pill says it; the marks sit on the line below, where there is room. */}
           <StageBadge now={now} zh={zh} status={r.status} />
         </span>
         <span className="plc-meta">
@@ -256,6 +274,7 @@ const LIST_CSS = `
 .plc-card:focus-visible { outline: 2px solid #171717; outline-offset: 2px; }
 .plc-card:hover .plc-open { color: #171717; }
 .plc-card[data-archived] { opacity: .72; }
+.plc-card[data-published] .plc-foot { border-top-color: #e3f3ea; }
 .plc-card[data-archived] .plc-thumb img { filter: grayscale(1); }
 .plc-thumb { position: relative; height: 124px; flex-shrink: 0; overflow: hidden; background: linear-gradient(135deg, #eef4fd, #f3effc 55%, #edf7f2); border-bottom: 1px solid #f1f1ef; display: flex; align-items: center; justify-content: center; }
 .plc-thumb img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
