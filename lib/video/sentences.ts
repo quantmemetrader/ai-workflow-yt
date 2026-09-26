@@ -197,6 +197,25 @@ export function toSentences(
     if (!had || RANK[g] > RANK[had]) pauseAfter.set(best, g);
   }
 
+  /*
+   * A pause inside a word is not a sentence end. Whisper times syllables,
+   * not words, and a 300 ms hesitation between 火 and 力 — real, measured —
+   * would otherwise split 火力 across two sentences and put a caption break
+   * inside a word. The segmenter says where the words are; a soft or firm
+   * silence only breaks on a word edge. A hard silence breaks regardless:
+   * a second of quiet mid-word is a fluff the cut will show anyway.
+   */
+  const segmenter = typeof Intl !== "undefined" && "Segmenter" in Intl ? new Intl.Segmenter("zh", { granularity: "word" }) : null;
+  const onWordEdge = (before: string, after: string): boolean => {
+    if (!segmenter || !before || !after) return true;
+    const text = before + after;
+    for (const seg of segmenter.segment(text)) {
+      if (seg.index === before.length) return true;
+      if (seg.index > before.length) return false;
+    }
+    return true;
+  };
+
   const sentences: Sentence[] = [];
   let buffer: Word[] = [];
 
@@ -228,8 +247,8 @@ export function toSentences(
     if (SENTENCE_END.test(w.text)) cut = true;
     else if (pause === "hard") cut = true;
     else if (longEnough && next.startMs - w.endMs >= o.pauseMs) cut = true;
-    else if (longEnough && pause === "firm") cut = true;
-    else if (pause === "soft" && chars >= o.softMinChars) cut = true;
+    else if (longEnough && pause === "firm" && onWordEdge(joinWords(buffer.slice(-6)), next.text)) cut = true;
+    else if (pause === "soft" && chars >= o.softMinChars && onWordEdge(joinWords(buffer.slice(-6)), next.text)) cut = true;
     if (cut) {
       flush();
       continue;
@@ -242,6 +261,70 @@ export function toSentences(
   }
   flush();
   return sentences;
+}
+
+/**
+ * Word timings reconciled with measured silence.
+ *
+ * Whisper hangs a pause on the word that follows it: on the 蒸馏 take 核
+ * is timed 40.86–41.30 s while the take is silent until 41.24 s, and 阿 is
+ * timed 126.40–127.08 s across a pause that runs 126.43–127.01 s. Every
+ * consumer downstream is bitten by that — the cut planner counts a word as
+ * removed when its middle lies in a trimmed pause, the caption retimer drops
+ * a word whose start it cannot map, and a caption pops before its syllable.
+ * The silences are the measurement, so the words move to them:
+ *
+ *   - a silence (≥ `minSilenceMs`) beginning within `toleranceMs` of a
+ *     word's start, with the word running on past it: the word starts where
+ *     the silence ends (a syllable outlasts the tolerance, so a word whose
+ *     first 120 ms are "speech" and then 200 ms of quiet was not spoken
+ *     before the pause);
+ *   - a silence covering the whole of a word bar a sliver at its start: the
+ *     word ends where the silence starts (whisper's 在 timed across a 5.6 s
+ *     pause is 50 ms of 在 and 5.5 s of nothing);
+ *   - a word timed to run on into the silence after it: it ends where the
+ *     silence starts.
+ *
+ * Words never cross each other: each new start is at least the previous
+ * word's new end. Pure, and cheap enough to run on every take.
+ */
+export function alignWords(
+  words: readonly Word[],
+  silences: readonly Silence[],
+  options: { minSilenceMs?: number; toleranceMs?: number } = {},
+): Word[] {
+  const minSilence = options.minSilenceMs ?? 200;
+  const tol = options.toleranceMs ?? 120;
+  const sil = silences.filter((s) => s.endMs - s.startMs >= minSilence).sort((a, b) => a.startMs - b.startMs);
+  const out: Word[] = [];
+  let floor = 0;
+  for (const w0 of words) {
+    let startMs = w0.startMs;
+    let endMs = w0.endMs;
+    /* The silence covering the start, if any: it begins no later than `tol`
+       after the word's nominal start and reaches past it. */
+    const atStart = sil.find((s) => s.startMs <= startMs + tol && s.endMs > startMs + tol);
+    if (atStart) {
+      if (atStart.endMs < endMs - 30) {
+        startMs = atStart.endMs;
+      } else if (atStart.startMs > startMs + 30) {
+        endMs = atStart.startMs;
+      } else {
+        /* Entirely inside the pause: the syllable is after it. */
+        const dur = Math.max(40, Math.min(endMs - startMs, 400));
+        startMs = atStart.endMs;
+        endMs = startMs + dur;
+      }
+    }
+    /* A silence the word runs on into. */
+    const atEnd = sil.find((s) => s.startMs > startMs + 30 && s.startMs < endMs - tol && s.endMs >= endMs - tol);
+    if (atEnd) endMs = atEnd.startMs;
+    startMs = Math.max(startMs, floor);
+    endMs = Math.max(endMs, startMs);
+    out.push({ text: w0.text, startMs: Math.round(startMs), endMs: Math.round(endMs) });
+    floor = Math.round(endMs);
+  }
+  return out;
 }
 
 /** The sentence a moment falls in, or the nearest one when it falls in a gap. */

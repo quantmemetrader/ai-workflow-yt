@@ -129,3 +129,70 @@ export function clock(ms: number): string {
   const s = Math.max(0, Math.round(ms / 1000));
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 }
+
+/* ------------------------------------------------------------ director v2 */
+
+/** A sentence the model said could go, and how willingly. */
+export type OptionalDrop = {
+  id: string;
+  /** What dropping it saves, in ms of the cut. */
+  ms: number;
+  /** 2: should go if the video must be shorter; 3: could go if it still must. */
+  priority: 2 | 3;
+  reason: "filler" | "off-topic" | "aside";
+  text: string;
+};
+
+export type SentenceBudget = {
+  /** The cut's length once retakes, pauses and the must-go drops are out. */
+  lengthMs: number;
+  /** The brief's ceiling, or null for no budget. */
+  budgetMs: number | null;
+  /** What the model offered up, any order. */
+  optional: readonly OptionalDrop[];
+  /** Sentences holding a brief anchor (a quoted phrase, a number, a named entity): never dropped for length. */
+  anchors: ReadonlySet<string>;
+  /** A cut this close over the budget fits; re-cutting it would cost a sentence to save a breath. */
+  slack?: number;
+};
+
+export type SentenceFit = {
+  dropped: OptionalDrop[];
+  /** Offered drops that were refused because the sentence holds a brief anchor. */
+  refused: OptionalDrop[];
+  lengthMs: number;
+  overBudgetMs: number;
+};
+
+/**
+ * Cut a sentence plan down to its budget, v2.
+ *
+ * The order is the plan's (§2 W1): retakes and pauses have already gone
+ * (they are wins whatever the budget), so what is left to give is the
+ * model's optional drops, priority 2 before 3, in transcript order within a
+ * priority so the argument still runs forwards. A sentence that holds a
+ * brief anchor is never given up: the brief said it, so it stays. If the
+ * cut is still over after all of that, nothing else goes — `overBudgetMs`
+ * says by how much and the director reports the overrun rather than losing
+ * a sentence to hit a number (§1: never drop a sentence to hit a length).
+ */
+export function fitSentencesToBudget(input: SentenceBudget): SentenceFit {
+  const slack = input.slack ?? 0.03;
+  let lengthMs = input.lengthMs;
+  const dropped: OptionalDrop[] = [];
+  const refused: OptionalDrop[] = [];
+  if (input.budgetMs === null || lengthMs <= Math.round(input.budgetMs * (1 + slack))) {
+    return { dropped, refused, lengthMs, overBudgetMs: 0 };
+  }
+  const order = [...input.optional].sort((a, b) => a.priority - b.priority || a.id.localeCompare(b.id));
+  for (const d of order) {
+    if (lengthMs <= input.budgetMs) break;
+    if (input.anchors.has(d.id)) {
+      refused.push(d);
+      continue;
+    }
+    dropped.push(d);
+    lengthMs -= Math.max(0, d.ms);
+  }
+  return { dropped, refused, lengthMs, overBudgetMs: Math.max(0, lengthMs - input.budgetMs) };
+}
