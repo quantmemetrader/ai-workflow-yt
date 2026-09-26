@@ -97,14 +97,19 @@ async function claim(qid: string, property: "P154" | "P18", ctx: EntityCtx): Pro
 
 type ImageInfo = { url: string; descriptionurl: string; thumburl?: string; thumbwidth?: number; thumbheight?: number; width?: number; height?: number; mime?: string; extmetadata?: Record<string, { value?: string }> };
 
-async function commonsInfo(file: string, ctx: EntityCtx): Promise<ImageInfo | null> {
+/** The widest rendition Commons rasterises an SVG at; wider requests are clamped by the server. */
+const SVG_MAX_WIDTH = 4000;
+/** What a full-frame or card asset needs on its short side; the same number `sourcing.ts` gates on. */
+const WANT_SHORT_SIDE = 1080;
+
+async function commonsInfo(file: string, ctx: EntityCtx, width = 1200): Promise<ImageInfo | null> {
   const url = new URL("https://commons.wikimedia.org/w/api.php");
   url.search = new URLSearchParams({
     action: "query",
     titles: `File:${file.replace(/^File:/i, "")}`,
     prop: "imageinfo",
     iiprop: "url|extmetadata|size|mime",
-    iiurlwidth: "1200",
+    iiurlwidth: String(width),
     iiextmetadatafilter: "Artist|LicenseShortName|LicenseUrl|Credit|Attribution",
     format: "json",
     formatversion: "2",
@@ -115,10 +120,33 @@ async function commonsInfo(file: string, ctx: EntityCtx): Promise<ImageInfo | nu
   return page.imageinfo?.[0] ?? null;
 }
 
+/**
+ * A vector logo at a size the frame can use.
+ *
+ * A Commons SVG is stored at its nominal size (the Anthropic wordmark is
+ * 1024×115) and the 1200-wide rendition of a wordmark is 135 px tall, which
+ * the prefilter rightly refuses for a full frame and the first review run
+ * lost every company logo to. The API rasterises an SVG at any width up to
+ * about 4000 (guessing a thumbnail address by hand is refused with a 400;
+ * only the API's own address works), so ask for the width that puts the
+ * short side at 1080 where the ratio allows, and the widest it will give
+ * otherwise. A raster file cannot be enlarged and is left as it came.
+ */
+async function bigRendition(file: string, info: ImageInfo, ctx: EntityCtx): Promise<ImageInfo> {
+  if (info.mime !== "image/svg+xml" || !info.width || !info.height) return info;
+  const short = Math.min(info.width, info.height);
+  const wanted = Math.min(SVG_MAX_WIDTH, Math.max(1200, Math.ceil((info.width * WANT_SHORT_SIDE) / short)));
+  if (wanted <= 1200) return info;
+  const big = await commonsInfo(file, ctx, wanted);
+  return big?.thumburl ? big : info;
+}
+
 const stripHtml = (s: string | undefined) => (s ?? "").replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim();
 
-function candidateFrom(entity: Entity, file: string, info: ImageInfo, via: EntityVisual["via"]): Candidate | null {
-  const big = info.thumburl ?? info.url;
+/** `info` is the 1200-wide answer (its rendition is the judge's thumbnail); `large` the rendition to fetch, the same object for a raster file. */
+function candidateFrom(entity: Entity, file: string, info: ImageInfo, large: ImageInfo, via: EntityVisual["via"]): Candidate | null {
+  const big = large.thumburl ?? large.url;
+  const small = info.thumburl ?? info.url ?? big;
   if (!big) return null;
   const licence = stripHtml(info.extmetadata?.LicenseShortName?.value) || undefined;
   if (!licence) return null;
@@ -135,10 +163,10 @@ function candidateFrom(entity: Entity, file: string, info: ImageInfo, via: Entit
     description: entity.descriptorZh,
     url: info.descriptionurl,
     author: { name: artist || "Wikimedia Commons", url: info.descriptionurl },
-    /* A 640-wide rendition for the judge; Commons thumb addresses carry their width. */
-    thumb: big.replace(/\/1200px-/, "/640px-"),
-    width: info.thumbwidth ?? info.width,
-    height: info.thumbheight ?? info.height,
+    /* The 1200-class rendition for the judge (the adapter scales it to 480 anyway); the large one is what gets fetched. */
+    thumb: small,
+    width: large.thumbwidth ?? large.width,
+    height: large.thumbheight ?? large.height,
     orientation: info.width && info.height ? (info.width > info.height ? "landscape" : info.width < info.height ? "portrait" : "square") : undefined,
     handle: { via: "image", url: big, fallbackUrl: raster && info.url !== big ? info.url : undefined, headers: { "user-agent": WIKI_UA } },
     licence,
@@ -191,7 +219,8 @@ export async function entityVisual(entity: Entity, ctx: EntityCtx = {}): Promise
     seen.add(key);
     const info = await commonsInfo(f.file, ctx);
     if (!info) continue;
-    const candidate = candidateFrom(entity, f.file, info, f.via);
+    const large = await bigRendition(f.file, info, ctx);
+    const candidate = candidateFrom(entity, f.file, info, large, f.via);
     if (candidate) out.push({ candidate, via: f.via, qid, file: key, isMark: f.via === "P154" || MARK.test(key) });
     if (out.length >= 3) break;
   }

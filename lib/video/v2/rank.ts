@@ -39,6 +39,11 @@ export type PrefilterOpts = {
   needMs: number;
   keep?: number;
   minShortSide?: number;
+  /** Candidates that are a logo, seal or emblem (the record's P154 claim): they serve on an entity card, so a
+   * smaller short side is enough — a 4000-wide wordmark is 450 px tall and would otherwise be thrown out. */
+  logoIds?: ReadonlySet<string>;
+  /** The short side a logo needs; 300 by default. */
+  minLogoSide?: number;
   /** At most this many pictures among the kept, for a beat that wants a clip. */
   maxImages?: number;
 };
@@ -126,8 +131,10 @@ export function prefilter(cands: Candidate[], beat: Beat, plan: QueryPlan, opts:
       dropped.push({ id: c.id, why: "太短" });
       continue;
     }
-    if (c.width && c.height && Math.min(c.width, c.height) < minSide) {
-      dropped.push({ id: c.id, why: `短边 ${Math.min(c.width, c.height)} px 不够` });
+    const isLogo = opts.logoIds?.has(c.id) ?? false;
+    const need = isLogo ? (opts.minLogoSide ?? 300) : minSide;
+    if (c.width && c.height && Math.min(c.width, c.height) < need) {
+      dropped.push({ id: c.id, why: `短边 ${Math.min(c.width, c.height)} px 不够${isLogo ? "（标志也至少要 300）" : ""}` });
       continue;
     }
     if (BLACKLIST.test(`${c.title} ${c.description ?? ""}`)) {

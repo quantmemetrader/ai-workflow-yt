@@ -28,6 +28,7 @@ import { toSentences, sentenceAt } from "@/lib/video/sentences";
 import { sourceBeatsReport, beatIdOf, type BeatTrace } from "@/lib/video/v2/sourcing";
 import { placeCredits } from "@/lib/video/v2/credits";
 import { hamming } from "@/lib/video/v2/diversity";
+import { authorKey } from "@/lib/video/v2/rank";
 import { sheet, type SheetCell } from "@/lib/video/contactsheet";
 import { PLATFORM_LABEL, resetMediaSpend } from "@/lib/video/v2/media-adapter";
 import { resetVisionSpend } from "@/lib/video/vision";
@@ -115,6 +116,17 @@ function checks(beats: TestBeat[], sourced: Sourced[], traces: BeatTrace[], ms: 
     }
   out.push({ item: "No provider id or permalink twice", pass: dupIds === 0, value: `${dupIds} duplicates among ${sourced.length} picks` });
   out.push({ item: "No dHash-near frame twice (Hamming ≤ 10)", pass: minHam > 10, value: `min distance ${minHam}${nearPair ? ` (${nearPair})` : ""}` });
+
+  /* The two diversity rules the picks themselves must show (PLAN.md §1 relevance gate, §2 W3 diversity.ts). */
+  const perAuthor = new Map<string, number>();
+  for (const s of sourced) perAuthor.set(authorKey(s.candidate), (perAuthor.get(authorKey(s.candidate)) ?? 0) + 1);
+  const overCap = Array.from(perAuthor).filter(([, n]) => n > 2);
+  out.push({ item: "≤ 2 assets per author or channel", pass: overCap.length === 0, value: overCap.length ? overCap.map(([k, n]) => `${k} ×${n}`).join(", ") : `max ${Math.max(0, ...perAuthor.values())} per author over ${perAuthor.size} authors` });
+  const perPlatform = new Map<string, number>();
+  for (const s of sourced) perPlatform.set(s.candidate.platform, (perPlatform.get(s.candidate.platform) ?? 0) + 1);
+  const top = Array.from(perPlatform).sort((a, b) => b[1] - a[1])[0] ?? ["-", 0];
+  const share = sourced.length ? top[1] / sourced.length : 0;
+  out.push({ item: "≤ 40 % of cutaways from one platform", pass: share <= 0.4, value: `${top[0]} ${top[1]}/${sourced.length} = ${Math.round(share * 100)}% (the reservation bound is ${Math.ceil(0.4 * beats.length)} of ${beats.length} beats)` });
 
   const gateFails = sourced.filter((s) => s.score < (beats[Number(s.beatId.slice(1, 3))]?.intent === "person" ? 8 : 7));
   out.push({ item: "Every chosen asset ≥ 7 (people ≥ 8)", pass: gateFails.length === 0, value: gateFails.length ? gateFails.map((s) => `${nameOf(s.beatId)}=${s.score}`).join(", ") : `scores ${sourced.map((s) => s.score).join(" ")}` });

@@ -37,6 +37,16 @@ export type SheetOptions = {
 
 export const SHEET_FONT = process.env.DV2_SHEET_FONT || "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc";
 
+/**
+ * A picture with transparency, flattened onto white, as an ffmpeg filter
+ * chain. A logo from Commons is a PNG of black or blue marks on nothing;
+ * converted straight to JPEG or grey the nothing becomes black, the judge
+ * saw a "black screen" for the Nature wordmark, and every such logo hashed
+ * to the same near-empty dHash. Put this in front of any scale that ends
+ * in a JPEG or a grey frame. Harmless on a picture with no alpha.
+ */
+export const FLATTEN_ON_WHITE = "format=rgba,split[fg][bg];[bg]drawbox=c=white:t=fill[bg2];[bg2][fg]overlay=format=auto";
+
 /* ffmpeg's filter-graph escaping for a path or a literal inside an option value. */
 const esc = (s: string) => s.replace(/\\/g, "\\\\").replace(/:/g, "\\:").replace(/'/g, "\\'").replace(/,/g, "\\,").replace(/\[/g, "\\[").replace(/\]/g, "\\]");
 
@@ -68,7 +78,7 @@ async function renderCell(cell: SheetCell, i: number, dir: string, o: Required<O
   await writeFile(textFile, wrapLabel(`#${i + 1} ${cell.label}`, width, o.labelLines));
   const draw = `drawtext=fontfile=${esc(o.fontFile)}:textfile=${esc(textFile)}:fontsize=${o.fontSize}:fontcolor=white:x=6:y=${o.cellH + 5}:line_spacing=4`;
   /* `setsar=1`: a picture with a non-square pixel aspect (a scaled web JPEG often carries one) would otherwise fail `concat`, which insists every cell agree. */
-  const frame = `scale=${o.cellW}:${o.cellH}:force_original_aspect_ratio=decrease,setsar=1,pad=${o.cellW}:${o.cellH}:(ow-iw)/2:(oh-ih)/2:color=#1a1a1c,pad=${o.cellW}:${o.cellH + labelH}:0:0:color=#141416,${draw}`;
+  const frame = `${FLATTEN_ON_WHITE},scale=${o.cellW}:${o.cellH}:force_original_aspect_ratio=decrease,setsar=1,pad=${o.cellW}:${o.cellH}:(ow-iw)/2:(oh-ih)/2:color=#1a1a1c,pad=${o.cellW}:${o.cellH + labelH}:0:0:color=#141416,${draw}`;
   if (cell.image) {
     try {
       await exec("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-i", cell.image, "-frames:v", "1", "-vf", frame, out], { timeout: 30_000 });

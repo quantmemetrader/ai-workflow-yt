@@ -1,6 +1,7 @@
 import { execFile } from "node:child_process";
 import type { Candidate } from "@/lib/video/v2/media-adapter";
 import { authorKey } from "@/lib/video/v2/rank";
+import { FLATTEN_ON_WHITE } from "@/lib/video/contactsheet";
 
 /**
  * Never the same picture twice.
@@ -16,12 +17,21 @@ import { authorKey } from "@/lib/video/v2/rank";
  *             thumbnail, 64 bits) within a Hamming distance of 10 of one
  *             already chosen is the same shot from another upload
  *   platform  no more than 40 % of the cutaways from one site, so the
- *             sources feel varied; logos are graphics and do not count
+ *             sources feel varied; a logo counts like any other asset,
+ *             since the plan's rule is about where things come from
+ *
+ * The platform share is a bound, not a measurement: beats are sourced in
+ * parallel and nobody knows how many will resolve, so the cap is taken
+ * against the number of beats. A run with a few misses can land a point or
+ * two over 40 % of the actual picks; the lab's report prints the real
+ * ratio, and `platformShare` can be lowered when that matters.
  *
  * `reserve` is synchronous and mutates the reservations in the same tick as
  * it checks them, which is what makes it safe under the limiter: two beats
  * cannot both pass for the same clip. `dhashOf` is the one piece of IO, a
- * thin ffmpeg call that returns the 72 grey bytes the pure hash reads.
+ * thin ffmpeg call that returns the 72 grey bytes the pure hash reads —
+ * the picture flattened onto white first, or every transparent logo would
+ * hash as the same black frame.
  */
 
 export type SourcedKind = "video" | "image" | "logo";
@@ -96,10 +106,8 @@ type Verdict = { ok: true } | { ok: false; reasonZh: string };
 export function precheck(candidate: Candidate, kind: SourcedKind, r: Reservations): Verdict {
   if (r.ids.has(candidate.id) || r.ids.has(candidate.url)) return { ok: false, reasonZh: "这条素材已经用过（本片或近 30 天）" };
   if ((r.authors.get(authorKey(candidate)) ?? 0) >= r.authorCap) return { ok: false, reasonZh: `同一作者 ${candidate.author.name} 已用 ${r.authorCap} 条` };
-  if (kind !== "logo") {
-    const cap = Math.max(2, Math.ceil(r.platformShare * r.total));
-    if ((r.platforms.get(candidate.platform) ?? 0) >= cap) return { ok: false, reasonZh: `来自 ${candidate.platform} 的镜头已占四成` };
-  }
+  const cap = Math.max(2, Math.ceil(r.platformShare * r.total));
+  if ((r.platforms.get(candidate.platform) ?? 0) >= cap) return { ok: false, reasonZh: `来自 ${candidate.platform} 的镜头已占四成` };
   return { ok: true };
 }
 
@@ -114,7 +122,7 @@ export function reserve(pick: { beatId: string; candidate: Candidate; kind: Sour
   r.ids.add(pick.candidate.id);
   r.ids.add(pick.candidate.url);
   r.authors.set(authorKey(pick.candidate), (r.authors.get(authorKey(pick.candidate)) ?? 0) + 1);
-  if (pick.kind !== "logo") r.platforms.set(pick.candidate.platform, (r.platforms.get(pick.candidate.platform) ?? 0) + 1);
+  r.platforms.set(pick.candidate.platform, (r.platforms.get(pick.candidate.platform) ?? 0) + 1);
   if (pick.dhash) r.hashes.push({ hash: pick.dhash, beatId: pick.beatId });
   r.kinds.set(pick.beatId, pick.kind);
   return { ok: true };
@@ -127,7 +135,7 @@ export function dhashOf(file: string): Promise<string> {
   return new Promise((resolve, reject) => {
     execFile(
       "ffmpeg",
-      ["-hide_banner", "-loglevel", "error", "-i", file, "-frames:v", "1", "-vf", "scale=9:8:flags=area,format=gray", "-f", "rawvideo", "-"],
+      ["-hide_banner", "-loglevel", "error", "-i", file, "-frames:v", "1", "-vf", `${FLATTEN_ON_WHITE},scale=9:8:flags=area,format=gray`, "-f", "rawvideo", "-"],
       { encoding: "buffer", timeout: 20_000, maxBuffer: 1024 * 1024 },
       (err, stdout) => {
         if (err) return reject(new Error(`dhash: ffmpeg failed on ${file}: ${err.message}`));

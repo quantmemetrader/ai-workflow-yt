@@ -209,6 +209,23 @@ const MIN_LOGO_SIDE = 300;
 const MAX_REJECTIONS = 3;
 const MAX_ATTEMPTS = 6;
 
+/**
+ * What no cutaway may be, whatever the beat says: the judge scored an
+ * AI-rendered "Anthropic" office with the name misspelt on the facade 10/10
+ * in the first review run, because nothing had told it a rendering is not a
+ * picture of the thing. Appended to every beat's `mustNot`, for the
+ * candidate scoring and the window pick alike.
+ */
+const STANDING_MUST_NOT = "an AI-generated, rendered or mocked-up picture (garbled or misspelt signage, impossible architecture, plastic-looking people are the tells); a stock actor posing";
+
+function withStandingMustNot(mustNot: string | undefined): string {
+  return [mustNot?.trim(), STANDING_MUST_NOT].filter(Boolean).join("; ");
+}
+
+/** Whether a small picture is a logo or mark rather than a photograph, by its title and the judge's own words. */
+const MARK_WORDS = /\blogo\b|wordmark|\bicon\b|\bseal\b|emblem|badge|标志|图标|徽|商标|logo图/i;
+const looksLikeMark = (title: string, reason: string) => MARK_WORDS.test(`${title} ${reason}`);
+
 const EXT_BY_MIME: Record<string, string> = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "image/gif": "gif", "image/avif": "avif", "image/bmp": "bmp", "image/svg+xml": "svg" };
 
 /** Two looks inside a clip: past the intro, and past the middle. */
@@ -245,9 +262,12 @@ type Judged = Ranked & { score: number; reason: string; thumb: string; images: J
  * Best first: score, then the routing table's preferences at a tie — the
  * record's logo for a company or product, never an agency's seal over a
  * real picture, the kind the beat would rather have, the prefilter's own
- * score. When the top two are within a point and the previous beat's
+ * score. When the top two tie — the same score, or both in the "shows the
+ * specific thing" band (9–10) a point apart — and the previous beat's
  * cutaway is of the top one's kind, the other kind goes first, so
- * consecutive cutaways alternate when the choice is free.
+ * consecutive cutaways alternate when the choice is free. A whole point
+ * across the band edge (9 against 8) is not a free choice: the first
+ * review run swapped a 9/10 code clip for an 8/10 photograph that way.
  */
 function order(judged: Judged[], beat: Beat, gate: number, prevKind: SourcedKind | undefined): Judged[] {
   const logoWanted = beat.entity && (beat.entity.kind === "company" || beat.entity.kind === "product" || beat.entity.kind === "publication");
@@ -256,7 +276,8 @@ function order(judged: Judged[], beat: Beat, gate: number, prevKind: SourcedKind
   const bonus = (j: Judged) =>
     j.score < gate ? 0 : (logoWanted && j.logo ? 0.5 : 0) + (seal && j.logo ? -1.5 : 0) + (j.fromRecord && !j.logo ? 0.3 : 0) + (j.candidate.kind === want ? 0.1 : 0) + j.pre * 0.05;
   const sorted = judged.slice().sort((a, b) => b.score + bonus(b) - (a.score + bonus(a)));
-  if (prevKind && sorted.length > 1 && sorted[0].kind === prevKind && sorted[1].kind !== prevKind && sorted[0].score - sorted[1].score <= 1 && sorted[1].score >= gate && !sorted[0].logo) {
+  const tie = sorted.length > 1 && (sorted[1].score >= sorted[0].score || (sorted[1].score >= 9 && sorted[0].score - sorted[1].score <= 1));
+  if (prevKind && tie && sorted[0].kind === prevKind && sorted[1].kind !== prevKind && sorted[1].score >= gate && !sorted[0].logo) {
     [sorted[0], sorted[1]] = [sorted[1], sorted[0]];
   }
   return sorted;
@@ -306,7 +327,7 @@ async function sourceOne(beat: Beat, index: number, prevBeatId: string | undefin
 
   /* 2. Thin on metadata. */
   const wantsClip = beat.intent === "scene" || beat.intent === "metaphor" || beat.intent === "person" || beat.intent === "product" || beat.intent === "concept";
-  const { kept, dropped } = prefilter(candidates, beat, plan, { usedIds: r.ids, usedAuthors: r.authors, authorCap: r.authorCap, needMs, keep: wantsClip ? 12 : 10, maxImages: wantsClip ? 4 : undefined });
+  const { kept, dropped } = prefilter(candidates, beat, plan, { usedIds: r.ids, usedAuthors: r.authors, authorCap: r.authorCap, needMs, keep: wantsClip ? 12 : 10, maxImages: wantsClip ? 4 : undefined, logoIds: markIds, minLogoSide: MIN_LOGO_SIDE });
   trace.kept = kept.length;
   trace.dropped = dropped;
   if (!kept.length) return done(null, `候选 ${candidates.length} 条全部被初筛淘汰`);
@@ -356,9 +377,12 @@ async function sourceOne(beat: Beat, index: number, prevBeatId: string | undefin
   say(`核对 ${shown.length} 个候选（${flat.length} 张图）与「${line.slice(0, 18)}」的相关度`);
   const gate = gateFor(beat);
   const entity = beat.entity ? { name: beat.entity.name, descriptorZh: beat.entity.descriptorZh, romanised: beat.entity.romanised } : undefined;
+  const mustNot = withStandingMustNot(beat.mustNot);
+  /* The same guard goes to the window pick, which reads the beat's own fields. */
+  const judgeBeat: Beat = { ...beat, mustNot };
   let judged: Judged[];
   try {
-    const res = await scoreCandidates(line, context, flat.map((f) => f.img.file), { must: beat.must, mustNot: beat.mustNot, entity }, ctx.vision);
+    const res = await scoreCandidates(line, context, flat.map((f) => f.img.file), { must: beat.must, mustNot, entity }, ctx.vision);
     judged = shown.map((x) => {
       const images: JudgeImage[] = flat.map((f, i) => ({ f, i })).filter(({ f }) => f.x === x).map(({ f, i }) => ({ file: f.img.file, atMs: f.img.atMs, score: res.scores[i].score, reason: res.scores[i].reason }));
       const best = images.reduce((b, im) => (im.score > b.score ? im : b), images[0]);
@@ -408,7 +432,7 @@ async function sourceOne(beat: Beat, index: number, prevBeatId: string | undefin
   let lastReason = "";
   let rejections = 0;
   const shortSide = (local: { width?: number; height?: number }) => (local.width && local.height ? Math.min(local.width, local.height) : undefined);
-  const tooSmall = (local: { width?: number; height?: number }, kind: SourcedKind) => kind !== "logo" && (shortSide(local) ?? Infinity) < MIN_SHORT_SIDE;
+  const tooSmall = (local: { width?: number; height?: number }, kind: SourcedKind) => (shortSide(local) ?? Infinity) < (kind === "logo" ? MIN_LOGO_SIDE : MIN_SHORT_SIDE);
   for (const j of ordered.slice(0, MAX_ATTEMPTS)) {
     if (rejections >= MAX_REJECTIONS) break;
     const c = j.candidate;
@@ -429,7 +453,7 @@ async function sourceOne(beat: Beat, index: number, prevBeatId: string | undefin
           rejections++;
           continue;
         }
-        const verdict = await pickWindow({ file: local.file, durationMs: local.durationMs ?? 0, sectionStartMs: local.sectionStartMs }, beat, line, needMs, {
+        const verdict = await pickWindow({ file: local.file, durationMs: local.durationMs ?? 0, sectionStartMs: local.sectionStartMs }, judgeBeat, line, needMs, {
           dir: path.join(ctx.workDir, "frames", safe(beatId)),
           prefix: safe(c.id),
           context,
@@ -481,11 +505,12 @@ async function sourceOne(beat: Beat, index: number, prevBeatId: string | undefin
 
       say(`取『${c.title.slice(0, 20)}』（${PLATFORM_LABEL[c.platform]}）`);
       const local = await fetchLocal(c, {}, ctx.media);
-      /* A small picture of a company or product is still its logo for the entity card; a small picture of anything else is out. */
+      /* A small picture of a company's or product's *logo* still serves on the entity card; a small picture of
+         anything else — the first review run put a 640 px aerial photo of a campus on the logo tile — is out. */
       let kind: SourcedKind = j.kind;
       if (tooSmall(local, kind)) {
         const side = shortSide(local)!;
-        if (beat.intent === "org" && beat.entity && beat.entity.kind !== "agency" && beat.entity.kind !== "legislature" && side >= MIN_LOGO_SIDE) {
+        if (beat.intent === "org" && beat.entity && beat.entity.kind !== "agency" && beat.entity.kind !== "legislature" && side >= MIN_LOGO_SIDE && looksLikeMark(c.title, j.reason)) {
           kind = "logo";
         } else {
           const why = `短边只有 ${side} px，放大会糊`;
@@ -537,6 +562,35 @@ async function sourceOne(beat: Beat, index: number, prevBeatId: string | undefin
 
 /* ------------------------------------------------------------------ entry */
 
+/**
+ * undici — Node's own fetch — can throw an AssertionError out of a socket
+ * 'end' handler when a remote host closes a keep-alive connection in the
+ * middle of a response (nodejs/undici, "false == true at Parser.finish";
+ * undici 6.28 on Node 22.23 did it on the 41st search of the cold review
+ * run, from one of the two hundred picture hosts a run touches). That is
+ * an uncaught exception, not a rejected promise: no try/catch in the
+ * fetcher sees it, and a worker process dies in the middle of a director
+ * run. While beats are being sourced, that one error is logged and the
+ * request that hit it fails by its own timeout, which every request here
+ * has. Any other uncaught exception is printed and ends the process, as
+ * Node would have done with no listener at all.
+ */
+function guardUndiciAssertions(): () => void {
+  const handler = (err: unknown) => {
+    const e = err as { code?: string; stack?: string; message?: string } | null;
+    if (e && e.code === "ERR_ASSERTION" && /undici/.test(e.stack ?? "")) {
+      console.warn(`[sourcing] undici socket assertion ignored: ${e.message ?? ""}`);
+      return;
+    }
+    console.error(err);
+    process.exit(1);
+  };
+  process.on("uncaughtException", handler);
+  return () => {
+    process.removeListener("uncaughtException", handler);
+  };
+}
+
 export async function sourceBeatsReport(beats: Beat[], ctx: SourcingCtx): Promise<SourcingReport> {
   const t0 = Date.now();
   if (ctx.into === "files" && !ctx.viewer) throw new Error("sourceBeats: into \"files\" needs a viewer");
@@ -544,7 +598,21 @@ export async function sourceBeatsReport(beats: Beat[], ctx: SourcingCtx): Promis
   const r = newReservations({ total: beats.length, tenantRecent: ctx.tenantRecent, used: ctx.used });
   for (const h of ctx.hashes ?? []) r.hashes.push({ hash: h, beatId: "earlier" });
   const run = limiter(ctx.limiter ?? 6);
-  const rows = await Promise.all(
+  const unguard = guardUndiciAssertions();
+  let rows: { sourced: Sourced | null; trace: BeatTrace }[];
+  try {
+    rows = await sourceAll(beats, ctx, r, run);
+  } finally {
+    unguard();
+  }
+  const sourced = rows.map((x) => x.sourced).filter((s): s is Sourced => Boolean(s));
+  const traces = rows.map((x) => x.trace);
+  const misses = traces.filter((t) => !t.skipped && t.missReasonZh).map((t) => ({ beatId: t.beatId, reasonZh: t.missReasonZh! }));
+  return { sourced, traces, misses, ms: Date.now() - t0, spend: { media: mediaSpend(), vision: visionSpend() } };
+}
+
+function sourceAll(beats: Beat[], ctx: SourcingCtx, r: Reservations, run: <T>(fn: () => Promise<T>) => Promise<T>): Promise<{ sourced: Sourced | null; trace: BeatTrace }[]> {
+  return Promise.all(
     beats.map((beat, i) =>
       run(() =>
         sourceOne(beat, i, i > 0 ? beatIdOf(beats[i - 1], i - 1) : undefined, ctx, r).catch((err): { sourced: Sourced | null; trace: BeatTrace } => ({
@@ -571,10 +639,6 @@ export async function sourceBeatsReport(beats: Beat[], ctx: SourcingCtx): Promis
       ),
     ),
   );
-  const sourced = rows.map((x) => x.sourced).filter((s): s is Sourced => Boolean(s));
-  const traces = rows.map((x) => x.trace);
-  const misses = traces.filter((t) => !t.skipped && t.missReasonZh).map((t) => ({ beatId: t.beatId, reasonZh: t.missReasonZh! }));
-  return { sourced, traces, misses, ms: Date.now() - t0, spend: { media: mediaSpend(), vision: visionSpend() } };
 }
 
 /** PLAN.md §2 W3's entry point: the picks, in beat order; the report is for the lab and the director's log. */

@@ -10,6 +10,7 @@ import { fetchAsset, fetchToDisk, type FetchOpts } from "@/lib/media/fetch";
 import { creditLine, creditsBlock, toUsed, PLATFORM_LABEL, TAKEDOWN_LINE, type UsedAsset } from "@/lib/media/credits";
 import { downloadToFile, run, ToolError } from "@/lib/media/tools";
 import type { Asset, Candidate, MediaKind, Platform } from "@/lib/media/types";
+import { FLATTEN_ON_WHITE } from "@/lib/video/contactsheet";
 
 /**
  * The director's one door to `lib/media`.
@@ -284,7 +285,8 @@ export async function downloadThumb(candidate: Candidate, dest: string, opts: { 
     const headers: Record<string, string> = { referer: candidate.url };
     if (candidate.handle.via === "image" && candidate.handle.headers) Object.assign(headers, candidate.handle.headers);
     await downloadToFile(url, raw, { headers, timeoutMs: opts.timeoutMs ?? 8_000, maxBytes: 12 * 1024 * 1024 });
-    await run("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-i", raw, "-frames:v", "1", "-vf", `scale='min(${opts.width ?? 480},iw)':-2`, "-q:v", "4", dest], { timeoutMs: 20_000 });
+    /* Flattened onto white first: a transparent logo would otherwise reach the judge as marks on black. */
+    await run("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-i", raw, "-frames:v", "1", "-vf", `${FLATTEN_ON_WHITE},scale='min(${opts.width ?? 480},iw)':-2`, "-q:v", "4", dest], { timeoutMs: 20_000 });
     spend.thumbs++;
     return dest;
   } catch {
