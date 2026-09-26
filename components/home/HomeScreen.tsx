@@ -161,12 +161,13 @@ export function HomeScreen({
   const ready = said(draft).length > 0;
 
   /* Research before the script. A new project whose text does not hand the
-     work to 编剧, 剪辑师 or 撰稿人 by name (研究员 tagged, 策划, or nobody)
-     goes to 研究员 for a title check first (`TitleCheckCard`); the project
-     is made from the card, with the researched title or as typed. Naming
-     one of the three keeps the box's old behaviour: the work starts at once,
-     and a quiet line under the box offers the check anyway. */
-  const writesNow = (text: string) => parseAgentMentions(text).some((k) => k === "script" || k === "video" || k === "article");
+     work to a colleague by name (研究员 tagged, or nobody) goes to 研究员
+     for a title check first (`TitleCheckCard`); the project is made from
+     the card, with the researched title or as typed. Naming 策划, 编剧,
+     剪辑师 or 撰稿人 keeps the box's old behaviour: the person asked that
+     employee for something, so the work starts at once, and for the writers
+     a quiet line under the box offers the check anyway. */
+  const writesNow = (text: string) => parseAgentMentions(text).some((k) => k === "planning" || k === "script" || k === "video" || k === "article");
   const researchFirst = target === "new" && !writesNow(draft);
   const offerCheck = target === "new" && ready && parseAgentMentions(draft).some((k) => k === "script" || k === "article");
 
