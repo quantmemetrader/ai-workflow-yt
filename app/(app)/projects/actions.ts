@@ -8,6 +8,7 @@ import {
   deleteProject,
   otherProjectWithScript,
   projectForTopic,
+  projectsVisibleTo,
   resolveTopicRef,
   rewriteChannelTopic,
   scriptState,
@@ -22,7 +23,7 @@ import { db } from "@/lib/db/client";
 import { ideas, scripts, workProjects } from "@/lib/db/schema";
 import { linkScript } from "@/lib/video/service";
 import { share } from "@/lib/authz/rebac";
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { briefText, formatHints, isWriting, refFromChoice, type ProjectSource, type ScriptChips, type TopicRef } from "@/lib/projects/topic";
 import { draftInBackground } from "@/lib/script/background";
 import { scriptWriting } from "@/lib/script/writing";
@@ -270,18 +271,31 @@ export async function setProjectStatusAction(id: string, status: "active" | "don
   const viewer = await getViewer();
   if (!viewer || !viewer.modules.includes("chat")) return { error: "Not allowed" };
   if (!["active", "done", "archived"].includes(status)) return { error: "No such status" };
-  await setProjectStatus(viewer, id, status);
+  /* Only a project this person may see (`setProjectStatus` checks): an
+     action can be called with any id, not just the ones on screen. */
+  if (!(await setProjectStatus(viewer, String(id ?? ""), status))) {
+    return { error: (viewer.locale ?? "zh-CN").startsWith("zh") ? "没有这个项目" : "No such project" };
+  }
   revalidatePath("/", "layout");
   return {};
 }
 
-/** Rename a project. */
+/**
+ * Rename a project. Only one this person may see, and not a deleted one:
+ * the action is reachable with any id, and a private project's name is
+ * its members' to change.
+ */
 export async function renameProjectAction(id: string, title: string) {
   const viewer = await getViewer();
   if (!viewer || !viewer.modules.includes("chat")) return { error: "Not allowed" };
   const t = String(title ?? "").trim().slice(0, 80);
   if (!t) return { error: "A project needs a name" };
-  await db.update(workProjects).set({ title: t, updatedAt: new Date() }).where(and(eq(workProjects.id, id), eq(workProjects.tenantId, viewer.tenantId)));
+  const renamed = await db
+    .update(workProjects)
+    .set({ title: t, updatedAt: new Date() })
+    .where(and(eq(workProjects.id, String(id ?? "")), eq(workProjects.tenantId, viewer.tenantId), isNull(workProjects.deletedAt), projectsVisibleTo(viewer)))
+    .returning({ id: workProjects.id });
+  if (!renamed.length) return { error: (viewer.locale ?? "zh-CN").startsWith("zh") ? "没有这个项目" : "No such project" };
   revalidatePath("/", "layout");
   return {};
 }
@@ -324,18 +338,53 @@ export async function chooseScriptAction(projectId: string, scriptId: string) {
   const viewer = await getViewer();
   if (!viewer || !viewer.modules.includes("chat")) return { error: "Not allowed" };
   const zh = (viewer.locale ?? "zh-CN").startsWith("zh");
-  const [p] = await db.select().from(workProjects).where(and(eq(workProjects.id, projectId), eq(workProjects.tenantId, viewer.tenantId))).limit(1);
-  if (!p) return { error: "No such project" };
-  const [sc] = await db.select({ id: scripts.id, title: scripts.title }).from(scripts).where(and(eq(scripts.id, scriptId), eq(scripts.tenantId, viewer.tenantId))).limit(1);
-  if (!sc) return { error: "No such script" };
+  /* Only a project this person may see, and not a deleted one. It used to
+     be any project in the studio by id: pointing somebody's private project
+     at a script of one's own re-wrote its chat's description, and every
+     employee in that chat then wrote into a script the caller can read. */
+  const p = await visibleProject(viewer, String(projectId ?? ""));
+  if (!p) return { error: zh ? "没有这个项目" : "No such project" };
+  const [sc] = await db.select({ id: scripts.id, title: scripts.title }).from(scripts).where(and(eq(scripts.id, String(scriptId ?? "")), eq(scripts.tenantId, viewer.tenantId), isNull(scripts.deletedAt))).limit(1);
+  if (!sc) return { error: zh ? "没有这个脚本" : "No such script" };
   const other = await otherProjectWithScript(viewer.tenantId, sc.id, p.id);
-  if (other) return { error: zh ? `这个脚本已经是项目《${other.title}》的了` : `That script already belongs to “${other.title}”` };
+  if (other) {
+    /* Named only when this person may see that project: the refusal was a
+       way to read any private project's title from its script's id. */
+    const named = await visibleProject(viewer, other.id);
+    return {
+      error: named
+        ? zh
+          ? `这个脚本已经是项目《${named.title}》的了`
+          : `That script already belongs to “${named.title}”`
+        : zh
+          ? "这个脚本已经属于另一个项目"
+          : "That script already belongs to another project",
+    };
+  }
   await db.update(workProjects).set({ scriptId: sc.id, updatedAt: new Date() }).where(eq(workProjects.id, p.id));
   if (p.videoProjectId) await linkScript(viewer, p.videoProjectId, sc.id).catch(() => {});
   await share(viewer, { type: "script", id: sc.id }, "editor", { type: "tenant", id: viewer.tenantId }).catch(() => null);
   await rewriteChannelTopic(p.id);
   /* The page refreshes itself; a whole-app revalidation read as a reload. */
   return {};
+}
+
+/**
+ * A new topic snapshot for `work_projects.source`, keeping the draft mark
+ * the row holds when the update runs.
+ *
+ * Not the mark read before resolving the topic: that read is a few
+ * round trips old by the time of the write, and a background draft that
+ * finished in between (`setProjectWriting(null)`) had its "done" written
+ * over with the stale "writing". For ten minutes the project then said 编剧
+ * was writing when nothing was, and every 写初稿 press did nothing. The
+ * right-hand side of an UPDATE reads the row as it is under the row lock,
+ * so a mark set or cleared meanwhile survives.
+ */
+function keepWriting(next: ProjectSource | { kind: string; label?: string }) {
+  const rest: Record<string, unknown> = { ...next };
+  delete rest.writing;
+  return sql`${JSON.stringify(rest)}::jsonb || jsonb_build_object('writing', coalesce(${workProjects.source} -> 'writing', 'null'::jsonb))`;
 }
 
 /**
@@ -362,7 +411,7 @@ export async function chooseTopicAction(projectId: string, input: { id?: string;
     if (!title) return { error: "A topic needs a name" };
     await db
       .update(workProjects)
-      .set({ title, brief: String(input.brief ?? "").slice(0, 1000) || title, source: { kind: "pick", label: input.label ?? "选题" }, updatedAt: new Date() })
+      .set({ title, brief: String(input.brief ?? "").slice(0, 1000) || title, source: keepWriting({ kind: "pick", label: input.label ?? "选题" }), updatedAt: new Date() })
       .where(eq(workProjects.id, p.id));
     await rewriteChannelTopic(p.id);
     return { scriptUpdated: false };
@@ -374,7 +423,7 @@ export async function chooseTopicAction(projectId: string, input: { id?: string;
     .update(workProjects)
     /* A draft already being written keeps its mark: the page waiting on it
        would otherwise stop waiting before it lands. */
-    .set({ title: resolved.title, brief: briefText(resolved.source, resolved.title), source: { ...resolved.source, writing: (p.source as ProjectSource | null)?.writing ?? null }, topicId: resolved.projectTopicId, updatedAt: new Date() })
+    .set({ title: resolved.title, brief: briefText(resolved.source, resolved.title), source: keepWriting(resolved.source), topicId: resolved.projectTopicId, updatedAt: new Date() })
     .where(eq(workProjects.id, p.id));
 
   let scriptUpdated = false;

@@ -5,7 +5,8 @@ import { revalidatePath } from "next/cache";
 import { getViewer } from "@/lib/auth/dal";
 import { AGENT_KEYS, parseAgentMentions, type AgentKey } from "@/lib/agents/catalog";
 import { readCardActions, readCardDone } from "@/lib/agents/cards";
-import { dispatchAgentMentions, replyTarget } from "@/lib/agents/mentions";
+import { dispatchAgentMentions, handoffMeta, replyTarget } from "@/lib/agents/mentions";
+import { pressedHandoff } from "@/lib/agents/handoff";
 import { agentTag } from "@/lib/agents/catalog";
 import { setFileAccess } from "@/lib/files/access";
 import { conversationDetail } from "@/lib/chat/service";
@@ -179,7 +180,11 @@ export async function pressCardAction(slug: string, messageId: string, actionId:
   const already = readCardDone(message.meta);
   if (already) return { error: "Somebody already answered this" };
 
-  await postMessage(viewer, channel.id, action.body);
+  /* A button that hands checked work on — the approval's "让剪辑师出粗剪" —
+     carries it, so the colleague's turn opens inside that script and
+     project instead of in a channel that is neither (`pressedHandoff`). */
+  const handoff = await pressedHandoff(viewer, message.meta, action.body);
+  await postMessage(viewer, channel.id, action.body, handoff ? { handoff: handoffMeta(handoff) } : undefined);
   await markCardDone(channel.id, messageId, {
     actionId,
     by: viewer.nameLocal || viewer.name,
@@ -194,7 +199,7 @@ export async function pressCardAction(slug: string, messageId: string, actionId:
     const body = action.body;
     after(async () => {
       try {
-        await dispatchAgentMentions({ viewer, channelId: channel.id, body });
+        await dispatchAgentMentions({ viewer, channelId: channel.id, body, ...(handoff ? { handoff } : {}) });
       } catch (err) {
         console.error("[chat] a tagged agent could not be reached", err);
       }

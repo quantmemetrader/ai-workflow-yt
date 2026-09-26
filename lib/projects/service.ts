@@ -13,6 +13,7 @@ import { audit } from "@/lib/audit";
 import { share } from "@/lib/authz/rebac";
 import { TITLE_NOISE, backlogQueryOf, channelNote, fromHotRow, fromIdea, fromSignal, fromTopicRow, type ProjectSource, type SignalLike, type SourceEvidence, type TopicRef, titleCore } from "@/lib/projects/topic";
 import { isListKey, listName, type HotRow } from "@/lib/research/platform-catalog";
+import { HOT_TENANT } from "@/lib/research/platforms";
 
 /**
  * Which projects this person may see: their own, the studio-wide ones
@@ -459,24 +460,62 @@ export async function workProjectDetail(viewer: Viewer, id: string, zh: boolean,
   };
 }
 
-export async function setProjectStatus(viewer: Viewer, id: string, status: "active" | "done" | "archived") {
-  await db.update(workProjects).set({ status, updatedAt: new Date() }).where(and(eq(workProjects.id, id), eq(workProjects.tenantId, viewer.tenantId)));
+/**
+ * Mark a project active, done or archived. Only one this person may see:
+ * the action is reachable with any id, and a private project is not
+ * somebody else's to close. False when nothing was changed.
+ */
+export async function setProjectStatus(viewer: Viewer, id: string, status: "active" | "done" | "archived"): Promise<boolean> {
+  const rows = await db
+    .update(workProjects)
+    .set({ status, updatedAt: new Date() })
+    .where(and(eq(workProjects.id, id), eq(workProjects.tenantId, viewer.tenantId), isNull(workProjects.deletedAt), visibleTo(viewer)))
+    .returning({ id: workProjects.id });
+  return rows.length > 0;
 }
 
 export async function touchProjects(ids: string[]) {
   if (ids.length) await db.update(workProjects).set({ updatedAt: new Date() }).where(inArray(workProjects.id, ids));
 }
 
-/** The project a script or a video project belongs to, if any. */
-export async function projectFor(tenantId: string, by: { scriptId?: string; videoProjectId?: string }) {
+/**
+ * The project a script or a video project belongs to, if any.
+ *
+ * Given the person, only a project they may see: the script and video
+ * screens draw its title and a link to it from this, and a private
+ * project's name and id are not every Script holder's to read. Given only
+ * the studio's id, any live project, for callers with no person behind them.
+ */
+export async function projectFor(who: Viewer | string, by: { scriptId?: string; videoProjectId?: string }) {
   const cond = by.scriptId ? eq(workProjects.scriptId, by.scriptId) : by.videoProjectId ? eq(workProjects.videoProjectId, by.videoProjectId) : null;
   if (!cond) return null;
+  const tenantId = typeof who === "string" ? who : who.tenantId;
   const [row] = await db
     .select({ id: workProjects.id, title: workProjects.title, scriptId: workProjects.scriptId, videoProjectId: workProjects.videoProjectId })
     .from(workProjects)
-    .where(and(eq(workProjects.tenantId, tenantId), isNull(workProjects.deletedAt), cond))
+    .where(and(eq(workProjects.tenantId, tenantId), isNull(workProjects.deletedAt), cond, typeof who === "string" ? undefined : visibleTo(who)))
     .limit(1);
   return row ?? null;
+}
+
+/**
+ * Whether this person may reach a script or a video project by the project
+ * rule: one that belongs to live projects only through a project of those
+ * they may see; one in no project answers to its own module's checks alone.
+ *
+ * For ids that arrive from outside — what a screen says is open, what an
+ * assistant turn falls back on — before an employee, who is a member of
+ * every private project's chat and an editor of its script, acts on them
+ * for somebody. Existence in the studio is the caller's to check.
+ */
+export async function reachableThroughProjects(viewer: Viewer, by: { scriptId?: string; videoProjectId?: string }): Promise<boolean> {
+  const cond = by.scriptId ? eq(workProjects.scriptId, by.scriptId) : by.videoProjectId ? eq(workProjects.videoProjectId, by.videoProjectId) : null;
+  if (!cond) return false;
+  const [row] = await db
+    .select({ all: count(), open: sql<number>`count(*) filter (where ${visibleTo(viewer)})` })
+    .from(workProjects)
+    .where(and(eq(workProjects.tenantId, viewer.tenantId), isNull(workProjects.deletedAt), cond));
+  return Number(row?.all ?? 0) === 0 || Number(row?.open ?? 0) > 0;
 }
 
 type Access = { mode: "private" | "everyone" | "groups" | "people"; groups?: string[]; userIds?: string[] };
@@ -686,9 +725,16 @@ export async function resolveTopicRef(viewer: Viewer, ref: TopicRef): Promise<Re
     /* A platform's own chart or a beat feed (`beat_douyin` …): both are
        stored lists, read the same way. */
     if (!isListKey(platform) || !phrase) return null;
-    /* The stored lists only: never a live (billed) read from a button. */
+    /* The stored lists only: never a live (billed) read from a button.
+       The lists are shared by every studio, but 研究员's marks on them are
+       not: the collector judges each row for its own studio (`HOT_TENANT`),
+       citing that studio's videos, viewers and rivals, and
+       `/api/research/hot` gives them to nobody else. So another studio's
+       project starts from the row alone, with no "why" copied into its
+       brief, its chat's description or its writer's facts. */
+    const own = viewer.tenantId === HOT_TENANT;
     const snaps = await db
-      .select({ rows: hotSnapshots.rows, judged: hotSnapshots.judged })
+      .select({ rows: hotSnapshots.rows, judged: own ? hotSnapshots.judged : sql<null>`null` })
       .from(hotSnapshots)
       .where(eq(hotSnapshots.platform, platform))
       .orderBy(desc(hotSnapshots.fetchedAt))
@@ -696,7 +742,8 @@ export async function resolveTopicRef(viewer: Viewer, ref: TopicRef): Promise<Re
     for (const snap of snaps) {
       const row = (snap.rows as HotRow[]).find((r) => r && r.phrase === phrase);
       if (!row) continue;
-      return { title: phrase.slice(0, 80), source: fromHotRow(row, platform, listName(platform, zh), snap.judged?.[phrase]?.why ?? null), projectTopicId: null, scriptTopicId: null, mandatoryPoints: [] };
+      const why = own ? (snap.judged?.[phrase]?.why ?? null) : null;
+      return { title: phrase.slice(0, 80), source: fromHotRow(row, platform, listName(platform, zh), why), projectTopicId: null, scriptTopicId: null, mandatoryPoints: [] };
     }
     /* A row shown from a live read (the YouTube chart on the "live" tab) is
        in no stored list: the phrase is the topic, with no numbers claimed. */

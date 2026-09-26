@@ -13,7 +13,7 @@ import { labelFor, modelFor } from "./models";
 import { assemblePrompt } from "./prompt";
 import { runTool, toolsFor } from "./tools";
 import { idsIn, type Artifact, type ToolContext } from "./tools/types";
-import { agentKeyFromEmail } from "@/lib/agents/catalog";
+import { AGENT_KEYS, AGENT_LABELS, agentKeyFromEmail, type AgentKey } from "@/lib/agents/catalog";
 
 /**
  * One turn of the employee's agent (spec §4.2, §5).
@@ -72,6 +72,39 @@ export type AgentEvent =
 const ROUNDS_BY_MODULE: Partial<Record<Module, number>> = { video: 9, script: 6, research: 6 };
 const DEFAULT_ROUNDS = 4;
 const HISTORY = 20;
+
+/**
+ * One earlier message of a thread, as the model is shown it.
+ *
+ * On /chat one thread can have several speakers: "@编剧 写个脚本", then
+ * "@策划 这个排进今天计划吗" in the same conversation. Every answer used to be
+ * replayed in the assistant role, which a model reads as its own earlier
+ * turns, so 策划 was handed 编剧's "《X》初稿写好了（scr_…）" as something it had
+ * said, and could go on to report having written it. Only the speaker's own
+ * answers are replayed as its own; anybody else's go in as what they are, a
+ * colleague's (or the person's assistant's) words quoted in the thread.
+ *
+ * A row with no speaker is the person's own assistant, or from before the
+ * column existed. In a thread the speaker owns — an employee's own thread
+ * per channel (`lib/agents/mentions.ts`), or the person's own — those rows
+ * are the speaker's; in somebody else's thread, the person's assistant's.
+ */
+export function replayed(
+  m: { role: string; content: string; speaker: string | null },
+  as: { me: AgentKey | null; ownThread: boolean; zh: boolean },
+): ChatMessage {
+  if (m.role !== "assistant") return { role: "user", content: m.content };
+  const who: AgentKey | null =
+    m.speaker === null ? (as.ownThread ? as.me : null) : AGENT_KEYS.includes(m.speaker as AgentKey) ? (m.speaker as AgentKey) : null;
+  if (who === as.me) return { role: "assistant", content: m.content };
+  const name = who ? (as.zh ? AGENT_LABELS[who].nameLocal : AGENT_LABELS[who].name) : as.zh ? "助理" : "the assistant";
+  return {
+    role: "user",
+    content: as.zh
+      ? `（以下是${name}在这个对话里之前的回答，不是你说的，也不是新的提问。）\n${m.content}`
+      : `(What ${name} answered earlier in this conversation. Not something you said, and not a new question.)\n${m.content}`,
+  };
+}
 
 export async function* runAgent(opts: {
   viewer: Viewer;
@@ -168,16 +201,25 @@ export async function* runAgent(opts: {
       .limit(HISTORY)
   ).reverse();
 
+  /* Whose words each earlier answer was (`replayed`): the thread's owner
+     decides whose the rows from before the speaker column are. */
+  const [thread] = await db
+    .select({ userId: conversations.userId })
+    .from(conversations)
+    .where(eq(conversations.id, conversationId))
+    .limit(1);
+  const as = {
+    me: agentKeyFromEmail(viewer.email),
+    ownThread: thread?.userId === viewer.id,
+    zh: (viewer.locale ?? "zh-CN").startsWith("zh"),
+  };
+
   const { text: system } = await assemblePrompt(viewer, opts.module);
   const messages: ChatMessage[] = [
     { role: "system", content: system },
     ...history
       .filter((m) => m.id !== assistantId && m.content.trim() && (m.role === "user" || m.role === "assistant"))
-      .map((m) =>
-        m.role === "user"
-          ? ({ role: "user", content: m.content } as ChatMessage)
-          : ({ role: "assistant", content: m.content } as ChatMessage),
-      ),
+      .map((m) => replayed(m, as)),
   ];
 
   const tools = toolsFor(viewer, { readOnly: opts.context?.readOnly });

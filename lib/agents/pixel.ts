@@ -1,13 +1,25 @@
 /**
  * Pixel faces for the AI employees (and the host's own assistant).
  *
- * The studio asked for "pixel style pfp for the agents in chat". Each face is a
- * 16x16 sprite written out as a grid of colour letters, drawn as inline SVG with
- * crisp edges: no image files, no emoji, nothing fetched. Every employee keeps
- * the colour it has everywhere else (its tint behind, its colour on the shirt)
- * and carries one thing that says the job: the researcher's glasses and lens,
- * the planner's clipboard, the writer's beret and pen, the editor's headphones,
- * the article writer's quill. The host's assistant is a small robot.
+ * The studio asked for "pixel style pfp for the agents in chat", then for
+ * faces that can be told apart at a glance. Each face is a 16x16 sprite
+ * written out as a grid of colour letters, drawn as inline SVG with crisp
+ * edges: no image files, no emoji, nothing fetched. Every employee keeps the
+ * colour it has everywhere else (its tint behind, its colour on the shirt or
+ * the prop) and is drawn with a big job prop and its own outline, so it
+ * reads by shape at 18-24px:
+ *   research  - glasses, lab coat and blue tie, holding up a tall report with a
+ *               folded corner and three blue bars rising (the chart doc);
+ *   planning  - round top bun, a brown clipboard on the left with a grey clip
+ *               and a checklist of purple boxes;
+ *   script    - wide tilted beret, a big pencil (eraser, metal band, yellow
+ *               body, wood tip) writing on a script page at the bottom right;
+ *   video     - an open striped clapperboard raised on the left, black hair
+ *               and a teal headphone band and ear cup;
+ *   article   - long hair with a bow, an open newspaper held across the whole
+ *               width: headline bars, centre fold, text lines, a photo block.
+ * The host's assistant is a small white TV-box robot with a gold antenna, gold
+ * ear bolts and a dark screen showing two eyes, blush and a smile.
  *
  * Pure data and string building, so it runs on the server and in the browser.
  */
@@ -15,8 +27,11 @@ import { AGENT_COLORS, AGENT_TINTS, type AgentKey } from "@/lib/agents/catalog";
 
 export type SpriteKey = AgentKey | "host";
 
-/** Colour letters shared by every sprite; "." is transparent. */
-const SHARED: Record<string, string> = {"k": "#1f1f24", "s": "#f6cfae", "S": "#e2a882", "w": "#ffffff", "m": "#c2573f", "l": "#e3f1ff", "y": "#e8ad2c", "b": "#8a5a33", "p": "#fbfaf5", "g": "#9aa3ad"};
+/**
+ * Colour letters shared by every sprite; "." is transparent. "d" is the slate
+ * of the clapperboard and the robot's neck.
+ */
+const SHARED: Record<string, string> = {"k": "#1f1f24", "s": "#f6cfae", "S": "#e2a882", "w": "#ffffff", "m": "#c2573f", "l": "#e3f1ff", "y": "#e8ad2c", "b": "#8a5a33", "p": "#fbfaf5", "g": "#9aa3ad", "d": "#474d57"};
 
 /** Hair colour per face. */
 const HAIR: Record<SpriteKey, string> = {
@@ -31,111 +46,111 @@ const HAIR: Record<SpriteKey, string> = {
 const GRIDS: Record<SpriteKey, string[]> = {
   research: [
     "................",
-    "....kkkkkkkk....",
-    "...khhhhhhhhk...",
-    "..khhhhhhhhhhk..",
-    "..khhhhhhhhhhk..",
-    "..khsssssssshk..",
-    "..kskkksskkksk..",
-    "..kskwkkkkwksk..",
-    "..kskkksskkksk..",
-    "..kssssmmssssk..",
-    "...kssssssssk...",
-    "....kkkSSkkkkk..",
-    "..kkcccwwcckllk.",
-    ".kcccccwwcckllk.",
-    ".kcccccwwccckkkb",
-    ".kcccccwwccccckb",
+    "..kkkkkk........",
+    ".khhhhhhk.......",
+    "khhhhhhhhkkkkk..",
+    "khhhhhssskpppgk.",
+    "khssssssskpppggk",
+    "kkkkskkkskppppck",
+    "kwlkkwlkskppppck",
+    "kkkkskkkskppcpck",
+    "ksssmmssskppcpck",
+    ".ksssssskkcpcpck",
+    "kwwkSSkwwscpcpck",
+    "kwwwccwwwscpcpck",
+    "kwwwccwwwkkkkkkk",
+    "kwwwwcwwwwwk....",
+    "kwwwwcwwwwwwk...",
   ],
   planning: [
-    "......kkkk......",
-    "....kkhhhhkk....",
-    "...khhhhhhhhk...",
-    "..khhhhhhhhhhk..",
-    "..khhhhhhhhhhk..",
-    "..khhsssssshhk..",
-    "..kssssssssssk..",
-    "..kssksssskssk..",
-    "..kssssssssssk..",
-    "..kssssmmssssk..",
-    "kyykssssssssk...",
-    "kpppkkkSSkkk....",
-    "kpcpkccwwccckk..",
-    "kpppkccwwccccck.",
-    "kpcpkccwwccccck.",
-    "kkkkkccwwccccck.",
+    ".........kkkk...",
+    "........khhhhk..",
+    "..kkkk..khhhhk..",
+    "kkggggkkkkhhkkk.",
+    "kbpggpbkhhhhhhhk",
+    "kbppppbkhssssshk",
+    "kbcpggbksksskshk",
+    "kbppppbksssssshk",
+    "kbcpggbksmmssshk",
+    "kbppppbkkssssskk",
+    "kbcpggsskkkSSkk.",
+    "kbppppsskccycck.",
+    "kbbbbbbkcccyccck",
+    "kkkkkkkkcccyccck",
+    "kccccccccccyyccc",
+    "kccccccccccyyccc",
   ],
   script: [
-    "........k.......",
-    "....kkkkkkkkk...",
-    "...kcccccccccck.",
-    "..kcccccccccccck",
-    "..kkkkkkkkkkkkk.",
-    "..khsssssssshk..",
-    "..kssssssssssk..",
-    "..kssksssskssk..",
-    "..kssssssssssk.k",
-    "..kssssmmssssky.",
-    "...ksssssssskyk.",
-    "....kkkSSkkkyk..",
-    "..kkcccwwcckyk..",
-    ".kcccccwwcckcck.",
-    ".kcccccwwccccck.",
-    ".kcccccwwccccck.",
+    "................",
+    "...kkkk......kk.",
+    "..kccccck...kmmk",
+    ".kcccccccck.kggk",
+    "kcccccccccckyyk.",
+    ".kkkkkkkkkkkyyk.",
+    "..khsssssskyyk..",
+    "..ksssssskkyyk..",
+    "..kskssksskyk...",
+    "..kssssssksSk...",
+    "..kssmmsskSSk...",
+    "...ksssskkkkkkk.",
+    "....kSSkkpppppk.",
+    "..kkcwwcckpgggk.",
+    ".kcccwwcckpppppk",
+    ".kcccwwcckpgggpk",
   ],
   video: [
-    "...kkkkkkkkkk...",
-    "..kggggggggggk..",
-    ".kgkkkkkkkkkkgk.",
-    ".kgkhhhhhhhhkgk.",
-    ".kgkhhhhhhhhkgk.",
-    "kcckhsssssshkcck",
-    "kccksssssssskcck",
-    "kccksskssksskcck",
-    "kccksssssssskcck",
-    "kkkksssmmssskkkk",
-    "...kssssssssk...",
-    "....kkkSSkkk....",
-    "..kkcccwwccckk..",
-    ".kcccccwwccccck.",
-    ".kcccccwwccccck.",
-    ".kcccccwwccccck.",
+    "................",
+    ".....kk..kkkk...",
+    "...kkwk.kcccck..",
+    ".kkwwkkkhhhhkck.",
+    "kwwkk.khhhhhkcck",
+    "kkkkkkkhhhhhkcck",
+    "kwwkkwkssssskcck",
+    "kkkkkkksksskkcck",
+    "kdddddksssssskk.",
+    "kdwwwdksmmssk...",
+    "kdddddkkssssk...",
+    ".kkkkkk.kSSk....",
+    "..kssk.kcwwck...",
+    "..kkkkkccwwcck..",
+    ".kcccccccwwccck.",
+    ".kcccccccwwcccck",
   ],
   article: [
-    "...............k",
-    "....kkkkkkkk..kw",
-    "...khhhhhhhhkkwk",
-    "..khhhhhhhhhhkwk",
-    "..khhhhhhhhhhkwk",
-    "..khhsssssshhkk.",
-    "..khsssssssshk..",
-    "..khskssssksshk.",
-    "..khsssssssshk..",
-    "..khsssmmssshk..",
-    "..khksssssskhk..",
-    "..khhkkSSkkhhk..",
-    "..khkccwwcckhk..",
-    ".khhcccwwccchhk.",
-    ".kcccccwwccccck.",
-    ".kcccccwwccccck.",
+    "....kkkkkkk.kk..",
+    "...khhhhhhhkcck.",
+    "..khhhhhhhhhkck.",
+    "..khhhssshhhhk..",
+    ".khhssssssshhk..",
+    ".khhskssskshhk..",
+    ".khhsssssssshhk.",
+    ".khhssssmsshhhk.",
+    "khhhhssssshhhhk.",
+    "kkkkkkkkkkkkkkkk",
+    "sppppppgppppppps",
+    "spkkkkpgpkkkkkps",
+    "kppppppgpppppppk",
+    "kpggggpgpcccpggk",
+    "kppppppgpcccpppk",
+    "kpggggpgpcccpggk",
   ],
   host: [
     ".......kk.......",
+    "......kyyk......",
     ".......kk.......",
     "...kkkkkkkkkk...",
-    "..kggggggggggk..",
-    "..kgkkkkkkkkgk..",
-    "..kgkwwkkwwkgk..",
-    "..kgkwwkkwwkgk..",
-    "..kgkkkkkkkkgk..",
-    "..kggggggggggk..",
-    "..kggggkkggggk..",
+    "..kwwwwwwwwwwk..",
+    ".kkwkkkkkkkkwkk.",
+    "kykwkllkkllkwkyk",
+    "kykwkllkkllkwkyk",
+    ".kkwmkkkkkkmwkk.",
+    "..kwklkkkklkwk..",
+    "..kgkkllllkkgk..",
     "...kkkkkkkkkk...",
-    ".....kkggkk.....",
-    "..kkkkkkkkkkkk..",
-    "..kggggyyggggk..",
-    ".kgggggyygggggk.",
-    ".kggggggggggggk.",
+    "......kddk......",
+    "...kkkkkkkkkk...",
+    "..kwwwwyywwwwk..",
+    "..kgwwwyywwwgk..",
   ],
 };
 

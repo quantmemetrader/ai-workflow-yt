@@ -1,6 +1,7 @@
 import "server-only";
 import { and, asc, count, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
+import { projectsVisibleTo } from "@/lib/projects/service";
 import {
   approvals,
   articles,
@@ -98,7 +99,11 @@ export async function scriptRun(viewer: Viewer, scriptId: string, zh: boolean): 
   const [inProject] = await db
     .select({ id: workProjects.id, title: workProjects.title, topicId: workProjects.topicId, source: workProjects.source })
     .from(workProjects)
-    .where(and(eq(workProjects.tenantId, tenantId), eq(workProjects.scriptId, scriptId), isNull(workProjects.deletedAt)))
+    /* Only a project this person may see, as the project bar above the
+       script (`projectFor`) and its topic card (`scriptTopic`): the flow
+       panel draws its title and a link to it, and a private project's name
+       and id are its members'. The script itself is the studio's. */
+    .where(and(eq(workProjects.tenantId, tenantId), eq(workProjects.scriptId, scriptId), isNull(workProjects.deletedAt), projectsVisibleTo(viewer)))
     .orderBy(asc(workProjects.createdAt))
     .limit(1);
   const src = (inProject?.source as ProjectSource | null | undefined) ?? null;

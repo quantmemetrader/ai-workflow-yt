@@ -11,7 +11,8 @@ import { workProjectDetail } from "@/lib/projects/service";
  */
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const viewer = await getViewer();
-  if (!viewer) return Response.json({ error: "Not allowed" }, { status: 403 });
+  /* Chat, the gate of the project page that polls this. */
+  if (!viewer || !viewer.modules.includes("chat")) return Response.json({ error: "Not allowed" }, { status: 403 });
   const { id } = await params;
   const p = await workProjectDetail(viewer, id, true, 3);
   if (!p) return Response.json({ error: "Not found" }, { status: 404 });
