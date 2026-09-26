@@ -107,9 +107,13 @@ export type HomeLayout = {
 
 const SIDE: PanelKey[] = ["chats", "team"];
 
+/* Every job's Home reads top-down the same way: the task box, then where the
+   work in hand stands, then what to shoot next, then the rest. The owner asked
+   for the projects' status right under the box. */
+
 export const HOME_LAYOUT: Record<HomeRole, HomeLayout> = {
   overview: {
-    main: ["composer", "ideas", "suggestion", "projects", "decisions", "running"],
+    main: ["composer", "projects", "suggestion", "ideas", "decisions", "running"],
     side: SIDE,
     agent: null,
     projectsZh: "进行中的项目",
@@ -121,7 +125,7 @@ export const HOME_LAYOUT: Record<HomeRole, HomeLayout> = {
      ideas, the backlog) and after it is delivered (how it did, what people
      said). So the brief leads, and the projects are the delivered ones. */
   research: {
-    main: ["composer", "suggestion", "ideas", "extra", "projects", "decisions", "running"],
+    main: ["composer", "projects", "suggestion", "ideas", "extra", "decisions", "running"],
     side: SIDE,
     agent: "research",
     projectsZh: "刚交付 · 看反馈",
@@ -130,7 +134,7 @@ export const HOME_LAYOUT: Record<HomeRole, HomeLayout> = {
     emptyEn: "Nothing delivered in the last 7 days. Delivered videos come here for their response.",
   },
   planning: {
-    main: ["composer", "ideas", "suggestion", "projects", "decisions", "running"],
+    main: ["composer", "projects", "suggestion", "ideas", "decisions", "running"],
     side: SIDE,
     agent: "planning",
     projectsZh: "待策划",
@@ -139,7 +143,7 @@ export const HOME_LAYOUT: Record<HomeRole, HomeLayout> = {
     emptyEn: "No new project waiting for a plan.",
   },
   script: {
-    main: ["composer", "extra", "ideas", "projects", "suggestion", "decisions"],
+    main: ["composer", "projects", "suggestion", "extra", "ideas", "decisions"],
     side: SIDE,
     agent: "script",
     projectsZh: "手上的脚本",
@@ -148,7 +152,7 @@ export const HOME_LAYOUT: Record<HomeRole, HomeLayout> = {
     emptyEn: "No script to write right now.",
   },
   video: {
-    main: ["composer", "extra", "projects", "decisions", "running"],
+    main: ["composer", "projects", "extra", "decisions", "running"],
     side: SIDE,
     agent: "video",
     projectsZh: "手上的视频",
@@ -157,7 +161,7 @@ export const HOME_LAYOUT: Record<HomeRole, HomeLayout> = {
     emptyEn: "Nothing to cut right now. A project appears here once its clips arrive.",
   },
   article: {
-    main: ["composer", "extra", "projects", "decisions", "running"],
+    main: ["composer", "projects", "extra", "decisions", "running"],
     side: SIDE,
     agent: "article",
     projectsZh: "待交付发布",
