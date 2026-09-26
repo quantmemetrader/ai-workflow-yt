@@ -53,9 +53,9 @@ export function RailAccount({ account, zh, wide }: { account: RailAccountInfo; z
       }}
     >
       <Picture name={who} url={account.avatarUrl} />
+      {/* One line, not two: the name, then the role as a small pill. The
+          owner found the two-line version too tall for the rail's foot. */}
       {wide ? (
-        {/* One line, not two: the name, then the role as a small pill. The
-            owner found the two-line version too tall for the rail's foot. */}
         <span style={{ display: "flex", alignItems: "center", minWidth: 0, gap: 6, flexGrow: 1 }}>
           <span style={{ fontSize: 12.5, fontWeight: 600, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{who}</span>
           <span style={{ marginLeft: "auto", fontSize: 10.5, fontWeight: 500, lineHeight: "16px", padding: "0 6px", borderRadius: 8, background: role.bg, color: role.fg, whiteSpace: "nowrap", flexShrink: 0 }}>
