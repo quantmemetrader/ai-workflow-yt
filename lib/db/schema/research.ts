@@ -148,14 +148,16 @@ export const hotSnapshots = pgTable(
     /** 研究员's marks on the rows that are this channel's business, by phrase. */
     judged: jsonb().$type<Record<string, { fit: string; why: string }>>(),
     /**
-     * Which beat each row is on, by phrase: `t` ai · crypto · tech · biz ·
+     * Which beat each row is on, by phrase: `t` a beat key — ai · crypto ·
+     * tech · biz, or one the studio added (`lib/research/beats.ts`) — or
      * other (lists marked before AI and crypto were beats of their own say
-     * only biz or tech), `s` 0-3 how squarely. Written at collection time so
-     * the screen can show only the studio's beats without asking a model on
-     * every view. Null on lists collected before this existed: show
-     * everything. The type only; the column is jsonb either way.
+     * only biz or tech), `s` 0-3 how squarely, `v` which beats the mark was
+     * made against. Written at collection time so the screen can show only
+     * the studio's beats without asking a model on every view. Null on lists
+     * collected before this existed: show everything. The type only; the
+     * column is jsonb either way.
      */
-    relevance: jsonb().$type<Record<string, { t: "ai" | "crypto" | "biz" | "tech" | "other"; s: number; tag?: string }>>(),
+    relevance: jsonb().$type<Record<string, { t: string; s: number; tag?: string; v?: string }>>(),
   },
   (t) => [index("hot_snapshots_platform_idx").on(t.platform, t.fetchedAt)],
 );

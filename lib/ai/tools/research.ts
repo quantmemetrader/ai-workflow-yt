@@ -11,7 +11,8 @@ import { suggestAngles } from "@/lib/research/angles";
 import { trendingSearches } from "@/lib/research/trending";
 import { channelsForPhrase, trendingVideos } from "@/lib/research/youtube";
 import { storedAll } from "@/lib/research/platforms";
-import { BEATS, PLATFORMS, isBeat, isPlatformKey, onFocus, relevanceLabel, type Beat, type BeatTab } from "@/lib/research/platform-catalog";
+import { PLATFORMS, isPlatformKey, onFocus, relevanceLabel, type Beat, type BeatTab } from "@/lib/research/platform-catalog";
+import { readBeats } from "@/lib/research/beat-store";
 import { BEAT_TABS, acrossPlatforms, feedOfTab, tabRows, type BeatRow, type Lists } from "@/lib/research/beat-view";
 import { addCompetitor, listCompetitors } from "@/lib/social/service";
 import { num, str, type ToolContext, type ToolPack, type ToolResult } from "./types";
@@ -119,7 +120,7 @@ const defs: ToolDef[] = [
     function: {
       name: "trending_now",
       description:
-        "What is doing well right now on the studio's four beats (AI, crypto, tech, business), platform by platform: 抖音, 小红书, 微博, B站, YouTube, TikTok, Hong Kong/Taiwan news and the crypto market. " +
+        "What is doing well right now on the studio's beats (by default AI, crypto, tech, business; the studio can add its own on the Research page), platform by platform: 抖音, 小红书, 微博, B站, YouTube, TikTok, Hong Kong/Taiwan news and the crypto market. " +
         "Each platform is searched for the beats every three hours and its best recent posts kept with their numbers (plays, likes, comments, followers); rows also on the platform's own chart are marked 上榜. " +
         "Reads stored lists: free and instant. beat= narrows to one beat. all=true reads the platforms' raw hourly charts instead, every row. " +
         "A region other than HK reads Google and YouTube for that market live instead, unfiltered.",
@@ -131,7 +132,10 @@ const defs: ToolDef[] = [
             description:
               "One platform only: douyin, xiaohongshu, weibo, bilibili, youtube, tiktok, news or crypto (the coin market). With all=true, a raw chart: google, youtube, dy_breakout, dy_finance, dy_tech, dy_rising, douyin, weibo, bilibili, xiaohongshu or tiktok. Default every platform.",
           },
-          beat: { type: "string", enum: ["ai", "crypto", "tech", "biz"], description: "One beat only. Default all four." },
+          beat: {
+            type: "string",
+            description: "One beat only, by its key: ai, crypto, tech, biz, or a key the studio added (the answer lists the studio's beats with their keys). Default every beat the studio follows.",
+          },
           all: { type: "boolean", description: "The platforms' raw hourly charts, every row including entertainment and sport. Default false." },
           region: { type: "string", description: "HK, TW, SG, US, GB or JP. Default HK." },
         },
@@ -294,7 +298,15 @@ async function run(ctx: ToolContext, name: string, args: Record<string, unknown>
     if (region === "HK") {
       const everything = args.all === true || args.all === "true";
       const only = str(args.platform, 20);
-      const beat: Beat | null = isBeat(args.beat) ? args.beat : null;
+      /* The studio's own beats (Research → 管理赛道): beat= takes any key
+         switched on there, and rows under a beat it switched off are left
+         out, as on the page. */
+      const beats = (await readBeats(ctx.viewer.tenantId)).filter((b) => b.enabled);
+      const keys = beats.map((b) => b.key);
+      const asked = str(args.beat, 20).trim().toLowerCase();
+      const beat: Beat | null = beats.find((b) => b.key === asked || b.zh === asked || b.en.toLowerCase() === asked)?.key ?? null;
+      const beatName = (k: Beat) => beats.find((b) => b.key === k)?.zh ?? k;
+      const beatNameEn = (k: Beat) => beats.find((b) => b.key === k)?.en ?? k;
       const stored = await storedAll();
       const lists = stored as Lists;
       const views = (x: BeatRow) => {
@@ -311,7 +323,7 @@ async function run(ctx: ToolContext, name: string, args: Record<string, unknown>
       };
       const line = (x: BeatRow, n: number) => {
         const where = x.chart ? `上榜 ${PLATFORMS.find((p) => p.key === x.chart!.list)?.zh ?? x.chart.list} #${x.chart.rank}${x.feedRank ? `, beats #${x.feedRank}` : ""}` : `#${n}`;
-        const tag = x.mark && x.mark.t !== "other" ? ` [${relevanceLabel(x.mark, true)}]` : x.beat ? ` [${BEATS.find((b) => b.key === x.beat)!.zh}]` : "";
+        const tag = x.mark && x.mark.t !== "other" ? ` [${relevanceLabel(x.mark, true, beats)}]` : x.beat ? ` [${beatName(x.beat)}]` : "";
         const nums = views(x);
         const link = x.url && !/\/search|[?&]q=|keyword=/.test(x.url) ? ` · ${x.url}` : "";
         return `- ${where} ${x.phrase.replace(/\s+/g, " ").slice(0, 90)}${tag}${x.extra ? ` (${x.extra.slice(0, 30)})` : ""}${nums ? ` · ${nums}` : ""}${link}`;
@@ -329,7 +341,7 @@ async function run(ctx: ToolContext, name: string, args: Record<string, unknown>
           out.push(`\n${meta.zh} (${meta.label}) chart, stored ${Math.max(1, Math.round((Date.now() - hot.fetchedAt) / 60_000))} min ago:`);
           hot.rows.slice(0, 15).forEach((r, i) => {
             const mark = hot.relevance?.[r.phrase] ?? null;
-            out.push(`- #${i + 1} ${r.phrase.replace(/\s+/g, " ").slice(0, 90)}${mark && onFocus(mark, 1) ? ` [${relevanceLabel(mark, true)}]` : ""}${r.stats?.views != null ? ` · ${r.stats.views.toLocaleString("en-US")} views` : r.heatLabel ? ` · ${r.heatLabel}` : r.heat != null ? ` · heat ${r.heat.toLocaleString("en-US")}` : ""}`);
+            out.push(`- #${i + 1} ${r.phrase.replace(/\s+/g, " ").slice(0, 90)}${mark && onFocus(mark, 1) ? ` [${relevanceLabel(mark, true, beats)}]` : ""}${r.stats?.views != null ? ` · ${r.stats.views.toLocaleString("en-US")} views` : r.heatLabel ? ` · ${r.heatLabel}` : r.heat != null ? ` · heat ${r.heat.toLocaleString("en-US")}` : ""}`);
           });
         }
         return { text: out.length ? ["The platforms' own charts, every row (the # is the rank on that chart):", ...out].join("\n") : "No stored charts yet; the hourly collector has not run." };
@@ -339,16 +351,16 @@ async function run(ctx: ToolContext, name: string, args: Record<string, unknown>
       const tabs: BeatTab[] = (BEAT_TABS as readonly string[]).includes(only) ? [only as BeatTab] : [...BEAT_TABS];
       const out: string[] = [];
       if (tabs.length > 1) {
-        const top = acrossPlatforms(lists, { beat, limit: 12 });
+        const top = acrossPlatforms(lists, { beat, limit: 12, beats: keys });
         const allLine = stored.beat_all?.summary;
         if (top.length) {
-          out.push(`\nAcross platforms${beat ? ` (${BEATS.find((b) => b.key === beat)!.en})` : ""}${allLine ? `. Researcher: ${allLine}` : ""}`);
+          out.push(`\nAcross platforms${beat ? ` (${beatNameEn(beat)})` : ""}${allLine ? `. Researcher: ${allLine}` : ""}`);
           // Each with its platform, and its rank in that platform's feed.
           top.forEach((x) => out.push(`- ${feedOfTab(tabOf(x.from)).zh} ${line(x, x.feedRank ?? x.rank).slice(2)}`));
         }
       }
       for (const tab of tabs) {
-        const { charted, feed } = tabRows(tab, lists, { beat, chartCap: 5 });
+        const { charted, feed } = tabRows(tab, lists, { beat, chartCap: 5, beats: keys });
         const rows = [...charted, ...feed].slice(0, tabs.length > 1 ? 8 : 25);
         if (!rows.length) continue;
         const meta = feedOfTab(tab);
@@ -360,13 +372,13 @@ async function run(ctx: ToolContext, name: string, args: Record<string, unknown>
       if (!out.length) {
         return {
           text: beat
-            ? `Nothing stored on the ${BEATS.find((b) => b.key === beat)!.en} beat${tabs.length === 1 ? ` for ${feedOfTab(tabs[0]).zh}` : ""} right now. Try without beat=, or all=true for the raw charts.`
+            ? `Nothing stored on the ${beatNameEn(beat)} beat${tabs.length === 1 ? ` for ${feedOfTab(tabs[0]).zh}` : ""} right now (a beat just added fills at the next collection, every three hours). Try without beat=, or all=true for the raw charts.`
             : "No beat feeds stored yet (they are collected every three hours); all=true reads the platforms' raw charts.",
         };
       }
       return {
         text: [
-          "What is doing well on the studio's beats (AI, crypto, tech, business). # is the rank in that platform's beat feed (ranked by engagement and recency); 上榜 rows are also on the platform's own chart, with that rank.",
+          `What is doing well on the studio's beats (${beats.map((b) => `${b.key} = ${b.zh}${b.en !== b.zh ? ` / ${b.en}` : ""}`).join(", ")}${asked && !beat ? `; "${asked}" is not one of them, so every beat is shown` : ""}). # is the rank in that platform's beat feed (ranked by engagement and recency); 上榜 rows are also on the platform's own chart, with that rank.`,
           ...out,
         ].join("\n"),
       };

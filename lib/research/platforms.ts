@@ -20,6 +20,7 @@ import { summarizeHot } from "@/lib/research/summary";
 import { judgeHot, type Judged } from "@/lib/research/judge";
 import { studioBrief, type StudioBrief } from "@/lib/research/studio";
 import { FOCUS_FALLBACK, channelFocus, classifyHot } from "@/lib/research/relevance";
+import { readBeats } from "@/lib/research/beat-store";
 import { recordUsage } from "@/lib/ai/ledger";
 
 /**
@@ -176,13 +177,17 @@ export async function collectPlatform(
 ): Promise<PlatformHot> {
   const hot = await readLive(platform);
   if (hot.rows.length) {
-    const [prev, pillars] = await Promise.all([
+    /* The studio's beats decide what a chart row is marked as (a beat it
+       added, none it switched off), the same list the beat feeds search. */
+    const [prev, pillars, beats] = await Promise.all([
       latestStored(platform).catch(() => null),
       channelFocus(tenantId).catch(() => FOCUS_FALLBACK),
+      readBeats(tenantId),
     ]);
     const { relevance, counts } = await classifyHot(platform, hot.rows, {
       prev: { ...opts.reuse, ...(prev?.relevance ?? {}) },
       pillars,
+      beats,
       onUsage: meterFor(tenantId),
     });
     if (relevance) {
