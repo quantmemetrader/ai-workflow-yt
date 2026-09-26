@@ -48,7 +48,8 @@ export type GlossaryChange = {
   from: string;
   to: string;
   count: number;
-  by: "case" | "distance" | "model";
+  /** case: Latin casing; distance: Latin edit distance; near: Han, one character off; model: a validated proposal. */
+  by: "case" | "distance" | "near" | "model";
   /** Character offsets in the transcript text where it was applied. */
   at: number[];
 };
@@ -456,17 +457,63 @@ export function applyGlossary(
     if (!did) break;
   }
 
+  /*
+   * 2b. Chinese near misses the code can see without a model: a span of
+   * the same length as a term of three or more characters that differs in
+   * exactly one of them (月之案面 → 月之暗面). Two of four right is a guess;
+   * three of four, in a take about the thing, is a mishearing. Found
+   * first, applied right to left so offsets hold; a span that is itself
+   * a term is left alone.
+   */
+  for (const t of terms) {
+    if (t.kind !== "han") continue;
+    const tc = Array.from(t.text.replace(/^《(.*)》$/, "$1"));
+    if (tc.length < 3) continue;
+    const cps = chars.map((c) => c.ch);
+    const found: number[] = [];
+    for (let i = 0; i + tc.length <= cps.length; i++) {
+      let diff = 0;
+      for (let k = 0; k < tc.length && diff < 2; k++) if (cps[i + k] !== tc[k]) diff++;
+      if (diff !== 1) continue;
+      const span = chars.slice(i, i + tc.length);
+      if (span.some((c) => c.w < 0 || !HAN.test(c.ch))) continue;
+      const from = span.map((c) => c.ch).join("");
+      if (isTerm(from)) continue;
+      found.push(i);
+      i += tc.length - 1;
+    }
+    for (const at of found.reverse()) {
+      const from = chars.slice(at, at + tc.length).map((c) => c.ch).join("");
+      replaceSpan(at, at + tc.length, tc.join(""));
+      record(from, tc.join(""), "near", at);
+    }
+  }
+
   /* 3. The model's proposals, validated one by one against the current text. */
   for (const p of proposals) {
     const from = (p.from ?? "").trim();
     const to = (p.to ?? "").trim();
-    const why = validate(from, to, terms, isTerm);
-    if (why) {
-      rejected.push({ from, to, why });
+    const verdict = validate(from, to, terms, isTerm);
+    if (typeof verdict === "string") {
+      rejected.push({ from, to, why: verdict });
       continue;
     }
     const text = chars.map((c) => c.ch).join("");
-    const hits = occurrences(text, from);
+    let hits = occurrences(text, from);
+    /* A fix that completes a longer term (百度人 → 摆渡人 inside 你的新经济摆渡人)
+       applies only where the rest of that term is around it. */
+    if (verdict.within) {
+      const cps = Array.from(text);
+      const [pre, post] = verdict.within.split(to).map((s) => Array.from(s));
+      hits = hits.filter((at) => {
+        const b = at + Array.from(from).length;
+        return pre.every((c, i) => cps[at - pre.length + i] === c) && post.every((c, i) => cps[b + i] === c);
+      });
+      if (!hits.length) {
+        rejected.push({ from, to, why: `只是「${verdict.within}」的一部分，而识别文字里前后文对不上` });
+        continue;
+      }
+    }
     if (!hits.length) {
       rejected.push({ from, to, why: "识别文字里没有这个词" });
       continue;
@@ -516,12 +563,28 @@ function occurrences(hay: string, needle: string): number[] {
  * terms, `from` ∈ transcript — plus a shape test: a mishearing has about
  * the term's length and, for Chinese, either the same length (帧流→蒸馏,
  * 私围裂→思维链) or a character in common (西雅芳→谢亚芳, 百度人→摆渡人).
+ *
+ * `to` may also be the tail or head of a longer term (摆渡人 in
+ * 你的新经济摆渡人): the caller then applies it only where the rest of that
+ * term stands around the mishearing. Returns the reason for refusing as a
+ * string, or the verdict with the enclosing term.
  */
-function validate(from: string, to: string, terms: readonly Term[], isTerm: (s: string) => boolean): string | null {
+function validate(
+  from: string,
+  to: string,
+  terms: readonly Term[],
+  isTerm: (s: string) => boolean,
+): string | { within: string | null } {
   if (!from || !to) return "空的 from/to";
   if (from === to) return "from 与 to 相同";
-  const term = terms.find((t) => t.text === to);
-  if (!term) return "to 不在名词表里";
+  let term = terms.find((t) => t.text === to);
+  let within: string | null = null;
+  if (!term) {
+    const enclosing = terms.filter((t) => t.kind === "han" && Array.from(to).length >= 2 && t.text !== to && t.text.includes(to) && t.text.split(to).length === 2);
+    if (enclosing.length !== 1) return "to 不在名词表里";
+    term = { text: to, kind: "han", weight: enclosing[0].weight };
+    within = enclosing[0].text;
+  }
   if (isTerm(from)) return "from 本身就是名词表里的词";
   if (from.includes(to) || to.includes(from)) return "from 与 to 互相包含（不是听错）";
   const lf = Array.from(from).length;
@@ -536,7 +599,7 @@ function validate(from: string, to: string, terms: readonly Term[], isTerm: (s: 
     const d = levenshtein(from.toLowerCase(), to.toLowerCase());
     if (d > Math.max(2, Math.floor(lt / 2))) return `拼写相差 ${d} 处，太远`;
   }
-  return null;
+  return { within };
 }
 
 /* ------------------------------------------------------------------ model */
@@ -613,14 +676,18 @@ export type GlossaryModelUsage = {
 };
 
 /**
- * The models the glossary asks, in order. The flash Qwen answers a
- * JSON-shaped request with JSON and knows Chinese homophones; the DeepSeek
- * flash is the fallback. Both are asked with reasoning off: the first lab
- * run went through `lib/ai/openrouter.ts:complete`, which cannot say so,
- * and the model spent its whole 600-token budget thinking and returned
- * no JSON at all.
+ * The models the glossary asks, in order, both with reasoning off and in
+ * JSON mode. Measured on the 蒸馏 take (W2 lab, five models, same prompt):
+ * the DeepSeek flash found every near miss the others found and the two
+ * they missed (帧流→蒸馏, 蒸瘤→蒸馏) for $0.00008 in 1.9 s; the flash Qwen
+ * is the fallback (misses the two, $0.00008); qwen3-max found one of the
+ * two at 20× the price; kimi-k2.6 found both and invented rewrites of
+ * whole clauses, which validation refuses but is not a habit to pay for.
+ * Reasoning must be off: through `lib/ai/openrouter.ts:complete`, which
+ * cannot say so, the same DeepSeek spent its whole 600-token budget
+ * thinking and returned no JSON at all.
  */
-export const GLOSSARY_MODELS = (process.env.GLOSSARY_MODELS || "qwen/qwen3.8-flash,deepseek/deepseek-v4-flash").split(",").map((s) => s.trim()).filter(Boolean);
+export const GLOSSARY_MODELS = (process.env.GLOSSARY_MODELS || "deepseek/deepseek-v4-flash,qwen/qwen3.8-flash").split(",").map((s) => s.trim()).filter(Boolean);
 
 const GLOSSARY_TIMEOUT_MS = Number(process.env.GLOSSARY_TIMEOUT_MS || 60_000);
 

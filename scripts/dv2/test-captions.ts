@@ -212,9 +212,10 @@ async function main() {
     if (numbers.some(([a, b]) => end > a && end < b)) breakFailures.push(`inside a figure: ${around}`);
   });
   const punctLines = lines.filter((l) => /[，。]/.test(l.text)).map((l) => l.text);
+  /* Names and terms up to eight characters are never split; a longer quoted sentence is not a name. */
   const termSplits = terms
     .map((t) => t.text.replace(/^《(.*)》$/, "$1"))
-    .filter((t) => Array.from(t).length >= 2)
+    .filter((t) => Array.from(t).length >= 2 && Array.from(t).length <= 8)
     .flatMap((t) => {
       const out: string[] = [];
       let at = full.indexOf(t);
@@ -317,9 +318,11 @@ async function main() {
     console.log("rendering the window with v1's bilingual preset…");
     const v1Runs = [await encode(assV1Path, v1Mp4)];
     console.log(`  ${v1Runs[0]} ms`);
-    /* A second pass each, the smaller of the two counts: the box is shared. */
-    reelRuns.push(await encode(assPath, reelMp4));
-    v1Runs.push(await encode(assV1Path, v1Mp4));
+    /* Two more passes each, the smallest of the three counts: the box is shared. */
+    for (let k = 0; k < 2; k++) {
+      reelRuns.push(await encode(assPath, reelMp4));
+      v1Runs.push(await encode(assV1Path, v1Mp4));
+    }
     timings.encodeReelMs = Math.min(...reelRuns);
     timings.encodeBilingualMs = Math.min(...v1Runs);
     const probe = await run("ffprobe", ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height,nb_frames", "-of", "csv=p=0", reelMp4]);

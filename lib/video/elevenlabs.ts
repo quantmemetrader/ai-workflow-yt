@@ -393,6 +393,8 @@ export function toCaptionLines(
  * 0.5, roughly what they take up in Noto Sans CJK at one size.
  */
 const REEL_DEFAULTS = { aimChars: 8, maxChars: 12, minChars: 4, minMs: 500, pauseMs: 700 } as const;
+/** The longest glossary term a line keeps whole; longer ones are quoted sentences, not names. */
+const REEL_MAX_ATOMIC_TERM = 8;
 
 const HAN_CHAR = /[㐀-䶿一-鿿豈-﫿]/;
 const R_DIGIT_RUN = /[0-9][0-9.,]*[0-9]|[0-9]/g;
@@ -400,19 +402,40 @@ const R_UNIT_AFTER_DIGITS = "多个页次万亿千百倍成条家年月日号天
 const R_HAN_NUMERAL = /[零一二三四五六七八九十百千万亿几两]{2,}[多余]?/g;
 const R_NUMBER_PREFIX = /[近约超共达仅逾]/;
 const R_LATIN_RUN = /[A-Za-z][A-Za-z0-9'.-]*/g;
-const WEAK_END = /[的了和与在是把被给对从到比而就也都又或及于向着过地得]$/;
+/** A line should not end on the word that opens the next clause (但, 被, 让, 那么…)… */
+const WEAK_END = /(但是|那么|所以|因为|因此|然后|只是|就是|而且|[和与在是把被给让将对从到比而就也都又还才或及于向着过但却则])$/;
+/** …a particle at the end is milder (subtitles end on 的 all the time)… */
+const PARTICLE_END = /[的了地得]$/;
+/** …and it must not start with the particle that belongs to the previous word. */
 const WEAK_START = /^[的了地得着过吗呢吧啊呀]/;
+/**
+ * Single characters that are words on their own. A single-character
+ * segment that is not one of these is usually half of a word ICU did not
+ * know (调|用量, 账|号), and a break beside it is suspect.
+ */
+const FUNCTION_CHARS = "的了着过是在和与及或也都就又还才不没要会能可把被让给到从向对比而但并且如因为所以于以之其这那此每各另某几多少有无很更最太再已经将去来说看做用叫";
 const R_TRAILING_PUNCT = /^(.*?)([，。、！？；：,.!?;:…”」』）)》〉]+)$/;
 const R_LEADING_PUNCT = /^[“「『（(《〈…]+/;
 
 type ReelUnit = { text: string; start: number; end: number; punct: "" | "," | "."; spaceBefore: boolean };
 
 /**
- * Whisper's words as units: trailing punctuation lifted off into a
- * boundary strength (a full stop outranks a comma), leading quotes
- * dropped, a decimal point kept ("1." + "51"), Latin fragments that abut
- * in time joined into one token (An·th·rop·ic), and a space remembered
- * between two Latin words a real gap separates.
+ * The transcript as units a line may be cut between: one per Han
+ * character, one per run of Latin letters or digits.
+ *
+ * Not one per whisper word. Whisper groups characters as it likes
+ * (你知道 · 吗 · 美 · 国 · 账号被), and a break that can only fall between
+ * its groups misses the phrase boundary the segmenter finds inside one
+ * (账号 | 被Anthropic指控). Each character takes its share of its word's
+ * time, evenly; the segmenter's words are put back together afterwards
+ * for the caption's own word list (`regroup`), which is what the
+ * spoken-word highlight follows.
+ *
+ * Trailing punctuation is lifted off into a boundary strength (a full
+ * stop outranks a comma), leading quotes are dropped, a decimal point is
+ * kept ("1." + "51"), Latin fragments that abut in time are joined into
+ * one token (An·th·rop·ic), and a space is remembered between two Latin
+ * words a real gap separates.
  */
 function reelUnitsOf(words: TranscriptWord[]): ReelUnit[] {
   const out: ReelUnit[] = [];
@@ -430,19 +453,34 @@ function reelUnitsOf(words: TranscriptWord[]): ReelUnit[] {
       }
     }
     text = text.replace(R_LEADING_PUNCT, "");
-    const prev = out[out.length - 1];
     if (!text) {
+      const prev = out[out.length - 1];
       if (prev && punct) prev.punct = punct === "." || prev.punct === "." ? "." : ",";
       continue;
     }
-    const latin = Boolean(prev && /[A-Za-z]$/.test(prev.text) && /^[A-Za-z]/.test(text));
-    if (latin && prev.punct === "" && w.start - prev.end <= 0.04) {
-      prev.text += text;
-      prev.end = Math.max(prev.end, w.end);
-      prev.punct = punct;
-      continue;
+    const cps = Array.from(text);
+    const n = cps.length;
+    const wordStart = w.start;
+    const span = Math.max(0, w.end - w.start);
+    let k = 0;
+    while (k < n) {
+      let j = k + 1;
+      if (/[A-Za-z0-9]/.test(cps[k])) while (j < n && /[A-Za-z0-9'.%-]/.test(cps[j])) j++;
+      const piece = cps.slice(k, j).join("");
+      const start = wordStart + (span * k) / n;
+      const end = wordStart + (span * j) / n;
+      const prev = out[out.length - 1];
+      const latin = Boolean(prev && /[A-Za-z]$/.test(prev.text) && /^[A-Za-z]/.test(piece));
+      if (latin && prev.punct === "" && start - prev.end <= 0.04) {
+        prev.text += piece;
+        prev.end = Math.max(prev.end, end);
+      } else {
+        out.push({ text: piece, start, end, punct: "", spaceBefore: latin });
+      }
+      k = j;
     }
-    out.push({ text, start: w.start, end: Math.max(w.start, w.end), punct, spaceBefore: latin });
+    /* The punctuation followed the word, so it follows the word's last piece. */
+    out[out.length - 1].punct = punct;
   }
   return out;
 }
@@ -507,15 +545,17 @@ function forbiddenBreaks(plain: string, terms: readonly string[], maxTermChars: 
  * unspaced text, and which of those sit between two single-character Han
  * segments (a word ICU did not know, split into its characters).
  */
-function segmentBoundaries(units: ReelUnit[]): { bounds: Set<number>; weak: Set<number> } {
+function segmentBoundaries(units: ReelUnit[]): { bounds: Set<number>; weak: Map<number, number> } {
   const bounds = new Set<number>();
-  const weak = new Set<number>();
+  /** Boundary → penalty: 16 between two single characters of which one is not a word (口|子), 8 between two function singles, 5 beside one stray single. */
+  const weak = new Map<number, number>();
   let spaced = "";
   for (const u of units) spaced += (u.spaceBefore ? " " : "") + u.text;
   if (typeof Intl === "undefined" || typeof (Intl as { Segmenter?: unknown }).Segmenter !== "function") {
     /* No segmenter on this runtime: every unit boundary is a boundary. The
        figure and term guards still hold. */
     let acc = 0;
+    bounds.add(0);
     for (const u of units) {
       acc += Array.from(u.text).length;
       bounds.add(acc);
@@ -542,12 +582,20 @@ function segmentBoundaries(units: ReelUnit[]): { bounds: Set<number>; weak: Set<
     segs.push({ a, b, single: b - a === 1 && HAN_CHAR.test(s.segment) });
   }
   bounds.add(0);
+  /* A single Han character that is not a word on its own is half of a word
+     ICU did not know (账|号, 调|用量), and it belongs to one of its
+     neighbours; which one is not knowable here, so a boundary on either
+     side of it is a little suspect, and one between two such singles is
+     more so. Neither outranks a clause opener left at a line's end. */
+  const stray = (s: Seg) => s.single && !FUNCTION_CHARS.includes(cps[s.a]);
   for (let i = 0; i < segs.length; i++) {
     const s = segs[i];
     bounds.add(plainPos[s.a]);
     bounds.add(plainPos[s.b]);
     const n = segs[i + 1];
-    if (n && s.single && n.single && plainPos[s.b] === plainPos[n.a]) weak.add(plainPos[s.b]);
+    if (!n || plainPos[s.b] !== plainPos[n.a]) continue;
+    if (s.single && n.single) weak.set(plainPos[s.b], stray(s) || stray(n) ? 16 : 8);
+    else if (stray(s) || stray(n)) weak.set(plainPos[s.b], 5);
   }
   return { bounds, weak };
 }
@@ -573,7 +621,10 @@ function reelLines(words: TranscriptWord[], o: ReelLineOptions): CaptionLine[] {
   const offsets: number[] = [0];
   for (const u of units) offsets.push(offsets[offsets.length - 1] + Array.from(u.text).length);
   const { bounds, weak } = segmentBoundaries(units);
-  const forbidden = forbiddenBreaks(plain, o.terms ?? [], max);
+  /* A name is kept whole; a quoted sentence from the brief (十二字的金句) is
+     not a name, and forcing it onto one line left the word before it as a
+     one-character caption. Eight characters covers every name and term. */
+  const forbidden = forbiddenBreaks(plain, o.terms ?? [], Math.min(max, REEL_MAX_ATOMIC_TERM));
   const widths = units.map(unitWidth);
 
   /*
@@ -621,10 +672,16 @@ function reelLines(words: TranscriptWord[], o: ReelLineOptions): CaptionLine[] {
     if (lineW > max) cost += (lineW - max) * 20;
     const first = units[j];
     const last = units[i - 1];
-    if ((last.end - first.start) * 1000 < minMs) cost += 40;
-    if (i < n && WEAK_END.test(last.text)) cost += 4;
-    if (WEAK_START.test(first.text)) cost += 6;
-    if (i < n && weak.has(offsets[i]) && last.punct === "") cost += 8;
+    const text = units.slice(j, i).map((u) => u.text).join("");
+    const durMs = (last.end - first.start) * 1000;
+    if (durMs < minMs) cost += 40;
+    /* A line up for more than 3.5 s is a line the viewer has read twice. */
+    if (durMs > 3500) cost += 20;
+    if (i < n && WEAK_END.test(text)) cost += 12;
+    else if (i < n && PARTICLE_END.test(text)) cost += 6;
+    if (WEAK_START.test(text)) cost += 16;
+    /* A break inside a word ICU did not know (口|子) is the worst of these. */
+    if (i < n && last.punct === "") cost += weak.get(offsets[i]) ?? 0;
     if (last.punct === ".") cost -= 4;
     else if (last.punct === ",") cost -= 2;
     if (i < n) {
@@ -665,19 +722,42 @@ function reelLines(words: TranscriptWord[], o: ReelLineOptions): CaptionLine[] {
   cuts.reverse();
   if (!cuts.length || cuts[cuts.length - 1] !== n) cuts.push(n);
 
+  /*
+   * The caption's own words: the segmenter's words, put back together
+   * from the character units, each spanning its characters' time. A Latin
+   * token is a word of its own. This is what the reel renderer lights up
+   * word by word.
+   */
+  const regroup = (from: number, to: number): CaptionLine["words"] => {
+    const words: CaptionLine["words"] = [];
+    for (let k = from; k < to; k++) {
+      const u = units[k];
+      const prev = words[words.length - 1];
+      const latin = /^[A-Za-z0-9]/.test(u.text);
+      const prevLatin = Boolean(prev && /[A-Za-z0-9]$/.test(prev.text));
+      const startsWord = k === from || bounds.has(offsets[k]) || latin || prevLatin || u.spaceBefore;
+      if (startsWord || !prev) words.push({ start: u.start, end: u.end, text: (u.spaceBefore && prev ? " " : "") + u.text });
+      else {
+        prev.text += u.text;
+        prev.end = Math.max(prev.end, u.end);
+      }
+    }
+    return words.map((w) => ({ ...w, text: w.text.trimStart() }));
+  };
+
   const lines: CaptionLine[] = [];
   let from = 0;
   for (const to of cuts) {
+    if (to <= from) continue;
     const us = units.slice(from, to);
-    from = to;
-    if (!us.length) continue;
     const text = us.map((u, k) => (k > 0 && u.spaceBefore ? " " : "") + u.text).join("");
     lines.push({
       startMs: Math.round(us[0].start * 1000),
       endMs: Math.round(us[us.length - 1].end * 1000),
       text,
-      words: us.map((u) => ({ start: u.start, end: u.end, text: u.text })),
+      words: regroup(from, to),
     });
+    from = to;
   }
 
   /* Half a second on screen at least, stretched into the gap after the line

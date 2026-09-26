@@ -293,7 +293,9 @@ export const CAPTION_PRESETS: CaptionPreset[] = [
       second: { family: "Noto Sans CJK SC", sizeRatio: 0.01875 },
       reel: {
         ...REEL,
-        second: { sizePx: 36, opacity: 0.75, delayMs: 80, centreY: 1420, bold: true, outlinePx: 2 },
+        /* The outline is opaque even though the fill is not: at 75 % a white
+           line over her beige top was hard to read in the lab frames. */
+        second: { sizePx: 36, opacity: 0.75, delayMs: 80, centreY: 1420, bold: true, outlinePx: 3 },
       },
     },
   },

@@ -637,7 +637,8 @@ function reelAss(cues: AssCue[], preset: CaptionPreset, opts: AssOptions): strin
           L.second.size,
           assColour(st.fill, Math.round(255 * (1 - r.second.opacity))),
           assColour(st.fill, Math.round(255 * (1 - r.second.opacity))),
-          assColour(r.outlineColour, Math.round(255 * (1 - r.second.opacity))),
+          /* The fill is translucent; the outline is not, or the line vanishes on a light top. */
+          assColour(r.outlineColour),
           assColour("#000000", 0),
           r.second.bold ? -1 : 0,
           0,
