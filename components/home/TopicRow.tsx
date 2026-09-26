@@ -287,7 +287,7 @@ export const IDEAS_CSS = `
 .tpr:not(.tpr-open) > .tpr-can:hover { background: #fafafa; }
 .tpr-hit { flex: 1 1 auto; min-width: 0; display: flex; align-items: flex-start; gap: 10px; padding: 0; border: 0; background: transparent; font: inherit; color: inherit; text-align: left; cursor: inherit; }
 .tpr-hit:focus-visible { outline: 2px solid #171717; outline-offset: 3px; border-radius: 6px; }
-.tpr-dots { min-width: 0; height: 20px; display: inline-flex; align-items: center; flex-shrink: 0; }
+.tpr-dots { width: 74px; height: 20px; display: inline-flex; align-items: center; flex-shrink: 0; }
 .tpr-title { font-size: 13.5px; font-weight: 600; line-height: 20px; color: #171717; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tpr-open .tpr-title { white-space: normal; }
 .tpr-line { font-size: 12px; line-height: 18px; color: #8a8a8a; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
