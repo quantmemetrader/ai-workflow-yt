@@ -13,6 +13,7 @@ import { VIDEO_READ_ONLY, videoPack } from "@/lib/ai/tools/video";
 import { budgetState, recordUsage } from "@/lib/ai/ledger";
 import { modelFor } from "@/lib/ai/models";
 import { askTitle, firstAsk, withoutTags } from "@/lib/chat/project-title";
+import { readWorkRefs } from "@/lib/chat/handoff";
 
 /**
  * A private conversation with an employee (or the person's own assistant),
@@ -128,7 +129,12 @@ async function receiptRefs(viewer: Viewer, conversationId: string): Promise<{ re
       add(kind, m[0]);
     }
   }
-  /* A hand-off names its project on the message it posted, checked there. */
+  /* A hand-off names its project on the message it posted, checked there.
+     `assign_task` is often given the project by its short form ("wp_s8kx"),
+     which the id pattern above does not take; the message's meta has the
+     full ids. Read with `readWorkRefs`, the one reading of every shape a
+     message names its work in (a hand-off's artifacts, "project" and
+     "video" included, its scriptId/projectId, receipts, a job). */
   if (handoffs.length) {
     const posted = await db
       .select({ id: chatMessages.id, meta: chatMessages.meta })
@@ -136,13 +142,10 @@ async function receiptRefs(viewer: Viewer, conversationId: string): Promise<{ re
       .innerJoin(chatChannels, eq(chatChannels.id, chatMessages.channelId))
       .where(and(inArray(chatMessages.id, handoffs.slice(0, 20)), eq(chatChannels.tenantId, viewer.tenantId)));
     for (const id of handoffs) {
-      const meta = posted.find((p) => p.id === id)?.meta as { handoff?: { artifacts?: { kind?: unknown; id?: unknown }[] } } | undefined;
-      for (const a of meta?.handoff?.artifacts ?? []) {
-        if (typeof a?.id !== "string") continue;
-        if (a.kind === "work_project") add("wp", a.id);
-        else if (a.kind === "script") add("scr", a.id);
-        else if (a.kind === "video_project") add("prj", a.id);
-      }
+      const named = readWorkRefs(posted.find((p) => p.id === id)?.meta);
+      named.projectIds.forEach((v) => add("wp", v));
+      named.scriptIds.forEach((v) => add("scr", v));
+      named.videoIds.forEach((v) => add("prj", v));
     }
   }
   return { refs, written: [...new Set(written)] };
@@ -214,9 +217,30 @@ async function looseScriptOf(viewer: Viewer, written: string[]) {
 /** The linked project, when the link is this studio's and the project is still one the person may see. */
 async function linkedProject(viewer: Viewer, conversationId: string) {
   const link = await readLink(conversationId);
-  if (!link || !("projectId" in link) || link.tenantId !== viewer.tenantId) return null;
-  const p = await visibleProject(viewer, link.projectId);
-  return p ? { id: p.id, title: p.title } : null;
+  if (link && "projectId" in link && link.tenantId === viewer.tenantId) {
+    const p = await visibleProject(viewer, link.projectId);
+    if (p) return { id: p.id, title: p.title };
+  }
+  /* The project remembers the conversation too (`source.conversationId`):
+     if the link row was never written (the database dropped between the
+     project and the row), the project is still found, and a second press
+     cannot start another. Only one this person started and may still see. */
+  if (link && "projectId" in link) return null;
+  const [made] = await db
+    .select({ id: workProjects.id, title: workProjects.title })
+    .from(workProjects)
+    .where(
+      and(
+        eq(workProjects.tenantId, viewer.tenantId),
+        eq(workProjects.createdBy, viewer.id),
+        isNull(workProjects.deletedAt),
+        sql`${workProjects.source} ->> 'conversationId' = ${conversationId}`,
+        projectsVisibleTo(viewer),
+      ),
+    )
+    .orderBy(asc(workProjects.createdAt))
+    .limit(1);
+  return made ?? null;
 }
 
 /**
@@ -411,6 +435,11 @@ export async function createFromConversation(viewer: Viewer, conversationId: str
   const receipts = await receiptRefs(viewer, conversationId);
   const already = (await linkedProject(viewer, conversationId)) ?? (await firstVisible(viewer, receipts.refs));
   if (already) return { ok: true, id: already.id, title: already.title, existed: true };
+  /* The bar only offers this once the person has asked something; a
+     request for an empty conversation (or one of bare @tags) is refused
+     here too, rather than starting a project called "New chat". */
+  const turns = await turnsOf(conversationId);
+  if (!firstAsk(turns)) return { ok: false, error: t("这段对话还没有内容", "This conversation has nothing in it yet"), status: 400 };
 
   const key = linkKey(conversationId);
   const now = new Date();
@@ -423,7 +452,17 @@ export async function createFromConversation(viewer: Viewer, conversationId: str
     const [row] = await db.select({ value: settings.value }).from(settings).where(eq(settings.key, key)).limit(1);
     const v = row?.value as Partial<LinkValue> | undefined;
     if (v && "state" in v && v.state === "creating" && Date.now() - Date.parse(String(v.at)) < 90_000) {
-      return { ok: false, error: t("项目正在建，稍等一下", "The project is being made; one moment"), status: 409 };
+      /* Being made right now: a second press that got past the button, two
+         tabs, the side panel and the chat screen at once. Wait for it (a
+         second or two; up to 15) and answer with it, so this press also
+         ends at "open the project" instead of an error beside a project
+         that exists. */
+      for (let i = 0; i < 20; i++) {
+        await new Promise((r) => setTimeout(r, 750));
+        const made = await linkedProject(viewer, conversationId);
+        if (made) return { ok: true, id: made.id, title: made.title, existed: true };
+      }
+      return { ok: false, error: t("项目正在建，稍等一下再按一次", "The project is being made; press again in a moment"), status: 409 };
     }
     const took = await db
       .update(settings)
@@ -433,8 +472,8 @@ export async function createFromConversation(viewer: Viewer, conversationId: str
     if (!took.length) return { ok: false, error: t("项目正在建，稍等一下", "The project is being made; one moment"), status: 409 };
   }
 
+  let madeId: string | null = null;
   try {
-    const turns = await turnsOf(conversationId);
     const title = (typeof input.title === "string" ? input.title : "").replace(/\s+/g, " ").trim().slice(0, 80) || askTitle(firstAsk(turns)) || convo.title.slice(0, 40) || t("新项目", "New project");
     const brief = (typeof input.brief === "string" ? input.brief : "").trim().slice(0, 1000) || fallbackBrief(turns) || null;
     const access = input.access === "private" ? "private" : "everyone";
@@ -494,6 +533,13 @@ export async function createFromConversation(viewer: Viewer, conversationId: str
       ...(loose ? { scriptId: loose.id } : {}),
       ...(video ? { videoProjectId: video.id } : {}),
     });
+    madeId = made.id;
+    /* Linked at once, before anything else can go wrong: a failure after
+       this point must not give the claim back (the catch below only removes
+       a row still marked "creating"), or the next press would start a
+       second project beside this one. */
+    const link: LinkValue = { projectId: made.id, tenantId: viewer.tenantId, userId: viewer.id, at: new Date().toISOString() };
+    await db.update(settings).set({ value: link, updatedBy: viewer.id, updatedAt: new Date() }).where(eq(settings.key, key));
     if (access === "private") await setProjectAccess(viewer, made.id, { mode: "private" });
 
     /* The note in the project's chat, as the person: plain text with one
@@ -511,10 +557,9 @@ export async function createFromConversation(viewer: Viewer, conversationId: str
       .filter(Boolean)
       .join("\n\n");
     await postMessage(viewer, made.channelId, note, { fromChat: { conversationId } }).catch((err) => console.error("[chat-project] could not post the note", err));
-
-    const link: LinkValue = { projectId: made.id, tenantId: viewer.tenantId, userId: viewer.id, at: new Date().toISOString() };
-    await db.update(settings).set({ value: link, updatedBy: viewer.id, updatedAt: new Date() }).where(eq(settings.key, key));
-    await audit(viewer, "project.from_chat", { module: "chat", objectType: "project", objectId: made.id, meta: { conversationId, access, script: loose?.id ?? null } });
+    await audit(viewer, "project.from_chat", { module: "chat", objectType: "project", objectId: made.id, meta: { conversationId, access, script: loose?.id ?? null } }).catch((err) =>
+      console.error("[chat-project] could not audit", err),
+    );
     return { ok: true, id: made.id, title: title.slice(0, 80), existed: false };
   } catch (err) {
     /* Nothing was linked: give the claim back so the press can be tried again. */
@@ -523,6 +568,14 @@ export async function createFromConversation(viewer: Viewer, conversationId: str
       .where(and(eq(settings.key, key), sql`${settings.value} ->> 'state' = 'creating'`))
       .catch(() => {});
     console.error("[chat-project] could not start the project", err);
-    return { ok: false, error: err instanceof Error ? err.message : t("没能建成项目", "Could not start the project"), status: 500 };
+    /* Plain words, not the database's: the project may exist already (made,
+       linked, then the access change failed), and pressing again opens it. */
+    return {
+      ok: false,
+      error: madeId
+        ? t("项目已建成，但没能设好谁能看到；再按一次打开它，在项目页里改。", "The project was made, but who can see it was not set; press again to open it and change it there.")
+        : t("没能建成项目，再试一次。", "Could not start the project; try again."),
+      status: 500,
+    };
   }
 }

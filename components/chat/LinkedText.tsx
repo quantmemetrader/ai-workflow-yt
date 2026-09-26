@@ -9,9 +9,11 @@ import Link from "next/link";
  * project (`lib/chat/conversation-project.ts`) links back to that
  * conversation: "[标题](/chat/t/cnv_…)" printed as brackets read as a bug.
  * Only links inside the app (a path starting with one "/") become links;
- * anything else stays the text it was.
+ * anything else stays the text it was. A backslash is refused anywhere in
+ * the path, as `localHref` in `lib/chat/handoff.ts` does: browsers read
+ * `/\host` as `//host`, another site, and any person can type this text.
  */
-const LINK = /\[([^\]\n]{1,120})\]\((\/(?!\/)[^\s)]{1,300})\)/g;
+const LINK = /\[([^\]\n]{1,120})\]\((\/(?![/\\])[^\s)\\]{1,300})\)/g;
 
 export function LinkedText({ text, color }: { text: string; color?: string }) {
   const out: React.ReactNode[] = [];

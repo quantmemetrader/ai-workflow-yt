@@ -51,6 +51,11 @@ type Made = { id: string; title: string; existed: boolean };
    invoice is not a video, so the bar stays off there. */
 const BACK_OFFICE = /^\/(finance|accounting|hr|legal|admin|settings)(\/|$)/;
 
+/* The model's title and brief, kept per conversation and per settled reply
+   for this page's life: opening the form, closing it and opening it again
+   costs one metered call, not one per opening. A new reply asks again. */
+const suggested = new Map<string, { title?: string; brief?: string }>();
+
 export function ProjectBridge({
   conversationId,
   messages,
@@ -199,6 +204,7 @@ export function ProjectBridge({
           compact={compact}
           anchor={bar}
           conversationId={conversationId}
+          version={settled}
           initialTitle={state.title || suggestTitle(messages)}
           looseScript={state.looseScript}
           onClose={() => setOpenFor(null)}
@@ -287,6 +293,7 @@ function CreateForm({
   compact,
   anchor,
   conversationId,
+  version,
   initialTitle,
   looseScript,
   onClose,
@@ -297,16 +304,21 @@ function CreateForm({
   /** The bar: the full form hangs under it; the side panel's is placed against it. */
   anchor: React.RefObject<HTMLDivElement | null>;
   conversationId: string;
+  /** How many replies have settled: the suggestion is kept per this. */
+  version: number;
   initialTitle: string;
   looseScript: { id: string; title: string } | null;
   onClose: () => void;
   onMade: (m: Made) => void;
 }) {
   const t = (a: string, b: string) => (zh ? a : b);
-  const [title, setTitle] = React.useState(initialTitle);
-  const [brief, setBrief] = React.useState("");
+  /* Only ever drawn after a press, on the client: the kept suggestion can
+     seed the fields directly. */
+  const [kept] = React.useState(() => suggested.get(`${conversationId}:${version}`) ?? null);
+  const [title, setTitle] = React.useState(kept?.title || initialTitle);
+  const [brief, setBrief] = React.useState(kept?.brief ?? "");
   const [access, setAccess] = React.useState<"everyone" | "private">("everyone");
-  const [suggesting, setSuggesting] = React.useState(true);
+  const [suggesting, setSuggesting] = React.useState(!kept);
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const touched = React.useRef({ title: false, brief: false });
@@ -331,15 +343,22 @@ function CreateForm({
     return () => window.removeEventListener("resize", measure);
   }, [compact, anchor]);
 
-  /* The model's title and brief, once, when the form opens. */
+  /* The model's title and brief, once, when the form opens (or from the
+     last opening, when no reply has landed since). */
   React.useEffect(() => {
     const ctl = new AbortController();
+    const cacheKey = `${conversationId}:${version}`;
+    const fill = (s: { title?: string; brief?: string }) => {
+      if (s.title && !touched.current.title) setTitle(s.title);
+      if (s.brief && !touched.current.brief) setBrief(s.brief);
+    };
+    if (suggested.has(cacheKey)) return;
     fetch("/api/chat/project/suggest", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ conversationId }), signal: ctl.signal })
       .then((r) => (r.ok ? (r.json() as Promise<{ title?: string; brief?: string }>) : null))
       .then((s) => {
         if (!s) return;
-        if (s.title && !touched.current.title) setTitle(s.title);
-        if (s.brief && !touched.current.brief) setBrief(s.brief);
+        suggested.set(cacheKey, { title: s.title, brief: s.brief });
+        fill(s);
       })
       .catch(() => {
         /* The first ask stays as the name, and the brief is the person's to write. */
@@ -348,7 +367,7 @@ function CreateForm({
         if (!ctl.signal.aborted) setSuggesting(false);
       });
     return () => ctl.abort();
-  }, [conversationId]);
+  }, [conversationId, version]);
 
   /* Esc, or a press anywhere but the form and its bar, closes it. */
   React.useEffect(() => {
