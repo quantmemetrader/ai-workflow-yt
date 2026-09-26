@@ -8,7 +8,7 @@ import { Icon, type IconName } from "@/components/ui/Icon";
 import { MentionMenu, type MentionPerson } from "@/components/chat/MentionMenu";
 import { useMentions } from "@/components/chat/useMentions";
 import { AccessPicker } from "@/components/files/AccessPicker";
-import { AGENT_COLORS, AGENT_LABELS, AGENT_TINTS, agentTag, parseAgentMentions, type AgentKey } from "@/lib/agents/catalog";
+import { AGENT_COLORS, AGENT_TINTS, agentTag, parseAgentMentions, type AgentKey } from "@/lib/agents/catalog";
 import { pressCardAction, sendChannelMessage } from "@/app/(app)/chat/actions";
 import { deleteProjectAction, renameProjectAction, setProjectAccessAction, setProjectStatusAction, chooseScriptAction, chooseTopicAction, startFromTopicAction } from "@/app/(app)/projects/actions";
 import { addClipAction, addItemAction, autoEditAction, exportAction } from "@/app/(app)/video/actions";
@@ -311,7 +311,17 @@ export function ProjectScreen({ project: p, zh, people, writing }: { project: Pr
             <span style={{ width: 7, height: 7, borderRadius: 4, flexShrink: 0, background: anyWorking ? "#278f5e" : "#d9d9d9", animation: anyWorking ? "auraPulse 1.6s ease-in-out infinite" : "none" }} />
             <span style={{ fontSize: 11.5, color: "#999999", flexShrink: 0 }}>{t("动态", "Activity")}</span>
             <span style={{ fontSize: 12.5, color: "#525252", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flexGrow: 1 }}>
-              {lastMsg ? `${lastMsg.agent ? (zh ? AGENT_LABELS[lastMsg.agent].nameLocal : AGENT_LABELS[lastMsg.agent].name) : lastMsg.author}：${oneLine(lastMsg.body)}` : t("还没有动静", "Nothing yet")}
+              {/* The author as a name, translate-proof (`AgentName`): read
+                  through Chrome's translate, 撰稿人 is "Writer", not
+                  "Contributor". */}
+              {lastMsg ? (
+                <>
+                  {lastMsg.agent ? <AgentName agent={lastMsg.agent} zh={zh} /> : lastMsg.author}
+                  {`：${oneLine(lastMsg.body)}`}
+                </>
+              ) : (
+                t("还没有动静", "Nothing yet")
+              )}
             </span>
             <span style={{ fontSize: 11.5, color: "#7c7c7c", flexShrink: 0, display: "inline-flex", alignItems: "center", gap: 5 }}>
               <Icon name="chat" size={12} /> {t(`对话 ${p.messages.length}`, `Chat ${p.messages.length}`)}

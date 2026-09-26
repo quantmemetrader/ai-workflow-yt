@@ -24,7 +24,7 @@ import { Fold } from "@/components/ui/Fold";
 import { Icon } from "@/components/ui/Icon";
 import { AgentName, Tr } from "@/components/ui/Tr";
 import { AgentTyping } from "@/components/agents/AgentTyping";
-import { soft } from "@/components/chat/look";
+import { soft, withoutLeadingPictures } from "@/components/chat/look";
 import { SayToAgent } from "@/components/flow/SayToAgent";
 import type { ThreadMessage } from "@/components/home/Echo";
 
@@ -120,10 +120,16 @@ export function HomeScreen({
   const box = React.useRef<HTMLTextAreaElement | null>(null);
   const mentions = useMentions({ people, zh, draft, setDraft, box });
   const [giveTo, setGiveTo] = React.useState<AgentKey | null>(null);
-  /* When each colleague was given work from the 同事 panel. Its row shows it
-     typing (`AgentTyping`) until its reply lands — the last thing it said is
-     newer than this — or the watch below runs out. */
-  const [asked, setAsked] = React.useState<Partial<Record<AgentKey, string>>>({});
+  /* The colleagues given work from the 同事 panel, each with the moment of
+     the last thing it had said then (0: nothing yet). Its row types
+     (`AgentTyping`) until that moves — its reply landed — or the watch below
+     runs out. The mark is the server's own timestamp, not this browser's
+     clock: a machine whose clock runs fast or slow neither ends the typing
+     before the answer nor keeps it going after. */
+  const [asked, setAsked] = React.useState<Partial<Record<AgentKey, number>>>({});
+  /* SayToAgent calls `onDone` after a send and also on Escape; only a send
+     gives the row something to type about. Set by the key that closed it. */
+  const cancelled = React.useRef(false);
   /* Which project the task box sends to: a new one unless one is chosen. */
   const [target, setTarget] = React.useState<string>("new");
   /* The topic 研究员 is checking (or has checked) under the box, if any. */
@@ -134,13 +140,14 @@ export function HomeScreen({
      half, then stop. */
   const [watching, setWatching] = React.useState(false);
   const [sentAt, setSentAt] = React.useState<string | null>(null);
-  const spokeSince = (key: AgentKey, since: string) => {
-    const a = agents.find((x) => x.key === key);
-    return Boolean(a?.at && new Date(a.at).toISOString() > since);
+  /* When a colleague last spoke, as the server has it (0: never). */
+  const lastSpoke = (key: AgentKey) => {
+    const at = agents.find((x) => x.key === key)?.at;
+    return at ? new Date(at).getTime() : 0;
   };
   const waitingOn = (key: AgentKey) => {
-    const since = asked[key];
-    return watching && since !== undefined && !spokeSince(key, since);
+    const before = asked[key];
+    return watching && before !== undefined && lastSpoke(key) <= before;
   };
   /* Settled once somebody answered in the thread and every colleague given
      work from the panel has spoken since. */
@@ -152,6 +159,9 @@ export function HomeScreen({
       if (Date.now() >= until) {
         clearInterval(id);
         setWatching(false);
+        /* A colleague that never answered stops typing for good, rather
+           than again at the next press that starts a watch. */
+        setAsked({});
         return;
       }
       router.refresh();
@@ -514,7 +524,9 @@ export function HomeScreen({
                     </div>
                   ) : (
                     <div title={a.line ?? undefined} style={{ fontSize: 12, color: a.line ? "#7c7c7c" : "#c7c7c7", marginTop: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                      {a.line ? trim(a.line, 90) : t("还没说过话", "Has not spoken yet")}
+                      {/* Without the picture an employee opens with (the
+                          plan's clipboard): the product draws no emoji. */}
+                      {a.line ? trim(withoutLeadingPictures(a.line), 90) : t("还没说过话", "Has not spoken yet")}
                     </div>
                   )}
                 </div>
@@ -530,17 +542,31 @@ export function HomeScreen({
                 </button>
               </div>
               {on ? (
-                <div style={{ marginTop: 8 }}>
+                <div
+                  style={{ marginTop: 8 }}
+                  /* Which way the box is closing: Escape (nothing sent) or
+                     a send, by Enter or by the button. */
+                  onKeyDownCapture={(e) => {
+                    cancelled.current = e.key === "Escape";
+                  }}
+                  onPointerDownCapture={() => {
+                    cancelled.current = false;
+                  }}
+                >
                   <SayToAgent
                     agent={a.key}
                     zh={zh}
                     onDone={() => {
-                      const now = new Date().toISOString();
-                      setAsked((m) => ({ ...m, [a.key]: now }));
-                      setSentAt(now);
-                      setWatching(true);
-                      /* The box closes; the row types until the answer. */
+                      /* The box closes either way. */
                       setGiveTo(null);
+                      if (cancelled.current) {
+                        cancelled.current = false;
+                        return;
+                      }
+                      /* Sent: the row types until the answer lands. */
+                      setAsked((m) => ({ ...m, [a.key]: lastSpoke(a.key) }));
+                      setSentAt(new Date().toISOString());
+                      setWatching(true);
                     }}
                   />
                 </div>

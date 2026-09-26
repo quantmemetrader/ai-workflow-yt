@@ -54,9 +54,12 @@ html.translated-rtl .tr-en { display: inline; }
 .agent-typing.sm { gap: 7px; }
 .agent-typing.sm .agent-typing-pill { height: 24px; padding: 0 10px; gap: 6px; font-size: 12px; }
 .agent-typing-name { font-weight: 600; }
-/* Its own line height: at the pill's 1, overflow: hidden cut the tails
-   off "Typing" and "Writing" in a translated page. */
-.agent-typing-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; line-height: 1.45; }
+/* Its own line height, with room below the baseline: the label clips
+   (overflow: hidden, for the ellipsis), and the app's Latin face is as deep
+   as it is tall, so at 1 — and still at 1.45 — the tails of "Typing",
+   "Looking things up" and "Rendering" were cut off in a translated page.
+   1.75 of 12px is 21px, inside the small pill's 24. */
+.agent-typing-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; line-height: 1.75; }
 .agent-typing-dots { display: inline-flex; align-items: center; gap: 3px; flex-shrink: 0; }
 .agent-typing-dots i { display: block; width: 4px; height: 4px; border-radius: 50%; background: currentColor; opacity: .25; animation: agentTypingDot 1.2s ease-in-out infinite; }
 .agent-typing-dots i:nth-child(2) { animation-delay: .15s; }
