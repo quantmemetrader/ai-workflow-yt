@@ -76,6 +76,12 @@ export function ProjectScreen({
   const [aiVoice, setAiVoice] = React.useState(false);
   const [voiceId, setVoiceId] = React.useState(p.narration?.voiceId?.replace(/@.*$/, "") || voices.find((v) => v.lang === "zh")?.id || DEFAULT_VOICE_ZH);
   const hasNarration = p.beats.some((b) => b.voiceover.trim().length > 0);
+  /* The AI 配音 box is for footage nobody speaks in (stock shots, a script-only
+     project) — the owner: "show it only on the ones that actually don't have
+     spoken audio". Speech found by transcription (caption lines exist for the
+     clips) hides it; a narration already made keeps it, so it can be changed. */
+  const footageSpeaks = (p.video?.clips ?? 0) > 0 && (p.video?.captions?.length ?? 0) > 0;
+  const showVoiceBox = Boolean(p.narration) || !footageSpeaks;
   const oneGoBody = (extra: Record<string, unknown> = {}) =>
     JSON.stringify({ prompt: videoPrompt, narrate: aiVoice ? "on" : "auto", voiceId, ...extra });
   const [busyAction, setBusyAction] = React.useState<string | null>(null);
@@ -790,6 +796,7 @@ export function ProjectScreen({
                   </div>
                 ) : null
               ) : null}
+              {showVoiceBox ? (<>
               {/* AI 配音: the script's 旁白 read by one of the studio's voices, the cut timed to it. */}
               <div style={{ padding: "10px 12px", borderRadius: 12, border: "1px solid #ececec", background: aiVoice ? "#fafafa" : "#ffffff", marginBottom: 10 }}>
                 <label style={{ display: "flex", alignItems: "flex-start", gap: 9, cursor: hasNarration ? "pointer" : "default" }}>
@@ -813,6 +820,7 @@ export function ProjectScreen({
                   </div>
                 ) : null}
               </div>
+              </>) : null}
               <textarea value={videoPrompt} onChange={(e) => setVideoPrompt(e.target.value)} rows={3} placeholder={t("描述你要的成片：长度、节奏、画面、字幕…", "Describe the video: length, pace, shots, captions…")} style={{ width: "100%", border: "1px solid #e2e2e2", borderRadius: 10, padding: "9px 11px", fontFamily: "inherit", fontSize: 13, lineHeight: 1.55, resize: "vertical", outline: "none", boxSizing: "border-box" }} />
               {/* Held while the director or a render runs, each saying what
                   is running, so nobody starts a second film over the first. */}
