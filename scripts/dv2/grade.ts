@@ -6,6 +6,7 @@
  *     scripts/dv2/grade.ts --input <run>/grade-input.json --out /tmp/dv2_lab/W7/rNN \
  *       [--gold /tmp/dv2_lab/fixture/zhengliu.gold.json] [--prev /tmp/dv2_lab/W7/rMM/report.json] \
  *       [--skip whisper,face,vision,frames,scene] [--max-frames 150] [--concurrency 8] [--label rNN]
+ *       [--fonts-dir <dir>]   (default <cwd>/remotion/public/fonts, as render.ts)
  *
  *   # the v1 baseline, straight from the fixture and W5's `renderTimeline` output:
  *     scripts/dv2/grade.ts --v1 --fixture /tmp/dv2_lab/fixture/zhengliu.json --mp4 /tmp/dv2_lab/W5/a_v1.mp4 \
@@ -129,8 +130,13 @@ const CONCURRENCY = Number(arg("--concurrency", "8")) || 8;
 const FACE_PYTHON = process.env.FACE_PYTHON || "/home/ubuntu/.venvs/dv2face/bin/python";
 const FACE_SCRIPT = arg("--face-script", process.env.FACE_SCRIPT || "");
 const CACHE = arg("--cache", path.join(path.dirname(OUT), "cache"));
-/** The renderer's own font folder, when it passes one to libass (the default is fontconfig's system fonts). */
-const FONTS_DIR = arg("--fonts-dir", "");
+/**
+ * The font folder the export render hands libass (`render.ts` FONTS_DIR:
+ * `<cwd>/remotion/public/fonts`, where the Black OTF lives — it is not a
+ * system font on the box). The font check must look where the renderer
+ * looks, or it reports a fallback the render never had.
+ */
+const FONTS_DIR = arg("--fonts-dir", path.join(process.cwd(), "remotion", "public", "fonts"));
 
 const exists = async (p: string) => Boolean(await stat(p).catch(() => null));
 const fmt = (ms: number) => `${Math.floor(ms / 60000)}:${String(Math.floor((ms % 60000) / 1000)).padStart(2, "0")}.${String(Math.floor((ms % 1000) / 100))}`;
@@ -562,7 +568,7 @@ async function main() {
   const ass = input.assFile && (await exists(input.assFile)) ? parseAss(await readFile(input.assFile, "utf8")) : null;
   const fonts: FontSelect | null =
     ass && input.assFile
-      ? await timed("fontselect", () => measureFontSelect(input.assFile!, ass, { fontsDir: FONTS_DIR || null })).catch((err) => {
+      ? await timed("fontselect", async () => measureFontSelect(input.assFile!, ass, { fontsDir: (await exists(FONTS_DIR)) ? FONTS_DIR : null })).catch((err) => {
           console.warn(`  fontselect failed: ${err instanceof Error ? err.message : String(err)}`);
           return null;
         })
