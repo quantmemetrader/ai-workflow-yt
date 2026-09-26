@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import { BOOT_SCRIPT } from "@/lib/client/boot";
 
 /**
  * What the site says about itself to a browser tab, a bookmark, a shared
@@ -51,6 +52,11 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="zh-Hans-CN">
+      <head>
+        {/* Before any bundle: survive Chrome's translate rewriting the page,
+            reload once on a script from an older deploy, report the rest. */}
+        <script dangerouslySetInnerHTML={{ __html: BOOT_SCRIPT }} />
+      </head>
       <body>
         {children}
         {/* Desktop only until the next release: the editor, timeline and

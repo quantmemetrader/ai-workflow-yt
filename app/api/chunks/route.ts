@@ -1,4 +1,4 @@
-import { readdir } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 
 /**
@@ -19,13 +19,28 @@ let cached: string[] | null = null;
 
 async function list(): Promise<string[]> {
   if (cached) return cached;
-  const dir = path.join(process.cwd(), ".next", "static", "chunks");
+  // A release carries its own build's list (scripts/stage-release.sh): its
+  // chunks folder also holds older builds' scripts, kept for tabs opened
+  // before a deploy, and warming those would be wasted bandwidth.
   try {
-    const names = await readdir(dir);
-    cached = names.filter((n) => n.endsWith(".js") || n.endsWith(".css")).map((n) => `/_next/static/chunks/${n}`);
+    const own = JSON.parse(await readFile(path.join(process.cwd(), "chunks.json"), "utf8")) as unknown;
+    if (Array.isArray(own)) {
+      cached = own.filter((x): x is string => typeof x === "string");
+      return cached;
+    }
   } catch {
-    cached = [];
+    // Not a release (a plain `next start`): read the folder.
   }
+  for (const dist of [".next-build", ".next"]) {
+    try {
+      const names = await readdir(path.join(process.cwd(), dist, "static", "chunks"));
+      cached = names.filter((n) => n.endsWith(".js") || n.endsWith(".css")).map((n) => `/_next/static/chunks/${n}`);
+      return cached;
+    } catch {
+      // try the next place
+    }
+  }
+  cached = [];
   return cached;
 }
 

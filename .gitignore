@@ -40,3 +40,8 @@ remotion/.stills
 /image.png
 /image copy.png
 /image copy 2.png
+
+# build output and deploy releases (scripts/stage-release.sh)
+/.next-build/
+/releases/
+/static-archive/

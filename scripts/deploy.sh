@@ -17,12 +17,16 @@ npx tsc --noEmit
 npm run smoke
 
 echo "==> build"
-npm run build
+# Into .next-build, never where the live server reads (next.config.ts
+# distDir), with an id per deploy for Next's skew protection.
+release="$(date -u +%Y%m%d%H%M%S)-$(git rev-parse --short HEAD)"
+NEXT_DEPLOYMENT_ID="$release" npx next build
 
-# Staging now happens in the `postbuild` script, so that a plain `npm run build`
-# also leaves a complete standalone tree. It used not to, and a stray build
-# after a deploy quietly emptied public/ — which took out every design-only
-# module page until the next deploy.
+echo "==> stage release ${release}"
+# Moves the build into releases/<id>, keeps every older script an open tab
+# may still ask for, and points .next/standalone at the new release in one
+# rename. See the script for why.
+bash scripts/stage-release.sh "$release"
 
 mkdir -p logs
 

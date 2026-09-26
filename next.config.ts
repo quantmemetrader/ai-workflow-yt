@@ -33,6 +33,25 @@ const nextConfig: NextConfig = {
    */
   ...(process.env.VERCEL ? {} : { output: "standalone" as const }),
 
+  /*
+   * Builds never write where the live server reads.
+   *
+   * `next build` used to rebuild .next in place while pm2 was serving from
+   * .next/standalone: for the minute a deploy took, pages read half-written
+   * manifests, and every build deleted the scripts open tabs still needed.
+   * Builds now go to .next-build; scripts/stage-release.sh moves the result
+   * into releases/<id> and points .next/standalone at it in one rename.
+   */
+  distDir: process.env.NEXT_DIST_DIR || (process.env.VERCEL ? ".next" : ".next-build"),
+
+  /*
+   * Skew protection. Each deploy gets its own id (scripts/deploy.sh); a tab
+   * still running the previous build notices the mismatch on its next
+   * navigation and does a full load of the new build instead of failing on
+   * a script that no longer matches.
+   */
+  ...(process.env.NEXT_DEPLOYMENT_ID ? { deploymentId: process.env.NEXT_DEPLOYMENT_ID } : {}),
+
   async rewrites() {
     return {
       beforeFiles: [

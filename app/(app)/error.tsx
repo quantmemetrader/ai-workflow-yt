@@ -24,6 +24,12 @@ export default function AppError({
 }) {
   useEffect(() => {
     console.error("[app] render failed", error);
+    const aura = (window as Window & { __aura?: { report: (k: string, m: string, s?: string, d?: string) => void; stale: (m: string) => boolean; reloadOnce: () => boolean } }).__aura;
+    const message = error?.message ?? "";
+    aura?.report("boundary", message, error?.stack, error?.digest);
+    // A tab from before a deploy, or a page the translate extension rewrote:
+    // one reload fixes both, so do it rather than ask.
+    if (aura && (aura.stale(message) || /NotFoundError|removeChild|insertBefore/.test(message))) aura.reloadOnce();
   }, [error]);
 
   return (

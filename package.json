@@ -22,7 +22,7 @@
     "db:reset": "node --env-file=.env.local --dns-result-order=ipv4first --conditions=react-server --import tsx scripts/reset-tenant.ts",
     "db:add-user": "node --env-file=.env.local --dns-result-order=ipv4first --conditions=react-server --import tsx scripts/add-user.ts",
     "db:backup": "bash scripts/backup-db.sh",
-    "postbuild": "test -d .next/standalone && rm -rf .next/standalone/public .next/standalone/.next/static && cp -r public .next/standalone/public && cp -r .next/static .next/standalone/.next/static || echo 'no standalone output (Vercel builds its own); nothing to stage'",
+    "postbuild": "test -d .next-build/standalone && rm -rf .next-build/standalone/public .next-build/standalone/.next-build/static && cp -r public .next-build/standalone/public && cp -r .next-build/static .next-build/standalone/.next-build/static || echo 'no standalone output in .next-build (Vercel builds its own); nothing to stage'",
     "deploy:vercel": "bash scripts/deploy-vercel.sh"
   },
   "dependencies": {
