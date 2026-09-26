@@ -12,6 +12,7 @@ import { pressCardAction, sendChannelMessage } from "@/app/(app)/chat/actions";
 import { ProjectChats, ProjectProgress } from "@/components/home/ProjectHub";
 import { SuggestionCard, type TodaySuggestion } from "@/components/home/Suggestion";
 import { IdeasPanel, IDEAS_CSS } from "@/components/home/IdeasPanel";
+import { TitleCheckCard, TITLE_CHECK_CSS, type CheckAsk } from "@/components/home/TitleCheckCard";
 import { DetailLink, DETAIL_LINK_CSS } from "@/components/home/DetailLink";
 import { RoleExtraPanel, RoleTabs, ROLE_TABS_CSS } from "@/components/home/RolePanels";
 import type { ProjectDetail } from "@/lib/projects/service";
@@ -113,6 +114,8 @@ export function HomeScreen({
   const [giveTo, setGiveTo] = React.useState<AgentKey | null>(null);
   /* Which project the task box sends to: a new one unless one is chosen. */
   const [target, setTarget] = React.useState<string>("new");
+  /* The topic 研究员 is checking (or has checked) under the box, if any. */
+  const [checkAsk, setCheckAsk] = React.useState<CheckAsk | null>(null);
 
   /* After something is said, the answer comes from a model call that ends
      after the request returns. Refresh every few seconds for a minute and a
@@ -157,25 +160,53 @@ export function HomeScreen({
   const said = (text: string) => AGENT_KEYS.reduce((rest, k) => rest.split(agentTag(k)).join(""), text).trim();
   const ready = said(draft).length > 0;
 
-  /* The task box starts a project (or adds to one). A new project is
-     offered, not opened — "打开项目" or "留在首页" — because somebody
-     handing out three tasks in a row wants to stay here; adding to an
-     existing one still goes there, where the answer will appear. */
-  function startWork(body: string) {
+  /* Research before the script. A new project whose text does not hand the
+     work to 编剧, 剪辑师 or 撰稿人 by name (研究员 tagged, 策划, or nobody)
+     goes to 研究员 for a title check first (`TitleCheckCard`); the project
+     is made from the card, with the researched title or as typed. Naming
+     one of the three keeps the box's old behaviour: the work starts at once,
+     and a quiet line under the box offers the check anyway. */
+  const writesNow = (text: string) => parseAgentMentions(text).some((k) => k === "script" || k === "video" || k === "article");
+  const researchFirst = target === "new" && !writesNow(draft);
+  const offerCheck = target === "new" && ready && parseAgentMentions(draft).some((k) => k === "script" || k === "article");
+
+  function askResearcher(body: string) {
     const text = body.trim();
     if (!said(text)) return;
     setError(null);
+    setCreated(null);
+    setCheckAsk({ original: text, text: trim(said(text), 200), nonce: Date.now() });
+    setDraft(seed);
+  }
+
+  /* A new project from the words as typed: the box's own start, and the
+     card's "直接开项目". Offered, not opened — "打开项目" or "留在首页" —
+     because somebody handing out three tasks in a row wants to stay here. */
+  async function startNew(text: string): Promise<boolean> {
+    const r = await startProjectAction({ message: text });
+    if ("error" in r && r.error) {
+      setError(r.error);
+      return false;
+    }
+    if ("id" in r && r.id) setCreated({ id: r.id, what: trim(said(text), 40), tagged: parseAgentMentions(text).length > 0 });
+    /* The new project in the lists and the sidebar, without leaving. */
+    router.refresh();
+    return true;
+  }
+
+  /* The task box starts a project (or adds to one); adding to an existing
+     one still goes there, where the answer will appear. */
+  function startWork(body: string) {
+    const text = body.trim();
+    if (!said(text)) return;
+    if (target === "new" && !writesNow(text)) {
+      askResearcher(text);
+      return;
+    }
+    setError(null);
     start(async () => {
       if (target === "new") {
-        const r = await startProjectAction({ message: text });
-        if ("error" in r && r.error) {
-          setError(r.error);
-          return;
-        }
-        setDraft(seed);
-        if ("id" in r && r.id) setCreated({ id: r.id, what: trim(said(text), 40), tagged: parseAgentMentions(text).length > 0 });
-        /* The new project in the lists and the sidebar, without leaving. */
-        router.refresh();
+        if (await startNew(text)) setDraft(seed);
         return;
       }
       const p = projects.find((x) => x.id === target);
@@ -225,7 +256,7 @@ export function HomeScreen({
               startWork(draft);
             }
           }}
-          placeholder={t("想做什么？例如：@编剧 把 RWA 这条写成 60 秒竖版", "What do you want made? e.g. @writer make the RWA piece a 60s vertical")}
+          placeholder={t("想做什么题？写下来，研究员先查热榜和对标；想直接写就 @编剧", "What topic? The researcher checks the lists and rivals first; tag @writer to go straight to the script")}
           style={{ width: "100%", border: 0, outline: "none", resize: "none", fontSize: 14.5, lineHeight: 1.6, fontFamily: "inherit", letterSpacing: "inherit", color: "#171717", background: "transparent" }}
         />
         <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginTop: 6 }}>
@@ -276,7 +307,21 @@ export function HomeScreen({
           </button>
         </div>
       </div>
+      {/* One quiet line on where 开工 sends a new topic, or, when the text
+          names the writer, the offer to have it checked first. */}
+      {offerCheck ? (
+        <button type="button" className="hc-hint" onClick={() => askResearcher(draft)}>
+          <AgentIcon agent="research" size={14} radius={4} />
+          {t("先让研究员看看标题？", "Have the researcher check the title first?")}
+        </button>
+      ) : researchFirst && ready ? (
+        <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 6, padding: "0 2px", fontSize: 12, color: "#8a8a8a" }}>
+          <AgentIcon agent="research" size={14} radius={4} />
+          {t("开工后研究员先查这个题的热度和对标，再决定写不写脚本", "Start sends it to the researcher first: heat and rivals, then you decide on the script")}
+        </div>
+      ) : null}
       {error ? <div style={{ fontSize: 12.5, color: "#e03636", marginTop: 6 }}>{error}</div> : null}
+      {checkAsk ? <TitleCheckCard key={checkAsk.nonce} zh={zh} ask={checkAsk} canWrite={can("script")} onDirect={startNew} onClose={() => setCheckAsk(null)} /> : null}
       {created ? (
         <div role="status" style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 8, padding: "9px 12px", border: "1px solid #cbe9d8", borderRadius: 12, background: "#f1faf5", flexWrap: "wrap" }}>
           <Icon name="check" size={15} color="#1e7a4f" strokeWidth={2.2} />
@@ -424,7 +469,7 @@ export function HomeScreen({
 
   return (
     <div style={{ flexGrow: 1, minWidth: 0, minHeight: 0, overflowY: "auto", ...PAPER }}>
-      <style dangerouslySetInnerHTML={{ __html: `${DETAIL_LINK_CSS}${IDEAS_CSS}${ROLE_TABS_CSS} .home-all:hover { color: #171717 !important; }` }} />
+      <style dangerouslySetInnerHTML={{ __html: `${DETAIL_LINK_CSS}${IDEAS_CSS}${TITLE_CHECK_CSS}${ROLE_TABS_CSS} .home-all:hover { color: #171717 !important; }` }} />
       <div style={{ maxWidth: 1240, margin: "0 auto", padding: "22px 24px 48px", display: "flex", flexDirection: "column", gap: 14 }}>
         <div>
           <h1 style={{ fontSize: 22, fontWeight: 600, margin: 0, letterSpacing: "-0.01em" }}>{t(`${greeting(zh)}，${me}`, `${greeting(zh)}, ${me}`)}</h1>
