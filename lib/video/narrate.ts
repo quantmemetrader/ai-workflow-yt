@@ -10,7 +10,7 @@ import { hasUsableAudio } from "@/lib/video/tts/audio";
 import { hanPerLine, narrationCaptionLines } from "@/lib/video/tts/captions";
 import { narrationFromBeats } from "@/lib/video/tts/split";
 import type { TimedSentence } from "@/lib/video/tts/types";
-import { DEFAULT_VOICE_EN, DEFAULT_VOICE_ZH, parseVoiceId, voiceLabel, voiceLanguage } from "@/lib/video/tts/voices";
+import { DEFAULT_VOICE_EN, DEFAULT_VOICE_ZH, parseVoiceId, voiceCanRead, voiceLabel, voiceLanguage } from "@/lib/video/tts/voices";
 
 /**
  * A video whose words are a generated narration, not what was filmed.
@@ -106,7 +106,14 @@ export async function narratedCut(
   if (!input.footage.length) throw new Error("There is no footage in the bin to lay under the narration.");
 
   const han = /[一-鿿]/.test(narration.text);
-  const voiceId = input.voiceId && parseVoiceId(input.voiceId) ? input.voiceId : han ? DEFAULT_VOICE_ZH : DEFAULT_VOICE_EN;
+  let voiceId = input.voiceId && parseVoiceId(input.voiceId) ? input.voiceId : han ? DEFAULT_VOICE_ZH : DEFAULT_VOICE_EN;
+  /* An English voice picked for a Chinese script would say "Chinese letter"
+     for every character (`voiceCanRead`). The director is not stopped for
+     that: it reads the script in the Mandarin default and says so. */
+  if (!voiceCanRead(voiceId, narration.text)) {
+    await input.say("voice", `${voiceLabel(voiceId, false)} cannot read Chinese, so the narration is read by ${voiceLabel(DEFAULT_VOICE_ZH, false)}`);
+    voiceId = DEFAULT_VOICE_ZH;
+  }
   const name = voiceLabel(voiceId, true);
 
   /* ---- 1. voice --------------------------------------------------- */

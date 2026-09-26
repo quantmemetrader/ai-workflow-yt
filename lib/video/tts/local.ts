@@ -72,7 +72,12 @@ export const localProvider: TtsProvider = {
 
 function run(args: string[], stdin: string): Promise<string> {
   return new Promise((resolve, reject) => {
-    const child = spawn(PYTHON, args, {
+    /* turbopackIgnore: this module is reached from pages and routes, and a
+       spawn of a path Turbopack cannot resolve made `next build` trace the
+       whole repository into .next/standalone (232 MB of source, PDFs and
+       logs beside server.js). The interpreter lives in /opt/tts, outside
+       the build, so there is nothing here for it to trace. */
+    const child = spawn(/*turbopackIgnore: true*/ PYTHON, args, {
       stdio: ["pipe", "pipe", "pipe"],
       env: {
         ...process.env,

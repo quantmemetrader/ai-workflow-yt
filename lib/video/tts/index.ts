@@ -10,7 +10,7 @@ import { splitNarration } from "./split";
 import type { SpeakSentence, TimedSentence, TtsProvider, UiVoice } from "./types";
 
 export type { UiVoice } from "./types";
-import { LOCAL_VOICES, SAMPLE_LINE, baseVoiceId, parseVoiceId, type CatalogVoice } from "./voices";
+import { CANNOT_READ_CHINESE, LOCAL_VOICES, SAMPLE_LINE, baseVoiceId, parseVoiceId, voiceCanRead, type CatalogVoice } from "./voices";
 
 /**
  * Text to speech for the studio: one entry point, whichever engine speaks.
@@ -70,6 +70,7 @@ export async function narrate(input: { text?: string; sentences?: SpeakSentence[
   if (!parsed) throw new TtsError(`Not a voice this studio knows: ${input.voiceId}`);
   const sentences = input.sentences ?? splitNarration(input.text ?? "");
   if (!sentences.length) throw new TtsError("There is nothing to say");
+  if (!voiceCanRead(input.voiceId, sentences.map((s) => s.text).join(""))) throw new TtsError(CANNOT_READ_CHINESE);
 
   const found = await providerFor(input.voiceId);
   if (!found.ok) throw new TtsError(found.reason);

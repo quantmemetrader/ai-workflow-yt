@@ -819,3 +819,38 @@ longer needs `=1` to be on).
 echo "模型蒸馏，就是让一个小模型向大模型学习。" | \
   /opt/tts/venv/bin/python /opt/tts/speak.py --voice zf_086 --out /tmp/a.mp3 --loudnorm
 ```
+
+### Review (2026-09-26)
+
+- **Numbers in Mandarin were read wrong.** misaki hands digits to cn2an,
+  which took "GPT-4" for minus four ("GPT 负四"; Whisper heard "GPT-FOOS"),
+  read "RTX 4090" as a quantity (四千零九十), "1,000" as "一，零" and
+  "10:30" with a clause break in it. `speak.py` now rewrites what the G2P
+  reads (`speakable_zh`: 名字-数字 is a space, a range is 到, a long number
+  after a name is said digit by digit, 1,000 loses its comma, 10:30 is
+  10点30, 16:9 is 16比9) while the captions keep the text as written;
+  "GPT-4" and "1,000,000" are one caption word each. Re-measured on two new
+  paragraphs with 2026年 / GPT-4 / RTX 4090 / 70亿 / 300万 / 90%, four
+  voices: CER 0–1.2%, every term heard right. `speak.py` lives in
+  `/opt/tts` (md5 in its README), not in this repo.
+- **An English voice cannot read Chinese.** Handed Han characters, Kokoro's
+  English voices say "Chinese letter" for each one. The editor now refuses
+  that pair before anything is queued (`voiceCanRead`), and the director
+  reads a Chinese script in the Mandarin default instead, saying so in its
+  log. The Mandarin voices read English cleanly, so that direction is kept.
+- **Music now ducks under a narration.** The render keyed the ducking on
+  the footage's own sound, which a narrated cut mutes, so a music bed with
+  "duck under speech" stayed at full level under the voice. Voice-over
+  tracks now join the key.
+- **`next build` traced the whole repository.** `lib/video/tts/local.ts` is
+  reached from pages and routes, and its spawn of `/opt/tts/venv/bin/python`
+  made Turbopack copy every file of the project into `.next/standalone`
+  (232 MB of source, PDFs and logs beside `server.js`). The spawn is now
+  marked `turbopackIgnore`.
+- A refused voice-over (an English voice for Chinese text) no longer
+  empties the text box; it is cleared only once the voice-over is queued.
+- Checked and left as is: sentence starts sit within ~50 ms of where the
+  voice comes out of silence; a narration file lands at about -17 LUFS
+  (linear levelling stops at the -1.5 dBTP ceiling) and the render's own
+  pass takes the mix to -16; two voice-overs at once run at about 5 cores
+  and 2.5 GB each, 62–64 s for a 1,149-character script each (40 s alone).

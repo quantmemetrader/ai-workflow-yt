@@ -817,7 +817,7 @@ export function VideoScreen({
                 onAddMusic={(fileId, gain) => run(() => addMusicAction(project.id, fileId, gain))}
                 onUpdate={(trackId, input) => edit(() => updateTrackAction(trackId, input))}
                 onRemove={(trackId) => edit(() => removeTrackAction(trackId))}
-                onSpeak={(input) => run(() => voiceOverAction(project.id, input))}
+                onSpeak={(input, done) => run(() => voiceOverAction(project.id, input), done)}
                 onCaption={(trackId) => edit(() => captionsFromTrackAction(trackId))}
               />
 
@@ -2180,7 +2180,8 @@ function AudioTracks({
   onAddMusic: (fileId: string, gain: number) => void;
   onUpdate: (trackId: string, input: { gain?: number; startMs?: number; duckUnderSpeech?: boolean }) => void;
   onRemove: (trackId: string) => void;
-  onSpeak: (input: { text: string; voiceId: string; label: string; startMs: number; gain: number }) => void;
+  /** `done` runs only when the voice-over was accepted, so a refused one keeps its text. */
+  onSpeak: (input: { text: string; voiceId: string; label: string; startMs: number; gain: number }, done?: () => void) => void;
   onCaption: (trackId: string) => void;
 }) {
   const t = (en: string, cn: string) => (zh ? cn : en);
@@ -2366,8 +2367,9 @@ function AudioTracks({
                   label: script.trim().replace(/\s+/g, " ").slice(0, 40),
                   startMs: 0,
                   gain: 1,
-                });
-                setScript("");
+                }, () => setScript(""));
+                // Cleared only once it is accepted: a refusal (an English voice
+                // for Chinese text, say) used to throw the typed script away.
               }}
               style={{ ...solid, opacity: busy || !script.trim() ? 0.45 : 1 }}
             >

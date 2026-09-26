@@ -477,7 +477,7 @@ export async function renderExport(exportId: string): Promise<{ fileId: string; 
       .leftJoin(files, eq(files.id, audioTracks.fileId))
       .where(and(eq(audioTracks.projectId, e.projectId), eq(audioTracks.state, "ready")));
 
-    const usable: { path: string; startMs: number; gain: number; duck: boolean }[] = [];
+    const usable: { path: string; startMs: number; gain: number; duck: boolean; speech: boolean }[] = [];
     for (const [i, entry] of tracks.entries()) {
       if (!entry.key) continue;
       const local = path.join(dir, `audio-${i}${path.extname(entry.key) || ".mp3"}`);
@@ -487,6 +487,8 @@ export async function renderExport(exportId: string): Promise<{ fileId: string; 
         startMs: entry.t.startMs,
         gain: entry.t.gain,
         duck: entry.t.duckUnderSpeech,
+        // A voice-over is speech: music that ducks under speech ducks under it.
+        speech: entry.t.kind === "voiceover" && !entry.t.duckUnderSpeech,
       });
     }
 
@@ -782,7 +784,8 @@ function buildArgs(input: {
   brolls: BrollSpec[];
   accent?: string;
   punches: PunchSpec[];
-  tracks: { path: string; startMs: number; gain: number; duck: boolean }[];
+  /** `speech`: a voice-over, which keys the ducking the way filmed speech does. */
+  tracks: { path: string; startMs: number; gain: number; duck: boolean; speech?: boolean }[];
   size: { w: number; h: number };
   out: string;
 }): string[] {
@@ -861,9 +864,20 @@ function buildArgs(input: {
       // Everything that ducks is folded together, pushed under the footage's
       // own sound, and only then mixed back with it.
       const duckers = tracks.map((t, i) => (t.duck ? `[a${i}]` : null)).filter(Boolean) as string[];
-      const straight = tracks.map((t, i) => (t.duck ? null : `[a${i}]`)).filter(Boolean) as string[];
+      /* A voice-over is speech too. Under a narration the footage is muted
+         (`options.mute`, lib/video/narrate.ts), so a key made of the footage
+         alone is silence and the music never ducked under the voice. Each
+         voice-over is split: one copy into the mix, one into the key. */
+      const speech = tracks.map((t, i) => (!t.duck && t.speech ? i : -1)).filter((i) => i >= 0);
+      for (const i of speech) audio.push(`[a${i}]asplit=2[a${i}m][a${i}k]`);
+      const straight = tracks.map((t, i) => (t.duck ? null : speech.includes(i) ? `[a${i}m]` : `[a${i}]`)).filter(Boolean) as string[];
       audio.push(`${duckers.join("")}amix=inputs=${duckers.length}:normalize=0[bed]`);
-      audio.push(`${audioLabel}asplit=2[spk][key]`);
+      if (speech.length) {
+        audio.push(`${audioLabel}asplit=2[spk][keyfoot]`);
+        audio.push(`[keyfoot]${speech.map((i) => `[a${i}k]`).join("")}amix=inputs=${1 + speech.length}:duration=first:normalize=0[key]`);
+      } else {
+        audio.push(`${audioLabel}asplit=2[spk][key]`);
+      }
       audio.push(`[bed][key]sidechaincompress=threshold=0.05:ratio=8:attack=20:release=400[bedducked]`);
       audio.push(`[spk][bedducked]${straight.join("")}amix=inputs=${2 + straight.length}:duration=first:normalize=0[aout]`);
     } else {

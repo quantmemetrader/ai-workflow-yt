@@ -64,7 +64,7 @@ export async function oneGo(
     : [];
   const narration = narrate === "off" ? null : narrationOf(beats);
   if (narrate === "on" && !narration) {
-    return { ok: false, error: "脚本里还没有旁白，没法配音。先写好脚本的旁白（VO），或者关掉 AI 配音。", status: 400 };
+    return { ok: false, error: "脚本里还没有旁白，没法配音。先写好脚本的旁白（VO），或者关掉 AI 配音。The script has no narration (VO) to voice yet: write it first, or turn AI voice-over off.", status: 400 };
   }
   /* The director reads the script through the video project; a project whose
      cut was never tied to its script is tied now, or the narration has

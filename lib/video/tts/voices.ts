@@ -207,6 +207,25 @@ export function voiceLabel(raw: string | null | undefined, zh: boolean, extra: {
   return other?.name ?? p.engineVoice;
 }
 
+/**
+ * Whether a voice can read this text at all.
+ *
+ * Kokoro's English voices have no Chinese: handed Han characters, the English
+ * G2P falls back to espeak, which says "Chinese letter" for every one of them
+ * (measured: that is exactly what Whisper heard back). The Mandarin voices
+ * read English words through the English G2P and do it cleanly, so only this
+ * one direction is refused. ElevenLabs' voices are multilingual.
+ */
+export function voiceCanRead(raw: string | null | undefined, text: string): boolean {
+  const p = parseVoiceId(raw);
+  if (!p || p.provider !== "local") return true;
+  const lang = p.voice?.lang ?? (p.engineVoice.startsWith("z") ? "zh" : "en");
+  return lang === "zh" || !/[㐀-鿿豈-﫿]/.test(text);
+}
+
+/** What a person is told when they pick an English voice for Chinese text. */
+export const CANNOT_READ_CHINESE = "英文声音读不了中文，请选一个中文声音。This English voice cannot read Chinese; choose a Mandarin voice.";
+
 /** Which language a voice reads, so captions are filed under the right one. */
 export function voiceLanguage(raw: string | null | undefined): "zh" | "en" {
   const p = parseVoiceId(raw);

@@ -28,7 +28,7 @@ import { probe } from "@/lib/files/poster";
 import { isIconName, isPlacement } from "@/lib/video/icons";
 import type { DirectorState } from "@/lib/video/director";
 import { providerFor } from "@/lib/video/tts";
-import { parseVoiceId, voiceLanguage } from "@/lib/video/tts/voices";
+import { CANNOT_READ_CHINESE, parseVoiceId, voiceCanRead, voiceLanguage } from "@/lib/video/tts/voices";
 import { hanPerLine, narrationCaptionLines } from "@/lib/video/tts/captions";
 import { trackTimings } from "@/lib/video/voiceover";
 
@@ -1655,6 +1655,7 @@ export async function requestVoiceOver(
     throw new Error("配音已关闭（VOICEOVER_ENABLED=0）。Voice-over is switched off on this deployment.");
   }
   if (!parseVoiceId(input.voiceId)) throw new Error("Choose a voice");
+  if (!voiceCanRead(input.voiceId, text)) throw new Error(CANNOT_READ_CHINESE);
   const engine = await providerFor(input.voiceId);
   if (!engine.ok) {
     throw new Error(`这个声音暂时不可用，请换一个工作室自己的声音。${engine.reason}`);
