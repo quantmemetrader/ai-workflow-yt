@@ -38,7 +38,8 @@ export default async function ScriptPage({ params }: { params: Promise<{ id: str
 
   const zh = (viewer.locale ?? "zh-CN").startsWith("zh");
 
-  const inProject = await projectFor(viewer.tenantId, { scriptId: id });
+  /* The project bar, only for a project this person may see. */
+  const inProject = await projectFor(viewer, { scriptId: id });
   const view = (
     <DetailView
       locale={viewer.locale ?? "zh-CN"}

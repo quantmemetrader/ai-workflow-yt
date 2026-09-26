@@ -129,10 +129,26 @@ export type ToolContext = {
    */
   readOnly?: boolean;
   /**
-   * Set when an AI employee is answering a tag in a channel: where in the
-   * chain of hand-offs this turn sits, so a colleague it hands work to with
-   * `assign_task` is counted against the same bound and the same budget as a
-   * tag would be. Absent for a person's own assistant and for the panels.
+   * The person the turn is working for, when there is one: whoever typed the
+   * question into their assistant, or tagged the employee in a channel, or
+   * started the chain of hand-offs this turn is part of.
+   *
+   * An employee runs as itself (`viewer` is the agent), and setProjectAccess
+   * makes every agent a member of every private project's chat and an editor
+   * of its script. So "can the agent reach it" is the wrong question for
+   * anything the agent hands back or starts on someone's say-so: a person
+   * outside a private project could name it and have 编剧 write into it, or
+   * have 策划 list it. Tools that pick a project or a channel for somebody
+   * check it against this person as well. Absent when no person is behind
+   * the turn (a chain an employee started on its own).
+   */
+  asker?: Viewer;
+  /**
+   * Where in the chain of hand-offs this turn sits, so a colleague it hands
+   * work to with `assign_task` is counted against the same bound and the
+   * same budget as a tag would be. Set when an AI employee answers a tag in
+   * a channel, and by the assistant stream for each turn it runs (so one
+   * message there cannot start the same colleague twice).
    */
   team?: {
     hop: number;

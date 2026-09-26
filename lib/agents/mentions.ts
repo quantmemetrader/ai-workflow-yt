@@ -78,7 +78,7 @@ export const MAX_HOPS = 1;
  * a reply, and a round of it. Past that the studio is paying for the agents to
  * talk among themselves.
  */
-const MAX_REPLIES = 3;
+export const MAX_REPLIES = 3;
 
 /** What an agent's answer may be before the channel becomes unreadable. Longer
  * than any useful chat reply and far short of a pasted document. */
@@ -152,6 +152,11 @@ export type MentionDispatch = {
   /** The person who started the chain, by name: whom a colleague further
    * down asks when something is missing. Internal. */
   origin?: string | null;
+  /** The same person as a viewer, carried to every turn of the chain as
+   * `ToolContext.asker`, so what a colleague picks for them is checked
+   * against them and not only against the colleague. Null when an employee
+   * started the chain. Internal. */
+  asker?: Viewer | null;
 };
 
 /**
@@ -207,11 +212,13 @@ export async function dispatchAgentMentions(input: MentionDispatch): Promise<voi
         ? null
         : input.viewer.nameLocal || input.viewer.name;
 
+  const asker = input.asker !== undefined ? input.asker : agentKeyFromEmail(input.viewer.email) ? null : input.viewer;
+
   for (const key of wanted) {
     if (budget.left <= 0) return;
     budget.left--;
     try {
-      await answerOne({ ...input, hop, spoken, budget, origin }, key, channel);
+      await answerOne({ ...input, hop, spoken, budget, origin, asker }, key, channel);
     } catch (err) {
       // One agent falling over is not the others' problem, and it is certainly
       // not the message's.
@@ -720,7 +727,7 @@ const WORKS_IN: Record<AgentKey, Module> = {
 };
 
 type Chain = Required<Pick<MentionDispatch, "viewer" | "channelId" | "body" | "spoken" | "hop" | "budget">> &
-  Pick<MentionDispatch, "handoff" | "replyMeta"> & { origin: string | null };
+  Pick<MentionDispatch, "handoff" | "replyMeta"> & { origin: string | null; asker: Viewer | null };
 
 /** The block a colleague's turn opens with when work was handed to it. */
 function handoffBlock(h: Handoff, origin: string | null): string {
@@ -855,6 +862,7 @@ async function answerOne(input: Chain, key: AgentKey, channel: Channel) {
        carries its checked contents, so this is the guard, not the rule. */
     readOnly: input.hop >= 1 && !handoff,
     team,
+    ...(input.asker ? { asker: input.asker } : {}),
   };
 
   /* One turn of the employee: what it said, and what its tools did. Every
@@ -872,7 +880,8 @@ async function answerOne(input: Chain, key: AgentKey, channel: Channel) {
       content,
       module: WORKS_IN[key],
       // The room it was tagged in, so "this channel" means something. Re-checked
-      // inside every tool against the *agent's* membership, not the asker's.
+      // inside every tool against the *agent's* membership; what it picks for
+      // somebody (a project, a channel to read) against the asker's as well.
       context,
     })) {
       if (event.type === "message") id = event.id;
@@ -1135,6 +1144,7 @@ async function answerOne(input: Chain, key: AgentKey, channel: Channel) {
       hop: input.hop + 1,
       budget: input.budget,
       origin,
+      asker: input.asker,
     });
   }
 }

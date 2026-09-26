@@ -1,7 +1,8 @@
 import "server-only";
-import { and, eq, inArray, isNull } from "drizzle-orm";
+import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { chatChannels, scripts, workProjects } from "@/lib/db/schema";
+import { chatChannels, scripts, videoProjects, workProjects } from "@/lib/db/schema";
+import type { Viewer } from "@/lib/auth/types";
 import { audit } from "@/lib/audit";
 import type { ToolDef } from "@/lib/ai/openrouter";
 import { AGENT_KEYS, AGENT_LABELS, agentFromTag, agentKeyFromEmail, agentTag, type AgentKey } from "@/lib/agents/catalog";
@@ -9,7 +10,7 @@ import { ensureAgentChannel } from "@/lib/agents";
 import { latestPlan } from "@/lib/agents/proposals";
 import type { Handoff, HandoffArtifact } from "@/lib/agents/mentions";
 import { postMessage } from "@/lib/chat/service";
-import { listWorkProjects } from "@/lib/projects/service";
+import { listWorkProjects, reachableThroughProjects, visibleProject, type WorkProjectRow } from "@/lib/projects/service";
 import { id as asId, num, str, type ToolContext, type ToolPack, type ToolResult } from "./types";
 
 /**
@@ -87,6 +88,69 @@ const hkToday = () =>
 const ownerName = (owner: string) =>
   AGENT_KEYS.includes(owner as AgentKey) ? AGENT_LABELS[owner as AgentKey].nameLocal : "人";
 
+/**
+ * The person this turn works for, if there is one: whoever asked (the
+ * assistant stream and every turn of a chain a person started carry them as
+ * `asker`), or the viewer itself when that is a person's own assistant.
+ * Null when an employee started the chain and nobody is behind it.
+ *
+ * Projects are picked by this person's rule, not the employee's. The
+ * employee runs as itself and setProjectAccess makes it a member of every
+ * private project's chat and an editor of its script, so "can the employee
+ * reach it" is the wrong test: by it a guest could list the studio's
+ * projects through 策划, and anyone could hand 编剧 a private project's
+ * script to rewrite. And the employee's own rule was too narrow for the
+ * people inside: it never sees a private project, so its owner asking from
+ * #制作 heard "no such project".
+ */
+function personOf(ctx: ToolContext): Viewer | null {
+  if (ctx.asker) return ctx.asker;
+  return agentKeyFromEmail(ctx.viewer.email) ? null : ctx.viewer;
+}
+
+/** The live project whose chat a channel is, with what a hand-off and the
+ * project list need from it. */
+async function projectInChannel(tenantId: string, channelId: string) {
+  const [row] = await db
+    .select({
+      id: workProjects.id,
+      title: workProjects.title,
+      status: workProjects.status,
+      mode: workProjects.mode,
+      updatedAt: workProjects.updatedAt,
+      channelId: workProjects.channelId,
+      scriptId: workProjects.scriptId,
+      videoProjectId: workProjects.videoProjectId,
+      channelSlug: chatChannels.slug,
+      createdBy: workProjects.createdBy,
+      access: sql<string>`${workProjects.access} ->> 'mode'`,
+    })
+    .from(workProjects)
+    .leftJoin(chatChannels, eq(chatChannels.id, workProjects.channelId))
+    .where(and(eq(workProjects.channelId, channelId), eq(workProjects.tenantId, tenantId), isNull(workProjects.deletedAt)))
+    .limit(1);
+  return row ?? null;
+}
+
+/**
+ * The projects this turn may name, most recently active first: the ones the
+ * person it works for may see (`personOf`).
+ *
+ * With nobody behind the turn, the employee's own, plus the project whose
+ * chat it is answering in: it was made a member there, and "@策划 让编剧写"
+ * inside a private project has to find the project it is in. Never every
+ * private project it happens to be a member of — its answer is posted where
+ * other people read it.
+ */
+async function projectsFor(ctx: ToolContext, limit: number): Promise<WorkProjectRow[]> {
+  const person = personOf(ctx);
+  const rows = await listWorkProjects(person ?? ctx.viewer, limit);
+  if (person || !ctx.channelId) return rows;
+  const here = await projectInChannel(ctx.viewer.tenantId, ctx.channelId);
+  if (!here || rows.some((r) => r.id === here.id)) return rows;
+  return [{ ...here, updatedAt: here.updatedAt.toISOString() }, ...rows].slice(0, limit);
+}
+
 /** A colleague from whatever the model wrote: the key, the name, the tag. */
 function colleague(v: unknown): AgentKey | null {
   const s = str(v, 40).replace(/^@/, "");
@@ -122,7 +186,7 @@ async function run(ctx: ToolContext, name: string, args: Record<string, unknown>
   if (name === "list_projects") {
     const limit = Math.min(40, Math.max(1, num(args.limit, 15)));
     const query = str(args.query, 80).toLowerCase();
-    const all = await listWorkProjects(ctx.viewer, 40);
+    const all = await projectsFor(ctx, 40);
     const rows = (query ? all.filter((r) => r.title.toLowerCase().includes(query)) : all).slice(0, limit);
     if (!rows.length) {
       return {
@@ -181,31 +245,31 @@ async function run(ctx: ToolContext, name: string, args: Record<string, unknown>
     }
 
     /* Where: the named project's own chat; else the channel this is being
-       asked in; else #制作, where the studio hands work over. */
-    const projectId = asId(args.project_id);
-    /* A project named by id has to be one this viewer can see, by the rule
-       the project list itself uses — being in the tenant is not enough.
+       asked in; else #制作, where the studio hands work over.
+
        Handing 编剧 a project is handing it that project's script to write
-       into, and a person must not reach a private project that way. The one
-       found from the channel needs no such check: the viewer is already in
-       that project's chat. */
-    if (projectId && !(await listWorkProjects(ctx.viewer, 200)).some((p) => p.id === projectId)) {
-      return { text: "There is no such project, or it is not open to you. list_projects gives the ids." };
+       into, so the project — named by id, or found from the channel — has
+       to be one the person this is done for may see, by the rule the
+       project list itself uses (`personOf`). Being in the tenant is not
+       enough, and neither is the employee's own reach: the channel used to
+       need no check at all, on the reasoning that the viewer was in that
+       project's chat — true of the employee, who is in every project's
+       chat, and not of whoever sent the channel id to the assistant stream.
+       With nobody behind the turn, the employee's own rule, and the project
+       whose chat it is answering in. */
+    const person = personOf(ctx);
+    const here = ctx.channelId ? await projectInChannel(ctx.viewer.tenantId, ctx.channelId) : null;
+    const projectId = asId(args.project_id);
+    let project: { id: string; title: string; channelId: string; scriptId: string | null; videoProjectId: string | null } | null = null;
+    if (projectId) {
+      project = person ? await visibleProject(person, projectId) : here?.id === projectId ? here : await visibleProject(ctx.viewer, projectId);
+      if (!project) return { text: "There is no such project, or it is not open to you. list_projects gives the ids." };
+    } else if (here) {
+      if (person && !(await visibleProject(person, here.id))) {
+        return { text: "This chat's project is not open to the person who asked, so nothing was handed on." };
+      }
+      project = here;
     }
-    const [project] = projectId
-      ? await db
-          .select({ id: workProjects.id, title: workProjects.title, channelId: workProjects.channelId, scriptId: workProjects.scriptId, videoProjectId: workProjects.videoProjectId })
-          .from(workProjects)
-          .where(and(eq(workProjects.id, projectId), eq(workProjects.tenantId, ctx.viewer.tenantId), isNull(workProjects.deletedAt)))
-          .limit(1)
-      : ctx.channelId
-        ? await db
-            .select({ id: workProjects.id, title: workProjects.title, channelId: workProjects.channelId, scriptId: workProjects.scriptId, videoProjectId: workProjects.videoProjectId })
-            .from(workProjects)
-            .where(and(eq(workProjects.channelId, ctx.channelId), eq(workProjects.tenantId, ctx.viewer.tenantId), isNull(workProjects.deletedAt)))
-            .limit(1)
-        : [];
-    if (projectId && !project) return { text: "There is no such project. list_projects gives the ids." };
 
     const channelId = project?.channelId ?? ctx.channelId ?? (await ensureAgentChannel(ctx.viewer.tenantId, "production"));
     const [channel] = await db
@@ -215,15 +279,35 @@ async function run(ctx: ToolContext, name: string, args: Record<string, unknown>
       .limit(1);
     if (!channel) return { text: "That channel is not open to you, so nothing was handed on." };
 
-    const scriptId = project?.scriptId ?? ctx.scriptId ?? null;
-    const videoProjectId = project?.videoProjectId ?? ctx.projectId ?? null;
-    const [script] = scriptId
-      ? await db
-          .select({ id: scripts.id, title: scripts.title })
-          .from(scripts)
-          .where(and(eq(scripts.id, scriptId), eq(scripts.tenantId, ctx.viewer.tenantId), isNull(scripts.deletedAt)))
-          .limit(1)
-      : [];
+    /* The script and the video project that go with it: the project's own
+       when there is a project — never a screen's id beside it — and
+       otherwise the ones open on screen. Those are posted as checked
+       ("verified") and handed to a colleague to work in, so each has to
+       exist in the studio and, when it belongs to projects, be reachable by
+       the person through one of them. The video project used to go out
+       with no check at all. */
+    const scriptId = project ? project.scriptId : (ctx.scriptId ?? null);
+    const videoWanted = project ? project.videoProjectId : (ctx.projectId ?? null);
+    const [[scriptRow], [videoRow]] = await Promise.all([
+      scriptId
+        ? db
+            .select({ id: scripts.id, title: scripts.title })
+            .from(scripts)
+            .where(and(eq(scripts.id, scriptId), eq(scripts.tenantId, ctx.viewer.tenantId), isNull(scripts.deletedAt)))
+            .limit(1)
+        : [],
+      videoWanted
+        ? db
+            .select({ id: videoProjects.id })
+            .from(videoProjects)
+            .where(and(eq(videoProjects.id, videoWanted), eq(videoProjects.tenantId, ctx.viewer.tenantId), isNull(videoProjects.deletedAt)))
+            .limit(1)
+        : [],
+    ]);
+    const onScreenOk = async (by: { scriptId?: string; videoProjectId?: string }) =>
+      project !== null || !person || (await reachableThroughProjects(person, by));
+    const script = scriptRow && (await onScreenOk({ scriptId: scriptRow.id })) ? scriptRow : undefined;
+    const videoProjectId = videoRow && (await onScreenOk({ videoProjectId: videoRow.id })) ? videoRow.id : null;
 
     /* What goes with it: only things that exist, each with its link. */
     const artifacts: HandoffArtifact[] = [
@@ -265,6 +349,9 @@ async function run(ctx: ToolContext, name: string, args: Record<string, unknown>
         hop,
         spoken: team ? [...team.spoken, ...(from !== "human" ? [from] : [])] : from !== "human" ? [from] : [],
         ...(team ? { budget: team.budget, origin: team.origin } : {}),
+        /* The colleague's turn works for the same person, and checks what
+           it picks against them too. */
+        asker: person,
       });
     /* Inside an employee's turn, the colleague starts once its reply is
        posted; anywhere else, once the response has gone. */
