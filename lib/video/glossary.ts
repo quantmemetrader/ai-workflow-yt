@@ -459,14 +459,16 @@ export function applyGlossary(
 
   /*
    * 2b. Chinese near misses the code can see without a model: a span of
-   * the same length as a term of three or more characters that differs in
-   * exactly one of them (月之案面 → 月之暗面). Two of four right is a guess;
-   * three of four, in a take about the thing, is a mishearing. Found
-   * first, applied right to left so offsets hold; a span that is itself
-   * a term is left alone.
+   * the same length as a *name* of three or more characters that differs
+   * in exactly one of them (月之案面 → 月之暗面). Two of four right is a
+   * guess; three of four, in a take about the thing, is a mishearing.
+   * Names only — the brief's spelling line and term cards (weight 3):
+   * a quoted phrase is ordinary words, and the rule applied to 「暗知识」
+   * rewrote 现有的知识 as 现有暗知识 in the lab. Found first, applied right
+   * to left so offsets hold; a span that is itself a term is left alone.
    */
   for (const t of terms) {
-    if (t.kind !== "han") continue;
+    if (t.kind !== "han" || t.weight < 3) continue;
     const tc = Array.from(t.text.replace(/^《(.*)》$/, "$1"));
     if (tc.length < 3) continue;
     const cps = chars.map((c) => c.ch);
