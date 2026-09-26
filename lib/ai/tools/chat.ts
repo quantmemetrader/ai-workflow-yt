@@ -232,7 +232,38 @@ export function notesFor(meta: Record<string, unknown> | null): string[] {
   }
   const digest = meta.digest as { date?: unknown } | undefined;
   if (digest) notes.push(`研究员的晨报${typeof digest.date === "string" ? `（${digest.date}）` : ""}。`);
+  /* Files a person put on the message (`sendChannelMessage`), each with
+     its id, so 剪辑师 can pick the take up — and whether it already went
+     into the project's bin, so it does not add it a second time. */
+  const binned = meta.binned as { clips?: unknown } | undefined;
+  const clipOf = new Map<string, string>();
+  if (binned && Array.isArray(binned.clips)) {
+    for (const c of binned.clips as { fileId?: unknown; clipId?: unknown }[]) {
+      if (typeof c?.fileId === "string" && typeof c.clipId === "string") clipOf.set(c.fileId, c.clipId);
+    }
+  }
+  if (Array.isArray(meta.attachments)) {
+    for (const a of (meta.attachments as { fileId?: unknown; name?: unknown; kind?: unknown; durationMs?: unknown }[]).slice(0, 10)) {
+      if (typeof a?.fileId !== "string") continue;
+      const facts = [typeof a.kind === "string" ? a.kind : "file", typeof a.durationMs === "number" && a.durationMs > 0 ? clockOf(a.durationMs) : null].filter(Boolean).join(", ");
+      const clip = clipOf.get(a.fileId);
+      notes.push(`[附件] ${typeof a.name === "string" ? a.name : a.fileId} (${facts}) file id ${a.fileId}${clip ? ` · 已加入项目素材 (clip id ${clip})` : ""}`);
+    }
+  }
+  /* The worker's "渲染好了": which export and which file, so an employee
+     asked "where is the video" can name it rather than guess. */
+  const render = meta.render as { exportId?: unknown; fileId?: unknown; aspect?: unknown; durationMs?: unknown } | undefined;
+  if (render && typeof render.exportId === "string") {
+    const facts = [typeof render.aspect === "string" ? render.aspect : null, typeof render.durationMs === "number" && render.durationMs > 0 ? clockOf(render.durationMs) : null].filter(Boolean).join(" · ");
+    notes.push(`[成片] ${facts ? `${facts} · ` : ""}export id ${render.exportId}${typeof render.fileId === "string" ? ` · file id ${render.fileId}` : ""}`);
+  }
   return notes;
+}
+
+/** "2:31" — a length, in a note. */
+function clockOf(ms: number): string {
+  const s = Math.round(ms / 1000);
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 }
 
 async function run(ctx: ToolContext, name: string, args: Record<string, unknown>): Promise<ToolResult> {
@@ -262,6 +293,7 @@ async function run(ctx: ToolContext, name: string, args: Record<string, unknown>
         createdAt: chatMessages.createdAt,
         authorId: chatMessages.authorId,
         meta: chatMessages.meta,
+        attachments: chatMessages.attachments,
         author: users.name,
         authorLocal: users.nameLocal,
       })
@@ -289,6 +321,12 @@ async function run(ctx: ToolContext, name: string, args: Record<string, unknown>
       const who = `${m.authorLocal || m.author || "someone"}${m.authorId === ctx.viewer.id ? "（你）" : ""}`;
       const line = `[${m.createdAt.toISOString().slice(0, 16).replace("T", " ")}] ${who}: ${(m.body ?? "").replace(/\s+/g, " ")}`;
       const notes = notesFor(m.meta);
+      /* A file attached before messages described their files: the id is
+         all there is, and it is enough to open. */
+      const described = new Set(Array.isArray(m.meta?.attachments) ? (m.meta.attachments as { fileId?: unknown }[]).map((a) => a?.fileId) : []);
+      for (const id of Array.isArray(m.attachments) ? m.attachments : []) {
+        if (typeof id === "string" && !described.has(id)) notes.push(`[附件] file id ${id}`);
+      }
       return notes.length ? `${line}\n${notes.map((n) => `  ↳ ${n}`).join("\n")}` : line;
     });
 

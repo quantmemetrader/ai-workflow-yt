@@ -78,6 +78,8 @@ export type EditorProps = {
   onAddCaption?: (atMs: number) => void;
   /** The + on the Graphics track: a new graphic at the playhead. */
   onAddGraphic?: (atMs: number) => void;
+  /** The "AI" on the Audio track: write a voice-over and have it spoken. */
+  onVoiceOver?: () => void;
   /** Take back the last change — including a whole turn from the assistant.
    * Absent when there is nothing to take back. */
   onUndo?: (() => void) | null;
@@ -864,6 +866,29 @@ export function Editor(props: EditorProps) {
                 >
                   {name}
                 </span>
+                {k === "audio" && props.onVoiceOver ? (
+                  <button
+                    type="button"
+                    title={t("AI voice-over: have text spoken", "AI 配音：把文字读成配音")}
+                    aria-label={t("AI voice-over", "AI 配音")}
+                    onClick={() => props.onVoiceOver?.()}
+                    style={{
+                      height: 18,
+                      flexShrink: 0,
+                      padding: "0 4px",
+                      borderRadius: 5,
+                      border: `1px solid ${LINE}`,
+                      background: "#ffffff",
+                      color: MUTED,
+                      cursor: "pointer",
+                      fontSize: 9.5,
+                      fontWeight: 600,
+                      lineHeight: "16px",
+                    }}
+                  >
+                    AI
+                  </button>
+                ) : null}
                 {/* One + per track. Video and Audio open the file picker;
                     Captions and Graphics put one at the playhead, which is
                     where somebody looking at the frame wants it. */}

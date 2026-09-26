@@ -12,7 +12,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const viewer = await getViewer();
   if (!viewer) return Response.json({ error: "Not allowed" }, { status: 403 });
   const { id } = await params;
-  const body = (await req.json().catch(() => ({}))) as { prompt?: unknown; way?: unknown };
+  const body = (await req.json().catch(() => ({}))) as { prompt?: unknown; way?: unknown; narrate?: unknown; voiceId?: unknown };
   const res = await oneGo(viewer, id, body);
   if (!res.ok) return Response.json({ error: res.error }, { status: res.status });
   return Response.json({ ok: true, brought: res.brought, way: res.way, ...(res.seconds ? { seconds: res.seconds } : {}) });

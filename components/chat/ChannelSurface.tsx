@@ -15,7 +15,7 @@ import {
   type MentionPerson,
   type MentionTarget,
 } from "./MentionMenu";
-import { bytes, uploadToStudio, type Attaching } from "./upload";
+import { ATTACH_ACCEPT, bytes, kindOf, uploadToStudio, type Attaching } from "./upload";
 import type { CardAction, CardDone } from "@/lib/agents/cards";
 import type { ChatCardKind, ChatHandoff, HandoffArtifact } from "@/lib/chat/handoff";
 import { AgentIcon } from "@/components/agents/AgentIcon";
@@ -27,6 +27,8 @@ import type { StepKey } from "@/lib/agents/steps";
 import { JobChip } from "./Working";
 import { AgentTyping } from "@/components/agents/AgentTyping";
 import { AgentName } from "@/components/ui/Tr";
+import { VideoCards } from "./VideoCard";
+import type { VideoCard } from "@/lib/chat/video-card";
 
 /**
  * The channel's main column: header, messages, composer.
@@ -46,7 +48,10 @@ import { AgentName } from "@/components/ui/Tr";
  *   3. **Files.** An attach button, because there was not one.
  */
 
-export type ChannelAttachment = { id: string; name: string; kind: string; sizeBytes: number | null };
+export type ChannelAttachment = { id: string; name: string; kind: string; sizeBytes: number | null; durationMs?: number | null };
+
+/** A file the composer just sent, for the row drawn before the server's copy arrives. */
+export type SentFile = { id: string; name: string; size: number; kind: string };
 
 export type ChannelMessage = {
   id: string;
@@ -80,6 +85,9 @@ export type ChannelMessage = {
   project?: { id: string; title: string } | null;
   /** A director run or a render it started, followed by a live chip. */
   job?: { videoProjectId: string } | null;
+  /** The renders and video files it names, as cards this reader may open
+   * (`lib/chat/videos.ts`): a poster that plays, 下载, 打开项目. */
+  videos?: VideoCard[];
 };
 
 /** An employee at work in the room right now (`lib/chat/pending.ts`). */
@@ -478,12 +486,14 @@ function Card({
 }
 
 /** What a message carries. Re-checked server-side for every reader, so an
- * attachment that is not listed here is one this person may not open. */
-function Attachments({ items }: { items: ChannelAttachment[] }) {
-  if (!items.length) return null;
+ * attachment that is not listed here is one this person may not open. A
+ * video drawn as a card (`videos`) is not listed a second time as a chip. */
+function Attachments({ items, drawn }: { items: ChannelAttachment[]; drawn: ReadonlySet<string> }) {
+  const rest = items.filter((f) => !drawn.has(f.id));
+  if (!rest.length) return null;
   return (
     <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
-      {items.map((f) =>
+      {rest.map((f) =>
         f.kind === "image" ? (
           <Link key={f.id} href={`/files/${f.id}`} title={f.name}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -502,10 +512,7 @@ function Attachments({ items }: { items: ChannelAttachment[] }) {
           </Link>
         ) : (
           <Link key={f.id} href={`/files/${f.id}`} className="chip" style={{ color: "#007be0", borderColor: "#a7d7fd", background: "#f2f9ff" }}>
-            <svg viewBox="0 0 24 24">
-              <path d="M14 3.5H7.5v17h9v-12z" />
-              <path d="M14 3.5v5h2.5" />
-            </svg>
+            <Icon name={f.kind === "video" ? "clapper" : f.kind === "audio" ? "play" : "doc"} size={13} />
             {f.name}
             {f.sizeBytes ? <span style={{ color: "#7c9bb4" }}>{bytes(f.sizeBytes)}</span> : null}
           </Link>
@@ -524,7 +531,9 @@ export function ChannelSurface(props: {
   onOpenMembers?: () => void;
   messages: ChannelMessage[];
   sending: boolean;
-  onSend: (body: string, attachmentIds: string[]) => void;
+  /** The text and the files on it — their ids for the server, and their
+   * names and sizes for the row drawn before the server's copy arrives. */
+  onSend: (body: string, attachmentIds: string[], files: SentFile[]) => void;
   locale: string;
   /** Everyone who can be tagged besides the AI employees, who come from the
    * catalog and are always offered. */
@@ -653,13 +662,19 @@ export function ChannelSurface(props: {
 
     for (const file of files) {
       const key = `${file.name}-${file.size}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-      setAttached((rest) => [...rest, { key, name: file.name, size: file.size, progress: 0 }]);
+      /* The × on the chip while the bytes move: the request is aborted and
+         the uploader abandons its row (`uploadToStudio`), instead of the
+         chip going and the file quietly finishing into the list. */
+      const controller = new AbortController();
+      setAttached((rest) => [...rest, { key, name: file.name, size: file.size, mime: file.type, progress: 0, cancel: () => controller.abort() }]);
 
-      void uploadToStudio(file, (fraction) =>
-        setAttached((rest) => rest.map((a) => (a.key === key ? { ...a, progress: fraction } : a))),
+      void uploadToStudio(
+        file,
+        (fraction) => setAttached((rest) => rest.map((a) => (a.key === key ? { ...a, progress: fraction } : a))),
+        controller.signal,
       )
         .then(({ id }) =>
-          setAttached((rest) => rest.map((a) => (a.key === key ? { ...a, fileId: id, progress: 1 } : a))),
+          setAttached((rest) => rest.map((a) => (a.key === key ? { ...a, fileId: id, progress: 1, cancel: undefined } : a))),
         )
         .catch((err: unknown) =>
           setAttached((rest) =>
@@ -677,11 +692,15 @@ export function ChannelSurface(props: {
 
   function send() {
     const body = draft.trim();
-    const ids = attached.flatMap((a) => (a.fileId ? [a.fileId] : []));
+    const sent = attached.flatMap((a) => (a.fileId ? [{ id: a.fileId, name: a.name, size: a.size, kind: kindOf(a.name, a.mime) }] : []));
     // A file still on its way is a message that would arrive without it.
     if (props.sending || uploading) return;
-    if (!body && !ids.length) return;
-    props.onSend(body, ids);
+    if (!body && !sent.length) return;
+    props.onSend(
+      body,
+      sent.map((f) => f.id),
+      sent,
+    );
     setDraft("");
     setAttached([]);
     setMention(null);
@@ -998,7 +1017,12 @@ export function ChannelSurface(props: {
                       ) : (
                         <Body body={body} />
                       )}
-                      <Attachments items={m.attachments ?? []} />
+                      {/* A render or a video it names, or a video attached to
+                          it: the poster that plays, 下载, 打开项目. On a message
+                          that already has its "打开项目" button the card does
+                          not repeat it. */}
+                      <VideoCards videos={m.videos} zh={zh} here={{ projectId: m.project?.id ?? null }} />
+                      <Attachments items={m.attachments ?? []} drawn={new Set((m.videos ?? []).map((v) => v.fileId))} />
                       <Card
                         actions={m.actions ?? []}
                         done={m.done}
@@ -1179,7 +1203,10 @@ export function ChannelSurface(props: {
                         </span>
                         <button
                           type="button"
-                          onClick={() => setAttached((rest) => rest.filter((x) => x.key !== a.key))}
+                          onClick={() => {
+                            a.cancel?.();
+                            setAttached((rest) => rest.filter((x) => x.key !== a.key));
+                          }}
                           aria-label={zh ? `移除 ${a.name}` : `Remove ${a.name}`}
                           style={{
                             border: 0,
@@ -1212,6 +1239,7 @@ export function ChannelSurface(props: {
                         type="file"
                         multiple
                         hidden
+                        accept={ATTACH_ACCEPT}
                         onChange={(e) => {
                           attach(e.target.files);
                           // So the same file picked twice in a row still fires.

@@ -30,7 +30,11 @@ export type IconName =
   | "folder"
   | "folderOpen"
   | "link"
-  | "undo";
+  | "undo"
+  | "download"
+  | "paperclip"
+  | "image"
+  | "doc";
 
 const PATHS: Record<IconName, React.ReactNode> = {
   chat: <path d="M20.5 11.6a7.9 7.9 0 0 1-8.5 7.8 8.9 8.9 0 0 1-2.6-.4L4.5 20.4l1.3-3.8a7.7 7.7 0 0 1-1.8-5A7.9 7.9 0 0 1 12 3.8a7.9 7.9 0 0 1 8.5 7.8z" />,
@@ -126,6 +130,30 @@ const PATHS: Record<IconName, React.ReactNode> = {
     <>
       <path d="M8.5 5.5 4.5 9.5l4 4" />
       <path d="M4.5 9.5h9.8a5 5 0 0 1 0 10H10" />
+    </>
+  ),
+  /* The finished file, to keep (下载): the upload arrow, pointing down. */
+  download: (
+    <>
+      <path d="M12 4.5v11M7.5 11 12 15.5 16.5 11" />
+      <path d="M4.5 15v3.2a1.8 1.8 0 0 0 1.8 1.8h11.4a1.8 1.8 0 0 0 1.8-1.8V15" />
+    </>
+  ),
+  /* Attach a file to a message. */
+  paperclip: <path d="M16.5 8.5 10 15a2.5 2.5 0 0 0 3.5 3.5l6.5-6.5a4.5 4.5 0 0 0-6.4-6.4L7 12.2a6.5 6.5 0 0 0 9.2 9.2l4.3-4.3" />,
+  /* A picture, on a file chip. */
+  image: (
+    <>
+      <rect x="3.5" y="5" width="17" height="14" rx="2.2" />
+      <circle cx="9" cy="10" r="1.6" />
+      <path d="m20.5 15.5-4.6-4.6-6.4 6.4-2.3-2.3L3.5 19" />
+    </>
+  ),
+  /* A document, on a file chip. */
+  doc: (
+    <>
+      <path d="M14 3.5H7.5v17h9v-12z" />
+      <path d="M14 3.5v5h2.5M10 12.5h4M10 15.5h4" />
     </>
   ),
 };

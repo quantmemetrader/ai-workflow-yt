@@ -29,6 +29,8 @@ import { addClip } from "./service";
 import { ICON_NAMES, isIconName, isPlacement } from "./icons";
 import { asEntrance, CAPTION_PRESETS, FURNITURE_KINDS, isGraphicKind } from "./presets";
 import { canKaraoke } from "./ass";
+import { dropNarration, footageHasSound, narratedCut, narrationOf } from "./narrate";
+import { targetFromBrief } from "./length";
 
 /**
  * The director: a brief in, a finished video out.
@@ -110,7 +112,7 @@ function cutawayPlacement(asked: string, pace: Pace): string {
 
 export type DirectorState = {
   state: "queued" | "running" | "done" | "failed";
-  step?: "footage" | "transcribe" | "cut" | "design" | "pictures" | "write" | "render";
+  step?: "footage" | "voice" | "transcribe" | "cut" | "captions" | "design" | "pictures" | "write" | "render";
   brief?: string;
   aspect?: string;
   render?: boolean;
@@ -119,6 +121,16 @@ export type DirectorState = {
    * format as measured), hype (every named thing full frame, one after
    * another, the way a fast-cut short is made). */
   pace?: Pace;
+  /**
+   * Whether the script's narration is voiced and the cut timed to it
+   * (`lib/video/narrate.ts`): "on" always, "off" never, "auto" (the default)
+   * when the footage has no sound to cut on and the script has 旁白 to read.
+   */
+  narrate?: "auto" | "on" | "off";
+  /** The voice to narrate in (`lib/video/tts/voices.ts`); the default when absent. */
+  voiceId?: string;
+  /** The narration the last run made, so the next one replaces it. */
+  narration?: { trackId: string; voiceId: string; durationMs: number; sentences: number };
   note?: string;
   error?: string;
   log?: { at: string; text: string }[];
@@ -137,8 +149,13 @@ export type DirectorState = {
     fileId?: string;
     title?: string;
     notes?: string;
+    /** Set when the words were a generated narration rather than the footage's own. */
+    narrated?: boolean;
   };
 };
+
+/** What `transcribeProject` and the transcribers say when nobody speaks. */
+const NO_SPEECH = /no audible|any sound|produced any audio|nothing was said|could not be made out|made out no words|no words/i;
 
 async function patch(projectId: string, fn: (d: DirectorState) => DirectorState) {
   const [row] = await db.select({ director: videoProjects.director }).from(videoProjects).where(eq(videoProjects.id, projectId)).limit(1);
@@ -265,41 +282,118 @@ export async function direct(viewer: Viewer, projectId: string, jobId?: string):
     const footage = bin.filter((b) => b.kind === "video");
     if (!footage.length) throw new Error("There is no footage in the bin. Drop a clip on the editor first.");
 
-    let items = await db.select().from(timelineItems).where(eq(timelineItems.projectId, projectId)).orderBy(asc(timelineItems.ord));
-    if (!items.length) {
-      const joinAll = /all clips|every clip|join|stitch|in order|拼接|全部素材|按顺序/i.test(brief);
-      const chosen = joinAll ? footage : [footage.reduce((best, f) => ((f.c.durationMs ?? 0) > (best.c.durationMs ?? 0) ? f : best), footage[0])];
-      await db.insert(timelineItems).values(
-        chosen.map((f, i) => ({ id: newId("beat"), projectId, kind: "clip", clipId: f.c.id, ord: i * 10, inMs: 0, outMs: f.c.durationMs ?? null })),
-      );
-      items = await db.select().from(timelineItems).where(eq(timelineItems.projectId, projectId)).orderBy(asc(timelineItems.ord));
-      await say("footage", joinAll ? `Put all ${chosen.length} clips on the timeline in order` : `Put ${chosen[0].name ?? "the longest take"} on the timeline; the other ${footage.length - 1} stay as cutaways`);
+    /* The script, read now rather than at the design: its 旁白 decides whether
+       this video is cut on what was filmed or on a narration made from it. */
+    const beats = project.scriptId
+      ? await db.select().from(scriptBeats).where(eq(scriptBeats.scriptId, project.scriptId)).orderBy(asc(scriptBeats.ord))
+      : [];
+    const narration = narrationOf(beats);
+    const narrateMode = asked.narrate === "on" || asked.narrate === "off" ? asked.narrate : "auto";
+    let narrated = narrateMode === "on";
+    if (narrated && !narration) {
+      throw new Error("The script has no narration (旁白) to voice yet. Write the beats' voiceover first, or turn AI voice-over off.");
+    }
+    if (!narrated && narrateMode === "auto" && narration) {
+      await say("footage", "Listening for speech in the footage");
+      const heard = await footageHasSound(footage.map((f) => ({ id: f.c.id, fileId: f.c.fileId, peaksError: f.c.peaksError })));
+      console.log(`[director ${projectId}] sound check: ${heard.notes.join("; ")}`);
+      if (!heard.any) {
+        narrated = true;
+        await say("footage", "The footage has no sound to cut on, so the script's narration will carry the video");
+      }
     }
 
-    /* ---- 2. transcribe ---------------------------------------------- */
-    const [anyCaption] = await db.select({ language: captions.language }).from(captions).where(eq(captions.projectId, projectId)).limit(1);
-    const language = anyCaption?.language ?? asked.language ?? (/english|英文|in english/i.test(brief) ? "en" : "zh-CN");
+    /* A narration is as long as the script is: the words are the producer's
+       and the director does not drop sentences from them to hit a length. So
+       when the brief asks for less than the script says, the notes say so. */
+    let narrationNote: string | null = null;
+    /** Voice the script and lay the footage under it (`lib/video/narrate.ts`). */
+    const narrate = async (): Promise<string> => {
+      const made = await narratedCut(viewer, projectId, {
+        beats,
+        voiceId: asked.voiceId ?? null,
+        aspect,
+        pace,
+        previousTrackId: asked.narration?.trackId ?? null,
+        footage: footage
+          .filter((f) => (f.c.durationMs ?? 0) >= 1000 || f.c.durationMs === null)
+          .map((f) => ({ id: f.c.id, durationMs: f.c.durationMs, label: f.c.label || f.name || "clip" })),
+        say: (step, text) => say(step, text),
+      });
+      await patch(projectId, (d) => ({
+        ...d,
+        narration: { trackId: made.trackId, voiceId: made.voiceId, durationMs: made.durationMs, sentences: made.sentences },
+      }));
+      const target = targetFromBrief(brief);
+      if (target && made.durationMs > target * 1.25) {
+        narrationNote = `The narration runs ${Math.round(made.durationMs / 1000)}s as the script is written; the brief asked for about ${Math.round(target / 1000)}s. Shorten the script's narration to shorten the video.`;
+      }
+      return made.language;
+    };
 
-    const timed = await db
-      .select({ n: sql<number>`count(*)::int` })
-      .from(captions)
-      .where(and(eq(captions.projectId, projectId), eq(captions.language, language), sql`${captions.words} is not null`));
-    if (Number(timed[0]?.n ?? 0) === 0) {
-      await say("transcribe", "Transcribing the footage with word timings. A minute or two on a long take.");
-      const t = await transcribeProject(projectId, { language, diarize: true });
-      await say("transcribe", `Transcribed: ${t.captions} lines, ${t.languageCode} (${Math.round(t.languageProbability * 100)}% sure)`);
+    let language = asked.language ?? (/english|英文|in english/i.test(brief) ? "en" : "zh-CN");
+    if (narrated) {
+      language = await narrate();
     } else {
-      await say("transcribe", "The transcript is already here");
-    }
+      /* Narrated last time, filmed speech this time: the old voice and the
+         muted shots under it go, and the footage is laid afresh. */
+      if (asked.narration?.trackId && (await dropNarration(viewer, projectId, asked.narration.trackId))) {
+        await patch(projectId, (d) => ({ ...d, narration: undefined }));
+        await db.delete(captions).where(eq(captions.projectId, projectId));
+        await say("footage", "The footage speaks this time, so the earlier AI voice-over is off the cut");
+      }
+      let items = await db.select().from(timelineItems).where(eq(timelineItems.projectId, projectId)).orderBy(asc(timelineItems.ord));
+      if (!items.length) {
+        const joinAll = /all clips|every clip|join|stitch|in order|拼接|全部素材|按顺序/i.test(brief);
+        const chosen = joinAll ? footage : [footage.reduce((best, f) => ((f.c.durationMs ?? 0) > (best.c.durationMs ?? 0) ? f : best), footage[0])];
+        await db.insert(timelineItems).values(
+          chosen.map((f, i) => ({ id: newId("beat"), projectId, kind: "clip", clipId: f.c.id, ord: i * 10, inMs: 0, outMs: f.c.durationMs ?? null })),
+        );
+        items = await db.select().from(timelineItems).where(eq(timelineItems.projectId, projectId)).orderBy(asc(timelineItems.ord));
+        await say("footage", joinAll ? `Put all ${chosen.length} clips on the timeline in order` : `Put ${chosen[0].name ?? "the longest take"} on the timeline; the other ${footage.length - 1} stay as cutaways`);
+      }
 
-    /* ---- 3. cut ----------------------------------------------------- */
-    const keepAll = /don'?t cut|do not cut|keep everything|no cuts|leave the cut|不要剪|不剪|保留全部|全部保留/i.test(brief);
-    if (keepAll) {
-      await say("cut", "Leaving the cut as it is, as asked");
-    } else {
-      await say("cut", "Taking out the dead air and choosing what to keep");
-      const r = await autoEdit(viewer, projectId, { language, brief });
-      await say("cut", `Cut to ${r.cuts} piece${r.cuts === 1 ? "" : "s"}, ${(r.removedMs / 1000).toFixed(1)}s removed${r.note ? ` (${r.note})` : ""}`);
+      /* ---- 2. transcribe -------------------------------------------- */
+      const [anyCaption] = await db.select({ language: captions.language }).from(captions).where(eq(captions.projectId, projectId)).limit(1);
+      language = anyCaption?.language ?? language;
+
+      const timed = await db
+        .select({ n: sql<number>`count(*)::int` })
+        .from(captions)
+        .where(and(eq(captions.projectId, projectId), eq(captions.language, language), sql`${captions.words} is not null`));
+      if (Number(timed[0]?.n ?? 0) === 0) {
+        await say("transcribe", "Transcribing the footage with word timings. A minute or two on a long take.");
+        try {
+          const t = await transcribeProject(projectId, { language, diarize: true });
+          await say("transcribe", `Transcribed: ${t.captions} lines, ${t.languageCode} (${Math.round(t.languageProbability * 100)}% sure)`);
+        } catch (err) {
+          /* Footage the sound check let through (it has *a* sound — music,
+             wind) but in which nobody speaks. With a script to read, that is
+             a narrated video, not a failed one. */
+          const msg = err instanceof Error ? err.message : String(err);
+          if (narrateMode === "auto" && narration && NO_SPEECH.test(msg)) {
+            await say("transcribe", "Nobody speaks in the footage, so the script's narration will carry the video");
+            narrated = true;
+            language = await narrate();
+          } else {
+            throw err;
+          }
+        }
+      } else {
+        await say("transcribe", "The transcript is already here");
+      }
+
+      /* ---- 3. cut --------------------------------------------------- */
+      const keepAll = /don'?t cut|do not cut|keep everything|no cuts|leave the cut|不要剪|不剪|保留全部|全部保留/i.test(brief);
+      if (narrated) {
+        // Already cut to the narration.
+      } else if (keepAll) {
+        await say("cut", "Leaving the cut as it is, as asked");
+      } else {
+        await say("cut", "Taking out the dead air and choosing what to keep");
+        const r = await autoEdit(viewer, projectId, { language, brief });
+        await say("cut", `Cut to ${r.cuts} piece${r.cuts === 1 ? "" : "s"}, ${(r.removedMs / 1000).toFixed(1)}s removed${r.note ? ` (${r.note})` : ""}`);
+      }
     }
 
     /* ---- 4. design -------------------------------------------------- */
@@ -326,10 +420,6 @@ export async function direct(viewer: Viewer, projectId: string, jobId?: string):
       .orderBy(desc(files.updatedAt))
       .limit(25);
 
-    const beats = project.scriptId
-      ? await db.select().from(scriptBeats).where(eq(scriptBeats.scriptId, project.scriptId)).orderBy(asc(scriptBeats.ord))
-      : [];
-
     const voice = await creatorVoiceText(viewer.tenantId);
     const line = (c: (typeof cues)[number]) => `[${c.startMs}–${c.endMs}ms] ${c.text}`;
     const transcript = cues.map(line).join("\n").slice(0, 26_000);
@@ -338,6 +428,9 @@ export async function direct(viewer: Viewer, projectId: string, jobId?: string):
       `Brief from the producer:\n${brief || "(none given: make the best video the footage allows)"}`,
       P.prompt,
       `Aspect: ${aspect}. Language of the captions: ${language}.`,
+      narrated
+        ? "This video is NARRATED: the transcript below is a voice-over generated from the script, read over footage in which nobody speaks to camera. There is no presenter: no lower-third for a speaker, no punch-ins (there is no face to push in on), and every beat already has its own shot. Titles, statements, stats and pictures carry it."
+        : "",
       `The finished timeline runs to ${totalMs}ms in ${cutRows.length} cut${cutRows.length === 1 ? "" : "s"}.`,
       `Clips in the bin:\n${clipList.map((c) => `- ${c.id}  ${c.label}  ${c.seconds}s  ${c.spare ? "SPARE (can be a cutaway)" : "on the timeline"}`).join("\n")}`,
       pictures.length ? `Pictures in the studio's files:\n${pictures.map((p) => `- ${p.id}  ${p.name}`).join("\n")}` : "Pictures in the studio's files: none.",
@@ -418,7 +511,7 @@ export async function direct(viewer: Viewer, projectId: string, jobId?: string):
       return { ...part, graphics: within(part.graphics), punches: within(part.punches), broll: within(part.broll), footage: within(part.footage), pictures: within(part.pictures) };
     };
 
-    let plan: Plan = empty();
+    const plan: Plan = empty();
     let designNote: string | null = null;
     const settled = await Promise.allSettled(windows.map(designWindow));
     const failed: string[] = [];
@@ -440,6 +533,12 @@ export async function direct(viewer: Viewer, projectId: string, jobId?: string):
       plan.pictures.push(...part.pictures);
       if (part.notes) plan.notes = plan.notes ? `${plan.notes} ${part.notes}` : part.notes;
     });
+    /* Under a narration there is no face to push in on and nobody to name:
+       held to that here whatever the model answered. */
+    if (narrated) {
+      plan.punches = [];
+      plan.graphics = plan.graphics.filter((g) => g.kind !== "lower-third");
+    }
     if (!plan.graphics.length && !plan.title) {
       designNote = failed.length
         ? `The model could not be reached (${failed[0]}); the cut and the captions are here without titles.`
@@ -744,7 +843,8 @@ export async function direct(viewer: Viewer, projectId: string, jobId?: string):
       broll: rows.filter((r) => r.kind === "broll").length,
       pictures: pictureRows.length,
       title,
-      notes: [plan.notes, designNote].filter(Boolean).join(" ") || undefined,
+      notes: [narrationNote, plan.notes, designNote].filter(Boolean).join(" ") || undefined,
+      ...(narrated ? { narrated: true } : {}),
     };
 
     /* ---- 7. render -------------------------------------------------- */

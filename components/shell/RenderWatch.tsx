@@ -24,7 +24,9 @@ type Answer = {
 
 const STEP: Record<string, [string, string]> = {
   footage: ["Footage", "素材"],
+  voice: ["Voicing", "配音中"],
   transcribe: ["Transcribing", "转写中"],
+  captions: ["Captions", "加字幕中"],
   cut: ["Cutting", "剪辑中"],
   design: ["Designing", "设计中"],
   pictures: ["Finding pictures", "找图中"],

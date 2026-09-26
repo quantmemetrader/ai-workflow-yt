@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { ChannelSurface, type ChannelMember, type ChannelMessage, type ChannelPending } from "@/components/chat/ChannelSurface";
+import { ChannelSurface, type ChannelMember, type ChannelMessage, type ChannelPending, type SentFile } from "@/components/chat/ChannelSurface";
 import { pendingStamp } from "@/lib/agents/steps";
 import { parseAgentMentions } from "@/lib/agents/catalog";
 import { pressCardAction, sendChannelMessage } from "@/app/(app)/chat/actions";
@@ -147,7 +147,7 @@ export function ChannelView({
     };
   }, [router, slug, latest, working]);
 
-  function send(body: string, attachmentIds: string[]) {
+  function send(body: string, attachmentIds: string[], files: SentFile[] = []) {
     /*
      * Three things, and the last two are the reason direct messages looked
      * broken for a week.
@@ -169,6 +169,9 @@ export function ChannelView({
       body,
       createdAt: new Date().toISOString(),
       pending: true,
+      /* The files as chips, by name, until the server's copy draws them
+         properly (a video as its card, once its poster exists). */
+      attachments: files.map((f) => ({ id: f.id, name: f.name, kind: f.kind, sizeBytes: f.size, durationMs: null })),
     };
     setFailed(null);
     setOptimistic((rest) => [...rest, mine]);

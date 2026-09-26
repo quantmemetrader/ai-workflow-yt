@@ -20,7 +20,7 @@ import { field, ghost, solid } from "@/components/ui/kit";
  */
 const STEPS: { key: NonNullable<DirectorState["step"]>; en: string; zh: string }[] = [
   { key: "footage", en: "Footage", zh: "素材" },
-  { key: "transcribe", en: "Transcribe", zh: "转写" },
+  { key: "transcribe", en: "Words", zh: "转写/配音" },
   { key: "cut", en: "Cut", zh: "剪辑" },
   { key: "design", en: "Design", zh: "设计" },
   { key: "render", en: "Render", zh: "渲染" },
@@ -75,7 +75,16 @@ export function Director({
   /* Finding pictures and writing the rows are the tail of the design step;
      they have no chip of their own, and without this the stepper showed no
      step at all for a minute while they ran. */
-  const stepKey = director.step === "pictures" || director.step === "write" ? "design" : director.step;
+  const stepKey =
+    director.step === "pictures" || director.step === "write"
+      ? "design"
+      : /* A narrated run voices the script where a filmed one transcribes,
+           and writes its captions as part of the cut. */
+        director.step === "voice"
+        ? "transcribe"
+        : director.step === "captions"
+          ? "cut"
+          : director.step;
   const stepIndex = STEPS.findIndex((s) => s.key === stepKey);
   const elapsed = director.startedAt ? Math.max(0, Math.round((now - new Date(director.startedAt).getTime()) / 1000)) : 0;
   const result = director.state === "done" ? director.result : undefined;

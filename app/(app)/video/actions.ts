@@ -13,6 +13,7 @@ import {
   addClip,
   addTimelineItem,
   captionsFromText,
+  captionsFromTrack,
   createProject,
   deleteProject,
   isAspect,
@@ -333,7 +334,10 @@ export async function autoEditAction(projectId: string, language: string) {
  * director state while it runs. Everything it writes is one ⌘Z away, because
  * the editor snapshots the project before it starts.
  */
-export async function directAction(projectId: string, input: { brief: string; aspect?: string; render?: boolean; pace?: string }) {
+export async function directAction(
+  projectId: string,
+  input: { brief: string; aspect?: string; render?: boolean; pace?: string; narrate?: string; voiceId?: string },
+) {
   const viewer = await editor();
   if (!viewer) return { error: "Not allowed" };
   if (!id(projectId)) return { error: "Not found" };
@@ -345,6 +349,8 @@ export async function directAction(projectId: string, input: { brief: string; as
       aspect: typeof input.aspect === "string" ? input.aspect : "16:9",
       render: input.render !== false,
       pace: typeof input.pace === "string" ? input.pace : "channel",
+      narrate: typeof input.narrate === "string" ? input.narrate : "auto",
+      voiceId: typeof input.voiceId === "string" ? input.voiceId.slice(0, 64) : null,
     });
     refresh();
     return {};
@@ -619,7 +625,8 @@ export async function removeTrackAction(trackId: string) {
   }
 }
 
-/** A voice-over, spoken by ElevenLabs. Queued: synthesis and filing are the
+/** A voice-over, spoken from text by the chosen voice's engine (the studio's
+ * own voices run on this server). Queued: synthesis and filing are the
  * worker's job, and the screen polls while it happens. */
 export async function voiceOverAction(
   projectId: string,
@@ -642,6 +649,20 @@ export async function voiceOverAction(
     return {};
   } catch (err) {
     return { error: err instanceof Error ? err.message : "Could not start that" };
+  }
+}
+
+/** Captions cut from a finished voice-over's own timings (`captionsFromTrack`). */
+export async function captionsFromTrackAction(trackId: string) {
+  const viewer = await editor();
+  if (!viewer) return { error: "Not allowed" };
+  if (!id(trackId)) return { error: "Not found" };
+  try {
+    const r = await captionsFromTrack(viewer, trackId);
+    refresh();
+    return { lines: r.lines };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Could not caption from that" };
   }
 }
 

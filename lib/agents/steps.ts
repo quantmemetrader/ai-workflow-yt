@@ -159,7 +159,9 @@ export function pendingStamp(rows: { id: string; step: string }[]): string {
  */
 const DIRECTOR_STEPS: Record<string, [string, string]> = {
   footage: ["拼接素材", "joining the footage"],
+  voice: ["配音", "voicing the narration"],
   transcribe: ["转写素材", "transcribing"],
+  captions: ["加字幕", "adding captions"],
   cut: ["粗剪", "making the rough cut"],
   design: ["加字幕和图形", "adding captions and graphics"],
   pictures: ["找图", "finding pictures"],

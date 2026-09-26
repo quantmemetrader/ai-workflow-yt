@@ -61,8 +61,10 @@ export const env = {
    * say plainly that no channel is connected rather than crashing the app.
    */
   /**
-   * Which backend turns speech into text. Voice-over is not affected by this
-   * and is always ElevenLabs.
+   * Which backend turns speech into text. Voice-over (text to speech) is not
+   * affected by this: it runs on this server's own engine (`lib/video/tts`,
+   * /opt/tts) for the studio's voices, and on ElevenLabs only for a voice
+   * picked from its library.
    *
    *   local       the venv at /opt/whisper, and only that. A failure fails the
    *               job. This is the default.
@@ -83,7 +85,8 @@ export const env = {
   ) as "local" | "auto" | "elevenlabs",
 
   /**
-   * ElevenLabs. Speech to text for video captions, and voice-over.
+   * ElevenLabs. Optional: speech to text when TRANSCRIBE_BACKEND asks for it,
+   * and voice-over in a voice from its library when it can be reached.
    *
    * The account is on the free tier: 10,000 text-to-speech characters a month
    * and transcription billed by audio length. The Video module states the

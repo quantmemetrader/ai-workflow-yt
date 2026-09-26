@@ -28,6 +28,12 @@ import { publishPlatformName, publishedDay, type Publication } from "@/lib/proje
 import { artifactHref } from "@/lib/chat/handoff";
 import { LinkedText } from "@/components/chat/LinkedText";
 import { PersonAvatar } from "@/components/ui/PersonAvatar";
+import { VoicePicker } from "@/components/video/VoicePicker";
+import type { UiVoice } from "@/lib/video/tts/types";
+import { DEFAULT_VOICE_ZH, voiceLabel } from "@/lib/video/tts/voices";
+import { VideoCards } from "@/components/chat/VideoCard";
+import { videoBytes, videoClock } from "@/lib/chat/video-card";
+import { directorStepLabel } from "@/lib/agents/steps";
 
 /**
  * One project, worked on in place.
@@ -41,7 +47,20 @@ import { PersonAvatar } from "@/components/ui/PersonAvatar";
  */
 type Msg = ProjectDetail["messages"][number];
 
-export function ProjectScreen({ project: p, zh, people, writing }: { project: ProjectDetail; zh: boolean; people: MentionPerson[]; writing: boolean }) {
+export function ProjectScreen({
+  project: p,
+  zh,
+  people,
+  writing,
+  voices = [],
+}: {
+  project: ProjectDetail;
+  zh: boolean;
+  people: MentionPerson[];
+  writing: boolean;
+  /** The narration voices (`lib/video/tts`), for the video card's AI 配音. */
+  voices?: UiVoice[];
+}) {
   const t = (a: string, b: string) => (zh ? a : b);
   const router = useRouter();
   const [pending, start] = React.useTransition();
@@ -51,11 +70,26 @@ export function ProjectScreen({ project: p, zh, people, writing }: { project: Pr
   const [chatOpen, setChatOpen] = React.useState(false);
   const [popup, setPopup] = React.useState<{ title: string; body: React.ReactNode } | null>(null);
   const [videoPrompt, setVideoPrompt] = React.useState((p.brief ?? p.title).replace(/@\S+/g, "").trim());
+  /* AI 配音: on means the script's 旁白 is voiced and the video cut to it even
+     when the clips have sound; off (the default) still voices it when the
+     clips turn out to be silent. The voice starts as the one used last. */
+  const [aiVoice, setAiVoice] = React.useState(false);
+  const [voiceId, setVoiceId] = React.useState(p.narration?.voiceId?.replace(/@.*$/, "") || voices.find((v) => v.lang === "zh")?.id || DEFAULT_VOICE_ZH);
+  const hasNarration = p.beats.some((b) => b.voiceover.trim().length > 0);
+  /* The AI 配音 box is for footage nobody speaks in (stock shots, a script-only
+     project) — the owner: "show it only on the ones that actually don't have
+     spoken audio". Speech found by transcription (caption lines exist for the
+     clips) hides it; a narration already made keeps it, so it can be changed. */
+  const footageSpeaks = (p.video?.clips ?? 0) > 0 && (p.video?.captions?.length ?? 0) > 0;
+  const showVoiceBox = Boolean(p.narration) || !footageSpeaks;
+  const oneGoBody = (extra: Record<string, unknown> = {}) =>
+    JSON.stringify({ prompt: videoPrompt, narrate: aiVoice ? "on" : "auto", voiceId, ...extra });
   const [busyAction, setBusyAction] = React.useState<string | null>(null);
   const [picking, setPicking] = React.useState<null | "clips" | "scripts" | "topics">(null);
   /* The 已发布 popover, and which button opened it: the delivery step's in
-     the row of steps, or the delivery card's. */
-  const [publishing, setPublishing] = React.useState<null | "step" | "card">(null);
+     the row of steps, the delivery card's, or the one under the finished
+     film on the 成片 card. */
+  const [publishing, setPublishing] = React.useState<null | "step" | "card" | "video">(null);
   /* When each employee was last asked from a card, so its card can show it working. */
   const [asked, setAsked] = React.useState<Partial<Record<AgentKey, string>>>({});
 
@@ -133,25 +167,70 @@ export function ProjectScreen({ project: p, zh, people, writing }: { project: Pr
       else if ("note" in res && res.note) notify(res.note);
     });
   }
-  const renderLive = p.render?.state === "queued" || p.render?.state === "rendering" || directing;
+  /*
+   * Where the film stands, from the project's rows (`workProjectDetail`):
+   *
+   *   directing   — the director is at it (queued or running);
+   *   renderLive  — a render is queued or encoding;
+   *   busyLive    — either: the page polls, the buttons wait;
+   *   rendered    — the latest render finished with a file: the player;
+   *   renderFailed — it did not, and nobody is retrying yet;
+   *   cutReady    — a cut is on the timeline, nobody is on it, nothing
+   *                 rendered: the one press that is missing is 渲染.
+   */
+  const renderLive = p.render?.state === "queued" || p.render?.state === "rendering";
+  const busyLive = renderLive || directing;
+  const renderFailed = !directing && p.render?.state === "failed";
+  const cutReady = !busyLive && !(p.render?.state === "done" && p.render.fileId) && (p.video?.items ?? 0) > 0;
 
-  /* While something is being worked on, ask for the project's state in one
-     short string and refresh only when it changes: re-rendering on a timer
-     read as the page reloading itself. */
+  /*
+   * Ask for the project's state in one short string and refresh only when
+   * it changes: re-rendering on a timer read as the page reloading itself.
+   *
+   * Every three seconds while something is being worked on. The clock on
+   * that restarts each time the stamp moves (a render's percent is in it),
+   * so a film that takes longer than the deadline keeps its bar going and
+   * still turns the card over when it lands; only a job that has said
+   * nothing new for eight minutes stops being asked about. And once when
+   * the tab comes back into view, whatever the state: a render started in
+   * the editor tab, or by 剪辑师 from the chat, shows the moment the owner
+   * looks here again rather than after a reload.
+   */
   React.useEffect(() => {
-    if (!(anyWorking || renderLive)) return;
-    const until = Date.now() + 8 * 60_000;
+    const live = anyWorking || busyLive;
+    let until = Date.now() + 8 * 60_000;
     let last: string | null = null;
-    const id = setInterval(async () => {
-      if (Date.now() > until) return clearInterval(id);
+    let stopped = false;
+    const pulse = async () => {
       const r = await fetch(`/api/projects/${p.id}/pulse`, { cache: "no-store" }).catch(() => null);
       const j = r?.ok ? ((await r.json()) as { stamp: string }) : null;
-      if (!j) return;
-      if (last !== null && j.stamp !== last) router.refresh();
+      if (!j || stopped) return;
+      if (last !== null && j.stamp !== last) {
+        until = Date.now() + 8 * 60_000;
+        router.refresh();
+      }
       last = j.stamp;
-    }, 3000);
-    return () => clearInterval(id);
-  }, [anyWorking, renderLive, router, p.id]);
+    };
+    /* The stamp this page was drawn from, so the first change is seen. */
+    void pulse();
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void pulse();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onVisible);
+    const id = live
+      ? setInterval(() => {
+          if (Date.now() > until) return;
+          void pulse();
+        }, 3000)
+      : null;
+    return () => {
+      stopped = true;
+      if (id) clearInterval(id);
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onVisible);
+    };
+  }, [anyWorking, busyLive, router, p.id]);
 
   /** Ask one employee something from its card; the answer comes back there. */
   function ask(agent: AgentKey, text: string) {
@@ -231,7 +310,21 @@ export function ProjectScreen({ project: p, zh, people, writing }: { project: Pr
     />
   );
   const skipped = (k: ProjectStep["key"]) => p.steps.find((s) => s.key === k)?.state === "skipped";
-  const pct = p.render ? Math.round(p.render.progress > 1 ? p.render.progress : p.render.progress * 100) : 0;
+  /* Already 0–100 (`workProjectDetail`). */
+  const pct = p.render?.progress ?? 0;
+  /* What a held button says while a render runs: queued, or how far. */
+  const renderingLabel = p.render?.state === "queued" ? t("排队渲染…", "Queued to render…") : t(`渲染中 ${pct}%…`, `Rendering ${pct}%…`);
+  /* What the 剪辑 step and the 成片 card say while the film is being made:
+     the director's step, or the render with its percent. */
+  const liveWork: LiveWork | null = directing
+    ? { agent: "video", label: { zh: `正在${directorStepLabel(p.director?.step ?? null, true)}`, en: capital(directorStepLabel(p.director?.step ?? null, false)) }, percent: p.director?.step === "render" && pct > 0 ? pct : null, since: p.director?.startedAt ?? null }
+    : renderLive
+      ? { agent: "video", step: p.render?.state === "queued" ? "working" : "rendering", label: p.render?.state === "queued" ? { zh: "排队渲染", en: "Queued to render" } : undefined, percent: p.render?.state === "queued" ? null : pct, since: p.render?.startedAt ?? null }
+      : null;
+  /* The render buttons burn the cut's own caption track, when it has one. */
+  const captionLanguage = p.video?.captions[0] ?? (zh ? "zh-CN" : "en");
+  const burnCaptions = (p.video?.captions.length ?? 0) > 0;
+  const render = (aspect: "9:16" | "16:9") => p.video && runTool(aspect === "9:16" ? "r916" : "r169", t(`渲染 ${aspect}`, `render ${aspect}`), () => exportAction(p.video!.id, { aspect, burnCaptions, captionLanguage }));
 
   return (
     <div style={{ flexGrow: 1, minWidth: 0, minHeight: 0, display: "flex", position: "relative", ...PAPER }}>
@@ -350,7 +443,10 @@ export function ProjectScreen({ project: p, zh, people, writing }: { project: Pr
                   {publishing === "step" ? publishPopover("right") : null}
                 </div>
               ) : (
-                <StepCard key={s.key} step={s} n={i + 1} zh={zh} />
+                /* The 剪辑 step types while the film is being made: the
+                   director's step or the render's percent, and how long
+                   it has been at it. */
+                <StepCard key={s.key} step={s} n={i + 1} zh={zh} live={s.key === "edit" ? liveWork : null} />
               ),
             ])}
           </div>
@@ -506,55 +602,241 @@ export function ProjectScreen({ project: p, zh, people, writing }: { project: Pr
               </Workbench>
             ) : null}
 
-            {/* ---- the video ---- */}
+            {/* ---- the video ----
+                The card says where the film is at every moment, and offers
+                the one press that moves it on: the director typing its step
+                while it cuts; "剪辑完成，还没渲染" with 渲染 in black once it
+                has (this used to read "还没有成片" for ever); a progress bar
+                with the minutes left while it renders; the player, 下载 and
+                「已发布 · 标记完成」 once it is out; what went wrong, and 重试,
+                when it did not. */}
             <Workbench
               icon={<AgentIcon agent="video" size={26} radius={7} />}
               title={t("成片", "The video")}
-              sub={rendered ? t("已渲染", "Rendered") : renderLive ? t(`渲染中 ${pct}%`, `Rendering ${pct}%`) : t("还没有成片", "Nothing rendered yet")}
+              sub={
+                rendered
+                  ? t(`已渲染 · ${[p.render?.aspect, p.render?.durationMs ? videoClock(p.render.durationMs) : null].filter(Boolean).join(" · ")}`, `Rendered · ${[p.render?.aspect, p.render?.durationMs ? videoClock(p.render.durationMs) : null].filter(Boolean).join(" · ")}`)
+                  : directing
+                    ? t(`剪辑师正在${directorStepLabel(p.director?.step ?? null, true)}`, `The editor is ${directorStepLabel(p.director?.step ?? null, false)}`)
+                    : renderLive
+                      ? p.render?.state === "queued"
+                        ? t("排队渲染", "Queued to render")
+                        : t(`渲染中 ${pct}%`, `Rendering ${pct}%`)
+                      : cutReady
+                        ? t(`剪辑完成 · ${p.video?.items ?? 0} 段${p.video?.graphics ? ` · ${p.video.graphics} 个图形` : ""} · 待渲染`, `Cut done · ${p.video?.items ?? 0} pieces${p.video?.graphics ? ` · ${p.video.graphics} graphics` : ""} · not rendered yet`)
+                        : t("还没有成片", "Nothing rendered yet")
+              }
               right={
                 <span style={{ display: "flex", gap: 6 }}>
                   {p.video ? <Link prefetch={false} href={`/video?project=${p.video.id}`} style={{ ...btn(false), height: 28, fontSize: 12, textDecoration: "none" }}>{t("在剪辑台打开", "Open in the editor")} <Icon name="external" size={11} /></Link> : null}
-                  {rendered ? <a href={`/api/files/${rendered}/download`} target="_blank" rel="noreferrer" style={{ ...btn(false), height: 28, fontSize: 12, textDecoration: "none" }}>{t("下载", "Download")}</a> : null}
                 </span>
               }
             >
               {directing ? (
                 /* The director at work, typing like every other employee:
-                   its step, and the render's percent once it is rendering. */
-                <div style={{ marginBottom: 10 }}>
-                  <AgentTyping
-                    agent="video"
-                    zh={zh}
-                    name
-                    label={{ zh: `正在${stepName(p.director?.step ?? null, true)}`, en: capital(stepName(p.director?.step ?? null, false)) }}
-                    percent={p.render?.state === "rendering" && pct > 0 ? pct : null}
-                  />
+                   its step, the render's percent once it is rendering, how
+                   long it has been at it, and its last word. */
+                <div style={{ marginBottom: 12, padding: "12px 14px", borderRadius: 12, background: "#f7f8fb", border: "1px solid #eef0f5" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                    <AgentTyping agent="video" zh={zh} name label={liveWork?.label} percent={liveWork?.percent ?? null} />
+                    <Elapsed since={p.director?.startedAt ?? null} zh={zh} />
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8, fontSize: 12, color: "#7c7c7c", lineHeight: 1.5 }}>
+                    <span style={{ minWidth: 0 }}>{p.director?.note ?? p.director?.lastLog ?? t("转写、粗剪、配图形，最后渲染。做完会直接出现在这里。", "Transcribe, cut, design, then render. It lands right here when done.")}</span>
+                  </div>
                 </div>
-              ) : p.director?.state === "failed" && p.director.error ? (
+              ) : p.director?.state === "failed" && p.director.error && !rendered && !cutReady ? (
                 <div style={{ padding: "10px 12px", borderRadius: 12, background: "#fdf3f2", border: "1px solid #f6d5d1", marginBottom: 10 }}>
                   <div style={{ fontSize: 12.5, color: "#a3281c", lineHeight: 1.55 }}>
                     {/no words|no sound|transcribe|转写|声音/i.test(p.director.error)
-                      ? t("素材里没有人说话，导演没法按口播剪。可以直接用这些画面拼成片。", "There is no speech in the footage, so the director cannot cut on it. The shots can be put together directly instead.")
+                      ? hasNarration
+                        ? t("素材里没有人说话。可以用脚本的旁白做 AI 配音，按配音剪成片。", "There is no speech in the footage. The script's narration can be voiced and the video cut to it.")
+                        : t("素材里没有人说话，导演没法按口播剪。可以直接用这些画面拼成片。", "There is no speech in the footage, so the director cannot cut on it. The shots can be put together directly instead.")
                       : `${t("上次没做成：", "Last try stopped: ")}${p.director.error}`}
                   </div>
-                  <button type="button" disabled={busyAction !== null} onClick={() => runTool("assemble", t("用画面拼成片", "build from the shots"), async () => { const r = await fetch(`/api/projects/${p.id}/one-go`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ prompt: videoPrompt, way: "assemble" }) }); const j = (await r.json().catch(() => ({}))) as { error?: string }; return r.ok ? {} : { error: j.error ?? t("没能开始", "Could not start") }; })} style={{ ...btn(true), height: 30, fontSize: 12, marginTop: 8 }}>
-                    <Icon name="film" size={13} /> {t("用这些画面直接拼成片", "Build it from the shots instead")}
+                  <button type="button" disabled={busyAction !== null} onClick={() => runTool("assemble", t("用画面拼成片", "build from the shots"), async () => { const r = await fetch(`/api/projects/${p.id}/one-go`, { method: "POST", headers: { "content-type": "application/json" }, body: oneGoBody({ way: "assemble" }) }); const j = (await r.json().catch(() => ({}))) as { error?: string }; return r.ok ? {} : { error: j.error ?? t("没能开始", "Could not start") }; })} style={{ ...btn(true), height: 30, fontSize: 12, marginTop: 8 }}>
+                    <Icon name="film" size={13} /> {hasNarration ? t("用旁白配音，按配音剪成片", "Voice the narration and cut to it") : t("用这些画面直接拼成片", "Build it from the shots instead")}
                   </button>
                 </div>
               ) : null}
-              {rendered ? <video controls preload="metadata" src={`/api/files/${rendered}/download`} style={{ width: "100%", maxHeight: 420, borderRadius: 12, background: "#000", display: "block", marginBottom: 10 }} /> : null}
+
               {renderLive && !directing ? (
-                <div style={{ marginBottom: 10 }}>
-                  <AgentTyping agent="video" zh={zh} name step={p.render?.state === "queued" ? "working" : "rendering"} label={p.render?.state === "queued" ? { zh: "排队渲染", en: "Queued to render" } : undefined} percent={p.render?.state === "queued" ? null : pct} />
-                  <div style={{ fontSize: 11.5, color: "#7c7c7c", marginTop: 5 }}>{t("完成后会直接在这里播放", "It plays right here when done")}</div>
+                /* Encoding: the bar, the percent, and about how long is
+                   left, worked out from how fast it has gone so far. */
+                <div style={{ marginBottom: 12, padding: "12px 14px", borderRadius: 12, background: "#f7f8fb", border: "1px solid #eef0f5" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                    <AgentTyping agent="video" zh={zh} name step={liveWork?.step} label={liveWork?.label} percent={liveWork?.percent ?? null} />
+                    <Elapsed since={p.render?.startedAt ?? null} zh={zh} />
+                  </div>
+                  <div aria-hidden style={{ height: 6, borderRadius: 3, background: "#e3e6ee", overflow: "hidden", marginTop: 10 }}>
+                    <div style={{ height: "100%", width: `${Math.max(2, pct)}%`, borderRadius: 3, background: "linear-gradient(90deg,#278f5e,#0f5bd5)", transition: "width .6s ease" }} />
+                  </div>
+                  <div style={{ display: "flex", gap: 10, marginTop: 7, fontSize: 12, color: "#7c7c7c", flexWrap: "wrap" }}>
+                    <span style={{ fontVariantNumeric: "tabular-nums" }}>{p.render?.aspect} · {pct}%</span>
+                    <RenderEta render={p.render} zh={zh} />
+                    <span style={{ marginLeft: "auto" }}>{t("完成后会直接在这里播放", "It plays right here when done")}</span>
+                  </div>
                 </div>
               ) : null}
+
+              {rendered && p.render ? (
+                /* The film, in place: the 480p copy plays (the master when
+                   there is none, or it will not), the master downloads. */
+                <div style={{ marginBottom: 12 }}>
+                  <RenderPlayer render={p.render} zh={zh} />
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8, fontSize: 12, color: "#7c7c7c", flexWrap: "wrap" }}>
+                    <span style={{ fontVariantNumeric: "tabular-nums" }}>
+                      {[p.render.aspect, p.render.durationMs ? videoClock(p.render.durationMs) : null, p.render.sizeBytes ? videoBytes(p.render.sizeBytes) : null].filter(Boolean).join(" · ")}
+                      {p.render.proxyFileId ? ` · ${t("预览画质，下载的是原片", "preview quality; the download is the full file")}` : ""}
+                    </span>
+                  </div>
+                  <div style={{ display: "flex", gap: 6, marginTop: 10, flexWrap: "wrap", position: "relative" }}>
+                    <a href={`/api/files/${rendered}/download?download=1`} style={{ ...btn(true), height: 32, textDecoration: "none" }}>
+                      <Icon name="download" size={13} />
+                      {t("下载", "Download")}
+                    </a>
+                    {p.video ? (
+                      <Link prefetch={false} href={`/video?project=${p.video.id}`} style={{ ...btn(false), height: 32, textDecoration: "none" }}>
+                        <Icon name="scissors" size={13} />
+                        {t("在剪辑台打开", "Open in the editor")}
+                      </Link>
+                    ) : null}
+                    {/* The file's own page holds its sharing sheet (who may
+                        open it), which is what a link to send around means
+                        here: every open is checked and audited there. */}
+                    <Link prefetch={false} href={`/files/${rendered}`} style={{ ...btn(false), height: 32, textDecoration: "none" }}>
+                      <Icon name="share" size={13} />
+                      {t("分享链接", "Share")}
+                    </Link>
+                    {p.render.subtitleFileId ? (
+                      <a href={`/api/files/${p.render.subtitleFileId}/download?download=1`} style={{ ...btn(false), height: 32, textDecoration: "none" }}>
+                        SRT
+                      </a>
+                    ) : null}
+                    {p.canPublish && p.status === "active" ? (
+                      <>
+                        <span style={{ flexGrow: 1 }} />
+                        <button type="button" onClick={() => setPublishing((v) => (v === "video" ? null : "video"))} disabled={pending} aria-expanded={publishing === "video"} data-pub-opener="" style={{ ...btn(false), height: 32, gap: 7, borderColor: PUBLISHED_TONE.line, color: PUBLISHED_TONE.ink }}>
+                          <PublishedCheck size={14} />
+                          <Tr zh="已发布 · 标记完成" en="Mark as published" inZh={zh} />
+                        </button>
+                      </>
+                    ) : null}
+                    {publishing === "video" ? publishPopover("right") : null}
+                  </div>
+                </div>
+              ) : null}
+
+              {renderFailed && p.render ? (
+                /* What went wrong, in the studio's words, and the same
+                   render again. */
+                <div style={{ padding: "10px 12px", borderRadius: 12, background: "#fdf3f2", border: "1px solid #f6d5d1", marginBottom: 12 }}>
+                  <div style={{ fontSize: 12.5, color: "#a3281c", lineHeight: 1.55, overflowWrap: "anywhere" }}>
+                    {t("渲染没成功", "The render failed")}
+                    {p.render.error ? `：${p.render.error.slice(0, 240)}` : "。"}
+                  </div>
+                  <button type="button" disabled={busyAction !== null || !p.video?.items} onClick={() => render(p.render?.aspect === "16:9" ? "16:9" : "9:16")} style={{ ...btn(true), height: 30, fontSize: 12, marginTop: 8 }}>
+                    <Icon name="undo" size={13} /> {t(`重试 · 渲染 ${p.render.aspect}`, `Try again · render ${p.render.aspect}`)}
+                  </button>
+                </div>
+              ) : null}
+
+              {cutReady && !renderFailed ? (
+                /* The cut is there and nothing has been rendered from it:
+                   the one press that is missing, in black. */
+                <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", borderRadius: 12, background: "#fafaf9", border: "1px solid #ececea", marginBottom: 12, flexWrap: "wrap" }}>
+                  <span style={{ flex: "1 1 220px", minWidth: 0 }}>
+                    <span style={{ display: "block", fontSize: 13, fontWeight: 600 }}>
+                      {p.director?.state === "done" ? t("剪辑完成，还没渲染成片", "The cut is done; nothing rendered yet") : t("时间线上有剪辑，还没渲染成片", "There is a cut on the timeline; nothing rendered yet")}
+                    </span>
+                    <span style={{ display: "block", fontSize: 11.5, color: "#7c7c7c", marginTop: 2, lineHeight: 1.5 }}>
+                      {t(`${p.video?.items ?? 0} 段${p.video?.graphics ? `、${p.video.graphics} 个图形` : ""}${burnCaptions ? "、字幕压进画面" : ""}。按渲染出成片，几分钟；好了会在这里播放。`, `${p.video?.items ?? 0} pieces${p.video?.graphics ? `, ${p.video.graphics} graphics` : ""}${burnCaptions ? ", captions burnt in" : ""}. Press render for the film; it takes minutes and plays here when done.`)}
+                    </span>
+                    {/* The director stopped part-way through this cut (the
+                        step says "看成片卡"): what stopped it, here, so the
+                        owner can decide whether to render what is there or
+                        ask 剪辑师 again. */}
+                    {p.director?.state === "failed" && p.director.error ? (
+                      <span style={{ display: "block", fontSize: 11.5, color: "#a3281c", marginTop: 6, lineHeight: 1.5, overflowWrap: "anywhere" }}>
+                        {t("剪辑师上次没做完：", "The editor stopped last time: ")}
+                        {p.director.error.slice(0, 240)}
+                      </span>
+                    ) : null}
+                  </span>
+                  <span style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                    <button type="button" onClick={() => render("9:16")} disabled={busyAction !== null || pending} style={{ ...btn(true), height: 34, opacity: busyAction ? 0.6 : 1 }}>
+                      <Icon name="play" size={13} />
+                      {busyAction === "r916" ? t("开始中…", "Starting…") : t("渲染 9:16", "Render 9:16")}
+                    </button>
+                    <button type="button" onClick={() => render("16:9")} disabled={busyAction !== null || pending} style={{ ...btn(false), height: 34, opacity: busyAction ? 0.6 : 1 }}>
+                      {busyAction === "r169" ? t("开始中…", "Starting…") : t("渲染 16:9", "Render 16:9")}
+                    </button>
+                    {p.video ? (
+                      <Link prefetch={false} href={`/video?project=${p.video.id}`} className="pj-quiet" style={{ ...quiet("#525252"), height: 34, textDecoration: "none" }}>
+                        {t("在剪辑台打开", "Open in the editor")}
+                      </Link>
+                    ) : null}
+                  </span>
+                </div>
+              ) : null}
+
+              {/* The narration the director (or the editor) made: listen to it here. */}
+              {p.narration && !directing ? (
+                p.narration.state === "ready" && p.narration.fileId ? (
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", borderRadius: 10, background: "#f6f7fb", border: "1px solid #e7e9f2", marginBottom: 10, flexWrap: "wrap" }}>
+                    <span style={{ fontSize: 12, color: "#404040", fontWeight: 500 }}>
+                      {t("AI 配音", "AI voice-over")} · {voiceLabel(p.narration.voiceId, zh, voices.map((v) => ({ id: v.id, name: zh ? v.name.zh : v.name.en })))}
+                      {p.narration.durationMs ? ` · ${clock(p.narration.durationMs)}` : ""}
+                    </span>
+                    <audio controls preload="none" src={`/api/files/${p.narration.fileId}/download`} style={{ height: 30, flexGrow: 1, minWidth: 200 }} />
+                  </div>
+                ) : p.narration.state === "pending" || p.narration.state === "speaking" ? (
+                  <div style={{ marginBottom: 10 }}>
+                    <AgentTyping agent="video" zh={zh} name label={{ zh: "正在配音", en: "Voicing the narration" }} />
+                  </div>
+                ) : null
+              ) : null}
+              {showVoiceBox ? (<>
+              {/* AI 配音: the script's 旁白 read by one of the studio's voices, the cut timed to it. */}
+              <div style={{ padding: "10px 12px", borderRadius: 12, border: "1px solid #ececec", background: aiVoice ? "#fafafa" : "#ffffff", marginBottom: 10 }}>
+                <label style={{ display: "flex", alignItems: "flex-start", gap: 9, cursor: hasNarration ? "pointer" : "default" }}>
+                  <input type="checkbox" checked={aiVoice} disabled={!hasNarration || voices.length === 0} onChange={(e) => setAiVoice(e.target.checked)} style={{ marginTop: 3, accentColor: "#171717" }} />
+                  <span style={{ flexGrow: 1 }}>
+                    <span style={{ display: "block", fontSize: 13, fontWeight: 600, color: "#171717" }}>{t("AI 配音", "AI voice-over")}</span>
+                    <span style={{ display: "block", fontSize: 11.5, color: "#7c7c7c", marginTop: 2, lineHeight: 1.55 }}>
+                      {!hasNarration
+                        ? t("脚本还没有旁白。写好旁白后，可以用它生成配音。", "The script has no narration yet. Once it does, it can be voiced.")
+                        : voices.length === 0
+                          ? t("本服务器上暂无可用的语音引擎。", "No speech engine is available on this server.")
+                          : aiVoice
+                            ? t("用脚本旁白生成配音，按配音的节奏剪辑，字幕跟着配音走。", "The script's narration is voiced, the cut follows its rhythm, and the captions follow the voice.")
+                            : t("不勾选时：素材里没有人声（比如素材库画面）会自动用旁白配音。", "Unticked: footage with no speech (stock shots, say) is voiced from the narration automatically.")}
+                    </span>
+                  </span>
+                </label>
+                {aiVoice || (!p.video?.clips && hasNarration) ? (
+                  <div style={{ marginTop: 10 }}>
+                    <VoicePicker voices={voices} value={voiceId} onChange={setVoiceId} zh={zh} compact />
+                  </div>
+                ) : null}
+              </div>
+              </>) : null}
               <textarea value={videoPrompt} onChange={(e) => setVideoPrompt(e.target.value)} rows={3} placeholder={t("描述你要的成片：长度、节奏、画面、字幕…", "Describe the video: length, pace, shots, captions…")} style={{ width: "100%", border: "1px solid #e2e2e2", borderRadius: 10, padding: "9px 11px", fontFamily: "inherit", fontSize: 13, lineHeight: 1.55, resize: "vertical", outline: "none", boxSizing: "border-box" }} />
+              {/* Held while the director or a render runs, each saying what
+                  is running, so nobody starts a second film over the first. */}
               <Actions>
-                <Action primary icon="spark" label={busyAction === "direct" ? t("开始中…", "Starting…") : t("按描述一键成片", "Make it from this")} onClick={() => runTool("direct", t("一键成片", "one-go video"), async () => { const r = await fetch(`/api/projects/${p.id}/one-go`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ prompt: videoPrompt }) }); const j = (await r.json().catch(() => ({}))) as { error?: string }; return r.ok ? {} : { error: j.error ?? t("没能开始", "Could not start") }; })} disabled={pending || renderLive || !videoPrompt.trim()} />
-                <Action icon="scissors" label={t("自动粗剪", "Auto rough cut")} onClick={() => p.video && runTool("autoedit", t("自动粗剪", "auto rough cut"), () => autoEditAction(p.video!.id, zh ? "zh-CN" : "en"))} disabled={pending || !p.video?.clips} />
-                <Action icon="play" label={t("渲染 9:16", "Render 9:16")} onClick={() => p.video && runTool("r916", t("渲染 9:16", "render 9:16"), () => exportAction(p.video!.id, { aspect: "9:16", burnCaptions: true, captionLanguage: "zh-CN" }))} disabled={pending || renderLive || !p.video?.items} />
-                <Action icon="play" label={t("渲染 16:9", "Render 16:9")} onClick={() => p.video && runTool("r169", t("渲染 16:9", "render 16:9"), () => exportAction(p.video!.id, { aspect: "16:9", burnCaptions: true, captionLanguage: "zh-CN" }))} disabled={pending || renderLive || !p.video?.items} />
+                <Action primary icon="spark" label={busyAction === "direct" ? t("开始中…", "Starting…") : directing ? t("剪辑师正在剪…", "The editor is cutting…") : renderLive ? renderingLabel : t("按描述一键成片", "Make it from this")} onClick={() => runTool("direct", t("一键成片", "one-go video"), async () => { const r = await fetch(`/api/projects/${p.id}/one-go`, { method: "POST", headers: { "content-type": "application/json" }, body: oneGoBody() }); const j = (await r.json().catch(() => ({}))) as { error?: string }; return r.ok ? {} : { error: j.error ?? t("没能开始", "Could not start") }; })} disabled={pending || busyLive || !videoPrompt.trim()} />
+                <Action icon="scissors" label={directing ? t("剪辑中…", "Cutting…") : t("自动粗剪", "Auto rough cut")} onClick={() => p.video && runTool("autoedit", t("自动粗剪", "auto rough cut"), () => autoEditAction(p.video!.id, zh ? "zh-CN" : "en"))} disabled={pending || busyLive || !p.video?.clips} />
+                {/* Rendered already: the same cut again, or the other shape.
+                    Not rendered: the render buttons are the panel above. */}
+                {rendered ? (
+                  <>
+                    <Action icon="play" label={t("再渲染 9:16", "Render 9:16 again")} onClick={() => render("9:16")} disabled={pending || busyLive || !p.video?.items} />
+                    <Action icon="play" label={t("再渲染 16:9", "Render 16:9 again")} onClick={() => render("16:9")} disabled={pending || busyLive || !p.video?.items} />
+                  </>
+                ) : busyLive ? (
+                  <Action icon="play" label={directing ? t("渲染 · 等剪辑完", "Render · after the cut") : renderingLabel} onClick={() => undefined} disabled />
+                ) : null}
               </Actions>
               {rendered ? (
                 <Actions>
@@ -562,7 +844,7 @@ export function ProjectScreen({ project: p, zh, people, writing }: { project: Pr
                   <Action icon="spark" label={t("换开头", "New opening")} onClick={() => ask("video", t("换一个更抓人的开头，重新渲染。", "Try a stronger opening, and render again."))} disabled={pending} />
                 </Actions>
               ) : null}
-              <AgentOutput agent="video" msg={latest("video")} working={working("video")} typing={doing("video", "正在剪辑", "Editing")} zh={zh} compact onOpen={(m) => setPopup({ title: t("剪辑师说", "The video agent says"), body: <Body text={m.body} /> })} />
+              <AgentOutput agent="video" msg={latest("video")} working={working("video") && !busyLive} typing={doing("video", "正在剪辑", "Editing")} zh={zh} compact onOpen={(m) => setPopup({ title: t("剪辑师说", "The video agent says"), body: <Body text={m.body} /> })} />
             </Workbench>
 
             {/* ---- captions & delivery ---- */}
@@ -1071,6 +1353,9 @@ function ChatDrawer({ project: p, zh, people, onClose }: { project: ProjectDetai
                         })}
                     </div>
                   ) : null}
+                  {/* "渲染好了" with the film under it: the poster that
+                      plays, 下载, 在剪辑台打开 — right here in the drawer. */}
+                  <VideoCards videos={m.videos} zh={zh} here={{ projectId: p.id }} />
                   {m.job ? (
                     <div>
                       <JobChip job={m.job} zh={zh} project={{ id: p.id }} />
@@ -1112,7 +1397,12 @@ function ChatDrawer({ project: p, zh, people, onClose }: { project: ProjectDetai
                 </span>
                 <PersonAvatar id={m.authorId} url={m.authorAvatar} name={m.author} size={18} radius={5} />
               </div>
-              <div style={{ marginTop: 3, background: "#171717", color: "#fff", borderRadius: "12px 4px 12px 12px", padding: "9px 12px", fontSize: 12.5, lineHeight: 1.6, whiteSpace: "pre-wrap", wordBreak: "break-word" }}><LinkedText text={m.body} /></div>
+              {m.body.trim() ? <div style={{ marginTop: 3, background: "#171717", color: "#fff", borderRadius: "12px 4px 12px 12px", padding: "9px 12px", fontSize: 12.5, lineHeight: 1.6, whiteSpace: "pre-wrap", wordBreak: "break-word" }}><LinkedText text={m.body} /></div> : null}
+              {/* A take a colleague dropped into this chat: its card, under
+                  their line, the way the channel draws it. */}
+              <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                <VideoCards videos={m.videos} zh={zh} here={{ projectId: p.id }} />
+              </div>
             </div>
           ),
         )}
@@ -1158,7 +1448,7 @@ function StepArrow({ live, done }: { live: boolean; done: boolean }) {
  * `published` (once marked: a green card, the date, and the platforms' marks,
  * each a link to the post).
  */
-function StepCard({ step: s, n, zh, published = null, onPublish }: { step: ProjectStep; n: number; zh: boolean; published?: Publication | null; onPublish?: () => void }) {
+function StepCard({ step: s, n, zh, published = null, onPublish, live = null }: { step: ProjectStep; n: number; zh: boolean; published?: Publication | null; onPublish?: () => void; live?: LiveWork | null }) {
   const you = s.owner === "you";
   const color = you ? "#171717" : AGENT_COLORS[s.owner as AgentKey];
   const isPublished = s.key === "deliver" && s.state === "done";
@@ -1209,6 +1499,19 @@ function StepCard({ step: s, n, zh, published = null, onPublish }: { step: Proje
             </div>
           ) : null}
         </>
+      ) : live && s.state === "running" ? (
+        /* At work: the employee typing its step — the same pill as the
+           chat — and how long it has been at it, instead of a line that
+           never changed. */
+        <div style={{ marginTop: 7, display: "flex", flexDirection: "column", gap: 4, minWidth: 0 }}>
+          {/* The percent goes on the line below, not in the pill: a card
+              this narrow squeezed "正在渲染" to "正…" beside the bar. */}
+          <AgentTyping agent={live.agent} zh={zh} step={live.step} label={live.label} face={false} size="sm" />
+          <span style={{ display: "flex", gap: 6, fontSize: 11, color: "#7c7c7c", fontVariantNumeric: "tabular-nums", minWidth: 0 }}>
+            {live.percent !== null && live.percent !== undefined ? <span style={{ fontWeight: 600, color }}>{live.percent}%</span> : null}
+            <Elapsed since={live.since} zh={zh} style={{ fontSize: 11, color: "#7c7c7c" }} />
+          </span>
+        </div>
       ) : (
         <div style={{ fontSize: 11.5, marginTop: 7, lineHeight: 1.4, color: s.state === "you" ? "#fff" : s.state === "running" ? color : dim ? "#b3b3b3" : "#525252", fontWeight: s.state === "running" || s.state === "you" ? 500 : 400, overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>
           {s.line}
@@ -1348,21 +1651,105 @@ function scriptStatus(s: string, zh: boolean): string {
   return zh ? v[0] : v[1];
 }
 
-function stepName(step: string | null, zh: boolean): string {
-  const m: Record<string, [string, string]> = {
-    transcribe: ["转写素材", "transcribing the footage"],
-    plan: ["规划剪辑", "planning the cut"],
-    cut: ["剪辑", "cutting"],
-    captions: ["加字幕", "adding captions"],
-    graphics: ["加图形", "adding graphics"],
-    footage: ["找画面", "finding footage"],
-    pictures: ["找图", "finding pictures"],
-    write: ["写入", "writing"],
-    render: ["渲染", "rendering"],
-  };
-  const v = step ? m[step] : null;
-  return v ? (zh ? v[0] : v[1]) : zh ? "处理中" : "working";
+/**
+ * The film being made, as the 剪辑 step and the 成片 card type it: who, on
+ * what (a step from the shared table, or the director's own words), how far
+ * (the render's percent), and since when.
+ */
+type LiveWork = { agent: AgentKey; step?: StepKey; label?: { zh: string; en: string }; percent?: number | null; since: string | null };
+
+/**
+ * The browser's clock, ticking every `ms`, as an external store: null on
+ * the server and on the first client render (`getServerSnapshot`), so the
+ * markup hydrates without a mismatch, then the time. The snapshot is the
+ * clock rounded to the tick, so two reads within one tick agree — which is
+ * what `useSyncExternalStore` needs from a snapshot.
+ */
+function useNow(ms: number, on: boolean): number | null {
+  return React.useSyncExternalStore(
+    (onChange) => {
+      if (!on) return () => undefined;
+      const id = setInterval(onChange, ms);
+      return () => clearInterval(id);
+    },
+    () => (on ? Math.floor(Date.now() / ms) * ms : null),
+    () => null,
+  );
 }
+
+/**
+ * "已用 3 分 12 秒" — how long a job has been at it, ticking.
+ *
+ * Nothing on the server: the clock starts in the browser after hydration
+ * (`useNow`), so the server's markup and the first client render agree (a
+ * time worked out on both sides would differ by the request's flight).
+ */
+function Elapsed({ since, zh, style }: { since: string | null; zh: boolean; style?: React.CSSProperties }) {
+  const now = useNow(1000, Boolean(since));
+  if (!since || now === null) return null;
+  const secs = Math.max(0, Math.round((now - new Date(since).getTime()) / 1000));
+  if (!Number.isFinite(secs)) return null;
+  const m = Math.floor(secs / 60);
+  const s = secs % 60;
+  const text = zh ? (m ? `已用 ${m} 分 ${s} 秒` : `已用 ${s} 秒`) : m ? `${m}m ${s}s so far` : `${s}s so far`;
+  return (
+    <span style={{ fontSize: 12, color: "#7c7c7c", fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap", ...style }} aria-live="off">
+      {text}
+    </span>
+  );
+}
+
+/**
+ * "预计还要约 2 分钟" — from how far the render has got in how long: the
+ * remaining share at the pace so far. Said only once a tenth is done and a
+ * minute has been measured, because the first percent are the setup and
+ * would promise an hour. Browser-side, for the same reason as `Elapsed`.
+ */
+function RenderEta({ render, zh }: { render: ProjectDetail["render"]; zh: boolean }) {
+  const startedAt = render?.startedAt ?? null;
+  const now = useNow(5000, Boolean(startedAt));
+  if (!render || render.state !== "rendering" || !startedAt || now === null) return null;
+  const pct = render.progress;
+  const elapsed = now - new Date(startedAt).getTime();
+  if (pct < 10 || elapsed < 20_000) return <span>{zh ? "正在估算剩余时间…" : "Working out the time left…"}</span>;
+  const left = (elapsed * (100 - pct)) / pct;
+  const mins = Math.ceil(left / 60_000);
+  return <span>{mins <= 1 ? (zh ? "预计不到一分钟" : "Under a minute left") : zh ? `预计还要约 ${mins} 分钟` : `About ${mins} min left`}</span>;
+}
+
+/**
+ * The finished film, on the card: the 480p copy plays (a twentieth of the
+ * master's bytes; the studio's link to the bucket is the slow part) and
+ * drops to the master when that copy will not play — deleted, or not this
+ * reader's to open. The poster is the render's own still.
+ */
+function RenderPlayer({ render, zh }: { render: NonNullable<ProjectDetail["render"]>; zh: boolean }) {
+  const [proxyFailed, setProxyFailed] = React.useState(false);
+  const fileId = render.fileId!;
+  const playing = proxyFailed ? fileId : (render.proxyFileId ?? fileId);
+  const shape = render.aspect === "9:16" ? TALL_SHAPE : WIDE_SHAPE;
+  return (
+    <video
+      key={playing}
+      controls
+      preload="metadata"
+      playsInline
+      poster={`/api/files/${fileId}/thumb`}
+      src={`/api/files/${playing}/download`}
+      onError={() => {
+        if (!proxyFailed && render.proxyFileId) setProxyFailed(true);
+      }}
+      aria-label={zh ? "成片" : "The video"}
+      style={{ display: "block", aspectRatio: render.aspect.replace(":", " / "), objectFit: "contain", borderRadius: 12, background: "#000", ...shape }}
+    />
+  );
+}
+
+/** A vertical film is a phone screen: 480 tall and as wide as that makes
+ * it, centred — not the whole column's width of black with a thin picture
+ * in the middle. A wide one takes the column. */
+const TALL_SHAPE: React.CSSProperties = { height: 480, width: "auto", maxWidth: "100%", margin: "0 auto" };
+const WIDE_SHAPE: React.CSSProperties = { width: "100%", maxHeight: 420 };
 
 function clean(body: string): string {
   return body.replace(/\*\*/g, "").replace(/^#+\s*/gm, "").replace(/@\S+\s?/g, "").trim();

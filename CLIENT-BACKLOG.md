@@ -697,3 +697,160 @@ Everything below was exercised in production, not just built.
   the platform's own list as a table with 研究员's mark and reason.
 - Script: a 流程 panel — topic, plan, versions, approval, project, post.
 - Articles parked off the rail at the client's request.
+
+---
+
+## Text to speech on this box — 2026-09-26
+
+"If there is no audio in the video and we just have the script, make the
+audio too." Voice-over used to mean ElevenLabs, which refuses this server's
+IP and is a free tier of 10,000 characters a month, so it was switched off.
+It now runs here, and the director uses it on its own when the footage is
+silent.
+
+### What runs
+
+- **`/opt/tts/`**, outside the repo for the same reasons as `/opt/whisper`.
+  - `venv/` — Python 3.12: `torch 2.14.0+cpu`, `kokoro 0.9.4`,
+    `misaki[zh,en] 0.9.4` (jieba, pypinyin, cn2an for Mandarin; spaCy
+    `en_core_web_sm 3.8.0` for English), `soundfile`. Exact pins in
+    `/opt/tts/requirements.lock.txt`. `espeak-ng` is installed from apt.
+  - `models/` — the HuggingFace cache: `hexgrad/Kokoro-82M-v1.1-zh`
+    (Mandarin, 103 voices) and `hexgrad/Kokoro-82M` (v1.0, the English
+    voices the catalogue uses). Read offline at run time (`HF_HUB_OFFLINE=1`).
+  - `speak.py` — the CLI. Text or pre-split sentences in, a WAV (or MP3) out,
+    one JSON object on stdout with where every sentence and word is said.
+  - `cache/samples/` — the 试听 samples, made on first press.
+  - `bin/uv` — the installer used to build the venv.
+- **`lib/video/tts/`** — the provider layer. `index.ts` `narrate()` splits,
+  speaks, joins with our own pauses, levels to -16 LUFS (two-pass
+  `loudnorm`, linear) and encodes MP3. `local.ts` spawns the CLI (argv
+  array, JSON on stdin); `elevenlabs.ts` is kept as an optional provider,
+  used only for an ElevenLabs voice and only while it answers;
+  `voices.ts` is the catalogue; `split.ts` the sentence rule;
+  `captions.ts` turns timings into caption lines through the same
+  `toCaptionLines` the transcriber's captions use.
+- **`lib/video/voiceover.ts`** `speakTrack()` — speaks a track through the
+  layer and files it. The timings go beside the audio in R2 as
+  `…/<fileId>/timings.json` (no migration: `audio_tracks` is unchanged).
+- **`lib/video/narrate.ts`** — the narrated cut the director runs.
+
+### The engine and why
+
+Kokoro-82M, Apache-2.0 (https://huggingface.co/hexgrad/Kokoro-82M-v1.1-zh,
+https://huggingface.co/hexgrad/Kokoro-82M). v1.1-zh's Mandarin speakers come
+from a professional dataset LongMaoData granted for the model. Benchmarked on
+this CPU against the other permissive candidates, on the same 174-character
+Mandarin paragraph, transcribed back by the local Whisper:
+
+| | RTF (8 threads) | CER | voices | notes |
+| --- | --- | --- | --- | --- |
+| **Kokoro-82M v1.1-zh** | **0.115** | **1.2%** | 100 zh + 3 en (+ v1.0 English) | chosen |
+| MeloTTS ZH (MIT) | 0.156 | 1.2% | one | flatter; UTMOS 2.1 vs Kokoro 2.9 |
+| CosyVoice2-0.5B (Apache-2.0) | 2.86 | 1.7% | zero-shot only | 93 s to load; a 3-min script ≈ 10 min |
+
+(The CER misses are 它 heard as 他 — the same sound.) Through the production
+CLI at its default six threads: RTF 0.157 plus ~4 s of model load; a
+461-character script (92 s of audio) in 19.5 s wall; a real 1,149-character
+script (3 min 53 s of audio) in 40 s, CER 2.3% on the uploaded MP3. F5-TTS
+weights (non-commercial) and edge-tts (an unofficial endpoint) were ruled out.
+
+### Voices (`lib/video/tts/voices.ts`)
+
+Chosen from all 103 by measurement: a neural naturalness predictor (UTMOS)
+over the same two sentences, pitch and its spread for the style, and Whisper
+CER on the paragraph (all ≤1.2%). The owner picks by ear.
+
+| id | 名字 | style |
+| --- | --- | --- |
+| `kokoro:zf_086` | 新闻女声 (default zh) | anchor |
+| `kokoro:zf_036` | 知性女声 | warm |
+| `kokoro:zf_022` | 活力女声 | energetic |
+| `kokoro:zf_075` | 亲切女声 | friendly |
+| `kokoro:zm_064` | 浑厚男声 | deep |
+| `kokoro:zm_081` | 新闻男声 | anchor |
+| `kokoro:zm_095` | 青年男声 | energetic |
+| `kokoro:af_heart` | 英文女声 (default en) | warm |
+| `kokoro:am_michael` | 英文男声 | steady |
+| `kokoro:bf_emma` | 英式女声 | clear |
+
+A voice id may carry a pace, `kokoro:zm_064@1.1` (语速 in the editor).
+
+### Where it shows
+
+- **Editor → 音频**: AI 配音 lists the voices with 试听 on each; 语速; a
+  finished voice-over has 按配音出字幕 (captions from its own timings).
+- **Project page → 成片**: AI 配音. Ticked, the script's 旁白 is voiced and
+  the video cut to it whatever the footage sounds like. Unticked (default),
+  the director still narrates when the footage has no sound to cut on
+  (no audio stream, or mean < -50 dBFS / peak < -35 over the first 90 s),
+  or when transcription finds nobody speaking. The finished narration plays
+  on the card.
+- **One-go with stock footage**: when the project has a script, it brings a
+  clip per beat (up to eight, searched from each beat's 画面) and runs the
+  director narrated instead of laying silent clips end to end.
+- The director's steps now include `voice` (正在配音) and `captions`.
+
+### The narrated cut
+
+Every beat's voiceover (not natural-sound beats) is one paragraph; a new beat
+starts a new shot; inside a beat, shots change in the pause between sentences
+and never outlast the pace (calm 7 s, channel 5 s, hype 3 s). Clip sound is
+muted on those items (`timeline_items.options.mute`, honoured by the render).
+Captions come from the measured timings: Mandarin per jieba word (exact from
+Kokoro's duration predictor; clause-anchored estimates when a sentence holds
+digits or English), English per word. No punch-ins or speaker lower-thirds
+under a narration. A narration is as long as its script; if the brief asks for
+less, the director's notes say so. Running the director again replaces the
+narration it made (the old MP3 goes to the bin, as a replaced render does);
+if the footage speaks the next time, the narration and its muted shots come
+off the cut and the director works from the filmed speech.
+
+### Env (all optional; defaults shown)
+
+`TTS_PYTHON=/opt/tts/venv/bin/python`, `TTS_SCRIPT=/opt/tts/speak.py`,
+`TTS_THREADS=6`, `TTS_CACHE=/opt/tts/models`, `TTS_CACHE_DIR=/opt/tts/cache`,
+`TTS_TIMEOUT_MS=900000`. `VOICEOVER_ENABLED=0` switches voice-over off (it no
+longer needs `=1` to be on).
+
+### Check it by hand
+
+```bash
+echo "模型蒸馏，就是让一个小模型向大模型学习。" | \
+  /opt/tts/venv/bin/python /opt/tts/speak.py --voice zf_086 --out /tmp/a.mp3 --loudnorm
+```
+
+### Review (2026-09-26)
+
+- **Numbers in Mandarin were read wrong.** misaki hands digits to cn2an,
+  which took "GPT-4" for minus four ("GPT 负四"; Whisper heard "GPT-FOOS"),
+  read "RTX 4090" as a quantity (四千零九十), "1,000" as "一，零" and
+  "10:30" with a clause break in it. `speak.py` now rewrites what the G2P
+  reads (`speakable_zh`: 名字-数字 is a space, a range is 到, a long number
+  after a name is said digit by digit, 1,000 loses its comma, 10:30 is
+  10点30, 16:9 is 16比9) while the captions keep the text as written;
+  "GPT-4" and "1,000,000" are one caption word each. Re-measured on two new
+  paragraphs with 2026年 / GPT-4 / RTX 4090 / 70亿 / 300万 / 90%, four
+  voices: CER 0–1.2%, every term heard right. `speak.py` lives in
+  `/opt/tts` (md5 in its README), not in this repo.
+- **An English voice cannot read Chinese.** Handed Han characters, Kokoro's
+  English voices say "Chinese letter" for each one. The editor now refuses
+  that pair before anything is queued (`voiceCanRead`), and the director
+  reads a Chinese script in the Mandarin default instead, saying so in its
+  log. The Mandarin voices read English cleanly, so that direction is kept.
+- **Music now ducks under a narration.** The render keyed the ducking on
+  the footage's own sound, which a narrated cut mutes, so a music bed with
+  "duck under speech" stayed at full level under the voice. Voice-over
+  tracks now join the key.
+- **`next build` traced the whole repository.** `lib/video/tts/local.ts` is
+  reached from pages and routes, and its spawn of `/opt/tts/venv/bin/python`
+  made Turbopack copy every file of the project into `.next/standalone`
+  (232 MB of source, PDFs and logs beside `server.js`). The spawn is now
+  marked `turbopackIgnore`.
+- A refused voice-over (an English voice for Chinese text) no longer
+  empties the text box; it is cleared only once the voice-over is queued.
+- Checked and left as is: sentence starts sit within ~50 ms of where the
+  voice comes out of silence; a narration file lands at about -17 LUFS
+  (linear levelling stops at the -1.5 dBTP ceiling) and the render's own
+  pass takes the mix to -16; two voice-overs at once run at about 5 cores
+  and 2.5 GB each, 62–64 s for a 1,149-character script each (40 s alone).

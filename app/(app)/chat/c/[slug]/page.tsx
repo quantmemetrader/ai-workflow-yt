@@ -92,6 +92,8 @@ export default async function ChannelPage({ params }: { params: Promise<{ slug: 
         card: m.card,
         project: links.get(m.id) ?? null,
         job: m.job,
+        /* The renders and videos it names, as cards this reader may open. */
+        videos: m.videos,
         body: m.body,
         createdAt: m.createdAt.toISOString(),
       }))}
