@@ -620,8 +620,21 @@ export function punchFilter(specs: PunchSpec[], opts: { width: number; height: n
 
 /* ---------------------------------------------------------- framing */
 
-/** How a host cut is framed: the zoom and the point it is anchored on. */
-export type Framing = { zoom: number; anchor: [number, number] };
+/**
+ * How a host cut is framed: the zoom and the point it is anchored on.
+ *
+ * `eyeOut`, when the planner gives it, is where the anchor's y lands in the
+ * output as a share of the height (director v2's layout drops the eye line
+ * to 0.50 under a Zone-T card so the card clears the forehead). The planner
+ * then owns the zoom as well: it has already chosen a scale that fills the
+ * frame with the eyes there, so the `EYE_MAX` floor, which exists to lift
+ * the eyes to 0.34, does not apply. Without it the anchor lands at
+ * `EYE_TARGET` as before.
+ */
+export type Framing = { zoom: number; anchor: [number, number]; eyeOut?: number };
+
+/** The zoom floor for a framing: none when the planner placed the eye line itself. */
+const floorOf = (f: Framing): number => (f.eyeOut !== undefined ? 1 : minFramingZoom({ eyeY: f.anchor[1] }));
 
 /** The hardest the picture is ever pushed in (§1). */
 export const ZOOM_MAX = 1.25;
@@ -642,14 +655,15 @@ export function framingCrop(
   size: { width: number; height: number },
 ): { zoom: number; w: number; h: number; x: number; y: number; eyeOut: number; raised: boolean } | null {
   const [ax, ay] = f.anchor;
-  const floor = minFramingZoom({ eyeY: ay });
+  const floor = floorOf(f);
+  const target = f.eyeOut ?? EYE_TARGET;
   const zoom = Math.min(ZOOM_MAX, Math.max(f.zoom, floor));
   if (zoom <= 1.0005) return null;
   const { width: W, height: H } = size;
   const w = even(Math.round(W / zoom));
   const h = even(Math.round(H / zoom));
   const x = Math.round(clamp(ax * W - w / 2, 0, W - w));
-  const y = Math.round(clamp(ay * H - EYE_TARGET * h, 0, H - h));
+  const y = Math.round(clamp(ay * H - target * h, 0, H - h));
   return { zoom, w, h, x, y, eyeOut: (ay * H - y) / h, raised: zoom > f.zoom + 1e-6 };
 }
 
@@ -677,20 +691,21 @@ export function framingChain(f: Framing, size: { width: number; height: number }
  */
 export function pushChain(from: Framing, to: number, rampS: number, size: { width: number; height: number }): string {
   const [ax, ay] = from.anchor;
-  const z0 = Math.min(ZOOM_MAX, Math.max(from.zoom, minFramingZoom({ eyeY: ay })));
+  const z0 = Math.min(ZOOM_MAX, Math.max(from.zoom, floorOf(from)));
+  const target = from.eyeOut ?? EYE_TARGET;
   const z1 = Math.min(ZOOM_MAX, Math.max(z0, to));
   const { width: W, height: H } = size;
   const ramp = Math.max(1 / 30, rampS).toFixed(3);
   const Z = `(${z0.toFixed(4)}+${(z1 - z0).toFixed(4)}*min(1,t/${ramp}))`;
   return (
     `scale=w='iw*${Z}':h='ih*${Z}':eval=frame:flags=bilinear,` +
-    `crop=${W}:${H}:x='clip(${(ax * W).toFixed(1)}*${Z}-${W / 2},0,${W}*${Z}-${W})':y='clip(${(ay * H).toFixed(1)}*${Z}-${(EYE_TARGET * H).toFixed(1)},0,${H}*${Z}-${H})',`
+    `crop=${W}:${H}:x='clip(${(ax * W).toFixed(1)}*${Z}-${W / 2},0,${W}*${Z}-${W})':y='clip(${(ay * H).toFixed(1)}*${Z}-${(target * H).toFixed(1)},0,${H}*${Z}-${H})',`
   );
 }
 
 /** What the effective framing of a cut comes to, for reports and lints. */
 export function effectiveZoom(f: Framing): number {
-  return Math.min(ZOOM_MAX, Math.max(f.zoom, minFramingZoom({ eyeY: f.anchor[1] })));
+  return Math.min(ZOOM_MAX, Math.max(f.zoom, floorOf(f)));
 }
 
 /* ---------------------------------------------------------- layouts */

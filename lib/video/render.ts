@@ -129,6 +129,15 @@ export type RenderCut = RenderPlan["cuts"][number] & {
    * generated narration (`options.mute`, `lib/video/narrate.ts`).
    */
   mute?: boolean;
+  /** Where the anchor's y lands in the output (a share of the height); see `Framing.eyeOut`. */
+  eyeOut?: number;
+  /**
+   * The cut continues the one before it on the same source with no edit in
+   * between — only the framing changes (a card comes up and the host is
+   * reframed under it). Its sound joins the previous cut's without the
+   * 12 ms fades, which would otherwise dip the voice mid-word.
+   */
+  seam?: boolean;
 };
 
 /** `speech`: a voice-over, which keys the ducking the way filmed speech does. */
@@ -805,7 +814,10 @@ export async function renderTimeline(
     const inSec = cut.inMs / 1000;
     const outSec = Math.max(inSec + 0.05, cut.outMs / 1000);
     const lengthMs = Math.round((outSec - inSec) * 1000);
-    const framing = { zoom: cut.zoom, anchor: cut.anchor };
+    const framing = { zoom: cut.zoom, anchor: cut.anchor, ...(cut.eyeOut !== undefined ? { eyeOut: cut.eyeOut } : {}) };
+    /* No fade on a seam's side: the sound runs straight through a reframe. */
+    const nextCut = plan.cuts[plan.cuts.indexOf(cut) + 1];
+    const edges = { in: !cut.seam, out: !nextCut?.seam };
     const tail = `fps=${FPS},setsar=1,format=yuv420p`;
 
     /*
@@ -860,7 +872,7 @@ export async function renderTimeline(
       pre.push(segs.length === 1 ? `${segs[0]}null[c${n}v]` : `${segs.join("")}concat=n=${segs.length}:v=1:a=0[c${n}v]`);
       const ka = inputs.length;
       inputs.push({ path: cut.file, ss: inSec, t: outSec - inSec, audioOnly: true });
-      pre.push(audioChain(ka, (sourceHasAudio.get(cut.file) ?? false) && !cut.mute, lengthMs, fade, exact, `[c${n}a]`));
+      pre.push(audioChain(ka, (sourceHasAudio.get(cut.file) ?? false) && !cut.mute, lengthMs, fade, exact, `[c${n}a]`, edges));
     } else {
       // The window is cut at the demuxer by `-ss`/`-t` in buildArgs, so this
       // input carries only the cut's own frames and starts near zero; the
@@ -869,7 +881,7 @@ export async function renderTimeline(
       inputs.push({ path: cut.file, ss: inSec, t: outSec - inSec + slack });
       const chain = mode === "v2" ? framingChain(framing, { width: size.w, height: size.h }) : "";
       pre.push(`[${k}:v]setpts=PTS-STARTPTS,${normalise(size.w, size.h)}${chain}${tail}${frameTrim(cutFrames)}[c${n}v]`);
-      pre.push(audioChain(k, (sourceHasAudio.get(cut.file) ?? false) && !cut.mute, lengthMs, fade, exact, `[c${n}a]`));
+      pre.push(audioChain(k, (sourceHasAudio.get(cut.file) ?? false) && !cut.mute, lengthMs, fade, exact, `[c${n}a]`, edges));
     }
     cuts.push({ v: `[c${n}v]`, a: `[c${n}a]`, lengthMs, join: arrive });
     filmMs -= overlapOf(arrive, cuts);
@@ -963,11 +975,13 @@ function clampPush(push: NonNullable<RenderCut["push"]>, inMs: number, outMs: nu
  * the sound is what sets the length of every segment of the join (see the
  * cut loop in `renderTimeline`), and the fade-out ends on the last sample.
  */
-function audioChain(input: number, hasSound: boolean, lengthMs: number, fade: number, exact: boolean, label: string): string {
+function audioChain(input: number, hasSound: boolean, lengthMs: number, fade: number, exact: boolean, label: string, edges: { in: boolean; out: boolean } = { in: true, out: true }): string {
   const len = (lengthMs / 1000).toFixed(3);
   if (!hasSound) return `anullsrc=channel_layout=stereo:sample_rate=48000,atrim=0:${len},asetpts=PTS-STARTPTS${label}`;
   const trim = exact ? `,apad,atrim=end=${len}` : "";
-  const fades = fade > 0 ? `,afade=t=in:st=0:d=${fade.toFixed(3)},afade=t=out:st=${Math.max(0, lengthMs / 1000 - fade).toFixed(3)}:d=${fade.toFixed(3)}` : "";
+  const fadeIn = fade > 0 && edges.in ? `,afade=t=in:st=0:d=${fade.toFixed(3)}` : "";
+  const fadeOut = fade > 0 && edges.out ? `,afade=t=out:st=${Math.max(0, lengthMs / 1000 - fade).toFixed(3)}:d=${fade.toFixed(3)}` : "";
+  const fades = `${fadeIn}${fadeOut}`;
   return `[${input}:a]asetpts=PTS-STARTPTS,aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo${trim}${fades}${label}`;
 }
 
