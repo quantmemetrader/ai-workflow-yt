@@ -1,6 +1,7 @@
 import * as React from "react";
 import { AGENT_COLORS, AGENT_TINTS, type AgentKey } from "@/lib/agents/catalog";
 import { spritePaths, spriteScale, spriteTint } from "@/lib/agents/pixel";
+import { botMarkup } from "@/lib/agents/bots";
 
 /**
  * One face per AI employee, in that employee's colour.
@@ -62,15 +63,32 @@ export function AgentIcon({
   size = 36,
   radius = 10,
   title,
-  variant = "pixel",
+  variant = "bot",
 }: {
   agent?: AgentKey | null;
   size?: number;
   radius?: number;
   title?: string;
-  /** "pixel" draws the face; "line" the job glyph. Under 16px is always line. */
-  variant?: "pixel" | "line";
+  /** "bot" (default) the robot on its colour circle; "pixel" the older pixel
+   *  face; "line" the job glyph. Under 16px is always line. */
+  variant?: "bot" | "pixel" | "line";
 }) {
+  /* The robots (lib/agents/bots.ts) carry their own circle, so the caller's
+     radius does not apply: a bot is always round, like the owner's reference. */
+  if (variant === "bot" && size >= 16) {
+    return (
+      <svg
+        viewBox="0 0 96 96"
+        role={title ? "img" : undefined}
+        aria-label={title}
+        aria-hidden={title ? undefined : true}
+        width={size}
+        height={size}
+        style={{ display: "block", flexShrink: 0, stroke: "none" }}
+        dangerouslySetInnerHTML={{ __html: botMarkup(agent ?? "host") }}
+      />
+    );
+  }
   if (variant === "pixel" && size >= 16) {
     const key = agent ?? "host";
     const spr = Math.min(size, 16 * spriteScale(size));

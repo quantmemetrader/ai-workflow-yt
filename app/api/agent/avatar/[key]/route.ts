@@ -1,5 +1,6 @@
 import { AGENT_KEYS } from "@/lib/agents/catalog";
-import { spriteSvg, type SpriteKey } from "@/lib/agents/pixel";
+import { type SpriteKey } from "@/lib/agents/pixel";
+import { botSvg } from "@/lib/agents/bots";
 
 /**
  * An AI employee's face as an image file.
@@ -25,7 +26,7 @@ export async function GET(_request: Request, ctx: { params: Promise<{ key: strin
   const { key } = await ctx.params;
   if (!(KEYS as readonly string[]).includes(key)) return new Response("Not found", { status: 404 });
 
-  return new Response(spriteSvg(key as SpriteKey), {
+  return new Response(botSvg(key as SpriteKey), {
     headers: {
       "content-type": "image/svg+xml; charset=utf-8",
       "cache-control": "public, max-age=31536000, immutable",
