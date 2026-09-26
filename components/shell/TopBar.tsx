@@ -10,6 +10,7 @@ import type { Viewer } from "@/lib/auth/types";
 import { Tr, TR_EN } from "@/components/ui/Tr";
 import { PersonAvatar } from "@/components/ui/PersonAvatar";
 import { AvatarSheet } from "@/components/shell/AvatarSheet";
+import { TOPBAR_LIVE_SLOT } from "@/lib/client/live";
 
 /**
  * The strip across the top of every module: where you are, and who you are.
@@ -99,7 +100,12 @@ export function TopBar({
         </span>
       )}
 
-      <div style={{ flexGrow: 1 }} />
+      {/* The free middle of the bar, and where the film being made shows
+        * ("《蒸馏之战》 · 正在渲染 42%"): the corner chip (`RenderWatch`)
+        * is portalled in here, so it sits between where you are and what
+        * the team is doing and can never cover either. Empty otherwise, and
+        * React renders nothing into it itself. */}
+      <div id={TOPBAR_LIVE_SLOT} style={{ flexGrow: 1, minWidth: 0, display: "flex", justifyContent: "center" }} />
 
       {/* What the team is doing, on every page. */}
       <Pulse zh={zh} />

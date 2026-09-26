@@ -26,8 +26,9 @@ import { PersonAvatar } from "@/components/ui/PersonAvatar";
 import type { StepKey } from "@/lib/agents/steps";
 import { JobChip } from "./Working";
 import { AgentTyping } from "@/components/agents/AgentTyping";
-import { AgentName } from "@/components/ui/Tr";
+import { AgentName, Tr } from "@/components/ui/Tr";
 import { VideoCards } from "./VideoCard";
+import { LivePill, useLiveRow } from "./LivePill";
 import type { VideoCard } from "@/lib/chat/video-card";
 
 /**
@@ -88,6 +89,9 @@ export type ChannelMessage = {
   /** The renders and video files it names, as cards this reader may open
    * (`lib/chat/videos.ts`): a poster that plays, 下载, 打开项目. */
   videos?: VideoCard[];
+  /** A take this message dropped into a project's bin: offer "素材传好了 ·
+   * 开始剪" under it, until somebody presses it (`startCutFromChatAction`). */
+  cutOffer?: { projectId: string; title: string } | null;
 };
 
 /** An employee at work in the room right now (`lib/chat/pending.ts`). */
@@ -556,6 +560,14 @@ export function ChannelSurface(props: {
   now?: string;
   /** The employees at work here right now, drawn after the last message. */
   pending?: ChannelPending[];
+  /** The project this chat belongs to, when it is a project's own: its live
+   * status row while the film is made (`LivePill`), and what a dropped
+   * take's 开始剪 press is about. */
+  project?: { id: string; title: string; videoProjectId: string | null } | null;
+  /** "素材传好了 · 开始剪" under a dropped take. */
+  onStartCut?: (messageId: string) => void;
+  /** The message whose 开始剪 press is in flight. */
+  cutting?: string | null;
   /** A one-to-one conversation: the header is the other person, not a #room. */
   isDirect?: boolean;
   /** The other person's picture, in a direct message. */
@@ -567,6 +579,11 @@ export function ChannelSurface(props: {
   /* Falls back to the newest message rather than the clock, so a caller that
      passes no `now` still renders the same thing on both sides. */
   const now = props.now ?? props.messages[props.messages.length - 1]?.createdAt ?? "1970-01-01T00:00:00.000Z";
+  /* The project's film, live (`lib/client/live.ts`): one row under the last
+     message while it is made, and none once the worker's own 渲染好了
+     line with the card is in the thread. */
+  const liveRow = useLiveRow(props.project?.id, (exportId) => props.messages.some((m) => m.videos?.some((v) => v.kind === "render" && v.id === exportId)));
+  const liveBusy = liveRow !== null && liveRow.state !== "done" && liveRow.state !== "failed";
   const [draft, setDraft] = React.useState("");
   const [attached, setAttached] = React.useState<Attaching[]>([]);
   const box = React.useRef<HTMLTextAreaElement>(null);
@@ -1030,8 +1047,31 @@ export function ChannelSurface(props: {
                         busy={props.pressing ?? null}
                         onPress={(id) => props.onPress?.(m.id, id)}
                       />
+                      {/* A take dropped here is in the project's bin: the
+                          press that was missing after it. Gone while the
+                          film is already being made. */}
+                      {m.cutOffer && props.onStartCut && !liveBusy ? (
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 9, flexWrap: "wrap" }}>
+                          <button
+                            type="button"
+                            disabled={props.cutting !== null && props.cutting !== undefined}
+                            onClick={() => props.onStartCut?.(m.id)}
+                            style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 27, padding: "0 11px", borderRadius: 8, fontSize: 12, fontWeight: 500, fontFamily: "inherit", letterSpacing: "inherit", cursor: "pointer", border: "1px solid #171717", background: "#171717", color: "#fff", opacity: props.cutting === m.id ? 0.55 : 1 }}
+                          >
+                            <Icon name="scissors" size={12} />
+                            <Tr zh="素材传好了 · 开始剪" en="Clips are in · start the cut" inZh={zh} />
+                          </button>
+                          <span style={{ fontSize: 11.5, color: "#7c7c7c" }}>
+                            <Tr zh="转写、按脚本粗剪、图形、渲染 9:16；好了成片会发在这里。" en="Transcribe, cut to the script, design, render 9:16; the film lands here." inZh={zh} />
+                          </span>
+                        </div>
+                      ) : null}
                       <Handoff handoff={m.handoff} tags={tags} byAgent={m.isAgent === true} zh={zh} project={m.project ?? null} />
-                      {m.job ? (
+                      {/* One live line per film: while the project's own
+                          status row below follows it, the chips on earlier
+                          messages about the same film stand down (each
+                          would otherwise poll and say the same thing). */}
+                      {m.job && !(liveRow && props.project?.videoProjectId === m.job.videoProjectId) ? (
                         <div>
                           <JobChip job={m.job} zh={zh} project={m.project ?? null} />
                         </div>
@@ -1041,6 +1081,30 @@ export function ChannelSurface(props: {
                 </React.Fragment>
               );
             })}
+            {/* The project's film, live: 剪辑师's row that follows the
+                worker (转写 → 剪辑 → 设计图形 → 渲染 42% → 成片已出),
+                patched in place rather than posted. */}
+            {liveRow && props.project ? (
+              <div className="msg" aria-live="polite">
+                <div className="face">
+                  <AgentMark agent="video" />
+                </div>
+                <div style={{ minWidth: 0, flexGrow: 1 }}>
+                  <div className="head">
+                    <span className="who">
+                      <AgentName agent="video" zh={zh} />
+                    </span>
+                    <span className="role" style={{ background: soft(AGENT_TINTS.video, 0.75), color: AGENT_COLORS.video }}>
+                      {zh ? AGENT_LABELS.video.title : AGENT_LABELS.video.titleEn}
+                    </span>
+                    <span className="when">《{props.project.title}》</span>
+                  </div>
+                  <div style={{ marginTop: 4 }}>
+                    <LivePill p={liveRow} zh={zh} />
+                  </div>
+                </div>
+              </div>
+            ) : null}
             {(props.pending ?? []).map((row) => (
               <WorkingRow key={row.id} row={row} zh={zh} locale={props.locale} />
             ))}

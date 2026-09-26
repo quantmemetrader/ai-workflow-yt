@@ -186,6 +186,27 @@ export function readWorkRefs(meta: unknown): WorkRefs {
 }
 
 /**
+ * A video a person put in a project's chat, and so in its bin
+ * (`meta.binned`, written by `sendChannelMessage`): the project it went
+ * into, so the message can offer "素材传好了 · 开始剪" right there — and
+ * whether that press was made (`meta.cutPressed`), so it is offered once.
+ */
+export function readBinned(meta: unknown): { projectId: string; videoProjectId: string } | null {
+  const raw = (meta as { binned?: unknown } | null)?.binned;
+  if (!raw || typeof raw !== "object") return null;
+  const b = raw as { projectId?: unknown; videoProjectId?: unknown };
+  const projectId = str(b.projectId, 64);
+  const videoProjectId = str(b.videoProjectId, 64);
+  return projectId && videoProjectId ? { projectId, videoProjectId } : null;
+}
+
+/** Whether somebody already pressed that message's 开始剪 (`startCutFromChatAction`). */
+export function readCutPressed(meta: unknown): boolean {
+  const raw = (meta as { cutPressed?: unknown } | null)?.cutPressed;
+  return Boolean(raw && typeof raw === "object");
+}
+
+/**
  * A long job a message started — a director run or a render in a video
  * project — so the list can draw a live chip (state and percent) that polls
  * `/api/chat/job` instead of the whole thread.

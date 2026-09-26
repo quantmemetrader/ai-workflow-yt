@@ -18,6 +18,7 @@ import { isListKey, listName, type HotRow } from "@/lib/research/platform-catalo
 import { HOT_TENANT } from "@/lib/research/platforms";
 import { mayPublish, platformsLine, readPublication, type Publication } from "@/lib/projects/publication";
 import { projectsVisibleTo } from "@/lib/projects/visible";
+import { liveAutoCut, type AutoCut } from "@/lib/projects/live-types";
 
 /**
  * Which projects this person may see (`lib/projects/visible.ts`): the rule
@@ -341,12 +342,17 @@ export async function listProjectStages(
       scriptVersion: scripts.version,
       directorState: sql<string | null>`${videoProjects.director} ->> 'state'`,
       directorStep: sql<string | null>`${videoProjects.director} ->> 'step'`,
+      /* Whether the worker still holds the job the director's row (and the
+         latest render's) speak of — see `staleWork` below. */
+      directorJob: sql<boolean>`exists (select 1 from jobs j where j.type = 'video.direct' and j.status in ('queued','running') and j.payload ->> 'projectId' = ${videoProjects.id})`,
+      renderJob: sql<boolean>`exists (select 1 from jobs j join ${videoExports} x on x.id = j.payload ->> 'exportId' where j.type = 'video.export' and j.status in ('queued','running') and x.project_id = ${videoProjects.id})`,
+      videoUpdatedAt: videoProjects.updatedAt,
       beats: sql<number>`(select count(*)::int from ${scriptBeats} where ${scriptBeats.scriptId} = ${scripts.id})`,
       clips: sql<number>`(select count(*)::int from ${videoClips} where ${videoClips.projectId} = ${videoProjects.id})`,
       items: sql<number>`(select count(*)::int from ${timelineItems} where ${timelineItems.projectId} = ${videoProjects.id})`,
       graphics: sql<number>`(select count(*)::int from ${videoGraphics} where ${videoGraphics.projectId} = ${videoProjects.id})`,
-      render: sql<{ state: string; progress: number; fileId: string | null; durationMs: number | null } | null>`(
-        select json_build_object('state', ${videoExports.state}, 'progress', ${videoExports.progress}, 'fileId', ${videoExports.fileId}, 'durationMs', ${videoExports.durationMs})
+      render: sql<{ state: string; progress: number; fileId: string | null; durationMs: number | null; createdAt: string | null } | null>`(
+        select json_build_object('state', ${videoExports.state}, 'progress', ${videoExports.progress}, 'fileId', ${videoExports.fileId}, 'durationMs', ${videoExports.durationMs}, 'createdAt', ${videoExports.createdAt})
           from ${videoExports}
          where ${videoExports.projectId} = ${videoProjects.id}
          order by ${videoExports.createdAt} desc
@@ -375,6 +381,13 @@ export async function listProjectStages(
        instead is read the same way. */
     const render = typeof r.render === "string" ? (JSON.parse(r.render) as typeof r.render) : r.render;
     const published = r.status === "done" ? readPublication(r.source) : null;
+    /* Said to be at work, with nobody on it: read as stopped (`staleWork`).
+       The director renders inside its own job (no `video.export` job for
+       that render), so a live director job holds the render too. */
+    const stale = staleWork({
+      director: r.directorState ? { state: r.directorState, job: r.directorJob === true, updatedAt: r.videoUpdatedAt } : null,
+      render: render ? { state: String(render.state), job: r.renderJob === true || r.directorJob === true, createdAt: render.createdAt ? new Date(render.createdAt) : null } : null,
+    });
     const steps = buildSteps(
       {
         mode: r.mode,
@@ -385,8 +398,8 @@ export async function listProjectStages(
         clips: Number(r.clips ?? 0),
         items: Number(r.items ?? 0),
         graphics: Number(r.graphics ?? 0),
-        render: render ? { state: String(render.state), progress: Number(render.progress ?? 0), fileId: render.fileId ?? null, durationMs: render.durationMs ?? null } : null,
-        director: r.directorState ? { state: r.directorState, step: r.directorStep ?? null } : null,
+        render: render ? { state: stale.render ? "failed" : String(render.state), progress: Number(render.progress ?? 0), fileId: render.fileId ?? null, durationMs: render.durationMs ?? null } : null,
+        director: r.directorState ? { state: stale.director ? "failed" : r.directorState, step: r.directorStep ?? null } : null,
         published,
       },
       zh,
@@ -404,7 +417,7 @@ export async function listProjectStages(
       access: r.access,
       scriptStatus: r.scriptStatus ?? null,
       beats: Number(r.beats ?? 0),
-      directorState: r.directorState ?? null,
+      directorState: stale.director ? "failed" : (r.directorState ?? null),
       steps,
       frontier: frontierStep(steps),
       thumbFileId: r.firstClipFileId ?? (render?.state === "done" ? (render.fileId ?? null) : null),
@@ -487,6 +500,8 @@ export type ProjectDetail = {
   } | null;
   /** The latest voice-over on the cut (AI 配音), for the video card's player. */
   narration: { trackId: string; fileId: string | null; voiceId: string | null; durationMs: number | null; state: string; error: string | null } | null;
+  /** "传完自动开始剪": the setting, and when an armed one fires (`lib/projects/live.ts`). */
+  autoCut: AutoCut;
   steps: ProjectStep[];
   messages: {
     id: string;
@@ -646,10 +661,57 @@ export function buildSteps(f: StepFacts, zh: boolean): ProjectStep[] {
             ? `${t("已发布", "Published")} · ${platformsLine(f.published.platforms, zh)}`
             : t("已发布", "Published")
           : rendered
-            ? t("看成片，发布后标记完成", "Watch it; mark it once it is posted")
+            ? t("等你 · 看成片，发布后标记完成", "Your turn · watch it; mark it once it is posted")
             : t("剪完之后", "After the edit"),
     },
   ];
+}
+
+/**
+ * Keeping "正在渲染" honest.
+ *
+ * The director's row and a render's row each say where they are, and the
+ * worker writes both — so a worker that died under a render leaves a row
+ * that says "rendering" for ever, and a page that reads the row alone draws
+ * a bar that never moves. The queue is the truth: a queued or running job
+ * for the director (`video.direct`) or for the render (`video.export`). A
+ * row at work with no such job is read as failed, with a reason, and the
+ * page offers 重试. The one exception is a row a moment old, written just
+ * before its own job was queued.
+ */
+export const STALE_WORK_ERROR = "任务中断了：队列里已经没有这个任务（可能是服务器重启）。按重试再来一次。";
+const ENQUEUE_GRACE_MS = 30_000;
+
+export function staleWork(f: {
+  director: { state: string; job: boolean; updatedAt: Date | null } | null;
+  render: { state: string; job: boolean; createdAt: Date | null } | null;
+}): { director: boolean; render: boolean } {
+  const now = Date.now();
+  const d = f.director;
+  const r = f.render;
+  const directing = d?.state === "queued" || d?.state === "running";
+  const rendering = r?.state === "queued" || r?.state === "rendering";
+  const freshDirector = d?.state === "queued" && d.updatedAt !== null && now - d.updatedAt.getTime() < ENQUEUE_GRACE_MS;
+  const freshRender = r?.state === "queued" && r.createdAt !== null && now - r.createdAt.getTime() < ENQUEUE_GRACE_MS;
+  return {
+    director: Boolean(directing && d && !d.job && !freshDirector),
+    render: Boolean(rendering && r && !r.job && !freshRender),
+  };
+}
+
+/**
+ * The project a chat belongs to, when it is a project's own chat and this
+ * person may see the project: what "传好了" typed there is about
+ * (`lib/projects/start-cut.ts`), and what the channel's live status row is
+ * for.
+ */
+export async function projectOfChannel(viewer: Viewer, channelId: string): Promise<{ id: string; title: string; channelId: string; videoProjectId: string | null; source: unknown } | null> {
+  const [row] = await db
+    .select({ id: workProjects.id, title: workProjects.title, channelId: workProjects.channelId, videoProjectId: workProjects.videoProjectId, source: workProjects.source })
+    .from(workProjects)
+    .where(and(eq(workProjects.channelId, channelId), eq(workProjects.tenantId, viewer.tenantId), isNull(workProjects.deletedAt), visibleTo(viewer)))
+    .limit(1);
+  return row ?? null;
 }
 
 export async function workProjectDetail(viewer: Viewer, id: string, zh: boolean, messageLimit = 80): Promise<ProjectDetail | null> {
@@ -666,13 +728,13 @@ export async function workProjectDetail(viewer: Viewer, id: string, zh: boolean,
     ? await db.select({ id: scripts.id, title: scripts.title, status: scripts.status, version: scripts.version }).from(scripts).where(and(eq(scripts.id, p.scriptId), isNull(scripts.deletedAt))).limit(1)
     : [];
   const [video] = p.videoProjectId
-    ? await db.select({ id: videoProjects.id, title: videoProjects.title, director: videoProjects.director }).from(videoProjects).where(and(eq(videoProjects.id, p.videoProjectId), isNull(videoProjects.deletedAt))).limit(1)
+    ? await db.select({ id: videoProjects.id, title: videoProjects.title, director: videoProjects.director, updatedAt: videoProjects.updatedAt }).from(videoProjects).where(and(eq(videoProjects.id, p.videoProjectId), isNull(videoProjects.deletedAt))).limit(1)
     : [];
   const [beatRows, clipRows] = await Promise.all([
     script ? db.select({ ord: scriptBeats.ord, visual: scriptBeats.visual, voiceover: scriptBeats.voiceover }).from(scriptBeats).where(eq(scriptBeats.scriptId, script.id)).orderBy(scriptBeats.ord) : Promise.resolve([]),
     video ? db.select({ id: videoClips.id, fileId: videoClips.fileId, label: videoClips.label, durationMs: videoClips.durationMs }).from(videoClips).where(eq(videoClips.projectId, video.id)).limit(40) : Promise.resolve([]),
   ]);
-  const [[beats], [clips], [items], [graphics], captionRows, [render], thread, [narration]] = await Promise.all([
+  const [[beats], [clips], [items], [graphics], captionRows, [renderRow], thread, [narration], [held]] = await Promise.all([
     script ? db.select({ n: count() }).from(scriptBeats).where(eq(scriptBeats.scriptId, script.id)) : Promise.resolve([{ n: 0 }]),
     video ? db.select({ n: count() }).from(videoClips).where(eq(videoClips.projectId, video.id)) : Promise.resolve([{ n: 0 }]),
     video ? db.select({ n: count() }).from(timelineItems).where(eq(timelineItems.projectId, video.id)) : Promise.resolve([{ n: 0 }]),
@@ -718,11 +780,28 @@ export async function workProjectDetail(viewer: Viewer, id: string, zh: boolean,
           .orderBy(desc(audioTracks.createdAt))
           .limit(1)
       : Promise.resolve([]),
+    /* Whether the worker still holds the director's job and the latest
+       render's (`staleWork`): one read of the queue. */
+    video
+      ? db.execute<{ director_job: boolean; render_job: boolean }>(sql`
+          select exists (select 1 from jobs j where j.type = 'video.direct' and j.status in ('queued','running') and j.payload ->> 'projectId' = ${video.id}) as director_job,
+                 exists (select 1 from jobs j join video_exports x on x.id = j.payload ->> 'exportId' where j.type = 'video.export' and j.status in ('queued','running') and x.project_id = ${video.id}) as render_job
+        `).then((r) => r.rows)
+      : Promise.resolve([{ director_job: false, render_job: false }]),
   ]);
+
+  /* A render the worker no longer holds is a failed render, said so. */
+  const staleness = staleWork({
+    director: video && typeof (video.director as { state?: unknown }).state === "string" ? { state: (video.director as { state: string }).state, job: held?.director_job === true, updatedAt: video.updatedAt } : null,
+    /* The director's render runs inside the director's job: that job holds it. */
+    render: renderRow ? { state: renderRow.state, job: held?.render_job === true || held?.director_job === true, createdAt: renderRow.at } : null,
+  });
+  const render = renderRow ? (staleness.render ? { ...renderRow, state: "failed", error: renderRow.error ?? STALE_WORK_ERROR } : renderRow) : undefined;
 
   /* The director's row, read once: `{ state, step, error, note, log,
      startedAt, finishedAt, render, result }` (lib/video/director.ts). */
-  const dir = video?.director && typeof (video.director as { state?: unknown }).state === "string" ? (video.director as Record<string, unknown>) : null;
+  const dirRaw = video?.director && typeof (video.director as { state?: unknown }).state === "string" ? (video.director as Record<string, unknown>) : null;
+  const dir = dirRaw && staleness.director ? { ...dirRaw, state: "failed", error: STALE_WORK_ERROR, finishedAt: video!.updatedAt.toISOString() } : dirRaw;
   const dirStr = (k: string) => (typeof dir?.[k] === "string" ? (dir[k] as string) : null);
   const dirLog = Array.isArray(dir?.log) ? (dir.log as { text?: unknown }[]) : [];
   const dirResult = dir?.result && typeof dir.result === "object" ? (dir.result as { cuts?: unknown; graphics?: unknown; pictures?: unknown }) : null;
@@ -800,6 +879,10 @@ export async function workProjectDetail(viewer: Viewer, id: string, zh: boolean,
         }
       : null,
     narration: narration ?? null,
+    /* The setting, and an armed cut unless a start since used it up. */
+    autoCut: (({ on, dueAt }) => ({ on, dueAt }))(
+      liveAutoCut(p.source, Math.max(Date.parse(dirStr("startedAt") ?? "") || 0, renderRow?.at ? new Date(renderRow.at).getTime() : 0)),
+    ),
     steps,
     messages: (thread?.messages ?? []).map((m) => ({
       id: m.id,

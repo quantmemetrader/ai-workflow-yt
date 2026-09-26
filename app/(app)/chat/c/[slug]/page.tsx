@@ -5,7 +5,7 @@ import { announcementsChannel, channelMembers, channelThread, listPeople, markRe
 import { ChannelView } from "@/components/chat/ChannelView";
 import { answeringModel } from "@/lib/ai/models";
 import { agentKeyFromEmail } from "@/lib/agents/catalog";
-import { projectLinks } from "@/lib/projects/service";
+import { projectLinks, projectOfChannel } from "@/lib/projects/service";
 
 export default async function ChannelPage({ params }: { params: Promise<{ slug: string }> }) {
   /* The segment can arrive still percent-encoded: a channel named 研究日报
@@ -37,9 +37,13 @@ export default async function ChannelPage({ params }: { params: Promise<{ slug: 
   /* The project each message is about, for its "打开项目" button: named
      outright or through the script and video it handed over, and only the
      projects this person may see (`projectLinks`). */
-  const [members, links] = await Promise.all([
+  /* And the project this chat belongs to, when it is a project's own: the
+     live status row while its film is made, and the 开始剪 press under a
+     take dropped here, are about it. */
+  const [members, links, project] = await Promise.all([
     channelMembers(viewer, channel.id),
     projectLinks(viewer, thread.messages.map((m) => ({ messageId: m.id, ...m.refs }))),
+    projectOfChannel(viewer, channel.id),
   ]);
 
   // Marking the channel read is a write nobody should wait on.
@@ -73,8 +77,12 @@ export default async function ChannelPage({ params }: { params: Promise<{ slug: 
            is written in Chinese. Never rendered. */
         email: p.email,
       }))}
+      project={project ? { id: project.id, title: project.title, videoProjectId: project.videoProjectId } : null}
       messages={thread.messages.map((m) => ({
         id: m.id,
+        /* A take dropped here went into the project's bin: offer the cut,
+           once (`startCutFromChatAction`). */
+        cutOffer: m.binned && project && m.binned.projectId === project.id && !m.cutPressed ? { projectId: project.id, title: project.title } : null,
         authorId: m.authorId,
         authorName: (zh && m.authorNameLocal) || m.authorName || "—",
         authorAvatar: m.authorAvatar,

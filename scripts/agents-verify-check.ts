@@ -14,7 +14,10 @@ import { notesFor } from "../lib/ai/tools/chat";
 import { parseAgentMentions } from "../lib/agents/catalog";
 import { stepForTool } from "../lib/agents/steps";
 import { readCardActions } from "../lib/agents/cards";
-import { readWorkRefs } from "../lib/chat/handoff";
+import { readBinned, readCutPressed, readWorkRefs } from "../lib/chat/handoff";
+import { holdsTheCut, looksLikeDone } from "../lib/projects/done-phrases";
+import { staleWork } from "../lib/projects/service";
+import { liveAutoCut } from "../lib/projects/live-types";
 import {
   delegatedTo,
   existingIds,
@@ -282,6 +285,55 @@ async function main() {
   check("write_script takes a script_id for rewriting outside a project", Boolean((writerDef?.function.parameters as { properties?: Record<string, unknown> } | undefined)?.properties?.script_id));
   const noSuch = await runTool(writerAgent, "write_script", JSON.stringify({ subject: "AI模型蒸馏", script_id: FAKE }));
   check("… and a script_id that does not exist writes nothing and starts no project", /no script/i.test(noSuch.text) && !noSuch.artifacts, noSuch.text);
+
+  /* 16. "传好了": the sentence that starts the cut in code, and the ones
+         that do not (a question, a "not yet", a brief). */
+  for (const t of ["传好了", "素材上传完了", "@剪辑师 传好了", "@剪辑师传好了", "done", "Done.", "开始剪", "可以剪了", "素材都传上去了", "上传好了，开工", "all uploaded, go ahead", "ready to cut", "好的，传好了，辛苦了", "传好了 开始剪"]) {
+    check(`a hand-over: ${t}`, looksLikeDone(t));
+  }
+  /* …and the near misses: a brief that happens to contain 剪, a "not yet",
+     a clause that is not a hand-over beside one that is. */
+  for (const t of ["可以剪吗？", "素材还没传完", "还没传好", "还要传两个", "先别剪", "等一下再剪", "传好了吗", "把开头剪短一点，节奏快一些，然后重新渲染一版，字幕用黄色，再加一个片头的标题和三个数据图形", "not yet, wait", "上传功能怎么用", "可以剪短一点", "剪一下开头", "开始做封面", "素材上面的字幕改一下", "传好了，帮我把开头剪快一点", "cut it shorter", "let's cut the intro", "I uploaded the wrong file", "is it ready", "好的"]) {
+    check(`not a hand-over: ${t}`, !looksLikeDone(t));
+  }
+
+  /* 16b. "More is coming": the turn that answers it may not start a cut,
+          and a hand-over never reads as one. */
+  for (const t of ["还没传好，等我一下", "再补一段", "还要再传两个", "等一下", "先别剪", "素材还没传完", "还有一段", "wait, one more clip", "not yet"]) {
+    check(`holds the cut: ${t}`, holdsTheCut(t) && !looksLikeDone(t));
+  }
+  for (const t of ["传好了", "素材上传完了", "done", "开始剪", "可以剪了", "把开头剪短一点"]) {
+    check(`does not hold the cut: ${t}`, !holdsTheCut(t));
+  }
+
+  /* 17. "正在渲染" only with a job behind it: a row that says it is at work
+         with nothing in the queue reads as stopped, except a moment after
+         its own enqueue. */
+  const old = new Date(Date.now() - 5 * 60_000);
+  const fresh = new Date();
+  check("a running director with no job is stale", staleWork({ director: { state: "running", job: false, updatedAt: old }, render: null }).director);
+  check("a running director with its job is not", !staleWork({ director: { state: "running", job: true, updatedAt: old }, render: null }).director);
+  check("a director queued a moment ago, job not yet visible, is not", !staleWork({ director: { state: "queued", job: false, updatedAt: fresh }, render: null }).director);
+  check("a director queued five minutes ago with no job is", staleWork({ director: { state: "queued", job: false, updatedAt: old }, render: null }).director);
+  check("a rendering export with no job is stale", staleWork({ director: null, render: { state: "rendering", job: false, createdAt: old } }).render);
+  check("a finished export is never stale", !staleWork({ director: null, render: { state: "done", job: false, createdAt: old } }).render);
+  check("a done director is never stale", !staleWork({ director: { state: "done", job: false, updatedAt: old }, render: null }).director);
+
+  /* 18. A dropped take's offer, as the chat reads it. */
+  const dropped = readBinned({ binned: { projectId: "wp_01m3e8aces1eb36sjs8bzq9bja", videoProjectId: "prj_01m3byhf3eyss1wved6fh538bp", clips: [] } });
+  check("a binned take names its project and video project", dropped?.projectId === "wp_01m3e8aces1eb36sjs8bzq9bja" && dropped.videoProjectId === "prj_01m3byhf3eyss1wved6fh538bp", dropped);
+  check("a message without one has no offer", readBinned({ attachments: [] }) === null && readBinned(null) === null);
+  check("the press is read once written", readCutPressed({ cutPressed: { by: "usr_x", at: "2026-09-26T00:00:00.000Z" } }) && !readCutPressed({}));
+
+  /* 19. "传完自动开始剪" fires once: an arm that a later start (any start:
+         the button, 一键成片, 剪辑师 from the chat) already used up is read
+         as unarmed, so it cannot start a second film when the first ends. */
+  const armedAt = new Date(Date.now() - 90_000);
+  const armed = { autoCut: { on: true, dueAt: new Date(armedAt.getTime() + 60_000).toISOString(), armedAt: armedAt.toISOString() } };
+  check("an arm with no start since stands", liveAutoCut(armed, armedAt.getTime() - 10 * 60_000).dueAt !== null);
+  check("an arm a start used up is spent", liveAutoCut(armed, armedAt.getTime() + 20_000).spent && liveAutoCut(armed, armedAt.getTime() + 20_000).dueAt === null);
+  check("the setting survives a spent arm", liveAutoCut(armed, armedAt.getTime() + 20_000).on);
+  check("no arm, nothing spent", !liveAutoCut({ autoCut: { on: true } }, Date.now()).spent);
 
   console.log(failures ? `\n${failures} check(s) failed` : "\nall checks passed");
   process.exitCode = failures ? 1 : 0;

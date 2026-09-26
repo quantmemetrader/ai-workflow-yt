@@ -16,7 +16,9 @@ import { binVideo } from "@/lib/chat/bin";
 import { projectById } from "@/lib/video/service";
 import { canEditProject } from "@/lib/video/access";
 import { relationOn, share } from "@/lib/authz/rebac";
-import { clipCount, reachableThroughProjects } from "@/lib/projects/service";
+import { clipCount, projectFor, reachableThroughProjects } from "@/lib/projects/service";
+import { holdsTheCut, looksLikeDone } from "@/lib/projects/done-phrases";
+import { describeOutcome, startCutForProject, type StartCutOutcome } from "@/lib/projects/start-cut";
 import { workProjects } from "@/lib/db/schema";
 import { videoClock } from "@/lib/chat/video-card";
 
@@ -321,7 +323,9 @@ export async function POST(request: Request) {
            may hold everything they may see, private projects included.
            Kept in a variable: a script write that starts a project pins
            the rest of the turn to it (below). */
-        const turnContext: Omit<ToolContext, "viewer"> = { ...context, ...ids, asker: viewer, team, privateReply: true };
+        /* "还没传好" / "再补一段" to 剪辑师 with a project open: no cut starts
+           this turn, whatever the model makes of the bin (`holdsTheCut`). */
+        const turnContext: Omit<ToolContext, "viewer"> = { ...context, ...ids, asker: viewer, team, privateReply: true, ...(ids.projectId && holdsTheCut(content) ? { holdCut: true } : {}) };
         /* The files on the message, as lines under it (and, for a video, in
            the project's bin): what the employee reads, what the thread keeps
            and what a reload draws as cards. The first one is also "the file
@@ -341,10 +345,41 @@ export async function POST(request: Request) {
         /* What 剪辑师 said and did this turn, for the check at the end. */
         let said = "";
         let cut = false;
+        /*
+         * "传好了" to 剪辑师, in its own chat, with a project open: the cut
+         * is started here, in code, before the model says a word — the
+         * same starter the project's chat and page use (`startCutForProject`),
+         * which counts the bin, refuses a second start, and has 剪辑师 say
+         * in the project's chat what it is doing. The model is then told
+         * what happened and only phrases it; a start it did not make is
+         * not a start claim (`cut`).
+         */
+        let turnText = turnContent;
+        if (speaker === "video" && ids.projectId && !hasAttachments && looksLikeDone(content) && viewer.modules.includes("video")) {
+          const wp = await projectFor(viewer, { videoProjectId: ids.projectId }).catch(() => null);
+          const [row] = wp ? await db.select({ channelId: workProjects.channelId }).from(workProjects).where(eq(workProjects.id, wp.id)).limit(1) : [];
+          if (wp && row) {
+            const zh = (viewer.locale ?? "zh-CN").startsWith("zh");
+            const outcome = await startCutForProject(viewer, { id: wp.id, title: wp.title, channelId: row.channelId, videoProjectId: ids.projectId }, { via: "assistant", quietWhenEmpty: true }).catch(
+              (err): StartCutOutcome => ({ kind: "error", error: err instanceof Error ? err.message : String(err) }),
+            );
+            if (outcome.kind === "started") cut = true;
+            const fact = describeOutcome(outcome, wp.title, zh);
+            turnText = `${turnContent}\n\n（系统已处理，不是对方说的）${fact}${
+              zh
+                ? outcome.kind === "started"
+                  ? " 进度在项目页、首页和项目对话里都能看到。请用一两句话告诉对方已经开始了、去哪里看进度；不要再调用任何剪辑工具，不要说“我来开始”。"
+                  : outcome.kind === "no-clips"
+                    ? " 请告诉对方先把素材传到项目页的「素材」卡（或直接发到项目对话里），传好再说一声；不要调用剪辑工具。"
+                    : " 请用一句话告诉对方；不要再调用剪辑工具。"
+                : " Tell them in a sentence or two; do not call any editing tool."
+            }`;
+          }
+        }
         for await (const event of runAgent({
           viewer: speakerViewer,
           conversationId: conversationId!,
-          content: turnContent,
+          content: turnText,
           // The employee's own trade when one answers; otherwise the screen
           // the question came from decides which tuning the prompt carries.
           module: speakerModule,

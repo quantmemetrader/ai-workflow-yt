@@ -15,10 +15,16 @@ import { canEditProject } from "@/lib/video/access";
 import { agentTag } from "@/lib/agents/catalog";
 import { setFileAccess } from "@/lib/files/access";
 import { binVideo } from "@/lib/chat/bin";
-import { and, eq, isNull } from "drizzle-orm";
+import { holdsTheCut, looksLikeDone } from "@/lib/projects/done-phrases";
+import { startCutForProject } from "@/lib/projects/start-cut";
+import { armAutoCut } from "@/lib/projects/live";
+import { readAutoCut } from "@/lib/projects/live-types";
+import { readBinned, readCutPressed } from "@/lib/chat/handoff";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { workProjects } from "@/lib/db/schema";
 import { conversationDetail } from "@/lib/chat/service";
+import { startFromTopicAction } from "@/app/(app)/projects/actions";
 import {
   addChannelMembers,
   attachmentsFor,
@@ -149,19 +155,23 @@ export async function sendChannelMessage(
    * skipped.
    */
   const videos = described.filter((f) => f.kind === "video");
+  /* The project this chat belongs to, if it is a project's own: what a
+     dropped video goes into, and what "传好了" typed here is about. */
+  const [wp] = await db
+    .select({ id: workProjects.id, title: workProjects.title, channelId: workProjects.channelId, videoProjectId: workProjects.videoProjectId, source: workProjects.source })
+    .from(workProjects)
+    .where(and(eq(workProjects.channelId, channel.id), eq(workProjects.tenantId, viewer.tenantId), isNull(workProjects.deletedAt)))
+    .limit(1);
+  let landed = 0;
   if (videos.length) {
-    const [wp] = await db
-      .select({ id: workProjects.id, videoProjectId: workProjects.videoProjectId })
-      .from(workProjects)
-      .where(and(eq(workProjects.channelId, channel.id), eq(workProjects.tenantId, viewer.tenantId), isNull(workProjects.deletedAt)))
-      .limit(1);
     if (wp?.videoProjectId && (await canEditProject(viewer, wp.videoProjectId).catch(() => false))) {
       const binned: { fileId: string; clipId: string }[] = [];
       for (const f of videos) {
         try {
           /* Once: a take already in the bin is named, not added again. */
-          const { clipId } = await binVideo(viewer, wp.videoProjectId, f.fileId);
+          const { clipId, existed } = await binVideo(viewer, wp.videoProjectId, f.fileId);
           binned.push({ fileId: f.fileId, clipId });
+          if (!existed) landed++;
         } catch (err) {
           console.error("[chat] could not put an attached video in the project's bin", err);
         }
@@ -173,13 +183,49 @@ export async function sendChannelMessage(
   await postMessage(viewer, channel.id, body, meta, attachments);
   revalidatePath(`/chat/c/${slug}`);
 
+  /* A take landed in the bin and "传完自动开始剪" is on: the minute starts
+     (again) now, as it does for an upload on the project page. */
+  if (landed && wp && readAutoCut(wp.source).on) {
+    await armAutoCut(viewer, wp.id).catch((err) => console.error("[chat] could not arm the auto-cut", err));
+  }
+
+  /*
+   * "传好了" — the clips are in, start the cut.
+   *
+   * Said in a project's own chat (with no employee tagged, or only 剪辑师),
+   * this is not a question for the model: the bin is counted, and when it
+   * holds clips and nothing is running the one-go starts and 剪辑师 says
+   * so, with the job on its message so the chat follows it live
+   * (`lib/projects/start-cut.ts`). An empty bin gets the "please upload"
+   * reply with its buttons — deterministically, not from a prompt. The
+   * person needs the Video module to start a render, as on the page.
+   */
+  const tags = parseAgentMentions(body);
+  const forEditor = tags.length === 0 || (tags.length === 1 && tags[0] === "video");
+  if (wp?.videoProjectId && forEditor && looksLikeDone(body) && viewer.modules.includes("video")) {
+    const project = { id: wp.id, title: wp.title, channelId: wp.channelId, videoProjectId: wp.videoProjectId };
+    after(async () => {
+      try {
+        await startCutForProject(viewer, project, { via: "chat" });
+      } catch (err) {
+        console.error("[chat] the cut could not be started from the message", err);
+      }
+    });
+    return { answering: "video" as const };
+  }
+
+  /* "还没传好" / "再补一段", or a take dropped into the project's chat (its
+     own 开始剪 press is under it): whoever answers must not start the cut
+     on their own (`holdsTheCut`, `ToolContext.holdCut`). */
+  const holdCut = Boolean(wp?.videoProjectId) && (holdsTheCut(body) || videos.length > 0);
+
   /* The agents that were tagged, if any. After the response: each one is a
      model call with tool use behind it, and nobody pressing enter should wait
      for that. */
   if (parseAgentMentions(body).length) {
     after(async () => {
       try {
-        await dispatchAgentMentions({ viewer, channelId: channel.id, body });
+        await dispatchAgentMentions({ viewer, channelId: channel.id, body, holdCut });
       } catch (err) {
         console.error("[chat] a tagged agent could not be reached", err);
       }
@@ -193,7 +239,7 @@ export async function sendChannelMessage(
   if (to) {
     after(async () => {
       try {
-        await dispatchAgentMentions({ viewer, channelId: channel.id, body: `${agentTag(to)} ${body}` });
+        await dispatchAgentMentions({ viewer, channelId: channel.id, body: `${agentTag(to)} ${body}`, holdCut });
       } catch (err) {
         console.error("[chat] the employee being answered could not be reached", err);
       }
@@ -253,13 +299,17 @@ export async function pressCardAction(slug: string, messageId: string, actionId:
      written into, found or started now (`planHandoff`): the plan lives in
      #研究日报, which is no project, and the draft used to land loose. */
   let handoff: Awaited<ReturnType<typeof pressedHandoff>> = null;
+  /* Set when the hand-off is the morning plan's "交给编剧" (`planHandoff`). */
+  let planned = false;
   try {
-    handoff =
-      (await pressedHandoff(viewer, message.meta, action.body)) ??
-      (await planHandoff(viewer, message.meta, action.id).catch((err) => {
+    handoff = await pressedHandoff(viewer, message.meta, action.body);
+    if (!handoff) {
+      handoff = await planHandoff(viewer, message.meta, action.id).catch((err) => {
         console.error("[chat] could not find or start the plan item's project", err);
         return null;
-      }));
+      });
+      planned = handoff !== null;
+    }
     await postMessage(viewer, channel.id, action.body, handoff ? { handoff: handoffMeta(handoff) } : undefined);
   } catch (err) {
     /* Nothing was said for the press: give it back so the card can be
@@ -268,6 +318,30 @@ export async function pressCardAction(slug: string, messageId: string, actionId:
     throw err;
   }
   revalidatePath(`/chat/c/${slug}`);
+
+  /* "交给编剧" on the morning plan: the draft is written by code, into the
+     project the press just found or started — not by a 编剧 model turn in
+     #研究日报. That turn once went off and watched a trend topic instead
+     ("Watching … now", in English), and the owner found an empty project
+     and nothing anywhere: "it just disappeared". Now the press starts the
+     same background draft as 开项目 on an idea (`startFromTopicAction` with
+     `write`), and 编剧 says in this channel where it is writing, with the
+     project linked; the project's own chat gets the "写好了" line. */
+  if (planned && handoff?.to === "script" && handoff.workProjectId && handoff.task) {
+    const title = handoff.artifacts.find((a) => a.kind === "work_project")?.title ?? "";
+    const started = await startFromTopicAction({ kind: "proposal", text: handoff.task, source: "plan" }, { write: true }).catch((err) => ({ error: err instanceof Error ? err.message : String(err) }));
+    const failed = "error" in started && started.error ? started.error : null;
+    const writing = !failed && "writing" in started && started.writing;
+    const line = failed
+      ? `《${title}》的项目开好了，但初稿没能开始：${failed}。在项目页按「写初稿」再试一次。`
+      : writing
+        ? `好的，《${title}》的初稿我在项目里写，一两分钟后出现在项目的脚本里。`
+        : `《${title}》的项目里已经有脚本了，去项目里看。`;
+    const writer = await agentViewer(viewer.tenantId, "script");
+    await postMessage(writer, channel.id, line, { agent: "script", project: { id: handoff.workProjectId, title } }).catch((err) => console.error("[chat] could not say where the draft is", err));
+    revalidatePath(`/chat/c/${slug}`);
+    return {};
+  }
 
   /* The prepared line nearly always tags a colleague — that is the point of
      "hand it to the editor" being one press. Same path as a typed tag, after
@@ -357,6 +431,64 @@ async function runCardAction(
     }
   });
   return {};
+}
+
+/**
+ * "素材传好了 · 开始剪" under a video somebody dropped into a project's chat.
+ *
+ * The take is in the bin already (`meta.binned`); this is the press that
+ * was missing after it. It posts the person's own line into the channel —
+ * what they could have typed — and starts the cut the same way "传好了"
+ * typed there does (`startCutForProject`), after the response. The press
+ * is written onto the message so it is offered once; a second press is
+ * told somebody already pressed it.
+ */
+export async function startCutFromChatAction(slug: string, messageId: string) {
+  const viewer = await getViewer();
+  if (!viewer || !viewer.modules.includes("chat")) return { error: "Not allowed" };
+  const zh = (viewer.locale ?? "zh-CN").startsWith("zh");
+  if (!viewer.modules.includes("video")) return { error: zh ? "需要视频模块的权限" : "This needs the Video module" };
+  if (typeof slug !== "string" || !slug || slug.length > MAX_SLUG) return { error: "Channel not found" };
+  if (typeof messageId !== "string" || messageId.length > 64) return { error: "No such message" };
+
+  const channel = await channelBySlug(viewer, slug);
+  if (!channel) return { error: "Channel not found" };
+  const message = await channelMessage(channel.id, messageId);
+  if (!message) return { error: "No such message" };
+  const binned = readBinned(message.meta);
+  if (!binned) return { error: "No such button" };
+  if (readCutPressed(message.meta)) return { error: zh ? "已经按过了" : "Somebody already pressed this" };
+
+  const [wp] = await db
+    .select({ id: workProjects.id, title: workProjects.title, channelId: workProjects.channelId, videoProjectId: workProjects.videoProjectId })
+    .from(workProjects)
+    .where(and(eq(workProjects.id, binned.projectId), eq(workProjects.channelId, channel.id), eq(workProjects.tenantId, viewer.tenantId), isNull(workProjects.deletedAt)))
+    .limit(1);
+  if (!wp?.videoProjectId) return { error: zh ? "没有这个项目" : "No such project" };
+  if (!(await canEditProject(viewer, wp.videoProjectId))) {
+    return { error: zh ? "这个项目的视频只分享给你查看，请找负责人要编辑权限。" : "This project's video was shared with you to view. Ask its owner for edit access." };
+  }
+
+  /* Claimed first: two presses at once must start one cut. */
+  const pressed = JSON.stringify({ cutPressed: { by: viewer.id, at: new Date().toISOString() } });
+  const claimed = await db.execute<{ id: string }>(sql`
+    update chat_messages set meta = meta || ${pressed}::jsonb
+     where id = ${message.id} and channel_id = ${channel.id} and not (meta ? 'cutPressed')
+     returning id
+  `);
+  if (!claimed.rows.length) return { error: zh ? "已经按过了" : "Somebody already pressed this" };
+
+  await postMessage(viewer, channel.id, zh ? `素材传好了，开始剪《${wp.title}》。` : `The clips are in; start cutting "${wp.title}".`, { said: "start-cut" });
+  revalidatePath(`/chat/c/${slug}`);
+  const project = { id: wp.id, title: wp.title, channelId: wp.channelId, videoProjectId: wp.videoProjectId };
+  after(async () => {
+    try {
+      await startCutForProject(viewer, project, { via: "button" });
+    } catch (err) {
+      console.error("[chat] the cut could not be started from the button", err);
+    }
+  });
+  return { answering: "video" as const };
 }
 
 /**

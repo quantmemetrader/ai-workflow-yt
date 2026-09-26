@@ -4,7 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { AgentIcon } from "@/components/agents/AgentIcon";
 import { Icon } from "@/components/ui/Icon";
-import { AGENT_COLORS } from "@/lib/agents/catalog";
+import { Tr } from "@/components/ui/Tr";
 
 /**
  * One topic on Home (a researcher's idea, a suggestion from the brief) as a
@@ -34,8 +34,11 @@ export function TopicRow({
   action,
   children,
   notice,
+  rank,
 }: {
   first: boolean;
+  /** Place in a ranked list (1, 2, 3…), drawn as a big quiet number on the left; unset draws nothing there. */
+  rank?: number;
   open: boolean;
   /** Unset when there is nothing more to show: no chevron, no toggle. */
   onToggle?: () => void;
@@ -60,11 +63,11 @@ export function TopicRow({
       <div className={canOpen ? "tpr-head tpr-can" : "tpr-head"} onClick={onToggle}>
         {canOpen ? (
           <button type="button" className="tpr-hit" aria-expanded={open} aria-controls={open ? detailId : undefined}>
-            <RowText strength={strength} strengthTitle={strengthTitle} title={title} line={open ? null : line} />
+            <RowText rank={rank} strength={strength} strengthTitle={strengthTitle} title={title} line={open ? null : line} />
           </button>
         ) : (
           <span className="tpr-hit">
-            <RowText strength={strength} strengthTitle={strengthTitle} title={title} line={line} />
+            <RowText rank={rank} strength={strength} strengthTitle={strengthTitle} title={title} line={line} />
           </span>
         )}
         {meta}
@@ -80,7 +83,7 @@ export function TopicRow({
         ) : null}
       </div>
       {open && children ? (
-        <div id={detailId} style={{ padding: "0 14px 14px 58px" }}>
+        <div id={detailId} style={{ padding: `0 14px 14px ${rank ? 50 : 14}px` }}>
           {children}
         </div>
       ) : null}
@@ -89,10 +92,19 @@ export function TopicRow({
   );
 }
 
-function RowText({ strength, strengthTitle, title, line }: { strength: number | null; strengthTitle: string; title: string; line?: React.ReactNode }) {
+function RowText({ rank, strength, strengthTitle, title, line }: { rank?: number; strength: number | null; strengthTitle: string; title: string; line?: React.ReactNode }) {
+  /* A ranked list reads like a 热搜 board: a big light number, the top
+     pick's in orange. Five blue dots, then coloured pills, both read as
+     noise to the owner; the strength now lives in the order and the
+     number's tooltip. */
+  const hot = (strength ?? 0) >= 5;
   return (
     <>
-      <span className="tpr-dots">{strength ? <Strength n={strength} title={strengthTitle} size={5} /> : null}</span>
+      {rank ? (
+        <span className="tpr-rank" title={strength ? `${strengthTitle} ${Math.round(strength)}/5` : undefined} style={{ color: hot ? "#e8590c" : "#c4c4c4" }}>
+          {String(rank).padStart(2, "0")}
+        </span>
+      ) : null}
       <span style={{ minWidth: 0, display: "flex", flexDirection: "column" }}>
         <span className="tpr-title" title={title}>
           {title}
@@ -166,19 +178,15 @@ export function RowTag({ children, tone = "grey", title }: { children: React.Rea
  * researcher's own colours: the blue for the strength it has, the light tint
  * (a step darker, `EMPTY_DOT`, so it still shows on white) for the rest.
  */
-export function Strength({ n, title, size = 6 }: { n: number; title: string; size?: number }) {
-  const k = Math.max(0, Math.min(5, Math.round(n)));
+export function Strength({ n, title }: { n: number; title: string; size?: number }) {
+  /* Quiet text: "热度 4/5". Dots and then coloured pills were both too loud. */
+  const k = Math.max(1, Math.min(5, Math.round(n)));
   return (
-    <span role="img" aria-label={`${k}/5`} title={title} style={{ display: "inline-flex", alignItems: "center", gap: size > 5 ? 3 : 2, flexShrink: 0 }}>
-      {[0, 1, 2, 3, 4].map((i) => (
-        <span key={i} style={{ width: size, height: size, borderRadius: size / 2, background: i < k ? AGENT_COLORS.research : EMPTY_DOT }} />
-      ))}
+    <span title={title} style={{ fontSize: 11.5, color: "#8a8a8a", whiteSpace: "nowrap", flexShrink: 0, fontVariantNumeric: "tabular-nums" }}>
+      <Tr zh="热度" en="Heat" /> <b style={{ color: k >= 5 ? "#e8590c" : "#171717", fontWeight: 600 }}>{k}</b>/5
     </span>
   );
 }
-
-/** 研究员's tint (`AGENT_TINTS.research`), a step darker so an empty dot still shows on white. */
-const EMPTY_DOT = "#c4d8f4";
 
 /**
  * After a start from Home: the project exists and 编剧 may be writing.
@@ -267,7 +275,7 @@ export const IDEAS_CSS = `
 .tpr:not(.tpr-open) > .tpr-can:hover { background: #fafafa; }
 .tpr-hit { flex: 1 1 auto; min-width: 0; display: flex; align-items: flex-start; gap: 10px; padding: 0; border: 0; background: transparent; font: inherit; color: inherit; text-align: left; cursor: inherit; }
 .tpr-hit:focus-visible { outline: 2px solid #171717; outline-offset: 3px; border-radius: 6px; }
-.tpr-dots { width: 34px; height: 20px; display: inline-flex; align-items: center; flex-shrink: 0; }
+.tpr-rank { width: 26px; flex-shrink: 0; font-size: 19px; line-height: 21px; font-weight: 700; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
 .tpr-title { font-size: 13.5px; font-weight: 600; line-height: 20px; color: #171717; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tpr-open .tpr-title { white-space: normal; }
 .tpr-line { font-size: 12px; line-height: 18px; color: #8a8a8a; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

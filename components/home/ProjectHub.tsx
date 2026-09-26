@@ -17,6 +17,7 @@ import { PUBLISHED_TONE, PublishedMarks } from "@/components/projects/Published"
 import { publishedDay } from "@/lib/projects/publication";
 import { PersonAvatar } from "@/components/ui/PersonAvatar";
 import { VideoCards } from "@/components/chat/VideoCard";
+import { LiveBadge, LiveBar, LiveLine } from "@/components/home/LiveBadge";
 
 /**
  * Home, project by project.
@@ -89,9 +90,14 @@ export function ProjectProgress({
                 <span style={{ minWidth: 0, flexGrow: 1, display: "flex", flexDirection: "column", gap: 9 }}>
                   <span style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
                     <span style={{ fontSize: 13.5, fontWeight: 600, minWidth: 0, flexGrow: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.title}</span>
-                    <StageBadge now={now} zh={zh} status={p.status} />
+                    {/* Live while the film is being made: "正在渲染 42%"
+                        typing like 剪辑师, then 成片已出 · 看看 for two
+                        minutes after it lands (`LiveBadge`); the server's
+                        pill otherwise. */}
+                    <LiveBadge projectId={p.id} zh={zh} fallback={<StageBadge now={now} zh={zh} status={p.status} />} />
                   </span>
                   <StepTrack steps={p.steps} current={now?.key ?? null} />
+                  <LiveBar projectId={p.id} />
                   <span style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 11.5, color: "#7c7c7c", minWidth: 0 }}>
                     {/* A published one (the researcher's "just published")
                         says when, and where it went as marks — not links, the
@@ -107,7 +113,9 @@ export function ProjectProgress({
                     ) : (
                       <>
                         {now && now.owner !== "you" ? <AgentIcon agent={now.owner} size={16} radius={5} /> : now ? <Icon name="upload" size={13} color="#b07a1f" /> : <Icon name="check" size={13} color="#1e7a4f" />}
-                        <span style={{ minWidth: 0, flexGrow: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{now ? now.line : t("已完成", "Done")}</span>
+                        <span style={{ minWidth: 0, flexGrow: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          <LiveLine projectId={p.id} zh={zh} fallback={now ? now.line : t("已完成", "Done")} />
+                        </span>
                       </>
                     )}
                     <span className="pp-open">

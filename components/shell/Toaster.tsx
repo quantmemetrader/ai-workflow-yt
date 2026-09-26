@@ -1,16 +1,21 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import { NOTIFY_EVENT, type Notice } from "@/lib/client/notify";
 
 /**
- * Where a failure goes now that nothing calls `window.alert`.
+ * Where a failure goes now that nothing calls `window.alert` — and where
+ * "《蒸馏之战》成片已出" lands, with 打开 and 下载 under it, when a film
+ * finishes while you are on some other page (`lib/client/live.ts`).
  *
  * Bottom left, so it never lands on the background-work toast in the other
  * corner. Errors stay until they are dismissed, because an error you did not
- * read is an error you will hit again; anything else clears itself.
+ * read is an error you will hit again; anything else clears itself, a notice
+ * with presses on it a little later than one without.
  */
 const HOLD = { error: 0, ok: 4000, info: 5000 } as const;
+const HOLD_WITH_ACTIONS = 15_000;
 
 export function Toaster() {
   const [notices, setNotices] = useState<Notice[]>([]);
@@ -24,9 +29,9 @@ export function Toaster() {
 
     function onNotice(event: Event) {
       const notice = (event as CustomEvent<Notice>).detail;
-      if (!notice?.text) return;
+      if (!notice?.text && !notice?.title) return;
       setNotices((cur) => [...cur.slice(-3), notice]);
-      const hold = HOLD[notice.kind];
+      const hold = notice.hold !== undefined ? notice.hold : notice.actions?.length && notice.kind !== "error" ? HOLD_WITH_ACTIONS : HOLD[notice.kind];
       if (hold) timers.add(setTimeout(() => drop(notice.id), hold));
     }
 
@@ -69,16 +74,49 @@ export function Toaster() {
           }}
         >
           <Glyph kind={n.kind} />
-          <span
-            style={{
-              fontSize: 12.5,
-              lineHeight: 1.55,
-              color: n.kind === "error" ? "#8a2b2b" : "#383838",
-              minWidth: 0,
-              overflowWrap: "anywhere",
-            }}
-          >
-            {n.text}
+          <span style={{ minWidth: 0, display: "flex", flexDirection: "column", gap: 3 }}>
+            {n.title ? <span style={{ fontSize: 13, fontWeight: 600, lineHeight: 1.45, color: n.kind === "error" ? "#8a2b2b" : "#171717", overflowWrap: "anywhere" }}>{n.title}</span> : null}
+            {n.text ? (
+              <span
+                style={{
+                  fontSize: 12.5,
+                  lineHeight: 1.55,
+                  color: n.kind === "error" ? "#8a2b2b" : "#383838",
+                  minWidth: 0,
+                  overflowWrap: "anywhere",
+                }}
+              >
+                {n.text}
+              </span>
+            ) : null}
+            {n.actions?.length ? (
+              <span style={{ display: "flex", gap: 6, marginTop: 5, flexWrap: "wrap" }}>
+                {n.actions.map((a, i) => {
+                  const style: React.CSSProperties = {
+                    display: "inline-flex",
+                    alignItems: "center",
+                    height: 26,
+                    padding: "0 10px",
+                    borderRadius: 8,
+                    fontSize: 12,
+                    fontWeight: 500,
+                    textDecoration: "none",
+                    border: `1px solid ${i === 0 ? "#171717" : "#e2e2e2"}`,
+                    background: i === 0 ? "#171717" : "#ffffff",
+                    color: i === 0 ? "#ffffff" : "#171717",
+                  };
+                  return a.download ? (
+                    <a key={a.label} href={a.href} style={style} onClick={() => drop(n.id)}>
+                      {a.label}
+                    </a>
+                  ) : (
+                    <Link key={a.label} href={a.href} prefetch={false} style={style} onClick={() => drop(n.id)}>
+                      {a.label}
+                    </Link>
+                  );
+                })}
+              </span>
+            ) : null}
           </span>
           <button
             type="button"

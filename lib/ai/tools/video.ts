@@ -580,7 +580,14 @@ async function dispatch(ctx: ToolContext & { projectId: string; language: string
   } catch {
     return "Those arguments were not valid JSON. Try again with a single JSON object.";
   }
-  
+
+  /* The person said the clips are not all in (or dropped one in, with its
+     own 开始剪 press under it): no cut starts on this turn, whatever the
+     model makes of the bin (`ToolContext.holdCut`). */
+  if (ctx.holdCut && (name === "make_video" || name === "first_cut")) {
+    return "Not started: the host said more clips are coming, or not to start yet. Do not start the cut this turn. Tell them you will wait, and that saying 传好了 (or pressing 素材传好了 · 开始剪) starts it.";
+  }
+
   if (name === "describe_timeline") {
     const { rows, totalMs } = await timeline(ctx.projectId);
     const cues = await db
