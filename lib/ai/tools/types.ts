@@ -144,6 +144,15 @@ export type ToolContext = {
    */
   asker?: Viewer;
   /**
+   * The answer goes back to the person who asked and to nobody else: the
+   * assistant stream, their own conversation. Absent, the answer is posted
+   * in a channel (an employee answering a tag), where everyone in the room
+   * reads it, so a tool that lists things for `asker` lists only what the
+   * room may hear about — a private project's title, id and chat are its
+   * members' even when one of them is the one asking in #制作.
+   */
+  privateReply?: boolean;
+  /**
    * Where in the chain of hand-offs this turn sits, so a colleague it hands
    * work to with `assign_task` is counted against the same bound and the
    * same budget as a tag would be. Set when an AI employee answers a tag in

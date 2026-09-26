@@ -241,8 +241,10 @@ export async function POST(request: Request) {
           module: speakerModule,
           /* `asker` is the person, whoever answers: an employee's tools
              check what they pick for somebody against the one who asked,
-             not only against the employee (`ToolContext.asker`). */
-          context: { ...context, ...ids, asker: viewer, team },
+             not only against the employee (`ToolContext.asker`). The
+             answer comes back to them alone (`privateReply`), so a list
+             may hold everything they may see, private projects included. */
+          context: { ...context, ...ids, asker: viewer, team, privateReply: true },
           signal: request.signal,
         })) {
           if (event.type === "message" && speaker && !speakerSaved) {

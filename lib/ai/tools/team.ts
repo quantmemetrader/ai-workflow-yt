@@ -101,7 +101,8 @@ const ownerName = (owner: string) =>
  * projects through 策划, and anyone could hand 编剧 a private project's
  * script to rewrite. And the employee's own rule was too narrow for the
  * people inside: it never sees a private project, so its owner asking from
- * #制作 heard "no such project".
+ * #制作 heard "no such project". (What a channel answer may *list* is
+ * narrower still: `projectsFor`.)
  */
 function personOf(ctx: ToolContext): Viewer | null {
   if (ctx.asker) return ctx.asker;
@@ -133,22 +134,43 @@ async function projectInChannel(tenantId: string, channelId: string) {
 }
 
 /**
- * The projects this turn may name, most recently active first: the ones the
- * person it works for may see (`personOf`).
+ * The projects this turn may name, most recently active first.
+ *
+ * When the answer goes back to the person alone (their own assistant, or an
+ * employee in the assistant stream: `privateReply`), the ones that person
+ * may see (`personOf`).
+ *
+ * When an employee's answer is posted in a channel, what the room may hear
+ * about: the employee's own reach (the studio-wide projects) plus the
+ * project whose chat this is — and of those, only the ones the person who
+ * asked may see. Listing by the person alone put every private project an
+ * admin or a member could see into #制作, titles, ids and chat slugs, for
+ * everyone reading #制作. `held` says some were left out, so the answer can
+ * say where they are named instead of "there is no such project";
+ * assign_task still takes such a project's id from the person.
  *
  * With nobody behind the turn, the employee's own, plus the project whose
  * chat it is answering in: it was made a member there, and "@策划 让编剧写"
  * inside a private project has to find the project it is in. Never every
- * private project it happens to be a member of — its answer is posted where
- * other people read it.
+ * private project it happens to be a member of, for the same reason.
  */
-async function projectsFor(ctx: ToolContext, limit: number): Promise<WorkProjectRow[]> {
+async function projectsFor(ctx: ToolContext, limit: number): Promise<{ rows: WorkProjectRow[]; held: boolean }> {
   const person = personOf(ctx);
-  const rows = await listWorkProjects(person ?? ctx.viewer, limit);
-  if (person || !ctx.channelId) return rows;
-  const here = await projectInChannel(ctx.viewer.tenantId, ctx.channelId);
-  if (!here || rows.some((r) => r.id === here.id)) return rows;
-  return [{ ...here, updatedAt: here.updatedAt.toISOString() }, ...rows].slice(0, limit);
+  const employee = Boolean(agentKeyFromEmail(ctx.viewer.email));
+  if (person && (!employee || ctx.privateReply)) return { rows: await listWorkProjects(person, limit), held: false };
+
+  const [own, here] = await Promise.all([
+    listWorkProjects(ctx.viewer, person ? 200 : limit),
+    ctx.channelId ? projectInChannel(ctx.viewer.tenantId, ctx.channelId) : null,
+  ]);
+  const room: WorkProjectRow[] = here && !own.some((r) => r.id === here.id) ? [{ ...here, updatedAt: here.updatedAt.toISOString() }, ...own] : own;
+  if (!person) return { rows: room.slice(0, limit), held: false };
+
+  /* The person's own list, in its order, kept to what the room may hear. */
+  const inRoom = new Set(room.map((r) => r.id));
+  const mine = await listWorkProjects(person, 200);
+  const rows = mine.filter((r) => inRoom.has(r.id));
+  return { rows: rows.slice(0, limit), held: rows.length < mine.length };
 }
 
 /** A colleague from whatever the model wrote: the key, the name, the tag. */
@@ -186,13 +208,25 @@ async function run(ctx: ToolContext, name: string, args: Record<string, unknown>
   if (name === "list_projects") {
     const limit = Math.min(40, Math.max(1, num(args.limit, 15)));
     const query = str(args.query, 80).toLowerCase();
-    const all = await projectsFor(ctx, 40);
+    const { rows: all, held } = await projectsFor(ctx, 40);
     const rows = (query ? all.filter((r) => r.title.toLowerCase().includes(query)) : all).slice(0, limit);
+    /* No count and no names: only that such projects exist and where they
+       can be named, so "no such project" is not said of one that is. */
+    const heldNote = held
+      ? "Projects kept to some people are not listed in a channel: they are named in their own chat or in the person's own assistant, and assign_task still takes such a project's id when the person gives it."
+      : "";
     if (!rows.length) {
       return {
-        text: query
-          ? `No project is called anything like "${str(args.query, 80)}". There are ${all.length} project(s) in all.`
-          : "The studio has no projects yet.",
+        text: [
+          query
+            ? `No project is called anything like "${str(args.query, 80)}". There are ${all.length} project(s) in all.`
+            : held
+              ? "No project here is open to everyone in this room."
+              : "The studio has no projects yet.",
+          heldNote,
+        ]
+          .filter(Boolean)
+          .join("\n"),
       };
     }
     /* Each project's script by name and state, so "is the script written"
@@ -206,14 +240,17 @@ async function run(ctx: ToolContext, name: string, args: Record<string, unknown>
       : [];
     const byId = new Map(scriptRows.map((s) => [s.id, s]));
     return {
-      text: rows
-        .map((r) => {
+      text: [
+        ...rows.map((r) => {
           const sc = r.scriptId ? byId.get(r.scriptId) : undefined;
           return [
             `- 《${r.title}》 (id: ${r.id}) — ${r.status}${r.mode !== "full" ? ` · ${r.mode}` : ""} · active ${r.updatedAt.slice(0, 10)}`,
             `  script: ${sc ? `${sc.title} (id: ${sc.id}, ${sc.status})` : r.scriptId ? `${r.scriptId} (deleted)` : "none"} · video project: ${r.videoProjectId ?? "none"}${r.channelSlug ? ` · chat #${r.channelSlug}` : ""}`,
           ].join("\n");
-        })
+        }),
+        heldNote,
+      ]
+        .filter(Boolean)
         .join("\n"),
     };
   }
