@@ -63,17 +63,42 @@ const LEVEL: Record<CheckLevel, { zh: string; en: string; fg: string; bg: string
   crowded: { zh: "扎堆", en: "Crowded", fg: "#6a3fc4", bg: "#efe9fb" },
 };
 
+/**
+ * The card's own deadline. The server stops the model work well before this
+ * (`CHECK_BUDGET_MS` in lib/ideas/check.ts); this is for a connection that
+ * hangs, so the progress line never counts on forever.
+ */
+const DEADLINE_MS = 125_000;
+
 async function postCheck(zh: boolean, body: unknown, signal: AbortSignal): Promise<{ check?: TitleCheck; error?: string }> {
+  /* Given up on by the card (`signal`), or too late (the timer): only the
+     second is the person's news. */
+  const own = new AbortController();
+  const stop = () => own.abort();
+  signal.addEventListener("abort", stop, { once: true });
+  let late = false;
+  const timer = setTimeout(() => {
+    late = true;
+    own.abort();
+  }, DEADLINE_MS);
   try {
-    const r = await fetch("/api/ideas/check", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal });
+    const r = await fetch("/api/ideas/check", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal: own.signal });
     const j = (await r.json().catch(() => ({}))) as { check?: TitleCheck; error?: string };
-    if (!r.ok || !j.check) return { error: j.error ?? (zh ? "研究员这次没看完，再试一次。" : "The researcher could not finish this time; try again.") };
+    if (signal.aborted) return {};
+    if (!r.ok || !j.check) return { error: j.error ?? (late ? tooLate(zh) : zh ? "研究员这次没看完，再试一次。" : "The researcher could not finish this time; try again.") };
     return { check: j.check };
   } catch {
     if (signal.aborted) return {};
+    if (late) return { error: tooLate(zh) };
     return { error: zh ? "连不上服务器，再试一次。" : "Could not reach the server; try again." };
+  } finally {
+    clearTimeout(timer);
+    signal.removeEventListener("abort", stop);
   }
 }
+
+const tooLate = (zh: boolean) =>
+  zh ? `研究员 ${Math.round(DEADLINE_MS / 1000)} 秒还没看完，先别等了，再试一次。` : `No answer from the researcher after ${Math.round(DEADLINE_MS / 1000)}s; try again.`;
 
 export function TitleCheckCard({
   zh,
@@ -225,7 +250,10 @@ export function TitleCheckCard({
         ? t("对照本频道的数据和选题储备…", "Checking the channel's numbers and the backlog…")
         : elapsed < 45
           ? t("研究员在比较标题…", "Weighing the titles…")
-          : t("快好了，核对证据里的数字…", "Nearly there, checking the numbers…");
+          : elapsed < 70
+            ? t("快好了，核对证据里的数字…", "Nearly there, checking the numbers…")
+            : /* Said plainly once it is slower than it should be. */
+              t("比平时慢，模型还没回，最多再等一分钟…", "Slower than usual; the model has not answered yet (a minute at most)…");
 
   /* ---- folded: one row once a project exists ---- */
   const done = started || direct;
@@ -373,7 +401,9 @@ export function TitleCheckCard({
                 </svg>
                 {t("依据", "What it stands on")}
                 <span style={{ color: "#a3a3a3" }}>
-                  {t(` · 证据 ${check.evidence.length} 条${check.similar.length ? ` · 对标 ${check.similar.length} 个` : ""}`, ` · ${check.evidence.length} evidence${check.similar.length ? ` · ${check.similar.length} similar` : ""}`)}
+                  {check.evidence.length
+                    ? t(` · 证据 ${check.evidence.length} 条${check.similar.length ? ` · 对标 ${check.similar.length} 个` : ""}`, ` · ${check.evidence.length} evidence${check.similar.length ? ` · ${check.similar.length} similar` : ""}`)
+                    : t(" · 没有直接证据", " · no direct evidence")}
                 </span>
               </button>
               {details ? (

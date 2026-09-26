@@ -6,7 +6,7 @@ import { ulid } from "@/lib/ids";
 import type { Viewer } from "@/lib/auth/types";
 import type { Idea, IdeaEvidence } from "@/lib/ideas/types";
 import type { CheckLevel, CheckPrevious, TitleCheck, TitleOption } from "@/lib/ideas/check-types";
-import { complete } from "@/lib/ai/openrouter";
+import { AiError, complete } from "@/lib/ai/openrouter";
 import { modelFor } from "@/lib/ai/models";
 import { assertBudget, BudgetStop, recordUsage } from "@/lib/ai/ledger";
 import { agentViewer } from "@/lib/agents";
@@ -32,8 +32,12 @@ import { evidencePool, ideaById, withoutPoolIds } from "@/lib/ideas/service";
  * makes a live (billed) platform read:
  *
  *   — every stored list of the last two weeks (`hot_snapshots`: the platform
- *     lists, the beat feeds, saved searches), searched for the topic's words,
- *     with the classifier's business / tech mark where the list has one;
+ *     lists and the beat feeds), searched for the topic's words, with the
+ *     classifier's business / tech mark where the list has one. Not the
+ *     "search:" rows: those are the phrases somebody typed into Search &
+ *     compare, cached for every studio with no owner on them, so quoting
+ *     one ("抖音搜索「…」") would tell this studio what another searched
+ *     for. `evidencePool` leaves them out for the same reason;
  *   — the channel's own uploads (`creator_videos`) and how the ones on this
  *     subject did against the channel's median;
  *   — the last week of morning briefs, and the backlog topics;
@@ -192,12 +196,8 @@ const hkDate = (d: Date | string) => {
   return `${Number(m)}月${Number(day)}日`;
 };
 
-/** Where a stored row came from, in words: the platform list, a beat feed, a saved search. */
+/** Where a stored row came from, in words: the platform list or a beat feed. */
 function sourceOf(platform: string, row: StoredRow): { label: string; platform: string | null } {
-  if (platform.startsWith("search:")) {
-    const [, p, ...q] = platform.split(":");
-    return { label: `${PLATFORM_NAME[p] ?? p}搜索「${clip(q.join(":"), 16)}」`, platform: p ?? null };
-  }
   if (platform.startsWith("beat_")) {
     const list = typeof row.list === "string" ? row.list : null;
     if (list && PLATFORM_NAME[list]) return { label: PLATFORM_NAME[list], platform: list };
@@ -248,6 +248,7 @@ async function listMatches(groups: Groups): Promise<{ found: Omit<Found, "id">[]
               from hot_snapshots h
               cross join lateral jsonb_array_elements(case when jsonb_typeof(h.rows) = 'array' then h.rows else '[]'::jsonb end) r
              where h.fetched_at > now() - ${since}
+               and h.platform not like 'search:%'
                and (coalesce(r.value ->> 'phrase', '') || ' ' || coalesce(r.value ->> 'extra', '')) ~* ${termsRegex(terms)}
           ), d as (
             select distinct on (k) k, platform, fetched_at, row, rel, count(*) over (partition by k) as seen
@@ -261,6 +262,7 @@ async function listMatches(groups: Groups): Promise<{ found: Omit<Found, "id">[]
       select platform, max(fetched_at) as latest, min(fetched_at) as first, count(*) as n
         from hot_snapshots
        where fetched_at > now() - ${since}
+         and platform not like 'search:%'
        group by platform
     `),
   ]);
@@ -473,6 +475,9 @@ export function cleanGroups(v: unknown): Groups {
   });
 }
 
+/** The prompt's example answer; also how an answer that only repeats it is recognised. */
+const EXAMPLE_GROUPS = [["比特币", "比特幣", "BTC", "Bitcoin"], ["ETF", "现货ETF", "現貨ETF"]];
+
 /**
  * The topic as search groups, by the utility model; the local split when it
  * fails or is slow.
@@ -489,19 +494,28 @@ async function searchGroups(researcher: Viewer, text: string, store: boolean): P
     "每个概念给 3 到 8 个检索词：短词（2 到 6 个字，或一个英文词/缩写），包括同义词、常见说法、英文缩写；简体和繁体写法不同的，两种都给（比如 失业、失業）。",
     "不要给整句，不要给“影响”“分析”“普通人”这类放在哪个标题里都成立的泛词。一个词只含一个概念：不要写“比特币ETF”，写成“比特币”和“ETF”两组。",
     `选题：「${text}」`,
-    '只回答一个 JSON 对象：{"groups":[["比特币","比特幣","BTC","Bitcoin"],["ETF","现货ETF","現貨ETF"]]}',
+    `只回答一个 JSON 对象：${JSON.stringify({ groups: EXAMPLE_GROUPS })}`,
   ]
     .filter(Boolean)
     .join("\n");
   /* The utility model sometimes spends its whole answer thinking and
      returns nothing; the assistant model is asked once more before the
      local split. */
+  const plain = `${toSimplified(text).toLowerCase()} ${text.toLowerCase()}`;
+  const example = new Set(cleanGroups(EXAMPLE_GROUPS).flat());
   for (const model of [...new Set([modelFor.utility(), modelFor.assistant()])]) {
     try {
       const out = await ask(researcher, model, prompt, { temperature: 0.2, maxTokens: 600, store, signal: AbortSignal.timeout(15_000) });
       const groups = cleanGroups(parseObject(out.text)?.groups);
-      if (groups.length) return groups;
-      console.warn(`[ideas/check] search words: nothing usable from ${model} (${out.text.length} chars)`);
+      /* Not the example handed back. Given something it could not read as
+         a topic (an instruction typed into the box), the model answered with
+         the prompt's own example, and the whole check then researched 比特币
+         ETF under somebody else's words. Its own guess at a vague topic
+         ("最近能拍点啥") is kept: that is still about what was typed. */
+      const flat = groups.flat();
+      const echoed = flat.length > 0 && flat.every((term) => example.has(term)) && !flat.some((term) => has(plain, toSimplified(term)));
+      if (groups.length && !echoed) return groups;
+      console.warn(`[ideas/check] search words: nothing usable from ${model} (${out.text.length} chars${echoed ? ", the prompt's example repeated" : ""})`);
     } catch (err) {
       console.error(`[ideas/check] search words by ${model}`, err);
     }
@@ -514,6 +528,28 @@ async function searchGroups(researcher: Viewer, text: string, store: boolean): P
 export type CheckResult = { ok: true; check: TitleCheck } | { ok: false; error: string };
 
 const LEVELS: CheckLevel[] = ["hot", "warm", "cold", "crowded"];
+
+/**
+ * The whole check's time on the model. A first check takes 10 to 20
+ * seconds; this is the ceiling for a slow provider, so the card on Home says
+ * "didn't finish" within about two minutes instead of counting on. The
+ * card's own deadline (`TitleCheckCard`) sits just above it.
+ */
+const CHECK_BUDGET_MS = 100_000;
+
+/**
+ * A failed model call in the person's words. The provider's own message
+ * ("qwen/qwen3-max did not respond within 60s") is logged, not shown: the
+ * card says what happened (too slow, rate-limited, out of credit) and that
+ * trying again is the way out.
+ */
+function failWords(err: unknown, zh: boolean): string {
+  const text = err instanceof Error ? `${err.name} ${err.message}` : String(err);
+  if (err instanceof AiError && err.kind === "credit") return zh ? "AI 账户的额度用完了，不是研究员的问题；管理员充值后再试。" : "The AI account is out of credit; an admin needs to top it up.";
+  if (/did not respond within|TimeoutError|timed? ?out/i.test(text)) return zh ? "研究员这次没在时间内看完（模型太慢），再试一次。" : "The researcher ran out of time (the model was too slow); try again.";
+  if (err instanceof AiError && err.kind === "rate_limit") return zh ? "模型这会儿在限流，没有扣费，稍后再试。" : "The model is rate-limiting right now; nothing was charged. Try again shortly.";
+  return zh ? "研究员这次没看完（模型出错），再试一次。" : "The researcher could not finish (a model error); try again.";
+}
 
 /**
  * Check a typed topic, or have another round on one already checked.
@@ -529,22 +565,27 @@ export async function checkTitle(
   opts: { store?: boolean } = {},
 ): Promise<CheckResult> {
   const store = opts.store !== false;
+  const zh = (viewer.locale ?? "zh-CN").startsWith("zh");
+  const began = Date.now();
   const text = topicText(input.text);
-  if (!text) return { ok: false, error: "先写下想做的题目。" };
+  if (!text) return { ok: false, error: zh ? "先写下想做的题目。" : "Write the topic first." };
   const instruction = (input.instruction ?? "").replace(/\s+/g, " ").trim().slice(0, 120) || null;
 
   const researcher = await agentViewer(viewer.tenantId, "research");
   try {
     await assertBudget(researcher);
   } catch (err) {
-    if (err instanceof BudgetStop) return { ok: false, error: "研究员本期的 AI 额度已经用完。" };
+    if (err instanceof BudgetStop) return { ok: false, error: zh ? "研究员本期的 AI 额度已经用完。" : "The researcher's AI budget for this period is used up." };
     throw err;
   }
 
   /* The round before, read from the row itself: what the page sends is only
-     which row, and the person's own earlier words. */
+     which row, and the person's own earlier words. Only a check of this
+     same topic (its seed is what was typed): an id from anywhere else, say
+     one of 研究员's generated ideas, is not rewritten by a follow-up, and
+     the round starts fresh instead. */
   const prevId = input.previous && typeof input.previous.id === "string" ? input.previous.id.slice(0, 64) : null;
-  const [prevRow] = prevId ? await db.select().from(ideas).where(and(eq(ideas.id, prevId), eq(ideas.tenantId, viewer.tenantId))).limit(1) : [];
+  const [prevRow] = prevId ? await db.select().from(ideas).where(and(eq(ideas.id, prevId), eq(ideas.tenantId, viewer.tenantId), eq(ideas.seed, text))).limit(1) : [];
   const earlier = (Array.isArray(input.previous?.instructions) ? input.previous!.instructions : [])
     .filter((x): x is string => typeof x === "string" && Boolean(x.trim()))
     .slice(-3)
@@ -639,7 +680,7 @@ export async function checkTitle(
       ? "2. 注意：存下来的数据里这个题的直接证据很少。要老实说“存下来的数据里直接证据很少”，不要编数字，strength 不超过 3，thin 为 true。可以用大盘或本频道的数据说明为什么冷、怎么换角度更有机会。"
       : "2. 证据少时要老实说，不要编数字；证据够时 thin 为 false。",
     "3. 给 3 个标题，按你推荐的顺序，每个配一句理由（20 字以内）。标题像本频道的标题：具体、有冲突或有数字，简体中文，20 字左右。标题里的数字只能用证据里有的，没有就不用数字。",
-    "4. evidence 引 1 到 3 条最能支持判断的编号，优先引跟这个题直接相关的（TM、TV、TS 开头）；similar 引最多 3 条做得好的同题视频（只能选 TM、TV 开头、带播放数、说的是同一件事的条目），没有就给空数组。",
+    "4. evidence 引 0 到 3 条最能支持判断的编号，优先引跟这个题直接相关的（TM、TV、TS 开头）；大盘的条目只有说的是这个题或它的核心对象才能引，没有相关的就给空数组，不要拿无关的热门凑数；similar 引最多 3 条做得好的同题视频（只能选 TM、TV 开头、带播放数、说的是同一件事的条目），没有就给空数组。",
     "5. risk：事实、合规、时效上要注意的一句话（比如涉及投资建议、数据可能过时），没有就 null。",
     "6. reply：像同事在对话里回的一句话，30 字以内，说结论或这次改了什么。why 不要重复 verdict.line，说 verdict 没说到的理由。",
     "7. title、why、angle、hook、reply、verdict.line 里都不要写编号（TM3、H5 这类），编号只放在 evidence 和 similar 里。",
@@ -653,10 +694,13 @@ export async function checkTitle(
 
   let raw: Record<string, unknown> | null = null;
   let used: string | null = null;
-  let lastError = "研究员这次没有给出能读的判断。";
+  let lastError = zh ? "研究员这次没有给出能读的判断，再试一次。" : "The researcher's answer could not be read; try again.";
   for (const model of [...new Set([modelFor.assistant(), modelFor.utility()])]) {
+    /* What is left of the budget; a fallback with a few seconds left is not tried. */
+    const left = CHECK_BUDGET_MS - (Date.now() - began);
+    if (left < 8_000) break;
     try {
-      const out = await ask(researcher, model, prompt, { temperature: 0.5, maxTokens: 1800, store });
+      const out = await ask(researcher, model, prompt, { temperature: 0.5, maxTokens: 1800, store, signal: AbortSignal.timeout(Math.min(60_000, left)) });
       if (REFUSAL.test(out.text.slice(0, 80))) continue;
       const j = parseObject(out.text);
       if (j && Array.isArray(j.titles) && j.titles.length) {
@@ -665,7 +709,7 @@ export async function checkTitle(
         break;
       }
     } catch (err) {
-      lastError = err instanceof Error ? err.message : String(err);
+      lastError = failWords(err, zh);
       console.error(`[ideas/check] ${model}`, err);
     }
   }
@@ -680,7 +724,15 @@ export async function checkTitle(
     const r = byId.get(id)!;
     return { label: r.label, title: r.title, url: r.url, numbers: r.numbers, thumbnail: r.thumbnail ?? null, platform: r.platform ?? null };
   };
-  const evidenceIds = [...new Set(ids(raw.evidence))].slice(0, 3);
+  /* The topic's own rows were found by its words; a pool row counts only
+     when it has one of them too. With nothing on the topic the model padded
+     the evidence with the day's biggest rows on anything ("捡快递" behind a
+     question about SaaS security), which the card would show as proof and
+     编剧 would be handed as facts. None left: the card says there is no
+     direct evidence, which is the honest answer. */
+  const ownIds = new Set([...tm, ...tv, ...ts, ...tk].map((f) => f.id));
+  const onTopic = (id: string) => ownIds.has(id) || matchOf(byId.get(id)!.title, groups).hits.some(Boolean);
+  const evidenceIds = [...new Set(ids(raw.evidence))].filter(onTopic).slice(0, 3);
   /* Similar videos: the topic's own rows with plays (never the pool's: asked
      for "did well", the model reached for the day's biggest video on any
      subject), not already shown as evidence. */
@@ -769,7 +821,7 @@ export async function checkTitle(
       await db.insert(ideas).values({ id, tenantId: viewer.tenantId, batchId: latest?.batchId ?? `ib_${ulid()}`, createdBy: viewer.id, ...values, status: "new", createdAt: now, updatedAt: now });
     }
     const stored = await ideaById(viewer, id);
-    if (!stored) return { ok: false, error: "存不下这次的判断，再试一次。" };
+    if (!stored) return { ok: false, error: zh ? "存不下这次的判断，再试一次。" : "The check could not be saved; try again." };
     idea = stored;
   }
 

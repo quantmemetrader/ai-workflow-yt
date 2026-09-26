@@ -6,10 +6,10 @@ import { checkTitle, chooseCheckTitle, cleanGroups } from "@/lib/ideas/check";
  * 研究员's check on a topic typed into Home's task box (`lib/ideas/check.ts`).
  *
  * POST { text, previous?, instruction? } — check it, or have another round
- * ("换个角度") on the idea the last round stored. Twenty to sixty seconds of
- * model work, so it is awaited here in a route handler and not in a server
- * action, which would hold up every navigation behind it; the card on Home
- * shows its own progress meanwhile.
+ * ("换个角度") on the idea the last round stored. Ten to twenty seconds of
+ * model work as a rule (at most `CHECK_BUDGET_MS`), so it is awaited here in
+ * a route handler and not in a server action, which would hold up every
+ * navigation behind it; the card on Home shows its own progress meanwhile.
  *
  * PATCH { id, title } — the title picked on the card becomes the idea's own,
  * just before `startFromTopicAction` makes the project from it.
@@ -42,8 +42,11 @@ export async function POST(req: NextRequest) {
     if (!res.ok) return Response.json({ error: res.error }, { status: 422 });
     return Response.json({ check: res.check }, { headers: { "Cache-Control": "no-store" } });
   } catch (err) {
+    /* Logged in full; the card gets a plain line (a database error's text
+       is no use to the person and says more about the system than it should). */
     console.error("[ideas/check] check", err);
-    return Response.json({ error: err instanceof Error ? err.message : "研究员这次没有看完" }, { status: 500 });
+    const zh = (viewer.locale ?? "zh-CN").startsWith("zh");
+    return Response.json({ error: zh ? "研究员这次没看完（服务器出错），再试一次。" : "The researcher could not finish (a server error); try again." }, { status: 500 });
   }
 }
 
