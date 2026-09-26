@@ -16,6 +16,7 @@ import { AgentName, Tr } from "@/components/ui/Tr";
 import { PUBLISHED_TONE, PublishedMarks } from "@/components/projects/Published";
 import { publishedDay } from "@/lib/projects/publication";
 import { PersonAvatar } from "@/components/ui/PersonAvatar";
+import { VideoCards } from "@/components/chat/VideoCard";
 
 /**
  * Home, project by project.
@@ -214,8 +215,15 @@ function ProjectChat({ project: p, zh, first, open, onToggle }: { project: Proje
             ) : (
               <PersonAvatar id={m.authorId} url={m.authorAvatar} name={m.author} size={18} radius={5} />
             )}
-            <div style={{ fontSize: 12.5, lineHeight: 1.5, color: "#2b343d", minWidth: 0, ...(open ? { whiteSpace: "pre-wrap" } : { overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }) }}>
-              <b style={{ fontWeight: 600, color: m.agent ? AGENT_COLORS[m.agent] : "#171717" }}>{m.agent ? <AgentName agent={m.agent} zh={zh} /> : m.author}</b> {m.body.replace(/\*\*/g, "").slice(0, open ? 1200 : 200)}
+            <div style={{ minWidth: 0, flexGrow: 1 }}>
+              <div style={{ fontSize: 12.5, lineHeight: 1.5, color: "#2b343d", minWidth: 0, ...(open ? { whiteSpace: "pre-wrap" } : { overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }) }}>
+                <b style={{ fontWeight: 600, color: m.agent ? AGENT_COLORS[m.agent] : "#171717" }}>{m.agent ? <AgentName agent={m.agent} zh={zh} /> : m.author}</b> {m.body.replace(/\*\*/g, "").slice(0, open ? 1200 : 200)}
+              </div>
+              {/* "渲染好了" with the film under it, small: the poster that
+                  plays and 下载, on Home, without opening the project. The
+                  card is one press from the project already, so it does not
+                  offer "打开项目" again. */}
+              <VideoCards videos={m.videos} zh={zh} here={{ projectId: p.id }} compact />
             </div>
           </div>
         ))}

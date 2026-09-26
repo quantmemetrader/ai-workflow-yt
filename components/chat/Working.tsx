@@ -146,6 +146,16 @@ export function JobChip({ job, zh, project }: { job: { videoProjectId: string };
       </Link>
     );
   }
+  /* The director finished without rendering (it was asked not to): the
+     cut is ready, and the film is one press away on the project page. */
+  if (s?.state === "cut") {
+    return (
+      <Link href={href} prefetch={false} style={{ ...frame, border: "1px solid #e6e6e6", background: "#fafaf9", color: "#171717" }}>
+        <Icon name="scissors" size={12} />
+        {zh ? "剪辑完成 · 待渲染 · 去渲染" : "Cut done · not rendered · render it"}
+      </Link>
+    );
+  }
   const running = s !== null && (s.state === "queued" || s.state === "running");
   const what = !running ? (zh ? "进行中" : "In progress") : s.state === "queued" ? (zh ? "排队中" : "Queued") : `${zh ? "正在" : ""}${directorStepLabel(s.step, zh)}`;
   return (

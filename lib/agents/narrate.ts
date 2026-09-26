@@ -68,17 +68,57 @@ async function videoProjectOf(job: Job): Promise<string | null> {
   }
 }
 
-async function say(job: Job, phase: "start" | "done" | "failed", text: string) {
+/**
+ * A finished render, for the "渲染好了" line: what came out, and the ids the
+ * chat's video card and the employees' `read_channel` name it by.
+ */
+type Rendered = { exportId: string; fileId: string | null; aspect: string; durationMs: number | null; sizeBytes: number | null };
+
+async function renderOf(exportId: string | null | undefined): Promise<Rendered | null> {
+  if (typeof exportId !== "string") return null;
+  try {
+    const { rows } = await db.execute<{ id: string; file_id: string | null; aspect: string; duration_ms: number | null; size_bytes: number | string | null }>(sql`
+      select id, file_id, aspect, duration_ms, size_bytes from video_exports where id = ${exportId} and state = 'done' limit 1
+    `);
+    const r = rows[0];
+    return r ? { exportId: r.id, fileId: r.file_id, aspect: r.aspect, durationMs: r.duration_ms, sizeBytes: r.size_bytes === null ? null : Number(r.size_bytes) } : null;
+  } catch {
+    return null;
+  }
+}
+
+/** The project page a video project belongs to, for "打开项目". */
+async function workProjectOf(videoProjectId: string | null): Promise<string | null> {
+  if (!videoProjectId) return null;
+  try {
+    const { rows } = await db.execute<{ id: string }>(sql`select id from work_projects where video_project_id = ${videoProjectId} and deleted_at is null order by created_at desc limit 1`);
+    return rows[0]?.id ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** "9:16 · 2:31 · 48 MB" — what a render came out as, in the line. */
+function renderFacts(r: Rendered): string {
+  const mb = r.sizeBytes ? `${(r.sizeBytes / 1_048_576).toFixed(r.sizeBytes < 10 * 1_048_576 ? 1 : 0)} MB` : null;
+  return [r.aspect, r.durationMs ? clock(r.durationMs) : null, mb].filter(Boolean).join(" · ");
+}
+
+async function say(job: Job, phase: "start" | "done" | "failed", text: string, rendered: Rendered | null = null) {
   const who = SPEAKS[job.type];
   if (!who) return;
   try {
     /* "开始渲染…" carries the job, so the chat draws a live chip under it
        (state and percent, `/api/chat/job`) and an "打开项目" button, instead
-       of twenty minutes of the same sentence. */
+       of twenty minutes of the same sentence. "渲染好了" carries the render
+       itself (`meta.render`: the export and its file), so the chat draws
+       the video card under it — the poster that plays, 下载, 打开项目 —
+       and an employee reading the channel can name the file. */
     const videoProjectId = await videoProjectOf(job);
     await postAsAgent(job.tenantId, who, "production", text, {
       narration: { jobId: job.id, type: job.type, phase },
       ...(videoProjectId ? { job: { videoProjectId } } : {}),
+      ...(rendered ? { render: { exportId: rendered.exportId, fileId: rendered.fileId, aspect: rendered.aspect, durationMs: rendered.durationMs, sizeBytes: rendered.sizeBytes } } : {}),
     });
   } catch (err) {
     // Narration must never fail the job it is narrating.
@@ -108,11 +148,19 @@ export async function narrateDone(job: Job, result: unknown): Promise<void> {
   const title = await projectTitle(job);
   const name = title ? `《${title}》` : "这条片";
   const r = (result ?? {}) as Record<string, unknown>;
-  const href = typeof job.payload?.projectId === "string" ? `/video?project=${job.payload.projectId}` : null;
+  /* The project's own page when it has one, else the editor: "打开项目"
+     used to point at the editor alone, and an export job (which names only
+     its export) had no link at all. */
+  const videoProjectId = await videoProjectOf(job);
+  const wp = await workProjectOf(videoProjectId);
+  const href = wp ? `/projects/${wp}` : videoProjectId ? `/video?project=${videoProjectId}` : null;
   const link = href ? ` [打开项目](${href})` : "";
 
   if (job.type === "video.export") {
-    await say(job, "done", `${name}渲染好了，可以在导出里下载了。${link}`);
+    /* What came out, and the card to watch and download it right here. */
+    const rendered = await renderOf(typeof job.payload?.exportId === "string" ? job.payload.exportId : null);
+    const facts = rendered ? renderFacts(rendered) : "";
+    await say(job, "done", `${name}渲染好了${facts ? `（${facts}）` : ""}，下面可以直接看、下载。${link}`, rendered);
     return;
   }
   if (job.type === "video.autoedit") {
@@ -132,7 +180,12 @@ export async function narrateDone(job: Job, result: unknown): Promise<void> {
     typeof r.graphics === "number" ? `${r.graphics} 个图形` : null,
     typeof r.pictures === "number" && r.pictures ? `${r.pictures} 张配图` : null,
   ].filter(Boolean);
-  await say(job, "done", `${name}整条做好了${bits.length ? `：${bits.join("，")}` : ""}。${link}`);
+  /* The director rendered at the end, or was asked not to. Rendered: the
+     card is under the line. Not rendered: say so, and where the button is —
+     "整条做好了" with nothing to watch read as a video that never came. */
+  const rendered = await renderOf(typeof r.exportId === "string" ? r.exportId : null);
+  const tail = rendered ? `已渲染（${renderFacts(rendered)}），下面可以直接看、下载。` : "还没渲染：到项目页按「渲染 9:16」就出成片。";
+  await say(job, "done", `${name}整条做好了${bits.length ? `：${bits.join("，")}` : ""}。${tail}${link}`, rendered);
 }
 
 export async function narrateFailed(job: Job, err: unknown): Promise<void> {

@@ -1,7 +1,8 @@
 import "server-only";
 import { and, count, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { audioTracks, chatChannels, chatMembers, chatMessages, hotSnapshots, ideas, relationTuples, seriesCache, settings, topics, users, scriptBeats, scripts, timelineItems, videoClips, videoExports, videoProjects, workProjects } from "@/lib/db/schema";
+import { audioTracks, captions, chatChannels, chatMembers, chatMessages, hotSnapshots, ideas, relationTuples, seriesCache, settings, topics, users, scriptBeats, scripts, timelineItems, videoClips, videoExports, videoGraphics, videoProjects, workProjects } from "@/lib/db/schema";
+import { directorStepLabel } from "@/lib/agents/steps";
 import { newId } from "@/lib/ids";
 import type { Viewer } from "@/lib/auth/types";
 import { viewerById } from "@/lib/auth/viewer-by-id";
@@ -16,20 +17,14 @@ import { TITLE_NOISE, backlogQueryOf, channelNote, fromHotRow, fromIdea, fromSig
 import { isListKey, listName, type HotRow } from "@/lib/research/platform-catalog";
 import { HOT_TENANT } from "@/lib/research/platforms";
 import { mayPublish, platformsLine, readPublication, type Publication } from "@/lib/projects/publication";
+import { projectsVisibleTo } from "@/lib/projects/visible";
 
 /**
- * Which projects this person may see: their own, the studio-wide ones
- * (not for guests), the ones shared with a group they are in, the ones
- * naming them. Owners and admins see all of the studio's.
+ * Which projects this person may see (`lib/projects/visible.ts`): the rule
+ * lives there so the chat's video cards can ask it without importing this
+ * module, which imports the chat.
  */
-function visibleTo(viewer: Viewer) {
-  if (viewer.isAdmin) return sql`true`;
-  return sql`(${workProjects.createdBy} = ${viewer.id}
-    or (${workProjects.access} ->> 'mode' = 'everyone' and ${viewer.role} <> 'guest')
-    or (${workProjects.access} ->> 'mode' = 'groups' and (${workProjects.access} -> 'groups') ? ${viewer.role})
-    or (${workProjects.access} ->> 'mode' = 'groups' and ${viewer.role} = 'owner' and (${workProjects.access} -> 'groups') ? 'admin')
-    or (${workProjects.access} ->> 'mode' = 'people' and (${workProjects.access} -> 'userIds') ? ${viewer.id}))`;
-}
+const visibleTo = projectsVisibleTo;
 
 export type WorkProjectRow = {
   id: string;
@@ -345,11 +340,13 @@ export async function listProjectStages(
       scriptStatus: scripts.status,
       scriptVersion: scripts.version,
       directorState: sql<string | null>`${videoProjects.director} ->> 'state'`,
+      directorStep: sql<string | null>`${videoProjects.director} ->> 'step'`,
       beats: sql<number>`(select count(*)::int from ${scriptBeats} where ${scriptBeats.scriptId} = ${scripts.id})`,
       clips: sql<number>`(select count(*)::int from ${videoClips} where ${videoClips.projectId} = ${videoProjects.id})`,
       items: sql<number>`(select count(*)::int from ${timelineItems} where ${timelineItems.projectId} = ${videoProjects.id})`,
-      render: sql<{ state: string; progress: number; fileId: string | null } | null>`(
-        select json_build_object('state', ${videoExports.state}, 'progress', ${videoExports.progress}, 'fileId', ${videoExports.fileId})
+      graphics: sql<number>`(select count(*)::int from ${videoGraphics} where ${videoGraphics.projectId} = ${videoProjects.id})`,
+      render: sql<{ state: string; progress: number; fileId: string | null; durationMs: number | null } | null>`(
+        select json_build_object('state', ${videoExports.state}, 'progress', ${videoExports.progress}, 'fileId', ${videoExports.fileId}, 'durationMs', ${videoExports.durationMs})
           from ${videoExports}
          where ${videoExports.projectId} = ${videoProjects.id}
          order by ${videoExports.createdAt} desc
@@ -387,7 +384,9 @@ export async function listProjectStages(
         beats: Number(r.beats ?? 0),
         clips: Number(r.clips ?? 0),
         items: Number(r.items ?? 0),
-        render: render ? { state: String(render.state), progress: Number(render.progress ?? 0), fileId: render.fileId ?? null } : null,
+        graphics: Number(r.graphics ?? 0),
+        render: render ? { state: String(render.state), progress: Number(render.progress ?? 0), fileId: render.fileId ?? null, durationMs: render.durationMs ?? null } : null,
+        director: r.directorState ? { state: r.directorState, step: r.directorStep ?? null } : null,
         published,
       },
       zh,
@@ -440,14 +439,52 @@ export type ProjectDetail = {
   createdAt: string;
   channel: { id: string; slug: string; name: string };
   script: { id: string; title: string; status: string; version: number; beats: number } | null;
-  video: { id: string; title: string; clips: number; items: number } | null;
+  /** The cut: clips in the bin, items on the timeline, graphics over it,
+   * and the languages it has captions in (first one first), for the render
+   * buttons to burn the right track. */
+  video: { id: string; title: string; clips: number; items: number; graphics: number; captions: string[] } | null;
   /** The script's beats, in order, for the card and its popup. */
   beats: { ord: number; visual: string; voiceover: string }[];
   /** The clips in the bin, for thumbnails. */
   clipList: { id: string; fileId: string; label: string; durationMs: number | null }[];
-  render: { fileId: string | null; state: string; progress: number; at: string } | null;
-  /** Where the director has got to, when it is at work on this project. */
-  director: { state: string; step: string | null; error: string | null } | null;
+  /**
+   * The latest render, whole: which one, where it stands (`progress` is
+   * 0–100 whichever way the row stored it), what came out (the file, its
+   * 480p copy, length, size), what went wrong, and its clock — so the page
+   * can say "渲染中 45%，还要两分钟" and, done, play it.
+   */
+  render: {
+    id: string;
+    fileId: string | null;
+    proxyFileId: string | null;
+    subtitleFileId: string | null;
+    state: string;
+    progress: number;
+    aspect: string;
+    durationMs: number | null;
+    sizeBytes: number | null;
+    error: string | null;
+    at: string;
+    startedAt: string | null;
+    finishedAt: string | null;
+  } | null;
+  /**
+   * Where the director has got to, when it has been at work on this
+   * project: its state and step, its clock (for "已用 3 分钟"), its last
+   * word (the log's newest line), whether it was asked to render at the
+   * end, and what it made once done.
+   */
+  director: {
+    state: string;
+    step: string | null;
+    error: string | null;
+    note: string | null;
+    lastLog: string | null;
+    startedAt: string | null;
+    finishedAt: string | null;
+    render: boolean;
+    result: { cuts: number; graphics: number; pictures: number } | null;
+  } | null;
   /** The latest voice-over on the cut (AI 配音), for the video card's player. */
   narration: { trackId: string; fileId: string | null; voiceId: string | null; durationMs: number | null; state: string; error: string | null } | null;
   steps: ProjectStep[];
@@ -469,6 +506,8 @@ export type ProjectDetail = {
     otherProject: { id: string; title: string } | null;
     /** A long job it started, for the live chip. */
     job: { videoProjectId: string } | null;
+    /** The renders and video files it names, as cards this reader may open. */
+    videos: import("@/lib/chat/video-card").VideoCard[];
   }[];
   /** The employees at work in this project's chat right now, and on what. */
   pending: import("@/lib/chat/pending").PendingRow[];
@@ -485,11 +524,29 @@ export type StepFacts = {
   beats: number;
   clips: number;
   items: number;
-  /** The latest render. */
-  render: { state: string; progress: number; fileId: string | null } | null;
+  /** Graphics over the cut (titles, stats, pictures), for "剪辑完成 · 11 段 · 45 个图形". */
+  graphics?: number;
+  /** The latest render. `progress` as the row stores it (0–1 or 0–100). */
+  render: { state: string; progress: number; fileId: string | null; durationMs?: number | null } | null;
+  /** The director, when it has been at work: so a cut it finished without
+   * a render reads as finished and waiting for the render button, not as
+   * "时间线 11 段" for ever. */
+  director?: { state: string; step?: string | null } | null;
   /** Where it went, when it has been marked published. */
   published?: Publication | null;
 };
+
+/** A render's progress as a percent, whichever way the row stored it. */
+export function renderPercent(progress: number | null | undefined): number {
+  const p = progress ?? 0;
+  return Math.max(0, Math.min(100, Math.round(p > 1 ? p : p * 100)));
+}
+
+/** "2:31" — a length, on a step. */
+function stepClock(ms: number): string {
+  const s = Math.round(ms / 1000);
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+}
 
 /**
  * A project's five steps and where each stands, from its rows.
@@ -519,6 +576,30 @@ export function buildSteps(f: StepFacts, zh: boolean): ProjectStep[] {
           : "todo";
   const rendered = render?.state === "done" && render.fileId;
   const rendering = render && (render.state === "queued" || render.state === "rendering");
+  const director = f.director ?? null;
+  const directing = director?.state === "queued" || director?.state === "running";
+  /* A cut that is on the timeline and nobody is working on, with no render
+     out of it: finished as far as the editor goes, and waiting for the one
+     press that makes the film. This used to read "running" for ever. */
+  const cutReady = !rendered && !rendering && !directing && items.n > 0;
+  const graphics = f.graphics ?? 0;
+  const editLine = rendered
+    ? t(`成片已出${render!.durationMs ? ` · ${stepClock(render!.durationMs)}` : ""}`, `Rendered${render!.durationMs ? ` · ${stepClock(render!.durationMs)}` : ""}`)
+    : directing
+      ? t(`剪辑师正在${directorStepLabel(director?.step ?? null, true)}`, `The editor is ${directorStepLabel(director?.step ?? null, false)}`)
+      : rendering
+        ? render!.state === "queued"
+          ? t("排队渲染", "Queued to render")
+          : t(`渲染中 ${renderPercent(render!.progress)}%`, `Rendering ${renderPercent(render!.progress)}%`)
+        : cutReady
+          ? render?.state === "failed"
+            ? t("渲染没成功 · 重试", "The render failed · try again")
+            : director?.state === "done"
+              ? t(`剪辑完成 · ${items.n} 段${graphics ? ` · ${graphics} 个图形` : ""} · 待渲染`, `Cut done · ${items.n} pieces${graphics ? ` · ${graphics} graphics` : ""} · not rendered yet`)
+              : director?.state === "failed"
+                ? t("上次没做成 · 看成片卡", "Last try stopped · see the video card")
+                : t(`时间线 ${items.n} 段 · 待渲染`, `${items.n} on the timeline · not rendered yet`)
+          : t("素材到了就开始", "Starts when clips arrive");
   return [
     { key: "topic", label: t("选题", "Topic"), owner: "research", state: "done", line: f.source?.label ?? t("你定的题", "Your topic") },
     {
@@ -547,8 +628,10 @@ export function buildSteps(f: StepFacts, zh: boolean): ProjectStep[] {
       key: "edit",
       label: t("剪辑", "Edit"),
       owner: "video",
-      state: rendered ? "done" : rendering || items.n > 0 ? "running" : "todo",
-      line: rendered ? t("成片已出", "Rendered") : rendering ? t(`渲染中 ${Math.round((render!.progress ?? 0) * (render!.progress > 1 ? 1 : 100))}%`, `Rendering ${Math.round((render!.progress ?? 0) * (render!.progress > 1 ? 1 : 100))}%`) : items.n > 0 ? t(`时间线 ${items.n} 段`, `${items.n} on the timeline`) : t("素材到了就开始", "Starts when clips arrive"),
+      /* "you" once the cut is ready and not rendered: the next press (渲染)
+         is the owner's, and the card says so in black. */
+      state: rendered ? "done" : directing || rendering ? "running" : cutReady ? "you" : "todo",
+      line: editLine,
     },
     {
       key: "deliver",
@@ -589,13 +672,38 @@ export async function workProjectDetail(viewer: Viewer, id: string, zh: boolean,
     script ? db.select({ ord: scriptBeats.ord, visual: scriptBeats.visual, voiceover: scriptBeats.voiceover }).from(scriptBeats).where(eq(scriptBeats.scriptId, script.id)).orderBy(scriptBeats.ord) : Promise.resolve([]),
     video ? db.select({ id: videoClips.id, fileId: videoClips.fileId, label: videoClips.label, durationMs: videoClips.durationMs }).from(videoClips).where(eq(videoClips.projectId, video.id)).limit(40) : Promise.resolve([]),
   ]);
-  const [[beats], [clips], [items], [render], thread, [narration]] = await Promise.all([
+  const [[beats], [clips], [items], [graphics], captionRows, [render], thread, [narration]] = await Promise.all([
     script ? db.select({ n: count() }).from(scriptBeats).where(eq(scriptBeats.scriptId, script.id)) : Promise.resolve([{ n: 0 }]),
     video ? db.select({ n: count() }).from(videoClips).where(eq(videoClips.projectId, video.id)) : Promise.resolve([{ n: 0 }]),
     video ? db.select({ n: count() }).from(timelineItems).where(eq(timelineItems.projectId, video.id)) : Promise.resolve([{ n: 0 }]),
+    video ? db.select({ n: count() }).from(videoGraphics).where(eq(videoGraphics.projectId, video.id)) : Promise.resolve([{ n: 0 }]),
+    /* The languages the cut has captions in, most lines first: what the
+       render buttons burn in. */
     video
       ? db
-          .select({ fileId: videoExports.fileId, state: videoExports.state, progress: videoExports.progress, at: videoExports.createdAt })
+          .select({ language: captions.language, n: count() })
+          .from(captions)
+          .where(eq(captions.projectId, video.id))
+          .groupBy(captions.language)
+          .orderBy(desc(count()))
+      : Promise.resolve([] as { language: string; n: number }[]),
+    video
+      ? db
+          .select({
+            id: videoExports.id,
+            fileId: videoExports.fileId,
+            proxyFileId: videoExports.proxyFileId,
+            subtitleFileId: videoExports.subtitleFileId,
+            state: videoExports.state,
+            progress: videoExports.progress,
+            aspect: videoExports.aspect,
+            durationMs: videoExports.durationMs,
+            sizeBytes: videoExports.sizeBytes,
+            error: videoExports.error,
+            at: videoExports.createdAt,
+            startedAt: videoExports.startedAt,
+            finishedAt: videoExports.finishedAt,
+          })
           .from(videoExports)
           .where(eq(videoExports.projectId, video.id))
           .orderBy(desc(videoExports.createdAt))
@@ -612,6 +720,26 @@ export async function workProjectDetail(viewer: Viewer, id: string, zh: boolean,
       : Promise.resolve([]),
   ]);
 
+  /* The director's row, read once: `{ state, step, error, note, log,
+     startedAt, finishedAt, render, result }` (lib/video/director.ts). */
+  const dir = video?.director && typeof (video.director as { state?: unknown }).state === "string" ? (video.director as Record<string, unknown>) : null;
+  const dirStr = (k: string) => (typeof dir?.[k] === "string" ? (dir[k] as string) : null);
+  const dirLog = Array.isArray(dir?.log) ? (dir.log as { text?: unknown }[]) : [];
+  const dirResult = dir?.result && typeof dir.result === "object" ? (dir.result as { cuts?: unknown; graphics?: unknown; pictures?: unknown }) : null;
+  const director: ProjectDetail["director"] = dir
+    ? {
+        state: dirStr("state")!,
+        step: dirStr("step"),
+        error: dirStr("error"),
+        note: dirStr("note"),
+        lastLog: typeof dirLog[dirLog.length - 1]?.text === "string" ? (dirLog[dirLog.length - 1].text as string) : null,
+        startedAt: dirStr("startedAt"),
+        finishedAt: dirStr("finishedAt"),
+        render: dir.render !== false,
+        result: dirResult ? { cuts: Number(dirResult.cuts ?? 0), graphics: Number(dirResult.graphics ?? 0), pictures: Number(dirResult.pictures ?? 0) } : null,
+      }
+    : null;
+
   /* A message in this chat that names some other project (a hand-off
      that came from elsewhere) gets a way there; this project's own is
      already on screen. */
@@ -627,7 +755,9 @@ export async function workProjectDetail(viewer: Viewer, id: string, zh: boolean,
       beats: beats.n,
       clips: clips.n,
       items: items.n,
-      render: render ? { state: render.state, progress: render.progress, fileId: render.fileId } : null,
+      graphics: graphics.n,
+      render: render ? { state: render.state, progress: render.progress, fileId: render.fileId, durationMs: render.durationMs } : null,
+      director: director ? { state: director.state, step: director.step } : null,
       published,
     },
     zh,
@@ -650,9 +780,25 @@ export async function workProjectDetail(viewer: Viewer, id: string, zh: boolean,
     script: script ? { ...script, beats: beats.n } : null,
     beats: beatRows,
     clipList: clipRows,
-    video: video ? { id: video.id, title: video.title, clips: clips.n, items: items.n } : null,
-    director: video?.director && typeof (video.director as { state?: unknown }).state === "string" ? { state: String((video.director as { state: string }).state), step: ((video.director as { step?: string }).step ?? null), error: ((video.director as { error?: string }).error ?? null) } : null,
-    render: render ? { fileId: render.fileId, state: render.state, progress: render.progress, at: render.at.toISOString() } : null,
+    video: video ? { id: video.id, title: video.title, clips: clips.n, items: items.n, graphics: graphics.n, captions: captionRows.map((c) => c.language) } : null,
+    director,
+    render: render
+      ? {
+          id: render.id,
+          fileId: render.fileId,
+          proxyFileId: render.proxyFileId,
+          subtitleFileId: render.subtitleFileId,
+          state: render.state,
+          progress: renderPercent(render.progress),
+          aspect: render.aspect,
+          durationMs: render.durationMs,
+          sizeBytes: render.sizeBytes,
+          error: render.error,
+          at: render.at.toISOString(),
+          startedAt: render.startedAt?.toISOString() ?? null,
+          finishedAt: render.finishedAt?.toISOString() ?? null,
+        }
+      : null,
     narration: narration ?? null,
     steps,
     messages: (thread?.messages ?? []).map((m) => ({
@@ -668,6 +814,7 @@ export async function workProjectDetail(viewer: Viewer, id: string, zh: boolean,
       handoff: m.handoff,
       otherProject: links.get(m.id) && links.get(m.id)!.id !== p.id ? links.get(m.id)! : null,
       job: m.job,
+      videos: m.videos,
     })),
     pending: thread?.pending ?? [],
   };
@@ -1125,6 +1272,4 @@ export async function rewriteChannelTopic(projectId: string): Promise<void> {
  * module's topics queue): the same rule the sidebar and the project page
  * use, so a private project never shows up in someone else's list.
  */
-export function projectsVisibleTo(viewer: Viewer) {
-  return visibleTo(viewer);
-}
+export { projectsVisibleTo };

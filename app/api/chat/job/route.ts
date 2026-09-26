@@ -15,10 +15,15 @@ import type { DirectorState } from "@/lib/video/director";
  * that video project: the chip of a private project's render says nothing
  * to anybody else.
  *
- *   state   — queued · running · done · failed · idle
+ *   state   — queued · running · done · cut · failed · idle
  *   step    — the director's step (footage, transcribe, cut, design,
  *             pictures, write, render), or "render" for a plain export
  *   percent — the render's progress, 0–100, when there is a render
+ *
+ * "done" means a film is out: a finished render with its file. A director
+ * run that ended without one (asked not to render, `render: false`) is
+ * "cut" — the timeline is ready and the render button is the next press —
+ * so the chip does not say 成片已出 over a project with nothing to watch.
  */
 export async function GET(request: Request) {
   const viewer = await getViewer();
@@ -53,7 +58,7 @@ export async function GET(request: Request) {
           : render?.state === "failed"
             ? "failed"
             : director?.state === "done"
-              ? "done"
+              ? "cut"
               : "idle";
   return Response.json(
     {

@@ -46,12 +46,40 @@ export type Attaching = {
   key: string;
   name: string;
   size: number;
+  /** What the browser said it is, for the chip's icon and the row drawn
+   * before the server's copy arrives. */
+  mime?: string;
   /** 0–1. The bytes are what is measured; they are all but the whole wait. */
   progress: number;
   /** Set when the upload finished — this is what the message carries. */
   fileId?: string;
   error?: string;
+  /** Stops the bytes while they are still moving (the chip's ×): the
+   * uploader aborts its request and abandons the row, so a file nobody
+   * wanted does not sit in the list. Nothing to stop once it has landed. */
+  cancel?: () => void;
 };
+
+/**
+ * What the paperclip offers: footage, pictures, sound, and the documents a
+ * studio passes around. The store takes anything (`readUploadInput`); this
+ * only keeps the picker from opening on a whole disk of everything.
+ */
+export const ATTACH_ACCEPT = "video/*,image/*,audio/*,.pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.md,.srt,.csv";
+
+/** The file's kind as the store will file it (`kindFromMime`), from what the
+ * browser knows before the upload — so a chip can say "video" at once. */
+export function kindOf(name: string, mime?: string | null): string {
+  const m = (mime ?? "").toLowerCase();
+  const ext = name.toLowerCase().split(".").pop() ?? "";
+  if (m.startsWith("video/") || ["mp4", "mov", "m4v", "webm", "mkv", "avi"].includes(ext)) return "video";
+  if (m.startsWith("image/") || ["png", "jpg", "jpeg", "gif", "webp", "heic"].includes(ext)) return "image";
+  if (m.startsWith("audio/") || ["mp3", "wav", "m4a", "aac", "flac"].includes(ext)) return "audio";
+  if (m === "application/pdf" || ext === "pdf") return "pdf";
+  if (["doc", "docx", "txt", "md", "rtf", "srt"].includes(ext)) return "doc";
+  if (["xls", "xlsx", "csv"].includes(ext)) return "sheet";
+  return "other";
+}
 
 /**
  * Below this a single PUT is fine, and simpler: one request, no bookkeeping,
