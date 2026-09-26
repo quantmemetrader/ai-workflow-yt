@@ -1,5 +1,5 @@
 import "server-only";
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq, or, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { hotSnapshots } from "@/lib/db/schema";
 import { newId } from "@/lib/ids";
@@ -13,11 +13,11 @@ import {
   weiboHotSearch,
   xiaohongshuSearchNotes,
 } from "@/lib/social/tikhub";
-import { searchVideos } from "@/lib/research/youtube";
+import { channelsById, searchVideos } from "@/lib/research/youtube";
 import { cryptoMarket, googleNewsSearch, type NewsEdition } from "@/lib/research/beat-sources";
 import { BEAT_EVERY_HOURS_DEFAULT, beatSlot, planBeatRun, planNews, planYouTube, type PlannedSearch } from "@/lib/research/beats";
 import { BEAT_FEEDS, BEATS, beatOf, type Beat, type BeatFeedKey, type HotRow, type RelevanceMap } from "@/lib/research/platform-catalog";
-import { acrossPlatforms, type Lists } from "@/lib/research/beat-view";
+import { acrossPlatforms, foreignScript, type Lists } from "@/lib/research/beat-view";
 import { FOCUS_FALLBACK, channelFocus, classifyHot } from "@/lib/research/relevance";
 import { summarizeHot } from "@/lib/research/summary";
 import { judgeHot, type Judged } from "@/lib/research/judge";
@@ -67,9 +67,12 @@ import { HOT_TENANT, latestStored, meterFor, storedAll } from "@/lib/research/pl
  *            call. Every third hour: 8 runs, 136 to 176 requests a day
  *            (about 145 typical, 4,400 a month), on top of the hourly
  *            charts' ~176 a day. At the account's observed average of about
- *            $0.0017 a request, roughly $0.25 a day.
- *   YouTube  2 searches a run at 101 units each (search, then the videos'
- *            numbers): 202 units, 1,616 a day of the key's 10,000.
+ *            $0.0017 a request, roughly $0.25 a day. A feed that fails
+ *            waits its three hours like one that worked (`RUN_KEY`), so an
+ *            outage does not multiply the count.
+ *   YouTube  2 searches a run at 102 units each (search, then the videos'
+ *            numbers and their channels' subscribers): 204 units, 1,632 a
+ *            day of the key's 10,000.
  *   Google News, CoinGecko: free, 8 and 2 requests a run.
  *   Models   the classifier on new rows only (rows kept from the last run
  *            keep their marks), one summary and one set of marks per feed.
@@ -97,8 +100,8 @@ const FRESH_DAYS: Record<BeatFeedKey, number> = {
  *  is searched for every beat every run, and prices are only worth the
  *  latest read, so those two start fresh each time. */
 const CARRY = new Set<BeatFeedKey>(["beat_douyin", "beat_xiaohongshu", "beat_bilibili", "beat_tiktok", "beat_weibo", "beat_youtube"]);
-/** Devanagari, Arabic, Thai, Cyrillic, Ethiopic, Hangul, Bengali, Tamil. */
-const OTHER_SCRIPT = /[\u0900-\u097F\u0600-\u06FF\u0E00-\u0E7F\u0400-\u04FF\u1200-\u137F\uAC00-\uD7AF\u0980-\u09FF\u0B80-\u0BFF]/;
+/* `OTHER_SCRIPT` (in `beat-view.ts`, shared with the page's 上榜 rows): a
+   title or account name in a script the studio's audience does not read. */
 
 /** A TikTok caption of hashtags and nothing else ("#iphone18 #apple") says
  *  what it is tagged, not what it is; there is nothing to research in it. */
@@ -233,6 +236,22 @@ function rank(feed: BeatFeedKey, cands: Candidate[], now: number): Candidate[] {
     const sorted = [...list].sort((a, b) => engagement(b) - engagement(a));
     sorted.forEach((c, i) => pct.set(c, list.length > 1 ? 1 - i / (list.length - 1) : 0.5));
   }
+  /* A row with likes but no plays (抖音's own search, the fallback for a
+     word the billboard has little for) is measured against the likes of
+     every row that has them, plays or not — not only against the few other
+     fallback rows. Ranked among eight of its own, a video with 6,000 likes
+     came out at the top of its group and sat at #2 of the 抖音 feed, above
+     billboard videos with millions of plays and a hundred times its likes. */
+  if (feed !== "beat_news" && groups.has("likes") && groups.has("views")) {
+    /* Likes alone: the billboard rows carry plays and likes but no
+       comments or shares, so counting those would favour the fallback. */
+    const likeScore = (c: Candidate) => lg(c.stats?.likes);
+    const pool = cands.filter((c) => c.stats?.likes != null).map(likeScore).sort((a, b) => a - b);
+    for (const c of groups.get("likes")!) {
+      const below = pool.filter((v) => v < likeScore(c)).length;
+      pct.set(c, pool.length > 1 ? below / (pool.length - 1) : 0.5);
+    }
+  }
   const score = (c: Candidate) => {
     const h = ageHours(c, now);
     const recency = h === null ? 0.5 : Math.pow(0.5, h / 48);
@@ -322,6 +341,54 @@ function clusterNews(cands: Candidate[]): Candidate[] {
   );
 }
 
+/** Words to compare two titles by: two-character pieces of a Chinese title's
+ *  opening, or the first dozen words of one in English (character pairs of
+ *  English are shared by nearly any two headlines). */
+const STOP = new Set("the and for with that this you your are was were has have had from what when why how who its not but all any can will just about into out our they them their his her she him new now more most than then there here one two get got".split(" "));
+function storyTokens(phrase: string): Set<string> {
+  const clean = phrase.toLowerCase().replace(/[#@]\S+/g, " ").replace(/【[^】]*】/g, " ");
+  const latin = (clean.match(/[a-z]/g) ?? []).length;
+  const han = (clean.match(/\p{Script=Han}/gu) ?? []).length;
+  const out = new Set<string>();
+  if (latin > han * 2) {
+    for (const w of clean.split(/[^a-z0-9$%.]+/).filter((w) => w.length >= 3 && !STOP.has(w)).slice(0, 12)) out.add(w);
+  } else {
+    const t = clean.replace(/[\s\p{P}\p{S}]+/gu, "").slice(0, 32);
+    for (let i = 0; i < t.length - 1; i++) out.add(t.slice(i, i + 2));
+  }
+  return out;
+}
+
+/**
+ * The rows that retell a story a better-ranked row already tells.
+ *
+ * `dedupe` only catches the same post. 微博's 科技 hot list gives one phone
+ * launch seven topics ("华为Mate90系列定档", "…发布会定档", "…定档10月1日",
+ * "知情人士回应…"), and on 抖音 one company's matrix accounts post the same
+ * smuggling story under five titles; on 09-26 that was seven of 微博's thirty
+ * rows and five of 抖音's. Titles sharing most of their opening (two-character
+ * pieces for Chinese, words for English, overlap ≥ 0.4), directly or through
+ * another retelling, are one story. The retellings are not dropped: they go
+ * after every row that tells a story of its own, so they only fill a feed
+ * that would otherwise be short.
+ */
+function echoesOf(ranked: Candidate[]): Set<Candidate> {
+  const seen: Set<string>[] = [];
+  const echoes = new Set<Candidate>();
+  for (const c of ranked) {
+    const t = storyTokens(c.phrase);
+    if (t.size < 3) continue;
+    const same = seen.some((s) => {
+      let both = 0;
+      for (const g of t) if (s.has(g)) both++;
+      return both / (s.size + t.size - both) >= 0.4;
+    });
+    if (same) echoes.add(c);
+    seen.push(t);
+  }
+  return echoes;
+}
+
 /** What each feed will ask this run, for the dry run and the log. */
 export type PlannedRequest = { feed: BeatFeedKey; paid: "tikhub" | "youtube" | "free"; what: string; beat: Beat | null };
 
@@ -346,7 +413,7 @@ function planned(slot: number, pillars: string[]): { requests: PlannedRequest[];
   };
   requests.push({ feed: "beat_weibo", paid: "tikhub", what: "GET /api/v1/weibo/app/fetch_hot_search {category:technologynav, count:50}", beat: "tech" });
   for (const s of searches) requests.push({ feed: feedOf[s.source], paid: "tikhub", what: `${endpoint[s.source]} · "${s.query}"`, beat: s.beat });
-  for (const y of planYouTube(slot)) requests.push({ feed: "beat_youtube", paid: "youtube", what: `search.list q="${y.q}" publishedAfter=72h order=viewCount regionCode=HK relevanceLanguage=${y.lang === "zh" ? "zh-Hant" : "en"} + videos.list`, beat: null });
+  for (const y of planYouTube(slot)) requests.push({ feed: "beat_youtube", paid: "youtube", what: `search.list q="${y.q}" publishedAfter=72h order=viewCount regionCode=HK relevanceLanguage=${y.lang === "zh" ? "zh-Hant" : "en"} + videos.list + channels.list`, beat: null });
   for (const n of planNews(slot)) for (const ed of ["HK", "TW"]) requests.push({ feed: "beat_news", paid: "free", what: `Google News ${ed} "${n.q}"`, beat: n.beat });
   requests.push({ feed: "beat_crypto", paid: "free", what: "CoinGecko /coins/markets top 100 + /search/trending", beat: "crypto" });
   return { requests, searches };
@@ -419,18 +486,23 @@ async function fetchFeed(
       if (!env.youtube.configured) break;
       for (const y of planYouTube(ctx.slot)) {
         if (!budget.takeYouTube(`${feed} "${y.q}"`)) continue;
-        youtubeUnits += 101;
-        const vids = await call(`youtube "${y.q}"`, errors, async () =>
-          (await searchVideos(y.q, { hours: 72, limit: 50, regionCode: "HK", relevanceLanguage: y.lang === "zh" ? "zh-Hant" : "en" })).map((v) => ({
+        youtubeUnits += 102;
+        const vids = await call(`youtube "${y.q}"`, errors, async () => {
+          const found = await searchVideos(y.q, { hours: 72, limit: 50, regionCode: "HK", relevanceLanguage: y.lang === "zh" ? "zh-Hant" : "en" });
+          /* The channels' subscriber counts, one more unit for up to fifty:
+             what "×N 粉丝量" is measured against, as on 抖音 and TikTok. A
+             channel that hides its count reads 0 and gets none. */
+          const subs = new Map((await channelsById(found.map((v) => v.channelId)).catch(() => [])).map((c) => [c.id, c.subscribers]));
+          return found.map((v) => ({
             phrase: v.title,
             heat: v.views,
             heatLabel: null,
             url: `https://www.youtube.com/watch?v=${v.id}`,
             thumbnail: v.thumbnail,
             extra: v.channelTitle,
-            stats: { views: v.views, likes: v.likes, comments: v.comments, likeRate: v.views ? v.likes / v.views : null, publishedAt: v.publishedAt },
-          })),
-        );
+            stats: { views: v.views, likes: v.likes, comments: v.comments, likeRate: v.views ? v.likes / v.views : null, fans: subs.get(v.channelId) || null, publishedAt: v.publishedAt },
+          }));
+        });
         add(vids, null, `youtube:${y.lang}`, y.q, "search");
       }
       break;
@@ -525,9 +597,10 @@ async function buildFeed(
 
   const windowMs = FRESH_DAYS[feed] * 86_400_000;
   /* YouTube and TikTok searches in English reach Hindi stock tips and
-     Indonesian trading clips; the studio's audience reads Chinese and
-     English, so a title in another script is not theirs. */
-  const merged = dedupe([...fresh, ...carried]).filter((c) => !OTHER_SCRIPT.test(c.phrase) && !hashtagsOnly(c.phrase));
+     Burmese AI-tool clips; the studio's audience reads Chinese and
+     English, so a title or an account in another script is not theirs
+     (`foreignScript`). */
+  const merged = dedupe([...fresh, ...carried]).filter((c) => !foreignScript(c) && !hashtagsOnly(c.phrase));
   const all = (feed === "beat_news" ? clusterNews(merged) : merged).filter((c) => {
     if (!windowMs) return true;
     const h = ageHours(c, ctx.now);
@@ -542,7 +615,11 @@ async function buildFeed(
   /* A carried row is ranked with the group it came from last time; mixing
      groups across runs is fine, since each group is ranked in itself. */
   const ranked = rank(feed, all, ctx.now);
-  const top = feed === "beat_crypto" ? ranked.slice(0, FEED_SIZE) : spread(ranked, CLASSIFY_TOP);
+  /* Retellings of a story a better row tells go last (`echoesOf`), before
+     the rows sent to the classifier are chosen, so they are marked last too. */
+  const echoes = feed === "beat_crypto" ? new Set<Candidate>() : echoesOf(ranked);
+  const ordered = [...ranked.filter((c) => !echoes.has(c)), ...ranked.filter((c) => echoes.has(c))];
+  const top = feed === "beat_crypto" ? ranked.slice(0, FEED_SIZE) : spread(ordered, CLASSIFY_TOP);
   const pillars = ctx.pillars.length ? ctx.pillars : FOCUS_FALLBACK;
   const { relevance, counts } = await classifyHot(feed, top, {
     prev: { ...ctx.seen, ...(prev?.relevance ?? {}) },
@@ -566,8 +643,10 @@ async function buildFeed(
   report.kept = marked.length;
   const strong = marked.filter((x) => !relevance || (x.mark?.s ?? 0) >= 2);
   const weak = marked.filter((x) => relevance && (x.mark?.s ?? 0) < 2);
+  /* Stories of their own first, squarest first; retellings only to fill. */
+  const own = (x: { c: Candidate }) => !echoes.has(x.c);
   const chosen = balanced(
-    [...strong, ...weak].map((x) => ({ ...x, beat: x.beat })),
+    [...strong.filter(own), ...weak.filter(own), ...strong.filter((x) => !own(x)), ...weak.filter((x) => !own(x))].map((x) => ({ ...x, beat: x.beat })),
     FEED_SIZE,
     feed === "beat_crypto" ? FEED_SIZE : BEAT_CAP,
   );
@@ -599,10 +678,31 @@ async function buildFeed(
   return report;
 }
 
-/** When a feed was last stored. */
-async function newestAt(feed: string): Promise<number | null> {
-  const [row] = await db.select({ at: hotSnapshots.fetchedAt }).from(hotSnapshots).where(eq(hotSnapshots.platform, feed)).orderBy(desc(hotSnapshots.fetchedAt)).limit(1);
-  return row ? row.at.getTime() : null;
+/**
+ * The run's own row in `hot_snapshots`: platform "beat_run", no rows, the
+ * feeds it set out to read in `note` (comma-separated) and, once it is done,
+ * its request counts in `summary` — the cost log, one row per run.
+ *
+ * Written before the first request, because the age guard reads it. A feed
+ * that comes back with nothing stores no row of its own (a platform down,
+ * TikHub refusing, every word dragging in only off-beat posts), and the
+ * guard used to look at the feed's own row alone: that feed was due again
+ * the next hour, and the next, buying the same failing searches up to 24
+ * times a day instead of eight. Now a feed waits its three hours from the
+ * last time it was tried, whatever came of it.
+ */
+const RUN_KEY = "beat_run";
+
+/** When a feed was last stored, or last tried by a run, whichever is later. */
+async function lastTried(feed: string): Promise<{ at: number; stored: boolean } | null> {
+  const [row] = await db
+    .select({ at: hotSnapshots.fetchedAt, platform: hotSnapshots.platform })
+    .from(hotSnapshots)
+    .where(or(eq(hotSnapshots.platform, feed), and(eq(hotSnapshots.platform, RUN_KEY), sql`(',' || ${hotSnapshots.note} || ',') like ${`%,${feed},%`}`)))
+    // On a tie (the run's row and the feed's carry the same time) the feed's own row wins.
+    .orderBy(desc(hotSnapshots.fetchedAt), sql`${hotSnapshots.platform} = ${feed} desc`)
+    .limit(1);
+  return row ? { at: row.at.getTime(), stored: row.platform === feed } : null;
 }
 
 export type BeatRunResult = {
@@ -622,8 +722,9 @@ export type BeatRunResult = {
  * Every beat feed that is due, then the cross-platform top.
  *
  *   everyHours  how often the feeds are refreshed (default 3, env
- *               `RESEARCH_BEAT_EVERY_HOURS`); a feed newer than that, less
- *               ten minutes of slack, is left alone unless `force`
+ *               `RESEARCH_BEAT_EVERY_HOURS`); a feed stored or tried more
+ *               recently than that, less ten minutes of slack, is left alone
+ *               unless `force`
  *   tikhubCap   the most TikHub requests this run may make (default 30, env
  *               `RESEARCH_BEAT_TIKHUB_CAP`); checked before each call
  *   ytSearches  the most YouTube searches this run (default 2, env
@@ -651,9 +752,10 @@ export async function collectBeats(
   const due: BeatFeedKey[] = [];
   const skipped: BeatReport[] = [];
   for (const feed of feeds) {
-    const at = opts.force ? null : await newestAt(feed).catch(() => null);
-    if (at !== null && now - at < gap) {
-      skipped.push({ feed, rows: 0, byBeat: { ai: 0, crypto: 0, tech: 0, biz: 0 }, classified: 0, kept: 0, carried: 0, tikhub: 0, youtubeUnits: 0, free: 0, model: 0, skipped: `stored ${Math.round((now - at) / 60_000)} min ago`, examples: [], errors: [] });
+    const last = opts.force ? null : await lastTried(feed).catch(() => null);
+    if (last && now - last.at < gap) {
+      const ago = Math.round((now - last.at) / 60_000);
+      skipped.push({ feed, rows: 0, byBeat: { ai: 0, crypto: 0, tech: 0, biz: 0 }, classified: 0, kept: 0, carried: 0, tikhub: 0, youtubeUnits: 0, free: 0, model: 0, skipped: last.stored ? `stored ${ago} min ago` : `tried ${ago} min ago (nothing stored)`, examples: [], errors: [] });
     } else due.push(feed);
   }
   const plannedDue = requests.filter((r) => due.includes(r.feed));
@@ -670,6 +772,11 @@ export async function collectBeats(
       throw err;
     }));
   const seen: RelevanceMap = opts.seen ?? {};
+  /* The run's row, before any request (see `RUN_KEY`). If it cannot be
+     written the run does not go ahead: without it a failing feed would be
+     retried every hour. */
+  const runId = newId("hot");
+  await db.insert(hotSnapshots).values({ id: runId, platform: RUN_KEY, rows: [], note: due.join(","), summary: `slot ${slot}: running`, judged: null, relevance: null, fetchedAt: new Date(now) });
   /* The feeds in parallel (each one's own requests in turn): a run is a
      couple of minutes rather than ten. The budget is checked and taken in
      one synchronous step before each call, so parallel feeds cannot
@@ -704,13 +811,23 @@ export async function collectBeats(
     console.error("[beats] beat_all", err);
   }
 
+  const youtubeUnits = reports.reduce((n, r) => n + r.youtubeUnits, 0);
+  const stored = reports.filter((r) => r.rows > 0).map((r) => r.feed);
+  await db
+    .update(hotSnapshots)
+    .set({
+      summary: `slot ${slot}: TikHub ${budget.tikhub}/${tikhubCap} · YouTube ${youtubeUnits}u · stored ${stored.length}/${due.length}${stored.length < due.length ? ` (none for ${due.filter((f) => !stored.includes(f)).join(", ")})` : ""}${budget.refused.length ? ` · over the cap: ${budget.refused.length}` : ""}`,
+    })
+    .where(eq(hotSnapshots.id, runId))
+    .catch((err: unknown) => console.error("[beats] run row", err));
+
   return {
     slot,
     pillars,
     reports: [...reports, ...skipped],
     tikhub: budget.tikhub,
     tikhubCap,
-    youtubeUnits: reports.reduce((n, r) => n + r.youtubeUnits, 0),
+    youtubeUnits,
     free: reports.reduce((n, r) => n + r.free, 0),
     planned: plannedDue,
     refused: budget.refused,

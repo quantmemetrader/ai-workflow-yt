@@ -19,10 +19,12 @@
  *
  *   The beat feeds (`collectBeats`, `lib/research/beat-feeds.ts`): each
  *   platform searched for the beats, thirty on-beat posts per platform with
- *   their numbers. Every third hour by default (a feed newer than that is
- *   left alone), 17 TikHub requests a run (up to 22) under a hard cap of
- *   30, two YouTube searches (202 units), free Google News and CoinGecko
- *   reads. About 145 TikHub requests and 1,616 YouTube units a day.
+ *   their numbers. Every third hour by default (a feed stored or tried more
+ *   recently than that is left alone, so a failing platform is not retried
+ *   hourly), 17 TikHub requests a run (up to 22) under a hard cap of 30,
+ *   two YouTube searches (204 units), free Google News and CoinGecko reads.
+ *   About 145 TikHub requests (136-176) and 1,632 YouTube units a day. Each
+ *   run leaves a "beat_run" row in hot_snapshots with its counts.
  *
  * Flags:
  *   --force         re-read every chart now, ignoring the age guard (billed;

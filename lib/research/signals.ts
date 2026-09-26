@@ -139,7 +139,10 @@ export function evidenceNumbers(e: Evidence): string {
   if (s.comments != null) parts.push(`评论 ${wan(s.comments)}`);
   if (s.shares != null) parts.push(`转发 ${wan(s.shares)}`);
   if (s.saves != null) parts.push(`收藏 ${wan(s.saves)}`);
-  if (s.fans != null) parts.push(`账号粉丝 ${wan(s.fans)}${s.views ? `（播放是粉丝的 ${wan(Math.round(s.views / Math.max(1, s.fans)))} 倍）` : ""}`);
+  /* The multiple only when the video travelled past its own audience: the
+     beat feeds carry big accounts too, and "播放是粉丝的 0 倍" on a news
+     account's clip read to the brief's model as a flop. */
+  if (s.fans != null) parts.push(`账号粉丝 ${wan(s.fans)}${s.views && s.views >= s.fans ? `（播放是粉丝的 ${wan(Math.round(s.views / Math.max(1, s.fans)))} 倍）` : ""}`);
   if (s.videos != null) parts.push(`相关视频 ${wan(s.videos)}`);
   if (s.rankUp) parts.push(`排名上升 ${s.rankUp}`);
   if (s.publishedAt) parts.push(ago(s.publishedAt));

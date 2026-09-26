@@ -61,6 +61,28 @@ export const BEAT_TABS: readonly BeatTab[] = ["douyin", "xiaohongshu", "weibo", 
 
 export const feedOfTab = (tab: BeatTab) => BEAT_FEEDS.find((f) => f.tab === tab)!;
 
+/**
+ * A script the studio's audience does not read: Devanagari and the other
+ * Indic scripts, Arabic, Hebrew, Thai, Lao, Myanmar, Khmer, Cyrillic,
+ * Georgian, Armenian, Ethiopic, Hangul, Sinhala.
+ *
+ * English searches on TikTok and YouTube reach Hindi stock tips, Burmese
+ * "free AI tools" clips and Indonesian trading streams, and the TikTok
+ * technology chart carries Arabic how-tos; none of it is for a Hong Kong
+ * Chinese audience. Tested on the title and on the account's name, which
+ * gives away a Latin-titled video from a Hindi channel ("NSE IPO GOOD NEWS"
+ * by "Stock Market का Commando"). The first cut missed Myanmar, so a
+ * Burmese clip sat at #18 of the TikTok feed.
+ */
+export const OTHER_SCRIPT =
+  /[\u0400-\u04FF\u0530-\u058F\u0590-\u05FF\u0600-\u06FF\u0900-\u0DFF\u0E00-\u0EFF\u1000-\u109F\u10A0-\u10FF\u1200-\u137F\u1780-\u17FF\uAC00-\uD7AF]/;
+export const foreignScript = (r: Pick<HotRow, "phrase" | "extra">) => OTHER_SCRIPT.test(r.phrase) || OTHER_SCRIPT.test(r.extra ?? "");
+
+/* Google's Hong Kong chart is topped up from Taiwan and Singapore when it
+   is thin; the 新闻 tab is Hong Kong and Taiwan, so a Singapore bakery
+   closing is not one of its 上榜 rows. */
+const OFF_REGION = /^(SG|GB|US|JP) · /;
+
 /** Same post: same link, or the same opening words once spacing, tags and
  *  punctuation are gone (a headline syndicated to two outlets, a video on
  *  two 抖音 charts with a slightly different title). */
@@ -97,6 +119,7 @@ export function chartRows(feed: BeatFeedKey, lists: Lists): BeatRow[] {
     l.rows.forEach((r, i) => {
       const mark = l.relevance![r.phrase] ?? null;
       if (!onFocus(mark)) return;
+      if (foreignScript(r) || (key === "google" && OFF_REGION.test(r.extra ?? ""))) return;
       out.push({ ...r, from: key, rank: i + 1, mark, beat: beatOf(mark), chart: { list: key, rank: i + 1 }, feedRank: null });
     });
   }

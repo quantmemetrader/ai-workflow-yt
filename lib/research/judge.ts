@@ -38,6 +38,43 @@ const TTL_MS = 30 * 60_000;
 const cache = new Map<string, { at: number; judged: Judged }>();
 const MAX_ROWS = 30;
 
+/** A title reduced to what two copies of it share: no spacing, punctuation,
+ *  hashtags or case, and simplified characters. */
+const bare = (s: string) =>
+  toSimplified(s)
+    .toLowerCase()
+    .replace(/#\S+/g, "")
+    .replace(/[\s\p{P}\p{S}]+/gu, "");
+
+/**
+ * The row a mark is about.
+ *
+ * The model answers with the row's number and, since 09-26, the opening
+ * words of its title (`t`). The number alone was not enough: on the stored
+ * 抖音 and 新闻 beat feeds the model numbered its own picks 1, 2, 3, 4 instead
+ * of citing the list, so "加密赛道 — 比特币行情可直接覆盖" landed on an AI
+ * jobs video and "香港楼市" on a story about AI taking office jobs. So the
+ * echo is checked against the numbered row; when they disagree the row
+ * whose title the echo opens is used instead, and a mark that matches no
+ * row is dropped rather than pinned on the wrong one. An answer without an
+ * echo (an older prompt, a model that ignored it) is taken by number, as
+ * before.
+ */
+function rowFor(rows: HotRow[], n: number, echo: string): HotRow | null {
+  const byNumber = Number.isInteger(n) && n >= 1 ? (rows[n - 1] ?? null) : null;
+  const e = bare(echo).slice(0, 12);
+  if (e.length < 2) return byNumber;
+  const opens = (r: HotRow) => {
+    const b = bare(r.phrase);
+    // The echo is the title's start; allow a model that skipped a leading
+    // bracket or two characters by also accepting it a little way in.
+    const at = b.indexOf(e.slice(0, Math.min(6, e.length)));
+    return at >= 0 && at <= 4;
+  };
+  if (byNumber && opens(byNumber)) return byNumber;
+  return rows.find(opens) ?? null;
+}
+
 export async function judgeHot(
   tenantId: string,
   platform: ListKey,
@@ -70,7 +107,7 @@ export async function judgeHot(
           "每条标注要说清依据：引用频道数据里的具体东西（哪条视频、哪位观众、哪个对标账号）。",
         ]),
     "宁可少标，不要硬凑；一份 20 条的榜通常标 2–5 条。",
-    `输出 JSON 数组，每项 {"n": 序号, "fit": "2到6个字的标签，如 可接RWA选题 / 观众问过 / 香港本地${opts.borrow ? " / 形式可借" : ""}", "why": "一句话依据"}。没有就输出 []。只输出 JSON。`,
+    `输出 JSON 数组，每项 {"n": 序号, "t": "该条标题的前 12 个字，照抄", "fit": "2到6个字的标签，如 可接RWA选题 / 观众问过 / 香港本地${opts.borrow ? " / 形式可借" : ""}", "why": "一句话依据"}。n 必须是该条在下面列表里的序号，不是你挑出来的第几条。没有就输出 []。只输出 JSON。`,
     "",
     "# 频道数据",
     brief.text,
@@ -99,9 +136,10 @@ export async function judgeHot(
       if (Array.isArray(parsed)) {
         for (const item of parsed) {
           const n = Number((item as { n?: unknown })?.n);
+          const echo = String((item as { t?: unknown })?.t ?? "").trim();
           const fit = String((item as { fit?: unknown })?.fit ?? "").trim();
           const why = String((item as { why?: unknown })?.why ?? "").trim();
-          const row = rows[n - 1];
+          const row = rowFor(rows.slice(0, MAX_ROWS), n, echo);
           if (!row || !fit || fit.length > 12) continue;
           judged[row.phrase] = { fit: toSimplified(fit), why: toSimplified(why).slice(0, 160) };
         }

@@ -154,35 +154,60 @@ function wordsFor(source: BeatSource, beat: Beat, lang: "zh" | "hk" | "en", pill
 }
 
 /**
+ * How many runs before `slot` asked about the beat at position `pos`, on a
+ * platform that asks `n` of `cycle` beats a run (run s asks positions s,
+ * s+1 … s+n-1, wrapping).
+ *
+ * The rotation's clock for words. Indexing a beat's words by the slot itself
+ * skipped words for good: on 小红书, which asks three of the four beats a
+ * run, 科技 is left out every fourth slot, and with eight 科技 words the
+ * slots it is asked in always landed on the same six — 芯片 and 机器人 were
+ * never searched there; on 微博 (two of three beats) 加密货币 and Web3 never
+ * came round. Counting the times a beat was actually asked makes each ask
+ * take the next word, so every word comes round in turn.
+ */
+export function timesAsked(slot: number, pos: number, n: number, cycle: number): number {
+  if (n >= cycle) return slot;
+  const base = Math.floor(slot / cycle) * cycle;
+  let k = Math.floor(slot / cycle) * n;
+  for (let s = base; s < slot; s++) if ((((pos - s) % cycle) + cycle) % cycle < n) k++;
+  return k;
+}
+
+/**
  * What one beat run asks, platform by platform.
  *
  * `slot` is `beatSlot()`: the same slot always plans the same searches.
  * A platform that asks n < 4 searches takes n beats starting at a point
- * that moves by one each run, so no beat is skipped two runs in a row.
+ * that moves by one each run, so no beat is skipped two runs in a row, and
+ * each time a beat is asked it takes the beat's next word (`timesAsked`).
  */
 export function planBeatRun(slot: number, pillars: string[] = []): PlannedSearch[] {
   const pw = pillarWords(pillars);
   const plan: PlannedSearch[] = [];
-  /* `round` > 0 is a second (third…) search on the same beat in one run: a
+  /* `asked` is how many times this platform asked about the beat before;
+     `round` > 0 is a second (third…) search on the same beat in one run: a
      different word of it, three along. */
-  const pick = (source: BeatSource, beat: Beat, lang: "zh" | "hk" | "en", round = 0) => {
+  const pick = (source: BeatSource, beat: Beat, lang: "zh" | "hk" | "en", asked: number, round = 0) => {
     const words = wordsFor(source, beat, lang, pw);
-    return words[(slot + OFFSET[source] + round * 3) % words.length];
+    return words[(asked + OFFSET[source] + round * 3) % words.length];
   };
   for (const source of ["douyin", "xiaohongshu", "bilibili", "tiktok"] as const) {
     const n = SEARCHES_PER_RUN[source];
     const lang = source === "tiktok" ? "en" : "zh";
     for (let k = 0; k < n; k++) {
-      const beat = BEAT_ORDER[(slot + k) % BEAT_ORDER.length];
-      plan.push({ source, beat, query: pick(source, beat, lang, Math.floor(k / BEAT_ORDER.length)), lang });
+      const pos = (slot + k) % BEAT_ORDER.length;
+      const beat = BEAT_ORDER[pos];
+      plan.push({ source, beat, query: pick(source, beat, lang, timesAsked(slot, pos, n, BEAT_ORDER.length), Math.floor(k / BEAT_ORDER.length)), lang });
     }
   }
   /* 微博: its 科技 hot list is read every run (not a search, see
      `beat-feeds.ts`), so its searches rotate over the other three beats. */
   const weiboBeats: Beat[] = ["ai", "crypto", "biz"];
   for (let k = 0; k < SEARCHES_PER_RUN.weibo; k++) {
-    const beat = weiboBeats[(slot + k) % weiboBeats.length];
-    plan.push({ source: "weibo", beat, query: pick("weibo", beat, "zh"), lang: "zh" });
+    const pos = (slot + k) % weiboBeats.length;
+    const beat = weiboBeats[pos];
+    plan.push({ source: "weibo", beat, query: pick("weibo", beat, "zh", timesAsked(slot, pos, SEARCHES_PER_RUN.weibo, weiboBeats.length)), lang: "zh" });
   }
   return plan;
 }
@@ -192,7 +217,8 @@ export function planBeatRun(slot: number, pillars: string[] = []): PlannedSearch
  * over two beats joined with YouTube's own OR (`|`), alternating which pair
  * gets which language. So every beat is searched in both languages every
  * two runs (six hours), and a video found stays in the feed while it is
- * under three days old. Two searches are 200 units of the key's 10,000 a day.
+ * under three days old. Two searches are about 200 units (204 with the
+ * videos' numbers and their channels) of the key's 10,000 a day.
  */
 export function planYouTube(slot: number): { beats: Beat[]; q: string; lang: "zh" | "en" }[] {
   const pairs: Beat[][] = [
