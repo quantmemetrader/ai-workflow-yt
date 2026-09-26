@@ -188,7 +188,7 @@ export async function transcribeProject(
 
     /* The brief's spellings, back into the words (v2 only; see above). */
     if (terms.length) {
-      const fixed = await applyGlossaryWithModel(transcript.words, terms, { log });
+      const fixed = await applyGlossaryWithModel(transcript.words, terms, { log, brief: typeof brief === "string" ? brief : "" });
       if (fixed.changes.length) log(`glossary: ${fixed.changes.map((c) => `${c.from}\u2192${c.to}\u00d7${c.count}`).join(", ")}`);
       if (fixed.rejected.length) log(`glossary refused: ${fixed.rejected.map((r) => `${r.from}\u2192${r.to}\uff08${r.why}\uff09`).join(", ")}`);
       transcript = { ...transcript, words: fixed.words, text: fixed.text };

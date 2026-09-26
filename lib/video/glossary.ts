@@ -754,6 +754,7 @@ export function proposalMessages(
   terms: readonly Term[],
   hints: readonly GlossaryProposal[] = [],
   absent: readonly string[] = [],
+  brief = "",
 ): { role: "system" | "user"; content: string }[] {
   const list = terms.map((t) => t.text).join("、");
   const hintLine = hints.length
@@ -775,11 +776,12 @@ export function proposalMessages(
         "只是缩写或简称的不要列（如「阿里」之于「阿里巴巴」）；确实说的是另一个词的不要改；不在名词表里的词一律不管。" +
         "规则：to 必须一字不差地取自名词表；from 必须是识别文字里连续出现的原文。" +
         "另外单独列出识别文字里其他明显的同音别字（typos）：只限普通词语、读音完全相同、按上下文明显写错的（例如「一码归一码」被写成「一马归一马」则列 from「一马」to「一码」），from 与 to 字数相同、各两到四个字；拿不准的一律不列，不要改用词和语法。" +
+        "如果给了简报，简报里的词组就是她想说的原话：识别文字里与简报某个词组读音相同、写法不同的片段（例如简报写「从零训练」，识别文字写「从聆讯练」，则列 from「聆讯」to「零训」）也列入 typos，规则同上。" +
         "只输出 JSON，格式：{\"fixes\":[{\"from\":\"帧流\",\"to\":\"蒸馏\"}],\"typos\":[{\"from\":\"一马\",\"to\":\"一码\"}]}，没有则输出 {\"fixes\":[],\"typos\":[]}。",
     },
     {
       role: "user",
-      content: `名词表：${list}\n\n识别文字：\n${text}${absentLine}${hintLine}`,
+      content: `名词表：${list}${brief.trim() ? `\n\n简报（她要讲的内容，供对照同音别字）：\n${brief.trim().slice(0, 3000)}` : ""}\n\n识别文字：\n${text}${absentLine}${hintLine}`,
     },
   ];
 }
@@ -924,7 +926,7 @@ export async function jsonCompletion(
 export async function applyGlossaryWithModel(
   words: readonly TranscriptWord[],
   terms: readonly Term[],
-  options: { model?: string; signal?: AbortSignal; log?: (line: string) => void } = {},
+  options: { model?: string; signal?: AbortSignal; log?: (line: string) => void; brief?: string } = {},
 ): Promise<GlossaryResult & { usage: GlossaryModelUsage | null; proposals: GlossaryProposal[]; raw: string }> {
   const log = options.log ?? (() => {});
   const first = applyGlossary(words, terms);
@@ -954,7 +956,7 @@ export async function applyGlossaryWithModel(
   let usage: GlossaryModelUsage | null = null;
   let raw = "";
   const models = options.model ? [options.model] : GLOSSARY_MODELS;
-  const messages = proposalMessages(first.text, terms, hints, absent);
+  const messages = proposalMessages(first.text, terms, hints, absent, options.brief ?? "");
   type Answer = Awaited<ReturnType<typeof jsonCompletion>> & { model: string };
   /** Ask these models at once; every answer that arrives counts. */
   const ask = async (batch: readonly string[]): Promise<Answer[]> => {

@@ -1282,6 +1282,9 @@ export function planCut(input: PlanCutInput): PlanCutResult {
     pauses.push({ startMs: s.startMs, endMs: s.endMs, removedMs: Math.max(0, s.endMs - s.startMs - keep) });
   }
 
+  /* 8. no piece edge inside a kept word (the r02 cut clipped 鱼 of 鱼与熊掌 by 16 ms) */
+  pieces = guardWordEdges(pieces, words, o.guard);
+
   const lengthMs = length(pieces);
   const retakeCount = drops.filter((d) => d.reason === "retake").length;
   const pauseMs = pauses.reduce((sum, p) => sum + p.removedMs, 0);
@@ -1468,4 +1471,47 @@ export function holeTranscriber(file: string, languageCode: string | null): (sta
     const t = await transcribeLocal(new Blob([new Uint8Array(wav)]), "hole.wav", { languageCode: languageCode || undefined });
     return toWords(t.words.map((w) => ({ text: w.text, start: w.start + startMs / 1000, end: w.end + startMs / 1000 })));
   };
+}
+
+/**
+ * Moves every piece edge that lands inside a kept word out to the word's
+ * edge plus `guard` ms (PLAN §1: the cut never clips a syllable).
+ *
+ * The silence snap puts edges in measured quiet, but whisper often times a
+ * CJK onset 10–40 ms before the energy the silence detector sees, so an
+ * in-point 2–16 ms after a word's start sounds like a missing syllable
+ * (r02: 要, 鱼 and 面 were each clipped this way). A word counts as kept
+ * when its midpoint is inside the piece. Words longer than `maxWordMs` are
+ * whisper stretching a syllable over a pause and are left alone, and so is
+ * an edge more than `maxShiftMs` inside a word, which is a deliberate cut
+ * the planner made. An edge never moves past the neighbouring piece.
+ * Pure.
+ */
+export function guardWordEdges(
+  pieces: readonly Range[],
+  words: readonly { startMs: number; endMs: number }[],
+  guard: number,
+  maxWordMs = 700,
+  maxShiftMs = 120,
+): Range[] {
+  const out = pieces.map((p) => ({ ...p }));
+  for (let i = 0; i < out.length; i++) {
+    const p = out[i];
+    const prevEnd = i > 0 ? out[i - 1].endMs : 0;
+    const nextStart = i + 1 < out.length ? out[i + 1].startMs : Infinity;
+    for (const w of words) {
+      if (w.endMs - w.startMs > maxWordMs) continue;
+      const mid = (w.startMs + w.endMs) / 2;
+      if (mid < p.startMs || mid >= p.endMs) continue;
+      /* in-point: at or after the onset, so the onset is clipped */
+      if (p.startMs > w.startMs - guard && p.startMs - w.startMs <= maxShiftMs) {
+        p.startMs = Math.max(prevEnd, w.startMs - guard);
+      }
+      /* out-point: before the word's end */
+      if (p.endMs < w.endMs + guard && w.endMs - p.endMs <= maxShiftMs) {
+        p.endMs = Math.min(nextStart, w.endMs + guard);
+      }
+    }
+  }
+  return out;
 }

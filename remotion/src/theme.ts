@@ -81,9 +81,15 @@ export const V2 = {
 
   /* ---- shape: radius 24, one shadow, 64 px side margins */
   radius: 24,
-  shadow: "0 8px 24px rgba(0,0,0,0.35)",
-  textShadow: "0 4px 24px rgba(0,0,0,0.35)",
+  shadow: "0 8px 16px rgba(0,0,0,0.35)",
+  textShadow: "0 4px 16px rgba(0,0,0,0.35)",
   side: 64,
+  /**
+   * How far a card's shadow reaches past its edge. The safe column is inset
+   * by it on both sides, so the shadow, not only the card, stays inside
+   * x 64–930 (r02: entity and headline alpha boxes started at x 57).
+   */
+  shadowReach: 14,
   /** Platform UI on the right: nothing sits past x = width − 150. */
   rightUnsafe: 150,
 

@@ -153,7 +153,13 @@ export function defaultNeedMs(beat: Beat): number {
 
 /** The relevance gate: 7 of 10, 8 for a named person. */
 export function gateFor(beat: Beat): number {
-  return beat.intent === "person" || beat.entity?.kind === "person" ? 8 : 7;
+  /*
+   * A scene or a metaphor comes from stock libraries, where the in-pipeline
+   * judge is generous: in r02 it passed a pip-install terminal, euro notes
+   * and Matrix code at 7–8 that the independent re-score gave 2. They need
+   * an 8 like a person does; a miss leaves the host or a designed card.
+   */
+  return beat.intent === "person" || beat.entity?.kind === "person" || beat.intent === "scene" || beat.intent === "metaphor" ? 8 : 7;
 }
 
 /**
@@ -220,7 +226,7 @@ const MAX_ATTEMPTS = 6;
  * about a planet for Nature's warning on model collapse — each matched the
  * name and scored 7–10.
  */
-const STANDING_MUST_NOT = "an AI-generated, rendered or mocked-up picture (garbled or misspelt signage, impossible architecture, plastic-looking people are the tells); a stock actor posing; a TV news frame with a burned-in ticker, lower third or subtitles; an app-store, marketing or ad screenshot with its sales headline; a picture of a different event, year or subject that only shares a name, logo or masthead with the line (a magazine cover about another story, a press conference on another topic, a repost about another announcement): score what the picture shows against what the line says, not the name it carries";
+const STANDING_MUST_NOT = "an AI-generated, rendered or mocked-up picture (garbled or misspelt signage, impossible architecture, plastic-looking people are the tells); a stock actor posing; a TV news frame with a burned-in ticker, lower third or subtitles; an app-store, marketing or ad screenshot with its sales headline; a picture of a different event, year or subject that only shares a name, logo or masthead with the line (a magazine cover about another story, a press conference on another topic, a repost about another announcement): score what the picture shows against what the line says, not the name it carries; a generic stock screen of code or a terminal, Matrix-style code rain, a keyboard, banknotes, a glowing abstract shape, particles or a pattern standing in for an idea (score these 3 or less unless the line literally names that object)";
 
 function withStandingMustNot(mustNot: string | undefined): string {
   return [mustNot?.trim(), STANDING_MUST_NOT].filter(Boolean).join("; ");

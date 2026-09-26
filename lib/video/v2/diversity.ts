@@ -103,7 +103,25 @@ export function nearest(hash: string, r: Reservations): { distance: number; beat
 type Verdict = { ok: true } | { ok: false; reasonZh: string };
 
 /** The checks that need no frame: run before a candidate is fetched, so nothing is downloaded for a clip that cannot be used. */
+/**
+ * Sites whose pictures are store listings or download-page promo art, never
+ * a picture of the thing said (r02 put an apkpure 「Work Like an Office
+ * Expert」 banner on screen for Kimi). Matched against the page and the
+ * image host.
+ */
+const BLOCKED_HOSTS = /(^|\.)(apkpure|apkcombo|apkmirror|uptodown|softonic|malavida|filehippo|apps\.apple|play\.google|appgallery)\.(com|net|cn|org)$|(^|\.)(pc6|pcsoft|onlinedown|cr173|zol|mydown|downxia|xiazaiba|ddooo|3dmgame|qqtn)\.(com|net|cn)$/i;
+
+export function blockedHost(url: string | undefined): boolean {
+  if (!url) return false;
+  try {
+    return BLOCKED_HOSTS.test(new URL(url).hostname);
+  } catch {
+    return false;
+  }
+}
+
 export function precheck(candidate: Candidate, kind: SourcedKind, r: Reservations): Verdict {
+  if (blockedHost(candidate.url) || blockedHost(candidate.author?.url) || blockedHost(candidate.handle?.url)) return { ok: false, reasonZh: "应用商店或下载站的宣传图，不是所说之物" };
   if (r.ids.has(candidate.id) || r.ids.has(candidate.url)) return { ok: false, reasonZh: "这条素材已经用过（本片或近 30 天）" };
   if ((r.authors.get(authorKey(candidate)) ?? 0) >= r.authorCap) return { ok: false, reasonZh: `同一作者 ${candidate.author.name} 已用 ${r.authorCap} 条` };
   const cap = Math.max(2, Math.ceil(r.platformShare * r.total));

@@ -146,7 +146,7 @@ async function stageTranscribe(fixture: Fixture): Promise<TranscribeOut> {
       await writeJson(cached, transcript);
     }
     transcript = { ...transcript, text: toSimplified(transcript.text), words: transcript.words.map((w) => ({ ...w, text: toSimplified(w.text) })) };
-    const fixed = await applyGlossaryWithModel(transcript.words, terms, { log: (l) => log(`glossary: ${l}`) });
+    const fixed = await applyGlossaryWithModel(transcript.words, terms, { log: (l) => log(`glossary: ${l}`), brief: fixture.brief });
     spent("glossary", fixed.usage?.costMicros);
     log(`transcribe: glossary ${fixed.changes.map((c) => `${c.from}→${c.to}×${c.count}`).join(", ") || "no changes"}`);
     const words: Word[] = (fixed.words as TranscriptWord[])
@@ -281,14 +281,14 @@ type DesignOut = {
  * echoes do not line up is asked once more; what still does not line up is
  * left without English rather than shown under the wrong words.
  */
-const TRANSLATE_SYSTEM = `You subtitle a Chinese business creator's vertical reel in English. You get a JSON array of Chinese caption lines. Answer with one JSON object and nothing else: {"lines":[{"zh":"the Chinese line copied exactly","en":"a short natural English subtitle, at most 8 words","kw":"at most one word copied verbatim from the Chinese line worth the accent colour (a name, a figure, the verb it turns on), or empty"}]}, exactly one entry per input line, in the same order. Keep names and figures exactly (Anthropic, Claude, DeepSeek, Kimi, MiniMax, ByteDance, Zhang Yiming, Alibaba, NSA, CISA, FBI). A caption line is often a fragment of a sentence: translate the fragment, do not complete it from its neighbours.`;
+const TRANSLATE_SYSTEM = `You subtitle a Chinese business creator's vertical reel in English. You get a JSON array of Chinese caption lines. Answer with one JSON object and nothing else: {"lines":[{"zh":"the Chinese line copied exactly","en":"a short natural English subtitle, at most 8 words","kw":"at most one word copied verbatim from the Chinese line worth the accent colour (a name, a figure, the verb it turns on), or empty"}]}, exactly one entry per input line, in the same order. Keep names and figures exactly (Anthropic, Claude, DeepSeek, Kimi, MiniMax, ByteDance, Zhang Yiming, Alibaba, NSA, CISA, FBI). A caption line is often a fragment of a sentence: translate the fragment, do not complete it from its neighbours. Each "en" translates only the words of its own "zh" row: never carry words over from the row before or push them to the row after (r02's English ran two lines behind the Chinese for 20 s), and every "en" is whole English words (never "distillation su" on one row and "perior" on the next). A garbled or cut-off fragment still gets a short literal English of what is there, never an empty "en".`;
 
 const bare = (t: string) => t.replace(/[\s\p{P}\p{S}]/gu, "");
 
 async function translateLines(zh: string[], call: (system: string, user: string) => Promise<string>): Promise<{ second: string | null; keywords: string[] }[]> {
   const out: { second: string | null; keywords: string[] }[] = zh.map(() => ({ second: null, keywords: [] }));
   const batches: number[][] = [];
-  for (let i = 0; i < zh.length; i += 20) batches.push(zh.map((_, k) => k).slice(i, i + 20));
+  for (let i = 0; i < zh.length; i += 12) batches.push(zh.map((_, k) => k).slice(i, i + 12));
   const attempt = async (idx: number[]): Promise<number[]> => {
     let text = "";
     try {
@@ -323,7 +323,7 @@ async function translateLines(zh: string[], call: (system: string, user: string)
   const left = (await pmap(batches, 4, attempt)).flat();
   if (left.length) {
     const again: number[][] = [];
-    for (let i = 0; i < left.length; i += 20) again.push(left.slice(i, i + 20));
+    for (let i = 0; i < left.length; i += 6) again.push(left.slice(i, i + 6));
     const still = (await pmap(again, 4, attempt)).flat();
     if (still.length) log(`translate: ${still.length} lines left without English (echo did not match)`);
   }

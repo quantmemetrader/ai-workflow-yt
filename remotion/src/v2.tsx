@@ -73,8 +73,8 @@ export type Geo = {
 export function geo(W: number, H: number): Geo {
   const px = (n: number) => Math.round((n * H) / V2.frame.height);
   const x = (n: number) => Math.round((n * W) / V2.frame.width);
-  const safeLeft = x(V2.side);
-  const safeRight = W - x(V2.rightUnsafe);
+  const safeLeft = x(V2.side + V2.shadowReach);
+  const safeRight = W - x(V2.rightUnsafe + V2.shadowReach);
   return { W, H, px, x, safeLeft, safeRight, safeW: safeRight - safeLeft };
 }
 

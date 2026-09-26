@@ -647,7 +647,7 @@ export function resolveLayout(input: LayoutInput): LayoutPlan {
     endMs: slot.endMs,
     sourceInMs: inFileMs(src),
     layout: runId ? "run" : src.layout,
-    cropX: src.subjectX,
+    cropX: (runId ? "run" : src.layout) === "run" ? cropBesideCircle(src.subjectX, src.asset.width, src.asset.height) : src.subjectX,
     still: src.kind !== "video",
     runId,
     kind: src.kind,
@@ -829,6 +829,12 @@ export function resolveLayout(input: LayoutInput): LayoutPlan {
     const s = sentence.get(beat.sentenceId);
     if (!s) {
       skipped.push({ beatId: beat.id, reasonZh: "句子不在成片里（已被剪掉）" });
+      return;
+    }
+    /* The host herself is introduced by the lower third / name chip; an entity card with her monogram next to it reads as a glitch (r02 at 4:57). */
+    const hostName = input.lowerThird.name.trim();
+    if (hostName && beat.intent === "person" && (beat.entity?.name ?? beat.anchor ?? "").includes(hostName)) {
+      skipped.push({ beatId: beat.id, reasonZh: "主播本人已有名条，不再加人物卡" });
       return;
     }
     const hit = anchorIn(s, beat.anchor);
@@ -1351,8 +1357,35 @@ export function resolveLayout(input: LayoutInput): LayoutPlan {
   const zoneTSpans = graphics.filter((g) => g.zone === "T").map((g) => ({ startMs: g.startMs, endMs: g.endMs }));
   const splitSpans = cutaways.filter((c) => c.layout === "split").map((c) => ({ startMs: c.startMs, endMs: c.endMs }));
   const runSpans = [...runs.map((r) => ({ startMs: r.startMs, endMs: r.endMs })), ...cutaways.filter((c) => c.layout === "run" && !c.runId).map((c) => ({ startMs: c.startMs, endMs: c.endMs }))];
-  const cutZooms = framing(input.pieces, zoneTSpans, splitSpans, pushes, { zoneT, split: { zoom: split.hostZoom, eyeY: split.hostEyeY / FRAME.height }, totalMs, runs: runSpans });
+  let cutZooms = framing(input.pieces, zoneTSpans, splitSpans, pushes, { zoneT, split: { zoom: split.hostZoom, eyeY: split.hostEyeY / FRAME.height }, totalMs, runs: runSpans });
   for (const seg of cutZooms) if (seg.push && seg.push.to === FRAMING.slowPush.to) ledger.addChange(seg.push.fromMs);
+  /*
+   * A stretch of more than 5 s with no change at all (r02: 2:44 and 3:12,
+   * one long take with nothing on it) gets a reframe in the middle: the
+   * plain host segment under it switches between 1.00 and 1.12, the cut-in
+   * a reel editor makes inside a long take. Only on a plain framing
+   * segment (not Zone T, split, run or a punchline), at the gap's middle
+   * snapped to a word start when one is within 0.6 s.
+   */
+  {
+    const wordStarts = sentences.flatMap((x) => (x.words ?? []).map((w) => w.startMs));
+    const plain = new Set(["base", "alternate", "slow push"]);
+    const current = () => Array.from(new Set(ledger.changes.map(round))).sort((a, b) => a - b);
+    for (const g of cadenceGaps(current(), totalMs)) {
+      if (g.toMs - g.fromMs <= 5000) continue;
+      const mid = (g.fromMs + g.toMs) / 2;
+      const near = wordStarts.filter((w) => Math.abs(w - mid) <= 600).sort((a, b) => Math.abs(a - mid) - Math.abs(b - mid))[0];
+      const at = round(near ?? mid);
+      const k = cutZooms.findIndex((seg) => seg.inMs + TIMING.minChangeGapMs <= at && at <= seg.outMs - TIMING.minChangeGapMs && plain.has(seg.why));
+      if (k < 0) continue;
+      const seg = cutZooms[k];
+      const other = seg.zoom === FRAMING.base ? FRAMING.alternate : FRAMING.base;
+      const a: FramingSegment = { inMs: seg.inMs, outMs: at, zoom: seg.zoom, anchor: seg.anchor, why: seg.why === "slow push" ? "base" : seg.why };
+      const b: FramingSegment = { inMs: at, outMs: seg.outMs, zoom: other, anchor: [0.5, FRAMING.eyeY], why: "reframe" };
+      cutZooms = [...cutZooms.slice(0, k), a, b, ...cutZooms.slice(k + 1)];
+      ledger.addChange(at);
+    }
+  }
 
   /* ---- 9. the numbers ------------------------------------------------- */
   const changes = Array.from(new Set(ledger.changes.map(round))).sort((a, b) => a - b);
@@ -1413,6 +1446,26 @@ export function resolveLayout(input: LayoutInput): LayoutPlan {
  * the ±40 drift as the chin under the alternate framing needs so the top
  * edge stays ≥ chin + 40.
  */
+/**
+ * The crop centre for a `run` cutaway that keeps the picture's subject out
+ * from under the presenter's circle (ZONES.run, centred at x 0.74). The
+ * compositor covers the 9:16 frame and crops around `cropX`; this moves
+ * the crop so the subject lands at x ≈ 0.30 of the frame instead of the
+ * middle, where the circle's left edge (0.60) is close enough to cover a
+ * face (r02: 张一鸣's face under the circle at 3:44). The compositor clamps
+ * the crop to the picture, so a subject near the left edge stays put.
+ * Pure.
+ */
+export function cropBesideCircle(subjectX: number | undefined, width: number | undefined, height: number | undefined): number {
+  const x = subjectX ?? 0.5;
+  if (!width || !height) return x;
+  /* The share of the source's width the 9:16 cover crop shows. */
+  const frac = Math.min(1, (height * FRAME.width) / FRAME.height / width);
+  if (frac >= 0.999) return x;
+  const want = 0.3;
+  return clamp(x + (0.5 - want) * frac, frac / 2, 1 - frac / 2);
+}
+
 export function captionLine(face: FaceTrack | null): number {
   const box = faceBoxUnder(face, FRAMING.alternate, FRAMING.eyeY);
   if (!box) return ZONES.caption.zhY;
