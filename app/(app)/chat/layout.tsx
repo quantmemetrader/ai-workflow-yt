@@ -36,12 +36,6 @@ export default async function ChatLayout({ children }: { children: React.ReactNo
             isPrivate: c.isPrivate,
             unread: c.unread,
           }))}
-        /* The projects' own chats, in a section of their own: they live on the
-           project pages too, but "the client should see the chat history"
-           found nothing in Chat itself. */
-        projectChats={channels
-          .filter((c): c is typeof c & { slug: string } => Boolean(c.slug) && hidden.has(c.id))
-          .map((c) => ({ id: c.id, slug: c.slug, name: c.name, isPrivate: c.isPrivate, unread: c.unread }))}
         conversations={conversations.map((c) => ({
           id: c.id,
           title: c.title,
