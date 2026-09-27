@@ -50,11 +50,12 @@ export function AnswerPicker({ answering, zh, onPick, soft = tintAt, align = "le
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
         title={zh ? "选择谁来回答" : "Choose who answers"}
-        style={{ background: answering ? soft(AGENT_TINTS[answering], 0.5) : "#f4f4f5", border: 0, cursor: "pointer", fontFamily: "inherit" }}
+        /* Styled here, not by the chat screen's stylesheet: the side panels use it too, and there the chip came out as loose text. */
+        style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 28, padding: "0 8px 0 4px", borderRadius: 8, fontSize: 12, lineHeight: 1, color: "#525252", whiteSpace: "nowrap", flexShrink: 0, background: answering ? soft(AGENT_TINTS[answering], 0.5) : "#f4f4f5", border: 0, cursor: "pointer", fontFamily: "inherit" }}
       >
         <AgentIcon agent={answering} size={20} radius={5} />
         {zh ? "回答：" : "Answering: "}
-        <b>{answering ? <AgentName agent={answering} zh={zh} /> : zh ? "你的助理" : "Your agent"}</b>
+        <b style={{ fontWeight: 600, color: "#171717" }}>{answering ? <AgentName agent={answering} zh={zh} /> : zh ? "你的助理" : "Your agent"}</b>
         <span aria-hidden style={{ fontSize: 10, color: "#8a8a8a", marginLeft: 2 }}>{open ? "▴" : "▾"}</span>
       </button>
       {open ? (

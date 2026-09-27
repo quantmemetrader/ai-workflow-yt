@@ -570,7 +570,17 @@ function People({
               {/* The owner's own role is not a dropdown: a studio with no owner
                   is a studio nobody can administer. */}
               {p.role === "owner" || self ? (
-                <Badge tone={p.role === "owner" ? "info" : "quiet"}>{p.role}</Badge>
+                /* Not changeable here — the owner's role, or your own: drawn as
+                   a disabled field the size of the dropdowns beside it, grey
+                   and centred, with why on hover. A coloured pill read as a
+                   fault ("show it disabled, greyish, so it doesn't look like an error"). */
+                <span
+                  aria-disabled="true"
+                  title={p.role === "owner" ? t("The owner's role cannot be changed", "所有者的角色不能在这里修改") : t("You cannot change your own role", "不能修改自己的角色")}
+                  style={{ ...field, height: 26, width: 100, fontSize: 11.5, display: "inline-flex", alignItems: "center", justifyContent: "center", boxSizing: "border-box", background: "#f5f5f4", color: "#9a9a9a", borderColor: "#ececea", cursor: "not-allowed", userSelect: "none" }}
+                >
+                  {p.role}
+                </span>
               ) : (
                 <select
                   value={p.role}
