@@ -23,6 +23,26 @@ import { enqueue } from "@/lib/jobs/queue";
 export type FileRow = typeof files.$inferSelect;
 export type FolderRow = typeof folders.$inferSelect;
 
+/**
+ * Not a playback proxy — the 480p copy the editor and the render preview play
+ * instead of the master ("… · 预览 480p.mp4").
+ *
+ * They are an implementation detail of playback, and a list that shows every
+ * master twice reads as duplicated uploads. Two ways to know one: the `proxy`
+ * tag it is given when made, and the pointer to it — some file's, or some
+ * render's, `proxy_file_id`. The tag alone was the old test; the pointer is
+ * the one that cannot be forgotten by a code path that makes a copy without
+ * tagging it. Hidden, never deleted: the file page still reaches one by id.
+ *
+ * The subqueries alias their own tables, so the bare `files` inside them is
+ * the outer row.
+ */
+export function notProxy() {
+  return sql`(not ('proxy' = any(${files.tags}))
+    and not exists (select 1 from files p where p.proxy_file_id = ${files.id})
+    and not exists (select 1 from video_exports e where e.proxy_file_id = ${files.id}))`;
+}
+
 export function kindFromMime(mime: string, name: string): FileRow["kind"] {
   if (mime.startsWith("video/")) return "video";
   if (mime.startsWith("audio/")) return "audio";
@@ -124,14 +144,10 @@ export async function listFolder(viewer: Viewer, folderId: string | null) {
   /* The top level is everything you can read, less the stock: a licensed
      picture the director fetched for one cutaway is not what somebody
      opening Files came for. It is all in its own folder, one click away. */
-  /* Proxies — the 480p copy the editor plays instead of the master — are
-     never listed. They are an implementation detail of playback, tagged
-     `proxy` when made, and a folder that shows every master twice reads as
-     duplicated uploads. The file page still reaches them by id. */
-  const notProxy = sql`not ('proxy' = any(${files.tags}))`;
+  /* Proxies are never listed — see `notProxy`. */
   const where = folderId
-    ? and(eq(files.folderId, folderId), isNull(files.deletedAt), canReadFiles(viewer), notProxy)
-    : and(isNull(files.deletedAt), canReadFiles(viewer), sql`not ('stock' = any(${files.tags}))`, notProxy);
+    ? and(eq(files.folderId, folderId), isNull(files.deletedAt), canReadFiles(viewer), notProxy())
+    : and(isNull(files.deletedAt), canReadFiles(viewer), sql`not ('stock' = any(${files.tags}))`, notProxy());
 
   const [rows, subfolders] = await Promise.all([
     db
@@ -850,8 +866,8 @@ export async function listRecent(viewer: Viewer, limit = 100) {
     .innerJoin(users, eq(users.id, files.ownerId))
     // The stock stays in its own folder here too: forty licensed pictures the
     // director fetched would otherwise be the whole of "recent".
-    // Nor the playback proxies — see `listFolder`.
-    .where(and(isNull(files.deletedAt), canReadFiles(viewer), sql`not ('stock' = any(${files.tags}))`, sql`not ('proxy' = any(${files.tags}))`))
+    // Nor the playback proxies — see `notProxy`.
+    .where(and(isNull(files.deletedAt), canReadFiles(viewer), sql`not ('stock' = any(${files.tags}))`, notProxy()))
     .orderBy(desc(files.updatedAt))
     .limit(limit);
 }
@@ -868,6 +884,7 @@ export async function listSharedWithMe(viewer: Viewer, limit = 100) {
     .where(
       and(
         isNull(files.deletedAt),
+        notProxy(),
         sql`${files.ownerId} <> ${viewer.id}`,
         sql`exists (
           select 1 from relation_tuples t
@@ -893,7 +910,9 @@ export async function listTrash(viewer: Viewer, limit = 100) {
     .select({ file: files, ownerName: users.name, ownerAvatar: users.avatarUrl })
     .from(files)
     .innerJoin(users, eq(users.id, files.ownerId))
-    .where(and(sql`${files.deletedAt} is not null`, canReadFiles(viewer)))
+    /* A master's proxy goes to the bin with it; it is still not something
+       to restore by hand — the player falls back to the master without it. */
+    .where(and(sql`${files.deletedAt} is not null`, canReadFiles(viewer), notProxy()))
     .orderBy(desc(files.deletedAt))
     .limit(limit);
 }

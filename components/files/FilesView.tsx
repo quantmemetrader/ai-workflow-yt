@@ -3,7 +3,8 @@
 import { useEffect, useRef, useState, useSyncExternalStore, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { AccessPicker, type AccessChoice } from "@/components/files/AccessPicker";
-import { FilesScreen, type FileRow, type FolderRow } from "@/components/canvas/FilesScreen";
+import { FilesScreen, type FileRow, type FilesLens, type FolderRow } from "@/components/canvas/FilesScreen";
+import { ProjectGroups, type ProjectCard } from "@/components/files/ProjectGroups";
 import { InlineAgentThread, useInlineAgent } from "@/components/shell/InlineAgent";
 import { useLocalPreference } from "@/lib/client/preference";
 import { NameDialog } from "@/components/ui/NameDialog";
@@ -43,6 +44,10 @@ export function FilesView({
   canEdit,
   canCreate,
   locale,
+  lens,
+  projects,
+  loose,
+  looseTotal,
 }: {
   model: string;
   view?: "folder" | "recent" | "shared" | "trash";
@@ -54,6 +59,12 @@ export function FilesView({
   canEdit: boolean;
   canCreate?: boolean;
   locale: string;
+  /** The top of Files only: which lens is showing, and for 按项目 the cards
+   * and the unfiled files (`lib/files/lenses.ts`). */
+  lens?: FilesLens;
+  projects?: ProjectCard[];
+  loose?: FileRow[];
+  looseTotal?: number;
 }) {
   const router = useRouter();
   const [, start] = useTransition();
@@ -107,6 +118,9 @@ export function FilesView({
      Listened for on the document: the drop target is the whole screen, and a
      file dragged over the browser must not open in a new tab instead. */
   const canUpload = canEdit && view === "folder";
+  const openFile = (id: string) => router.push(`/files/${id}`);
+  const rename = canEdit ? (kind: "file" | "folder", id: string, name: string) => setRenaming({ kind, id, name }) : undefined;
+  const remove = canEdit && view !== "trash" ? (kind: "file" | "folder", id: string, name: string) => setDeleting({ kind, id, name }) : undefined;
   useEffect(() => {
     if (!canUpload) return;
     const over = (e: DragEvent) => {
@@ -156,6 +170,28 @@ export function FilesView({
         }
         layout={layout}
         onLayoutChange={setLayout}
+        lens={lens}
+        renderBody={
+          lens === "projects"
+            ? (needle) => (
+                <ProjectGroups
+                  projects={projects ?? []}
+                  loose={loose ?? []}
+                  looseTotal={looseTotal ?? 0}
+                  needle={needle}
+                  /* A project's files are pictures first; the list layout's
+                     columns would repeat one header per shelf, so it draws
+                     as the grid here. */
+                  layout={layout === "gallery" ? "gallery" : "grid"}
+                  locale={locale}
+                  onOpenFile={openFile}
+                  onRename={rename}
+                  onDelete={remove}
+                  onSetAccess={(f) => setChanging(f)}
+                />
+              )
+            : undefined
+        }
         onAsk={(prompt) => void agent.send(prompt)}
         thread={
           <InlineAgentThread
@@ -166,14 +202,12 @@ export function FilesView({
           />
         }
         onOpenFolder={(id) => router.push(id ? `/files/f/${id}` : "/files")}
-        onOpenFile={(id) => router.push(`/files/${id}`)}
+        onOpenFile={openFile}
         onUploadClick={() => input.current?.click()}
         onNewFolder={() => setNamingFolder(true)}
         onSetAccess={(f) => setChanging(f)}
-        onRename={canEdit ? (kind, id, name) => setRenaming({ kind, id, name }) : undefined}
-        onDelete={
-          canEdit && view !== "trash" ? (kind, id, name) => setDeleting({ kind, id, name }) : undefined
-        }
+        onRename={rename}
+        onDelete={remove}
       />
       {renaming && (
         <NameDialog
