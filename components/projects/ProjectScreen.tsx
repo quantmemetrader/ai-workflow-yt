@@ -11,7 +11,7 @@ import { useMentions } from "@/components/chat/useMentions";
 import { AccessPicker } from "@/components/files/AccessPicker";
 import { AGENT_COLORS, AGENT_LABELS, AGENT_TINTS, agentTag, parseAgentMentions, type AgentKey } from "@/lib/agents/catalog";
 import { pressCardAction, sendChannelMessage } from "@/app/(app)/chat/actions";
-import { cancelAutoCutAction, clipLandedAction, deleteProjectAction, flowNoteAction, renameProjectAction, setAutoCutAction, setProjectAccessAction, setProjectStatusAction, chooseScriptAction, chooseTopicAction, startCutFromPageAction, startFromTopicAction, unpublishAction } from "@/app/(app)/projects/actions";
+import { applySendBackAction, cancelAutoCutAction, clipLandedAction, deleteProjectAction, flowNoteAction, sendBackAction, settleSendBackAction, renameProjectAction, setAutoCutAction, setProjectAccessAction, setProjectStatusAction, chooseScriptAction, chooseTopicAction, startCutFromPageAction, startFromTopicAction, unpublishAction } from "@/app/(app)/projects/actions";
 import { addClipAction, addItemAction, autoEditAction, exportAction } from "@/app/(app)/video/actions";
 import { uploadFiles } from "@/lib/client/upload";
 import { beginWork } from "@/lib/client/busy";
@@ -22,6 +22,7 @@ import { isRunning } from "@/lib/projects/live-types";
 import { ClipsNextStep } from "@/components/projects/ClipsNextStep";
 import { LivePill, useLiveRow } from "@/components/chat/LivePill";
 import type { ProjectDetail, ProjectStep } from "@/lib/projects/service";
+import type { SentBack } from "@/lib/projects/sendback";
 import { frontierStep } from "@/lib/home/roles";
 import { cleanCodes, type ProjectSource } from "@/lib/projects/topic";
 import { JobChip } from "@/components/chat/Working";
@@ -400,6 +401,36 @@ export function ProjectScreen({
   const stepDone = (k: ProjectStep["key"]) => p.steps.find((s) => s.key === k)?.state === "done";
   const frontier = p.status === "active" ? frontierStep(p.steps) : null;
   const stepNow = (k: ProjectStep["key"]) => (frontier?.key === k ? frontier.state : null);
+  /* A note sent back to this step, in front of whoever holds it. */
+  const noticeFor = (k: ProjectStep["key"]) => {
+    const back = p.sentBack[k];
+    if (!back || back.state === "done") return null;
+    return (
+      <SentBackPanel
+        back={back}
+        zh={zh}
+        pending={pending}
+        onApply={
+          k === "script" && back.state === "open"
+            ? () =>
+                start(async () => {
+                  if (p.script?.status === "locked" && canApprove) await unlockAction(p.script.id);
+                  const r = await applySendBackAction(p.id);
+                  if (r && "error" in r && r.error) notify(r.error);
+                  else notify(t("已交给编剧按建议改写", "Handed to the writer to make the edits"), "ok");
+                  router.refresh();
+                })
+            : undefined
+        }
+        onDone={() =>
+          start(async () => {
+            await settleSendBackAction(p.id, k);
+            router.refresh();
+          })
+        }
+      />
+    );
+  };
   /* Already 0–100 (`workProjectDetail`). */
   const pct = p.render?.progress ?? 0;
   /* What a held button says while a render runs: queued, or how far. */
@@ -580,21 +611,18 @@ export function ProjectScreen({
                       to: nameOf(prev),
                       send: async (note: string) => {
                         const slug = p.channel.slug;
+                        /* Kept on the project for the step's card, and said in its chat; a script comes back with 编剧's edits. */
+                        if (failed(await sendBackAction(p.id, prev.key, note))) return;
                         const r =
-                          prev.key === "clips"
-                            ? await flowNoteAction(p.id, t(`退回给 ${nameOf(prev)}：${note}`, `Sent back to ${nameOf(prev)}: ${note}`))
-                            : prev.key === "script"
-                              ? await (async () => {
-                                  /* A locked script cannot be rewritten: unlocked first, by someone who may. */
-                                  if (p.script?.status === "locked" && canApprove) await unlockAction(p.script.id);
-                                  return sendChannelMessage(slug, `${agentTag("script")} 脚本退回修改：${note}\n请按这些意见改好项目里的脚本。`);
-                                })()
-                              : prev.key === "edit"
-                                ? await sendChannelMessage(slug, `${agentTag("video")} 成片退回，按以下意见重新剪一版视频：${note}`)
-                                : await sendChannelMessage(slug, `${agentTag("research")} 选题退回：${note}\n请按这个意见换个方向，再交给编剧。`);
+                          prev.key === "edit"
+                            ? await sendChannelMessage(slug, `${agentTag("video")} 成片退回，按以下意见重新剪一版视频：${note}`)
+                            : prev.key === "topic"
+                              ? await sendChannelMessage(slug, `${agentTag("research")} 选题退回：${note}\n请按这个意见换个方向，再交给编剧。`)
+                              : null;
                         if (!failed(r)) {
                           notify(t(`已退回给 ${nameOf(prev)}`, `Sent back to ${nameOf(prev)}`));
                           refresh();
+                          if (prev.key === "script") jumpToCard("script");
                         }
                       },
                     }
@@ -612,6 +640,7 @@ export function ProjectScreen({
                     live={liveWork}
                     published={p.status === "done" ? p.published : null}
                     popover={publishing === "step" ? publishPopover("left") : null}
+                    sentBack={p.sentBack}
                   />
                 );
               })()}
@@ -660,7 +689,7 @@ export function ProjectScreen({
                 button in the row (where it wrapped onto a line of its own). */}
             <Workbench
               anchor={STEP_ANCHOR.topic}
-              done={stepDone("topic")} now={stepNow("topic")}
+              done={stepDone("topic")} now={stepNow("topic")} notice={noticeFor("topic")}
               zh={zh}
               icon={<AgentIcon agent="research" size={26} radius={7} />}
               title={t("选题", "Topic")}
@@ -688,7 +717,7 @@ export function ProjectScreen({
             {!skipped("script") ? (
               <Workbench
                 anchor={STEP_ANCHOR.script}
-                done={stepDone("script")} now={stepNow("script")}
+                done={stepDone("script")} now={stepNow("script")} notice={noticeFor("script")}
                 zh={zh}
                 icon={<AgentIcon agent="script" size={26} radius={7} />}
                 title={t("脚本", "Script")}
@@ -774,7 +803,7 @@ export function ProjectScreen({
             {!skipped("clips") ? (
               <Workbench
                 anchor={STEP_ANCHOR.clips}
-                done={stepDone("clips")} now={stepNow("clips")}
+                done={stepDone("clips")} now={stepNow("clips")} notice={noticeFor("clips")}
                 zh={zh}
                 icon={<span style={{ width: 26, height: 26, borderRadius: 7, background: "#171717", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center" }}><Icon name="clapper" size={15} /></span>}
                 title={t("素材", "Clips")}
@@ -858,7 +887,7 @@ export function ProjectScreen({
                 and 重试 in black, when it did not. */}
             <Workbench
               anchor={STEP_ANCHOR.edit}
-              done={stepDone("edit")} now={stepNow("edit")}
+              done={stepDone("edit")} now={stepNow("edit")} notice={noticeFor("edit")}
               zh={zh}
               icon={<AgentIcon agent="video" size={26} radius={7} />}
               title={t("成片", "The video")}
@@ -1092,7 +1121,7 @@ export function ProjectScreen({
             </Workbench>
 
             {/* ---- captions & delivery ---- */}
-            <Workbench anchor={STEP_ANCHOR.deliver} done={stepDone("deliver")} now={stepNow("deliver")} zh={zh} icon={<AgentIcon agent="article" size={26} radius={7} />} title={t("文案与交付", "Captions & delivery")} sub={p.status === "done" ? t("已发布", "Published") : t("标题、简介、标签", "Titles, descriptions, tags")}>
+            <Workbench anchor={STEP_ANCHOR.deliver} done={stepDone("deliver")} now={stepNow("deliver")} notice={noticeFor("deliver")} zh={zh} icon={<AgentIcon agent="article" size={26} radius={7} />} title={t("文案与交付", "Captions & delivery")} sub={p.status === "done" ? t("已发布", "Published") : t("标题、简介、标签", "Titles, descriptions, tags")}>
               <Delivery
                 project={p}
                 zh={zh}
@@ -1326,7 +1355,7 @@ function Board({ children }: { children: React.ReactNode }) {
  * goes to `/projects/<id>#clips` — and the card is outlined for a moment when
  * it is the one opened (`:target` in `PROJECT_CSS`).
  */
-function Workbench({ icon, title, sub, right, children, anchor, done = false, now = null, zh = true }: { icon: React.ReactNode; title: string; sub?: string; right?: React.ReactNode; children: React.ReactNode; anchor?: string; done?: boolean; now?: ProjectStep["state"] | null; zh?: boolean }) {
+function Workbench({ icon, title, sub, right, children, anchor, done = false, now = null, zh = true, notice = null }: { icon: React.ReactNode; title: string; sub?: string; right?: React.ReactNode; children: React.ReactNode; anchor?: string; done?: boolean; now?: ProjectStep["state"] | null; zh?: boolean; notice?: React.ReactNode }) {
   /* The card whose step it is now says so, as a done one says 已完成: "do this now". */
   const nowTone = now === "you" ? { bg: "#fff4df", ink: "#95590a", line: "#f0c987", zh: "现在做这一步", en: "Do this now" } : now === "running" ? { bg: "#e9f2fe", ink: "#1f5fbf", line: "#b9d2f6", zh: "进行中", en: "In progress" } : now ? { bg: "#f3f3f1", ink: "#5f5f5f", line: "#dcdcd8", zh: "下一步", en: "Next" } : null;
   return (
@@ -1352,6 +1381,7 @@ function Workbench({ icon, title, sub, right, children, anchor, done = false, no
         <span style={{ flexGrow: 1 }} />
         {right}
       </div>
+      {notice}
       {children}
     </section>
   );
@@ -1768,7 +1798,9 @@ function StepFlow({
   live,
   published,
   popover,
+  sentBack,
 }: {
+  sentBack: ProjectDetail["sentBack"];
   steps: ProjectStep[];
   zh: boolean;
   people: ProjectDetail["people"];
@@ -1841,6 +1873,9 @@ function StepFlow({
                   </span>
                 )}
                 {isNow ? <NowPill state={s.state} zh={zh} /> : null}
+                {sentBack[s.key]?.state === "open" ? (
+                  <span style={{ fontSize: 11, fontWeight: 600, lineHeight: "18px", padding: "0 8px", borderRadius: 999, color: "#b42318", background: "#fdecea", whiteSpace: "nowrap" }}>{t("有退回意见", "Sent back")}</span>
+                ) : null}
                 <span style={{ marginLeft: "auto", fontSize: 12, color: done ? "#6b6b6b" : isNow ? "#525252" : "#b3b3b3", minWidth: 0, maxWidth: "55%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "inline-flex", alignItems: "center", gap: 6 }}>
                   {out ? (
                     <>
@@ -1866,6 +1901,58 @@ function StepFlow({
           </div>
         );
       })}
+    </div>
+  );
+}
+
+/**
+ * A note a step was sent back with, on that step's card: who sent it and
+ * what they said, and for a script 编剧's edits beat by beat — the old line
+ * struck through, the new one under it — with the press that has them made.
+ * "Make the revise suggestions better highlighted to the person in charge."
+ */
+function SentBackPanel({ back, zh, pending, onApply, onDone }: { back: SentBack; zh: boolean; pending: boolean; onApply?: () => void; onDone: () => void }) {
+  const t = (a: string, b: string) => (zh ? a : b);
+  const applied = back.state === "applied";
+  return (
+    <div style={{ marginBottom: 14, borderRadius: 11, border: "1px solid #f4c7a8", borderLeft: "4px solid #e8590c", background: "#fff6ef", padding: "11px 14px", display: "flex", flexDirection: "column", gap: 9 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12, fontWeight: 700, color: "#c2410c" }}>
+          <Icon name="undo" size={12} />
+          {applied ? t("已按退回意见交给编剧修改", "Handed back for the edits") : t("退回修改", "Sent back")}
+        </span>
+        <span style={{ fontSize: 11.5, color: "#9a6b4f" }}>
+          {back.byName} · {new Date(back.at).toLocaleString(zh ? "zh-CN" : "en-US", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+        </span>
+      </div>
+      <div style={{ fontSize: 14, fontWeight: 600, color: "#171717", lineHeight: 1.55 }}>「{back.note}」</div>
+      {back.suggestions?.length ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+          <span style={{ fontSize: 11.5, fontWeight: 600, color: "#9a6b4f" }}>{t("编剧的具体改法", "The writer's edits")}</span>
+          {back.suggestions.map((x, i) => (
+            <div key={i} style={{ display: "grid", gridTemplateColumns: "52px minmax(0,1fr)", gap: 8, padding: "8px 10px", borderRadius: 8, background: "#fff", border: "1px solid #f6dcc8" }}>
+              <span style={{ fontSize: 11.5, fontWeight: 700, color: "#c2410c", whiteSpace: "nowrap" }}>{t(`第 ${x.ord} 镜`, `Beat ${x.ord}`)}</span>
+              <span style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0, fontSize: 12.5, lineHeight: 1.55 }}>
+                <span style={{ color: "#9a9a9a", textDecoration: "line-through" }}>{x.before}</span>
+                <span style={{ color: "#171717", fontWeight: 600 }}>{x.after}</span>
+                {x.why ? <span style={{ fontSize: 11, color: "#9a6b4f" }}>{x.why}</span> : null}
+              </span>
+            </div>
+          ))}
+        </div>
+      ) : null}
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        {onApply ? (
+          <button type="button" className="pj-flow-next" disabled={pending} onClick={onApply} style={{ background: "#c2410c" }}>
+            <Icon name="pen" size={13} />
+            {back.suggestions?.length ? t("按建议改写", "Make these edits") : t("让编剧按意见改", "Have the writer revise")}
+          </button>
+        ) : null}
+        <button type="button" className="pj-flow-back" disabled={pending} onClick={onDone}>
+          <Icon name="check" size={12} strokeWidth={2.4} />
+          {t("标记已处理", "Mark as dealt with")}
+        </button>
+      </div>
     </div>
   );
 }

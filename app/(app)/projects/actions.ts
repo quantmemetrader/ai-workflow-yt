@@ -17,6 +17,8 @@ import {
   visibleProject,
 } from "@/lib/projects/service";
 import { postMessage } from "@/lib/chat/service";
+import { agentViewer } from "@/lib/agents";
+import { isStepKey, readSentBack, recordSendBack, settleSendBack } from "@/lib/projects/sendback";
 import { dispatchAgentMentions } from "@/lib/agents/mentions";
 import { parseAgentMentions } from "@/lib/agents/catalog";
 import { db } from "@/lib/db/client";
@@ -581,6 +583,76 @@ export async function flowNoteAction(projectId: string, body: string) {
   if (!project) return { error: (viewer.locale ?? "zh-CN").startsWith("zh") ? "没有这个项目" : "No such project" };
   const id = await postMessage(viewer, project.channelId, text, { flow: true });
   if (!id) return { error: "Not posted" };
+  revalidatePath(`/projects/${project.id}`);
+  return { ok: true };
+}
+
+/**
+ * 退回 with a note: kept on the project for the step's card
+ * (`lib/projects/sendback.ts`) and said in the project's chat. A script
+ * sent back comes with 编剧's edits, beat by beat, posted under the note
+ * as 编剧's reply; nothing is rewritten until someone presses 按建议改写.
+ * The other steps keep their own follow-up (the researcher asked again, the
+ * editor re-cutting), which the page starts as before.
+ */
+export async function sendBackAction(projectId: string, step: string, note: string) {
+  const viewer = await getViewer();
+  if (!viewer || !viewer.modules.includes("chat")) return { error: "Not allowed" };
+  const text = typeof note === "string" ? note.trim().slice(0, 1000) : "";
+  if (!text) return { error: (viewer.locale ?? "zh-CN").startsWith("zh") ? "写下要改什么" : "Say what to change" };
+  if (!isStepKey(step)) return { error: "No such step" };
+  const project = await visibleProject(viewer, String(projectId ?? ""));
+  if (!project) return { error: (viewer.locale ?? "zh-CN").startsWith("zh") ? "没有这个项目" : "No such project" };
+  const kept = await recordSendBack(viewer, project, step, text);
+  const who = step === "script" ? "编剧" : step === "topic" ? "研究员" : step === "edit" ? "剪辑师" : null;
+  if (step === "script" || step === "clips") {
+    await postMessage(viewer, project.channelId, `退回给${who ?? "上一步"}：${text}`, { flow: true, sentBack: step });
+  }
+  if (step === "script") {
+    const writer = await agentViewer(viewer.tenantId, "script");
+    const body = kept.suggestions?.length
+      ? [`收到退回意见。具体改法如下，项目页「脚本」卡上可以一键按建议改写：`, ...kept.suggestions.map((x) => `- 第 ${x.ord} 镜：「${x.before}」→「${x.after}」（${x.why}）`)].join("\n")
+      : `收到退回意见：「${text}」。项目页「脚本」卡上按「按建议改写」，我就按这条意见改。`;
+    await postMessage(writer, project.channelId, body, { agent: "script", sentBack: step });
+  }
+  revalidatePath(`/projects/${project.id}`);
+  return { ok: true, suggestions: kept.suggestions?.length ?? 0 };
+}
+
+/** 按建议改写: 编剧 is asked to make the edits it suggested (or to act on the note), in the project's chat. */
+export async function applySendBackAction(projectId: string) {
+  const viewer = await getViewer();
+  if (!viewer || !viewer.modules.includes("chat")) return { error: "Not allowed" };
+  const project = await visibleProject(viewer, String(projectId ?? ""));
+  if (!project) return { error: "No such project" };
+  const [row] = await db.select({ source: workProjects.source }).from(workProjects).where(eq(workProjects.id, project.id)).limit(1);
+  const back = readSentBack(row?.source).script;
+  if (!back) return { error: "Nothing was sent back" };
+  const body = [
+    `@编剧 按退回意见改好项目里的脚本：${back.note}`,
+    ...(back.suggestions ?? []).map((x) => `- 第 ${x.ord} 镜：「${x.before}」改成「${x.after}」`),
+  ].join("\n");
+  await postMessage(viewer, project.channelId, body, {});
+  after(async () => {
+    try {
+      await dispatchAgentMentions({ viewer, channelId: project.channelId, body });
+    } catch (err) {
+      console.error("[projects] 编剧 could not be reached for the edits", err);
+    }
+  });
+  await settleSendBack(project.id, "script", "applied");
+  revalidatePath(`/projects/${project.id}`);
+  return { ok: true };
+}
+
+/** 标记已处理: the note has been dealt with. */
+export async function settleSendBackAction(projectId: string, step: string) {
+  const viewer = await getViewer();
+  if (!viewer || !viewer.modules.includes("chat")) return { error: "Not allowed" };
+  if (!isStepKey(step)) return { error: "No such step" };
+  const project = await visibleProject(viewer, String(projectId ?? ""));
+  if (!project) return { error: "No such project" };
+  await settleSendBack(project.id, step, "done");
   revalidatePath(`/projects/${project.id}`);
   return { ok: true };
 }

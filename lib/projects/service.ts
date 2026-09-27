@@ -19,6 +19,7 @@ import { HOT_TENANT } from "@/lib/research/platforms";
 import { mayPublish, platformsLine, readPublication, type Publication } from "@/lib/projects/publication";
 import { projectsVisibleTo } from "@/lib/projects/visible";
 import { liveAutoCut, type AutoCut } from "@/lib/projects/live-types";
+import { readSentBack, type SentBack } from "@/lib/projects/sendback";
 
 /**
  * Which projects this person may see (`lib/projects/visible.ts`): the rule
@@ -454,6 +455,8 @@ export type ProjectDetail = {
    * a human, show the human involved" — the cards said 「（你）」 to everyone.
    */
   people: { clips: StepPerson | null; deliver: StepPerson | null };
+  /** Steps sent back with a note, still open or just handed on (`lib/projects/sendback.ts`). */
+  sentBack: Partial<Record<ProjectStep["key"], SentBack>>;
   /** May mark it published and undo that (`mayPublish` in lib/projects/publication.ts). */
   canPublish: boolean;
   /** Where it went, once marked published; null while it is not done. */
@@ -891,6 +894,7 @@ export async function workProjectDetail(viewer: Viewer, id: string, zh: boolean,
     access: p.access ?? { mode: "everyone" },
     canManage: viewer.isAdmin || p.createdBy === viewer.id,
     people,
+    sentBack: readSentBack(p.source),
     /* `mayPublish`: the managers (admin or creator), never a guest. */
     canPublish: mayPublish(viewer, p.createdBy),
     published,
