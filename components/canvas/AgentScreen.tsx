@@ -1362,7 +1362,7 @@ function HistoryRail({ history, zh, locale, today }: { history: AgentHistory; zh
                   </span>
                   <span style={{ fontSize: 11, color: "#a3a3a3", flexShrink: 0 }}>{whenLabel(l.at, today, locale)}</span>
                 </div>
-                <div className="l">{l.body}</div>
+                <div className="l">{plainLine(l.body)}</div>
               </Link>
             ))}
           </div>
@@ -1441,7 +1441,7 @@ function AgentEmpty({
                     </span>
                     <span style={{ color: "#a3a3a3", marginLeft: "auto", flexShrink: 0 }}>{whenLabel(l.at, today, locale)}</span>
                   </div>
-                  <div style={{ fontSize: 13, lineHeight: 1.55, marginTop: 3, color: "#2b343d", overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical" }}>{l.body}</div>
+                  <div style={{ fontSize: 13, lineHeight: 1.55, marginTop: 3, color: "#2b343d", overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical" }}>{plainLine(l.body)}</div>
                 </div>
               </Link>
             ))}
@@ -1450,4 +1450,18 @@ function AgentEmpty({
       ) : null}
     </div>
   );
+}
+
+/**
+ * A channel line as a person reads it in the side panel: markdown links as
+ * their words (a link back to a project page dropped), and the internal ids
+ * an employee writes for its colleagues (`scr_…`, `wp_…`) taken out — the
+ * panel printed "[Open Project](/projects/wp_…)" and "`scr_01m3…`".
+ */
+function plainLine(text: string): string {
+  return text
+    .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (_m, label: string, url: string) => (url.startsWith("/projects/") ? "" : label))
+    .replace(/[（(]?\s*(?:id[:：]\s*)?`?\b(?:scr|wp|prj|fil|rnd|shot|cnv|msg|am|job|ch|usr|top|idea)_[0-9a-z]{6,}\b`?\s*[)）]?/gi, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
 }

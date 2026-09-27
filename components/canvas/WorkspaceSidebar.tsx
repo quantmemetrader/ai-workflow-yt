@@ -119,8 +119,26 @@ function AssistantRowList({ zh, picked }: { zh: boolean; picked: AgentKey | null
      employee's row stays the selected one while you read their thread. */
   const onChat = pathname === "/chat" || pathname.startsWith("/chat/t/");
   const onAgent = onChat && !picked;
+  const router = useRouter();
   return (
     <>
+      {/* Start a new chat with your assistant, one press from anywhere in
+          Chat ("new chat buttons more accessible"). The cookie keeps it new
+          until its first message (app/(app)/chat/page.tsx). */}
+      <button
+        type="button"
+        className="ws"
+        onClick={() => {
+          document.cookie = `tg_chat_new=1; path=/; max-age=${60 * 60 * 24 * 30}; samesite=lax`;
+          router.push("/chat?fresh=1");
+        }}
+        style={{ gap: 9, height: 32, width: "100%", border: "1px dashed #dcdcda", background: "#fff", fontFamily: "inherit", cursor: "pointer", marginBottom: 4 }}
+      >
+        <span style={{ width: 20, height: 20, borderRadius: 6, display: "inline-flex", alignItems: "center", justifyContent: "center", background: "#171717", color: "#fff", flexShrink: 0 }}>
+          <svg viewBox="0 0 24 24" width="12" height="12" aria-hidden><path d="M12 6v12M6 12h12" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" fill="none" /></svg>
+        </span>
+        <span>{zh ? "新对话" : "New chat"}</span>
+      </button>
       <Link href="/chat" className={`ws${onAgent ? " on" : ""}`} style={{ gap: 9, height: 32 }}>
         {/* The host's own assistant: the pixel robot, beside the employees'
             pixel faces below — it was a black cube like nothing else here. */}

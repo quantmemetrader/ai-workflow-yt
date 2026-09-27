@@ -482,7 +482,19 @@ export async function POST(request: Request) {
       // mid-flight — leaving the conversation titled "New chat" and the model
       // call unrecorded. `after` keeps the runtime alive for it, the same way
       // "last active" and "mark read" are handled.
-      if (isFirst) after(() => titleConversation(viewer, conversationId!, titleFrom));
+      if (isFirst) {
+        /* A readable name at once — the first words asked, without tags —
+           so the list never says "New chat" while the titling call runs (or
+           when it cannot: the person left, the request is over and `after`
+           has no request to attach to). The model's title replaces it. */
+        const first = titleFrom.replace(/@\S+/g, "").replace(/\[附件\][^\n]*/g, "").replace(/\s+/g, " ").trim().slice(0, 24);
+        if (first) await db.update(conversations).set({ title: first }).where(and(eq(conversations.id, conversationId!), eq(conversations.title, "New chat"))).catch(() => {});
+        try {
+          after(() => titleConversation(viewer, conversationId!, titleFrom));
+        } catch {
+          void titleConversation(viewer, conversationId!, titleFrom).catch(() => {});
+        }
+      }
     },
   });
 
