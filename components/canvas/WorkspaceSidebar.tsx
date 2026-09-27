@@ -193,6 +193,7 @@ function NavSpinner() {
 
 export function WorkspaceSidebar({
   studio,
+  projectChats = [],
   channels,
   people,
   conversations = [],
@@ -201,6 +202,8 @@ export function WorkspaceSidebar({
   now,
 }: {
   studio: string;
+  /** Each project's own chat. */
+  projectChats?: SidebarChannel[];
   channels: SidebarChannel[];
   people: SidebarPerson[];
   /** This person's own past conversations with the agent, newest first. */
@@ -408,6 +411,29 @@ export function WorkspaceSidebar({
             );
           })}
         </div>
+
+        {projectChats.length ? (
+          <>
+            <div className="sec">
+              <span style={{ flexGrow: 1 }}>{zh ? "项目对话" : "Project chats"}</span>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
+              {projectChats.map((c) => {
+                const active = pathname === `/chat/c/${c.slug}`;
+                return (
+                  <Link key={c.id} href={`/chat/c/${c.slug}`} prefetch={false} className={`ws${active ? " on" : c.unread ? " unread" : ""}`} title={c.name}>
+                    <span className="hs" aria-hidden>
+                      <Icon name="folder" size={12} color="#a3a3a3" />
+                    </span>
+                    <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.name}</span>
+                    {c.unread > 0 && !active && <span className="ct">{c.unread > 99 ? "99+" : c.unread}</span>}
+                    <NavSpinner />
+                  </Link>
+                );
+              })}
+            </div>
+          </>
+        ) : null}
 
         <div className="sec">{zh ? "消息" : "Direct messages"}</div>
         <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
