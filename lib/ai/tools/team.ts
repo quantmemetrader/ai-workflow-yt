@@ -10,6 +10,9 @@ import { ensureAgentChannel } from "@/lib/agents";
 import { latestPlan } from "@/lib/agents/proposals";
 import type { Handoff, HandoffArtifact } from "@/lib/agents/mentions";
 import { postMessage } from "@/lib/chat/service";
+import { rememberFilmOrigin } from "@/lib/agents/film-origin";
+import { asksForVideoCut } from "@/lib/projects/done-phrases";
+import { startCutForProject } from "@/lib/projects/start-cut";
 import { listWorkProjects, reachableThroughProjects, visibleProject, type WorkProjectRow } from "@/lib/projects/service";
 import { id as asId, num, str, type ToolContext, type ToolPack, type ToolResult } from "./types";
 
@@ -383,6 +386,28 @@ async function run(ctx: ToolContext, name: string, args: Record<string, unknown>
       assignment: { task },
     });
     if (!messageId) return { text: "Nothing was posted, so nothing was handed on." };
+
+    /* 剪辑师 asked to make a project's video: the cut starts in code, the
+       way the chat's own @剪辑师 does (`asksForVideoCut`), and the finished
+       film comes back to the assistant chat that asked. A model turn in the
+       project's chat set styles, or said it was done, instead of cutting. */
+    if (to === "video" && project && videoProjectId && ctx.viewer.modules.includes("video") && asksForVideoCut(task)) {
+      const cut = { id: project.id, title: project.title, channelId: project.channelId, videoProjectId };
+      const viewer = person ?? ctx.viewer;
+      if (ctx.conversationId) await rememberFilmOrigin(videoProjectId, ctx.conversationId).catch(() => {});
+      later(() => startCutForProject(viewer, cut, { via: "assistant", prompt: task }).then(() => undefined));
+      await audit(ctx.viewer, "agent.assign", {
+        objectType: "channel",
+        objectId: channelId,
+        module: "chat",
+        meta: { from, to, task: task.slice(0, 160), messageId, hop, project: project.id, cut: true },
+      });
+      return {
+        text: `剪辑师 has started cutting 《${project.title}》 (message ${messageId}): "${task}". The finished video will be posted back in this chat by itself, in a few minutes. Say in one sentence that 剪辑师 is cutting it now; do not @ them again and do not say it is finished.`,
+        changed: true,
+        artifacts: [{ kind: "assignment", id: messageId, title: `${AGENT_LABELS[to].nameLocal}：${task.slice(0, 80)}`, action: "assigned" }],
+      };
+    }
 
     const start = () =>
       dispatchAgentMentions({

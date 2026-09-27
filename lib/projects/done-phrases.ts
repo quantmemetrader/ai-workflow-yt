@@ -65,6 +65,16 @@ export function holdsTheCut(body: string): boolean {
   return MORE_COMING.test(text);
 }
 
+/**
+ * Whether a message asks for a video to be made (「剪一条 30 秒 Reels」,
+ * "make the video"). The chat's @剪辑师 in a project and the assistant's
+ * hand-off to 剪辑师 both start the cut on this in code: the model turn in
+ * the project's chat set styles, or said it had already cut it, instead.
+ */
+export function asksForVideoCut(body: string): boolean {
+  return !holdsTheCut(body) && /(剪|做|出|生成|制作|渲染|make|cut|render|create)[^。！？!?\n]{0,20}(视频|成片|完整版|版本|reels?|shorts?|短视频|片子|一条|video|film)/i.test(body);
+}
+
 /** The longest message that is still a hand-over rather than a brief. */
 const MAX_LENGTH = 80;
 

@@ -745,6 +745,22 @@ const EndCard: React.FC<TemplateProps> = ({ g, accent, text, sub, options, env }
   })();
   const creditLines = creditsFit?.lines ?? [];
   const creditSize = creditsFit?.size ?? g.px(V2.size.credits);
+  /* A short's close: her face stays, only the 素材来源 line over a soft shade at the foot (see `resolveLayout`). */
+  if (options.compact) {
+    if (!creditLines.length) return null;
+    return (
+      <AbsoluteFill style={{ opacity: env.on }}>
+        <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: g.px(360), background: "linear-gradient(to bottom, rgba(14,14,16,0), rgba(14,14,16,0.72))" }} />
+        <div style={{ position: "absolute", left: g.safeLeft, width: g.safeW, bottom: g.H - g.px(1745), textAlign: "center" }}>
+          {creditLines.map((l, i) => (
+            <div key={i} style={{ ...bold(creditSize, V2.ink), opacity: 0.8, lineHeight: 1.4, whiteSpace: "nowrap" }}>
+              {l}
+            </div>
+          ))}
+        </div>
+      </AbsoluteFill>
+    );
+  }
   /* The closing question: three lines at 44 px, or smaller (to 32), or a fourth line, rather than cut. */
   const subFit = sub ? fitWrappedOrMark(sub, g.safeW, g.px(V2.size.endSub), g.px(32), 3) : { size: g.px(V2.size.endSub), lines: [] as string[] };
   const subLines = subFit.lines;

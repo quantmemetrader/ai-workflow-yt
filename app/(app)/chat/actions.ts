@@ -15,7 +15,7 @@ import { canEditProject } from "@/lib/video/access";
 import { agentTag } from "@/lib/agents/catalog";
 import { setFileAccess } from "@/lib/files/access";
 import { binImage, binVideo } from "@/lib/chat/bin";
-import { holdsTheCut, looksLikeDone } from "@/lib/projects/done-phrases";
+import { asksForVideoCut, holdsTheCut, looksLikeDone } from "@/lib/projects/done-phrases";
 import { startCutForProject } from "@/lib/projects/start-cut";
 import { armAutoCut } from "@/lib/projects/live";
 import { readAutoCut } from "@/lib/projects/live-types";
@@ -223,8 +223,7 @@ export async function sendChannelMessage(
    * already cut it" instead of making anything.
    */
   const asksForVideo =
-    tags.length === 1 && tags[0] === "video" && !holdsTheCut(body) &&
-    /(剪|做|出|生成|制作|渲染|make|cut|render|create)[^。！？!?\n]{0,20}(视频|成片|完整版|版本|reels?|shorts?|短视频|片子|一条|video|film)/i.test(body);
+    tags.length === 1 && tags[0] === "video" && asksForVideoCut(body);
   if (wp?.videoProjectId && asksForVideo && viewer.modules.includes("video")) {
     const project = { id: wp.id, title: wp.title, channelId: wp.channelId, videoProjectId: wp.videoProjectId };
     const brief = body.replace(/@\S+/g, "").trim();

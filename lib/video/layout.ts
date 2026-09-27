@@ -103,6 +103,9 @@ export const TIMING = {
   diagramMax: 8000,
   stingerMs: 700,
   endCardMax: 3000,
+  /** A short: 90 s or less. It ends on her face, with the credits small over the picture for the last 2.5 s. */
+  shortMaxMs: 90_000,
+  shortCreditsMs: 2500,
   /** Start on the first syllable of the noun: −2 … +3 frames. */
   land: [-2 * MS_PER_FRAME, 3 * MS_PER_FRAME] as const,
   enterMs: 300,
@@ -735,16 +738,26 @@ export function resolveLayout(input: LayoutInput): LayoutPlan {
   }
 
   /* ---- 3. end card, lower third / chip, stingers -------------------- */
-  const endStart = round(Math.max(0, totalMs - TIMING.endCardMax));
-  graphics.push({
-    id: gid("end-card", "close"),
-    kind: "end-card",
-    startMs: endStart,
-    endMs: totalMs,
-    zone: "full",
-    props: { text: input.endCard.titleZh, sub: input.endCard.questionZh, creditsLine: input.credits?.line ?? "", enter: "fade" },
-  });
-  ledger.take({ id: gid("end-card", "close"), startMs: endStart, endMs: totalMs, layer: "graphic" });
+  /*
+   * A short (a Reel, a Short: 90 s or less) ends on her face. The full-screen
+   * card took the last 3 s of a 21 s reel and blacked her out on the
+   * punchline (「但是创造不了新的能力」 said over the void); a short keeps only
+   * the 素材来源 line, small, over the picture, and no chapter stingers.
+   */
+  const short = totalMs <= TIMING.shortMaxMs;
+  const creditsLine = input.credits?.line ?? "";
+  const endStart = short && !creditsLine ? totalMs : round(Math.max(0, totalMs - (short ? TIMING.shortCreditsMs : TIMING.endCardMax)));
+  if (endStart < totalMs) {
+    graphics.push({
+      id: gid("end-card", "close"),
+      kind: "end-card",
+      startMs: endStart,
+      endMs: totalMs,
+      zone: short ? "lower" : "full",
+      props: { text: input.endCard.titleZh, sub: input.endCard.questionZh, creditsLine, enter: "fade", ...(short ? { compact: true } : {}) },
+    });
+    if (!short) ledger.take({ id: gid("end-card", "close"), startMs: endStart, endMs: totalMs, layer: "graphic" });
+  }
 
   const nameSentence = input.lowerThird.sentenceId ? sentence.get(input.lowerThird.sentenceId) : undefined;
   const nameAt = nameSentence ? (anchorIn(nameSentence, `我是${input.lowerThird.name}`) ?? anchorIn(nameSentence, input.lowerThird.name))?.startMs ?? nameSentence.startMs : null;
@@ -773,7 +786,7 @@ export function resolveLayout(input: LayoutInput): LayoutPlan {
     }
   };
 
-  input.chapters.forEach((ch, i) => {
+  (short ? [] : input.chapters).forEach((ch, i) => {
     const s = sentence.get(ch.sentenceId);
     if (!s) return;
     /* On the jump cut the chapter opens with, when there is one within five frames; else two frames before the first word. */
