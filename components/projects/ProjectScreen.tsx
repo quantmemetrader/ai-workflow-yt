@@ -60,7 +60,10 @@ export function ProjectScreen({
   voices = [],
   canApprove = false,
   privateChats = [],
+  me = null,
 }: {
+  /** The person, for the steps that are theirs (their picture and name, not the assistant's robot). */
+  me?: { id: string; name: string; avatarUrl: string | null } | null;
   /** Your private chats that worked on this project, linked under the activity line. */
   privateChats?: { id: string; title: string }[];
   /** An owner or admin: may OK the script in one press (脚本可以了). */
@@ -519,6 +522,7 @@ export function ProjectScreen({
                    afterwards where it went; its popover opens under it. */
                 <div key={s.key} style={{ position: "relative", minWidth: 0, display: "flex" }}>
                   <StepCard
+                    me={me}
                     step={s}
                     n={i + 1}
                     zh={zh}
@@ -531,7 +535,7 @@ export function ProjectScreen({
                 /* The 剪辑 step types while the film is being made: the
                    director's step or the render's percent, and how long
                    it has been at it. */
-                <StepCard key={s.key} step={s} n={i + 1} zh={zh} live={s.key === "edit" ? liveWork : null} />
+                <StepCard key={s.key} step={s} n={i + 1} zh={zh} live={s.key === "edit" ? liveWork : null} me={me} />
               ),
             ])}
           </div>
@@ -1647,7 +1651,7 @@ function StepArrow({ live, done }: { live: boolean; done: boolean }) {
  * `published` (once marked: a green card, the date, and the platforms' marks,
  * each a link to the post).
  */
-function StepCard({ step: s, n, zh, published = null, onPublish, live = null }: { step: ProjectStep; n: number; zh: boolean; published?: Publication | null; onPublish?: () => void; live?: LiveWork | null }) {
+function StepCard({ step: s, n, zh, published = null, onPublish, live = null, me = null }: { step: ProjectStep; n: number; zh: boolean; published?: Publication | null; onPublish?: () => void; live?: LiveWork | null; me?: { id: string; name: string; avatarUrl: string | null } | null }) {
   const you = s.owner === "you";
   const color = you ? "#171717" : AGENT_COLORS[s.owner as AgentKey];
   const isPublished = s.key === "deliver" && s.state === "done";
@@ -1670,11 +1674,12 @@ function StepCard({ step: s, n, zh, published = null, onPublish, live = null }: 
     <div style={{ ...frame, borderRadius: 12, padding: "10px 12px", minWidth: 0, flexGrow: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
         <span style={{ opacity: dim ? 0.5 : 1, display: "flex", flexShrink: 0 }}>
-          <AgentIcon agent={you ? null : (s.owner as AgentKey)} size={22} radius={6} />
+          {you && me ? <PersonAvatar id={me.id} url={me.avatarUrl} name={me.name} size={22} radius={11} /> : <AgentIcon agent={you ? null : (s.owner as AgentKey)} size={22} radius={6} />}
         </span>
         <span style={{ fontSize: 12.5, fontWeight: 600, lineHeight: 1.3, color: s.state === "you" ? "#fff" : dim ? "#a3a3a3" : "#171717", minWidth: 0, overflowWrap: "anywhere" }}>
           <span style={{ fontWeight: 500, color: s.state === "you" ? "#8a8a8a" : "#b3b3b3", marginRight: 5, fontVariantNumeric: "tabular-nums" }}>{n}</span>
           {s.label}
+          {you ? <span style={{ fontWeight: 400, color: s.state === "you" ? "#b3b3b3" : "#a3a3a3", marginLeft: 4 }}>{zh ? "（你）" : "(you)"}</span> : null}
         </span>
         {isPublished ? (
           <span style={{ marginLeft: "auto", display: "flex", flexShrink: 0 }}>

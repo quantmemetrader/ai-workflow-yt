@@ -48,6 +48,7 @@ export default async function ScriptPage({ params }: { params: Promise<{ id: str
       approvers={approvers.map((a) => ({ id: a.id, name: (zh && a.nameLocal) || a.name, avatarUrl: a.avatarUrl }))}
       viewerId={viewer.id}
       viewerIsAdmin={viewer.role === "owner" || viewer.role === "admin"}
+      viewerName={(zh && viewer.nameLocal) || viewer.name}
       viewerAvatar={viewer.avatarUrl}
       model={modelFor.drafting()}
       canMakeVideo={viewer.modules.includes("video")}

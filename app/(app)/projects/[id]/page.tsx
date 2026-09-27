@@ -47,6 +47,7 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
       voices={voices}
       privateChats={privateChats.map((c) => ({ id: c.id, title: c.title }))}
       canApprove={viewer.role === "owner" || viewer.role === "admin"}
+      me={{ id: viewer.id, name: (zh && viewer.nameLocal) || viewer.name, avatarUrl: viewer.avatarUrl }}
       people={people.map((p) => ({ id: p.id, name: (zh && p.nameLocal) || p.name, avatarUrl: p.avatarUrl, title: p.title, email: p.email }))}
     />
   );

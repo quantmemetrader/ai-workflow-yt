@@ -1,5 +1,6 @@
 "use client";
 
+import { PersonAvatar } from "@/components/ui/PersonAvatar";
 import * as React from "react";
 import Link from "next/link";
 import { AgentIcon } from "@/components/agents/AgentIcon";
@@ -17,7 +18,7 @@ import type { ScriptRun } from "@/lib/script/run";
  */
 type State = "done" | "running" | "you" | "todo";
 
-export function RunPanel({ run, zh, onApprove, writing }: { run: ScriptRun; zh: boolean; onApprove?: () => void; writing?: boolean }) {
+export function RunPanel({ run, zh, onApprove, writing, me = null }: { run: ScriptRun; zh: boolean; onApprove?: () => void; writing?: boolean; /** The person, for the steps that are theirs: their picture and name, not "你". */ me?: { id: string; name: string; avatarUrl: string | null } | null }) {
   const t = (a: string, b: string) => (zh ? a : b);
   const latest = run.versions[run.versions.length - 1] ?? null;
   /*
@@ -131,7 +132,9 @@ export function RunPanel({ run, zh, onApprove, writing }: { run: ScriptRun; zh: 
                 : { border: "1px solid #e2e2e2", background: "#fff" };
         const inner = (
           <div style={{ ...box, borderRadius: 10, padding: "8px 10px", display: "flex", gap: 9, alignItems: "flex-start" }}>
-            {s.owner === "you" ? (
+            {s.owner === "you" && me ? (
+              <PersonAvatar id={me.id} url={me.avatarUrl} name={me.name} size={20} radius={10} />
+            ) : s.owner === "you" ? (
               <span style={{ width: 20, height: 20, borderRadius: 6, background: dark && !dim ? "#fff" : "#e2e2e2", color: "#171717", fontSize: 10, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: 1 }}>
                 {t("你", "U")}
               </span>
@@ -141,7 +144,7 @@ export function RunPanel({ run, zh, onApprove, writing }: { run: ScriptRun; zh: 
             <div style={{ minWidth: 0, flexGrow: 1 }}>
               <div style={{ display: "flex", alignItems: "baseline", gap: 6, minWidth: 0 }}>
                 <span style={{ fontSize: 12.5, fontWeight: 600, color: dark && !dim ? "#fff" : dim ? "#999999" : "#171717", whiteSpace: "nowrap" }}>
-                  {s.owner === "you" ? t("你", "You") : zh ? AGENT_LABELS[s.owner].nameLocal : AGENT_LABELS[s.owner].name}
+                  {s.owner === "you" ? (me ? `${me.name}${t("（你）", " (you)")}` : t("你", "You")) : zh ? AGENT_LABELS[s.owner].nameLocal : AGENT_LABELS[s.owner].name}
                   <span style={{ fontWeight: 400, color: dark && !dim ? "#b3b3b3" : "#999999" }}> · {s.name}</span>
                 </span>
                 <span style={{ flexGrow: 1 }} />

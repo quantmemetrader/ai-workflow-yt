@@ -45,6 +45,7 @@ export function DetailView({
   approvers,
   viewerId,
   viewerIsAdmin = false,
+  viewerName = null,
   viewerAvatar = null,
   locale,
   model,
@@ -60,6 +61,8 @@ export function DetailView({
   viewerId: string;
   /** An owner or admin: may approve any version, whoever was asked. */
   viewerIsAdmin?: boolean;
+  /** The person's name, for the steps that are theirs. */
+  viewerName?: string | null;
   /** The signed-in person's own picture, for the lines they wrote. */
   viewerAvatar?: string | null;
   locale: string;
@@ -266,7 +269,7 @@ export function DetailView({
               q.set("tab", "approval");
               router.replace(`/script/${id}?${q.toString()}`, { scroll: false });
             }}
-          />
+           me={viewerName ? { id: viewerId, name: viewerName, avatarUrl: viewerAvatar } : null} />
         ) : undefined
       }
       thread={
