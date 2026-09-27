@@ -203,7 +203,7 @@ export async function cutTake(take: Take, tr: Pick<TranscribeOut, "words">, hook
   /* A short keeps only its chosen sentences: the cut works over the take's
      speech, so its pieces are clipped to those sentences' spans (with a
      breath either side) — without this the "short" came out 5:28. */
-  const clipped = sentences === all ? planned : clipToSentences(planned, sentences);
+  const clipped = sentences === all ? planned : clipToSentences(planned, sentences, all);
   const cut = sentences === all ? clipped : { ...clipped, report: { ...clipped.report, noteZh: `精华短视频：从 ${all.length} 句里选了 ${sentences.length} 句，成片约 ${Math.round(clipped.lengthMs / 1000)} 秒` } };
   log(`cut: ${cut.pieces.length} pieces, ${sec(cut.lengthMs)} s kept, ${sec(cut.removedMs)} s removed; ${cut.report.noteZh}`);
   return {
@@ -753,7 +753,7 @@ async function pickHighlights<T extends { id: string; startMs: number; endMs: nu
 }
 
 /** The cut's pieces, kept only inside the chosen sentences (a short). */
-function clipToSentences<C extends { pieces: { clipId: string; inMs: number; outMs: number }[]; lengthMs: number; removedMs: number }>(cut: C, sentences: { startMs: number; endMs: number }[]): C {
+function clipToSentences<C extends { pieces: { clipId: string; inMs: number; outMs: number }[]; lengthMs: number; removedMs: number }>(cut: C, sentences: { startMs: number; endMs: number }[], all: { startMs: number }[] = sentences): C {
   const spans = sentences.map((s) => ({ a: s.startMs - 120, b: s.endMs + 160 })).sort((x, y) => x.a - y.a);
   const pieces: C["pieces"] = [];
   for (const p of cut.pieces) {
@@ -764,6 +764,15 @@ function clipToSentences<C extends { pieces: { clipId: string; inMs: number; out
     }
   }
   pieces.sort((x, y) => x.inMs - y.inMs);
+  /* The short ends on a breath, not on its last syllable: the reel stopped
+     the frame she finished 「护城河」, and read as cut off. Up to 0.45 s of
+     the quiet after it, never into the next sentence she says. */
+  const last = pieces[pieces.length - 1];
+  if (last) {
+    const next = all.map((x) => x.startMs).filter((ms) => ms >= last.outMs).sort((a, b) => a - b)[0] ?? Infinity;
+    const out = Math.min(last.outMs + 450, next - 80);
+    if (out > last.outMs) pieces[pieces.length - 1] = { ...last, outMs: out };
+  }
   const lengthMs = pieces.reduce((n, p) => n + (p.outMs - p.inMs), 0);
   return { ...cut, pieces, removedMs: cut.removedMs + (cut.lengthMs - lengthMs), lengthMs };
 }
