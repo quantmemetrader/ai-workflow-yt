@@ -734,7 +734,7 @@ export async function titleConversation(viewer: Viewer, conversationId: string, 
         {
           role: "system",
           content:
-            "Title this work conversation in at most six words, in the language of the message. No quotes, no trailing punctuation.",
+            "Title this work conversation in at most six words, in the language of the message, naming its SUBJECT (\"Arc 链前景\", \"后量子钱包脚本\"), never the kind of question (not \"What are your thoughts\", not \"A question\"). Leave out @names. No quotes, no trailing punctuation.",
         },
         { role: "user", content: firstMessage.slice(0, 500) },
       ],

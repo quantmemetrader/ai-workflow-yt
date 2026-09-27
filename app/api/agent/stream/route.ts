@@ -510,7 +510,13 @@ export async function POST(request: Request) {
            so the list never says "New chat" while the titling call runs (or
            when it cannot: the person left, the request is over and `after`
            has no request to attach to). The model's title replaces it. */
-        const first = titleFrom.replace(/@\S+/g, "").replace(/\[附件\][^\n]*/g, "").replace(/\s+/g, " ").trim().slice(0, 24);
+        const first = titleFrom
+          .replace(/@\S+/g, "")
+          .replace(/\[附件\][^\n]*/g, "")
+          .replace(/^\s*(what are your thoughts (on|about)|what do you think (of|about)|should i make a video (on|about)|tell me about|can you|please|你怎么看|你觉得|说说|帮我)\s*/i, "")
+          .replace(/\s+/g, " ")
+          .trim()
+          .slice(0, 24);
         if (first) await db.update(conversations).set({ title: first }).where(and(eq(conversations.id, conversationId!), eq(conversations.title, "New chat"))).catch(() => {});
         try {
           after(() => titleConversation(viewer, conversationId!, titleFrom));

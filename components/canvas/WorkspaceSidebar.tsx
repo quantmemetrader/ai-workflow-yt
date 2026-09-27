@@ -339,7 +339,7 @@ export function WorkspaceSidebar({
               <span className="aside">{zh ? "仅你可见" : "only you"}</span>
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
-              {(historyOpen ? conversations : conversations.slice(0, 3)).map((c) => {
+              {(historyOpen ? conversations : conversations.slice(0, 2)).map((c) => {
                 const active = pathname === `/chat/t/${c.id}`;
                 return (
                   <Link key={c.id} href={`/chat/t/${c.id}`} prefetch={false} className={`ws${active ? " on" : ""}`} title={c.title}>
@@ -356,15 +356,14 @@ export function WorkspaceSidebar({
                   </Link>
                 );
               })}
-              {conversations.length > 3 ? (
-                <button type="button" className="more" onClick={() => setHistoryOpen((v) => !v)}>
-                  {historyOpen
-                    ? zh
-                      ? "收起"
-                      : "Show fewer"
-                    : zh
-                      ? `+ 再看 ${conversations.length - 3} 条`
-                      : `+ ${conversations.length - 3} more`}
+              {/* Two at a glance, the rest a press away ("just a few, the
+                  remaining inside a dropdown"). */}
+              {conversations.length > 2 ? (
+                <button type="button" className="more" aria-expanded={historyOpen} onClick={() => setHistoryOpen((v) => !v)} style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                  {historyOpen ? (zh ? "收起" : "Show fewer") : zh ? `更多 ${conversations.length - 2} 条` : `${conversations.length - 2} more`}
+                  <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden style={{ transform: historyOpen ? "rotate(180deg)" : undefined }}>
+                    <path d="m6.5 9.5 5.5 5.5 5.5-5.5" />
+                  </svg>
                 </button>
               ) : null}
             </div>
