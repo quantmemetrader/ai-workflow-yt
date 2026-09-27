@@ -133,7 +133,9 @@ export async function generateReport(viewer: Viewer, period: string): Promise<Re
     lines.push("", "No entries have been recorded, so there is no movement to report.");
   }
 
-  const waiting = spend.filter((s) => s.state === "requested");
+  /* `awaiting_approval` is what `raiseSpend` writes; this read "requested",
+     a state no request is ever in, so the report always said none waited. */
+  const waiting = spend.filter((s) => s.state === "awaiting_approval");
   figures.spendRequestsWaiting = waiting.length;
   if (waiting.length) {
     lines.push("", "Spend requests waiting on a decision:");
