@@ -1,3 +1,4 @@
+import { mirrorToProject } from "@/lib/agents/project-mirror";
 import "server-only";
 import { and, asc, desc, eq, ilike, isNull, or } from "drizzle-orm";
 import { db } from "@/lib/db/client";
@@ -267,6 +268,10 @@ async function run(ctx: ToolContext, name: string, args: Record<string, unknown>
           .join("\n"),
         ...(projectReceipt.length ? { artifacts: projectReceipt, changed: true } : {}),
       };
+    }
+    /* Written from a private chat: the project's own chat says so too. */
+    if (project && ctx.privateReply) {
+      await mirrorToProject(ctx.viewer.tenantId, project.id, "script", `《${res.title}》的${project.created ? "初稿" : "新一版"}写好了：${res.beats} 个分镜。在脚本页看、改：/script/${res.id}`).catch((err) => console.error("[script] could not tell the project", err));
     }
     return {
       /* The receipt. Inside a project the script already existed and was

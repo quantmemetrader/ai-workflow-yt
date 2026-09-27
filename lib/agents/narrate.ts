@@ -154,7 +154,9 @@ async function say(job: Job, phase: "start" | "done" | "failed", text: string, r
     if (phase !== "start" && final && videoProjectId) {
       await answerFilmOrigin(videoProjectId, text, rendered?.fileId ?? null).catch((err) => console.error("[narrate] could not answer the chat that asked", err));
     }
-    if (phase !== "start" && final) {
+    /* The start line too, now: work started from a private chat left the
+       project's chat empty until the film was out. */
+    if (final) {
       const wp = await workProjectRowOf(videoProjectId);
       if (wp) {
         const production = await ensureAgentChannel(job.tenantId, "production");
