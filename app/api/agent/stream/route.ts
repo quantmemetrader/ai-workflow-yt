@@ -76,21 +76,23 @@ async function describeAttachments(viewer: Viewer, conversationId: string, raw: 
     }
   }
 
-  const lines: string[] = [];
-  for (const f of files) {
-    let note = "";
-    if ((f.kind === "video" || f.kind === "image") && bin) {
-      try {
-        /* Once: a take already in the bin is named, not added again. A
-           picture goes in as a five-second shot (`binImage`). */
-        const { clipId } = f.kind === "image" ? await binImage(viewer, bin.videoProjectId, f.id) : await binVideo(viewer, bin.videoProjectId, f.id);
-        note = f.kind === "image" ? ` · 已做成 5 秒画面放进项目素材《${bin.title}》(clip id ${clipId})` : ` · 已加入项目素材《${bin.title}》(clip id ${clipId})`;
-      } catch (err) {
-        console.error("[agent] could not put an attached video in the project's bin", err);
+  /* All at once, not one after another: three pictures took a minute. */
+  const lines = await Promise.all(
+    files.map(async (f) => {
+      let note = "";
+      if ((f.kind === "video" || f.kind === "image") && bin) {
+        try {
+          /* Once: a take already in the bin is named, not added again. A
+             picture goes in as a five-second shot (`binImage`). */
+          const { clipId } = f.kind === "image" ? await binImage(viewer, bin.videoProjectId, f.id) : await binVideo(viewer, bin.videoProjectId, f.id);
+          note = f.kind === "image" ? ` · 已做成 5 秒画面放进项目素材《${bin.title}》(clip id ${clipId})` : ` · 已加入项目素材《${bin.title}》(clip id ${clipId})`;
+        } catch (err) {
+          console.error("[agent] could not put an attached file in the project's bin", err);
+        }
       }
-    }
-    lines.push(`[附件] ${f.name} (${f.kind}${f.durationMs ? `, ${videoClock(f.durationMs)}` : ""}) file id ${f.id}${note}`);
-  }
+      return `[附件] ${f.name} (${f.kind}${f.durationMs ? `, ${videoClock(f.durationMs)}` : ""}) file id ${f.id}${note}`;
+    }),
+  );
   return { text: lines.join("\n"), fileIds: files.map((f) => f.id) };
 }
 
@@ -383,8 +385,31 @@ export async function POST(request: Request) {
            the project's bin): what the employee reads, what the thread keeps
            and what a reload draws as cards. The first one is also "the file
            on screen" for tools that read one, unless the screen said which. */
-        const attached = hasAttachments ? await describeAttachments(viewer, conversationId!, body.attachments, { videoProjectId: ids.projectId, reader: speaker ? speakerViewer : null }) : { text: "", fileIds: [] };
+        /*
+         * The question is on record the moment it arrives — before the files
+         * are worked on (a picture becomes a shot, a video goes in the bin:
+         * seconds each). It used to be saved only after that, so a request
+         * that died meanwhile left nothing at all: "I asked him to make the
+         * video, changed tabs, and it went away". Now it is there at once
+         * (and 重新回答 can pick it up if anything fails), the page is told
+         * what is happening, and the turn runs on the server whatever the
+         * page does.
+         */
+        let questionId: string | null = null;
+        if (hasAttachments && !retry) {
+          questionId = newId("am");
+          await db.insert(agentMessages).values({ id: questionId, conversationId: conversationId!, role: "user", content: content || "（附件）", status: "complete" });
+          send({ type: "notice", text: (viewer.locale ?? "zh-CN").startsWith("zh") ? "正在处理附件…可以先去别的页面，做好会留在这里。" : "Working on the files… you can leave; the answer stays here." });
+        }
+        const ping = hasAttachments ? setInterval(() => send({ type: "ping" }), 8000) : null;
+        let attached: { text: string; fileIds: string[] };
+        try {
+          attached = hasAttachments ? await describeAttachments(viewer, conversationId!, body.attachments, { videoProjectId: ids.projectId, reader: speaker ? speakerViewer : null }) : { text: "", fileIds: [] };
+        } finally {
+          if (ping) clearInterval(ping);
+        }
         const turnContent = attached.text ? (content ? `${content}\n\n${attached.text}` : attached.text) : content;
+        if (questionId && turnContent) await db.update(agentMessages).set({ content: turnContent }).where(eq(agentMessages.id, questionId));
         /* Nothing typed, and none of the files named is one this person may
            read (a stale id, an upload that never finished): there is no
            turn to run, and the model is not asked an empty question. */
@@ -441,7 +466,8 @@ export async function POST(request: Request) {
              mid-answer ("I changed screens and it just disappeared"). Only
              the Stop button ends it (`/api/agent/stop`). */
           signal: stopper.signal,
-          retry,
+          /* Already on record: a retry, or a question saved before its files were worked on. */
+          retry: retry || questionId !== null,
         })) {
           if (event.type === "delta") said += event.text;
           if (event.type === "tool" && event.status === "ok" && event.artifacts?.length) {

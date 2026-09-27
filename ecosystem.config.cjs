@@ -60,7 +60,7 @@ module.exports = {
       // A reload is rolling: the new instance must be listening before the
       // old one goes, and the old one gets long enough to finish whatever
       // request it has (a video page opened during a deploy used to hang).
-      kill_timeout: 30_000,
+      kill_timeout: 300_000,
       wait_ready: false,
       listen_timeout: 60_000,
 

@@ -71,12 +71,14 @@ export async function binImage(viewer: Viewer, videoProjectId: string, fileId: s
     const out = join(dir, "still.mp4");
     /* Blurred cover fill + the whole picture fitted on top, then a gentle
        push-in (1.00 → ~1.09 over five seconds). */
+    /* The picture whole over a blurred fill of itself; the edit adds its own
+       motion. About a second: the push-in drawn here used to cost three. */
     const graph = [
-      "[0:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=24:2,eq=brightness=-0.08[bg]",
+      "[0:v]scale=540:960:force_original_aspect_ratio=increase,crop=540:960,boxblur=12:1,eq=brightness=-0.08,scale=1080:1920[bg]",
       "[0:v]scale=1080:1920:force_original_aspect_ratio=decrease[fg]",
-      "[bg][fg]overlay=(W-w)/2:(H-h)/2,scale=1188:2112,zoompan=z='1+0.0006*on':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=1080x1920:fps=30,format=yuv420p[v]",
+      "[bg][fg]overlay=(W-w)/2:(H-h)/2,format=yuv420p[v]",
     ].join(";");
-    await run("ffmpeg", ["-v", "error", "-y", "-loop", "1", "-t", "5", "-i", String(url), "-filter_complex", graph, "-map", "[v]", "-t", "5", "-r", "30", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-movflags", "+faststart", out], { timeout: 90_000 });
+    await run("ffmpeg", ["-v", "error", "-y", "-loop", "1", "-framerate", "30", "-t", "5", "-i", String(url), "-filter_complex", graph, "-map", "[v]", "-t", "5", "-c:v", "libx264", "-preset", "ultrafast", "-tune", "stillimage", "-crf", "22", "-movflags", "+faststart", out], { timeout: 60_000 });
     const base = img.name.replace(/\.[a-z0-9]{2,5}$/i, "").slice(0, 50);
     const made = await importVideoBytes(viewer, {
       bytes: new Uint8Array(await readFile(out)),
