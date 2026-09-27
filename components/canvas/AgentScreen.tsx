@@ -294,9 +294,39 @@ export function AgentScreen({
     });
   }
 
+  /*
+   * The thread follows its last message. It used to scroll only when a
+   * message was added, so whatever grew after — the live "剪辑中" row, a
+   * video card's poster, an answer's tools — sat below the fold ("scroll to
+   * the last message always"). Now any growth keeps the bottom in view,
+   * unless the person has scrolled up to read (more than ~160px from the
+   * bottom); sending snaps back down.
+   */
+  const pinned = useRef(true);
   useEffect(() => {
     const el = scroller.current;
-    if (el) el.scrollTop = el.scrollHeight;
+    if (!el) return;
+    const toBottom = () => {
+      if (pinned.current) el.scrollTop = el.scrollHeight;
+    };
+    const onScroll = () => {
+      pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 160;
+    };
+    el.addEventListener("scroll", onScroll, { passive: true });
+    const mo = new MutationObserver(toBottom);
+    mo.observe(el, { childList: true, subtree: true, characterData: true });
+    /* Posters and pictures change the height when they load, with no DOM change. */
+    el.addEventListener("load", toBottom, true);
+    toBottom();
+    return () => {
+      el.removeEventListener("scroll", onScroll);
+      el.removeEventListener("load", toBottom, true);
+      mo.disconnect();
+    };
+  }, []);
+  useEffect(() => {
+    const el = scroller.current;
+    if (el && pinned.current) el.scrollTop = el.scrollHeight;
   }, [messages]);
 
   /* Arriving with an employee picked: the caret goes after their tag, so the
@@ -337,6 +367,7 @@ export function AgentScreen({
        way would be a message that arrives without it. */
     const files = opts.retry ? [] : attached.flatMap((a) => (a.fileId ? [{ id: a.fileId, name: a.name, size: a.size, kind: kindOf(a.name, a.mime) }] : []));
     if (busy || (!opts.retry && ((!asksSomething(text) && !files.length) || uploading))) return;
+    pinned.current = true;
     setBusy(true);
     setNotice(null);
     /* The next draft starts addressed to whoever this one was: a question to
@@ -653,7 +684,12 @@ export function AgentScreen({
                     <AgentRow key={m.id} message={m} zh={zh} locale={locale} />
                   ),
                 )}
-                <ChatLiveWork conversationId={conversationId} settled={messages.filter((x) => x.role === "assistant" && x.status !== "streaming").length} zh={zh} shown={messages.flatMap((x) => (x.videos ?? []).map((v) => v.id))} />
+                {/* Pinned to the bottom of the thread, just above the box you
+                    type in: the film being made is always in view, however far
+                    up you have scrolled, instead of appearing below the fold. */}
+                <div style={{ position: "sticky", bottom: 0, zIndex: 2, background: "linear-gradient(to top, #fff 70%, rgba(255,255,255,0))", paddingTop: 6 }}>
+                  <ChatLiveWork conversationId={conversationId} settled={messages.filter((x) => x.role === "assistant" && x.status !== "streaming").length} zh={zh} shown={messages.flatMap((x) => (x.videos ?? []).map((v) => v.id))} />
+                </div>
                 {/* A question left without an answer (the answer stopped before a
                     word, or never came): one press answers it again — the site
                     recovers, the person does not have to type it twice. */}
