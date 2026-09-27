@@ -21,7 +21,7 @@ import { bumpLive, useLiveProject } from "@/lib/client/live";
 import { isRunning } from "@/lib/projects/live-types";
 import { ClipsNextStep } from "@/components/projects/ClipsNextStep";
 import { LivePill, useLiveRow } from "@/components/chat/LivePill";
-import type { ProjectDetail, ProjectStep, StepPerson } from "@/lib/projects/service";
+import type { ProjectDetail, ProjectStep } from "@/lib/projects/service";
 import { frontierStep } from "@/lib/home/roles";
 import { cleanCodes, type ProjectSource } from "@/lib/projects/topic";
 import { JobChip } from "@/components/chat/Working";
@@ -512,50 +512,19 @@ export function ProjectScreen({
             />
           ) : null}
 
-          {/* ---- where it stands ---- */}
-          {/* The line, left to right, with the way it goes drawn between steps. */}
-          <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) 22px minmax(0,1fr) 22px minmax(0,1fr) 22px minmax(0,1fr) 22px minmax(0,1fr)", alignItems: "stretch" }}>
-            {p.steps.flatMap((s, i) => [
-              ...(i ? [<StepArrow key={`a${i}`} live={s.state === "running" || s.state === "you"} done={p.steps[i - 1].state === "done" || p.steps[i - 1].state === "skipped"} />] : []),
-              s.key === "deliver" ? (
-                /* The last step carries the one press that finishes the
-                   project once the cut is out (「已发布 · 标记完成」), and
-                   afterwards where it went; its popover opens under it. */
-                <div key={s.key} style={{ position: "relative", minWidth: 0, display: "flex" }}>
-                  <StepCard
-                    me={me}
-                    person={p.people.deliver}
-                    step={s}
-                    n={i + 1}
-                    zh={zh}
-                    published={p.status === "done" ? p.published : null}
-                    /* The press itself is the flow bar's 「确认交付」 now: one place to press, not two. */
-                  />
-                  {publishing === "step" ? publishPopover("right") : null}
-                </div>
-              ) : (
-                /* The 剪辑 step types while the film is being made: the
-                   director's step or the render's percent, and how long
-                   it has been at it. */
-                <StepCard key={s.key} step={s} n={i + 1} zh={zh} live={s.key === "edit" ? liveWork : null} me={me} person={s.key === "clips" ? p.people.clips : null} />
-              ),
-            ])}
-          </div>
-
-          {/* ---- whose turn it is, and the two presses that move it ---- */}
+          {/* ---- where it stands: the steps one below the other ---- */}
           {/*
-           * "A button to confirm and send to the next person in the flow, and
-           * to add comments and send back to the previous one." The step it
-           * has got to, who holds it, and those two presses — each one leaves
-           * a line in the project's chat, so the history says who moved it.
+           * Read top to bottom like a checklist: a tick on each step once it
+           * is done, and the step it has got to open, with who holds it and
+           * the two presses — confirm and hand on, or send back with a note —
+           * inside it. The row of five cards with a bar under it read as two
+           * things side by side ("make it a flow, one below the other").
            */}
-          {p.status === "active"
-            ? (() => {
-                const now = frontierStep(p.steps);
-                if (!now) return null;
-                const i = p.steps.findIndex((x) => x.key === now.key);
-                const next = p.steps.slice(i + 1).find((x) => x.state !== "skipped") ?? null;
-                const prev = [...p.steps.slice(0, i)].reverse().find((x) => x.state !== "skipped") ?? null;
+          {(() => {
+                const now = p.status === "active" ? frontierStep(p.steps) : null;
+                const i = now ? p.steps.findIndex((x) => x.key === now.key) : -1;
+                const next = now ? (p.steps.slice(i + 1).find((x) => x.state !== "skipped") ?? null) : null;
+                const prev = now ? ([...p.steps.slice(0, i)].reverse().find((x) => x.state !== "skipped") ?? null) : null;
                 const personOf = (x: ProjectStep) => (x.key === "clips" ? p.people.clips : x.key === "deliver" ? p.people.deliver : null);
                 const nameOf = (x: ProjectStep) =>
                   x.owner === "you" ? (personOf(x)?.name ?? t("主持人", "the host")) : zh ? AGENT_LABELS[x.owner as AgentKey].nameLocal : AGENT_LABELS[x.owner as AgentKey].nameEn;
@@ -566,8 +535,9 @@ export function ProjectScreen({
                   return Boolean(e);
                 };
                 const nextName = next ? nameOf(next) : "";
-                const confirm: FlowMove | null =
-                  now.key === "script"
+                const confirm: FlowMove | null = !now
+                  ? null
+                  : now.key === "script"
                     ? now.state === "running"
                       ? { label: t("编剧正在写…", "The writer is writing…"), disabled: true }
                       : now.state === "you"
@@ -626,9 +596,22 @@ export function ProjectScreen({
                       },
                     }
                   : null;
-                return <FlowBar zh={zh} step={now} n={i + 1} person={personOf(now)} me={me} confirm={confirm} back={back} pending={pending} />;
-              })()
-            : null}
+                return (
+                  <StepFlow
+                    steps={p.steps}
+                    zh={zh}
+                    people={p.people}
+                    me={me}
+                    now={now?.key ?? null}
+                    confirm={confirm}
+                    back={back}
+                    pending={pending}
+                    live={liveWork}
+                    published={p.status === "done" ? p.published : null}
+                    popover={publishing === "step" ? publishPopover("left") : null}
+                  />
+                );
+              })()}
 
           {/* ---- one line of activity; the whole conversation on demand ---- */}
           <button type="button" onClick={() => setChatOpen(true)} style={{ display: "flex", alignItems: "center", gap: 9, padding: "9px 14px", border: "1px solid #e6e6e6", borderRadius: 12, background: "#fff", cursor: "pointer", font: "inherit", textAlign: "left", minWidth: 0, boxShadow: "0 1px 2px rgba(0,0,0,0.03)" }}>
@@ -1723,156 +1706,159 @@ function ChatDrawer({ project: p, zh, people, onClose }: { project: ProjectDetai
   );
 }
 
-function StepArrow({ live, done }: { live: boolean; done: boolean }) {
-  const color = live ? "#0f5bd5" : done ? "#278f5e" : "#c9c6c0";
-  return (
-    <div aria-hidden style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
-      <svg viewBox="0 0 22 12" style={{ width: 20, height: 12 }}>
-        <path d="M1 6h17" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeDasharray={live || done ? undefined : "3 3"} />
-        <path d="M14 2l5 4-5 4" fill="none" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-      </svg>
-    </div>
-  );
-}
-
-/**
- * One step in the row. The delivery step also takes `onPublish` (the white
- * 「已发布 · 标记完成」 press inside its black "your turn" card) and
- * `published` (once marked: a green card, the date, and the platforms' marks,
- * each a link to the post).
- */
-function StepCard({ step: s, n, zh, published = null, onPublish, live = null, me = null, person = null }: { step: ProjectStep; n: number; zh: boolean; published?: Publication | null; onPublish?: () => void; live?: LiveWork | null; me?: { id: string; name: string; avatarUrl: string | null } | null; person?: StepPerson | null }) {
-  const you = s.owner === "you";
-  /* The person on a host's step by name (the uploader, the approver), else whoever is looking. */
-  const who = you ? (person ?? me) : null;
-  const color = you ? "#171717" : AGENT_COLORS[s.owner as AgentKey];
-  const isPublished = s.key === "deliver" && s.state === "done";
-  const frame: React.CSSProperties = isPublished
-    ? { border: `1px solid ${PUBLISHED_TONE.line}`, background: "#f3fbf6" }
-    : s.state === "you"
-      ? { background: "#171717", color: "#fff", border: "1px solid #171717" }
-      : s.state === "running"
-        ? { border: "1px solid transparent", background: "linear-gradient(#fff,#fff) padding-box, linear-gradient(135deg,#278f5e,#0f5bd5) border-box" }
-        : s.state === "skipped"
-          ? { border: "1px dashed #e6e6e6", background: "repeating-linear-gradient(135deg,#fafaf9 0 8px,#f3f3f1 8px 16px)", opacity: 0.7 }
-          : s.state === "todo"
-            ? { border: "1px dashed #d9d9d9", background: "#fbfbfa" }
-            : { border: "1px solid #e2e2e2", background: "#fff" };
-  const dim = s.state === "todo" || s.state === "skipped";
-  /* The step's name is the card's title now (12.5, dark), its number a quiet
-     prefix; it was all one 11px grey caption, the same weight as the line
-     under it, so five cards read as five grey smudges. */
-  return (
-    <div style={{ ...frame, borderRadius: 12, padding: "10px 12px", minWidth: 0, flexGrow: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-        <span style={{ opacity: dim ? 0.5 : 1, display: "flex", flexShrink: 0 }}>
-          {you && who ? <PersonAvatar id={who.id} url={who.avatarUrl} name={who.name} size={22} radius={11} /> : <AgentIcon agent={you ? null : (s.owner as AgentKey)} size={22} radius={6} />}
-        </span>
-        <span style={{ fontSize: 12.5, fontWeight: 600, lineHeight: 1.3, color: s.state === "you" ? "#fff" : dim ? "#a3a3a3" : "#171717", minWidth: 0, overflowWrap: "anywhere" }}>
-          <span style={{ fontWeight: 500, color: s.state === "you" ? "#8a8a8a" : "#b3b3b3", marginRight: 5, fontVariantNumeric: "tabular-nums" }}>{n}</span>
-          {s.label}
-        </span>
-        {isPublished ? (
-          <span style={{ marginLeft: "auto", display: "flex", flexShrink: 0 }}>
-            <PublishedCheck size={15} />
-          </span>
-        ) : s.state === "done" ? (
-          <span style={{ marginLeft: "auto", color: "#278f5e", display: "flex", flexShrink: 0 }}>
-            <Icon name="check" size={13} strokeWidth={2.4} />
-          </span>
-        ) : null}
-      </div>
-      <StepWho step={s} zh={zh} who={who} me={me} dim={dim} />
-      {isPublished ? (
-        <>
-          <div style={{ fontSize: 11.5, marginTop: 7, lineHeight: 1.4, color: PUBLISHED_TONE.ink, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-            <Tr zh="已发布" en="Published" inZh={zh} />
-            {published ? <span style={{ fontWeight: 400, color: "#5f7f6d" }}>{` · ${publishedDay(published.at, zh)}`}</span> : null}
-          </div>
-          {published?.platforms.length ? (
-            <div style={{ marginTop: 7 }}>
-              <PublishedMarks platforms={published.platforms} zh={zh} size={16} links gap={5} />
-            </div>
-          ) : null}
-        </>
-      ) : live && s.state === "running" ? (
-        /* At work: the employee typing its step — the same pill as the
-           chat — and how long it has been at it, instead of a line that
-           never changed. */
-        <div style={{ marginTop: 7, display: "flex", flexDirection: "column", gap: 4, minWidth: 0 }}>
-          {/* The percent goes on the line below, not in the pill: a card
-              this narrow squeezed "正在渲染" to "正…" beside the bar. */}
-          <AgentTyping agent={live.agent} zh={zh} step={live.step} label={live.label} face={false} size="sm" />
-          <span style={{ display: "flex", gap: 6, fontSize: 11, color: "#7c7c7c", fontVariantNumeric: "tabular-nums", minWidth: 0 }}>
-            {live.percent !== null && live.percent !== undefined ? <span style={{ fontWeight: 600, color }}>{live.percent}%</span> : null}
-            <Elapsed since={live.since} zh={zh} style={{ fontSize: 11, color: "#7c7c7c" }} />
-          </span>
-        </div>
-      ) : (
-        <div style={{ fontSize: 11.5, marginTop: 7, lineHeight: 1.4, color: s.state === "you" ? "#fff" : s.state === "running" ? color : dim ? "#b3b3b3" : "#525252", fontWeight: s.state === "running" || s.state === "you" ? 500 : 400, overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>
-          {s.line}
-        </div>
-      )}
-      {onPublish ? (
-        /* White on the black "your turn" card, the green check on it: the
-           one thing left to do, and what it will say when done. */
-        <div style={{ marginTop: "auto", paddingTop: 9 }}>
-          <button type="button" onClick={onPublish} className="pj-publish" data-pub-opener="">
-            <PublishedCheck size={14} />
-            <Tr zh="已发布 · 标记完成" en="Mark as published" inZh={zh} />
-          </button>
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-/**
- * Who does a step, under its name: an AI employee's steps carry an 「AI」
- * mark and the employee's name, a person's their own name (with 「（你）」
- * when it is the one looking) — "highlight which are AI, and for the part
- * done by a human, the human involved".
- */
-function StepWho({ step: s, zh, who, me, dim }: { step: ProjectStep; zh: boolean; who: StepPerson | null; me: { id: string } | null; dim: boolean }) {
-  const onDark = s.state === "you";
-  if (s.owner === "you") {
-    const mine = Boolean(who && me && who.id === me.id);
-    return (
-      <div style={{ marginTop: 4, fontSize: 11, fontWeight: 500, lineHeight: 1.3, color: onDark ? "#d4d4d4" : dim ? "#b3b3b3" : "#525252", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-        {who ? who.name : zh ? "主持人" : "The host"}
-        {mine ? <span style={{ fontWeight: 400, color: onDark ? "#9a9a9a" : "#a3a3a3" }}>{zh ? "（你）" : " (you)"}</span> : null}
-      </div>
-    );
-  }
-  const k = s.owner as AgentKey;
-  return (
-    <div style={{ marginTop: 4, display: "flex", alignItems: "center", gap: 5, minWidth: 0, opacity: dim ? 0.6 : 1 }}>
-      <span style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: 0.3, lineHeight: "14px", padding: "0 4px", borderRadius: 4, flexShrink: 0, color: onDark ? "#171717" : AGENT_COLORS[k], background: onDark ? "#fff" : AGENT_TINTS[k] }}>AI</span>
-      <span style={{ fontSize: 11, fontWeight: 500, lineHeight: 1.3, color: onDark ? "#d4d4d4" : AGENT_COLORS[k], whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-        <AgentName agent={k} zh={zh} />
-      </span>
-    </div>
-  );
-}
-
 type FlowMove = { label: string; onClick?: () => void; disabled?: boolean; hint?: string };
 type FlowBack = { to: string; send: (note: string) => Promise<void> };
 
 /**
- * The bar under the steps: where the project is and whose turn it is, the
- * press that hands it on (approve the script, start the cut, render, mark it
- * published — whatever the step needs), and the one that sends it back a
- * step with a note. The note is required: "sent back" with no reason is a
- * question the other side has to come and ask.
+ * The steps one below the other: a tick on each one done, the sand timer on
+ * the one being worked on, the step it has got to in black with a pill
+ * (等你 / 进行中 / 下一步) and its presses. Who does each step is on its row:
+ * an 「AI」 mark and the employee, or a person's face and name — "highlight
+ * which are AI, and the human involved in the rest".
  */
-function FlowBar({ zh, step, n, person, me, confirm, back, pending }: { zh: boolean; step: ProjectStep; n: number; person: StepPerson | null; me: { id: string; name: string; avatarUrl: string | null } | null; confirm: FlowMove | null; back: FlowBack | null; pending: boolean }) {
+function StepFlow({
+  steps,
+  zh,
+  people,
+  me,
+  now,
+  confirm,
+  back,
+  pending,
+  live,
+  published,
+  popover,
+}: {
+  steps: ProjectStep[];
+  zh: boolean;
+  people: ProjectDetail["people"];
+  me: { id: string; name: string; avatarUrl: string | null } | null;
+  now: ProjectStep["key"] | null;
+  confirm: FlowMove | null;
+  back: FlowBack | null;
+  pending: boolean;
+  live: LiveWork | null;
+  published: Publication | null;
+  popover: React.ReactNode;
+}) {
+  const t = (a: string, b: string) => (zh ? a : b);
+  return (
+    <div style={{ border: "1px solid #e6e6e6", borderRadius: 14, background: "#fff", padding: "2px 16px", boxShadow: "0 1px 2px rgba(0,0,0,0.03)" }}>
+      {steps.map((s, i) => {
+        const last = i === steps.length - 1;
+        const isNow = s.key === now;
+        const done = s.state === "done";
+        const skipped = s.state === "skipped";
+        const dim = !isNow && !done && s.state !== "running";
+        const k = s.owner === "you" ? null : (s.owner as AgentKey);
+        const who = k ? null : ((s.key === "clips" ? people.clips : s.key === "deliver" ? people.deliver : null) ?? me);
+        const mine = Boolean(who && me && who.id === me.id);
+        const out = s.key === "deliver" && done ? published : null;
+        return (
+          <div key={s.key} style={{ display: "grid", gridTemplateColumns: "24px minmax(0,1fr)", columnGap: 12 }}>
+            <div style={{ position: "relative", display: "flex", justifyContent: "center" }}>
+              <FlowMark step={s} isNow={isNow} n={i + 1} />
+              {/* The line down to the next step: green once this one is behind us. */}
+              {!last ? <span aria-hidden style={{ position: "absolute", top: 38, bottom: -12, left: 11, width: 2, borderRadius: 1, background: done || skipped ? "#bfe3cf" : "#ececea" }} /> : null}
+            </div>
+            <div style={{ position: "relative", minWidth: 0, padding: isNow ? "12px 0 14px" : "12px 0", borderBottom: last ? 0 : "1px solid #f3f3f1" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0, flexWrap: "wrap", rowGap: 4 }}>
+                <span style={{ fontSize: 13.5, fontWeight: 600, color: dim ? "#a3a3a3" : "#171717", textDecoration: skipped ? "line-through" : undefined, whiteSpace: "nowrap" }}>{s.label}</span>
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 5, opacity: dim ? 0.6 : 1, minWidth: 0 }}>
+                  {k ? (
+                    <>
+                      <AgentIcon agent={k} size={18} radius={5} />
+                      <span style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: 0.3, lineHeight: "14px", padding: "0 4px", borderRadius: 4, color: AGENT_COLORS[k], background: AGENT_TINTS[k] }}>AI</span>
+                      <span style={{ fontSize: 12, fontWeight: 500, color: AGENT_COLORS[k], whiteSpace: "nowrap" }}>
+                        <AgentName agent={k} zh={zh} />
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      {who ? <PersonAvatar id={who.id} url={who.avatarUrl} name={who.name} size={18} radius={9} /> : <AgentIcon agent={null} size={18} radius={5} />}
+                      <span style={{ fontSize: 12, fontWeight: 500, color: "#525252", whiteSpace: "nowrap" }}>
+                        {who ? who.name : t("主持人", "The host")}
+                        {mine ? <span style={{ fontWeight: 400, color: "#a3a3a3" }}>{t("（你）", " (you)")}</span> : null}
+                      </span>
+                    </>
+                  )}
+                </span>
+                {isNow ? <NowPill state={s.state} zh={zh} /> : null}
+                <span style={{ marginLeft: "auto", fontSize: 12, color: done ? "#6b6b6b" : isNow ? "#525252" : "#b3b3b3", minWidth: 0, maxWidth: "55%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "inline-flex", alignItems: "center", gap: 6 }}>
+                  {out ? (
+                    <>
+                      <span style={{ color: PUBLISHED_TONE.ink, fontWeight: 600 }}>{`${t("已发布", "Published")} · ${publishedDay(out.at, zh)}`}</span>
+                      {out.platforms.length ? <PublishedMarks platforms={out.platforms} zh={zh} size={15} links gap={4} /> : null}
+                    </>
+                  ) : (
+                    s.line
+                  )}
+                </span>
+              </div>
+              {/* At work: the employee typing its step, as in the chat, with how far and how long. */}
+              {isNow && live && s.state === "running" ? (
+                <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+                  <AgentTyping agent={live.agent} zh={zh} step={live.step} label={live.label} face={false} size="sm" />
+                  {live.percent !== null && live.percent !== undefined ? <span style={{ fontSize: 11.5, fontWeight: 600, color: AGENT_COLORS[live.agent] }}>{live.percent}%</span> : null}
+                  <Elapsed since={live.since} zh={zh} style={{ fontSize: 11.5, color: "#7c7c7c" }} />
+                </div>
+              ) : null}
+              {isNow ? <FlowActions zh={zh} confirm={confirm} back={back} pending={pending} /> : null}
+              {s.key === "deliver" ? popover : null}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/** A step's mark on the line: tick, sand timer, its number in black (the step it is at), or in grey (still to come). */
+function FlowMark({ step: s, isNow, n }: { step: ProjectStep; isNow: boolean; n: number }) {
+  const base: React.CSSProperties = { position: "relative", zIndex: 1, marginTop: 10, width: 24, height: 24, borderRadius: 12, boxSizing: "border-box", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, fontSize: 11.5, fontWeight: 600, fontVariantNumeric: "tabular-nums" };
+  if (s.state === "done") {
+    return (
+      <span style={{ ...base, background: "#278f5e", color: "#fff" }}>
+        <Icon name="check" size={13} strokeWidth={2.8} />
+      </span>
+    );
+  }
+  if (s.state === "skipped") return <span style={{ ...base, background: "#fff", border: "1.5px dashed #d6d6d2", color: "#c4c4c0" }}>{n}</span>;
+  if (s.state === "running") {
+    /* Being worked on: a sand timer turning over, not a dot. */
+    return (
+      <span style={{ ...base, background: "#fff", border: "2px solid #0f5bd5", color: "#0f5bd5" }}>
+        <svg viewBox="0 0 24 24" width="12" height="12" aria-hidden style={{ display: "block", animation: "tgHourglass 1.8s ease-in-out infinite" }}>
+          <style>{"@keyframes tgHourglass{0%,40%{transform:rotate(0deg)}60%,100%{transform:rotate(180deg)}}"}</style>
+          <path d="M6.5 3.5h11M6.5 20.5h11M7.5 3.5c0 4.2 4.5 5.6 4.5 8.5s-4.5 4.3-4.5 8.5M16.5 3.5c0 4.2-4.5 5.6-4.5 8.5s4.5 4.3 4.5 8.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+          <path d="M9.6 18.6h4.8c-.6-1.6-1.6-2.4-2.4-2.9-.8.5-1.8 1.3-2.4 2.9z" fill="currentColor" />
+        </svg>
+      </span>
+    );
+  }
+  if (isNow) return <span style={{ ...base, background: "#171717", color: "#fff", boxShadow: "0 0 0 4px #efefed" }}>{n}</span>;
+  return <span style={{ ...base, background: "#fff", border: "1.5px solid #e2e2e2", color: "#a3a3a3" }}>{n}</span>;
+}
+
+/** Where the step it has got to stands, beside its name: your turn, at work, or next. */
+function NowPill({ state, zh }: { state: ProjectStep["state"]; zh: boolean }) {
+  const tone = state === "you" ? { bg: "#fff4df", ink: "#95590a", zh: "等你", en: "Your turn" } : state === "running" ? { bg: "#e9f2fe", ink: "#1f5fbf", zh: "进行中", en: "Working" } : { bg: "#f3f3f1", ink: "#5f5f5f", zh: "下一步", en: "Next" };
+  return <span style={{ fontSize: 11, fontWeight: 600, lineHeight: "18px", padding: "0 8px", borderRadius: 999, color: tone.ink, background: tone.bg, whiteSpace: "nowrap" }}>{zh ? tone.zh : tone.en}</span>;
+}
+
+/**
+ * The step's two presses, inside its row: the one that hands it on (approve
+ * the script, start the cut, render, mark it published — whatever the step
+ * needs) and the one that sends it back a step with a note. The note is
+ * required: "sent back" with no reason is a question the other side has to
+ * come and ask.
+ */
+function FlowActions({ zh, confirm, back, pending }: { zh: boolean; confirm: FlowMove | null; back: FlowBack | null; pending: boolean }) {
   const t = (a: string, b: string) => (zh ? a : b);
   const [open, setOpen] = React.useState(false);
   const [note, setNote] = React.useState("");
   const [sending, setSending] = React.useState(false);
-  const ai = step.owner !== "you";
-  const who = ai ? null : (person ?? me);
-  const mine = Boolean(who && me && who.id === me.id);
+  if (!confirm && !back) return null;
   const send = async () => {
     if (!back || !note.trim() || sending) return;
     setSending(true);
@@ -1885,48 +1871,24 @@ function FlowBar({ zh, step, n, person, me, confirm, back, pending }: { zh: bool
     }
   };
   return (
-    <div style={{ border: "1px solid #e6e6e6", borderRadius: 12, background: "#fff", padding: "10px 14px", display: "flex", flexDirection: "column", gap: 10, boxShadow: "0 1px 2px rgba(0,0,0,0.03)" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-        <span style={{ fontSize: 11.5, color: "#999999", flexShrink: 0 }}>{t("现在", "Now")}</span>
-        <span style={{ display: "inline-flex", alignItems: "center", gap: 7, minWidth: 0 }}>
-          {ai ? <AgentIcon agent={step.owner as AgentKey} size={20} radius={5} /> : who ? <PersonAvatar id={who.id} url={who.avatarUrl} name={who.name} size={20} radius={10} /> : <AgentIcon agent={null} size={20} radius={5} />}
-          <span style={{ fontSize: 13, fontWeight: 600, color: "#171717", whiteSpace: "nowrap" }}>
-            <span style={{ fontWeight: 500, color: "#b3b3b3", marginRight: 5 }}>{n}</span>
-            {step.label}
-          </span>
-          <span style={{ fontSize: 12, color: "#7c7c7c", whiteSpace: "nowrap" }}>
-            {"· "}
-            {ai ? (
-              <>
-                <span style={{ fontSize: 9.5, fontWeight: 700, lineHeight: "14px", padding: "0 4px", borderRadius: 4, marginRight: 4, color: AGENT_COLORS[step.owner as AgentKey], background: AGENT_TINTS[step.owner as AgentKey] }}>AI</span>
-                <AgentName agent={step.owner as AgentKey} zh={zh} />
-              </>
-            ) : (
-              <>
-                {who ? who.name : t("主持人", "the host")}
-                {mine ? t("（你）", " (you)") : ""}
-              </>
-            )}
-          </span>
-        </span>
-        <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-          {back ? (
-            <button type="button" onClick={() => setOpen((v) => !v)} disabled={pending || sending} className="pj-flow-back" aria-expanded={open}>
-              <Icon name="undo" size={12} />
-              {t(`退回给 ${back.to}`, `Send back to ${back.to}`)}
-            </button>
-          ) : null}
-          {confirm ? (
-            <button type="button" onClick={confirm.onClick} disabled={pending || confirm.disabled || !confirm.onClick} className="pj-flow-next" title={confirm.hint}>
-              {!confirm.disabled ? <Icon name="check" size={12} strokeWidth={2.4} /> : null}
-              {confirm.label}
-            </button>
-          ) : null}
-        </span>
+    <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+        {confirm ? (
+          <button type="button" onClick={confirm.onClick} disabled={pending || confirm.disabled || !confirm.onClick} className="pj-flow-next" title={confirm.hint}>
+            {!confirm.disabled ? <Icon name="check" size={12} strokeWidth={2.4} /> : null}
+            {confirm.label}
+          </button>
+        ) : null}
+        {back ? (
+          <button type="button" onClick={() => setOpen((v) => !v)} disabled={pending || sending} className="pj-flow-back" aria-expanded={open}>
+            <Icon name="undo" size={12} />
+            {t(`退回给 ${back.to}`, `Send back to ${back.to}`)}
+          </button>
+        ) : null}
       </div>
-      {confirm?.disabled && confirm.hint ? <div style={{ fontSize: 11.5, color: "#7c7c7c", marginTop: -4 }}>{confirm.hint}</div> : null}
+      {confirm?.disabled && confirm.hint ? <div style={{ fontSize: 11.5, color: "#7c7c7c" }}>{confirm.hint}</div> : null}
       {open && back ? (
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, maxWidth: 640 }}>
           <textarea
             value={note}
             onChange={(e) => setNote(e.target.value)}
@@ -1938,12 +1900,12 @@ function FlowBar({ zh, step, n, person, me, confirm, back, pending }: { zh: bool
             }}
             style={{ width: "100%", boxSizing: "border-box", resize: "vertical", minHeight: 56, border: "1px solid #e2e2e2", borderRadius: 9, padding: "8px 10px", fontFamily: "inherit", fontSize: 12.5, lineHeight: 1.5, outline: "none" }}
           />
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-            <button type="button" className="pj-flow-back" onClick={() => setOpen(false)} disabled={sending}>
-              {t("取消", "Cancel")}
-            </button>
+          <div style={{ display: "flex", gap: 8 }}>
             <button type="button" className="pj-flow-next" onClick={() => void send()} disabled={sending || !note.trim()}>
               {sending ? t("正在退回…", "Sending back…") : t(`附意见退回给 ${back.to}`, `Send back to ${back.to}`)}
+            </button>
+            <button type="button" className="pj-flow-back" onClick={() => setOpen(false)} disabled={sending}>
+              {t("取消", "Cancel")}
             </button>
           </div>
         </div>
