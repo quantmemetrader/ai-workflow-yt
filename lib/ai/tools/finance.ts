@@ -31,7 +31,7 @@ const defs: ToolDef[] = [
     function: {
       name: "api_balances",
       description:
-        "What is left on each paid service the studio runs on, read live from the services: OpenRouter (every AI answer), DeepSeek, TikHub (research data), ElevenLabs, and what Cloudflare R2 storage holds and costs. Also this month's model spend by our own ledger. Use it for 还剩多少额度 / 余额 / API 花了多少 / 要不要充值.",
+        "What is left on each paid service the studio runs on, read live from the services: OpenRouter (every AI answer), TikHub (research data), and what Cloudflare R2 storage holds and costs. Also this month's model spend by our own ledger. Use it for 还剩多少额度 / 余额 / API 花了多少 / 要不要充值.",
       parameters: {
         type: "object",
         properties: { fresh: { type: "boolean", description: "Read again now instead of the copy from the last five minutes. Default false." } },

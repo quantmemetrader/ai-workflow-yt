@@ -10,8 +10,7 @@ import type { Viewer } from "@/lib/auth/dal";
  * services themselves, beside what our own ledger says we spent this month.
  *
  * Every figure is the provider's own answer to its balance endpoint (OpenRouter
- * `/credits`, DeepSeek `/user/balance`, TikHub `get_user_info`, ElevenLabs
- * `/user/subscription`); R2 has no balance, so it is the bytes we hold and
+ * `/credits`, TikHub `get_user_info`); R2 has no balance, so it is the bytes we hold and
  * what they cost past the free tier. Keys never leave this file: a row carries
  * numbers and a state, not a credential.
  *
@@ -20,7 +19,7 @@ import type { Viewer } from "@/lib/auth/dal";
  * trips to four providers. TikHub's daily-usage endpoint is not used: that
  * call is billed.
  */
-export type ProviderKey = "openrouter" | "openrouter-backup" | "deepseek" | "tikhub" | "elevenlabs" | "r2";
+export type ProviderKey = "openrouter" | "tikhub" | "r2";
 
 export type ProviderBalance = {
   key: ProviderKey;
@@ -81,25 +80,25 @@ function row(p: Omit<ProviderBalance, "state" | "error" | "note" | "noteZh" | "m
   return { leftUsd: null, totalUsd: null, usedUsd: null, monthUsd: null, note: null, noteZh: null, error: null, state: "ok", ...p };
 }
 
-async function openRouter(key: string, which: "openrouter" | "openrouter-backup", monthUsd: number | null): Promise<ProviderBalance> {
+async function openRouter(key: string, which: "openrouter", monthUsd: number | null): Promise<ProviderBalance> {
   const base = {
     key: which,
-    name: which === "openrouter" ? "OpenRouter" : "OpenRouter (backup key)",
-    nameZh: which === "openrouter" ? "OpenRouter" : "OpenRouter（备用 key）",
+    name: "OpenRouter",
+    nameZh: "OpenRouter",
     what: "Every AI employee's and assistant's answers",
     whatZh: "所有 AI 员工和助理的回答",
     topUp: "https://openrouter.ai/settings/credits",
   } as const;
   const [credits, info] = await Promise.all([
     getJson(`${env.openrouter.baseUrl}/credits`, { Authorization: `Bearer ${key}` }),
-    which === "openrouter" ? getJson(`${env.openrouter.baseUrl}/key`, { Authorization: `Bearer ${key}` }) : Promise.resolve(null),
+    getJson(`${env.openrouter.baseUrl}/key`, { Authorization: `Bearer ${key}` }),
   ]);
   if (!credits.ok) return row({ ...base, state: "error", error: credits.error, monthUsd });
   const d = (credits.json as { data?: { total_credits?: unknown; total_usage?: unknown } }).data ?? {};
   const total = num(d.total_credits);
   const used = num(d.total_usage);
   const left = total !== null && used !== null ? Math.max(0, total - used) : null;
-  const daily = info && info.ok ? num((info.json as { data?: { usage_daily?: unknown } }).data?.usage_daily) : null;
+  const daily = info.ok ? num((info.json as { data?: { usage_daily?: unknown } }).data?.usage_daily) : null;
   return row({
     ...base,
     leftUsd: left,
@@ -109,27 +108,6 @@ async function openRouter(key: string, which: "openrouter" | "openrouter-backup"
     state: stateOf(left),
     note: daily !== null ? `Today ${usd(daily)}` : null,
     noteZh: daily !== null ? `今天 ${usd(daily)}` : null,
-  });
-}
-
-async function deepSeek(monthUsd: number | null): Promise<ProviderBalance> {
-  const base = { key: "deepseek", name: "DeepSeek", nameZh: "DeepSeek", what: "Cheaper answers, called directly", whatZh: "直连的低价回答", topUp: "https://platform.deepseek.com/top_up" } as const;
-  if (!env.deepseek.configured) return row({ ...base, state: "off" });
-  const r = await getJson(`${env.deepseek.baseUrl}/user/balance`, { Authorization: `Bearer ${env.deepseek.apiKey}` });
-  if (!r.ok) return row({ ...base, state: "error", error: r.error, monthUsd });
-  const infos = (r.json as { balance_infos?: { currency?: string; total_balance?: unknown; granted_balance?: unknown }[] }).balance_infos ?? [];
-  const usdRow = infos.find((b) => b.currency === "USD") ?? infos[0];
-  /* A CNY balance is shown in dollars at a round rate: close enough to say "about how long". */
-  const raw = num(usdRow?.total_balance);
-  const left = raw === null ? null : usdRow?.currency === "CNY" ? raw / 7.1 : raw;
-  const granted = num(usdRow?.granted_balance);
-  return row({
-    ...base,
-    leftUsd: left,
-    monthUsd,
-    state: stateOf(left),
-    note: granted ? `Includes ${usd(granted)} granted` : null,
-    noteZh: granted ? `含赠送 ${usd(granted)}` : null,
   });
 }
 
@@ -143,23 +121,6 @@ async function tikHub(): Promise<ProviderBalance> {
   const free = num(u.free_credit) ?? 0;
   const left = bal === null ? null : bal + free;
   return row({ ...base, leftUsd: left, state: stateOf(left), note: free ? `Includes ${usd(free)} free credit` : null, noteZh: free ? `含免费额度 ${usd(free)}` : null });
-}
-
-async function elevenLabs(): Promise<ProviderBalance> {
-  const base = { key: "elevenlabs", name: "ElevenLabs", nameZh: "ElevenLabs", what: "Voice and transcription (backup)", whatZh: "配音与转写（备用）", topUp: "https://elevenlabs.io/app/subscription" } as const;
-  if (!env.elevenlabs.configured) return row({ ...base, state: "off" });
-  const r = await getJson(`${env.elevenlabs.baseUrl}/user/subscription`, { "xi-api-key": env.elevenlabs.apiKey ?? "" });
-  if (!r.ok) return row({ ...base, state: "error", error: r.error });
-  const s = r.json as { character_count?: unknown; character_limit?: unknown; tier?: string };
-  const used = num(s.character_count);
-  const limit = num(s.character_limit);
-  const left = used !== null && limit !== null ? limit - used : null;
-  return row({
-    ...base,
-    state: left === null ? "error" : left <= 0 ? "empty" : limit && left / limit < 0.1 ? "low" : "ok",
-    note: used !== null && limit !== null ? `${used.toLocaleString()} / ${limit.toLocaleString()} characters${s.tier ? ` · ${s.tier}` : ""}` : null,
-    noteZh: used !== null && limit !== null ? `字符 ${used.toLocaleString()} / ${limit.toLocaleString()}${s.tier ? ` · ${s.tier}` : ""}` : null,
-  });
 }
 
 async function r2(tenantId: string): Promise<ProviderBalance> {
@@ -182,36 +143,26 @@ async function r2(tenantId: string): Promise<ProviderBalance> {
   });
 }
 
-/** This month's model spend by our own ledger: OpenRouter's (every "vendor/model") and DeepSeek called directly. */
-async function ledgerMonth(tenantId: string): Promise<{ openrouter: number; deepseek: number }> {
+/** This month's spend through OpenRouter by our own ledger: every "vendor/model" call. */
+async function ledgerMonth(tenantId: string): Promise<{ openrouter: number }> {
   const period = new Date().toISOString().slice(0, 7);
-  const rows = await db
-    .select({
-      direct: sql<boolean>`position('/' in ${aiUsage.model}) = 0 and ${aiUsage.model} ilike 'deepseek%'`,
-      total: sql<number>`coalesce(sum(${aiUsage.costMicros}), 0)::bigint`,
-    })
+  const [row] = await db
+    .select({ total: sql<number>`coalesce(sum(${aiUsage.costMicros}), 0)::bigint` })
     .from(aiUsage)
-    .where(and(eq(aiUsage.tenantId, tenantId), sql`to_char(${aiUsage.createdAt}, 'YYYY-MM') = ${period}`))
-    .groupBy(sql`1`);
-  let openrouter = 0;
-  let deepseek = 0;
-  for (const r of rows) {
-    if (r.direct) deepseek += Number(r.total) / 1e6;
-    else openrouter += Number(r.total) / 1e6;
-  }
-  return { openrouter, deepseek };
+    .where(and(eq(aiUsage.tenantId, tenantId), sql`to_char(${aiUsage.createdAt}, 'YYYY-MM') = ${period}`, sql`position('/' in ${aiUsage.model}) > 0`));
+  return { openrouter: Number(row?.total ?? 0) / 1e6 };
 }
 
 export async function apiBalances(viewer: Pick<Viewer, "tenantId">, opts: { fresh?: boolean } = {}): Promise<Balances> {
   const hit = cache.get(viewer.tenantId);
   if (!opts.fresh && hit && Date.now() - hit.at < TTL_MS) return hit.value;
-  const month = await ledgerMonth(viewer.tenantId).catch(() => ({ openrouter: 0, deepseek: 0 }));
+  const month = await ledgerMonth(viewer.tenantId).catch(() => ({ openrouter: 0 }));
+  /* The studio's own accounts only. DeepSeek and the backup OpenRouter key
+     are not the studio accounts, and ElevenLabs is not used: none of them is the
+     studio's money, so none is shown. */
   const rows = await Promise.all([
     openRouter(env.openrouter.apiKey, "openrouter", month.openrouter),
-    ...(env.openrouter.backupKey ? [openRouter(env.openrouter.backupKey, "openrouter-backup", null)] : []),
-    deepSeek(month.deepseek),
     tikHub(),
-    elevenLabs(),
     r2(viewer.tenantId).catch(() => row({ key: "r2", name: "Cloudflare R2", nameZh: "Cloudflare R2", what: "Storage", whatZh: "存储", topUp: null, state: "error", error: "could not be read" })),
   ]);
   const value = { at: new Date().toISOString(), rows };
