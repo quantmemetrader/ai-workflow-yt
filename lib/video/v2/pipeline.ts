@@ -162,13 +162,33 @@ export async function cutTake(take: Take, tr: Pick<TranscribeOut, "words">, hook
   const silences = fine.filter((s) => s.endMs - s.startMs >= 250);
   const filled = await fillHoles(tr.words, silences, holeTranscriber(take.raw, "zh"));
   const words = alignWords(filled.words, fine);
-  const sentences = toSentences(words, [], { clipId, silences });
-  const found = findRetakes(words, sentences, { briefPhrases: briefPhrases(brief), silences });
+  const all = toSentences(words, [], { clipId, silences });
   const ask = (what: string, model: string, temperature: number, maxTokens: number) => async (messages: { role: "system" | "user"; content: string }[]) => {
     const out = await complete({ model, temperature, maxTokens, messages });
     await hooks.usage?.(what, { model: out.model, provider: out.provider, promptTokens: out.promptTokens, completionTokens: out.completionTokens, costMicros: out.costMicros, requestId: out.requestId });
     return out.text;
   };
+  /*
+   * A short (a Reel, a Short: 90 s or less asked of a longer take). The full
+   * edit never drops a sentence to hit a length; a short is the opposite
+   * job — the strongest whole sentences for the length, in their order: the
+   * hook, the fact that proves it, the line to end on. Picked once by the
+   * model, checked in code (real ids, in order, near the length); the rest
+   * of the cut then runs on those sentences only.
+   */
+  let sentences = all;
+  if (targetMs !== null && targetMs <= 90_000 && totalMs > targetMs * 1.8 && all.length > 3) {
+    try {
+      const picked = await pickHighlights(all, targetMs, brief, ask("highlights", modelFor.assistant(), 0.2, 800));
+      if (picked.length) {
+        sentences = picked;
+        log(`cut: short of ${sec(targetMs)} s — ${picked.length} of ${all.length} sentences picked (${sec(picked.reduce((n, s) => n + (s.endMs - s.startMs), 0))} s)`);
+      }
+    } catch (err) {
+      log(`cut: could not pick the short's sentences (${err instanceof Error ? err.message : err}); cutting the whole take`);
+    }
+  }
+  const found = findRetakes(words, sentences, { briefPhrases: briefPhrases(brief), silences });
   const modelDecisions = await decideRetakes(found.ambiguous, ask("retakes", modelFor.utility(), 0, 600));
   const decisions = [...found.decisions, ...modelDecisions];
   const retakes = decisions.filter((d) => d.drop).map(toRetake);
@@ -682,4 +702,32 @@ export async function v2RenderPlan(input: {
     audio: { voiceChain: true, cutFadeMs: 12 as const },
   };
   return { plan, skipped };
+}
+
+/** The strongest whole sentences for a short, in their order (see `cutTake`). */
+async function pickHighlights<T extends { id: string; startMs: number; endMs: number; text: string }>(
+  sentences: T[],
+  targetMs: number,
+  brief: string,
+  ask: (messages: { role: "system" | "user"; content: string }[]) => Promise<string>,
+): Promise<T[]> {
+  const list = sentences.map((s) => `${s.id} | ${((s.endMs - s.startMs) / 1000).toFixed(1)}s | ${s.text}`).join("\n");
+  const raw = await ask([
+    {
+      role: "system",
+      content:
+        "You cut short vertical videos (Instagram Reels, YouTube Shorts) from a talking-head take. From the numbered sentences, choose the few that make the strongest short of the target length: open on the most gripping claim (the hook), keep one concrete fact or number that proves it, and end on a line that lands (a punchline or a question). Whole sentences only, never retakes of the same line, in their original order, total close to the target and never more than 15% over. Answer JSON only: {\"ids\": [\"s003\", …]}.",
+    },
+    { role: "user", content: `Target: ${Math.round(targetMs / 1000)} seconds.\nBrief: ${brief.slice(0, 1200)}\n\nSentences (id | length | text):\n${list}` },
+  ]);
+  const m = raw.match(/\{[\s\S]*\}/);
+  const ids = new Set<string>(m ? ((JSON.parse(m[0]) as { ids?: unknown }).ids as string[] | undefined)?.filter((x) => typeof x === "string") ?? [] : []);
+  const chosen = sentences.filter((s) => ids.has(s.id));
+  /* Near the length: trim from the end if the model went over. */
+  let total = chosen.reduce((n, s) => n + (s.endMs - s.startMs), 0);
+  while (chosen.length > 1 && total > targetMs * 1.2) {
+    const last = chosen.splice(chosen.length - 2, 1)[0];
+    total -= last.endMs - last.startMs;
+  }
+  return chosen.length >= 2 ? chosen : [];
 }
