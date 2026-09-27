@@ -8,6 +8,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AgentIcon } from "@/components/agents/AgentIcon";
+import { AnswerPicker } from "@/components/chat/AnswerPicker";
 import { MentionMenu } from "@/components/chat/MentionMenu";
 import { useMentions } from "@/components/chat/useMentions";
 import { AGENT_COLORS, AGENT_KEYS, AGENT_LABELS, AGENT_TINTS, agentTag, parseAgentMentions, type AgentKey } from "@/lib/agents/catalog";
@@ -139,11 +140,8 @@ ${threadCss("[data-agent-screen]")}
 [data-agent-screen] .pick .hn { font-size: 11.5px; color: #8a8a8a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 1px; }
 [data-agent-screen] .answer { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 6px 0 4px; border-radius: 8px; font-size: 12px; color: #525252; white-space: nowrap; flex-shrink: 0; }
 [data-agent-screen] .answer b { font-weight: 600; color: #171717; }
-[data-agent-screen] .answer .x { border: 0; background: transparent; padding: 0 2px; cursor: pointer; color: #8a8a8a; font: inherit; line-height: 1; }
-[data-agent-screen] .answer .x:hover { color: #171717; }
-[data-agent-screen] .faces { display: flex; align-items: center; gap: 3px; margin-left: 2px; }
-[data-agent-screen] .faces button { border: 1px solid transparent; background: transparent; border-radius: 7px; padding: 2px; cursor: pointer; display: flex; opacity: .8; transition: opacity .15s, border-color .15s; }
-[data-agent-screen] .faces button:hover { opacity: 1; border-color: #e5e5e5; }
+[data-agent-screen] .answer:hover { filter: brightness(0.97); }
+[data-agent-screen] .answer-row:hover { background: #f7f7f5 !important; }
 [data-agent-screen] .hist { display: block; padding: 8px 10px; border-radius: 9px; color: #171717; text-decoration: none; border: 1px solid transparent; }
 [data-agent-screen] .hist:hover { background: #f4f4f5; }
 [data-agent-screen] .hist.on { background: #fff; border-color: #e5e5e5; }
@@ -842,43 +840,19 @@ export function AgentScreen({
                     </button>
                   </>
                 ) : null}
-                <span
-                  className="answer"
-                  style={{ background: answering ? soft(AGENT_TINTS[answering], 0.5) : "#f4f4f5" }}
-                >
-                  <AgentIcon agent={answering} size={20} radius={5} />
-                  {zh ? "回答：" : "Answering: "}
-                  <b>{answering ? <AgentName agent={answering} zh={zh} /> : zh ? "你的助理" : "Your agent"}</b>
-                  {/* Back to the assistant: drop the tag at the front. A tag
-                      further into the sentence is the writer's own business. */}
-                  {answering && input.startsWith("@") ? (
-                    <button
-                      type="button"
-                      className="x"
-                      onClick={() => {
-                        setInput((d) => d.replace(/^@\S+\s*/, ""));
-                        requestAnimationFrame(() => box.current?.focus());
-                      }}
-                      aria-label={zh ? "改回你的助理" : "Back to your agent"}
-                      title={zh ? "改回你的助理" : "Back to your agent"}
-                    >
-                      ×
-                    </button>
-                  ) : null}
-                </span>
-                <span className="faces">
-                  {AGENT_KEYS.filter((k) => k !== answering).map((k) => (
-                    <button
-                      key={k}
-                      type="button"
-                      onClick={() => ask(k)}
-                      aria-label={zh ? `问${name(k)}` : `Ask ${name(k)}`}
-                      title={zh ? `问${name(k)}：${AGENT_LABELS[k].hint}` : `Ask ${name(k)}: ${AGENT_LABELS[k].hintEn}`}
-                    >
-                      <AgentIcon agent={k} size={20} radius={5} />
-                    </button>
-                  ))}
-                </span>
+                <AnswerPicker
+                  answering={answering}
+                  zh={zh}
+                  soft={soft}
+                  onPick={(k) => {
+                    if (k) ask(k);
+                    else {
+                      /* Back to the assistant: drop the tag at the front. A tag further into the sentence is the writer's own business. */
+                      setInput((d) => d.replace(/^@\S+\s*/, ""));
+                      requestAnimationFrame(() => box.current?.focus());
+                    }
+                  }}
+                />
                 <span className="sep" aria-hidden />
                 <button type="button" className="ico2" onClick={() => format("bold")} aria-label="Bold" title={zh ? "加粗" : "Bold"}>
                   <svg viewBox="0 0 24 24">
