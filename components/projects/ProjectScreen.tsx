@@ -1859,7 +1859,14 @@ function clean(body: string): string {
 }
 
 function oneLine(body: string): string {
-  return clean(body).replace(/\s+/g, " ").slice(0, 140);
+  /* Markdown links read as their words in a one-line summary; a link back to
+     a project page (you are on it) is dropped — the line used to end in a raw
+     "[打开项目](/projects/wp_…)". */
+  return clean(body)
+    .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (_m, label: string, url: string) => (url.startsWith("/projects/") ? "" : label))
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 140);
 }
 
 function clock(ms: number): string {
