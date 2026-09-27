@@ -13,6 +13,8 @@ import { channelsForPhrase, trendingVideos } from "@/lib/research/youtube";
 import { storedAll } from "@/lib/research/platforms";
 import { PLATFORMS, isPlatformKey, onFocus, relevanceLabel, type Beat, type BeatTab } from "@/lib/research/platform-catalog";
 import { readBeats } from "@/lib/research/beat-store";
+import { googleNewsSearch } from "@/lib/research/beat-sources";
+import { searchPlatform } from "@/lib/research/platform-search";
 import { BEAT_TABS, acrossPlatforms, feedOfTab, tabRows, type BeatRow, type Lists } from "@/lib/research/beat-view";
 import { addCompetitor, listCompetitors } from "@/lib/social/service";
 import { num, str, type ToolContext, type ToolPack, type ToolResult } from "./types";
@@ -59,7 +61,7 @@ const defs: ToolDef[] = [
     function: {
       name: "watch_topic",
       description:
-        "Start watching a phrase. Collection runs in the background and takes a few seconds; the numbers appear on the Trends dashboard when it lands.",
+        "Add a phrase to the studio's tracking list (numbers land on the Trends dashboard later). Only when someone asks to track something, or as an extra AFTER you have answered — never instead of answering; to learn about a subject now, use search_now.",
       parameters: {
         type: "object",
         properties: {
@@ -112,6 +114,21 @@ const defs: ToolDef[] = [
           decision: { type: "string", enum: ["adopt", "reject", "save"] },
         },
         required: ["phrase", "decision"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "search_now",
+      description:
+        "Research any subject right now, live: the latest news headlines about it (Chinese and English, with outlet and date) and the top videos about it on YouTube and 抖音 (with views and creators). " +
+        "Call this FIRST whenever someone asks what you think about, what is happening with, or what the future is of anything — a coin, a company, a technology, a person, an event. " +
+        "Takes a few seconds. Search in the language the subject is best known in; you may call it twice (e.g. English name, then Chinese name).",
+      parameters: {
+        type: "object",
+        properties: { query: { type: "string", description: "The subject, as people would search it: \"Arc chain\", \"Circle Arc blockchain\", \"后量子钱包\"." } },
+        required: ["query"],
       },
     },
   },
@@ -284,6 +301,35 @@ async function run(ctx: ToolContext, name: string, args: Record<string, unknown>
       changed: true,
       artifacts: [{ kind: "topic", id: topic.id, title: topic.name, action: "updated" }],
     };
+  }
+
+  if (name === "search_now") {
+    const q = str(args.query, 120).trim();
+    if (!q) return { text: "Say what to search for." };
+    /* Each source alone, under its own deadline: one slow or failing source
+       never costs the answer the others found. */
+    const within = <T,>(p: Promise<T>, ms: number): Promise<T | null> => Promise.race([p.catch(() => null), new Promise<null>((r) => setTimeout(() => r(null), ms))]);
+    const [zhNews, enNews, yt, dy] = await Promise.all([
+      within(googleNewsSearch(q, "HK", 12), 15_000),
+      within(googleNewsSearch(q, "US", 12), 15_000),
+      within(searchPlatform("youtube", q), 20_000),
+      within(searchPlatform("douyin", q), 20_000),
+    ]);
+    const day = (iso: string | null | undefined) => (iso ? iso.slice(0, 10) : "");
+    const lines: string[] = [];
+    const news = [...(enNews ?? []), ...(zhNews ?? [])].slice(0, 14);
+    if (news.length) {
+      lines.push(`News about "${q}" (newest first as Google returns them):`);
+      for (const n of news) lines.push(`- ${day(n.stats?.publishedAt)} · ${n.extra ?? "news"} — ${n.phrase}${n.url ? ` (${n.url})` : ""}`);
+    }
+    for (const [label, res] of [["YouTube", yt], ["抖音", dy]] as const) {
+      const rows = res?.rows?.slice(0, 6) ?? [];
+      if (!rows.length) continue;
+      lines.push(`${label} videos about "${q}":`);
+      for (const r of rows) lines.push(`- ${r.phrase}${r.extra ? ` · ${r.extra}` : ""}${r.heatLabel ? ` · ${r.heatLabel}` : r.stats?.views != null ? ` · ${r.stats.views.toLocaleString("en-US")} views` : ""}${r.url ? ` (${r.url})` : ""}`);
+    }
+    if (!lines.length) return { text: `Nothing came back for "${q}" from news, YouTube or 抖音 just now. Try another name for it (English / Chinese / the project's full name), then answer from what you know, saying it is background.` };
+    return { text: lines.join("\n") };
   }
 
   if (name === "trending_now") {

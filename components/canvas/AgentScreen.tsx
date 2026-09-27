@@ -477,7 +477,10 @@ export function AgentScreen({
 
       /* The new chat has its first message: it is now "the last chat" /chat reopens. */
       if (created) document.cookie = "tg_chat_new=; path=/; max-age=0; samesite=lax";
-      if (created && !initialId) router.replace(`/chat/t/${created}${history ? `?agent=${history.agent}` : ""}`);
+      /* The new chat gets its own address without leaving the page: a
+         navigation here redrew the whole screen (loading, then the page again)
+         right as the answer finished — "the whole page reloaded". */
+      if (created && !initialId) window.history.replaceState(null, "", `/chat/t/${created}${history ? `?agent=${history.agent}` : ""}`);
       else router.refresh();
     } catch (err) {
       if ((err as Error).name === "AbortError") patchLast((m) => ({ ...m, status: "stopped" }));

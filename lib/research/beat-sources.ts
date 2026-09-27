@@ -24,10 +24,11 @@ const UA = "Mozilla/5.0 (compatible; Tengya/1.0; +studio research)";
 
 /* ----------------------------------------------------------- Google News */
 
-export type NewsEdition = "HK" | "TW";
+export type NewsEdition = "HK" | "TW" | "US";
 const EDITION: Record<NewsEdition, string> = {
   HK: "hl=zh-HK&gl=HK&ceid=HK:zh-Hant",
   TW: "hl=zh-TW&gl=TW&ceid=TW:zh-Hant",
+  US: "hl=en-US&gl=US&ceid=US:en",
 };
 
 const text = (v: unknown): string | null => {

@@ -95,6 +95,7 @@ const TOOL_STEPS: Record<string, StepKey> = {
   creator_videos: "research",
   creator_video: "research",
   watch_topic: "topics",
+  search_now: "research",
   decide_topic: "topics",
   watch_channel: "topics",
   // files and the rest of the assistant's own tools

@@ -36,7 +36,7 @@ import { suggestTitle, withoutTags } from "@/lib/chat/project-title";
  * form floats over the page (fixed, in a portal) beside it, because the
  * panel's thread is a small scroll box that would clip it.
  */
-export type BridgeMessage = { role: "user" | "assistant"; content: string; status: string };
+export type BridgeMessage = { role: "user" | "assistant"; content: string; status: string; speaker?: string | null };
 
 type BridgeState = {
   project: { id: string; title: string; via: "link" | "work" | "screen" } | null;
@@ -75,7 +75,11 @@ export function ProjectBridge({
   /* Changes each time a reply settles: the moment to ask again. */
   const settled = messages.filter((m) => m.role === "assistant" && m.status !== "streaming").length;
   const hidden = compact && BACK_OFFICE.test(pathname);
-  const live = Boolean(conversationId && hasAsk && !hidden);
+  /* Only once there is something to put in a project: 编剧, 剪辑师 or 撰稿人
+     answered here. A research question is not a project, and the bar on
+     every chat ("把这段对话变成项目…") was noise the owner circled. */
+  const made = messages.some((m) => m.role === "assistant" && (m.speaker === "script" || m.speaker === "video" || m.speaker === "article"));
+  const live = Boolean(conversationId && hasAsk && !hidden && made);
 
   /* Kept with the conversation they belong to, so a panel that starts a
      new thread (or loads an old one) never shows the last one's project. */
