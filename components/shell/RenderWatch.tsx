@@ -51,6 +51,9 @@ export function RenderWatch({ locale }: { locale: string }) {
   const zh = locale.startsWith("zh");
   const pathname = usePathname();
   const onVideo = pathname === "/video";
+  /* Toasts closed with ×, for as long as the page is open: each film and
+     state once (a new state of the same film shows again). */
+  const [dismissed, setDismissed] = useState<string[]>([]);
   const { at: polledAt, projects: live } = useLiveSnapshot();
   /* Ticks while there is a countdown or a window to count down; the poll's
      own clock otherwise, so nothing here reads the time during a render. */
@@ -68,11 +71,32 @@ export function RenderWatch({ locale }: { locale: string }) {
   if (onVideo) return <Legacy locale={locale} covered={new Set(live.map((p) => p.videoProjectId))} draw={false} />;
   /* In the chat the film is drawn in the thread, as 剪辑师 at work (ChatLiveWork). */
   if (pathname === "/chat" || pathname?.startsWith("/chat/t/")) return null;
-  if (pick) return <Chip p={pick} zh={zh} now={now} />;
+  if (pick && !dismissed.includes(chipKey(pick))) return <Chip p={pick} zh={zh} now={now} onClose={() => setDismissed((d) => [...d, chipKey(pick)])} />;
   return <Legacy locale={locale} covered={new Set(live.map((p) => p.videoProjectId))} draw />;
 }
 
-function Chip({ p, zh, now }: { p: LiveProject; zh: boolean; now: number }) {
+const chipKey = (p: LiveProject) => `${p.id}:${p.state}:${p.exportId ?? ""}:${p.finishedAt ?? ""}`;
+
+/** The toast's ×. */
+function Close({ onClose, zh, dark }: { onClose: () => void; zh: boolean; dark: boolean }) {
+  return (
+    <button
+      type="button"
+      aria-label={zh ? "关闭" : "Close"}
+      title={zh ? "关闭" : "Close"}
+      onClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        onClose();
+      }}
+      style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 20, height: 20, borderRadius: 10, border: 0, background: "transparent", color: dark ? "rgba(255,255,255,.7)" : "inherit", cursor: "pointer", flexShrink: 0, padding: 0 }}
+    >
+      <svg viewBox="0 0 24 24" width="11" height="11" aria-hidden><path d="M7 7l10 10M17 7 7 17" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" fill="none" /></svg>
+    </button>
+  );
+}
+
+function Chip({ p, zh, now, onClose }: { p: LiveProject; zh: boolean; now: number; onClose: () => void }) {
   const words = liveWords(p, now);
   const running = isRunning(p) || p.state === "armed";
   const failed = p.state === "failed";
@@ -130,6 +154,7 @@ function Chip({ p, zh, now }: { p: LiveProject; zh: boolean; now: number }) {
             <b style={{ display: "block", height: "100%", width: `${Math.max(4, p.percent)}%`, background: "#fff", borderRadius: 2, transition: "width .5s ease" }} />
           </span>
         ) : null}
+        <Close onClose={onClose} zh={zh} dark />
       </Link>
       </Dock>
     );
@@ -150,6 +175,7 @@ function Chip({ p, zh, now }: { p: LiveProject; zh: boolean; now: number }) {
           <Tr zh="下载" en="Download" inZh={zh} />
         </a>
       ) : null}
+      <Close onClose={onClose} zh={zh} dark={false} />
     </div>
     </Dock>
   );
