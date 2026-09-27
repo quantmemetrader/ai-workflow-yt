@@ -137,7 +137,7 @@ export function VoicePicker({
                       </span>
                     ) : null}
                     {failed === v.id ? (
-                      <span style={{ display: "block", fontSize: 11, color: "#c0392b", marginTop: 1 }}>{t("无法播放", "Could not play")}</span>
+                      <span style={{ display: "block", fontSize: 11, color: "#c0392b", marginTop: 1 }}>{t("Could not play", "无法播放")}</span>
                     ) : null}
                   </span>
                   {v.sample ? (
