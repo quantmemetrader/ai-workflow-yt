@@ -398,6 +398,8 @@ export function ProjectScreen({
   );
   const skipped = (k: ProjectStep["key"]) => p.steps.find((s) => s.key === k)?.state === "skipped";
   const stepDone = (k: ProjectStep["key"]) => p.steps.find((s) => s.key === k)?.state === "done";
+  const frontier = p.status === "active" ? frontierStep(p.steps) : null;
+  const stepNow = (k: ProjectStep["key"]) => (frontier?.key === k ? frontier.state : null);
   /* Already 0–100 (`workProjectDetail`). */
   const pct = p.render?.progress ?? 0;
   /* What a held button says while a render runs: queued, or how far. */
@@ -555,7 +557,7 @@ export function ProjectScreen({
                           : { label: t("等管理员确认脚本", "Waiting for an admin to approve"), disabled: true }
                         : { label: t("让编剧开写", "Ask the writer for a draft"), onClick: writeDraft }
                     : now.key === "clips"
-                      ? { label: t(`先上传素材，再交给 ${nextName}`, `Upload the clips, then on to ${nextName}`), disabled: true, hint: t("在下面「素材」里上传，或直接把视频发到项目对话。", "Upload under Clips below, or send the videos to the project chat.") }
+                      ? { label: t(`先上传素材，再交给 ${nextName}`, `Upload the clips, then on to ${nextName}`), disabled: true, to: "clips", hint: t("在下面「素材」里上传，或直接把视频发到项目对话 ↓", "Upload under Clips below, or send the videos to the project chat ↓") }
                       : now.key === "edit"
                         ? now.state === "running"
                           ? { label: t("剪辑师正在剪…", "The editor is cutting…"), disabled: true }
@@ -658,7 +660,7 @@ export function ProjectScreen({
                 button in the row (where it wrapped onto a line of its own). */}
             <Workbench
               anchor={STEP_ANCHOR.topic}
-              done={stepDone("topic")}
+              done={stepDone("topic")} now={stepNow("topic")}
               zh={zh}
               icon={<AgentIcon agent="research" size={26} radius={7} />}
               title={t("选题", "Topic")}
@@ -686,7 +688,7 @@ export function ProjectScreen({
             {!skipped("script") ? (
               <Workbench
                 anchor={STEP_ANCHOR.script}
-                done={stepDone("script")}
+                done={stepDone("script")} now={stepNow("script")}
                 zh={zh}
                 icon={<AgentIcon agent="script" size={26} radius={7} />}
                 title={t("脚本", "Script")}
@@ -772,7 +774,7 @@ export function ProjectScreen({
             {!skipped("clips") ? (
               <Workbench
                 anchor={STEP_ANCHOR.clips}
-                done={stepDone("clips")}
+                done={stepDone("clips")} now={stepNow("clips")}
                 zh={zh}
                 icon={<span style={{ width: 26, height: 26, borderRadius: 7, background: "#171717", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center" }}><Icon name="clapper" size={15} /></span>}
                 title={t("素材", "Clips")}
@@ -856,7 +858,7 @@ export function ProjectScreen({
                 and 重试 in black, when it did not. */}
             <Workbench
               anchor={STEP_ANCHOR.edit}
-              done={stepDone("edit")}
+              done={stepDone("edit")} now={stepNow("edit")}
               zh={zh}
               icon={<AgentIcon agent="video" size={26} radius={7} />}
               title={t("成片", "The video")}
@@ -1090,7 +1092,7 @@ export function ProjectScreen({
             </Workbench>
 
             {/* ---- captions & delivery ---- */}
-            <Workbench anchor={STEP_ANCHOR.deliver} done={stepDone("deliver")} zh={zh} icon={<AgentIcon agent="article" size={26} radius={7} />} title={t("文案与交付", "Captions & delivery")} sub={p.status === "done" ? t("已发布", "Published") : t("标题、简介、标签", "Titles, descriptions, tags")}>
+            <Workbench anchor={STEP_ANCHOR.deliver} done={stepDone("deliver")} now={stepNow("deliver")} zh={zh} icon={<AgentIcon agent="article" size={26} radius={7} />} title={t("文案与交付", "Captions & delivery")} sub={p.status === "done" ? t("已发布", "Published") : t("标题、简介、标签", "Titles, descriptions, tags")}>
               <Delivery
                 project={p}
                 zh={zh}
@@ -1324,9 +1326,11 @@ function Board({ children }: { children: React.ReactNode }) {
  * goes to `/projects/<id>#clips` — and the card is outlined for a moment when
  * it is the one opened (`:target` in `PROJECT_CSS`).
  */
-function Workbench({ icon, title, sub, right, children, anchor, done = false, zh = true }: { icon: React.ReactNode; title: string; sub?: string; right?: React.ReactNode; children: React.ReactNode; anchor?: string; done?: boolean; zh?: boolean }) {
+function Workbench({ icon, title, sub, right, children, anchor, done = false, now = null, zh = true }: { icon: React.ReactNode; title: string; sub?: string; right?: React.ReactNode; children: React.ReactNode; anchor?: string; done?: boolean; now?: ProjectStep["state"] | null; zh?: boolean }) {
+  /* The card whose step it is now says so, as a done one says 已完成: "do this now". */
+  const nowTone = now === "you" ? { bg: "#fff4df", ink: "#95590a", line: "#f0c987", zh: "现在做这一步", en: "Do this now" } : now === "running" ? { bg: "#e9f2fe", ink: "#1f5fbf", line: "#b9d2f6", zh: "进行中", en: "In progress" } : now ? { bg: "#f3f3f1", ink: "#5f5f5f", line: "#dcdcd8", zh: "下一步", en: "Next" } : null;
   return (
-    <section id={anchor} className={anchor ? "pj-card" : undefined} style={{ background: "#fff", border: "1px solid #e2e2e2", borderRadius: 14, padding: "14px 16px 16px", minWidth: 0, boxShadow: "0 1px 2px rgba(0,0,0,0.03)", scrollMarginTop: 16 }}>
+    <section id={anchor} className={anchor ? "pj-card" : undefined} style={{ background: "#fff", border: `1px solid ${nowTone && now === "you" ? nowTone.line : "#e2e2e2"}`, borderRadius: 14, padding: "14px 16px 16px", minWidth: 0, boxShadow: "0 1px 2px rgba(0,0,0,0.03)", scrollMarginTop: 16 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14, minWidth: 0 }}>
         {icon}
         <span style={{ fontSize: 14.5, fontWeight: 600 }}>{title}</span>
@@ -1337,6 +1341,11 @@ function Workbench({ icon, title, sub, right, children, anchor, done = false, zh
               <Icon name="check" size={11} strokeWidth={2.8} />
             </span>
             {zh ? "已完成" : "Done"}
+          </span>
+        ) : nowTone ? (
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 5, flexShrink: 0, fontSize: 11.5, fontWeight: 600, lineHeight: "20px", padding: "0 9px 0 7px", borderRadius: 999, color: nowTone.ink, background: nowTone.bg }}>
+            <span style={{ width: 6, height: 6, borderRadius: 3, background: nowTone.ink, animation: now === "running" ? "auraPulse 1.4s ease-in-out infinite" : undefined }} />
+            {zh ? nowTone.zh : nowTone.en}
           </span>
         ) : null}
         {sub ? <span style={{ fontSize: 12, color: "#999999", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{sub}</span> : null}
@@ -1735,7 +1744,7 @@ function jumpToCard(key: ProjectStep["key"]) {
   window.setTimeout(() => el.classList.remove("pj-flash"), 2500);
 }
 
-type FlowMove = { label: string; onClick?: () => void; disabled?: boolean; hint?: string };
+type FlowMove = { label: string; onClick?: () => void; disabled?: boolean; hint?: string; to?: ProjectStep["key"] };
 type FlowBack = { to: string; send: (note: string) => Promise<void> };
 
 /**
@@ -1807,31 +1816,22 @@ function StepFlow({
                 style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0, flexWrap: "wrap", rowGap: 4 }}
               >
                 <span style={{ fontSize: 13.5, fontWeight: 600, color: dim ? "#a3a3a3" : "#171717", textDecoration: skipped ? "line-through" : undefined, whiteSpace: "nowrap" }}>{s.label}</span>
-                {/* Who does it, told apart at a glance: an AI employee is a
-                    square pill in its own colour with the spark (「AI 员工 ·
-                    编剧」); a person is a round, warm one with their face
-                    (「真人 · Catherine」) — "more differentiation between AI
-                    and human". */}
+                {/* Who does it: an AI employee is a pill in its own colour
+                    with the AI sparkle; a person is just their face and name. */}
                 {k ? (
-                  <span style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 24, padding: "0 9px 0 3px", borderRadius: 7, background: AGENT_TINTS[k], color: AGENT_COLORS[k], opacity: dim ? 0.55 : 1, minWidth: 0, whiteSpace: "nowrap" }}>
+                  <span title={t("AI 员工", "AI employee")} style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 24, padding: "0 9px 0 3px", borderRadius: 7, background: AGENT_TINTS[k], color: AGENT_COLORS[k], opacity: dim ? 0.55 : 1, minWidth: 0, whiteSpace: "nowrap" }}>
                     <AgentIcon agent={k} size={18} radius={5} />
-                    <span style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 11, fontWeight: 700, letterSpacing: 0.2 }}>
-                      <Icon name="spark" size={11} />
-                      {t("AI 员工", "AI")}
-                    </span>
-                    <span style={{ width: 1, height: 11, background: "currentColor", opacity: 0.3 }} />
                     <span style={{ fontSize: 12, fontWeight: 600 }}>
                       <AgentName agent={k} zh={zh} />
                     </span>
+                    <AiSparkle size={13} />
                   </span>
                 ) : (
-                  <span style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 24, padding: "0 10px 0 3px", borderRadius: 999, background: "#fff4df", border: "1px solid #f4ddb0", color: "#95590a", opacity: dim ? 0.55 : 1, minWidth: 0, whiteSpace: "nowrap", boxSizing: "border-box" }}>
-                    {who ? <PersonAvatar id={who.id} url={who.avatarUrl} name={who.name} size={18} radius={9} /> : <AgentIcon agent={null} size={18} radius={9} />}
-                    <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: 0.2 }}>{t("真人", "Person")}</span>
-                    <span style={{ width: 1, height: 11, background: "currentColor", opacity: 0.3 }} />
-                    <span style={{ fontSize: 12, fontWeight: 600, color: "#6b4208" }}>
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 6, opacity: dim ? 0.55 : 1, minWidth: 0, whiteSpace: "nowrap" }}>
+                    {who ? <PersonAvatar id={who.id} url={who.avatarUrl} name={who.name} size={20} radius={10} /> : <AgentIcon agent={null} size={20} radius={10} />}
+                    <span style={{ fontSize: 12.5, fontWeight: 600, color: "#404040" }}>
                       {who ? who.name : t("主持人", "The host")}
-                      {mine ? <span style={{ fontWeight: 400, color: "#b07a2c" }}>{t("（你）", " (you)")}</span> : null}
+                      {mine ? <span style={{ fontWeight: 400, color: "#a3a3a3" }}>{t("（你）", " (you)")}</span> : null}
                     </span>
                   </span>
                 )}
@@ -1862,6 +1862,16 @@ function StepFlow({
         );
       })}
     </div>
+  );
+}
+
+/** The AI mark: a four-point sparkle with a small one beside it, in the colour around it. */
+function AiSparkle({ size = 13 }: { size?: number }) {
+  return (
+    <svg viewBox="0 0 24 24" width={size} height={size} aria-hidden style={{ display: "block", flexShrink: 0 }}>
+      <path d="M10 2.5c.5 4.6 2.9 7 7.5 7.5-4.6.5-7 2.9-7.5 7.5-.5-4.6-2.9-7-7.5-7.5 4.6-.5 7-2.9 7.5-7.5z" fill="currentColor" />
+      <path d="M18.5 14c.25 2.3 1.45 3.5 3.75 3.75-2.3.25-3.5 1.45-3.75 3.75-.25-2.3-1.45-3.5-3.75-3.75 2.3-.25 3.5-1.45 3.75-3.75z" fill="currentColor" opacity=".7" />
+    </svg>
   );
 }
 
@@ -1910,7 +1920,8 @@ function FlowActions({ zh, confirm, back, pending }: { zh: boolean; confirm: Flo
   const [open, setOpen] = React.useState(false);
   const [note, setNote] = React.useState("");
   const [sending, setSending] = React.useState(false);
-  if (!confirm && !back) return null;
+  const live = confirm && !confirm.disabled && confirm.onClick ? { label: confirm.label, onClick: confirm.onClick } : null;
+  if (!live && !back && !confirm?.hint) return null;
   const send = async () => {
     if (!back || !note.trim() || sending) return;
     setSending(true);
@@ -1924,11 +1935,13 @@ function FlowActions({ zh, confirm, back, pending }: { zh: boolean; confirm: Flo
   };
   return (
     <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-        {confirm ? (
-          <button type="button" onClick={confirm.onClick} disabled={pending || confirm.disabled || !confirm.onClick} className="pj-flow-next" title={confirm.hint}>
-            {!confirm.disabled ? <Icon name="check" size={12} strokeWidth={2.4} /> : null}
-            {confirm.label}
+      <div style={{ display: live || back ? "flex" : "none", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+        {/* Only a press that can be pressed: "先上传素材，再交给剪辑师" greyed out
+            was a button nobody could use, taking the row. */}
+        {live ? (
+          <button type="button" onClick={live.onClick} disabled={pending} className="pj-flow-next">
+            <Icon name="check" size={12} strokeWidth={2.4} />
+            {live.label}
           </button>
         ) : null}
         {back ? (
@@ -1938,7 +1951,15 @@ function FlowActions({ zh, confirm, back, pending }: { zh: boolean; confirm: Flo
           </button>
         ) : null}
       </div>
-      {confirm?.disabled && confirm.hint ? <div style={{ fontSize: 11.5, color: "#7c7c7c" }}>{confirm.hint}</div> : null}
+      {confirm?.disabled && confirm.hint ? (
+        confirm.to ? (
+          <button type="button" onClick={() => jumpToCard(confirm.to!)} className="pj-flow-hint">
+            {confirm.hint}
+          </button>
+        ) : (
+          <div style={{ fontSize: 11.5, color: "#7c7c7c" }}>{confirm.hint}</div>
+        )
+      ) : null}
       {open && back ? (
         <div style={{ display: "flex", flexDirection: "column", gap: 8, maxWidth: 640 }}>
           <textarea
@@ -2234,6 +2255,8 @@ function quiet(color: string): React.CSSProperties {
 
 const PROJECT_CSS = `
 .pj-card:target, .pj-card.pj-flash { animation: pjTarget 2.4s ease-out 1; }
+.pj-flow-hint { align-self: flex-start; border: 0; padding: 0; background: none; font-family: inherit; font-size: 11.5px; color: #1f5fbf; cursor: pointer; text-align: left; }
+.pj-flow-hint:hover { text-decoration: underline; }
 .pj-flow-head { cursor: pointer; margin: -4px -8px; padding: 4px 8px; border-radius: 8px; transition: background-color .15s ease; }
 .pj-flow-head:hover { background: #f7f7f5; }
 .pj-flow-head:focus-visible { outline: 2px solid #9fb8e8; outline-offset: 0; }
