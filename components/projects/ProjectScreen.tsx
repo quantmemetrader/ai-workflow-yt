@@ -768,7 +768,10 @@ export function ProjectScreen({
                     onClick={() =>
                       start(async () => {
                         const r = await approveNowAction(p.script!.id);
-                        setApproveError(r && "error" in r && r.error ? r.error : null);
+                        const err = r && "error" in r && r.error ? r.error : null;
+                        setApproveError(err);
+                        /* Say what the press did: the button goes with it, and a card that just lost its button read as nothing happened. */
+                        if (!err) notify(t(`脚本已批准，第 ${r && "versionNo" in r ? r.versionNo : ""} 版已锁定`, `Script approved; version ${r && "versionNo" in r ? r.versionNo : ""} locked`), "ok");
                         router.refresh();
                       })
                     }
@@ -777,6 +780,35 @@ export function ProjectScreen({
                   >
                     <Icon name="check" size={14} strokeWidth={2.4} /> {t("脚本可以了", "Script looks good")}
                   </button>
+                ) : null}
+                {/* Approved: said on the card where the button was, with the way back. */}
+                {p.script?.status === "locked" ? (
+                  <div style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 32, padding: "0 12px", borderRadius: 9, background: "#eaf7f0", border: "1px solid #bfe3cf", color: "#1e7a4f", fontSize: 13, fontWeight: 600 }}>
+                      <Icon name="check" size={13} strokeWidth={2.6} />
+                      {t(`已批准 · 第 ${p.script.version} 版已锁定`, `Approved · version ${p.script.version} locked`)}
+                    </span>
+                    {canApprove ? (
+                      <button
+                        type="button"
+                        className="pj-flow-back"
+                        disabled={pending}
+                        title={t("解锁后可以再改，改完要重新批准", "Unlock to change it; it needs approving again after")}
+                        onClick={() =>
+                          start(async () => {
+                            const r = await unlockAction(p.script!.id);
+                            if (r && "error" in r && r.error) notify(r.error);
+                            else notify(t("脚本已解锁，可以再改", "Script unlocked for changes"), "ok");
+                            router.refresh();
+                          })
+                        }
+                        style={{ height: 32, fontSize: 12.5 }}
+                      >
+                        <Icon name="lock" size={12} />
+                        {t("解锁再改", "Unlock to edit")}
+                      </button>
+                    ) : null}
+                  </div>
                 ) : null}
                 {approveError ? <div style={{ marginTop: 6, fontSize: 11.5, color: "#c0392b" }}>{approveError}</div> : null}
                 {!canApprove && p.script?.status === "awaiting_approval" ? (
