@@ -28,15 +28,28 @@ import { canKaraoke, toAss } from "@/lib/video/ass";
 import { asTransition, captionPreset, type TransitionKind } from "@/lib/video/presets";
 import {
   brollFilter,
+  cutawayFilter,
+  framingChain,
+  furnitureFilter,
   graphicsAvailable,
+  makeMasks,
+  motionFilter,
+  normalise,
   overlayFilter,
   punchFilter,
+  pushChain,
   renderGraphics,
   type BrollSpec,
+  type CutawayInput,
   type GraphicSpec,
+  type HostInsert,
+  type MotionInput,
+  type MotionPart,
   type PunchSpec,
 } from "@/lib/video/graphics";
 import { asEntrance } from "@/lib/video/presets";
+import type { RenderPlan } from "@/lib/video/v2/types";
+import { loadRenderInputV2 } from "@/lib/video/v2/render-input";
 
 /**
  * The renderer. FFmpeg on this box, run by the worker, never by a request.
@@ -46,7 +59,22 @@ import { asEntrance } from "@/lib/video/presets";
  * ship the captions, and put the result back in the file store as a real file
  * with real permissions.
  *
- * Four things worth knowing:
+ * Since director v2 it is two halves with a seam you can see:
+ *
+ *   - `loadRenderInput()` reads the database and the object store and comes
+ *     back with a `RenderInput`: local files, numbers, nothing else. The
+ *     export's progress row is updated as it downloads.
+ *   - `renderTimeline(plan, out)` takes that and makes an mp4. It writes only
+ *     under its work directory and reads nothing from the database, so the
+ *     lab (`scripts/dv2/test-render.ts`) can render a plan it wrote itself,
+ *     and a render that came out wrong can be replayed from its plan.
+ *
+ * `renderExport()` is the worker's entry and is the two halves plus the
+ * store step, exactly as before. A v1 project produces the same ffmpeg
+ * command it did before the split — the lab checks that argument for
+ * argument — because the old path is not the one being changed.
+ *
+ * Four things worth knowing, unchanged:
  *
  *   1. **Every cut is re-encoded to a common format before concatenation.**
  *      FFmpeg's concat demuxer needs identical streams, and a studio's footage
@@ -74,6 +102,91 @@ const FONTS_DIR = path.join(process.cwd(), "remotion", "public", "fonts");
 /** A render that has not finished in an hour is not going to. */
 const RENDER_TIMEOUT_MS = 60 * 60_000;
 
+/* ------------------------------------------------------------ the plan */
+
+/** How one cut arrives from the one before it. */
+export type Join = { kind: TransitionKind; ms: number };
+
+/**
+ * One cut of the film as the renderer takes it: the plan's cut (`file`,
+ * `zoom`, `anchor`, `push`) plus what the v1 path needs to stay itself — a
+ * transition in, or a drawn title card instead of footage.
+ */
+export type RenderCut = RenderPlan["cuts"][number] & {
+  /**
+   * A push's clock is the cut's own source clock, the same as `inMs`/`outMs`;
+   * `rampMs` is how long the zoom takes to arrive (default: the whole window,
+   * the slow push; a snap sets 167 ms, five frames). `to` is absolute.
+   */
+  push?: { fromMs: number; toMs: number; to: number; rampMs?: number };
+  /** The face box's height as a share of the frame, for the `run` circle's crop. */
+  faceHeight?: number;
+  /** v1: the transition into this cut (default a hard cut). */
+  join?: Join;
+  /** v1: a drawn title card; `inMs` 0 and `outMs` the hold, no file. */
+  title?: { text: string };
+  /**
+   * The cut contributes silence, not its own sound: the footage under a
+   * generated narration (`options.mute`, `lib/video/narrate.ts`).
+   */
+  mute?: boolean;
+  /** Where the anchor's y lands in the output (a share of the height); see `Framing.eyeOut`. */
+  eyeOut?: number;
+  /**
+   * The cut continues the one before it on the same source with no edit in
+   * between — only the framing changes (a card comes up and the host is
+   * reframed under it). Its sound joins the previous cut's without the
+   * 12 ms fades, which would otherwise dip the voice mid-word.
+   */
+  seam?: boolean;
+};
+
+/** `speech`: a voice-over, which keys the ducking the way filmed speech does. */
+export type TrackInput = { path: string; startMs: number; gain: number; duck: boolean; speech?: boolean };
+
+/**
+ * What `renderTimeline` renders. A `RenderPlan` (the v2 contract in
+ * `lib/video/v2/types.ts`) is one of these with nothing extra; the extra
+ * fields carry the v1 editor's layers so the worker's existing projects go
+ * through the same function unchanged.
+ */
+/**
+ * One cutaway as the renderer takes it: the plan's, plus — for `split` —
+ * where the host under the band is framed when §1's numbers do not fit the
+ * presenter. §1 puts the host at 1.12 with the eye line at y ≈ 1150, which
+ * lands a face whose eyes are 0.13 of the frame above its chin (蒸馏) with
+ * the chin at y ≈ 1430, under the caption line; the planner that knows the
+ * face track and the caption's top sets these so the chin clears it
+ * (`hostEyeY = (captionTop − 40)/H − (chinY − eyeY)·hostZoom`).
+ */
+export type RenderCutaway = RenderPlan["cutaways"][number] & {
+  /** `split`: the host's zoom under the band (default `LAYOUT.splitHostZoom`, 1.12). */
+  hostZoom?: number;
+  /** `split`: where the host's eye line lands, as a share of the height (default `LAYOUT.splitEyeY`, 1150/1920). */
+  hostEyeY?: number;
+};
+
+export type RenderInput = Omit<RenderPlan, "cuts" | "cutaways"> & {
+  cuts: RenderCut[];
+  cutaways: RenderCutaway[];
+  /** `v1` keeps the old command byte for byte: no framing, no fades, TP −1.5. Default `v2`. */
+  mode?: "v1" | "v2";
+  accent?: string;
+  /** Where intermediates go (masks, stills). Default: beside the output. */
+  workDir?: string;
+  /** v1: editor graphics drawn as Remotion stills and faded on. */
+  stills?: GraphicSpec[];
+  /** v1: cutaways in the old placements (`pip`, corners, `full` at a scale). */
+  brolls?: BrollSpec[];
+  /** v1: whole-video punch-ins. */
+  punches?: PunchSpec[];
+  /** Music and voice-over tracks from the editor. */
+  tracks?: TrackInput[];
+};
+
+export type RenderProgress = { phase: "graphics" | "encode"; totalMs: number; doneMs?: number; command?: string };
+
+/* ----------------------------------------------------------- worker */
 
 /**
  * An export is seen by whoever can see its project.
@@ -142,385 +255,34 @@ export async function renderExport(exportId: string): Promise<{ fileId: string; 
   const dir = await mkdtemp(path.join(tmpdir(), "aura-render-"));
 
   try {
-    const items = await db
-      .select({ i: timelineItems, clip: videoClips, file: files })
-      .from(timelineItems)
-      .leftJoin(videoClips, eq(videoClips.id, timelineItems.clipId))
-      .leftJoin(files, eq(files.id, videoClips.fileId))
-      .where(eq(timelineItems.projectId, e.projectId))
-      .orderBy(asc(timelineItems.ord));
+    const setProgress = (progress: number) =>
+      db.update(videoExports).set({ progress }).where(eq(videoExports.id, exportId)).then(() => {}, () => {});
 
-    if (!items.length) throw new Error("There is nothing on the timeline");
-
-    /*
-     * One pass, not three.
-     *
-     * The first renderer wrote every cut to its own file, stitched those
-     * through `xfade` when a dissolve was asked for, and then encoded the
-     * lot a third time under the graphics and the captions. Three 1080p
-     * encodes of the same picture, on a box that shares its cores with two
-     * other services, was eighteen minutes for a fourteen-cut minute of
-     * video before a single title had been drawn.
-     *
-     * Now every cut is its own input, opened with `-ss`/`-t` so the demuxer
-     * reads only that cut's window, the cuts are joined by `concat` (or
-     * `xfade` where a transition was asked for), and the punch-ins, graphics,
-     * cutaways and captions go on the same graph. The picture is encoded
-     * exactly once.
-     *
-     * The cuts are NOT `trim` filters on one shared input. `concat` consumes
-     * its inputs in order, so while it reads the first cut the split feeding
-     * the others has to buffer every frame they will eventually need: a
-     * 4-minute 1080x1920 timeline is ~25GB of raw frames, and a 22-cut export
-     * took 63GB and was killed by the kernel. Seeking per input costs one
-     * demuxer per cut and holds nothing.
-     */
-    /** Local path per source file: downloaded once, seeked into many times. */
-    const sourcePath = new Map<string, string>();
-    /** One entry per cut — the same file appears once for each cut taken from it. */
-    const inputs: { path: string; ss: number; t: number }[] = [];
-    const sourceHasAudio = new Map<string, boolean>();
-    const cuts: { v: string; a: string; lengthMs: number; join: Join }[] = [];
-    const pre: string[] = [];
-    let totalMs = 0;
-
-    for (const [index, entry] of items.entries()) {
-      const arrive: Join =
-        cuts.length === 0
-          ? { kind: "cut", ms: 0 }
-          : { kind: asTransition(entry.i.transition), ms: Math.max(80, Math.min(4000, entry.i.transitionMs)) };
-      const n = cuts.length;
-
-      if (entry.i.kind === "title") {
-        const hold = Math.max(200, entry.i.holdMs);
-        const safe = (entry.i.text ?? "").replace(/\\/g, "\\\\").replace(/:/g, "\\:").replace(/'/g, "\u2019").slice(0, 200);
-        pre.push(
-          `color=c=0x111111:s=${size.w}x${size.h}:r=${FPS}:d=${(hold / 1000).toFixed(3)},` +
-            `drawtext=text='${safe}':fontcolor=white:fontsize=${Math.round(size.w / 22)}:x=(w-text_w)/2:y=(h-text_h)/2:line_spacing=12,` +
-            `format=yuv420p,setsar=1[c${n}v]`,
-          `anullsrc=channel_layout=stereo:sample_rate=48000,atrim=0:${(hold / 1000).toFixed(3)},asetpts=PTS-STARTPTS[c${n}a]`,
-        );
-        cuts.push({ v: `[c${n}v]`, a: `[c${n}a]`, lengthMs: hold, join: arrive });
-        totalMs += hold;
-        continue;
-      }
-
-      if (!entry.clip || !entry.file?.storageKey) {
-        // A cut whose source has been deleted is skipped rather than failing
-        // the whole render: the log says so and the rest of the cut survives.
-        continue;
-      }
-
-      let local = sourcePath.get(entry.file.storageKey);
-      if (local === undefined) {
-        local = path.join(dir, `src-${sourcePath.size}${path.extname(entry.file.name) || ".mp4"}`);
-        await download(entry.file.storageKey, local);
-        sourcePath.set(entry.file.storageKey, local);
-        sourceHasAudio.set(entry.file.storageKey, await hasAudio(local));
-      }
-
-      /*
-       * A cut that starts past the end of its own footage.
-       *
-       * Said here, naming the cut, the time and the file, rather than
-       * surfacing minutes later as a filter that produced nothing.
-       */
-      const sourceMs = entry.clip.durationMs ?? null;
-      if (sourceMs !== null && entry.i.inMs >= sourceMs) {
-        throw new Error(
-          `Cut ${index + 1} starts at ${(entry.i.inMs / 1000).toFixed(1)}s, past the end of ` +
-            `${entry.file.name} (${(sourceMs / 1000).toFixed(1)}s). Trim it, or take it off the timeline.`,
-        );
-      }
-
-      const inSec = entry.i.inMs / 1000;
-      const outMs = entry.i.outMs ?? entry.clip.durationMs ?? null;
-      if (outMs === null) throw new Error(`The length of ${entry.file.name} is not known yet. Wait a moment and try again.`);
-      const outSec = Math.max(inSec + 0.05, outMs / 1000);
-      const lengthMs = Math.round((outSec - inSec) * 1000);
-
-      // The window is cut at the demuxer by `-ss`/`-t` in buildArgs, so this
-      // input carries only the cut's own frames and starts near zero; the
-      // setpts still zeroes the residue left by seeking to a keyframe.
-      const k = inputs.length;
-      inputs.push({ path: local, ss: inSec, t: outSec - inSec });
-
-      pre.push(
-        `[${k}:v]setpts=PTS-STARTPTS,` +
-          `scale=${size.w}:${size.h}:force_original_aspect_ratio=decrease,pad=${size.w}:${size.h}:(ow-iw)/2:(oh-ih)/2:color=black,` +
-          `fps=${FPS},setsar=1,format=yuv420p[c${n}v]`,
-        /* A cut marked `mute` (the footage under a generated narration,
-           `lib/video/narrate.ts`) contributes silence, not its own sound. */
-        sourceHasAudio.get(entry.file.storageKey) && !(entry.i.options as { mute?: unknown } | null)?.mute
-          ? `[${k}:a]asetpts=PTS-STARTPTS,` +
-              `aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo[c${n}a]`
-          : `anullsrc=channel_layout=stereo:sample_rate=48000,atrim=0:${(lengthMs / 1000).toFixed(3)},asetpts=PTS-STARTPTS[c${n}a]`,
-      );
-      cuts.push({ v: `[c${n}v]`, a: `[c${n}a]`, lengthMs, join: arrive });
-      totalMs += lengthMs;
-
-      await db
-        .update(videoExports)
-        .set({ progress: Math.round(((index + 1) / items.length) * 10) })
-        .where(eq(videoExports.id, exportId));
-    }
-
-    if (!cuts.length) throw new Error("Every cut's source file is missing");
-
-    /* The join: one concat when nothing dissolves, a fold of xfade and
-       acrossfade where something does. A dissolve overlaps its two cuts, so
-       the film is shorter than the sum of its parts by what overlapped. */
-    const { filters: joinFilters, video: joinedV, audio: joinedA, overlapMs } = joinCuts(cuts);
-    pre.push(...joinFilters);
-    totalMs = Math.max(0, totalMs - overlapMs);
-    const captionRows = await db
-      .select()
-      .from(captions)
-      .where(and(eq(captions.projectId, e.projectId), eq(captions.language, e.captionLanguage)))
-      .orderBy(asc(captions.startMs));
-
-    const srt = captionRows.length
-      ? toSrt(
-          captionRows.map((c) => ({
-            id: c.id,
-            startMs: c.startMs,
-            endMs: c.endMs,
-            text: c.text,
-            language: c.language,
-          })),
-        )
-      : null;
-
-    let srtPath: string | null = null;
-    if (srt) {
-      srtPath = path.join(dir, "captions.srt");
-      await writeFile(srtPath, srt, "utf8");
-    }
-
-    /*
-     * The captions the renderer actually draws, as ASS.
-     *
-     * The SRT above is still written, because a sidecar file is what somebody
-     * uploads to YouTube alongside the video. What gets *burned in* is this:
-     * the project's chosen preset, with its one treatment, its margins and —
-     * when the transcriber measured them — its word timings.
-     */
-    let assPath: string | null = null;
-    if (captionRows.length && e.burnCaptions === "burn") {
-      /* The other language's lines, for the bilingual preset: matched to the
-         main line by its start, which is how the translation pass wrote them. */
-      const wantsSecond = Boolean(captionPreset(project.captionPreset).style.second);
-      const others = wantsSecond
-        ? await db
-            .select({ startMs: captions.startMs, text: captions.text })
-            .from(captions)
-            .where(and(eq(captions.projectId, e.projectId), sql`${captions.language} <> ${e.captionLanguage}`))
-        : [];
-      const secondAt = new Map(others.map((o) => [o.startMs, o.text]));
-
-      const cues = captionRows.map((c) => ({
-        startMs: c.startMs,
-        endMs: c.endMs,
-        text: c.text,
-        words: c.words,
-        keywords: c.keywords,
-        second: secondAt.get(c.startMs) ?? null,
-      }));
-
-      // A preset that follows the voice, asked for on captions that were never
-      // timed, would drift within a sentence. It falls back to the whole-line
-      // preset rather than pretending.
-      const wanted = project.captionPreset;
-      const preset = captionPreset(wanted).style.karaoke && !canKaraoke(cues) ? "clean" : wanted;
-
-      assPath = path.join(dir, "captions.ass");
-      await writeFile(
-        assPath,
-        toAss(cues, { presetKey: preset, width: size.w, height: size.h, accent: project.accent }),
-        "utf8",
-      );
-    }
-
-    /*
-     * Titles, lower thirds and end cards.
-     *
-     * Each is drawn once by Remotion as a transparent still and laid over the
-     * picture by FFmpeg, which also does the fade and the slide. Rendering the
-     * whole timeline through Chrome was the first design and cost thirteen
-     * seconds a frame on this box; this costs about eleven seconds per
-     * graphic, whatever the video's length.
-     */
-    const graphicRows = await db
-      .select()
-      .from(videoGraphics)
-      .where(eq(videoGraphics.projectId, e.projectId))
-      .orderBy(asc(videoGraphics.startMs));
-
-    /* A picture graphic needs its bytes. They are pulled here, next to the
-       footage, and the file is re-read from the store rather than trusted from
-       the row: a graphic pointing at a file that has since been deleted draws
-       nothing rather than failing the render. */
-    const pictureIds = graphicRows.map((g) => g.fileId).filter((id): id is string => Boolean(id));
-    const pictures = pictureIds.length
-      ? await db
-          .select({ id: files.id, key: files.storageKey, name: files.name, mime: files.mime })
-          .from(files)
-          .where(and(inArray(files.id, pictureIds), isNull(files.deletedAt)))
-      : [];
-
-    const pictureFiles = new Map<string, string>();
-    const pictureMimes = new Map<string, string | null>();
-    for (const [i, picture] of pictures.entries()) {
-      if (!picture.key) continue;
-      const local = path.join(dir, `picture-${i}${path.extname(picture.name) || ".png"}`);
-      // A picture that will not download is left out of the render rather
-      // than failing it: the video is worth more than one missing still.
-      const got = await download(picture.key, local).then(() => true, () => false);
-      if (got) {
-        pictureFiles.set(picture.id, local);
-        pictureMimes.set(picture.id, picture.mime ?? null);
-      }
-      else console.warn(`[render] picture ${picture.id} could not be fetched; skipped`);
-    }
-
-    const specs: GraphicSpec[] = graphicRows
-      .filter((g) => g.kind !== "broll" && g.kind !== "punch")
-      .filter((g) => (g.kind === "image" ? pictureFiles.has(g.fileId ?? "") : g.text.trim()))
-      .filter((g) => g.endMs > g.startMs)
-      .map((g) => ({
-        kind: g.kind as GraphicSpec["kind"],
-        text: g.text,
-        sub: g.sub,
-        startMs: g.startMs,
-        endMs: g.endMs,
-        imagePath: g.fileId ? (pictureFiles.get(g.fileId) ?? null) : null,
-        imageMime: g.fileId ? (pictureMimes.get(g.fileId) ?? null) : null,
-        icon: g.icon,
-        placement: g.placement,
-        scale: g.scale,
-        enter: asEntrance(g.options?.enter),
-      }));
-
-    /*
-     * Cutaways: a clip from the bin over the picture, the speaker's sound
-     * continuing underneath. The clip is pulled from storage next to the
-     * footage; a cutaway whose clip has gone is dropped rather than failing
-     * the render, the same rule a missing picture follows.
-     */
-    const brollRows = graphicRows.filter((g) => g.kind === "broll" && g.endMs > g.startMs);
-    const brollClipIds = brollRows.map((g) => String(g.options?.clipId ?? "")).filter(Boolean);
-    const brollClips = brollClipIds.length
-      ? await db
-          .select({ id: videoClips.id, key: files.storageKey, name: files.name, durationMs: videoClips.durationMs })
-          .from(videoClips)
-          .innerJoin(files, eq(files.id, videoClips.fileId))
-          .where(and(inArray(videoClips.id, brollClipIds), isNull(files.deletedAt)))
-      : [];
-    const brollLocal = new Map<string, string>();
-    for (const [i, clip] of brollClips.entries()) {
-      if (!clip.key) continue;
-      const local = path.join(dir, `broll-${i}${path.extname(clip.name) || ".mp4"}`);
-      await download(clip.key, local).catch(() => null);
-      brollLocal.set(clip.id, local);
-    }
-    const brolls: BrollSpec[] = brollRows
-      .map((g) => {
-        const clipId = String(g.options?.clipId ?? "");
-        const local = brollLocal.get(clipId);
-        const clip = brollClips.find((c) => c.id === clipId);
-        if (!local || !clip) return null;
-        const sourceInMs = Math.max(0, Number(g.options?.sourceInMs ?? 0) || 0);
-        // Never past the end of the cutaway's own footage.
-        const available = clip.durationMs ? clip.durationMs - sourceInMs : null;
-        const length = available === null ? g.endMs - g.startMs : Math.min(g.endMs - g.startMs, available);
-        if (length < 200) return null;
-        return {
-          path: local,
-          startMs: g.startMs,
-          endMs: g.startMs + length,
-          sourceInMs,
-          placement: g.placement || "full",
-          scale: g.scale,
-        };
-      })
-      .filter((b): b is BrollSpec => b !== null);
-
-    /* Punch-ins: the picture, not an overlay. Sorted and de-overlapped here
-       so the filter can sum them. */
-    const punches: PunchSpec[] = graphicRows
-      .filter((g) => g.kind === "punch" && g.endMs > g.startMs)
-      .map((g) => ({ startMs: g.startMs, endMs: g.endMs, zoom: Number(g.options?.zoom ?? 1.15) || 1.15 }))
-      .sort((a, b) => a.startMs - b.startMs)
-      .filter((p, i, all) => i === 0 || p.startMs >= all[i - 1].endMs);
-
-    let graphicFiles: string[] = [];
-    if (specs.length) {
-      if (!(await graphicsAvailable())) {
-        // Say so rather than silently shipping a video without the titles
-        // somebody put on the timeline.
-        throw new Error("This machine cannot draw graphics: run `npm install` in remotion/.");
-      }
-      await db.update(videoExports).set({ progress: 15 }).where(eq(videoExports.id, exportId));
-      graphicFiles = await renderGraphics(specs, { width: size.w, height: size.h, accent: project.accent, dir });
-    }
-
-    /*
-     * Voice-over and music, if there are any.
-     *
-     * Mixed in a second pass rather than into every segment: a track is laid
-     * against the *timeline*, not against one cut, and doing it per segment
-     * would mean slicing each track at every edit point for no gain.
-     */
-    const tracks = await db
-      .select({ t: audioTracks, key: files.storageKey })
-      .from(audioTracks)
-      .leftJoin(files, eq(files.id, audioTracks.fileId))
-      .where(and(eq(audioTracks.projectId, e.projectId), eq(audioTracks.state, "ready")));
-
-    const usable: { path: string; startMs: number; gain: number; duck: boolean; speech: boolean }[] = [];
-    for (const [i, entry] of tracks.entries()) {
-      if (!entry.key) continue;
-      const local = path.join(dir, `audio-${i}${path.extname(entry.key) || ".mp3"}`);
-      await download(entry.key, local);
-      usable.push({
-        path: local,
-        startMs: entry.t.startMs,
-        gain: entry.t.gain,
-        duck: entry.t.duckUnderSpeech,
-        // A voice-over is speech: music that ducks under speech ducks under it.
-        speech: entry.t.kind === "voiceover" && !entry.t.duckUnderSpeech,
-      });
-    }
+    /* A director v2 video is read back into its own plan (`lib/video/v2/render-input.ts`); anything else, and any v2
+       video whose tenant has the flag off again, loads exactly as before. */
+    const { plan, srt } =
+      (await loadRenderInputV2({ e, project, dir, download, onProgress: setProgress })) ?? (await loadRenderInput({ e, project, size, dir, onProgress: setProgress }));
 
     const master = path.join(dir, "master.mp4");
-    const finalArgs = buildArgs({
-      inputs,
-      pre,
-      joinedV,
-      joinedA,
-      assPath,
-      graphicFiles,
-      graphicSpecs: specs,
-      brolls,
-      accent: project.accent,
-      punches,
-      tracks: usable,
-      size,
-      out: master,
-    });
-    await db
-      .update(videoExports)
-      .set({ progress: 20, command: `ffmpeg ${finalArgs.join(" ")}`.slice(0, 4000) })
-      .where(eq(videoExports.id, exportId));
-
-    // The one encode. Progress is read from FFmpeg itself, so the bar on
-    // screen is the picture's own clock and not a guess.
     let lastWritten = 0;
-    await runFfmpeg(finalArgs, async (doneMs) => {
-      const pct = 20 + Math.min(70, Math.round((doneMs / Math.max(1, totalMs)) * 70));
+    const { durationMs: totalMs } = await renderTimeline(plan, master, async (p) => {
+      if (p.phase === "graphics") {
+        await setProgress(15);
+        return;
+      }
+      if (p.command !== undefined) {
+        await db
+          .update(videoExports)
+          .set({ progress: 20, command: p.command.slice(0, 4000) })
+          .where(eq(videoExports.id, exportId));
+        return;
+      }
+      // The one encode. Progress is read from FFmpeg itself, so the bar on
+      // screen is the picture's own clock and not a guess.
+      const pct = 20 + Math.min(70, Math.round(((p.doneMs ?? 0) / Math.max(1, p.totalMs)) * 70));
       if (pct - lastWritten >= 3) {
         lastWritten = pct;
-        await db.update(videoExports).set({ progress: pct }).where(eq(videoExports.id, exportId)).catch(() => {});
+        await setProgress(pct);
       }
     });
 
@@ -613,7 +375,7 @@ export async function renderExport(exportId: string): Promise<{ fileId: string; 
        same words, one of them already on the picture, is a file nobody wants
        and a caption track YouTube would show on top of the burned one. */
     let subtitleFileId: string | null = null;
-    if (srt && assPath === null) {
+    if (srt && !plan.assFile) {
       subtitleFileId = newId("fil");
       const srtName = `${project.title} · ${e.captionLanguage}.srt`;
       const srtKey = storageKey(e.tenantId, subtitleFileId, srtName);
@@ -683,21 +445,689 @@ export async function renderExport(exportId: string): Promise<{ fileId: string; 
   }
 }
 
+/* ------------------------------------------------------------- loading */
+
+type ExportRow = typeof videoExports.$inferSelect;
+type ProjectRow = typeof videoProjects.$inferSelect;
+
+/**
+ * Everything a render reads, read: the timeline, the captions, the graphics,
+ * the cutaways, the tracks, and every file they point at pulled next to each
+ * other on local disk. The result is a `RenderInput` in `v1` mode — the
+ * editor's own layers, exactly as the renderer always drew them. The v2
+ * director builds its plan elsewhere (`lib/video/v2/persist.ts` and the lab)
+ * and hands it to `renderTimeline` directly.
+ */
+export async function loadRenderInput(input: {
+  e: ExportRow;
+  project: ProjectRow;
+  size: { w: number; h: number };
+  dir: string;
+  onProgress?: (pct: number) => Promise<void> | void;
+}): Promise<{ plan: RenderInput; srt: string | null }> {
+  const { e, project, size, dir } = input;
+  const items = await db
+    .select({ i: timelineItems, clip: videoClips, file: files })
+    .from(timelineItems)
+    .leftJoin(videoClips, eq(videoClips.id, timelineItems.clipId))
+    .leftJoin(files, eq(files.id, videoClips.fileId))
+    .where(eq(timelineItems.projectId, e.projectId))
+    .orderBy(asc(timelineItems.ord));
+
+  if (!items.length) throw new Error("There is nothing on the timeline");
+
+  /** Local path per source file: downloaded once, seeked into many times. */
+  const sourcePath = new Map<string, string>();
+  const cuts: RenderCut[] = [];
+
+  for (const [index, entry] of items.entries()) {
+    const join: Join =
+      cuts.length === 0
+        ? { kind: "cut", ms: 0 }
+        : { kind: asTransition(entry.i.transition), ms: Math.max(80, Math.min(4000, entry.i.transitionMs)) };
+
+    if (entry.i.kind === "title") {
+      const hold = Math.max(200, entry.i.holdMs);
+      cuts.push({ clipId: "", file: "", inMs: 0, outMs: hold, zoom: 1, anchor: [0.5, 0.42], join, title: { text: entry.i.text ?? "" } });
+      continue;
+    }
+
+    if (!entry.clip || !entry.file?.storageKey) {
+      // A cut whose source has been deleted is skipped rather than failing
+      // the whole render: the log says so and the rest of the cut survives.
+      continue;
+    }
+
+    let local = sourcePath.get(entry.file.storageKey);
+    if (local === undefined) {
+      local = path.join(dir, `src-${sourcePath.size}${path.extname(entry.file.name) || ".mp4"}`);
+      await download(entry.file.storageKey, local);
+      sourcePath.set(entry.file.storageKey, local);
+    }
+
+    /*
+     * A cut that starts past the end of its own footage.
+     *
+     * Said here, naming the cut, the time and the file, rather than
+     * surfacing minutes later as a filter that produced nothing.
+     */
+    const sourceMs = entry.clip.durationMs ?? null;
+    if (sourceMs !== null && entry.i.inMs >= sourceMs) {
+      throw new Error(
+        `Cut ${index + 1} starts at ${(entry.i.inMs / 1000).toFixed(1)}s, past the end of ` +
+          `${entry.file.name} (${(sourceMs / 1000).toFixed(1)}s). Trim it, or take it off the timeline.`,
+      );
+    }
+
+    const outMs = entry.i.outMs ?? entry.clip.durationMs ?? null;
+    if (outMs === null) throw new Error(`The length of ${entry.file.name} is not known yet. Wait a moment and try again.`);
+
+    /* A cut marked `mute` (the footage under a generated narration,
+       `lib/video/narrate.ts`) contributes silence, not its own sound. */
+    const mute = Boolean((entry.i.options as { mute?: unknown } | null)?.mute);
+    cuts.push({ clipId: entry.clip.id, file: local, inMs: entry.i.inMs, outMs, zoom: 1, anchor: [0.5, 0.42], join, ...(mute ? { mute } : {}) });
+    await input.onProgress?.(Math.round(((index + 1) / items.length) * 10));
+  }
+
+  if (!cuts.length) throw new Error("Every cut's source file is missing");
+
+  const captionRows = await db
+    .select()
+    .from(captions)
+    .where(and(eq(captions.projectId, e.projectId), eq(captions.language, e.captionLanguage)))
+    .orderBy(asc(captions.startMs));
+
+  const srt = captionRows.length
+    ? toSrt(
+        captionRows.map((c) => ({
+          id: c.id,
+          startMs: c.startMs,
+          endMs: c.endMs,
+          text: c.text,
+          language: c.language,
+        })),
+      )
+    : null;
+
+  if (srt) await writeFile(path.join(dir, "captions.srt"), srt, "utf8");
+
+  /*
+   * The captions the renderer actually draws, as ASS.
+   *
+   * The SRT above is still written, because a sidecar file is what somebody
+   * uploads to YouTube alongside the video. What gets *burned in* is this:
+   * the project's chosen preset, with its one treatment, its margins and —
+   * when the transcriber measured them — its word timings.
+   */
+  let assPath: string | null = null;
+  if (captionRows.length && e.burnCaptions === "burn") {
+    /* The other language's lines, for the bilingual preset: matched to the
+       main line by its start, which is how the translation pass wrote them. */
+    const wantsSecond = Boolean(captionPreset(project.captionPreset).style.second);
+    const others = wantsSecond
+      ? await db
+          .select({ startMs: captions.startMs, text: captions.text })
+          .from(captions)
+          .where(and(eq(captions.projectId, e.projectId), sql`${captions.language} <> ${e.captionLanguage}`))
+      : [];
+    const secondAt = new Map(others.map((o) => [o.startMs, o.text]));
+
+    const cues = captionRows.map((c) => ({
+      startMs: c.startMs,
+      endMs: c.endMs,
+      text: c.text,
+      words: c.words,
+      keywords: c.keywords,
+      second: secondAt.get(c.startMs) ?? null,
+    }));
+
+    // A preset that follows the voice, asked for on captions that were never
+    // timed, would drift within a sentence. It falls back to the whole-line
+    // preset rather than pretending.
+    const wanted = project.captionPreset;
+    const preset = captionPreset(wanted).style.karaoke && !canKaraoke(cues) ? "clean" : wanted;
+
+    assPath = path.join(dir, "captions.ass");
+    await writeFile(
+      assPath,
+      toAss(cues, { presetKey: preset, width: size.w, height: size.h, accent: project.accent }),
+      "utf8",
+    );
+  }
+
+  /*
+   * Titles, lower thirds and end cards.
+   *
+   * Each is drawn once by Remotion as a transparent still and laid over the
+   * picture by FFmpeg, which also does the fade and the slide. Rendering the
+   * whole timeline through Chrome was the first design and cost thirteen
+   * seconds a frame on this box; this costs about eleven seconds per
+   * graphic, whatever the video's length.
+   */
+  const graphicRows = await db
+    .select()
+    .from(videoGraphics)
+    .where(eq(videoGraphics.projectId, e.projectId))
+    .orderBy(asc(videoGraphics.startMs));
+
+  /* A picture graphic needs its bytes. They are pulled here, next to the
+     footage, and the file is re-read from the store rather than trusted from
+     the row: a graphic pointing at a file that has since been deleted draws
+     nothing rather than failing the render. */
+  const pictureIds = graphicRows.map((g) => g.fileId).filter((id): id is string => Boolean(id));
+  const pictures = pictureIds.length
+    ? await db
+        .select({ id: files.id, key: files.storageKey, name: files.name, mime: files.mime })
+        .from(files)
+        .where(and(inArray(files.id, pictureIds), isNull(files.deletedAt)))
+    : [];
+
+  const pictureFiles = new Map<string, string>();
+  const pictureMimes = new Map<string, string | null>();
+  for (const [i, picture] of pictures.entries()) {
+    if (!picture.key) continue;
+    const local = path.join(dir, `picture-${i}${path.extname(picture.name) || ".png"}`);
+    // A picture that will not download is left out of the render rather
+    // than failing it: the video is worth more than one missing still.
+    const got = await download(picture.key, local).then(() => true, () => false);
+    if (got) {
+      pictureFiles.set(picture.id, local);
+      pictureMimes.set(picture.id, picture.mime ?? null);
+    }
+    else console.warn(`[render] picture ${picture.id} could not be fetched; skipped`);
+  }
+
+  const stills: GraphicSpec[] = graphicRows
+    .filter((g) => g.kind !== "broll" && g.kind !== "punch")
+    .filter((g) => (g.kind === "image" ? pictureFiles.has(g.fileId ?? "") : g.text.trim()))
+    .filter((g) => g.endMs > g.startMs)
+    .map((g) => ({
+      kind: g.kind as GraphicSpec["kind"],
+      text: g.text,
+      sub: g.sub,
+      startMs: g.startMs,
+      endMs: g.endMs,
+      imagePath: g.fileId ? (pictureFiles.get(g.fileId) ?? null) : null,
+      imageMime: g.fileId ? (pictureMimes.get(g.fileId) ?? null) : null,
+      icon: g.icon,
+      placement: g.placement,
+      scale: g.scale,
+      enter: asEntrance(g.options?.enter),
+    }));
+
+  /*
+   * Cutaways: a clip from the bin over the picture, the speaker's sound
+   * continuing underneath. The clip is pulled from storage next to the
+   * footage; a cutaway whose clip has gone is dropped rather than failing
+   * the render, the same rule a missing picture follows.
+   */
+  const brollRows = graphicRows.filter((g) => g.kind === "broll" && g.endMs > g.startMs);
+  const brollClipIds = brollRows.map((g) => String(g.options?.clipId ?? "")).filter(Boolean);
+  const brollClips = brollClipIds.length
+    ? await db
+        .select({ id: videoClips.id, key: files.storageKey, name: files.name, durationMs: videoClips.durationMs })
+        .from(videoClips)
+        .innerJoin(files, eq(files.id, videoClips.fileId))
+        .where(and(inArray(videoClips.id, brollClipIds), isNull(files.deletedAt)))
+    : [];
+  const brollLocal = new Map<string, string>();
+  for (const [i, clip] of brollClips.entries()) {
+    if (!clip.key) continue;
+    const local = path.join(dir, `broll-${i}${path.extname(clip.name) || ".mp4"}`);
+    await download(clip.key, local).catch(() => null);
+    brollLocal.set(clip.id, local);
+  }
+  const brolls: BrollSpec[] = brollRows
+    .map((g) => {
+      const clipId = String(g.options?.clipId ?? "");
+      const local = brollLocal.get(clipId);
+      const clip = brollClips.find((c) => c.id === clipId);
+      if (!local || !clip) return null;
+      const sourceInMs = Math.max(0, Number(g.options?.sourceInMs ?? 0) || 0);
+      // Never past the end of the cutaway's own footage.
+      const available = clip.durationMs ? clip.durationMs - sourceInMs : null;
+      const length = available === null ? g.endMs - g.startMs : Math.min(g.endMs - g.startMs, available);
+      if (length < 200) return null;
+      return {
+        path: local,
+        startMs: g.startMs,
+        endMs: g.startMs + length,
+        sourceInMs,
+        placement: g.placement || "full",
+        scale: g.scale,
+      };
+    })
+    .filter((b): b is BrollSpec => b !== null);
+
+  /* Punch-ins: the picture, not an overlay. Sorted and de-overlapped here
+     so the filter can sum them. */
+  const punches: PunchSpec[] = graphicRows
+    .filter((g) => g.kind === "punch" && g.endMs > g.startMs)
+    .map((g) => ({ startMs: g.startMs, endMs: g.endMs, zoom: Number(g.options?.zoom ?? 1.15) || 1.15 }))
+    .sort((a, b) => a.startMs - b.startMs)
+    .filter((p, i, all) => i === 0 || p.startMs >= all[i - 1].endMs);
+
+  /*
+   * Voice-over and music, if there are any.
+   *
+   * Mixed in a second pass rather than into every segment: a track is laid
+   * against the *timeline*, not against one cut, and doing it per segment
+   * would mean slicing each track at every edit point for no gain.
+   */
+  const tracks = await db
+    .select({ t: audioTracks, key: files.storageKey })
+    .from(audioTracks)
+    .leftJoin(files, eq(files.id, audioTracks.fileId))
+    .where(and(eq(audioTracks.projectId, e.projectId), eq(audioTracks.state, "ready")));
+
+  const usable: TrackInput[] = [];
+  for (const [i, entry] of tracks.entries()) {
+    if (!entry.key) continue;
+    const local = path.join(dir, `audio-${i}${path.extname(entry.key) || ".mp3"}`);
+    await download(entry.key, local);
+    usable.push({
+      path: local,
+      startMs: entry.t.startMs,
+      gain: entry.t.gain,
+      duck: entry.t.duckUnderSpeech,
+      // A voice-over is speech: music that ducks under speech ducks under it.
+      speech: entry.t.kind === "voiceover" && !entry.t.duckUnderSpeech,
+    });
+  }
+
+  const plan: RenderInput = {
+    width: size.w,
+    height: size.h,
+    fps: 30,
+    mode: "v1",
+    accent: project.accent,
+    workDir: dir,
+    cuts,
+    cutaways: [],
+    motion: [],
+    assFile: assPath ?? undefined,
+    audio: { voiceChain: false, cutFadeMs: 12 },
+    stills,
+    brolls,
+    punches,
+    tracks: usable,
+  };
+  return { plan, srt };
+}
+
+/* ----------------------------------------------------------- rendering */
+
+/**
+ * Render a plan to an mp4. Pure in the sense that matters: it reads the
+ * files the plan names, writes under its work directory and the output
+ * path, and touches nothing else.
+ *
+ * The order of work: probe what needs probing (which sources carry sound,
+ * how long each motion part is), draw what needs drawing once (the v1
+ * stills, the v2 masks), assemble one ffmpeg command, run it with progress.
+ */
+export async function renderTimeline(
+  plan: RenderInput,
+  outFile: string,
+  onProgress?: (p: RenderProgress) => Promise<void> | void,
+  opts: { dryRun?: boolean } = {},
+): Promise<{ durationMs: number; command: string; args: string[] }> {
+  const size = { w: plan.width, h: plan.height };
+  const dir = plan.workDir ?? path.dirname(outFile);
+  const mode = plan.mode ?? "v2";
+  if (!plan.cuts.length) throw new Error("There is nothing on the timeline");
+
+  /* Which sources carry a sound track at all: a clip without one still
+     needs silence on the join, or concat drops sound from everything after. */
+  const sourceHasAudio = new Map<string, boolean>();
+  for (const c of plan.cuts) {
+    if (c.title || sourceHasAudio.has(c.file)) continue;
+    sourceHasAudio.set(c.file, await hasAudio(c.file));
+  }
+
+  /* One input per cut (or per push segment), the per-cut chains, the join. */
+  const inputs: { path: string; ss: number; t: number; audioOnly?: boolean }[] = [];
+  const cuts: { v: string; a: string; lengthMs: number; join: Join }[] = [];
+  const pre: string[] = [];
+  /** Where each cut sits on the film, for the v2 host inserts. */
+  const placed: { cut: RenderCut; startMs: number; lengthMs: number }[] = [];
+  let totalMs = 0;
+  /** Where the next cut lands on the film: the sum so far less every dissolve's overlap. */
+  let filmMs = 0;
+  const fade = mode === "v2" && plan.audio.cutFadeMs > 0 ? plan.audio.cutFadeMs / 1000 : 0;
+
+  for (const cut of plan.cuts) {
+    const arrive: Join = cuts.length === 0 ? { kind: "cut", ms: 0 } : (cut.join ?? { kind: "cut", ms: 0 });
+    const n = cuts.length;
+
+    if (cut.title) {
+      const hold = Math.max(200, cut.outMs - cut.inMs);
+      const safe = cut.title.text.replace(/\\/g, "\\\\").replace(/:/g, "\\:").replace(/'/g, "\u2019").slice(0, 200);
+      pre.push(
+        `color=c=0x111111:s=${size.w}x${size.h}:r=${FPS}:d=${(hold / 1000).toFixed(3)},` +
+          `drawtext=text='${safe}':fontcolor=white:fontsize=${Math.round(size.w / 22)}:x=(w-text_w)/2:y=(h-text_h)/2:line_spacing=12,` +
+          `format=yuv420p,setsar=1[c${n}v]`,
+        `anullsrc=channel_layout=stereo:sample_rate=48000,atrim=0:${(hold / 1000).toFixed(3)},asetpts=PTS-STARTPTS[c${n}a]`,
+      );
+      cuts.push({ v: `[c${n}v]`, a: `[c${n}a]`, lengthMs: hold, join: arrive });
+      filmMs += hold - overlapOf(arrive, cuts);
+      totalMs += hold;
+      continue;
+    }
+
+    const inSec = cut.inMs / 1000;
+    const outSec = Math.max(inSec + 0.05, cut.outMs / 1000);
+    const lengthMs = Math.round((outSec - inSec) * 1000);
+    const framing = { zoom: cut.zoom, anchor: cut.anchor, ...(cut.eyeOut !== undefined ? { eyeOut: cut.eyeOut } : {}) };
+    /* No fade on a seam's side: the sound runs straight through a reframe. */
+    const nextCut = plan.cuts[plan.cuts.indexOf(cut) + 1];
+    const edges = { in: !cut.seam, out: !nextCut?.seam };
+    const tail = `fps=${FPS},setsar=1,format=yuv420p`;
+
+    /*
+     * v2: every cut is exactly as long as the plan says, to the frame and to
+     * the sample.
+     *
+     * ffmpeg's input `-t` on its own leaves each cut's picture up to a frame
+     * long — the frame that covers the seek point is kept, and the last one
+     * runs past `-t` — and `concat` stretches the film by the longest stream
+     * of every segment. Measured: 11 cuts came out 193 ms long, and the
+     * 70–100 cuts of a v2 edit would come out well over a second long, with
+     * every caption, cutaway and motion clip placed on the plan's clock
+     * landing early by that much by the end. So the picture is cut to
+     * floor(length × fps) frames and the sound to the length exactly: the
+     * sound sets each segment's length, the picture is never longer than it,
+     * and the frame it may be short is repeated by the encoder's constant
+     * frame rate at the cut, where nobody sees a held frame. The plan's clock
+     * and the film's are then the same clock. The v1 path keeps its own
+     * command (and its 127 ms), byte for byte.
+     */
+    const exact = mode === "v2";
+    const cutFrames = Math.floor((lengthMs * FPS) / 1000 + 1e-6);
+    const frameTrim = (frames: number) => (exact ? `,trim=end_frame=${Math.max(1, frames)}` : "");
+    /* A few frames of decode slack past the trim, so the trim always has
+       the frames it counts to. */
+    const slack = exact ? 3 / FPS : 0;
+
+    /*
+     * The push, as its own segment. The window is cut out of the cut, the
+     * per-frame scale runs on those frames only, and the three pieces are
+     * joined back; the audio is read once for the whole cut from a separate
+     * demuxer so the segment seams never touch it. The frames are shared
+     * out so the three pieces sum to the cut's own count.
+     */
+    const push = mode === "v2" && cut.push ? clampPush(cut.push, cut.inMs, cut.outMs) : null;
+    if (push) {
+      const bounds = [cut.inMs, push.fromMs, push.toMs, cut.outMs];
+      const kept: { a: number; b: number; s: number }[] = [];
+      for (let s = 0; s < 3; s++) if (bounds[s + 1] - bounds[s] >= 34) kept.push({ a: bounds[s], b: bounds[s + 1], s });
+      const segs: string[] = [];
+      let assigned = 0;
+      kept.forEach(({ a, b, s }, idx) => {
+        const last = idx === kept.length - 1;
+        const frames = last ? Math.max(1, cutFrames - assigned) : Math.floor(((b - a) * FPS) / 1000 + 1e-6);
+        assigned += frames;
+        const k = inputs.length;
+        inputs.push({ path: cut.file, ss: a / 1000, t: (b - a) / 1000 + slack });
+        const chain = s === 1 ? pushChain(framing, push.to, (push.rampMs ?? push.toMs - push.fromMs) / 1000, { width: size.w, height: size.h }) : framingChain(framing, { width: size.w, height: size.h });
+        pre.push(`[${k}:v]setpts=PTS-STARTPTS,${normalise(size.w, size.h)}${chain}${tail}${frameTrim(frames)}[c${n}s${s}]`);
+        segs.push(`[c${n}s${s}]`);
+      });
+      pre.push(segs.length === 1 ? `${segs[0]}null[c${n}v]` : `${segs.join("")}concat=n=${segs.length}:v=1:a=0[c${n}v]`);
+      const ka = inputs.length;
+      inputs.push({ path: cut.file, ss: inSec, t: outSec - inSec, audioOnly: true });
+      pre.push(audioChain(ka, (sourceHasAudio.get(cut.file) ?? false) && !cut.mute, lengthMs, fade, exact, `[c${n}a]`, edges));
+    } else {
+      // The window is cut at the demuxer by `-ss`/`-t` in buildArgs, so this
+      // input carries only the cut's own frames and starts near zero; the
+      // setpts still zeroes the residue left by seeking to a keyframe.
+      const k = inputs.length;
+      inputs.push({ path: cut.file, ss: inSec, t: outSec - inSec + slack });
+      const chain = mode === "v2" ? framingChain(framing, { width: size.w, height: size.h }) : "";
+      pre.push(`[${k}:v]setpts=PTS-STARTPTS,${normalise(size.w, size.h)}${chain}${tail}${frameTrim(cutFrames)}[c${n}v]`);
+      pre.push(audioChain(k, (sourceHasAudio.get(cut.file) ?? false) && !cut.mute, lengthMs, fade, exact, `[c${n}a]`, edges));
+    }
+    cuts.push({ v: `[c${n}v]`, a: `[c${n}a]`, lengthMs, join: arrive });
+    filmMs -= overlapOf(arrive, cuts);
+    placed.push({ cut, startMs: filmMs, lengthMs });
+    filmMs += lengthMs;
+    totalMs += lengthMs;
+  }
+
+  /* The join: one concat when nothing dissolves, a fold of xfade and
+     acrossfade where something does. A dissolve overlaps its two cuts, so
+     the film is shorter than the sum of its parts by what overlapped. */
+  const { filters: joinFilters, video: joinedV, audio: joinedA, overlapMs } = joinCuts(cuts);
+  pre.push(...joinFilters);
+  totalMs = Math.max(0, totalMs - overlapMs);
+
+  /* v1 stills, drawn by Remotion. A dry run names the files without drawing
+     them: it only wants the command. */
+  const stills = plan.stills ?? [];
+  let graphicFiles: string[] = [];
+  if (stills.length) {
+    if (opts.dryRun) graphicFiles = stills.map((_, i) => path.join(dir, `graphic-${i}.png`));
+    else {
+      if (!(await graphicsAvailable())) {
+        // Say so rather than silently shipping a video without the titles
+        // somebody put on the timeline.
+        throw new Error("This machine cannot draw graphics: run `npm install` in remotion/.");
+      }
+      await onProgress?.({ phase: "graphics", totalMs });
+      graphicFiles = await renderGraphics(stills, { width: size.w, height: size.h, accent: plan.accent ?? "#007be0", dir });
+    }
+  }
+
+  /* v2 layers: the cutaways with their host inserts and masks, the motion
+     parts with their lengths, the furniture. */
+  const cutaways = mode === "v2" ? await prepareCutaways(plan, placed, dir) : [];
+  const motion = mode === "v2" ? await prepareMotion(plan.motion ?? []) : [];
+
+  const finalArgs = buildArgs({
+    inputs,
+    pre,
+    joinedV,
+    joinedA,
+    assPath: plan.assFile ?? null,
+    graphicFiles,
+    graphicSpecs: stills,
+    brolls: plan.brolls ?? [],
+    accent: plan.accent,
+    punches: plan.punches ?? [],
+    tracks: plan.tracks ?? [],
+    size,
+    out: outFile,
+    v2: mode === "v2" ? { cutaways, motion, furniture: plan.furniture ?? null, audio: plan.audio } : null,
+  });
+
+  /* The voice chain's loudness in two passes when asked for: the first
+     measures the joined speech, the second normalises linearly against it,
+     which lands on −16 LUFS where the one-pass mode drifts with the
+     material. A measurement that fails leaves the one-pass filter in. Only
+     when the voice is the whole mix: the measurement is of the speech alone,
+     and a linear gain worked out from it would be wrong for a mix with a
+     music bed or an editor's track under it — those keep the one-pass
+     normaliser on the mix, as v1 does. */
+  let args = finalArgs;
+  const voiceIsTheMix = !(plan.tracks?.length) && !plan.audio.music && !(plan.audio.sfx?.length);
+  if (mode === "v2" && plan.audio.voiceChain && voiceIsTheMix && !opts.dryRun) {
+    const measured = await measureLoudness(inputs, pre, joinedA).catch((err) => {
+      console.warn("[render] loudness measurement failed; one-pass loudnorm:", err instanceof Error ? err.message : err);
+      return null;
+    });
+    if (measured) args = finalArgs.map((a) => a.replace(LOUDNORM_V2, `${LOUDNORM_V2}:${measured}`));
+  }
+
+  const command = `ffmpeg ${args.join(" ")}`;
+  if (opts.dryRun) return { durationMs: totalMs, command, args };
+  await onProgress?.({ phase: "encode", totalMs, doneMs: 0, command });
+  await runFfmpeg(args, onProgress ? (doneMs) => onProgress({ phase: "encode", totalMs, doneMs }) : undefined);
+  return { durationMs: totalMs, command, args };
+}
+
+/** A push clamped inside its cut; null when nothing of it is left. */
+function clampPush(push: NonNullable<RenderCut["push"]>, inMs: number, outMs: number): NonNullable<RenderCut["push"]> | null {
+  const fromMs = Math.max(inMs, Math.min(outMs, push.fromMs));
+  const toMs = Math.max(fromMs, Math.min(outMs, push.toMs));
+  if (toMs - fromMs < 100 || !(push.to > 1)) return null;
+  return { ...push, fromMs, toMs };
+}
+
+/**
+ * The per-cut audio chain, with the v2 12 ms fades when `fade` is set, and
+ * — when `exact` — padded and trimmed to the cut's length to the sample, so
+ * the sound is what sets the length of every segment of the join (see the
+ * cut loop in `renderTimeline`), and the fade-out ends on the last sample.
+ */
+function audioChain(input: number, hasSound: boolean, lengthMs: number, fade: number, exact: boolean, label: string, edges: { in: boolean; out: boolean } = { in: true, out: true }): string {
+  const len = (lengthMs / 1000).toFixed(3);
+  if (!hasSound) return `anullsrc=channel_layout=stereo:sample_rate=48000,atrim=0:${len},asetpts=PTS-STARTPTS${label}`;
+  const trim = exact ? `,apad,atrim=end=${len}` : "";
+  const fadeIn = fade > 0 && edges.in ? `,afade=t=in:st=0:d=${fade.toFixed(3)}` : "";
+  const fadeOut = fade > 0 && edges.out ? `,afade=t=out:st=${Math.max(0, lengthMs / 1000 - fade).toFixed(3)}:d=${fade.toFixed(3)}` : "";
+  const fades = `${fadeIn}${fadeOut}`;
+  return `[${input}:a]asetpts=PTS-STARTPTS,aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo${trim}${fades}${label}`;
+}
+
+/** How much a dissolve into this cut eats of the running length. */
+function overlapOf(join: Join, cuts: { lengthMs: number }[]): number {
+  if (join.kind === "cut" || cuts.length < 2) return 0;
+  const prev = cuts[cuts.length - 2].lengthMs;
+  const cur = cuts[cuts.length - 1].lengthMs;
+  return Math.max(80, Math.min(join.ms, prev - 40, cur - 40));
+}
+
+/** A cutaway of the plan with what the renderer adds before it is an input. */
+type PreparedCutaway = RenderCutaway & {
+  hosts: { file: string; inMs: number; outMs: number; startMs: number; endMs: number; anchor: [number, number]; faceHeight: number }[];
+  mask: string | null;
+};
+
+/**
+ * The v2 cutaways with their host inserts: for each `split` window, and for
+ * each `run` group, the pieces of the source under that window, found by
+ * walking the placed cuts. A run group's circle rides on its last item so
+ * the presenter holds still while the footage behind her changes and no
+ * clip of the run is laid on after her.
+ */
+async function prepareCutaways(plan: RenderInput, placed: { cut: RenderCut; startMs: number; lengthMs: number }[], dir: string): Promise<PreparedCutaway[]> {
+  const list = (plan.cutaways ?? []).filter((c) => c.endMs > c.startMs).sort((a, b) => a.startMs - b.startMs);
+  if (!list.length) return [];
+  const masks = list.some((c) => c.layout === "split" || c.layout === "run") ? await makeMasks({ width: plan.width, height: plan.height, dir }) : null;
+
+  const piecesUnder = (startMs: number, endMs: number) => {
+    const out: PreparedCutaway["hosts"] = [];
+    for (const p of placed) {
+      const a = Math.max(startMs, p.startMs);
+      const b = Math.min(endMs, p.startMs + p.lengthMs);
+      if (b - a < 34) continue;
+      out.push({
+        file: p.cut.file,
+        inMs: p.cut.inMs + (a - p.startMs),
+        outMs: p.cut.inMs + (b - p.startMs),
+        startMs: a,
+        endMs: b,
+        anchor: p.cut.anchor,
+        faceHeight: p.cut.faceHeight ?? 0.22,
+      });
+    }
+    return out;
+  };
+
+  return list.map((c) => {
+    if (c.layout === "split") return { ...c, hosts: piecesUnder(c.startMs, c.endMs), mask: masks?.rounded ?? null };
+    if (c.layout === "run") {
+      /* The circle rides on the group's LAST item: the chain lays the
+         cutaways on in time order, so a circle drawn with the first clip
+         would be painted over by the second clip's full-frame footage. */
+      const group = c.runId ? list.filter((o) => o.layout === "run" && o.runId === c.runId) : [c];
+      const last = group[group.length - 1] === c;
+      const hosts = last ? piecesUnder(Math.min(...group.map((o) => o.startMs)), Math.max(...group.map((o) => o.endMs))) : [];
+      return { ...c, hosts, mask: hosts.length ? (masks?.circle ?? null) : null };
+    }
+    return { ...c, layout: "full" as const, hosts: [], mask: null };
+  });
+}
+
+/** A motion clip with each part's length measured, ready to be an input. */
+type PreparedMotion = Omit<MotionInput, "parts"> & { parts: { full?: Omit<MotionPart, "input">; in?: Omit<MotionPart, "input">; hold?: Omit<MotionPart, "input">; out?: Omit<MotionPart, "input"> } };
+
+async function prepareMotion(clips: RenderPlan["motion"]): Promise<PreparedMotion[]> {
+  const out: PreparedMotion[] = [];
+  for (const c of clips) {
+    if (c.endMs <= c.startMs) continue;
+    const parts: PreparedMotion["parts"] = {};
+    for (const key of ["full", "in", "hold", "out"] as const) {
+      const p = c.parts[key];
+      if (!p) continue;
+      const still = key === "hold" || /\.(png|jpe?g|webp)$/i.test(p);
+      parts[key] = { path: p, still, durationMs: still ? 0 : await clipLengthMs(p) };
+    }
+    if (!parts.full && !parts.in && !parts.hold && !parts.out) continue;
+    out.push({ id: c.id, startMs: c.startMs, endMs: c.endMs, x: c.x, y: c.y, w: c.w, h: c.h, parts });
+  }
+  return out;
+}
+
 /* ------------------------------------------------------------- ffmpeg */
 
-/** How one cut arrives from the one before it. */
-export type Join = { kind: TransitionKind; ms: number };
-
-/** Whether a source carries a sound track at all. A clip without one still
- * needs silence on the join, or concat drops sound from everything after it. */
-async function hasAudio(file: string): Promise<boolean> {
+/**
+ * ffprobe's stdout, or "" when it will not start, fails, or does not answer
+ * within the limit. A probe of a local file answers in well under a second;
+ * one that has not answered in a minute is stuck on a broken file or a dead
+ * mount, and a render that waits on it for ever is a worker that never
+ * takes the next job.
+ */
+function probe(args: string[], timeoutMs = 60_000): Promise<string> {
   return new Promise((resolve) => {
-    const child = spawn("ffprobe", ["-v", "error", "-select_streams", "a", "-show_entries", "stream=codec_type", "-of", "csv=p=0", file]);
+    const child = spawn("ffprobe", ["-v", "error", ...args], { stdio: ["ignore", "pipe", "ignore"] });
     let out = "";
     child.stdout.on("data", (c) => (out += String(c)));
-    child.on("error", () => resolve(false));
-    child.on("close", () => resolve(out.includes("audio")));
+    const timer = setTimeout(() => {
+      child.kill("SIGKILL");
+      resolve("");
+    }, timeoutMs);
+    child.on("error", () => {
+      clearTimeout(timer);
+      resolve("");
+    });
+    child.on("close", (code) => {
+      clearTimeout(timer);
+      resolve(code === 0 ? out : "");
+    });
   });
+}
+
+/** Whether a source carries a sound track at all. */
+async function hasAudio(file: string): Promise<boolean> {
+  const out = await probe(["-select_streams", "a", "-show_entries", "stream=codec_type", "-of", "csv=p=0", file]);
+  return out.includes("audio");
+}
+
+/**
+ * A short clip's exact length in frames, as milliseconds. The container's
+ * duration on a 12-frame WebM rounds; the packet count does not, and the
+ * hold has to start on the frame after the entrance ends, not a frame early
+ * (a flash of nothing) or late (two layers of the same card).
+ */
+async function clipLengthMs(file: string): Promise<number> {
+  const text = await probe([
+    "-select_streams", "v:0", "-count_packets",
+    "-show_entries", "stream=nb_read_packets,r_frame_rate:format=duration", "-of", "json", file,
+  ]);
+  try {
+    const parsed = JSON.parse(text) as { streams?: { nb_read_packets?: string; r_frame_rate?: string }[]; format?: { duration?: string } };
+    const s = parsed.streams?.[0];
+    const [num, den] = (s?.r_frame_rate ?? "30/1").split("/").map(Number);
+    const fps = den ? num / den : 30;
+    const packets = Number(s?.nb_read_packets);
+    if (packets > 0 && fps > 0) return Math.round((packets / fps) * 1000);
+    const seconds = Number(parsed.format?.duration);
+    if (seconds > 0) return Math.round(seconds * 1000);
+  } catch {
+    /* fall through */
+  }
+  throw new Error(`could not measure ${path.basename(file)}`);
 }
 
 /**
@@ -758,20 +1188,36 @@ function joinCuts(cuts: { v: string; a: string; lengthMs: number; join: Join }[]
   return { filters, video: "[pv]", audio: "[pa]", overlapMs };
 }
 
+/** The v2 voice chain (§1): highpass, gentle 3:1, de-ess, then the normaliser. */
+const VOICE_CHAIN = "highpass=f=80,acompressor=threshold=-18dB:ratio=3:attack=10:release=120,deesser=i=0.4:m=0.5:f=0.5";
+/**
+ * §1 asks for a true peak of −1 dBTP on the delivered file. The AAC encode
+ * overshoots the normaliser's own ceiling by a few tenths — measured −0.9
+ * on the decode against a −1 target, and −1.0 or −0.9 from one render to
+ * the next against −1.3 — so the filter aims half a decibel under and the
+ * file lands at or below −1 with margin to spare. The integrated loudness
+ * is set by the linear gain, not by the ceiling, so −16 LUFS holds.
+ */
+const LOUDNORM_V2 = "loudnorm=I=-16:TP=-1.5:LRA=11";
+
 /**
  * One FFmpeg command for the whole film.
  *
  * The inputs are in a fixed order because the filter graph refers to them by
  * number: the sources first, each once, then a still per graphic, then a
- * trimmed cutaway per b-roll, then each audio track.
+ * trimmed cutaway per b-roll, then — for a v2 plan — the cutaways, the host
+ * pieces under them, their masks, the motion parts and the furniture, and
+ * last the audio tracks. A v1 plan has none of the middle, so its command
+ * is what it always was.
  *
  * The video chain is, in order: the cuts joined, the picture pushed in where
- * a punch asks, the graphics laid over it oldest first, the cutaways over
- * those, then the captions. Captions last means captions on top.
+ * a v1 punch asks, the v1 b-roll, the v2 cutaways, the v1 stills, the
+ * motion clips, the furniture, then the captions. Captions last means
+ * captions on top.
  */
 function buildArgs(input: {
   /** One per cut: the source file and the window to read from it. */
-  inputs: { path: string; ss: number; t: number }[];
+  inputs: { path: string; ss: number; t: number; audioOnly?: boolean }[];
   /** Per-cut normalisation and the join, already written. */
   pre: string[];
   joinedV: string;
@@ -784,18 +1230,18 @@ function buildArgs(input: {
   brolls: BrollSpec[];
   accent?: string;
   punches: PunchSpec[];
-  /** `speech`: a voice-over, which keys the ducking the way filmed speech does. */
-  tracks: { path: string; startMs: number; gain: number; duck: boolean; speech?: boolean }[];
+  tracks: TrackInput[];
   size: { w: number; h: number };
   out: string;
+  v2: { cutaways: PreparedCutaway[]; motion: PreparedMotion[]; furniture: string | null; audio: RenderPlan["audio"] } | null;
 }): string[] {
-  const { inputs, pre, joinedV, joinedA, assPath, graphicFiles, graphicSpecs, brolls, punches, tracks, size, out } = input;
+  const { inputs, pre, joinedV, joinedA, assPath, graphicFiles, graphicSpecs, brolls, punches, tracks, size, out, v2 } = input;
 
   const args: string[] = ["-y"];
   // `-ss`/`-t` ahead of `-i` cuts at the demuxer, so each input decodes only
   // its own window. Doing it here rather than with `trim` in the graph is what
   // keeps memory flat as the cut count climbs.
-  for (const inp of inputs) args.push("-ss", inp.ss.toFixed(3), "-t", inp.t.toFixed(3), "-i", inp.path);
+  for (const inp of inputs) args.push("-ss", inp.ss.toFixed(3), "-t", inp.t.toFixed(3), ...(inp.audioOnly ? ["-vn"] : []), "-i", inp.path);
   // A still has no duration of its own: it is looped for exactly its window
   // and not a frame longer, and the filter moves it to its place on the film.
   for (const [i, file] of graphicFiles.entries()) {
@@ -807,11 +1253,64 @@ function buildArgs(input: {
   for (const b of brolls) {
     args.push("-ss", (b.sourceInMs / 1000).toFixed(3), "-t", ((b.endMs - b.startMs) / 1000 + 0.1).toFixed(3), "-an", "-i", b.path);
   }
-  for (const t of tracks) args.push("-i", t.path);
 
   const stillOffset = inputs.length;
   const brollOffset = stillOffset + graphicFiles.length;
-  const audioOffset = brollOffset + brolls.length;
+  let next = brollOffset + brolls.length;
+
+  /* ---- v2 inputs ---- */
+  const cutawayInputs: CutawayInput[] = [];
+  const motionInputs: MotionInput[] = [];
+  let furnitureInput: number | null = null;
+  if (v2) {
+    for (const c of v2.cutaways) {
+      const seconds = (c.endMs - c.startMs) / 1000 + 0.1;
+      if (c.still) args.push("-loop", "1", "-framerate", String(FPS), "-t", seconds.toFixed(3), "-i", c.file);
+      else args.push("-ss", (Math.max(0, c.sourceInMs) / 1000).toFixed(3), "-t", seconds.toFixed(3), "-an", "-i", c.file);
+      const entry: CutawayInput = { ...c, input: next++, hosts: [] };
+      const hosts: HostInsert[] = [];
+      for (const h of c.hosts) {
+        args.push("-ss", (h.inMs / 1000).toFixed(3), "-t", ((h.outMs - h.inMs) / 1000 + 0.05).toFixed(3), "-an", "-i", h.file);
+        hosts.push({ input: next++, startMs: h.startMs, endMs: h.endMs, anchor: h.anchor, faceHeight: h.faceHeight });
+      }
+      entry.hosts = hosts;
+      if (c.mask) {
+        args.push("-i", c.mask);
+        entry.maskInput = next++;
+      }
+      cutawayInputs.push(entry);
+    }
+    for (const m of v2.motion) {
+      const parts: MotionInput["parts"] = {};
+      for (const key of ["full", "in", "hold", "out"] as const) {
+        const p = m.parts[key];
+        if (!p) continue;
+        /* The alpha plane survives only through libvpx; the native VP9
+           decoder reports yuv420p and the card comes out on black. */
+        if (p.still) args.push("-i", p.path);
+        else args.push("-c:v", "libvpx-vp9", "-i", p.path);
+        parts[key] = { ...p, input: next++ };
+      }
+      motionInputs.push({ ...m, parts });
+    }
+    if (v2.furniture) {
+      args.push("-i", v2.furniture);
+      furnitureInput = next++;
+    }
+  }
+
+  const audioOffset = next;
+  for (const t of tracks) args.push("-i", t.path);
+  let musicInput: number | null = null;
+  const sfxInputs: number[] = [];
+  if (v2?.audio.music) {
+    args.push("-stream_loop", "-1", "-i", v2.audio.music.file);
+    musicInput = audioOffset + tracks.length;
+  }
+  for (const s of v2?.audio.sfx ?? []) {
+    args.push("-i", s.file);
+    sfxInputs.push(audioOffset + tracks.length + (musicInput === null ? 0 : 1) + sfxInputs.length);
+  }
 
   /* ---- video ---- */
   const video: string[] = [...pre];
@@ -832,10 +1331,27 @@ function buildArgs(input: {
     videoLabel = "[vb]";
   }
 
+  const v2cut = cutawayFilter(cutawayInputs, { width: size.w, height: size.h, from: videoLabel, out: "[vc]" });
+  if (v2cut) {
+    video.push(v2cut);
+    videoLabel = "[vc]";
+  }
+
   const overlays = overlayFilter(graphicSpecs, { width: size.w, height: size.h, firstInput: stillOffset, from: videoLabel, out: "[vout]" });
   if (overlays) {
     video.push(overlays.filter);
     videoLabel = "[vout]";
+  }
+
+  const motion = motionFilter(motionInputs, { from: videoLabel, out: "[vm]" });
+  if (motion) {
+    video.push(motion);
+    videoLabel = "[vm]";
+  }
+
+  if (furnitureInput !== null) {
+    video.push(furnitureFilter(furnitureInput, { from: videoLabel, out: "[vf]" }));
+    videoLabel = "[vf]";
   }
 
   if (assPath) {
@@ -851,6 +1367,13 @@ function buildArgs(input: {
   /* ---- audio ---- */
   const audio: string[] = [];
   let audioLabel = joinedA;
+
+  /* The voice chain first, on the speech alone, so the compressor and the
+     de-esser never see a music bed. */
+  if (v2?.audio.voiceChain) {
+    audio.push(`${audioLabel}${VOICE_CHAIN}[voice]`);
+    audioLabel = "[voice]";
+  }
 
   if (tracks.length) {
     const labels: string[] = [audioLabel];
@@ -886,10 +1409,33 @@ function buildArgs(input: {
     audioLabel = "[aout]";
   }
 
+  /* The optional v2 bed and stingers: the bed ducks under the voice through
+     the same side-chain the editor's tracks use; a stinger is dropped in at
+     its moment. Both are off for the channel (no music, no SFX) and cost
+     nothing when absent. */
+  if (musicInput !== null && v2?.audio.music) {
+    audio.push(`[${musicInput}:a]aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,volume=${v2.audio.music.gainDb.toFixed(1)}dB[mus]`);
+    audio.push(`${audioLabel}asplit=2[mspk][mkey]`);
+    audio.push(`[mus][mkey]sidechaincompress=threshold=0.05:ratio=8:attack=20:release=400[musducked]`);
+    audio.push(`[mspk][musducked]amix=inputs=2:duration=first:normalize=0[amus]`);
+    audioLabel = "[amus]";
+  }
+  if (sfxInputs.length && v2?.audio.sfx) {
+    const labels = sfxInputs.map((inp, i) => {
+      const s = v2.audio.sfx![i];
+      const delay = Math.max(0, Math.round(s.atMs));
+      audio.push(`[${inp}:a]aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,adelay=${delay}|${delay},volume=${s.gainDb.toFixed(1)}dB[sfx${i}]`);
+      return `[sfx${i}]`;
+    });
+    audio.push(`${audioLabel}${labels.join("")}amix=inputs=${1 + labels.length}:duration=first:normalize=0[asfx]`);
+    audioLabel = "[asfx]";
+  }
+
   /* Speech at a broadcast level: the editor's cut sits around -15 dB where
      the raw take sat at -28, and a phone in a noisy room is where the video
-     is watched. One pass, applied to the whole mix so the bed ducks with it. */
-  audio.push(`${audioLabel}loudnorm=I=-16:TP=-1.5:LRA=11[anorm]`);
+     is watched. One pass, applied to the whole mix so the bed ducks with it.
+     The v2 chain asks for a true peak of −1 (§1); the v1 path keeps −1.5. */
+  audio.push(`${audioLabel}${v2?.audio.voiceChain ? LOUDNORM_V2 : "loudnorm=I=-16:TP=-1.5:LRA=11"}[anorm]`);
   audioLabel = "[anorm]";
 
   args.push("-filter_complex", [...video, ...audio].join(";"));
@@ -898,6 +1444,56 @@ function buildArgs(input: {
   args.push("-c:a", "aac", "-b:a", "192k", "-ar", "48000");
   args.push("-movflags", "+faststart", out);
   return args;
+}
+
+/**
+ * The first pass of the two-pass normaliser: the joined speech through the
+ * voice chain and `loudnorm` in measure mode, audio only, no encode. Returns
+ * the `measured_*` options for the second pass, or throws.
+ */
+async function measureLoudness(
+  inputs: { path: string; ss: number; t: number; audioOnly?: boolean }[],
+  pre: string[],
+  joinedA: string,
+): Promise<string> {
+  const args: string[] = ["-hide_banner", "-nostats", "-y"];
+  for (const inp of inputs) args.push("-ss", inp.ss.toFixed(3), "-t", inp.t.toFixed(3), "-vn", "-i", inp.path);
+  /* Only the audio side of the per-cut chains and the join: the video
+     labels are never referenced, so ffmpeg decodes no picture. */
+  const audioPre = pre.filter((f) => /^\[\d+:a\]|^anullsrc|concat=n=\d+:v=1:a=1|acrossfade/.test(f)).map((f) =>
+    f.includes("concat=n=") ? f.replace(/\[c\d+v\]/g, "").replace(/\[jv\d+\]|\[pv\]/g, "").replace(/:v=1:a=1/, ":v=0:a=1") : f,
+  );
+  args.push("-filter_complex", `${[...audioPre].join(";")};${joinedA}${VOICE_CHAIN},${LOUDNORM_V2}:print_format=json[m]`, "-map", "[m]", "-f", "null", "-");
+  const text = await new Promise<string>((resolve, reject) => {
+    const child = spawn("ffmpeg", args, { stdio: ["ignore", "ignore", "pipe"] });
+    /* The summary is the last thing ffmpeg prints, so the tail is kept. */
+    let err = "";
+    child.stderr.on("data", (c) => {
+      err = (err + String(c)).slice(-20000);
+    });
+    const timer = setTimeout(() => {
+      child.kill("SIGKILL");
+      reject(new Error("the loudness pass timed out"));
+    }, 10 * 60_000);
+    child.on("error", (e) => {
+      clearTimeout(timer);
+      reject(e);
+    });
+    child.on("close", (code) => {
+      clearTimeout(timer);
+      if (code === 0) resolve(err);
+      else reject(new Error(`ffmpeg exited ${code}: ${err.slice(-600)}`));
+    });
+  });
+  const m = /\{[^{}]*"input_i"[^{}]*\}/.exec(text);
+  if (!m) throw new Error("no loudnorm summary in the output");
+  const j = JSON.parse(m[0]) as Record<string, string>;
+  const num = (k: string) => {
+    const v = Number(j[k]);
+    if (!Number.isFinite(v)) throw new Error(`loudnorm gave no ${k}`);
+    return v;
+  };
+  return `measured_I=${num("input_i").toFixed(2)}:measured_TP=${num("input_tp").toFixed(2)}:measured_LRA=${num("input_lra").toFixed(2)}:measured_thresh=${num("input_thresh").toFixed(2)}:offset=${num("target_offset").toFixed(2)}:linear=true`;
 }
 
 /**
@@ -1052,6 +1648,11 @@ async function makeProxy(input: {
 }
 
 /** Streamed to disk, not buffered: a master is measured in gigabytes. */
+/** An object out of the store onto local disk (the director v2 path pulls its take through this too). */
+export async function downloadObject(key: string, to: string): Promise<void> {
+  return download(key, to);
+}
+
 async function download(key: string, to: string) {
   const res = await getObject(key);
   if (!res.ok || !res.body) throw new Error(`Storage said ${res.status} for ${key}`);

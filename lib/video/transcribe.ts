@@ -15,6 +15,9 @@ import { probe } from "@/lib/files/poster";
 import { ElevenLabsUnconfigured, toCaptionLines, transcribe } from "@/lib/video/elevenlabs";
 import type { Transcript } from "@/lib/video/elevenlabs";
 import { transcribeLocal } from "@/lib/video/whisper";
+import { applyGlossaryWithModel, extractTerms, hotwordsFrom, type Term } from "@/lib/video/glossary";
+import { captionPreset } from "@/lib/video/presets";
+import { directorV2ForTenant } from "@/lib/video/v2/flag";
 import { toSimplified } from "@/lib/text/simplified";
 import { env } from "@/lib/env";
 
@@ -67,6 +70,19 @@ export async function transcribeProject(
     .where(eq(videoProjects.id, projectId))
     .limit(1);
   if (!project) throw new Error(`video.transcribe: no project ${projectId}`);
+
+  /*
+   * Director v2 (PLAN.md §2 W2): the brief's names go to whisper as
+   * hotwords, the glossary puts the brief's spellings back into the words,
+   * and a project on a reel preset gets phrase-broken reel lines. All of it
+   * hangs off the tenant's flag; with the flag off `terms` is empty and
+   * nothing below behaves differently from before.
+   */
+  const v2 = await directorV2ForTenant(project.tenantId).catch(() => false);
+  const brief = (project.director as { brief?: unknown } | null)?.brief;
+  const terms: Term[] = v2 && typeof brief === "string" ? extractTerms(brief) : [];
+  const log = (line: string) => console.log(`[transcribe ${projectId}] ${line}`);
+  if (terms.length) log(`director v2: ${terms.length} terms from the brief, ${hotwordsFrom(terms).length} as hotwords`);
 
   const dir = await mkdtemp(path.join(tmpdir(), "aura-transcribe-"));
 
@@ -168,7 +184,15 @@ export async function transcribeProject(
     if (size < 1000) throw new Error("The cut has no audible audio");
 
     const audio = new Blob([await readFile(combined)], { type: "audio/mpeg" });
-    const transcript = simplified(await runTranscription(projectId, audio, options.diarize ?? true));
+    let transcript = simplified(await runTranscription(projectId, audio, options.diarize ?? true, hotwordsFrom(terms)));
+
+    /* The brief's spellings, back into the words (v2 only; see above). */
+    if (terms.length) {
+      const fixed = await applyGlossaryWithModel(transcript.words, terms, { log, brief: typeof brief === "string" ? brief : "" });
+      if (fixed.changes.length) log(`glossary: ${fixed.changes.map((c) => `${c.from}\u2192${c.to}\u00d7${c.count}`).join(", ")}`);
+      if (fixed.rejected.length) log(`glossary refused: ${fixed.rejected.map((r) => `${r.from}\u2192${r.to}\uff08${r.why}\uff09`).join(", ")}`);
+      transcript = { ...transcript, words: fixed.words, text: fixed.text };
+    }
 
     /*
      * The line length the finished frame can actually hold.
@@ -177,11 +201,19 @@ export async function transcribeProject(
      * exports, so the project's own aspect is the honest guess: a vertical cut
      * gets about sixteen Han characters a line, a wide one about twenty-four.
      * Latin scales with it, roughly two and a half characters per Han one.
+     *
+     * A reel preset (director v2) breaks differently: at phrase boundaries,
+     * to its own aim and ceiling, never inside a name or a figure.
      */
     const aspect = (project.director as { aspect?: string } | null)?.aspect ?? "16:9";
     const han = aspect === "9:16" ? 16 : aspect === "1:1" ? 20 : 24;
     const isHan = /[\u3000-\u9fff\uf900-\ufaff]/.test(transcript.text);
-    const lines = toCaptionLines(transcript, { maxChars: isHan ? han : Math.round(han * 2.5) });
+    const reel = v2 ? captionPreset(project.captionPreset).style.reel : undefined;
+    const lines = reel
+      ? toCaptionLines(transcript, {
+          reel: { aimChars: reel.aimChars, maxChars: reel.maxChars, minChars: reel.minChars, minMs: reel.minMs, terms: terms.map((t) => t.text) },
+        })
+      : toCaptionLines(transcript, { maxChars: isHan ? han : Math.round(han * 2.5) });
     if (!lines.length) throw new Error("Nothing was said, or nothing could be made out");
 
     /*
@@ -263,10 +295,12 @@ async function runTranscription(
   projectId: string,
   audio: Blob,
   diarize: boolean,
+  hotwords: readonly string[] = [],
 ): Promise<Transcript> {
   const backend = env.transcribeBackend;
-  // Detected, not declared. See the note at the top.
-  const options = { diarize, languageCode: null };
+  // Detected, not declared. See the note at the top. The hotwords only mean
+  // something to the local backend; ElevenLabs has no such lever.
+  const options = { diarize, languageCode: null, hotwords };
   const log = (line: string) => console.log(`[transcribe ${projectId}] ${line}`);
   const describe = (t: Transcript) =>
     `${t.languageCode} p=${t.languageProbability.toFixed(3)}, ${t.words.length} words, ${Math.round(t.durationSecs)}s of audio`;

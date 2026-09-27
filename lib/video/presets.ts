@@ -12,6 +12,49 @@
  * never the three stacked — and word-by-word highlighting only where it is
  * honest.
  */
+/**
+ * Director v2's reel captions (PLAN.md §1 "Captions"): the numbers behind
+ * the `reel` presets. `ass.ts` takes its reel path whenever a preset carries
+ * one of these; `elevenlabs.ts:toCaptionLines` breaks lines to `aimChars`
+ * / `maxChars` for it. Everything is stated for a 1080×1920 frame and scaled
+ * by the frame's height at render time.
+ */
+export type ReelCaptionStyle = {
+  /** Han characters per line: what the breaker aims for, the most it allows, the fewest it likes. */
+  aimChars: number;
+  maxChars: number;
+  minChars: number;
+  /** The pop: 0 → `peak` % → 100 % over `popMs` milliseconds. */
+  popMs: number;
+  peak: number;
+  /** The spoken word's scale while it is being said, per cent. */
+  spokenScale: number;
+  /** Outline width in px, its colour, and the outline blur. */
+  outlinePx: number;
+  outlineColour: string;
+  blur: number;
+  /** The zh line's visual centre, in px from the top; and the lowest it may be pushed to clear the chin. */
+  centreY: number;
+  maxCentreY: number;
+  /** The gap the line keeps below the speaker's chin, when a face track is given. */
+  chinGap: number;
+  /** Number runs are always in the accent; at most this many other keywords per line. */
+  maxKeywords: number;
+  /** The least time a line stays up. */
+  minMs: number;
+  /** The second-language line, when the preset has one. */
+  second?: {
+    sizePx: number;
+    /** 0–1. */
+    opacity: number;
+    /** It fades in this long after the zh line lands. */
+    delayMs: number;
+    centreY: number;
+    bold: boolean;
+    outlinePx: number;
+  };
+};
+
 export type CaptionPreset = {
   key: string;
   name: string;
@@ -54,7 +97,33 @@ export type CaptionPreset = {
     keywords?: boolean;
     /** A second-language line under the first, small and light. */
     second?: { family: string; sizeRatio: number };
+    /** Present on the reel presets only; see `ReelCaptionStyle`. */
+    reel?: ReelCaptionStyle;
   };
+};
+
+/**
+ * The reel look, once, shared by both reel presets (PLAN.md §1): 72 px
+ * Black, 5 px #0E0E10 outline with a 1.5 blur, centre y 1360, a pop of
+ * 0→108→100 % in 160 ms, the spoken word at 110 %, half a second on screen
+ * at least. `maxCentreY` 1400 keeps the line out of the bottom platform
+ * band (y > 1440) even when a low chin pushes it down.
+ */
+const REEL: ReelCaptionStyle = {
+  aimChars: 8,
+  maxChars: 12,
+  minChars: 4,
+  popMs: 160,
+  peak: 108,
+  spokenScale: 110,
+  outlinePx: 5,
+  outlineColour: "#0E0E10",
+  blur: 1.5,
+  centreY: 1360,
+  maxCentreY: 1400,
+  chinGap: 40,
+  maxKeywords: 1,
+  minMs: 500,
 };
 
 export const CAPTION_PRESETS: CaptionPreset[] = [
@@ -168,6 +237,66 @@ export const CAPTION_PRESETS: CaptionPreset[] = [
       marginRatio: 0.44,
       karaoke: false,
       uppercase: false,
+    },
+  },
+
+  /*
+   * Director v2's captions for a vertical reel (PLAN.md §1 "Captions").
+   *
+   * One heavy line of four to twelve characters, broken where a phrase
+   * ends and never inside a name or a number, popping in with the voice;
+   * the word being said and every number in the accent colour. The family
+   * is the static Black OTF that `scripts/fetch-cjk-font.sh` fetches: the
+   * variable NotoSansSC.ttf falls back to DejaVu at this weight in libass
+   * (Stage 0), so the face has to be on the box. `karaoke` is off because
+   * the reel renderer lights words with its own tags and degrades to a
+   * plain pop when a row has no timings, so `render.ts` never needs to
+   * swap the preset out.
+   */
+  {
+    key: "reel",
+    name: "Reel",
+    nameZh: "短视频字幕",
+    note: "One heavy line, four to twelve characters, broken at phrase boundaries, popping in with the voice; the spoken word and every number in the accent colour. Director v2's caption for a vertical reel.",
+    noteZh: "单行黑体大字，四到十二字，按语义断句，随语音弹出；正在说的词和所有数字用强调色。导演 v2 竖屏短视频的字幕。",
+    style: {
+      family: "Noto Sans CJK SC Black",
+      weight: 900,
+      sizeRatio: 0.0375,
+      fill: "#ffffff",
+      treatment: "outline",
+      lines: 1,
+      marginRatio: 0.2755,
+      karaoke: false,
+      uppercase: false,
+      keywords: true,
+      reel: REEL,
+    },
+  },
+  {
+    key: "bilingual-reel",
+    name: "Bilingual reel",
+    nameZh: "双语短视频字幕",
+    note: "The reel caption with the English under it: 36 px, three-quarter opacity, fading in a beat after the Chinese lands. For the channel's bilingual reels.",
+    noteZh: "短视频字幕加下方一行英文：36 像素、七五折透明度，比中文晚一拍淡入。频道的双语短视频用这个。",
+    style: {
+      family: "Noto Sans CJK SC Black",
+      weight: 900,
+      sizeRatio: 0.0375,
+      fill: "#ffffff",
+      treatment: "outline",
+      lines: 1,
+      marginRatio: 0.2755,
+      karaoke: false,
+      uppercase: false,
+      keywords: true,
+      second: { family: "Noto Sans CJK SC", sizeRatio: 0.01875 },
+      reel: {
+        ...REEL,
+        /* The outline is opaque even though the fill is not: at 75 % a white
+           line over her beige top was hard to read in the lab frames. */
+        second: { sizePx: 36, opacity: 0.75, delayMs: 80, centreY: 1420, bold: true, outlinePx: 3 },
+      },
     },
   },
 ];
@@ -364,15 +493,118 @@ export const GRAPHIC_KINDS = [
     key: "end-card",
     name: "End card",
     nameZh: "片尾卡",
-    note: "Full frame, on black. The last thing, and the only place a call to action belongs.",
-    noteZh: "黑底满屏。放在最后，也是唯一适合放行动号召的位置。",
+    note: "Full frame, on black. The last thing, and the only place a call to action belongs. `options.creditsLine` adds the 素材来源 line, small and grey, above the footnote band.",
+    noteZh: "黑底满屏。放在最后，也是唯一适合放行动号召的位置。options.creditsLine 会在脚注上方加一行灰色小字的素材来源。",
     hasSub: true,
+  },
+
+  /*
+   * Director v2 (PLAN.md §1 "Graphics"), the templates that make an argument
+   * legible with the sound off. Marked `v2` because until W4 lands their
+   * Remotion templates they draw through the composition's default branch
+   * (one centred line) and the editor's preview shows the same; the v1
+   * director never emits them, so a flag-off run is unchanged. Each reads
+   * its own keys from `options` (`landMs`, `stepsMs`, `items`, `asset`…) and
+   * lives in Zone T — y 230–620 on a 1080×1920 frame — never over the face.
+   */
+  {
+    key: "hook",
+    name: "Hook block",
+    nameZh: "开场论断",
+    note: "The opening claim as up to three short lines, landing one by one with the words, in Zone T for the first 2.5 s. From the brief's statement block.",
+    noteZh: "开场论断：最多三行短句，随语音逐行落下，前 2.5 秒停在上方安全区。取自简报里的论断块。",
+    hasSub: false,
+    v2: true,
+  },
+  {
+    key: "counter",
+    name: "Counter",
+    nameZh: "计数",
+    note: "A number that counts up over 0.7 s and lands on the spoken figure, the unit smaller beside it. Only for a number actually said.",
+    noteZh: "数字在 0.7 秒内滚动到她说出的值，单位小一号放在旁边。只用于真正说出的数字。",
+    hasSub: true,
+    v2: true,
+  },
+  {
+    key: "compare",
+    name: "Compare bars",
+    nameZh: "对比条",
+    note: "Two or three bars that grow in sequence, half a second each, for a this-versus-that figure. Red only for the negative one.",
+    noteZh: "两三根依次生长的条形，每根半秒，用于 A 比 B 的数字。只有负面的一根用红色。",
+    hasSub: true,
+    v2: true,
+  },
+  {
+    key: "list",
+    name: "List build",
+    nameZh: "列表",
+    note: "Items that appear one after another as each is said: a timeline of events, the three parties named. Three to five, never more.",
+    noteZh: "随每一项说出依次出现：事件时间线、被点名的三家。三到五项，不要更多。",
+    hasSub: false,
+    v2: true,
+  },
+  {
+    key: "entity",
+    name: "Entity card",
+    nameZh: "机构卡",
+    note: "A logo on a white tile with the name and a one-line descriptor, 1.5–2.5 s at first mention. The asset and its credit ride in options.",
+    noteZh: "白色底块上的标识，加名称和一句说明，首次提及时出现 1.5–2.5 秒。素材与来源记录在 options 里。",
+    hasSub: true,
+    v2: true,
+  },
+  {
+    key: "chip",
+    name: "Chip",
+    nameZh: "标识",
+    note: "A small name chip for a thing already introduced by its entity card. The one graphic allowed a little overshoot.",
+    noteZh: "已经用机构卡介绍过的事物，再次提到时用一枚小标识。唯一允许轻微弹性的图形。",
+    hasSub: false,
+    v2: true,
+  },
+  {
+    key: "headline",
+    name: "Headline card",
+    nameZh: "新闻卡",
+    note: "Outlet, date and the quoted headline, sliding up from blur to sharp in 250 ms, held 2.5–4 s; the article image behind at 30% when there is one, credited. Never a fake screenshot.",
+    noteZh: "媒体名、日期和引用的标题，250 毫秒从模糊到清晰上滑，停留 2.5–4 秒；有配图时以 30% 透明度垫在后面并注明来源。绝不伪造截图。",
+    hasSub: true,
+    v2: true,
+  },
+  {
+    key: "term",
+    name: "Term card",
+    nameZh: "术语卡",
+    note: "A term and its one-line definition, 3 s: 蒸馏＝小模型学大模型的「暗知识」. For the words the argument turns on.",
+    noteZh: "一个术语加一句定义，停 3 秒：蒸馏＝小模型学大模型的「暗知识」。用于论证依赖的关键词。",
+    hasSub: true,
+    v2: true,
+  },
+  {
+    key: "diagram",
+    name: "Diagram",
+    nameZh: "示意图",
+    note: "Three synced steps that draw a mechanism: teacher model → outputs → student model. One diagram a video, at the explanation.",
+    noteZh: "三个与语音同步的步骤画出机制：老师模型 → 输出 → 学生模型。一条视频只用一次，放在讲解处。",
+    hasSub: false,
+    v2: true,
+  },
+  {
+    key: "stinger",
+    name: "Chapter stinger",
+    nameZh: "章节转场",
+    note: "A 0.7 s number-and-title flash at a real turn in the argument: 「02 中方回应」. Four to six a video, never at a paragraph that merely continues.",
+    noteZh: "0.7 秒的编号加标题闪现，放在论证真正转折处：「02 中方回应」。一条视频四到六个，段落只是延续时不用。",
+    hasSub: false,
+    v2: true,
   },
 ] as const;
 
 export type GraphicKindKey = (typeof GRAPHIC_KINDS)[number]["key"];
 
 export const GRAPHIC_KIND_KEYS = GRAPHIC_KINDS.map((k) => k.key) as readonly GraphicKindKey[];
+
+/** The director v2 templates: what W4 draws as motion and W6 schedules; nothing in v1 emits them. */
+export const V2_GRAPHIC_KIND_KEYS = GRAPHIC_KINDS.filter((k) => "v2" in k && k.v2).map((k) => k.key) as readonly GraphicKindKey[];
 
 export function isGraphicKind(value: unknown): value is GraphicKindKey {
   return (GRAPHIC_KIND_KEYS as readonly string[]).includes(String(value));

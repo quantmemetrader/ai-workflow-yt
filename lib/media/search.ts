@@ -34,8 +34,9 @@ import { searchStockImages, searchStockVideo } from "@/lib/media/sources/stock";
 
 export type MediaQuery = string | { zh?: string; en?: string };
 
-/** Which group of sources answered a row of the report; "stock" bundles the three libraries. */
-export type ProviderKey = Platform | "stock";
+/** Which group of sources answered a row of the report; "stock" bundles the three libraries. Wikimedia Commons is
+ * a platform an asset can come from (the director resolves a named entity through Wikidata) but not a search. */
+export type ProviderKey = Exclude<Platform, "wikimedia"> | "stock";
 
 export type SearchMediaOpts = {
   kind: MediaKind;

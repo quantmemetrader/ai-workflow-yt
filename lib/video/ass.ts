@@ -103,12 +103,26 @@ function wrap(text: string, lines: 1 | 2, maxChars = 0): string {
   return `${words.slice(0, best.at).join(" ")}\\N${words.slice(best.at).join(" ")}`;
 }
 
-export function toAss(
-  cues: AssCue[],
-  opts: { presetKey: string; width: number; height: number; accent: string },
-): string {
+export type AssOptions = {
+  presetKey: string;
+  width: number;
+  height: number;
+  accent: string;
+  /**
+   * The speaker's chin, in px from the top of this frame, from the face
+   * track. The reel presets keep their line's top edge below it (PLAN.md
+   * §1 Zone F); the older presets ignore it.
+   */
+  chinY?: number | null;
+};
+
+export function toAss(cues: AssCue[], opts: AssOptions): string {
   const preset: CaptionPreset = captionPreset(opts.presetKey);
   const st = preset.style;
+
+  /* Director v2's reel captions are a different renderer, not a variation
+     of this one: per-word tags, a measured position, a second style. */
+  if (st.reel) return reelAss(cues, preset, opts);
 
   const size = Math.round(opts.height * st.sizeRatio);
   const marginV = Math.round(opts.height * st.marginRatio);
@@ -355,4 +369,369 @@ export function canKaraoke(cues: AssCue[]): boolean {
   if (cues.length === 0) return false;
   const withWords = cues.filter((c) => c.words && c.words.length > 0).length;
   return withWords / cues.length >= 0.8;
+}
+
+
+/* ------------------------------------------------------------------ reel */
+
+/**
+ * Director v2's reel captions (PLAN.md §1 "Captions", W2).
+ *
+ * What the tags do, per word, because every word carries its own block:
+ *
+ *   {\fscx0\fscy0\t(0,112,\fscx108\fscy108)\t(112,160,\fscx100\fscy100)}
+ *       the pop, 0 → 108 → 100 % in 160 ms. libass applies `\t` to the
+ *       running state in tag order with the event's clock, so restating
+ *       it in every word's block is what keeps the whole line popping
+ *       together; a bare `\fscx100` in a later block would cancel it.
+ *   {\c<rest>\t(a,a+1,\c<accent>\fscx110\fscy110)\t(b,b+1,\c<rest>\fscx100\fscy100)}
+ *       the spoken word: accent and 110 % from its start `a` to its end
+ *       `b`, back to its resting colour after. A number, or the line's
+ *       one keyword, rests in the accent already. `a` never precedes the
+ *       end of the pop, or the first word would snap to 110 % while the
+ *       line is still growing.
+ *   {\blur1.5}  on the 5 px #0E0E10 outline, from the style.
+ *   {\fad(0,60)} the exit; the pop is the entrance.
+ *
+ * The English line is its own event on its own style, 36 px Bold at 75 %,
+ * starting 80 ms after the zh line with a fade of the same length.
+ *
+ * Where the line sits is measured, not guessed. Under libass the visual
+ * centre of a Han line in Noto Sans CJK SC Black is 0.43 em above the
+ * bottom of its line box and its ink top 0.79 em above it; the Latin
+ * en line's centre is 0.39 em above (calibration renders on the box, 72
+ * and 36 px, Stage 0 fonts). `MarginV` is derived from those so the zh
+ * centre lands on the preset's `centreY` (1360) — or lower, when a face
+ * track says the chin is close, down to `maxCentreY` and never past it.
+ */
+const INK = { han: { centre: 0.43, top: 0.79 }, latin: { centre: 0.39 } } as const;
+
+/** How long a line takes to leave. The pop is its entrance. */
+const REEL_EXIT_MS = 60;
+
+export type ReelLayout = {
+  size: number;
+  outline: number;
+  marginH: number;
+  marginV: number;
+  /** Where the zh line's visual centre and ink top land, px from the top. */
+  centreY: number;
+  topY: number;
+  /** False when the chin forced the line past `maxCentreY`; it is clamped there and the caller may want to know. */
+  chinClear: boolean;
+  second?: { size: number; outline: number; marginV: number; centreY: number };
+};
+
+/** The geometry a reel preset produces on this frame. Null for a preset without a reel style. */
+export function reelLayout(
+  preset: CaptionPreset,
+  opts: { width: number; height: number; chinY?: number | null },
+): ReelLayout | null {
+  const st = preset.style;
+  const r = st.reel;
+  if (!r) return null;
+  const k = opts.height / 1920;
+  const size = Math.round(opts.height * st.sizeRatio);
+  const outline = Math.max(1, Math.round(r.outlinePx * k));
+  const wanted = r.centreY * k;
+  let centre = wanted;
+  if (typeof opts.chinY === "number" && Number.isFinite(opts.chinY)) {
+    /* Top edge of the ink, outline included, at least `chinGap` below the chin. */
+    const minCentre = opts.chinY + r.chinGap * k + (INK.han.top - INK.han.centre) * size + outline;
+    centre = Math.max(centre, minCentre);
+  }
+  const ceiling = r.maxCentreY * k;
+  const chinClear = centre <= ceiling + 0.5;
+  centre = Math.min(centre, ceiling);
+  const marginV = Math.round(opts.height - (centre + INK.han.centre * size));
+  const topY = Math.round(centre - (INK.han.top - INK.han.centre) * size - outline);
+  const marginH = Math.round(64 * (opts.width / 1080));
+  let second: ReelLayout["second"];
+  if (r.second) {
+    const size2 = Math.round(r.second.sizePx * k);
+    const centre2 = r.second.centreY * k + (centre - wanted);
+    second = {
+      size: size2,
+      outline: Math.max(1, Math.round(r.second.outlinePx * k)),
+      centreY: Math.round(centre2),
+      marginV: Math.round(opts.height - (centre2 + INK.latin.centre * size2)),
+    };
+  }
+  return { size, outline, marginH, marginV, centreY: Math.round(centre), topY, chinClear, second };
+}
+
+/** `#rrggbb` as an inline `\c` colour: `&HBBGGRR&`, no alpha. */
+function tagColour(hex: string): string {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
+  const rgb = m ? m[1] : "ffffff";
+  return `&H${rgb.slice(4, 6)}${rgb.slice(2, 4)}${rgb.slice(0, 2)}&`.toUpperCase();
+}
+
+/** A word of a reel line: text, its time inside the event (ms), and whether a space goes before it. */
+type ReelUnit = { text: string; start: number | null; end: number | null; spaceBefore: boolean };
+
+/** Punctuation a reel line never shows: the breaker strips it, and a row from elsewhere is stripped here. */
+const TRAILING_PUNCT = /^(.*?)([，。、！？；：,.!?;:…”」』）)》〉]+)$/;
+const LEADING_PUNCT = /^[“「『（(《〈…]+/;
+
+/**
+ * The words of a cue as units in the event's clock, punctuation off,
+ * Latin fragments joined the way `joinWords` joins them: no space unless a
+ * real gap separates two Latin words. A cue without timings becomes one
+ * unit per character (spaces kept), so it still pops and still lights its
+ * numbers; only the spoken-word highlight needs the clock.
+ */
+function reelUnits(c: AssCue): ReelUnit[] {
+  const out: ReelUnit[] = [];
+  if (c.words?.length) {
+    for (let i = 0; i < c.words.length; i++) {
+      const w = c.words[i];
+      let text = w.text.trim();
+      const nextText = c.words[i + 1]?.text.trim() ?? "";
+      const m = TRAILING_PUNCT.exec(text);
+      if (m) {
+        const decimal = /[0-9]$/.test(m[1]) && /^[.,]$/.test(m[2]) && /^[0-9]/.test(nextText);
+        if (!decimal) text = m[1];
+      }
+      text = text.replace(LEADING_PUNCT, "");
+      if (!text) continue;
+      const start = Math.max(0, Math.round(w.start * 1000 - c.startMs));
+      const end = Math.max(start, Math.round(w.end * 1000 - c.startMs));
+      const prev = out[out.length - 1];
+      const latin = Boolean(prev && /[A-Za-z]$/.test(prev.text) && /^[A-Za-z]/.test(text));
+      if (latin && prev.end !== null && start - prev.end <= 40) {
+        prev.text += text;
+        prev.end = Math.max(prev.end, end);
+        continue;
+      }
+      out.push({ text, start, end, spaceBefore: latin });
+    }
+    return out;
+  }
+  for (const ch of Array.from(c.text.trim())) {
+    if (/[，。、！？；：]/.test(ch)) continue;
+    out.push({ text: ch, start: null, end: null, spaceBefore: false });
+  }
+  return out;
+}
+
+/** Units and unit chars that count as a figure: digits with their marks and units, and Han numerals of two or more. */
+const DIGIT_RUN = /[0-9][0-9.,]*[0-9]|[0-9]/g;
+/** Scale words a figure may run through (3500多, 1.51亿, 30万), then at most one measure or unit (个, 次, 条, 美金, %); the breaker uses the same rule. */
+const FIGURE_SCALE = "万亿千百十多余";
+const FIGURE_UNIT = "个页次倍成条家年月日号天人元块%％";
+const HAN_NUMERAL = /[零一二三四五六七八九十百千万亿几两]{2,}[多余]?/g;
+const NUMBER_PREFIX = /[近约超共达仅逾]/;
+
+/** Character ranges of the figures in a line, by code point. */
+export function numberRanges(text: string): [number, number][] {
+  const cps = Array.from(text);
+  const u16ToCp: number[] = [];
+  for (let i = 0, u = 0; i < cps.length; i++) {
+    u16ToCp[u] = i;
+    u += cps[i].length;
+    u16ToCp[u] = i + 1;
+  }
+  const ranges: [number, number][] = [];
+  const push = (aU16: number, bU16: number, extendUnits: boolean) => {
+    let a = u16ToCp[aU16] ?? 0;
+    let b = u16ToCp[bU16] ?? cps.length;
+    if (extendUnits) {
+      let n = 0;
+      while (b < cps.length && n < 3 && FIGURE_SCALE.includes(cps[b])) {
+        b++;
+        n++;
+      }
+      if (b < cps.length && FIGURE_UNIT.includes(cps[b])) b++;
+      else if (b + 1 < cps.length && cps[b] === "美" && "金元".includes(cps[b + 1])) b += 2;
+      if (a > 0 && NUMBER_PREFIX.test(cps[a - 1])) a--;
+    }
+    ranges.push([a, b]);
+  };
+  for (const m of text.matchAll(DIGIT_RUN)) push(m.index!, m.index! + m[0].length, true);
+  for (const m of text.matchAll(HAN_NUMERAL)) push(m.index!, m.index! + m[0].length, true);
+  ranges.sort((x, y) => x[0] - y[0]);
+  return ranges;
+}
+
+/**
+ * Which units rest in the accent: every figure, plus the first of the
+ * row's keywords that occurs outside a figure, up to `maxKeywords`.
+ */
+function accentFlags(units: ReelUnit[], keywords: string[], maxKeywords: number): boolean[] {
+  const plain = units.map((u) => u.text).join("");
+  const cps = Array.from(plain);
+  const unitOf: number[] = [];
+  units.forEach((u, i) => {
+    for (let k = 0; k < Array.from(u.text).length; k++) unitOf.push(i);
+  });
+  const lit = new Array<boolean>(units.length).fill(false);
+  const mark = (a: number, b: number) => {
+    for (let p = a; p < b && p < unitOf.length; p++) lit[unitOf[p]] = true;
+  };
+  const numbers = numberRanges(plain);
+  for (const [a, b] of numbers) mark(a, b);
+  const wanted = [...new Set(keywords.map((k) => k.trim()).filter(Boolean))].sort((a, b) => b.length - a.length);
+  let used = 0;
+  for (const kw of wanted) {
+    if (used >= maxKeywords) break;
+    const kcp = Array.from(kw);
+    let at = -1;
+    for (let i = 0; i + kcp.length <= cps.length; i++) {
+      let ok = true;
+      for (let k = 0; k < kcp.length; k++) {
+        if (cps[i + k] !== kcp[k]) {
+          ok = false;
+          break;
+        }
+      }
+      if (!ok) continue;
+      if (numbers.some(([a, b]) => i < b && i + kcp.length > a)) continue;
+      at = i;
+      break;
+    }
+    if (at === -1) continue;
+    mark(at, at + kcp.length);
+    used++;
+  }
+  return lit;
+}
+
+function reelAss(cues: AssCue[], preset: CaptionPreset, opts: AssOptions): string {
+  const st = preset.style;
+  const r = st.reel!;
+  const L = reelLayout(preset, opts)!;
+  const k = opts.height / 1920;
+
+  /* The Black OTF's family name is "Noto Sans CJK SC Black" with Bold 0;
+     asking for bold on top of it sends libass to DejaVu (Stage 0). A
+     family that names its weight is never emboldened. */
+  const namesWeight = /\b(black|heavy|bold|medium|light)$/i.test(st.family);
+  const styleZh = [
+    "Style: Reel",
+    st.family,
+    L.size,
+    assColour(st.fill),
+    assColour(st.fill),
+    assColour(r.outlineColour),
+    assColour("#000000", 0),
+    st.weight >= 600 && !namesWeight ? -1 : 0,
+    0,
+    0,
+    0,
+    100,
+    100,
+    0,
+    0,
+    1,
+    L.outline,
+    0,
+    2,
+    L.marginH,
+    L.marginH,
+    L.marginV,
+    1,
+  ].join(",");
+
+  const styleEn =
+    r.second && st.second && L.second
+      ? [
+          "Style: ReelEn",
+          st.second.family,
+          L.second.size,
+          assColour(st.fill, Math.round(255 * (1 - r.second.opacity))),
+          assColour(st.fill, Math.round(255 * (1 - r.second.opacity))),
+          /* The fill is translucent; the outline is not, or the line vanishes on a light top. */
+          assColour(r.outlineColour),
+          assColour("#000000", 0),
+          r.second.bold ? -1 : 0,
+          0,
+          0,
+          0,
+          100,
+          100,
+          0,
+          0,
+          1,
+          L.second.outline,
+          0,
+          2,
+          L.marginH,
+          L.marginH,
+          L.second.marginV,
+          1,
+        ].join(",")
+      : null;
+
+  const header = [
+    "[Script Info]",
+    "ScriptType: v4.00+",
+    `PlayResX: ${opts.width}`,
+    `PlayResY: ${opts.height}`,
+    /* Smart wrapping, as a safety net only: a reel line is one line by
+       construction (twelve Han characters at 72 px is 864 px inside the
+       952 px between the margins), so a correct line never wraps. A row
+       that did not come from the reel breaker — a project switched to this
+       preset after it was transcribed, or a 9:16 project transcribed with
+       the flag off, whose rows run to sixteen characters — would be clipped
+       off both edges under WrapStyle 2; wrapped, every character stays on
+       screen. */
+    "WrapStyle: 0",
+    "ScaledBorderAndShadow: yes",
+    "YCbCr Matrix: TV.709",
+    "",
+    "[V4+ Styles]",
+    "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
+    styleZh,
+    ...(styleEn ? [styleEn] : []),
+    "",
+    "[Events]",
+    "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
+  ];
+
+  const accent = tagColour(opts.accent);
+  const white = tagColour(st.fill);
+  const popUp = Math.round(r.popMs * 0.7);
+  const blur = Math.round(r.blur * k * 10) / 10;
+  const pop = `\\fscx0\\fscy0\\blur${blur}\\t(0,${popUp},\\fscx${r.peak}\\fscy${r.peak})\\t(${popUp},${r.popMs},\\fscx100\\fscy100)`;
+
+  const sorted = cues
+    .filter((c) => c.text.trim() && c.endMs > c.startMs)
+    .slice()
+    .sort((a, b) => a.startMs - b.startMs);
+
+  const events: string[] = [];
+  for (let i = 0; i < sorted.length; i++) {
+    const c = sorted[i];
+    const next = sorted[i + 1];
+    /* Half a second at least, into the gap before the next line only. */
+    let endMs = c.endMs;
+    if (endMs - c.startMs < r.minMs) endMs = Math.max(endMs, Math.min(c.startMs + r.minMs, next ? next.startMs : c.startMs + r.minMs));
+
+    const units = reelUnits(c);
+    if (!units.length) continue;
+    const lit = accentFlags(units, c.keywords ?? [], r.maxKeywords);
+    const body = units
+      .map((u, idx) => {
+        const rest = lit[idx] ? accent : white;
+        let tags = `${pop}\\c${rest}`;
+        if (u.start !== null && u.end !== null) {
+          const a = Math.max(r.popMs, u.start);
+          const b = Math.max(a + 1, u.end);
+          tags += `\\t(${a},${a + 1},\\c${accent}\\fscx${r.spokenScale}\\fscy${r.spokenScale})\\t(${b},${b + 1},\\c${rest}\\fscx100\\fscy100)`;
+        }
+        return `{${tags}}${u.spaceBefore ? " " : ""}${escape(u.text)}`;
+      })
+      .join("");
+    events.push(`Dialogue: 0,${timestamp(c.startMs)},${timestamp(endMs)},Reel,,0,0,0,,{\\fad(0,${REEL_EXIT_MS})}${body}`);
+
+    if (styleEn && r.second && c.second?.trim()) {
+      const startEn = Math.min(c.startMs + r.second.delayMs, Math.max(c.startMs, endMs - 120));
+      events.push(
+        `Dialogue: 1,${timestamp(startEn)},${timestamp(endMs)},ReelEn,,0,0,0,,{\\fad(${r.second.delayMs},${REEL_EXIT_MS})}${escape(c.second.trim())}`,
+      );
+    }
+  }
+
+  return [...header, ...events, ""].join("\n");
 }

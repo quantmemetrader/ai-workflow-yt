@@ -16,6 +16,15 @@ echo "==> checks"
 npx tsc --noEmit
 npm run smoke
 
+echo "==> renderer fonts"
+# Director v2 draws its captions (libass) and graphics (Remotion) in Noto
+# Sans CJK SC Black/Bold: OFL, ~17 MB each, gitignored, so fetched here into
+# remotion/public/fonts. The script skips a face that is already there, so
+# this costs nothing after the first deploy. A failure does not stop the
+# deploy: v1 does not use these faces, and a v2 render without them falls
+# back to the variable face until the next deploy fetches them.
+bash scripts/fetch-cjk-font.sh --otf-only || echo "!! the CJK caption fonts could not be fetched (scripts/fetch-cjk-font.sh --otf-only); v2 renders use the fallback face" >&2
+
 echo "==> build"
 # Into .next-build, never where the live server reads (next.config.ts
 # distDir), with an id per deploy for Next's skew protection.

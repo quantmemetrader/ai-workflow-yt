@@ -1,10 +1,13 @@
 import "server-only";
+import { rm } from "node:fs/promises";
+import path from "node:path";
 import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import {
   captions,
   files,
   scriptBeats,
+  tenants,
   timelineItems,
   videoClips,
   videoExports,
@@ -14,7 +17,7 @@ import {
 import type { Viewer } from "@/lib/auth/dal";
 import { audit } from "@/lib/audit";
 import { newId } from "@/lib/ids";
-import { isInterrupted, renderExport } from "@/lib/video/render";
+import { downloadObject, isInterrupted, renderExport } from "@/lib/video/render";
 import { canReadFiles } from "@/lib/authz/rebac";
 import { complete } from "@/lib/ai/openrouter";
 import { modelFor } from "@/lib/ai/models";
@@ -31,6 +34,12 @@ import { asEntrance, CAPTION_PRESETS, FURNITURE_KINDS, isGraphicKind } from "./p
 import { canKaraoke } from "./ass";
 import { dropNarration, footageHasSound, narratedCut, narrationOf } from "./narrate";
 import { targetFromBrief } from "./length";
+import { directorV2ForTenant } from "./v2/flag";
+import { directorRecord, persistDesign, toRows, writeCaptionLines, writeCutTimeline, type TranslatedLine } from "./v2/persist";
+import type { Credits, CutReport } from "./v2/types";
+
+export { planDesign } from "./v2/design";
+export { furnitureFromBrief } from "./v2/furniture";
 
 /**
  * The director: a brief in, a finished video out.
@@ -139,6 +148,16 @@ export type DirectorState = {
   /** Set when the worker was restarted under the render: the design is on
    * the timeline already, so the next run goes straight to the encoder. */
   resume?: "render";
+  /**
+   * Director v2's record of the run (`lib/video/v2/persist.ts`): the cut
+   * report, every fetched asset with its credit, the credits line and
+   * block, and the framing and stats the lab and the grader read. A
+   * project the v1 director made has none of these.
+   */
+  cut?: CutReport | null;
+  assets?: Credits["assets"];
+  credits?: { line: string; block: string };
+  v2?: Record<string, unknown>;
   result?: {
     cuts: number;
     graphics: number;
@@ -239,6 +258,9 @@ export async function direct(viewer: Viewer, projectId: string, jobId?: string):
   const wantRender = asked.render !== false;
   const pace: Pace = asked.pace === "calm" || asked.pace === "hype" ? asked.pace : "channel";
   const P = PACES[pace];
+  /* Read once, here, and never again: a tenant that has not opted in is
+     not touched by anything under `lib/video/v2/`. */
+  const v2 = await directorV2ForTenant(viewer.tenantId);
 
   const say = async (step: DirectorState["step"], text: string) => {
     console.log(`[director ${projectId}] ${step}: ${text}`);
@@ -342,6 +364,18 @@ export async function direct(viewer: Viewer, projectId: string, jobId?: string):
         await db.delete(captions).where(eq(captions.projectId, projectId));
         await say("footage", "The footage speaks this time, so the earlier AI voice-over is off the cut");
       }
+
+      /* ---- v2: the lab's pipeline, from the take up ------------------- */
+      if (v2) {
+        const take = await v2Take(projectId, footage, { aspect, language, brief });
+        if ("take" in take) {
+          const result = await directV2(viewer, project, { brief, aspect, language, pace, wantRender, say, take: take.take });
+          await finish(viewer, projectId, jobId, result);
+          return result;
+        }
+        console.log(`[director ${projectId}] v2 is on but this project runs v1: ${take.why}`);
+      }
+
       let items = await db.select().from(timelineItems).where(eq(timelineItems.projectId, projectId)).orderBy(asc(timelineItems.ord));
       if (!items.length) {
         const joinAll = /all clips|every clip|join|stitch|in order|拼接|全部素材|按顺序/i.test(brief);
@@ -862,6 +896,275 @@ export async function direct(viewer: Viewer, projectId: string, jobId?: string):
 }
 
 type Say = (step: DirectorState["step"], text: string) => Promise<void>;
+
+/* ------------------------------------------------------------ director v2 */
+
+type V2TakeRow = { clipId: string; fileId: string; name: string; storageKey: string; sizeBytes: number | null; durationMs: number };
+
+/**
+ * Whether this project can be made by v2, and from which take.
+ *
+ * v2 cuts one take, as the lab does: its silences are measured on the
+ * source file and its sentences are in source time. The take is the clip
+ * the timeline already cuts (a re-run of the director on its own cut), or
+ * the longest clip in the bin when the timeline is empty. A timeline built
+ * from several clips, a brief asking to join every clip, a frame other than
+ * 9:16 (the reel layout is 1080×1920) or a language other than Chinese (the
+ * captions, the cut prompts and the translation are Chinese-first) stays on
+ * v1, which is said in the worker's log.
+ */
+async function v2Take(
+  projectId: string,
+  footage: { c: typeof videoClips.$inferSelect; name: string | null }[],
+  ctx: { aspect: string; language: string; brief: string },
+): Promise<{ take: V2TakeRow } | { why: string }> {
+  if (ctx.aspect !== "9:16") return { why: `aspect ${ctx.aspect}` };
+  if (!/^zh/i.test(ctx.language)) return { why: `language ${ctx.language}` };
+  const items = await db.select().from(timelineItems).where(eq(timelineItems.projectId, projectId)).orderBy(asc(timelineItems.ord));
+  const onTimeline = [...new Set(items.filter((i) => i.kind !== "title").map((i) => i.clipId ?? ""))];
+  let clip: (typeof footage)[number]["c"] | undefined;
+  if (items.length) {
+    if (onTimeline.length !== 1 || !onTimeline[0] || items.some((i) => i.kind === "title")) return { why: "the timeline holds more than one take" };
+    clip = footage.find((f) => f.c.id === onTimeline[0])?.c;
+    if (!clip) return { why: "the timeline's clip is not footage" };
+  } else {
+    if (footage.length > 1 && /all clips|every clip|join|stitch|in order|拼接|全部素材|按顺序/i.test(ctx.brief)) return { why: "the brief asks to join every clip" };
+    clip = footage.reduce((best, f) => ((f.c.durationMs ?? 0) > (best.c.durationMs ?? 0) ? f : best), footage[0]).c;
+  }
+  if (!clip.fileId) return { why: "the take has no file" };
+  const [file] = await db
+    .select({ id: files.id, name: files.name, storageKey: files.storageKey, sizeBytes: files.sizeBytes, durationMs: files.durationMs })
+    .from(files)
+    .where(and(eq(files.id, clip.fileId), isNull(files.deletedAt)))
+    .limit(1);
+  if (!file?.storageKey) return { why: "the take's file is missing" };
+  const durationMs = clip.durationMs ?? file.durationMs;
+  if (!durationMs) return { why: "the take's length is not known yet" };
+  return { take: { clipId: clip.id, fileId: file.id, name: file.name, storageKey: file.storageKey, sizeBytes: file.sizeBytes === null ? null : Number(file.sizeBytes), durationMs } };
+}
+
+/**
+ * The v2 path: the lab's pipeline (`lib/video/v2/pipeline.ts`), stage for
+ * stage, on the project's own take, then written down as rows.
+ *
+ *   footage     the take's master out of the store, once (`v2/cache.ts`)
+ *   transcribe  whisper over the whole take with the brief's hotwords, the glossary
+ *   cut         silences, retakes, the model's plan, W1's `planCut`; the
+ *               pieces replace the timeline and the report goes on `director.cut`
+ *   captions    the face track (`file_meta.meta.face`), reel caption lines on
+ *               the cut's clock, the English line per caption
+ *   design      the outline call, the footage call for the gaps
+ *   pictures    W3 sourcing into Files (the judged bytes, imported with
+ *               their attribution), the entity logos, the layout
+ *   write       captions, graphics and cutaways, the run's record (framing,
+ *               layout hints, credits, the render record), the credits on
+ *               `director.media`
+ *   render      the export, whose renderer reads all of it back
+ *               (`v2/render-input.ts`) into W5's `renderTimeline` plan
+ *
+ * A lab run and this differ only in what the models and the searches
+ * answer on the day.
+ */
+async function directV2(
+  viewer: Viewer,
+  project: typeof videoProjects.$inferSelect,
+  ctx: { brief: string; aspect: string; language: string; pace: Pace; wantRender: boolean; say: Say; take: V2TakeRow },
+): Promise<DirectResult> {
+  const { brief, language, say, take } = ctx;
+  const projectId = project.id;
+  const started = Date.now();
+  const [{ cutTake, designTake, sourceTake, transcribeTake, V2_PRESET, V2_TIKHUB_BUDGET, sec }, { localTake, sweepV2Cache, v2CacheDir }, { faceTrackForFile }, { recordUsedAssets }] = await Promise.all([
+    import("./v2/pipeline"),
+    import("./v2/cache"),
+    import("./face"),
+    import("./v2/media-adapter"),
+  ]);
+  const [tenant] = await db.select({ name: tenants.name }).from(tenants).where(eq(tenants.id, viewer.tenantId)).limit(1);
+  const log = (line: string) => console.log(`[director ${projectId}] v2 ${line}`);
+  const hooks = {
+    log,
+    usage: (_what: string, u: { model: string; provider?: string | null; promptTokens: number; completionTokens: number; costMicros: number; requestId?: string | null }) =>
+      recordUsage({ viewer, module: "video", provider: u.provider ?? "openrouter", model: u.model, promptTokens: u.promptTokens, completionTokens: u.completionTokens, costMicros: u.costMicros, requestId: u.requestId ?? undefined }),
+    step: (step: "captions" | "design" | "pictures", text: string) => say(step, text),
+  };
+  const cacheDir = v2CacheDir();
+  const runDir = path.join(cacheDir, "runs", `${projectId}-${Date.now()}`);
+  const timings: Record<string, number> = {};
+  const lap = (key: string, t0: number) => (timings[key] = Date.now() - t0);
+
+  try {
+    /* ---- footage ------------------------------------------------------ */
+    await sweepV2Cache().catch(() => {});
+    await say("footage", `取原片「${take.name}」`);
+    let t0 = Date.now();
+    const raw = await localTake({ id: take.fileId, name: take.name, storageKey: take.storageKey, sizeBytes: take.sizeBytes }, downloadObject);
+    lap("footageMs", t0);
+    const t = { raw, clipId: take.clipId, durationMs: take.durationMs, brief, title: project.title, cacheDir };
+    const channel = { accent: project.accent, tenantName: tenant?.name ?? null };
+
+    /* ---- transcribe --------------------------------------------------- */
+    await say("transcribe", "逐字转写原片，简报里的人名和术语一并校对");
+    t0 = Date.now();
+    const tr = await transcribeTake(t, hooks);
+    lap("transcribeMs", t0);
+    if (tr.words.length < 5) throw new Error("原片里听不到有人说话，无法按口播来剪。请换一段有人声的素材，或打开 AI 配音。");
+    await say("transcribe", `转写完成：${tr.words.length} 个词${tr.changes.length ? `，按简报校正 ${tr.changes.length} 处` : ""}`);
+
+    /* ---- cut ---------------------------------------------------------- */
+    await say("cut", "找出重说和口误，在停顿处下剪刀");
+    t0 = Date.now();
+    const cut = await cutTake(t, tr, hooks);
+    lap("cutMs", t0);
+    if (!cut.pieces.length) throw new Error("剪完什么也没剩下：原片里没有可用的口播。");
+    await patch(projectId, (d) => ({ ...d, cut: cut.report }));
+    await say("cut", `粗剪完成：${cut.pieces.length} 段，保留 ${Math.round(cut.lengthMs / 1000)} 秒，去掉 ${Math.round(cut.removedMs / 1000)} 秒`);
+
+    /* ---- captions + design -------------------------------------------- */
+    await say("captions", "测量人脸位置，断字幕行");
+    t0 = Date.now();
+    const d = await designTake(t, cut, { ...channel, face: () => faceTrackForFile(take.fileId, raw, { clipId: take.clipId }) }, hooks);
+    lap("designMs", t0);
+
+    /* ---- pictures: sourcing into Files, logos, layout ----------------- */
+    await say("pictures", "按每句话去抖音、B站、YouTube 等平台找素材");
+    t0 = Date.now();
+    const src = await sourceTake(
+      t,
+      cut,
+      d,
+      {
+        ...channel,
+        into: "files",
+        viewer,
+        workDir: path.join(runDir, "source"),
+        media: { cacheDir: path.join(cacheDir, "media"), tikhubBudget: V2_TIKHUB_BUDGET },
+        vision: { ledger: { viewer, module: "video" } },
+      },
+      hooks,
+    );
+    lap("sourceMs", t0);
+    const design = src.design;
+
+    /* ---- write -------------------------------------------------------- */
+    await say("write", "写入字幕、图形、空镜和素材来源");
+    t0 = Date.now();
+    /* The cut, its captions and its design go down together, so a run that failed halfway leaves the last whole video, not half of two. */
+    await writeCutTimeline(projectId, take.clipId, cut.pieces, newId);
+    await writeCaptionLines(projectId, language, d.captions, newId);
+    /* Each fetched video asset goes in the bin once, so its cutaway row names a clip. */
+    const clipIds = new Map<string, string>();
+    for (const c of design.plan.cutaways) {
+      if (c.still || clipIds.has(c.asset.fileId) || c.asset.fileId.startsWith("local:")) continue;
+      try {
+        clipIds.set(c.asset.fileId, await addClip(viewer, projectId, c.asset.fileId));
+      } catch (err) {
+        log(`cutaway ${c.id} could not go in the bin: ${err instanceof Error ? err.message : err}`);
+      }
+    }
+    const rows = toRows(design.plan, projectId, clipIds).map((r) => ({ ...r, id: newId("gfx"), options: { ...r.options, planId: r.id } as Record<string, unknown> }));
+    const record = directorRecord(
+      design.plan,
+      design.credits,
+      cut.report,
+      design.lint.map((v) => ({ rule: v.rule, atMs: v.atMs, detailZh: v.detailZh })),
+      design.notesZh,
+      { version: 1, clipId: take.clipId, fileId: take.fileId, chinY: d.chinY, preset: V2_PRESET, accent: project.accent },
+    );
+    await persistDesign(projectId, rows, record);
+    /* The credits record the media library keeps on the project (`director.media`), for the 素材来源 panel and the publish copy. */
+    await recordUsedAssets(projectId, design.credits.assets, { replace: true }).catch((err) => log(`credits record failed: ${err instanceof Error ? err.message : err}`));
+    const title = design.outline.titleZh && (project.title.startsWith("Untitled") || /^new project|^未命名/i.test(project.title)) ? design.outline.titleZh.slice(0, 120) : project.title;
+    await db.update(videoProjects).set({ captionPreset: V2_PRESET, title, updatedAt: new Date() }).where(eq(videoProjects.id, projectId));
+    lap("writeMs", t0);
+
+    const cutaways = design.plan.cutaways.length;
+    const result: DirectResult = {
+      cuts: cut.pieces.length,
+      graphics: design.plan.graphics.filter((g) => !["header", "watermark", "footnote"].includes(g.kind)).length,
+      punches: design.plan.pushes.length,
+      broll: design.plan.cutaways.filter((c) => !c.still).length,
+      pictures: design.plan.cutaways.filter((c) => c.still).length,
+      title,
+      notes: [
+        cut.report.noteZh,
+        design.notesZh,
+        `导演 v2：规划 ${Math.round((Date.now() - started) / 1000)} 秒（转写 ${sec(timings.transcribeMs ?? 0)}、粗剪 ${sec(timings.cutMs ?? 0)}、设计 ${sec(timings.designMs ?? 0)}、找素材 ${sec(timings.sourceMs ?? 0)} 秒）；${cutaways} 个空镜，${design.credits.assets.length} 个来源。`,
+      ]
+        .filter(Boolean)
+        .join(" "),
+    };
+    log(`designed in ${Date.now() - started} ms ${JSON.stringify(timings)}; ${cut.pieces.length} pieces, ${d.captions.length} captions, ${rows.length} rows, ${cutaways} cutaways, lint ${design.lint.length}; media ${JSON.stringify(src.spend.media)}; vision $${(src.spend.vision.costMicros / 1e6).toFixed(4)}`);
+
+    await patch(projectId, (dd) => ({ ...dd, result, language }));
+    if (ctx.wantRender) await renderStep(viewer, projectId, ctx.aspect, language, result, say);
+    return result;
+  } finally {
+    await rm(runDir, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
+/**
+ * The translation, batched: `parts` batches in parallel, then one more
+ * round of two batches for the lines that came back missing or empty.
+ * `call` takes the numbered lines (`12. 原句`) and returns the model's
+ * text; it may throw, and a batch that throws is simply a batch of missing
+ * lines. Pure apart from `call`, so the lab times it without the database.
+ */
+export async function translateInBatches(
+  cues: { text: string }[],
+  call: (numbered: string) => Promise<string>,
+  parts = 3,
+): Promise<{ lines: TranslatedLine[]; batches: number; retried: number; missing: number }> {
+  const numbered = (idx: number[]) => idx.map((i) => `${i}. ${cues[i].text}`).join("\n");
+  const ask = async (idx: number[]): Promise<TranslatedLine[]> => {
+    if (!idx.length) return [];
+    try {
+      const asked = new Set(idx);
+      return parseTranslation(await call(numbered(idx)), cues).filter((l) => asked.has(l.i));
+    } catch {
+      return [];
+    }
+  };
+  const all = cues.map((_, i) => i);
+  const size = Math.max(1, Math.ceil(all.length / parts));
+  const batches: number[][] = [];
+  for (let at = 0; at < all.length; at += size) batches.push(all.slice(at, at + size));
+  const got = new Map<number, TranslatedLine>();
+  const answered = (l: TranslatedLine) => Boolean(l.second) || l.keywords.length > 0;
+  for (const lines of await Promise.all(batches.map(ask))) for (const l of lines) if (answered(l)) got.set(l.i, l);
+  const missing = all.filter((i) => !got.has(i));
+  if (missing.length) {
+    const half = Math.ceil(missing.length / 2);
+    for (const lines of await Promise.all([missing.slice(0, half), missing.slice(half)].map(ask))) for (const l of lines) if (answered(l) && !got.has(l.i)) got.set(l.i, l);
+  }
+  const lines = Array.from(got.values()).sort((a, b) => a.i - b.i);
+  return { lines, batches: batches.length, retried: missing.length, missing: all.length - lines.length };
+}
+
+/** The translation answer, checked line by line: an index that exists, a keyword that is in the line. */
+export function parseTranslation(text: string, cues: { text: string }[]): TranslatedLine[] {
+  const body = text.replace(/<\/?think(?:ing)?>/gi, "\n");
+  const start = body.indexOf("{");
+  const end = body.lastIndexOf("}");
+  if (start < 0 || end <= start) return [];
+  let parsed: { lines?: { i?: unknown; second?: unknown; keywords?: unknown }[] };
+  try {
+    parsed = JSON.parse(body.slice(start, end + 1)) as typeof parsed;
+  } catch {
+    return [];
+  }
+  const out: TranslatedLine[] = [];
+  for (const l of parsed.lines ?? []) {
+    const i = Number(l.i);
+    if (!Number.isInteger(i) || !cues[i]) continue;
+    const second = typeof l.second === "string" ? l.second.trim().slice(0, 200) : "";
+    const keywords = Array.isArray(l.keywords)
+      ? l.keywords.filter((k): k is string => typeof k === "string" && k.trim().length > 0 && cues[i].text.includes(k.trim())).map((k) => k.trim()).slice(0, 3)
+      : [];
+    out.push({ i, second, keywords });
+  }
+  return out;
+}
 
 async function renderStep(viewer: Viewer, projectId: string, aspect: string, language: string, result: DirectResult, say: Say) {
   await say("render", `Rendering ${aspect} with the captions burnt in. Minutes on a long cut.`);

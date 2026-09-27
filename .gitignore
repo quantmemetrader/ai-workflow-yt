@@ -35,6 +35,14 @@ tsconfig.tsbuildinfo
 # Cached Remotion stills (keyed by content)
 remotion/.stills
 
+# Cached director v2 motion clips (keyed by props + bundle generation)
+remotion/.clips
+
+# The static heavy CJK faces libass and Remotion draw the v2 captions and
+# graphics with (Noto Sans CJK SC Black/Bold, OFL, ~17 MB each). Fetched at
+# deploy by scripts/fetch-cjk-font.sh; far too big to live in a public repo.
+remotion/public/fonts/*.otf
+
 # Scratch screenshots kept locally: they show the old host IP, the client's
 # domain and a frame of client video. Not secrets, but not for a public repo.
 /image.png

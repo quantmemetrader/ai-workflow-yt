@@ -3,7 +3,7 @@
 import { useEffect, useRef } from "react";
 import type { ClipRow, GraphicRow } from "@/lib/video/service";
 import { ICONS } from "@/lib/video/icons";
-import { CARD_PAD, CARD_RADIUS, CORNER_MAX_W, HEADER_BAND, cardBehindPicture, inCorner } from "@/lib/video/presets";
+import { CARD_PAD, CARD_RADIUS, CORNER_MAX_W, GRAPHIC_KINDS, HEADER_BAND, cardBehindPicture, inCorner } from "@/lib/video/presets";
 
 /**
  * What the render will look like, drawn over the preview.
@@ -952,14 +952,17 @@ function Still({ graphic: g, accent, r, type, w }: StillProps) {
     case "statement":
       /* The channel's claim block: short lines set left, the accent dash
          above, the marked words a size up. Over the footage, no scrim — the
-         speaker stays visible behind their own claim. */
+         speaker stays visible behind their own claim. In Zone T (top at
+         230 of 1920) when the row carries `options.zone: "T"`, as director
+         v2's rows do and as the composition draws it; older rows keep the
+         lower-left corner they were rendered in. */
       return (
         <div
           style={{
             ...fill,
-            justifyContent: "flex-end",
-            alignItems: "flex-start",
-            padding: `0 ${r(0.05)}px ${r(0.44)}px`,
+            ...(g.options?.zone === "T"
+              ? { justifyContent: "flex-start", alignItems: "flex-start", padding: `${r(230 / 1920)}px ${r(0.05)}px 0` }
+              : { justifyContent: "flex-end", alignItems: "flex-start", padding: `0 ${r(0.05)}px ${r(0.44)}px` }),
           }}
         >
           <div>
@@ -1032,6 +1035,72 @@ function Still({ graphic: g, accent, r, type, w }: StillProps) {
           ) : null}
         </div>
       );
+
+    case "hook":
+    case "counter":
+    case "compare":
+    case "list":
+    case "entity":
+    case "chip":
+    case "headline":
+    case "term":
+    case "diagram":
+    case "stinger": {
+      /* Director v2's templates (`remotion/src/v2.tsx`) are motion — a
+         number counting up, bars growing in turn, lines landing on words —
+         and the preview does not animate. What a producer needs from it is
+         what, where and when, so each is a labelled box in the zone the
+         rendered clip occupies: the chip top right under the header band,
+         everything else in Zone T (y 230–620 of 1920, x 64 to 150 short of
+         the right edge), which is where `lib/video/motion.ts` crops them. */
+      const kindZh = GRAPHIC_KINDS.find((k) => k.key === g.kind)?.nameZh ?? g.kind;
+      const side = Math.round((w * 64) / 1080);
+      const rightUnsafe = Math.round((w * 150) / 1080);
+      const chip = g.kind === "chip";
+      const box: React.CSSProperties = chip
+        ? {
+            position: "absolute",
+            right: rightUnsafe,
+            top: r(264 / 1920),
+            height: r(64 / 1920),
+            padding: `0 ${r(0.012)}px`,
+            borderRadius: r(0.02),
+            display: "flex",
+            alignItems: "center",
+            gap: r(0.008),
+          }
+        : {
+            position: "absolute",
+            left: side,
+            right: rightUnsafe,
+            top: r(230 / 1920),
+            height: r(390 / 1920),
+            padding: r(0.012),
+            borderRadius: r(0.0125),
+            display: "flex",
+            flexDirection: "column",
+            justifyContent: "center",
+            gap: r(0.006),
+          };
+      return (
+        <div
+          style={{
+            ...box,
+            boxSizing: "border-box",
+            border: `1.5px dashed ${accent}`,
+            background: "rgba(14,14,16,0.45)",
+            color: INK,
+            overflow: "hidden",
+          }}
+        >
+          <div style={{ fontFamily: CJK, fontWeight: 700, fontSize: type(0.014), color: accent, whiteSpace: "nowrap" }}>{kindZh}</div>
+          <div style={{ fontFamily: face(g.text), fontWeight: 700, fontSize: type(chip ? 0.016 : 0.03), lineHeight: 1.2, whiteSpace: chip ? "nowrap" : "normal" }}>
+            {g.text}
+          </div>
+          {!chip && g.sub ? <div style={{ fontFamily: face(g.sub), fontSize: type(0.016), color: QUIET }}>{g.sub}</div> : null}
+        </div>
+      );
+    }
 
     default:
       /* `title`, and anything a later preset adds: one line, centred, over the
