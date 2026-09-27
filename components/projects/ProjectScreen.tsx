@@ -529,7 +529,7 @@ export function ProjectScreen({
                     n={i + 1}
                     zh={zh}
                     published={p.status === "done" ? p.published : null}
-                    onPublish={p.canPublish && p.status === "active" && s.state === "you" ? () => setPublishing((v) => (v === "step" ? null : "step")) : undefined}
+                    /* The press itself is the flow bar's 「确认交付」 now: one place to press, not two. */
                   />
                   {publishing === "step" ? publishPopover("right") : null}
                 </div>
