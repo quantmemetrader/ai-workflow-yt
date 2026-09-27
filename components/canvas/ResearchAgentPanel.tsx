@@ -8,6 +8,7 @@ import { MentionMenu } from "@/components/chat/MentionMenu";
 import { useMentions } from "@/components/chat/useMentions";
 import { asksSomething } from "@/components/chat/look";
 import { AgentIcon } from "@/components/agents/AgentIcon";
+import { AnswerPicker } from "@/components/chat/AnswerPicker";
 import { AGENT_LABELS, agentTag, parseAgentMentions, screenAgentForPath, type AgentKey } from "@/lib/agents/catalog";
 import { useResizable } from "@/components/ui/Resizer";
 import { AgentName } from "@/components/ui/Tr";
@@ -200,30 +201,23 @@ export function ResearchAgentPanel({
         {/* History and a new thread sit right above the composer, where the
             hand already is, rather than in the header two panes away. */}
         {tools ? <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 7 }}>{tools}</div> : null}
-        {/* Who answers, and one press to ask a colleague instead. */}
-        <div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap", marginBottom: 7 }}>
-          <span style={{ fontSize: 11.5, color: "#999999", marginRight: 1 }}>{zh ? "回答：" : "Answering:"}</span>
-          <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12, fontWeight: 600, color: "#171717" }}>
-            <AgentIcon agent={answering} size={16} radius={4} />
-            {answering ? <AgentName agent={answering} zh={zh} /> : zh ? "你的助理" : "Your assistant"}
-          </span>
-          <span style={{ flexGrow: 1 }} />
-          {(["research", "script", "video", "article"] as AgentKey[])
-            .filter((k) => k !== answering)
-            .map((k) => (
-              <button
-                key={k}
-                type="button"
-                title={zh ? `问${name(k)}` : `Ask ${name(k)}`}
-                onClick={() => {
-                  setAsk((d) => (parseAgentMentions(d).length ? d.replace(/^@\S+\s*/, `${agentTag(k)} `) : `${agentTag(k)} ${d}`.trimEnd() + " "));
-                  requestAnimationFrame(() => box.current?.focus());
-                }}
-                className="ap-ask"
-              >
-                <AgentIcon agent={k} size={16} radius={4} />
-              </button>
-            ))}
+        {/* Who answers: the same dropdown as the chat's composer, every employee in it — a row of faces had room for four. */}
+        <div style={{ display: "flex", alignItems: "center", marginBottom: 7 }}>
+          <AnswerPicker
+            answering={answering}
+            zh={zh}
+            align="right"
+            onPick={(k) => {
+              setAsk((d) =>
+                k
+                  ? parseAgentMentions(d).length
+                    ? d.replace(/^@\S+\s*/, `${agentTag(k)} `)
+                    : `${agentTag(k)} ${d}`.trimEnd() + " "
+                  : d.replace(/^@\S+\s*/, ""),
+              );
+              requestAnimationFrame(() => box.current?.focus());
+            }}
+          />
         </div>
         <div className="ap-box">
           <MentionMenu matches={mentions.matches} active={mentions.active} zh={zh} onPick={mentions.pick} onHover={mentions.setActive} placement="up" />

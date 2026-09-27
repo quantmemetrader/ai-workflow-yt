@@ -12,7 +12,10 @@ import { AGENT_KEYS, AGENT_LABELS, AGENT_TINTS, type AgentKey } from "@/lib/agen
  * per employee, and seven of them no longer fitted beside the formatting
  * buttons ("can have a dropdown here, all agents are not fitting").
  */
-export function AnswerPicker({ answering, zh, onPick, soft }: { answering: AgentKey | null; zh: boolean; onPick: (k: AgentKey | null) => void; soft: (hex: string, a: number) => string }) {
+/** A tint at an opacity, when the caller has no helper of its own. */
+const tintAt = (hex: string, a: number) => `${hex}${Math.round(a * 255).toString(16).padStart(2, "0")}`;
+
+export function AnswerPicker({ answering, zh, onPick, soft = tintAt, align = "left" }: { answering: AgentKey | null; zh: boolean; onPick: (k: AgentKey | null) => void; soft?: (hex: string, a: number) => string; align?: "left" | "right" }) {
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLSpanElement | null>(null);
 
@@ -58,7 +61,7 @@ export function AnswerPicker({ answering, zh, onPick, soft }: { answering: Agent
         <span
           role="listbox"
           aria-label={zh ? "谁来回答" : "Who answers"}
-          style={{ position: "absolute", left: 0, bottom: "calc(100% + 6px)", zIndex: 40, width: 300, maxHeight: 470, overflowY: "auto", background: "#fff", border: "1px solid #e6e6e6", borderRadius: 12, boxShadow: "0 12px 32px rgba(0,0,0,0.12)", padding: 6, display: "flex", flexDirection: "column", gap: 2 }}
+          style={{ position: "absolute", ...(align === "right" ? { right: 0 } : { left: 0 }), bottom: "calc(100% + 6px)", zIndex: 40, width: 300, maxHeight: 470, overflowY: "auto", background: "#fff", border: "1px solid #e6e6e6", borderRadius: 12, boxShadow: "0 12px 32px rgba(0,0,0,0.12)", padding: 6, display: "flex", flexDirection: "column", gap: 2 }}
         >
           {rows.map((k) => {
             const current = k === answering;

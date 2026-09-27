@@ -149,8 +149,8 @@ export function AdminScreen({
        place you had to leave the screen to ask a question about the screen. */
     <div style={{ flexGrow: 1, minWidth: 0, display: "flex", minHeight: 0 }}>
     <ModuleSidebar
-      title="Admin"
-      titleZh="管理"
+      title="Manage employees"
+      titleZh="员工管理"
       screens={SCREENS}
       active={tab}
       onChange={setTab}
