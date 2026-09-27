@@ -122,6 +122,8 @@ export async function* runAgent(opts: {
    */
   context?: Omit<ToolContext, "viewer">;
   signal?: AbortSignal;
+  /** Answer the question already on record (重新回答) instead of adding it again. */
+  retry?: boolean;
 }): AsyncGenerator<AgentEvent> {
   const { viewer, conversationId, content, signal } = opts;
   const startedAt = Date.now();
@@ -129,13 +131,14 @@ export async function* runAgent(opts: {
   // 1. The question goes in the record before anything can fail — including
   //    the budget check below, which used to drop it on the floor so a person
   //    at their cap reloaded the thread and found their own message gone.
-  await db.insert(agentMessages).values({
-    id: newId("am"),
-    conversationId,
-    role: "user",
-    content,
-    status: "complete",
-  });
+  if (!opts.retry)
+    await db.insert(agentMessages).values({
+      id: newId("am"),
+      conversationId,
+      role: "user",
+      content,
+      status: "complete",
+    });
 
   // A turn whose process died — a deploy, a pm2 reload, a crash — leaves its
   // assistant row `streaming` for ever, and the thread renders a spinner that

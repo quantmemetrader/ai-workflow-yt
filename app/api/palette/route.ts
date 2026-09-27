@@ -1,6 +1,7 @@
 import { and, eq, ilike, isNull, or, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { chatChannels, chatMembers, folders, users } from "@/lib/db/schema";
+import { chatChannels, chatMembers, conversations, folders, users, workProjects } from "@/lib/db/schema";
+import { projectsVisibleTo } from "@/lib/projects/visible";
 import { getViewer } from "@/lib/auth/dal";
 import { canReadFolders } from "@/lib/authz/rebac";
 import { searchFiles } from "@/lib/ai/retrieval";
@@ -22,7 +23,7 @@ import { searchFiles } from "@/lib/ai/retrieval";
  * trip at all.
  */
 export type PaletteHit = {
-  kind: "channel" | "person" | "folder" | "file";
+  kind: "channel" | "person" | "folder" | "file" | "project" | "chat";
   id: string;
   href: string;
   title: string;
@@ -107,8 +108,29 @@ export async function GET(request: Request) {
 
     filesModule ? searchFiles(viewer, q, MAX_PER_GROUP) : Promise.resolve({ hits: [], withheld: 0 }),
   ]);
+  /* Projects you may open, and your own chats: "search should be like the
+     jump box" — the things people actually look for by name. */
+  const [projectRows, chatRows] = await Promise.all([
+    chat
+      ? db
+          .select({ id: workProjects.id, title: workProjects.title })
+          .from(workProjects)
+          .where(and(eq(workProjects.tenantId, viewer.tenantId), isNull(workProjects.deletedAt), ilike(workProjects.title, like), projectsVisibleTo(viewer)))
+          .limit(MAX_PER_GROUP)
+      : Promise.resolve([]),
+    chat
+      ? db
+          .select({ id: conversations.id, title: conversations.title })
+          .from(conversations)
+          .where(and(eq(conversations.userId, viewer.id), isNull(conversations.archivedAt), ilike(conversations.title, like)))
+          .limit(MAX_PER_GROUP)
+      : Promise.resolve([]),
+  ]);
 
   const hits: PaletteHit[] = [];
+
+  for (const p of projectRows) hits.push({ kind: "project", id: p.id, href: `/projects/${p.id}`, title: p.title, subtitle: null });
+  for (const c of chatRows) hits.push({ kind: "chat", id: c.id, href: `/chat/t/${c.id}`, title: c.title, subtitle: null });
 
   for (const c of channels) {
     if (!c.slug) continue;

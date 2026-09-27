@@ -1,7 +1,7 @@
 import { AGENT_KEYS, type AgentKey } from "@/lib/agents/catalog";
 import { notFound } from "next/navigation";
 import { requireModule } from "@/lib/auth/dal";
-import { conversationDetail } from "@/lib/chat/service";
+import { conversationDetail, listConversations } from "@/lib/chat/service";
 import { answeringModel } from "@/lib/ai/models";
 import { AgentScreen } from "@/components/canvas/AgentScreen";
 import { agentHistoryFor, threadMessagesOf } from "@/lib/chat/thread";
@@ -30,6 +30,7 @@ export default async function ConversationPage({ params, searchParams }: { param
      to turn into 剪辑师's page, and its 新对话 into a new editor chat. */
   const asked = typeof agent === "string" && (AGENT_KEYS as readonly string[]).includes(agent) ? (agent as AgentKey) : null;
   const history = asked ? await agentHistoryFor(viewer, asked, id) : null;
+  const recent = asked ? null : (await listConversations(viewer, 15)).map((c) => ({ id: c.id, title: c.title, updatedAt: c.updatedAt.toISOString() }));
 
   return (
     <AgentScreen
@@ -39,6 +40,7 @@ export default async function ConversationPage({ params, searchParams }: { param
       model={lastModel ?? answeringModel()}
       initialAgent={asked ? lastSpeaker : null}
       history={history}
+      recent={recent}
       /* The composer's paperclip goes through /api/files/presign, which
          refuses anybody without the Files module. */
       canAttach={viewer.modules.includes("files")}

@@ -1,6 +1,6 @@
 import { endTurn, registerTurn } from "@/lib/ai/turns";
 import { after } from "next/server";
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, eq, isNull, sql, desc, inArray } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { agentMessages, conversations, files, scripts, topics } from "@/lib/db/schema";
 import { getViewer, type Viewer } from "@/lib/auth/dal";
@@ -184,6 +184,7 @@ export async function POST(request: Request) {
     /** Files already uploaded and confirmed, in the order they were
      *  attached; each is checked against the person (`describeAttachments`). */
     attachments?: unknown;
+    retry?: boolean;
   };
   try {
     body = await request.json();
@@ -191,7 +192,28 @@ export async function POST(request: Request) {
     return new Response("Bad request", { status: 400 });
   }
 
-  const content = String(body.content ?? "").trim();
+  let content = String(body.content ?? "").trim();
+  /*
+   * 重新回答: the conversation's last question, answered again, without adding
+   * it twice. Only when it is the last thing in the thread (or followed only
+   * by answers that stopped before a word), and only in the person's own
+   * conversation; the empty answers are cleared first.
+   */
+  const retry = body.retry === true && typeof body.conversationId === "string";
+  if (retry) {
+    const rows = await db
+      .select({ id: agentMessages.id, role: agentMessages.role, content: agentMessages.content, status: agentMessages.status })
+      .from(agentMessages)
+      .innerJoin(conversations, eq(conversations.id, agentMessages.conversationId))
+      .where(and(eq(agentMessages.conversationId, body.conversationId as string), eq(conversations.userId, viewer.id)))
+      .orderBy(desc(agentMessages.createdAt))
+      .limit(6);
+    const at = rows.findIndex((r) => r.role === "user");
+    const after = at > 0 ? rows.slice(0, at) : [];
+    if (at < 0 || after.some((r) => r.content.trim() || r.status === "streaming")) return new Response("Nothing to answer again", { status: 409 });
+    if (after.length) await db.delete(agentMessages).where(inArray(agentMessages.id, after.map((r) => r.id)));
+    content = rows[at].content;
+  }
   /* A file with nothing typed is an ordinary thing to send ("here is the
      take"); nothing at all is not. */
   const hasAttachments = Array.isArray(body.attachments) && body.attachments.length > 0;
@@ -419,6 +441,7 @@ export async function POST(request: Request) {
              mid-answer ("I changed screens and it just disappeared"). Only
              the Stop button ends it (`/api/agent/stop`). */
           signal: stopper.signal,
+          retry,
         })) {
           if (event.type === "delta") said += event.text;
           if (event.type === "tool" && event.status === "ok" && event.artifacts?.length) {

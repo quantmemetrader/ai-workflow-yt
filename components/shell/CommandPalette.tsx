@@ -38,6 +38,9 @@ const GLYPH: Record<string, string> = {
   folder:
     '<path d="M3.8 7.2a1.9 1.9 0 0 1 1.9-1.9h3a1.9 1.9 0 0 1 1.47.69l.93 1.13h6.2a1.9 1.9 0 0 1 1.9 1.9v7.7a1.9 1.9 0 0 1-1.9 1.9H5.7a1.9 1.9 0 0 1-1.9-1.9z"/>',
   file: '<path d="M7 3.6h7L18 8v12.4H7z"/><path d="M9.6 12.4h5.4M9.6 15.6h5.4"/>',
+  project:
+    '<path d="M3.8 7.2a1.9 1.9 0 0 1 1.9-1.9h3a1.9 1.9 0 0 1 1.47.69l.93 1.13h6.2a1.9 1.9 0 0 1 1.9 1.9v7.7a1.9 1.9 0 0 1-1.9 1.9H5.7a1.9 1.9 0 0 1-1.9-1.9z"/><path d="M9 13h6"/>',
+  chat: '<path d="M5 5.5h14v10H9.5L5 19z"/>',
 };
 
 export function CommandPalette({ modules, locale }: { modules: Module[]; locale: string }) {
@@ -266,7 +269,7 @@ export function CommandPalette({ modules, locale }: { modules: Module[]; locale:
             ref={input}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder={zh ? "跳转到频道、成员、文件夹或文件" : "Jump to a channel, a person, a folder or a file"}
+            placeholder={zh ? "搜索项目、对话、频道、成员或文件" : "Search projects, chats, channels, people or files"}
             style={{
               flexGrow: 1,
               minWidth: 0,
@@ -382,9 +385,17 @@ export function CommandPalette({ modules, locale }: { modules: Module[]; locale:
                             ? zh
                               ? "文件夹"
                               : "folder"
-                            : zh
-                              ? "文件"
-                              : "file"}
+                            : row.kind === "project"
+                              ? zh
+                                ? "项目"
+                                : "project"
+                              : row.kind === "chat"
+                                ? zh
+                                  ? "对话"
+                                  : "chat"
+                                : zh
+                                  ? "文件"
+                                  : "file"}
                   </span>
                 </button>
               </div>

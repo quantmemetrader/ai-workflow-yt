@@ -49,6 +49,7 @@ export default async function NewChatPage({
   const openId = history && !fresh && !q ? (history.conversations[0]?.id ?? null) : null;
   const detail = openId ? await conversationDetail(viewer, openId) : null;
   const messages: ThreadMessage[] = detail ? await threadMessagesOf(viewer, detail) : [];
+  const recent = picked ? null : (await listConversations(viewer, 15)).map((c) => ({ id: c.id, title: c.title, updatedAt: c.updatedAt.toISOString() }));
   const lastModel = detail ? [...detail.messages].reverse().find((m) => m.model)?.model : null;
 
   return (
@@ -64,6 +65,7 @@ export default async function NewChatPage({
       initialPrompt={q}
       initialAgent={picked}
       history={history ? { ...history, currentId: detail ? openId : null } : null}
+      recent={recent}
       canAttach={viewer.modules.includes("files")}
       now={new Date().toISOString()}
       me={{

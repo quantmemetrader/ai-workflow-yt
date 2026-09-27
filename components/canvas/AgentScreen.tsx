@@ -176,7 +176,10 @@ export function AgentScreen({
   now,
   history = null,
   canAttach = true,
+  recent = null,
 }: {
+  /** Your own assistant's page: your recent conversations, for the history panel on the right. */
+  recent?: { id: string; title: string; updatedAt: string }[] | null;
   /** False for somebody without the Files module: no paperclip rather than
    *  one the upload route refuses. */
   canAttach?: boolean;
@@ -328,11 +331,11 @@ export function AgentScreen({
     });
   }, []);
 
-  async function send(text: string) {
+  async function send(text: string, opts: { retry?: boolean } = {}) {
     /* The files that finished uploading go with the text; one still on its
        way would be a message that arrives without it. */
-    const files = attached.flatMap((a) => (a.fileId ? [{ id: a.fileId, name: a.name, size: a.size, kind: kindOf(a.name, a.mime) }] : []));
-    if ((!asksSomething(text) && !files.length) || busy || uploading) return;
+    const files = opts.retry ? [] : attached.flatMap((a) => (a.fileId ? [{ id: a.fileId, name: a.name, size: a.size, kind: kindOf(a.name, a.mime) }] : []));
+    if (busy || (!opts.retry && ((!asksSomething(text) && !files.length) || uploading))) return;
     setBusy(true);
     setNotice(null);
     /* The next draft starts addressed to whoever this one was: a question to
@@ -340,19 +343,26 @@ export function AgentScreen({
        reply in a channel goes to the employee who just spoke. It is only a
        tag in the box — visible, and one × away from the assistant. */
     const to = parseAgentMentions(text)[0] ?? null;
-    setInput(to ? `${agentTag(to)} ` : "");
-    setAttached([]);
+    if (!opts.retry) {
+      setInput(to ? `${agentTag(to)} ` : "");
+      setAttached([]);
+    }
     const now = new Date().toISOString();
     const userId = `u-${Date.now()}`;
 
     /* The answer's row goes up at once, typing, under the face of whoever
        will answer — the first employee tagged, else the assistant: the rule
        the stream route applies, so its `speaker` event only confirms it. */
-    setMessages((prev) => [
-      ...prev,
-      { id: userId, role: "user", content: text, status: "complete", createdAt: now, citations: [], tools: [], attachments: files },
-      { id: `a-${Date.now()}`, role: "assistant", content: "", status: "streaming", createdAt: now, citations: [], tools: [], speaker: to },
-    ]);
+    setMessages((prev) => {
+      const answer: ThreadMessage = { id: `a-${Date.now()}`, role: "assistant", content: "", status: "streaming", createdAt: now, citations: [], tools: [], speaker: to };
+      if (opts.retry) {
+        /* The question is already there; answers that stopped before a word go. */
+        const kept = [...prev];
+        while (kept.length && kept[kept.length - 1].role === "assistant" && !kept[kept.length - 1].content.trim()) kept.pop();
+        return [...kept, answer];
+      }
+      return [...prev, { id: userId, role: "user", content: text, status: "complete", createdAt: now, citations: [], tools: [], attachments: files }, answer];
+    });
     /* A video the person just attached is drawn as its card as soon as the
        server can name it (its poster may take the worker a moment). */
     const sentVideos = files.filter((f) => f.kind === "video").map((f) => f.id);
@@ -370,7 +380,7 @@ export function AgentScreen({
       const res = await fetch("/api/agent/stream", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ conversationId, content: text, ...(files.length ? { attachments: files.map((f) => f.id) } : {}) }),
+        body: JSON.stringify(opts.retry ? { conversationId, retry: true } : { conversationId, content: text, ...(files.length ? { attachments: files.map((f) => f.id) } : {}) }),
         signal: controller.signal,
       });
       if (!res.ok || !res.body) throw new Error(await res.text());
@@ -498,7 +508,7 @@ export function AgentScreen({
   /* The employee's side rail: their other threads with this person, and —
      beside a conversation — their latest lines in the channels. With no
      conversation yet those lines are the page itself (`AgentEmpty`). */
-  const showRail = Boolean(history && (history.conversations.length > 0 || (messages.length > 0 && history.lines.length > 0)));
+  const showRail = Boolean((history && (history.conversations.length > 0 || (messages.length > 0 && history.lines.length > 0))) || (!history && recent && recent.length > 0));
 
   return (
     <div data-agent-screen="" style={{ flexGrow: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
@@ -575,26 +585,9 @@ export function AgentScreen({
         <span className="chip" style={{ height: 28, fontSize: 11.5 }}>
           <ModelPicker current={liveModel} zh={zh} />
         </span>
-        <Link href="/search" prefetch={false} className="ico2" aria-label={zh ? "搜索" : "Search"}>
+        <button type="button" className="ico2" aria-label={zh ? "搜索" : "Search"} title={zh ? "搜索（⌘K）" : "Search (⌘K)"} onClick={() => window.dispatchEvent(new CustomEvent("aura:jump"))} style={{ border: 0, background: "transparent", cursor: "pointer" }}>
           {ICON2.search}
-        </Link>
-        <span
-          className="ico2"
-          role="note"
-          tabIndex={0}
-          aria-label={
-            zh
-              ? "这个助理的权限与你完全一致，读取的文件会列在右侧。"
-              : "This agent holds exactly your permissions. Whatever it reads is listed on the right."
-          }
-          title={
-            zh
-              ? "这个助理的权限与你完全一致，读取的文件会列在右侧。"
-              : "This agent holds exactly your permissions. Whatever it reads is listed on the right."
-          }
-        >
-          {ICON2.info}
-        </span>
+        </button>
       </div>
 
       <div style={{ flexGrow: 1, minHeight: 0, display: "flex" }}>
@@ -657,6 +650,23 @@ export function AgentScreen({
                   ),
                 )}
                 <ChatLiveWork conversationId={conversationId} settled={messages.filter((x) => x.role === "assistant" && x.status !== "streaming").length} zh={zh} />
+                {/* A question left without an answer (the answer stopped before a
+                    word, or never came): one press answers it again — the site
+                    recovers, the person does not have to type it twice. */}
+                {(() => {
+                  const last = messages[messages.length - 1];
+                  const orphan = !busy && conversationId && last && (last.role === "user" || (last.role === "assistant" && !last.content.trim() && (last.status === "stopped" || last.status === "failed")));
+                  if (!orphan) return null;
+                  const question = [...messages].reverse().find((m) => m.role === "user");
+                  if (!question) return null;
+                  return (
+                    <div style={{ display: "flex", justifyContent: "flex-start", padding: "4px 0 8px 48px" }}>
+                      <button type="button" className="chip" onClick={() => void send(question.content, { retry: true })} style={{ height: 28, fontSize: 12, gap: 6, cursor: "pointer", fontFamily: "inherit" }}>
+                        <Icon name="undo" size={12} /> {zh ? "重新回答" : "Answer again"}
+                      </button>
+                    </div>
+                  );
+                })()}
               </>
             )}
 
@@ -919,6 +929,7 @@ export function AgentScreen({
           >
             {sourcesHandle}
             {history && showRail ? <HistoryRail history={history} zh={zh} locale={locale} today={today} /> : null}
+            {!history && showRail && recent ? <RecentRail recent={recent} current={conversationId} zh={zh} locale={locale} today={today} /> : null}
             {sources.length > 0 ? (
             <>
             <div
@@ -1467,4 +1478,47 @@ function plainLine(text: string): string {
     .replace(/[（(]?\s*(?:id[:：]\s*)?`?\b(?:scr|wp|prj|fil|rnd|shot|cnv|msg|am|job|ch|usr|top|idea)_[0-9a-z]{6,}\b`?\s*[)）]?/gi, "")
     .replace(/\s{2,}/g, " ")
     .trim();
+}
+
+/**
+ * Your own chats, on your assistant's page: the history panel the page had
+ * while it borrowed the last employee's (it went when "你的助理" stopped
+ * turning into 剪辑师's page — "the chat history tab just gone, need back").
+ */
+function RecentRail({ recent, current, zh, locale, today }: { recent: { id: string; title: string; updatedAt: string }[]; current: string | null; zh: boolean; locale: Locale; today: string }) {
+  const router = useRouter();
+  return (
+    <div style={{ display: "flex", flexDirection: "column", minHeight: 0, overflowY: "auto" }}>
+      <div style={{ height: 44, flexShrink: 0, display: "flex", alignItems: "center", gap: 8, padding: "0 12px 0 16px", borderBottom: "1px solid #ededed" }}>
+        <span className="lbl" style={{ padding: 0, flexGrow: 1 }}>
+          {zh ? "你的对话" : "Your chats"} · {recent.length}
+        </span>
+        <button
+          type="button"
+          className="chip"
+          style={{ height: 26, fontSize: 11.5, gap: 5, cursor: "pointer", fontFamily: "inherit" }}
+          title={zh ? "开一个新对话" : "Start a new conversation"}
+          onClick={() => {
+            document.cookie = `tg_chat_new=1; path=/; max-age=${60 * 60 * 24 * 30}; samesite=lax`;
+            router.push("/chat?fresh=1");
+          }}
+        >
+          <Icon name="plus" size={12} />
+          {zh ? "新对话" : "New"}
+        </button>
+      </div>
+      <div style={{ padding: "8px 8px 12px", display: "flex", flexDirection: "column", gap: 2 }}>
+        {recent.map((c) => (
+          <Link key={c.id} href={`/chat/t/${c.id}`} prefetch={false} className={`hist${c.id === current ? " on" : ""}`}>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
+              <span style={{ fontSize: 12.5, color: "#171717", fontWeight: c.id === current ? 600 : 500, flexGrow: 1, minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                {c.title === "New chat" ? (zh ? "新对话" : "New chat") : c.title}
+              </span>
+              <span style={{ fontSize: 11, color: "#a3a3a3", flexShrink: 0 }}>{whenLabel(c.updatedAt, today, locale)}</span>
+            </div>
+          </Link>
+        ))}
+      </div>
+    </div>
+  );
 }
