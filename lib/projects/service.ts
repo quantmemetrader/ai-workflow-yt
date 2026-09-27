@@ -1,7 +1,7 @@
 import "server-only";
 import { and, count, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { audioTracks, captions, chatChannels, chatMembers, chatMessages, hotSnapshots, ideas, relationTuples, seriesCache, settings, topics, users, scriptBeats, scripts, timelineItems, videoClips, videoExports, videoGraphics, videoProjects, workProjects } from "@/lib/db/schema";
+import { audioTracks, captions, chatChannels, chatMembers, chatMessages, files, hotSnapshots, ideas, relationTuples, seriesCache, settings, topics, users, scriptBeats, scripts, timelineItems, videoClips, videoExports, videoGraphics, videoProjects, workProjects } from "@/lib/db/schema";
 import { directorStepLabel } from "@/lib/agents/steps";
 import { newId } from "@/lib/ids";
 import type { Viewer } from "@/lib/auth/types";
@@ -436,6 +436,9 @@ export async function projectChannelIds(tenantId: string): Promise<string[]> {
 export type StepState = "done" | "running" | "you" | "todo" | "skipped";
 export type ProjectStep = { key: "topic" | "script" | "clips" | "edit" | "deliver"; label: string; owner: AgentKey | "you"; state: StepState; line: string };
 
+/** A person on one of the host's steps, as the step card draws them: their face and name. */
+export type StepPerson = { id: string; name: string; avatarUrl: string | null };
+
 export type ProjectDetail = {
   id: string;
   title: string;
@@ -444,6 +447,13 @@ export type ProjectDetail = {
   mode: string;
   access: { mode: "private" | "everyone" | "groups" | "people"; groups?: string[]; userIds?: string[] };
   canManage: boolean;
+  /**
+   * The people on the two steps a person does, by name: whoever uploaded
+   * the clips (else the project's owner, who is to), and whoever marked it
+   * published (else the owner, who is to approve it). "For the part done by
+   * a human, show the human involved" — the cards said 「（你）」 to everyone.
+   */
+  people: { clips: StepPerson | null; deliver: StepPerson | null };
   /** May mark it published and undo that (`mayPublish` in lib/projects/publication.ts). */
   canPublish: boolean;
   /** Where it went, once marked published; null while it is not done. */
@@ -838,6 +848,17 @@ export async function workProjectDetail(viewer: Viewer, id: string, zh: boolean,
   const links = thread ? await projectLinks(viewer, thread.messages.map((m) => ({ messageId: m.id, ...m.refs }))) : new Map<string, { id: string; title: string }>();
 
   const published = p.status === "done" ? readPublication(p.source) : null;
+  const [firstClip] = clipRows[0] ? await db.select({ ownerId: files.ownerId }).from(files).where(eq(files.id, clipRows[0].fileId)).limit(1) : [];
+  const personIds = [...new Set([firstClip?.ownerId, published?.by, p.createdBy].filter((x): x is string => Boolean(x)))];
+  const personRows = personIds.length
+    ? await db.select({ id: users.id, name: users.name, nameLocal: users.nameLocal, avatarUrl: users.avatarUrl, email: users.email }).from(users).where(inArray(users.id, personIds))
+    : [];
+  /* A person, never an employee: a clip 剪辑师 brought in from stock is its file, not its step. */
+  const person = (id: string | null | undefined): StepPerson | null => {
+    const u = personRows.find((r) => r.id === id && !agentKeyFromEmail(r.email));
+    return u ? { id: u.id, name: (zh && u.nameLocal) || u.name, avatarUrl: u.avatarUrl ?? null } : null;
+  };
+  const people = { clips: person(firstClip?.ownerId) ?? person(p.createdBy), deliver: person(published?.by) ?? person(p.createdBy) };
   const steps = buildSteps(
     {
       mode: p.mode,
@@ -863,6 +884,7 @@ export async function workProjectDetail(viewer: Viewer, id: string, zh: boolean,
     mode: p.mode,
     access: p.access ?? { mode: "everyone" },
     canManage: viewer.isAdmin || p.createdBy === viewer.id,
+    people,
     /* `mayPublish`: the managers (admin or creator), never a guest. */
     canPublish: mayPublish(viewer, p.createdBy),
     published,

@@ -564,3 +564,23 @@ export async function cancelAutoCutAction(projectId: string) {
   await disarmAutoCut(viewer, ok.project.id);
   return {};
 }
+
+/**
+ * A line in the project's chat for a press on the flow bar
+ * (「确认，交给剪辑师」, 「退回给 Catherine」), so the history says who moved
+ * it on and why. Posted as the person and routed to nobody: an untagged
+ * message in a project's chat goes to 剪辑师 as a reply, and 「素材齐了」
+ * would start a second cut beside the one the press started.
+ */
+export async function flowNoteAction(projectId: string, body: string) {
+  const viewer = await getViewer();
+  if (!viewer || !viewer.modules.includes("chat")) return { error: "Not allowed" };
+  const text = typeof body === "string" ? body.trim().slice(0, 2000) : "";
+  if (!text) return { error: "Nothing to send" };
+  const project = await visibleProject(viewer, String(projectId ?? ""));
+  if (!project) return { error: (viewer.locale ?? "zh-CN").startsWith("zh") ? "没有这个项目" : "No such project" };
+  const id = await postMessage(viewer, project.channelId, text, { flow: true });
+  if (!id) return { error: "Not posted" };
+  revalidatePath(`/projects/${project.id}`);
+  return { ok: true };
+}

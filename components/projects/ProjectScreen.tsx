@@ -1,6 +1,6 @@
 "use client";
 
-import { approveNowAction } from "@/app/(app)/script/actions";
+import { approveNowAction, unlockAction } from "@/app/(app)/script/actions";
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -9,9 +9,9 @@ import { Icon, type IconName } from "@/components/ui/Icon";
 import { MentionMenu, type MentionPerson } from "@/components/chat/MentionMenu";
 import { useMentions } from "@/components/chat/useMentions";
 import { AccessPicker } from "@/components/files/AccessPicker";
-import { AGENT_COLORS, AGENT_TINTS, agentTag, parseAgentMentions, type AgentKey } from "@/lib/agents/catalog";
+import { AGENT_COLORS, AGENT_LABELS, AGENT_TINTS, agentTag, parseAgentMentions, type AgentKey } from "@/lib/agents/catalog";
 import { pressCardAction, sendChannelMessage } from "@/app/(app)/chat/actions";
-import { cancelAutoCutAction, clipLandedAction, deleteProjectAction, renameProjectAction, setAutoCutAction, setProjectAccessAction, setProjectStatusAction, chooseScriptAction, chooseTopicAction, startCutFromPageAction, startFromTopicAction, unpublishAction } from "@/app/(app)/projects/actions";
+import { cancelAutoCutAction, clipLandedAction, deleteProjectAction, flowNoteAction, renameProjectAction, setAutoCutAction, setProjectAccessAction, setProjectStatusAction, chooseScriptAction, chooseTopicAction, startCutFromPageAction, startFromTopicAction, unpublishAction } from "@/app/(app)/projects/actions";
 import { addClipAction, addItemAction, autoEditAction, exportAction } from "@/app/(app)/video/actions";
 import { uploadFiles } from "@/lib/client/upload";
 import { beginWork } from "@/lib/client/busy";
@@ -21,7 +21,8 @@ import { bumpLive, useLiveProject } from "@/lib/client/live";
 import { isRunning } from "@/lib/projects/live-types";
 import { ClipsNextStep } from "@/components/projects/ClipsNextStep";
 import { LivePill, useLiveRow } from "@/components/chat/LivePill";
-import type { ProjectDetail, ProjectStep } from "@/lib/projects/service";
+import type { ProjectDetail, ProjectStep, StepPerson } from "@/lib/projects/service";
+import { frontierStep } from "@/lib/home/roles";
 import { cleanCodes, type ProjectSource } from "@/lib/projects/topic";
 import { JobChip } from "@/components/chat/Working";
 import type { StepKey } from "@/lib/agents/steps";
@@ -523,6 +524,7 @@ export function ProjectScreen({
                 <div key={s.key} style={{ position: "relative", minWidth: 0, display: "flex" }}>
                   <StepCard
                     me={me}
+                    person={p.people.deliver}
                     step={s}
                     n={i + 1}
                     zh={zh}
@@ -535,10 +537,98 @@ export function ProjectScreen({
                 /* The 剪辑 step types while the film is being made: the
                    director's step or the render's percent, and how long
                    it has been at it. */
-                <StepCard key={s.key} step={s} n={i + 1} zh={zh} live={s.key === "edit" ? liveWork : null} me={me} />
+                <StepCard key={s.key} step={s} n={i + 1} zh={zh} live={s.key === "edit" ? liveWork : null} me={me} person={s.key === "clips" ? p.people.clips : null} />
               ),
             ])}
           </div>
+
+          {/* ---- whose turn it is, and the two presses that move it ---- */}
+          {/*
+           * "A button to confirm and send to the next person in the flow, and
+           * to add comments and send back to the previous one." The step it
+           * has got to, who holds it, and those two presses — each one leaves
+           * a line in the project's chat, so the history says who moved it.
+           */}
+          {p.status === "active"
+            ? (() => {
+                const now = frontierStep(p.steps);
+                if (!now) return null;
+                const i = p.steps.findIndex((x) => x.key === now.key);
+                const next = p.steps.slice(i + 1).find((x) => x.state !== "skipped") ?? null;
+                const prev = [...p.steps.slice(0, i)].reverse().find((x) => x.state !== "skipped") ?? null;
+                const personOf = (x: ProjectStep) => (x.key === "clips" ? p.people.clips : x.key === "deliver" ? p.people.deliver : null);
+                const nameOf = (x: ProjectStep) =>
+                  x.owner === "you" ? (personOf(x)?.name ?? t("主持人", "the host")) : zh ? AGENT_LABELS[x.owner as AgentKey].nameLocal : AGENT_LABELS[x.owner as AgentKey].nameEn;
+                const refresh = () => router.refresh();
+                const failed = (r: unknown) => {
+                  const e = r && typeof r === "object" && "error" in r ? (r as { error?: string }).error : null;
+                  if (e) notify(e);
+                  return Boolean(e);
+                };
+                const nextName = next ? nameOf(next) : "";
+                const confirm: FlowMove | null =
+                  now.key === "script"
+                    ? now.state === "running"
+                      ? { label: t("编剧正在写…", "The writer is writing…"), disabled: true }
+                      : now.state === "you"
+                        ? canApprove && p.script
+                          ? {
+                              label: t(`确认脚本，交给 ${nextName}`, `Approve the script, on to ${nextName}`),
+                              onClick: () =>
+                                start(async () => {
+                                  if (failed(await approveNowAction(p.script!.id))) return;
+                                  await flowNoteAction(p.id, t(`确认了脚本，交给 ${nextName} 拍摄、上传素材。`, `Approved the script; over to ${nextName} to film and upload the clips.`));
+                                  refresh();
+                                }),
+                            }
+                          : { label: t("等管理员确认脚本", "Waiting for an admin to approve"), disabled: true }
+                        : { label: t("让编剧开写", "Ask the writer for a draft"), onClick: writeDraft }
+                    : now.key === "clips"
+                      ? { label: t(`先上传素材，再交给 ${nextName}`, `Upload the clips, then on to ${nextName}`), disabled: true, hint: t("在下面「素材」里上传，或直接把视频发到项目对话。", "Upload under Clips below, or send the videos to the project chat.") }
+                      : now.key === "edit"
+                        ? now.state === "running"
+                          ? { label: t("剪辑师正在剪…", "The editor is cutting…"), disabled: true }
+                          : now.state === "you"
+                            ? { label: t("渲染成片", "Render the film"), onClick: () => void render("9:16") }
+                            : {
+                                label: t("素材齐了，交给剪辑师", "Clips are in, on to the editor"),
+                                onClick: () =>
+                                  start(async () => {
+                                    await flowNoteAction(p.id, t("素材齐了，交给剪辑师开剪。", "The clips are in; over to the editor."));
+                                    failed(await startCutFromPageAction(p.id, {}));
+                                    refresh();
+                                  }),
+                              }
+                        : now.key === "deliver" && p.canPublish
+                          ? { label: t("确认交付 · 标记已发布", "Approve · mark as published"), onClick: () => setPublishing((v) => (v === "step" ? null : "step")) }
+                          : null;
+                const back: FlowBack | null = prev
+                  ? {
+                      to: nameOf(prev),
+                      send: async (note: string) => {
+                        const slug = p.channel.slug;
+                        const r =
+                          prev.key === "clips"
+                            ? await flowNoteAction(p.id, t(`退回给 ${nameOf(prev)}：${note}`, `Sent back to ${nameOf(prev)}: ${note}`))
+                            : prev.key === "script"
+                              ? await (async () => {
+                                  /* A locked script cannot be rewritten: unlocked first, by someone who may. */
+                                  if (p.script?.status === "locked" && canApprove) await unlockAction(p.script.id);
+                                  return sendChannelMessage(slug, `${agentTag("script")} 脚本退回修改：${note}\n请按这些意见改好项目里的脚本。`);
+                                })()
+                              : prev.key === "edit"
+                                ? await sendChannelMessage(slug, `${agentTag("video")} 成片退回，按以下意见重新剪一版视频：${note}`)
+                                : await sendChannelMessage(slug, `${agentTag("research")} 选题退回：${note}\n请按这个意见换个方向，再交给编剧。`);
+                        if (!failed(r)) {
+                          notify(t(`已退回给 ${nameOf(prev)}`, `Sent back to ${nameOf(prev)}`));
+                          refresh();
+                        }
+                      },
+                    }
+                  : null;
+                return <FlowBar zh={zh} step={now} n={i + 1} person={personOf(now)} me={me} confirm={confirm} back={back} pending={pending} />;
+              })()
+            : null}
 
           {/* ---- one line of activity; the whole conversation on demand ---- */}
           <button type="button" onClick={() => setChatOpen(true)} style={{ display: "flex", alignItems: "center", gap: 9, padding: "9px 14px", border: "1px solid #e6e6e6", borderRadius: 12, background: "#fff", cursor: "pointer", font: "inherit", textAlign: "left", minWidth: 0, boxShadow: "0 1px 2px rgba(0,0,0,0.03)" }}>
@@ -1651,8 +1741,10 @@ function StepArrow({ live, done }: { live: boolean; done: boolean }) {
  * `published` (once marked: a green card, the date, and the platforms' marks,
  * each a link to the post).
  */
-function StepCard({ step: s, n, zh, published = null, onPublish, live = null, me = null }: { step: ProjectStep; n: number; zh: boolean; published?: Publication | null; onPublish?: () => void; live?: LiveWork | null; me?: { id: string; name: string; avatarUrl: string | null } | null }) {
+function StepCard({ step: s, n, zh, published = null, onPublish, live = null, me = null, person = null }: { step: ProjectStep; n: number; zh: boolean; published?: Publication | null; onPublish?: () => void; live?: LiveWork | null; me?: { id: string; name: string; avatarUrl: string | null } | null; person?: StepPerson | null }) {
   const you = s.owner === "you";
+  /* The person on a host's step by name (the uploader, the approver), else whoever is looking. */
+  const who = you ? (person ?? me) : null;
   const color = you ? "#171717" : AGENT_COLORS[s.owner as AgentKey];
   const isPublished = s.key === "deliver" && s.state === "done";
   const frame: React.CSSProperties = isPublished
@@ -1674,12 +1766,11 @@ function StepCard({ step: s, n, zh, published = null, onPublish, live = null, me
     <div style={{ ...frame, borderRadius: 12, padding: "10px 12px", minWidth: 0, flexGrow: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
         <span style={{ opacity: dim ? 0.5 : 1, display: "flex", flexShrink: 0 }}>
-          {you && me ? <PersonAvatar id={me.id} url={me.avatarUrl} name={me.name} size={22} radius={11} /> : <AgentIcon agent={you ? null : (s.owner as AgentKey)} size={22} radius={6} />}
+          {you && who ? <PersonAvatar id={who.id} url={who.avatarUrl} name={who.name} size={22} radius={11} /> : <AgentIcon agent={you ? null : (s.owner as AgentKey)} size={22} radius={6} />}
         </span>
         <span style={{ fontSize: 12.5, fontWeight: 600, lineHeight: 1.3, color: s.state === "you" ? "#fff" : dim ? "#a3a3a3" : "#171717", minWidth: 0, overflowWrap: "anywhere" }}>
           <span style={{ fontWeight: 500, color: s.state === "you" ? "#8a8a8a" : "#b3b3b3", marginRight: 5, fontVariantNumeric: "tabular-nums" }}>{n}</span>
           {s.label}
-          {you ? <span style={{ fontWeight: 400, color: s.state === "you" ? "#b3b3b3" : "#a3a3a3", marginLeft: 4 }}>{zh ? "（你）" : "(you)"}</span> : null}
         </span>
         {isPublished ? (
           <span style={{ marginLeft: "auto", display: "flex", flexShrink: 0 }}>
@@ -1691,6 +1782,7 @@ function StepCard({ step: s, n, zh, published = null, onPublish, live = null, me
           </span>
         ) : null}
       </div>
+      <StepWho step={s} zh={zh} who={who} me={me} dim={dim} />
       {isPublished ? (
         <>
           <div style={{ fontSize: 11.5, marginTop: 7, lineHeight: 1.4, color: PUBLISHED_TONE.ink, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
@@ -1729,6 +1821,131 @@ function StepCard({ step: s, n, zh, published = null, onPublish, live = null, me
             <PublishedCheck size={14} />
             <Tr zh="已发布 · 标记完成" en="Mark as published" inZh={zh} />
           </button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * Who does a step, under its name: an AI employee's steps carry an 「AI」
+ * mark and the employee's name, a person's their own name (with 「（你）」
+ * when it is the one looking) — "highlight which are AI, and for the part
+ * done by a human, the human involved".
+ */
+function StepWho({ step: s, zh, who, me, dim }: { step: ProjectStep; zh: boolean; who: StepPerson | null; me: { id: string } | null; dim: boolean }) {
+  const onDark = s.state === "you";
+  if (s.owner === "you") {
+    const mine = Boolean(who && me && who.id === me.id);
+    return (
+      <div style={{ marginTop: 4, fontSize: 11, fontWeight: 500, lineHeight: 1.3, color: onDark ? "#d4d4d4" : dim ? "#b3b3b3" : "#525252", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+        {who ? who.name : zh ? "主持人" : "The host"}
+        {mine ? <span style={{ fontWeight: 400, color: onDark ? "#9a9a9a" : "#a3a3a3" }}>{zh ? "（你）" : " (you)"}</span> : null}
+      </div>
+    );
+  }
+  const k = s.owner as AgentKey;
+  return (
+    <div style={{ marginTop: 4, display: "flex", alignItems: "center", gap: 5, minWidth: 0, opacity: dim ? 0.6 : 1 }}>
+      <span style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: 0.3, lineHeight: "14px", padding: "0 4px", borderRadius: 4, flexShrink: 0, color: onDark ? "#171717" : AGENT_COLORS[k], background: onDark ? "#fff" : AGENT_TINTS[k] }}>AI</span>
+      <span style={{ fontSize: 11, fontWeight: 500, lineHeight: 1.3, color: onDark ? "#d4d4d4" : AGENT_COLORS[k], whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+        <AgentName agent={k} zh={zh} />
+      </span>
+    </div>
+  );
+}
+
+type FlowMove = { label: string; onClick?: () => void; disabled?: boolean; hint?: string };
+type FlowBack = { to: string; send: (note: string) => Promise<void> };
+
+/**
+ * The bar under the steps: where the project is and whose turn it is, the
+ * press that hands it on (approve the script, start the cut, render, mark it
+ * published — whatever the step needs), and the one that sends it back a
+ * step with a note. The note is required: "sent back" with no reason is a
+ * question the other side has to come and ask.
+ */
+function FlowBar({ zh, step, n, person, me, confirm, back, pending }: { zh: boolean; step: ProjectStep; n: number; person: StepPerson | null; me: { id: string; name: string; avatarUrl: string | null } | null; confirm: FlowMove | null; back: FlowBack | null; pending: boolean }) {
+  const t = (a: string, b: string) => (zh ? a : b);
+  const [open, setOpen] = React.useState(false);
+  const [note, setNote] = React.useState("");
+  const [sending, setSending] = React.useState(false);
+  const ai = step.owner !== "you";
+  const who = ai ? null : (person ?? me);
+  const mine = Boolean(who && me && who.id === me.id);
+  const send = async () => {
+    if (!back || !note.trim() || sending) return;
+    setSending(true);
+    try {
+      await back.send(note.trim());
+      setNote("");
+      setOpen(false);
+    } finally {
+      setSending(false);
+    }
+  };
+  return (
+    <div style={{ border: "1px solid #e6e6e6", borderRadius: 12, background: "#fff", padding: "10px 14px", display: "flex", flexDirection: "column", gap: 10, boxShadow: "0 1px 2px rgba(0,0,0,0.03)" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+        <span style={{ fontSize: 11.5, color: "#999999", flexShrink: 0 }}>{t("现在", "Now")}</span>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 7, minWidth: 0 }}>
+          {ai ? <AgentIcon agent={step.owner as AgentKey} size={20} radius={5} /> : who ? <PersonAvatar id={who.id} url={who.avatarUrl} name={who.name} size={20} radius={10} /> : <AgentIcon agent={null} size={20} radius={5} />}
+          <span style={{ fontSize: 13, fontWeight: 600, color: "#171717", whiteSpace: "nowrap" }}>
+            <span style={{ fontWeight: 500, color: "#b3b3b3", marginRight: 5 }}>{n}</span>
+            {step.label}
+          </span>
+          <span style={{ fontSize: 12, color: "#7c7c7c", whiteSpace: "nowrap" }}>
+            {"· "}
+            {ai ? (
+              <>
+                <span style={{ fontSize: 9.5, fontWeight: 700, lineHeight: "14px", padding: "0 4px", borderRadius: 4, marginRight: 4, color: AGENT_COLORS[step.owner as AgentKey], background: AGENT_TINTS[step.owner as AgentKey] }}>AI</span>
+                <AgentName agent={step.owner as AgentKey} zh={zh} />
+              </>
+            ) : (
+              <>
+                {who ? who.name : t("主持人", "the host")}
+                {mine ? t("（你）", " (you)") : ""}
+              </>
+            )}
+          </span>
+        </span>
+        <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          {back ? (
+            <button type="button" onClick={() => setOpen((v) => !v)} disabled={pending || sending} className="pj-flow-back" aria-expanded={open}>
+              <Icon name="undo" size={12} />
+              {t(`退回给 ${back.to}`, `Send back to ${back.to}`)}
+            </button>
+          ) : null}
+          {confirm ? (
+            <button type="button" onClick={confirm.onClick} disabled={pending || confirm.disabled || !confirm.onClick} className="pj-flow-next" title={confirm.hint}>
+              {!confirm.disabled ? <Icon name="check" size={12} strokeWidth={2.4} /> : null}
+              {confirm.label}
+            </button>
+          ) : null}
+        </span>
+      </div>
+      {confirm?.disabled && confirm.hint ? <div style={{ fontSize: 11.5, color: "#7c7c7c", marginTop: -4 }}>{confirm.hint}</div> : null}
+      {open && back ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <textarea
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            autoFocus
+            rows={2}
+            placeholder={t(`写下要改什么，${back.to} 会在项目对话里收到`, `Say what to change; ${back.to} gets it in the project chat`)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) void send();
+            }}
+            style={{ width: "100%", boxSizing: "border-box", resize: "vertical", minHeight: 56, border: "1px solid #e2e2e2", borderRadius: 9, padding: "8px 10px", fontFamily: "inherit", fontSize: 12.5, lineHeight: 1.5, outline: "none" }}
+          />
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+            <button type="button" className="pj-flow-back" onClick={() => setOpen(false)} disabled={sending}>
+              {t("取消", "Cancel")}
+            </button>
+            <button type="button" className="pj-flow-next" onClick={() => void send()} disabled={sending || !note.trim()}>
+              {sending ? t("正在退回…", "Sending back…") : t(`附意见退回给 ${back.to}`, `Send back to ${back.to}`)}
+            </button>
+          </div>
         </div>
       ) : null}
     </div>
@@ -2011,6 +2228,12 @@ const PROJECT_CSS = `
 .pj-quiet:focus-visible { outline: 2px solid #171717; outline-offset: 1px; }
 .pj-publish { display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%; height: 28px; border: 0; border-radius: 8px; background: #fff; color: #171717; font-family: inherit; font-size: 12px; font-weight: 600; cursor: pointer; white-space: nowrap; transition: background-color .15s ease; }
 .pj-publish:hover { background: #eef8f2; }
+.pj-flow-next { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 12px; border: 0; border-radius: 8px; background: #171717; color: #fff; font-family: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; white-space: nowrap; transition: background-color .15s ease; }
+.pj-flow-next:hover:not(:disabled) { background: #333; }
+.pj-flow-next:disabled { background: #f0f0ee; color: #9a9a9a; cursor: default; }
+.pj-flow-back { display: inline-flex; align-items: center; gap: 5px; height: 30px; padding: 0 11px; border: 1px solid #e2e2e2; border-radius: 8px; background: #fff; color: #525252; font-family: inherit; font-size: 12.5px; font-weight: 500; cursor: pointer; white-space: nowrap; transition: background-color .15s ease; }
+.pj-flow-back:hover:not(:disabled) { background: #f7f7f5; }
+.pj-flow-back:disabled { opacity: .5; cursor: default; }
 .pj-publish:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
 .pj-pub-link { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 10px 0 8px; border-radius: 9px; background: #fff; border: 1px solid #d9eee2; font-size: 12px; text-decoration: none; color: #171717; min-width: 0; transition: border-color .15s ease, box-shadow .15s ease; }
 a.pj-pub-link:hover { border-color: #9fd6b6; box-shadow: 0 2px 8px rgba(30,122,79,.08); color: #171717; }
