@@ -1,5 +1,6 @@
 "use client";
 
+import { STEP_LABELS, stepForTool } from "@/lib/agents/steps";
 import { ChatLiveWork } from "@/components/chat/ChatLiveWork";
 import { ModelPicker } from "@/components/shell/ModelPicker";
 
@@ -1137,7 +1138,7 @@ function AgentRow({ message, zh, locale }: { message: ThreadMessage; zh: boolean
 
         <div className="txt">
           {message.tools.map((tool) => (
-            <div key={tool.id} className="tool">
+            <div key={tool.id} className="tool" title={tool.summary ?? tool.name}>
               {tool.status === "running" ? (
                 <span
                   style={{
@@ -1166,7 +1167,10 @@ function AgentRow({ message, zh, locale }: { message: ThreadMessage; zh: boolean
                   {tool.status === "error" ? <path d="M7 7l10 10M17 7 7 17" /> : <path d="m5 12.5 4.5 4.5L19 7.5" />}
                 </svg>
               )}
-              <span>{tool.summary ?? tool.name}</span>
+              {/* What it did, in words — not the tool's raw first line ("Plan for
+                  2026-09-27, posted by 策划 … (message msg_…)"), which stays
+                  on hover. */}
+              <span>{toolWords(tool.name, tool.status, tool.summary, zh)}</span>
             </div>
           ))}
 
@@ -1524,4 +1528,14 @@ function RecentRail({ recent, current, zh, locale, today }: { recent: { id: stri
       </div>
     </div>
   );
+}
+
+/** A tool call as a person reads it: "查资料 · 3.8 s", "正在写脚本". */
+function toolWords(name: string, status: string, summary: string | undefined | null, zh: boolean): string {
+  const label = STEP_LABELS[stepForTool(name)] ?? STEP_LABELS.working;
+  const words = (zh ? label.zh : label.en).replace(/…$/, "");
+  const secs = /·\s*([\d.]+\s*s)\s*$/.exec(summary ?? "")?.[1];
+  if (status === "running") return words;
+  const done = zh ? words.replace(/^正在/, "") : words.replace(/^(\w)/, (c) => c.toUpperCase());
+  return secs ? `${done} · ${secs}` : done;
 }

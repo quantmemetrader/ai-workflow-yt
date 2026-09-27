@@ -178,7 +178,11 @@ export function ProjectBridge({
   }
 
   /* ---- first read still on its way: the bar's room, nothing claimed ---- */
-  if (!state) return compact ? null : <Shell compact={false}><span style={{ height: 8, width: 180, borderRadius: 4, background: "#efefed" }} aria-hidden /></Shell>;
+  /* Nothing drawn until there is something to say: the empty grey bar that
+     held the room while the first read ran looked like a loading project
+     that never came ("no need to show a project loading bar until a project
+     is made"). */
+  if (!state) return null;
 
   /* A guest (or someone without Chat) is not offered a project. */
   if (!state.canCreate) return null;
