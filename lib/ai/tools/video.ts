@@ -666,7 +666,7 @@ async function dispatch(ctx: ToolContext & { projectId: string; language: string
     } catch (err) {
       return err instanceof Error ? err.message : "That could not be started.";
     }
-    return done(`Making it now: footage → transcribe → cut → design → ${render ? `render ${aspect}` : "no render"}. It takes a few minutes; each step shows on screen, and you can undo the lot afterwards with ⌘Z.`);
+    return done(`Started, not finished: footage → transcribe → cut → design → ${render ? `render ${aspect}` : "no render"} now runs for several minutes, and nothing is cut or rendered yet. The finished video is posted in this chat by itself when it is out. Tell the person in one sentence that 剪辑师 is cutting it now; do not say it is done, and do not describe the video (its opening, numbers or ending): nobody has seen it yet.`);
   }
 
   if (name === "list_clips") {
