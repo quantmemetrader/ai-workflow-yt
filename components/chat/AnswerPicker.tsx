@@ -23,6 +23,7 @@ export function AnswerPicker({
   align = "left",
   quick = 4,
   prefer = [],
+  compact = false,
 }: {
   answering: AgentKey | null;
   zh: boolean;
@@ -33,7 +34,10 @@ export function AnswerPicker({
   quick?: number;
   /** Who comes first among the faces (the employee this screen is about). */
   prefer?: AgentKey[];
+  /** A narrow panel: the chip drops 「回答：」 so one more face fits. */
+  compact?: boolean;
 }) {
+  const [hover, setHover] = useState<AgentKey | null>(null);
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLSpanElement | null>(null);
 
@@ -71,12 +75,12 @@ export function AnswerPicker({
         aria-haspopup="listbox"
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
-        title={zh ? "选择谁来回答" : "Choose who answers"}
+        title={compact ? (zh ? "回答：选择谁来回答" : "Answering: choose who answers") : zh ? "选择谁来回答" : "Choose who answers"}
         /* Styled here, not by the chat screen's stylesheet: the side panels use it too, and there the chip came out as loose text. */
         style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 28, padding: "0 8px 0 4px", borderRadius: 8, fontSize: 12, lineHeight: 1, color: "#525252", whiteSpace: "nowrap", flexShrink: 0, background: answering ? soft(AGENT_TINTS[answering], 0.5) : "#f4f4f5", border: 0, cursor: "pointer", fontFamily: "inherit" }}
       >
         <AgentIcon agent={answering} size={20} radius={5} />
-        {zh ? "回答：" : "Answering: "}
+        {compact ? null : zh ? "回答：" : "Answering: "}
         <b style={{ fontWeight: 600, color: "#171717" }}>{answering ? <AgentName agent={answering} zh={zh} /> : zh ? "你的助理" : "Your agent"}</b>
         <span aria-hidden style={{ fontSize: 10, color: "#8a8a8a", marginLeft: 2 }}>{open ? "▴" : "▾"}</span>
       </button>
@@ -87,10 +91,22 @@ export function AnswerPicker({
           className="answer-face"
           onClick={() => pick(k)}
           aria-label={zh ? `问${AGENT_LABELS[k].nameLocal}` : `Ask ${AGENT_LABELS[k].nameEn}`}
-          title={zh ? `问${AGENT_LABELS[k].nameLocal}：${AGENT_LABELS[k].hint}` : `Ask ${AGENT_LABELS[k].nameEn}: ${AGENT_LABELS[k].hintEn}`}
-          style={{ display: "flex", padding: 2, border: "1px solid transparent", borderRadius: 7, background: "transparent", cursor: "pointer", flexShrink: 0 }}
+          onMouseEnter={() => setHover(k)}
+          onMouseLeave={() => setHover((h) => (h === k ? null : h))}
+          onFocus={() => setHover(k)}
+          onBlur={() => setHover((h) => (h === k ? null : h))}
+          style={{ position: "relative", display: "flex", padding: 2, border: "1px solid transparent", borderRadius: 7, background: "transparent", cursor: "pointer", flexShrink: 0 }}
         >
           <AgentIcon agent={k} size={22} radius={6} />
+          {/* The name on hover, at once, above the face: who this press asks. */}
+          {hover === k && !open ? (
+            <span
+              role="tooltip"
+              style={{ position: "absolute", bottom: "calc(100% + 6px)", left: "50%", transform: "translateX(-50%)", zIndex: 41, padding: "4px 8px", borderRadius: 6, background: "#171717", color: "#fff", fontSize: 11.5, fontWeight: 600, lineHeight: 1.3, whiteSpace: "nowrap", pointerEvents: "none", boxShadow: "0 4px 12px rgba(0,0,0,0.18)" }}
+            >
+              {zh ? `问${AGENT_LABELS[k].nameLocal}` : `Ask ${AGENT_LABELS[k].nameEn}`}
+            </span>
+          ) : null}
         </button>
       ))}
       {rest > 0 ? (
