@@ -179,6 +179,11 @@ export function HomeScreen({
     setPressing(messageId + actionId);
     start(async () => {
       const res = await pressCardAction(channelSlug, messageId, actionId);
+      /* "交给编剧" on the plan: open the project it started, where 编剧 is writing. */
+      if (res && "projectId" in res && res.projectId) {
+        router.push(`/projects/${res.projectId}`);
+        return;
+      }
       setPressing(null);
       if (res?.error) setError(res.error);
       else {
@@ -471,8 +476,8 @@ export function HomeScreen({
                         {zh ? a.label : a.labelEn}
                       </Link>
                     ) : (
-                      <button key={a.id} type="button" disabled={pending} onClick={() => press(d.channelSlug, d.messageId, a.id)} style={{ ...btn(i === 0), opacity: pressing === d.messageId + a.id ? 0.55 : 1 }}>
-                        {zh ? a.label : a.labelEn}
+                      <button key={a.id} type="button" disabled={pending} onClick={() => press(d.channelSlug, d.messageId, a.id)} style={{ ...btn(i === 0), opacity: pressing === d.messageId + a.id ? 0.7 : 1 }}>
+                        {pressing === d.messageId + a.id && a.id === "hand-script" ? (zh ? "正在开项目…" : "Opening the project…") : zh ? a.label : a.labelEn}
                       </button>
                     ),
                   )}

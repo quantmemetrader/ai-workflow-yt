@@ -341,7 +341,8 @@ export async function pressCardAction(slug: string, messageId: string, actionId:
     const writer = await agentViewer(viewer.tenantId, "script");
     await postMessage(writer, channel.id, line, { agent: "script", project: { id: handoff.workProjectId, title } }).catch((err) => console.error("[chat] could not say where the draft is", err));
     revalidatePath(`/chat/c/${slug}`);
-    return {};
+    /* The screen goes straight to the project, where the draft is being written. */
+    return { projectId: handoff.workProjectId };
   }
 
   /* The prepared line nearly always tags a colleague — that is the point of

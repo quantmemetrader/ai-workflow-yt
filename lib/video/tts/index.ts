@@ -105,7 +105,12 @@ let elCache: { at: number; rows: UiVoice[] } | null = null;
  */
 export async function voicesForUi(): Promise<UiVoice[]> {
   const out: UiVoice[] = [];
-  if ((await localProvider.available()).ok) out.push(...LOCAL_VOICES.map(toUi));
+  /* Two voices on screen, a woman and a man, and no 试听: the owner found the
+     long list with previews that would not play on his machine noise ("its fine
+     if we just have 2 voice options"). The engine still reads every catalogue
+     voice, so old narrations and ids keep working. */
+  if ((await localProvider.available()).ok) out.push(...LOCAL_VOICES.filter((v) => UI_VOICE_IDS.includes(v.id)).map(toUi));
+  if (UI_VOICE_IDS.length) return out;
   if ((await elevenLabsProvider.available()).ok) {
     if (!elCache || Date.now() - elCache.at > 3_600_000) {
       const rows = await elevenLabsVoices().catch(() => []);
@@ -128,8 +133,11 @@ export async function voicesForUi(): Promise<UiVoice[]> {
   return out;
 }
 
+/** The voices a person picks from: 新闻女声 (the default) and 新闻男声. */
+const UI_VOICE_IDS: string[] = ["kokoro:zf_086", "kokoro:zm_081"];
+
 function toUi(v: CatalogVoice): UiVoice {
-  return { id: v.id, provider: v.provider, lang: v.lang, gender: v.gender, style: v.style, name: v.name, blurb: v.blurb, sample: true };
+  return { id: v.id, provider: v.provider, lang: v.lang, gender: v.gender, style: v.style, name: v.name, blurb: v.blurb, sample: false };
 }
 
 /* ---------------------------------------------------------------- samples */
