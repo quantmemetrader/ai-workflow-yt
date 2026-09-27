@@ -10,6 +10,7 @@ import {
 } from "@/lib/finance/service";
 import { FinanceScreen } from "@/components/finance/FinanceScreen";
 import { listReports } from "@/lib/finance/reports";
+import { apiBalances } from "@/lib/finance/providers";
 
 export const metadata = { title: "财务 · Finance" };
 
@@ -24,7 +25,7 @@ export default async function FinancePage() {
   const viewer = await requireModule("finance");
   const period = new Date().toISOString().slice(0, 7);
 
-  const [centres, budget, actuals, spend, cash, limits, reports] = await Promise.all([
+  const [centres, budget, actuals, spend, cash, limits, reports, balances] = await Promise.all([
     listCentres(viewer),
     budgetVsActual(viewer, period),
     listActuals(viewer, period),
@@ -32,12 +33,15 @@ export default async function FinancePage() {
     cashSeries(viewer),
     thresholds(viewer),
     listReports(viewer),
+    /* Never holds the page up: a provider that does not answer is a row that says so. */
+    apiBalances(viewer).catch(() => null),
   ]);
 
   return (
     <FinanceScreen
       period={period}
       reports={reports}
+      balances={balances}
       centres={centres}
       budget={budget}
       actuals={actuals}

@@ -36,6 +36,8 @@ import {
 import { ModuleSidebar, type ScreenItem } from "@/components/shell/ModuleSidebar";
 import { Reports } from "@/components/finance/Reports";
 import type { ReportRow } from "@/lib/finance/reports";
+import type { Balances } from "@/lib/finance/providers";
+import { ApiBalances } from "@/components/finance/ApiBalances";
 
 /**
  * Finance (spec §4.9), transcribed from the five `Fin-*` artboards.
@@ -55,6 +57,7 @@ type Tab = "budget" | "cash" | "cost" | "spend" | "reports";
 export function FinanceScreen({
   period,
   reports,
+  balances,
   centres,
   budget,
   actuals,
@@ -68,6 +71,8 @@ export function FinanceScreen({
   period: string;
   /** The monthly management reports, newest period first. */
   reports: ReportRow[];
+  /** What is left on each paid service (`lib/finance/providers.ts`); null when it could not be read. */
+  balances: Balances | null;
   centres: CentreRow[];
   budget: { cells: BudgetCell[]; unfiledMicros: number; modelSpendMicros: number };
   actuals: ActualRow[];
@@ -120,6 +125,8 @@ export function FinanceScreen({
 
       <div style={{ flexGrow: 1, minHeight: 0, display: "flex" }}>
         <div style={{ flexGrow: 1, minWidth: 0, overflowY: "auto", padding: "18px 22px 40px" }}>
+          {/* Above every tab: what is left on each service we pay for. */}
+          {balances ? <ApiBalances balances={balances} zh={zh} /> : null}
           {tab === "budget" && (
             <Budget
               period={period}

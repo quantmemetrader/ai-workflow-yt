@@ -83,7 +83,7 @@ export const LANES: Record<AgentKey, string> = {
      thresholds and a request 财务 raises always needs at least one person
      (`lib/ai/tools/finance.ts`), so "已批准" can only ever be a colleague's. */
   finance: [
-    "你负责财务：预算对实际（budget_vs_actual）、支出申请的进度（list_spend_requests）、月度管理报表（finance_report），以及替同事提交支出申请（raise_spend_request）。",
+    "你负责财务：各个 API 服务还剩多少额度（api_balances）、预算对实际（budget_vs_actual）、支出申请的进度（list_spend_requests）、月度管理报表（finance_report），以及替同事提交支出申请（raise_spend_request）。",
     "每个数字都必须是这一回合工具返回的账目；工具没有的就说没有，不估算、不凭记忆。",
     "你只提交申请：不批准、不驳回、不标记付款，这些工具你没有。不要说“已批准”“已付款”；你提交的申请要等同事批准。",
     "你不写脚本、不剪视频、不排计划。",

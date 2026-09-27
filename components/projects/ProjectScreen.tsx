@@ -744,9 +744,9 @@ export function ProjectScreen({
                       })
                     }
                     title={t("批准并锁定这一版，交给剪辑师", "Approve and lock this version; it goes to the editor")}
-                    style={{ marginTop: 10, display: "inline-flex", alignItems: "center", gap: 5, height: 26, padding: "0 10px", borderRadius: 8, border: "1px solid #cbe9d8", background: "#f2faf6", color: "#1e7a4f", fontFamily: "inherit", fontSize: 12, fontWeight: 500, cursor: "pointer" }}
+                    style={{ marginTop: 12, display: "inline-flex", alignItems: "center", gap: 6, height: 36, padding: "0 16px", borderRadius: 9, border: "1px solid #9fd6b8", background: "#eaf7f0", color: "#1e7a4f", fontFamily: "inherit", fontSize: 13.5, fontWeight: 600, cursor: "pointer" }}
                   >
-                    <Icon name="check" size={12} /> {t("脚本可以了", "Script looks good")}
+                    <Icon name="check" size={14} strokeWidth={2.4} /> {t("脚本可以了", "Script looks good")}
                   </button>
                 ) : null}
                 {approveError ? <div style={{ marginTop: 6, fontSize: 11.5, color: "#c0392b" }}>{approveError}</div> : null}
@@ -1393,9 +1393,11 @@ function Disclose({ zh, on, label, children }: { zh: boolean; on: boolean; label
   return (
     <>
       <div style={{ display: "flex", marginTop: 8 }}>
-        <button type="button" className="pj-quiet" data-disclose="" aria-expanded={open} onClick={() => setOpen((v) => !v)} title={open ? (zh ? "收起" : "Collapse") : undefined} style={{ ...quiet("#8a8a8a"), height: 26, padding: "0 8px", marginLeft: -8, gap: 4 }}>
+        {/* A button, not a grey caption: 「改脚本」 is how a done step is redone,
+            and as an 11px link with a caret nobody saw it. */}
+        <button type="button" className="pj-disclose" data-disclose="" aria-expanded={open} onClick={() => setOpen((v) => !v)} title={open ? (zh ? "收起" : "Collapse") : undefined}>
           {label}
-          <span aria-hidden style={{ fontSize: 10, lineHeight: 1 }}>{open ? "\u25B4" : "\u25BE"}</span>
+          <span aria-hidden style={{ fontSize: 11, lineHeight: 1, color: "#8a8a8a" }}>{open ? "\u25B4" : "\u25BE"}</span>
         </button>
       </div>
       {open ? children : null}
@@ -2271,10 +2273,13 @@ const PROJECT_CSS = `
 .pj-quiet:focus-visible { outline: 2px solid #171717; outline-offset: 1px; }
 .pj-publish { display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%; height: 28px; border: 0; border-radius: 8px; background: #fff; color: #171717; font-family: inherit; font-size: 12px; font-weight: 600; cursor: pointer; white-space: nowrap; transition: background-color .15s ease; }
 .pj-publish:hover { background: #eef8f2; }
-.pj-flow-next { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 12px; border: 0; border-radius: 8px; background: #171717; color: #fff; font-family: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; white-space: nowrap; transition: background-color .15s ease; }
+.pj-flow-next { display: inline-flex; align-items: center; gap: 7px; height: 36px; padding: 0 16px; border: 0; border-radius: 9px; background: #171717; color: #fff; font-family: inherit; font-size: 13.5px; font-weight: 600; cursor: pointer; white-space: nowrap; transition: background-color .15s ease; }
 .pj-flow-next:hover:not(:disabled) { background: #333; }
 .pj-flow-next:disabled { background: #f0f0ee; color: #9a9a9a; cursor: default; }
-.pj-flow-back { display: inline-flex; align-items: center; gap: 5px; height: 30px; padding: 0 11px; border: 1px solid #e2e2e2; border-radius: 8px; background: #fff; color: #525252; font-family: inherit; font-size: 12.5px; font-weight: 500; cursor: pointer; white-space: nowrap; transition: background-color .15s ease; }
+.pj-flow-back { display: inline-flex; align-items: center; gap: 6px; height: 36px; padding: 0 15px; border: 1px solid #d4d4d4; border-radius: 9px; background: #fff; color: #262626; font-family: inherit; font-size: 13.5px; font-weight: 600; cursor: pointer; white-space: nowrap; transition: background-color .15s ease; }
+.pj-disclose { display: inline-flex; align-items: center; gap: 7px; height: 34px; padding: 0 14px; border: 1px solid #d4d4d4; border-radius: 9px; background: #fff; color: #262626; font-family: inherit; font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap; transition: background-color .15s ease; }
+.pj-disclose:hover { background: #f7f7f5; }
+.pj-disclose[aria-expanded="true"] { background: #f3f3f1; }
 .pj-flow-back:hover:not(:disabled) { background: #f7f7f5; }
 .pj-flow-back:disabled { opacity: .5; cursor: default; }
 .pj-publish:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }

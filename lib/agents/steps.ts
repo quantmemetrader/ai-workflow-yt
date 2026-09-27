@@ -153,6 +153,7 @@ const TOOL_STEPS: Record<string, StepKey> = {
   list_checklists: "checklists",
   // finance
   budget_vs_actual: "budget",
+  api_balances: "budget",
   list_spend_requests: "requests",
   raise_spend_request: "spend",
   finance_report: "report",

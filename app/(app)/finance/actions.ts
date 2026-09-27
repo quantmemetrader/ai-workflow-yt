@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { generateReport, saveReport, shareReport } from "@/lib/finance/reports";
+import { apiBalances } from "@/lib/finance/providers";
 import { getViewer } from "@/lib/auth/dal";
 import {
   addActual,
@@ -229,4 +230,13 @@ export async function setThresholdsAction(autoBelow: number, oneApproverBelow: n
   } catch (err) {
     return { error: err instanceof Error ? err.message : "Could not save those" };
   }
+}
+
+/** 刷新: read every provider's balance again now, past the five-minute copy. */
+export async function refreshBalancesAction() {
+  const viewer = await finance();
+  if (!viewer) return { error: "Not allowed" };
+  await apiBalances(viewer, { fresh: true });
+  revalidatePath("/finance");
+  return {};
 }

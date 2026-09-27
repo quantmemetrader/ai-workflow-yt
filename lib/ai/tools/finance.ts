@@ -3,6 +3,7 @@ import type { ToolDef } from "@/lib/ai/openrouter";
 import { agentKeyFromEmail } from "@/lib/agents/catalog";
 import { budgetVsActual, listCentres, listSpend, raiseSpend, thresholds } from "@/lib/finance/service";
 import { generateReport, listReports } from "@/lib/finance/reports";
+import { apiBalances, balancesText } from "@/lib/finance/providers";
 import { withheldFrom } from "./audience";
 import { num, str, type ToolContext, type ToolPack, type ToolResult } from "./types";
 
@@ -25,6 +26,19 @@ import { num, str, type ToolContext, type ToolPack, type ToolResult } from "./ty
  * answer (`withheldFrom`).
  */
 const defs: ToolDef[] = [
+  {
+    type: "function",
+    function: {
+      name: "api_balances",
+      description:
+        "What is left on each paid service the studio runs on, read live from the services: OpenRouter (every AI answer), DeepSeek, TikHub (research data), ElevenLabs, and what Cloudflare R2 storage holds and costs. Also this month's model spend by our own ledger. Use it for 还剩多少额度 / 余额 / API 花了多少 / 要不要充值.",
+      parameters: {
+        type: "object",
+        properties: { fresh: { type: "boolean", description: "Read again now instead of the copy from the last five minutes. Default false." } },
+        required: [],
+      },
+    },
+  },
   {
     type: "function",
     function: {
@@ -124,6 +138,11 @@ const ORDER: Record<string, number> = { awaiting_approval: 0, approved: 1 };
 async function run(ctx: ToolContext, name: string, args: Record<string, unknown>): Promise<ToolResult> {
   const withheld = await withheldFrom(ctx, "finance");
   if (withheld) return { text: withheld };
+
+  if (name === "api_balances") {
+    const b = await apiBalances(ctx.viewer, { fresh: args.fresh === true });
+    return { text: `${balancesText(b, true)}\n\nThese are the providers' own figures; "low" is under $2 left. Topping up is done by a person on the provider's site.` };
+  }
 
   if (name === "budget_vs_actual") {
     const period = args.period === undefined || args.period === "" ? thisMonth() : monthOf(args.period);
