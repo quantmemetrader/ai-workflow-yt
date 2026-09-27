@@ -1824,7 +1824,10 @@ function StepFlow({
                     <span style={{ fontSize: 12, fontWeight: 600 }}>
                       <AgentName agent={k} zh={zh} />
                     </span>
-                    <AiSparkle size={13} />
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 2, fontSize: 10.5, fontWeight: 800, letterSpacing: 0.4 }}>
+                      <AiSparkle size={12} />
+                      AI
+                    </span>
                   </span>
                 ) : (
                   <span style={{ display: "inline-flex", alignItems: "center", gap: 6, opacity: dim ? 0.55 : 1, minWidth: 0, whiteSpace: "nowrap" }}>
