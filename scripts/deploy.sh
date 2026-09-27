@@ -32,7 +32,7 @@ echo "==> build"
 release="$(date -u +%Y%m%d%H%M%S)-$(git rev-parse --short HEAD)"
 # Lowest CPU and IO priority: the build uses every core for ~3 minutes, and
 # live chats streaming on the same box stalled while it ran.
-NEXT_DEPLOYMENT_ID="$release" nice -n 19 ionice -c3 npx next build
+NEXT_DEPLOYMENT_ID="$release" NODE_OPTIONS=--max-old-space-size=8192 nice -n 19 ionice -c3 npx next build
 
 echo "==> stage release ${release}"
 # Moves the build into releases/<id>, keeps every older script an open tab
