@@ -10,6 +10,7 @@ import { Poster, Waiting } from "@/components/files/Poster";
 import { EyeOffGlyph, GlobeGlyph, PeopleGlyph, PersonGlyph, visibilityLabel } from "@/components/files/AccessPicker";
 import { AgentIcon } from "@/components/agents/AgentIcon";
 import { PersonAvatar } from "@/components/ui/PersonAvatar";
+import { Tr } from "@/components/ui/Tr";
 /**
  * FilesScreen — a transcription of design/canvas/FilesDesktop.dc.html.
  *
@@ -137,6 +138,27 @@ const ZH: Record<string, string> = {
   "New folder makes the first one": "点击“新建文件夹”创建第一个",
 };
 
+/** The screen's own zh/en lookup, for the pieces drawn outside this file
+ * (the project groups) so they say Rename and Processing the same way. */
+export function filesLabel(zh: boolean) {
+  return (key: string) => (zh ? (ZH[key] ?? key) : key);
+}
+
+/**
+ * The ways to look at the top of Files (`lib/files/lenses.ts`), in the order
+ * the switch draws them. Links, not state: the lens is in the URL
+ * (`?view=projects`), so it survives a reload, a back button and a pasted
+ * link, and the server reads it to fetch only what that lens shows.
+ */
+export type FilesLens = "all" | "projects" | "images" | "videos" | "docs";
+const LENS_TABS: { lens: FilesLens; zh: string; en: string }[] = [
+  { lens: "all", zh: "全部", en: "All" },
+  { lens: "projects", zh: "按项目", en: "By project" },
+  { lens: "images", zh: "图片", en: "Images" },
+  { lens: "videos", zh: "视频", en: "Videos" },
+  { lens: "docs", zh: "文档", en: "Documents" },
+];
+
 /** The sidebar's selected treatment, the same one the folder rows use. */
 function viewStyle(active: boolean): React.CSSProperties {
   return active
@@ -155,7 +177,7 @@ function viewStyle(active: boolean): React.CSSProperties {
 /* ------------------------------------------------------------------ format */
 
 /** "1.8 GB", "944 MB", "14 KB" — the artboard's sizes, decimal units. */
-function formatBytes(bytes: number, locale: string): string {
+export function formatBytes(bytes: number, locale: string): string {
   const units = ["B", "KB", "MB", "GB", "TB", "PB"];
   let value = Math.max(0, bytes);
   let unit = 0;
@@ -172,7 +194,7 @@ function formatBytes(bytes: number, locale: string): string {
 }
 
 /** "2 Sep" — the artboard's Modified column. */
-function formatDate(iso: string, locale: string): string {
+export function formatDate(iso: string, locale: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "";
   return new Intl.DateTimeFormat(locale, { day: "numeric", month: "short" }).format(d);
@@ -306,6 +328,13 @@ export function FilesScreen(props: {
    * their wiring layer remembers it. */
   layout?: "list" | "grid" | "gallery";
   onLayoutChange?: (next: "list" | "grid" | "gallery") => void;
+  /** Which lens the top of Files is showing. Absent inside a folder and on
+   * the saved views, which draw no switch. */
+  lens?: FilesLens;
+  /** Draws the listing in place of the folder's tiles, for a lens that is not
+   * a flat list (按项目). Given the filter box's text, so the filter still
+   * narrows what is shown. */
+  renderBody?: (needle: string) => React.ReactNode;
 }): React.JSX.Element {
   const [draft, setDraft] = React.useState("");
   const { width: sideWidth, handle: sideHandle } = useResizable("files-sidebar", {
@@ -341,6 +370,8 @@ export function FilesScreen(props: {
     onLayoutChange,
     view = "folder",
     onRestore,
+    lens,
+    renderBody,
   } = props;
   const canCreate = canCreateProp ?? canEdit;
 
@@ -563,6 +594,7 @@ export function FilesScreen(props: {
               <span style={{ fontSize: 12, color: "#999999", fontVariantNumeric: "tabular-nums" }}>
                 {folders.length + files.length}
               </span>
+              {lens ? <LensSwitch lens={lens} zh={zh} /> : null}
             </span>
           ) : view === "folder" ? (
             /* The way back to the top of Files, which a folder's own path
@@ -636,7 +668,7 @@ export function FilesScreen(props: {
 
           {/* List / Grid / Gallery. The artboard draws all three and only List
               was ever built, so the other two were design nobody could reach. */}
-          {onLayoutChange ? (
+          {onLayoutChange && !renderBody ? (
             <div
               role="group"
               aria-label={t("View")}
@@ -867,7 +899,9 @@ export function FilesScreen(props: {
                 </div>
               ) : null}
 
-              {empty ? (
+              {renderBody ? (
+                renderBody(needle)
+              ) : empty ? (
                 /* the artboard has no empty state; this is its dashed Grid tile */
                 <div
                   className="tile"
@@ -939,6 +973,7 @@ export function FilesScreen(props: {
                     onDelete={onDelete}
                     onRestore={view === "trash" ? onRestore : undefined}
                     onSetAccess={view === "trash" ? undefined : onSetAccess}
+                    showDate={lens != null && lens !== "all"}
                     zh={zh}
                     t={t}
                   />
@@ -1491,6 +1526,49 @@ export function FilesScreen(props: {
   );
 }
 
+/**
+ * 全部 · 按项目 · 图片 · 视频 · 文档, beside the title at the top of Files.
+ * Drawn like the List / Grid / Gallery control so the toolbar has one kind of
+ * switch, with words rather than glyphs because a lens is not a picture. The
+ * labels are short and Chrome's translate gets short labels wrong, so each is
+ * a `Tr`.
+ */
+function LensSwitch({ lens, zh }: { lens: FilesLens; zh: boolean }) {
+  return (
+    <nav
+      aria-label={zh ? "查看方式" : "Show"}
+      style={{ display: "flex", gap: 2, padding: 2, marginLeft: 8, borderRadius: 8, background: "#f3f3f3", flexShrink: 0, alignSelf: "center" }}
+    >
+      {LENS_TABS.map((tab) => {
+        const on = tab.lens === lens;
+        return (
+          <Link
+            key={tab.lens}
+            href={tab.lens === "all" ? "/files" : `/files?view=${tab.lens}`}
+            aria-current={on ? "page" : undefined}
+            style={{
+              height: 24,
+              padding: "0 10px",
+              display: "flex",
+              alignItems: "center",
+              borderRadius: 6,
+              fontSize: 12.5,
+              fontWeight: on ? 500 : 400,
+              textDecoration: "none",
+              whiteSpace: "nowrap",
+              background: on ? "#ffffff" : "transparent",
+              boxShadow: on ? "0 1px 2px rgba(0,0,0,0.1)" : "none",
+              color: on ? "#171717" : "#8a8a8a",
+            }}
+          >
+            <Tr zh={tab.zh} en={tab.en} inZh={zh} />
+          </Link>
+        );
+      })}
+    </nav>
+  );
+}
+
 const LAYOUT_LABEL = { list: "List", grid: "Grid", gallery: "Gallery" } as const;
 
 /** The three view icons in the toolbar's segmented control. */
@@ -1541,7 +1619,7 @@ function LayoutGlyph({ mode }: { mode: "list" | "grid" | "gallery" }) {
  * Folders come first in both, because a folder is a place and a file is a
  * thing, and mixing them by date makes a folder hard to find.
  */
-function Tiles({
+export function Tiles({
   layout,
   folders,
   files,
@@ -1552,6 +1630,8 @@ function Tiles({
   onDelete,
   onRestore,
   onSetAccess,
+  showDate,
+  tag,
   zh,
   t,
 }: {
@@ -1570,6 +1650,12 @@ function Tiles({
      layout is the grid — so the trash had no way out of it for most people. */
   onRestore?: (id: string) => void;
   onSetAccess?: (file: FileRow) => void;
+  /* The date on the second line, where tiles from many places are mixed (a
+     project's files, all the pictures) and "when" is how one is told apart. */
+  showDate?: boolean;
+  /* A quiet word beside the size, where the caller knows something the file
+     row does not — a clip that was made from a picture is 画面. */
+  tag?: (file: FileRow) => string | null;
   zh: boolean;
   t: (key: string) => string;
 }) {
@@ -1740,10 +1826,19 @@ function Tiles({
               {f.name}
             </span>
             <span style={{ fontSize: 11.5, color: "#999999", display: "flex", alignItems: "center", gap: 6, marginTop: 2 }}>
-              <span>
+              <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                 {f.version && f.version > 1 ? `v${f.version} · ` : ""}
                 {formatBytes(f.sizeBytes, locale)}
+                {/* The date is drawn in the browser's time zone and the
+                    server's may differ by a day near midnight; the text is
+                    allowed to settle rather than warn. */}
+                {showDate ? <span suppressHydrationWarning>{` · ${formatDate(f.updatedAt, locale)}`}</span> : null}
               </span>
+              {tag?.(f) ? (
+                <span style={{ flexShrink: 0, fontSize: 11, color: "#7c7c7c", background: "#f3f3f3", borderRadius: 4, padding: "0 5px", lineHeight: "16px" }}>
+                  {tag(f)}
+                </span>
+              ) : null}
               <VisibilityChip file={f} zh={zh} onSetAccess={onSetAccess} />
             </span>
           </span>
