@@ -1,4 +1,5 @@
 import { rememberFilmOrigin } from "@/lib/agents/film-origin";
+import { visibleProject } from "@/lib/projects/service";
 import "server-only";
 import { and, asc, desc, eq, isNull } from "drizzle-orm";
 import { db } from "@/lib/db/client";
@@ -147,6 +148,7 @@ const defs: ToolDef[] = [
         type: "object",
         properties: {
           brief: { type: "string", description: "What the video should be, in the person's own words: the subject, the mood, the platform, anything they asked for." },
+          project_id: { type: "string", description: "The project to make it in (wp_…, from list_projects) when none is open here, as in the person's own assistant chat." },
           aspect: { type: "string", enum: ["16:9", "9:16", "1:1"], description: "Default 16:9. 9:16 for a short." },
           render: { type: "boolean", description: "Render the file at the end. Default true." },
           pace: { type: "string", enum: ["calm", "channel", "hype"], description: "How much happens on screen. hype = a full-frame visual for every named thing, every two to four seconds, the CapCut look. Default channel." },
@@ -1101,10 +1103,19 @@ async function run(ctx: ToolContext, name: string, args: Record<string, unknown>
    * studio. Without one there is nothing to edit, and saying so beats every
    * tool failing in its own way.
    */
-  const wanted = asId(args.project_id) ?? ctx.projectId ?? null;
+  let wanted = asId(args.project_id) ?? ctx.projectId ?? null;
+  /* A studio project named from the person's own assistant chat (wp_…, from
+     list_projects): its video project, when the person may see it. "No
+     video project is open" to 「用《蒸馏之战》的原片剪一条 Reels」 was the
+     whole answer, the model saying nothing after it. */
+  if (wanted?.startsWith("wp_")) {
+    const wp = await visibleProject(ctx.asker ?? ctx.viewer, wanted);
+    if (!wp?.videoProjectId) return { text: "There is no such project, or it has no video project, or it is not open to this person. list_projects gives the ids." };
+    wanted = wp.videoProjectId;
+  }
   if (!wanted) {
     return {
-      text: "No video project is open. Open one in the Video module and ask again.",
+      text: "No video project is open in this chat. Call list_projects to find the project the person means, then call this tool again with its project_id (wp_…). Do not stop here.",
     };
   }
 
