@@ -1,5 +1,6 @@
 "use client";
 
+import { ChatLiveWork } from "@/components/chat/ChatLiveWork";
 import { ModelPicker } from "@/components/shell/ModelPicker";
 
 import Link from "next/link";
@@ -655,6 +656,7 @@ export function AgentScreen({
                     <AgentRow key={m.id} message={m} zh={zh} locale={locale} />
                   ),
                 )}
+                <ChatLiveWork conversationId={conversationId} settled={messages.filter((x) => x.role === "assistant" && x.status !== "streaming").length} zh={zh} />
               </>
             )}
 
@@ -1042,7 +1044,14 @@ function UserRow({
   const zh = locale.startsWith("zh");
   /* A file drawn as its video card is not also a chip. */
   const drawn = new Set((message.videos ?? []).map((v) => v.fileId));
-  const chips = (message.attachments ?? []).filter((f) => !drawn.has(f.id));
+  const lines = (message.content ?? "").split("\n");
+  const pictures = lines.flatMap((l) => {
+    const m = /^\[附件\]\s+(.+?)\s+\(image[^)]*\)\s+file id\s+(fil_[0-9a-z]+)/i.exec(l.trim());
+    return m ? [{ name: m[1], id: m[2].toLowerCase() }] : [];
+  });
+  const shown = lines.filter((l) => !l.trim().startsWith("[附件]")).join("\n").trim();
+  const pictured = new Set(pictures.map((p) => p.id));
+  const chips = (message.attachments ?? []).filter((f) => !drawn.has(f.id) && !pictured.has(f.id));
   return (
     <div className="msg">
       <PersonAvatar className="mav" id={me.id} url={me.avatarUrl} name={me.name} />
@@ -1051,7 +1060,19 @@ function UserRow({
           <span className="who">{me.name}</span>
           <span className="when">{time(message.createdAt, locale)}</span>
         </div>
-        {message.content ? <div className="txt plain">{message.content}</div> : null}
+        {/* The "[附件] … file id …" lines are for the employee reading the
+            turn, not for the person: they are drawn as thumbnails instead. */}
+        {shown ? <div className="txt plain">{shown}</div> : null}
+        {pictures.length ? (
+          <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
+            {pictures.map((f) => (
+              <Link key={f.id} href={`/files/${f.id}`} prefetch={false} title={f.name} style={{ display: "block", width: 72, height: 72, borderRadius: 10, overflow: "hidden", border: "1px solid #ececec", background: "#f6f6f5" }}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={`/api/files/${f.id}/download`} alt={f.name} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+              </Link>
+            ))}
+          </div>
+        ) : null}
         {/* The files on it: a video as its card (the poster that plays,
             下载), anything else as a chip to its page. */}
         <VideoCards videos={message.videos} zh={zh} />

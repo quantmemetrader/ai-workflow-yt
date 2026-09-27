@@ -1,3 +1,4 @@
+import { rememberFilmOrigin } from "@/lib/agents/film-origin";
 import "server-only";
 import { and, asc, desc, eq, isNull } from "drizzle-orm";
 import { db } from "@/lib/db/client";
@@ -657,6 +658,9 @@ async function dispatch(ctx: ToolContext & { projectId: string; language: string
     const pace = ["calm", "channel", "hype"].includes(str(args.pace, 10)) ? str(args.pace, 10) : /hype|capcut|fast|dense|快|多|炸|燃/i.test(brief) ? "hype" : "channel";
     try {
       await requestDirector(ctx.viewer, ctx.projectId, { brief, aspect, render, language: ctx.language, pace });
+      /* Started from a private chat: the finished film is posted back there
+         (`narrate.ts`), not only in the project's and #制作's channels. */
+      if (ctx.conversationId) await rememberFilmOrigin(ctx.projectId, ctx.conversationId).catch(() => {});
     } catch (err) {
       return err instanceof Error ? err.message : "That could not be started.";
     }

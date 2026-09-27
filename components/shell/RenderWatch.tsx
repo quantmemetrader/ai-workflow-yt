@@ -5,11 +5,10 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { readRendering, serverRendering, subscribeRendering, writeRendering } from "@/lib/client/rendering";
 import { notify } from "@/lib/client/notify";
-import { TOPBAR_LIVE_SLOT, useLiveSnapshot } from "@/lib/client/live";
+import { useLiveSnapshot } from "@/lib/client/live";
 import { isRecent, isRunning, liveWords, type LiveProject } from "@/lib/projects/live-types";
 import { Icon } from "@/components/ui/Icon";
 import { Tr } from "@/components/ui/Tr";
-import { createPortal } from "react-dom";
 import type { DirectorState } from "@/lib/video/director";
 
 /**
@@ -67,6 +66,8 @@ export function RenderWatch({ locale }: { locale: string }) {
     null;
 
   if (onVideo) return <Legacy locale={locale} covered={new Set(live.map((p) => p.videoProjectId))} draw={false} />;
+  /* In the chat the film is drawn in the thread, as 剪辑师 at work (ChatLiveWork). */
+  if (pathname === "/chat" || pathname?.startsWith("/chat/t/")) return null;
   if (pick) return <Chip p={pick} zh={zh} now={now} />;
   return <Legacy locale={locale} covered={new Set(live.map((p) => p.videoProjectId))} draw />;
 }
@@ -81,13 +82,13 @@ function Chip({ p, zh, now }: { p: LiveProject; zh: boolean; now: number }) {
     display: "flex",
     alignItems: "center",
     gap: 8,
-    height: 28,
-    padding: "0 3px 0 11px",
-    borderRadius: 14,
+    height: 26,
+    padding: "0 3px 0 10px",
+    borderRadius: 13,
     background: failed ? "#fdf3f2" : p.state === "done" ? "#eaf7ef" : "#171717",
     color: failed ? "#a3281c" : p.state === "done" ? "#146b43" : "#fff",
     border: failed ? "1px solid #f6d5d1" : p.state === "done" ? "1px solid #cbe9d8" : "1px solid #171717",
-    fontSize: 12,
+    fontSize: 11.5,
     boxShadow: "0 3px 12px rgba(23,23,23,0.16)",
     minWidth: 0,
   };
@@ -165,24 +166,22 @@ function Chip({ p, zh, now }: { p: LiveProject; zh: boolean; now: number }) {
  * the top. The chip's own entrance animation owns its `transform`, so the
  * floating strip is full width and centres it with flex instead.
  */
-const DOCK_CSS = `.rw-dock{display:flex;justify-content:center;min-width:0;max-width:100%}
-.rw-dock>*{min-width:0;max-width:min(460px,100%);animation:fadeUp .18s cubic-bezier(.32,.72,0,1) both}
-.rw-dock.rw-float{position:fixed;left:0;right:0;top:5px;z-index:60;pointer-events:none;padding:0 16px}
-@media (max-width:760px){.rw-dock,.rw-dock.rw-float{position:fixed;left:0;right:0;top:auto;bottom:14px;z-index:60;pointer-events:none;padding:0 16px}}`;
+/* A tiny toast, bottom right, above the page — not in the header ("have it
+   like a small thing, a tiny toast"). */
+const DOCK_CSS = `.rw-dock{position:fixed;right:18px;bottom:18px;z-index:60;pointer-events:none;display:flex;justify-content:flex-end;max-width:calc(100% - 36px)}
+.rw-dock>*{min-width:0;max-width:min(360px,100%);animation:fadeUp .18s cubic-bezier(.32,.72,0,1) both}
+@media (max-width:760px){.rw-dock{right:12px;left:12px;bottom:12px;justify-content:center}}`;
 
 /* The slot is looked up when the chip draws (after the first poll, so the
    bar is there); nothing to subscribe to, the chip redraws on every poll. */
-const noSubscribe = () => () => undefined;
 
 function Dock({ children }: { children: React.ReactNode }) {
-  const slot = useSyncExternalStore(noSubscribe, () => document.getElementById(TOPBAR_LIVE_SLOT), () => null);
-  const body = (
-    <div className={slot ? "rw-dock" : "rw-dock rw-float"}>
+  return (
+    <div className="rw-dock">
       <style>{DOCK_CSS}</style>
       {children}
     </div>
   );
-  return slot ? createPortal(body, slot) : body;
 }
 
 /**

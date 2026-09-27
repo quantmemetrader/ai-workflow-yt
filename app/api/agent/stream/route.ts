@@ -356,7 +356,7 @@ export async function POST(request: Request) {
            the rest of the turn to it (below). */
         /* "还没传好" / "再补一段" to 剪辑师 with a project open: no cut starts
            this turn, whatever the model makes of the bin (`holdsTheCut`). */
-        const turnContext: Omit<ToolContext, "viewer"> = { ...context, ...ids, asker: viewer, team, privateReply: true, ...(ids.projectId && holdsTheCut(content) ? { holdCut: true } : {}) };
+        const turnContext: Omit<ToolContext, "viewer"> = { ...context, ...ids, ...(conversationId ? { conversationId } : {}), asker: viewer, team, privateReply: true, ...(ids.projectId && holdsTheCut(content) ? { holdCut: true } : {}) };
         /* The files on the message, as lines under it (and, for a video, in
            the project's bin): what the employee reads, what the thread keeps
            and what a reload draws as cards. The first one is also "the file

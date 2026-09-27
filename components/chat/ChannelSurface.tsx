@@ -1071,7 +1071,7 @@ export function ChannelSurface(props: {
                           status row below follows it, the chips on earlier
                           messages about the same film stand down (each
                           would otherwise poll and say the same thing). */}
-                      {m.job && !(liveRow && props.project?.videoProjectId === m.job.videoProjectId) ? (
+                      {m.job && !m.videos?.length && !(liveRow && props.project?.videoProjectId === m.job.videoProjectId) ? (
                         <div>
                           <JobChip job={m.job} zh={zh} project={m.project ?? null} />
                         </div>

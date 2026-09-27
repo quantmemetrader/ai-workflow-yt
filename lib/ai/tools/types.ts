@@ -116,6 +116,8 @@ export type ToolContext = {
   channelId?: string;
   /** The video project on screen. */
   projectId?: string;
+  /** The private conversation the turn runs in, when there is one: a film started here is announced back here. */
+  conversationId?: string;
   /** The research topic on screen. */
   topicId?: string;
   /** The file or document on screen. */

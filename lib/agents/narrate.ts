@@ -1,3 +1,4 @@
+import { answerFilmOrigin } from "@/lib/agents/film-origin";
 import "server-only";
 import { sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
@@ -150,6 +151,9 @@ async function say(job: Job, phase: "start" | "done" | "failed", text: string, r
        project's chat hears only the last one (the live row says "正在自动重试"
        meanwhile), or a clip that cannot be read posts "没成功" three times. */
     const final = phase !== "failed" || job.maxAttempts === undefined || job.attempts >= job.maxAttempts;
+    if (phase !== "start" && final && videoProjectId) {
+      await answerFilmOrigin(videoProjectId, text, rendered?.fileId ?? null).catch((err) => console.error("[narrate] could not answer the chat that asked", err));
+    }
     if (phase !== "start" && final) {
       const wp = await workProjectRowOf(videoProjectId);
       if (wp) {
