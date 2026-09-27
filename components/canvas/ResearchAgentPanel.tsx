@@ -207,6 +207,8 @@ export function ResearchAgentPanel({
             answering={answering}
             zh={zh}
             align="right"
+            quick={3}
+            prefer={home ? [home] : []}
             onPick={(k) => {
               setAsk((d) =>
                 k

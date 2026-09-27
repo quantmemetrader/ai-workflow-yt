@@ -142,6 +142,7 @@ ${threadCss("[data-agent-screen]")}
 [data-agent-screen] .answer b { font-weight: 600; color: #171717; }
 [data-agent-screen] .answer:hover { filter: brightness(0.97); }
 [data-agent-screen] .answer-row:hover { background: #f7f7f5 !important; }
+[data-agent-screen] .answer-face:hover { border-color: #e5e5e5 !important; }
 [data-agent-screen] .hist { display: block; padding: 8px 10px; border-radius: 9px; color: #171717; text-decoration: none; border: 1px solid transparent; }
 [data-agent-screen] .hist:hover { background: #f4f4f5; }
 [data-agent-screen] .hist.on { background: #fff; border-color: #e5e5e5; }

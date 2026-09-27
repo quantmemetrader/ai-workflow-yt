@@ -15,7 +15,25 @@ import { AGENT_KEYS, AGENT_LABELS, AGENT_TINTS, type AgentKey } from "@/lib/agen
 /** A tint at an opacity, when the caller has no helper of its own. */
 const tintAt = (hex: string, a: number) => `${hex}${Math.round(a * 255).toString(16).padStart(2, "0")}`;
 
-export function AnswerPicker({ answering, zh, onPick, soft = tintAt, align = "left" }: { answering: AgentKey | null; zh: boolean; onPick: (k: AgentKey | null) => void; soft?: (hex: string, a: number) => string; align?: "left" | "right" }) {
+export function AnswerPicker({
+  answering,
+  zh,
+  onPick,
+  soft = tintAt,
+  align = "left",
+  quick = 4,
+  prefer = [],
+}: {
+  answering: AgentKey | null;
+  zh: boolean;
+  onPick: (k: AgentKey | null) => void;
+  soft?: (hex: string, a: number) => string;
+  align?: "left" | "right";
+  /** How many faces sit beside the chip for one press; the rest are behind 「+N」. */
+  quick?: number;
+  /** Who comes first among the faces (the employee this screen is about). */
+  prefer?: AgentKey[];
+}) {
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLSpanElement | null>(null);
 
@@ -40,9 +58,13 @@ export function AnswerPicker({ answering, zh, onPick, soft = tintAt, align = "le
     onPick(k);
   };
   const rows: (AgentKey | null)[] = [null, ...AGENT_KEYS];
+  /* A few faces for one press, the rest one press further: "multiple there, then a dropdown". */
+  const order = [...prefer, ...AGENT_KEYS.filter((k) => !prefer.includes(k))].filter((k) => k !== answering);
+  const faces = order.slice(0, Math.max(0, quick));
+  const rest = order.length - faces.length;
 
   return (
-    <span ref={root} style={{ position: "relative", display: "inline-flex", flexShrink: 0 }}>
+    <span ref={root} style={{ position: "relative", display: "inline-flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
       <button
         type="button"
         className="answer"
@@ -58,6 +80,34 @@ export function AnswerPicker({ answering, zh, onPick, soft = tintAt, align = "le
         <b style={{ fontWeight: 600, color: "#171717" }}>{answering ? <AgentName agent={answering} zh={zh} /> : zh ? "你的助理" : "Your agent"}</b>
         <span aria-hidden style={{ fontSize: 10, color: "#8a8a8a", marginLeft: 2 }}>{open ? "▴" : "▾"}</span>
       </button>
+      {faces.map((k) => (
+        <button
+          key={k}
+          type="button"
+          className="answer-face"
+          onClick={() => pick(k)}
+          aria-label={zh ? `问${AGENT_LABELS[k].nameLocal}` : `Ask ${AGENT_LABELS[k].nameEn}`}
+          title={zh ? `问${AGENT_LABELS[k].nameLocal}：${AGENT_LABELS[k].hint}` : `Ask ${AGENT_LABELS[k].nameEn}: ${AGENT_LABELS[k].hintEn}`}
+          style={{ display: "flex", padding: 2, border: "1px solid transparent", borderRadius: 7, background: "transparent", cursor: "pointer", flexShrink: 0 }}
+        >
+          <AgentIcon agent={k} size={22} radius={6} />
+        </button>
+      ))}
+      {rest > 0 ? (
+        <button
+          type="button"
+          className="answer-face"
+          onClick={() => setOpen((v) => !v)}
+          aria-haspopup="listbox"
+          aria-expanded={open}
+          aria-label={zh ? `还有 ${rest} 位同事` : `${rest} more colleagues`}
+          title={zh ? "更多同事" : "More colleagues"}
+          style={{ display: "inline-flex", alignItems: "center", gap: 2, height: 26, padding: "0 7px", border: "1px solid #e6e6e6", borderRadius: 7, background: "#fff", color: "#525252", fontFamily: "inherit", fontSize: 11.5, fontWeight: 600, cursor: "pointer", flexShrink: 0, whiteSpace: "nowrap" }}
+        >
+          +{rest}
+          <span aria-hidden style={{ fontSize: 9, color: "#8a8a8a" }}>{open ? "▴" : "▾"}</span>
+        </button>
+      ) : null}
       {open ? (
         <span
           role="listbox"
