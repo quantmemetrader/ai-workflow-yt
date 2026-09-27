@@ -343,6 +343,22 @@ export function ProjectScreen({
   }
 
   const rendered = p.render?.state === "done" && p.render.fileId ? p.render.fileId : null;
+  /*
+   * A calm page once work is done (the owner: "all stuff which are done,
+   * don't have those as CTA, only maybe retry ones are fine"). A step that
+   * is done shows its result; its buttons fold behind one quiet grey link
+   * (`Disclose`), and only the next step's press stays loud.
+   *
+   *   topicChosen — the topic card shows a chosen topic: its asks fold;
+   *   hasCut      — a cut is on the timeline: adding clips folds;
+   *   videoMade   — rendered, or a cut exists: the script step is behind us;
+   *   scriptDone  — beats, and approved/locked or the film already made.
+   */
+  const topicChosen = Boolean(src?.why || src?.hook || src?.evidence?.length || p.brief);
+  const hasCut = (p.video?.items ?? 0) > 0;
+  const videoMade = Boolean(rendered) || hasCut;
+  const scriptDone = p.beats.length > 0 && (p.script?.status === "locked" || p.steps.find((s) => s.key === "script")?.state === "done" || videoMade);
+  const copyDone = p.status === "done" || Boolean(latest("article"));
   const lastMsg = p.messages[p.messages.length - 1] ?? null;
 
   /** 「撤回，改回进行中」: back in progress, the platforms and links cleared. */
@@ -405,13 +421,15 @@ export function ProjectScreen({
               <span>/</span>
               <span>{p.mode.startsWith("direct:") ? t("直接交代", "Straight to an employee") : t("完整流程", "Full line")}</span>
             </div>
-            <button type="button" onClick={() => p.canManage && setSharing(true)} disabled={!p.canManage} style={{ ...btn(false), height: 30, fontSize: 12 }}>
-              <Icon name={p.access.mode === "everyone" ? "eye" : "lock"} size={13} />
+            {/* Who can see it and the full flow: quiet, low-contrast text,
+                not framed chips (the owner: "全部流程 is too visible"). */}
+            <button type="button" className="pj-quiet" onClick={() => p.canManage && setSharing(true)} disabled={!p.canManage} style={{ ...quiet("#9a9a9a"), height: 26, padding: "0 6px", cursor: p.canManage ? "pointer" : "default" }}>
+              <Icon name={p.access.mode === "everyone" ? "eye" : "lock"} size={12} />
               {p.access.mode === "everyone" ? t("全工作室", "Everyone") : p.access.mode === "private" ? t("仅自己", "Private") : p.access.mode === "groups" ? t("部分分组", "Groups") : t(`${p.access.userIds?.length ?? 0} 人`, `${p.access.userIds?.length ?? 0} people`)}
             </button>
-            <Link prefetch={false} href={`/flow?project=${p.id}`} style={{ ...btn(false), height: 30, fontSize: 12, textDecoration: "none" }}>
-              <Icon name="share" size={13} />
-              {t("全部流程", "Full flow")}
+            <Link prefetch={false} href={`/flow?project=${p.id}`} className="pj-quiet" style={{ ...quiet("#9a9a9a"), height: 26, padding: "0 6px", textDecoration: "none" }}>
+              <Icon name="share" size={12} />
+              <Tr zh="全部流程" en="Full flow" inZh={zh} />
             </Link>
             {p.canManage ? (
               <>
@@ -544,7 +562,7 @@ export function ProjectScreen({
               icon={<AgentIcon agent="research" size={26} radius={7} />}
               title={t("选题", "Topic")}
               sub={src?.label ?? t("你定的题", "Your topic")}
-              right={<Action quiet icon="bulb" label={t("换成已有选题", "Use an existing topic")} onClick={() => setPicking("topics")} disabled={pending} />}
+              right={topicChosen ? undefined : <Action quiet icon="bulb" label={t("换成已有选题", "Use an existing topic")} onClick={() => setPicking("topics")} disabled={pending} />}
             >
               {src?.why || src?.hook || src?.evidence?.length ? (
                 <TopicFacts src={src} zh={zh} />
@@ -552,12 +570,15 @@ export function ProjectScreen({
                 <p style={{ margin: "0 0 10px", fontSize: 13, color: "#525252", lineHeight: 1.6 }}>{cleanCodes(p.brief).slice(0, 300)}</p>
               ) : null}
               <AgentOutput agent="research" msg={latest("research")} working={working("research")} typing={doing("research", "正在查资料", "Looking things up")} zh={zh} onOpen={(m) => setPopup({ title: t("研究员的结果", "The researcher's findings"), body: <Body text={m.body} /> })} />
+              <Disclose zh={zh} on={topicChosen} label={<Tr zh="问研究员 · 更多" en="Ask the researcher · more" inZh={zh} />}>
               <Actions>
                 <Action icon="spark" label={t("补充证据", "Find evidence")} onClick={() => ask("research", t("为这个项目的选题找 3 条真实数据证据（平台、播放或热度、链接），只用工具查到的数字。", "Find 3 real pieces of evidence for this project's topic (platform, views or heat, link), numbers from tools only."))} disabled={pending} />
                 <Action icon="bulb" label={t("3 个角度", "3 angles")} onClick={() => ask("research", t("给这个项目 3 个适合本频道的切入角度，每个一句话，说明为什么。", "Give 3 angles for this project that suit our channel, one line each, with why."))} disabled={pending} />
                 <Action icon="eye" label={t("对标怎么做", "How rivals did it")} onClick={() => ask("research", t("找对标账号做过的同题视频，说出播放和他们的开头怎么写。", "Find rival videos on this topic, with their views and how they open."))} disabled={pending} />
+                {topicChosen ? <Action icon="bulb" label={t("换成已有选题", "Use an existing topic")} onClick={() => setPicking("topics")} disabled={pending} /> : null}
               </Actions>
               <AskBox people={people} zh={zh} placeholder={t("问研究员这个选题…", "Ask the researcher about this topic…")} onSend={(v) => ask("research", v)} disabled={pending} />
+              </Disclose>
             </Workbench>
 
             {/* ---- script ---- */}
@@ -594,23 +615,30 @@ export function ProjectScreen({
                     </button>
                   </div>
                 ) : !working("script") && !draftWriting ? (
-                  <Empty text={t("还没有分镜。让编剧写初稿，或在下面说要什么。", "No beats yet. Ask the writer for a draft, or say what you want below.")} />
+                  videoMade ? (
+                    /* Cut straight from the host's talk: nothing is missing. */
+                    <p style={{ margin: 0, fontSize: 12.5, color: "#7c7c7c", lineHeight: 1.6 }}>{t("这条是按口播直接剪的，没有分镜脚本。", "This one was cut straight from the host's talk; there is no beat script.")}</p>
+                  ) : (
+                    <Empty text={t("还没有分镜。让编剧写初稿，或在下面说要什么。", "No beats yet. Ask the writer for a draft, or say what you want below.")} />
+                  )
                 ) : null}
                 {p.script?.status === "awaiting_approval" ? (
                   <Link prefetch={false} href={`/script/${p.script.id}?tab=approval`} style={{ ...btn(true), textDecoration: "none", marginTop: 10 }}>
                     {t("去批准", "Review and approve")} <Icon name="external" size={11} />
                   </Link>
                 ) : null}
+                <Disclose zh={zh} on={(videoMade && !p.beats.length) || scriptDone} label={p.beats.length ? <Tr zh="改脚本" en="Revise the script" inZh={zh} /> : <Tr zh="写一版脚本" en="Write a script" inZh={zh} />}>
                 <Actions>
                   {/* Straight to the writer with the topic's facts (not a chat
                       message it has to interpret): the draft is written after
                       the response and lands on this card. */}
-                  <Action primary icon="pen" label={p.beats.length ? t("按选题重写", "Rewrite from the topic") : t("写初稿", "Write the draft")} onClick={writeDraft} disabled={pending || draftWriting || p.script?.status === "locked" || !p.script} />
+                  <Action primary={!p.beats.length} icon="pen" label={p.beats.length ? t("按选题重写", "Rewrite from the topic") : t("写初稿", "Write the draft")} onClick={writeDraft} disabled={pending || draftWriting || p.script?.status === "locked" || !p.script} />
                   <Action icon="scissors" label={t("改到 60 秒", "Cut to 60s")} onClick={() => ask("script", t("把项目脚本改到 60 秒以内，保留最有力的三点，写回项目脚本。", "Cut the project's script to under 60 seconds, keeping the three strongest points; write it back."))} disabled={pending || !p.beats.length || p.script?.status === "locked"} />
                   <Action icon="spark" label={t("加强开头", "Stronger hook")} onClick={() => ask("script", t("把项目脚本的开头改得更抓人，前 3 秒给出冲突或数字，写回项目脚本。", "Make the opening grab harder: a conflict or a number in the first 3 seconds; write it back."))} disabled={pending || !p.beats.length || p.script?.status === "locked"} />
                   <Action icon="check" label={t("核查事实", "Fact-check")} onClick={() => ask("research", t("核查这个项目脚本里的每个数字和说法，列出需要改的地方和来源。", "Fact-check every number and claim in this project's script; list what to change, with sources."))} disabled={pending || !p.beats.length} />
                 </Actions>
                 <AskBox people={people} zh={zh} placeholder={t("告诉编剧怎么写或怎么改…", "Tell the writer what to write or change…")} onSend={(v) => ask("script", `${v}（写进项目脚本）`)} disabled={pending || p.script?.status === "locked"} />
+                </Disclose>
               </Workbench>
             ) : null}
 
@@ -634,7 +662,13 @@ export function ProjectScreen({
                     ))}
                   </div>
                 ) : null}
-                <label style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", border: "1.5px dashed #9fb8e8", borderRadius: 12, background: "#f5f8fe", cursor: "pointer" }}>
+                {/* Outside the fold: 「再传」 on the next-step box clicks it. */}
+                <input ref={fileInput} id={`pj-upload-${p.id}`} type="file" multiple accept="video/*,audio/*,image/*" style={{ display: "none" }} onChange={(e) => {
+                  if (e.target.files?.length) void upload(e.target.files);
+                  e.target.value = "";
+                }} />
+                <Disclose zh={zh} on={hasCut} label={<Tr zh="添加素材" en="Add clips" inZh={zh} />}>
+                <label htmlFor={`pj-upload-${p.id}`} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", border: "1.5px dashed #9fb8e8", borderRadius: 12, background: "#f5f8fe", cursor: "pointer" }}>
                   <span style={{ color: "#0f5bd5", display: "flex" }}><Icon name="upload" size={20} /></span>
                   <span style={{ flexGrow: 1 }}>
                     <span style={{ display: "block", fontSize: 13, fontWeight: 600 }}>{t("添加主持人的素材", "Add the host's clips")}</span>
@@ -643,14 +677,12 @@ export function ProjectScreen({
                   {/* White: the whole dashed box is the press, and a black
                       block in it made the card's loudest thing a label. */}
                   <span style={{ ...btn(false), height: 30, fontSize: 12, borderColor: "#c9d8f3", color: "#0f5bd5" }}>{t("选择文件", "Choose files")}</span>
-                  <input ref={fileInput} type="file" multiple accept="video/*,audio/*,image/*" style={{ display: "none" }} onChange={(e) => {
-                    if (e.target.files?.length) void upload(e.target.files);
-                    e.target.value = "";
-                  }} />
                 </label>
                 <Actions>
                   <Action icon="film" label={t("从已上传的素材里选", "Choose from uploaded clips")} onClick={() => setPicking("clips")} disabled={pending} />
                 </Actions>
+                {hasCut ? <AskBox people={people} zh={zh} placeholder={t("描述想从素材库找的画面，例如：交易屏幕、香港夜景…", "Describe stock shots to find, e.g. trading screens, Hong Kong at night…")} onSend={(v) => ask("video", `从素材库找这类画面放进项目素材箱：${v}`)} disabled={pending} /> : null}
+                </Disclose>
                 {/* Clips in, and no film being made or out of them yet: the
                     next press is here, on the card the clips landed on —
                     loud right after an upload — with 传完自动开始剪 beside
@@ -681,7 +713,7 @@ export function ProjectScreen({
                   </p>
                 ) : null}
                 {working("video") && !renderLive ? <Working agent="video" zh={zh} typing={doing("video", "正在找画面", "Finding footage")} /> : null}
-                <AskBox people={people} zh={zh} placeholder={t("描述想从素材库找的画面，例如：交易屏幕、香港夜景…", "Describe stock shots to find, e.g. trading screens, Hong Kong at night…")} onSend={(v) => ask("video", `从素材库找这类画面放进项目素材箱：${v}`)} disabled={pending} />
+                {hasCut ? null : <AskBox people={people} zh={zh} placeholder={t("描述想从素材库找的画面，例如：交易屏幕、香港夜景…", "Describe stock shots to find, e.g. trading screens, Hong Kong at night…")} onSend={(v) => ask("video", `从素材库找这类画面放进项目素材箱：${v}`)} disabled={pending} />}
               </Workbench>
             ) : null}
 
@@ -691,8 +723,9 @@ export function ProjectScreen({
                 while it cuts; "剪辑完成，还没渲染" with 渲染 in black once it
                 has (this used to read "还没有成片" for ever); a progress bar
                 with the minutes left while it renders; the player, 下载 and
-                「已发布 · 标记完成」 once it is out; what went wrong, and 重试,
-                when it did not. */}
+                分享 once it is out (making it again folds into a quiet 重做;
+                「已发布 · 标记完成」 is the step-5 card's); what went wrong,
+                and 重试 in black, when it did not. */}
             <Workbench
               icon={<AgentIcon agent="video" size={26} radius={7} />}
               title={t("成片", "The video")}
@@ -796,16 +829,7 @@ export function ProjectScreen({
                         SRT
                       </a>
                     ) : null}
-                    {p.canPublish && p.status === "active" ? (
-                      <>
-                        <span style={{ flexGrow: 1 }} />
-                        <button type="button" onClick={() => setPublishing((v) => (v === "video" ? null : "video"))} disabled={pending} aria-expanded={publishing === "video"} data-pub-opener="" style={{ ...btn(false), height: 32, gap: 7, borderColor: PUBLISHED_TONE.line, color: PUBLISHED_TONE.ink }}>
-                          <PublishedCheck size={14} />
-                          <Tr zh="已发布 · 标记完成" en="Mark as published" inZh={zh} />
-                        </button>
-                      </>
-                    ) : null}
-                    {publishing === "video" ? publishPopover("right") : null}
+                    {/* 「已发布 · 标记完成」 lives on the step-5 card only. */}
                   </div>
                 </div>
               ) : null}
@@ -879,6 +903,7 @@ export function ProjectScreen({
                   </div>
                 ) : null
               ) : null}
+              <Disclose zh={zh} on={Boolean(rendered)} label={<Tr zh="重做" en="Redo" inZh={zh} />}>
               {showVoiceBox ? (<>
               {/* AI 配音: the script's 旁白 read by one of the studio's voices, the cut timed to it. */}
               <div style={{ padding: "10px 12px", borderRadius: 12, border: "1px solid #ececec", background: aiVoice ? "#fafafa" : "#ffffff", marginBottom: 10 }}>
@@ -908,7 +933,9 @@ export function ProjectScreen({
               {/* Held while the director or a render runs, each saying what
                   is running, so nobody starts a second film over the first. */}
               <Actions>
-                <Action primary icon="spark" label={busyAction === "direct" ? t("开始中…", "Starting…") : directing ? t("剪辑师正在剪…", "The editor is cutting…") : renderLive ? renderingLabel : t("按描述一键成片", "Make it from this")} onClick={() => runTool("direct", t("一键成片", "one-go video"), async () => { const r = await fetch(`/api/projects/${p.id}/one-go`, { method: "POST", headers: { "content-type": "application/json" }, body: oneGoBody() }); const j = (await r.json().catch(() => ({}))) as { error?: string }; return r.ok ? {} : { error: j.error ?? t("没能开始", "Could not start") }; })} disabled={pending || busyLive || !videoPrompt.trim()} />
+                {/* Black only while it is the next press: with clips in, the
+                    clips card's 「开始剪」 is; with a cut, 渲染; with a film, nothing. */}
+                <Action primary={!rendered && !cutReady && !p.video?.clips} icon="spark" label={busyAction === "direct" ? t("开始中…", "Starting…") : directing ? t("剪辑师正在剪…", "The editor is cutting…") : renderLive ? renderingLabel : t("按描述一键成片", "Make it from this")} onClick={() => runTool("direct", t("一键成片", "one-go video"), async () => { const r = await fetch(`/api/projects/${p.id}/one-go`, { method: "POST", headers: { "content-type": "application/json" }, body: oneGoBody() }); const j = (await r.json().catch(() => ({}))) as { error?: string }; return r.ok ? {} : { error: j.error ?? t("没能开始", "Could not start") }; })} disabled={pending || busyLive || !videoPrompt.trim()} />
                 <Action icon="scissors" label={directing ? t("剪辑中…", "Cutting…") : t("自动粗剪", "Auto rough cut")} onClick={() => p.video && runTool("autoedit", t("自动粗剪", "auto rough cut"), () => autoEditAction(p.video!.id, zh ? "zh-CN" : "en"))} disabled={pending || busyLive || !p.video?.clips} />
                 {/* Rendered already: the same cut again, or the other shape.
                     Not rendered: the render buttons are the panel above. */}
@@ -927,6 +954,7 @@ export function ProjectScreen({
                   <Action icon="spark" label={t("换开头", "New opening")} onClick={() => ask("video", t("换一个更抓人的开头，重新渲染。", "Try a stronger opening, and render again."))} disabled={pending} />
                 </Actions>
               ) : null}
+              </Disclose>
               <AgentOutput agent="video" msg={latest("video")} working={working("video") && !busyLive} typing={doing("video", "正在剪辑", "Editing")} zh={zh} compact onOpen={(m) => setPopup({ title: t("剪辑师说", "The video agent says"), body: <Body text={m.body} /> })} />
             </Workbench>
 
@@ -943,8 +971,11 @@ export function ProjectScreen({
                 disabled={pending}
               />
               <AgentOutput agent="article" msg={latest("article")} working={working("article")} typing={doing("article", "正在写稿", "Writing")} zh={zh} copyable onOpen={(m) => setPopup({ title: t("文案", "Copy"), body: <Body text={m.body} copy /> })} />
+              <Disclose zh={zh} on={copyDone} label={<Tr zh="再写文案" en="More copy" inZh={zh} />}>
               <Actions>
-                <Action primary icon="pen" label={t("写各平台文案", "Platform copy")} onClick={() => ask("article", t("为这个项目写 YouTube、小红书、抖音、微博的标题、简介和标签，各一版。", "Write titles, descriptions and tags for YouTube, Rednote, Douyin and Weibo for this project."))} disabled={pending} />
+                {/* Framed, not black: the one loud press at this point is the
+                    step-5 card's 「已发布 · 标记完成」. */}
+                <Action icon="pen" label={t("写各平台文案", "Platform copy")} onClick={() => ask("article", t("为这个项目写 YouTube、小红书、抖音、微博的标题、简介和标签，各一版。", "Write titles, descriptions and tags for YouTube, Rednote, Douyin and Weibo for this project."))} disabled={pending} />
                 <Action icon="bulb" label={t("封面标题", "Thumbnail lines")} onClick={() => ask("article", t("给这个项目 5 个封面大字标题，每个不超过 10 个字。", "Give 5 thumbnail headlines for this project, 10 characters or fewer each."))} disabled={pending} />
                 <Action icon="comment" label={t("置顶评论", "Pinned comment")} onClick={() => ask("article", t("写一条引导讨论的置顶评论。", "Write a pinned comment that starts a discussion."))} disabled={pending} />
                 {/* 「标记交付」 was a bare status toggle here; marking it done
@@ -952,6 +983,7 @@ export function ProjectScreen({
                     it went. */}
               </Actions>
               <AskBox people={people} zh={zh} placeholder={t("文案要求，例如：更口语、加 3 个话题标签…", "What the copy should be, e.g. more casual, add 3 hashtags…")} onSend={(v) => ask("article", v)} disabled={pending} />
+              </Disclose>
             </Workbench>
           </Board>
         </div>
@@ -1203,6 +1235,28 @@ function Action({ icon, label, onClick, disabled, primary = false, quiet: isQuie
       <Icon name={icon} size={13} />
       {label}
     </button>
+  );
+}
+
+/**
+ * The fold for a done step's buttons: while `on`, its children hide behind
+ * one quiet grey text link (no frame) that opens them; while not, they show
+ * as they always did. Closed on the first render, so the server and the
+ * browser agree.
+ */
+function Disclose({ zh, on, label, children }: { zh: boolean; on: boolean; label: React.ReactNode; children: React.ReactNode }) {
+  const [open, setOpen] = React.useState(false);
+  if (!on) return <>{children}</>;
+  return (
+    <>
+      <div style={{ display: "flex", marginTop: 8 }}>
+        <button type="button" className="pj-quiet" data-disclose="" aria-expanded={open} onClick={() => setOpen((v) => !v)} title={open ? (zh ? "收起" : "Collapse") : undefined} style={{ ...quiet("#8a8a8a"), height: 26, padding: "0 8px", marginLeft: -8, gap: 4 }}>
+          {label}
+          <span aria-hidden style={{ fontSize: 10, lineHeight: 1 }}>{open ? "\u25B4" : "\u25BE"}</span>
+        </button>
+      </div>
+      {open ? children : null}
+    </>
   );
 }
 
@@ -1717,11 +1771,12 @@ function Delivery({
       <span style={{ flex: "1 1 200px", minWidth: 0 }}>
         <span style={{ display: "block", fontSize: 13, fontWeight: 600 }}>{t("成片好了", "The cut is ready")}</span>
         <span style={{ display: "block", fontSize: 11.5, color: "#7c7c7c", marginTop: 2, lineHeight: 1.5 }}>
-          {t("发出去后按这里，项目就算完成。", "Posted it? Press this and the project is done.")}
+          {t("发出去后，在第 5 步标记完成。", "Posted it? Mark it done on step 5.")}
         </span>
       </span>
-      <button type="button" onClick={onToggle} disabled={disabled} aria-expanded={open} data-pub-opener="" style={{ ...btn(true), height: 34, gap: 7 }}>
-        <PublishedCheck size={15} />
+      {/* The loud one is on the step-5 card; this is the same press, quiet. */}
+      <button type="button" className="pj-quiet" onClick={onToggle} disabled={disabled} aria-expanded={open} data-pub-opener="" style={{ ...quiet("#8a8a8a"), height: 28, padding: "0 8px" }}>
+        <Icon name="check" size={12} />
         <Tr zh="已发布 · 标记完成" en="Mark as published" inZh={zh} />
       </button>
       {open ? popover("right") : null}
