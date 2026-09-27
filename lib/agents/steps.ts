@@ -218,6 +218,8 @@ const TOOL_WORDS: Record<string, { zh: string; en: string }> = {
  */
 export function scrubToolNames(text: string): string {
   const zh = /[\u3400-\u9fff]/.test(text);
+  /* An internal id in brackets after the thing it names (「购买麦克风（req_01m3j0…）」) is noise to a reader: the name is already there. */
+  text = text.replace(/\s*[（(]\s*(?:申请编号|编号|id|ID)?[:：]?\s*`?[a-z]{2,5}_[0-9a-z]{20,}`?\s*[）)]/g, "");
   return text.replace(/`?\b([a-z]+(?:_[a-z]+)+)\b`?(\s*[（(](?:AI\s*)?beat[）)])?/g, (all, name: string) => {
     if (!(name in TOOL_STEPS)) return all;
     const w = TOOL_WORDS[name];
