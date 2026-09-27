@@ -649,7 +649,7 @@ export function AgentScreen({
                     <AgentRow key={m.id} message={m} zh={zh} locale={locale} />
                   ),
                 )}
-                <ChatLiveWork conversationId={conversationId} settled={messages.filter((x) => x.role === "assistant" && x.status !== "streaming").length} zh={zh} />
+                <ChatLiveWork conversationId={conversationId} settled={messages.filter((x) => x.role === "assistant" && x.status !== "streaming").length} zh={zh} shown={messages.flatMap((x) => (x.videos ?? []).map((v) => v.id))} />
                 {/* A question left without an answer (the answer stopped before a
                     word, or never came): one press answers it again — the site
                     recovers, the person does not have to type it twice. */}
