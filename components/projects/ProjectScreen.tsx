@@ -397,6 +397,7 @@ export function ProjectScreen({
     />
   );
   const skipped = (k: ProjectStep["key"]) => p.steps.find((s) => s.key === k)?.state === "skipped";
+  const stepDone = (k: ProjectStep["key"]) => p.steps.find((s) => s.key === k)?.state === "done";
   /* Already 0–100 (`workProjectDetail`). */
   const pct = p.render?.progress ?? 0;
   /* What a held button says while a render runs: queued, or how far. */
@@ -656,6 +657,9 @@ export function ProjectScreen({
                 press in the card's header rather than one more framed
                 button in the row (where it wrapped onto a line of its own). */}
             <Workbench
+              anchor={STEP_ANCHOR.topic}
+              done={stepDone("topic")}
+              zh={zh}
               icon={<AgentIcon agent="research" size={26} radius={7} />}
               title={t("选题", "Topic")}
               sub={src?.label ?? t("你定的题", "Your topic")}
@@ -681,6 +685,9 @@ export function ProjectScreen({
             {/* ---- script ---- */}
             {!skipped("script") ? (
               <Workbench
+                anchor={STEP_ANCHOR.script}
+                done={stepDone("script")}
+                zh={zh}
                 icon={<AgentIcon agent="script" size={26} radius={7} />}
                 title={t("脚本", "Script")}
                 sub={p.beats.length ? t(`${p.beats.length} 个分镜 · ${scriptStatus(p.script?.status ?? "", zh)}`, `${p.beats.length} beats · ${scriptStatus(p.script?.status ?? "", zh)}`) : t("还没写", "Not written yet")}
@@ -764,7 +771,9 @@ export function ProjectScreen({
             {/* ---- clips ---- */}
             {!skipped("clips") ? (
               <Workbench
-                anchor="clips"
+                anchor={STEP_ANCHOR.clips}
+                done={stepDone("clips")}
+                zh={zh}
                 icon={<span style={{ width: 26, height: 26, borderRadius: 7, background: "#171717", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center" }}><Icon name="clapper" size={15} /></span>}
                 title={t("素材", "Clips")}
                 sub={p.video ? t(`${p.video.clips} 段 · 时间线 ${p.video.items} 段`, `${p.video.clips} clips · ${p.video.items} on the timeline`) : "—"}
@@ -846,6 +855,9 @@ export function ProjectScreen({
                 「已发布 · 标记完成」 is the step-5 card's); what went wrong,
                 and 重试 in black, when it did not. */}
             <Workbench
+              anchor={STEP_ANCHOR.edit}
+              done={stepDone("edit")}
+              zh={zh}
               icon={<AgentIcon agent="video" size={26} radius={7} />}
               title={t("成片", "The video")}
               sub={
@@ -1078,7 +1090,7 @@ export function ProjectScreen({
             </Workbench>
 
             {/* ---- captions & delivery ---- */}
-            <Workbench icon={<AgentIcon agent="article" size={26} radius={7} />} title={t("文案与交付", "Captions & delivery")} sub={p.status === "done" ? t("已发布", "Published") : t("标题、简介、标签", "Titles, descriptions, tags")}>
+            <Workbench anchor={STEP_ANCHOR.deliver} done={stepDone("deliver")} zh={zh} icon={<AgentIcon agent="article" size={26} radius={7} />} title={t("文案与交付", "Captions & delivery")} sub={p.status === "done" ? t("已发布", "Published") : t("标题、简介、标签", "Titles, descriptions, tags")}>
               <Delivery
                 project={p}
                 zh={zh}
@@ -1312,12 +1324,21 @@ function Board({ children }: { children: React.ReactNode }) {
  * goes to `/projects/<id>#clips` — and the card is outlined for a moment when
  * it is the one opened (`:target` in `PROJECT_CSS`).
  */
-function Workbench({ icon, title, sub, right, children, anchor }: { icon: React.ReactNode; title: string; sub?: string; right?: React.ReactNode; children: React.ReactNode; anchor?: string }) {
+function Workbench({ icon, title, sub, right, children, anchor, done = false, zh = true }: { icon: React.ReactNode; title: string; sub?: string; right?: React.ReactNode; children: React.ReactNode; anchor?: string; done?: boolean; zh?: boolean }) {
   return (
     <section id={anchor} className={anchor ? "pj-card" : undefined} style={{ background: "#fff", border: "1px solid #e2e2e2", borderRadius: 14, padding: "14px 16px 16px", minWidth: 0, boxShadow: "0 1px 2px rgba(0,0,0,0.03)", scrollMarginTop: 16 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14, minWidth: 0 }}>
         {icon}
         <span style={{ fontSize: 14.5, fontWeight: 600 }}>{title}</span>
+        {/* The step this card is for is done: the same green tick as the flow above. */}
+        {done ? (
+          <span title={zh ? "这一步已完成" : "This step is done"} style={{ display: "inline-flex", alignItems: "center", gap: 4, flexShrink: 0, fontSize: 11.5, fontWeight: 600, color: "#1e7a4f" }}>
+            <span style={{ width: 18, height: 18, borderRadius: 9, background: "#278f5e", color: "#fff", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+              <Icon name="check" size={11} strokeWidth={2.8} />
+            </span>
+            {zh ? "已完成" : "Done"}
+          </span>
+        ) : null}
         {sub ? <span style={{ fontSize: 12, color: "#999999", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{sub}</span> : null}
         <span style={{ flexGrow: 1 }} />
         {right}
@@ -1700,6 +1721,20 @@ function ChatDrawer({ project: p, zh, people, onClose }: { project: ProjectDetai
   );
 }
 
+/** Each step's card below the flow. 素材 keeps "clips": links elsewhere go to `/projects/<id>#clips`. */
+const STEP_ANCHOR: Record<ProjectStep["key"], string> = { topic: "step-topic", script: "step-script", clips: "clips", edit: "step-edit", deliver: "step-deliver" };
+
+/** To a step's card, outlined for a moment so the eye lands on it (the same outline `#clips` gets). */
+function jumpToCard(key: ProjectStep["key"]) {
+  const el = document.getElementById(STEP_ANCHOR[key]);
+  if (!el) return;
+  el.scrollIntoView({ behavior: "smooth", block: "start" });
+  el.classList.remove("pj-flash");
+  void el.offsetWidth;
+  el.classList.add("pj-flash");
+  window.setTimeout(() => el.classList.remove("pj-flash"), 2500);
+}
+
 type FlowMove = { label: string; onClick?: () => void; disabled?: boolean; hint?: string };
 type FlowBack = { to: string; send: (note: string) => Promise<void> };
 
@@ -1756,27 +1791,50 @@ function StepFlow({
               {!last ? <span aria-hidden style={{ position: "absolute", top: 38, bottom: -12, left: 11, width: 2, borderRadius: 1, background: done || skipped ? "#bfe3cf" : "#ececea" }} /> : null}
             </div>
             <div style={{ position: "relative", minWidth: 0, padding: isNow ? "12px 0 14px" : "12px 0", borderBottom: last ? 0 : "1px solid #f3f3f1" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0, flexWrap: "wrap", rowGap: 4 }}>
+              {/* The row's head goes to the step's card below: "when pressed, take the user to that card". */}
+              <div
+                role="link"
+                tabIndex={skipped ? -1 : 0}
+                className={skipped ? undefined : "pj-flow-head"}
+                title={skipped ? undefined : t(`看「${s.label}」`, `Go to ${s.label}`)}
+                onClick={skipped ? undefined : () => jumpToCard(s.key)}
+                onKeyDown={skipped ? undefined : (e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    jumpToCard(s.key);
+                  }
+                }}
+                style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0, flexWrap: "wrap", rowGap: 4 }}
+              >
                 <span style={{ fontSize: 13.5, fontWeight: 600, color: dim ? "#a3a3a3" : "#171717", textDecoration: skipped ? "line-through" : undefined, whiteSpace: "nowrap" }}>{s.label}</span>
-                <span style={{ display: "inline-flex", alignItems: "center", gap: 5, opacity: dim ? 0.6 : 1, minWidth: 0 }}>
-                  {k ? (
-                    <>
-                      <AgentIcon agent={k} size={18} radius={5} />
-                      <span style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: 0.3, lineHeight: "14px", padding: "0 4px", borderRadius: 4, color: AGENT_COLORS[k], background: AGENT_TINTS[k] }}>AI</span>
-                      <span style={{ fontSize: 12, fontWeight: 500, color: AGENT_COLORS[k], whiteSpace: "nowrap" }}>
-                        <AgentName agent={k} zh={zh} />
-                      </span>
-                    </>
-                  ) : (
-                    <>
-                      {who ? <PersonAvatar id={who.id} url={who.avatarUrl} name={who.name} size={18} radius={9} /> : <AgentIcon agent={null} size={18} radius={5} />}
-                      <span style={{ fontSize: 12, fontWeight: 500, color: "#525252", whiteSpace: "nowrap" }}>
-                        {who ? who.name : t("主持人", "The host")}
-                        {mine ? <span style={{ fontWeight: 400, color: "#a3a3a3" }}>{t("（你）", " (you)")}</span> : null}
-                      </span>
-                    </>
-                  )}
-                </span>
+                {/* Who does it, told apart at a glance: an AI employee is a
+                    square pill in its own colour with the spark (「AI 员工 ·
+                    编剧」); a person is a round, warm one with their face
+                    (「真人 · Catherine」) — "more differentiation between AI
+                    and human". */}
+                {k ? (
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 24, padding: "0 9px 0 3px", borderRadius: 7, background: AGENT_TINTS[k], color: AGENT_COLORS[k], opacity: dim ? 0.55 : 1, minWidth: 0, whiteSpace: "nowrap" }}>
+                    <AgentIcon agent={k} size={18} radius={5} />
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 11, fontWeight: 700, letterSpacing: 0.2 }}>
+                      <Icon name="spark" size={11} />
+                      {t("AI 员工", "AI")}
+                    </span>
+                    <span style={{ width: 1, height: 11, background: "currentColor", opacity: 0.3 }} />
+                    <span style={{ fontSize: 12, fontWeight: 600 }}>
+                      <AgentName agent={k} zh={zh} />
+                    </span>
+                  </span>
+                ) : (
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 24, padding: "0 10px 0 3px", borderRadius: 999, background: "#fff4df", border: "1px solid #f4ddb0", color: "#95590a", opacity: dim ? 0.55 : 1, minWidth: 0, whiteSpace: "nowrap", boxSizing: "border-box" }}>
+                    {who ? <PersonAvatar id={who.id} url={who.avatarUrl} name={who.name} size={18} radius={9} /> : <AgentIcon agent={null} size={18} radius={9} />}
+                    <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: 0.2 }}>{t("真人", "Person")}</span>
+                    <span style={{ width: 1, height: 11, background: "currentColor", opacity: 0.3 }} />
+                    <span style={{ fontSize: 12, fontWeight: 600, color: "#6b4208" }}>
+                      {who ? who.name : t("主持人", "The host")}
+                      {mine ? <span style={{ fontWeight: 400, color: "#b07a2c" }}>{t("（你）", " (you)")}</span> : null}
+                    </span>
+                  </span>
+                )}
                 {isNow ? <NowPill state={s.state} zh={zh} /> : null}
                 <span style={{ marginLeft: "auto", fontSize: 12, color: done ? "#6b6b6b" : isNow ? "#525252" : "#b3b3b3", minWidth: 0, maxWidth: "55%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "inline-flex", alignItems: "center", gap: 6 }}>
                   {out ? (
@@ -2175,9 +2233,12 @@ function quiet(color: string): React.CSSProperties {
 }
 
 const PROJECT_CSS = `
-.pj-card:target { animation: pjTarget 2.4s ease-out 1; }
+.pj-card:target, .pj-card.pj-flash { animation: pjTarget 2.4s ease-out 1; }
+.pj-flow-head { cursor: pointer; margin: -4px -8px; padding: 4px 8px; border-radius: 8px; transition: background-color .15s ease; }
+.pj-flow-head:hover { background: #f7f7f5; }
+.pj-flow-head:focus-visible { outline: 2px solid #9fb8e8; outline-offset: 0; }
 @keyframes pjTarget { 0%, 40% { box-shadow: 0 0 0 3px rgba(15,91,213,.28); border-color: #9fb8e8; } 100% { box-shadow: 0 1px 2px rgba(0,0,0,0.03); } }
-@media (prefers-reduced-motion: reduce) { .pj-card:target { animation: none; border-color: #9fb8e8; } }
+@media (prefers-reduced-motion: reduce) { .pj-card:target, .pj-card.pj-flash { animation: none; border-color: #9fb8e8; } }
 .pj-quiet { transition: background-color .15s ease, color .15s ease; }
 .pj-quiet:hover:not(:disabled) { background: rgba(0,0,0,0.045) !important; color: #171717 !important; }
 .pj-danger:hover:not(:disabled) { background: #fdecea !important; color: #b42318 !important; }
