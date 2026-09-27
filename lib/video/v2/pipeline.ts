@@ -728,8 +728,23 @@ async function pickHighlights<T extends { id: string; startMs: number; endMs: nu
   const m = raw.match(/\{[\s\S]*\}/);
   const ids = new Set<string>(m ? ((JSON.parse(m[0]) as { ids?: unknown }).ids as string[] | undefined)?.filter((x) => typeof x === "string") ?? [] : []);
   const chosen = sentences.filter((s) => ids.has(s.id));
-  /* Near the length: trim from the end if the model went over. */
+  /* Short of the length (models pick sparingly): add the sentence just
+     before a chosen one — usually its setup ("调用量6月就已经超过美国了"
+     before "7月末达到了63.5%"; "蒸馏能够压缩现有的知识" before "但是创造不了
+     新的能力") — until the short is near its length. */
   let total = chosen.reduce((n, s) => n + (s.endMs - s.startMs), 0);
+  for (let round = 0; round < 3 && total < targetMs * 0.8; round++) {
+    for (const c of [...chosen].reverse()) {
+      if (total >= targetMs * 0.8) break;
+      const i = sentences.indexOf(c);
+      const prev = i > 0 ? sentences[i - 1] : null;
+      if (!prev || ids.has(prev.id) || total + (prev.endMs - prev.startMs) > targetMs * 1.1) continue;
+      ids.add(prev.id);
+      total += prev.endMs - prev.startMs;
+    }
+    chosen.splice(0, chosen.length, ...sentences.filter((s) => ids.has(s.id)));
+  }
+  /* Near the length: trim from the end if the model went over. */
   while (chosen.length > 1 && total > targetMs * 1.2) {
     const last = chosen.splice(chosen.length - 2, 1)[0];
     total -= last.endMs - last.startMs;
