@@ -14,7 +14,7 @@ import { visibleProject } from "@/lib/projects/service";
 import { canEditProject } from "@/lib/video/access";
 import { agentTag } from "@/lib/agents/catalog";
 import { setFileAccess } from "@/lib/files/access";
-import { binVideo } from "@/lib/chat/bin";
+import { binImage, binVideo } from "@/lib/chat/bin";
 import { holdsTheCut, looksLikeDone } from "@/lib/projects/done-phrases";
 import { startCutForProject } from "@/lib/projects/start-cut";
 import { armAutoCut } from "@/lib/projects/live";
@@ -154,7 +154,8 @@ export async function sendChannelMessage(
    * (no edit right, still uploading) is still attached; only the bin is
    * skipped.
    */
-  const videos = described.filter((f) => f.kind === "video");
+  /* Pictures too: each becomes a five-second shot in the bin (`binImage`). */
+  const videos = described.filter((f) => f.kind === "video" || f.kind === "image");
   /* The project this chat belongs to, if it is a project's own: what a
      dropped video goes into, and what "传好了" typed here is about. */
   const [wp] = await db
@@ -169,7 +170,7 @@ export async function sendChannelMessage(
       for (const f of videos) {
         try {
           /* Once: a take already in the bin is named, not added again. */
-          const { clipId, existed } = await binVideo(viewer, wp.videoProjectId, f.fileId);
+          const { clipId, existed } = f.kind === "image" ? await binImage(viewer, wp.videoProjectId, f.fileId) : await binVideo(viewer, wp.videoProjectId, f.fileId);
           binned.push({ fileId: f.fileId, clipId });
           if (!existed) landed++;
         } catch (err) {

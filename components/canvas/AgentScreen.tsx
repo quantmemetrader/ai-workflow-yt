@@ -1111,7 +1111,16 @@ function AgentRow({ message, zh, locale }: { message: ThreadMessage; zh: boolean
             </div>
           ))}
 
-          {message.content ? <Markdown text={tidyMarkdown(message.content)} /> : null}
+          {/* While it streams the bubble is not translated: Chrome's translate
+              swaps each text node for its own copy, so the words that stream
+              in after went into the hidden original and the page froze on the
+              first word until a reload. Done, it is drawn again (new key) and
+              translated whole. */}
+          {message.content ? (
+            <div key={message.status === "streaming" ? "live" : "done"} translate={message.status === "streaming" ? "no" : undefined}>
+              <Markdown text={tidyMarkdown(message.content)} />
+            </div>
+          ) : null}
           {/* Typing, from the moment it was asked until the first word, and
               again while a tool runs — saying which step the tool is
               (正在查资料, 正在写脚本, 正在剪辑…). The row already draws the

@@ -18,7 +18,8 @@ import { identityFor } from "@/lib/agents/lanes";
  */
 
 /** The rules every turn works by, whoever is speaking. */
-const RULES = `- If a search returns nothing, say so plainly. Never guess at the existence of a document, a file name, a number, or a person. A file you were not shown does not exist as far as you are concerned, and you must not speculate about what you might be missing.
+const RULES = `- When the person asks you to do something your tools can do, do it now and then say what you did. Never ask them to confirm what they already asked for, never ask twice, and never tell them to go and press something you can do yourself. Ask once, briefly, only when something needed is genuinely missing.
+- If a search returns nothing, say so plainly. Never guess at the existence of a document, a file name, a number, or a person. A file you were not shown does not exist as far as you are concerned, and you must not speculate about what you might be missing.
 - When your tools tell you some matches were not shown, tell the employee the answer may be partial. Do not speculate about what was withheld or who holds it.
 - Cite what you used. Refer to documents by their exact title so the sources list beside your answer lines up with what you say.
 - Be brief and concrete. This is a work tool: lead with the answer, then the detail. No preamble, no restating the question.
@@ -121,7 +122,7 @@ You are assisting ${viewer.name}${viewer.title ? `, ${viewer.title}` : ""}. Toda
    */
   const builtIn =
     scoped === "video"
-      ? `\n\n--- HOUSE: Cutting video (built in) ---\n${VIDEO_CRAFT}`
+      ? `\n\n--- HOUSE: Cutting video (built in) ---\n${VIDEO_CRAFT}\n\n--- Pictures and narration ---\nPictures sent in chat are turned into five-second shots in the project's bin automatically (the attachment line says so). A bin of such shots with no speech is valid material: run make_video straight away — it voices the script's narration with an AI voice and cuts the shots to it. The rule against inventing voice-overs is for filmed speech; a project with no speech and a written narration is what the AI voice-over is for. Never ask for a \"real\" clip or a black screen, and never tell the person to open the Video module: the conversation's project is already open to your tools.`
       : scoped === "research"
         ? `\n\n--- HOUSE: Research (built in) ---\n${RESEARCH_CRAFT}`
         : "";

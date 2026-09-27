@@ -29,7 +29,9 @@ echo "==> build"
 # Into .next-build, never where the live server reads (next.config.ts
 # distDir), with an id per deploy for Next's skew protection.
 release="$(date -u +%Y%m%d%H%M%S)-$(git rev-parse --short HEAD)"
-NEXT_DEPLOYMENT_ID="$release" npx next build
+# Lowest CPU and IO priority: the build uses every core for ~3 minutes, and
+# live chats streaming on the same box stalled while it ran.
+NEXT_DEPLOYMENT_ID="$release" nice -n 19 ionice -c3 npx next build
 
 echo "==> stage release ${release}"
 # Moves the build into releases/<id>, keeps every older script an open tab

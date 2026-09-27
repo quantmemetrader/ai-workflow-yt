@@ -12,7 +12,7 @@ import { agentViewer } from "@/lib/agents";
 import { CUT_TOOLS, MAX_REPLIES, findStartClaims, later } from "@/lib/agents/mentions";
 import { attachmentsFor, channelById } from "@/lib/chat/service";
 import { bridgeState } from "@/lib/chat/conversation-project";
-import { binVideo } from "@/lib/chat/bin";
+import { binImage, binVideo } from "@/lib/chat/bin";
 import { projectById } from "@/lib/video/service";
 import { canEditProject } from "@/lib/video/access";
 import { relationOn, share } from "@/lib/authz/rebac";
@@ -63,7 +63,7 @@ async function describeAttachments(viewer: Viewer, conversationId: string, raw: 
   }
 
   let bin: { videoProjectId: string; title: string } | null = null;
-  if (files.some((f) => f.kind === "video")) {
+  if (files.some((f) => f.kind === "video" || f.kind === "image")) {
     try {
       const state = await bridgeState(viewer, conversationId, { videoProjectId: hints.videoProjectId ?? null });
       if (state?.project) {
@@ -78,11 +78,12 @@ async function describeAttachments(viewer: Viewer, conversationId: string, raw: 
   const lines: string[] = [];
   for (const f of files) {
     let note = "";
-    if (f.kind === "video" && bin) {
+    if ((f.kind === "video" || f.kind === "image") && bin) {
       try {
-        /* Once: a take already in the bin is named, not added again. */
-        const { clipId } = await binVideo(viewer, bin.videoProjectId, f.id);
-        note = ` · 已加入项目素材《${bin.title}》(clip id ${clipId})`;
+        /* Once: a take already in the bin is named, not added again. A
+           picture goes in as a five-second shot (`binImage`). */
+        const { clipId } = f.kind === "image" ? await binImage(viewer, bin.videoProjectId, f.id) : await binVideo(viewer, bin.videoProjectId, f.id);
+        note = f.kind === "image" ? ` · 已做成 5 秒画面放进项目素材《${bin.title}》(clip id ${clipId})` : ` · 已加入项目素材《${bin.title}》(clip id ${clipId})`;
       } catch (err) {
         console.error("[agent] could not put an attached video in the project's bin", err);
       }
@@ -299,7 +300,26 @@ export async function POST(request: Request) {
       let speakerSaved: Promise<unknown> | null = null;
 
       try {
-        const ids = await checkedIds;
+        const screen = await checkedIds;
+        /*
+         * A private chat that already belongs to a project (编剧 wrote its
+         * script here, or it was linked) works in that project when the
+         * screen names none. Without this 剪辑师 answered "No video project is
+         * open. Open one in the Video module" to "@剪辑师 make this video" —
+         * the owner: "fix this so we can make videos directly from DM".
+         */
+        let ids = screen;
+        if (!screen.projectId && conversationId) {
+          const state = await bridgeState(viewer, conversationId).catch(() => null);
+          if (state?.project) {
+            const [wp] = await db
+              .select({ id: workProjects.id, videoProjectId: workProjects.videoProjectId, scriptId: workProjects.scriptId })
+              .from(workProjects)
+              .where(and(eq(workProjects.id, state.project.id), eq(workProjects.tenantId, viewer.tenantId)))
+              .limit(1);
+            if (wp?.videoProjectId) ids = { ...screen, projectId: wp.videoProjectId, ...(wp.scriptId && !screen.scriptId ? { scriptId: wp.scriptId } : {}) };
+          }
+        }
         /*
          * The same bound a turn in a channel has. Without it every
          * `assign_task` here started a chain of its own with a fresh budget,
