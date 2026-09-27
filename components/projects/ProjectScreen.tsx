@@ -59,7 +59,10 @@ export function ProjectScreen({
   writing,
   voices = [],
   canApprove = false,
+  privateChats = [],
 }: {
+  /** Your private chats that worked on this project, linked under the activity line. */
+  privateChats?: { id: string; title: string }[];
   /** An owner or admin: may OK the script in one press (脚本可以了). */
   canApprove?: boolean;
   project: ProjectDetail;
@@ -554,6 +557,18 @@ export function ProjectScreen({
               <Icon name="chat" size={12} /> {t(`对话 ${p.messages.length}`, `Chat ${p.messages.length}`)}
             </span>
           </button>
+
+          {privateChats.length ? (
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", margin: "-4px 2px 0", fontSize: 12, color: "#7c7c7c" }}>
+              <Icon name="chat" size={12} />
+              {t("在你的私聊里做过：", "Worked on in your private chats:")}
+              {privateChats.map((c) => (
+                <Link key={c.id} href={`/chat/t/${c.id}`} prefetch={false} style={{ color: "#171717", textDecoration: "none", borderBottom: "1px solid #dcdcda" }}>
+                  {c.title === "New chat" ? t("对话", "Chat") : c.title}
+                </Link>
+              ))}
+            </div>
+          ) : null}
 
           {/* A board of two columns that pack like a puzzle: each card starts
               where the one above it ends, whatever their heights. */}

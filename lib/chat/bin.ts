@@ -1,6 +1,6 @@
 import "server-only";
 import { execFile } from "node:child_process";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -68,6 +68,13 @@ export async function binImage(viewer: Viewer, videoProjectId: string, fileId: s
   const dir = await mkdtemp(join(tmpdir(), "tengya-still-"));
   try {
     const url = await presignDownload(img.storageKey, { expiresIn: 600 });
+    /* Fetched once to disk: ffmpeg looping a picture read from a URL
+       downloads it again for every frame — 150 fetches for five seconds —
+       and was killed at its time limit, so no picture ever reached the bin. */
+    const src = join(dir, "picture");
+    const got = await fetch(String(url), { signal: AbortSignal.timeout(30_000) });
+    if (!got.ok) throw new Error(`Could not read the picture (${got.status})`);
+    await writeFile(src, Buffer.from(await got.arrayBuffer()));
     const out = join(dir, "still.mp4");
     /* Blurred cover fill + the whole picture fitted on top, then a gentle
        push-in (1.00 → ~1.09 over five seconds). */
@@ -78,7 +85,7 @@ export async function binImage(viewer: Viewer, videoProjectId: string, fileId: s
       "[0:v]scale=1080:1920:force_original_aspect_ratio=decrease[fg]",
       "[bg][fg]overlay=(W-w)/2:(H-h)/2,format=yuv420p[v]",
     ].join(";");
-    await run("ffmpeg", ["-v", "error", "-y", "-loop", "1", "-framerate", "30", "-t", "5", "-i", String(url), "-filter_complex", graph, "-map", "[v]", "-t", "5", "-c:v", "libx264", "-preset", "ultrafast", "-tune", "stillimage", "-crf", "22", "-movflags", "+faststart", out], { timeout: 60_000 });
+    await run("ffmpeg", ["-v", "error", "-y", "-loop", "1", "-framerate", "30", "-t", "5", "-i", src, "-filter_complex", graph, "-map", "[v]", "-t", "5", "-c:v", "libx264", "-preset", "ultrafast", "-tune", "stillimage", "-crf", "22", "-movflags", "+faststart", out], { timeout: 60_000 });
     const base = img.name.replace(/\.[a-z0-9]{2,5}$/i, "").slice(0, 50);
     const made = await importVideoBytes(viewer, {
       bytes: new Uint8Array(await readFile(out)),

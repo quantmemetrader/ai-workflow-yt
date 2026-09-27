@@ -591,9 +591,13 @@ export function buildSteps(f: StepFacts, zh: boolean): ProjectStep[] {
       ? "done"
       : script.status === "awaiting_approval"
         ? "you"
-        : script.status === "drafting" || beats.n > 0
-          ? "running"
-          : "todo";
+        : beats.n > 0
+          ? /* Written: ticked, whether or not anyone formally approved it
+               ("it did write a script, so why is script not ticked"). */
+            "done"
+          : script.status === "drafting"
+            ? "running"
+            : "todo";
   const rendered = render?.state === "done" && render.fileId;
   const rendering = render && (render.state === "queued" || render.state === "rendering");
   const director = f.director ?? null;
@@ -630,7 +634,9 @@ export function buildSteps(f: StepFacts, zh: boolean): ProjectStep[] {
       line: skip("script")
         ? t("跳过 · 直接剪辑", "Skipped · straight to the edit")
         : scriptState === "done"
-          ? t(`第 ${script!.version} 版已锁定`, `v${script!.version} locked`)
+          ? script!.status === "locked"
+            ? t(`第 ${script!.version} 版已锁定`, `v${script!.version} locked`)
+            : t(`已写好 · ${beats.n} 个分镜`, `Written · ${beats.n} beats`)
           : scriptState === "you"
             ? t("写好了，等你批准", "Written; waiting for your OK")
             : draftWriting
