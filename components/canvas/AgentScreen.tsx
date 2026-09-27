@@ -200,6 +200,21 @@ export function AgentScreen({
   const router = useRouter();
   const [conversationId, setConversationId] = useState(initialId);
   const [messages, setMessages] = useState<ThreadMessage[]>(initialMessages);
+  /* Back on a chat whose answer is still being written (the person left
+     mid-turn; the server carried on): show what is saved and look again
+     every few seconds until it is done. The page's own live stream, when
+     there is one, is left alone. */
+  const streamingSaved = initialMessages.some((m) => m.role === "assistant" && m.status === "streaming");
+  useEffect(() => {
+    if (!abort.current) setMessages(initialMessages);
+  }, [initialMessages]);
+  useEffect(() => {
+    if (!streamingSaved) return;
+    const t = setInterval(() => {
+      if (!abort.current) router.refresh();
+    }, 3000);
+    return () => clearInterval(t);
+  }, [streamingSaved, router]);
   const [input, setInput] = useState(initialAgent ? `${agentTag(initialAgent)} ` : "");
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -388,6 +403,9 @@ export function AgentScreen({
             case "conversation":
               created = event.id;
               setConversationId(event.id);
+              /* The chat exists now: it is "the last chat" even if the person
+                 leaves before the answer ends. */
+              document.cookie = "tg_chat_new=; path=/; max-age=0; samesite=lax";
               break;
             case "speaker":
               patchLast((m) => ({ ...m, speaker: event.agent ?? null }));
@@ -828,7 +846,13 @@ export function AgentScreen({
                 <div style={{ flexGrow: 1 }} />
                 <button
                   type="button"
-                  onClick={() => (busy ? abort.current?.abort() : void send(input))}
+                  onClick={() => {
+                    if (!busy) return void send(input);
+                    /* The turn runs on the server whatever the page does, so
+                       Stop tells it to stop, then drops the stream. */
+                    if (conversationId) void fetch("/api/agent/stop", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ conversationId }) }).catch(() => {});
+                    abort.current?.abort();
+                  }}
                   disabled={!busy && !ready}
                   aria-label={busy ? (zh ? "停止" : "Stop") : zh ? "发送" : "Send"}
                   title={busy ? (zh ? "停止" : "Stop") : zh ? "发送" : "Send"}
@@ -1127,7 +1151,7 @@ function AgentRow({ message, zh, locale }: { message: ThreadMessage; zh: boolean
               face, so the pill sits where the words will be. */}
           {typing ? (
             <div style={{ marginTop: message.content ? 6 : 2 }}>
-              <AgentTyping agent={sp} zh={zh} step={streamStep(message.tools)} face={false} />
+              <AgentTyping agent={sp} zh={zh} step={streamStep(message.tools, sp)} face={false} />
             </div>
           ) : null}
 

@@ -888,7 +888,16 @@ export async function decideApproval(
     .limit(1);
   if (!version) return { error: "The version this approval names no longer exists." };
 
-  if (version.authorId === viewer.id) {
+  /* Any owner or admin may decide, whoever was asked and whoever the version
+     is filed under — 编剧 writes under the asker's name, so "you cannot approve
+     your own version" stopped the admin who asked for the draft ("any admin
+     should be able to do approval, not one specific person"). Others: only
+     the person asked, and never their own version. */
+  const admin = viewer.role === "owner" || viewer.role === "admin";
+  if (!admin && row.approverId && row.approverId !== viewer.id) {
+    return { error: "Only the person asked, or an admin, can decide this approval." };
+  }
+  if (!admin && version.authorId === viewer.id) {
     return { error: "A version cannot be approved by the person who wrote it." };
   }
   if (version.checksum !== row.checksum) {

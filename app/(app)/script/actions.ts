@@ -5,7 +5,7 @@ import { createWorkProject } from "@/lib/projects/service";
 import { revalidatePath } from "next/cache";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { scriptFolders, scripts, users } from "@/lib/db/schema";
+import { approvals, scriptFolders, scripts, users } from "@/lib/db/schema";
 import { getViewer, type Viewer } from "@/lib/auth/dal";
 import { audit } from "@/lib/audit";
 import { BudgetStop } from "@/lib/ai/ledger";
@@ -387,6 +387,41 @@ export async function decideApprovalAction(approvalId: unknown, decision: unknow
   });
   revalidatePath("/script", "layout");
   return res;
+}
+
+/**
+ * "脚本可以了": approve and lock the script as it stands, in one press.
+ *
+ * For owners and admins, from the project page's script card: the owner found
+ * the request-then-approve round trip, with its checklist and "you cannot
+ * approve your own version", confusing for a script he just wanted to OK.
+ * The record is the same as the long way — a request (to themselves) and its
+ * approval, so the audit trail and the hand-off to 剪辑师 are unchanged.
+ */
+export async function approveNowAction(scriptId: unknown) {
+  const viewer = await writer();
+  if (!viewer) return { error: "Not allowed" };
+  if (viewer.role !== "owner" && viewer.role !== "admin") return { error: "Only an owner or admin can approve." };
+  const id = await ownScript(viewer, scriptId);
+  if (!id) return { error: "Not allowed" };
+
+  const [waiting] = await db
+    .select({ id: approvals.id })
+    .from(approvals)
+    .where(and(eq(approvals.objectType, "script"), eq(approvals.objectId, id), eq(approvals.state, "requested")))
+    .limit(1);
+  let approvalId = waiting?.id ?? null;
+  if (!approvalId) {
+    const req = await requestApproval(viewer, id, viewer.id);
+    if (!req) return { error: "There is nothing to approve yet, or the script is already locked." };
+    approvalId = req.approvalId;
+  }
+  const res = await decideApproval(viewer, approvalId, "approved");
+  if ("error" in res) return res;
+  await audit(viewer, "script.approval.approved", { objectType: "approval", objectId: approvalId, module: "script", meta: { versionNo: res.versionNo, oneStep: true } });
+  revalidatePath("/script", "layout");
+  revalidatePath("/projects", "layout");
+  return { ok: true, versionNo: res.versionNo };
 }
 
 export async function unlockAction(scriptId: unknown) {

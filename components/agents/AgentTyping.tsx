@@ -107,9 +107,20 @@ export function AgentTyping({
  * of the tool still running (the last one started), else typing — the
  * model is writing, or about to.
  */
-export function streamStep(tools: { name: string; status: string }[]): StepKey {
+export function streamStep(tools: { name: string; status: string }[], agent: AgentKey | null = null): StepKey {
   for (let i = tools.length - 1; i >= 0; i--) {
     if (tools[i].status === "running") return stepForTool(tools[i].name);
   }
-  return "typing";
+  /* Between tools, each employee is doing its own job, not "typing": 剪辑师
+     edits, 编剧 writes, 研究员 looks things up ("editor should not show
+     typing but editing"). The assistant types. */
+  return agent ? AGENT_DEFAULT_STEP[agent] : "typing";
 }
+
+const AGENT_DEFAULT_STEP: Record<AgentKey, StepKey> = {
+  research: "research",
+  planning: "projects",
+  script: "writing_script",
+  video: "editing",
+  article: "writing",
+};

@@ -109,8 +109,16 @@ export function StepTrack({ steps, current }: { steps: ProjectStep[]; current: s
             <span style={{ position: "relative", zIndex: 1, width: 20, height: 20, borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, boxSizing: "border-box", ...dot }}>
               {done ? (
                 <Icon name="check" size={11} strokeWidth={2.6} />
+              ) : isNow && s.state === "running" ? (
+                /* Being worked on: a sand timer turning over, not a dot —
+                   "instead of the orange dot, a sand timer when loading". */
+                <svg viewBox="0 0 24 24" width="12" height="12" aria-hidden style={{ display: "block", color: ink, animation: "tgHourglass 1.8s ease-in-out infinite" }}>
+                  <style>{"@keyframes tgHourglass{0%,40%{transform:rotate(0deg)}60%,100%{transform:rotate(180deg)}}"}</style>
+                  <path d="M6.5 3.5h11M6.5 20.5h11M7.5 3.5c0 4.2 4.5 5.6 4.5 8.5s-4.5 4.3-4.5 8.5M16.5 3.5c0 4.2-4.5 5.6-4.5 8.5s4.5 4.3 4.5 8.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                  <path d="M9.6 18.6h4.8c-.6-1.6-1.6-2.4-2.4-2.9-.8.5-1.8 1.3-2.4 2.9z" fill="currentColor" />
+                </svg>
               ) : isNow ? (
-                <span style={{ width: 7, height: 7, borderRadius: 4, background: ink, animation: s.state === "running" ? "auraPulse 1.4s ease-in-out infinite" : undefined }} />
+                <span style={{ width: 7, height: 7, borderRadius: 4, background: ink }} />
               ) : null}
             </span>
             <span style={{ maxWidth: "100%", fontSize: 11, lineHeight: 1.2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: isNow ? ink : done ? "#525252" : "#a8a8a4", fontWeight: isNow ? 600 : 500, textDecoration: skipped ? "line-through" : undefined }}>{s.label}</span>

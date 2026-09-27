@@ -13,7 +13,7 @@ import { agentKeyFromEmail, type AgentKey } from "@/lib/agents/catalog";
 import { frontierStep } from "@/lib/home/roles";
 import { audit } from "@/lib/audit";
 import { share } from "@/lib/authz/rebac";
-import { TITLE_NOISE, backlogQueryOf, channelNote, fromHotRow, fromIdea, fromSignal, fromTopicRow, type ProjectSource, type SignalLike, type SourceEvidence, type TopicRef, titleCore } from "@/lib/projects/topic";
+import { TITLE_NOISE, backlogQueryOf, channelNote, fromHotRow, fromIdea, fromSignal, fromTopicRow, isWriting, type ProjectSource, type SignalLike, type SourceEvidence, type TopicRef, titleCore } from "@/lib/projects/topic";
 import { isListKey, listName, type HotRow } from "@/lib/research/platform-catalog";
 import { HOT_TENANT } from "@/lib/research/platforms";
 import { mayPublish, platformsLine, readPublication, type Publication } from "@/lib/projects/publication";
@@ -580,7 +580,12 @@ export function buildSteps(f: StepFacts, zh: boolean): ProjectStep[] {
   const skip = (key: ProjectStep["key"]) =>
     direct === "video" ? key === "script" || key === "clips" : direct === "article" ? key !== "deliver" && key !== "topic" : false;
 
-  const scriptState: StepState = !script
+  /* A draft on its way (started from a plan or an idea, written in the
+     background) is the writer at work, not "等编剧开写". */
+  const draftWriting = isWriting(f.source as ProjectSource | null, Date.now()) && script?.status !== "locked" && script?.status !== "awaiting_approval";
+  const scriptState: StepState = draftWriting
+    ? "running"
+    : !script
     ? "todo"
     : script.status === "locked"
       ? "done"
@@ -628,7 +633,9 @@ export function buildSteps(f: StepFacts, zh: boolean): ProjectStep[] {
           ? t(`第 ${script!.version} 版已锁定`, `v${script!.version} locked`)
           : scriptState === "you"
             ? t("写好了，等你批准", "Written; waiting for your OK")
-            : scriptState === "running"
+            : draftWriting
+              ? t("编剧正在写初稿…", "The writer is drafting…")
+              : scriptState === "running"
               ? t(`草稿 · ${beats.n} 个分镜`, `Draft · ${beats.n} beats`)
               : t("等编剧开写", "Waiting for the writer"),
     },

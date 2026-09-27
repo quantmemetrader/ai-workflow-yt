@@ -1,3 +1,4 @@
+import { endTurn, registerTurn } from "@/lib/ai/turns";
 import { after } from "next/server";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
@@ -277,8 +278,18 @@ export async function POST(request: Request) {
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
     async start(controller) {
+      /* The page may be gone (the person moved to another screen): the turn
+         carries on and is saved; there is just nobody to stream it to. */
+      let gone = false;
+      const stopper = new AbortController();
+      if (conversationId) registerTurn(conversationId, stopper);
       const send = (event: unknown) => {
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
+        if (gone) return;
+        try {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
+        } catch {
+          gone = true;
+        }
       };
 
       send({ type: "conversation", id: conversationId });
@@ -404,7 +415,10 @@ export async function POST(request: Request) {
           // the question came from decides which tuning the prompt carries.
           module: speakerModule,
           context: turnContext,
-          signal: request.signal,
+          /* Not the request's signal: leaving the page used to kill the turn
+             mid-answer ("I changed screens and it just disappeared"). Only
+             the Stop button ends it (`/api/agent/stop`). */
+          signal: stopper.signal,
         })) {
           if (event.type === "delta") said += event.text;
           if (event.type === "tool" && event.status === "ok" && event.artifacts?.length) {
@@ -454,8 +468,13 @@ export async function POST(request: Request) {
         console.error("[agent] stream failed", err);
         send({ type: "error", kind: "server", message: "Something went wrong." });
       } finally {
+        if (conversationId) endTurn(conversationId, stopper);
         if (speakerSaved) await speakerSaved;
-        controller.close();
+        try {
+          controller.close();
+        } catch {
+          /* already gone */
+        }
       }
 
       // `void` here meant nothing awaited the call: the stream closes, the
