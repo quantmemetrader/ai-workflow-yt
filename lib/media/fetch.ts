@@ -1,6 +1,6 @@
 import "server-only";
 import { createHash } from "node:crypto";
-import { mkdir, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { and, eq, isNull } from "drizzle-orm";
@@ -52,6 +52,15 @@ export type FetchOpts = {
   /** The spoken line this was found for, kept in the file's record. */
   forLine?: string;
   signal?: AbortSignal;
+  /**
+   * The bytes are already on this machine: the director fetched the
+   * candidate to judge it and, for a video, cut the chosen window to its own
+   * file (`lib/video/v2/window.ts:cutClip`). That file is imported instead
+   * of downloading the candidate a second time, so what goes into Files is
+   * exactly what the judge saw. A video given this way is the window
+   * already and is not cut again; `windowS` is still recorded.
+   */
+  localFile?: string;
 };
 
 const MAX_CLIP_S = 60;
@@ -292,6 +301,22 @@ async function downloadImage(candidate: Candidate, dir: string): Promise<{ file:
   throw lastError instanceof Error ? lastError : new ToolError("the picture could not be fetched");
 }
 
+/** A file the caller already holds, copied into the work directory (the caller's copy is never moved or removed). */
+async function copyInto(src: string, dir: string, name: string): Promise<string> {
+  const dest = path.join(dir, name);
+  await copyFile(src, dest);
+  return dest;
+}
+
+/** A picture the caller already holds, sniffed the way a download is. */
+async function localImage(src: string, dir: string): Promise<{ file: string; mime: string }> {
+  const file = await copyInto(src, dir, "local.bin");
+  const head = Buffer.from((await readFile(file)).subarray(0, 512));
+  const mime = imageMime(head, /<svg[\s>]/i.test(head.toString("utf8")) ? "image/svg+xml" : "");
+  if (!mime) throw new ToolError("the local file is not a picture a browser can show");
+  return { file, mime };
+}
+
 /* ------------------------------------------------------------ normalising */
 
 /**
@@ -363,7 +388,7 @@ async function fetchFresh(viewer: Viewer, candidate: Candidate, key: string, win
     };
 
     if (candidate.kind === "image") {
-      const { file, mime } = await downloadImage(candidate, dir);
+      const { file, mime } = opts.localFile ? await localImage(opts.localFile, dir) : await downloadImage(candidate, dir);
       const bytes = await readFile(file);
       const size = await probe(file).catch(() => null);
       const { id } = await importPictureBytes(viewer, {
@@ -385,7 +410,7 @@ async function fetchFresh(viewer: Viewer, candidate: Candidate, key: string, win
       return asset;
     }
 
-    const { file, windowed } = await downloadVideo(candidate, dir, window, opts.signal);
+    const { file, windowed } = opts.localFile ? { file: await copyInto(opts.localFile, dir, "local.mp4"), windowed: true } : await downloadVideo(candidate, dir, window, opts.signal);
     const p = await probe(file);
     if (!p.durationMs) throw new ToolError("the download has no playable video in it");
     /* What still has to be cut: the window when the whole file came down, or the cap when the piece is over it. */

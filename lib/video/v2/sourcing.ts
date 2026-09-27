@@ -53,7 +53,9 @@ import { scoreCandidates, visionSpend, type VisionOptions } from "@/lib/video/vi
  * Two modes. `into: "local"` keeps every file on this machine (the lab,
  * and the look-before-you-keep pass in production). `into: "files"` then
  * imports the chosen window through the media library, with attribution
- * and its `file_meta` record, exactly as `fetchAsset` writes them.
+ * and its `file_meta` record, exactly as `fetchAsset` writes them — the
+ * very file the judge chose (`localFile`), not a second download, so the
+ * product's cutaway is the lab's to the pixel.
  */
 
 export type SourcingCtx = {
@@ -497,7 +499,7 @@ async function sourceOne(beat: Beat, index: number, prevBeatId: string | undefin
         const cut = await cutClip(local.file, clip, { startMs: pick.localStartMs, durationMs: needMs + 1_000, maxEdge: ctx.maxEdge ?? 1920 });
         const asset: Asset =
           ctx.into === "files" && ctx.viewer
-            ? await fetchIntoFiles(ctx.viewer, c, { windowS: { start: pick.windowMs[0] / 1000, end: (pick.windowMs[1] + 1_000) / 1000 }, forLine: line })
+            ? await fetchIntoFiles(ctx.viewer, c, { windowS: { start: pick.windowMs[0] / 1000, end: (pick.windowMs[1] + 1_000) / 1000 }, forLine: line, localFile: clip })
             : localAsset(c, { file: clip, ...cut }, pick.windowMs);
         trace.attempts.push({ id: c.id, outcome: "选用" });
         trace.chosenImage = pick.best.file;
@@ -548,7 +550,7 @@ async function sourceOne(beat: Beat, index: number, prevBeatId: string | undefin
       const still = path.join(ctx.workDir, "clips", `${safe(beatId)}.${EXT_BY_MIME[local.mime ?? ""] ?? "img"}`);
       await mkdir(path.dirname(still), { recursive: true });
       await copyFile(local.file, still);
-      const asset: Asset = ctx.into === "files" && ctx.viewer ? await fetchIntoFiles(ctx.viewer, c, { forLine: line }) : localAsset(c, { file: still, width: local.width, height: local.height });
+      const asset: Asset = ctx.into === "files" && ctx.viewer ? await fetchIntoFiles(ctx.viewer, c, { forLine: line, localFile: still }) : localAsset(c, { file: still, width: local.width, height: local.height });
       const smallForCard = kind === "logo" && j.kind !== "logo";
       trace.attempts.push({ id: c.id, outcome: smallForCard ? "选用（小图，只作机构卡用）" : "选用" });
       trace.chosenImage = still;

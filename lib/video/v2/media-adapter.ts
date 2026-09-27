@@ -7,7 +7,7 @@ import { env } from "@/lib/env";
 import type { Viewer } from "@/lib/auth/types";
 import { planFor, searchMedia, type MediaQuery, type ProviderKey, type ProviderReport, type SearchMediaOpts, type SearchMediaResult } from "@/lib/media/search";
 import { fetchAsset, fetchToDisk, type FetchOpts } from "@/lib/media/fetch";
-import { creditLine, creditsBlock, toUsed, PLATFORM_LABEL, TAKEDOWN_LINE, type UsedAsset } from "@/lib/media/credits";
+import { creditLine, creditsBlock, recordUsedAssets, toUsed, PLATFORM_LABEL, TAKEDOWN_LINE, type UsedAsset } from "@/lib/media/credits";
 import { downloadToFile, run, ToolError } from "@/lib/media/tools";
 import type { Asset, Candidate, MediaKind, Platform } from "@/lib/media/types";
 import { FLATTEN_ON_WHITE } from "@/lib/video/contactsheet";
@@ -39,7 +39,7 @@ import { FLATTEN_ON_WHITE } from "@/lib/video/contactsheet";
  */
 
 export type { Asset, Candidate, MediaKind, MediaQuery, Platform, ProviderKey, ProviderReport, SearchMediaOpts, UsedAsset };
-export { creditLine, creditsBlock, toUsed, PLATFORM_LABEL, TAKEDOWN_LINE, planFor, ToolError };
+export { creditLine, creditsBlock, recordUsedAssets, toUsed, PLATFORM_LABEL, TAKEDOWN_LINE, planFor, ToolError };
 
 export type MediaCtx = {
   /** Search and fetch caches, thumbnails and work directories live under here. */

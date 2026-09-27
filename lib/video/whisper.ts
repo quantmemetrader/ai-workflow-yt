@@ -127,7 +127,9 @@ export async function transcribeLocal(
   // detect the language and to window the decode, so it needs it on disk.
   const fromPath = typeof audio === "string";
   const dir = fromPath ? null : await mkdtemp(path.join(tmpdir(), "aura-whisper-"));
-  const audioPath = fromPath ? audio : path.join(dir!, path.basename(filename) || "audio.mp3");
+  /* turbopackIgnore: a path handed in at run time (the lab's wav, the director's
+     take) made the file tracer copy the whole repo into the standalone build. */
+  const audioPath = fromPath ? audio : path.join(/*turbopackIgnore: true*/ dir!, path.basename(filename) || "audio.mp3");
 
   try {
     if (!fromPath) await writeFile(audioPath, Buffer.from(await audio.arrayBuffer()));
@@ -173,7 +175,7 @@ export async function localTranscriberInstalled(): Promise<boolean> {
 
 function runPython(args: string[], hotwords: readonly string[]): Promise<string> {
   return new Promise((resolve, reject) => {
-    const child = spawn(PYTHON, args, {
+    const child = spawn(/*turbopackIgnore: true*/ PYTHON, args, {
       stdio: ["ignore", "pipe", "pipe"],
       env: {
         ...process.env,

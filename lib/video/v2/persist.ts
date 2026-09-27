@@ -77,7 +77,7 @@ export function toRows(plan: LayoutPlan, projectId: string, clipIds: Map<string,
       options.asset = pictured.asset;
       options.credit = pictured.asset.credit ?? (pictured as { credit?: string }).credit ?? null;
     }
-    push({ id: rowId(g.id), kind: g.kind, text: text.slice(0, 200), sub: sub ? sub.slice(0, 200) : null, startMs: g.startMs, endMs: g.endMs, fileId, icon: null, placement, scale: 30, options });
+    push({ id: rowId(g.id), kind: g.kind, text: text.slice(0, 200), sub: sub !== null ? sub.slice(0, 200) : null, startMs: g.startMs, endMs: g.endMs, fileId, icon: null, placement, scale: 30, options });
   }
 
   for (const c of plan.cutaways) push(cutawayRow(c, clipIds));
@@ -123,6 +123,15 @@ function cutawayRow(c: CutawaySpec, clipIds: Map<string, string>): Omit<GraphicR
   return { id: rowId(c.id), kind: "broll", text: c.label.slice(0, 60), fileId: null, icon: null, scale: 34, ...base, options: { ...base.options, clipId, fileId: c.asset.fileId } };
 }
 
+/**
+ * What the export's renderer needs to draw a v2 video again from the rows
+ * (`lib/video/v2/render-input.ts`): which take the timeline cuts, where the
+ * chin sits under the plain framing (the caption line keeps clear of it),
+ * the caption preset and the accent. The face track itself is on the take's
+ * `file_meta.meta.face` (`faceTrackForFile`).
+ */
+export type V2RenderRecord = { version: 1; clipId: string; fileId: string; chinY: number; preset: string; accent: string };
+
 /** What the run leaves on `video_projects.director` beside the state machine's own keys. */
 export type DirectorV2Record = {
   cut?: CutReport | null;
@@ -137,15 +146,24 @@ export type DirectorV2Record = {
     stats: LayoutPlan["stats"];
     lint: { rule: string; atMs: number; detailZh: string }[];
     notesZh: string;
+    /** Set by the product's director; absent on a lab record. */
+    render?: V2RenderRecord;
   };
 };
 
-export function directorRecord(plan: LayoutPlan, credits: Credits, cut: CutReport | null | undefined, lint: DirectorV2Record["v2"]["lint"], notesZh: string): DirectorV2Record {
+export function directorRecord(
+  plan: LayoutPlan,
+  credits: Credits,
+  cut: CutReport | null | undefined,
+  lint: DirectorV2Record["v2"]["lint"],
+  notesZh: string,
+  render?: V2RenderRecord,
+): DirectorV2Record {
   return {
     cut: cut ?? null,
     assets: credits.assets,
     credits: { line: credits.line, block: credits.block },
-    v2: { version: 2, at: new Date().toISOString(), framing: plan.cutZooms, runs: plan.runs, renderHints: plan.renderHints, stats: plan.stats, lint, notesZh },
+    v2: { version: 2, at: new Date().toISOString(), framing: plan.cutZooms, runs: plan.runs, renderHints: plan.renderHints, stats: plan.stats, lint, notesZh, ...(render ? { render } : {}) },
   };
 }
 
@@ -214,4 +232,37 @@ export async function writeTranslation(
     await db.execute(sql`update captions set keywords = v.kw from (values ${sql.join(values, sql`, `)}) as v(id, kw) where captions.id = v.id`);
   }
   return { inserted: inserts.length, keyworded: keyworded.length };
+}
+
+/**
+ * The cut onto the timeline: the take's pieces in order, replacing whatever
+ * was there (the v1 cut, an earlier run). Two statements.
+ */
+export async function writeCutTimeline(projectId: string, clipId: string, pieces: readonly { inMs: number; outMs: number }[], newId: (prefix: "beat") => string): Promise<void> {
+  const [{ db }, { timelineItems }, { eq }] = await Promise.all([import("@/lib/db/client"), import("@/lib/db/schema"), import("drizzle-orm")]);
+  await db.delete(timelineItems).where(eq(timelineItems.projectId, projectId));
+  const rows = pieces.map((p, i) => ({ id: newId("beat"), projectId, kind: "clip", clipId, ord: i * 10, inMs: Math.round(p.inMs), outMs: Math.round(p.outMs) }));
+  for (let at = 0; at < rows.length; at += 200) await db.insert(timelineItems).values(rows.slice(at, at + 200));
+}
+
+/**
+ * The reel's caption lines as the project's captions: the spoken language
+ * with its word timings and keywords, the English line beside each at the
+ * same start (which is how the renderer pairs them). Every older track goes
+ * first: the lines were made on the old cut's clock.
+ */
+export async function writeCaptionLines(
+  projectId: string,
+  language: string,
+  lines: readonly { startMs: number; endMs: number; text: string; words: { start: number; end: number; text: string }[]; second: string | null; keywords: string[] }[],
+  newId: (prefix: "beat") => string,
+): Promise<{ lines: number; seconds: number }> {
+  const [{ db }, { captions }, { eq }] = await Promise.all([import("@/lib/db/client"), import("@/lib/db/schema"), import("drizzle-orm")]);
+  const other = /^zh/.test(language) ? "en" : "zh-CN";
+  await db.delete(captions).where(eq(captions.projectId, projectId));
+  const rows = lines.map((l, i) => ({ id: newId("beat"), projectId, startMs: l.startMs, endMs: l.endMs, text: l.text, language, ord: i, words: l.words, keywords: l.keywords }));
+  const seconds = lines.flatMap((l, i) => (l.second ? [{ id: newId("beat"), projectId, startMs: l.startMs, endMs: l.endMs, text: l.second, language: other, ord: i }] : []));
+  for (let at = 0; at < rows.length; at += 200) await db.insert(captions).values(rows.slice(at, at + 200));
+  for (let at = 0; at < seconds.length; at += 200) await db.insert(captions).values(seconds.slice(at, at + 200));
+  return { lines: rows.length, seconds: seconds.length };
 }

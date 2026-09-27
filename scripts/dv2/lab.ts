@@ -30,14 +30,31 @@
  */
 import { createHash } from "node:crypto";
 import { execFile } from "node:child_process";
-import { copyFile, mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
-import type { Beat, CutPiece, CutReport, FaceTrack, GraphicSpecV2, MotionClip, Retake, Sentence, Silence, Sourced, Word } from "@/lib/video/v2/types";
-import type { Transcript, TranscriptWord } from "@/lib/video/elevenlabs";
-import type { DesignResult, Outline, OutlineEntity } from "@/lib/video/v2/design";
+import type { Beat, MotionClip, Sourced } from "@/lib/video/v2/types";
 import type { GradeInput, GradeAsset, GradeBeat, GradeCutaway, GradeGraphic } from "./metrics";
-import { toMotionSpecs, toRenderCuts, toRenderCutaways, wordsOnTimeline, FURNITURE } from "@/lib/video/v2/render-plan";
+import { FURNITURE } from "@/lib/video/v2/render-plan";
+import {
+  cutReportText,
+  cutTake,
+  designTake,
+  furnitureStill,
+  captionsAss,
+  motionTake,
+  pmap,
+  sourceTake,
+  transcribeTake,
+  v2RenderPlan,
+  type CutOut,
+  type DesignOut,
+  type Hooks,
+  type MotionOut,
+  type SourceOut,
+  type Take,
+  type TranscribeOut,
+} from "@/lib/video/v2/pipeline";
 
 const run = promisify(execFile);
 
@@ -101,58 +118,23 @@ async function timed<T>(stage: string, fn: () => Promise<T>): Promise<T> {
   return r;
 }
 
-async function pmap<T, R>(items: readonly T[], limit: number, fn: (item: T, i: number) => Promise<R>): Promise<R[]> {
-  const out: R[] = new Array(items.length);
-  let next = 0;
-  await Promise.all(
-    Array.from({ length: Math.min(limit, items.length) }, async () => {
-      while (next < items.length) {
-        const i = next++;
-        out[i] = await fn(items[i], i);
-      }
-    }),
-  );
-  return out;
-}
+/*
+ * The stages themselves live in `lib/video/v2/pipeline.ts`, which the
+ * product's director runs too; the lab adds only what is around them: one
+ * JSON per stage in the run directory, `--from`, the kept sourcing answers,
+ * the contact sheets, the cost file and the grade.
+ */
+
+const take = (fixture: Fixture): Take => ({ raw: RAW, clipId: fixture.source.clipId, durationMs: fixture.source.durationMs, brief: fixture.brief, title: fixture.project.title, cacheDir: CACHE });
+const hooks: Hooks = { log, usage: (what, u) => spent(what, u.costMicros) };
 
 /* ============================================================ transcribe */
-
-type TranscribeOut = { terms: string[]; hotwords: string[]; changes: unknown[]; words: Word[]; languageCode: string };
 
 async function stageTranscribe(fixture: Fixture): Promise<TranscribeOut> {
   const file = path.join(OUT, "transcribe.json");
   if (!runs("transcribe")) return readJson<TranscribeOut>(file);
   return timed("transcribe", async () => {
-    const { extractTerms, hotwordsFrom, applyGlossaryWithModel } = await import("@/lib/video/glossary");
-    const { transcribeLocal } = await import("@/lib/video/whisper");
-    const { toSimplified } = await import("@/lib/text/simplified");
-    const terms = extractTerms(fixture.brief);
-    const hotwords = hotwordsFrom(terms);
-    /* Whisper once per file and hotword list: ~60 s, and the same answer every run. */
-    const info = await stat(RAW);
-    const key = createHash("sha1").update(`${path.resolve(RAW)}|${info.size}|${Math.round(info.mtimeMs)}|${hotwords.join(",")}`).digest("hex").slice(0, 16);
-    await mkdir(path.join(CACHE, "whisper"), { recursive: true });
-    const cached = path.join(CACHE, "whisper", `${key}.json`);
-    let transcript: Transcript;
-    if (await exists(cached)) {
-      transcript = await readJson<Transcript>(cached);
-      log(`transcribe: whisper cached (${transcript.words.length} words)`);
-    } else {
-      const audio = path.join(CACHE, "whisper", `${key}.wav`);
-      if (!(await exists(audio))) await run("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-i", RAW, "-vn", "-ac", "1", "-ar", "16000", audio], { timeout: 170_000 });
-      const t0 = Date.now();
-      transcript = await transcribeLocal(audio, "audio.wav", { hotwords });
-      log(`transcribe: whisper ${transcript.words.length} words in ${sec(Date.now() - t0)} s`);
-      await writeJson(cached, transcript);
-    }
-    transcript = { ...transcript, text: toSimplified(transcript.text), words: transcript.words.map((w) => ({ ...w, text: toSimplified(w.text) })) };
-    const fixed = await applyGlossaryWithModel(transcript.words, terms, { log: (l) => log(`glossary: ${l}`), brief: fixture.brief });
-    spent("glossary", fixed.usage?.costMicros);
-    log(`transcribe: glossary ${fixed.changes.map((c) => `${c.from}→${c.to}×${c.count}`).join(", ") || "no changes"}`);
-    const words: Word[] = (fixed.words as TranscriptWord[])
-      .filter((w) => w.type === "word" && w.text.trim())
-      .map((w) => ({ text: w.text, startMs: Math.round(w.start * 1000), endMs: Math.round(Math.max(w.start, w.end) * 1000) }));
-    const out: TranscribeOut = { terms: terms.map((t) => t.text), hotwords, changes: fixed.changes, words, languageCode: transcript.languageCode };
+    const out = await transcribeTake(take(fixture), hooks);
     await writeJson(file, out);
     return out;
   });
@@ -160,273 +142,36 @@ async function stageTranscribe(fixture: Fixture): Promise<TranscribeOut> {
 
 /* =================================================================== cut */
 
-type CutOut = {
-  words: Word[];
-  silences: Silence[];
-  fine: Silence[];
-  sentences: Sentence[];
-  retakes: Retake[];
-  decisions: { id: string; drop: boolean; decidedBy: string; whyZh: string }[];
-  pieces: CutPiece[];
-  report: CutReport;
-  lengthMs: number;
-  removedMs: number;
-  coldOpenId: string | null;
-  refused: unknown[];
-  refusedRetakes: unknown[];
-  holes: unknown[];
-};
-
 async function stageCut(fixture: Fixture, tr: TranscribeOut): Promise<CutOut> {
   const file = path.join(OUT, "cut.json");
   if (!runs("cut")) return readJson<CutOut>(file);
   return timed("cut", async () => {
-    const { planCut, planMessagesV2, parsePlanV2, holeTranscriber, EMPTY_PLAN_V2 } = await import("@/lib/video/autoedit");
-    const { targetFromBrief } = await import("@/lib/video/length");
-    const { briefPhrases, decideRetakes, fillHoles, findRetakes, toRetake } = await import("@/lib/video/retakes");
-    const { alignWords, toSentences } = await import("@/lib/video/sentences");
-    const { detectSilences } = await import("@/lib/video/silences");
-    const { complete } = await import("@/lib/ai/openrouter");
-    const { modelFor } = await import("@/lib/ai/models");
-
-    const clipId = fixture.source.clipId;
-    const totalMs = fixture.source.durationMs;
-    const brief = fixture.brief;
-    const targetMs = targetFromBrief(brief);
-    const fine = await detectSilences(RAW, { db: -32, minMs: 80, cacheDir: CACHE });
-    const silences = fine.filter((s) => s.endMs - s.startMs >= 250);
-    const filled = await fillHoles(tr.words, silences, holeTranscriber(RAW, "zh"));
-    const words = alignWords(filled.words, fine);
-    const sentences = toSentences(words, [], { clipId, silences });
-    const found = findRetakes(words, sentences, { briefPhrases: briefPhrases(brief), silences });
-    const ask = (what: string, model: string, temperature: number, maxTokens: number) => async (messages: { role: "system" | "user"; content: string }[]) => {
-      const out = await complete({ model, temperature, maxTokens, messages });
-      spent(what, out.costMicros);
-      return out.text;
-    };
-    const modelDecisions = await decideRetakes(found.ambiguous, ask("retakes", modelFor.utility(), 0, 600));
-    const decisions = [...found.decisions, ...modelDecisions];
-    const retakes = decisions.filter((d) => d.drop).map(toRetake);
-    let plan = EMPTY_PLAN_V2;
-    try {
-      const raw = await ask("cut plan", modelFor.assistant(), 0.2, 2000)(planMessagesV2({ title: fixture.project.title, sentences, retakes, brief, targetMs, totalMs }));
-      plan = parsePlanV2(raw, new Set(sentences.map((s) => s.id)));
-    } catch (err) {
-      log(`cut: plan call failed (${err instanceof Error ? err.message : err}); cutting without it`);
-    }
-    const cut = planCut({ sentences, silences, fineSilences: fine, words, brief, targetMs, retakes, plan, totalMs });
-    log(`cut: ${cut.pieces.length} pieces, ${sec(cut.lengthMs)} s kept, ${sec(cut.removedMs)} s removed; ${cut.report.noteZh}`);
-    const out: CutOut = {
-      words,
-      silences,
-      fine,
-      sentences,
-      retakes,
-      decisions: decisions.map((d) => ({ id: d.id, drop: d.drop, decidedBy: d.decidedBy, whyZh: d.whyZh })),
-      pieces: cut.pieces,
-      report: cut.report,
-      lengthMs: cut.lengthMs,
-      removedMs: cut.removedMs,
-      coldOpenId: cut.coldOpenId,
-      refused: cut.refused,
-      refusedRetakes: cut.refusedRetakes.map((r) => ({ ...r.retake, text: r.text, whyZh: r.whyZh })),
-      holes: filled.holes,
-    };
+    const out = await cutTake(take(fixture), tr, hooks);
     await writeJson(file, out);
-    /* The cut report a person reads: what went and why, and what was kept against advice. */
-    const lines = [
-      `蒸馏 cut: ${cut.pieces.length} pieces, ${sec(cut.lengthMs)} s kept of ${sec(totalMs)} s (${sec(cut.removedMs)} s removed)`,
-      cut.report.noteZh,
-      "",
-      "Removed:",
-      ...cut.report.removed.map((r) => `  [${r.reason}] ${sec(r.ms)} s  ${r.sentenceIds.join(",")}  ${r.text}`),
-      "",
-      `Restored by the audit: ${cut.report.restored.join(", ") || "none"}`,
-      `Over budget: ${sec(cut.report.overBudgetMs)} s`,
-      "",
-      "Retake decisions:",
-      ...decisions.map((d) => `  ${d.id} ${d.drop ? "DROP" : "keep"} (${d.decidedBy}) ${d.whyZh}`),
-      ...cut.refusedRetakes.map((r) => `  kept, no quiet to cut at: ${sec(r.retake.dropStartMs)}–${sec(r.retake.dropEndMs)} ${r.text} — ${r.whyZh}`),
-      "",
-      "Model drops refused:",
-      ...cut.refused.map((r) => `  ${r.id}: ${r.whyZh}`),
-    ];
-    await writeFile(path.join(OUT, "cut-report.txt"), lines.join("\n"), "utf8");
+    await writeFile(path.join(OUT, "cut-report.txt"), cutReportText(fixture.project.title, out, fixture.source.durationMs), "utf8");
     return out;
   });
 }
 
 /* ================================================================ design */
 
-type CaptionRow = { startMs: number; endMs: number; text: string; words: { start: number; end: number; text: string }[]; second: string | null; keywords: string[] };
-type DesignOut = {
-  face: FaceTrack & { series?: unknown[] };
-  timelineSentences: Sentence[];
-  timelinePieces: { inMs: number; outMs: number }[];
-  totalMs: number;
-  timelineWords: Word[];
-  captions: CaptionRow[];
-  outlineRaw: string;
-  outline: Outline;
-  chinY: number;
-};
-
-/**
- * The English line for every caption, in batches of 20, four at a time.
- *
- * The model is asked to echo each Chinese line beside its English, and an
- * answer is matched back by that echo, not by the index it gives: the
- * first integrated run numbered its answers its own way and every English
- * line after the first batch sat under the wrong Chinese one. A batch whose
- * echoes do not line up is asked once more; what still does not line up is
- * left without English rather than shown under the wrong words.
- */
-const TRANSLATE_SYSTEM = `You subtitle a Chinese business creator's vertical reel in English. You get a JSON array of Chinese caption lines. Answer with one JSON object and nothing else: {"lines":[{"zh":"the Chinese line copied exactly","en":"a short natural English subtitle, at most 8 words","kw":"at most one word copied verbatim from the Chinese line worth the accent colour (a name, a figure, the verb it turns on), or empty"}]}, exactly one entry per input line, in the same order. Keep names and figures exactly (Anthropic, Claude, DeepSeek, Kimi, MiniMax, ByteDance, Zhang Yiming, Alibaba, NSA, CISA, FBI). A caption line is often a fragment of a sentence: translate the fragment, do not complete it from its neighbours. Each "en" translates only the words of its own "zh" row: never carry words over from the row before or push them to the row after (r02's English ran two lines behind the Chinese for 20 s), and every "en" is whole English words (never "distillation su" on one row and "perior" on the next). A garbled or cut-off fragment still gets a short literal English of what is there, never an empty "en".`;
-
-const bare = (t: string) => t.replace(/[\s\p{P}\p{S}]/gu, "");
-
-async function translateLines(zh: string[], call: (system: string, user: string) => Promise<string>): Promise<{ second: string | null; keywords: string[] }[]> {
-  const out: { second: string | null; keywords: string[] }[] = zh.map(() => ({ second: null, keywords: [] }));
-  const batches: number[][] = [];
-  for (let i = 0; i < zh.length; i += 12) batches.push(zh.map((_, k) => k).slice(i, i + 12));
-  const attempt = async (idx: number[]): Promise<number[]> => {
-    let text = "";
-    try {
-      text = await call(TRANSLATE_SYSTEM, JSON.stringify(idx.map((i) => zh[i])));
-    } catch (err) {
-      log(`translate: batch failed (${err instanceof Error ? err.message : err})`);
-      return idx;
-    }
-    const a = text.indexOf("{");
-    const b = text.lastIndexOf("}");
-    let rows: { zh?: unknown; en?: unknown; kw?: unknown }[] = [];
-    try {
-      rows = (JSON.parse(text.slice(a, b + 1)) as { lines?: typeof rows }).lines ?? [];
-    } catch {
-      return idx;
-    }
-    const missing: number[] = [];
-    let cursor = 0;
-    for (const i of idx) {
-      /* The echo of this line, searched forward from the last match so a skipped row does not shift the rest. */
-      const want = bare(zh[i]);
-      let hit = -1;
-      for (let k = cursor; k < rows.length; k++) if (bare(String(rows[k].zh ?? "")) === want) { hit = k; break; }
-      if (hit < 0) { missing.push(i); continue; }
-      cursor = hit + 1;
-      const en = String(rows[hit].en ?? "").trim();
-      const kw = String(rows[hit].kw ?? "").trim();
-      out[i] = { second: en || null, keywords: kw && zh[i].includes(kw) ? [kw] : [] };
-    }
-    return missing;
-  };
-  const left = (await pmap(batches, 4, attempt)).flat();
-  if (left.length) {
-    const again: number[][] = [];
-    for (let i = 0; i < left.length; i += 6) again.push(left.slice(i, i + 6));
-    const still = (await pmap(again, 4, attempt)).flat();
-    if (still.length) log(`translate: ${still.length} lines left without English (echo did not match)`);
-  }
-  return out;
-}
-
 async function stageDesign(fixture: Fixture, cut: CutOut): Promise<DesignOut> {
   const file = path.join(OUT, "design.json");
   if (!runs("design")) return readJson<DesignOut>(file);
   return timed("design", async () => {
     const { faceTrackCached } = await import("@/lib/video/face");
-    const { sentencesOnTimeline, faceBoxUnder, FRAMING } = await import("@/lib/video/layout");
-    const { toCaptionLines } = await import("@/lib/video/elevenlabs");
-    const { captionPreset } = await import("@/lib/video/presets");
-    const { extractTerms, jsonCompletion } = await import("@/lib/video/glossary");
-    const { furnitureFromBrief } = await import("@/lib/video/director");
-    const { planDesign } = await import("@/lib/video/v2/design");
-    const { complete } = await import("@/lib/ai/openrouter");
-    const { modelFor } = await import("@/lib/ai/models");
-
-    /* The face: YuNet over the raw take every 2 s, cached per file. */
-    const track = await faceTrackCached(RAW, { cacheDir: CACHE, clipId: fixture.source.clipId });
-    const face: FaceTrack = { clipId: track.clipId, box: track.box, eyeY: track.eyeY, chinY: track.chinY, samples: track.samples };
-    log(`design: face ${track.samples} samples, eye ${track.eyeY.toFixed(3)}, chin ${track.chinY.toFixed(3)}`);
-
-    const mapped = sentencesOnTimeline(cut.sentences, cut.pieces);
-    const timelineWords = wordsOnTimeline(cut.words, cut.pieces);
-    /*
-     * The cut's sentence ends, marked on the words the caption breaker reads.
-     * Whisper's punctuation does not survive every cut (a retake removed, two
-     * takes joined), so r01 had lines running across sentences:
-     * 「你的新经济摆渡人你」「标准那么Anthropic」. A full stop on each sentence's
-     * last word lets the breaker end the line there (it already avoids
-     * reading across one).
-     */
-    const lastWord = new Set<number>();
-    for (const s of mapped.sentences) {
-      let k = -1;
-      timelineWords.forEach((w, i) => {
-        if (w.startMs >= s.startMs - 30 && w.endMs <= s.endMs + 30) k = i;
-      });
-      if (k >= 0) lastWord.add(k);
-    }
-    const captionWords = timelineWords.map((w, i) => (lastWord.has(i) && !/[，。、！？；：,.!?;:…]$/.test(w.text.trim()) ? { ...w, text: `${w.text}。` } : w));
-
-    /* Reel caption lines on the cut's clock. */
-    const preset = captionPreset(PRESET);
-    const reel = preset.style.reel;
-    const terms = extractTerms(fixture.brief).map((t) => t.text);
-    const transcript: Transcript = {
-      text: captionWords.map((w) => w.text).join(""),
-      languageCode: "zh",
-      languageProbability: 1,
-      durationSecs: mapped.totalMs / 1000,
-      words: captionWords.map((w) => ({ text: w.text, start: w.startMs / 1000, end: w.endMs / 1000, type: "word" })),
-    };
-    const lines = toCaptionLines(transcript, reel ? { reel: { aimChars: reel.aimChars, maxChars: reel.maxChars, minChars: reel.minChars, minMs: reel.minMs, terms } } : {});
-    log(`design: ${lines.length} caption lines`);
-
-    /* English for each line, matched back by the Chinese it echoes (see `translateLines`). */
-    const english = await translateLines(lines.map((l) => l.text), async (system, user) => {
-      const res = await jsonCompletion(TRANSLATE_MODEL, [{ role: "system", content: system }, { role: "user", content: user }], AbortSignal.timeout(120_000), 6000);
-      spent("translate", res.usage.costMicros);
-      return res.text;
-    });
-    log(`design: translated ${english.filter((e) => e.second).length}/${lines.length}`);
-    const captions: CaptionRow[] = lines.map((l, i) => ({ ...l, second: english[i]?.second ?? null, keywords: english[i]?.keywords ?? [] }));
-
-    /* The chin under the plain framing: the captions' top edge keeps 40 px under it. */
-    const chinY = Math.round(faceBoxUnder(face, FRAMING.base, FRAMING.eyeY)?.chin ?? 1000);
-
-    /* The outline: one call over the whole transcript (layout recomputed later with the real sourcing). */
-    let outlineRaw = "";
-    const design = await planDesign(
+    const out = await designTake(
+      take(fixture),
+      cut,
       {
-        brief: fixture.brief,
-        sentences: mapped.sentences,
-        pieces: mapped.pieces,
-        totalMs: mapped.totalMs,
-        captions: captions.map((c) => ({ startMs: c.startMs, endMs: c.endMs, text: c.text })),
-        face,
-        pace: "channel",
         accent: fixture.project.accent,
-        language: "zh-CN",
-        furniture: furnitureFromBrief(fixture.brief, fixture.project.title, fixture.project.tenantName),
-        cut: cut.report,
-        voice: null,
+        tenantName: fixture.project.tenantName,
+        face: () => faceTrackCached(RAW, { cacheDir: CACHE, clipId: fixture.source.clipId }),
+        preset: PRESET,
+        translateModel: TRANSLATE_MODEL,
       },
-      {
-        complete: async (req) => {
-          const t0 = Date.now();
-          const out = await complete({ model: modelFor.assistant(), temperature: req.temperature, maxTokens: req.maxTokens, messages: [{ role: "system", content: req.system }, { role: "user", content: req.user }] });
-          spent("outline", out.costMicros);
-          log(`design: outline ${out.model} ${out.promptTokens}+${out.completionTokens} tokens $${(out.costMicros / 1e6).toFixed(4)} ${sec(Date.now() - t0)} s`);
-          /* The outline call, then the footage call for the gaps it left (design.ts). */
-          outlineRaw = outlineRaw ? `${outlineRaw}\n\n--- footage ---\n\n${out.text}` : out.text;
-          return { text: out.text, costMicros: out.costMicros };
-        },
-        sourceBeats: null,
-        say: (t) => log(`design: ${t}`),
-      },
+      hooks,
     );
-    const out: DesignOut = { face: track, timelineSentences: mapped.sentences, timelinePieces: mapped.pieces, totalMs: mapped.totalMs, timelineWords, captions, outlineRaw, outline: design.outline, chinY };
     await writeJson(file, out);
     return out;
   });
@@ -434,47 +179,13 @@ async function stageDesign(fixture: Fixture, cut: CutOut): Promise<DesignOut> {
 
 /* ================================================================ source */
 
-/**
- * The media cache stores a fetched picture as `img0.bin`; the motion
- * renderer inlines a logo only by a picture extension. A copy with the
- * extension the bytes say (the mime from the fetch, else the magic) sits
- * beside it, so the entity card shows the logo instead of a monogram.
- */
-async function withImageExt(file: string, mime?: string): Promise<string> {
-  if (/\.(png|jpe?g|webp|gif|svg)$/i.test(file)) return file;
-  const head = await readFile(file).then((b) => b.subarray(0, 64), () => Buffer.alloc(0));
-  const sniff = head[0] === 0x89 && head[1] === 0x50 ? "png" : head[0] === 0xff && head[1] === 0xd8 ? "jpg" : head.subarray(8, 12).toString() === "WEBP" ? "webp" : head.subarray(0, 3).toString() === "GIF" ? "gif" : /<svg|<\?xml/i.test(head.toString()) ? "svg" : null;
-  const ext = sniff ?? (mime?.includes("png") ? "png" : mime?.includes("jpeg") ? "jpg" : mime?.includes("webp") ? "webp" : mime?.includes("svg") ? "svg" : null);
-  if (!ext) return file;
-  const out = `${file}.${ext}`;
-  if (!(await exists(out))) await copyFile(file, out);
-  return out;
-}
-
-type SourceOut = { design: DesignResult; traces: unknown[]; misses: unknown[]; spend: { media: unknown; vision: { costMicros: number } }; sourcingMs: number };
-
 async function stageSource(fixture: Fixture, cut: CutOut, d: DesignOut): Promise<SourceOut> {
   const file = path.join(OUT, "source.json");
   if (!runs("source")) return readJson<SourceOut>(file);
   return timed("source", async () => {
-    const { planDesign } = await import("@/lib/video/v2/design");
-    const { furnitureFromBrief } = await import("@/lib/video/director");
-    const { sourceBeatsReport } = await import("@/lib/video/v2/sourcing");
-    const { entityVisual } = await import("@/lib/video/v2/entities");
-    const { fetchLocal, localAsset, resetMediaSpend, mediaSpend } = await import("@/lib/video/v2/media-adapter");
-    const { placeCredits } = await import("@/lib/video/v2/credits");
-    const { resetVisionSpend, visionSpend } = await import("@/lib/video/vision");
     const { sheet } = await import("@/lib/video/contactsheet");
-
-    resetMediaSpend();
-    resetVisionSpend();
-    const media = { cacheDir: CACHE, tikhubBudget: TIKHUB };
     const workDir = path.join(OUT, "source");
     await mkdir(workDir, { recursive: true });
-    const traces: unknown[] = [];
-    const misses: unknown[] = [];
-    let sourcingMs = 0;
-    const contextEn = `A Chinese business-explainer reel titled 「${d.outline.titleZh}」. ${fixture.brief.replace(/\s+/g, " ").slice(0, 260)}`;
 
     /*
      * The sourcing answer is kept per beat list in the run directory, so a
@@ -482,120 +193,59 @@ async function stageSource(fixture: Fixture, cut: CutOut, d: DesignOut): Promise
      * every candidate; `--resource` asks again.
      */
     const answerFile = (beats: Beat[]) => path.join(workDir, `answer-${createHash("sha1").update(JSON.stringify(beats)).digest("hex").slice(0, 12)}.json`);
-    const sourceBeats = async (beats: Beat[]): Promise<Sourced[]> => {
-      const t0 = Date.now();
-      const kept = answerFile(beats);
-      if (!flag("--resource") && (await exists(kept))) {
-        const again = await readJson<{ sourced: Sourced[]; traces: unknown[]; misses: unknown[] }>(kept);
-        traces.push(...again.traces);
-        misses.push(...again.misses);
-        log(`source: ${again.sourced.length}/${beats.length} beats from the kept answer ${path.basename(kept)}`);
-        return again.sourced;
-      }
-      const report = await sourceBeatsReport(beats, {
-        sentences: d.timelineSentences,
-        into: "local",
-        media,
-        workDir,
-        sheets: true,
-        limiter: 6,
-        contextEn,
-        /* Long enough for the longest cutaway the layout may place (4.5 s): the window comes back cut to its own file. */
-        needMs: (b) => (b.intent === "person" || b.intent === "headline" ? 4500 : 4000),
-        onProgress: (m) => log(`source: ${m}`),
-      });
-      sourcingMs += Date.now() - t0;
-      await writeJson(kept, { sourced: report.sourced, traces: report.traces, misses: report.misses });
-      traces.push(...report.traces);
-      misses.push(...report.misses);
-      log(`source: ${report.sourced.length}/${beats.length} beats sourced in ${sec(report.ms)} s; ${report.misses.length} misses`);
-      /* The chosen-windows sheet: every pick with its line and credit. */
-      const cells = report.sourced.map((s) => {
-        const t = report.traces.find((x) => x.beatId === s.beatId);
-        return { image: t?.chosenImage ?? null, label: `${s.beatId} ${t?.line.slice(0, 26) ?? ""}\n${s.asset.credit.slice(0, 44)}\n${s.score}/10 · ${s.kind} · ${s.layout}\n${s.candidate.licence ?? "平台引用（署名）"}` };
-      });
-      if (cells.length) await sheet(cells, path.join(OUT, "sheets", "sourced.jpg"), { cols: 5, cellW: 300, cellH: 300, labelLines: 4, title: `${fixture.project.title} · sourced ${report.sourced.length}/${beats.length}` }).catch((err) => log(`source: sheet failed ${err}`));
-      return report.sourced;
-    };
-
-    /* One logo per entity for its card: the resolver's first mark, fetched to this box. */
     const logoFile = path.join(workDir, "logos.json");
     const logosKept: Record<string, Sourced | null> = !flag("--resource") && (await exists(logoFile)) ? await readJson<Record<string, Sourced | null>>(logoFile) : {};
-    const logoFor = async (e: OutlineEntity): Promise<Sourced | null> => {
-      if (e.name in logosKept) return logosKept[e.name];
-      const found = await logoFresh(e);
-      logosKept[e.name] = found;
-      await writeJson(logoFile, logosKept);
-      return found;
-    };
-    async function logoFresh(e: OutlineEntity): Promise<Sourced | null> {
-      try {
-        const visuals = await entityVisual(e, { cacheDir: CACHE, timeoutMs: 20_000 });
-        const pick = visuals.find((v) => v.isMark) ?? (e.kind === "person" ? visuals[0] : null);
-        if (!pick) return null;
-        const local = await fetchLocal(pick.candidate, { signal: AbortSignal.timeout(60_000) }, media);
-        if (!local.file) return null;
-        const file = await withImageExt(local.file, local.mime);
-        const asset = localAsset(pick.candidate, { file, width: local.width, height: local.height });
-        return { beatId: e.firstSentenceId ?? "s000", asset, candidate: pick.candidate, kind: "logo", score: 9, reasonZh: `${e.name} 标志（${pick.via}）`, windowMs: [0, 0], subjectX: 0.5, dhash: pick.candidate.id, layout: "full", alternatives: [] };
-      } catch (err) {
-        log(`source: logo ${e.name} failed: ${err instanceof Error ? err.message : err}`);
-        return null;
-      }
-    }
 
-    const traceLines: string[] = [];
-    const design = await planDesign(
+    const out = await sourceTake(
+      take(fixture),
+      cut,
+      d,
       {
-        brief: fixture.brief,
-        sentences: d.timelineSentences,
-        pieces: d.timelinePieces,
-        totalMs: d.totalMs,
-        captions: d.captions.map((c) => ({ startMs: c.startMs, endMs: c.endMs, text: c.text })),
-        face: { clipId: d.face.clipId, box: d.face.box, eyeY: d.face.eyeY, chinY: d.face.chinY, samples: d.face.samples },
-        pace: "channel",
         accent: fixture.project.accent,
-        language: "zh-CN",
-        furniture: furnitureFromBrief(fixture.brief, fixture.project.title, fixture.project.tenantName),
-        cut: cut.report,
-        voice: null,
+        tenantName: fixture.project.tenantName,
+        into: "local",
+        workDir,
+        media: { cacheDir: CACHE, tikhubBudget: TIKHUB },
+        memo: {
+          answers: {
+            get: async (beats) => (!flag("--resource") && (await exists(answerFile(beats))) ? readJson(answerFile(beats)) : null),
+            put: (beats, kept) => writeJson(answerFile(beats), kept),
+          },
+          logos: {
+            get: async (name) => (name in logosKept ? logosKept[name] : undefined),
+            put: async (name, found) => {
+              logosKept[name] = found;
+              await writeJson(logoFile, logosKept);
+            },
+          },
+          /* The chosen-windows sheet: every pick with its line and credit. */
+          onReport: async (report, beats) => {
+            const cells = report.sourced.map((s) => {
+              const t = report.traces.find((x) => x.beatId === s.beatId);
+              return { image: t?.chosenImage ?? null, label: `${s.beatId} ${t?.line.slice(0, 26) ?? ""}\n${s.asset.credit.slice(0, 44)}\n${s.score}/10 · ${s.kind} · ${s.layout}\n${s.candidate.licence ?? "平台引用（署名）"}` };
+            });
+            if (cells.length) await sheet(cells, path.join(OUT, "sheets", "sourced.jpg"), { cols: 5, cellW: 300, cellH: 300, labelLines: 4, title: `${fixture.project.title} · sourced ${report.sourced.length}/${beats.length}` }).catch((err) => log(`source: sheet failed ${err}`));
+          },
+        },
       },
-      { complete: null, outline: d.outline, sourceBeats, entityVisual: logoFor, placeCredits: (s) => placeCredits(s), say: (t) => log(`source: ${t}`), trace: (l) => traceLines.push(l) },
+      hooks,
     );
-    await writeFile(path.join(OUT, "trace.txt"), traceLines.join("\n"), "utf8");
-    const spend = { media: mediaSpend(), vision: visionSpend() };
-    spent("vision (sourcing)", spend.vision.costMicros);
-    log(`source: plan ${design.plan.cutaways.length} cutaways, ${design.plan.graphics.length} graphics, lint ${design.lint.length}; coverage ${(design.plan.stats.coverage * 100).toFixed(1)} %`);
-    const out: SourceOut = { design, traces, misses, spend, sourcingMs };
+    await writeFile(path.join(OUT, "trace.txt"), out.traceLines.join("\n"), "utf8");
+    spent("vision (sourcing)", out.spend.vision.costMicros);
     await writeJson(file, out);
-    await writeJson(path.join(OUT, "plan.json"), design.plan);
-    await writeFile(path.join(OUT, "credits.txt"), `${design.credits.line}\n\n${design.credits.block}\n`, "utf8");
+    await writeJson(path.join(OUT, "plan.json"), out.design.plan);
+    await writeFile(path.join(OUT, "credits.txt"), `${out.design.credits.line}\n\n${out.design.credits.block}\n`, "utf8");
     return out;
   });
 }
 
 /* ================================================================ motion */
 
-type MotionOut = { specs: GraphicSpecV2[]; clips: MotionClip[] };
-
 async function stageMotion(fixture: Fixture, src: SourceOut): Promise<MotionOut> {
   const file = path.join(OUT, "motion.json");
   if (!runs("motion")) return readJson<MotionOut>(file);
   return timed("motion", async () => {
-    const { renderMotionClips } = await import("@/lib/video/motion");
-    /* Pictures on cards (logos, a headline's article image) named so the renderer will inline them. */
-    const graphics: GraphicSpecV2[] = JSON.parse(JSON.stringify(src.design.plan.graphics)) as GraphicSpecV2[];
-    for (const g of graphics) {
-      const refs = [g.props.logo, g.props.image, ...(Array.isArray(g.props.group) ? (g.props.group as { logo?: unknown }[]).map((m) => m.logo) : [])];
-      for (const ref of refs) {
-        const asset = (ref as { asset?: { localPath?: string } } | null | undefined)?.asset;
-        if (asset?.localPath) asset.localPath = await withImageExt(asset.localPath);
-      }
-    }
-    const specs = toMotionSpecs(graphics);
-    const clips = await renderMotionClips(specs, { width: W, height: H, accent: fixture.project.accent, dir: path.join(OUT, "motion"), log: (l) => log(`motion: ${l}`) });
-    log(`motion: ${clips.length}/${specs.length} clips`);
-    const out: MotionOut = { specs, clips };
+    const out = await motionTake(src.design.plan.graphics, { accent: fixture.project.accent, dir: path.join(OUT, "motion") }, hooks);
     await writeJson(file, out);
     return out;
   });
@@ -605,85 +255,35 @@ async function stageMotion(fixture: Fixture, src: SourceOut): Promise<MotionOut>
 
 type RenderOut = { mp4: string; assFile: string; furniture: string | null; plan: unknown; skipped: unknown[]; durationMs: number; renderMs: number };
 
-async function furnitureStill(fixture: Fixture, graphics: readonly GraphicSpecV2[], dir: string): Promise<string | null> {
-  const { renderGraphics } = await import("@/lib/video/graphics");
-  const rows = graphics.filter((g) => FURNITURE.has(g.kind) && String(g.props.text ?? "").trim());
-  if (!rows.length) return null;
-  const channel = (kind: string) => fixture.graphics.find((g) => g.kind === kind);
-  type Spec = Parameters<typeof renderGraphics>[0][number];
-  const specs: Spec[] = rows.map((g) => ({
-    kind: g.kind as Spec["kind"],
-    text: String(g.props.text ?? ""),
-    sub: g.props.sub == null ? null : String(g.props.sub),
-    startMs: 0,
-    endMs: 3000,
-    placement: channel(g.kind)?.placement ?? null,
-    scale: channel(g.kind)?.scale ?? null,
-    enter: "fade",
-  }));
-  const work = path.join(dir, "furniture");
-  await mkdir(work, { recursive: true });
-  const files = await renderGraphics(specs, { width: W, height: H, accent: fixture.project.accent, dir: work });
-  const out = path.join(dir, "furniture.png");
-  const args = ["-y", "-f", "lavfi", "-i", `color=c=black@0.0:s=${W}x${H},format=rgba`];
-  for (const f of files) args.push("-i", f);
-  const graph: string[] = [];
-  let label = "[0:v]";
-  files.forEach((_, i) => {
-    const next = i === files.length - 1 ? "[out]" : `[f${i}]`;
-    if (rows[i].kind === "header") graph.push(`[${i + 1}:v]format=rgba,colorchannelmixer=aa=0.9[h${i}]`, `${label}[h${i}]overlay=0:0:format=auto${next}`);
-    else graph.push(`${label}[${i + 1}:v]overlay=0:0:format=auto${next}`);
-    label = next;
-  });
-  await run("ffmpeg", ["-hide_banner", "-loglevel", "error", ...args, "-filter_complex", graph.join(";"), "-map", "[out]", "-frames:v", "1", out], { timeout: 120_000 });
-  return out;
-}
-
 async function stageRender(fixture: Fixture, cut: CutOut, d: DesignOut, src: SourceOut, motion: MotionOut): Promise<RenderOut> {
   const file = path.join(OUT, "render.json");
   if (!runs("render")) return readJson<RenderOut>(file);
   return timed("render", async () => {
     const { renderTimeline } = await import("@/lib/video/render");
-    const { toAss } = await import("@/lib/video/ass");
-    const { faceTrackFor, faceAnchor } = await import("@/lib/video/face");
     const dir = path.join(OUT, "render");
     await mkdir(dir, { recursive: true });
 
-    const assText = toAss(
-      d.captions.map((c) => ({ startMs: c.startMs, endMs: c.endMs, text: c.text, words: c.words, keywords: c.keywords, second: c.second })),
-      { presetKey: PRESET, width: W, height: H, accent: fixture.project.accent, chinY: d.chinY },
-    );
     const assFile = path.join(OUT, "captions.ass");
-    await writeFile(assFile, assText, "utf8");
-    const furniture = await furnitureStill(fixture, src.design.plan.graphics, dir);
+    await writeFile(assFile, await captionsAss(d.captions, { accent: fixture.project.accent, chinY: d.chinY, preset: PRESET }), "utf8");
+    /* The channel's furniture where the project's own rows put it. */
+    const channel = (kind: string) => fixture.graphics.find((g) => g.kind === kind);
+    const furniture = await furnitureStill(src.design.plan.graphics, { accent: fixture.project.accent, dir, placement: channel });
 
-    const face = { clipId: d.face.clipId, box: d.face.box, eyeY: d.face.eyeY, chinY: d.face.chinY, samples: d.face.samples };
-    const track = d.face as Parameters<typeof faceTrackFor>[0];
-    const cuts = toRenderCuts(cut.pieces, src.design.plan.cutZooms, {
-      file: RAW,
-      face,
-      faceAt: (inMs, outMs) => {
-        const local = faceTrackFor(track, inMs, outMs);
-        return { anchor: faceAnchor(local), faceHeight: local.box[3] };
-      },
-    });
-    const { cutaways, skipped } = toRenderCutaways(src.design.plan.cutaways, src.design.plan.renderHints, face);
-    const plan = {
-      width: W,
-      height: H,
-      fps: 30 as const,
-      mode: "v2" as const,
+    const { plan, skipped } = await v2RenderPlan({
+      raw: RAW,
+      pieces: cut.pieces,
+      cutZooms: src.design.plan.cutZooms,
+      renderHints: src.design.plan.renderHints,
+      cutaways: src.design.plan.cutaways,
+      face: d.face,
+      motion: motion.clips,
+      furniture,
+      assFile,
       accent: fixture.project.accent,
       workDir: dir,
-      cuts,
-      cutaways,
-      motion: motion.clips,
-      furniture: furniture ?? undefined,
-      assFile,
-      audio: { voiceChain: true, cutFadeMs: 12 as const },
-    };
+    });
     await writeJson(path.join(OUT, "render-plan.json"), plan);
-    log(`render: ${cuts.length} cuts (${cuts.filter((c) => c.seam).length} seams), ${cutaways.length} cutaways (${skipped.length} skipped), ${motion.clips.length} motion clips`);
+    log(`render: ${plan.cuts.length} cuts (${plan.cuts.filter((c) => c.seam).length} seams), ${plan.cutaways.length} cutaways (${skipped.length} skipped), ${motion.clips.length} motion clips`);
     const mp4 = path.join(OUT, "out.mp4");
     const t0 = Date.now();
     let lastPct = -10;
@@ -698,7 +298,7 @@ async function stageRender(fixture: Fixture, cut: CutOut, d: DesignOut, src: Sou
     });
     const renderMs = Date.now() - t0;
     await writeFile(path.join(OUT, "render-command.txt"), res.command, "utf8");
-    const out: RenderOut = { mp4, assFile, furniture, plan: { cuts: cuts.length, cutaways: cutaways.length, motion: motion.clips.length }, skipped, durationMs: res.durationMs, renderMs };
+    const out: RenderOut = { mp4, assFile, furniture, plan: { cuts: plan.cuts.length, cutaways: plan.cutaways.length, motion: motion.clips.length }, skipped, durationMs: res.durationMs, renderMs };
     await writeJson(file, out);
     return out;
   });

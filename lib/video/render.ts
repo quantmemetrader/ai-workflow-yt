@@ -49,6 +49,7 @@ import {
 } from "@/lib/video/graphics";
 import { asEntrance } from "@/lib/video/presets";
 import type { RenderPlan } from "@/lib/video/v2/types";
+import { loadRenderInputV2 } from "@/lib/video/v2/render-input";
 
 /**
  * The renderer. FFmpeg on this box, run by the worker, never by a request.
@@ -257,7 +258,10 @@ export async function renderExport(exportId: string): Promise<{ fileId: string; 
     const setProgress = (progress: number) =>
       db.update(videoExports).set({ progress }).where(eq(videoExports.id, exportId)).then(() => {}, () => {});
 
-    const { plan, srt } = await loadRenderInput({ e, project, size, dir, onProgress: setProgress });
+    /* A director v2 video is read back into its own plan (`lib/video/v2/render-input.ts`); anything else, and any v2
+       video whose tenant has the flag off again, loads exactly as before. */
+    const { plan, srt } =
+      (await loadRenderInputV2({ e, project, dir, download, onProgress: setProgress })) ?? (await loadRenderInput({ e, project, size, dir, onProgress: setProgress }));
 
     const master = path.join(dir, "master.mp4");
     let lastWritten = 0;
@@ -1644,6 +1648,11 @@ async function makeProxy(input: {
 }
 
 /** Streamed to disk, not buffered: a master is measured in gigabytes. */
+/** An object out of the store onto local disk (the director v2 path pulls its take through this too). */
+export async function downloadObject(key: string, to: string): Promise<void> {
+  return download(key, to);
+}
+
 async function download(key: string, to: string) {
   const res = await getObject(key);
   if (!res.ok || !res.body) throw new Error(`Storage said ${res.status} for ${key}`);
