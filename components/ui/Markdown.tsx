@@ -13,6 +13,34 @@ export function Markdown({ text }: { text: string }) {
   return <div className="flex flex-col gap-2 text-sm leading-[1.55] text-ink-gray-8">{blocks(text)}</div>;
 }
 
+const LIST_RE = /^(\s*)(?:[-*+]|(\d+)\.)\s+(.*)$/;
+
+type ListRow = { indent: number; ordered: boolean; num: number; text: string };
+
+/** One list from its rows: the least-indented rows are its items, anything deeper belongs to the item above it. */
+function listTree(rows: ListRow[], nextKey: () => number): React.ReactNode {
+  const base = Math.min(...rows.map((r) => r.indent));
+  const tops: { row: ListRow; kids: ListRow[] }[] = [];
+  for (const r of rows) {
+    if (r.indent > base && tops.length) tops[tops.length - 1].kids.push(r);
+    else tops.push({ row: r, kids: [] });
+  }
+  const ordered = tops[0].row.ordered;
+  const items = tops.map((t, n) => (
+    <li key={n} className="pl-0.5">
+      {inline(t.row.text)}
+      {t.kids.length ? <div className="mt-1">{listTree(t.kids, nextKey)}</div> : null}
+    </li>
+  ));
+  const k = nextKey();
+  if (!ordered) return <ul key={k} className="ml-4 flex list-outside list-disc flex-col gap-1">{items}</ul>;
+  return (
+    <ol key={k} start={tops[0].row.num > 1 ? tops[0].row.num : undefined} className="ml-4 flex list-outside list-decimal flex-col gap-1">
+      {items}
+    </ol>
+  );
+}
+
 function blocks(src: string): React.ReactNode[] {
   const lines = src.replace(/\r\n/g, "\n").split("\n");
   const out: React.ReactNode[] = [];
@@ -64,24 +92,37 @@ function blocks(src: string): React.ReactNode[] {
       continue;
     }
 
-    // Lists
-    if (/^\s*([-*+]|\d+\.)\s+/.test(line)) {
-      const items: string[] = [];
-      const ordered = /^\s*\d+\./.test(line);
-      while (i < lines.length && /^\s*([-*+]|\d+\.)\s+/.test(lines[i])) {
-        items.push(lines[i].replace(/^\s*([-*+]|\d+\.)\s+/, ""));
-        i++;
+    // Lists: nested by indent ("1. topic" then "   - why"), and one list
+    // across the blank lines between its items. It was flat and restarted at
+    // every blank line, so a researcher's three topics each read "1." and
+    // their sub-points came out numbered 2 and 3.
+    if (LIST_RE.test(line)) {
+      const rows: ListRow[] = [];
+      while (i < lines.length) {
+        const m = LIST_RE.exec(lines[i]);
+        if (m) {
+          rows.push({ indent: m[1].replace(/\t/g, "    ").length, ordered: m[3] !== undefined, num: Number(m[3] ?? 1), text: m[4] });
+          i++;
+          continue;
+        }
+        if (!lines[i].trim()) {
+          let j = i;
+          while (j < lines.length && !lines[j].trim()) j++;
+          if (j < lines.length && LIST_RE.test(lines[j])) {
+            i = j;
+            continue;
+          }
+          break;
+        }
+        // An indented line under an item carries on its text.
+        if (/^\s{2,}\S/.test(lines[i]) && rows.length) {
+          rows[rows.length - 1].text += ` ${lines[i].trim()}`;
+          i++;
+          continue;
+        }
+        break;
       }
-      const ListTag = ordered ? "ol" : "ul";
-      out.push(
-        <ListTag key={key++} className={`ml-4 flex list-outside flex-col gap-1 ${ordered ? "list-decimal" : "list-disc"}`}>
-          {items.map((item, n) => (
-            <li key={n} className="pl-0.5">
-              {inline(item)}
-            </li>
-          ))}
-        </ListTag>,
-      );
+      out.push(listTree(rows, () => key++));
       continue;
     }
 

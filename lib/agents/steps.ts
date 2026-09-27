@@ -174,3 +174,26 @@ export function directorStepLabel(step: string | null | undefined, zh: boolean):
   const v = step ? DIRECTOR_STEPS[step] : undefined;
   return v ? (zh ? v[0] : v[1]) : zh ? "处理中" : "working";
 }
+
+/* The source a research tool stands for, in words: what a reply says instead of the tool's name. */
+const TOOL_WORDS: Record<string, { zh: string; en: string }> = {
+  trending_now: { zh: "实时热榜", en: "the live charts" },
+  search_now: { zh: "实时搜索", en: "a live search" },
+  watch_topic: { zh: "追踪列表", en: "the watch list" },
+};
+
+/**
+ * A reply with a tool's own name in it (「以上均来自 trending_now（AI beat）」)
+ * gets the plain words for it instead. The prompt says never to write them;
+ * this is for when the model does anyway.
+ */
+export function scrubToolNames(text: string): string {
+  const zh = /[\u3400-\u9fff]/.test(text);
+  return text.replace(/`?\b([a-z]+(?:_[a-z]+)+)\b`?(\s*[（(](?:AI\s*)?beat[）)])?/g, (all, name: string) => {
+    if (!(name in TOOL_STEPS)) return all;
+    const w = TOOL_WORDS[name];
+    if (w) return zh ? w.zh : w.en;
+    const step = STEP_LABELS[TOOL_STEPS[name]];
+    return zh ? step.zh.replace(/^正在/, "") : step.en.toLowerCase();
+  });
+}

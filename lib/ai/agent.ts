@@ -14,6 +14,7 @@ import { assemblePrompt } from "./prompt";
 import { runTool, toolsFor } from "./tools";
 import { idsIn, type Artifact, type ToolContext } from "./tools/types";
 import { AGENT_KEYS, AGENT_LABELS, agentKeyFromEmail, type AgentKey } from "@/lib/agents/catalog";
+import { scrubToolNames } from "@/lib/agents/steps";
 
 /**
  * One turn of the employee's agent (spec §4.2, §5).
@@ -560,6 +561,8 @@ export async function* runAgent(opts: {
       answer = lastToolText.slice(0, 600);
       yield { type: "delta", text: answer };
     }
+
+    answer = scrubToolNames(answer);
 
     if (!answer.trim() && !signal?.aborted) {
       yield {

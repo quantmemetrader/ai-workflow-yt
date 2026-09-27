@@ -71,11 +71,14 @@ export async function binImage(viewer: Viewer, videoProjectId: string, fileId: s
     /* Fetched once to disk: ffmpeg looping a picture read from a URL
        downloads it again for every frame — 150 fetches for five seconds —
        and was killed at its time limit, so no picture ever reached the bin. */
-    const src = join(dir, "picture");
+    /* turbopackIgnore: a temp dir made at run time. Without it the build
+       read "<dir>/picture" as a pattern over the whole project (23 249 files,
+       the deploy releases among them) and copied them into every release. */
+    const src = join(/*turbopackIgnore: true*/ dir, "picture");
     const got = await fetch(String(url), { signal: AbortSignal.timeout(30_000) });
     if (!got.ok) throw new Error(`Could not read the picture (${got.status})`);
     await writeFile(src, Buffer.from(await got.arrayBuffer()));
-    const out = join(dir, "still.mp4");
+    const out = join(/*turbopackIgnore: true*/ dir, "still.mp4");
     /* Blurred cover fill + the whole picture fitted on top, then a gentle
        push-in (1.00 → ~1.09 over five seconds). */
     /* The picture whole over a blurred fill of itself; the edit adds its own
