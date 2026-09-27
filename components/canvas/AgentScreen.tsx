@@ -1165,6 +1165,9 @@ function AgentRow({ message, zh, locale }: { message: ThreadMessage; zh: boolean
             <div key={message.status === "streaming" ? "live" : "done"} translate={message.status === "streaming" ? "no" : undefined}>
               <Markdown text={tidyMarkdown(message.content)} />
             </div>
+          ) : message.status === "stopped" ? (
+            /* Cut off before a word was written: say so, not an empty bubble. */
+            <div style={{ fontSize: 12.5, color: "#8a8a8a" }}>{zh ? "这次回答中途停了，没有写完。再问一次就好。" : "This answer stopped before it was written. Ask again."}</div>
           ) : null}
           {/* Typing, from the moment it was asked until the first word, and
               again while a tool runs — saying which step the tool is
