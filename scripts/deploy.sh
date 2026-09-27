@@ -13,7 +13,8 @@ cd "$(dirname "$0")/.."
 root=$(pwd)
 
 echo "==> checks"
-npx tsc --noEmit
+# The project outgrew tsc's default 4 GB heap (it died with "heap out of memory"); the box has 64 GB.
+NODE_OPTIONS=--max-old-space-size=8192 npx tsc --noEmit
 npm run smoke
 
 echo "==> renderer fonts"
