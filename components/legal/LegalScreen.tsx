@@ -21,10 +21,6 @@ import { ModuleSidebar, type ScreenItem } from "@/components/shell/ModuleSidebar
 /**
  * Legal (spec §4.10), transcribed from the four `Legal-*` artboards.
  *
- * The non-advice notice sits under the header on every tab, not in a footer
- * somebody scrolls past: it is a term of the contract this was built under
- * (8.4), and clause review is exactly the screen where somebody might forget.
- *
  * Clause review marks departures and explains them. There is no risk column,
  * no score and no recommendation, because a plausible-sounding verdict from a
  * machine is worse than no verdict at all.
@@ -47,7 +43,6 @@ export function LegalScreen({
   contracts,
   checklists,
   runs,
-  nonAdvice,
   locale,
   model,
 }: {
@@ -55,7 +50,6 @@ export function LegalScreen({
   contracts: ContractRow[];
   checklists: ChecklistRow[];
   runs: RunRow[];
-  nonAdvice: string;
   locale: string;
   model: string;
 }) {
@@ -99,20 +93,6 @@ export function LegalScreen({
     <div style={{ flexGrow: 1, minWidth: 0, display: "flex", flexDirection: "column", minHeight: 0 }}>
       <ModuleHeader title={t("Legal", "法务")} note={t("drafting and comparison", "起草与比对")} />
 
-      {/* The notice, on every tab. Contract clause 8.4. */}
-      <div
-        style={{
-          flexShrink: 0,
-          padding: "9px 22px",
-          borderBottom: "1px solid #ededed",
-          fontSize: 11.5,
-          color: "#a35f00",
-          background: "#fffbf3",
-          lineHeight: 1.5,
-        }}
-      >
-        {nonAdvice}
-      </div>
 
       <div style={{ flexGrow: 1, minHeight: 0, display: "flex" }}>
         <div style={{ flexGrow: 1, minWidth: 0, overflowY: "auto", padding: "18px 22px 40px" }}>
@@ -213,7 +193,6 @@ export function LegalScreen({
             `${contracts.length} 份合同，${openFindings} 处差异尚未有人查看。`,
           )}
           placeholder={t("Ask about a contract…", "询问合同…")}
-          footnote={nonAdvice}
           model={model}
           onAsk={(prompt) => void agent.send(prompt)}
           thread={

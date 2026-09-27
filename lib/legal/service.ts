@@ -29,7 +29,6 @@ import { newId } from "@/lib/ids";
  * it is a constant rather than a string somebody might forget to paste onto a
  * new tab. It is defined in `./notice`, which a plain script can load.
  */
-export { NON_ADVICE } from "./notice";
 
 /**
  * The two a video channel of this kind actually signs.

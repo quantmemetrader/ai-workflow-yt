@@ -4,7 +4,6 @@ import { db } from "@/lib/db/client";
 import { tenants } from "@/lib/db/schema";
 import type { ToolDef } from "@/lib/ai/openrouter";
 import {
-  NON_ADVICE,
   draftContract,
   listChecklists,
   listContracts,
@@ -26,9 +25,7 @@ import { id, num, str, type ToolContext, type ToolPack, type ToolResult } from "
  *
  * The module's one rule holds here too: a departure is marked and explained,
  * a verdict is never rendered. The review is the service's mechanical
- * clause-by-clause comparison, returned as it is, and everything that drafts
- * or compares ends with the non-advice notice, so a reply quoting it carries
- * the notice with it.
+ * clause-by-clause comparison, returned as it is,.
  *
  * Gated on the Legal module, like every action on the Legal screen
  * (`lawyer()` in app/(app)/legal/actions.ts), and on who will read the answer
@@ -116,7 +113,6 @@ const day = (d: Date | string | null) => (d ? (typeof d === "string" ? d : d.toI
 
 /** The notice as the last lines of a result: both languages, because the
  * model answers in the asker's and must not have to translate it. */
-const NOTICE = `\n\n${NON_ADVICE.zh}\n${NON_ADVICE.en}`;
 
 const DEPARTURE: Record<string, string> = {
   missing: "missing from the contract",
@@ -184,7 +180,7 @@ async function run(ctx: ToolContext, name: string, args: Record<string, unknown>
           findings.length
             ? `Last review against the template:\n${findingLines(findings).join("\n")}`
             : "Not reviewed, or no departures from the template at the last review.",
-        ].join("\n") + NOTICE,
+        ].join("\n"),
     };
   }
 
@@ -233,7 +229,7 @@ async function run(ctx: ToolContext, name: string, args: Record<string, unknown>
           `Drafted: "${title}" (id: ${contractId}) in the Legal library, as a draft.`,
           unfilled.length ? `Still blank, shown as placeholders: ${unfilled.join(", ")}.` : "Every field was filled.",
           "Nothing has been sent or signed. Open it at /legal to edit, review or send.",
-        ].join("\n") + NOTICE,
+        ].join("\n"),
       changed: true,
     };
   }
@@ -253,8 +249,7 @@ async function run(ctx: ToolContext, name: string, args: Record<string, unknown>
         (found
           ? `Compared "${title}" (id: ${contractId}) with its template: ${found} departure(s).\n${findingLines(findings).join("\n")}`
           : `Compared "${title}" (id: ${contractId}) with its template: no departures, clause for clause.`) +
-        "\nThe contract is now in review. These are differences, not a judgement of them." +
-        NOTICE,
+        "\nThe contract is now in review. These are differences, not a judgement of them.",
       changed: true,
     };
   }

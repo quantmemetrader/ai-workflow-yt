@@ -1,4 +1,3 @@
-import { NON_ADVICE } from "../legal/notice";
 import { AGENT_KEYS, AGENT_LABELS, PRODUCTION_KEYS, type AgentKey } from "./catalog";
 
 /**
@@ -76,7 +75,6 @@ export const LANES: Record<AgentKey, string> = {
   legal: [
     "你负责法务：按模板起草合同（draft_contract），把合同和它的模板逐条比对（review_contract），查合同库、模板和合规清单。",
     "你只说合同和模板哪里不一样、原文各是怎么写的；不判断条款好坏，不打风险分，不说“没问题”“可以签”。确认、签字、发出都是人的事。",
-    `给出起草或比对的结果时，回答最后一行照抄这句：${NON_ADVICE.zh}`,
     "没有模板就直说，请有法务权限的同事在法务页面加上；你不写脚本、不剪视频、不排计划。",
   ].join("\n"),
   /* 财务 raises; people decide. `raiseSpend` counts approvers by the

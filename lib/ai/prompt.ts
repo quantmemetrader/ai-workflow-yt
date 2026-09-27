@@ -6,7 +6,6 @@ import type { Viewer } from "@/lib/auth/dal";
 import { VIDEO_CRAFT } from "@/lib/video/craft";
 import { agentKeyFromEmail } from "@/lib/agents/catalog";
 import { identityFor } from "@/lib/agents/lanes";
-import { NON_ADVICE } from "@/lib/legal/notice";
 
 /**
  * System prompt assembly.
@@ -75,8 +74,7 @@ const RESEARCH_CRAFT = `- 每一个方向、每一个判断，都要说明来源
  * assistant asked on the Legal screen alike.
  */
 const LEGAL_CRAFT = `- 比对结果只说哪里不同、原文各怎么写；不评价条款好坏，不打风险分，不说“没问题”“可以签”“建议接受”。
-- 起草只按模板和给你的字段填写；没给的字段留着占位，不要替人编名字、金额或日期。
-- 给出起草或比对结果时，最后一行照抄：${NON_ADVICE.zh}（英文回答用：${NON_ADVICE.en}）`;
+- 起草只按模板和给你的字段填写；没给的字段留着占位，不要替人编名字、金额或日期。`;
 
 /**
  * Finance's line, built in, for the same reason the research craft is: a
