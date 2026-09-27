@@ -647,8 +647,8 @@ export function ProjectScreen({
             </div>
           ) : null}
 
-          {/* A board of two columns that pack like a puzzle: each card starts
-              where the one above it ends, whatever their heights. */}
+          {/* The cards one below the other, in the flow's order: topic,
+              script, clips, the film, captions and delivery. */}
           <Board>
             {/* ---- topic ---- */}
             {/* Swapping the topic (and, on the script card, using another
@@ -1297,20 +1297,14 @@ function Picker({ projectId, kind, zh, onClose, onPick }: { projectId: string; k
 }
 
 /**
- * Cards in two columns, dealt alternately (left, right, left…), each column
- * stacking its cards with no gaps; one column on a narrow screen.
+ * The cards one below the other, in the order they are written — the same
+ * order as the steps above them. Two columns dealt left, right, left read
+ * 选题, 素材, 文案与交付 down one side and 脚本, 成片 down the other, and
+ * nobody could follow the work through them ("this too, one below other").
  */
 function Board({ children }: { children: React.ReactNode }) {
   const cards = React.Children.toArray(children).filter(Boolean);
-  const left = cards.filter((_, i) => i % 2 === 0);
-  const right = cards.filter((_, i) => i % 2 === 1);
-  return (
-    <div className="pboard" style={{ display: "flex", gap: 14, alignItems: "flex-start" }}>
-      <div style={{ flex: "1 1 0", minWidth: 0, display: "flex", flexDirection: "column", gap: 14 }}>{left}</div>
-      <div style={{ flex: "1 1 0", minWidth: 0, display: "flex", flexDirection: "column", gap: 14 }}>{right}</div>
-      <style dangerouslySetInnerHTML={{ __html: `@media (max-width: 980px) { .pboard { flex-direction: column; } .pboard > div { width: 100%; } }` }} />
-    </div>
-  );
+  return <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>{cards}</div>;
 }
 
 /**
