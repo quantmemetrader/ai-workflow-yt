@@ -78,8 +78,8 @@ export function ProjectBridge({
   /* Only once there is something to put in a project: 编剧, 剪辑师 or 撰稿人
      answered here. A research question is not a project, and the bar on
      every chat ("把这段对话变成项目…") was noise the owner circled. */
-  const made = messages.some((m) => m.role === "assistant" && (m.speaker === "script" || m.speaker === "video" || m.speaker === "article"));
-  const live = Boolean(conversationId && hasAsk && !hidden && made);
+  const employeeMade = messages.some((m) => m.role === "assistant" && (m.speaker === "script" || m.speaker === "video" || m.speaker === "article"));
+  const live = Boolean(conversationId && hasAsk && !hidden && employeeMade);
 
   /* Kept with the conversation they belong to, so a panel that starts a
      new thread (or loads an old one) never shows the last one's project. */
