@@ -10,8 +10,9 @@
  * to the whole studio as before, every layout keeps a link to all of them,
  * and anybody can look at another job's Home with `?view=`.
  *
- * A job is one of the employee keys (research · planning · script · video ·
- * article), stored per person in `users.work_role`, so `AGENT_LABELS`,
+ * A job is one of the production line's employee keys (research · planning ·
+ * script · video · article — `PRODUCTION_KEYS`, not 法务 or 财务, who have no
+ * videos in hand), stored per person in `users.work_role`, so `AGENT_LABELS`,
  * `JOB_OWNER` and a decision's `agent` all filter by it without a mapping
  * table. "overview" is everything, today's Home.
  *
@@ -19,15 +20,15 @@
  * draw the same thing the page filtered by, and the admin screen needs the
  * labels. Only types come from server files, and types are erased.
  */
-import { AGENT_KEYS, type AgentKey } from "@/lib/agents/catalog";
+import { PRODUCTION_KEYS, isProductionKey, type ProductionKey } from "@/lib/agents/catalog";
 import type { Viewer } from "@/lib/auth/types";
 import type { ProjectStep, StepState } from "@/lib/projects/service";
 
-export type HomeRole = "overview" | AgentKey;
+export type HomeRole = "overview" | ProductionKey;
 
 /** In the order the tabs are drawn: everything first, then the line of work
  * in the order it goes. */
-export const HOME_ROLES: readonly HomeRole[] = ["overview", ...AGENT_KEYS];
+export const HOME_ROLES: readonly HomeRole[] = ["overview", ...PRODUCTION_KEYS];
 
 export function isHomeRole(value: unknown): value is HomeRole {
   return typeof value === "string" && (HOME_ROLES as readonly string[]).includes(value);
@@ -59,7 +60,7 @@ export const ROLE_LABELS: Record<HomeRole, { zh: string; en: string }> = {
  * the overview, which is never wrong, only less focused.
  */
 export function homeRoleOf(viewer: Pick<Viewer, "workRole" | "role" | "modules">): HomeRole {
-  if (viewer.workRole && (AGENT_KEYS as readonly string[]).includes(viewer.workRole)) return viewer.workRole;
+  if (isProductionKey(viewer.workRole)) return viewer.workRole;
   if (viewer.role === "owner" || viewer.role === "admin") return "overview";
   const has = (m: Viewer["modules"][number]) => viewer.modules.includes(m);
   const production = (["research", "script", "video", "publish"] as const).filter(has);
@@ -88,7 +89,7 @@ export type PanelKey =
   | "running"
   /** The last words of each project in hand. */
   | "chats"
-  /** The five employees. */
+  /** The five employees of the production line. */
   | "team";
 
 export type HomeLayout = {
@@ -97,7 +98,7 @@ export type HomeLayout = {
   /** Down the narrow column, top to bottom. */
   side: PanelKey[];
   /** The employee this job works with: first in 同事, tagged in the task box. */
-  agent: AgentKey | null;
+  agent: ProductionKey | null;
   /** The projects panel's title and what it says when nothing is in hand. */
   projectsZh: string;
   projectsEn: string;

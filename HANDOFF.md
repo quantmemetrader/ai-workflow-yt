@@ -8,7 +8,7 @@ Everything here was verified in that session unless marked *unverified*.
 - Internal platform for 腾亚创变 (Tengya), a Hong Kong finance/tech video studio. Live at https://tengya.media.
 - Client contact: Ryan (WhatsApp +852 5167 6504). Studio staff seen in the DB: Catherine (admin), Avon, two accounts named Ryan, "Studio owner", "admin" (admin@okbro.xyz). **Real names / Chinese names for these accounts are still unknown — do not invent them.**
 - Client brief (the spec everything follows): `~/Downloads/+852 5167 6504/tengya-agentic-prompt.md` on Rahul's Mac.
-- The product idea in one line: five AI employees (研究员 research, 策划 planning, 编剧 script, 剪辑师 video, 撰稿人 article) that talk in chat channels, hand work to each other, and put buttons under what they say; a person says yes and moves on.
+- The product idea in one line: seven AI employees (研究员 research, 策划 planning, 编剧 script, 剪辑师 video, 撰稿人 article on the production line; 法务 legal and 财务 finance beside it) that talk in chat channels, hand work to each other, and put buttons under what they say; a person says yes and moves on.
 
 ## 2. Server and repo
 

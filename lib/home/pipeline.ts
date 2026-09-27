@@ -14,7 +14,7 @@ import {
   videoProjects,
 } from "@/lib/db/schema";
 import type { Viewer } from "@/lib/auth/types";
-import type { AgentKey } from "@/lib/agents/catalog";
+import type { ProductionKey } from "@/lib/agents/catalog";
 
 /**
  * Where today's video is, step by step.
@@ -36,7 +36,8 @@ export type StageState = "done" | "running" | "you" | "todo";
 export type Stage = {
   key: StageKey;
   n: number;
-  owner: AgentKey | "you";
+  /** A step of the video is one of the production line's, or the person's. */
+  owner: ProductionKey | "you";
   state: StageState;
   /** One short line under the owner: "08:00 已完成", "进行中 62%", "等上一步". */
   line: string;

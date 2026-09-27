@@ -321,14 +321,24 @@ export async function listSpend(viewer: Viewer): Promise<SpendRow[]> {
 
 export async function raiseSpend(
   viewer: Viewer,
-  input: { title: string; description: string; amountMicros: number; centreId: string | null; neededBy: Date | null },
+  input: {
+    title: string;
+    description: string;
+    amountMicros: number;
+    centreId: string | null;
+    neededBy: Date | null;
+    /** A floor under the thresholds' count. 财务 raises with 1: the
+     *  auto-approve line trusts a person's own small purchase, and a request
+     *  a model raised is not one (`lib/ai/tools/finance.ts`). */
+    minApprovals?: number;
+  },
 ) {
   const title = input.title.trim();
   if (!title) throw new Error("It needs a title");
   if (!(input.amountMicros > 0)) throw new Error("An amount is a positive number");
 
   const t = await thresholds(viewer);
-  const needed = approvalsFor(input.amountMicros / 1_000_000, t);
+  const needed = Math.max(approvalsFor(input.amountMicros / 1_000_000, t), input.minApprovals ?? 0);
 
   const id = newId("req");
   await db.insert(spendRequests).values({

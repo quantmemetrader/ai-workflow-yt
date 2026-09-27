@@ -2,7 +2,7 @@
 
 import { useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { AGENT_KEYS, AGENT_LABELS, type AgentKey } from "@/lib/agents/catalog";
+import { AGENT_LABELS, PRODUCTION_KEYS, type AgentKey } from "@/lib/agents/catalog";
 import type { Automation, AutomationKey } from "@/lib/automations/service";
 import { setAutomationAction } from "./actions";
 
@@ -90,7 +90,9 @@ export function AutomationsCard({
                   onChange={(e) => save(row.key, { agent: e.target.value as AgentKey })}
                   className="h-7 rounded-lg border border-outline-gray-2 px-2 text-xs"
                 >
-                  {AGENT_KEYS.map((key) => (
+                  {/* The morning digest, the plan and the footage note are
+                      production work; 法务 and 财务 are not offered them. */}
+                  {PRODUCTION_KEYS.map((key) => (
                     <option key={key} value={key}>
                       {zh ? AGENT_LABELS[key].nameLocal : AGENT_LABELS[key].name}
                     </option>

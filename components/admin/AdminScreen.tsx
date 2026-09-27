@@ -37,7 +37,7 @@ import {
 } from "@/app/(app)/admin/actions";
 import { notify } from "@/lib/client/notify";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
-import { AGENT_KEYS } from "@/lib/agents/catalog";
+import { PRODUCTION_KEYS } from "@/lib/agents/catalog";
 import { ROLE_LABELS } from "@/lib/home/roles";
 import { PersonAvatar } from "@/components/ui/PersonAvatar";
 
@@ -344,7 +344,9 @@ function WorkRoleSelect({
       style={{ ...field, height: 26, width, fontSize: 11.5 }}
     >
       <option value="">{zh ? "— 未设" : "— not set"}</option>
-      {AGENT_KEYS.map((k) => (
+      {/* The production line's jobs only: 法务 and 财务 have no Home of
+          their own to land on (`HOME_ROLES`). */}
+      {PRODUCTION_KEYS.map((k) => (
         <option key={k} value={k}>
           {zh ? ROLE_LABELS[k].zh : ROLE_LABELS[k].en}
         </option>

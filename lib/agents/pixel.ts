@@ -17,7 +17,11 @@
  *   video     - an open striped clapperboard raised on the left, black hair
  *               and a teal headphone band and ear cup;
  *   article   - long hair with a bow, an open newspaper held across the whole
- *               width: headline bars, centre fold, text lines, a photo block.
+ *               width: headline bars, centre fold, text lines, a photo block;
+ *   legal     - neat dark hair, a brass suit and white shirt, holding up a
+ *               balance on the left: post, beam, two grey pans;
+ *   finance   - short hair, the green shirt, a slate calculator held in
+ *               front with a light display and one gold key.
  * The host's assistant is a small white TV-box robot with a gold antenna, gold
  * ear bolts and a dark screen showing two eyes, blush and a smile.
  *
@@ -40,6 +44,8 @@ const HAIR: Record<SpriteKey, string> = {
   script: "#5a2c14",
   video: "#1b1b1b",
   article: "#4a2433",
+  legal: "#2b2b33",
+  finance: "#3b2a1a",
   host: "#171717",
 };
 
@@ -133,6 +139,42 @@ const GRIDS: Record<SpriteKey, string[]> = {
     "kpggggpgpcccpggk",
     "kppppppgpcccpppk",
     "kpggggpgpcccpggk",
+  ],
+  legal: [
+    "................",
+    "........kkkkkk..",
+    ".......khhhhhhk.",
+    "...y...khhhhhhhk",
+    "yyyyyyykhssssshk",
+    "y..y..yksssssssk",
+    "y..y..yksksskssk",
+    "gggygggksssssssk",
+    ".g.y.g.kssmmsssk",
+    "...y....kssssk..",
+    "...y....kkSSkk..",
+    "..sys..kcwwwwck.",
+    "...y...kccwwccck",
+    "..yyy..kcccwccck",
+    ".......kcccwccck",
+    ".......kcccwccck",
+  ],
+  finance: [
+    "................",
+    ".....kkkkkk.....",
+    "....khhhhhhk....",
+    "...khhhhhhhhk...",
+    "...khssssssshk..",
+    "...ksssssssssk..",
+    "...kskkssskksk..",
+    "...ksssssssssk..",
+    "...ksssmmssssk..",
+    "....kssssssk....",
+    ".....kkSSkk.....",
+    "...kccccccccck..",
+    ".kdddddkcccccck.",
+    ".kdllldksccccck.",
+    ".kdwdwdksccccck.",
+    ".kdwdydkcccccccc",
   ],
   host: [
     ".......kk.......",

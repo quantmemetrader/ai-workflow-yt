@@ -170,7 +170,7 @@ function render(date: string, plan: Plan): string {
 async function main() {
   const date = hkDate();
 
-  /* Cheap, idempotent, and hourly: the five employees exist and answer to the
+  /* Cheap, idempotent, and hourly: the employees exist and answer to the
      names the catalog gives them, whether or not today's plan is due. */
   await ensureAllAgents(TENANT);
 

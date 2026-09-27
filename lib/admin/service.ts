@@ -17,7 +17,7 @@ import {
 } from "@/lib/db/schema";
 import type { Viewer } from "@/lib/auth/dal";
 import { workRoleOf } from "@/lib/auth/types";
-import { AGENT_KEYS, type AgentKey } from "@/lib/agents/catalog";
+import { isProductionKey, type ProductionKey } from "@/lib/agents/catalog";
 import { audit } from "@/lib/audit";
 import { newId } from "@/lib/ids";
 import { env } from "@/lib/env";
@@ -58,7 +58,7 @@ export type PersonRow = {
   email: string;
   title: string | null;
   /** Their job in the studio (岗位), which picks their Home. Null: not set. */
-  workRole: AgentKey | null;
+  workRole: ProductionKey | null;
   role: "owner" | "admin" | "member" | "guest";
   status: "active" | "invited" | "suspended";
   avatarUrl: string | null;
@@ -220,9 +220,9 @@ export async function setUserRole(
  * The owner's row follows the rule the rest of this screen does: the owner's
  * own details are the owner's to change.
  */
-export async function setWorkRole(viewer: Viewer, userId: string, role: AgentKey | null) {
+export async function setWorkRole(viewer: Viewer, userId: string, role: ProductionKey | null) {
   assertAdmin(viewer);
-  if (role !== null && !(AGENT_KEYS as readonly string[]).includes(role)) throw new Error("No such job");
+  if (role !== null && !isProductionKey(role)) throw new Error("No such job");
 
   const [target] = await db
     .select({ id: users.id, role: users.role })

@@ -24,7 +24,7 @@ import {
   setUserStatus,
   setWorkRole,
 } from "@/lib/admin/service";
-import { AGENT_KEYS, type AgentKey } from "@/lib/agents/catalog";
+import { isProductionKey } from "@/lib/agents/catalog";
 
 /**
  * Admin, from the screen.
@@ -79,7 +79,7 @@ export async function setWorkRoleAction(userId: string, role: string | null) {
   const viewer = await admin();
   if (!viewer) return { error: "Not allowed" };
   if (!id(userId)) return { error: "Not allowed" };
-  const next = role === null || role === "" ? null : (AGENT_KEYS as readonly string[]).includes(role) ? (role as AgentKey) : undefined;
+  const next = role === null || role === "" ? null : isProductionKey(role) ? role : undefined;
   if (next === undefined) return { error: "No such job" };
 
   try {

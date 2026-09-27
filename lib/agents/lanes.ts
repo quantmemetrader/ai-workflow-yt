@@ -1,4 +1,5 @@
-import { AGENT_KEYS, AGENT_LABELS, type AgentKey } from "./catalog";
+import { NON_ADVICE } from "../legal/notice";
+import { AGENT_KEYS, AGENT_LABELS, PRODUCTION_KEYS, type AgentKey } from "./catalog";
 
 /**
  * Who each AI employee is, and what is theirs to do.
@@ -25,11 +26,16 @@ export const ROSTER: Record<AgentKey, string> = {
   script: "写脚本、改脚本、审批前的检查",
   video: "粗剪、字幕、图形、渲染",
   article: "长文、按平台改写、发布记录",
+  legal: "按模板起草合同、把合同和模板逐条比对、看合规清单；只标出差异，不下法律结论",
+  finance: "预算对实际、支出申请进度、月度管理报表；可以提交支出申请，不批准、不付款",
 };
 
 /** The colleagues the plan can give a to-do to, as the morning plan's
- * instructions list them — everyone but the planner, who is writing it. */
-export const PLAN_COLLEAGUES = AGENT_KEYS.filter((k) => k !== "planning")
+ * instructions list them — the production line but the planner, who is
+ * writing it. Not 法务 or 财务: the plan is the day's video work, its owners
+ * are a fixed list in `scripts/plan.ts` ("上面六个里的一个"), and a to-do for
+ * either of them would be dropped to 人 at best. */
+export const PLAN_COLLEAGUES = PRODUCTION_KEYS.filter((k) => k !== "planning")
   .map((k) => `- ${AGENT_LABELS[k].nameLocal}：${ROSTER[k]}`)
   .join("\n");
 
@@ -62,6 +68,25 @@ export const LANES: Record<AgentKey, string> = {
   article: [
     "你负责文章：长文、按平台改写、查发布记录。",
     "你不写视频脚本、不剪视频；那是编剧和剪辑师的事。",
+  ].join("\n"),
+  /* The review is mechanical on purpose (`reviewContract`): it says where a
+     contract departs from its template and never what that means. 法务 is
+     held to the same line, because a fluent "this clause is fine" from a
+     model is exactly the verdict the module was built not to give. */
+  legal: [
+    "你负责法务：按模板起草合同（draft_contract），把合同和它的模板逐条比对（review_contract），查合同库、模板和合规清单。",
+    "你只说合同和模板哪里不一样、原文各是怎么写的；不判断条款好坏，不打风险分，不说“没问题”“可以签”。确认、签字、发出都是人的事。",
+    `给出起草或比对的结果时，回答最后一行照抄这句：${NON_ADVICE.zh}`,
+    "没有模板就直说，请有法务权限的同事在法务页面加上；你不写脚本、不剪视频、不排计划。",
+  ].join("\n"),
+  /* 财务 raises; people decide. `raiseSpend` counts approvers by the
+     thresholds and a request 财务 raises always needs at least one person
+     (`lib/ai/tools/finance.ts`), so "已批准" can only ever be a colleague's. */
+  finance: [
+    "你负责财务：预算对实际（budget_vs_actual）、支出申请的进度（list_spend_requests）、月度管理报表（finance_report），以及替同事提交支出申请（raise_spend_request）。",
+    "每个数字都必须是这一回合工具返回的账目；工具没有的就说没有，不估算、不凭记忆。",
+    "你只提交申请：不批准、不驳回、不标记付款，这些工具你没有。不要说“已批准”“已付款”；你提交的申请要等同事批准。",
+    "你不写脚本、不剪视频、不排计划。",
   ].join("\n"),
 };
 

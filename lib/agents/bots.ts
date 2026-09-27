@@ -11,6 +11,9 @@ import type { AgentKey } from "@/lib/agents/catalog";
  *   编剧    orange  a typewriter, the page standing out of the roller
  *   剪辑师  teal    a film camera: two reels, one big lens eye, a tripod
  *   撰稿人  pink    a newspaper page with a face, a fountain pen across it
+ *   法务    navy    a brass balance with a head on its post, a sealed
+ *                   contract in one pan
+ *   财务    amber   a green calculator whose display is the visor, a coin
  *   助理    violet  a speech bubble wearing a headset
  *
  * The first version put the same helmet on all six with different props;
@@ -18,7 +21,7 @@ import type { AgentKey } from "@/lib/agents/catalog";
  * do". Now the job object is the character, so each has its own silhouette.
  *
  * Drawn on a 96 box so the shapes stay chunky at 18px, where the circle's
- * colour and the silhouette do the work. Ids are per key, so six different
+ * colour and the silhouette do the work. Ids are per key, so all the different
  * bots can share a page; the same bot twice defines the same clip twice,
  * which draws the same.
  */
@@ -32,6 +35,10 @@ const BG: Record<BotKey, string> = {
   script: "#ff6a1a",
   video: "#11c4a6",
   article: "#ff2e7e",
+  /* The one dark circle, so the brass reads; and amber, which sits between
+     编剧's orange and 策划's lime without being either. */
+  legal: "#1e2d52",
+  finance: "#ffb81c",
   host: "#6d5dfc",
 };
 
@@ -114,6 +121,38 @@ const BODY: Record<BotKey, string> = {
     <path d="M60 102l22-34" stroke="#243154" stroke-width="10" stroke-linecap="round"/>
     <path d="M73 82l6-9" stroke="#ffd21f" stroke-width="10.5"/>
     <path d="M83 58l4 8-8 3z" fill="${K}"/>`,
+  /* A balance: the head sits on the post, the beam is its shoulders, a pan
+     hangs from each end and the left one holds a contract with a red seal. */
+  legal: `
+    <path d="M30 100l7-14h22l7 14z" fill="#e0a800"/>
+    <rect x="45" y="32" width="6" height="56" rx="2" fill="#ffc933"/>
+    <path d="M18 40L8 64M18 40l10 24M78 40L68 64M78 40l10 24" stroke="#f3e6c0" stroke-width="2.4" stroke-linecap="round"/>
+    <rect x="10" y="34" width="76" height="7" rx="3.5" fill="#ffc933"/>
+    <rect x="10" y="34" width="76" height="3" rx="1.5" fill="#ffe38a"/>
+    <circle cx="48" cy="22" r="16" fill="#ffc933"/>
+    <path d="M60 11a16 16 0 0 1 0 22z" fill="#e0a800"/>
+    <rect x="36" y="15" width="24" height="13" rx="6.5" fill="${K}"/>
+    <rect x="40.5" y="18" width="5.5" height="7" rx="2.75" fill="#7df9ff"/>
+    <rect x="50" y="18" width="5.5" height="7" rx="2.75" fill="#7df9ff"/>
+    <rect x="10" y="49" width="16" height="16" rx="1.5" fill="#ffffff"/>
+    <path d="M13 53h10M13 57h7" stroke="#9aa3ad" stroke-width="2" stroke-linecap="round"/>
+    <circle cx="22" cy="61" r="3.6" fill="#e5484d"/>
+    <path d="M5 64h26a13 13 0 0 1-26 0z" fill="#ffc933"/>
+    <path d="M65 64h26a13 13 0 0 1-26 0z" fill="#ffc933"/>
+    <path d="M5 64h26v3H5zM65 64h26v3H65z" fill="#e0a800"/>`,
+  /* A calculator: the display is the visor with the eyes in it, keys below
+     with the equals in orange, a gold coin leaning on it. */
+  finance: `
+    <rect x="22" y="12" width="52" height="84" rx="10" fill="#1f7a3a"/>
+    <path d="M62 12h2a10 10 0 0 1 10 10v74H62z" fill="#17602d"/>
+    <rect x="29" y="20" width="38" height="19" rx="5" fill="${K}"/>
+    <rect x="37" y="25" width="6.5" height="9" rx="3.25" fill="#9dff6b"/>
+    <rect x="52.5" y="25" width="6.5" height="9" rx="3.25" fill="#9dff6b"/>
+    <circle cx="34" cy="51" r="4.6" fill="#eafbe0"/><circle cx="48" cy="51" r="4.6" fill="#eafbe0"/><circle cx="62" cy="51" r="4.6" fill="#eafbe0"/>
+    <circle cx="34" cy="63" r="4.6" fill="#eafbe0"/><circle cx="48" cy="63" r="4.6" fill="#eafbe0"/><circle cx="62" cy="63" r="4.6" fill="#eafbe0"/>
+    <circle cx="34" cy="75" r="4.6" fill="#eafbe0"/><circle cx="48" cy="75" r="4.6" fill="#eafbe0"/><circle cx="62" cy="75" r="4.6" fill="#ff6a1a"/>
+    <circle cx="81" cy="86" r="12" fill="#ffe066" stroke="#b88600" stroke-width="3"/>
+    <circle cx="81" cy="86" r="6.5" fill="none" stroke="#d9a400" stroke-width="2.6"/>`,
   /* A speech bubble with a headset: the one you talk to. */
   host: `
     <path d="M28 58l-8 20 24-18z" fill="#ffffff"/>

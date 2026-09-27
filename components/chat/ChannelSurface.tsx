@@ -166,6 +166,9 @@ const ARTIFACT: Record<string, { zh: string; en: string; icon: IconName }> = {
   render: { zh: "成片", en: "Render", icon: "film" },
   competitor: { zh: "对标账号", en: "Channel to watch", icon: "eye" },
   assignment: { zh: "任务", en: "Task", icon: "check" },
+  contract: { zh: "合同", en: "Contract", icon: "doc" },
+  spend_request: { zh: "用款申请", en: "Spend request", icon: "check" },
+  finance_report: { zh: "财务报表", en: "Management report", icon: "doc" },
 };
 const OTHER_ARTIFACT = { zh: "内容", en: "Item", icon: "external" as IconName };
 

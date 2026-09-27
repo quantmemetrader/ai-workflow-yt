@@ -4,7 +4,7 @@ import { db } from "@/lib/db/client";
 import { chatChannels, chatMembers, chatMessages, jobs, publishPosts, topics, users, videoExports, videoProjects } from "@/lib/db/schema";
 import type { Viewer } from "@/lib/auth/types";
 import { AGENTS } from "@/lib/agents";
-import { AGENT_KEYS, AGENT_LABELS, type AgentKey } from "@/lib/agents/catalog";
+import { AGENT_KEYS, AGENT_LABELS, PRODUCTION_KEYS, isProductionKey, type AgentKey, type ProductionKey } from "@/lib/agents/catalog";
 import { readCardActions, readCardDone, type CardAction } from "@/lib/agents/cards";
 import { audit } from "@/lib/audit";
 import { pendingApprovals } from "@/lib/script/service";
@@ -283,7 +283,10 @@ export async function readHome(viewer: Viewer, zh: boolean, opts: { runningFor?:
   }
   decisions.reverse();
 
-  const agents: AgentState[] = AGENT_KEYS.map((key) => {
+  /* Home's 同事 panel is the production line: five rows sized to fit it,
+     each with 派任务 into the day's video work. 法务 and 财务 are asked from
+     Chat's AI 同事 list instead. */
+  const agents: AgentState[] = PRODUCTION_KEYS.map((key) => {
     const label = AGENT_LABELS[key];
     const theirs = recent.filter((m) => m.authorId && keyByUserId.get(m.authorId) === key);
     const last = theirs[0];
@@ -428,8 +431,8 @@ export async function roleExtra(viewer: Viewer, role: HomeRole): Promise<RoleExt
  * `setWorkRole` this grants no module: someone on Home already holds chat,
  * and choosing a layout is not a reason to be given anything else.
  */
-export async function setMyWorkRole(viewer: Viewer, role: AgentKey | null): Promise<void> {
-  if (role !== null && !(AGENT_KEYS as readonly string[]).includes(role)) throw new Error("No such job");
+export async function setMyWorkRole(viewer: Viewer, role: ProductionKey | null): Promise<void> {
+  if (role !== null && !isProductionKey(role)) throw new Error("No such job");
   await db
     .update(users)
     .set({ workRole: role })

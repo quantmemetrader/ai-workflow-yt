@@ -33,6 +33,14 @@ export const STEP_KEYS = [
   "graphics",
   "making",
   "rendering",
+  "contracts",
+  "drafting_contract",
+  "comparing",
+  "checklists",
+  "budget",
+  "requests",
+  "spend",
+  "report",
   "checking",
   "working",
 ] as const;
@@ -58,6 +66,14 @@ export const STEP_LABELS: Record<StepKey, { zh: string; en: string; icon: IconNa
   graphics: { zh: "正在加图形", en: "Adding graphics", icon: "spark" },
   making: { zh: "正在做成片：拼接、粗剪、渲染", en: "Making the video: joining, cutting, rendering", icon: "film" },
   rendering: { zh: "正在渲染", en: "Rendering", icon: "film" },
+  contracts: { zh: "正在看合同", en: "Reading the contracts", icon: "doc" },
+  drafting_contract: { zh: "正在起草合同", en: "Drafting the contract", icon: "pen" },
+  comparing: { zh: "正在和模板逐条比对", en: "Comparing it with the template", icon: "eye" },
+  checklists: { zh: "正在看合规清单", en: "Reading the checklists", icon: "check" },
+  budget: { zh: "正在查预算和支出", en: "Checking budget against spending", icon: "eye" },
+  requests: { zh: "正在看用款申请", en: "Reading the spend requests", icon: "check" },
+  spend: { zh: "正在提交用款申请", en: "Raising the spend request", icon: "share" },
+  report: { zh: "正在看财务报表", en: "Reading the management report", icon: "doc" },
   checking: { zh: "正在核对", en: "Checking the answer", icon: "check" },
   working: { zh: "正在处理", en: "Working", icon: "spark" },
 };
@@ -128,6 +144,18 @@ const TOOL_STEPS: Record<string, StepKey> = {
   set_enter: "graphics",
   set_look: "graphics",
   make_video: "making",
+  // legal
+  list_contracts: "contracts",
+  read_contract: "contracts",
+  list_templates: "contracts",
+  draft_contract: "drafting_contract",
+  review_contract: "comparing",
+  list_checklists: "checklists",
+  // finance
+  budget_vs_actual: "budget",
+  list_spend_requests: "requests",
+  raise_spend_request: "spend",
+  finance_report: "report",
 };
 
 export function stepForTool(name: string): StepKey {

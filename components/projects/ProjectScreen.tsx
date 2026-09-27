@@ -499,7 +499,7 @@ export function ProjectScreen({
               zh={zh}
               initial={p.access.mode === "groups" ? { mode: "groups", groups: p.access.groups ?? [] } : p.access.mode === "people" ? { mode: "people", userIds: p.access.userIds ?? [] } : { mode: p.access.mode }}
               confirm={t("保存", "Save")}
-              note={t("对话、脚本和视频都跟着这个设置。五位 AI 员工始终可以参与。", "The chat, script and video follow this. The five AI employees can always take part.")}
+              note={t("对话、脚本和视频都跟着这个设置。AI 员工始终可以参与。", "The chat, script and video follow this. The AI employees can always take part.")}
               onClose={() => setSharing(false)}
               onConfirm={(choice) =>
                 start(async () => {

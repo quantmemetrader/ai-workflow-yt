@@ -1,7 +1,7 @@
 "use server";
 
 import { getViewer } from "@/lib/auth/dal";
-import { AGENT_KEYS, type AgentKey } from "@/lib/agents/catalog";
+import { isProductionKey } from "@/lib/agents/catalog";
 import { setMyWorkRole } from "@/lib/home/service";
 
 /**
@@ -18,7 +18,7 @@ import { setMyWorkRole } from "@/lib/home/service";
 export async function setMyWorkRoleAction(role: string | null) {
   const viewer = await getViewer();
   if (!viewer || !viewer.modules.includes("chat")) return { error: "Not allowed" };
-  const next = role === null || role === "overview" ? null : (AGENT_KEYS as readonly string[]).includes(role) ? (role as AgentKey) : undefined;
+  const next = role === null || role === "overview" ? null : isProductionKey(role) ? role : undefined;
   if (next === undefined) return { error: "No such job" };
   try {
     await setMyWorkRole(viewer, next);

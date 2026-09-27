@@ -18,6 +18,8 @@ import { creatorPack } from "./tools/creator";
 import { scriptPack } from "./tools/script";
 import { articlePack } from "./tools/article";
 import { teamPack } from "./tools/team";
+import { legalPack } from "./tools/legal";
+import { financePack } from "./tools/finance";
 
 /**
  * What the agent can do. Each tool is a thin wrapper over the same service the
@@ -39,7 +41,7 @@ import type { ToolContext, ToolResult } from "./tools/types";
  * the packs they hold, and `runTool` re-checks — a model is perfectly capable
  * of calling something it was never shown.
  */
-const PACKS: ToolPack[] = [chatPack, teamPack, researchPack, scriptPack, articlePack, videoPack, creatorPack];
+const PACKS: ToolPack[] = [chatPack, teamPack, researchPack, scriptPack, articlePack, videoPack, creatorPack, financePack, legalPack];
 
 export const TOOL_DEFS: ToolDef[] = [
   {
@@ -310,6 +312,11 @@ const WRITES = new Set<string>([
   "watch_channel",
   "write_script",
   "write_article",
+  "draft_contract",
+  "review_contract",
+  "raise_spend_request",
+  /* Not finance_report: it reads the latest report and, asked to, writes a
+     new one, and it refuses the writing itself on a read-only turn. */
   ...VIDEO_WRITES,
 ]);
 
@@ -323,6 +330,11 @@ const WRITES = new Set<string>([
  * colleagues', reached through `assign_task`. Removing the module would not
  * do it (`ensureAgent` only ever adds entitlements, never takes them away),
  * and would take the reading with it.
+ *
+ * 法务 and 财务 need no line here. Their modules are Legal and Finance alone,
+ * so no video or script pack is ever offered to them, and no other employee
+ * holds either module, so neither pack reaches 剪辑师 or 编剧: the
+ * entitlement does the scoping that a module like the planner's could not.
  */
 const DENIED: Partial<Record<AgentKey, ReadonlySet<string>>> = {
   planning: new Set(["write_script", "write_article", "create_document", ...VIDEO_WRITES]),

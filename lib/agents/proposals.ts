@@ -3,7 +3,7 @@ import { and, desc, eq, gte, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { chatChannels, chatMessages, comments, topics } from "@/lib/db/schema";
 import type { Viewer } from "@/lib/auth/types";
-import type { AgentKey } from "@/lib/agents/catalog";
+import type { ProductionKey } from "@/lib/agents/catalog";
 
 /**
  * What the AI employees think this page should be making next.
@@ -36,7 +36,7 @@ export type Proposal = {
 
 export type Proposals = {
   /** The employee these are for, so the strip says who proposed them. */
-  owner: AgentKey;
+  owner: ProductionKey;
   items: Proposal[];
   /** The plan's date when the first item came from one, so the strip can say
    *  "this morning" rather than implying it. */
@@ -48,8 +48,11 @@ type Todo = { text?: unknown; owner?: unknown; why?: unknown };
 const LIMIT = 4;
 const AUDIENCE_DAYS = 90;
 
-/** How a backlog topic or a question is turned into something to start. */
-const PHRASE: Record<AgentKey, { topic: (name: string) => string; question: (q: string) => string }> = {
+/** How a backlog topic or a question is turned into something to start.
+ * The production line's only: proposals are the Research, Script, Video and
+ * Article screens' strip of what to make next, and a topic is not a thing
+ * 法务 or 财务 starts. */
+const PHRASE: Record<ProductionKey, { topic: (name: string) => string; question: (q: string) => string }> = {
   script: {
     topic: (n) => `写《${n}》的脚本`,
     question: (q) => `写一条回答观众提问的脚本：「${q}」`,
@@ -72,7 +75,7 @@ const PHRASE: Record<AgentKey, { topic: (name: string) => string; question: (q: 
   },
 };
 
-export async function proposalsFor(viewer: Viewer, owner: AgentKey): Promise<Proposals> {
+export async function proposalsFor(viewer: Viewer, owner: ProductionKey): Promise<Proposals> {
   const items: Proposal[] = [];
   let planDate: string | null = null;
 

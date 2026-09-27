@@ -123,4 +123,6 @@ const AGENT_DEFAULT_STEP: Record<AgentKey, StepKey> = {
   script: "writing_script",
   video: "editing",
   article: "writing",
+  legal: "contracts",
+  finance: "budget",
 };

@@ -129,6 +129,13 @@ export function hrefFor(kind: ArtifactKind, id: string): string | undefined {
       return `/projects/${id}`;
     case "article":
       return `/article?id=${id}`;
+    /* The Legal and Finance screens open on their lists, with no address
+       for one row; the list is where the row is. */
+    case "contract":
+      return "/legal";
+    case "spend_request":
+    case "finance_report":
+      return "/finance";
     default:
       return undefined;
   }
@@ -368,6 +375,7 @@ const CHECKABLE: Record<string, { table: string; soft: boolean }[]> = {
     { table: "channels", soft: false },
   ],
   ch: [{ table: "chat_channels", soft: false }],
+  con: [{ table: "contracts", soft: false }],
   usr: [{ table: "users", soft: false }],
 };
 
@@ -385,6 +393,9 @@ const KIND_OF_PREFIX: Record<string, ArtifactKind[]> = {
   top: ["topic"],
   fil: ["file"],
   chn: ["competitor"],
+  /* Not `req_` or `rep_`: a spend decision shares the first and a research
+     report the second, so neither prefix says which thing it is. */
+  con: ["contract"],
 };
 
 /**
@@ -460,6 +471,11 @@ const KIND_WORDS: [RegExp, ArtifactKind[]][] = [
   [/文档|文件|document|\bfile\b/i, ["file"]],
   [/项目|project/i, ["work_project", "video_project"]],
   [/对标|competitor/i, ["competitor"]],
+  [/合同|协议|contract/i, ["contract"]],
+  [/支出申请|用款申请|付款申请|spend request/i, ["spend_request"]],
+  /* Not "报告" alone: "行业报告已生成" and a research note are not the
+     month's management report. */
+  [/财务报表|管理报表|财务报告|月度报告|management report|finance report/i, ["finance_report"]],
 ];
 
 /** Every name an employee goes by, including the ones the studio retired —
@@ -470,6 +486,8 @@ const EMPLOYEE_NAMES: Record<AgentKey, string[]> = {
   script: [AGENT_LABELS.script.nameLocal, AGENT_LABELS.script.name, "脚本助理"],
   video: [AGENT_LABELS.video.nameLocal, AGENT_LABELS.video.name, "视频助理"],
   article: [AGENT_LABELS.article.nameLocal, AGENT_LABELS.article.name, "文章助理"],
+  legal: [AGENT_LABELS.legal.nameLocal, AGENT_LABELS.legal.name, "法务助理"],
+  finance: [AGENT_LABELS.finance.nameLocal, AGENT_LABELS.finance.name, "财务助理"],
 };
 
 const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -830,6 +848,9 @@ const KIND_ZH: Record<ArtifactKind, string> = {
   render: "成片",
   competitor: "对标账号",
   assignment: "派活",
+  contract: "合同",
+  spend_request: "用款申请",
+  finance_report: "财务报表",
 };
 
 const ACTION_ZH: Record<Artifact["action"], string> = {
@@ -939,12 +960,14 @@ export function nudgeWins(first: string, wanted: AgentKey, handedOn: boolean): b
 /* ------------------------------------------------------------ one answer */
 
 /** Which trade each employee works in, for the prompt and the round budget. */
-const WORKS_IN: Record<AgentKey, Module> = {
+export const WORKS_IN: Record<AgentKey, Module> = {
   research: "research",
   planning: "research",
   script: "script",
   video: "video",
   article: "script",
+  legal: "legal",
+  finance: "finance",
 };
 
 type Chain = Required<Pick<MentionDispatch, "viewer" | "channelId" | "body" | "spoken" | "hop" | "budget">> &

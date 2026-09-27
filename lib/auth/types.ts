@@ -8,7 +8,7 @@
  * where both can reach it.
  */
 import type { Module } from "@/lib/db/schema";
-import { AGENT_KEYS, type AgentKey } from "@/lib/agents/catalog";
+import { isProductionKey, type ProductionKey } from "@/lib/agents/catalog";
 
 export type Viewer = {
   id: string;
@@ -25,7 +25,7 @@ export type Viewer = {
    * set": owners and admins get the overview, members a Home worked out
    * from their modules. Not `role`, which is what they are allowed to do.
    */
-  workRole: AgentKey | null;
+  workRole: ProductionKey | null;
   locale: "zh-CN" | "zh-HK" | "en" | null;
   /** Exactly the modules this person holds. The rail renders this list and
    * nothing else (spec §4.1). */
@@ -45,9 +45,11 @@ export type Viewer = {
  *
  * The column is free text; only an employee key is a work role. Anything
  * else (a value typed by hand into the database, a key since retired) reads
- * as "not set" rather than as a Home with no layout. Here, beside the type,
+ * as "not set" rather than as a Home with no layout — and so does 法务 or
+ * 财务, who are colleagues in chat but not a job on the production line
+ * (`PRODUCTION_KEYS`). Here, beside the type,
  * because both readers of a viewer need it and neither may import the other.
  */
-export function workRoleOf(value: string | null | undefined): AgentKey | null {
-  return value && (AGENT_KEYS as readonly string[]).includes(value) ? (value as AgentKey) : null;
+export function workRoleOf(value: string | null | undefined): ProductionKey | null {
+  return isProductionKey(value) ? value : null;
 }

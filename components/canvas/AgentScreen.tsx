@@ -114,6 +114,16 @@ const SUGGESTIONS: Record<AgentKey, [string, string][]> = {
     ["最近都发布了哪些内容？", "What did we publish lately?"],
     ["给最新的项目写各平台的标题和简介", "Write titles and descriptions per platform for the newest project"],
   ],
+  legal: [
+    ["用自由职业合同模板给……起草一份合同，费用……，开工日期……", "Draft a freelance agreement for … from the template: fee …, starting …"],
+    ["把最新的合同和它的模板逐条比对，哪里不一样？", "Compare the newest contract with its template, clause by clause: what differs?"],
+    ["哪些合同还没签、或者快到期了？", "Which contracts are unsigned, or about to expire?"],
+  ],
+  finance: [
+    ["这个月各成本中心的预算花了多少？哪里超了？", "How much of each cost centre's budget is spent this month, and where is it over?"],
+    ["现在有哪些用款申请在等审批？", "Which spend requests are waiting for approval?"],
+    ["帮我提一个用款申请：……，金额……，用途……", "Raise a spend request for me: …, amount …, for …"],
+  ],
 };
 
 /**

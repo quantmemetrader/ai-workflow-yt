@@ -8,8 +8,9 @@ import { botMarkup } from "@/lib/agents/bots";
  *
  * Two looks. `pixel` (the default) is a small pixel-art face: the researcher
  * with glasses and a lens, the planner with a clipboard, the writer in a beret
- * with a pen, the editor in headphones, the article writer with a quill, and a
- * little robot for the host's own assistant. `line` is the older glyph for the
+ * with a pen, the editor in headphones, the article writer with a quill, 法务
+ * behind a set of scales, 财务 with a calculator, and a little robot for the
+ * host's own assistant. `line` is the older glyph for the
  * job on a tint square, kept for places that mean a stage rather than a person
  * and for anything under 16px, where a face stops reading as one.
  */
@@ -47,6 +48,22 @@ const GLYPH: Record<AgentKey, React.ReactNode> = {
     <>
       <rect x="4.6" y="4.4" width="14.8" height="15.2" rx="2.4" />
       <path d="M8.2 9h7.6M8.2 12.6h7.6M8.2 16.2h4.6" />
+    </>
+  ),
+  /* Scales: the post, the beam, a pan hung from each end. */
+  legal: (
+    <>
+      <path d="M12 4.4v15.2M8.4 19.6h7.2M5 7.6h14" />
+      <path d="M5 7.6 2.6 13.2M5 7.6l2.4 5.6M2.6 13.2a2.4 2.4 0 0 0 4.8 0z" />
+      <path d="m19 7.6-2.4 5.6M19 7.6l2.4 5.6M16.6 13.2a2.4 2.4 0 0 0 4.8 0z" />
+    </>
+  ),
+  /* A calculator: the display, then two rows of keys as dots. */
+  finance: (
+    <>
+      <rect x="5.4" y="3.6" width="13.2" height="16.8" rx="2.4" />
+      <rect x="8.4" y="6.6" width="7.2" height="3.4" rx="0.8" />
+      <path d="M8.9 13.8h.01M12 13.8h.01M15.1 13.8h.01M8.9 17.2h.01M12 17.2h.01M15.1 17.2h.01" strokeWidth={2.6} />
     </>
   ),
 };

@@ -12,11 +12,36 @@
  * `@视频助理`, not `@Video agent`. The English forms are aliases so a message
  * typed on an English keyboard still reaches the right employee.
  */
-export type AgentKey = "research" | "planning" | "script" | "video" | "article";
+export type AgentKey = "research" | "planning" | "script" | "video" | "article" | "legal" | "finance";
 
 /** In the order the picker lists them, which is the order the work goes in:
- * find out, decide, write, cut, and write it up. */
-export const AGENT_KEYS = ["research", "planning", "script", "video", "article"] as const satisfies readonly AgentKey[];
+ * find out, decide, write, cut, and write it up — then the two who look after
+ * the studio rather than the film, 法务 and 财务. */
+export const AGENT_KEYS = [
+  "research",
+  "planning",
+  "script",
+  "video",
+  "article",
+  "legal",
+  "finance",
+] as const satisfies readonly AgentKey[];
+
+/**
+ * The five who make the videos: a topic found, planned, written, cut and
+ * published. Home's job tabs, a person's work role, the morning plan and the
+ * automations are about this line and nobody else.
+ *
+ * Listed rather than read off `AGENT_KEYS`, because 法务 and 财务 are
+ * colleagues in chat and are not a step of a video: a Home tab for 财务 with
+ * "videos in hand", or the morning plan handing 法务 a script, would be the
+ * roster leaking into the pipeline.
+ */
+export const PRODUCTION_KEYS = ["research", "planning", "script", "video", "article"] as const satisfies readonly AgentKey[];
+export type ProductionKey = (typeof PRODUCTION_KEYS)[number];
+
+export const isProductionKey = (value: unknown): value is ProductionKey =>
+  typeof value === "string" && (PRODUCTION_KEYS as readonly string[]).includes(value);
 
 export type AgentLabel = {
   name: string;
@@ -81,13 +106,32 @@ export const AGENT_LABELS: Record<AgentKey, AgentLabel> = {
     hint: "长文、发布记录、按平台改写",
     hintEn: "Long-form, publishing logs, rewriting per platform",
   },
+  legal: {
+    name: "Legal agent",
+    nameLocal: "法务",
+    nameEn: "Legal",
+    title: "AI 员工 · 法务",
+    titleEn: "AI employee · Legal",
+    hint: "合同起草、合同审阅、合规清单",
+    hintEn: "Drafting contracts, comparing them to the template, compliance checklists",
+  },
+  finance: {
+    name: "Finance agent",
+    nameLocal: "财务",
+    nameEn: "Finance",
+    title: "AI 员工 · 财务",
+    titleEn: "AI employee · Finance",
+    hint: "预算、支出审批、财务报表",
+    hintEn: "Budget against actuals, spend requests, the monthly report",
+  },
 };
 
 /**
  * The colour that follows each employee around: its icon, its stage on the
- * strip, its node in the flow, the dot beside its name. Five hues far enough
+ * strip, its node in the flow, the dot beside its name. Hues far enough
  * apart to be told at a glance, none of them the blue the product uses for
- * links.
+ * links. 法务 is brass and 财务 a leaf green: the orange and the teal are the
+ * nearest, and both sit well clear of them in hue and in weight.
  */
 export const AGENT_COLORS: Record<AgentKey, string> = {
   research: "#0f5bd5",
@@ -95,12 +139,14 @@ export const AGENT_COLORS: Record<AgentKey, string> = {
   script: "#b3420e",
   video: "#0b7a63",
   article: "#9d1d52",
+  legal: "#7a5a0c",
+  finance: "#3b7a16",
 };
 
 /**
  * The light version of each colour, for the square behind an employee's
- * mark: the studio's palette, steps 3–4 (blue, violet, orange, teal, pink).
- * The glyph is drawn in the full colour on top.
+ * mark: the studio's palette, steps 3–4 (blue, violet, orange, teal, pink,
+ * brass, green). The glyph is drawn in the full colour on top.
  */
 export const AGENT_TINTS: Record<AgentKey, string> = {
   research: "#d5e7fb",
@@ -108,6 +154,8 @@ export const AGENT_TINTS: Record<AgentKey, string> = {
   script: "#f8dcc6",
   video: "#c3e6e0",
   article: "#f5d4e6",
+  legal: "#f1e5c0",
+  finance: "#d9edca",
 };
 
 /** Which employee an agent user is, from the address every agent row has. */
@@ -138,6 +186,11 @@ const ALIASES: Record<AgentKey, string[]> = {
   script: ["编剧", "脚本助理", "脚本", "scriptagent", "script", "writer"],
   video: ["剪辑师", "视频助理", "剪辑", "视频", "videoagent", "video", "editor"],
   article: ["撰稿人", "文章助理", "撰稿", "文章", "articleagent", "article"],
+  /* No bare "法律" or "合同", and no "lawyer": a Chinese alias matches as a
+     prefix, so `@合同…` would tag 法务 from any sentence that starts with the
+     word, and 法务 is not a lawyer and must not answer to being one. */
+  legal: ["法务", "法务助理", "legalagent", "legal"],
+  finance: ["财务", "财务助理", "会计", "financeagent", "finance"],
 };
 
 /** Every name an employee answers to — the picker searches all of them, so

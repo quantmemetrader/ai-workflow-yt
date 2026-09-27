@@ -4,7 +4,7 @@ import { db } from "@/lib/db/client";
 import { settings } from "@/lib/db/schema";
 import { audit } from "@/lib/audit";
 import type { Viewer } from "@/lib/auth/types";
-import { AGENT_KEYS, type AgentKey } from "@/lib/agents/catalog";
+import { isProductionKey, type AgentKey } from "@/lib/agents/catalog";
 
 /**
  * What the studio's AI employees do without being asked, and the switch for it.
@@ -85,7 +85,9 @@ function clean(def: AutomationDef, stored: Partial<Automation> | undefined): Aut
   const minute = Number(stored?.minute);
   return {
     enabled: typeof stored?.enabled === "boolean" ? stored.enabled : base.enabled,
-    agent: AGENT_KEYS.includes(stored?.agent as AgentKey) ? (stored!.agent as AgentKey) : base.agent,
+    /* Only the production line runs these: a stored 法务 or 财务 (there is
+       no way to choose one, but the row is JSON) falls back to the default. */
+    agent: isProductionKey(stored?.agent) ? (stored!.agent as AgentKey) : base.agent,
     ...(def.scheduled
       ? {
           hour: Number.isInteger(hour) && hour >= 0 && hour <= 23 ? hour : base.hour,

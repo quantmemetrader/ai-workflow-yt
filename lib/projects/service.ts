@@ -100,7 +100,7 @@ export async function createWorkProject(
     .filter(Boolean)
     .join("");
   /* The studio works on a project together: its script and its video are
-     shared with everyone in it as editors, the five employees included. As
+     shared with everyone in it as editors, the AI employees included. As
      private files the employees could read the brief and then refuse to
      cut ("no edit permission"). */
   await Promise.all([

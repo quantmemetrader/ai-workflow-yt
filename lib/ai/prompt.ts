@@ -6,6 +6,7 @@ import type { Viewer } from "@/lib/auth/dal";
 import { VIDEO_CRAFT } from "@/lib/video/craft";
 import { agentKeyFromEmail } from "@/lib/agents/catalog";
 import { identityFor } from "@/lib/agents/lanes";
+import { NON_ADVICE } from "@/lib/legal/notice";
 
 /**
  * System prompt assembly.
@@ -65,6 +66,25 @@ const RESEARCH_CRAFT = `- 每一个方向、每一个判断，都要说明来源
 - 工具没查到的部分，可以用你自己的常识和背景知识补上，但要标明"背景"，不要编造具体数字和日期。
 - 加入关注（watch_topic）只能是回答之后的附加一句，绝不能代替回答，也不要让对方"等明早晨报"。
 - 给建议时只回答问题，不要 @ 任何同事。`;
+
+/**
+ * Legal's line, built in: the module marks departures and never renders a
+ * verdict (`lib/legal/service.ts`), and a model left to itself summarises a
+ * comparison as "these changes look fine". For 法务 and for anybody's
+ * assistant asked on the Legal screen alike.
+ */
+const LEGAL_CRAFT = `- 比对结果只说哪里不同、原文各怎么写；不评价条款好坏，不打风险分，不说“没问题”“可以签”“建议接受”。
+- 起草只按模板和给你的字段填写；没给的字段留着占位，不要替人编名字、金额或日期。
+- 给出起草或比对结果时，最后一行照抄：${NON_ADVICE.zh}（英文回答用：${NON_ADVICE.en}）`;
+
+/**
+ * Finance's line, built in, for the same reason the research craft is: a
+ * figure the ledger did not return is worse than no figure, and "已批准" from
+ * a model is a decision nobody made.
+ */
+const FINANCE_CRAFT = `- 每个金额、百分比、日期都必须是这一回合工具返回的；没有就说没有，不估算、不换算成别的币种。
+- 超支、结余只按工具给的预算和实际来算，并写明是哪个期间、哪个成本中心。
+- 你能做的只有查账和提交用款申请。不要说申请“已批准”“已付款”，除非工具返回的状态就是这样，而且那是别人做的决定。`;
 
 export type PromptPart = { id: string; title: string; kind: string; scope: string };
 
@@ -129,7 +149,11 @@ You are assisting ${viewer.name}${viewer.title ? `, ${viewer.title}` : ""}. Toda
       ? `\n\n--- HOUSE: Cutting video (built in) ---\n${VIDEO_CRAFT}\n\n--- Pictures and narration ---\nPictures sent in chat are turned into five-second shots in the project's bin automatically (the attachment line says so). A bin of such shots with no speech is valid material: run make_video straight away — it voices the script's narration with an AI voice and cuts the shots to it. The rule against inventing voice-overs is for filmed speech; a project with no speech and a written narration is what the AI voice-over is for. Never ask for a \"real\" clip or a black screen, and never tell the person to open the Video module: the conversation's project is already open to your tools. Asked to make a video, make it: call make_video straight away with what is in the bin, even if the project already has a video (the new cut becomes the project's video; the old render stays in Files). Do not ask whether to replace or add. make_video only STARTS the film: making it takes minutes. After calling it, say it has started and that the finished video will be posted here in the chat when it is ready. Never say the video is done, rendered, 已生成, 生成完毕 or 做好了 in the same turn, and never describe a result you have not seen.`
       : scoped === "research"
         ? `\n\n--- HOUSE: Research (built in) ---\n${RESEARCH_CRAFT}`
-        : "";
+        : scoped === "legal"
+          ? `\n\n--- HOUSE: Legal (built in) ---\n${LEGAL_CRAFT}`
+          : scoped === "finance"
+            ? `\n\n--- HOUSE: Finance (built in) ---\n${FINANCE_CRAFT}`
+            : "";
 
   return {
     text: header + builtIn + sections.join(""),
@@ -138,7 +162,11 @@ You are assisting ${viewer.name}${viewer.title ? `, ${viewer.title}` : ""}. Toda
         ? [{ id: "builtin:video-craft", title: "Cutting video", kind: "house", scope: "module: video" }]
         : scoped === "research"
           ? [{ id: "builtin:research-craft", title: "Research", kind: "house", scope: "module: research" }]
-          : []),
+          : scoped === "legal"
+            ? [{ id: "builtin:legal-craft", title: "Legal", kind: "house", scope: "module: legal" }]
+            : scoped === "finance"
+              ? [{ id: "builtin:finance-craft", title: "Finance", kind: "house", scope: "module: finance" }]
+              : []),
       ...rows.map((r) => ({
         id: r.id,
         title: r.title,

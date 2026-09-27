@@ -10,7 +10,7 @@ import type { ToolContext } from "@/lib/ai/tools/types";
 import { newId } from "@/lib/ids";
 import { AGENT_KEYS, parseAgentMentions, type AgentKey } from "@/lib/agents/catalog";
 import { agentViewer } from "@/lib/agents";
-import { CUT_TOOLS, MAX_REPLIES, findStartClaims, later } from "@/lib/agents/mentions";
+import { CUT_TOOLS, MAX_REPLIES, WORKS_IN, findStartClaims, later } from "@/lib/agents/mentions";
 import { attachmentsFor, channelById } from "@/lib/chat/service";
 import { bridgeState } from "@/lib/chat/conversation-project";
 import { binImage, binVideo } from "@/lib/chat/bin";
@@ -294,7 +294,9 @@ export async function POST(request: Request) {
   const asked = typeof body.agent === "string" && AGENT_KEYS.includes(body.agent as AgentKey) ? (body.agent as AgentKey) : null;
   const speaker: AgentKey | null = tagged ?? asked;
   const speakerViewer = speaker ? await agentViewer(viewer.tenantId, speaker) : viewer;
-  const speakerModule: Module = speaker ? ({ research: "research", planning: "research", script: "script", video: "video", article: "script" } as const)[speaker] : (context.module ?? "chat");
+  /* The employee's trade, from the same table a channel turn reads, so 法务
+     answers here with the Legal house rules as it does when tagged. */
+  const speakerModule: Module = speaker ? WORKS_IN[speaker] : (context.module ?? "chat");
 
   /* What the conversation is titled from: the words typed, or the file
      named when nothing was. */

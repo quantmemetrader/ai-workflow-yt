@@ -25,13 +25,11 @@ import { newId } from "@/lib/ids";
  * and `acknowledge` records that a person read it, not that it is fine.
  *
  * The non-advice notice (contract clause 8.4) is on every screen in this
- * module, which is why it lives here as a constant rather than as a string
- * somebody might forget to paste onto a new tab.
+ * module, and at the end of everything 法务 drafts or compares, which is why
+ * it is a constant rather than a string somebody might forget to paste onto a
+ * new tab. It is defined in `./notice`, which a plain script can load.
  */
-export const NON_ADVICE = {
-  en: "This is drafting and comparison, not legal advice. A qualified adviser decides what any of it means.",
-  zh: "这里提供的是起草与比对，不是法律意见。具体含义请咨询有资质的法律顾问。",
-};
+export { NON_ADVICE } from "./notice";
 
 /**
  * The two a video channel of this kind actually signs.

@@ -12,7 +12,7 @@ type Line = { agent: string; text: string; live: boolean; href: string; at: stri
  *
  * One line, rotating, on every page: a render at 62%, what 研究员 said this
  * morning, 编剧 answering three minutes ago. It is how a page about invoices
- * still feels like part of a studio where five employees are at work — and
+ * still feels like part of a studio where its AI employees are at work — and
  * a green dot when one of them actually is.
  *
  * Polled every twenty seconds; goes quiet, not blank, when nothing has

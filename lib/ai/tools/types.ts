@@ -53,7 +53,9 @@ export type ToolResult = {
 };
 
 /** The things a receipt can be about. `assignment` is a colleague being
- * handed a task through `assign_task`; its id is the message that did it. */
+ * handed a task through `assign_task`; its id is the message that did it.
+ * The last three are 法务's and 财务's: a drafted or reviewed contract, a
+ * spend request raised, a management report written. */
 export type ArtifactKind =
   | "script"
   | "video_project"
@@ -63,7 +65,10 @@ export type ArtifactKind =
   | "file"
   | "render"
   | "competitor"
-  | "assignment";
+  | "assignment"
+  | "contract"
+  | "spend_request"
+  | "finance_report";
 
 /** `started` is work handed to the worker that finishes later (making a
  * whole video), so "started" can be claimed and "finished" cannot yet. */

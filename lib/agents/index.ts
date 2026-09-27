@@ -64,6 +64,23 @@ export const AGENTS: Record<AgentKey, AgentDef> = {
     ...labels("article"),
     modules: ["chat", "script", "research", "publish"],
   },
+  /* Legal and nothing else of the studio's: it drafts from the templates and
+     compares contracts with them, and it has no reason to read a script or
+     touch a cut. No `files` either — a contract lives in the Legal module, not
+     in somebody's documents. */
+  legal: {
+    email: "legal@agents.invalid",
+    ...labels("legal"),
+    modules: ["chat", "legal"],
+  },
+  /* Finance, and not Accounting: the budget, the spend requests and the
+     monthly report are all Finance's. It may raise a request; deciding and
+     paying are a person's, and no tool it holds does either. */
+  finance: {
+    email: "finance@agents.invalid",
+    ...labels("finance"),
+    modules: ["chat", "finance"],
+  },
 };
 
 /** The three fields a user row takes from the catalog. */
@@ -109,7 +126,7 @@ export async function ensureAgent(tenantId: string, key: AgentKey): Promise<stri
      alone (the channel header's faces, the members sheet). A route rather than
      the SVG itself — see app/api/agent/avatar/[key]. Bump `v` when a face
      changes: the route is cached for a year. */
-  const avatarUrl = `/api/agent/avatar/${key}?v=4`;
+  const avatarUrl = `/api/agent/avatar/${key}?v=5`;
 
   let id = existing?.id;
   if (existing && !existing.isAgent) {
@@ -168,7 +185,7 @@ export async function ensureAgent(tenantId: string, key: AgentKey): Promise<stri
 }
 
 /**
- * All five, present and correctly named.
+ * All of them, present and correctly named.
  *
  * An employee's row is made the first time somebody uses it, which is right
  * for a fresh studio and wrong for everything else: 剪辑师 sat in the database
