@@ -241,6 +241,64 @@ export async function putObjectConfirmed(key: string, body: BodyInit, contentTyp
   return { key, etag: res.headers.get("etag")?.replaceAll('"', "") ?? null };
 }
 
+/**
+ * Put a file from disk, and say what landed: one PUT when it is small, a
+ * multipart upload in 16 MiB parts (eight at a time, each retried) when it
+ * is not.
+ *
+ * Director v2's 9:16 masters are ~150 MB. Read whole and sent as one PUT,
+ * the first one ran for five minutes and died as "fetch failed" at 90 %, a
+ * finished render lost at the last step. Parts fail alone and are retried
+ * alone; the object only appears when every part is in.
+ */
+export async function putFileConfirmed(path: string, key: string, contentType: string): Promise<{ key: string; etag: string | null }> {
+  const fs = await import("node:fs/promises");
+  const size = (await fs.stat(path)).size;
+  if (size <= 32 * 1024 * 1024) return putObjectConfirmed(key, await fs.readFile(path), contentType);
+
+  const partSize = partSizeFor(size);
+  const count = Math.ceil(size / partSize);
+  const uploadId = await createMultipartUpload(key, contentType);
+  const fh = await fs.open(path, "r");
+  try {
+    const parts: { partNumber: number; etag: string }[] = new Array(count);
+    let next = 0;
+    const lane = async () => {
+      while (next < count) {
+        const i = next++;
+        const start = i * partSize;
+        const len = Math.min(partSize, size - start);
+        const buf = Buffer.alloc(len);
+        await fh.read(buf, 0, len, start);
+        let lastError: unknown = null;
+        for (let attempt = 0; attempt < 4; attempt++) {
+          try {
+            const url = await presignUploadPart(key, uploadId, i + 1);
+            const res = await fetch(url, { method: "PUT", body: buf, signal: AbortSignal.timeout(180_000) });
+            if (!res.ok) throw new Error(`part ${i + 1} ${res.status} ${await res.text().catch(() => "")}`);
+            const etag = res.headers.get("etag");
+            if (!etag) throw new Error(`part ${i + 1} returned no etag`);
+            parts[i] = { partNumber: i + 1, etag: etag.replaceAll('"', "") };
+            lastError = null;
+            break;
+          } catch (err) {
+            lastError = err;
+            await new Promise((r) => setTimeout(r, 1500 * (attempt + 1)));
+          }
+        }
+        if (lastError) throw lastError;
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(8, count) }, lane));
+    return await completeMultipartUpload(key, uploadId, parts);
+  } catch (err) {
+    await abortMultipartUpload(key, uploadId).catch(() => {});
+    throw err;
+  } finally {
+    await fh.close();
+  }
+}
+
 export async function getObject(key: string): Promise<Response> {
   return client.fetch(objectUrl(key));
 }

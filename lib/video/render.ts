@@ -18,7 +18,7 @@ import {
   videoExports,
   videoGraphics,
   videoProjects, relationTuples } from "@/lib/db/schema";
-import { getObject, putObjectConfirmed, storageKey } from "@/lib/storage/r2";
+import { getObject, putFileConfirmed, putObjectConfirmed, storageKey } from "@/lib/storage/r2";
 import { grantOwner } from "@/lib/authz/rebac";
 import { newId } from "@/lib/ids";
 import { posterFromLocal, rememberPoster } from "@/lib/files/poster";
@@ -314,8 +314,9 @@ export async function renderExport(exportId: string): Promise<{ fileId: string; 
     const name = `${project.title} · ${e.aspect}.mp4`;
     const fileId = newId("fil");
     const key = storageKey(e.tenantId, fileId, name);
-    const { readFile } = await import("node:fs/promises");
-    const stored = await putObjectConfirmed(key, await readFile(master), "video/mp4");
+    /* From disk in parts when it is big (v2 masters are ~150 MB): one PUT of
+       the whole file timed out at the last step of a finished render. */
+    const stored = await putFileConfirmed(master, key, "video/mp4");
 
     await db.insert(files).values({
       id: fileId,
