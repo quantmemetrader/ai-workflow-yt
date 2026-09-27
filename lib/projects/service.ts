@@ -617,6 +617,10 @@ export function buildSteps(f: StepFacts, zh: boolean): ProjectStep[] {
      press that makes the film. This used to read "running" for ever. */
   const cutReady = !rendered && !rendering && !directing && items.n > 0;
   const graphics = f.graphics ?? 0;
+  /* Cut straight from the host's talk with no script ever written: the
+     script step was passed over, not waiting — 「等编剧开写」 sat grey above
+     a finished film. */
+  const talkCut = scriptState === "todo" && (Boolean(rendered) || items.n > 0);
   const editLine = rendered
     ? t(`成片已出${render!.durationMs ? ` · ${stepClock(render!.durationMs)}` : ""}`, `Rendered${render!.durationMs ? ` · ${stepClock(render!.durationMs)}` : ""}`)
     : directing
@@ -640,9 +644,11 @@ export function buildSteps(f: StepFacts, zh: boolean): ProjectStep[] {
       key: "script",
       label: t("脚本", "Script"),
       owner: "script",
-      state: skip("script") ? "skipped" : scriptState,
+      state: skip("script") || talkCut ? "skipped" : scriptState,
       line: skip("script")
         ? t("跳过 · 直接剪辑", "Skipped · straight to the edit")
+        : talkCut
+          ? t("跳过 · 按口播直接剪", "Skipped · cut straight from the talk")
         : scriptState === "done"
           ? script!.status === "locked"
             ? t(`第 ${script!.version} 版已锁定`, `v${script!.version} locked`)
