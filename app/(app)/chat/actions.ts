@@ -215,6 +215,29 @@ export async function sendChannelMessage(
     return { answering: "video" as const };
   }
 
+  /*
+   * "@剪辑师 剪一条 30 秒的 Reels" / "剪完整版" / "make the video" in a
+   * project's chat: the edit starts in code, with the message as its brief
+   * (so "30 秒" gets the short), exactly as the page's 一键成片 does — the
+   * model, asked in the channel, set a caption style or said "the director
+   * already cut it" instead of making anything.
+   */
+  const asksForVideo =
+    tags.length === 1 && tags[0] === "video" && !holdsTheCut(body) &&
+    /(剪|做|出|生成|制作|渲染|make|cut|render|create)[^。！？!?\n]{0,20}(视频|成片|完整版|版本|reels?|shorts?|短视频|片子|一条|video|film)/i.test(body);
+  if (wp?.videoProjectId && asksForVideo && viewer.modules.includes("video")) {
+    const project = { id: wp.id, title: wp.title, channelId: wp.channelId, videoProjectId: wp.videoProjectId };
+    const brief = body.replace(/@\S+/g, "").trim();
+    after(async () => {
+      try {
+        await startCutForProject(viewer, project, { via: "chat", prompt: brief });
+      } catch (err) {
+        console.error("[chat] the video could not be started from the message", err);
+      }
+    });
+    return { answering: "video" as const };
+  }
+
   /* "还没传好" / "再补一段", or a take dropped into the project's chat (its
      own 开始剪 press is under it): whoever answers must not start the cut
      on their own (`holdsTheCut`, `ToolContext.holdCut`). */
