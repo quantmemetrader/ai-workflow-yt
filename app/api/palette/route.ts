@@ -1,6 +1,6 @@
-import { and, eq, ilike, isNull, or, sql } from "drizzle-orm";
+import { and, desc, eq, ilike, isNull, or, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { chatChannels, chatMembers, conversations, folders, users, workProjects } from "@/lib/db/schema";
+import { agentMessages, chatChannels, chatMembers, chatMessages, conversations, folders, users, workProjects } from "@/lib/db/schema";
 import { projectsVisibleTo } from "@/lib/projects/visible";
 import { getViewer } from "@/lib/auth/dal";
 import { canReadFolders } from "@/lib/authz/rebac";
@@ -132,6 +132,47 @@ export async function GET(request: Request) {
   for (const p of projectRows) hits.push({ kind: "project", id: p.id, href: `/projects/${p.id}`, title: p.title, subtitle: null });
   for (const c of chatRows) hits.push({ kind: "chat", id: c.id, href: `/chat/t/${c.id}`, title: c.title, subtitle: null });
 
+  /* Any word said in any chat you can read ("I should be able to search any
+     word in any chat"): your own chats with the assistant and the employees,
+     and the channels and DMs you are in (public channels too). The line is
+     shown around the word. */
+  if (chat) {
+    const [ownLines, channelLines] = await Promise.all([
+      db
+        .select({ conversationId: agentMessages.conversationId, title: conversations.title, content: agentMessages.content, at: agentMessages.createdAt })
+        .from(agentMessages)
+        .innerJoin(conversations, eq(conversations.id, agentMessages.conversationId))
+        .where(and(eq(conversations.userId, viewer.id), isNull(conversations.archivedAt), ilike(agentMessages.content, like)))
+        .orderBy(desc(agentMessages.createdAt))
+        .limit(24),
+      db
+        .select({ id: chatMessages.id, body: chatMessages.body, slug: chatChannels.slug, name: chatChannels.name, kind: chatChannels.kind, at: chatMessages.createdAt })
+        .from(chatMessages)
+        .innerJoin(chatChannels, eq(chatChannels.id, chatMessages.channelId))
+        .leftJoin(chatMembers, and(eq(chatMembers.channelId, chatChannels.id), eq(chatMembers.userId, viewer.id)))
+        .where(
+          and(
+            eq(chatChannels.tenantId, viewer.tenantId),
+            isNull(chatMessages.deletedAt),
+            ilike(chatMessages.body, like),
+            or(sql`${chatMembers.userId} is not null`, and(eq(chatChannels.isPrivate, false), sql`${chatChannels.kind} <> 'dm'`)),
+          ),
+        )
+        .orderBy(desc(chatMessages.createdAt))
+        .limit(12),
+    ]);
+    const seen = new Set<string>();
+    for (const l of ownLines) {
+      if (seen.has(l.conversationId) || seen.size >= MAX_PER_GROUP) continue;
+      seen.add(l.conversationId);
+      hits.push({ kind: "chat", id: `${l.conversationId}:line`, href: `/chat/t/${l.conversationId}`, title: l.title === "New chat" ? "对话" : l.title, subtitle: around(l.content, q) });
+    }
+    for (const l of channelLines.slice(0, MAX_PER_GROUP)) {
+      if (!l.slug) continue;
+      hits.push({ kind: "channel", id: `${l.id}:line`, href: l.kind === "dm" ? `/chat/c/${l.slug}` : `/chat/c/${l.slug}`, title: l.kind === "dm" ? l.name : `#${l.name}`, subtitle: around(l.body, q) });
+    }
+  }
+
   for (const c of channels) {
     if (!c.slug) continue;
     hits.push({
@@ -172,4 +213,17 @@ export async function GET(request: Request) {
     { hits, withheld: fileSearch.withheld },
     { headers: { "Cache-Control": "no-store" } },
   );
+}
+
+/** The words around the first match, on one line, with the markdown and ids taken out. */
+function around(text: string, q: string): string {
+  const flat = text
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
+    .replace(/\b(?:scr|wp|prj|fil|rnd|shot|cnv|msg|am)_[0-9a-z]{6,}\b/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  const i = flat.toLowerCase().indexOf(q.toLowerCase());
+  if (i < 0) return flat.slice(0, 80);
+  const start = Math.max(0, i - 30);
+  return `${start > 0 ? "…" : ""}${flat.slice(start, i + q.length + 50)}${i + q.length + 50 < flat.length ? "…" : ""}`;
 }
