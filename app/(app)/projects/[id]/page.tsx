@@ -27,6 +27,7 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
       zh={zh}
       writing={writing}
       voices={voices}
+      canApprove={viewer.role === "owner" || viewer.role === "admin"}
       people={people.map((p) => ({ id: p.id, name: (zh && p.nameLocal) || p.name, avatarUrl: p.avatarUrl, title: p.title, email: p.email }))}
     />
   );

@@ -67,6 +67,8 @@ export type ScriptDetailScreenProps = {
   approvers: { id: string; name: string; avatarUrl?: string | null }[];
   /** the signed-in person, for "you are the designated approver" */
   viewerId: string;
+  /** an owner or admin: any of them may approve, whoever was asked or wrote it */
+  viewerIsAdmin?: boolean;
   /** their own picture, for the lines they wrote */
   viewerAvatar?: string | null;
   tab: "brief" | "draft" | "versions" | "approval";
@@ -744,6 +746,7 @@ export function ScriptDetailScreen(props: ScriptDetailScreenProps): React.JSX.El
     siblings,
     approvers,
     viewerId,
+    viewerIsAdmin = false,
     viewerAvatar = null,
     tab,
     compareVersion,
@@ -903,7 +906,8 @@ export function ScriptDetailScreen(props: ScriptDetailScreenProps): React.JSX.El
   const requested = approvals.find((a) => a.state === "requested") ?? null;
   const newestApproval = approvals.length > 0 ? approvals[0] : null;
   const approvedRecord = approvals.find((a) => a.state === "approved") ?? null;
-  const viewerIsApprover = requested !== null && requested.approverId === viewerId;
+  /* Any owner or admin may decide, not only the one person asked. */
+  const viewerIsApprover = requested !== null && (requested.approverId === viewerId || viewerIsAdmin);
   /**
    * "You aren't the author of this version".
    *
@@ -912,7 +916,7 @@ export function ScriptDetailScreen(props: ScriptDetailScreenProps): React.JSX.El
    * are the owner of the script and whoever asked for this approval, and
    * either one being the viewer means the viewer is on the writing side of it.
    */
-  const viewerIsAuthor = script.ownerId === viewerId || (requested !== null && requested.requestedBy === viewerId);
+  const viewerIsAuthor = !viewerIsAdmin && (script.ownerId === viewerId || (requested !== null && requested.requestedBy === viewerId));
 
   const openFlags = suggestions.length;
   const mandatoryTotal = script.mandatoryPoints.length;

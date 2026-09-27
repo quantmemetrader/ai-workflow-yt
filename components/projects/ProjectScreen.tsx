@@ -1,5 +1,6 @@
 "use client";
 
+import { approveNowAction } from "@/app/(app)/script/actions";
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -57,7 +58,10 @@ export function ProjectScreen({
   people,
   writing,
   voices = [],
+  canApprove = false,
 }: {
+  /** An owner or admin: may OK the script in one press (脚本可以了). */
+  canApprove?: boolean;
   project: ProjectDetail;
   zh: boolean;
   people: MentionPerson[];
@@ -89,6 +93,7 @@ export function ProjectScreen({
   const oneGoBody = (extra: Record<string, unknown> = {}) =>
     JSON.stringify({ prompt: videoPrompt, narrate: aiVoice ? "on" : "auto", voiceId, ...extra });
   const [busyAction, setBusyAction] = React.useState<string | null>(null);
+  const [approveError, setApproveError] = React.useState<string | null>(null);
   const [picking, setPicking] = React.useState<null | "clips" | "scripts" | "topics">(null);
   /* An upload from this page just landed: the clips card leads with the
      next press, loud, until the film starts. */
@@ -622,7 +627,29 @@ export function ProjectScreen({
                     <Empty text={t("还没有分镜。让编剧写初稿，或在下面说要什么。", "No beats yet. Ask the writer for a draft, or say what you want below.")} />
                   )
                 ) : null}
-                {p.script?.status === "awaiting_approval" ? (
+                {/* An owner or admin OKs the script here in one small press — the
+                    long way (ask someone, a checklist, "not your own version")
+                    was more than "yes, it works" needed. Others still go to the
+                    script's approval tab. */}
+                {canApprove && p.script && p.beats.length > 0 && p.script.status !== "locked" && !draftWriting ? (
+                  <button
+                    type="button"
+                    disabled={pending}
+                    onClick={() =>
+                      start(async () => {
+                        const r = await approveNowAction(p.script!.id);
+                        setApproveError(r && "error" in r && r.error ? r.error : null);
+                        router.refresh();
+                      })
+                    }
+                    title={t("批准并锁定这一版，交给剪辑师", "Approve and lock this version; it goes to the editor")}
+                    style={{ marginTop: 10, display: "inline-flex", alignItems: "center", gap: 5, height: 26, padding: "0 10px", borderRadius: 8, border: "1px solid #cbe9d8", background: "#f2faf6", color: "#1e7a4f", fontFamily: "inherit", fontSize: 12, fontWeight: 500, cursor: "pointer" }}
+                  >
+                    <Icon name="check" size={12} /> {t("脚本可以了", "Script looks good")}
+                  </button>
+                ) : null}
+                {approveError ? <div style={{ marginTop: 6, fontSize: 11.5, color: "#c0392b" }}>{approveError}</div> : null}
+                {!canApprove && p.script?.status === "awaiting_approval" ? (
                   <Link prefetch={false} href={`/script/${p.script.id}?tab=approval`} style={{ ...btn(true), textDecoration: "none", marginTop: 10 }}>
                     {t("去批准", "Review and approve")} <Icon name="external" size={11} />
                   </Link>

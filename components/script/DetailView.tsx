@@ -44,6 +44,7 @@ export function DetailView({
   siblings,
   approvers,
   viewerId,
+  viewerIsAdmin = false,
   viewerAvatar = null,
   locale,
   model,
@@ -57,6 +58,8 @@ export function DetailView({
   siblings: Record<string, ScriptListItem[]>;
   approvers: { id: string; name: string; avatarUrl?: string | null }[];
   viewerId: string;
+  /** An owner or admin: may approve any version, whoever was asked. */
+  viewerIsAdmin?: boolean;
   /** The signed-in person's own picture, for the lines they wrote. */
   viewerAvatar?: string | null;
   locale: string;
@@ -187,6 +190,7 @@ export function DetailView({
       siblings={siblings}
       approvers={approvers}
       viewerId={viewerId}
+      viewerIsAdmin={viewerIsAdmin}
       viewerAvatar={viewerAvatar}
       shareSheet={shareSheet}
       topic={detail.topic ?? null}
