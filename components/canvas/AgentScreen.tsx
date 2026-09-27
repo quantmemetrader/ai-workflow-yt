@@ -446,6 +446,8 @@ export function AgentScreen({
         }
       }
 
+      /* The new chat has its first message: it is now "the last chat" /chat reopens. */
+      if (created) document.cookie = "tg_chat_new=; path=/; max-age=0; samesite=lax";
       if (created && !initialId) router.replace(`/chat/t/${created}${history ? `?agent=${history.agent}` : ""}`);
       else router.refresh();
     } catch (err) {
@@ -530,6 +532,24 @@ export function AgentScreen({
           </div>
         </div>
         <div style={{ flexGrow: 1 }} />
+        {/* Your assistant reopens the last conversation (app/(app)/chat/page.tsx),
+            so a new one is asked for here; the cookie keeps it new until its
+            first message. An employee's page has its own 新对话 in the history. */}
+        {!history && (conversationId || messages.length > 0) ? (
+          <button
+            type="button"
+            className="chip"
+            style={{ height: 28, fontSize: 11.5, gap: 5, cursor: "pointer", fontFamily: "inherit" }}
+            title={zh ? "开一个新对话" : "Start a new conversation"}
+            onClick={() => {
+              document.cookie = `tg_chat_new=1; path=/; max-age=${60 * 60 * 24 * 30}; samesite=lax`;
+              router.push("/chat?fresh=1");
+            }}
+          >
+            <Icon name="plus" size={12} />
+            {zh ? "新对话" : "New chat"}
+          </button>
+        ) : null}
         {/* Which model is answering — and the control that changes it. It was
             a bare chip printing a model id with nothing to say why it was
             there; it is the same picker the composer carries everywhere else. */}

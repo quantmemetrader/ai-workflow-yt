@@ -1,11 +1,16 @@
+import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
 import { requireModule } from "@/lib/auth/dal";
 import { answeringModel } from "@/lib/ai/models";
 import { AgentScreen, type ThreadMessage } from "@/components/canvas/AgentScreen";
 import { AGENT_KEYS, type AgentKey } from "@/lib/agents/catalog";
-import { conversationDetail } from "@/lib/chat/service";
+import { conversationDetail, listConversations } from "@/lib/chat/service";
 import { agentHistoryFor, threadMessagesOf } from "@/lib/chat/thread";
 
 export const metadata = { title: "聊天 · Chat" };
+
+/** Set by 新对话, cleared by the new chat's first message (components/canvas/AgentScreen.tsx). */
+const NEW_CHAT_COOKIE = "tg_chat_new";
 
 export default async function NewChatPage({
   searchParams,
@@ -20,6 +25,16 @@ export default async function NewChatPage({
      the stream route routes it the same way and it can be deleted to ask the
      assistant instead. Anything that is not an employee is ignored. */
   const picked = typeof agent === "string" && (AGENT_KEYS as readonly string[]).includes(agent) ? (agent as AgentKey) : null;
+
+  /* Your own assistant keeps the last conversation open: leave the page and
+     come back and you are where you were ("keep the last chat open always
+     until I press new chat"). 新对话 sets `tg_chat_new` (AgentScreen), so a
+     new chat stays new across visits until its first message is sent, which
+     clears it. A question handed over (`q`) always starts fresh. */
+  if (!picked && !fresh && !q && (await cookies()).get(NEW_CHAT_COOKIE)?.value !== "1") {
+    const [latest] = await listConversations(viewer, 1);
+    if (latest) redirect(`/chat/t/${latest.id}`);
+  }
 
   /*
    * An employee's page opens on what you have said to each other, not a
