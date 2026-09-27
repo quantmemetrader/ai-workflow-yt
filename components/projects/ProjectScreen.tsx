@@ -1910,7 +1910,15 @@ const TALL_SHAPE: React.CSSProperties = { height: 480, width: "auto", maxWidth: 
 const WIDE_SHAPE: React.CSSProperties = { width: "100%", maxHeight: 420 };
 
 function clean(body: string): string {
-  return body.replace(/\*\*/g, "").replace(/^#+\s*/gm, "").replace(/@\S+\s?/g, "").trim();
+  /* Markdown links read as their words; a link back to a project page (you
+     are on it) is dropped — messages used to end in a raw
+     "[打开项目](/projects/wp_…)" wherever the page quoted them. */
+  return body
+    .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (_m, label: string, url: string) => (url.startsWith("/projects/") ? "" : label))
+    .replace(/\*\*/g, "")
+    .replace(/^#+\s*/gm, "")
+    .replace(/@\S+\s?/g, "")
+    .trim();
 }
 
 function oneLine(body: string): string {
