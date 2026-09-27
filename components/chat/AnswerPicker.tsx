@@ -58,7 +58,7 @@ export function AnswerPicker({ answering, zh, onPick, soft }: { answering: Agent
         <span
           role="listbox"
           aria-label={zh ? "谁来回答" : "Who answers"}
-          style={{ position: "absolute", left: 0, bottom: "calc(100% + 6px)", zIndex: 40, width: 300, maxHeight: 380, overflowY: "auto", background: "#fff", border: "1px solid #e6e6e6", borderRadius: 12, boxShadow: "0 12px 32px rgba(0,0,0,0.12)", padding: 6, display: "flex", flexDirection: "column", gap: 2 }}
+          style={{ position: "absolute", left: 0, bottom: "calc(100% + 6px)", zIndex: 40, width: 300, maxHeight: 470, overflowY: "auto", background: "#fff", border: "1px solid #e6e6e6", borderRadius: 12, boxShadow: "0 12px 32px rgba(0,0,0,0.12)", padding: 6, display: "flex", flexDirection: "column", gap: 2 }}
         >
           {rows.map((k) => {
             const current = k === answering;

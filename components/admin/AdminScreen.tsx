@@ -310,7 +310,11 @@ function TAB_SCOPE(tab: string, zh: boolean): string {
 
 /** The roster's column widths, in one place because the header row and every
  * person's row have to agree on them. */
-const COLUMNS = "minmax(0,1.6fr) 110px 120px minmax(0,1fr) 110px 110px 140px";
+const COLUMNS = "minmax(200px,1.6fr) 110px 120px minmax(70px,1fr) 100px 110px minmax(190px,auto)";
+/* Below this the roster scrolls sideways instead of squeezing: with the
+   assistant panel open the name column was crushed to nothing, the faces
+   to slivers, and the headers ran into each other ("memRoler"). */
+const ROSTER_MIN = 1000;
 
 /**
  * 岗位: which job a person does, and so which Home they land on.
@@ -492,11 +496,12 @@ function People({
         />
       ) : null}
 
-      <div style={{ display: "flex", flexDirection: "column" }}>
+      <div style={{ display: "flex", flexDirection: "column", overflowX: "auto" }}>
         <div
           style={{
             display: "grid",
             gridTemplateColumns: COLUMNS,
+            minWidth: ROSTER_MIN,
             gap: 10,
             padding: "0 10px 8px",
             fontSize: 10.5,
@@ -504,13 +509,13 @@ function People({
             borderBottom: "1px solid #ededed",
           }}
         >
-          <span>{t("Employee", "成员")}</span>
-          <span>{t("Role", "角色")}</span>
-          <span>{t("Job", "岗位")}</span>
-          <span>{t("Team", "团队")}</span>
-          <span>{t("Status", "状态")}</span>
-          <span>{t("Last active", "最近活跃")}</span>
-          <span>{t("Modules", "模块")}</span>
+          <span style={clip}>{t("Employee", "成员")}</span>
+          <span style={clip}>{t("Role", "角色")}</span>
+          <span style={clip}>{t("Job", "岗位")}</span>
+          <span style={clip}>{t("Team", "团队")}</span>
+          <span style={clip}>{t("Status", "状态")}</span>
+          <span style={clip}>{t("Last active", "最近活跃")}</span>
+          <span style={clip}>{t("Modules", "模块")}</span>
         </div>
 
         {shown.map((p) => {
@@ -538,6 +543,7 @@ function People({
               style={{
                 display: "grid",
                 gridTemplateColumns: COLUMNS,
+                minWidth: ROSTER_MIN,
                 gap: 10,
                 alignItems: "center",
                 padding: "9px 10px",
@@ -546,7 +552,9 @@ function People({
               }}
             >
               <span style={{ display: "flex", alignItems: "center", gap: 9, minWidth: 0 }}>
-                <PersonAvatar id={p.id} url={p.avatarUrl} name={(zh && p.nameLocal) || p.name} size={24} />
+                <span style={{ display: "flex", flexShrink: 0 }}>
+                  <PersonAvatar id={p.id} url={p.avatarUrl} name={(zh && p.nameLocal) || p.name} size={28} />
+                </span>
                 <span style={{ minWidth: 0 }}>
                   <span style={{ display: "block", fontWeight: 500, ...clip }}>
                     {(zh && p.nameLocal) || p.name}

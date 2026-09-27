@@ -153,8 +153,8 @@ const ALL: NavItem[] = [
   {
     module: "admin",
     href: "/admin",
-    label: "Admin",
-    labelZh: "管理",
+    label: "Manage employees",
+    labelZh: "员工管理",
     live: true,
     icon: '<path d="M4 7.4h16M4 12h16M4 16.6h16" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linecap="round"/><circle cx="9" cy="7.4" r="2.2"/><circle cx="15" cy="16.6" r="2.2"/>',
   },

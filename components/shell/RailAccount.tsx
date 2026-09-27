@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { Tr } from "@/components/ui/Tr";
+import { PersonAvatar } from "@/components/ui/PersonAvatar";
 import type { Viewer } from "@/lib/auth/types";
 
 /**
@@ -14,6 +15,7 @@ import type { Viewer } from "@/lib/auth/types";
  * just the picture.
  */
 export type RailAccountInfo = {
+  id: string;
   name: string;
   nameLocal: string | null;
   role: Viewer["role"];
@@ -52,7 +54,10 @@ export function RailAccount({ account, zh, wide }: { account: RailAccountInfo; z
         justifyContent: wide ? "flex-start" : "center",
       }}
     >
-      <Picture name={who} url={account.avatarUrl} />
+      {/* Their own picture, or the default face every screen draws for them — not a grey letter "C". */}
+      <span style={{ display: "flex", flexShrink: 0 }}>
+        <PersonAvatar id={account.id} url={account.avatarUrl} name={who} size={22} radius={11} />
+      </span>
       {/* One line, not two: the name, then the role as a small pill. The
           owner found the two-line version too tall for the rail's foot. */}
       {wide ? (
@@ -64,17 +69,5 @@ export function RailAccount({ account, zh, wide }: { account: RailAccountInfo; z
         </span>
       ) : null}
     </Link>
-  );
-}
-
-function Picture({ name, url }: { name: string; url: string | null }) {
-  if (url) {
-    // eslint-disable-next-line @next/next/no-img-element
-    return <img src={url} alt="" style={{ width: 20, height: 20, borderRadius: 10, objectFit: "cover", flexShrink: 0 }} />;
-  }
-  return (
-    <span aria-hidden style={{ width: 20, height: 20, borderRadius: 10, background: "#e2e2e2", color: "#525252", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 600, flexShrink: 0 }}>
-      {name.slice(0, 1).toUpperCase()}
-    </span>
   );
 }
