@@ -199,7 +199,12 @@ export async function cutTake(take: Take, tr: Pick<TranscribeOut, "words">, hook
   } catch (err) {
     log(`cut: plan call failed (${err instanceof Error ? err.message : err}); cutting without it`);
   }
-  const cut = planCut({ sentences, silences, fineSilences: fine, words, brief, targetMs, retakes, plan, totalMs });
+  const planned = planCut({ sentences, silences, fineSilences: fine, words, brief, targetMs, retakes, plan, totalMs });
+  /* A short keeps only its chosen sentences: the cut works over the take's
+     speech, so its pieces are clipped to those sentences' spans (with a
+     breath either side) — without this the "short" came out 5:28. */
+  const clipped = sentences === all ? planned : clipToSentences(planned, sentences);
+  const cut = sentences === all ? clipped : { ...clipped, report: { ...clipped.report, noteZh: `精华短视频：从 ${all.length} 句里选了 ${sentences.length} 句，成片约 ${Math.round(clipped.lengthMs / 1000)} 秒` } };
   log(`cut: ${cut.pieces.length} pieces, ${sec(cut.lengthMs)} s kept, ${sec(cut.removedMs)} s removed; ${cut.report.noteZh}`);
   return {
     words,
@@ -716,7 +721,7 @@ async function pickHighlights<T extends { id: string; startMs: number; endMs: nu
     {
       role: "system",
       content:
-        "You cut short vertical videos (Instagram Reels, YouTube Shorts) from a talking-head take. From the numbered sentences, choose the few that make the strongest short of the target length: open on the most gripping claim (the hook), keep one concrete fact or number that proves it, and end on a line that lands (a punchline or a question). Whole sentences only, never retakes of the same line, in their original order, total close to the target and never more than 15% over. Answer JSON only: {\"ids\": [\"s003\", …]}.",
+        "You cut short vertical videos (Instagram Reels, YouTube Shorts) from a talking-head take. From the numbered sentences, choose the few that make the strongest short of the target length: open on the most gripping claim (the hook), keep one concrete fact or number that proves it, and end on a line that lands (a punchline or a question). Whole sentences only, never retakes of the same line, in their original order, total between 85% and 110% of the target (add a supporting sentence rather than come in short). Answer JSON only: {\"ids\": [\"s003\", …]}.",
     },
     { role: "user", content: `Target: ${Math.round(targetMs / 1000)} seconds.\nBrief: ${brief.slice(0, 1200)}\n\nSentences (id | length | text):\n${list}` },
   ]);
@@ -730,4 +735,20 @@ async function pickHighlights<T extends { id: string; startMs: number; endMs: nu
     total -= last.endMs - last.startMs;
   }
   return chosen.length >= 2 ? chosen : [];
+}
+
+/** The cut's pieces, kept only inside the chosen sentences (a short). */
+function clipToSentences<C extends { pieces: { clipId: string; inMs: number; outMs: number }[]; lengthMs: number; removedMs: number }>(cut: C, sentences: { startMs: number; endMs: number }[]): C {
+  const spans = sentences.map((s) => ({ a: s.startMs - 120, b: s.endMs + 160 })).sort((x, y) => x.a - y.a);
+  const pieces: C["pieces"] = [];
+  for (const p of cut.pieces) {
+    for (const sp of spans) {
+      const inMs = Math.max(p.inMs, sp.a);
+      const outMs = Math.min(p.outMs, sp.b);
+      if (outMs - inMs >= 120) pieces.push({ ...p, inMs, outMs });
+    }
+  }
+  pieces.sort((x, y) => x.inMs - y.inMs);
+  const lengthMs = pieces.reduce((n, p) => n + (p.outMs - p.inMs), 0);
+  return { ...cut, pieces, removedMs: cut.removedMs + (cut.lengthMs - lengthMs), lengthMs };
 }
