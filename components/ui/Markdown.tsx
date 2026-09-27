@@ -101,7 +101,7 @@ function blocks(src: string): React.ReactNode[] {
       while (i < lines.length) {
         const m = LIST_RE.exec(lines[i]);
         if (m) {
-          rows.push({ indent: m[1].replace(/\t/g, "    ").length, ordered: m[3] !== undefined, num: Number(m[3] ?? 1), text: m[4] });
+          rows.push({ indent: m[1].replace(/\t/g, "    ").length, ordered: m[2] !== undefined, num: Number(m[2] ?? 1), text: m[3] ?? "" });
           i++;
           continue;
         }
