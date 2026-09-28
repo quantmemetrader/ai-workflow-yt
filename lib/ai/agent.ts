@@ -126,6 +126,10 @@ export async function* runAgent(opts: {
   signal?: AbortSignal;
   /** Answer the question already on record (重新回答) instead of adding it again. */
   retry?: boolean;
+  /** The model the person picked for this message (「模型」 in the composer),
+   *  already checked against the list; the studio default when absent. The
+   *  fallback chain still applies if it refuses. */
+  model?: string;
 }): AsyncGenerator<AgentEvent> {
   const { viewer, conversationId, content, signal } = opts;
   const startedAt = Date.now();
@@ -241,7 +245,7 @@ export async function* runAgent(opts: {
   const citedFileIds = new Set<string>();
   let answer = "";
   let withheldAny = false;
-  let model = modelFor.assistant();
+  let model = opts.model ?? modelFor.assistant();
   /** Models still untried if the current one refuses. */
   const fallbacks = modelFor.fallbacks().filter((m) => m !== model);
   let toldAboutFallback = false;

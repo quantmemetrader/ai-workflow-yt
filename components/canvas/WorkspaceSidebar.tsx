@@ -15,6 +15,7 @@ import { shortDay } from "@/components/chat/when";
 import { PersonAvatar } from "@/components/ui/PersonAvatar";
 import type { Locale } from "@/lib/i18n";
 import { AgentName } from "@/components/ui/Tr";
+import { channelName } from "@/lib/chat/channel-name";
 
 /**
  * The 256px workspace sidebar, transcribed from design/canvas/Main.dc.html and
@@ -86,6 +87,7 @@ const LOCK = (
 
 export type SidebarConversation = { id: string; title: string; updatedAt: string };
 
+
 /**
  * The person's own assistant, then the AI employees, one row each: face,
  * name, and the one line on what to ask them for. An employee's row opens the
@@ -119,39 +121,15 @@ function AssistantRowList({ zh, picked }: { zh: boolean; picked: AgentKey | null
      employee's row stays the selected one while you read their thread. */
   const onChat = pathname === "/chat" || pathname.startsWith("/chat/t/");
   const onAgent = onChat && !picked;
-  const router = useRouter();
   return (
     <>
-      {/* Start a new chat with your assistant, one press from anywhere in
-          Chat ("new chat buttons more accessible"). The cookie keeps it new
-          until its first message (app/(app)/chat/page.tsx). */}
-      <button
-        type="button"
-        className="ws"
-        onClick={() => {
-          document.cookie = `tg_chat_new=1; path=/; max-age=${60 * 60 * 24 * 30}; samesite=lax`;
-          router.push("/chat?fresh=1");
-        }}
-        style={{ gap: 9, height: 32, width: "100%", border: "1px dashed #dcdcda", background: "#fff", fontFamily: "inherit", cursor: "pointer", marginBottom: 4 }}
-      >
-        <span style={{ width: 20, height: 20, borderRadius: 6, display: "inline-flex", alignItems: "center", justifyContent: "center", background: "#171717", color: "#fff", flexShrink: 0 }}>
-          <svg viewBox="0 0 24 24" width="12" height="12" aria-hidden><path d="M12 6v12M6 12h12" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" fill="none" /></svg>
-        </span>
-        <span>{zh ? "新对话" : "New chat"}</span>
-      </button>
       <Link href="/chat" className={`ws${onAgent ? " on" : ""}`} style={{ gap: 9, height: 32 }}>
         {/* The host's own assistant: the pixel robot, beside the employees'
             pixel faces below — it was a black cube like nothing else here. */}
         <AgentIcon agent={null} size={20} radius={6} />
-        <span>{zh ? "你的助理" : "Your agent"}</span>
-        <span style={{ marginLeft: "auto", fontSize: 11.5, color: "#a3a3a3" }}>{zh ? "私密" : "private"}</span>
+        <span>{zh ? "你的助理" : "Your assistant"}</span>
         <NavSpinner />
       </Link>
-
-      <div className="sec">
-        <span style={{ flexGrow: 1 }}>{zh ? "AI 同事" : "AI teammates"}</span>
-        <span className="aside">{zh ? "点一下直接问" : "click to ask"}</span>
-      </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
         {AGENT_KEYS.map((k) => {
           const a = AGENT_LABELS[k];
@@ -170,7 +148,6 @@ function AssistantRowList({ zh, picked }: { zh: boolean; picked: AgentKey | null
               <span className="nm">
                 <AgentName agent={k} zh={zh} />
               </span>
-              <span className="hint">{zh ? a.hint : a.hintEn}</span>
               <NavSpinner />
             </Link>
           );
@@ -245,42 +222,20 @@ export function WorkspaceSidebar({
     >
       <style dangerouslySetInnerHTML={{ __html: CSS }} />
       {handle}
-      <div style={{ display: "flex", alignItems: "center", gap: 7, padding: "3px 8px 10px" }}>
-        <span style={{ fontSize: 14.5, fontWeight: 600 }}>{studio}</span>
+      <div style={{ display: "flex", alignItems: "center", gap: 7, padding: "3px 4px 10px 8px" }}>
+        <span style={{ fontSize: 14.5, fontWeight: 600, flexGrow: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{zh ? "消息" : "Messages"}</span>
+        {/* A new chat with your assistant, one press from anywhere in Chat. The
+            cookie keeps it new until its first message (app/(app)/chat/page.tsx). */}
         <button
           type="button"
-          onClick={() => setComposing(true)}
-          style={{
-            marginLeft: "auto",
-            width: 28,
-            height: 28,
-            borderRadius: 8,
-            background: "#fff",
-            border: "1px solid #ededed",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            cursor: "pointer",
-            padding: 0,
+          onClick={() => {
+            document.cookie = `tg_chat_new=1; path=/; max-age=${60 * 60 * 24 * 30}; samesite=lax`;
+            router.push("/chat?fresh=1");
           }}
-          aria-label={zh ? "新建频道" : "New channel"}
-          title={zh ? "新建频道" : "New channel"}
+          style={{ display: "inline-flex", alignItems: "center", gap: 5, height: 28, padding: "0 10px", borderRadius: 8, border: 0, background: "#171717", color: "#fff", fontFamily: "inherit", fontSize: 12, fontWeight: 600, cursor: "pointer", flexShrink: 0 }}
         >
-          <svg
-            viewBox="0 0 24 24"
-            style={{
-              width: 14,
-              height: 14,
-              stroke: "#383838",
-              fill: "none",
-              strokeWidth: 1.8,
-              strokeLinecap: "round",
-              strokeLinejoin: "round",
-            }}
-          >
-            <path d="M12 20h8" />
-            <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" />
-          </svg>
+          <svg viewBox="0 0 24 24" width="12" height="12" aria-hidden><path d="M12 6v12M6 12h12" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" fill="none" /></svg>
+          {zh ? "新对话" : "New chat"}
         </button>
       </div>
 
@@ -313,7 +268,7 @@ export function WorkspaceSidebar({
           <circle cx="11" cy="11" r="6.4" />
           <path d="m15.8 15.8 4 4" />
         </svg>
-        <span style={{ fontSize: 12, color: "#999999", flexGrow: 1 }}>{zh ? "跳转到…" : "Jump to…"}</span>
+        <span style={{ fontSize: 12, color: "#999999", flexGrow: 1 }}>{zh ? "搜索…" : "Search…"}</span>
         <span style={{ fontSize: 11.5, color: "#c7c7c7" }}>⌘K</span>
       </button>
 
@@ -322,6 +277,7 @@ export function WorkspaceSidebar({
           people, the list outgrows a laptop screen, and it used to push the
           footer off the bottom with no way to reach it. */}
       <div className="mid">
+        <div className="sec" style={{ marginTop: 2 }}>{zh ? "AI 同事" : "AI teammates"}</div>
         <AssistantRows zh={zh} />
 
         {/*
@@ -335,11 +291,10 @@ export function WorkspaceSidebar({
         {conversations.length > 0 ? (
           <>
             <div className="sec">
-              <span style={{ flexGrow: 1 }}>{zh ? "最近对话" : "Recent chats"}</span>
-              <span className="aside">{zh ? "仅你可见" : "only you"}</span>
+              <span style={{ flexGrow: 1 }}>{zh ? "最近" : "Recent"}</span>
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
-              {(historyOpen ? conversations : conversations.slice(0, 2)).map((c) => {
+              {(historyOpen ? conversations : conversations.slice(0, 3)).map((c) => {
                 const active = pathname === `/chat/t/${c.id}`;
                 return (
                   <Link key={c.id} href={`/chat/t/${c.id}`} prefetch={false} className={`ws${active ? " on" : ""}`} title={c.title}>
@@ -358,9 +313,9 @@ export function WorkspaceSidebar({
               })}
               {/* Two at a glance, the rest a press away ("just a few, the
                   remaining inside a dropdown"). */}
-              {conversations.length > 2 ? (
+              {conversations.length > 3 ? (
                 <button type="button" className="more" aria-expanded={historyOpen} onClick={() => setHistoryOpen((v) => !v)} style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-                  {historyOpen ? (zh ? "收起" : "Show fewer") : zh ? `更多 ${conversations.length - 2} 条` : `${conversations.length - 2} more`}
+                  {historyOpen ? (zh ? "收起" : "Show fewer") : zh ? `更多 ${conversations.length - 3} 条` : `${conversations.length - 3} more`}
                   <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden style={{ transform: historyOpen ? "rotate(180deg)" : undefined }}>
                     <path d="m6.5 9.5 5.5 5.5 5.5-5.5" />
                   </svg>
@@ -370,52 +325,11 @@ export function WorkspaceSidebar({
           </>
         ) : null}
 
-        {/* The + is on the heading, next to the channels, rather than only on
-            the pencil at the top of the sidebar. */}
-        <div className="sec">
-          <span style={{ flexGrow: 1 }}>{zh ? "频道" : "Channels"}</span>
-          <button
-            type="button"
-            onClick={() => setComposing(true)}
-            aria-label={zh ? "新建频道" : "New channel"}
-            title={zh ? "新建频道" : "New channel"}
-            style={plusButton}
-          >
-            <PlusGlyph />
-          </button>
-        </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
-          {channels.length === 0 ? (
-            <p style={{ fontSize: 12.5, color: "#999999", lineHeight: 1.5, padding: "2px 10px 0" }}>
-              {zh ? "还没有频道。" : "No channels yet."}
-            </p>
-          ) : null}
-          {channels.map((c) => {
-            const active = pathname === `/chat/c/${c.slug}`;
-            return (
-              <Link
-                key={c.id}
-                href={`/chat/c/${c.slug}`}
-                className={`ws${active ? " on" : c.unread ? " unread" : ""}`}
-              >
-                <span className="hs">{c.isPrivate ? LOCK : "#"}</span>
-                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {c.name}
-                </span>
-                {c.unread > 0 && !active && <span className="ct">{c.unread > 99 ? "99+" : c.unread}</span>}
-                <NavSpinner />
-              </Link>
-            );
-          })}
-        </div>
-
-        <div className="sec">{zh ? "消息" : "Direct messages"}</div>
+        <div className="sec">{zh ? "同事" : "People"}</div>
         <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
           {people.length === 0 ? (
             <p style={{ fontSize: 12.5, color: "#999999", lineHeight: 1.5, padding: "2px 10px 0" }}>
-              {zh
-                ? "工作室里还没有其他人。管理员添加成员后，他们会出现在这里。"
-                : "Nobody else in the studio yet. People appear here once an admin adds them."}
+              {zh ? "还没有其他同事。" : "No one else yet."}
             </p>
           ) : null}
           {people.map((p) => {
@@ -445,6 +359,45 @@ export function WorkspaceSidebar({
             );
           })}
         </div>
+        {/* The + is on the heading, next to the channels, rather than only on
+            the pencil at the top of the sidebar. */}
+        <div className="sec">
+          <span style={{ flexGrow: 1 }}>{zh ? "群聊" : "Group chats"}</span>
+          <button
+            type="button"
+            onClick={() => setComposing(true)}
+            aria-label={zh ? "新建群聊" : "New group chat"}
+            title={zh ? "新建群聊" : "New group chat"}
+            style={plusButton}
+          >
+            <PlusGlyph />
+          </button>
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
+          {channels.length === 0 ? (
+            <p style={{ fontSize: 12.5, color: "#999999", lineHeight: 1.5, padding: "2px 10px 0" }}>
+              {zh ? "还没有群聊。" : "No group chats yet."}
+            </p>
+          ) : null}
+          {channels.map((c) => {
+            const active = pathname === `/chat/c/${c.slug}`;
+            return (
+              <Link
+                key={c.id}
+                href={`/chat/c/${c.slug}`}
+                className={`ws${active ? " on" : c.unread ? " unread" : ""}`}
+              >
+                <span className="hs">{c.isPrivate ? LOCK : "#"}</span>
+                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {zh ? channelName(c.slug, c.name) : c.name}
+                </span>
+                {c.unread > 0 && !active && <span className="ct">{c.unread > 99 ? "99+" : c.unread}</span>}
+                <NavSpinner />
+              </Link>
+            );
+          })}
+        </div>
+
       </div>
 
       <div

@@ -1,3 +1,4 @@
+import { pickedModel } from "@/lib/ai/chat-models";
 import { fileTextWithin, readable as canBeRead, slowToRead } from "@/lib/files/extract";
 import { endTurn, registerTurn } from "@/lib/ai/turns";
 import { after } from "next/server";
@@ -197,6 +198,9 @@ export async function POST(request: Request) {
      *  attached; each is checked against the person (`describeAttachments`). */
     attachments?: unknown;
     retry?: boolean;
+    /** The model picked in the composer for this message (「模型」); anything
+     *  not on the list (`pickedModel`) means the studio's default. */
+    model?: unknown;
   };
   try {
     body = await request.json();
@@ -411,7 +415,7 @@ export async function POST(request: Request) {
         if (hasAttachments && !retry) {
           questionId = newId("am");
           await db.insert(agentMessages).values({ id: questionId, conversationId: conversationId!, role: "user", content: content || "（附件）", status: "complete" });
-          send({ type: "notice", text: (viewer.locale ?? "zh-CN").startsWith("zh") ? "正在处理附件…可以先去别的页面，做好会留在这里。" : "Working on the files… you can leave; the answer stays here." });
+          send({ type: "notice", text: (viewer.locale ?? "zh-CN").startsWith("zh") ? "正在读文件…可以先去别的页面，回答会留在这里。" : "Reading the files… you can leave; the answer stays here." });
         }
         const ping = hasAttachments ? setInterval(() => send({ type: "ping" }), 8000) : null;
         let attached: { text: string; fileIds: string[] };
@@ -419,6 +423,11 @@ export async function POST(request: Request) {
           attached = hasAttachments ? await describeAttachments(viewer, conversationId!, body.attachments, { videoProjectId: ids.projectId, reader: speaker ? speakerViewer : null }) : { text: "", fileIds: [] };
         } finally {
           if (ping) clearInterval(ping);
+        }
+        /* Which files were read, for the ticks on their chips. */
+        if (attached.fileIds.length) {
+          const read = attached.text.split("\n").flatMap((l) => (/已读取/.test(l) ? [/file id (fil_[0-9a-z]+)/i.exec(l)?.[1]?.toLowerCase()].filter((x): x is string => Boolean(x)) : []));
+          send({ type: "attachments", read });
         }
         const turnContent = attached.text ? (content ? `${content}\n\n${attached.text}` : attached.text) : content;
         if (questionId && turnContent) await db.update(agentMessages).set({ content: turnContent }).where(eq(agentMessages.id, questionId));
@@ -480,6 +489,8 @@ export async function POST(request: Request) {
           signal: stopper.signal,
           /* Already on record: a retry, or a question saved before its files were worked on. */
           retry: retry || questionId !== null,
+          /* The composer's 「模型」 for this message, checked against the list. */
+          model: pickedModel(body.model) ?? undefined,
         })) {
           if (event.type === "delta") said += event.text;
           if (event.type === "tool" && event.status === "ok" && event.artifacts?.length) {
