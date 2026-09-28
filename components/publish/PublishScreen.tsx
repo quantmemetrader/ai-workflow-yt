@@ -97,10 +97,10 @@ export function PublishScreen({
   /* The design draws these down a 212px column, the way every other
      desktop artboard in the set does — not across the top. */
   const SCREENS: ScreenItem<Tab>[] = [
-    { key: "channels", label: "Channel board", labelZh: "渠道看板", badge: channels.length },
-    { key: "caption", label: "Composer", labelZh: "文案", badge: counts.draft },
-    { key: "approvals", label: "Approval queue", labelZh: "审批队列", badge: waiting.length },
-    { key: "log", label: "Publish log", labelZh: "发布日志" },
+    { key: "channels", label: "Channel board", labelZh: "发布渠道", badge: channels.length },
+    { key: "caption", label: "Composer", labelZh: "待发内容", badge: counts.draft },
+    { key: "approvals", label: "Approval queue", labelZh: "等待批准", badge: waiting.length },
+    { key: "log", label: "Publish log", labelZh: "发布记录" },
   ];
 
   return (
@@ -117,9 +117,9 @@ export function PublishScreen({
           padding: "0 22px",
         }}
       >
-        <span style={{ fontSize: 15, fontWeight: 600 }}>{t("Publish", "发布中")}</span>
+        <span style={{ fontSize: 15, fontWeight: 600 }}>{t("Publishing", "发布设置")}</span>
         <span style={{ fontSize: 11.5, color: "#999999" }}>
-          {t("nothing goes out without a named approval", "没有具名批准，任何内容都不会发出")}
+          {t("connect the accounts you post to. Each video is posted from its own 发布 tab.", "在这里连接要发布的账号。每条视频在它自己的「发布」页里发。")}
         </span>
         <button
           type="button"
@@ -359,7 +359,7 @@ function ChannelBoard({
           <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
             <span style={{ fontSize: 13, fontWeight: 600 }}>{t("Also available", "还可以连接")}</span>
             <span style={{ fontSize: 11.5, color: "#999999" }}>
-              {t("Sign in as the account you publish from; it opens in a new tab. Come back and press Check now.", "用要发布的账号登录，会在新标签页打开；回来后点“立即检查”。")}
+              {t("Sign in with the account, then come back and press Check now.", "用那个账号登录，回来点「立即检查」。")}
             </span>
           </div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
@@ -1735,7 +1735,7 @@ function countWord(n: number, zh: boolean): string {
 function agentNote(channels: ChannelRow[], posts: PostRow[], waiting: number, zh: boolean) {
   const live = channels.filter((c) => c.canPost && c.enabled && !c.needsReconnect).length;
   if (zh) {
-    return `${live} 个渠道可发布，共 ${posts.length} 条内容，其中 ${waiting} 条等待批准。没有具名批准，任何内容都不会发出。`;
+    return `${live} 个账号可以发布，${waiting} 条等待批准。`;
   }
   return `${live} channel${live === 1 ? "" : "s"} can post. ${posts.length} post${posts.length === 1 ? "" : "s"} here, ${waiting} waiting for approval. Nothing goes out without a named approval.`;
 }

@@ -33,8 +33,9 @@ export default async function FinancePage() {
     cashSeries(viewer),
     thresholds(viewer),
     listReports(viewer),
-    /* Never holds the page up: a provider that does not answer is a row that says so. */
-    apiBalances(viewer).catch(() => null),
+    /* Owners and admins only: what is left on the AI services is not a
+       number the rest of the studio needs. Never holds the page up. */
+    viewer.role === "owner" || viewer.role === "admin" ? apiBalances(viewer).catch(() => null) : Promise.resolve(null),
   ]);
 
   return (

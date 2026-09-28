@@ -18,6 +18,41 @@ import { notify } from "@/lib/client/notify";
 import { Badge, Empty, Label, ModuleHeader, Row, clip, field, ghost, solid, useAction } from "@/components/ui/kit";
 import { ModuleSidebar, type ScreenItem } from "@/components/shell/ModuleSidebar";
 
+/*
+ * The two starting templates and the starting checklist were written in
+ * English (their text is the contract). Their names, the fields to fill in
+ * and the checklist questions are shown in Chinese here, by key, so a
+ * colleague filling one in reads 出镜人姓名 rather than "Contributor's full
+ * name". A template the studio writes itself shows the name it was given.
+ */
+const TEMPLATE_ZH: Record<string, string> = {
+  "Contributor and likeness release": "出镜同意与肖像授权书",
+  "Freelance production services agreement": "自由职业制作服务协议",
+  "Before a video goes out": "视频发布前检查",
+};
+const FIELD_ZH: Record<string, { label: string; hint?: string }> = {
+  contributor: { label: "出镜人姓名" },
+  production: { label: "节目或哪一集" },
+  recorded_on: { label: "拍摄日期" },
+  territory: { label: "授权地区", hint: "默认全球，除非对方另有要求" },
+  contractor: { label: "合作方姓名" },
+  role: { label: "负责什么", hint: "剪辑、摄影、调色……" },
+  services: { label: "具体工作内容" },
+  fee: { label: "费用" },
+  starts_on: { label: "开始日期" },
+  delivery: { label: "交付日期" },
+};
+const CHECK_ZH: Record<string, string> = {
+  releases: "每位出镜的人都签了出镜授权书",
+  music: "音乐和音效都有这个用途的授权",
+  footage: "别人的素材有授权，或者是我们自己拍的",
+  claims: "脚本里说的事实都能找到出处",
+  sponsorship: "有赞助或送礼的，画面和文案里都写明了",
+  personal_data: "画面里没有不相关的人的个人信息（屏幕、文件、人脸）",
+  trademarks: "出现的品牌只是顺带入镜，或者已经获得许可",
+};
+const nameZh = (name: string, zh: boolean) => (zh ? (TEMPLATE_ZH[name] ?? name) : name);
+
 /**
  * Legal (spec §4.10), transcribed from the four `Legal-*` artboards.
  *
@@ -73,16 +108,16 @@ export function LegalScreen({
      desktop artboard in the set does — not across the top. */
   const SCREENS: ScreenItem<Tab>[] = [
     { key: "draft", label: "Drafting", labelZh: "起草" },
-    { key: "review", label: "Clause review", labelZh: "条款审阅", badge: openFindings },
+    { key: "review", label: "Clause review", labelZh: "核对条款", badge: openFindings },
     { key: "repository", label: "Repository", labelZh: "合同库", badge: contracts.length },
-    { key: "compliance", label: "Compliance", labelZh: "合规" },
+    { key: "compliance", label: "Compliance", labelZh: "发布前检查" },
     { key: "templates", label: "Templates", labelZh: "模板", badge: templates.length },
   ];
 
   return (
     <div style={{ flexGrow: 1, minWidth: 0, display: "flex", minHeight: 0 }}>
     <div style={{ flexGrow: 1, minWidth: 0, display: "flex", flexDirection: "column", minHeight: 0 }}>
-      <ModuleHeader title={t("Legal", "法务")} note={t("drafting and comparison", "起草与比对")} />
+      <ModuleHeader title={t("Legal", "法务")} note={t("contracts: draft, check, keep", "合同：起草、核对、存档")} />
       <ModuleSidebar
       title="Legal"
       titleZh="法务"
@@ -255,7 +290,7 @@ function Drafting({
       <select value={templateId} onChange={(e) => { setTemplateId(e.target.value); setValues({}); }} style={{ ...field, width: 340 }}>
         {templates.map((x) => (
           <option key={x.id} value={x.id}>
-            {x.name}
+            {nameZh(x.name, zh)}
           </option>
         ))}
       </select>
@@ -271,11 +306,11 @@ function Drafting({
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))", gap: 9 }}>
             {template.fields.map((f) => (
               <label key={f.key} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                <span style={{ fontSize: 10.5, fontWeight: 500, color: "#999999" }}>{f.label}</span>
+                <span style={{ fontSize: 12.5, fontWeight: 500, color: "#525252" }}>{(zh && FIELD_ZH[f.key]?.label) || f.label}</span>
                 <input
                   value={values[f.key] ?? ""}
                   onChange={(e) => setValues((v) => ({ ...v, [f.key]: e.target.value }))}
-                  placeholder={f.hint}
+                  placeholder={(zh && FIELD_ZH[f.key]?.hint) || f.hint}
                   style={{ ...field, height: 32 }}
                 />
               </label>
@@ -294,8 +329,8 @@ function Drafting({
       </button>
 
       {template && (
-        <>
-          <Label>{t("The template", "模板原文")}</Label>
+        <details style={{ marginTop: 22 }}>
+          <summary style={{ cursor: "pointer", fontSize: 13, color: "#525252", marginBottom: 10 }}>{t("See the template text", "查看模板原文")}</summary>
           <pre
             style={{
               margin: 0,
@@ -313,7 +348,7 @@ function Drafting({
           >
             {template.body}
           </pre>
-        </>
+        </details>
       )}
     </div>
   );
@@ -581,7 +616,7 @@ function Compliance({
         <select value={listId} onChange={(e) => { setListId(e.target.value); setAnswers({}); }} style={{ ...field, width: 280 }}>
           {checklists.map((c) => (
             <option key={c.id} value={c.id}>
-              {c.name}
+              {nameZh(c.name, zh)}
             </option>
           ))}
         </select>
@@ -590,7 +625,7 @@ function Compliance({
 
       {list?.items.map((item) => (
         <Row key={item.key} style={{ alignItems: "center" }}>
-          <span style={{ flexGrow: 1, minWidth: 0, lineHeight: 1.5 }}>{item.text}</span>
+          <span style={{ flexGrow: 1, minWidth: 0, lineHeight: 1.5 }}>{(zh && CHECK_ZH[item.key]) || item.text}</span>
           <span style={{ display: "flex", gap: 4 }}>
             {(["yes", "no", "na"] as const).map((v) => (
               <button
@@ -725,7 +760,7 @@ function Templates({
 
       {templates.map((x) => (
         <Row key={x.id} style={{ alignItems: "center" }}>
-          <span style={{ flexGrow: 1, ...clip }} title={x.name}>{x.name}</span>
+          <span style={{ flexGrow: 1, ...clip }} title={x.name}>{nameZh(x.name, zh)}</span>
           <span style={{ width: 120, fontSize: 11, color: "#999999" }}>{x.kind}</span>
           <span style={{ width: 120, fontSize: 11, color: "#999999" }}>
             {x.fields.length} {t("fields", "个字段")}

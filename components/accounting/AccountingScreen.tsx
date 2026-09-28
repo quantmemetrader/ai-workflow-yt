@@ -92,9 +92,9 @@ export function AccountingScreen({
   /* The design draws these down a 212px column, the way every other
      desktop artboard in the set does — not across the top. */
   const SCREENS: ScreenItem<Tab>[] = [
-    { key: "inbox", label: "Document inbox", labelZh: "单据收件箱", badge: pending.length },
-    { key: "entries", label: "Entries", labelZh: "分录", badge: summary.draftCount },
-    { key: "period", label: "Period close", labelZh: "期末结账" },
+    { key: "inbox", label: "Document inbox", labelZh: "单据", badge: pending.length },
+    { key: "entries", label: "Entries", labelZh: "账目", badge: summary.draftCount },
+    { key: "period", label: "Period close", labelZh: "月结" },
     { key: "accounts", label: "Accounts", labelZh: "科目" },
   ];
 
@@ -103,10 +103,10 @@ export function AccountingScreen({
     <div style={{ flexGrow: 1, minWidth: 0, display: "flex", flexDirection: "column", minHeight: 0 }}>
       <ModuleHeader
         title={t("Accounting", "账务")}
-        note={t("manual entry, nothing posts without a confirmation", "手工记账，未确认不过账")}
+        note={t("record receipts and entries; nothing counts until confirmed", "录入单据和账目，确认后才入账")}
         right={
           <button type="button" onClick={() => newEntry()} style={solid}>
-            {t("New entry", "新建分录")}
+            {t("Record an entry", "记一笔账")}
           </button>
         }
       />
@@ -232,7 +232,7 @@ export function AccountingScreen({
       {voiding && (
         <ConfirmDialog
           danger
-          title={t("Void this entry?", "作废这条分录？")}
+          title={t("Void this entry?", "作废这笔账？")}
           body={t(
             "The row stays and the void is on the record. Nothing is deleted, and the balances stop counting it.",
             "记录会保留，作废会留痕。不会删除任何内容，余额不再计入这条分录。",
@@ -272,15 +272,15 @@ function Inbox({
       <p style={{ fontSize: 12, color: "#999999", margin: "0 0 14px", lineHeight: 1.6 }}>
         {t(
           "Receipts and invoices as they arrive. Nothing is read off them automatically; somebody types what matters and writes the entry.",
-          "到达的收据与发票。系统不会自动识别，由人录入关键信息并写分录。",
+          "收到的收据和发票记在这里，再从单据记账。",
         )}
       </p>
 
       <Label style={{ margin: "0 0 8px" }}>{t("Add a document", "新增单据")}</Label>
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 20 }}>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end", marginBottom: 20 }}>
         <input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder={t("What is it?", "单据名称")} style={{ ...field, width: 220, height: 32 }} />
         <input value={form.supplier} onChange={(e) => setForm({ ...form, supplier: e.target.value })} placeholder={t("Supplier", "供应商")} style={{ ...field, width: 160, height: 32 }} />
-        <input type="date" value={form.documentDate} onChange={(e) => setForm({ ...form, documentDate: e.target.value })} style={{ ...field, width: 150, height: 32 }} />
+        <label style={{ display: "flex", flexDirection: "column", gap: 3 }}><span style={{ fontSize: 11.5, color: "#8a8a8a" }}>{t("Date", "日期")}</span><input type="date" value={form.documentDate} onChange={(e) => setForm({ ...form, documentDate: e.target.value })} style={{ ...field, width: 150, height: 32 }} /></label>
         <input value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value.replace(/[^\d.-]/g, "") })} placeholder={t("Amount", "金额")} inputMode="decimal" style={{ ...field, width: 120, height: 32, textAlign: "right" }} />
         <button
           type="button"
@@ -291,12 +291,12 @@ function Inbox({
           }}
           style={{ ...solid, opacity: busy || !form.title.trim() ? 0.45 : 1 }}
         >
-          {t("Add", "关注")}
+          {t("Add", "添加")}
         </button>
       </div>
 
       {documents.length === 0 ? (
-        <Empty title={t("Nothing in the inbox", "收件箱是空的")} />
+        <Empty title={t("No documents yet", "还没有单据")} />
       ) : (
         documents.map((d) => (
           <Row key={d.id} style={{ alignItems: "center" }}>
@@ -314,7 +314,7 @@ function Inbox({
               ) : (
                 <>
                   <button type="button" disabled={busy} onClick={() => onEnter(d)} style={{ ...ghost, height: 24, fontSize: 11 }}>
-                    {t("write the entry", "写分录")}
+                    {t("write the entry", "记账")}
                   </button>
                   <button type="button" disabled={busy} onClick={() => onRemove(d.id)} style={{ ...ghost, height: 24, fontSize: 11 }}>
                     {t("remove", "删除")}
@@ -471,8 +471,8 @@ function Entries({
 
       {entries.length === 0 ? (
         <Empty
-          title={t("No entries yet", "还没有分录")}
-          body={t("New entry starts one, or write one straight off a document in the inbox.", "点击“新建分录”，或从收件箱的单据直接写分录。")}
+          title={t("No entries yet", "还没有账目")}
+          body={t("New entry starts one, or write one straight off a document in the inbox.", "点「记一笔账」，或在「单据」里从一张单据直接记账。")}
         />
       ) : (
         entries.map((e) => (
@@ -481,12 +481,12 @@ function Entries({
               <span style={{ fontSize: 11.5, color: "#7c7c7c", width: 86 }}>{e.entryDate}</span>
               <span style={{ fontSize: 12.5, fontWeight: 500 }}>{e.memo || t("(no memo)", "（无摘要）")}</span>
               <Badge tone={e.state === "posted" ? "good" : e.state === "void" ? "bad" : "warn"}>
-                {e.state === "posted" ? t("posted", "已过账") : e.state === "void" ? t("void", "已作废") : t("draft", "草稿")}
+                {e.state === "posted" ? t("posted", "已入账") : e.state === "void" ? t("void", "已作废") : t("draft", "草稿")}
               </Badge>
               {e.balanceMicros !== 0 && <Badge tone="bad">{t(`out by ${money(e.balanceMicros)}`, `差额 ${money(e.balanceMicros)}`)}</Badge>}
               <span style={{ marginLeft: "auto", fontSize: 11, color: "#999999" }}>
                 {e.state === "posted"
-                  ? `${t("posted by", "过账人")} ${e.postedByName ?? "—"}`
+                  ? `${t("posted by", "确认人")} ${e.postedByName ?? "—"}`
                   : `${t("written by", "录入人")} ${e.createdByName ?? "—"}`}
               </span>
             </div>
@@ -519,7 +519,7 @@ function Entries({
                     onClick={() => onPost(e.id)}
                     style={{ ...solid, height: 24, fontSize: 11, opacity: e.balanceMicros !== 0 ? 0.45 : 1 }}
                   >
-                    {t("post", "过账")}
+                    {t("post", "确认入账")}
                   </button>
                   <button type="button" disabled={busy} onClick={() => onDelete(e.id)} style={{ ...ghost, height: 24, fontSize: 11 }}>
                     {t("delete", "删除")}
@@ -566,7 +566,7 @@ function Period({
       <div style={{ display: "flex", alignItems: "baseline", gap: 12, marginBottom: 14 }}>
         <span style={{ fontSize: 15, fontWeight: 500 }}>{period}</span>
         <span style={{ fontSize: 11.5, color: "#999999" }}>
-          {t("posted entries only", "仅统计已过账的分录")}
+          {t("posted entries only", "只算已入账的")}
         </span>
         <button type="button" disabled={busy} onClick={onExport} style={{ ...solid, marginLeft: "auto" }}>
           {busy ? t("Exporting…", "导出中…") : t("Export CSV", "导出 CSV")}
@@ -585,7 +585,7 @@ function Period({
       )}
 
       {summary.balances.length === 0 ? (
-        <Empty title={t("Nothing posted in this period", "本期还没有过账的分录")} />
+        <Empty title={t("Nothing posted in this period", "本期还没有入账的记录")} />
       ) : (
         <>
           <Row head>
@@ -688,7 +688,7 @@ function Accounts({
           }}
           style={{ ...solid, opacity: busy || !form.code.trim() ? 0.45 : 1 }}
         >
-          {t("Add", "关注")}
+          {t("Add", "添加")}
         </button>
       </div>
     </>

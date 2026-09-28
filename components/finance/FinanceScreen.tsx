@@ -111,7 +111,7 @@ export function FinanceScreen({
     <div style={{ flexGrow: 1, minWidth: 0, display: "flex", flexDirection: "column", minHeight: 0 }}>
       <ModuleHeader
         title={t("Finance", "财务")}
-        note={t(`budget against actuals · ${period}`, `预算与实际对比 · ${period}`)}
+        note={t(`budget and spending · ${period}`, `预算和花费 · ${period}`)}
       />
       <ModuleSidebar
       title="Finance"
@@ -254,7 +254,7 @@ function Budget({
           title={t("No departments or projects yet", "还没有部门或项目")}
           body={t(
             "A budget is a number against something. Add the departments and projects the studio actually runs, and the lines follow.",
-            "预算总要对应某个对象。先添加工作室实际在跑的部门和项目，预算行随之出现。",
+            "先添加一个部门或项目，再给它定预算。",
           )}
         />
         <AddCentre kind={kind} setKind={setKind} name={name} setName={setName} busy={busy} zh={zh} onAdd={onAddCentre} />
@@ -377,7 +377,7 @@ function AddCentre({
         }}
         style={{ ...solid, opacity: busy || !name.trim() ? 0.45 : 1 }}
       >
-        {t("Add", "关注")}
+        {t("Add", "添加")}
       </button>
     </div>
   );
@@ -528,16 +528,16 @@ function Cost({
         <Stat label={t("Budgeted this period", "本期预算")} value={money(budgeted)} />
         <Stat label={t("Spent this period", "本期支出")} value={money(spent)} />
         <Stat
-          label={t("Of which models", "其中模型花费")}
+          label={t("Of which AI", "其中 AI 花费")}
           value={money(modelSpendMicros)}
-          note={t("from the token ledger, not typed in", "来自 token 账本，非手工录入")}
+          note={t("recorded automatically", "系统自动记录")}
         />
       </div>
 
       <p style={{ fontSize: 12, color: "#999999", lineHeight: 1.65, maxWidth: 560, margin: 0 }}>
         {t(
           "Model spend is recorded by the ledger as each call returns, so it is the one figure here nobody has to enter. Everything else on this tab is what somebody typed on the Cash tab, or what a paid spend request wrote.",
-          "模型花费由账本在每次调用返回时记录，是这里唯一无需手工录入的数字。其余数据来自“现金”页的手工录入，或已付款的用款申请。",
+          "AI 花费由系统自动记录；其余来自「现金」里录入的数字和已付款的用款申请。",
         )}
       </p>
     </>
