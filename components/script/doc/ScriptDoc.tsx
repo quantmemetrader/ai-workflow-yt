@@ -20,6 +20,7 @@ import { uploadFiles } from "@/lib/client/upload";
 import { renameProjectAction, setProjectAccessAction, setScriptLengthAction, startFromTopicAction } from "@/app/(app)/projects/actions";
 import { AccessPicker } from "@/components/files/AccessPicker";
 import { AgentIcon } from "@/components/agents/AgentIcon";
+import { ScriptPicker } from "@/components/projects/ScriptPicker";
 import {
   addReferenceAction,
   approveDocAction,
@@ -131,6 +132,8 @@ export function ScriptDoc(props: ScriptDocProps) {
   /* What was asked of 编剧 on this page, newest last, with what came back. */
   const [aiLog, setAiLog] = React.useState<{ q: string; a: string | null }[]>([]);
   const [accessOpen, setAccessOpen] = React.useState(false);
+  /* 所有脚本: every script, in its project's folder, to switch to (Ryan, 29 Sep). */
+  const [picking, setPicking] = React.useState(false);
   const panel: Exclude<Panel, null> = panelPick;
   const setPanel = (p: Panel) => setPanelPick(p ?? "ai");
   const [zoom, setZoomRaw] = React.useState(1);
@@ -924,6 +927,7 @@ export function ScriptDoc(props: ScriptDocProps) {
       />
 
       <div className="gd-actions">
+        <button type="button" className="gd-big" onClick={() => setPicking(true)}><GI name="outline" size={18} />{t("所有脚本", "All scripts")}</button>
         {me.canEdit ? (
           <BigDrop icon="upload" label={t("导入文档", "Import")}>
             {(close) => (
@@ -1410,6 +1414,7 @@ export function ScriptDoc(props: ScriptDocProps) {
         />
       ) : null}
 
+      {picking ? <ScriptPicker zh={zh} currentId={script?.id} onClose={() => setPicking(false)} /> : null}
       {accessOpen && props.access ? (
         <AccessPicker
           title={t("谁可以看到并参与这个项目？", "Who can see and work on this project?")}
