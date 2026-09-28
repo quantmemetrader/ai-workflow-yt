@@ -62,7 +62,7 @@ export default async function ProjectScriptPage({ params }: { params: Promise<{ 
   const sentBack = p.sentBack.script && p.sentBack.script.state === "open" ? p.sentBack.script : null;
 
   return (
-    <PageBody width={1240}>
+    <PageBody>
       <ScriptDoc
         projectId={p.id}
         projectTitle={p.title}
