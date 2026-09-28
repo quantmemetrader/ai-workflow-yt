@@ -25,6 +25,11 @@ type Chip = "all" | (typeof CHIPS)[number]["tab"];
 
 const STEP = 20;
 
+/** A row as shown: `label` is the headline in Simplified Chinese (news and
+ *  YouTube titles arrive in Traditional); `phrase` stays as stored, since that
+ *  is what 做成视频 looks the row up by. */
+export type ShownRow = BeatRow & { label?: string };
+
 function compact(n: number): string {
   if (n >= 100_000_000) return `${(n / 100_000_000).toFixed(1)}亿`;
   if (n >= 10_000) return `${(n / 10_000).toFixed(n >= 100_000 ? 0 : 1)}万`;
@@ -52,7 +57,7 @@ function platformOf(from: string): { mark: string; zh: string; en: string } {
   return byHot ? { mark: byHot.mark, zh: byHot.zh, en: byHot.label } : { mark: from, zh: from, en: from };
 }
 
-export function HotBoard({ zh, canWrite, initial = null }: { zh: boolean; canWrite: boolean; initial?: Record<string, BeatRow[]> | null }) {
+export function HotBoard({ zh, canWrite, initial = null }: { zh: boolean; canWrite: boolean; initial?: Record<string, ShownRow[]> | null }) {
   const t = (a: string, b: string) => (zh ? a : b);
   const router = useRouter();
   const [lists, setLists] = React.useState<Lists | null>(null);
@@ -86,7 +91,7 @@ export function HotBoard({ zh, canWrite, initial = null }: { zh: boolean; canWri
   }, []);
 
   const keys = React.useMemo(() => beats.filter((b) => b.enabled).map((b) => b.key), [beats]);
-  const rows: BeatRow[] = React.useMemo(() => {
+  const rows: ShownRow[] = React.useMemo(() => {
     if (initial) return initial[chip] ?? [];
     if (!lists) return [];
     if (chip === "all") return acrossPlatforms(lists, { limit: 300, beats: keys });
@@ -95,7 +100,7 @@ export function HotBoard({ zh, canWrite, initial = null }: { zh: boolean; canWri
   }, [lists, chip, keys, initial]);
   React.useEffect(() => setShown(STEP), [chip]);
 
-  async function make(r: BeatRow) {
+  async function make(r: ShownRow) {
     const id = `${r.from}:${r.phrase}`;
     if (busy) return;
     setBusy(id);
@@ -139,7 +144,7 @@ export function HotBoard({ zh, canWrite, initial = null }: { zh: boolean; canWri
           <span style={{ textAlign: "right" }}>{t("热度", "How hot")}</span>
           <span />
         </div>
-        {lists === null ? (
+        {!initial && lists === null ? (
           <div style={{ padding: 28, textAlign: "center", color: MUTED, fontSize: 13.5 }}>{initial ? t("这个平台现在没有 AI、加密、科技、商业的热点", "Nothing on the four beats here right now") : t("正在读取…", "Loading…")}</div>
         ) : rows.length === 0 ? (
           <div style={{ padding: 28, textAlign: "center", color: MUTED, fontSize: 13.5 }}>{t("这个平台还没有数据，下一轮更新后会出现。", "Nothing here yet; it fills at the next refresh.")}</div>
@@ -153,10 +158,10 @@ export function HotBoard({ zh, canWrite, initial = null }: { zh: boolean; canWri
                 <span style={{ minWidth: 0 }}>
                   {r.url ? (
                     <a href={r.url} target="_blank" rel="noopener noreferrer" className="hb-title">
-                      {r.phrase}
+                      {r.label ?? r.phrase}
                     </a>
                   ) : (
-                    <span className="hb-title">{r.phrase}</span>
+                    <span className="hb-title">{r.label ?? r.phrase}</span>
                   )}
                   {r.extra ? <span style={{ display: "block", fontSize: 12, color: MUTED, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.extra}</span> : null}
                 </span>

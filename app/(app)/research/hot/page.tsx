@@ -5,6 +5,8 @@ import { storedAll } from "@/lib/research/platforms";
 import { readBeatsWithOrigin } from "@/lib/research/beat-store";
 import { BEAT_FEEDS } from "@/lib/research/platform-catalog";
 import { acrossPlatforms, tabRows, type BeatRow, type Lists } from "@/lib/research/beat-view";
+import { toSimplified } from "@/lib/text/simplified";
+import type { ShownRow } from "@/components/research/HotBoard";
 
 export const metadata = { title: "热点榜 · Hot now" };
 
@@ -27,11 +29,13 @@ export default async function HotPage() {
   for (const [k, v] of Object.entries(all ?? {})) if (v) lists[k as keyof Lists] = { rows: v.rows ?? [], relevance: (v.relevance as never) ?? null, fetchedAt: v.fetchedAt ?? null } as never;
   const keys = beats.filter((b) => b.enabled && (FOUR as readonly string[]).includes(b.key)).map((b) => b.key);
   const onBeat = (r: BeatRow) => Boolean(r.beat && keys.includes(r.beat));
-  const byChip: Record<string, BeatRow[]> = { all: acrossPlatforms(lists, { limit: 400, beats: keys as never }).filter(onBeat).slice(0, 150) };
+  /* Everything shown in Simplified (the owner, 29 Sep: "simplified chinese for all"). */
+  const shown = (rows: BeatRow[]): ShownRow[] => rows.map((r) => ({ ...r, label: toSimplified(r.phrase), extra: r.extra ? toSimplified(r.extra) : r.extra }));
+  const byChip: Record<string, ShownRow[]> = { all: shown(acrossPlatforms(lists, { limit: 400, beats: keys as never }).filter(onBeat).slice(0, 150)) };
   for (const f of BEAT_FEEDS) {
     if (f.tab === "crypto") continue;
     const { charted, feed } = tabRows(f.tab, lists, { beats: keys as never, chartCap: 50 });
-    byChip[f.tab] = [...charted, ...feed].filter(onBeat).slice(0, 80);
+    byChip[f.tab] = shown([...charted, ...feed].filter(onBeat).slice(0, 80));
   }
   return (
     <ResearchShell zh={zh}>

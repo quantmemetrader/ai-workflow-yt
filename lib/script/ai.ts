@@ -70,6 +70,8 @@ async function examples(viewer: Viewer, query: string): Promise<string> {
 
 const DRAFT_PROMPT = `You write shooting scripts for a Hong Kong video studio.
 
+Chinese is always written in Simplified Chinese (简体中文), never Traditional — even when the brief or a source is in Traditional.
+
 A script is a list of beats. Each beat has three parts:
   "visual"    what is on screen: framing, camera, archive credits, on-screen text
   "voiceover" what is spoken, in the script's own language

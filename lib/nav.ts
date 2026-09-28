@@ -206,6 +206,8 @@ export type RailItem = {
   icon: string;
   /** The module that must be held to see it; none means everyone. */
   module?: Module;
+  /** Shown only to someone who does NOT hold this module (a fallback entry). */
+  without?: Module;
   /** Other routes that belong to this entry (it lights up on them too). */
   also?: string[];
 };
@@ -222,11 +224,12 @@ export const RAIL_MAIN: RailItem[] = [
   { href: "/script", label: "Scripts", labelZh: "脚本", icon: iconOf("/script"), module: "script" },
   { href: "/video", label: "Videos", labelZh: "视频", icon: iconOf("/video"), module: "video" },
   { href: "/research", label: "Topics", labelZh: "选题", icon: iconOf("/research"), module: "research" },
-  { href: "/review", label: "Results", labelZh: "数据", icon: iconOf("/review") },
   { href: "/files", label: "Files", labelZh: "文件", icon: iconOf("/files"), module: "files" },
   { href: "/chat", label: "Messages", labelZh: "消息", icon: iconOf("/chat"), module: "chat" },
   { href: "/team", label: "AI team", labelZh: "AI 同事", icon: iconOf("/train"), module: "chat", also: ["/train"] },
-  { href: "/publish", label: "Publishing", labelZh: "发布", icon: iconOf("/publish"), module: "publish" },
+  /* 账号数据 is a tab of 发布 (the owner, 29 Sep); without publish, it keeps its own entry. */
+  { href: "/publish", label: "Publishing", labelZh: "发布", icon: iconOf("/publish"), module: "publish", also: ["/review"] },
+  { href: "/review", label: "Results", labelZh: "数据", icon: iconOf("/review"), without: "publish" },
 ];
 
 /** The back office: owners and admins only, folded by default. */

@@ -20,6 +20,7 @@ import { mayPublish, platformsLine, readPublication, type Publication } from "@/
 import { projectsVisibleTo } from "@/lib/projects/visible";
 import { liveAutoCut, type AutoCut } from "@/lib/projects/live-types";
 import { readSentBack, type SentBack } from "@/lib/projects/sendback";
+import { toSimplified } from "@/lib/text/simplified";
 
 /**
  * Which projects this person may see (`lib/projects/visible.ts`): the rule
@@ -1251,12 +1252,12 @@ export async function resolveTopicRef(viewer: Viewer, ref: TopicRef): Promise<Re
       const row = (snap.rows as HotRow[]).find((r) => r && r.phrase === phrase);
       if (!row) continue;
       const why = own ? (snap.judged?.[phrase]?.why ?? null) : null;
-      return { title: phrase.slice(0, 80), source: fromHotRow(row, platform, listName(platform, zh), why), projectTopicId: null, scriptTopicId: null, mandatoryPoints: [] };
+      return { title: toSimplified(phrase).slice(0, 80), source: fromHotRow(row, platform, listName(platform, zh), why), projectTopicId: null, scriptTopicId: null, mandatoryPoints: [] };
     }
     /* A row shown from a live read (the YouTube chart on the "live" tab) is
        in no stored list: the phrase is the topic, with no numbers claimed. */
     const name = listName(platform, zh);
-    return { title: phrase.slice(0, 80), source: { kind: "hot", label: `${name}热榜`, key: `hot:${platform}:${phrase.slice(0, 120)}`, evidence: [] }, projectTopicId: null, scriptTopicId: null, mandatoryPoints: [] };
+    return { title: toSimplified(phrase).slice(0, 80), source: { kind: "hot", label: `${name}热榜`, key: `hot:${platform}:${phrase.slice(0, 120)}`, evidence: [] }, projectTopicId: null, scriptTopicId: null, mandatoryPoints: [] };
   }
 
   if (ref.kind === "proposal") {
