@@ -4,7 +4,7 @@ import { agentMessages, conversations, toolCalls } from "@/lib/db/schema";
 import { notFound } from "next/navigation";
 import { requireModule } from "@/lib/auth/dal";
 import { listPeople } from "@/lib/chat/service";
-import { workProjectDetail } from "@/lib/projects/service";
+import { projectForPage } from "@/lib/projects/page-data";
 import { scriptWriting } from "@/lib/script/writing";
 import { ProjectScreen } from "@/components/projects/ProjectScreen";
 import { voicesForUi } from "@/lib/video/tts";
@@ -16,7 +16,7 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
   const viewer = await requireModule("chat");
   const { id } = await params;
   const zh = (viewer.locale ?? "zh-CN").startsWith("zh");
-  const [project, people] = await Promise.all([workProjectDetail(viewer, id, zh), listPeople(viewer)]);
+  const [project, people] = await Promise.all([projectForPage(viewer, id, zh), listPeople(viewer)]);
   if (!project) notFound();
   /* Whether 编剧 is writing into its script now, with the mark's time limit
      applied here rather than in the browser, whose clock may differ. */
