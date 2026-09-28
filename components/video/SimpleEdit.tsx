@@ -59,6 +59,8 @@ export function SimpleEdit({ f, zh, modeSwitch }: { f: SimpleFacts; zh: boolean;
   const t = (a: string, b: string) => (zh ? a : b);
   const router = useRouter();
   const [aspect, setAspect] = React.useState<"9:16" | "16:9">(f.defaultAspect);
+  /* 成片多长: 0 follows the script; otherwise the cut is told the length (the owner, 29 Sep: "where do I choose how long I want the video"). */
+  const [len, setLen] = React.useState(0);
   const [wish, setWish] = React.useState("");
   const [uploads, setUploads] = React.useState<UploadProgress[]>([]);
   const [busy, setBusy] = React.useState(false);
@@ -153,7 +155,8 @@ export function SimpleEdit({ f, zh, modeSwitch }: { f: SimpleFacts; zh: boolean;
     if (busy) return;
     setBusy(true);
     try {
-      const r = await startCutFromPageAction(f.projectId, { prompt: wish.trim() || undefined, aspect });
+      const lenLine = len ? (zh ? `成片时长控制在约 ${len < 60 ? `${len} 秒` : `${len / 60} 分钟`}（前后 10% 以内）。` : `Keep the finished video to about ${len} seconds.`) : "";
+      const r = await startCutFromPageAction(f.projectId, { prompt: [lenLine, wish.trim()].filter(Boolean).join(" ") || undefined, aspect });
       if ("error" in r && r.error) {
         notify(r.error);
         return;
@@ -318,6 +321,20 @@ export function SimpleEdit({ f, zh, modeSwitch }: { f: SimpleFacts; zh: boolean;
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, maxWidth: 520 }}>
               <ShapeTile on={aspect === "9:16"} onClick={() => setAspect("9:16")} label={t("竖屏", "Vertical")} hint={t("抖音 · 小红书 · 视频号", "Douyin · Xiaohongshu · Channels")} w={18} h={32} />
               <ShapeTile on={aspect === "16:9"} onClick={() => setAspect("16:9")} label={t("横屏", "Horizontal")} hint={t("B站 · YouTube", "Bilibili · YouTube")} w={34} h={20} />
+            </div>
+            <div style={{ fontSize: 13, color: "#5f5f5f", margin: "18px 0 10px" }}>{t("成片多长？", "How long?")}</div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {[0, 30, 60, 180, 300, 600].map((n) => (
+                <button
+                  key={n}
+                  type="button"
+                  aria-pressed={len === n}
+                  onClick={() => setLen(n)}
+                  style={{ height: 40, padding: "0 16px", borderRadius: 10, border: `1.5px solid ${len === n ? "#171717" : "#dcdbd6"}`, background: len === n ? "#171717" : "#fff", color: len === n ? "#fff" : "#333", fontFamily: "inherit", fontSize: 14, fontWeight: 600, cursor: "pointer" }}
+                >
+                  {n === 0 ? t("按稿子长度", "Follow the script") : n < 60 ? t(`${n} 秒`, `${n}s`) : t(`${n / 60} 分钟`, `${n / 60} min`)}
+                </button>
+              ))}
             </div>
             <input
               value={wish}

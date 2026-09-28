@@ -112,6 +112,8 @@ export default async function ProjectScriptPage({ params }: { params: Promise<{ 
         people={people.map((x) => ({ id: x.id, name: (zh && x.nameLocal) || x.name, avatarUrl: x.avatarUrl, title: x.title }))}
         accessNote={accessNote}
         accessMode={p.access.mode}
+        access={p.access}
+        canManageAccess={p.canManage}
       />
     </div>
   );

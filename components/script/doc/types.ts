@@ -46,6 +46,9 @@ export type ScriptDocProps = {
   accessNote: string;
   /** The project's own access, for who sees an uploaded reference file. */
   accessMode: "private" | "everyone" | "groups" | "people";
+  /** The project's whole access setting, and whether this person may change it (谁能看). */
+  access?: { mode: "private" | "everyone" | "groups" | "people"; groups?: string[]; userIds?: string[] };
+  canManageAccess?: boolean;
 };
 
 export type { DocApproval, DocReference };

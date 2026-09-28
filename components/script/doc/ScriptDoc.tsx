@@ -17,7 +17,9 @@ import { PersonAvatar } from "@/components/ui/PersonAvatar";
 import { ShareDialog } from "@/components/share/ShareDialog";
 import { notify } from "@/lib/client/notify";
 import { uploadFiles } from "@/lib/client/upload";
-import { renameProjectAction, startFromTopicAction } from "@/app/(app)/projects/actions";
+import { renameProjectAction, setProjectAccessAction, setScriptLengthAction, startFromTopicAction } from "@/app/(app)/projects/actions";
+import { AccessPicker } from "@/components/files/AccessPicker";
+import { AgentIcon } from "@/components/agents/AgentIcon";
 import {
   addReferenceAction,
   approveDocAction,
@@ -70,7 +72,7 @@ import type { DocComment, ScriptDocProps } from "./types";
  * rest of the product reads (`saveRichAction`, `lib/script/rich.ts`).
  */
 
-const CHIPS: { zh: string; en: string }[] = [
+const CHIPS: { zh: string; en: string; icon?: string }[] = [
   { zh: "更口语", en: "More conversational" },
   { zh: "扩写到 3 分钟（约 800 字）", en: "Expand to 3 minutes" },
   { zh: "扩写到 5 分钟（约 1350 字）", en: "Expand to 5 minutes" },
@@ -126,6 +128,9 @@ export function ScriptDoc(props: ScriptDocProps) {
   /* The side panel is always open, on the AI assistant unless 批注 or 版本
      is picked (the owner, 29 Sep: "have the AI assistant always on"). */
   const [panelPick, setPanelPick] = React.useState<Exclude<Panel, null>>("ai");
+  /* What was asked of 编剧 on this page, newest last, with what came back. */
+  const [aiLog, setAiLog] = React.useState<{ q: string; a: string | null }[]>([]);
+  const [accessOpen, setAccessOpen] = React.useState(false);
   const panel: Exclude<Panel, null> = panelPick;
   const setPanel = (p: Panel) => setPanelPick(p ?? "ai");
   const [zoom, setZoomRaw] = React.useState(1);
@@ -372,6 +377,7 @@ export function ScriptDoc(props: ScriptDocProps) {
   );
 
   function openProposal(items: Tracked[], summary: string, source: "ai" | "sendback") {
+    if (source === "ai") setAiLog((l) => (l.length ? [...l.slice(0, -1), { ...l[l.length - 1], a: summary || t(`改了 ${items.length} 处，已在文档里标出`, `${items.length} edits, marked in the document`) }] : l));
     if (!items.length) return notify(t("编剧觉得不用改", "The writer found nothing to change"), "ok");
     setMarks({ tracked: items });
     setProposal({ summary, source, total: items.length });
@@ -379,6 +385,7 @@ export function ScriptDoc(props: ScriptDocProps) {
 
   function runCopilot(text?: string) {
     const q = (text ?? ask).trim();
+    if (q && editor && !locked) setAiLog((l) => [...l.slice(-5), { q, a: null }]);
     if (!editor) return;
     if (!q) return notify(t("写下要怎么改，或点一个快捷指令", "Say what to change, or press a quick instruction"));
     if (locked) {
@@ -878,6 +885,19 @@ export function ScriptDoc(props: ScriptDocProps) {
     return () => ro.disconnect();
   }, [zoom, outline]);
 
+  /* 视频时长: the length the script is written to (the owner, 29 Sep: "where do I even choose how long I want the video"). */
+  function setLength(secs: number) {
+    start(async () => {
+      const r = await setScriptLengthAction(projectId, secs);
+      if (r && "error" in r && r.error) return notify(r.error);
+      notify(t(`目标时长改成 ${secs / 60} 分钟`, `Target set to ${secs / 60} min`), "ok");
+      router.refresh();
+    });
+  }
+  function fitToLength(secs: number) {
+    runCopilot(zh ? `把稿子调整到约 ${secs / 60} 分钟（约 ${Math.round(secs * 4.5)} 字）：太短就扩写，每段多说细节、数字和例子；太长就精简。保留原来的结构和事实。` : `Adjust the script to about ${secs / 60} minutes.`);
+  }
+
   /* ---------------- render ---------------- */
   return (
     <div data-gd-root="" className={`gd-root${shots ? " gd-shots" : ""}`}>
@@ -926,6 +946,29 @@ export function ScriptDoc(props: ScriptDocProps) {
         <button type="button" className="gd-big" onClick={print}><GI name="print" size={18} />{t("打印", "Print")}</button>
         <button type="button" className="gd-big" onClick={() => setPanel("versions")}><GI name="history" size={18} />{t("版本记录", "Versions")}</button>
         <button type="button" className="gd-big" onClick={() => setSharing(true)}><GI name="lock" size={18} />{t("分享链接", "Share link")}</button>
+        {props.canManageAccess ? (
+          <button type="button" className="gd-big" onClick={() => setAccessOpen(true)}>
+            <GI name="people" size={18} />
+            {props.access?.mode === "private" ? t("谁能看：仅自己", "Access: only me") : props.access?.mode === "everyone" ? t("谁能看：全工作室", "Access: everyone") : props.access?.mode === "groups" ? t("谁能看：部分分组", "Access: groups") : t(`谁能看：${props.access?.userIds?.length ?? 0} 人`, "Access: people")}
+          </button>
+        ) : null}
+        {script ? (
+          <span className="gd-big gd-length" title={t("视频时长", "Video length")}>
+            <GI name="clock" size={18} />
+            <span>{t("时长", "Length")} {clock(docState.seconds, zh)}</span>
+            <span style={{ color: "#8a8a8a", fontWeight: 500 }}>/ {t("目标", "target")}</span>
+            <select value={String(script.targetSeconds ?? 180)} disabled={!me.canEdit || pending} onChange={(e) => setLength(Number(e.target.value))} aria-label={t("目标时长", "Target length")}>
+              {[30, 60, 90, 180, 300, 480, 600].concat(script.targetSeconds && ![30, 60, 90, 180, 300, 480, 600].includes(script.targetSeconds) ? [script.targetSeconds] : []).map((n) => (
+                <option key={n} value={n}>{n < 60 ? t(`${n} 秒`, `${n}s`) : t(`${Math.round((n / 60) * 10) / 10} 分钟`, `${Math.round((n / 60) * 10) / 10} min`)}</option>
+              ))}
+            </select>
+            {me.canEdit && Math.abs(docState.seconds - (script.targetSeconds ?? 180)) > (script.targetSeconds ?? 180) * 0.15 ? (
+              <button type="button" className="gd-length-fit" disabled={thinking || Boolean(proposal)} onClick={() => fitToLength(script.targetSeconds ?? 180)}>
+                {docState.seconds < (script.targetSeconds ?? 180) ? t("让编剧扩写到目标", "Expand to target") : t("让编剧精简到目标", "Trim to target")}
+              </button>
+            ) : null}
+          </span>
+        ) : null}
         <label className="gd-big" style={{ cursor: "pointer" }}>
           <input type="checkbox" checked={shots} onChange={() => setShots((v) => !v)} style={{ width: 16, height: 16 }} />
           {t("画面说明", "Shot notes")}
@@ -1133,7 +1176,7 @@ export function ScriptDoc(props: ScriptDocProps) {
           </div>
 
           {/* the floating AI bar */}
-          {!noScript && me.canEdit && !viewing && mode !== "view" ? (
+          {false ? (
             <div className="gd-ai-dock">
               {askFocus && !thinking ? (
                 <div className="gd-ai-chips" onMouseDown={(e) => e.preventDefault()}>
@@ -1178,25 +1221,67 @@ export function ScriptDoc(props: ScriptDocProps) {
               </div>
             </div>
             {panel === "ai" ? (
-              <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-                <p style={{ margin: 0, fontSize: 13, color: "#444746", lineHeight: 1.55 }}>{t("在页面底部写下要怎么改（或点快捷指令），编剧的改法会以修订显示在文档里：绿色是新文字，红色删除线是旧文字，逐条接受或拒绝。", "Say how to change it in the bar at the bottom. The writer's edits appear in the document as tracked changes to accept or reject.")}</p>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                  {CHIPS.map((c) => (
-                    <button key={c.zh} type="button" className="gd-chip" disabled={thinking || Boolean(proposal)} onClick={() => runCopilot(zh ? c.zh : c.en)}>
-                      {zh ? c.zh : c.en}
-                    </button>
-                  ))}
+              <div className="gd-ai-panel">
+                <div className="gd-ai-who">
+                  <AgentIcon agent="script" size={36} radius={10} />
+                  <div style={{ minWidth: 0, flexGrow: 1 }}>
+                    <div style={{ fontSize: 15, fontWeight: 600 }}>{t("编剧", "The writer")}</div>
+                    <div style={{ fontSize: 12.5, color: thinking ? "#1a73e8" : "#5f6368" }}>{thinking ? t("正在改稿…", "Rewriting…") : t("告诉我怎么改，改法会标在文档里", "Say how to change it")}</div>
+                  </div>
                 </div>
-                <div className="gd-side-block">
+
+                {aiLog.length ? (
+                  <div className="gd-ai-log">
+                    {aiLog.map((m, i) => (
+                      <div key={i} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                        <div className="gd-ai-q">{m.q.length > 80 ? `${m.q.slice(0, 80)}…` : m.q}</div>
+                        <div className="gd-ai-a">{m.a ?? (thinking && i === aiLog.length - 1 ? t("正在改…", "Working…") : t("没有改动", "No changes"))}</div>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+
+                {me.canEdit && !viewing && mode !== "view" ? (
+                  <>
+                    <div className="gd-ai-label">{t("一键改", "One-press edits")}</div>
+                    <div className="gd-ai-grid">
+                      {CHIPS.map((c) => (
+                        <button key={c.zh} type="button" className="gd-ai-action" disabled={thinking || Boolean(proposal)} onClick={() => runCopilot(zh ? c.zh : c.en)}>
+                          {zh ? c.zh.replace(/（.*）/, "") : c.en}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="gd-ai-compose">
+                      <textarea
+                        ref={askBox as unknown as React.RefObject<HTMLTextAreaElement>}
+                        value={ask}
+                        rows={3}
+                        disabled={thinking || Boolean(proposal)}
+                        onChange={(e) => setAsk(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); runCopilot(); } }}
+                        placeholder={thinking ? t("编剧正在改…", "The writer is on it…") : proposal ? t("先处理文档里的修改建议", "Deal with the suggested edits first") : t("想怎么改？例如：开头更抓人，第二段加一个真实数据", "How should it change?")}
+                      />
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <ModelChip value={pickModel} onChange={setPickModel} zh={zh} placement="up" align="left" />
+                        <span style={{ flexGrow: 1 }} />
+                        <button type="button" className="gd-ai-go" disabled={thinking || !ask.trim() || Boolean(proposal)} onClick={() => runCopilot()}>
+                          {thinking ? <span className="gd-spin" /> : <GI name="send" size={16} />}
+                          {t("让编剧改", "Rewrite")}
+                        </button>
+                      </div>
+                    </div>
+                  </>
+                ) : null}
+
+                <div className="gd-ai-refs" onDragOver={(e) => { if (me.canEdit) e.preventDefault(); }} onDrop={(e) => { if (!me.canEdit || !e.dataTransfer.files.length) return; e.preventDefault(); void uploadRefs(e.dataTransfer.files); }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                     <GI name="paperclip" size={16} />
-                    <span style={{ fontSize: 14, fontWeight: 500, flexGrow: 1 }}>{t("参考资料", "References")}</span>
-                    {me.canEdit ? <button type="button" className="gd-status-btn" onClick={() => refInput.current?.click()}>{t("上传", "Upload")}</button> : null}
+                    <span style={{ fontSize: 14, fontWeight: 600, flexGrow: 1 }}>{t("参考资料", "References")}</span>
+                    {me.canEdit ? <button type="button" className="gd-ai-up" onClick={() => refInput.current?.click()}><GI name="upload" size={14} />{t("上传", "Upload")}</button> : null}
                   </div>
-                  <div style={{ fontSize: 12, color: "#5f6368" }}>{t("范例脚本、采访稿、数据、笔记……编剧改写时会读。", "Example scripts, notes, data — the writer reads them.")}</div>
                   {props.references.map((f) => (
                     <div key={f.id} className="gd-ref">
-                      <GI name="paperclip" size={14} />
+                      <GI name="doc" size={14} />
                       <a href={`/files/${f.id}`} target="_blank" rel="noreferrer" title={f.name}>{f.name}</a>
                       {!f.hasText ? <span style={{ fontSize: 11, color: "#b06000" }}>{t("无文字", "no text")}</span> : null}
                       {me.canEdit ? <button type="button" className="gd-icon" aria-label={t("移除", "Remove")} onClick={() => start(async () => { await removeReferenceAction(projectId, f.id); router.refresh(); })}><GI name="x" size={14} /></button> : null}
@@ -1209,9 +1294,9 @@ export function ScriptDoc(props: ScriptDocProps) {
                       <span style={{ fontSize: 11 }}>{u.pct}%</span>
                     </div>
                   ))}
-                  {!props.references.length && !uploading.length ? <div style={{ fontSize: 12.5, color: "#80868b" }}>{t("还没有资料", "Nothing yet")}</div> : null}
+                  {!props.references.length && !uploading.length ? <div className="gd-ai-drop">{t("把范例、采访稿、数据拖到这里，编剧改稿时会读", "Drop examples, notes or data here")}</div> : null}
                 </div>
-                <Link href="/train/script" prefetch={false} className="gd-link" style={{ fontSize: 13 }}>{t("训练编剧（长期说明与范例）→", "Train the writer →")}</Link>
+                <Link href="/train/script" prefetch={false} className="gd-link" style={{ fontSize: 13 }}>{t("训练编剧：写长期说明、上传范例 →", "Train the writer →")}</Link>
               </div>
             ) : null}
             {panel === "versions" ? (
@@ -1325,8 +1410,28 @@ export function ScriptDoc(props: ScriptDocProps) {
         />
       ) : null}
 
+      {accessOpen && props.access ? (
+        <AccessPicker
+          title={t("谁可以看到并参与这个项目？", "Who can see and work on this project?")}
+          zh={zh}
+          initial={props.access.mode === "groups" ? { mode: "groups", groups: props.access.groups ?? [] } : props.access.mode === "people" ? { mode: "people", userIds: props.access.userIds ?? [] } : { mode: props.access.mode }}
+          confirm={t("保存", "Save")}
+          note={t("稿子、剪辑和对话都跟着这个设置。AI 员工始终可以参与。", "The script, edit and chat follow this.")}
+          onClose={() => setAccessOpen(false)}
+          onConfirm={(choice) =>
+            start(async () => {
+              const r = await setProjectAccessAction(projectId, choice as Parameters<typeof setProjectAccessAction>[1]);
+              if (r?.error) notify(r.error);
+              else notify(t("已保存", "Saved"), "ok");
+              setAccessOpen(false);
+              router.refresh();
+            })
+          }
+        />
+      ) : null}
       {sharing ? (
         <ShareDialog
+          onManageAccess={props.canManageAccess ? () => { setSharing(false); setAccessOpen(true); } : undefined}
           zh={zh}
           title={t(`分享脚本《${props.projectTitle}》`, `Share “${props.projectTitle}”`)}
           url={`/projects/${projectId}/script`}
@@ -1454,6 +1559,28 @@ const CSS = `
 .gd-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 2px 16px 8px; flex-shrink: 0; }
 .gd-big { display: inline-flex; align-items: center; gap: 8px; height: 42px; padding: 0 16px; border: 1px solid #d3d3d0; border-radius: 12px; background: #fff; color: #1f1f1f; font: inherit; font-size: 14.5px; font-weight: 600; cursor: pointer; white-space: nowrap; text-decoration: none; }
 .gd-big:hover { background: #f3f3f1; }
+.gd-length { gap: 6px; cursor: default; }
+.gd-length select { height: 30px; border: 1px solid #d3d3d0; border-radius: 8px; background: #fff; font: inherit; font-size: 13.5px; font-weight: 600; padding: 0 6px; cursor: pointer; }
+.gd-length-fit { height: 30px; padding: 0 10px; border: 0; border-radius: 8px; background: #171717; color: #fff; font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+.gd-length-fit:disabled { opacity: .5; cursor: default; }
+.gd-ai-panel { display: flex; flex-direction: column; gap: 14px; margin-top: 14px; }
+.gd-ai-who { display: flex; align-items: center; gap: 10px; }
+.gd-ai-log { display: flex; flex-direction: column; gap: 12px; max-height: 240px; overflow-y: auto; padding: 2px; }
+.gd-ai-q { align-self: flex-end; max-width: 88%; background: #171717; color: #fff; border-radius: 14px 14px 4px 14px; padding: 8px 12px; font-size: 13px; line-height: 1.5; }
+.gd-ai-a { align-self: flex-start; max-width: 92%; background: #f1f3f4; color: #1f1f1f; border-radius: 14px 14px 14px 4px; padding: 8px 12px; font-size: 13px; line-height: 1.5; }
+.gd-ai-label { font-size: 12.5px; font-weight: 600; color: #5f6368; margin-bottom: -6px; }
+.gd-ai-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.gd-ai-action { min-height: 38px; padding: 6px 10px; border: 1px solid #e3e3e3; border-radius: 10px; background: #fff; font: inherit; font-size: 13px; font-weight: 500; color: #1f1f1f; text-align: left; cursor: pointer; line-height: 1.35; }
+.gd-ai-action:hover:not(:disabled) { border-color: #c4c7c5; background: #f8f9fa; }
+.gd-ai-action:disabled { opacity: .5; cursor: default; }
+.gd-ai-compose { display: flex; flex-direction: column; gap: 8px; padding: 10px; border: 1px solid #d3d3d0; border-radius: 14px; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.04); }
+.gd-ai-compose:focus-within { border-color: #8ab4f8; box-shadow: 0 0 0 3px rgba(26,115,232,.12); }
+.gd-ai-compose textarea { border: 0; outline: none; resize: none; font: inherit; font-size: 14px; line-height: 1.5; background: transparent; }
+.gd-ai-go { display: inline-flex; align-items: center; gap: 6px; height: 36px; padding: 0 14px; border: 0; border-radius: 10px; background: #171717; color: #fff; font: inherit; font-size: 13.5px; font-weight: 600; cursor: pointer; }
+.gd-ai-go:disabled { opacity: .4; cursor: default; }
+.gd-ai-refs { display: flex; flex-direction: column; gap: 8px; padding: 12px; border: 1px solid #e3e3e3; border-radius: 12px; background: #fbfbfa; }
+.gd-ai-up { display: inline-flex; align-items: center; gap: 5px; height: 30px; padding: 0 10px; border: 1px solid #d3d3d0; border-radius: 8px; background: #fff; font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; }
+.gd-ai-drop { border: 1.5px dashed #d3d3d0; border-radius: 10px; padding: 14px 10px; text-align: center; font-size: 12.5px; color: #80868b; }
 .gd-side-tabs { display: flex; gap: 4px; padding: 3px; border-radius: 10px; background: #f1f3f4; width: 100%; }
 .gd-side-tab { flex: 1; height: 32px; border: 0; border-radius: 8px; background: transparent; font: inherit; font-size: 13.5px; color: #5f6368; cursor: pointer; }
 .gd-side-tab[data-on] { background: #fff; color: #1f1f1f; font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,.08); }

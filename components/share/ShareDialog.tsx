@@ -28,7 +28,10 @@ export function ShareDialog({
   defaultAsk = "review",
   onSend,
   onClose,
+  onManageAccess,
 }: {
+  /** Opens the project's access setting (who can open the link at all). */
+  onManageAccess?: () => void;
   zh: boolean;
   title: string;
   /** A path inside the app ("/projects/…/script"); drawn absolute. */
@@ -108,7 +111,16 @@ export function ShareDialog({
               {copied ? t("已复制", "Copied") : t("复制链接", "Copy link")}
             </button>
           </div>
-          {accessNote ? <div style={{ fontSize: 11.5, color: "#8a8a8a", marginTop: 6 }}>{accessNote}</div> : null}
+          {accessNote || onManageAccess ? (
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8 }}>
+              {accessNote ? <span style={{ fontSize: 12, color: "#6b6b6b", flexGrow: 1 }}>{accessNote}</span> : <span style={{ flexGrow: 1 }} />}
+              {onManageAccess ? (
+                <button type="button" onClick={onManageAccess} className="sd-btn" style={{ height: 30, fontSize: 12.5 }}>
+                  {t("更改谁能访问", "Change who has access")}
+                </button>
+              ) : null}
+            </div>
+          ) : null}
         </div>
 
         <div style={{ borderTop: "1px solid #efeee9", padding: "14px 18px" }}>
