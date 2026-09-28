@@ -579,7 +579,7 @@ function People({
                   title={p.role === "owner" ? t("The owner's role cannot be changed", "所有者的角色不能在这里修改") : t("You cannot change your own role", "不能修改自己的角色")}
                   style={{ ...field, height: 26, width: 100, fontSize: 11.5, display: "inline-flex", alignItems: "center", justifyContent: "center", boxSizing: "border-box", background: "#f5f5f4", color: "#9a9a9a", borderColor: "#ececea", cursor: "not-allowed", userSelect: "none" }}
                 >
-                  {p.role}
+                  {roleName(p.role, zh)}
                 </span>
               ) : (
                 <select
@@ -590,7 +590,7 @@ function People({
                 >
                   {["admin", "member", "guest"].map((r) => (
                     <option key={r} value={r}>
-                      {r}
+                      {roleName(r, zh)}
                     </option>
                   ))}
                 </select>
@@ -604,7 +604,7 @@ function People({
 
               <span>
                 <Badge tone={p.status === "active" ? "good" : p.status === "invited" ? "warn" : "bad"}>
-                  {p.status}
+                  {statusName(p.status, zh)}
                 </Badge>
               </span>
 
@@ -1841,7 +1841,7 @@ function Knowledge({
                     <option value="">{t("which role", "哪个角色")}</option>
                     {["owner", "admin", "member", "guest"].map((r) => (
                       <option key={r} value={r}>
-                        {r}
+                        {roleName(r, zh)}
                       </option>
                     ))}
                   </select>
@@ -2093,3 +2093,16 @@ const solid: React.CSSProperties = {
   letterSpacing: "inherit",
   cursor: "pointer",
 };
+
+/* Roles and states in words, not the database's values ("owner", "active"). */
+function roleName(role: string, zh: boolean): string {
+  const zhName: Record<string, string> = { owner: "所有者", admin: "管理员", member: "成员", guest: "访客" };
+  const en: Record<string, string> = { owner: "Owner", admin: "Admin", member: "Member", guest: "Guest" };
+  return (zh ? zhName[role] : en[role]) ?? role;
+}
+
+function statusName(status: string, zh: boolean): string {
+  const zhName: Record<string, string> = { active: "在用", invited: "已邀请", suspended: "已停用" };
+  const en: Record<string, string> = { active: "Active", invited: "Invited", suspended: "Suspended" };
+  return (zh ? zhName[status] : en[status]) ?? status;
+}
