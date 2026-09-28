@@ -304,7 +304,9 @@ export async function getObject(key: string): Promise<Response> {
 }
 
 export async function headObject(key: string) {
-  const res = await client.fetch(objectUrl(key), { method: "HEAD" });
+  /* identity: a text file is otherwise answered compressed, with no
+     content-length, and its size was stored as 0. */
+  const res = await client.fetch(objectUrl(key), { method: "HEAD", headers: { "accept-encoding": "identity" } });
   if (!res.ok) return null;
   return {
     size: Number(res.headers.get("content-length") ?? 0),

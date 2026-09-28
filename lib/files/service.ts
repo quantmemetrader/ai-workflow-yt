@@ -15,7 +15,7 @@ import type { Viewer } from "@/lib/auth/dal";
 import { canReadFiles, canReadFolders, grantOwner, relationOn, type SharedObject } from "@/lib/authz/rebac";
 import { audit } from "@/lib/audit";
 import { newId } from "@/lib/ids";
-import { deleteObject, putObjectConfirmed, storageKey } from "@/lib/storage/r2";
+import { deleteObject, headObject, putObjectConfirmed, storageKey } from "@/lib/storage/r2";
 import { enqueue } from "@/lib/jobs/queue";
 
 /** The shared media and document store (spec §3). Every read here is
@@ -515,6 +515,16 @@ export async function completeUpload(viewer: Viewer, fileId: string, checksum?: 
   // An id that matches nothing used to come back as `undefined` and throw on
   // the next line, turning a stale confirm into a 500.
   if (!row) throw new Error("File not found");
+
+  /* No size from the browser (some small text files arrive as 0): take the
+     stored object's own length, so lists do not say "0 B". */
+  if (!row.sizeBytes && row.storageKey) {
+    const head = await headObject(row.storageKey).catch(() => null);
+    if (head?.size) {
+      row.sizeBytes = head.size;
+      await db.update(files).set({ sizeBytes: head.size }).where(eq(files.id, fileId));
+    }
+  }
 
   // A confirm can arrive twice — a retried request, a double-clicked upload.
   // Version 1 is written once; the second attempt is a no-op, not a duplicate
