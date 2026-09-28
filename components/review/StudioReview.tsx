@@ -37,7 +37,7 @@ export function StudioReview({ zh, accounts, rows, canWork, stale, hasChannels }
   return (
     <div style={{ flexGrow: 1, minWidth: 0, minHeight: 0, display: "flex", flexDirection: "column", background: "#f6f5f2" }}>
       <div style={{ flexShrink: 0, borderBottom: `1px solid ${LINE}`, background: "rgba(250,250,248,.92)" }}>
-        <div style={{ maxWidth: 1180, margin: "0 auto", padding: "14px 24px", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+        <div style={{ maxWidth: 1180, padding: "14px 32px", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
           <h1 style={{ margin: 0, fontSize: 18, fontWeight: 600, color: INK }}>{t("作品复盘", "Published work")}</h1>
           <span style={{ fontSize: 12.5, color: MUTED, flexGrow: 1 }}>{t("发布之后看数据：账号涨粉、每条作品的表现。每个项目的「复盘」页可以让研究员写复盘。", "After publishing: account growth and how each post did. Each project's Review tab has the researcher's write-up.")}</span>
           {canWork ? (
