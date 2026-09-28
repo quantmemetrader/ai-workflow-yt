@@ -81,7 +81,9 @@ export function LegalScreen({
 
   return (
     <div style={{ flexGrow: 1, minWidth: 0, display: "flex", minHeight: 0 }}>
-    <ModuleSidebar
+    <div style={{ flexGrow: 1, minWidth: 0, display: "flex", flexDirection: "column", minHeight: 0 }}>
+      <ModuleHeader title={t("Legal", "法务")} note={t("drafting and comparison", "起草与比对")} />
+      <ModuleSidebar
       title="Legal"
       titleZh="法务"
       screens={SCREENS}
@@ -90,8 +92,6 @@ export function LegalScreen({
       zh={zh}
       storageKey="legal-sidebar"
     />
-    <div style={{ flexGrow: 1, minWidth: 0, display: "flex", flexDirection: "column", minHeight: 0 }}>
-      <ModuleHeader title={t("Legal", "法务")} note={t("drafting and comparison", "起草与比对")} />
 
 
       <div style={{ flexGrow: 1, minHeight: 0, display: "flex" }}>

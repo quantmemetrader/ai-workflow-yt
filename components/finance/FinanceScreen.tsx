@@ -108,7 +108,12 @@ export function FinanceScreen({
 
   return (
     <div style={{ flexGrow: 1, minWidth: 0, display: "flex", minHeight: 0 }}>
-    <ModuleSidebar
+    <div style={{ flexGrow: 1, minWidth: 0, display: "flex", flexDirection: "column", minHeight: 0 }}>
+      <ModuleHeader
+        title={t("Finance", "财务")}
+        note={t(`budget against actuals · ${period}`, `预算与实际对比 · ${period}`)}
+      />
+      <ModuleSidebar
       title="Finance"
       titleZh="财务"
       screens={SCREENS}
@@ -117,11 +122,6 @@ export function FinanceScreen({
       zh={zh}
       storageKey="finance-sidebar"
     />
-    <div style={{ flexGrow: 1, minWidth: 0, display: "flex", flexDirection: "column", minHeight: 0 }}>
-      <ModuleHeader
-        title={t("Finance", "财务")}
-        note={t(`budget against actuals · ${period}`, `预算与实际对比 · ${period}`)}
-      />
 
       <div style={{ flexGrow: 1, minHeight: 0, display: "flex" }}>
         <div style={{ flexGrow: 1, minWidth: 0, overflowY: "auto", padding: "18px 22px 40px" }}>

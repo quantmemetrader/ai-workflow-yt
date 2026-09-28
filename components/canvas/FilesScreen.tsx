@@ -1,11 +1,10 @@
 "use client";
 
-import { ModelPicker } from "@/components/shell/ModelPicker";
+import { ResearchAgentPanel } from "@/components/canvas/ResearchAgentPanel";
 
 import * as React from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
-import { useResizable } from "@/components/ui/Resizer";
 import { Poster, Waiting } from "@/components/files/Poster";
 import { EyeOffGlyph, GlobeGlyph, PeopleGlyph, PersonGlyph, visibilityLabel } from "@/components/files/AccessPicker";
 import { AgentIcon } from "@/components/agents/AgentIcon";
@@ -336,15 +335,6 @@ export function FilesScreen(props: {
    * narrows what is shown. */
   renderBody?: (needle: string) => React.ReactNode;
 }): React.JSX.Element {
-  const [draft, setDraft] = React.useState("");
-  const { width: sideWidth, handle: sideHandle } = useResizable("files-sidebar", {
-    min: 160, max: 400, initial: 208, edge: "right",
-  });
-  // The agent column shares one stored width across every screen that
-  // draws it, so narrowing it here does not leave it wide over there.
-  const { width: agentWidth, handle: agentHandle } = useResizable("agent-panel", {
-    min: 220, max: 620, initial: 280, edge: "left",
-  });
   const [filter, setFilter] = React.useState("");
   const {
     breadcrumbs,
@@ -419,152 +409,6 @@ export function FilesScreen(props: {
     <>
       <style dangerouslySetInnerHTML={{ __html: FILES_CSS }} />
 
-      {/* sidebar */}
-      <div
-        data-files-screen=""
-        style={{
-          width: sideWidth,
-          position: "relative",
-          flexShrink: 0,
-          background: "#f8f8f8",
-          borderRight: "1px solid #ededed",
-          display: "flex",
-          flexDirection: "column",
-          padding: "10px 8px",
-        }}
-      >
-        {sideHandle}
-        <div style={{ padding: "4px 8px 12px", fontSize: 14, fontWeight: 500 }}>{t("Database")}</div>
-        {/* The heading carries the +, so making a folder is where folders are
-            rather than only in the toolbar at the other end of the screen. */}
-        <div className="lbl" style={{ marginBottom: 5, display: "flex", alignItems: "center", gap: 6 }}>
-          <span style={{ flexGrow: 1 }}>{t("Folders")}</span>
-          {canCreate && (
-            <button
-              type="button"
-              onClick={onNewFolder}
-              aria-label={t("New folder")}
-              title={t("New folder")}
-              style={plusButton}
-            >
-              <PlusGlyph />
-            </button>
-          )}
-        </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
-          {sidebarFolders.length === 0 ? (
-            <p style={{ fontSize: 12.5, color: "#999999", lineHeight: 1.5, padding: "2px 8px 0" }}>
-              {t("No folders yet")}
-            </p>
-          ) : null}
-          {sidebarFolders.flatMap((f) => {
-            const current = f.id === currentFolderId;
-            const rows = [
-              <div
-                key={f.id}
-                className="n"
-                role="button"
-                tabIndex={0}
-                onClick={() => onOpenFolder(f.id)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    onOpenFolder(f.id);
-                  }
-                }}
-                style={
-                  current
-                    ? {
-                        background: "#ffffff",
-                        boxShadow: "0 1px 2px rgba(0,0,0,0.1)",
-                        color: "#171717",
-                        cursor: "pointer",
-                      }
-                    : onPath.has(f.id)
-                      ? { color: "#171717", cursor: "pointer" }
-                      : { cursor: "pointer" }
-                }
-              >
-                <svg viewBox="0 0 24 24">
-                  <path d="M4 7a2 2 0 0 1 2-2h3.6l1.8 2.2H18a2 2 0 0 1 2 2v8.3a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z" />
-                </svg>
-                <span>{f.name}</span>
-                {f.count != null ? (
-                  <span style={{ marginLeft: "auto", fontSize: 11.5, color: "#999999" }}>{f.count}</span>
-                ) : null}
-              </div>,
-            ];
-            /* the artboard's indented children, under the folder we are in */
-            if (current) {
-              for (const child of folders) {
-                rows.push(
-                  <div
-                    key={`${f.id}/${child.id}`}
-                    className="n"
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => onOpenFolder(child.id)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                        onOpenFolder(child.id);
-                      }
-                    }}
-                    style={{ paddingLeft: 24, cursor: "pointer" }}
-                  >
-                    <span>{child.name}</span>
-                  </div>,
-                );
-              }
-            }
-            return rows;
-          })}
-        </div>
-        <div className="lbl" style={{ margin: "14px 0 5px" }}>
-          {t("Views")}
-        </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
-          <Link className="n" href="/files/recent" style={viewStyle(view === "recent")}>
-            <svg viewBox="0 0 24 24">
-              <circle cx="12" cy="12" r="8" />
-              <path d="M12 8v4l2.5 1.5" />
-            </svg>
-            <span>{zh ? "最近" : "Recent"}</span>
-          </Link>
-          <Link className="n" href="/files/shared" style={viewStyle(view === "shared")}>
-            <svg viewBox="0 0 24 24">
-              <circle cx="17" cy="6.5" r="2.6" />
-              <circle cx="7" cy="12" r="2.6" />
-              <circle cx="17" cy="17.5" r="2.6" />
-              <path d="m9.4 10.7 5.2-2.9M9.4 13.3l5.2 2.9" />
-            </svg>
-            <span>{zh ? "共享给我的" : "Shared with me"}</span>
-          </Link>
-          <Link className="n" href="/files/trash" style={viewStyle(view === "trash")}>
-            <svg viewBox="0 0 24 24">
-              <path d="M5.5 7.5h13M9.5 7.5V5.8a1.3 1.3 0 0 1 1.3-1.3h2.4a1.3 1.3 0 0 1 1.3 1.3v1.7M7 7.5l.8 11.2h8.4L17 7.5" />
-            </svg>
-            <span>{zh ? "回收站" : "Trash"}</span>
-          </Link>
-        </div>
-        <div style={{ marginTop: "auto", padding: "10px 8px 4px", borderTop: "1px solid #ededed" }}>
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "baseline",
-              marginBottom: 6,
-            }}
-          >
-            <span style={{ fontSize: 11.5, color: "#999999" }}>{t("Storage")}</span>
-            <span style={{ fontSize: 11.5, color: "#525252" }}>{formatBytes(totalBytes, locale)}</span>
-          </div>
-          {/* The artboard draws a fill against a quota. Object storage here has
-              no quota, so the figure above is the whole truth and a bar would
-              be decoration pretending to be data. */}
-        </div>
-      </div>
-
       {/* main */}
       <div
         data-files-screen=""
@@ -594,7 +438,6 @@ export function FilesScreen(props: {
               <span style={{ fontSize: 12, color: "#999999", fontVariantNumeric: "tabular-nums" }}>
                 {folders.length + files.length}
               </span>
-              {lens ? <LensSwitch lens={lens} zh={zh} /> : null}
             </span>
           ) : view === "folder" ? (
             /* The way back to the top of Files, which a folder's own path
@@ -666,43 +509,6 @@ export function FilesScreen(props: {
           })}
           <div style={{ flexGrow: 1 }}></div>
 
-          {/* List / Grid / Gallery. The artboard draws all three and only List
-              was ever built, so the other two were design nobody could reach. */}
-          {onLayoutChange && !renderBody ? (
-            <div
-              role="group"
-              aria-label={t("View")}
-              style={{ display: "flex", gap: 2, padding: 2, borderRadius: 8, background: "#f3f3f3", flexShrink: 0 }}
-            >
-              {(["list", "grid", "gallery"] as const).map((mode) => (
-                <button
-                  key={mode}
-                  type="button"
-                  onClick={() => onLayoutChange(mode)}
-                  aria-pressed={layout === mode}
-                  aria-label={t(LAYOUT_LABEL[mode])}
-                  title={t(LAYOUT_LABEL[mode])}
-                  style={{
-                    width: 26,
-                    height: 24,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    border: 0,
-                    borderRadius: 6,
-                    cursor: "pointer",
-                    padding: 0,
-                    background: layout === mode ? "#ffffff" : "transparent",
-                    boxShadow: layout === mode ? "0 1px 2px rgba(0,0,0,0.1)" : "none",
-                    color: layout === mode ? "#171717" : "#999999",
-                  }}
-                >
-                  <LayoutGlyph mode={mode} />
-                </button>
-              ))}
-            </div>
-          ) : null}
-
           {/* Filter: narrows the rows below by name, in both scripts. The
               artboard drew this as a button; a live box is the same affordance
               without a dialog nobody needs. */}
@@ -756,24 +562,6 @@ export function FilesScreen(props: {
             <button
               type="button"
               className="btn"
-              onClick={onNewFolder}
-              style={{
-                flexShrink: 0,
-                border: "1px solid #ededed",
-                color: "#525252",
-                background: "#ffffff",
-                fontFamily: "inherit",
-                letterSpacing: "inherit",
-              }}
-            >
-              <FolderGlyph size={13} stroke="#7c7c7c" />
-              {t("New folder")}
-            </button>
-          ) : null}
-          {canCreate ? (
-            <button
-              type="button"
-              className="btn"
               onClick={onUploadClick}
               style={{
                 flexShrink: 0,
@@ -802,6 +590,19 @@ export function FilesScreen(props: {
             </button>
           ) : null}
         </div>
+
+        {/* What to look at, as tabs: the kinds of file, then the saved views.
+            They were a second column down the left (folders, views, storage)
+            beside the app's own rail — the owner wanted fewer columns and less
+            on the page. Folders show as tiles in the listing itself. */}
+        <FilesTabs
+          lens={breadcrumbs.length === 0 && view === "folder" ? (lens ?? "all") : null}
+          view={view}
+          zh={zh}
+          layout={onLayoutChange && !renderBody ? layout : null}
+          onLayoutChange={onLayoutChange}
+          onNewFolder={canCreate ? onNewFolder : undefined}
+        />
 
         <div style={{ flexGrow: 1, display: "flex", minHeight: 0 }}>
           <div style={{ flexGrow: 1, display: "flex", flexDirection: "column", minWidth: 0, minHeight: 0 }}>
@@ -1295,231 +1096,19 @@ export function FilesScreen(props: {
             </div>
           </div>
 
-          {/* ============ AGENT PANEL ============ */}
-          <div
-            data-files-agent=""
-            style={{
-              width: agentWidth,
-              position: "relative",
-              flexShrink: 0,
-              borderLeft: "1px solid #ededed",
-              background: "#fcfcfc",
-              display: "flex",
-              flexDirection: "column",
-            }}
-          >
-            {agentHandle}
-            <div
-              style={{
-                height: 44,
-                flexShrink: 0,
-                display: "flex",
-                alignItems: "center",
-                gap: 2,
-                padding: "0 10px",
-                borderBottom: "1px solid #ededed",
-              }}
-            >
-              {/* Who answers here: the host's own pixel robot, drawn the way
-                  every other screen's agent panel draws its employee
-                  (ResearchAgentPanel). It was the artboard's blue cube, a
-                  shape that stood for nobody, in a colour nothing else on
-                  the screen used. */}
-              <div
-                style={{
-                  height: 28,
-                  padding: "0 10px 0 6px",
-                  borderRadius: 8,
-                  background: "#ffffff",
-                  boxShadow: "0 1px 2px rgba(0,0,0,.08), 0 0 0 1px rgba(0,0,0,.03)",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 7,
-                  fontSize: 12.5,
-                  fontWeight: 500,
-                }}
-              >
-                <AgentIcon agent={null} size={18} radius={5} />
-                {t("Agent")}
-              </div>
-              {/* The artboard paired this with a "Details" tab and a collapse
-                  chevron. Neither had anything behind it — a file's details are
-                  on the file's own page — so only the panel's name is drawn. */}
-              <div style={{ flexGrow: 1 }}></div>
-            </div>
-
-            {/* scope */}
-            <div style={{ flexShrink: 0, padding: "12px 14px", borderBottom: "1px solid #f3f3f3" }}>
-              <div
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 7,
-                  height: 26,
-                  padding: "0 10px",
-                  borderRadius: 7,
-                  background: "#ffffff",
-                  border: "1px solid #ededed",
-                }}
-              >
-                <svg
-                  viewBox="0 0 24 24"
-                  style={{
-                    width: 12,
-                    height: 12,
-                    stroke: "#7c7c7c",
-                    fill: "none",
-                    strokeWidth: 1.7,
-                    strokeLinecap: "round",
-                    strokeLinejoin: "round",
-                  }}
-                >
-                  <path d="M4 7a2 2 0 0 1 2-2h3.6l1.8 2.2H18a2 2 0 0 1 2 2v8.3a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z" />
-                </svg>
-                <span style={{ fontSize: 12, color: "#525252" }}>{folderName}</span>
-                <span style={{ fontSize: 12, color: "#c7c7c7" }}>·</span>
-                <span style={{ fontSize: 12, color: "#999999" }}>
-                  {files.length} {t("files")}
-                </span>
-              </div>
-            </div>
-
-            {/* The artboard offered three canned prompts here. A shipped
-                product should not tell people what to ask; the composer below
-                is the way in. */}
-            {/* thread — the artboard's worked example was demo content. This is
-                the real conversation, answered here rather than on /chat. */}
-            {/* Until something has been asked, one line of fact about the
-                folder in place of an empty column: the thread's empty state
-                is marked `data-agent-empty`, and while it is empty the note
-                shows instead (the same :has() rule ResearchAgentPanel uses;
-                a browser without it shows the empty thread, as before). */}
-            <div className="fs-note">
-              <p>{agentNote}</p>
-            </div>
-            {thread ?? (
-              <div data-agent-empty="" style={{ flexGrow: 1, minHeight: 0, padding: "16px 14px 0", overflow: "hidden" }}></div>
-            )}
-
-            {/* composer */}
-            <div style={{ flexShrink: 0, padding: "12px 14px 10px" }}>
-              <div
-                style={{
-                  border: "1px solid #e2e2e2",
-                  borderRadius: 11,
-                  background: "#ffffff",
-                  padding: "10px 11px 8px",
-                  boxShadow: "0 1px 2px rgba(0,0,0,0.1)",
-                }}
-              >
-                <input
-                  value={draft}
-                  onChange={(e) => setDraft(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && draft.trim()) {
-                      e.preventDefault();
-                      onAsk(draft);
-                      setDraft("");
-                    }
-                  }}
-                  aria-label={t("Ask about this folder…")}
-                  placeholder={t("Ask about this folder…")}
-                  style={{
-                    width: "100%",
-                    border: 0,
-                    outline: "none",
-                    background: "transparent",
-                    fontSize: 12.5,
-                    fontFamily: "inherit",
-                    letterSpacing: "inherit",
-                    color: "#171717",
-                  }}
-                />
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    marginTop: 12,
-                  }}
-                >
-                  <ModelPicker current={model} zh={zh} />
-                  <button
-                    type="button"
-                    aria-label={t("Send")}
-                    onClick={() => {
-                      if (draft.trim()) {
-                        onAsk(draft);
-                        setDraft("");
-                      }
-                    }}
-                    style={{
-                      cursor: draft.trim() ? "pointer" : "default",
-                      border: 0,
-                      padding: 0,
-                      width: 26,
-                      height: 26,
-                      borderRadius: 7,
-                      /* The product's primary colour once there is something
-                         to send, grey until then — as on every other panel. */
-                      background: draft.trim() ? PRIMARY : "#d4d4d4",
-                      transition: "background .15s",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                    }}
-                  >
-                    <svg
-                      viewBox="0 0 24 24"
-                      style={{
-                        width: 13,
-                        height: 13,
-                        stroke: "#ffffff",
-                        fill: "none",
-                        strokeWidth: 2.2,
-                        strokeLinecap: "round",
-                        strokeLinejoin: "round",
-                      }}
-                    >
-                      <path d="M12 19V5.5M6 11.5 12 5.5l6 6" />
-                    </svg>
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {/* footer */}
-            <div
-              style={{
-                flexShrink: 0,
-                borderTop: "1px solid #f3f3f3",
-                padding: "10px 14px 12px",
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-              }}
-            >
-              <svg
-                viewBox="0 0 24 24"
-                style={{
-                  width: 12,
-                  height: 12,
-                  flexShrink: 0,
-                  stroke: "#999999",
-                  fill: "none",
-                  strokeWidth: 1.8,
-                  strokeLinecap: "round",
-                  strokeLinejoin: "round",
-                }}
-              >
-                <path d="M6.8 10.5h10.4v8H6.8z" />
-                <path d="M9.2 10.5V8a2.8 2.8 0 0 1 5.6 0v2.5" />
-              </svg>
-              <span style={{ fontSize: 12.5, color: "#999999", lineHeight: 1.4 }}>
-                {t("Answers use only files you can read")}
-              </span>
-            </div>
-          </div>
+          {/* The AI: the floating 「问 AI」 button and its drawer, shared with
+              every module page (`ResearchAgentPanel`). */}
+          <ResearchAgentPanel
+            accent={PRIMARY}
+            zh={zh}
+            scope={folderName}
+            note={agentNote}
+            placeholder={zh ? "问这里的文件…" : "Ask about these files…"}
+            model={model}
+            onAsk={onAsk}
+            thread={thread ?? <div data-agent-empty="" style={{ flexGrow: 1, minHeight: 0 }} />}
+            footnote={t("Answers use only files you can read")}
+          />
         </div>
       </div>
     </>
@@ -1527,45 +1116,66 @@ export function FilesScreen(props: {
 }
 
 /**
- * 全部 · 按项目 · 图片 · 视频 · 文档, beside the title at the top of Files.
- * Drawn like the List / Grid / Gallery control so the toolbar has one kind of
- * switch, with words rather than glyphs because a lens is not a picture. The
- * labels are short and Chrome's translate gets short labels wrong, so each is
- * a `Tr`.
+ * The row of tabs under the Files toolbar: 全部 · 按项目 · 图片 · 视频 · 文档,
+ * then 最近 · 共享给我的 · 回收站, and at the right the list / grid switch and
+ * a quiet 新建文件夹.
  */
-function LensSwitch({ lens, zh }: { lens: FilesLens; zh: boolean }) {
-  return (
-    <nav
-      aria-label={zh ? "查看方式" : "Show"}
-      style={{ display: "flex", gap: 2, padding: 2, marginLeft: 8, borderRadius: 8, background: "#f3f3f3", flexShrink: 0, alignSelf: "center" }}
+function FilesTabs({
+  lens,
+  view,
+  zh,
+  layout,
+  onLayoutChange,
+  onNewFolder,
+}: {
+  lens: FilesLens | null;
+  view: "folder" | "recent" | "shared" | "trash";
+  zh: boolean;
+  layout: "list" | "grid" | "gallery" | null;
+  onLayoutChange?: (next: "list" | "grid" | "gallery") => void;
+  onNewFolder?: () => void;
+}) {
+  const tab = (key: string, href: string, label: React.ReactNode, on: boolean) => (
+    <Link
+      key={key}
+      href={href}
+      aria-current={on ? "page" : undefined}
+      style={{ display: "inline-flex", alignItems: "center", height: 42, padding: "0 11px", fontSize: 14, textDecoration: "none", whiteSpace: "nowrap", color: on ? "#171717" : "#6b6b6b", fontWeight: on ? 600 : 400, borderBottom: `2px solid ${on ? "#171717" : "transparent"}` }}
     >
-      {LENS_TABS.map((tab) => {
-        const on = tab.lens === lens;
-        return (
-          <Link
-            key={tab.lens}
-            href={tab.lens === "all" ? "/files" : `/files?view=${tab.lens}`}
-            aria-current={on ? "page" : undefined}
-            style={{
-              height: 24,
-              padding: "0 10px",
-              display: "flex",
-              alignItems: "center",
-              borderRadius: 6,
-              fontSize: 12.5,
-              fontWeight: on ? 500 : 400,
-              textDecoration: "none",
-              whiteSpace: "nowrap",
-              background: on ? "#ffffff" : "transparent",
-              boxShadow: on ? "0 1px 2px rgba(0,0,0,0.1)" : "none",
-              color: on ? "#171717" : "#8a8a8a",
-            }}
-          >
-            <Tr zh={tab.zh} en={tab.en} inZh={zh} />
-          </Link>
-        );
-      })}
-    </nav>
+      {label}
+    </Link>
+  );
+  return (
+    <div style={{ flexShrink: 0, display: "flex", alignItems: "center", gap: 2, padding: "0 14px", borderBottom: "1px solid #ededed", overflowX: "auto" }}>
+      {LENS_TABS.map((x) => tab(x.lens, x.lens === "all" ? "/files" : `/files?view=${x.lens}`, <Tr zh={x.zh} en={x.en} inZh={zh} />, lens === x.lens && view === "folder"))}
+      <span aria-hidden style={{ width: 1, height: 16, background: "#e5e5e5", margin: "0 6px" }} />
+      {tab("recent", "/files/recent", zh ? "最近" : "Recent", view === "recent")}
+      {tab("shared", "/files/shared", zh ? "共享给我的" : "Shared with me", view === "shared")}
+      {tab("trash", "/files/trash", zh ? "回收站" : "Trash", view === "trash")}
+      <span style={{ flexGrow: 1 }} />
+      {onNewFolder ? (
+        <button type="button" onClick={onNewFolder} style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 30, padding: "0 10px", border: 0, borderRadius: 8, background: "transparent", color: "#525252", fontSize: 13, fontFamily: "inherit", cursor: "pointer", whiteSpace: "nowrap" }}>
+          <FolderGlyph size={13} stroke="#7c7c7c" />
+          {zh ? "新建文件夹" : "New folder"}
+        </button>
+      ) : null}
+      {layout && onLayoutChange ? (
+        <div role="group" aria-label={zh ? "显示方式" : "View"} style={{ display: "flex", gap: 2, padding: 2, borderRadius: 8, background: "#f3f3f3", flexShrink: 0 }}>
+          {(["grid", "list"] as const).map((mode) => (
+            <button
+              key={mode}
+              type="button"
+              onClick={() => onLayoutChange(mode)}
+              aria-pressed={layout === mode}
+              title={zh ? (mode === "grid" ? "网格" : "列表") : mode === "grid" ? "Grid" : "List"}
+              style={{ width: 28, height: 24, display: "flex", alignItems: "center", justifyContent: "center", border: 0, borderRadius: 6, cursor: "pointer", padding: 0, background: layout === mode ? "#fff" : "transparent", boxShadow: layout === mode ? "0 1px 2px rgba(0,0,0,.1)" : "none", color: layout === mode ? "#171717" : "#999" }}
+            >
+              <LayoutGlyph mode={mode} />
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
   );
 }
 

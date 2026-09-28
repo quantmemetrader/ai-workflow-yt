@@ -1,24 +1,18 @@
 "use client";
 
-import { useResizable } from "@/components/ui/Resizer";
-
 /**
- * The module's own column of screens.
+ * A module's screens, as a row of tabs under its header.
  *
- * Every desktop artboard in the design draws this — Accounting, Admin,
- * Finance, HR, Legal, Publish and Research all have the same 212px column with
- * the module's name at the top and a "Screens" list under it. Only Research
- * was built that way; the other six grew a strip of tabs across the top
- * instead, which is a different product wearing the same palette.
+ * It was a 212px column down the left (the design's artboards drew one for
+ * Accounting, Admin, Finance, HR, Legal and Publish). Beside the app's own
+ * rail and the AI panel on the right, that made four columns on one screen;
+ * the owner (28 Sep): "make it for non-technical people … less info per
+ * page". The same screens as tabs across the top give the page its width
+ * back and read like every other page with tabs in the product.
  *
- * This is that column, for the modules whose screens are *tabs of one page*
- * rather than separate routes. Research keeps its own because its screens are
- * real routes with their own data, and it carries the connected-sources
- * summary that nothing else has.
- *
- * The width is draggable and remembered per module, for the same reason every
- * other column here is: a person working in a table wants it narrow and a
- * person reading labels wants it wide, and neither should have to keep asking.
+ * The name is kept so the screens that import it did not all change;
+ * `storageKey` and `footer` are accepted and ignored (there is no width to
+ * remember, and the footer was a spend figure).
  */
 export type ScreenItem<T extends string> = {
   key: T;
@@ -31,14 +25,10 @@ export type ScreenItem<T extends string> = {
 };
 
 export function ModuleSidebar<T extends string>({
-  title,
-  titleZh,
   screens,
   active,
   onChange,
   zh,
-  storageKey,
-  footer,
 }: {
   title: string;
   titleZh: string;
@@ -46,108 +36,51 @@ export function ModuleSidebar<T extends string>({
   active: T;
   onChange: (key: T) => void;
   zh: boolean;
-  /** Where this module's remembered width lives. */
   storageKey: string;
-  /** The bottom of the column: the artboards put a usage line here. */
   footer?: React.ReactNode;
 }) {
-  const { width, handle } = useResizable(storageKey, { min: 170, max: 380, initial: 212, edge: "right" });
-
+  if (screens.length < 2) return null;
   return (
-    <div
-      data-module-sidebar=""
-      style={{
-        width,
-        flexShrink: 0,
-        position: "relative",
-        background: "#f8f8f8",
-        borderRight: "1px solid #ededed",
-        display: "flex",
-        flexDirection: "column",
-        padding: "10px 8px",
-        minHeight: 0,
-      }}
+    <nav
+      data-module-tabs=""
+      aria-label={zh ? "页面" : "Screens"}
+      style={{ flexShrink: 0, display: "flex", gap: 4, padding: "0 18px", borderBottom: "1px solid #ededed", overflowX: "auto", background: "#fff" }}
     >
-      {handle}
-
-      <div style={{ padding: "4px 9px 12px", fontSize: 14, fontWeight: 500 }}>{zh ? titleZh : title}</div>
-
-      <div
-        style={{
-          fontSize: 11.5,
-          fontWeight: 500,
-          color: "#999999",
-          padding: "0 9px",
-          marginBottom: 5,
-        }}
-      >
-        {zh ? "页面" : "Screens"}
-      </div>
-
-      <div style={{ display: "flex", flexDirection: "column", gap: 1, overflowY: "auto", minHeight: 0 }}>
-        {screens.map((s) => {
-          const on = s.key === active;
-          return (
-            <button
-              key={s.key}
-              type="button"
-              onClick={() => onChange(s.key)}
-              aria-current={on ? "page" : undefined}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-                height: 29,
-                padding: "0 9px",
-                borderRadius: 7,
-                border: 0,
-                cursor: "pointer",
-                textAlign: "left",
-                background: on ? "#ffffff" : "transparent",
-                boxShadow: on ? "0 1px 2px rgba(0,0,0,0.06)" : "none",
-                color: on ? "#171717" : "#525252",
-                fontWeight: on ? 500 : 400,
-                fontSize: 12.5,
-                fontFamily: "inherit",
-                letterSpacing: "inherit",
-              }}
-            >
-              <span
-                style={{
-                  flexGrow: 1,
-                  minWidth: 0,
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                {zh ? s.labelZh : s.label}
-              </span>
-
-              {s.alert ? (
-                <i
-                  style={{
-                    fontStyle: "normal",
-                    fontSize: 11.5,
-                    fontWeight: 600,
-                    color: "#ffffff",
-                    background: "#e03636",
-                    borderRadius: 9,
-                    padding: "1px 6px",
-                  }}
-                >
-                  {s.alert}
-                </i>
-              ) : s.badge ? (
-                <b style={{ fontSize: 11.5, fontWeight: 500, color: "#999999" }}>{s.badge}</b>
-              ) : null}
-            </button>
-          );
-        })}
-      </div>
-
-      {footer ? <div style={{ marginTop: "auto", paddingTop: 14 }}>{footer}</div> : null}
-    </div>
+      <style>{`[data-module-tabs] button{transition:color .15s ease,border-color .15s ease}[data-module-tabs] button:hover{color:#171717}`}</style>
+      {screens.map((s) => {
+        const on = s.key === active;
+        return (
+          <button
+            key={s.key}
+            type="button"
+            onClick={() => onChange(s.key)}
+            aria-current={on ? "page" : undefined}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 7,
+              height: 44,
+              padding: "0 12px",
+              border: 0,
+              borderBottom: `2px solid ${on ? "#171717" : "transparent"}`,
+              background: "transparent",
+              cursor: "pointer",
+              color: on ? "#171717" : "#6b6b6b",
+              fontWeight: on ? 600 : 400,
+              fontSize: 14,
+              fontFamily: "inherit",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {zh ? s.labelZh : s.label}
+            {s.alert ? (
+              <i style={{ fontStyle: "normal", fontSize: 11, fontWeight: 600, color: "#fff", background: "#e03636", borderRadius: 9, padding: "0 6px", lineHeight: "17px" }}>{s.alert}</i>
+            ) : s.badge ? (
+              <b style={{ fontSize: 11, fontWeight: 600, color: "#6b6b6b", background: "#f0f0ee", borderRadius: 9, padding: "0 6px", lineHeight: "17px" }}>{s.badge}</b>
+            ) : null}
+          </button>
+        );
+      })}
+    </nav>
   );
 }
-

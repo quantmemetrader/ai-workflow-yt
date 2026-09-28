@@ -100,15 +100,6 @@ export function AccountingScreen({
 
   return (
     <div style={{ flexGrow: 1, minWidth: 0, display: "flex", minHeight: 0 }}>
-    <ModuleSidebar
-      title="Accounting"
-      titleZh="账务"
-      screens={SCREENS}
-      active={tab}
-      onChange={setTab}
-      zh={zh}
-      storageKey="accounting-sidebar"
-    />
     <div style={{ flexGrow: 1, minWidth: 0, display: "flex", flexDirection: "column", minHeight: 0 }}>
       <ModuleHeader
         title={t("Accounting", "账务")}
@@ -119,6 +110,15 @@ export function AccountingScreen({
           </button>
         }
       />
+      <ModuleSidebar
+      title="Accounting"
+      titleZh="账务"
+      screens={SCREENS}
+      active={tab}
+      onChange={setTab}
+      zh={zh}
+      storageKey="accounting-sidebar"
+    />
 
       <div style={{ flexGrow: 1, minHeight: 0, display: "flex" }}>
         <div style={{ flexGrow: 1, minWidth: 0, overflowY: "auto", padding: "18px 22px 40px" }}>

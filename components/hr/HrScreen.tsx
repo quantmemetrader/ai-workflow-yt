@@ -85,7 +85,12 @@ export function HrScreen({
 
   return (
     <div style={{ flexGrow: 1, minWidth: 0, display: "flex", minHeight: 0 }}>
-    <ModuleSidebar
+    <div style={{ flexGrow: 1, minWidth: 0, display: "flex", flexDirection: "column", minHeight: 0 }}>
+      <ModuleHeader
+        title={t("Human Resources", "人事")}
+        note={t("leave, hiring and employee records", "请假、招聘与员工档案")}
+      />
+      <ModuleSidebar
       title="People & HR"
       titleZh="人事"
       screens={SCREENS}
@@ -94,11 +99,6 @@ export function HrScreen({
       zh={zh}
       storageKey="hr-sidebar"
     />
-    <div style={{ flexGrow: 1, minWidth: 0, display: "flex", flexDirection: "column", minHeight: 0 }}>
-      <ModuleHeader
-        title={t("Human Resources", "人事")}
-        note={t("leave, hiring and employee records", "请假、招聘与员工档案")}
-      />
 
       <div style={{ flexGrow: 1, minHeight: 0, display: "flex" }}>
         <div style={{ flexGrow: 1, minWidth: 0, overflowY: "auto", padding: "18px 22px 40px" }}>

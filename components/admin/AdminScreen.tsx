@@ -148,29 +148,6 @@ export function AdminScreen({
     /* Admin was the last module with no agent on it, which made it the one
        place you had to leave the screen to ask a question about the screen. */
     <div style={{ flexGrow: 1, minWidth: 0, display: "flex", minHeight: 0 }}>
-    <ModuleSidebar
-      title="Manage employees"
-      titleZh="员工管理"
-      screens={SCREENS}
-      active={tab}
-      onChange={setTab}
-      zh={zh}
-      storageKey="admin-sidebar"
-      footer={
-        /* The artboard puts a usage line here. The honest version of it is the
-           studio's spend against its cap — and this screen is not given the
-           cap, only the spend, so it shows the period's total rather than a
-           percentage of a number nobody passed in. */
-        <div style={{ padding: "0 9px 4px" }}>
-          <div style={{ fontSize: 11, color: "#999999", marginBottom: 3 }}>
-            {t(`Last ${usage.days} days`, `近 ${usage.days} 天`)}
-          </div>
-          <div style={{ fontSize: 13, fontWeight: 500, fontVariantNumeric: "tabular-nums" }}>
-            {money(usage.byModule.reduce((sum, m) => sum + m.costMicros, 0))}
-          </div>
-        </div>
-      }
-    />
 
     <div style={{ flexGrow: 1, minWidth: 0, display: "flex", flexDirection: "column", minHeight: 0 }}>
       <header
@@ -196,6 +173,29 @@ export function AdminScreen({
           {t("who is here, what they may open, and what it costs", "谁在这里、可以打开什么、花了多少钱")}
         </span>
       </header>
+      <ModuleSidebar
+      title="Manage employees"
+      titleZh="员工管理"
+      screens={SCREENS}
+      active={tab}
+      onChange={setTab}
+      zh={zh}
+      storageKey="admin-sidebar"
+      footer={
+        /* The artboard puts a usage line here. The honest version of it is the
+           studio's spend against its cap — and this screen is not given the
+           cap, only the spend, so it shows the period's total rather than a
+           percentage of a number nobody passed in. */
+        <div style={{ padding: "0 9px 4px" }}>
+          <div style={{ fontSize: 11, color: "#999999", marginBottom: 3 }}>
+            {t(`Last ${usage.days} days`, `近 ${usage.days} 天`)}
+          </div>
+          <div style={{ fontSize: 13, fontWeight: 500, fontVariantNumeric: "tabular-nums" }}>
+            {money(usage.byModule.reduce((sum, m) => sum + m.costMicros, 0))}
+          </div>
+        </div>
+      }
+    />
 
       <div style={{ flexGrow: 1, minHeight: 0, overflow: "auto", padding: "18px 22px 40px" }}>
         {tab === "people" && (
