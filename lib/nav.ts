@@ -119,6 +119,20 @@ const ALL: NavItem[] = [
     icon: '<path d="M21.86 4.14a1.1 1.1 0 0 0-1.14-.18L2.9 11.13c-.86.34-.83 1.58.05 1.87l4.46 1.5 1.68 5.06c.24.72 1.15.93 1.68.38l2.4-2.5 4.4 3.23c.6.44 1.46.12 1.63-.6z"/>',
   },
   {
+    /**
+     * Where the studio trains each AI employee: standing instructions, style
+     * and example files, read by every prompt it writes with (28 Sep: "a place
+     * where they can train each AI … upload examples, give instructions").
+     */
+    module: "chat",
+    secondary: true,
+    href: "/train",
+    label: "Train the AI",
+    labelZh: "AI 训练",
+    live: true,
+    icon: '<path d="M11 2.8c.55 5.05 3.2 7.7 8.25 8.25-5.05.55-7.7 3.2-8.25 8.25-.55-5.05-3.2-7.7-8.25-8.25 5.05-.55 7.7-3.2 8.25-8.25z"/><path d="M19.2 14.9c.27 2.5 1.6 3.83 4.1 4.1-2.5.27-3.83 1.6-4.1 4.1-.27-2.5-1.6-3.83-4.1-4.1 2.5-.27 3.83-1.6 4.1-4.1z" transform="scale(.92) translate(1 0)"/>',
+  },
+  {
     module: "accounting",
     href: "/accounting",
     label: "Accounting",
