@@ -605,9 +605,14 @@ export function buildSteps(f: StepFacts, zh: boolean): ProjectStep[] {
       : script.status === "awaiting_approval"
         ? "you"
         : beats.n > 0
-          ? /* Written: ticked, whether or not anyone formally approved it
-               ("it did write a script, so why is script not ticked"). */
-            "done"
+          ? /* Written but not approved: the person's step (share it, 批准) —
+               the 脚本 page now makes approval one press (28 Sep, the client:
+               the approval steps confused them). Ticked anyway once the film
+               is being cut from it, as it always was ("it did write a script,
+               so why is script not ticked"). */
+            f.items > 0 || (render?.state === "done" && render.fileId)
+            ? "done"
+            : "you"
           : script.status === "drafting"
             ? "running"
             : "todo";
@@ -657,7 +662,7 @@ export function buildSteps(f: StepFacts, zh: boolean): ProjectStep[] {
             ? t(`第 ${script!.version} 版已锁定`, `v${script!.version} locked`)
             : t(`已写好 · ${beats.n} 个分镜`, `Written · ${beats.n} beats`)
           : scriptState === "you"
-            ? t("写好了，等你批准", "Written; waiting for your OK")
+            ? t("写好了 · 分享给同事审阅批准", "Written · share it for approval")
             : draftWriting
               ? t("编剧正在写初稿…", "The writer is drafting…")
               : scriptState === "running"
