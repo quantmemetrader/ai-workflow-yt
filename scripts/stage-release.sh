@@ -24,11 +24,14 @@ cd "$(dirname "$0")/.."
 root=$(pwd)
 id="${1:?release id}"
 dist=".next-build"
-rel="$root/releases/$id"
+# Releases live OUTSIDE the project (29 Sep): inside it, every page's file
+# trace took in all of them — 215,000 files, a 54 GB build, OOM-killed.
+store="${RELEASES_DIR:-$HOME/aura-releases}"
+rel="$store/$id"
 link="$root/.next/standalone"
 
 test -f "$dist/standalone/server.js" || { echo "!! no standalone build in $dist" >&2; exit 1; }
-mkdir -p "$root/releases" "$root/static-archive" "$root/.next"
+mkdir -p "$store" "$root/static-archive" "$root/.next"
 
 rm -rf "$rel"
 mv "$dist/standalone" "$rel"
@@ -57,14 +60,24 @@ cp -r --update=none "$root/static-archive/." "$rel/$dist/static/"
 # Point the live path at the new release in one rename. The first time,
 # .next/standalone is still a real directory: it is kept as a release.
 if [ -e "$link" ] && [ ! -L "$link" ]; then
-  mv "$link" "$root/releases/legacy-$(date -u +%Y%m%d%H%M%S)"
+  mv "$link" "$store/legacy-$(date -u +%Y%m%d%H%M%S)"
 fi
 ln -sfn "$rel" "$root/.next/standalone.next"
 mv -Tf "$root/.next/standalone.next" "$link"
 echo "    live: $(readlink "$link")"
 
-# Keep the newest four releases (and whatever is live).
+# Keep the newest two releases (the live one and the one before it, which
+# instances still finishing the rolling reload may read). Older scripts that
+# open tabs ask for are in static-archive/, copied into every release.
 live=$(readlink -f "$link")
-ls -1d "$root"/releases/*/ 2>/dev/null | sed 's#/$##' | sort | head -n -4 | while read -r d; do
+ls -1d "$store"/*/ 2>/dev/null | sed 's#/$##' | sort | head -n -2 | while read -r d; do
   [ "$(readlink -f "$d")" = "$live" ] || rm -rf "$d"
 done
+# Releases from before the move, left inside the project: gone once they are
+# not live (a later deploy clears the last one).
+for d in "$root"/releases/*/; do
+  [ -d "$d" ] || continue
+  d="${d%/}"
+  [ "$(readlink -f "$d")" = "$live" ] || [ "$d" = "${PREV_LIVE:-}" ] || rm -rf "$d"
+done
+rmdir "$root/releases" 2>/dev/null || true

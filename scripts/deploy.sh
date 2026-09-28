@@ -57,7 +57,7 @@ echo "==> stage release ${release}"
 # Moves the build into releases/<id>, keeps every older script an open tab
 # may still ask for, and points .next/standalone at the new release in one
 # rename. See the script for why.
-bash scripts/stage-release.sh "$release"
+PREV_LIVE="$(readlink -f .next/standalone 2>/dev/null || true)" bash scripts/stage-release.sh "$release"
 
 mkdir -p logs
 
