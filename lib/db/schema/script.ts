@@ -305,6 +305,9 @@ export const scriptComments = pgTable(
     versionNo: integer(),
     authorId: text().references(() => users.id),
     body: text().notNull(),
+    /** The words the comment was made on (the doc page's 批注), when it was
+     * made on a selection; the page highlights them where they still are. */
+    quote: text(),
     resolvedBy: text().references(() => users.id),
     resolvedAt: timestamp({ withTimezone: true }),
     createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),

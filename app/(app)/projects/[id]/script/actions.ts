@@ -1,0 +1,322 @@
+"use server";
+
+import { revalidatePath } from "next/cache";
+import { and, eq } from "drizzle-orm";
+import { db } from "@/lib/db/client";
+import { approvals, scriptBeats, scripts, users, workProjects } from "@/lib/db/schema";
+import { getViewer, type Viewer } from "@/lib/auth/dal";
+import { audit } from "@/lib/audit";
+import { BudgetStop } from "@/lib/ai/ledger";
+import { visibleProject } from "@/lib/projects/service";
+import { dmChannelWith, postMessage } from "@/lib/chat/service";
+import { tagProjectFile } from "@/lib/projects/files";
+import { readSentBack, recordSendBack, settleSendBack } from "@/lib/projects/sendback";
+import { createScript, cutVersion, decideApproval, requestApproval, restoreVersion, saveBeats, unlock } from "@/lib/script/service";
+import { addDocComment, copilotRewrite, openRequestFor, requestReviews, resolveDocComment, setReferences, versionBeats, withdrawOthers } from "@/lib/script/doc";
+
+/**
+ * What the project's 脚本 page (the script as a document) can do.
+ *
+ * Every action re-reads the viewer and resolves the project through
+ * `visibleProject`, so a project id from the browser only ever reaches a
+ * project this person may see; the script is always the project's own,
+ * never an id the browser sent.
+ */
+
+type Ctx = { viewer: Viewer; zh: boolean; project: NonNullable<Awaited<ReturnType<typeof visibleProject>>> };
+
+async function ctx(projectId: unknown, needScript = false): Promise<Ctx | { error: string }> {
+  const viewer = await getViewer();
+  if (!viewer || !viewer.modules.includes("chat")) return { error: "Not allowed" };
+  const zh = (viewer.locale ?? "zh-CN").startsWith("zh");
+  if (needScript && !viewer.modules.includes("script")) return { error: zh ? "改脚本需要脚本模块的权限" : "Editing needs the Script module" };
+  const project = typeof projectId === "string" && projectId.length < 64 ? await visibleProject(viewer, projectId) : null;
+  if (!project) return { error: zh ? "没有这个项目" : "No such project" };
+  return { viewer, zh, project };
+}
+
+function refresh(projectId: string) {
+  revalidatePath(`/projects/${projectId}`, "layout");
+}
+
+function asMessage(err: unknown): string {
+  if (err instanceof BudgetStop) return err.message;
+  return err instanceof Error ? err.message : "Something went wrong";
+}
+
+const scriptUrl = (projectId: string) => `/projects/${projectId}/script`;
+
+type BeatIn = { visual?: unknown; voiceover?: unknown; subtitle?: unknown; naturalSound?: unknown };
+
+/** Autosave: the document's paragraphs, as the beats they are. */
+export async function saveDocAction(projectId: unknown, beats: unknown) {
+  const c = await ctx(projectId, true);
+  if ("error" in c) return c;
+  if (!c.project.scriptId || !Array.isArray(beats)) return { error: "Not allowed" };
+  const clean = (beats as BeatIn[]).slice(0, 200).map((b) => ({
+    visual: typeof b.visual === "string" ? b.visual : "",
+    voiceover: typeof b.voiceover === "string" ? b.voiceover : "",
+    subtitle: typeof b.subtitle === "string" ? b.subtitle : "",
+    naturalSound: b.naturalSound === true,
+  }));
+  const res = await saveBeats(c.viewer, c.project.scriptId, clean);
+  if (!res) return { error: c.zh ? "脚本已批准锁定，先点「继续编辑」" : "The script is locked" };
+  return { ok: true as const, at: new Date().toISOString() };
+}
+
+/** Editing an approved script: unlock it into a new draft (it will need approving again). */
+export async function unlockDocAction(projectId: unknown) {
+  const c = await ctx(projectId, true);
+  if ("error" in c) return c;
+  if (!c.project.scriptId) return { error: "Not allowed" };
+  await unlock(c.viewer, c.project.scriptId);
+  await audit(c.viewer, "script.unlock", { objectType: "script", objectId: c.project.scriptId, module: "script", meta: { from: "doc" } });
+  refresh(c.project.id);
+  return { ok: true as const };
+}
+
+/** A blank script to type into (自己写). */
+export async function startBlankAction(projectId: unknown) {
+  const c = await ctx(projectId, true);
+  if ("error" in c) return c;
+  let scriptId = c.project.scriptId;
+  if (!scriptId) {
+    scriptId = await createScript(c.viewer, { title: c.project.title });
+    await db.update(workProjects).set({ scriptId, updatedAt: new Date() }).where(eq(workProjects.id, c.project.id));
+  }
+  const [has] = await db.select({ id: scriptBeats.id }).from(scriptBeats).where(eq(scriptBeats.scriptId, scriptId)).limit(1);
+  if (!has) await saveBeats(c.viewer, scriptId, [{ visual: "", voiceover: "", subtitle: "" }]);
+  refresh(c.project.id);
+  return { ok: true as const };
+}
+
+/** The AI copilot: 编剧's tracked changes for an instruction. Nothing is saved. */
+export async function copilotAction(projectId: unknown, paragraphs: unknown, instruction: unknown) {
+  const c = await ctx(projectId, true);
+  if ("error" in c) return c;
+  if (!c.project.scriptId) return { error: "Not allowed" };
+  if (typeof instruction !== "string" || !instruction.trim()) return { error: c.zh ? "写下要怎么改" : "Say what to change" };
+  if (!Array.isArray(paragraphs) || !paragraphs.length) return { error: c.zh ? "脚本还是空的" : "The script is empty" };
+  const list = paragraphs.slice(0, 200).map((p) => (typeof p === "string" ? p.slice(0, 4000) : ""));
+  try {
+    return await copilotRewrite(c.viewer, c.project.scriptId, list, instruction);
+  } catch (err) {
+    return { error: asMessage(err) };
+  }
+}
+
+/** A file just uploaded (or picked) into the script's 参考资料. */
+export async function addReferenceAction(projectId: unknown, fileId: unknown) {
+  const c = await ctx(projectId, true);
+  if ("error" in c) return c;
+  if (!c.project.scriptId || typeof fileId !== "string") return { error: "Not allowed" };
+  const ok = await tagProjectFile(c.viewer, c.project.id, fileId, "reference");
+  if (!ok) return { error: c.zh ? "这个文件打不开" : "That file cannot be opened" };
+  await setReferences(c.viewer, c.project.scriptId, { add: fileId });
+  refresh(c.project.id);
+  return { ok: true as const };
+}
+
+export async function removeReferenceAction(projectId: unknown, fileId: unknown) {
+  const c = await ctx(projectId, true);
+  if ("error" in c) return c;
+  if (!c.project.scriptId || typeof fileId !== "string") return { error: "Not allowed" };
+  await setReferences(c.viewer, c.project.scriptId, { remove: fileId });
+  refresh(c.project.id);
+  return { ok: true as const };
+}
+
+/** A comment on selected words (批注). Anyone who can see the project may comment. */
+export async function docCommentAction(projectId: unknown, beatOrd: unknown, quote: unknown, body: unknown) {
+  const c = await ctx(projectId);
+  if ("error" in c) return c;
+  if (!c.project.scriptId) return { error: "Not allowed" };
+  if (typeof body !== "string" || !body.trim()) return { error: c.zh ? "写点什么" : "Write something first" };
+  const ord = Number(beatOrd);
+  const id = await addDocComment(c.viewer, c.project.scriptId, {
+    beatOrd: Number.isInteger(ord) && ord >= 0 ? ord : null,
+    quote: typeof quote === "string" && quote.trim() ? quote.trim() : null,
+    body,
+  });
+  refresh(c.project.id);
+  return id ? { ok: true as const, id } : { error: "Not allowed" };
+}
+
+export async function resolveCommentAction(projectId: unknown, commentId: unknown, reopen?: unknown) {
+  const c = await ctx(projectId);
+  if ("error" in c) return c;
+  if (!c.project.scriptId || typeof commentId !== "string") return { error: "Not allowed" };
+  await resolveDocComment(c.viewer, c.project.scriptId, commentId, reopen === true);
+  refresh(c.project.id);
+  return { ok: true as const };
+}
+
+/** One version's text, for the 版本 tab. */
+export async function versionBeatsAction(projectId: unknown, versionNo: unknown) {
+  const c = await ctx(projectId);
+  if ("error" in c) return c;
+  const n = Number(versionNo);
+  if (!c.project.scriptId || !Number.isInteger(n)) return { error: "Not allowed" };
+  const v = await versionBeats(c.viewer, c.project.scriptId, n);
+  if (!v) return { error: "Not found" };
+  return { ok: true as const, beats: v.beats.map((b) => ({ visual: b.visual, voiceover: b.voiceover, naturalSound: b.naturalSound })) };
+}
+
+/** 恢复此版本: the draft as it stands is kept as a version first, then the old one comes back. */
+export async function restoreDocVersionAction(projectId: unknown, versionNo: unknown) {
+  const c = await ctx(projectId, true);
+  if ("error" in c) return c;
+  const n = Number(versionNo);
+  const scriptId = c.project.scriptId;
+  if (!scriptId || !Number.isInteger(n) || n < 1) return { error: "Not allowed" };
+  const [s] = await db.select({ locked: scripts.lockedVersion }).from(scripts).where(eq(scripts.id, scriptId)).limit(1);
+  if (s?.locked !== null && s?.locked !== undefined) await unlock(c.viewer, scriptId);
+  await cutVersion(c.viewer, scriptId, { note: "before restoring an earlier version" });
+  const res = await restoreVersion(c.viewer, scriptId, n);
+  if (!res) return { error: c.zh ? "这个版本不存在" : "That version does not exist" };
+  await audit(c.viewer, "script.restore", { objectType: "script", objectId: scriptId, module: "script", meta: { versionNo: n, from: "doc" } });
+  refresh(c.project.id);
+  return { ok: true as const };
+}
+
+/**
+ * 分享: send the script to colleagues as a DM in the workspace chat, with a
+ * link to open it — and, asked to review, a request each of them can
+ * approve from the page. The project's own chat gets one line saying who it
+ * went to, so the flow shows where the script is.
+ */
+export async function shareScriptAction(projectId: unknown, input: { userIds?: unknown; ask?: unknown; message?: unknown }) {
+  const c = await ctx(projectId);
+  if ("error" in c) return c;
+  const scriptId = c.project.scriptId;
+  if (!scriptId) return { error: "Not allowed" };
+  const ask = input.ask === "review" ? "review" : "view";
+  const message = typeof input.message === "string" ? input.message.trim().slice(0, 1000) : "";
+  const ids = Array.isArray(input.userIds) ? [...new Set(input.userIds.filter((x): x is string => typeof x === "string"))].slice(0, 20) : [];
+  if (!ids.length) return { error: c.zh ? "选要发给谁" : "Choose who to send it to" };
+
+  const people = await db
+    .select({ id: users.id, name: users.name, nameLocal: users.nameLocal, isAgent: users.isAgent, status: users.status, tenantId: users.tenantId })
+    .from(users)
+    .where(eq(users.tenantId, c.viewer.tenantId));
+  const byId = new Map(people.filter((u) => !u.isAgent && u.status === "active").map((u) => [u.id, u]));
+  const targets = ids.filter((id) => byId.has(id) && id !== c.viewer.id);
+  if (!targets.length) return { error: c.zh ? "选的人不在这个工作室" : "Those people are not in this studio" };
+
+  let versionNo: number | null = null;
+  if (ask === "review") {
+    const [s] = await db.select({ locked: scripts.lockedVersion }).from(scripts).where(eq(scripts.id, scriptId)).limit(1);
+    if (s?.locked !== null && s?.locked !== undefined) return { error: c.zh ? "脚本已经批准了；要再审，先继续编辑出新版本" : "Already approved" };
+    const r = await requestReviews(c.viewer, scriptId, targets, message || null);
+    if (!r) return { error: c.zh ? "脚本还是空的，写几句再请人审" : "The script is empty" };
+    versionNo = r.versionNo;
+  }
+
+  const me = (c.zh && c.viewer.nameLocal) || c.viewer.name;
+  const link = scriptUrl(c.project.id);
+  const lead =
+    ask === "review"
+      ? c.zh
+        ? `${me} 请你审阅并批准脚本《${c.project.title}》${versionNo ? `（第 ${versionNo} 版）` : ""}。打开后可以直接改、加批注，看完按「批准」或「提修改意见」。`
+        : `${me} asks you to review and approve the script “${c.project.title}”${versionNo ? ` (v${versionNo})` : ""}.`
+      : c.zh
+        ? `${me} 把脚本《${c.project.title}》分享给你。`
+        : `${me} shared the script “${c.project.title}” with you.`;
+  const body = [message ? `${message}\n` : "", lead, "", `[${c.zh ? "打开脚本 →" : "Open the script →"}](${link})`].join("\n").trim();
+
+  let sent = 0;
+  for (const id of targets) {
+    const dm = await dmChannelWith(c.viewer, id);
+    if (!dm) continue;
+    await postMessage(c.viewer, dm.channel.id, body, { share: { kind: "script", projectId: c.project.id, scriptId, ask, versionNo } });
+    sent += 1;
+  }
+  const names = targets.map((id) => { const u = byId.get(id)!; return (c.zh && u.nameLocal) || u.name; }).join("、");
+  await postMessage(
+    c.viewer,
+    c.project.channelId,
+    ask === "review" ? (c.zh ? `把脚本${versionNo ? `第 ${versionNo} 版` : ""}发给 ${names} 审阅。` : `Sent the script to ${names} for review.`) : c.zh ? `把脚本分享给了 ${names}。` : `Shared the script with ${names}.`,
+    { flow: true },
+  ).catch(() => null);
+  await audit(c.viewer, "script.share", { objectType: "script", objectId: scriptId, module: "script", meta: { ask, to: targets, versionNo } });
+  refresh(c.project.id);
+  return { ok: true as const, sent, versionNo };
+}
+
+async function tell(c: Ctx, userId: string, body: string) {
+  if (userId === c.viewer.id) return;
+  const dm = await dmChannelWith(c.viewer, userId).catch(() => null);
+  if (dm) await postMessage(c.viewer, dm.channel.id, body, { share: { kind: "script", projectId: c.project.id } }).catch(() => null);
+}
+
+/** 批准: approve and lock the version asked about (a requested reviewer, or an owner/admin). */
+export async function approveDocAction(projectId: unknown) {
+  const c = await ctx(projectId);
+  if ("error" in c) return c;
+  const scriptId = c.project.scriptId;
+  if (!scriptId) return { error: "Not allowed" };
+  const admin = c.viewer.role === "owner" || c.viewer.role === "admin";
+  let req = await openRequestFor(c.viewer, scriptId);
+  if (!req) {
+    if (!admin) return { error: c.zh ? "没有请你审阅这份脚本" : "You were not asked to review this" };
+    const r = await requestApproval(c.viewer, scriptId, c.viewer.id);
+    if (!r) return { error: c.zh ? "脚本还是空的，或者已经批准了" : "Nothing to approve" };
+    req = { id: r.approvalId, approverId: c.viewer.id, requestedBy: c.viewer.id };
+  }
+  const res = await decideApproval(c.viewer, req.id, "approved");
+  if ("error" in res) return { error: res.error };
+  await withdrawOthers(c.viewer, scriptId, req.id);
+  const [row] = await db.select({ source: workProjects.source }).from(workProjects).where(eq(workProjects.id, c.project.id)).limit(1);
+  if (readSentBack(row?.source).script && readSentBack(row?.source).script!.state !== "done") await settleSendBack(c.project.id, "script", "done");
+  await audit(c.viewer, "script.approval.approved", { objectType: "approval", objectId: req.id, module: "script", meta: { versionNo: res.versionNo, from: "doc" } });
+  const me = (c.zh && c.viewer.nameLocal) || c.viewer.name;
+  await tell(c, req.requestedBy, c.zh ? `${me} 批准了脚本《${c.project.title}》第 ${res.versionNo} 版，可以开拍、剪辑了。\n\n[打开项目 →](/projects/${c.project.id}/edit)` : `${me} approved the script “${c.project.title}” (v${res.versionNo}).\n\n[Open the project →](/projects/${c.project.id}/edit)`);
+  refresh(c.project.id);
+  return { ok: true as const, versionNo: res.versionNo };
+}
+
+/** 提修改意见: send it back with a note — kept on the project (with 编剧's concrete edits), said in its chat, and as a comment. */
+export async function requestChangesAction(projectId: unknown, note: unknown) {
+  const c = await ctx(projectId);
+  if ("error" in c) return c;
+  const scriptId = c.project.scriptId;
+  if (!scriptId) return { error: "Not allowed" };
+  const text = typeof note === "string" ? note.trim().slice(0, 1000) : "";
+  if (!text) return { error: c.zh ? "写下要改什么" : "Say what to change" };
+  const req = await openRequestFor(c.viewer, scriptId);
+  if (req) {
+    await decideApproval(c.viewer, req.id, "rejected", text).catch(() => null);
+    await withdrawOthers(c.viewer, scriptId, req.id);
+  }
+  await addDocComment(c.viewer, scriptId, { beatOrd: null, quote: null, body: c.zh ? `修改意见：${text}` : `Changes requested: ${text}` });
+  const kept = await recordSendBack(c.viewer, c.project, "script", text);
+  await postMessage(c.viewer, c.project.channelId, c.zh ? `脚本退回修改：${text}` : `Script sent back: ${text}`, { flow: true, sentBack: "script" }).catch(() => null);
+  const me = (c.zh && c.viewer.nameLocal) || c.viewer.name;
+  if (req) await tell(c, req.requestedBy, c.zh ? `${me} 对脚本《${c.project.title}》提了修改意见：${text}\n\n[打开脚本 →](${scriptUrl(c.project.id)})` : `${me} requested changes to “${c.project.title}”: ${text}\n\n[Open the script →](${scriptUrl(c.project.id)})`);
+  refresh(c.project.id);
+  return { ok: true as const, suggestions: kept.suggestions?.length ?? 0 };
+}
+
+/** The sent-back note's edits were taken (accepted into the document): off the open list. */
+export async function settleDocSendBackAction(projectId: unknown, state: unknown) {
+  const c = await ctx(projectId);
+  if ("error" in c) return c;
+  await settleSendBack(c.project.id, "script", state === "applied" ? "applied" : "done");
+  refresh(c.project.id);
+  return { ok: true as const };
+}
+
+/** Withdraw the open review requests (取消审阅). */
+export async function withdrawReviewAction(projectId: unknown) {
+  const c = await ctx(projectId, true);
+  if ("error" in c) return c;
+  const scriptId = c.project.scriptId;
+  if (!scriptId) return { error: "Not allowed" };
+  await db
+    .update(approvals)
+    .set({ state: "withdrawn", decidedAt: new Date(), decidedBy: c.viewer.id })
+    .where(and(eq(approvals.objectType, "script"), eq(approvals.objectId, scriptId), eq(approvals.state, "requested")));
+  await db.update(scripts).set({ status: "drafting", updatedAt: new Date() }).where(and(eq(scripts.id, scriptId), eq(scripts.status, "awaiting_approval")));
+  refresh(c.project.id);
+  return { ok: true as const };
+}
