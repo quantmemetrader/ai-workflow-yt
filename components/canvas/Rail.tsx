@@ -159,7 +159,7 @@ export function Rail({ modules, locale, projects = [], account }: { modules: Mod
         const en = TR_EN[item.labelZh] ?? item.label;
         const shown = zh ? <Tr zh={item.labelZh} en={en} /> : label;
         return (
-          <span key={`${item.module}${item.secondary ? ":2" : ""}`} style={{ display: "contents" }}>
+          <span key={item.href} style={{ display: "contents" }}>
             <Link
               href={item.href}
               /* No prefetch: every refresh on a working page re-prefetched all
