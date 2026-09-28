@@ -694,30 +694,10 @@ export async function setTargetOptions(
  */
 export async function approveAndQueue(viewer: Viewer, postId: string, note: string | null) {
   /*
-   * The person who asked is not the person who approves.
-   *
-   * The spec wants an approval record naming somebody. A record naming the
-   * author is a rubber stamp with extra steps, so it is refused here rather
-   * than only hidden on the screen: the action is a public endpoint.
+   * Anyone who holds publish may approve, the person who asked included (the
+   * owner, 29 Sep: "anyone with the authority to approve, have approve
+   * yourself also as a button"). The record still names who approved.
    */
-  const [pending] = await db
-    .select({ requestedBy: approvals.requestedBy })
-    .from(approvals)
-    .where(
-      and(
-        eq(approvals.tenantId, viewer.tenantId),
-        eq(approvals.objectType, "publish_post"),
-        eq(approvals.objectId, postId),
-        eq(approvals.state, "requested"),
-      ),
-    )
-    .orderBy(desc(approvals.requestedAt))
-    .limit(1);
-
-  if (pending && pending.requestedBy === viewer.id) {
-    throw new Error("Somebody other than the person who asked has to approve this");
-  }
-
   const claimed = await db
     .update(publishPosts)
     .set({ state: "approved", updatedAt: new Date() })

@@ -1397,12 +1397,11 @@ function Approvals({
               </button>
               <button
                 type="button"
-                disabled={busy || askedByMe}
+                disabled={busy}
                 onClick={() => onApprove(p)}
-                title={askedByMe ? t("You asked for this one, so somebody else has to approve it", "这是你提交的，需要由他人批准") : undefined}
-                style={{ ...solid, flexShrink: 0, whiteSpace: "nowrap", opacity: busy || askedByMe ? 0.45 : 1 }}
+                style={{ ...solid, flexShrink: 0, whiteSpace: "nowrap", opacity: busy ? 0.45 : 1 }}
               >
-                {t("Approve and publish", "批准并发布")}
+                {askedByMe ? t("Approve it myself and publish", "我自己批准并发布") : t("Approve and publish", "批准并发布")}
               </button>
             </div>
           </div>

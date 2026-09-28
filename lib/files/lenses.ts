@@ -66,6 +66,8 @@ export type ProjectGroup = {
   /** The latest of the project's own edit, its cut's, and its newest file. */
   activeAt: string;
   files: { role: ProjectRole; row: Row }[];
+  /** The project's script, shown as a document on the card (it is not a file, but it is the project's). */
+  script: { id: string; title: string; status: string; updatedAt: string } | null;
   /** Files the project uses that this person may not open. Said as a number,
    * never named: the name of a file is part of the file. */
   hidden: number;
@@ -202,6 +204,15 @@ export async function listByProject(
       )
     : new Set<string>();
 
+  const scriptIds = projects.map((p) => p.scriptId).filter((x): x is string => Boolean(x));
+  const scriptRows = scriptIds.length
+    ? await db
+        .select({ id: scripts.id, title: scripts.title, status: scripts.status, updatedAt: scripts.updatedAt })
+        .from(scripts)
+        .where(and(inArray(scripts.id, scriptIds), isNull(scripts.deletedAt)))
+    : [];
+  const scriptOf = new Map(scriptRows.map((s) => [s.id, { id: s.id, title: s.title, status: s.status as string, updatedAt: s.updatedAt.toISOString() }]));
+
   const groups: ProjectGroup[] = projects.map((p) => {
     const seen = new Set<string>();
     const out: { role: ProjectRole; row: Row }[] = [];
@@ -218,7 +229,7 @@ export async function listByProject(
     const times = [p.updatedAt, p.cutUpdatedAt, ...out.map((f) => f.row.file.updatedAt)]
       .filter((d): d is Date => d instanceof Date)
       .map((d) => d.getTime());
-    return { id: p.id, title: p.title, activeAt: new Date(Math.max(...times)).toISOString(), files: out, hidden };
+    return { id: p.id, title: p.title, activeAt: new Date(Math.max(...times)).toISOString(), files: out, script: (p.scriptId && scriptOf.get(p.scriptId)) || null, hidden };
   });
   groups.sort((a, b) => b.activeAt.localeCompare(a.activeAt));
 

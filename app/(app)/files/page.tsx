@@ -46,6 +46,7 @@ export default async function FilesPage({ searchParams }: { searchParams: Promis
           title: p.title,
           activeAt: p.activeAt,
           hidden: p.hidden,
+          script: p.script,
           files: p.files.map((f) => ({ role: f.role, file: asRow.get(f.row.file.id)! })),
         }))}
         loose={loose.map((r) => asRow.get(r.file.id)!)}

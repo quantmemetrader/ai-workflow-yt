@@ -539,6 +539,22 @@ export function PublishStep({
                       }
                     })
                   }
+                  onSelf={() =>
+                    start(async () => {
+                      if (!window.confirm(t("自己批准并发布？你的名字会记录在批准记录上。", "Approve and publish it yourself? Your name goes on the approval."))) return;
+                      const on = channelRows.filter((r) => rowOf(r.key).on);
+                      const res = await sendChannelsForApprovalAction(projectId, {
+                        fileId: chosen?.id ?? null,
+                        approverId: viewerId,
+                        rows: on.map((r) => ({ channelId: r.channel!.id, title: rowOf(r.key).title || title, body: rowOf(r.key).body })),
+                      });
+                      if (failed(res) || !("postId" in res) || !res.postId) return;
+                      if (!failed(await approveAction(res.postId, ""))) {
+                        notify(t("已批准，后台正在发出", "Approved; it is going out"), "ok");
+                        router.refresh();
+                      }
+                    })
+                  }
                   onApprove={(postId) =>
                     start(async () => {
                       if (!window.confirm(t("批准并发布？你的名字会记录在批准记录上。", "Approve and publish? Your name goes on the approval."))) return;
@@ -845,6 +861,7 @@ function ChannelSend({
   disabled,
   onSend,
   onApprove,
+  onSelf,
 }: {
   zh: boolean;
   people: { id: string; name: string }[];
@@ -854,6 +871,8 @@ function ChannelSend({
   disabled: boolean;
   onSend: (approverId: string | null) => void;
   onApprove: (postId: string) => void;
+  /** Send it and approve it at once: for someone who can approve. */
+  onSelf: () => void;
 }) {
   const t = (a: string, b: string) => (zh ? a : b);
   const [approver, setApprover] = React.useState<string>("");
@@ -866,14 +885,10 @@ function ChannelSend({
           {post.approval?.approverName ? t(` · 已请 ${post.approval.approverName} 批准`, ` · asked ${post.approval.approverName}`) : ""}
           {post.approval?.requestedByName ? <span style={{ color: MUTED }}>{t(` · ${post.approval.requestedByName} 提交`, ` · from ${post.approval.requestedByName}`)}</span> : null}
         </div>
-        {mine ? (
-          <span style={{ fontSize: 12, color: MUTED }}>{t("需要另一位同事批准", "Somebody else has to approve it")}</span>
-        ) : (
-          <button type="button" style={bigButton("primary", pending)} disabled={pending} onClick={() => onApprove(post.id)}>
-            <Icon name="check" size={15} />
-            {t("批准并发布", "Approve and publish")}
-          </button>
-        )}
+        <button type="button" style={bigButton("primary", pending)} disabled={pending} onClick={() => onApprove(post.id)}>
+          <Icon name="check" size={15} />
+          {mine ? t("我自己批准并发布", "Approve it myself and publish") : t("批准并发布", "Approve and publish")}
+        </button>
       </div>
     );
   }
@@ -900,6 +915,10 @@ function ChannelSend({
       <button type="button" style={bigButton("primary", disabled || pending)} disabled={disabled || pending} onClick={() => onSend(approver || null)}>
         <Icon name="share" size={15} />
         {t("提交审批", "Send for approval")}
+      </button>
+      <button type="button" style={bigButton("secondary", disabled || pending)} disabled={disabled || pending} onClick={onSelf}>
+        <Icon name="check" size={15} />
+        {t("我自己批准并发布", "Approve it myself")}
       </button>
     </div>
   );

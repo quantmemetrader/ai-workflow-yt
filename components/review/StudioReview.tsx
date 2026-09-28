@@ -8,11 +8,12 @@ import { Card, Empty, INK, LINE, MUTED, PageBody, bigButton, smallButton } from 
 import { notify } from "@/lib/client/notify";
 import { publishPlatformName, publishedDay } from "@/lib/projects/publication";
 import { refreshReviewAction } from "@/app/(app)/review/actions";
-import { STAT_KEYS, STAT_LABEL, fmtNum, type AccountView } from "@/lib/review/types";
+import { STAT_KEYS, STAT_LABEL, fmtNum, type AccountView, type VideoRow } from "@/lib/review/types";
 import type { PublishedRow } from "@/lib/review/service";
 import { AccountTiles, PlatformMark, ago } from "@/components/review/ReviewParts";
+import { VideoTable } from "@/components/review/VideoTable";
 
-export function StudioReview({ zh, accounts, rows, canWork, stale, hasChannels }: { zh: boolean; accounts: AccountView[]; rows: PublishedRow[]; canWork: boolean; stale: boolean; hasChannels: boolean }) {
+export function StudioReview({ zh, accounts, rows, videos, canWork, stale, hasChannels }: { zh: boolean; accounts: AccountView[]; rows: PublishedRow[]; videos: VideoRow[]; canWork: boolean; stale: boolean; hasChannels: boolean }) {
   const t = (a: string, b: string) => (zh ? a : b);
   const router = useRouter();
   const [busy, setBusy] = React.useState(false);
@@ -37,8 +38,9 @@ export function StudioReview({ zh, accounts, rows, canWork, stale, hasChannels }
   return (
     <div style={{ flexGrow: 1, minWidth: 0, minHeight: 0, display: "flex", flexDirection: "column", background: "#f6f5f2" }}>
       <div style={{ flexShrink: 0, borderBottom: `1px solid ${LINE}`, background: "rgba(250,250,248,.92)" }}>
-        <div style={{ maxWidth: 1180, padding: "10px 32px", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-          <span style={{ fontSize: 13, color: MUTED, flexGrow: 1 }}>{t("账号涨粉、每条作品的表现，每 6 小时自动更新。", "Account growth and how each post did, updated every 6 hours.")}</span>
+        <div style={{ maxWidth: 1180, padding: "14px 32px", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+          <h1 style={{ margin: 0, fontSize: 18, fontWeight: 600, color: INK }}>{t("账号数据", "Account data")}</h1>
+          <span style={{ fontSize: 13, color: MUTED, flexGrow: 1, minWidth: 0 }}>{t("账号涨粉、每条视频的表现，每 6 小时自动更新。", "Account growth and every video's numbers, updated every 6 hours.")}</span>
           {canWork ? (
             <button type="button" disabled={busy} onClick={() => void refresh(true)} style={bigButton("primary", busy)}>
               <Icon name="undo" size={15} />
@@ -50,6 +52,10 @@ export function StudioReview({ zh, accounts, rows, canWork, stale, hasChannels }
       <PageBody width={1180}>
         <Card icon="eye" title={t("账号概况", "Accounts")} sub={t("工作室的所有账号：抖音、小红书、B站，以及已连接的 YouTube、LinkedIn。", "The studio's accounts on Douyin, Xiaohongshu and Bilibili, updated every 6 hours.")}>
           <AccountTiles accounts={accounts} zh={zh} canWork={canWork} />
+        </Card>
+
+        <Card icon="film" title={t("每条视频", "Every video")} sub={t("账号上每一条视频的最新数据。点开看走势和各平台对比。", "Every video on the accounts. Open one for its trend and the other platforms.")} pad={false}>
+          <VideoTable videos={videos} zh={zh} />
         </Card>
 
         <Card icon="play" title={t("已发布的项目", "Published projects")} sub={t("每个项目在各平台作品的最新数据之和。点开进入它的复盘页。", "Each project's latest numbers, added up across platforms. Open one for its review.")} pad={false}>

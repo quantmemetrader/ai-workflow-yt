@@ -3,7 +3,6 @@ import { answeringModel } from "@/lib/ai/models";
 import { listPeople } from "@/lib/chat/service";
 import { listChannels, listLog, listPosts, stateCounts } from "@/lib/publish/service";
 import { PublishScreen } from "@/components/publish/PublishScreen";
-import { PublishTabs } from "@/components/publish/PublishTabs";
 import { listByType } from "@/lib/files/lenses";
 
 export const metadata = { title: "发布 · Publish" };
@@ -38,9 +37,6 @@ export default async function PublishPage() {
   const zh = (viewer.locale ?? "zh-CN").startsWith("zh");
 
   return (
-    <div style={{ flexGrow: 1, minWidth: 0, minHeight: 0, display: "flex", flexDirection: "column" }}>
-      <PublishTabs zh={zh} canPublish />
-      <div style={{ flexGrow: 1, minWidth: 0, minHeight: 0, display: "flex" }}>
     <PublishScreen
       channels={channels}
       posts={posts}
@@ -52,7 +48,5 @@ export default async function PublishPage() {
       model={answeringModel()}
       videos={videos.map((v) => ({ id: v.file.id, name: v.file.name, durationMs: v.file.durationMs, at: v.file.createdAt.toISOString() }))}
     />
-      </div>
-    </div>
   );
 }

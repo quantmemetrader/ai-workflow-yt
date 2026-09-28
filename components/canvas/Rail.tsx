@@ -53,7 +53,7 @@ export function Rail({ modules, locale, account, isAdmin = false }: { modules: M
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const warm = useRef(0);
 
-  const holds = (i: RailItem) => (!i.module || modules.includes(i.module)) && (!i.without || !modules.includes(i.without));
+  const holds = (i: RailItem) => !i.module || modules.includes(i.module);
   const items = RAIL_MAIN.filter(holds);
   const back = isAdmin ? RAIL_BACK.filter(holds) : [];
   /* 后台 is folded until opened, and opens by itself on one of its pages. */

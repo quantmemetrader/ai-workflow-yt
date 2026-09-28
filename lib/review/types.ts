@@ -129,3 +129,26 @@ export const ACCOUNT_OF_PLATFORM: Record<string, AccountView["platform"]> = {
   shipinhao: "wechat_channels",
   bilibili: "bilibili",
 };
+
+/** One upload on one of the studio's accounts, with its numbers (账号数据 · 每条视频). */
+export type VideoRow = {
+  /** `${platform}_${id}`, the address of its own page. */
+  key: string;
+  platform: string;
+  title: string;
+  url: string | null;
+  thumb: string | null;
+  at: string | null;
+  stats: Stats;
+  /** Plays over time (likes where the platform gives no plays), oldest first. */
+  series: { at: string; v: number }[];
+  seriesOf: "plays" | "likes";
+  project: { id: string; title: string } | null;
+};
+
+/** Likes + comments + shares + saves over plays, when there are plays. */
+export function engagement(s: Stats): number | null {
+  if (!s.plays) return null;
+  const n = (s.likes ?? 0) + (s.comments ?? 0) + (s.shares ?? 0) + (s.collects ?? 0);
+  return n / s.plays;
+}

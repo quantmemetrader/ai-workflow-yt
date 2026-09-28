@@ -14,7 +14,17 @@ export type ProjectCard = {
   title: string;
   activeAt: string;
   files: { role: ProjectRole; file: FileRow }[];
+  /** The project's script: a document on the card, opened on its own page. */
+  script?: { id: string; title: string; status: string; updatedAt: string } | null;
   hidden: number;
+};
+
+const SCRIPT_STATE: Record<string, { zh: string; en: string }> = {
+  brief: { zh: "简报", en: "Brief" },
+  drafting: { zh: "撰写中", en: "Drafting" },
+  awaiting_approval: { zh: "待审批", en: "In review" },
+  approved: { zh: "已批准", en: "Approved" },
+  locked: { zh: "已锁定", en: "Locked" },
 };
 
 /* The four shelves of a project card, in the order the work produces them
@@ -44,6 +54,9 @@ const CSS = `
 [data-proj-groups] details[open] .pg-chev { transform: rotate(90deg); }
 [data-proj-groups] .pg-peek { display: flex; gap: 4px; flex-shrink: 0; }
 [data-proj-groups] details[open] .pg-peek { display: none; }
+[data-proj-groups] .pg-script { display: flex; align-items: center; gap: 10px; width: 280px; max-width: 100%; padding: 10px 12px; border: 1px solid #ededed; border-radius: 10px; text-decoration: none; background: #fff; box-sizing: border-box; }
+[data-proj-groups] .pg-script:hover { border-color: #d6d5d0; background: #fafaf8; }
+[data-proj-groups] .pg-doc { width: 34px; height: 42px; border-radius: 5px; background: #eef3fe; color: #1f6feb; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 [data-proj-groups] summary:focus-visible { outline: 2px solid #171717; outline-offset: 2px; border-radius: 10px; }
 [data-proj-groups] .pg-title:hover { text-decoration: underline; text-underline-offset: 3px; }
 @media (prefers-reduced-motion: reduce) { [data-proj-groups] .pg-chev { transition: none; } }
@@ -190,12 +203,13 @@ export function ProjectGroups({
                     {p.title}
                   </Link>
                   <span style={{ fontSize: 12, color: "#8a8a8a", flexShrink: 0, fontVariantNumeric: "tabular-nums" }}>
-                    {p.files.length}
+                    {p.files.length + (p.script ? 1 : 0)}
                   </span>
                 </span>
                 <span style={{ fontSize: 11.5, color: "#8a8a8a", display: "flex", gap: 10, flexWrap: "wrap" }}>
+                  {p.script ? <span style={{ whiteSpace: "nowrap" }}>{zh ? "脚本 1" : "Script 1"}</span> : null}
                   {p.files.length === 0 ? (
-                    <span>{zh ? "还没有文件" : "No files yet"}</span>
+                    p.script ? null : <span>{zh ? "还没有文件" : "No files yet"}</span>
                   ) : (
                     SHELVES.filter((s) => count(s.role) > 0).map((s) => (
                       <span key={s.role} style={{ whiteSpace: "nowrap" }}>
@@ -223,6 +237,25 @@ export function ProjectGroups({
             </summary>
 
             <div style={{ padding: "2px 14px 14px", display: "flex", flexDirection: "column", gap: 14 }}>
+              {p.script ? (
+                <section>
+                  <h3 style={{ margin: "0 0 8px", fontSize: 12, fontWeight: 500, color: "#525252", display: "flex", gap: 6 }}>
+                    {zh ? "脚本" : "Script"}
+                    <span style={{ color: "#8a8a8a", fontWeight: 400 }}>1</span>
+                  </h3>
+                  <Link href={`/script/${p.script.id}`} prefetch={false} className="pg-script">
+                    <span className="pg-doc" aria-hidden>
+                      <Icon name="doc" size={20} />
+                    </span>
+                    <span style={{ minWidth: 0, display: "flex", flexDirection: "column", gap: 3 }}>
+                      <span style={{ fontSize: 13, fontWeight: 500, color: "#171717", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.script.title}</span>
+                      <span style={{ fontSize: 11.5, color: "#8a8a8a", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }} suppressHydrationWarning>
+                        {(SCRIPT_STATE[p.script.status] ? (zh ? SCRIPT_STATE[p.script.status].zh : SCRIPT_STATE[p.script.status].en) : p.script.status) + " · " + (zh ? `${formatDate(p.script.updatedAt, locale)} 更新` : `Updated ${formatDate(p.script.updatedAt, locale)}`)}
+                      </span>
+                    </span>
+                  </Link>
+                </section>
+              ) : null}
               {SHELVES.map((s) => {
                 const list = p.files.filter((x) => x.role === s.role).map((x) => x.file);
                 if (list.length === 0) return null;

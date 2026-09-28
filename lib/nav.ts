@@ -123,8 +123,8 @@ const ALL: NavItem[] = [
     module: "chat",
     secondary: true,
     href: "/review",
-    label: "Published work",
-    labelZh: "作品复盘",
+    label: "Account data",
+    labelZh: "账号数据",
     live: true,
     icon: '<path d="M4 19.5h16" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round"/><path d="M5 15.5l4.2-4.4 3.3 3 6.5-7.1" stroke="currentColor" stroke-width="1.9" fill="none" stroke-linecap="round" stroke-linejoin="round"/><circle cx="19" cy="7" r="1.9"/>',
   },
@@ -206,8 +206,6 @@ export type RailItem = {
   icon: string;
   /** The module that must be held to see it; none means everyone. */
   module?: Module;
-  /** Shown only to someone who does NOT hold this module (a fallback entry). */
-  without?: Module;
   /** Other routes that belong to this entry (it lights up on them too). */
   also?: string[];
 };
@@ -227,9 +225,9 @@ export const RAIL_MAIN: RailItem[] = [
   { href: "/files", label: "Files", labelZh: "文件", icon: iconOf("/files"), module: "files" },
   { href: "/chat", label: "Messages", labelZh: "消息", icon: iconOf("/chat"), module: "chat" },
   { href: "/team", label: "AI team", labelZh: "AI 同事", icon: iconOf("/train"), module: "chat", also: ["/train"] },
-  /* 账号数据 is a tab of 发布 (the owner, 29 Sep); without publish, it keeps its own entry. */
-  { href: "/publish", label: "Publishing", labelZh: "发布", icon: iconOf("/publish"), module: "publish", also: ["/review"] },
-  { href: "/review", label: "Results", labelZh: "数据", icon: iconOf("/review"), without: "publish" },
+  { href: "/publish", label: "Publishing", labelZh: "发布", icon: iconOf("/publish"), module: "publish" },
+  /* Right below 发布, because it comes after it (the owner, 29 Sep): the accounts and every video's numbers. */
+  { href: "/review", label: "Account data", labelZh: "账号数据", icon: iconOf("/review") },
 ];
 
 /** The back office: owners and admins only, folded by default. */
@@ -266,6 +264,7 @@ export type CrumbItem = { href: string; label: string; labelZh: string };
 const SCREENS: CrumbItem[] = [
   { href: "/research/compare", label: "Search & compare", labelZh: "搜索与对比" },
   { href: "/review/channels", label: "Connected channels", labelZh: "已连接渠道" },
+  { href: "/review/video", label: "Video", labelZh: "视频数据" },
   { href: "/research/inbox", label: "Comment inbox", labelZh: "评论收件箱" },
   { href: "/research/backlog", label: "Saved topics", labelZh: "我的储备" },
   { href: "/research/hot", label: "Trending", labelZh: "热点榜" },
