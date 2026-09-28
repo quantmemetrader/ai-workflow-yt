@@ -10,9 +10,11 @@ import { env } from "@/lib/env";
  *   Zernio  → our own channels. Authorised by the studio. Reads *and* writes.
  *   TikHub  → public numbers on anyone's channel. Reads, and only reads.
  *
- * So competitor research comes from here, and nothing that touches the
- * studio's own accounts ever does. There is no write surface in this file and
- * there should never be one.
+ * So competitor research comes from here. The one read of the studio's own
+ * accounts is the 复盘 page's public numbers for the Chinese platforms Zernio
+ * cannot reach (`lib/review/platforms.ts`, asked for by the owner on 28 Sep) —
+ * the same public profile and post counts anybody could see. There is no
+ * write surface in this file and there should never be one.
  *
  * TikHub bills per request and every response is explicit about it
  * ("This request will incur a charge"), so callers are jobs, results are

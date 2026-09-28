@@ -119,6 +119,16 @@ const ALL: NavItem[] = [
     icon: '<path d="M21.86 4.14a1.1 1.1 0 0 0-1.14-.18L2.9 11.13c-.86.34-.83 1.58.05 1.87l4.46 1.5 1.68 5.06c.24.72 1.15.93 1.68.38l2.4-2.5 4.4 3.23c.6.44 1.46.12 1.63-.6z"/>',
   },
   {
+    /** Every published video's numbers and the studio's four accounts, after publish (28 Sep: review follows publish, not research). */
+    module: "chat",
+    secondary: true,
+    href: "/review",
+    label: "Published work",
+    labelZh: "作品复盘",
+    live: true,
+    icon: '<path d="M4 19.5h16" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round"/><path d="M5 15.5l4.2-4.4 3.3 3 6.5-7.1" stroke="currentColor" stroke-width="1.9" fill="none" stroke-linecap="round" stroke-linejoin="round"/><circle cx="19" cy="7" r="1.9"/>',
+  },
+  {
     /**
      * Where the studio trains each AI employee: standing instructions, style
      * and example files, read by every prompt it writes with (28 Sep: "a place
@@ -196,7 +206,8 @@ export type CrumbItem = { href: string; label: string; labelZh: string };
 
 const SCREENS: CrumbItem[] = [
   { href: "/research/compare", label: "Search & compare", labelZh: "搜索与对比" },
-  { href: "/research/performance", label: "Content performance", labelZh: "内容表现" },
+  { href: "/review/channels", label: "Connected channels", labelZh: "已连接渠道" },
+  { href: "/review", label: "Published work", labelZh: "作品复盘" },
   { href: "/research/inbox", label: "Comment inbox", labelZh: "评论收件箱" },
   { href: "/research/backlog", label: "Topic backlog", labelZh: "选题储备" },
   { href: "/files/recent", label: "Recent", labelZh: "最近" },
