@@ -209,7 +209,7 @@ export function ReviewScreen({
       <Card
         icon="eye"
         title={t("账号概况", "Accounts")}
-        sub={t("工作室在四个平台的账号：粉丝、获赞和最近作品。每 6 小时自动更新一次。", "The studio's four accounts: followers, likes and latest posts. Updated every 6 hours.")}
+        sub={t("工作室在抖音、小红书、B站的账号：粉丝、获赞和最近作品。每 6 小时自动更新一次。", "The studio's accounts on Douyin, Xiaohongshu and Bilibili: followers, likes and latest posts. Updated every 6 hours.")}
         right={
           <Link href="/review" prefetch={false} style={smallButton(false)}>
             {t("全部作品复盘", "All published")}
@@ -364,7 +364,7 @@ function AddPost({ projectId, zh, accounts }: { projectId: string; zh: boolean; 
         style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}
       >
         <span style={{ fontSize: 13, fontWeight: 600, color: INK }}>{t("添加作品", "Add a post")}</span>
-        <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder={t("粘贴作品链接或分享文字（抖音 / 小红书 / B站 / 视频号）", "Paste the post's link or share text")} style={{ ...inputStyle, flexGrow: 1, minWidth: 240 }} />
+        <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder={t("粘贴作品链接或分享文字（抖音 / 小红书 / B站）", "Paste the post's link or share text")} style={{ ...inputStyle, flexGrow: 1, minWidth: 240 }} />
         <select value={platform} onChange={(e) => setPlatform(e.target.value)} style={{ ...inputStyle, width: 120 }} aria-label={t("平台", "Platform")}>
           <option value="">{t("自动识别", "Detect")}</option>
           {PUBLISH_PLATFORMS.filter((p) => p.key !== "other").map((p) => (

@@ -49,7 +49,7 @@ export function StudioReview({ zh, accounts, rows, canWork, stale, hasChannels }
         </div>
       </div>
       <PageBody width={1180}>
-        <Card icon="eye" title={t("账号概况", "Accounts")} sub={t("工作室在四个平台的账号，每 6 小时自动更新。", "The studio's four accounts, updated every 6 hours.")}>
+        <Card icon="eye" title={t("账号概况", "Accounts")} sub={t("工作室在抖音、小红书、B站的账号，每 6 小时自动更新。", "The studio's accounts on Douyin, Xiaohongshu and Bilibili, updated every 6 hours.")}>
           <AccountTiles accounts={accounts} zh={zh} canWork={canWork} />
         </Card>
 

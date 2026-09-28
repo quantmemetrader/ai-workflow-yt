@@ -102,7 +102,7 @@ const ACCOUNT_FIELDS = (zh: boolean) => [
 ];
 
 /**
- * The four accounts as equal tiles: followers (and the change since the
+ * The accounts as equal tiles: followers (and the change since the
  * last reading, and a line when there are readings to draw), likes, works,
  * and the three latest posts with their numbers.
  */
@@ -110,7 +110,7 @@ export function AccountTiles({ accounts, zh, canWork }: { accounts: AccountView[
   const router = useRouter();
   const [typing, setTyping] = React.useState<string | null>(null);
   return (
-    <div className="rv-tiles" style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 12 }}>
+    <div className="rv-tiles" style={{ display: "grid", gridTemplateColumns: `repeat(${Math.max(1, accounts.length)}, minmax(0, 1fr))`, gap: 12 }}>
       <style>{`@media (max-width: 1100px){.rv-tiles{grid-template-columns:repeat(2,minmax(0,1fr)) !important}} @media (max-width: 560px){.rv-tiles{grid-template-columns:1fr !important}}`}</style>
       {accounts.map((a) => {
         const s = a.stats;
