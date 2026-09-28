@@ -84,8 +84,43 @@ export function StageBadge({ now, zh, status, published }: { now: Pick<ProjectSt
   );
 }
 
+type TrackStep = { key: string; label: string; owner: ProjectStep["owner"]; state: ProjectStep["state"]; line: string };
+
+/**
+ * The project's steps as its pages number them (选题 · 脚本 · 剪辑 · 发布 ·
+ * 复盘, `lib/projects/tabs.ts`), from its internal steps: uploading the
+ * footage and the cut are one 剪辑, delivery is 发布, and 复盘 follows it —
+ * so the stepper on a card reads like the tabs the card opens onto.
+ */
+function pageSteps(steps: ProjectStep[]): { list: TrackStep[]; map: Record<string, string> } {
+  const by = (k: ProjectStep["key"]) => steps.find((s) => s.key === k);
+  const zh = steps.some((s) => /[\u4e00-\u9fff]/.test(s.label));
+  const topic = by("topic");
+  const script = by("script");
+  const clips = by("clips");
+  const edit = by("edit");
+  const deliver = by("deliver");
+  const parts = [clips, edit].filter((x): x is ProjectStep => Boolean(x));
+  const editState: ProjectStep["state"] = parts.length && parts.every((x) => x.state === "done" || x.state === "skipped")
+    ? "done"
+    : parts.some((x) => x.state === "running")
+      ? "running"
+      : parts.some((x) => x.state === "you")
+        ? "you"
+        : "todo";
+  const list: TrackStep[] = [];
+  if (topic) list.push(topic);
+  if (script) list.push(script);
+  list.push({ key: "edit", label: zh ? "剪辑" : "Edit", owner: "video", state: editState, line: (edit?.state !== "todo" ? edit?.line : clips?.line) ?? "" });
+  if (deliver) list.push({ ...deliver, label: zh ? "发布" : "Publish" });
+  list.push({ key: "review", label: zh ? "复盘" : "Review", owner: "research", state: "todo", line: zh ? "发布后看数据" : "Numbers after it is out" });
+  return { list, map: { clips: "edit", edit: "edit" } };
+}
+
 /** The five steps as a small stepper: each dot in its employee's light colour. */
-export function StepTrack({ steps, current }: { steps: ProjectStep[]; current: string | null }) {
+export function StepTrack({ steps: raw, current: rawCurrent }: { steps: ProjectStep[]; current: string | null }) {
+  const { list: steps, map } = pageSteps(raw);
+  const current = rawCurrent ? (map[rawCurrent] ?? rawCurrent) : null;
   return (
     <span style={{ display: "grid", gridTemplateColumns: `repeat(${steps.length}, minmax(0,1fr))` }}>
       {steps.map((s, i) => {
