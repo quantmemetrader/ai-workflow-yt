@@ -19,7 +19,8 @@ import { trainingFor } from "@/lib/agents/training";
  */
 
 /** The rules every turn works by, whoever is speaking. */
-const RULES = `- Never write internal ids (req_…, con_…, rep_…, tpl_…, scr_…, wp_…) in your answer; name the thing instead. The ids are for your tool calls only.
+const RULES = `- Files people attach ([附件] lines) are read for you: their text is under the message between 〔附件内容：…〕 and 〔附件内容结束〕. Use it. If a file's text is not there, call read_file with its file id. Never say you cannot read attachments or files, and never ask the person to paste a file's content.
+- Never write internal ids (req_…, con_…, rep_…, tpl_…, scr_…, wp_…) in your answer; name the thing instead. The ids are for your tool calls only.
 - A video or a hand-off you start is started, not finished: it runs for minutes after your answer. Say only that it is being cut now and will be posted in this chat when it is out. Never say it is done or rendered, and never describe its opening, numbers or ending: you have not seen it.
 - Never write tool names, tool calls (like watch_topic("…")) or a tool result's own headings into your answer; say what you found and did in plain words.
 - When the person asks you to do something your tools can do, do it now and then say what you did. Never ask them to confirm what they already asked for, never ask twice, and never tell them to go and press something you can do yourself. Ask once, briefly, only when something needed is genuinely missing.

@@ -1,4 +1,5 @@
 import "server-only";
+import { fileTextWithin } from "@/lib/files/extract";
 import { desc, eq, isNull, and } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { files } from "@/lib/db/schema";
@@ -65,7 +66,7 @@ export const TOOL_DEFS: ToolDef[] = [
     function: {
       name: "read_file",
       description:
-        "Read the full text of one document by its id, as returned by search_files or list_recent_files.",
+        "Read any file by its id: documents, slides, spreadsheets, PDFs (scans too), pictures and screenshots (the text in them and what they show), audio and video (a transcript), zip archives. Use it for every [附件] file id whose content is not already under the message, and for ids from search_files or list_recent_files.",
       parameters: {
         type: "object",
         properties: { file_id: { type: "string", description: "The file id, e.g. fil_01k…" } },
@@ -195,7 +196,13 @@ export async function runTool(
 
     case "read_file": {
       const id = String(args.file_id ?? "");
-      const doc = await readFileText(viewer, id);
+      let doc = await readFileText(viewer, id);
+      /* Not read yet (uploaded a moment ago, or before files were read on
+         upload): read it now, then look again. */
+      if (doc && !doc.text.trim()) {
+        await fileTextWithin(id, 120_000, { ledger: { viewer, module: "chat" } }).catch(() => null);
+        doc = await readFileText(viewer, id);
+      }
       if (!doc) {
         // Indistinguishable from "does not exist" on purpose (§2.2.4).
         return { text: `No document with id ${id} is available.` };
@@ -283,12 +290,11 @@ export function toolsFor(viewer: Viewer, opts: { readOnly?: boolean } = {}): Too
 /** Everything the viewer's modules would bring, before any employee's lane
  * or a read-only turn narrows it. */
 function allTools(viewer: Viewer): ToolDef[] {
-  const base = viewer.modules.includes("files")
-    ? TOOL_DEFS
-    : TOOL_DEFS.filter(
-        (t) =>
-          !["search_files", "read_file", "list_recent_files", "create_document"].includes(t.function.name),
-      );
+  /* An AI employee always reads files (what a person attached is shared to
+     it); a person without the Files module gets none of the file tools. */
+  const employee = Boolean(agentKeyFromEmail(viewer.email));
+  const withheld = viewer.modules.includes("files") ? [] : employee ? ["create_document"] : ["search_files", "read_file", "list_recent_files", "create_document"];
+  const base = TOOL_DEFS.filter((t) => !withheld.includes(t.function.name));
 
   const packs = PACKS.filter((p) => holdsPack(viewer.modules, p)).flatMap((p) => p.defs);
   return [...base, ...packs];

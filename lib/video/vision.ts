@@ -584,3 +584,15 @@ export async function checkFrame(image: VisionImage, opts: VisionOptions = {}): 
   const ok = answer.ok === true && !issues.some((i) => i.severity === "high");
   return { ok, issues, captionTextRead: String(answer.caption_text_read ?? answer.captionTextRead ?? ""), usage, raw };
 }
+
+/**
+ * Read pictures into text for the file reader (`lib/files/extract.ts`): the
+ * text in them copied out and what they show, as the instruction asks. The
+ * answer rides in a JSON field because every call here asks for JSON.
+ */
+export async function readImages(images: VisionImage[], instruction: string, opts: VisionOptions = {}): Promise<string> {
+  const parts = await numbered(instruction, images, 'OUTPUT: {"text":"<everything asked for, as plain text>"}');
+  const { answer, raw } = await ask([VISION.scoreFallback, VISION.score], [{ role: "user", content: parts }], 6000, opts);
+  const text = typeof answer.text === "string" ? answer.text : raw;
+  return text.trim();
+}

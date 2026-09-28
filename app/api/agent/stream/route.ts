@@ -1,3 +1,4 @@
+import { fileTextWithin, readable as canBeRead, slowToRead } from "@/lib/files/extract";
 import { endTurn, registerTurn } from "@/lib/ai/turns";
 import { after } from "next/server";
 import { and, eq, isNull, sql, desc, inArray } from "drizzle-orm";
@@ -90,7 +91,16 @@ async function describeAttachments(viewer: Viewer, conversationId: string, raw: 
           console.error("[agent] could not put an attached file in the project's bin", err);
         }
       }
-      return `[附件] ${f.name} (${f.kind}${f.durationMs ? `, ${videoClock(f.durationMs)}` : ""}) file id ${f.id}${note}`;
+      /* Read it now, any format (`lib/files/extract.ts`): the model gets the
+         text under the message (`withAttachmentText`). A long recording is
+         waited on briefly and then read on in the background. */
+      let read = "";
+      if (canBeRead(f.name, f.mime ?? null)) {
+        const slow = slowToRead(f.name, f.mime ?? null);
+        const got = await fileTextWithin(f.id, slow ? 25_000 : 100_000, { ledger: { viewer, module: "chat" } }).catch(() => ({ text: null, pending: false }));
+        read = got.text ? ` · 已读取全文 ${got.text.length} 字` : got.pending ? " · 还在读取（稍后用 read_file 读）" : " · 这个文件读不出内容";
+      }
+      return `[附件] ${f.name} (${f.kind}${f.durationMs ? `, ${videoClock(f.durationMs)}` : ""}) file id ${f.id}${note}${read}`;
     }),
   );
   return { text: lines.join("\n"), fileIds: files.map((f) => f.id) };

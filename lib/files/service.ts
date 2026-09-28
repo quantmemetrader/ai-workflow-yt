@@ -1,4 +1,5 @@
 import "server-only";
+import { readable, slowToRead } from "@/lib/files/extract";
 import { setFileAccess, type AccessChoice } from "@/lib/files/access";
 import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
@@ -538,6 +539,26 @@ export async function completeUpload(viewer: Viewer, fileId: string, checksum?: 
     module: "files",
     meta: { name: row.name, bytes: row.sizeBytes },
   });
+
+  /*
+   * Its text, read once for the AI employees and for search — any document,
+   * slide deck, spreadsheet, PDF, picture or archive (`lib/files/extract.ts`).
+   * Recordings are transcribed when somebody asks for them, not on every
+   * upload. Queued: LibreOffice or the vision model can take a while.
+   */
+  if (readable(row.name, row.mime) && !slowToRead(row.name, row.mime)) {
+    await enqueue({
+      tenantId: viewer.tenantId,
+      type: "files.text",
+      module: "files",
+      payload: { fileId },
+      objectType: "file",
+      objectId: fileId,
+      createdBy: viewer.id,
+      dedupeKey: `text:${fileId}`,
+      priority: 4,
+    }).catch((err) => console.warn(`[files] no text read queued for ${fileId}:`, err instanceof Error ? err.message : err));
+  }
 
   /*
    * A video gets a still, so the file lists have something to show rather than

@@ -45,6 +45,8 @@ export type JobType =
   /** The 480p copy of an uploaded clip that the editor plays instead of the
    * master (`lib/video/proxy.ts`). One FFmpeg pass on the box. */
   | "files.proxy"
+  /** A file's text, read once on upload for the AI and search (`lib/files/extract.ts`). */
+  | "files.text"
   | "video.peaks"
   | "video.autoedit"
   /** Transcribe, cut, design, render: the whole video from a brief

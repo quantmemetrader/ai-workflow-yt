@@ -7,6 +7,7 @@
  *
  *   pm2 logs aura-worker
  */
+import { ensureFileText } from "@/lib/files/extract";
 import { claim, enqueue, fail, heartbeat, requeue, requeueStalled, succeed, type JobRow } from "../lib/jobs/queue";
 import { refreshFeeds, refreshSeries, refreshTopic, syncSourceRegistry } from "../lib/research/ingest";
 import {
@@ -76,6 +77,7 @@ const TIMEOUT_BY_TYPE: Record<string, number> = {
      than that plus the download, or the queue fails work that is still
      running. */
   "files.proxy": 60 * 60_000,
+  "files.text": 20 * 60_000,
 };
 
 type Handler = (job: JobRow) => Promise<unknown>;
@@ -130,6 +132,12 @@ const HANDLERS: Record<string, Handler> = {
      iPhone HEVC that a browser will not decode at all; this is ~0.34 Mbps of
      H.264 that every machine in the studio can start in a second. Queued when
      a video upload completes, never on a request. */
+  /* Any document, deck, sheet, PDF, picture or archive, read into text once
+     for the AI employees and search. */
+  "files.text": (job) => {
+    const { fileId } = job.payload as { fileId: string };
+    return ensureFileText(fileId, job.createdBy ? { ledger: { viewer: { id: job.createdBy, tenantId: job.tenantId }, module: "files" } } : {});
+  },
   "files.proxy": (job) => {
     const { fileId } = job.payload as { fileId: string };
     return makeSourceProxy(fileId);

@@ -1,4 +1,5 @@
 import "server-only";
+import { withAttachmentText } from "@/lib/files/attach-text";
 import { and, desc, eq, inArray, isNull, lt } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { agentMessages, conversations, citations as citationsTable, files, folders, toolCalls } from "@/lib/db/schema";
@@ -225,6 +226,16 @@ export async function* runAgent(opts: {
       .filter((m) => m.id !== assistantId && m.content.trim() && (m.role === "user" || m.role === "assistant"))
       .map((m) => replayed(m, as)),
   ];
+
+  /* What the person attached, read in full under their message (the newest
+     message's files whole, older ones as a start) — "I cannot read the
+     attachment" was the client's first complaint (28 Sep). */
+  const lastUser = messages.map((m) => m.role).lastIndexOf("user");
+  for (let i = 1; i < messages.length; i++) {
+    const m = messages[i];
+    if (m.role !== "user" || typeof m.content !== "string" || !m.content.includes("[附件]")) continue;
+    m.content = await withAttachmentText(viewer, m.content, i === lastUser ? 90_000 : 6_000);
+  }
 
   const tools = toolsFor(viewer, { readOnly: opts.context?.readOnly });
   const citedFileIds = new Set<string>();
