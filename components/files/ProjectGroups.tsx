@@ -170,7 +170,7 @@ export function ProjectGroups({
                   {/* The title goes to the project; the rest of the heading
                       opens and closes the card. */}
                   <Link
-                    href={`/projects/${p.id}`}
+                    href={`/projects/${p.id}/files`}
                     className="pg-title"
                     onClick={(e) => e.stopPropagation()}
                     style={{
