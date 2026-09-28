@@ -80,6 +80,7 @@ Answer with a single JSON object and nothing else:
 
 Rules:
 - Write to the target duration. Roughly 4.5 Chinese characters or 2.6 English words per second of voiceover.
+- Write a complete video script, not a summary or an outline: a hook in the first lines, a body where every point is developed with its detail, number, example or consequence, and a closing line that invites comments.
 - Open on an image, not on narration. The first beat is usually natural sound: set "naturalSound": true and leave "voiceover" empty.
 - Name concrete things: an hour, a street, a number, a person. Never "recently", never "many people".
 - Cover every mandatory point the brief lists.
@@ -87,6 +88,13 @@ Rules:
 - Do not invent facts, names, dates or quotes. If the brief does not give you a fact, write the beat without it.`;
 
 type DraftBeat = { visual: string; voiceover: string; subtitle: string; naturalSound: boolean };
+
+/**
+ * The length a draft is written to when the brief sets none: three minutes,
+ * about 800 characters. With no target the model stopped at 30–60 seconds —
+ * "not enough for video creation" (the owner, 29 Sep).
+ */
+export const DEFAULT_TARGET_SECONDS = 180;
 
 /**
  * Writes a draft from the brief.
@@ -126,9 +134,7 @@ export async function draftFromBrief(
     `Title: ${script.title}`,
     script.angle ? `Angle: ${script.angle}` : null,
     script.targetChannel ? `Channel: ${script.targetChannel}${script.aspect ? ` (${script.aspect})` : ""}` : null,
-    script.targetSeconds
-      ? `Target duration: ${formatDuration(script.targetSeconds)} (±${script.tolerancePercent}%) — about ${Math.round(script.targetSeconds * 4.5)} Chinese characters or ${Math.round(script.targetSeconds * 2.6)} English words of voice-over in total, across enough beats to carry it`
-      : null,
+    `Target duration: ${formatDuration(script.targetSeconds ?? DEFAULT_TARGET_SECONDS)} (±${script.tolerancePercent}%) — about ${Math.round((script.targetSeconds ?? DEFAULT_TARGET_SECONDS) * 4.5)} Chinese characters or ${Math.round((script.targetSeconds ?? DEFAULT_TARGET_SECONDS) * 2.6)} English words of voice-over in total, across enough beats to carry it`,
     script.language ? `Spoken language: ${script.language}` : null,
     script.subtitleLanguage ? `Subtitle language: ${script.subtitleLanguage}` : null,
     script.mandatoryPoints.length ? `Must cover:\n${script.mandatoryPoints.map((p) => `- ${p}`).join("\n")}` : null,
@@ -182,7 +188,7 @@ export async function draftFromBrief(
    * one more pass asks for the rest — the same facts, more of them said —
    * rather than handing over a script that the header at once marks −135 s.
    */
-  const target = script.targetSeconds;
+  const target = script.targetSeconds ?? DEFAULT_TARGET_SECONDS;
   const spoken = (list: DraftBeat[]) => list.reduce((sum, b) => sum + (b.naturalSound ? 0 : spokenSeconds(b.voiceover)), 0);
   if (target && target >= 45 && spoken(beats) < target * 0.6) {
     const have = Math.round(spoken(beats));

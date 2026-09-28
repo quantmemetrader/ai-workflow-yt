@@ -658,3 +658,15 @@ export async function settleSendBackAction(projectId: string, step: string) {
   revalidatePath(`/projects/${project.id}`);
   return { ok: true };
 }
+
+/** The length picked when starting a video (1 / 3 / 5 / 8 minutes), set on its script before the first draft. */
+export async function setScriptLengthAction(projectId: unknown, seconds: unknown) {
+  const viewer = await getViewer();
+  if (!viewer || !viewer.modules.includes("chat")) return { error: "Not allowed" };
+  const secs = typeof seconds === "number" && Number.isFinite(seconds) ? Math.round(seconds) : NaN;
+  if (typeof projectId !== "string" || !(secs >= 15 && secs <= 1800)) return { error: "Not allowed" };
+  const [p] = await db.select({ scriptId: workProjects.scriptId }).from(workProjects).where(and(eq(workProjects.id, projectId), eq(workProjects.tenantId, viewer.tenantId), isNull(workProjects.deletedAt))).limit(1);
+  if (!p?.scriptId) return { error: "Not allowed" };
+  await db.update(scripts).set({ targetSeconds: secs, updatedAt: new Date() }).where(eq(scripts.id, p.scriptId));
+  return { ok: true as const };
+}

@@ -72,6 +72,8 @@ import type { DocComment, ScriptDocProps } from "./types";
 
 const CHIPS: { zh: string; en: string }[] = [
   { zh: "更口语", en: "More conversational" },
+  { zh: "扩写到 3 分钟（约 800 字）", en: "Expand to 3 minutes" },
+  { zh: "扩写到 5 分钟（约 1350 字）", en: "Expand to 5 minutes" },
   { zh: "缩短 30 秒", en: "Cut 30 seconds" },
   { zh: "强化开头钩子", en: "Stronger opening hook" },
   { zh: "删掉绝对化说法", en: "Remove absolute claims" },
