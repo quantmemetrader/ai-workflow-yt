@@ -71,6 +71,8 @@ export type DesignInput = {
   cut?: CutReport | null;
   /** The creator's voice notes, when the tenant has them. */
   voice?: string | null;
+  /** The studio's standing instructions and examples for 剪辑师 (AI 训练). */
+  training?: string | null;
 };
 
 export type ModelCall = (req: { system: string; user: string; maxTokens: number; temperature: number }) => Promise<{ text: string; ms?: number; costMicros?: number }>;
@@ -619,7 +621,7 @@ export function transcriptLines(sentences: readonly Sentence[]): string {
 }
 
 export function outlineMessages(input: DesignInput, window?: { sentences: Sentence[]; seed: Outline }): { system: string; user: string } {
-  const system = `${REEL_SPEC}\n\n---\n\n${input.voice ? `The creator whose channel this is for, in their own numbers and words:\n${input.voice}\n\n---\n\n` : ""}${OUTLINE_PROMPT}`;
+  const system = `${REEL_SPEC}\n\n---\n\n${input.voice ? `The creator whose channel this is for, in their own numbers and words:\n${input.voice}\n\n---\n\n` : ""}${input.training ? `The studio's standing instructions for its editor. Follow them wherever they do not break the spec above or the answer format below:\n${input.training}\n\n---\n\n` : ""}${OUTLINE_PROMPT}`;
   const parts = [
     `Brief from the producer:\n${input.brief || "(none given: make the best reel the footage allows)"}`,
     `The finished cut runs ${(input.totalMs / 1000).toFixed(1)} s in ${input.pieces.length} pieces; ${input.sentences.length} sentences.`,

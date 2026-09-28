@@ -6,6 +6,7 @@ import type { Viewer } from "@/lib/auth/dal";
 import { VIDEO_CRAFT } from "@/lib/video/craft";
 import { agentKeyFromEmail } from "@/lib/agents/catalog";
 import { identityFor } from "@/lib/agents/lanes";
+import { trainingFor } from "@/lib/agents/training";
 
 /**
  * System prompt assembly.
@@ -132,6 +133,10 @@ You are assisting ${viewer.name}${viewer.title ? `, ${viewer.title}` : ""}. Toda
   const sections = rows.map(
     (r) => `\n\n--- ${r.kind.toUpperCase()}: ${r.title} (v${r.version}) ---\n${r.body}`,
   );
+  /* What the team taught this employee on AI 训练 (`lib/agents/training.ts`):
+     an employee speaking reads its own; a person's assistant reads the
+     assistant's. Last, so it is the freshest thing in the prompt. */
+  const training = await trainingFor(viewer.tenantId, agent ?? "assistant");
 
   /*
    * The video craft rules are built in rather than seeded.
@@ -155,7 +160,7 @@ You are assisting ${viewer.name}${viewer.title ? `, ${viewer.title}` : ""}. Toda
             : "";
 
   return {
-    text: header + builtIn + sections.join(""),
+    text: header + builtIn + sections.join("") + (training.text ? `\n\n${training.text}` : ""),
     parts: [
       ...(scoped === "video"
         ? [{ id: "builtin:video-craft", title: "Cutting video", kind: "house", scope: "module: video" }]
@@ -172,6 +177,7 @@ You are assisting ${viewer.name}${viewer.title ? `, ${viewer.title}` : ""}. Toda
         kind: r.kind,
         scope: r.scopeValue ? `${r.scope}: ${r.scopeValue}` : r.scope,
       })),
+      ...training.parts,
     ],
   };
 }

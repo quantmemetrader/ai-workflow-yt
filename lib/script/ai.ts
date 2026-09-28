@@ -7,6 +7,7 @@ import { modelFor } from "@/lib/ai/models";
 import { recordUsage, assertBudget } from "@/lib/ai/ledger";
 import { searchFiles, type Hit } from "@/lib/ai/retrieval";
 import { creatorVoiceText } from "@/lib/creator/service";
+import { trainingFor, type TrainKey } from "@/lib/agents/training";
 import type { Viewer } from "@/lib/auth/dal";
 import { measure, replaceSuggestions, saveBeats, spokenSeconds } from "./service";
 
@@ -24,9 +25,22 @@ import { measure, replaceSuggestions, saveBeats, spokenSeconds } from "./service
  * Every call here is metered and budget-checked like any other (spec §5).
  */
 
-/** The active house-style guide, assembled from the knowledge table. */
-export async function houseStyle(viewer: Viewer): Promise<{ text: string; version: string | null }> {
-  const rows = await db
+/**
+ * The active house-style guide, assembled from the knowledge table, with
+ * what the team taught the writer on AI 训练 (`lib/agents/training.ts`)
+ * after it — 编剧's for scripts, 撰稿人's when the article writer asks. So
+ * every draft, rewrite and check here follows the same instructions and
+ * learns from the same examples.
+ */
+export async function houseStyle(viewer: Viewer, who: TrainKey = "script"): Promise<{ text: string; version: string | null }> {
+  const [rows, training] = await Promise.all([houseRows(viewer), trainingFor(viewer.tenantId, who)]);
+  const text = [rows.map((r) => `## ${r.title}\n${r.body}`).join("\n\n"), training.text].filter(Boolean).join("\n\n");
+  const style = rows.find((r) => r.kind === "style");
+  return { text, version: style ? `v${style.version}` : null };
+}
+
+async function houseRows(viewer: Viewer) {
+  return db
     .select({ title: knowledge.title, body: knowledge.body, version: knowledge.version, kind: knowledge.kind })
     .from(knowledge)
     .where(
@@ -37,14 +51,6 @@ export async function houseStyle(viewer: Viewer): Promise<{ text: string; versio
         eq(knowledge.scopeValue, "script"),
       ),
     );
-
-  if (!rows.length) return { text: "", version: null };
-
-  const style = rows.find((r) => r.kind === "style");
-  return {
-    text: rows.map((r) => `## ${r.title}\n${r.body}`).join("\n\n"),
-    version: style ? `v${style.version}` : null,
-  };
 }
 
 /**

@@ -262,7 +262,7 @@ export type DesignOut = {
 };
 
 /** What the project and its studio put on every video. */
-export type Channel = { accent: string; tenantName: string | null };
+export type Channel = { accent: string; tenantName: string | null; /** What the team taught 剪辑师 on AI 训练. */ training?: string | null };
 
 /**
  * The English line for every caption, in batches of 12, four at a time.
@@ -339,6 +339,7 @@ async function designInput(take: Take, cut: CutOut, d: Pick<DesignOut, "timeline
     furniture: furnitureFromBrief(take.brief, take.title, channel.tenantName),
     cut: cut.report,
     voice: null,
+    training: channel.training ?? null,
   };
 }
 
