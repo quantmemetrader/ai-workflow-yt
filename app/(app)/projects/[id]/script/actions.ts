@@ -351,7 +351,8 @@ export async function importDocAction(projectId: unknown, fileId: unknown, mode:
     mode === "append"
       ? (await db.select({ visual: scriptBeats.visual, voiceover: scriptBeats.voiceover, subtitle: scriptBeats.subtitle, naturalSound: scriptBeats.naturalSound }).from(scriptBeats).where(eq(scriptBeats.scriptId, c.project.scriptId)).orderBy(asc(scriptBeats.ord)))
       : [];
-  const res = await saveBeats(c.viewer, c.project.scriptId, [...existing, ...paras].slice(0, 200));
+  const kept = existing.filter((b) => b.voiceover.trim() || b.visual.trim());
+  const res = await saveBeats(c.viewer, c.project.scriptId, [...kept, ...paras].slice(0, 200));
   if (!res) return { error: c.zh ? "没能写进稿子" : "Could not write it into the script" };
   await setReferences(c.viewer, c.project.scriptId, { add: fileId }).catch(() => null);
   await audit(c.viewer, "script.import", { objectType: "script", objectId: c.project.scriptId, module: "script", meta: { fileId, mode, paragraphs: paras.length } });
