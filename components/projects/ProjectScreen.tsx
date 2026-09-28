@@ -18,6 +18,7 @@ import { notify } from "@/lib/client/notify";
 import { useLiveProject } from "@/lib/client/live";
 import { isRunning } from "@/lib/projects/live-types";
 import { StepCards } from "@/components/projects/StepCards";
+import { FlowMoves } from "@/components/projects/FlowMoves";
 import { Card, GoButton, NextStep, smallButton } from "@/components/projects/kit";
 import { tabHref } from "@/lib/projects/tabs";
 import { LivePill, useLiveRow } from "@/components/chat/LivePill";
@@ -273,6 +274,7 @@ export function ProjectScreen({
         <div style={{ maxWidth: 1440, padding: "20px 32px 60px", display: "flex", flexDirection: "column", gap: 14 }}>
           <style dangerouslySetInnerHTML={{ __html: PROJECT_CSS }} />
           {view === "overview" ? <StepCards p={p} zh={zh} me={me} /> : null}
+          {view === "overview" ? <FlowMoves p={p} zh={zh} canApprove={canApprove} /> : null}
 
           {view === "overview" ? (
             <>

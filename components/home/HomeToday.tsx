@@ -1,3 +1,4 @@
+import * as React from "react";
 import Link from "next/link";
 import { Card, Empty, PageBody, smallButton } from "@/components/projects/kit";
 import { NewVideoBox } from "@/components/home/NewVideoBox";
@@ -8,7 +9,7 @@ import type { Today } from "@/lib/home/today";
  * a box to start a new video, the videos under way, and — only while it is
  * true — which AI employee is busy. One column, one obvious press per row.
  */
-export function HomeToday({ zh, me, greeting, today }: { zh: boolean; me: string; greeting: string; today: Today }) {
+export function HomeToday({ zh, me, greeting, today, team = null }: { zh: boolean; me: string; greeting: string; today: Today; team?: React.ReactNode }) {
   const t = (a: string, b: string) => (zh ? a : b);
   const n = today.todo.length + today.moreTodo;
   return (
@@ -45,6 +46,7 @@ export function HomeToday({ zh, me, greeting, today }: { zh: boolean; me: string
           <Empty icon="check" text={t("都做完了", "All done")} />
         )}
       </Card>
+      {team}
 
       <Card icon="plus" title={t("做一条新视频", "Make a new video")}>
         <NewVideoBox zh={zh} />

@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+
+import { useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { MentionMenu } from "@/components/chat/MentionMenu";
 import { useMentions } from "@/components/chat/useMentions";
@@ -38,15 +39,6 @@ import { AgentName } from "@/components/ui/Tr";
  * component that only looks right inside some of its hosts is not shared.
  */
 
-/*
- * 28 Sep: no longer a column. The owner wanted the pages calm and readable for
- * people who are not technical ("less info per page"), and a chat column
- * down the right of every module was the fourth column on most screens. It
- * is now one round 「问 AI」 button in the bottom-right corner that slides the
- * same panel in over the page; Esc or a click outside puts it away. The
- * conversation stays while the page is open (the host holds it), and the
- * model picker moved out of here (the chat box and Settings choose it).
- */
 const CSS = `
 [data-agent-panel] .rtab { height: 28px; padding: 0 10px 0 6px; border-radius: 8px; display: flex; align-items: center; font-size: 12.5px; color: #7c7c7c; }
 [data-agent-panel] .rtab.on { background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.08), 0 0 0 1px rgba(0,0,0,.03); color: #171717; font-weight: 500; }
@@ -59,26 +51,18 @@ const CSS = `
 [data-agent-panel] .ap-box:focus-within { border-color: #b5b5b5; box-shadow: 0 0 0 3px rgba(23,23,23,.05); }
 [data-agent-panel] .ap-ask { border: 1px solid transparent; background: transparent; border-radius: 6px; padding: 1px; cursor: pointer; display: flex; opacity: .85; }
 [data-agent-panel] .ap-ask:hover { opacity: 1; border-color: #e5e5e5; background: #fff; }
-.ap-fab { position: fixed; right: 22px; bottom: 22px; z-index: 60; display: inline-flex; align-items: center; gap: 8px; height: 46px; padding: 0 18px 0 8px; border-radius: 999px; border: 1px solid #e3e2de; background: #fff; color: #171717; font-family: inherit; font-size: 14px; font-weight: 600; cursor: pointer; box-shadow: 0 6px 22px rgba(0,0,0,.12); transition: transform .15s ease, box-shadow .15s ease; }
-.ap-fab:hover { transform: translateY(-1px); box-shadow: 0 10px 28px rgba(0,0,0,.16); }
-.ap-fab:focus-visible { outline: 2px solid #171717; outline-offset: 2px; }
-.ap-veil { position: fixed; inset: 0; z-index: 70; background: rgba(23,23,23,.18); animation: apFade .15s ease-out; }
-.ap-close { width: 30px; height: 30px; border-radius: 8px; border: 0; background: transparent; color: #525252; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
-.ap-close:hover { background: #f0f0ee; color: #171717; }
-@keyframes apFade { from { opacity: 0 } to { opacity: 1 } }
-@media (prefers-reduced-motion: reduce) { [data-agent-panel] { transition: none !important; } .ap-veil { animation: none; } }
 `;
 export function ResearchAgentPanel({
-  accent: _accent,
+  accent,
   zh,
   /** Top-right caption. The artboards put the region here. */
-  corner: _corner,
+  corner,
   /** The pill under the tab strip: what this screen is currently showing. */
   scope,
   /** One line of plain fact about what is on screen. */
   note,
   placeholder,
-  model: _model,
+  model,
   /** Footer left. The Comment inbox uses it for the PDPO notice. */
   footnote,
   onAsk,
@@ -110,37 +94,14 @@ export function ResearchAgentPanel({
   dock?: boolean;
 }) {
   const [ask, setAsk] = useState("");
-  /* Closed until asked for: the page gets its full width. */
-  const [open, setOpen] = useState(false);
-  useEffect(() => {
-    if (!open) return;
-    const key = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
-    };
-    window.addEventListener("keydown", key);
-    requestAnimationFrame(() => box.current?.focus());
-    return () => window.removeEventListener("keydown", key);
-  }, [open]);
   // One stored width for the agent column, shared by every screen that draws
   // it: narrowing it on Compare and finding it wide again on Inbox would be
   // the same panel disagreeing with itself.
-  const { width, handle } = useResizable("agent-drawer", { min: 320, max: 720, initial: 400, edge: "left" });
-  /* A drawer over the page, docked or not (`dock` is kept for the callers
-     that pass it; there is no column left to fill). */
-  void dock;
-  const frame: React.CSSProperties = {
-    position: "fixed",
-    top: 0,
-    right: 0,
-    bottom: 0,
-    width,
-    zIndex: 71,
-    borderLeft: "1px solid #e7e6e2",
-    boxShadow: open ? "-12px 0 40px rgba(0,0,0,.12)" : "none",
-    transform: open ? "translateX(0)" : "translateX(100%)",
-    visibility: open ? "visible" : "hidden",
-    transition: open ? "transform .22s cubic-bezier(.2,.8,.2,1)" : "transform .18s ease-in, visibility 0s linear .18s",
-  };
+  const { width, handle } = useResizable("agent-panel", { min: 220, max: 620, initial: 272, edge: "left" });
+  // Docked, the host owns the size and draws the seam.
+  const frame: React.CSSProperties = dock
+    ? { flexGrow: 1, minHeight: 0, borderTop: "1px solid #ededed" }
+    : { width, flexShrink: 0, borderLeft: "1px solid #ededed" };
 
   /* Who answers here unless the message tags someone: the screen's own
      employee, or the personal assistant where the screen has none. */
@@ -162,48 +123,56 @@ export function ResearchAgentPanel({
   };
 
   return (
-    <>
-    <style dangerouslySetInnerHTML={{ __html: CSS }} />
-    {open ? null : (
-      <button type="button" className="ap-fab" onClick={() => setOpen(true)} aria-label={zh ? "问 AI" : "Ask AI"}>
-        <AgentIcon agent={home} size={30} radius={15} />
-        {zh ? "问 AI" : "Ask AI"}
-      </button>
-    )}
-    {open ? <div className="ap-veil" onClick={() => setOpen(false)} aria-hidden /> : null}
     <div
       data-agent-panel=""
-      role="dialog"
-      aria-label={zh ? "问 AI" : "Ask AI"}
-      aria-hidden={!open}
       style={{
+        position: "relative",
         background: "#fcfcfc",
         display: "flex",
         flexDirection: "column",
         ...frame,
       }}
     >
-      {handle}
+      {dock ? null : handle}
+      <style dangerouslySetInnerHTML={{ __html: CSS }} />
       <div
         style={{
-          height: 56,
+          height: 42,
           flexShrink: 0,
           display: "flex",
           alignItems: "center",
-          gap: 10,
-          padding: "0 12px 0 16px",
+          gap: 2,
+          padding: "0 10px",
           borderBottom: "1px solid #ededed",
         }}
       >
-        {/* Who answers here: the screen's own employee, or the assistant. */}
-        <AgentIcon agent={home} size={30} radius={9} />
-        <div style={{ minWidth: 0, flexGrow: 1 }}>
-          <div style={{ fontSize: 14, fontWeight: 600, color: "#171717" }}>{home ? <AgentName agent={home} zh={zh} /> : zh ? "你的助理" : "Your assistant"}</div>
-          <div style={{ fontSize: 12, color: "#8a8a8a", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{zh ? `正在看：${scope}` : `Looking at: ${scope}`}</div>
+        {/* Who this panel is: the screen's own employee, or — where the
+            screen has none, as in Chat — the host's pixel robot. It was a
+            cube in the screen's accent colour that stood for nobody. */}
+        <div className="rtab on" style={{ gap: 7 }}>
+          <AgentIcon agent={home} size={18} radius={5} />
+          {home ? <AgentName agent={home} zh={zh} /> : zh ? "助理" : "Agent"}
         </div>
-        <button type="button" className="ap-close" onClick={() => setOpen(false)} aria-label={zh ? "关闭" : "Close"}>
-          <svg viewBox="0 0 24 24" width={16} height={16} fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><path d="M6 6l12 12M18 6 6 18" /></svg>
-        </button>
+        <div style={{ flexGrow: 1 }} />
+        {corner ? <span className="cap">{corner}</span> : null}
+      </div>
+
+      <div style={{ flexShrink: 0, padding: "11px 13px", borderBottom: "1px solid #f3f3f3" }}>
+        <div
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 7,
+            height: 25,
+            padding: "0 10px",
+            borderRadius: 7,
+            background: "#fff",
+            border: "1px solid #ededed",
+          }}
+        >
+          <span style={{ width: 6, height: 6, borderRadius: 3, background: accent }} />
+          <span style={{ fontSize: 11.5, color: "#525252" }}>{scope}</span>
+        </div>
       </div>
 
       {/* The screen's one line of fact, until something has been asked. A
@@ -288,8 +257,8 @@ export function ResearchAgentPanel({
             }}
           />
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 11 }}>
-            {/* The model is chosen in the chat box and in Settings, not here. */}
-            <span style={{ fontSize: 11.5, color: "#a3a3a3" }}>{zh ? "Enter 发送 · Shift+Enter 换行" : "Enter to send"}</span>
+            {/* The model is chosen per message in the chat box. */}
+            <span />
             <button
               type="button"
               aria-label={zh ? "发送" : "Send"}
@@ -344,6 +313,5 @@ export function ResearchAgentPanel({
         </div>
       ) : null}
     </div>
-    </>
   );
 }

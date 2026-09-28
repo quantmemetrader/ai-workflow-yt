@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import type { Proposals } from "@/lib/agents/proposals";
+import { ProposalsStrip } from "@/components/agents/ProposalsStrip";
 import { ResearchAgentPanel } from "./ResearchAgentPanel";
 import type { ScriptListItem } from "@/lib/script/service";
 import { PersonAvatar } from "@/components/ui/PersonAvatar";
@@ -774,6 +775,7 @@ export function ScriptLibraryScreen(props: ScriptLibraryScreenProps): React.JSX.
             {t("New folder")}
           </button>
         </div>
+        {proposals && scope !== "topics" ? <ProposalsStrip owner="script" items={proposals.items} planDate={proposals.planDate} zh={locale.startsWith("zh")} /> : null}
 
         <div style={{ flexGrow: 1, display: "flex", minHeight: 0 }}>
           <div

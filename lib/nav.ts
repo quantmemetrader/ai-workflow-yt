@@ -222,7 +222,7 @@ export const RAIL_MAIN: RailItem[] = [
   { href: "/review", label: "Results", labelZh: "数据", icon: iconOf("/review") },
   { href: "/files", label: "Files", labelZh: "文件", icon: iconOf("/files"), module: "files" },
   { href: "/chat", label: "Messages", labelZh: "消息", icon: iconOf("/chat"), module: "chat" },
-  { href: "/train", label: "AI team", labelZh: "AI 员工", icon: iconOf("/train"), module: "chat" },
+  { href: "/team", label: "AI team", labelZh: "AI 同事", icon: iconOf("/train"), module: "chat", also: ["/train"] },
 ];
 
 /** The back office: owners and admins only, folded by default. */
