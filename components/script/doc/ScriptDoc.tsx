@@ -118,7 +118,11 @@ export function ScriptDoc(props: ScriptDocProps) {
   const [outline, setOutline] = React.useState(true);
   const [ruler, setRuler] = React.useState(true);
   const [shots, setShots] = React.useState(false);
-  const [panel, setPanel] = React.useState<Panel>(null);
+  /* The side panel is always open, on the AI assistant unless 批注 or 版本
+     is picked (the owner, 29 Sep: "have the AI assistant always on"). */
+  const [panelPick, setPanelPick] = React.useState<Exclude<Panel, null>>("ai");
+  const panel: Exclude<Panel, null> = panelPick;
+  const setPanel = (p: Panel) => setPanelPick(p ?? "ai");
   const [zoom, setZoom] = React.useState(1);
   /* Unlocked for this approved version only: a newer approval locks it again. */
   const [unlockedFor, setUnlockedFor] = React.useState<number | null>(null);
@@ -800,7 +804,7 @@ export function ScriptDoc(props: ScriptDocProps) {
       const who = approved?.deciderName ?? "";
       return (
         <Status tone="ok" text={<>{t(`已批准 · 第 ${script.lockedVersion} 版`, `Approved · v${script.lockedVersion}`)}{who ? ` · ${who}` : ""}{approved?.decidedAt ? ` · ${ago(approved.decidedAt, zh)}` : ""}<span className="gd-status-dim">{t("　剪辑师会照这一版剪。改动会生成新版本。", " — the edit follows this version.")}</span></>}>
-          <Link href={`/projects/${projectId}/edit`} prefetch={false} className="gd-status-btn primary">{t("去剪辑 →", "On to the edit →")}</Link>
+          <Link href={`/projects/${projectId}/edit`} prefetch={false} className="gd-status-btn primary">{t("下一步：去剪辑 →", "Next: the edit →")}</Link>
         </Status>
       );
     }
@@ -818,7 +822,7 @@ export function ScriptDoc(props: ScriptDocProps) {
         <Status tone="wait" text={t(`已分享给 ${names} 审阅（第 ${open[0].versionNo ?? "?"} 版），等他们批准。`, `With ${names} for review (v${open[0].versionNo ?? "?"}).`)}>
           <button type="button" className="gd-status-btn" onClick={() => setSharing(true)}>{t("再发给别人", "Send to someone else")}</button>
           {me.canEdit ? <button type="button" className="gd-status-btn" disabled={pending} onClick={() => start(async () => { await withdrawReviewAction(projectId); router.refresh(); })}>{t("撤回审阅", "Withdraw")}</button> : null}
-          {me.isAdmin ? <button type="button" className="gd-status-btn" disabled={pending} onClick={approve}>{t("直接批准", "Approve now")}</button> : null}
+          {me.canEdit ? <button type="button" className="gd-status-btn" disabled={pending} onClick={approve}>{t("我自己审阅通过", "I approve it myself")}</button> : null}
         </Status>
       );
     }
@@ -832,9 +836,10 @@ export function ScriptDoc(props: ScriptDocProps) {
       );
     }
     return (
-      <Status tone="draft" text={<>{t(`草稿 · 第 ${(script.version ?? 0) + 1} 版`, `Draft · v${(script.version ?? 0) + 1}`)}<span className="gd-status-dim">{t("　写好后点「分享」，发给同事审阅并批准。", " — share it for review when it reads right.")}</span></>}>
-        <button type="button" className="gd-status-btn primary" onClick={() => setSharing(true)}>{t("分享 · 请人审阅", "Share for review")}</button>
-        {me.isAdmin ? <button type="button" className="gd-status-btn" disabled={pending} onClick={approve}>{t("直接批准", "Approve now")}</button> : null}
+      <Status tone="draft" text={<><b>{t("写好了？选一个往下走：", "Done? Pick the way forward:")}</b><span className="gd-status-dim">{t(`　草稿 · 第 ${(script.version ?? 0) + 1} 版`, `  Draft · v${(script.version ?? 0) + 1}`)}</span></>}>
+        <button type="button" className="gd-status-btn primary" onClick={() => setSharing(true)}>{t("发给同事审阅", "Send for review")}</button>
+        {me.canEdit ? <button type="button" className="gd-status-btn" disabled={pending} onClick={approve}>{t("我自己审阅通过", "I approve it myself")}</button> : null}
+        <Link href={`/projects/${projectId}/edit`} prefetch={false} className="gd-status-btn">{t("先去剪辑 →", "Skip to the edit →")}</Link>
       </Status>
     );
   }
@@ -855,7 +860,6 @@ export function ScriptDoc(props: ScriptDocProps) {
 
       {/* ---- header ---- */}
       <header className="gd-head">
-        <DocGlyph size={40} />
         <div style={{ display: "flex", flexDirection: "column", minWidth: 0, flexGrow: 1 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
             <input
@@ -887,7 +891,6 @@ export function ScriptDoc(props: ScriptDocProps) {
           <button type="button" className="gd-icon big gd-spark" data-on={panel === "ai" ? "1" : undefined} title={t("AI 助手", "AI copilot")} onClick={() => setPanel(panel === "ai" ? null : "ai")}>
             <GI name="sparkle" size={22} />
           </button>
-          <PersonAvatar id={me.id} url={me.avatarUrl} name={me.name} size={34} />
         </div>
       </header>
 
@@ -905,6 +908,31 @@ export function ScriptDoc(props: ScriptDocProps) {
         onComment={startComment}
         onImage={() => imgInput.current?.click()}
       />
+
+      <div className="gd-actions">
+        {me.canEdit ? (
+          <BigDrop icon="upload" label={t("导入文档", "Import")}>
+            {(close) => (
+              <>
+                <button type="button" className="gd-menu-item" onClick={() => { close(); importMode.current = "replace"; importInput.current?.click(); }}>{t("用文件替换现在的稿子", "Replace with a file")}</button>
+                <button type="button" className="gd-menu-item" onClick={() => { close(); importMode.current = "append"; importInput.current?.click(); }}>{t("把文件内容接在后面", "Add a file's text at the end")}</button>
+              </>
+            )}
+          </BigDrop>
+        ) : null}
+        <BigDrop icon="download" label={t("导出 / 下载", "Export")}>
+          {(close) => (
+            <>
+              {([["docx", t("Word 文档 (.docx)", "Word (.docx)")], ["pdf", "PDF (.pdf)"], ["txt", t("纯文本 (.txt)", "Plain text (.txt)")], ["md", "Markdown (.md)"]] as const).map(([f, label]) => (
+                <a key={f} href={exportHref(f)} download className="gd-menu-item" onClick={close}>{label}</a>
+              ))}
+            </>
+          )}
+        </BigDrop>
+        <button type="button" className="gd-big" onClick={print}><GI name="print" size={18} />{t("打印", "Print")}</button>
+        <button type="button" className="gd-big" onClick={() => setPanel("versions")}><GI name="history" size={18} />{t("版本记录", "Versions")}</button>
+        <button type="button" className="gd-big" onClick={() => setSharing(true)}><GI name="lock" size={18} />{t("分享链接", "Share link")}</button>
+      </div>
 
       {statusLine()}
       {noteOpen ? (
@@ -1138,8 +1166,13 @@ export function ScriptDoc(props: ScriptDocProps) {
         {panel ? (
           <aside className="gd-side">
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
-              <span style={{ fontSize: 16, fontWeight: 500, flexGrow: 1 }}>{panel === "ai" ? t("AI 助手", "AI copilot") : panel === "versions" ? t("版本记录", "Version history") : t("批注", "Comments")}</span>
-              <button type="button" className="gd-icon" onClick={() => setPanel(null)} aria-label={t("关闭", "Close")}><GI name="x" size={18} /></button>
+              <div className="gd-side-tabs" role="tablist">
+                {(["ai", "comments", "versions"] as const).map((k) => (
+                  <button key={k} type="button" role="tab" aria-selected={panel === k} className="gd-side-tab" data-on={panel === k ? "1" : undefined} onClick={() => setPanel(k)}>
+                    {k === "ai" ? t("AI 助手", "AI") : k === "comments" ? t(`批注${openComments.length ? ` ${openComments.length}` : ""}`, "Comments") : t("版本", "Versions")}
+                  </button>
+                ))}
+              </div>
             </div>
             {panel === "ai" ? (
               <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
@@ -1403,8 +1436,8 @@ const CSS = `
 .gd-sep { width: 1px; height: 20px; background: #c7c7c7; margin: 0 5px; flex-shrink: 0; }
 .gd-size { width: 34px; height: 24px; border: 1px solid #747775; border-radius: 4px; text-align: center; font: inherit; font-size: 14px; background: transparent; color: #1f1f1f; flex-shrink: 0; }
 .gd-size:disabled { border-color: #c7c7c7; color: #9aa0a6; }
-.gd-status { display: flex; align-items: center; gap: 10px; margin: 0 16px 6px; padding: 6px 8px 6px 12px; border-radius: 8px; font-size: 13px; color: #1f1f1f; flex-shrink: 0; min-height: 34px; box-sizing: border-box; }
-.gd-status[data-tone="draft"] { background: transparent; }
+.gd-status { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin: 0 16px 8px; padding: 10px 12px 10px 16px; border-radius: 12px; font-size: 15px; color: #1f1f1f; flex-shrink: 0; min-height: 60px; box-sizing: border-box; border: 1px solid #e3e3e3; }
+.gd-status[data-tone="draft"] { background: #fff8e8; border-color: #f4ddb0; }
 .gd-status[data-tone="you"] { background: #fef7e0; }
 .gd-status[data-tone="wait"] { background: #f1f3f4; }
 .gd-status[data-tone="ok"] { background: #e6f4ea; }
@@ -1414,7 +1447,13 @@ const CSS = `
 .gd-status[data-tone="ok"] .gd-status-dot { background: #1e8e3e; }
 .gd-status[data-tone="run"] .gd-status-dot { background: #1a73e8; animation: auraPulse 1.4s ease-in-out infinite; }
 .gd-status-dim { color: #5f6368; }
-.gd-status-btn { display: inline-flex; align-items: center; justify-content: center; height: 30px; padding: 0 14px; border: 1px solid #747775; border-radius: 999px; background: #fff; color: #1f1f1f; font: inherit; font-size: 13px; font-weight: 500; cursor: pointer; text-decoration: none; white-space: nowrap; }
+.gd-status-btn { display: inline-flex; align-items: center; justify-content: center; height: 42px; padding: 0 20px; border: 1px solid #c4c7c5; border-radius: 12px; background: #fff; color: #1f1f1f; font: inherit; font-size: 15px; font-weight: 600; cursor: pointer; text-decoration: none; white-space: nowrap; }
+.gd-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 2px 16px 8px; flex-shrink: 0; }
+.gd-big { display: inline-flex; align-items: center; gap: 8px; height: 42px; padding: 0 16px; border: 1px solid #d3d3d0; border-radius: 12px; background: #fff; color: #1f1f1f; font: inherit; font-size: 14.5px; font-weight: 600; cursor: pointer; white-space: nowrap; text-decoration: none; }
+.gd-big:hover { background: #f3f3f1; }
+.gd-side-tabs { display: flex; gap: 4px; padding: 3px; border-radius: 10px; background: #f1f3f4; width: 100%; }
+.gd-side-tab { flex: 1; height: 32px; border: 0; border-radius: 8px; background: transparent; font: inherit; font-size: 13.5px; color: #5f6368; cursor: pointer; }
+.gd-side-tab[data-on] { background: #fff; color: #1f1f1f; font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,.08); }
 .gd-status-btn:hover:not(:disabled) { background: #f1f3f4; }
 .gd-status-btn.primary { background: #171717; border-color: #171717; color: #fff; }
 .gd-status-btn.primary:hover:not(:disabled) { background: #333; }
@@ -1546,3 +1585,32 @@ const CSS = `
 }
 @media (max-width: 1280px) { .gd-outline { width: 210px; } .gd-margin { width: 240px; } .gd-card { width: 232px; } .gd-ruler-wrap, .gd-ai-dock { padding-right: 256px; } }
 `;
+
+/** A big button that opens a small menu under it (导入 / 导出). */
+function BigDrop({ icon, label, children }: { icon: "upload" | "download"; label: string; children: (close: () => void) => React.ReactNode }) {
+  const [open, setOpen] = React.useState(false);
+  const ref = React.useRef<HTMLDivElement | null>(null);
+  React.useEffect(() => {
+    if (!open) return;
+    const away = (e: Event) => {
+      if (!ref.current?.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("pointerdown", away);
+    return () => document.removeEventListener("pointerdown", away);
+  }, [open]);
+  const close = () => setOpen(false);
+  return (
+    <div ref={ref} style={{ position: "relative", display: "inline-flex" }}>
+      <button type="button" className="gd-big" aria-expanded={open} data-on={open ? "1" : undefined} onClick={() => setOpen((v) => !v)}>
+        <GI name={icon} size={18} />
+        {label}
+        <GI name="chevron" size={15} style={{ color: "#5f6368" }} />
+      </button>
+      {open ? (
+        <div className="gd-menu" style={{ minWidth: 240, left: 0, top: "calc(100% + 6px)" }}>
+          {children(close)}
+        </div>
+      ) : null}
+    </div>
+  );
+}

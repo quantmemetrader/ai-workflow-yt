@@ -262,7 +262,10 @@ export async function approveDocAction(projectId: unknown) {
   const admin = c.viewer.role === "owner" || c.viewer.role === "admin";
   let req = await openRequestFor(c.viewer, scriptId);
   if (!req) {
-    if (!admin) return { error: c.zh ? "没有请你审阅这份脚本" : "You were not asked to review this" };
+    /* 我自己审阅通过: an owner or admin, or anybody who writes scripts,
+       may approve without asking someone else (the owner, 29 Sep: "or do
+       review yourself"). The record still names who approved it. */
+    if (!admin && !c.viewer.modules.includes("script")) return { error: c.zh ? "没有请你审阅这份脚本" : "You were not asked to review this" };
     const r = await requestApproval(c.viewer, scriptId, c.viewer.id);
     if (!r) return { error: c.zh ? "脚本还是空的，或者已经批准了" : "Nothing to approve" };
     req = { id: r.approvalId, approverId: c.viewer.id, requestedBy: c.viewer.id };
