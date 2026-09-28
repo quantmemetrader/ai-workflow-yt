@@ -1,6 +1,6 @@
 "use client";
 
-import { approveNowAction, unlockAction } from "@/app/(app)/script/actions";
+import { unlockAction } from "@/app/(app)/script/actions";
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -8,18 +8,13 @@ import { AgentIcon } from "@/components/agents/AgentIcon";
 import { Icon, type IconName } from "@/components/ui/Icon";
 import { MentionMenu, type MentionPerson } from "@/components/chat/MentionMenu";
 import { useMentions } from "@/components/chat/useMentions";
-import { AccessPicker } from "@/components/files/AccessPicker";
-import { AGENT_COLORS, AGENT_LABELS, AGENT_TINTS, agentTag, parseAgentMentions, type AgentKey } from "@/lib/agents/catalog";
+import { AGENT_COLORS, AGENT_TINTS, agentTag, parseAgentMentions, type AgentKey } from "@/lib/agents/catalog";
 import { pressCardAction, sendChannelMessage } from "@/app/(app)/chat/actions";
-import { applySendBackAction, cancelAutoCutAction, clipLandedAction, deleteProjectAction, flowNoteAction, sendBackAction, settleSendBackAction, renameProjectAction, setAutoCutAction, setProjectAccessAction, setProjectStatusAction, chooseScriptAction, chooseTopicAction, startCutFromPageAction, startFromTopicAction, unpublishAction } from "@/app/(app)/projects/actions";
-import { addClipAction, addItemAction, autoEditAction, exportAction } from "@/app/(app)/video/actions";
-import { uploadFiles } from "@/lib/client/upload";
-import { beginWork } from "@/lib/client/busy";
+import { applySendBackAction, settleSendBackAction, chooseScriptAction, chooseTopicAction } from "@/app/(app)/projects/actions";
+import { addClipAction, addItemAction } from "@/app/(app)/video/actions";
 import { notify } from "@/lib/client/notify";
-import { writeRendering } from "@/lib/client/rendering";
-import { bumpLive, useLiveProject } from "@/lib/client/live";
+import { useLiveProject } from "@/lib/client/live";
 import { isRunning } from "@/lib/projects/live-types";
-import { ClipsNextStep } from "@/components/projects/ClipsNextStep";
 import { StepCards } from "@/components/projects/StepCards";
 import { Card, GoButton, NextStep, smallButton } from "@/components/projects/kit";
 import { tabHref } from "@/lib/projects/tabs";
@@ -32,28 +27,22 @@ import { JobChip } from "@/components/chat/Working";
 import type { StepKey } from "@/lib/agents/steps";
 import { AgentTyping } from "@/components/agents/AgentTyping";
 import { AgentName, Tr } from "@/components/ui/Tr";
-import { PublishPopover } from "@/components/projects/PublishPopover";
-import { PUBLISHED_TONE, PublishedCheck, PublishedMark, PublishedMarks, PublishedPill } from "@/components/projects/Published";
-import { publishPlatformName, publishedDay, type Publication } from "@/lib/projects/publication";
 import { artifactHref } from "@/lib/chat/handoff";
 import { LinkedText } from "@/components/chat/LinkedText";
 import { PersonAvatar } from "@/components/ui/PersonAvatar";
-import { VoicePicker } from "@/components/video/VoicePicker";
-import type { UiVoice } from "@/lib/video/tts/types";
-import { DEFAULT_VOICE_ZH, voiceLabel } from "@/lib/video/tts/voices";
 import { VideoCards } from "@/components/chat/VideoCard";
-import { videoBytes, videoClock } from "@/lib/chat/video-card";
-import { directorStepLabel } from "@/lib/agents/steps";
 
 /**
- * One project, worked on in place.
+ * A project's overview and its topic page.
  *
- * Each stage is a card with its own box to type into, its own buttons, and
- * its own results: 研究员's findings on the topic card, the script's beats on
- * the script card, the clips as thumbnails, the video with a prompt and a
- * player, the captions ready to copy. Asking an employee from a card shows
- * the answer on that card. The conversation itself is one line of activity
- * that opens into a panel only when somebody wants to talk directly.
+ * The overview is the five steps as blocks of one size (`StepCards`), each
+ * opening its own page, and the project's conversation; the topic page is
+ * 研究员's findings with the asks. The script, edit, publish, review and
+ * files pages are their own routes under `/projects/[id]/…` (28 Sep: the one
+ * long page with every card on it was "a bit messy").
+ *
+ * The page keeps asking the server for the project's stamp while anybody is
+ * at work on it (`/api/projects/[id]/pulse`) and refreshes when it moves.
  */
 type Msg = ProjectDetail["messages"][number];
 
@@ -62,7 +51,6 @@ export function ProjectScreen({
   zh,
   people,
   writing,
-  voices = [],
   canApprove = false,
   privateChats = [],
   me = null,
@@ -80,43 +68,13 @@ export function ProjectScreen({
   zh: boolean;
   people: MentionPerson[];
   writing: boolean;
-  /** The narration voices (`lib/video/tts`), for the video card's AI 配音. */
-  voices?: UiVoice[];
 }) {
   const t = (a: string, b: string) => (zh ? a : b);
   const router = useRouter();
   const [pending, start] = React.useTransition();
-  const [naming, setNaming] = React.useState(false);
-  const [name, setName] = React.useState(p.title);
-  const [sharing, setSharing] = React.useState(false);
   const [chatOpen, setChatOpen] = React.useState(false);
   const [popup, setPopup] = React.useState<{ title: string; body: React.ReactNode } | null>(null);
-  const [videoPrompt, setVideoPrompt] = React.useState((p.brief ?? p.title).replace(/@\S+/g, "").trim());
-  /* AI 配音: on means the script's 旁白 is voiced and the video cut to it even
-     when the clips have sound; off (the default) still voices it when the
-     clips turn out to be silent. The voice starts as the one used last. */
-  const [aiVoice, setAiVoice] = React.useState(false);
-  const [voiceId, setVoiceId] = React.useState(p.narration?.voiceId?.replace(/@.*$/, "") || voices.find((v) => v.lang === "zh")?.id || DEFAULT_VOICE_ZH);
-  const hasNarration = p.beats.some((b) => b.voiceover.trim().length > 0);
-  /* The AI 配音 box is for footage nobody speaks in (stock shots, a script-only
-     project) — the owner: "show it only on the ones that actually don't have
-     spoken audio". Speech found by transcription (caption lines exist for the
-     clips) hides it; a narration already made keeps it, so it can be changed. */
-  const footageSpeaks = (p.video?.clips ?? 0) > 0 && (p.video?.captions?.length ?? 0) > 0;
-  const showVoiceBox = Boolean(p.narration) || !footageSpeaks;
-  const oneGoBody = (extra: Record<string, unknown> = {}) =>
-    JSON.stringify({ prompt: videoPrompt, narrate: aiVoice ? "on" : "auto", voiceId, ...extra });
-  const [busyAction, setBusyAction] = React.useState<string | null>(null);
-  const [approveError, setApproveError] = React.useState<string | null>(null);
   const [picking, setPicking] = React.useState<null | "clips" | "scripts" | "topics">(null);
-  /* An upload from this page just landed: the clips card leads with the
-     next press, loud, until the film starts. */
-  const [justLanded, setJustLanded] = React.useState(false);
-  const fileInput = React.useRef<HTMLInputElement | null>(null);
-  /* The 已发布 popover, and which button opened it: the delivery step's in
-     the row of steps, the delivery card's, or the one under the finished
-     film on the 成片 card. */
-  const [publishing, setPublishing] = React.useState<null | "step" | "card" | "video">(null);
   /* When each employee was last asked from a card, so its card can show it working. */
   const [asked, setAsked] = React.useState<Partial<Record<AgentKey, string>>>({});
 
@@ -182,18 +140,6 @@ export function ProjectScreen({
     };
   }, [draftWriting, scriptIdForPulse, router]);
 
-  /** Write (or rewrite) the project's draft from its topic, after the response. */
-  function writeDraft() {
-    start(async () => {
-      const res = await startFromTopicAction({ kind: "project", id: p.id }, { write: true, rewrite: p.beats.length > 0 });
-      if ("error" in res && res.error) {
-        notify(res.error);
-        return;
-      }
-      if ("writing" in res && res.writing) setDraftWriting(true);
-      else if ("note" in res && res.note) notify(res.note);
-    });
-  }
   /*
    * Where the film stands, from the project's rows (`workProjectDetail`):
    *
@@ -207,8 +153,6 @@ export function ProjectScreen({
    */
   const renderLive = p.render?.state === "queued" || p.render?.state === "rendering";
   const busyLive = renderLive || directing;
-  const renderFailed = !directing && p.render?.state === "failed";
-  const cutReady = !busyLive && !(p.render?.state === "done" && p.render.fileId) && (p.video?.items ?? 0) > 0;
   /* The row says "failed" while the worker still holds a job to try again
      (the queue's backoff between attempts): the studio-wide store knows
      (`LiveProject.retrying`). The page keeps asking meanwhile, and does not
@@ -282,128 +226,10 @@ export function ProjectScreen({
     });
   }
 
-  /* A video job, started from a card. Not inside a page-wide transition
-     (that dimmed every button and read as the page glitching), and followed
-     by the corner chip on every page until it lands. */
-  async function runTool(key: string, label: string, fn: () => Promise<{ error?: string } | Record<string, never>>) {
-    if (busyAction) return;
-    setBusyAction(key);
-    const res = await fn().catch((err) => ({ error: err instanceof Error ? err.message : String(err) }));
-    setBusyAction(null);
-    if (res && "error" in res && res.error) {
-      notify(res.error);
-      return;
-    }
-    if (p.video) writeRendering({ projectId: p.video.id, title: p.title });
-    notify(t(`已开始：${label}`, `Started: ${label}`), "ok");
-    setAsked((m) => ({ ...m, video: new Date().toISOString() }));
-    setJustLanded(false);
-    /* Home's card, the sidebar and the corner chip follow at once. */
-    setTimeout(bumpLive, 1500);
-    router.refresh();
-  }
 
-  /**
-   * "素材传好了 · 开始剪" on the clips card: the one-go through the shared
-   * starter (`startCutFromPageAction`), so 剪辑师 says in the project's
-   * chat what it is doing and the chat's chip follows it. Same prompt and
-   * voice choices as the video card's button.
-   */
-  const startCut = () =>
-    runTool("cut", t("剪辑", "the cut"), async () => {
-      const r = await startCutFromPageAction(p.id, { prompt: videoPrompt, narrate: aiVoice ? "on" : "auto", voiceId });
-      return "error" in r && r.error ? { error: r.error } : {};
-    });
 
-  /** "传完自动开始剪", kept on the project; the page refreshes to its state. */
-  function toggleAutoCut(on: boolean) {
-    start(async () => {
-      const r = await setAutoCutAction(p.id, on);
-      if (r?.error) notify(r.error);
-      else notify(on ? t("好，最后一段传完 60 秒后会自动开始剪。", "On: the cut starts a minute after the last upload lands.") : t("已关闭自动开始。", "Auto-start is off."), "ok");
-      router.refresh();
-    });
-  }
-
-  function cancelAutoCut() {
-    start(async () => {
-      const r = await cancelAutoCutAction(p.id);
-      if (r?.error) notify(r.error);
-      else notify(t("已取消这次自动开始；设置还在。", "Cancelled this time; the setting stays."), "info");
-      setTimeout(bumpLive, 500);
-      router.refresh();
-    });
-  }
-
-  async function upload(list: FileList) {
-    if (!p.video) return;
-    const videoId = p.video.id;
-    const done = beginWork(t(`上传 ${list.length} 个文件`, `Uploading ${list.length} file(s)`));
-    try {
-      const out = await uploadFiles(list, {
-        access: { mode: "everyone" },
-        onDone: async (fileId) => {
-          const res = await addClipAction(videoId, fileId);
-          if ("id" in res && res.id) await addItemAction(videoId, "clip", res.id, "");
-          /* "传完自动开始剪": every landing moves the minute; the last one
-             is the one that counts (`clipLandedAction`). */
-          await clipLandedAction(p.id).catch(() => null);
-        },
-      });
-      if (out.uploaded) {
-        notify(t(`已上传 ${out.uploaded} 段素材`, `Uploaded ${out.uploaded} clip(s)`), "ok");
-        setJustLanded(true);
-      }
-      setTimeout(bumpLive, 500);
-      router.refresh();
-    } finally {
-      done();
-    }
-  }
-
-  const rendered = p.render?.state === "done" && p.render.fileId ? p.render.fileId : null;
-  /*
-   * A calm page once work is done (the owner: "all stuff which are done,
-   * don't have those as CTA, only maybe retry ones are fine"). A step that
-   * is done shows its result; its buttons fold behind one quiet grey link
-   * (`Disclose`), and only the next step's press stays loud.
-   *
-   *   topicChosen — the topic card shows a chosen topic: its asks fold;
-   *   hasCut      — a cut is on the timeline: adding clips folds;
-   *   videoMade   — rendered, or a cut exists: the script step is behind us;
-   *   scriptDone  — beats, and approved/locked or the film already made.
-   */
+  /* The topic card shows a chosen topic: its asks fold behind one quiet link. */
   const topicChosen = Boolean(src?.why || src?.hook || src?.evidence?.length || p.brief);
-  const hasCut = (p.video?.items ?? 0) > 0;
-  const videoMade = Boolean(rendered) || hasCut;
-  const scriptDone = p.beats.length > 0 && (p.script?.status === "locked" || p.steps.find((s) => s.key === "script")?.state === "done" || videoMade);
-  const copyDone = p.status === "done" || Boolean(latest("article"));
-  const lastMsg = p.messages[p.messages.length - 1] ?? null;
-
-  /** 「撤回，改回进行中」: back in progress, the platforms and links cleared. */
-  function undoPublish() {
-    if (!window.confirm(t("撤回「已发布」？项目回到进行中，记下的平台和链接会清掉。", "Undo “published”? The project goes back to in progress, and the platforms and links noted are cleared."))) return;
-    start(async () => {
-      const r = await unpublishAction(p.id);
-      if (r?.error) notify(r.error);
-      else notify(t("已改回进行中", "Back in progress"), "ok");
-      router.refresh();
-    });
-  }
-  const publishPopover = (align: "left" | "right") => (
-    <PublishPopover
-      projectId={p.id}
-      zh={zh}
-      rendered={Boolean(rendered)}
-      align={align}
-      onClose={() => setPublishing(null)}
-      onDone={() => {
-        setPublishing(null);
-        router.refresh();
-      }}
-    />
-  );
-  const skipped = (k: ProjectStep["key"]) => p.steps.find((s) => s.key === k)?.state === "skipped";
   const stepDone = (k: ProjectStep["key"]) => p.steps.find((s) => s.key === k)?.state === "done";
   const frontier = p.status === "active" ? frontierStep(p.steps) : null;
   const stepNow = (k: ProjectStep["key"]) => (frontier?.key === k ? frontier.state : null);
@@ -437,21 +263,7 @@ export function ProjectScreen({
       />
     );
   };
-  /* Already 0–100 (`workProjectDetail`). */
-  const pct = p.render?.progress ?? 0;
-  /* What a held button says while a render runs: queued, or how far. */
-  const renderingLabel = p.render?.state === "queued" ? t("排队渲染…", "Queued to render…") : t(`渲染中 ${pct}%…`, `Rendering ${pct}%…`);
-  /* What the 剪辑 step and the 成片 card say while the film is being made:
-     the director's step, or the render with its percent. */
-  const liveWork: LiveWork | null = directing
-    ? { agent: "video", label: { zh: `正在${directorStepLabel(p.director?.step ?? null, true)}`, en: capital(directorStepLabel(p.director?.step ?? null, false)) }, percent: p.director?.step === "render" && pct > 0 ? pct : null, since: p.director?.startedAt ?? null }
-    : renderLive
-      ? { agent: "video", step: p.render?.state === "queued" ? "working" : "rendering", label: p.render?.state === "queued" ? { zh: "排队渲染", en: "Queued to render" } : undefined, percent: p.render?.state === "queued" ? null : pct, since: p.render?.startedAt ?? null }
-      : null;
-  /* The render buttons burn the cut's own caption track, when it has one. */
-  const captionLanguage = p.video?.captions[0] ?? (zh ? "zh-CN" : "en");
-  const burnCaptions = (p.video?.captions.length ?? 0) > 0;
-  const render = (aspect: "9:16" | "16:9") => p.video && runTool(aspect === "9:16" ? "r916" : "r169", t(`渲染 ${aspect}`, `render ${aspect}`), () => exportAction(p.video!.id, { aspect, burnCaptions, captionLanguage }));
+
 
   return (
     <div style={{ flexGrow: 1, minWidth: 0, minHeight: 0, display: "flex", position: "relative", ...PAPER }}>
@@ -928,32 +740,11 @@ function Working({ agent, zh, typing }: { agent: AgentKey; zh: boolean; typing: 
   );
 }
 
-function capital(s: string): string {
-  return s ? s[0].toUpperCase() + s.slice(1) : s;
-}
 
 function Empty({ text }: { text: string }) {
   return <div style={{ fontSize: 12.5, color: "#999999", padding: "14px 12px", border: "1px dashed #e2e2e2", borderRadius: 10, textAlign: "center" }}>{text}</div>;
 }
 
-function BeatsTable({ beats, zh }: { beats: ProjectDetail["beats"]; zh: boolean }) {
-  return (
-    <div style={{ display: "flex", flexDirection: "column" }}>
-      <div style={{ display: "grid", gridTemplateColumns: "30px 1fr 1.4fr", gap: 12, padding: "6px 0", fontSize: 11.5, color: "#999999", borderBottom: "1px solid #eee" }}>
-        <span>#</span>
-        <span>{zh ? "画面" : "On screen"}</span>
-        <span>{zh ? "口播" : "Said"}</span>
-      </div>
-      {beats.map((b) => (
-        <div key={b.ord} style={{ display: "grid", gridTemplateColumns: "30px 1fr 1.4fr", gap: 12, padding: "9px 0", borderBottom: "1px solid #f3f3f3", fontSize: 13, lineHeight: 1.6 }}>
-          <span style={{ color: "#b3b3b3" }}>{b.ord}</span>
-          <span style={{ color: "#525252" }}>{b.visual}</span>
-          <span>{b.voiceover}</span>
-        </div>
-      ))}
-    </div>
-  );
-}
 
 function Body({ text, copy = false }: { text: string; copy?: boolean }) {
   const c = clean(text);
@@ -1164,145 +955,8 @@ function ChatDrawer({ project: p, zh, people, onClose }: { project: ProjectDetai
 /** Each step's card below the flow. 素材 keeps "clips": links elsewhere go to `/projects/<id>#clips`. */
 const STEP_ANCHOR: Record<ProjectStep["key"], string> = { topic: "step-topic", script: "step-script", clips: "clips", edit: "step-edit", deliver: "step-deliver" };
 
-/** To a step's card, outlined for a moment so the eye lands on it (the same outline `#clips` gets). */
-function jumpToCard(key: ProjectStep["key"]) {
-  const el = document.getElementById(STEP_ANCHOR[key]);
-  if (!el) return;
-  el.scrollIntoView({ behavior: "smooth", block: "start" });
-  el.classList.remove("pj-flash");
-  void el.offsetWidth;
-  el.classList.add("pj-flash");
-  window.setTimeout(() => el.classList.remove("pj-flash"), 2500);
-}
 
-type FlowMove = { label: string; onClick?: () => void; disabled?: boolean; hint?: string; to?: ProjectStep["key"] };
-type FlowBack = { to: string; send: (note: string) => Promise<void> };
 
-/**
- * The steps one below the other: a tick on each one done, the sand timer on
- * the one being worked on, the step it has got to in black with a pill
- * (等你 / 进行中 / 下一步) and its presses. Who does each step is on its row:
- * an 「AI」 mark and the employee, or a person's face and name — "highlight
- * which are AI, and the human involved in the rest".
- */
-function StepFlow({
-  steps,
-  zh,
-  people,
-  me,
-  now,
-  confirm,
-  back,
-  pending,
-  live,
-  published,
-  popover,
-  sentBack,
-}: {
-  sentBack: ProjectDetail["sentBack"];
-  steps: ProjectStep[];
-  zh: boolean;
-  people: ProjectDetail["people"];
-  me: { id: string; name: string; avatarUrl: string | null } | null;
-  now: ProjectStep["key"] | null;
-  confirm: FlowMove | null;
-  back: FlowBack | null;
-  pending: boolean;
-  live: LiveWork | null;
-  published: Publication | null;
-  popover: React.ReactNode;
-}) {
-  const t = (a: string, b: string) => (zh ? a : b);
-  return (
-    <div style={{ border: "1px solid #e6e6e6", borderRadius: 14, background: "#fff", padding: "2px 16px", boxShadow: "0 1px 2px rgba(0,0,0,0.03)" }}>
-      {steps.map((s, i) => {
-        const last = i === steps.length - 1;
-        const isNow = s.key === now;
-        const done = s.state === "done";
-        const skipped = s.state === "skipped";
-        const dim = !isNow && !done && s.state !== "running";
-        const k = s.owner === "you" ? null : (s.owner as AgentKey);
-        const who = k ? null : ((s.key === "clips" ? people.clips : s.key === "deliver" ? people.deliver : null) ?? me);
-        const mine = Boolean(who && me && who.id === me.id);
-        const out = s.key === "deliver" && done ? published : null;
-        return (
-          <div key={s.key} style={{ display: "grid", gridTemplateColumns: "24px minmax(0,1fr)", columnGap: 12 }}>
-            <div style={{ position: "relative", display: "flex", justifyContent: "center" }}>
-              <FlowMark step={s} isNow={isNow} n={i + 1} />
-              {/* The line down to the next step: green once this one is behind us. */}
-              {!last ? <span aria-hidden style={{ position: "absolute", top: 38, bottom: -12, left: 11, width: 2, borderRadius: 1, background: done || skipped ? "#bfe3cf" : "#ececea" }} /> : null}
-            </div>
-            <div style={{ position: "relative", minWidth: 0, padding: isNow ? "12px 0 14px" : "12px 0", borderBottom: last ? 0 : "1px solid #f3f3f1" }}>
-              {/* The row's head goes to the step's card below: "when pressed, take the user to that card". */}
-              <div
-                role="link"
-                tabIndex={skipped ? -1 : 0}
-                className={skipped ? undefined : "pj-flow-head"}
-                title={skipped ? undefined : t(`看「${s.label}」`, `Go to ${s.label}`)}
-                onClick={skipped ? undefined : () => jumpToCard(s.key)}
-                onKeyDown={skipped ? undefined : (e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    jumpToCard(s.key);
-                  }
-                }}
-                style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0, flexWrap: "wrap", rowGap: 4 }}
-              >
-                <span style={{ fontSize: 13.5, fontWeight: 600, color: dim ? "#a3a3a3" : "#171717", textDecoration: skipped ? "line-through" : undefined, whiteSpace: "nowrap" }}>{s.label}</span>
-                {/* Who does it: an AI employee is a pill in its own colour
-                    with the AI sparkle; a person is just their face and name. */}
-                {k ? (
-                  <span title={t("AI 员工", "AI employee")} style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 24, padding: "0 9px 0 3px", borderRadius: 7, background: AGENT_TINTS[k], color: AGENT_COLORS[k], opacity: dim ? 0.55 : 1, minWidth: 0, whiteSpace: "nowrap" }}>
-                    <AgentIcon agent={k} size={18} radius={5} />
-                    <span style={{ fontSize: 12, fontWeight: 600 }}>
-                      <AgentName agent={k} zh={zh} />
-                    </span>
-                    <span style={{ display: "inline-flex", alignItems: "center", gap: 2, fontSize: 10.5, fontWeight: 800, letterSpacing: 0.4 }}>
-                      <AiSparkle size={12} />
-                      AI
-                    </span>
-                  </span>
-                ) : (
-                  <span style={{ display: "inline-flex", alignItems: "center", gap: 6, opacity: dim ? 0.55 : 1, minWidth: 0, whiteSpace: "nowrap" }}>
-                    {who ? <PersonAvatar id={who.id} url={who.avatarUrl} name={who.name} size={20} radius={10} /> : <AgentIcon agent={null} size={20} radius={10} />}
-                    <span style={{ fontSize: 12.5, fontWeight: 600, color: "#404040" }}>
-                      {who ? who.name : t("主持人", "The host")}
-                      {mine ? <span style={{ fontWeight: 400, color: "#a3a3a3" }}>{t("（你）", " (you)")}</span> : null}
-                    </span>
-                  </span>
-                )}
-                {isNow ? <NowPill state={s.state} zh={zh} /> : null}
-                {sentBack[s.key]?.state === "open" ? (
-                  <span style={{ fontSize: 11, fontWeight: 600, lineHeight: "18px", padding: "0 8px", borderRadius: 999, color: "#b42318", background: "#fdecea", whiteSpace: "nowrap" }}>{t("有退回意见", "Sent back")}</span>
-                ) : null}
-                <span style={{ marginLeft: "auto", fontSize: 12, color: done ? "#6b6b6b" : isNow ? "#525252" : "#b3b3b3", minWidth: 0, maxWidth: "55%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "inline-flex", alignItems: "center", gap: 6 }}>
-                  {out ? (
-                    <>
-                      <span style={{ color: PUBLISHED_TONE.ink, fontWeight: 600 }}>{`${t("已发布", "Published")} · ${publishedDay(out.at, zh)}`}</span>
-                      {out.platforms.length ? <PublishedMarks platforms={out.platforms} zh={zh} size={15} links gap={4} /> : null}
-                    </>
-                  ) : (
-                    s.line
-                  )}
-                </span>
-              </div>
-              {/* At work: the employee typing its step, as in the chat, with how far and how long. */}
-              {isNow && live && s.state === "running" ? (
-                <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-                  <AgentTyping agent={live.agent} zh={zh} step={live.step} label={live.label} face={false} size="sm" />
-                  {live.percent !== null && live.percent !== undefined ? <span style={{ fontSize: 11.5, fontWeight: 600, color: AGENT_COLORS[live.agent] }}>{live.percent}%</span> : null}
-                  <Elapsed since={live.since} zh={zh} style={{ fontSize: 11.5, color: "#7c7c7c" }} />
-                </div>
-              ) : null}
-              {isNow ? <FlowActions zh={zh} confirm={confirm} back={back} pending={pending} /> : null}
-              {s.key === "deliver" ? popover : null}
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
 
 /**
  * A note a step was sent back with, on that step's card: who sent it and
@@ -1356,348 +1010,19 @@ function SentBackPanel({ back, zh, pending, onApply, onDone }: { back: SentBack;
   );
 }
 
-/** The AI mark: a four-point sparkle with a small one beside it, in the colour around it. */
-function AiSparkle({ size = 13 }: { size?: number }) {
-  return (
-    <svg viewBox="0 0 24 24" width={size} height={size} aria-hidden style={{ display: "block", flexShrink: 0 }}>
-      <path d="M10 2.5c.5 4.6 2.9 7 7.5 7.5-4.6.5-7 2.9-7.5 7.5-.5-4.6-2.9-7-7.5-7.5 4.6-.5 7-2.9 7.5-7.5z" fill="currentColor" />
-      <path d="M18.5 14c.25 2.3 1.45 3.5 3.75 3.75-2.3.25-3.5 1.45-3.75 3.75-.25-2.3-1.45-3.5-3.75-3.75 2.3-.25 3.5-1.45 3.75-3.75z" fill="currentColor" opacity=".7" />
-    </svg>
-  );
-}
 
-/** A step's mark on the line: tick, sand timer, its number in black (the step it is at), or in grey (still to come). */
-function FlowMark({ step: s, isNow, n }: { step: ProjectStep; isNow: boolean; n: number }) {
-  const base: React.CSSProperties = { position: "relative", zIndex: 1, marginTop: 10, width: 24, height: 24, borderRadius: 12, boxSizing: "border-box", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, fontSize: 11.5, fontWeight: 600, fontVariantNumeric: "tabular-nums" };
-  if (s.state === "done") {
-    return (
-      <span style={{ ...base, background: "#278f5e", color: "#fff" }}>
-        <Icon name="check" size={13} strokeWidth={2.8} />
-      </span>
-    );
-  }
-  if (s.state === "skipped") return <span style={{ ...base, background: "#fff", border: "1.5px dashed #d6d6d2", color: "#c4c4c0" }}>{n}</span>;
-  if (s.state === "running") {
-    /* Being worked on: a sand timer turning over, not a dot. */
-    return (
-      <span style={{ ...base, background: "#fff", border: "2px solid #0f5bd5", color: "#0f5bd5" }}>
-        <svg viewBox="0 0 24 24" width="12" height="12" aria-hidden style={{ display: "block", animation: "tgHourglass 1.8s ease-in-out infinite" }}>
-          <style>{"@keyframes tgHourglass{0%,40%{transform:rotate(0deg)}60%,100%{transform:rotate(180deg)}}"}</style>
-          <path d="M6.5 3.5h11M6.5 20.5h11M7.5 3.5c0 4.2 4.5 5.6 4.5 8.5s-4.5 4.3-4.5 8.5M16.5 3.5c0 4.2-4.5 5.6-4.5 8.5s4.5 4.3 4.5 8.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-          <path d="M9.6 18.6h4.8c-.6-1.6-1.6-2.4-2.4-2.9-.8.5-1.8 1.3-2.4 2.9z" fill="currentColor" />
-        </svg>
-      </span>
-    );
-  }
-  if (isNow) return <span style={{ ...base, background: "#171717", color: "#fff", boxShadow: "0 0 0 4px #efefed" }}>{n}</span>;
-  return <span style={{ ...base, background: "#fff", border: "1.5px solid #e2e2e2", color: "#a3a3a3" }}>{n}</span>;
-}
 
-/** Where the step it has got to stands, beside its name: your turn, at work, or next. */
-function NowPill({ state, zh }: { state: ProjectStep["state"]; zh: boolean }) {
-  const tone = state === "you" ? { bg: "#fff4df", ink: "#95590a", zh: "等你", en: "Your turn" } : state === "running" ? { bg: "#e9f2fe", ink: "#1f5fbf", zh: "进行中", en: "Working" } : { bg: "#f3f3f1", ink: "#5f5f5f", zh: "下一步", en: "Next" };
-  return <span style={{ fontSize: 11, fontWeight: 600, lineHeight: "18px", padding: "0 8px", borderRadius: 999, color: tone.ink, background: tone.bg, whiteSpace: "nowrap" }}>{zh ? tone.zh : tone.en}</span>;
-}
 
-/**
- * The step's two presses, inside its row: the one that hands it on (approve
- * the script, start the cut, render, mark it published — whatever the step
- * needs) and the one that sends it back a step with a note. The note is
- * required: "sent back" with no reason is a question the other side has to
- * come and ask.
- */
-function FlowActions({ zh, confirm, back, pending }: { zh: boolean; confirm: FlowMove | null; back: FlowBack | null; pending: boolean }) {
-  const t = (a: string, b: string) => (zh ? a : b);
-  const [open, setOpen] = React.useState(false);
-  const [note, setNote] = React.useState("");
-  const [sending, setSending] = React.useState(false);
-  const live = confirm && !confirm.disabled && confirm.onClick ? { label: confirm.label, onClick: confirm.onClick } : null;
-  if (!live && !back && !confirm?.hint) return null;
-  const send = async () => {
-    if (!back || !note.trim() || sending) return;
-    setSending(true);
-    try {
-      await back.send(note.trim());
-      setNote("");
-      setOpen(false);
-    } finally {
-      setSending(false);
-    }
-  };
-  return (
-    <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
-      <div style={{ display: live || back ? "flex" : "none", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-        {/* Only a press that can be pressed: "先上传素材，再交给剪辑师" greyed out
-            was a button nobody could use, taking the row. */}
-        {live ? (
-          <button type="button" onClick={live.onClick} disabled={pending} className="pj-flow-next">
-            <Icon name="check" size={12} strokeWidth={2.4} />
-            {live.label}
-          </button>
-        ) : null}
-        {back ? (
-          <button type="button" onClick={() => setOpen((v) => !v)} disabled={pending || sending} className="pj-flow-back" aria-expanded={open}>
-            <Icon name="undo" size={12} />
-            {t(`退回给 ${back.to}`, `Send back to ${back.to}`)}
-          </button>
-        ) : null}
-      </div>
-      {confirm?.disabled && confirm.hint ? (
-        confirm.to ? (
-          <button type="button" onClick={() => jumpToCard(confirm.to!)} className="pj-flow-hint">
-            {confirm.hint}
-          </button>
-        ) : (
-          <div style={{ fontSize: 11.5, color: "#7c7c7c" }}>{confirm.hint}</div>
-        )
-      ) : null}
-      {open && back ? (
-        <div style={{ display: "flex", flexDirection: "column", gap: 8, maxWidth: 640 }}>
-          <textarea
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            autoFocus
-            rows={2}
-            placeholder={t(`写下要改什么，${back.to} 会在项目对话里收到`, `Say what to change; ${back.to} gets it in the project chat`)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) void send();
-            }}
-            style={{ width: "100%", boxSizing: "border-box", resize: "vertical", minHeight: 56, border: "1px solid #e2e2e2", borderRadius: 9, padding: "8px 10px", fontFamily: "inherit", fontSize: 12.5, lineHeight: 1.5, outline: "none" }}
-          />
-          <div style={{ display: "flex", gap: 8 }}>
-            <button type="button" className="pj-flow-next" onClick={() => void send()} disabled={sending || !note.trim()}>
-              {sending ? t("正在退回…", "Sending back…") : t(`附意见退回给 ${back.to}`, `Send back to ${back.to}`)}
-            </button>
-            <button type="button" className="pj-flow-back" onClick={() => setOpen(false)} disabled={sending}>
-              {t("取消", "Cancel")}
-            </button>
-          </div>
-        </div>
-      ) : null}
-    </div>
-  );
-}
 
-/**
- * The delivery card's head: before, the press that marks it published (or,
- * with no cut yet, a quiet "mark it done anyway"); after, where it went —
- * each platform with its link, who marked it and when, the note — and a
- * quiet way back to in progress.
- */
-function Delivery({
-  project: p,
-  zh,
-  rendered,
-  open,
-  onToggle,
-  popover,
-  onUndo,
-  disabled,
-}: {
-  project: ProjectDetail;
-  zh: boolean;
-  rendered: boolean;
-  open: boolean;
-  onToggle: () => void;
-  popover: (align: "left" | "right") => React.ReactNode;
-  onUndo: () => void;
-  disabled: boolean;
-}) {
-  const t = (a: string, b: string) => (zh ? a : b);
-  if (p.status === "done") {
-    const pub = p.published;
-    return (
-      <div style={{ marginBottom: 12, padding: "12px 14px", borderRadius: 12, background: "#f3fbf6", border: `1px solid ${PUBLISHED_TONE.line}` }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-          <PublishedCheck size={18} />
-          <span style={{ fontSize: 13.5, fontWeight: 600, color: PUBLISHED_TONE.ink }}>
-            <Tr zh="已发布" en="Published" inZh={zh} />
-          </span>
-          {pub ? (
-            <span style={{ fontSize: 12, color: "#5f7f6d" }}>
-              {publishedDay(pub.at, zh)}
-              {pub.byName ? ` · ${pub.byName}` : ""}
-            </span>
-          ) : null}
-          <span style={{ flexGrow: 1 }} />
-          {p.canPublish ? (
-            <button type="button" className="pj-quiet" onClick={onUndo} disabled={disabled} style={{ ...quiet("#5f6f66"), height: 26, padding: "0 8px" }}>
-              <Icon name="undo" size={12} />
-              <Tr zh="撤回，改回进行中" en="Undo, back to in progress" inZh={zh} />
-            </button>
-          ) : null}
-        </div>
-        {pub?.platforms.length ? (
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 10 }}>
-            {pub.platforms.map((pl) =>
-              pl.url ? (
-                <a key={pl.key} href={pl.url} target="_blank" rel="noopener noreferrer" className="pj-pub-link" title={pl.url}>
-                  <PublishedMark platform={pl.key} size={15} zh={zh} />
-                  <span style={{ fontWeight: 500, color: "#171717" }}>{publishPlatformName(pl.key, zh)}</span>
-                  <span style={{ color: "#7c8a82", minWidth: 0, maxWidth: 170, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{shortUrl(pl.url)}</span>
-                  <Icon name="external" size={11} color="#7c8a82" />
-                </a>
-              ) : (
-                <span key={pl.key} className="pj-pub-link" data-nolink="">
-                  <PublishedMark platform={pl.key} size={15} zh={zh} />
-                  <span style={{ fontWeight: 500, color: "#171717" }}>{publishPlatformName(pl.key, zh)}</span>
-                  <span style={{ color: "#a3a3a3" }}>{t("没有链接", "no link")}</span>
-                </span>
-              ),
-            )}
-          </div>
-        ) : (
-          <div style={{ marginTop: 8, fontSize: 12, color: "#6f8a7b" }}>{t("标记完成时没有记下平台。", "No platform was noted when it was marked.")}</div>
-        )}
-        {pub?.note ? <p style={{ margin: "9px 0 0", fontSize: 12.5, color: "#3f5247", lineHeight: 1.55, whiteSpace: "pre-wrap" }}>{pub.note}</p> : null}
-      </div>
-    );
-  }
-  /* Offered to the project's managers only (`canPublish`), and only while it
-     is active: an archived one is read-only (the server refuses it too). */
-  if (!p.canPublish || p.status !== "active") return null;
-  return rendered ? (
-    <div style={{ position: "relative", marginBottom: 12, display: "flex", alignItems: "center", gap: 12, padding: "11px 12px 11px 14px", borderRadius: 12, background: "#fafaf9", border: "1px solid #ececea", flexWrap: "wrap" }}>
-      <span style={{ flex: "1 1 200px", minWidth: 0 }}>
-        <span style={{ display: "block", fontSize: 13, fontWeight: 600 }}>{t("成片好了", "The cut is ready")}</span>
-        <span style={{ display: "block", fontSize: 11.5, color: "#7c7c7c", marginTop: 2, lineHeight: 1.5 }}>
-          {t("发出去后，在第 5 步标记完成。", "Posted it? Mark it done on step 5.")}
-        </span>
-      </span>
-      {/* The loud one is on the step-5 card; this is the same press, quiet. */}
-      <button type="button" className="pj-quiet" onClick={onToggle} disabled={disabled} aria-expanded={open} data-pub-opener="" style={{ ...quiet("#8a8a8a"), height: 28, padding: "0 8px" }}>
-        <Icon name="check" size={12} />
-        <Tr zh="已发布 · 标记完成" en="Mark as published" inZh={zh} />
-      </button>
-      {open ? popover("right") : null}
-    </div>
-  ) : (
-    <div style={{ position: "relative", marginBottom: 10, display: "flex" }}>
-      <button type="button" className="pj-quiet" onClick={onToggle} disabled={disabled} aria-expanded={open} data-pub-opener="" style={{ ...quiet("#7c7c7c"), height: 26, padding: "0 8px", marginLeft: -8 }}>
-        <Icon name="check" size={12} />
-        <Tr zh="没有成片也标记完成" en="Mark done without a cut" inZh={zh} />
-      </button>
-      {open ? popover("left") : null}
-    </div>
-  );
-}
 
-/** "youtu.be/abc123" — a link without its scheme and "www.", for a chip. */
-function shortUrl(url: string): string {
-  return url.replace(/^https?:\/\//, "").replace(/^www\./, "").replace(/\/$/, "");
-}
 
-function StatusPill({ status, zh }: { status: string; zh: boolean }) {
-  const [label, color, bg] =
-    status === "done" ? [zh ? "已发布" : "Published", "#0b7a63", "#e3f4ee"] : status === "archived" ? [zh ? "已归档" : "Archived", "#7c7c7c", "#f0f0f0"] : [zh ? "进行中" : "In progress", "#0f5bd5", "#e6effd"];
-  return <span style={{ fontSize: 11.5, fontWeight: 500, color, background: bg, borderRadius: 999, padding: "0 9px", lineHeight: "22px", whiteSpace: "nowrap", flexShrink: 0 }}>{label}</span>;
-}
 
-function scriptStatus(s: string, zh: boolean): string {
-  const m: Record<string, [string, string]> = { brief: ["草稿", "draft"], drafting: ["草稿", "draft"], awaiting_approval: ["等批准", "awaiting approval"], locked: ["已锁定", "locked"], archived: ["已归档", "archived"] };
-  const v = m[s] ?? [s, s];
-  return zh ? v[0] : v[1];
-}
 
-/**
- * The film being made, as the 剪辑 step and the 成片 card type it: who, on
- * what (a step from the shared table, or the director's own words), how far
- * (the render's percent), and since when.
- */
-type LiveWork = { agent: AgentKey; step?: StepKey; label?: { zh: string; en: string }; percent?: number | null; since: string | null };
 
-/**
- * The browser's clock, ticking every `ms`, as an external store: null on
- * the server and on the first client render (`getServerSnapshot`), so the
- * markup hydrates without a mismatch, then the time. The snapshot is the
- * clock rounded to the tick, so two reads within one tick agree — which is
- * what `useSyncExternalStore` needs from a snapshot.
- */
-function useNow(ms: number, on: boolean): number | null {
-  return React.useSyncExternalStore(
-    (onChange) => {
-      if (!on) return () => undefined;
-      const id = setInterval(onChange, ms);
-      return () => clearInterval(id);
-    },
-    () => (on ? Math.floor(Date.now() / ms) * ms : null),
-    () => null,
-  );
-}
 
-/**
- * "已用 3 分 12 秒" — how long a job has been at it, ticking.
- *
- * Nothing on the server: the clock starts in the browser after hydration
- * (`useNow`), so the server's markup and the first client render agree (a
- * time worked out on both sides would differ by the request's flight).
- */
-function Elapsed({ since, zh, style }: { since: string | null; zh: boolean; style?: React.CSSProperties }) {
-  const now = useNow(1000, Boolean(since));
-  if (!since || now === null) return null;
-  const secs = Math.max(0, Math.round((now - new Date(since).getTime()) / 1000));
-  if (!Number.isFinite(secs)) return null;
-  const m = Math.floor(secs / 60);
-  const s = secs % 60;
-  const text = zh ? (m ? `已用 ${m} 分 ${s} 秒` : `已用 ${s} 秒`) : m ? `${m}m ${s}s so far` : `${s}s so far`;
-  return (
-    <span style={{ fontSize: 12, color: "#7c7c7c", fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap", ...style }} aria-live="off">
-      {text}
-    </span>
-  );
-}
 
-/**
- * "预计还要约 2 分钟" — from how far the render has got in how long: the
- * remaining share at the pace so far. Said only once a tenth is done and a
- * minute has been measured, because the first percent are the setup and
- * would promise an hour. Browser-side, for the same reason as `Elapsed`.
- */
-function RenderEta({ render, zh }: { render: ProjectDetail["render"]; zh: boolean }) {
-  const startedAt = render?.startedAt ?? null;
-  const now = useNow(5000, Boolean(startedAt));
-  if (!render || render.state !== "rendering" || !startedAt || now === null) return null;
-  const pct = render.progress;
-  const elapsed = now - new Date(startedAt).getTime();
-  if (pct < 10 || elapsed < 20_000) return <span>{zh ? "正在估算剩余时间…" : "Working out the time left…"}</span>;
-  const left = (elapsed * (100 - pct)) / pct;
-  const mins = Math.ceil(left / 60_000);
-  return <span>{mins <= 1 ? (zh ? "预计不到一分钟" : "Under a minute left") : zh ? `预计还要约 ${mins} 分钟` : `About ${mins} min left`}</span>;
-}
 
-/**
- * The finished film, on the card: the 480p copy plays (a twentieth of the
- * master's bytes; the studio's link to the bucket is the slow part) and
- * drops to the master when that copy will not play — deleted, or not this
- * reader's to open. The poster is the render's own still.
- */
-function RenderPlayer({ render, zh }: { render: NonNullable<ProjectDetail["render"]>; zh: boolean }) {
-  const [proxyFailed, setProxyFailed] = React.useState(false);
-  const fileId = render.fileId!;
-  const playing = proxyFailed ? fileId : (render.proxyFileId ?? fileId);
-  const shape = render.aspect === "9:16" ? TALL_SHAPE : WIDE_SHAPE;
-  return (
-    <video
-      key={playing}
-      controls
-      preload="metadata"
-      playsInline
-      poster={`/api/files/${fileId}/thumb`}
-      src={`/api/files/${playing}/download`}
-      onError={() => {
-        if (!proxyFailed && render.proxyFileId) setProxyFailed(true);
-      }}
-      aria-label={zh ? "成片" : "The video"}
-      style={{ display: "block", aspectRatio: render.aspect.replace(":", " / "), objectFit: "contain", borderRadius: 12, background: "#000", ...shape }}
-    />
-  );
-}
 
-/** A vertical film is a phone screen: 480 tall and as wide as that makes
- * it, centred — not the whole column's width of black with a thin picture
- * in the middle. A wide one takes the column. */
-const TALL_SHAPE: React.CSSProperties = { height: 480, width: "auto", maxWidth: "100%", margin: "0 auto" };
-const WIDE_SHAPE: React.CSSProperties = { width: "100%", maxHeight: 420 };
 
 function clean(body: string): string {
   /* Markdown links read as their words; a link back to a project page (you
@@ -1722,10 +1047,6 @@ function oneLine(body: string): string {
     .slice(0, 140);
 }
 
-function clock(ms: number): string {
-  const s = Math.round(ms / 1000);
-  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
-}
 
 function ago(iso: string, zh: boolean): string {
   const mins = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000));

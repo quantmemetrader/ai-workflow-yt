@@ -7,7 +7,6 @@ import { listPeople } from "@/lib/chat/service";
 import { projectForPage } from "@/lib/projects/page-data";
 import { scriptWriting } from "@/lib/script/writing";
 import { ProjectScreen } from "@/components/projects/ProjectScreen";
-import { voicesForUi } from "@/lib/video/tts";
 
 
 /**
@@ -22,9 +21,6 @@ export async function ProjectScreenPage({ id, view }: { id: string; view: "overv
   /* Whether 编剧 is writing into its script now, with the mark's time limit
      applied here rather than in the browser, whose clock may differ. */
   const writing = project.script ? (await scriptWriting(viewer.tenantId, project.script.id)).writing : false;
-  /* The narration voices for the video card's AI 配音 — only for somebody who
-     can make the video, and only when there is a video to make. */
-  const voices = project.video && viewer.modules.includes("video") ? await voicesForUi().catch(() => []) : [];
   /* Your own private chats that worked on this project (编剧 wrote its script
      there, 剪辑师 made its video there): linked from the page, which used to
      say "对话 0" while the whole conversation had happened in private. */
@@ -46,7 +42,6 @@ export async function ProjectScreenPage({ id, view }: { id: string; view: "overv
       project={project}
       zh={zh}
       writing={writing}
-      voices={voices}
       privateChats={privateChats.map((c) => ({ id: c.id, title: c.title }))}
       canApprove={viewer.role === "owner" || viewer.role === "admin"}
       me={{ id: viewer.id, name: (zh && viewer.nameLocal) || viewer.name, avatarUrl: viewer.avatarUrl }}
