@@ -966,10 +966,24 @@ export function ScriptDoc(props: ScriptDocProps) {
             <span>{t("时长", "Length")}</span>
             <span key={`len-${docState.seconds}`}>{clock(docState.seconds, zh)}</span>
             <span style={{ color: "#8a8a8a", fontWeight: 500 }}>/ {t("目标", "target")}</span>
-            <select value={String(script.targetSeconds ?? 180)} disabled={!me.canEdit || pending} onChange={(e) => setLength(Number(e.target.value))} aria-label={t("目标时长", "Target length")}>
+            <select
+              value={String(script.targetSeconds ?? 180)}
+              disabled={!me.canEdit || pending}
+              onChange={(e) => {
+                if (e.target.value === "custom") {
+                  const v = window.prompt(t("目标时长（分钟，可以写小数，如 2.5）", "Target length in minutes (e.g. 2.5)"), String(Math.round(((script.targetSeconds ?? 180) / 60) * 10) / 10));
+                  const n = Math.round(Number(v) * 60);
+                  if (v !== null && n >= 10 && n <= 3600) setLength(n);
+                  return;
+                }
+                setLength(Number(e.target.value));
+              }}
+              aria-label={t("目标时长", "Target length")}
+            >
               {[30, 60, 90, 180, 300, 480, 600].concat(script.targetSeconds && ![30, 60, 90, 180, 300, 480, 600].includes(script.targetSeconds) ? [script.targetSeconds] : []).map((n) => (
                 <option key={n} value={n}>{n < 60 ? t(`${n} 秒`, `${n}s`) : t(`${Math.round((n / 60) * 10) / 10} 分钟`, `${Math.round((n / 60) * 10) / 10} min`)}</option>
               ))}
+              <option value="custom">{t("自定义…", "Custom…")}</option>
             </select>
             {me.canEdit && Math.abs(docState.seconds - (script.targetSeconds ?? 180)) > (script.targetSeconds ?? 180) * 0.15 ? (
               <button type="button" className="gd-length-fit" disabled={thinking || Boolean(proposal)} onClick={() => fitToLength(script.targetSeconds ?? 180)}>

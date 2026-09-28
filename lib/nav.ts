@@ -217,10 +217,10 @@ const GEAR =
 
 export const RAIL_MAIN: RailItem[] = [
   { href: "/home", label: "Home", labelZh: "首页", icon: iconOf("/home"), module: "chat" },
-  { href: "/projects", label: "Videos", labelZh: "视频", icon: iconOf("/video"), module: "chat", also: ["/article"] },
+  { href: "/projects", label: "Projects", labelZh: "项目", icon: '<rect x="3.4" y="4.4" width="17.2" height="15.2" rx="2.4"/><path d="M9.2 4.4v15.2M14.8 4.4v15.2" stroke="#f8f8f8" stroke-width="1.5" fill="none"/>', module: "chat", also: ["/article"] },
   /* Every script and every cut, each in its project's folder (Ryan, 29 Sep: "where is the scripts page"). */
   { href: "/script", label: "Scripts", labelZh: "脚本", icon: iconOf("/script"), module: "script" },
-  { href: "/video", label: "Cuts", labelZh: "剪辑", icon: iconOf("/video"), module: "video" },
+  { href: "/video", label: "Videos", labelZh: "视频", icon: iconOf("/video"), module: "video" },
   { href: "/research", label: "Topics", labelZh: "选题", icon: iconOf("/research"), module: "research" },
   { href: "/review", label: "Results", labelZh: "数据", icon: iconOf("/review") },
   { href: "/files", label: "Files", labelZh: "文件", icon: iconOf("/files"), module: "files" },

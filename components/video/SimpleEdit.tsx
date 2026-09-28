@@ -61,6 +61,7 @@ export function SimpleEdit({ f, zh, modeSwitch }: { f: SimpleFacts; zh: boolean;
   const [aspect, setAspect] = React.useState<"9:16" | "16:9">(f.defaultAspect);
   /* 成片多长: 0 follows the script; otherwise the cut is told the length (the owner, 29 Sep: "where do I choose how long I want the video"). */
   const [len, setLen] = React.useState(0);
+  const [customMin, setCustomMin] = React.useState("");
   const [wish, setWish] = React.useState("");
   const [uploads, setUploads] = React.useState<UploadProgress[]>([]);
   const [busy, setBusy] = React.useState(false);
@@ -324,7 +325,7 @@ export function SimpleEdit({ f, zh, modeSwitch }: { f: SimpleFacts; zh: boolean;
             </div>
             <div style={{ fontSize: 13, color: "#5f5f5f", margin: "18px 0 10px" }}>{t("成片多长？", "How long?")}</div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              {[0, 30, 60, 180, 300, 600].map((n) => (
+              {[0, 30, 60, 180, 300, 600].filter((n) => true).map((n) => (
                 <button
                   key={n}
                   type="button"
@@ -335,6 +336,22 @@ export function SimpleEdit({ f, zh, modeSwitch }: { f: SimpleFacts; zh: boolean;
                   {n === 0 ? t("按稿子长度", "Follow the script") : n < 60 ? t(`${n} 秒`, `${n}s`) : t(`${n / 60} 分钟`, `${n / 60} min`)}
                 </button>
               ))}
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 40, padding: "0 12px", borderRadius: 10, border: `1.5px solid ${len && ![30, 60, 180, 300, 600].includes(len) ? "#171717" : "#dcdbd6"}`, background: "#fff" }}>
+                <span style={{ fontSize: 14, fontWeight: 600, color: "#333" }}>{t("自定义", "Custom")}</span>
+                <input
+                  inputMode="decimal"
+                  value={customMin}
+                  placeholder={t("如 2.5", "e.g. 2.5")}
+                  onChange={(e) => {
+                    const v = e.target.value.replace(/[^\d.]/g, "").slice(0, 5);
+                    setCustomMin(v);
+                    const n = Math.round(Number(v) * 60);
+                    if (n >= 10 && n <= 3600) setLen(n);
+                  }}
+                  style={{ width: 56, height: 28, border: "1px solid #dcdbd6", borderRadius: 7, padding: "0 6px", fontFamily: "inherit", fontSize: 14, textAlign: "center" }}
+                />
+                <span style={{ fontSize: 14, color: "#6b6b6b" }}>{t("分钟", "min")}</span>
+              </span>
             </div>
             <input
               value={wish}
