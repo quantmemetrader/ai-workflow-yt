@@ -207,7 +207,6 @@ export type CrumbItem = { href: string; label: string; labelZh: string };
 const SCREENS: CrumbItem[] = [
   { href: "/research/compare", label: "Search & compare", labelZh: "搜索与对比" },
   { href: "/review/channels", label: "Connected channels", labelZh: "已连接渠道" },
-  { href: "/review", label: "Published work", labelZh: "作品复盘" },
   { href: "/research/inbox", label: "Comment inbox", labelZh: "评论收件箱" },
   { href: "/research/backlog", label: "Topic backlog", labelZh: "选题储备" },
   { href: "/files/recent", label: "Recent", labelZh: "最近" },
