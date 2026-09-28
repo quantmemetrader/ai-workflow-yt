@@ -12,6 +12,7 @@ import { visibleProject } from "@/lib/projects/service";
 import { dmChannelWith, postMessage } from "@/lib/chat/service";
 import { tagProjectFile } from "@/lib/projects/files";
 import { ensureFileText } from "@/lib/files/extract";
+import { beatsFromDoc, isRichDoc } from "@/lib/script/rich";
 import { asc } from "drizzle-orm";
 import { readSentBack, recordSendBack, settleSendBack } from "@/lib/projects/sendback";
 import { createScript, cutVersion, decideApproval, requestApproval, restoreVersion, saveBeats, unlock } from "@/lib/script/service";
@@ -358,4 +359,50 @@ export async function importDocAction(projectId: unknown, fileId: unknown, mode:
   await audit(c.viewer, "script.import", { objectType: "script", objectId: c.project.scriptId, module: "script", meta: { fileId, mode, paragraphs: paras.length } });
   refresh(c.project.id);
   return { ok: true as const, paragraphs: paras.length };
+}
+
+/**
+ * The rich document saved (the Google-Docs-style page): its JSON and HTML on
+ * the script, and the beats it stands for (`lib/script/rich.ts`) written in
+ * the same breath, so the video, the 剪辑 page, versions and approvals keep
+ * reading `script_beats`. A subtitle typed separately for an unchanged line
+ * is kept.
+ */
+export async function saveRichAction(projectId: unknown, doc: unknown, html: unknown) {
+  const c = await ctx(projectId, true);
+  if ("error" in c) return c;
+  const scriptId = c.project.scriptId;
+  if (!scriptId || !isRichDoc(doc)) return { error: "Not allowed" };
+  const json = JSON.stringify(doc);
+  if (json.length > 3_000_000) return { error: c.zh ? "文档太大了" : "The document is too large" };
+  const before = await db.select({ voiceover: scriptBeats.voiceover, subtitle: scriptBeats.subtitle }).from(scriptBeats).where(eq(scriptBeats.scriptId, scriptId)).orderBy(asc(scriptBeats.ord));
+  const subtitleOf = new Map(before.filter((b) => b.subtitle && b.subtitle !== b.voiceover).map((b) => [b.voiceover, b.subtitle]));
+  const beats = beatsFromDoc(doc)
+    .slice(0, 400)
+    .map((b) => ({ ...b, subtitle: subtitleOf.get(b.voiceover) ?? b.subtitle }));
+  const res = await saveBeats(c.viewer, scriptId, beats.length ? beats : [{ visual: "", voiceover: "", subtitle: "", naturalSound: false }]);
+  if (!res) return { error: c.zh ? "脚本已批准锁定，先点「继续编辑」" : "The script is locked" };
+  const cleanHtml = typeof html === "string" ? html.slice(0, 3_000_000).replace(/<script[\s\S]*?<\/script>/gi, "").replace(/\son\w+="[^"]*"/gi, "") : null;
+  await db.update(scripts).set({ doc: doc as unknown as Record<string, unknown>, docHtml: cleanHtml }).where(eq(scripts.id, scriptId));
+  return { ok: true as const, at: new Date().toISOString() };
+}
+
+/** 重命名: the document's title is the script's (and the project's) name. */
+export async function renameScriptAction(projectId: unknown, title: unknown) {
+  const c = await ctx(projectId, true);
+  if ("error" in c) return c;
+  const name = typeof title === "string" ? title.trim().slice(0, 200) : "";
+  if (!name) return { error: c.zh ? "标题不能是空的" : "The title cannot be empty" };
+  if (c.project.scriptId) await db.update(scripts).set({ title: name, updatedAt: new Date() }).where(eq(scripts.id, c.project.scriptId));
+  refresh(c.project.id);
+  return { ok: true as const };
+}
+
+/** A picture put into the document: kept in the project's files (其他). */
+export async function docImageAction(projectId: unknown, fileId: unknown) {
+  const c = await ctx(projectId, true);
+  if ("error" in c) return c;
+  if (typeof fileId !== "string") return { error: "Not allowed" };
+  const ok = await tagProjectFile(c.viewer, c.project.id, fileId, "other");
+  return ok ? { ok: true as const, src: `/api/files/${fileId}/download` } : { error: c.zh ? "这张图打不开" : "That picture cannot be opened" };
 }

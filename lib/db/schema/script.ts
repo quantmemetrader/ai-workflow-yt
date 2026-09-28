@@ -90,6 +90,12 @@ export const scripts = pgTable(
     briefUpdatedBy: text().references(() => users.id),
     briefUpdatedAt: timestamp({ withTimezone: true }),
 
+    /** The script as a rich document (the Google-Docs-style page): TipTap
+     * JSON, and its HTML for Word/PDF export. `script_beats` stays what the
+     * rest of the product reads; `lib/script/rich.ts` keeps the two agreeing. */
+    doc: jsonb().$type<Record<string, unknown>>(),
+    docHtml: text(),
+
     /** The highest version number written so far. The draft in `script_beats`
      * is always "the next one". */
     version: integer().notNull().default(0),

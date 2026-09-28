@@ -1,5 +1,6 @@
 import type { DocApproval, DocReference } from "@/lib/script/doc";
 import type { SentBack } from "@/lib/projects/sendback";
+import type { RichDoc } from "@/lib/script/rich";
 
 export type DocBeat = { visual: string; voiceover: string; subtitle: string; naturalSound: boolean };
 
@@ -32,6 +33,8 @@ export type ScriptDocProps = {
   me: { id: string; name: string; avatarUrl: string | null; isAdmin: boolean; canEdit: boolean };
   script: { id: string; title: string; version: number; lockedVersion: number | null; status: string; targetSeconds: number | null; mandatoryPoints: string[] } | null;
   beats: DocBeat[];
+  /** The rich document the page opens (`lib/script/rich.ts` docForBeats). */
+  doc: RichDoc;
   versions: DocVersion[];
   approvals: DocApproval[];
   comments: DocComment[];

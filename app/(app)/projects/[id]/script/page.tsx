@@ -1,14 +1,14 @@
 import { notFound } from "next/navigation";
 import { and, asc, eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { scriptComments, users } from "@/lib/db/schema";
+import { scriptComments, scripts, users } from "@/lib/db/schema";
 import { requireModule } from "@/lib/auth/dal";
 import { projectForPage } from "@/lib/projects/page-data";
 import { listPeople } from "@/lib/chat/service";
 import { scriptDetail } from "@/lib/script/service";
 import { scriptWriting } from "@/lib/script/writing";
 import { docApprovals, docReferences } from "@/lib/script/doc";
-import { PageBody } from "@/components/projects/kit";
+import { docForBeats, type RichNode } from "@/lib/script/rich";
 import { ScriptDoc } from "@/components/script/doc/ScriptDoc";
 
 export const metadata = { title: "脚本 · Script" };
@@ -51,6 +51,10 @@ export default async function ProjectScriptPage({ params }: { params: Promise<{ 
     listPeople(viewer),
     scriptId ? scriptWriting(viewer.tenantId, scriptId).then((w) => w.writing) : Promise.resolve(false),
   ]);
+  const [stored] = scriptId ? await db.select({ doc: scripts.doc }).from(scripts).where(eq(scripts.id, scriptId)).limit(1) : [];
+  const beats = (detail?.beats ?? []).map((b) => ({ visual: b.visual, voiceover: b.voiceover, subtitle: b.subtitle, naturalSound: b.naturalSound }));
+  /* The rich document if it still says what the beats say; else one built from them. */
+  const doc = docForBeats((stored?.doc as RichNode | null) ?? null, beats);
 
   const s = detail?.script ?? null;
   const accessNote =
@@ -62,7 +66,7 @@ export default async function ProjectScriptPage({ params }: { params: Promise<{ 
   const sentBack = p.sentBack.script && p.sentBack.script.state === "open" ? p.sentBack.script : null;
 
   return (
-    <PageBody>
+    <div style={{ flexGrow: 1, minWidth: 0, minHeight: 0, display: "flex", flexDirection: "column" }}>
       <ScriptDoc
         projectId={p.id}
         projectTitle={p.title}
@@ -79,7 +83,8 @@ export default async function ProjectScriptPage({ params }: { params: Promise<{ 
             ? { id: s.id, title: s.title, version: s.version, lockedVersion: s.lockedVersion, status: s.status, targetSeconds: s.targetSeconds, mandatoryPoints: s.mandatoryPoints }
             : null
         }
-        beats={(detail?.beats ?? []).map((b) => ({ visual: b.visual, voiceover: b.voiceover, subtitle: b.subtitle, naturalSound: b.naturalSound }))}
+        beats={beats}
+        doc={doc}
         versions={(detail?.versions ?? []).map((v) => ({
           versionNo: v.versionNo,
           createdAt: v.createdAt.toISOString(),
@@ -108,6 +113,6 @@ export default async function ProjectScriptPage({ params }: { params: Promise<{ 
         accessNote={accessNote}
         accessMode={p.access.mode}
       />
-    </PageBody>
+    </div>
   );
 }
