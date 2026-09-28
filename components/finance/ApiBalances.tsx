@@ -20,6 +20,15 @@ const TONE: Record<ProviderBalance["state"], { ink: string; bg: string; line: st
   off: { ink: "#8a8a8a", bg: "#f7f7f5", line: "#ececea", bar: "#d9d9d9", zh: "未配置", en: "Not set up" },
 };
 
+/* What each service is for, in plain words; the provider's own name stays,
+   small, beside it (28 Sep: no provider names in front of people who are
+   not technical). Only owners and admins are shown this block at all. */
+const FRIENDLY: Record<string, { zh: string; en: string }> = {
+  openrouter: { zh: "AI 对话", en: "AI conversations" },
+  tikhub: { zh: "数据查询", en: "Research data" },
+  r2: { zh: "存储", en: "Storage" },
+};
+
 const usd = (n: number) => `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 export function ApiBalances({ balances, zh }: { balances: Balances; zh: boolean }) {
@@ -31,9 +40,9 @@ export function ApiBalances({ balances, zh }: { balances: Balances; zh: boolean 
   return (
     <section style={{ marginBottom: 22 }}>
       <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
-        <span style={{ fontSize: 14, fontWeight: 600 }}>{t("API balances", "API 余额与用量")}</span>
+        <span style={{ fontSize: 14, fontWeight: 600 }}>{t("AI services balance", "AI 服务余额")}</span>
         <span style={{ fontSize: 11.5, color: "#999999" }}>
-          {t("read from each service", "各服务自己的数字")} · {at.toLocaleTimeString(zh ? "zh-CN" : "en-US", { hour: "2-digit", minute: "2-digit" })}
+          {t("admins only", "仅管理员可见")} · {at.toLocaleTimeString(zh ? "zh-CN" : "en-US", { hour: "2-digit", minute: "2-digit" })}
         </span>
         {low.length ? (
           <span style={{ fontSize: 11.5, fontWeight: 600, color: "#95590a" }}>
@@ -73,7 +82,8 @@ function Card({ r, zh }: { r: ProviderBalance; zh: boolean }) {
   return (
     <div style={{ border: `1px solid ${tone?.line ?? "#e6e6e6"}`, borderRadius: 12, background: "#fff", padding: "12px 14px", display: "flex", flexDirection: "column", gap: 6, minWidth: 0 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-        <span style={{ fontSize: 13, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{zh ? r.nameZh : r.name}</span>
+        <span style={{ fontSize: 13, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{FRIENDLY[r.key] ? (zh ? FRIENDLY[r.key].zh : FRIENDLY[r.key].en) : zh ? r.nameZh : r.name}</span>
+        {FRIENDLY[r.key] ? <span style={{ fontSize: 10.5, color: "#a3a3a3", whiteSpace: "nowrap" }}>{r.name}</span> : null}
         {tone ? <span style={{ fontSize: 10.5, fontWeight: 600, lineHeight: "17px", padding: "0 7px", borderRadius: 999, color: tone.ink, background: tone.bg, whiteSpace: "nowrap" }}>{zh ? tone.zh : tone.en}</span> : null}
         {r.topUp && r.state !== "off" ? (
           <a href={r.topUp} target="_blank" rel="noreferrer" style={{ marginLeft: "auto", fontSize: 11.5, color: "#1f5fbf", textDecoration: "none", whiteSpace: "nowrap", display: "inline-flex", alignItems: "center", gap: 3 }}>
@@ -94,10 +104,10 @@ function Card({ r, zh }: { r: ProviderBalance; zh: boolean }) {
       <div style={{ fontSize: 11.5, color: "#6b6b6b", lineHeight: 1.5, fontVariantNumeric: "tabular-nums" }}>
         {[
           r.totalUsd !== null && r.usedUsd !== null ? t(`${usd(r.usedUsd)} used of ${usd(r.totalUsd)}`, `共 ${usd(r.totalUsd)} · 已用 ${usd(r.usedUsd)}`) : null,
-          r.monthUsd !== null && r.key !== "r2" ? t(`this month ${usd(r.monthUsd)} (our ledger)`, `本月 ${usd(r.monthUsd)}（账本）`) : null,
+          r.monthUsd !== null && r.key !== "r2" ? t(`this month ${usd(r.monthUsd)}`, `本月 ${usd(r.monthUsd)}`) : null,
           zh ? r.noteZh : r.note,
           r.state === "error" && r.error ? t(`Could not read: ${r.error}`, `查不到：${r.error}`) : null,
-          r.state === "off" ? t("No key on this deployment", "本部署没有配置 key") : null,
+          r.state === "off" ? t("Not set up", "还没接上") : null,
         ]
           .filter(Boolean)
           .map((line, i) => (

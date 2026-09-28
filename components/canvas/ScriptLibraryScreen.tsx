@@ -1,12 +1,9 @@
 "use client";
 
 import * as React from "react";
-import { ProposalsStrip } from "@/components/agents/ProposalsStrip";
 import type { Proposals } from "@/lib/agents/proposals";
 import { ResearchAgentPanel } from "./ResearchAgentPanel";
 import type { ScriptListItem } from "@/lib/script/service";
-import { useResizable } from "@/components/ui/Resizer";
-import { StatusStrip } from "@/components/ui/kit";
 import { PersonAvatar } from "@/components/ui/PersonAvatar";
 
 /**
@@ -472,9 +469,6 @@ export function ScriptLibraryScreen(props: ScriptLibraryScreenProps): React.JSX.
 
   const zh = locale.startsWith("zh");
   const t = (key: string): string => (zh ? (ZH[key] ?? key) : key);
-  const { width: sideWidth, handle: sideHandle } = useResizable("script-sidebar", {
-    min: 160, max: 400, initial: 212, edge: "right",
-  });
 
   /**
    * What the panel can say from these rows alone.
@@ -611,164 +605,12 @@ export function ScriptLibraryScreen(props: ScriptLibraryScreenProps): React.JSX.
         </defs>
       </svg>
 
-      {/* ============ MODULE SIDEBAR ============ */}
-      <div
-        data-script-library-screen=""
-        style={{
-          ...frameStyle,
-          width: sideWidth,
-          position: "relative",
-          flexShrink: 0,
-          background: "#f8f8f8",
-          borderRight: "1px solid #ededed",
-          display: "flex",
-          flexDirection: "column",
-          padding: "10px 8px",
-        }}
-      >
-        {sideHandle}
-        <div style={{ display: "flex", alignItems: "center", padding: "4px 9px 12px" }}>
-          <span style={{ fontSize: 14, fontWeight: 500 }}>{t("Script")}</span>
-          {/* The artboard's "+" beside the module name. The toolbar already
-              holds New script, so this is the library's other maker. */}
-          <button
-            type="button"
-            onClick={onNewFolder}
-            aria-label={t("New folder")}
-            title={t("New folder")}
-            style={{
-              marginLeft: "auto",
-              width: 24,
-              height: 24,
-              borderRadius: 7,
-              background: "#fff",
-              boxShadow: "0 1px 2px rgba(0,0,0,.1)",
-              border: 0,
-              padding: 0,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              cursor: "pointer",
-            }}
-          >
-            <svg
-              viewBox="0 0 24 24"
-              style={{ width: 13, height: 13, stroke: "#171717", fill: "none", strokeWidth: 2, strokeLinecap: "round" }}
-            >
-              <path d="M12 6v12M6 12h12" />
-            </svg>
-          </button>
-        </div>
-
-        <div className="lbl" style={{ marginBottom: 5 }}>
-          {t("Library")}
-        </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
-          {scopes.map((s) => {
-            const on = scope === s.key && (s.key !== "all" || folderId === null);
-            return (
-              <button
-                key={s.key}
-                type="button"
-                className={on ? "n on" : "n"}
-                aria-pressed={on}
-                onClick={() => {
-                  onScope(s.key);
-                  /* "All scripts" is the whole library, so it also steps out
-                     of whichever folder you were in. */
-                  if (s.key === "all" && folderId !== null) onFolder(null);
-                }}
-              >
-                <span>{s.label}</span>
-                {s.badge === null ? null : s.alert ? (
-                  s.badge > 0 ? (
-                    <i>{count(s.badge, locale)}</i>
-                  ) : (
-                    <b>{count(s.badge, locale)}</b>
-                  )
-                ) : (
-                  <b>{count(s.badge, locale)}</b>
-                )}
-              </button>
-            );
-          })}
-        </div>
-
-        <div className="lbl" style={{ margin: "16px 0 5px" }}>
-          {t("Folders")}
-        </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
-          {folders.length === 0 ? (
-            <p style={{ fontSize: 12.5, color: "#999999", lineHeight: 1.5, padding: "2px 9px 0" }}>
-              {t("No folders yet")}
-            </p>
-          ) : (
-            folders.map((f) => {
-              const on = f.id === folderId;
-              return (
-                <button
-                  key={f.id}
-                  type="button"
-                  className={on ? "n on" : "n"}
-                  aria-pressed={on}
-                  onClick={() => onFolder(on ? null : f.id)}
-                >
-                  <SidebarFolder on={on} />
-                  <span
-                    style={{
-                      minWidth: 0,
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    {f.name}
-                  </span>
-                  <b>{count(f.count, locale)}</b>
-                </button>
-              );
-            })
-          )}
-        </div>
-
-        {/* The artboard names a version here ("Style guide v7") and counts the
-            approved scripts behind it. Neither is known to this screen, so the
-            footer keeps the label and drops the numbers. */}
-        <div style={{ marginTop: "auto", padding: "11px 9px 4px", borderTop: "1px solid #ededed" }}>
-          <div className="lbl" style={{ padding: 0, marginBottom: 7 }}>
-            {t("House style")}
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "#383838" }}>
-            <svg
-              viewBox="0 0 24 24"
-              style={{
-                width: 13,
-                height: 13,
-                stroke: "#7c7c7c",
-                fill: "none",
-                strokeWidth: 1.7,
-                strokeLinecap: "round",
-                strokeLinejoin: "round",
-                flexShrink: 0,
-              }}
-            >
-              <path d="M6.5 3.5h7.2L18.5 8v12.5h-12z" />
-              <path d="M13.5 3.5V8h5" />
-            </svg>
-            {t("Style guide")}
-          </div>
-        </div>
-      </div>
-
       {/* ============ MAIN ============ */}
       <div
         data-script-library-screen=""
         style={{ ...frameStyle, flexGrow: 1, display: "flex", minWidth: 0 }}
       >
       <div style={{ flexGrow: 1, display: "flex", flexDirection: "column", minWidth: 0, minHeight: 0 }}>
-        {proposals && scope !== "topics" ? (
-          <ProposalsStrip owner="script" items={proposals.items} planDate={proposals.planDate} zh={locale.startsWith("zh")} />
-        ) : null}
         {/* toolbar */}
         <div className="bar">
           {here === null ? (
@@ -903,22 +745,35 @@ export function ScriptLibraryScreen(props: ScriptLibraryScreenProps): React.JSX.
           </button>
         </div>
 
-        {/* The same four counts the filter chips carry, read as a state of the
-            module rather than as four things to click: what is being written,
-            what is waiting on somebody, what is finished. */}
-        {/* In the order a script moves (brief, drafting, approval, locked)
-            and in the colours the filter chips and the row badges below
-            use: a brief is grey, not the amber of "waiting on somebody",
-            and 待审批 is the chips' amber rather than a third, red one. */}
-        <StatusStrip
-          items={[
-            { label: t("Briefs"), value: counts.brief, tone: "quiet" },
-            { label: t("Drafting"), value: counts.drafting, tone: "running" },
-            { label: t("Awaiting approval"), value: counts.awaiting, tone: "waiting" },
-            { label: t("Locked"), value: counts.locked, tone: "done" },
-          ]}
-          right={zh ? `共 ${count(counts.all, locale)} 个脚本` : `${count(counts.all, locale)} scripts in all`}
-        />
+        {/* Which scripts: tabs, not a second column down the left (the owner
+            wanted fewer columns and less on the page). The four status counts
+            that sat under the toolbar are on the filter chips below. */}
+        <div style={{ flexShrink: 0, display: "flex", alignItems: "center", gap: 2, padding: "0 16px", borderBottom: "1px solid #ededed", overflowX: "auto" }}>
+          {scopes.map((sc) => {
+            const on = scope === sc.key && (sc.key !== "all" || folderId === null);
+            return (
+              <button
+                key={sc.key}
+                type="button"
+                aria-pressed={on}
+                onClick={() => {
+                  onScope(sc.key);
+                  if (sc.key === "all" && folderId !== null) onFolder(null);
+                }}
+                style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 42, padding: "0 11px", border: 0, borderBottom: `2px solid ${on ? "#171717" : "transparent"}`, background: "transparent", fontFamily: "inherit", fontSize: 14, color: on ? "#171717" : "#6b6b6b", fontWeight: on ? 600 : 400, cursor: "pointer", whiteSpace: "nowrap" }}
+              >
+                {sc.label}
+                {sc.badge ? (
+                  <b style={{ fontSize: 11, fontWeight: 600, borderRadius: 9, padding: "0 6px", lineHeight: "17px", color: sc.alert ? "#fff" : "#6b6b6b", background: sc.alert ? "#e03636" : "#f0f0ee" }}>{count(sc.badge, locale)}</b>
+                ) : null}
+              </button>
+            );
+          })}
+          <span style={{ flexGrow: 1 }} />
+          <button type="button" onClick={onNewFolder} style={{ height: 30, padding: "0 10px", border: 0, borderRadius: 8, background: "transparent", color: "#525252", fontSize: 13, fontFamily: "inherit", cursor: "pointer", whiteSpace: "nowrap" }}>
+            {t("New folder")}
+          </button>
+        </div>
 
         <div style={{ flexGrow: 1, display: "flex", minHeight: 0 }}>
           <div

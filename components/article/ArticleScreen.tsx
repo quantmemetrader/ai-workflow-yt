@@ -7,7 +7,6 @@ import { ResearchAgentPanel } from "@/components/canvas/ResearchAgentPanel";
 import { InlineAgentThread, useInlineAgent } from "@/components/shell/InlineAgent";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Markdown } from "@/components/ui/Markdown";
-import { ProposalsStrip } from "@/components/agents/ProposalsStrip";
 import type { Proposals } from "@/lib/agents/proposals";
 import { Badge, Empty, Label, Row, chip, clip, field, ghost, solid, useAction } from "@/components/ui/kit";
 import { DESTINATIONS, destinationLabel } from "@/lib/article/destinations";
@@ -140,15 +139,6 @@ export function ArticleScreen({
 
   return (
     <div style={{ flexGrow: 1, minWidth: 0, display: "flex", minHeight: 0 }}>
-      <ModuleSidebar
-        title="Articles"
-        titleZh="文章"
-        screens={SCREENS}
-        active={tab}
-        onChange={(next) => go({ tab: next })}
-        zh={zh}
-        storageKey="article-sidebar"
-      />
 
       <div style={{ flexGrow: 1, minWidth: 0, display: "flex", flexDirection: "column", minHeight: 0 }}>
         <header
@@ -173,10 +163,16 @@ export function ArticleScreen({
             {t("New article", "新建文章")}
           </button>
         </header>
+      <ModuleSidebar
+        title="Articles"
+        titleZh="文章"
+        screens={SCREENS}
+        active={tab}
+        onChange={(next) => go({ tab: next })}
+        zh={zh}
+        storageKey="article-sidebar"
+      />
 
-        {proposals && tab === "library" ? (
-          <ProposalsStrip owner="article" items={proposals.items} planDate={proposals.planDate} zh={zh} />
-        ) : null}
 
         <div style={{ flexGrow: 1, minHeight: 0, display: "flex" }}>
           <div style={{ flexGrow: 1, minWidth: 0, overflowY: "auto", padding: "18px 22px 30px" }}>

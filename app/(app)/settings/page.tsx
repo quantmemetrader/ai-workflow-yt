@@ -17,6 +17,8 @@ import { users } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { AgentDock } from "@/components/shell/AgentDock";
 import { answeringModel } from "@/lib/ai/models";
+import { modelOptionsAction } from "./model-actions";
+import { ModelCard } from "./model-card";
 
 export const metadata = { title: "设置 · Settings" };
 
@@ -45,6 +47,11 @@ export default async function SettingsPage() {
     .limit(1);
   const devices = account?.confirmedAt ? await listTrustedDevices(viewer.id) : [];
   const day = (d: Date) => d.toISOString().slice(0, 10);
+  const admin = viewer.role === "owner" || viewer.role === "admin";
+  const models = admin ? ((await modelOptionsAction().catch(() => ({}))) as { options?: import("./model-actions").ModelOption[] }).options ?? [] : [];
+  /* A heading over each group, so the page reads as three short sections
+     (me, the team, security) rather than one long column of cards. */
+  const group = (title: string) => <h2 style={{ fontSize: 13, fontWeight: 600, color: "#8a8a8a", margin: "10px 0 -4px" }}>{title}</h2>;
 
   return (
     <div style={{ flexGrow: 1, minWidth: 0, display: "flex" }}>
@@ -66,6 +73,7 @@ export default async function SettingsPage() {
 
       <div style={{ flexGrow: 1, minHeight: 0, overflowY: "auto", padding: "22px 26px" }}>
         <div className="flex max-w-[720px] flex-col gap-4">
+          {group(zh ? "我的账号" : "My account")}
           <ProfileCard
             zh={zh}
             userId={viewer.id}
@@ -76,7 +84,12 @@ export default async function SettingsPage() {
             avatarUrl={viewer.avatarUrl}
           />
 
-          <section className="rounded-xl border border-outline-gray-1 p-4">
+          <LocaleSwitch current={locale} />
+
+          {admin || canInvite(viewer) ? group(zh ? "团队（管理员）" : "Team (admins)") : null}
+          {admin ? <ModelCard zh={zh} options={models} /> : null}
+          {admin ? (
+            <section className="rounded-xl border border-outline-gray-1 p-4">
             <h2 className="mb-3 text-sm font-semibold text-ink-gray-9">{t("AI spend")}</h2>
             <p className="text-p-2xl font-semibold text-ink-gray-9">{formatUsd(budget.usedMicros)}</p>
             <p className="mt-1 text-xs text-ink-gray-5">
@@ -99,25 +112,7 @@ export default async function SettingsPage() {
             )}
           </section>
 
-          <section className="rounded-xl border border-outline-gray-1 p-4">
-            <h2 className="mb-3 text-sm font-semibold text-ink-gray-9">
-              {zh ? "你的模块" : "Your modules"}
-            </h2>
-            <div className="flex flex-wrap gap-1.5">
-              {viewer.modules.map((m) => {
-                const item = NAV_BY_MODULE.get(m);
-                return (
-                  <span
-                    key={m}
-                    className="rounded-md border border-outline-gray-1 bg-surface-gray-1 px-2 py-1 text-xs text-ink-gray-7"
-                  >
-                    {zh ? item?.labelZh : item?.label}
-                  </span>
-                );
-              })}
-            </div>
-          </section>
-
+          ) : null}
           {canInvite(viewer) && (
             <PeopleCard
               zh={zh}
@@ -132,8 +127,8 @@ export default async function SettingsPage() {
             />
           )}
 
-          <LocaleSwitch current={locale} />
 
+          {admin ? (
           <AutomationsCard
             zh={zh}
             canEdit={viewer.role === "owner" || viewer.role === "admin"}
@@ -147,6 +142,9 @@ export default async function SettingsPage() {
               value: automations[def.key],
             }))}
           />
+          ) : null}
+
+          {group(zh ? "安全" : "Security")}
 
           <PasswordCard zh={zh} />
 

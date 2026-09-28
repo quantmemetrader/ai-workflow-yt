@@ -77,7 +77,7 @@ export function HrScreen({
   /* The design draws these down a 212px column, the way every other
      desktop artboard in the set does — not across the top. */
   const SCREENS: ScreenItem<Tab>[] = [
-    { key: "leave", label: "Leave", labelZh: "假期", badge: waiting.length },
+    { key: "leave", label: "Leave", labelZh: "请假", badge: waiting.length },
     { key: "roles", label: "Roles", labelZh: "岗位", badge: requisitions.filter((r) => r.state === "open").length },
     { key: "candidates", label: "Candidates", labelZh: "候选人", badge: candidates.length },
     { key: "people", label: "Employees", labelZh: "员工" },
@@ -85,7 +85,12 @@ export function HrScreen({
 
   return (
     <div style={{ flexGrow: 1, minWidth: 0, display: "flex", minHeight: 0 }}>
-    <ModuleSidebar
+    <div style={{ flexGrow: 1, minWidth: 0, display: "flex", flexDirection: "column", minHeight: 0 }}>
+      <ModuleHeader
+        title={t("Human Resources", "人事")}
+        note={t("leave, hiring and people", "请假、招聘和员工")}
+      />
+      <ModuleSidebar
       title="People & HR"
       titleZh="人事"
       screens={SCREENS}
@@ -94,11 +99,6 @@ export function HrScreen({
       zh={zh}
       storageKey="hr-sidebar"
     />
-    <div style={{ flexGrow: 1, minWidth: 0, display: "flex", flexDirection: "column", minHeight: 0 }}>
-      <ModuleHeader
-        title={t("Human Resources", "人事")}
-        note={t("leave, hiring and employee records", "请假、招聘与员工档案")}
-      />
 
       <div style={{ flexGrow: 1, minHeight: 0, display: "flex" }}>
         <div style={{ flexGrow: 1, minWidth: 0, overflowY: "auto", padding: "18px 22px 40px" }}>
@@ -165,7 +165,6 @@ export function HrScreen({
             `${waiting.length} 条请假待批，${requisitions.filter((r) => r.state === "open").length} 个岗位在招。`,
           )}
           placeholder={t("Ask about leave or hiring…", "询问请假或招聘…")}
-          footnote={t("No external sourcing. Schedule A3(8).", "不做任何外部招聘寻访。附表 A3(8)。")}
           model={model}
           onAsk={(prompt) => void agent.send(prompt)}
           thread={
@@ -233,16 +232,16 @@ function Leave({
   return (
     <>
       <Label style={{ margin: "0 0 8px" }}>{t("Ask for leave", "请假申请")}</Label>
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 20 }}>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end", marginBottom: 20 }}>
         <select value={form.kind} onChange={(e) => setForm({ ...form, kind: e.target.value })} style={{ ...field, width: 140, height: 32 }}>
           <option value="annual">{t("annual", "年假")}</option>
           <option value="sick">{t("sick", "病假")}</option>
           <option value="unpaid">{t("unpaid", "无薪假")}</option>
           <option value="other">{t("other", "其他")}</option>
         </select>
-        <input type="date" value={form.startOn} onChange={(e) => setForm({ ...form, startOn: e.target.value })} style={{ ...field, width: 150, height: 32 }} />
-        <input type="date" value={form.endOn} onChange={(e) => setForm({ ...form, endOn: e.target.value })} style={{ ...field, width: 150, height: 32 }} />
-        <input value={form.days} onChange={(e) => setForm({ ...form, days: e.target.value.replace(/[^\d.]/g, "") })} placeholder={t("Days", "天数")} style={{ ...field, width: 90, height: 32, textAlign: "right" }} />
+        <label style={{ display: "flex", flexDirection: "column", gap: 3 }}><span style={{ fontSize: 11.5, color: "#8a8a8a" }}>{t("From", "从")}</span><input type="date" value={form.startOn} onChange={(e) => setForm({ ...form, startOn: e.target.value })} style={{ ...field, width: 150, height: 32 }} /></label>
+        <label style={{ display: "flex", flexDirection: "column", gap: 3 }}><span style={{ fontSize: 11.5, color: "#8a8a8a" }}>{t("To", "到")}</span><input type="date" value={form.endOn} onChange={(e) => setForm({ ...form, endOn: e.target.value })} style={{ ...field, width: 150, height: 32 }} /></label>
+        <label style={{ display: "flex", flexDirection: "column", gap: 3 }}><span style={{ fontSize: 11.5, color: "#8a8a8a" }}>{t("Days", "天数")}</span><input value={form.days} onChange={(e) => setForm({ ...form, days: e.target.value.replace(/[^\d.]/g, "") })} placeholder={t("Days", "天数")} style={{ ...field, width: 90, height: 32, textAlign: "right" }} /></label>
         <input value={form.reason} onChange={(e) => setForm({ ...form, reason: e.target.value })} placeholder={t("Reason, if you want to give one", "原因（可选）")} style={{ ...field, width: 240, height: 32 }} />
         <button
           type="button"
@@ -554,7 +553,7 @@ function Candidates({
           }}
           style={{ ...solid, opacity: busy || !form.name.trim() ? 0.45 : 1 }}
         >
-          {t("Add", "关注")}
+          {t("Add", "添加")}
         </button>
       </div>
 
@@ -718,7 +717,7 @@ function People({
                 }}
                 style={{ ...ghost, height: 28 }}
               >
-                {t("add", "关注")}
+                {t("add", "添加")}
               </button>
             </div>
           )}
