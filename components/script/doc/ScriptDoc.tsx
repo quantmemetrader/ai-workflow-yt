@@ -120,10 +120,8 @@ export function ScriptDoc(props: ScriptDocProps) {
 
   /* ---------------- view state ---------------- */
   const [mode, setModeRaw] = React.useState<Mode>(me.canEdit ? "edit" : "view");
-  const [outline, setOutline] = React.useState(true);
-  React.useEffect(() => {
-    if (typeof window !== "undefined" && window.innerWidth < 1600) setOutline(false);
-  }, []);
+  /* The outline starts closed (the owner, 29 Sep); ☰ opens it. */
+  const [outline, setOutline] = React.useState(false);
   const [ruler, setRuler] = React.useState(true);
   const [shots, setShots] = React.useState(false);
   /* The side panel is always open, on the AI assistant unless 批注 or 版本
@@ -898,7 +896,13 @@ export function ScriptDoc(props: ScriptDocProps) {
     });
   }
   function fitToLength(secs: number) {
-    runCopilot(zh ? `把稿子调整到约 ${secs / 60} 分钟（约 ${Math.round(secs * 4.5)} 字）：太短就扩写，每段多说细节、数字和例子；太长就精简。保留原来的结构和事实。` : `Adjust the script to about ${secs / 60} minutes.`);
+    const want = Math.round(secs * 4.5);
+    const now = docState.count;
+    runCopilot(
+      zh
+        ? `把整份稿子调整到约 ${secs < 60 ? `${secs} 秒` : `${secs / 60} 分钟`}：现在约 ${now} 字，目标 ${want} 字（上下不超过 10%）。${now < want ? "在原段落上直接扩写（改写原段落本身），每段多说细节、数字和例子；需要时可以加新段落，但不要重复已有段落的意思。" : "在原段落上直接精简，删掉重复和空话，保留关键事实和数字。"}保留原来的结构和顺序。`
+        : `Adjust the whole script to about ${secs} seconds: now ~${now} characters, target ${want} (within 10%). Rewrite the existing paragraphs in place; never add a paragraph that repeats one.`,
+    );
   }
 
   /* ---------------- render ---------------- */
@@ -959,7 +963,8 @@ export function ScriptDoc(props: ScriptDocProps) {
         {script ? (
           <span className="gd-big gd-length" title={t("视频时长", "Video length")}>
             <GI name="clock" size={18} />
-            <span>{t("时长", "Length")} {clock(docState.seconds, zh)}</span>
+            <span>{t("时长", "Length")}</span>
+            <span key={`len-${docState.seconds}`}>{clock(docState.seconds, zh)}</span>
             <span style={{ color: "#8a8a8a", fontWeight: 500 }}>/ {t("目标", "target")}</span>
             <select value={String(script.targetSeconds ?? 180)} disabled={!me.canEdit || pending} onChange={(e) => setLength(Number(e.target.value))} aria-label={t("目标时长", "Target length")}>
               {[30, 60, 90, 180, 300, 480, 600].concat(script.targetSeconds && ![30, 60, 90, 180, 300, 480, 600].includes(script.targetSeconds) ? [script.targetSeconds] : []).map((n) => (
@@ -968,7 +973,7 @@ export function ScriptDoc(props: ScriptDocProps) {
             </select>
             {me.canEdit && Math.abs(docState.seconds - (script.targetSeconds ?? 180)) > (script.targetSeconds ?? 180) * 0.15 ? (
               <button type="button" className="gd-length-fit" disabled={thinking || Boolean(proposal)} onClick={() => fitToLength(script.targetSeconds ?? 180)}>
-                {docState.seconds < (script.targetSeconds ?? 180) ? t("让编剧扩写到目标", "Expand to target") : t("让编剧精简到目标", "Trim to target")}
+                <span key={docState.seconds < (script.targetSeconds ?? 180) ? "more" : "less"}>{docState.seconds < (script.targetSeconds ?? 180) ? t("让编剧扩写到目标", "Expand to target") : t("让编剧精简到目标", "Trim to target")}</span>
               </button>
             ) : null}
           </span>
@@ -1073,7 +1078,7 @@ export function ScriptDoc(props: ScriptDocProps) {
             <div className="gd-tab-pill">
               <GI name="outline" size={17} />
               <span style={{ flexGrow: 1 }}>{t("脚本", "Script")}</span>
-              <span style={{ fontSize: 12, color: "#5f6368" }}>{clock(docState.seconds, zh)}</span>
+              <span key={`ol-${docState.seconds}`} style={{ fontSize: 12, color: "#5f6368" }}>{clock(docState.seconds, zh)}</span>
             </div>
             {docState.headings.length ? (
               <nav style={{ display: "flex", flexDirection: "column", gap: 1, marginTop: 10 }}>

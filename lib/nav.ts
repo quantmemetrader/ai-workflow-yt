@@ -217,7 +217,10 @@ const GEAR =
 
 export const RAIL_MAIN: RailItem[] = [
   { href: "/home", label: "Home", labelZh: "首页", icon: iconOf("/home"), module: "chat" },
-  { href: "/projects", label: "Videos", labelZh: "视频", icon: iconOf("/video"), module: "chat", also: ["/script", "/video", "/article"] },
+  { href: "/projects", label: "Videos", labelZh: "视频", icon: iconOf("/video"), module: "chat", also: ["/article"] },
+  /* Every script and every cut, each in its project's folder (Ryan, 29 Sep: "where is the scripts page"). */
+  { href: "/script", label: "Scripts", labelZh: "脚本", icon: iconOf("/script"), module: "script" },
+  { href: "/video", label: "Cuts", labelZh: "剪辑", icon: iconOf("/video"), module: "video" },
   { href: "/research", label: "Topics", labelZh: "选题", icon: iconOf("/research"), module: "research" },
   { href: "/review", label: "Results", labelZh: "数据", icon: iconOf("/review") },
   { href: "/files", label: "Files", labelZh: "文件", icon: iconOf("/files"), module: "files" },

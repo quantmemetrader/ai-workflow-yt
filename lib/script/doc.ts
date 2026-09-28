@@ -233,7 +233,9 @@ const COPILOT_PROMPT = `你是短视频工作室的编剧，正在和同事一�
 - 只列真的要改的段落；没改的段落不要出现。要删掉一段，text 写空字符串 ""。
 - 保持原来的语言（简体/繁体）、人设和口吻，不要编造事实、数字、人名。
 - 口播按每秒约 4.5 个汉字估算时长；"缩短 30 秒"就是删减约 135 个字。
-- "text" 是完整的一段，不是片段。`;
+- "text" 是完整的一段，不是片段。
+- 扩写或改写时，优先改原段落本身（changes 里给出改后的整段），不要在原段落旁边另加一段意思相同的新段落；只有真正的新内容才用 inserts。
+- 指令给了目标字数时，改完后全文总字数要落在目标上下 10% 以内：先算清楚再写。`;
 
 async function referenceText(viewer: Viewer, scriptId: string): Promise<string> {
   const [s] = await db.select({ ids: scripts.sourceFileIds }).from(scripts).where(eq(scripts.id, scriptId)).limit(1);
