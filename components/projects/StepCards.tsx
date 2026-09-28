@@ -69,6 +69,24 @@ export function StepCards({ p, zh, me }: { p: ProjectDetail; zh: boolean; me: St
   ];
 
   const nowRow = now ? rows.find((r) => r.tab === now) : null;
+  /* What to do on the step that is up, in one plain sentence. */
+  const todo: Record<ProjectTab, string> = {
+    overview: "",
+    files: "",
+    topic: t("和研究员定下选题", "settle the topic with the researcher"),
+    script:
+      p.script && p.script.beats > 0
+        ? t("看一遍脚本，改好后点「分享」请同事审阅批准", "read the script, edit it, then press Share to get it approved")
+        : t("让编剧写初稿，或者自己写", "have the writer draft it, or write it yourself"),
+    edit:
+      (p.video?.clips ?? 0) === 0
+        ? t("主持人拍好口播后上传素材，剪辑师会按脚本粗剪", "upload the host's footage; the editor cuts it to the script")
+        : p.render?.state === "done"
+          ? t("看成片，没问题就去发布", "watch the film, then go publish")
+          : t("素材到了，让剪辑师开剪或自己剪，然后渲染成片", "footage is in: have the editor cut it (or cut it yourself), then render"),
+    publish: t("下载 AI 成片，改好后上传最终版，发到各平台", "download the AI film, polish it, upload the final and post it"),
+    review: t("看各平台数据，写复盘", "see the numbers and write the review"),
+  };
   const tabLabel = (k: ProjectTab) => {
     const x = PROJECT_TABS.find((y) => y.key === k)!;
     return zh ? x.zh : x.en;
@@ -77,7 +95,7 @@ export function StepCards({ p, zh, me }: { p: ProjectDetail; zh: boolean; me: St
   return (
     <>
       {p.status === "active" && nowRow ? (
-        <NextStep state="you" zh={zh} text={<>{t(`现在：第 ${PROJECT_TABS.find((x) => x.key === now)!.n} 步「${tabLabel(now!)}」`, `Now: step ${PROJECT_TABS.find((x) => x.key === now)!.n}, ${tabLabel(now!)}`)} <span style={{ color: "#6b6b6b" }}>— {nowRow.line}</span></>}>
+        <NextStep state="you" zh={zh} text={<><b>{t(`第 ${PROJECT_TABS.find((x) => x.key === now)!.n} 步「${tabLabel(now!)}」`, `Step ${PROJECT_TABS.find((x) => x.key === now)!.n}, ${tabLabel(now!)}`)}</b>{t("：", ": ")}{todo[now!]}</>}>
           <Link prefetch={false} href={tabHref(p.id, now!)} style={bigButton("primary")}>
             {t(`去${tabLabel(now!)}`, `Go to ${tabLabel(now!)}`)} <Arrow />
           </Link>
