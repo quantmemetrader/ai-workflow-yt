@@ -1,5 +1,7 @@
 "use client";
 
+import { ModelChip, useChatModel } from "@/components/chat/ModelChip";
+import { AUTO_MODEL } from "@/lib/ai/chat-models";
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -311,6 +313,8 @@ export function ScriptDoc(props: ScriptDocProps) {
   /* ---------------- the copilot ---------------- */
   const [instruction, setInstruction] = React.useState("");
   const [thinking, setThinking] = React.useState(false);
+  /* 「模型」: which model 编剧 uses for these rewrites (Ryan: change it while fixing a script). */
+  const [pickModel, setPickModel] = useChatModel(`script:${projectId}`);
 
   function runCopilot(text?: string) {
     const ask = (text ?? instruction).trim();
@@ -322,7 +326,7 @@ export function ScriptDoc(props: ScriptDocProps) {
     setThinking(true);
     start(async () => {
       if (saveState === "dirty") await save();
-      const r = await copilotAction(projectId, paras.map((p) => p.voiceover), ask);
+      const r = await copilotAction(projectId, paras.map((p) => p.voiceover), ask, pickModel === AUTO_MODEL ? undefined : pickModel);
       setThinking(false);
       if ("error" in r && r.error) return notify(r.error);
       if (!("ok" in r) || !r.ok) return;
@@ -786,10 +790,13 @@ export function ScriptDoc(props: ScriptDocProps) {
                 placeholder={t("例如：把第二段改得更口语，加一个香港观众熟悉的比喻，总长控制在 60 秒内", "e.g. make paragraph 2 more conversational and keep it under 60 seconds")}
                 style={{ width: "100%", boxSizing: "border-box", border: "1px solid #dcdbd6", borderRadius: 10, padding: "9px 11px", fontSize: 13, fontFamily: "inherit", resize: "vertical" }}
               />
-              <button type="button" style={{ ...bigButton("primary", !me.canEdit || thinking), width: "100%" }} disabled={!me.canEdit || thinking} onClick={() => runCopilot()}>
-                <Icon name="spark" size={14} />
-                {thinking ? t("编剧正在改…", "The writer is on it…") : t("执行改写", "Rewrite")}
-              </button>
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <ModelChip value={pickModel} onChange={setPickModel} zh={zh} placement="down" align="left" />
+                <button type="button" style={{ ...bigButton("primary", !me.canEdit || thinking), flexGrow: 1 }} disabled={!me.canEdit || thinking} onClick={() => runCopilot()}>
+                  <Icon name="spark" size={14} />
+                  {thinking ? t("编剧正在改…", "The writer is on it…") : t("执行改写", "Rewrite")}
+                </button>
+              </div>
 
               <div style={{ borderTop: "1px solid #efeee9", paddingTop: 12, display: "flex", flexDirection: "column", gap: 8 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>

@@ -1,8 +1,10 @@
 "use client";
 
+import { DropVeil, useFileDrop } from "@/components/chat/DropVeil";
 import { STEP_LABELS, stepForTool } from "@/lib/agents/steps";
 import { ChatLiveWork } from "@/components/chat/ChatLiveWork";
-import { ModelPicker } from "@/components/shell/ModelPicker";
+import { ModelChip, useChatModel } from "@/components/chat/ModelChip";
+import { AUTO_MODEL } from "@/lib/ai/chat-models";
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -68,7 +70,7 @@ export type ThreadMessage = {
   videos?: VideoCard[];
   /** The files the person put on this message, by name, for the row drawn
    * before a reload names them from the text. */
-  attachments?: { id: string; name: string; size: number; kind: string }[];
+  attachments?: { id: string; name: string; size: number; kind: string; read?: boolean }[];
 };
 
 /**
@@ -232,7 +234,9 @@ export function AgentScreen({
   const [input, setInput] = useState(initialAgent ? `${agentTag(initialAgent)} ` : "");
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
-  const [liveModel, setLiveModel] = useState(model);
+  /* Which model answers what is sent from this box (「模型」 in the composer):
+     this chat's choice, not the studio's. */
+  const [pickModel, setPickModel] = useChatModel(initialId ?? "new");
   /** The sources rail lists three; this opens the rest. */
   const [allSources, setAllSources] = useState(false);
   const abort = useRef<AbortController | null>(null);
@@ -275,53 +279,12 @@ export function AgentScreen({
     }
   }
 
-  /*
-   * Drag files from the desktop onto anywhere on this screen (the client:
-   * "desktop files cannot be dragged into the chat box"). A window-level
-   * listener, so the drop lands whether it is over the box, the thread or
-   * the margin; a veil says where it will go while something is held over.
-   */
-  const [dragging, setDragging] = useState(false);
-  const attachRef = useRef(attach);
-  attachRef.current = attach;
-  useEffect(() => {
-    if (!canAttach) return;
-    let depth = 0;
-    const hasFiles = (e: DragEvent) => Array.from(e.dataTransfer?.types ?? []).includes("Files");
-    const enter = (e: DragEvent) => {
-      if (!hasFiles(e)) return;
-      depth += 1;
-      setDragging(true);
-    };
-    const over = (e: DragEvent) => {
-      if (!hasFiles(e)) return;
-      e.preventDefault();
-      if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
-    };
-    const leave = (e: DragEvent) => {
-      if (!hasFiles(e)) return;
-      depth = Math.max(0, depth - 1);
-      if (depth === 0) setDragging(false);
-    };
-    const drop = (e: DragEvent) => {
-      if (!hasFiles(e)) return;
-      e.preventDefault();
-      depth = 0;
-      setDragging(false);
-      attachRef.current(e.dataTransfer?.files ?? null);
-      box.current?.focus();
-    };
-    window.addEventListener("dragenter", enter);
-    window.addEventListener("dragover", over);
-    window.addEventListener("dragleave", leave);
-    window.addEventListener("drop", drop);
-    return () => {
-      window.removeEventListener("dragenter", enter);
-      window.removeEventListener("dragover", over);
-      window.removeEventListener("dragleave", leave);
-      window.removeEventListener("drop", drop);
-    };
-  }, [canAttach]);
+  /* Files dragged from the desktop onto anywhere on this screen go on the
+     message (`useFileDrop`), with a veil saying so while they are held over. */
+  const dragging = useFileDrop(canAttach, (list) => {
+    attach(list);
+    box.current?.focus();
+  });
 
   /** The cards for a few ids, once the server can name them for this reader. */
   const patchById = useCallback((id: string, fn: (m: ThreadMessage) => ThreadMessage) => {
@@ -469,7 +432,10 @@ export function AgentScreen({
       const res = await fetch("/api/agent/stream", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(opts.retry ? { conversationId, retry: true } : { conversationId, content: text, ...(files.length ? { attachments: files.map((f) => f.id) } : {}) }),
+        body: JSON.stringify({
+          ...(opts.retry ? { conversationId, retry: true } : { conversationId, content: text, ...(files.length ? { attachments: files.map((f) => f.id) } : {}) }),
+          ...(pickModel !== AUTO_MODEL ? { model: pickModel } : {}),
+        }),
         signal: controller.signal,
       });
       if (!res.ok || !res.body) throw new Error(await res.text());
@@ -503,6 +469,12 @@ export function AgentScreen({
             case "conversation":
               created = event.id;
               setConversationId(event.id);
+              /* The model picked in the new chat stays picked when it is reopened. */
+              try {
+                window.sessionStorage.setItem(`tg-model:${event.id}`, pickModel);
+              } catch {
+                /* no storage: fine */
+              }
               /* The chat exists now: it is "the last chat" even if the person
                  leaves before the answer ends. */
               document.cookie = "tg_chat_new=; path=/; max-age=0; samesite=lax";
@@ -514,6 +486,8 @@ export function AgentScreen({
               patchLast((m) => ({ ...m, id: event.id }));
               break;
             case "delta":
+              /* The answer is coming: "正在处理附件…" has done its job. */
+              if (!answer) setNotice((n) => (n && isFilesNotice(n) ? null : n));
               answer += event.text;
               patchLast((m) => ({ ...m, content: m.content + event.text }));
               break;
@@ -542,13 +516,20 @@ export function AgentScreen({
               patchLast((m) => ({ ...m, citations: event.files, withheld: event.withheld }));
               break;
             case "notice":
-              setNotice(event.text);
+              setNotice(plainNotice(event.text, zh));
+              break;
+            case "attachments":
+              /* The stream route read the files: their chips get a tick. */
+              if (Array.isArray(event.read)) {
+                const read = new Set((event.read as unknown[]).filter((x): x is string => typeof x === "string"));
+                patchById(userId, (m) => ({ ...m, attachments: (m.attachments ?? []).map((f) => (read.has(f.id) ? { ...f, read: true } : f)) }));
+              }
               break;
             case "usage":
-              setLiveModel(event.model);
               patchLast((m) => ({ ...m, costMicros: event.costMicros, model: event.model }));
               break;
             case "done": {
+              setNotice((n) => (n && isFilesNotice(n) ? null : n));
               patchLast((m) => ({ ...m, status: "complete" }));
               /* The card under the answer, for what the turn named: what the
                  answer itself wrote, and what its tools made or looked up. */
@@ -558,6 +539,7 @@ export function AgentScreen({
               break;
             }
             case "error":
+              setNotice((n) => (n && isFilesNotice(n) ? null : n));
               patchLast((m) => ({ ...m, status: "failed", error: event.message }));
               break;
           }
@@ -582,6 +564,7 @@ export function AgentScreen({
     } finally {
       setBusy(false);
       abort.current = null;
+      setNotice((n) => (n && isFilesNotice(n) ? null : n));
     }
   }
 
@@ -600,7 +583,10 @@ export function AgentScreen({
   /* The employee's side rail: their other threads with this person, and —
      beside a conversation — their latest lines in the channels. With no
      conversation yet those lines are the page itself (`AgentEmpty`). */
-  const showRail = Boolean((history && (history.conversations.length > 0 || (messages.length > 0 && history.lines.length > 0))) || (!history && recent && recent.length > 0));
+  /* Your own recent chats are in the list on the left (「最近」), so the
+     assistant's page has no second copy on the right; an employee's page
+     keeps its rail of that employee's threads. */
+  const showRail = Boolean(history && (history.conversations.length > 0 || (messages.length > 0 && history.lines.length > 0)));
 
   return (
     <div data-agent-screen="" style={{ flexGrow: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
@@ -629,9 +615,6 @@ export function AgentScreen({
                 {zh ? AGENT_LABELS[history.agent].title : AGENT_LABELS[history.agent].titleEn}
               </span>
             ) : null}
-            <span className="role" style={{ background: "#f4f4f5", color: "#525252" }}>
-              {zh ? "私密" : "Private"}
-            </span>
           </div>
           <div
             style={{
@@ -645,11 +628,11 @@ export function AgentScreen({
           >
             {history
               ? zh
-                ? `你和${name(history.agent)}的对话，只有你能看到 · ${name(history.agent)}用自己的权限回答`
-                : `Your conversations with the ${name(history.agent)}, only you can see them · it answers with its own permissions`
+                ? "只有你能看到"
+                : "Only you can see this"
               : zh
-                ? "只有你能看到 · 权限与你完全一致 · @ 一位 AI 同事就由他来回答"
-                : "Only you can see this · works with exactly your permissions · @ an AI teammate to have them answer"}
+                ? "只有你能看到 · @ 一位同事，让他来回答"
+                : "Only you can see this · @ a teammate to have them answer"}
           </div>
         </div>
         <div style={{ flexGrow: 1 }} />
@@ -671,12 +654,8 @@ export function AgentScreen({
             {zh ? "新对话" : "New chat"}
           </button>
         ) : null}
-        {/* Which model is answering — and the control that changes it. It was
-            a bare chip printing a model id with nothing to say why it was
-            there; it is the same picker the composer carries everywhere else. */}
-        <span className="chip" style={{ height: 28, fontSize: 11.5 }}>
-          <ModelPicker current={liveModel} zh={zh} />
-        </span>
+        {/* The model is chosen per message in the composer (「模型」), not
+            here for the whole studio (Ryan, 28 Sep). */}
         <button type="button" className="ico2" aria-label={zh ? "搜索" : "Search"} title={zh ? "搜索（⌘K）" : "Search (⌘K)"} onClick={() => window.dispatchEvent(new CustomEvent("aura:jump"))} style={{ border: 0, background: "transparent", cursor: "pointer" }}>
           {ICON2.search}
         </button>
@@ -786,14 +765,7 @@ export function AgentScreen({
             )}
           </div>
 
-          {dragging ? (
-            <div aria-hidden style={{ position: "fixed", inset: 0, zIndex: 80, background: "rgba(23,23,23,.28)", display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none" }}>
-              <div style={{ padding: "28px 40px", borderRadius: 18, background: "#fff", border: "2px dashed #171717", textAlign: "center", boxShadow: "0 12px 40px rgba(0,0,0,.18)" }}>
-                <div style={{ fontSize: 17, fontWeight: 600, color: "#171717" }}>{zh ? "松开，把文件放进这条消息" : "Drop to add the files to this message"}</div>
-                <div style={{ fontSize: 13, color: "#6b6b6b", marginTop: 6 }}>{zh ? "任何格式都行：PPT、Word、Excel、PDF、图片、音频、视频、压缩包" : "Any format: slides, documents, spreadsheets, PDFs, pictures, audio, video, zip"}</div>
-              </div>
-            </div>
-          ) : null}
+          <DropVeil on={dragging} zh={zh} />
 
           {/* composer */}
           <div style={{ flexShrink: 0, padding: "6px 24px 18px" }}>
@@ -833,8 +805,8 @@ export function AgentScreen({
                       ? `问${name(answering)}…`
                       : `Ask ${name(answering)}…`
                     : zh
-                      ? "给助理发消息，或输入 @ 叫一位 AI 同事来回答…"
-                      : "Message your assistant, or type @ to have an AI teammate answer…"
+                      ? "问点什么，或 @ 一位同事…"
+                      : "Ask anything, or @ a teammate…"
                 }
                 style={{
                   display: "block",
@@ -891,7 +863,7 @@ export function AgentScreen({
                         e.target.value = "";
                       }}
                     />
-                    <button type="button" className="ico2" onClick={() => picker.current?.click()} aria-label={zh ? "添加文件" : "Attach a file"} title={zh ? "添加文件：视频会进项目素材，员工能直接用" : "Attach a file: a video goes into the project's clips for the employee to use"}>
+                    <button type="button" className="ico2" onClick={() => picker.current?.click()} aria-label={zh ? "添加文件" : "Attach a file"} title={zh ? "添加文件（任何格式，也可以直接拖进来）" : "Attach files (any format, or drag them in)"}>
                       <svg viewBox="0 0 24 24">
                         <path d="M16.5 8.5 10 15a2.5 2.5 0 0 0 3.5 3.5l6.5-6.5a4.5 4.5 0 0 0-6.4-6.4L7 12.2" />
                       </svg>
@@ -938,6 +910,7 @@ export function AgentScreen({
                   </svg>
                 </button>
                 <div style={{ flexGrow: 1 }} />
+                <ModelChip value={pickModel} onChange={setPickModel} zh={zh} placement="up" align="right" />
                 <button
                   type="button"
                   onClick={() => {
@@ -1011,7 +984,6 @@ export function AgentScreen({
           >
             {sourcesHandle}
             {history && showRail ? <HistoryRail history={history} zh={zh} locale={locale} today={today} /> : null}
-            {!history && showRail && recent ? <RecentRail recent={recent} current={conversationId} zh={zh} locale={locale} today={today} /> : null}
             {sources.length > 0 ? (
             <>
             <div
@@ -1144,7 +1116,15 @@ function UserRow({
   });
   const shown = lines.filter((l) => !l.trim().startsWith("[附件]")).join("\n").trim();
   const pictured = new Set(pictures.map((p) => p.id));
-  const chips = (message.attachments ?? []).filter((f) => !drawn.has(f.id) && !pictured.has(f.id));
+  /* The files named in the stored lines (a reloaded thread has no live
+     attachment list): a document is a chip, with a tick once it was read. */
+  const named = lines.flatMap((l) => {
+    const m = /^\[附件\]\s+(.+?)\s+\(([a-z]+)[^)]*\)\s+file id\s+(fil_[0-9a-z]+)/i.exec(l.trim());
+    return m ? [{ id: m[3].toLowerCase(), name: m[1], kind: m[2], size: 0, read: /已读取/.test(l) }] : [];
+  });
+  const live = message.attachments ?? [];
+  const merged = [...live.map((f) => ({ ...f, read: f.read || named.some((n) => n.id === f.id && n.read) })), ...named.filter((n) => !live.some((f) => f.id === n.id))];
+  const chips = merged.filter((f) => !drawn.has(f.id) && !pictured.has(f.id) && f.kind !== "video");
   return (
     <div className="msg">
       <PersonAvatar className="mav" id={me.id} url={me.avatarUrl} name={me.name} />
@@ -1175,7 +1155,15 @@ function UserRow({
               <Link key={f.id} href={`/files/${f.id}`} prefetch={false} className="chip" style={{ height: 26, fontSize: 11.5, gap: 6, color: "#0f5bd5", borderColor: "#c9ddf7", background: "#f2f8ff" }}>
                 <Icon name={f.kind === "image" ? "image" : f.kind === "video" ? "clapper" : "doc"} size={12} />
                 <span style={{ maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.name}</span>
-                <span style={{ color: "#7c9bb4" }}>{bytes(f.size)}</span>
+                {f.size ? <span style={{ color: "#7c9bb4" }}>{bytes(f.size)}</span> : null}
+                {f.read ? (
+                  <span title={zh ? "AI 已经读过这个文件" : "The AI has read this file"} style={{ display: "inline-flex", alignItems: "center", gap: 3, color: "#1e7a4f" }}>
+                    <svg viewBox="0 0 24 24" width={11} height={11} aria-hidden fill="none" stroke="currentColor" strokeWidth={2.6} strokeLinecap="round" strokeLinejoin="round">
+                      <path d="m5 12.5 4.5 4.5L19 7.5" />
+                    </svg>
+                    {zh ? "已读取" : "Read"}
+                  </span>
+                ) : null}
               </Link>
             ))}
           </div>
@@ -1215,8 +1203,8 @@ function AgentRow({ message, zh, locale }: { message: ThreadMessage; zh: boolean
         </div>
 
         <div className="txt">
-          {message.tools.map((tool) => (
-            <div key={tool.id} className="tool" title={tool.summary ?? tool.name}>
+          {groupTools(message.tools, zh).map(({ tool, count }) => (
+            <div key={tool.id} className="tool">
               {tool.status === "running" ? (
                 <span
                   style={{
@@ -1248,7 +1236,10 @@ function AgentRow({ message, zh, locale }: { message: ThreadMessage; zh: boolean
               {/* What it did, in words — not the tool's raw first line ("Plan for
                   2026-09-27, posted by 策划 … (message msg_…)"), which stays
                   on hover. */}
-              <span>{toolWords(tool.name, tool.status, tool.summary, zh)}</span>
+              <span>
+                {toolWords(tool.name, tool.status, zh)}
+                {count > 1 ? <span style={{ color: "#a3a3a3" }}>{` ×${count}`}</span> : null}
+              </span>
             </div>
           ))}
 
@@ -1326,21 +1317,23 @@ function AgentRow({ message, zh, locale }: { message: ThreadMessage; zh: boolean
             </div>
           )}
 
-          {message.status === "complete" && message.costMicros !== undefined && (
-            <p className="mut" style={{ marginTop: 8, fontSize: 11.5, color: "#a3a3a3" }}>
-              {message.model} · {cost(message.costMicros)}
-            </p>
-          )}
         </div>
       </div>
     </div>
   );
 }
 
-function cost(micros: number): string {
-  const usd = micros / 1_000_000;
-  if (!usd) return "US$0.00";
-  return usd < 0.01 ? `US$${usd.toFixed(4)}` : `US$${usd.toFixed(2)}`;
+/** The stream route's "working on your files" line, which goes once the answer starts. */
+function isFilesNotice(text: string): boolean {
+  return text.startsWith("正在处理附件") || text.startsWith("正在读文件") || text.startsWith("Working on the files") || text.startsWith("Reading the files");
+}
+
+/** A notice in plain words: the agent's own are written for an admin. */
+function plainNotice(text: string, zh: boolean): string {
+  if (/free fallback/i.test(text)) return zh ? "AI 账户余额不足，这次用的是备用模型，回答可能差一些。请管理员充值。" : "The AI account is low, so a backup model answered. Ask an admin to top it up.";
+  if (/budget/i.test(text)) return zh ? "这个月的 AI 额度用完了，回答停在了一半。请管理员提高额度。" : "This month's AI allowance is used up, so the answer stopped. Ask an admin to raise it.";
+  if (text.startsWith("正在处理附件")) return zh ? "正在读文件…可以先去别的页面，回答会留在这里。" : "Reading the files… you can leave; the answer stays here.";
+  return text;
 }
 
 /**
@@ -1353,16 +1346,16 @@ function Empty({ zh, picked, onPick }: { zh: boolean; picked: AgentKey | null; o
     <div style={{ padding: "0 24px 18px" }}>
       <AgentIcon agent={picked} size={44} radius={12} />
       <div style={{ fontSize: 17, fontWeight: 600, marginTop: 14 }}>
-        {picked ? (zh ? `问${AGENT_LABELS[picked].nameLocal}` : `Ask the ${AGENT_LABELS[picked].name}`) : zh ? "你的助理" : "Your agent"}
+        {picked ? (zh ? `问${AGENT_LABELS[picked].nameLocal}` : `Ask the ${AGENT_LABELS[picked].name}`) : zh ? "你的助理" : "Your assistant"}
       </div>
       <p className="mut" style={{ marginTop: 4, lineHeight: 1.6, maxWidth: 520 }}>
         {picked
           ? zh
-            ? `${AGENT_LABELS[picked].hint}。它用自己的权限回答，回答会留在这个对话里。`
-            : `${AGENT_LABELS[picked].hintEn}. It answers with its own permissions, in this conversation.`
+            ? AGENT_LABELS[picked].hint
+            : AGENT_LABELS[picked].hintEn
           : zh
-            ? "它的权限与你完全一致。它读过的文件会列在右边。也可以直接找一位 AI 同事："
-            : "It holds exactly your permissions. Whatever it reads is listed on the right. Or ask an AI teammate directly:"}
+            ? "问点什么，文件可以直接拖进来。也可以找一位同事："
+            : "Ask anything — drag files straight in. Or ask a teammate:"}
       </p>
       <div
         style={{
@@ -1565,55 +1558,27 @@ function plainLine(text: string): string {
     .trim();
 }
 
-/**
- * Your own chats, on your assistant's page: the history panel the page had
- * while it borrowed the last employee's (it went when "你的助理" stopped
- * turning into 剪辑师's page — "the chat history tab just gone, need back").
- */
-function RecentRail({ recent, current, zh, locale, today }: { recent: { id: string; title: string; updatedAt: string }[]; current: string | null; zh: boolean; locale: Locale; today: string }) {
-  const router = useRouter();
-  return (
-    <div style={{ display: "flex", flexDirection: "column", minHeight: 0, overflowY: "auto" }}>
-      <div style={{ height: 44, flexShrink: 0, display: "flex", alignItems: "center", gap: 8, padding: "0 12px 0 16px", borderBottom: "1px solid #ededed" }}>
-        <span className="lbl" style={{ padding: 0, flexGrow: 1 }}>
-          {zh ? "你的对话" : "Your chats"} · {recent.length}
-        </span>
-        <button
-          type="button"
-          className="chip"
-          style={{ height: 26, fontSize: 11.5, gap: 5, cursor: "pointer", fontFamily: "inherit" }}
-          title={zh ? "开一个新对话" : "Start a new conversation"}
-          onClick={() => {
-            document.cookie = `tg_chat_new=1; path=/; max-age=${60 * 60 * 24 * 30}; samesite=lax`;
-            router.push("/chat?fresh=1");
-          }}
-        >
-          <Icon name="plus" size={12} />
-          {zh ? "新对话" : "New"}
-        </button>
-      </div>
-      <div style={{ padding: "8px 8px 12px", display: "flex", flexDirection: "column", gap: 2 }}>
-        {recent.map((c) => (
-          <Link key={c.id} href={`/chat/t/${c.id}`} prefetch={false} className={`hist${c.id === current ? " on" : ""}`}>
-            <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
-              <span style={{ fontSize: 12.5, color: "#171717", fontWeight: c.id === current ? 600 : 500, flexGrow: 1, minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                {c.title === "New chat" ? (zh ? "新对话" : "New chat") : c.title}
-              </span>
-              <span style={{ fontSize: 11, color: "#a3a3a3", flexShrink: 0 }}>{whenLabel(c.updatedAt, today, locale)}</span>
-            </div>
-          </Link>
-        ))}
-      </div>
-    </div>
-  );
-}
 
 /** A tool call as a person reads it: "查资料 · 3.8 s", "正在写脚本". */
-function toolWords(name: string, status: string, summary: string | undefined | null, zh: boolean): string {
+function toolWords(name: string, status: string, zh: boolean): string {
   const label = STEP_LABELS[stepForTool(name)] ?? STEP_LABELS.working;
   const words = (zh ? label.zh : label.en).replace(/…$/, "");
-  const secs = /·\s*([\d.]+\s*s)\s*$/.exec(summary ?? "")?.[1];
   if (status === "running") return words;
-  const done = zh ? words.replace(/^正在/, "") : words.replace(/^(\w)/, (c) => c.toUpperCase());
-  return secs ? `${done} · ${secs}` : done;
+  return zh ? words.replace(/^正在/, "") : words.replace(/^(\w)/, (c) => c.toUpperCase());
+}
+
+/**
+ * The steps of an answer as a person reads them: the same finished step
+ * once, with how many times (看合同 ×3), in the order first taken; one still
+ * running shows on its own.
+ */
+function groupTools(tools: ThreadTool[], zh: boolean): { tool: ThreadTool; count: number }[] {
+  const out: { tool: ThreadTool; count: number; key: string }[] = [];
+  for (const t of tools) {
+    const key = `${t.status === "running" ? t.id : "done"}:${t.status === "error" ? "x" : ""}${toolWords(t.name, t.status === "running" ? "running" : "ok", zh)}`;
+    const same = out.find((o) => o.key === key);
+    if (same) same.count += 1;
+    else out.push({ tool: t, count: 1, key });
+  }
+  return out;
 }

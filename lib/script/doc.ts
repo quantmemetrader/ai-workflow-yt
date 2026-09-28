@@ -252,7 +252,7 @@ async function referenceText(viewer: Viewer, scriptId: string): Promise<string> 
  * change, delete or add, for the page to show as tracked changes. Nothing is
  * saved here — the person accepts what they want.
  */
-export async function copilotRewrite(viewer: Viewer, scriptId: string, paragraphs: string[], instruction: string) {
+export async function copilotRewrite(viewer: Viewer, scriptId: string, paragraphs: string[], instruction: string, pick?: string | null) {
   await assertBudget(viewer);
   const [script] = await db.select({ title: scripts.title, targetSeconds: scripts.targetSeconds }).from(scripts).where(and(eq(scripts.id, scriptId), eq(scripts.tenantId, viewer.tenantId))).limit(1);
   if (!script) return { error: "Not allowed" };
@@ -277,7 +277,8 @@ export async function copilotRewrite(viewer: Viewer, scriptId: string, paragraph
   let model = "";
   for (let attempt = 0; attempt < 2 && !raw; attempt++) {
     const out = await complete({
-      model: modelFor.assistant(),
+      /* The 「模型」 picked beside the copilot, else the studio default. */
+      model: pick ?? modelFor.assistant(),
       temperature: attempt ? 0.2 : 0.5,
       maxTokens: 6000,
       messages: [

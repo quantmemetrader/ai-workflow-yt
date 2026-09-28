@@ -1,5 +1,6 @@
 "use client";
 
+import { DropVeil, useFileDrop } from "@/components/chat/DropVeil";
 import * as React from "react";
 import Link from "next/link";
 import { formatTextarea, type Format } from "@/components/canvas/composer-format";
@@ -773,10 +774,16 @@ export function ChannelSurface(props: {
     ? `${composerLabel}，输入 @ 叫上 AI 同事`
     : `${composerLabel} — type @ to bring in an AI teammate`;
   const nothingToSend = !draft.trim() && !attached.some((a) => a.fileId);
+  /* Drop files anywhere on the channel, not only on the box. */
+  const dragging = useFileDrop(props.canAttach !== false, (files) => {
+    attach(files);
+    box.current?.focus();
+  });
 
   return (
     <div data-chat-surface="" style={{ flexGrow: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
       <style dangerouslySetInnerHTML={{ __html: CSS }} />
+      <DropVeil on={dragging} zh={zh} />
 
       <div
         style={{
@@ -1182,15 +1189,6 @@ export function ChannelSurface(props: {
               ) : null}
               <div
                 className="composer"
-                onDragOver={(e) => {
-                  if (props.canAttach === false) return;
-                  e.preventDefault();
-                }}
-                onDrop={(e) => {
-                  if (props.canAttach === false) return;
-                  e.preventDefault();
-                  attach(e.dataTransfer.files);
-                }}
               >
                 <MentionMenu
                   matches={matches}

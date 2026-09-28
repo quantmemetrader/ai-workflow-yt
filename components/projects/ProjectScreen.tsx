@@ -1,5 +1,7 @@
 "use client";
 
+import { DropVeil, useFileDrop } from "@/components/chat/DropVeil";
+import { uploadToStudio } from "@/components/chat/upload";
 import { unlockAction } from "@/app/(app)/script/actions";
 import * as React from "react";
 import Link from "next/link";
@@ -795,6 +797,22 @@ function ChatDrawer({ project: p, zh, people, onClose }: { project: ProjectDetai
     const el = scroller.current;
     if (el) el.scrollTop = el.scrollHeight;
   }, [lastId, working]);
+  /* Files dropped anywhere while the drawer is open go up and into the
+     project's chat as one message; the employees read them from there. */
+  const [sending, setSending] = React.useState<string | null>(null);
+  const dragging = useFileDrop(true, (list) => {
+    const files = Array.from(list).slice(0, 10);
+    if (!files.length) return;
+    setSending(t(`正在上传 ${files.length} 个文件…`, `Uploading ${files.length} file(s)…`));
+    void Promise.allSettled(files.map((f) => uploadToStudio(f, () => {}))).then(async (out) => {
+      const ids = out.flatMap((r) => (r.status === "fulfilled" ? [r.value.id] : []));
+      setSending(null);
+      if (!ids.length) return notify(t("上传没成功，再试一次", "The upload failed; try again"));
+      const res = await sendChannelMessage(p.channel.slug, "", ids);
+      if (res?.error) notify(res.error);
+      router.refresh();
+    });
+  });
   const say = (text: string) =>
     start(async () => {
       const res = await sendChannelMessage(p.channel.slug, text);
@@ -807,6 +825,8 @@ function ChatDrawer({ project: p, zh, people, onClose }: { project: ProjectDetai
     });
   return (
     <aside style={{ position: "absolute", right: 0, top: 0, bottom: 0, width: 420, background: "#fff", borderLeft: "1px solid #e6e6e6", boxShadow: "-12px 0 40px rgba(0,0,0,0.08)", display: "flex", flexDirection: "column", zIndex: 20 }}>
+      <DropVeil on={dragging} zh={zh} />
+      {sending ? <div style={{ padding: "6px 16px", fontSize: 12, color: "#6b6b6b", background: "#f7f7f5", borderBottom: "1px solid #f0f0f0" }}>{sending}</div> : null}
       <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "12px 14px 12px 16px", borderBottom: "1px solid #f0f0f0" }}>
         <Icon name="chat" size={15} />
         <span style={{ fontSize: 13.5, fontWeight: 600 }}>{t("项目对话", "Project chat")}</span>

@@ -1,3 +1,4 @@
+import { channelName } from "@/lib/chat/channel-name";
 import { after } from "next/server";
 import { notFound } from "next/navigation";
 import { requireModule } from "@/lib/auth/dal";
@@ -56,7 +57,7 @@ export default async function ChannelPage({ params }: { params: Promise<{ slug: 
       slug={slug}
       channelId={channel.id}
       model={answeringModel()}
-      name={channel.name}
+      name={zh ? channelName(slug, channel.name) : channel.name}
       topic={channel.topic}
       isPrivate={channel.isPrivate}
       canPost={channel.kind !== "announce" || viewer.isAdmin}
