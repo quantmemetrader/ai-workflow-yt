@@ -21,7 +21,7 @@ import { bumpLive, useLiveProject } from "@/lib/client/live";
 import { isRunning } from "@/lib/projects/live-types";
 import { ClipsNextStep } from "@/components/projects/ClipsNextStep";
 import { StepCards } from "@/components/projects/StepCards";
-import { GoButton, NextStep } from "@/components/projects/kit";
+import { Card, GoButton, NextStep, smallButton } from "@/components/projects/kit";
 import { tabHref } from "@/lib/projects/tabs";
 import { LivePill, useLiveRow } from "@/components/chat/LivePill";
 import type { ProjectDetail, ProjectStep } from "@/lib/projects/service";
@@ -463,26 +463,31 @@ export function ProjectScreen({
           {view === "overview" ? (
             <>
           {/* ---- one line of activity; the whole conversation on demand ---- */}
-          <button type="button" onClick={() => setChatOpen(true)} style={{ display: "flex", alignItems: "center", gap: 9, padding: "9px 14px", border: "1px solid #e6e6e6", borderRadius: 12, background: "#fff", cursor: "pointer", font: "inherit", textAlign: "left", minWidth: 0, boxShadow: "0 1px 2px rgba(0,0,0,0.03)" }}>
-            <span style={{ width: 7, height: 7, borderRadius: 4, flexShrink: 0, background: anyWorking ? "#278f5e" : "#d9d9d9", animation: anyWorking ? "auraPulse 1.6s ease-in-out infinite" : "none" }} />
-            <span style={{ fontSize: 11.5, color: "#999999", flexShrink: 0 }}>{t("动态", "Activity")}</span>
-            <span style={{ fontSize: 12.5, color: "#525252", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flexGrow: 1 }}>
-              {/* The author as a name, translate-proof (`AgentName`): read
-                  through Chrome's translate, 撰稿人 is "Writer", not
-                  "Contributor". */}
-              {lastMsg ? (
-                <>
-                  {lastMsg.agent ? <AgentName agent={lastMsg.agent} zh={zh} /> : lastMsg.author}
-                  {`：${oneLine(lastMsg.body)}`}
-                </>
-              ) : (
-                t("还没有动静", "Nothing yet")
-              )}
-            </span>
-            <span style={{ fontSize: 11.5, color: "#7c7c7c", flexShrink: 0, display: "inline-flex", alignItems: "center", gap: 5 }}>
-              <Icon name="chat" size={12} /> {t(`对话 ${p.messages.length}`, `Chat ${p.messages.length}`)}
-            </span>
-          </button>
+          <Card
+            icon="chat"
+            title={t("项目对话", "Project chat")}
+            sub={t("在这里 @ 任何 AI 员工或同事，所有人都看得到", "@ any AI employee or colleague here; everyone on the project sees it")}
+            right={
+              <button type="button" onClick={() => setChatOpen(true)} style={smallButton()}>
+                <span style={{ width: 7, height: 7, borderRadius: 4, background: anyWorking ? "#278f5e" : "#d0d0cc", animation: anyWorking ? "auraPulse 1.6s ease-in-out infinite" : "none" }} />
+                {t(`打开对话 · ${p.messages.length}`, `Open chat · ${p.messages.length}`)}
+              </button>
+            }
+          >
+            {p.messages.length ? (
+              <div style={{ display: "flex", flexDirection: "column" }}>
+                {p.messages.slice(-3).map((m, i) => (
+                  <button key={i} type="button" onClick={() => setChatOpen(true)} style={{ display: "flex", alignItems: "baseline", gap: 8, padding: "7px 0", border: 0, borderTop: i ? "1px solid #f0efeb" : 0, background: "none", font: "inherit", textAlign: "left", cursor: "pointer", minWidth: 0 }}>
+                    <span style={{ fontSize: 12.5, fontWeight: 600, color: "#171717", flexShrink: 0 }}>{m.agent ? <AgentName agent={m.agent} zh={zh} /> : m.author}</span>
+                    <span style={{ fontSize: 12.5, color: "#5f5f5f", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flexGrow: 1 }}>{oneLine(m.body).replace(/\s*(?:在脚本页看、改：)?\/(?:script|video|projects|chat)\/\S+/g, "")}</span>
+                    <span style={{ fontSize: 11.5, color: "#a3a3a3", flexShrink: 0 }}>{ago(m.at, zh)}</span>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div style={{ fontSize: 13, color: "#8a8a8a" }}>{t("还没有对话。", "No messages yet.")}</div>
+            )}
+          </Card>
 
           {privateChats.length ? (
             <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", margin: "-4px 2px 0", fontSize: 12, color: "#7c7c7c" }}>
