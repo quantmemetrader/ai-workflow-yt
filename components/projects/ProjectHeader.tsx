@@ -50,7 +50,7 @@ export function ProjectHeader({ p, zh }: { p: HeaderProject; zh: boolean }) {
   return (
     <div style={{ flexShrink: 0, background: "rgba(250,250,248,.92)", borderBottom: "1px solid #e7e6e2" }}>
       <style>{HEADER_CSS}</style>
-      <div style={{ maxWidth: 1080, margin: "0 auto", padding: "12px 24px 0" }}>
+      <div style={{ padding: "12px 32px 0" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
           <Link prefetch={false} href="/projects" className="ph-quiet" style={{ fontSize: 12, color: "#8a8a8a", textDecoration: "none", display: "inline-flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
             <Icon name="folder" size={13} />

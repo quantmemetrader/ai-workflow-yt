@@ -268,7 +268,7 @@ export function ProjectScreen({
   return (
     <div style={{ flexGrow: 1, minWidth: 0, minHeight: 0, display: "flex", position: "relative", ...PAPER }}>
       <div style={{ flexGrow: 1, minWidth: 0, overflowY: "auto" }}>
-        <div style={{ maxWidth: 1080, margin: "0 auto", padding: "20px 24px 60px", display: "flex", flexDirection: "column", gap: 14 }}>
+        <div style={{ maxWidth: 1440, padding: "20px 32px 60px", display: "flex", flexDirection: "column", gap: 14 }}>
           <style dangerouslySetInnerHTML={{ __html: PROJECT_CSS }} />
           {view === "overview" ? <StepCards p={p} zh={zh} me={me} /> : null}
 

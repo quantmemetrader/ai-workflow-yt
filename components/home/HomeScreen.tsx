@@ -577,7 +577,7 @@ export function HomeScreen({
   return (
     <div style={{ flexGrow: 1, minWidth: 0, minHeight: 0, overflowY: "auto", ...PAPER }}>
       <style dangerouslySetInnerHTML={{ __html: `${DETAIL_LINK_CSS}${IDEAS_CSS}${TITLE_CHECK_CSS}${ROLE_TABS_CSS} .home-all:hover { color: #171717 !important; }` }} />
-      <div style={{ maxWidth: 1080, margin: "0 auto", padding: "22px 24px 48px", display: "flex", flexDirection: "column", gap: 14 }}>
+      <div style={{ maxWidth: 1440, padding: "22px 32px 48px", display: "flex", flexDirection: "column", gap: 14 }}>
         <div>
           <h1 style={{ fontSize: 22, fontWeight: 600, margin: 0, letterSpacing: "-0.01em" }}>{t(`${greeting(zh)}，${me}`, `${greeting(zh)}, ${me}`)}</h1>
           <p style={{ margin: "5px 0 0", fontSize: 13.5, color: "#7c7c7c" }}>{subline}</p>

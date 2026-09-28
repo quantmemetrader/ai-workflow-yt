@@ -24,10 +24,10 @@ export const MUTED = "#8a8a8a";
 export const LINE = "#e7e6e2";
 export const ACCENT = "#1f6feb";
 
-export function PageBody({ children, width = 1080 }: { children: React.ReactNode; width?: number }) {
+export function PageBody({ children, width = 1440 }: { children: React.ReactNode; width?: number }) {
   return (
     <div style={{ flexGrow: 1, minWidth: 0, minHeight: 0, overflowY: "auto" }}>
-      <div style={{ maxWidth: width, margin: "0 auto", padding: "18px 24px 64px", display: "flex", flexDirection: "column", gap: 14 }}>{children}</div>
+      <div style={{ maxWidth: width, padding: "18px 32px 64px", display: "flex", flexDirection: "column", gap: 14 }}>{children}</div>
     </div>
   );
 }
