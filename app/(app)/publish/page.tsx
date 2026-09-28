@@ -3,6 +3,7 @@ import { answeringModel } from "@/lib/ai/models";
 import { listPeople } from "@/lib/chat/service";
 import { listChannels, listLog, listPosts, stateCounts } from "@/lib/publish/service";
 import { PublishScreen } from "@/components/publish/PublishScreen";
+import { listByType } from "@/lib/files/lenses";
 
 export const metadata = { title: "发布 · Publish" };
 
@@ -20,7 +21,7 @@ export const metadata = { title: "发布 · Publish" };
 export default async function PublishPage() {
   const viewer = await requireModule("publish");
 
-  const [channels, posts, log, counts, people] = await Promise.all([
+  const [channels, posts, log, counts, people, videos] = await Promise.all([
     listChannels(viewer),
     listPosts(viewer),
     listLog(viewer),
@@ -29,6 +30,8 @@ export default async function PublishPage() {
     // Admin module will narrow this to people who hold `publish`, and until it
     // exists a name that cannot approve is better than no names at all.
     listPeople(viewer),
+    // A post's 视频 box picks from the studio's recent videos (renders included).
+    listByType(viewer, "videos", 60).catch(() => []),
   ]);
 
   const zh = (viewer.locale ?? "zh-CN").startsWith("zh");
@@ -43,6 +46,7 @@ export default async function PublishPage() {
       viewerId={viewer.id}
       locale={viewer.locale ?? "zh-CN"}
       model={answeringModel()}
+      videos={videos.map((v) => ({ id: v.file.id, name: v.file.name, durationMs: v.file.durationMs, at: v.file.createdAt.toISOString() }))}
     />
   );
 }

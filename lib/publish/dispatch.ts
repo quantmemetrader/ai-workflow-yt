@@ -4,6 +4,8 @@ import { and, eq, inArray, ne } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { channels, publishLog, publishPosts, publishTargets } from "@/lib/db/schema";
 import { createPost as zernioCreatePost, ZernioUnconfigured } from "@/lib/social/zernio";
+import { files } from "@/lib/db/schema";
+import { presignDownload } from "@/lib/storage/r2";
 import { newId } from "@/lib/ids";
 
 /**
@@ -100,6 +102,23 @@ export async function sendPost(postId: string, onlyTargetId?: string): Promise<S
 
   const result: SendResult = { posted: 0, failed: 0, skipped: 0, errors: [] };
 
+  /*
+   * The video, when the post has one. The platform fetches it itself from a
+   * signed link to the bucket (Zernio: "every mediaItems[].url must be
+   * publicly reachable over HTTPS and return the file itself"). A scheduled
+   * post is fetched when it goes out, so its link lives for the longest a
+   * signature may (7 days); an immediate one for a day. This was the reason
+   * every post left as text: the file was stored on the post and never sent.
+   */
+  let media: { url: string; type: "video" | "image" }[] | undefined;
+  if (post.fileId) {
+    const [f] = await db.select({ key: files.storageKey, mime: files.mime, deletedAt: files.deletedAt }).from(files).where(eq(files.id, post.fileId)).limit(1);
+    if (f?.key && !f.deletedAt) {
+      const expiresIn = post.scheduledFor ? 7 * 86_400 - 60 : 86_400;
+      media = [{ url: await presignDownload(f.key, { expiresIn }), type: f.mime?.startsWith("image/") ? "image" : "video" }];
+    }
+  }
+
   for (const { target, channel } of targets) {
     const text = target.body ?? post.body;
     const title = target.title ?? post.title;
@@ -148,6 +167,7 @@ export async function sendPost(postId: string, onlyTargetId?: string): Promise<S
         content: text,
         title,
         tags: post.tags,
+        ...(media ? { mediaItems: media } : {}),
         idempotencyKey: key,
         ...(post.scheduledFor
           ? { scheduledFor: post.scheduledFor.toISOString() }

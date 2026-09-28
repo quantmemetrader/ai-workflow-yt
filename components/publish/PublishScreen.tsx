@@ -19,12 +19,14 @@ import {
   syncChannelsAction,
   updatePostAction,
   connectChannelAction,
+  setPostFileAction,
 } from "@/app/(app)/publish/actions";
 import { InlineAgentThread, useInlineAgent } from "@/components/shell/InlineAgent";
 import { ResearchAgentPanel } from "@/components/canvas/ResearchAgentPanel";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { notify } from "@/lib/client/notify";
 import { ModuleSidebar, type ScreenItem } from "@/components/shell/ModuleSidebar";
+import { PostVideo, type ComposerVideo } from "@/components/publish/PostVideo";
 
 /**
  * Publish (spec §4.6), transcribed from the four `Pub-*` artboards.
@@ -51,6 +53,7 @@ export function PublishScreen({
   viewerId,
   locale,
   model,
+  videos = [],
 }: {
   channels: ChannelRow[];
   posts: PostRow[];
@@ -60,6 +63,8 @@ export function PublishScreen({
   viewerId: string;
   locale: string;
   model: string;
+  /** Recent videos in Files (renders included), for a post's 视频 box. */
+  videos?: ComposerVideo[];
 }) {
   const zh = locale.startsWith("zh");
   const t = (en: string, cn: string) => (zh ? cn : en);
@@ -170,6 +175,8 @@ export function PublishScreen({
               people={people}
               viewerId={viewerId}
               onSelect={setSelected}
+              videos={videos}
+              onFile={(id, fileId) => run(() => setPostFileAction(id, fileId))}
               onSave={(id, input) => run(() => updatePostAction(id, input))}
               onTargets={(id, channelIds) => run(() => setTargetsAction(id, channelIds))}
               onOverride={(targetId, input) => run(() => setOverrideAction(targetId, input))}
@@ -219,6 +226,7 @@ export function PublishScreen({
       {composing && (
         <NewPostDialog
           channels={channels}
+          videos={videos}
           zh={zh}
           busy={busy}
           onClose={() => setComposing(false)}
@@ -1015,6 +1023,8 @@ function Caption({
   people,
   viewerId,
   onSelect,
+  videos,
+  onFile,
   onSave,
   onTargets,
   onOverride,
@@ -1029,6 +1039,9 @@ function Caption({
   people: { id: string; name: string }[];
   viewerId: string;
   onSelect: (id: string) => void;
+  videos: ComposerVideo[];
+  /** Attach a video to the post, or take it off. */
+  onFile: (id: string, fileId: string | null) => void;
   onSave: (id: string, input: { title?: string; body?: string; scheduledFor?: string | null }) => void;
   onTargets: (id: string, channelIds: string[]) => void;
   onOverride: (targetId: string, input: { title?: string | null; body?: string | null }) => void;
@@ -1075,6 +1088,7 @@ function Caption({
             <span style={{ fontSize: 12.5, fontWeight: 500, display: "block" }}>{p.title}</span>
             <span style={{ fontSize: 11, color: "#999999", display: "block", marginTop: 2 }}>
               <StateWord state={p.state} zh={zh} /> · {p.targets.length} {t("channels", "个渠道")}
+              {p.fileId ? ` · ${t("video", "视频")}` : ""}
             </span>
           </button>
         ))}
@@ -1102,6 +1116,18 @@ function Caption({
           <p style={{ fontSize: 11.5, color: "#999999", margin: "6px 0 14px" }}>
             {t("The master caption. A channel that overrides nothing uses this.", "主文案。未单独覆写的渠道使用它。")}
           </p>
+
+          <div style={{ marginBottom: 12 }}>
+            <PostVideo
+              key={`${selected.id}-video`}
+              fileId={selected.fileId}
+              fileName={selected.fileName}
+              videos={videos}
+              zh={zh}
+              disabled={busy || selected.state === "published" || selected.state === "publishing"}
+              onChange={(f) => onFile(selected.id, f?.id ?? null)}
+            />
+          </div>
 
           <textarea
             key={`${selected.id}-body`}
@@ -1324,6 +1350,19 @@ function Approvals({
               )}
             </div>
 
+            {p.fileId ? (
+              <a href={`/api/files/${p.fileId}/download`} target="_blank" rel="noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 8, marginTop: 10, textDecoration: "none", color: "#404040", fontSize: 12 }}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={`/api/files/${p.fileId}/thumb`} alt="" style={{ width: 96, height: 60, objectFit: "cover", borderRadius: 7, background: "#111" }} onError={(e) => ((e.target as HTMLImageElement).style.visibility = "hidden")} />
+                <span>
+                  <span style={{ display: "block", color: "#999999", fontSize: 11 }}>{t("Video", "视频")}</span>
+                  {p.fileName ?? ""}
+                </span>
+              </a>
+            ) : (
+              <p style={{ fontSize: 11.5, color: "#b45309", margin: "10px 0 0" }}>{t("No video — this goes out as text only.", "没有视频——只会发出文字。")}</p>
+            )}
+
             <p
               style={{
                 fontSize: 12.5,
@@ -1352,7 +1391,7 @@ function Approvals({
                 type="button"
                 disabled={busy}
                 onClick={() => onReject(p.id, notes[p.id] ?? "")}
-                style={ghost}
+                style={{ ...ghost, flexShrink: 0, whiteSpace: "nowrap" }}
               >
                 {t("Send back", "退回")}
               </button>
@@ -1361,7 +1400,7 @@ function Approvals({
                 disabled={busy || askedByMe}
                 onClick={() => onApprove(p)}
                 title={askedByMe ? t("You asked for this one, so somebody else has to approve it", "这是你提交的，需要由他人批准") : undefined}
-                style={{ ...solid, opacity: busy || askedByMe ? 0.45 : 1 }}
+                style={{ ...solid, flexShrink: 0, whiteSpace: "nowrap", opacity: busy || askedByMe ? 0.45 : 1 }}
               >
                 {t("Approve and publish", "批准并发布")}
               </button>
@@ -1491,21 +1530,24 @@ function LogTable({
 
 function NewPostDialog({
   channels,
+  videos,
   zh,
   busy,
   onClose,
   onCreate,
 }: {
   channels: ChannelRow[];
+  videos: ComposerVideo[];
   zh: boolean;
   busy: boolean;
   onClose: () => void;
-  onCreate: (input: { title: string; body: string; channelIds: string[] }) => void;
+  onCreate: (input: { title: string; body: string; channelIds: string[]; fileId: string | null }) => void;
 }) {
   const t = (en: string, cn: string) => (zh ? cn : en);
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [picked, setPicked] = useState<string[]>([]);
+  const [video, setVideo] = useState<{ id: string; name: string } | null>(null);
 
   return (
     <div
@@ -1540,7 +1582,7 @@ function NewPostDialog({
           animation: "fadeUp .16s cubic-bezier(.32,.72,0,1) both",
         }}
       >
-        <div style={{ padding: "17px 18px 0" }}>
+        <div style={{ padding: "17px 18px 0", overflowY: "auto", minHeight: 0, flexShrink: 1 }}>
           <div style={{ fontSize: 15, fontWeight: 600 }}>{t("New post", "新建发布")}</div>
           <input
             autoFocus
@@ -1555,6 +1597,9 @@ function NewPostDialog({
             placeholder={t("The master caption. You can refine it per channel afterwards.", "主文案。之后可按渠道单独调整。")}
             style={{ ...field, marginTop: 8, minHeight: 110, resize: "vertical", lineHeight: 1.6, padding: "10px 12px" }}
           />
+          <div style={{ marginTop: 8 }}>
+            <PostVideo fileId={video?.id ?? null} fileName={video?.name ?? null} videos={videos} zh={zh} disabled={busy} onChange={setVideo} />
+          </div>
         </div>
 
         <div className="lbl" style={{ padding: "16px 18px 6px", margin: 0 }}>
@@ -1605,7 +1650,7 @@ function NewPostDialog({
           </button>
           <button
             type="button"
-            onClick={() => onCreate({ title, body, channelIds: picked })}
+            onClick={() => onCreate({ title, body, channelIds: picked, fileId: video?.id ?? null })}
             disabled={busy || !title.trim()}
             style={{ ...solid, opacity: busy || !title.trim() ? 0.45 : 1 }}
           >

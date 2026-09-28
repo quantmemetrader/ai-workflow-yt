@@ -102,6 +102,23 @@ export async function updatePostAction(
   }
 }
 
+/**
+ * Attach a video to a post, or take it off (null). The composer's 视频 box:
+ * a post with no video goes out as text, which is what every post did before.
+ */
+export async function setPostFileAction(postId: string, fileId: string | null) {
+  const viewer = await publisher();
+  if (!viewer) return { error: "Not allowed" };
+  if (!id(postId)) return { error: "Not found" };
+  try {
+    await updatePost(viewer, postId, { fileId: fileId === null ? null : id(fileId) });
+    refresh();
+    return {};
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Could not attach that video" };
+  }
+}
+
 export async function setTargetsAction(postId: string, channelIds: string[]) {
   const viewer = await publisher();
   if (!viewer) return { error: "Not allowed" };

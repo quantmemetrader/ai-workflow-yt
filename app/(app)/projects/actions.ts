@@ -425,9 +425,10 @@ function keepWriting(next: ProjectSource | { kind: string; label?: string }) {
   const rest: Record<string, unknown> = { ...next };
   delete rest.writing;
   delete rest.published;
+  delete rest.publishDraft;
   /* The 已发布 record rides in the same column (lib/projects/publication.ts)
      and is not the topic's: changing the topic keeps it, read the same way. */
-  return sql`${JSON.stringify(rest)}::jsonb || jsonb_build_object('writing', coalesce(${workProjects.source} -> 'writing', 'null'::jsonb)) || (case when ${workProjects.source} ? 'published' then jsonb_build_object('published', ${workProjects.source} -> 'published') else '{}'::jsonb end)`;
+  return sql`${JSON.stringify(rest)}::jsonb || jsonb_build_object('writing', coalesce(${workProjects.source} -> 'writing', 'null'::jsonb)) || (case when ${workProjects.source} ? 'published' then jsonb_build_object('published', ${workProjects.source} -> 'published') else '{}'::jsonb end) || (case when ${workProjects.source} ? 'publishDraft' then jsonb_build_object('publishDraft', ${workProjects.source} -> 'publishDraft') else '{}'::jsonb end)`;
 }
 
 /**
