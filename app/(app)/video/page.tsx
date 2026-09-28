@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import { projectFor } from "@/lib/projects/service";
 import { publicationsByVideo } from "@/lib/projects/published";
 import { publishedDay } from "@/lib/projects/publication";
@@ -35,6 +36,12 @@ export default async function VideoPage({
 }) {
   const viewer = await requireModule("video");
   const { project: wanted } = await searchParams;
+  /* A cut that belongs to a project is edited on the project's 剪辑 page;
+     old links (chat cards, hand-offs) land there. */
+  if (wanted) {
+    const owner = await projectFor(viewer, { videoProjectId: wanted });
+    if (owner) redirect(`/projects/${owner.id}/edit`);
+  }
   const d = await editorData(viewer, wanted);
 
   /* Which cuts went out: each video project's work project, when it is

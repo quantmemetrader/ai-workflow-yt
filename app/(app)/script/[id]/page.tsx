@@ -1,6 +1,6 @@
 import { projectFor } from "@/lib/projects/service";
 import { ProjectBar } from "@/components/projects/ProjectBar";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { requireModule } from "@/lib/auth/dal";
 import { modelFor } from "@/lib/ai/models";
 import { shareCeiling } from "@/lib/authz/rebac";
@@ -23,6 +23,10 @@ export default async function ScriptPage({ params }: { params: Promise<{ id: str
 
   const detail = await scriptDetail(viewer, id);
   if (!detail) notFound();
+  /* A project's script is written on the project's own 脚本 page (the doc
+     with the copilot, sharing and approval); old links land there. */
+  const owner = await projectFor(viewer, { scriptId: id });
+  if (owner) redirect(`/projects/${owner.id}/script`);
 
   const zh0 = (viewer.locale ?? "zh-CN").startsWith("zh");
   const [siblings, approvers, ceiling, shares, run] = await Promise.all([

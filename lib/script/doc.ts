@@ -1,7 +1,7 @@
 import "server-only";
 import { and, asc, desc, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { approvals, files, knowledge, scriptBeats, scriptComments, scriptVersions, scripts, users } from "@/lib/db/schema";
+import { approvals, files, scriptBeats, scriptComments, scriptVersions, scripts, users } from "@/lib/db/schema";
 import type { Viewer } from "@/lib/auth/dal";
 import { complete } from "@/lib/ai/openrouter";
 import { modelFor } from "@/lib/ai/models";
@@ -235,18 +235,6 @@ const COPILOT_PROMPT = `你是短视频工作室的编剧，正在和同事一�
 - 口播按每秒约 4.5 个汉字估算时长；"缩短 30 秒"就是删减约 135 个字。
 - "text" 是完整的一段，不是片段。`;
 
-async function roleKnowledge(viewer: Viewer): Promise<string> {
-  const rows = await db
-    .select({ kind: knowledge.kind, title: knowledge.title, body: knowledge.body })
-    .from(knowledge)
-    .where(and(eq(knowledge.tenantId, viewer.tenantId), eq(knowledge.active, true), eq(knowledge.scope, "role"), eq(knowledge.scopeValue, "script")))
-    .limit(20);
-  if (!rows.length) return "";
-  const instructions = rows.filter((r) => r.kind !== "example").map((r) => `## ${r.title}\n${r.body}`).join("\n\n").slice(0, 6000);
-  const examples = rows.filter((r) => r.kind === "example").map((r) => `### ${r.title}\n${r.body.slice(0, 1500)}`).join("\n\n").slice(0, 6000);
-  return [instructions ? `编剧的长期说明：\n${instructions}` : "", examples ? `范例脚本（学习语气和结构，不要照抄内容）：\n${examples}` : ""].filter(Boolean).join("\n\n");
-}
-
 async function referenceText(viewer: Viewer, scriptId: string): Promise<string> {
   const [s] = await db.select({ ids: scripts.sourceFileIds }).from(scripts).where(eq(scripts.id, scriptId)).limit(1);
   const ids = s?.ids ?? [];
@@ -268,8 +256,9 @@ export async function copilotRewrite(viewer: Viewer, scriptId: string, paragraph
   await assertBudget(viewer);
   const [script] = await db.select({ title: scripts.title, targetSeconds: scripts.targetSeconds }).from(scripts).where(and(eq(scripts.id, scriptId), eq(scripts.tenantId, viewer.tenantId))).limit(1);
   if (!script) return { error: "Not allowed" };
-  const [style, trained, refs] = await Promise.all([houseStyle(viewer).catch(() => ({ text: "" })), roleKnowledge(viewer).catch(() => ""), referenceText(viewer, scriptId).catch(() => "")]);
-  const system = [COPILOT_PROMPT, style.text ? `工作室的写作规范：\n${style.text.slice(0, 4000)}` : "", trained, refs].filter(Boolean).join("\n\n");
+  /* The house style and 编剧's training (AI 训练) come in one piece from `houseStyle`. */
+  const [style, refs] = await Promise.all([houseStyle(viewer, "script").catch(() => ({ text: "" })), referenceText(viewer, scriptId).catch(() => "")]);
+  const system = [COPILOT_PROMPT, style.text ? `工作室的写作规范与编剧的训练：\n${style.text.slice(0, 12000)}` : "", refs].filter(Boolean).join("\n\n");
   const total = paragraphs.reduce((n, p) => n + spokenSeconds(p), 0);
   const user = [
     `标题：${script.title}`,
