@@ -409,3 +409,15 @@ export async function docImageAction(projectId: unknown, fileId: unknown) {
   const ok = await tagProjectFile(c.viewer, c.project.id, fileId, "other");
   return ok ? { ok: true as const, src: `/api/files/${fileId}/download` } : { error: c.zh ? "这张图打不开" : "That picture cannot be opened" };
 }
+
+/** 保存为新版本: the draft as it is now, kept as a numbered version (with an optional note). */
+export async function saveVersionAction(projectId: unknown, note?: unknown) {
+  const c = await ctx(projectId, true);
+  if ("error" in c) return c;
+  if (!c.project.scriptId) return { error: "Not allowed" };
+  const res = await cutVersion(c.viewer, c.project.scriptId, { note: typeof note === "string" && note.trim() ? note.trim().slice(0, 200) : null });
+  if (!res) return { error: c.zh ? "稿子是空的，或者已经批准锁定了" : "Nothing to save, or the script is locked" };
+  await audit(c.viewer, "script.version.saved", { objectType: "script", objectId: c.project.scriptId, module: "script", meta: { versionNo: res.versionNo } });
+  refresh(c.project.id);
+  return { ok: true as const, versionNo: res.versionNo };
+}

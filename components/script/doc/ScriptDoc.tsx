@@ -28,6 +28,7 @@ import {
   docCommentAction,
   docImageAction,
   importDocAction,
+  saveVersionAction,
   removeReferenceAction,
   renameScriptAction,
   requestChangesAction,
@@ -132,6 +133,7 @@ export function ScriptDoc(props: ScriptDocProps) {
   const [accessOpen, setAccessOpen] = React.useState(false);
   /* 所有脚本: every script, in its project's folder, to switch to (Ryan, 29 Sep). */
   const [picking, setPicking] = React.useState(false);
+  const [versionNote, setVersionNote] = React.useState("");
   const panel: Exclude<Panel, null> = panelPick;
   const setPanel = (p: Panel) => setPanelPick(p ?? "ai");
   const [zoom, setZoomRaw] = React.useState(1);
@@ -1026,7 +1028,25 @@ export function ScriptDoc(props: ScriptDocProps) {
             {t(` · 还剩 ${trackedLeft} 处`, ` · ${trackedLeft} left`)}
             {proposal.summary ? <span className="gd-status-dim"> — {proposal.summary}</span> : null}
           </span>
-          <button type="button" className="gd-status-btn primary" onClick={() => { const ids = trackedNow().map((x) => x.id); applyTracked(ids); endProposalIfDone([], proposal.source); notify(t("已接受全部修改", "All changes accepted"), "ok"); }}>{t("接受全部", "Accept all")}</button>
+          <button
+            type="button"
+            className="gd-status-btn primary"
+            disabled={pending}
+            onClick={() =>
+              start(async () => {
+                /* The draft as it was, kept as a version first, so the AI's edits can be undone from 版本. */
+                if (saveState === "dirty") await save();
+                if (!locked) await saveVersionAction(projectId, t("AI 改写前", "Before the AI edits")).catch(() => null);
+                const ids = trackedNow().map((x) => x.id);
+                applyTracked(ids);
+                endProposalIfDone([], proposal.source);
+                notify(t("已接受全部修改（改之前的稿子存成了一个版本）", "All changes accepted (the draft before them is kept as a version)"), "ok");
+                router.refresh();
+              })
+            }
+          >
+            {t("接受全部", "Accept all")}
+          </button>
           <button type="button" className="gd-status-btn" onClick={() => { rejectTracked(trackedNow().map((x) => x.id)); setProposal(null); }}>{t("全部拒绝", "Reject all")}</button>
         </div>
       ) : null}
@@ -1324,10 +1344,37 @@ export function ScriptDoc(props: ScriptDocProps) {
             ) : null}
             {panel === "versions" ? (
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                <button type="button" className="gd-version" data-on={!viewing ? "1" : undefined} onClick={() => setViewing(null)}>
-                  <b style={{ fontSize: 13.5 }}>{t("当前稿", "Current draft")}</b>
-                  <span style={{ fontSize: 12, color: "#5f6368" }}>{t(`${docState.count} 字 · 约 ${clock(docState.seconds, zh)}`, `${docState.count} words · ~${clock(docState.seconds, zh)}`)}</span>
-                </button>
+                <div className="gd-version-now">
+                  <button type="button" className="gd-version" data-on={!viewing ? "1" : undefined} onClick={() => setViewing(null)} style={{ border: 0, padding: 0, background: "transparent" }}>
+                    <b style={{ fontSize: 13.5 }}>{t("当前稿（正在写）", "Current draft")}</b>
+                    <span key={`vc-${docState.count}`} style={{ fontSize: 12, color: "#5f6368" }}>{t(`${docState.count} 字 · 约 ${clock(docState.seconds, zh)} · 自动保存`, `${docState.count} words · ~${clock(docState.seconds, zh)} · autosaved`)}</span>
+                  </button>
+                  <div style={{ fontSize: 12, color: "#5f6368", lineHeight: 1.5 }}>
+                    {t("改动会自动存进当前稿。想留一个能随时找回的版本，点下面的按钮；发给同事审阅、批准时也会自动存一版。", "Edits save into the draft. Save a version to keep a copy you can go back to; sending for review or approving saves one too.")}
+                  </div>
+                  {me.canEdit && !locked ? (
+                    <div style={{ display: "flex", gap: 6 }}>
+                      <input value={versionNote} onChange={(e) => setVersionNote(e.target.value)} placeholder={t("备注（可不填）", "Note (optional)")} style={{ flexGrow: 1, minWidth: 0, height: 34, border: "1px solid #d3d3d0", borderRadius: 8, padding: "0 10px", font: "inherit", fontSize: 13 }} />
+                      <button
+                        type="button"
+                        className="gd-ai-go"
+                        disabled={pending || docState.count === 0}
+                        onClick={() =>
+                          start(async () => {
+                            if (saveState === "dirty") await save();
+                            const r = await saveVersionAction(projectId, versionNote.trim() || null);
+                            if ("error" in r && r.error) return notify(r.error);
+                            setVersionNote("");
+                            notify(t(`已存为第 ${"versionNo" in r ? r.versionNo : ""} 版`, `Saved as v${"versionNo" in r ? r.versionNo : ""}`), "ok");
+                            router.refresh();
+                          })
+                        }
+                      >
+                        {t("保存为新版本", "Save a version")}
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
                 {props.versions.map((v) => {
                   const isLocked = script?.lockedVersion === v.versionNo;
                   const inReview = open.some((a) => a.versionNo === v.versionNo);
@@ -1605,6 +1652,7 @@ const CSS = `
 .gd-ai-refs { display: flex; flex-direction: column; gap: 8px; padding: 12px; border: 1px solid #e3e3e3; border-radius: 12px; background: #fbfbfa; }
 .gd-ai-up { display: inline-flex; align-items: center; gap: 5px; height: 30px; padding: 0 10px; border: 1px solid #d3d3d0; border-radius: 8px; background: #fff; font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; }
 .gd-ai-drop { border: 1.5px dashed #d3d3d0; border-radius: 10px; padding: 14px 10px; text-align: center; font-size: 12.5px; color: #80868b; }
+.gd-version-now { display: flex; flex-direction: column; gap: 8px; padding: 12px; border: 1px solid #d3e3fd; border-radius: 12px; background: #f5f8ff; margin-bottom: 8px; }
 .gd-side-tabs { display: flex; gap: 4px; padding: 3px; border-radius: 10px; background: #f1f3f4; width: 100%; }
 .gd-side-tab { flex: 1; height: 32px; border: 0; border-radius: 8px; background: transparent; font: inherit; font-size: 13.5px; color: #5f6368; cursor: pointer; }
 .gd-side-tab[data-on] { background: #fff; color: #1f1f1f; font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,.08); }
