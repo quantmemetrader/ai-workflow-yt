@@ -21,13 +21,15 @@ export type EditorBrief = {
   approved: { version: number; by: string | null; at: string | null } | null;
   /** The newest version written, for "第 3 版在写" beside an older approval. */
   latestVersion: number;
+  /** The shape the script was written for ("9:16", "16:9"), when it says. */
+  aspect: string | null;
   beats: { ord: number; visual: string; voiceover: string }[];
 };
 
 export async function editorBrief(viewer: Viewer, scriptId: string | null, zh: boolean): Promise<EditorBrief | null> {
   if (!scriptId) return null;
   const [s] = await db
-    .select({ id: scripts.id, title: scripts.title, titleLocal: scripts.titleLocal, version: scripts.version, lockedVersion: scripts.lockedVersion })
+    .select({ id: scripts.id, title: scripts.title, titleLocal: scripts.titleLocal, version: scripts.version, lockedVersion: scripts.lockedVersion, aspect: scripts.aspect })
     .from(scripts)
     .where(and(eq(scripts.id, scriptId), eq(scripts.tenantId, viewer.tenantId), isNull(scripts.deletedAt)))
     .limit(1);
@@ -55,6 +57,7 @@ export async function editorBrief(viewer: Viewer, scriptId: string | null, zh: b
         title,
         approved: { version: s.lockedVersion, by: a ? (zh && a.nameLocal) || a.name : null, at: a?.at ? a.at.toISOString() : null },
         latestVersion: s.version,
+        aspect: s.aspect ?? null,
         beats: v.beats.map((b) => ({ ord: b.ord, visual: b.visual, voiceover: b.voiceover })),
       };
     }
@@ -65,5 +68,5 @@ export async function editorBrief(viewer: Viewer, scriptId: string | null, zh: b
     .from(scriptBeats)
     .where(eq(scriptBeats.scriptId, s.id))
     .orderBy(scriptBeats.ord);
-  return { scriptId: s.id, title, approved: null, latestVersion: s.version, beats: draft };
+  return { scriptId: s.id, title, approved: null, latestVersion: s.version, aspect: s.aspect ?? null, beats: draft };
 }

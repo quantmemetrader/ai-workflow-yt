@@ -35,7 +35,7 @@ export type OneGoResult =
 export async function oneGo(
   viewer: Viewer,
   projectId: string,
-  body: { prompt?: unknown; way?: unknown; narrate?: unknown; voiceId?: unknown } = {},
+  body: { prompt?: unknown; way?: unknown; narrate?: unknown; voiceId?: unknown; aspect?: unknown } = {},
 ): Promise<OneGoResult> {
   if (!viewer.modules.includes("video")) return { ok: false, error: "Not allowed", status: 403 };
   const p = await workProjectDetail(viewer, projectId, true, 1);
@@ -54,6 +54,8 @@ export async function oneGo(
    * footage never has — and the script has 旁白 to read.
    */
   const narrate = body.narrate === "on" || body.narrate === "off" ? body.narrate : "auto";
+  /* 竖屏 or 横屏, as chosen on the 剪辑 page's simple mode; 9:16 otherwise. */
+  const aspect = body.aspect === "16:9" || body.aspect === "1:1" ? body.aspect : "9:16";
   const voiceId = typeof body.voiceId === "string" && parseVoiceId(body.voiceId) ? body.voiceId.slice(0, 64) : null;
   const beats = p.script
     ? await db
@@ -126,7 +128,7 @@ export async function oneGo(
    */
   if (narration && (narrate === "on" || stockOnly)) {
     try {
-      await requestDirector(viewer, p.video.id, { brief, aspect: "9:16", render: true, pace: "channel", narrate: "on", voiceId });
+      await requestDirector(viewer, p.video.id, { brief, aspect, render: true, pace: "channel", narrate: "on", voiceId });
       return { ok: true, brought, way: "narrated", videoProjectId: p.video.id };
     } catch (err) {
       return { ok: false, error: err instanceof Error ? err.message : "Could not start the director", status: 400 };
@@ -135,7 +137,7 @@ export async function oneGo(
 
   if (!stockOnly) {
     try {
-      await requestDirector(viewer, p.video.id, { brief, aspect: "9:16", render: true, pace: "channel", narrate: narration ? narrate : "off", voiceId });
+      await requestDirector(viewer, p.video.id, { brief, aspect, render: true, pace: "channel", narrate: narration ? narrate : "off", voiceId });
       return { ok: true, brought, way: "director", videoProjectId: p.video.id };
     } catch (err) {
       const msg = err instanceof Error ? err.message : "";
@@ -172,7 +174,7 @@ export async function oneGo(
         }
       }
     }
-    await requestExport(viewer, p.video.id, { aspect: "9:16", burnCaptions: false, captionLanguage: "zh-CN" });
+    await requestExport(viewer, p.video.id, { aspect, burnCaptions: false, captionLanguage: "zh-CN" });
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : "Could not put the video together", status: 400 };
   }

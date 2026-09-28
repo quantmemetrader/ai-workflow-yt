@@ -145,7 +145,7 @@ export function VideoScreen({
    * and draws instead the band that says what to do next (`EditBand`) and,
    * in the desk's right column, the approved script and files (`brief`).
    */
-  embedded?: { projectId: string; brief?: React.ReactNode };
+  embedded?: { projectId: string; brief?: React.ReactNode; modeSwitch?: React.ReactNode };
   /** What 剪辑师 suggests cutting next, drawn above the project list. */
   proposals?: Proposals;
   projects: ProjectRow[];
@@ -451,6 +451,7 @@ export function VideoScreen({
             lastRender: lastRender?.fileId ? { fileId: lastRender.fileId, subtitleFileId: lastRender.subtitleFileId, aspect: lastRender.aspect, durationMs: lastRender.durationMs } : null,
             stale,
           }}
+          extra={embedded.modeSwitch}
           onUpload={(files) => uploadIntoProject(files)}
           onCut={() =>
             run(async () => {

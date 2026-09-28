@@ -43,7 +43,10 @@ export function EditBand({
   onUpload,
   onCut,
   onRender,
+  extra,
 }: {
+  /** Drawn at the right end of the band: the 简单 / 专业剪辑 switch. */
+  extra?: React.ReactNode;
   projectId: string;
   zh: boolean;
   facts: BandFacts;
@@ -171,6 +174,7 @@ export function EditBand({
       </span>
       <div style={{ flexGrow: 1, minWidth: 0, fontSize: 13.5, color: "#2b2b2b", lineHeight: 1.45 }}>{text}</div>
       {presses ? <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>{presses}</div> : null}
+      {extra ? <div style={{ flexShrink: 0, marginLeft: 4 }}>{extra}</div> : null}
       <input
         ref={input}
         type="file"
