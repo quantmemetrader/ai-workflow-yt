@@ -1,18 +1,9 @@
-import { notFound } from "next/navigation";
-import { requireModule } from "@/lib/auth/dal";
-import { projectForPage } from "@/lib/projects/page-data";
-import { Card, PageBody } from "@/components/projects/kit";
+import { ProjectScreenPage } from "@/components/projects/ProjectScreenPage";
 
-/** Placeholder until this page is built. */
-export default async function Page({ params }: { params: Promise<{ id: string }> }) {
-  const viewer = await requireModule("chat");
+export const metadata = { title: "选题 · Topic" };
+
+/** Step 1: the topic — why now, the hook, the evidence, and the researcher to ask. */
+export default async function TopicPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const zh = (viewer.locale ?? "zh-CN").startsWith("zh");
-  const p = await projectForPage(viewer, id, zh);
-  if (!p) notFound();
-  return (
-    <PageBody>
-      <Card icon="spark" title="topic" sub={zh ? "这一页正在搭建" : "This page is being built"} />
-    </PageBody>
-  );
+  return <ProjectScreenPage id={id} view="topic" />;
 }
