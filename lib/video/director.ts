@@ -24,6 +24,7 @@ import { modelFor } from "@/lib/ai/models";
 import { recordUsage } from "@/lib/ai/ledger";
 import { importPicture, importVideo } from "@/lib/files/service";
 import { creatorVoiceText } from "@/lib/creator/service";
+import { trainingFor } from "@/lib/agents/training";
 import { HOUSE_FORMAT, VIDEO_CRAFT } from "./craft";
 import { autoEdit } from "./autoedit";
 import { transcribeProject } from "./transcribe";
@@ -454,7 +455,7 @@ export async function direct(viewer: Viewer, projectId: string, jobId?: string):
       .orderBy(desc(files.updatedAt))
       .limit(25);
 
-    const voice = await creatorVoiceText(viewer.tenantId);
+    const [voice, training] = await Promise.all([creatorVoiceText(viewer.tenantId), trainingFor(viewer.tenantId, "video")]);
     const line = (c: (typeof cues)[number]) => `[${c.startMs}–${c.endMs}ms] ${c.text}`;
     const transcript = cues.map(line).join("\n").slice(0, 26_000);
 
@@ -504,7 +505,7 @@ export async function direct(viewer: Viewer, projectId: string, jobId?: string):
       return { i, from, to, text: cues.filter((c) => c.startMs >= from && c.startMs < to).map(line).join("\n") };
     }).filter((w, _, all) => w.text.length > 0 || all.length === 1);
 
-    const system = `${VIDEO_CRAFT}\n\n---\n\n${HOUSE_FORMAT}\n\n---\n\n${voice ? `The creator whose channel this is for, in their own numbers and words. Make it look and sound like theirs:\n${voice}\n\n---\n\n` : ""}${DESIGN_PROMPT}`;
+    const system = `${VIDEO_CRAFT}\n\n---\n\n${HOUSE_FORMAT}\n\n---\n\n${voice ? `The creator whose channel this is for, in their own numbers and words. Make it look and sound like theirs:\n${voice}\n\n---\n\n` : ""}${training.text ? `The studio's standing instructions for its editor. Follow them wherever they do not break the rules above or the answer format below:\n${training.text}\n\n---\n\n` : ""}${DESIGN_PROMPT}`;
 
     const designWindow = async (w: (typeof windows)[number]): Promise<Plan> => {
       const last = windows.length - 1;
@@ -1000,7 +1001,7 @@ async function directV2(
     const raw = await localTake({ id: take.fileId, name: take.name, storageKey: take.storageKey, sizeBytes: take.sizeBytes }, downloadObject);
     lap("footageMs", t0);
     const t = { raw, clipId: take.clipId, durationMs: take.durationMs, brief, title: project.title, cacheDir };
-    const channel = { accent: project.accent, tenantName: tenant?.name ?? null };
+    const channel = { accent: project.accent, tenantName: tenant?.name ?? null, training: (await trainingFor(viewer.tenantId, "video")).text || null };
 
     /* ---- transcribe --------------------------------------------------- */
     await say("transcribe", "逐字转写原片，简报里的人名和术语一并校对");

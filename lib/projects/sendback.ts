@@ -6,6 +6,7 @@ import type { Viewer } from "@/lib/auth/types";
 import { complete } from "@/lib/ai/openrouter";
 import { modelFor } from "@/lib/ai/models";
 import { recordUsage } from "@/lib/ai/ledger";
+import { trainingFor } from "@/lib/agents/training";
 
 /**
  * A step sent back with a note, kept on the project until somebody deals
@@ -74,12 +75,13 @@ async function suggestEdits(viewer: Viewer, scriptId: string, note: string): Pro
   const spoken = beats.filter((b) => (b.voiceover ?? "").trim());
   if (!spoken.length) return null;
   try {
+    const training = await trainingFor(viewer.tenantId, "script");
     const out = await complete({
       model: modelFor.assistant(),
       temperature: 0.3,
       maxTokens: 1600,
       messages: [
-        { role: "system", content: SUGGEST_PROMPT },
+        { role: "system", content: SUGGEST_PROMPT + (training.text ? `\n\n${training.text}` : "") },
         { role: "user", content: `修改意见：${note}\n\n脚本（镜号 | 口播）：\n${spoken.map((b) => `${b.ord} | ${b.voiceover}`).join("\n")}` },
       ],
     });

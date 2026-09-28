@@ -74,7 +74,7 @@ export async function draftArticle(
   if (article.lockedVersion !== null) return { error: "That article is published. Retract it before rewriting." };
 
   const [style, refs, voice, fromScript] = await Promise.all([
-    houseStyle(viewer),
+    houseStyle(viewer, "article"),
     examples(viewer, article.title),
     creatorVoiceText(viewer.tenantId),
     article.scriptId ? scriptText(viewer, article.scriptId) : Promise.resolve(""),
