@@ -514,7 +514,7 @@ async function cuttable(viewer: Viewer, projectId: string, zh: boolean) {
  * it. The page's own prompt and voice choices travel with it, as they do
  * on the video card's button.
  */
-export async function startCutFromPageAction(projectId: string, input: { prompt?: unknown; narrate?: unknown; voiceId?: unknown } = {}) {
+export async function startCutFromPageAction(projectId: string, input: { prompt?: unknown; narrate?: unknown; voiceId?: unknown; aspect?: unknown } = {}) {
   const viewer = await getViewer();
   if (!viewer || !viewer.modules.includes("chat")) return { error: "Not allowed" };
   const zh = (viewer.locale ?? "zh-CN").startsWith("zh");
@@ -523,7 +523,8 @@ export async function startCutFromPageAction(projectId: string, input: { prompt?
   const narrate = input.narrate === "on" || input.narrate === "off" ? input.narrate : "auto";
   const voiceId = typeof input.voiceId === "string" && parseVoiceId(input.voiceId) ? input.voiceId.slice(0, 64) : null;
   const prompt = typeof input.prompt === "string" ? input.prompt.trim().slice(0, 2000) : undefined;
-  const outcome = await startCutForProject(viewer, ok.project, { via: "page", prompt: prompt || undefined, narrate, voiceId, quietWhenEmpty: true });
+  const aspect = input.aspect === "16:9" ? "16:9" : "9:16";
+  const outcome = await startCutForProject(viewer, ok.project, { via: "page", prompt: prompt || undefined, narrate, voiceId, aspect, quietWhenEmpty: true });
   const note = describeOutcome(outcome, ok.project.title, zh);
   if (outcome.kind === "error") return { error: outcome.error };
   if (outcome.kind === "no-clips") return { error: note };

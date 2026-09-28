@@ -10,12 +10,19 @@ import { HEAVY_JOBS_PAUSED } from "@/lib/jobs/heavy";
 import { VideoScreen } from "@/components/video/VideoScreen";
 import { ScriptBrief } from "@/components/video/ScriptBrief";
 import { Card, Empty, PageBody } from "@/components/projects/kit";
+import { EditModes, ModeSwitch } from "@/components/video/EditModes";
+import { SimpleEdit } from "@/components/video/SimpleEdit";
 
 export const metadata = { title: "剪辑 · Edit" };
 
 /**
- * A project's 剪辑 page: the cutting desk for its cut, filling the room under
- * the project's tabs.
+ * A project's 剪辑 page, in two modes (`EditModes`, kept per browser):
+ *
+ *   简单      three steps for anybody — upload the takes, let the AI cut
+ *             (竖屏 or 横屏), watch it and publish or ask for changes
+ *             (`SimpleEdit`). The default: most of the studio are not editors.
+ *   专业剪辑  the cutting desk for its cut, filling the room under the
+ *             project's tabs:
  *
  * Step 3 of the project — getting the host's clips in is part of it, so the
  * band across the top (`VideoScreen`'s `embedded.band`) says which of the
@@ -52,11 +59,35 @@ export default async function EditPage({ params }: { params: Promise<{ id: strin
     );
   }
 
-  return (
+  const simple = (
+    <SimpleEdit
+      zh={zh}
+      modeSwitch={<ModeSwitch />}
+      f={{
+        projectId: p.id,
+        channelSlug: p.channel.slug,
+        videoId: p.video.id,
+        title: p.title,
+        clips: p.clipList,
+        items: p.video.items,
+        captions: p.video.captions,
+        render: p.render
+          ? { fileId: p.render.fileId, proxyFileId: p.render.proxyFileId, state: p.render.state, progress: p.render.progress, aspect: p.render.aspect, durationMs: p.render.durationMs, startedAt: p.render.startedAt, error: p.render.error }
+          : null,
+        director: p.director ? { state: p.director.state, step: p.director.step, startedAt: p.director.startedAt, error: p.director.error } : null,
+        /* A script with no lines (a cut straight from the host's talk) is no script. */
+        script: brief && brief.beats.some((b) => b.voiceover.trim() || b.visual.trim()) ? { approvedVersion: brief.approved?.version ?? null, latestVersion: brief.latestVersion } : null,
+        defaultAspect: brief?.aspect?.includes("16:9") ? "16:9" : "9:16",
+      }}
+    />
+  );
+
+  const pro = (
     <VideoScreen
       embedded={{
         projectId: p.id,
         brief: <ScriptBrief projectId={p.id} zh={zh} brief={brief} files={files} />,
+        modeSwitch: <ModeSwitch />,
       }}
       projects={d.projects}
       project={d.project}
@@ -78,4 +109,6 @@ export default async function EditPage({ params }: { params: Promise<{ id: strin
       model={answeringModel()}
     />
   );
+
+  return <EditModes zh={zh} simple={simple} pro={pro} />;
 }

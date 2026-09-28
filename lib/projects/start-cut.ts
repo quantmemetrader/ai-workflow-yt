@@ -39,7 +39,7 @@ import { isRunning, liveWords } from "@/lib/projects/live-types";
 export type CutProject = { id: string; title: string; channelId: string; videoProjectId: string };
 
 export type StartCutOutcome =
-  | { kind: "started"; way: "director" | "assembled" | "narrated"; videoProjectId: string; clips: number }
+  | { kind: "started"; way: "director" | "assembled" | "narrated"; videoProjectId: string; clips: number; aspect?: string }
   | { kind: "no-clips" }
   | { kind: "running"; label: string }
   | { kind: "error"; error: string };
@@ -51,6 +51,8 @@ export type StartCutOptions = {
   prompt?: string;
   narrate?: "on" | "off" | "auto";
   voiceId?: string | null;
+  /** 竖屏 9:16 (the default) or 横屏 16:9. */
+  aspect?: "9:16" | "16:9";
   /** Say nothing in the chat when the bin is empty (the page shows that
    *  itself); the chat paths want the reply. */
   quietWhenEmpty?: boolean;
@@ -121,7 +123,8 @@ export async function startCutForProject(viewer: Viewer, project: CutProject, op
 
   const pendingId = await startPending(editor, project.channelId, "video", "looking");
   try {
-    const res = await oneGo(viewer, project.id, { prompt: opts.prompt, narrate: opts.narrate, voiceId: opts.voiceId ?? undefined });
+    const aspect = opts.aspect ?? "9:16";
+    const res = await oneGo(viewer, project.id, { prompt: opts.prompt, narrate: opts.narrate, voiceId: opts.voiceId ?? undefined, aspect });
     if (!res.ok) {
       /* Nothing started: the next press may try at once. */
       await release();
@@ -147,10 +150,10 @@ export async function startCutForProject(viewer: Viewer, project: CutProject, op
     const count = `${name}的素材 ${clips} 段都在。`;
     const plan =
       res.way === "narrated"
-        ? "素材里没有人声，用脚本的旁白配音、按配音剪，最后渲染 9:16。"
+        ? `素材里没有人声，用脚本的旁白配音、按配音剪，最后渲染 ${aspect}。`
         : res.way === "assembled"
-          ? "直接把这些画面拼成片，正在渲染 9:16。"
-          : "开始剪：先转写，再按脚本粗剪、配图形，最后渲染 9:16。";
+          ? `直接把这些画面拼成片，正在渲染 ${aspect}。`
+          : `开始剪：先转写，再按脚本粗剪、配图形，最后渲染 ${aspect}。`;
     const text = `${how}${count}${plan}进度看下面这条；好了我会把成片发在这里。`;
     await postMessage(editor, project.channelId, text, {
       agent: "video",
@@ -162,9 +165,9 @@ export async function startCutForProject(viewer: Viewer, project: CutProject, op
       module: "video",
       objectType: "project",
       objectId: project.id,
-      meta: { via: opts.via, way: res.way, clips, videoProjectId: res.videoProjectId },
+      meta: { via: opts.via, way: res.way, clips, videoProjectId: res.videoProjectId, aspect },
     });
-    return { kind: "started", way: res.way, videoProjectId: res.videoProjectId, clips };
+    return { kind: "started", way: res.way, videoProjectId: res.videoProjectId, clips, aspect };
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err);
     console.error("[start-cut] could not start", err);
@@ -182,8 +185,8 @@ export function describeOutcome(o: StartCutOutcome, title: string, zh: boolean):
   switch (o.kind) {
     case "started":
       return zh
-        ? `${name}开始剪了：${o.clips} 段素材，${o.way === "assembled" ? "直接拼成片并渲染" : o.way === "narrated" ? "旁白配音、按配音剪、渲染" : "转写、粗剪、图形、渲染"} 9:16。`
-        : `Started on “${title}”: ${o.clips} clips, ${o.way === "assembled" ? "assembled and rendering" : o.way === "narrated" ? "narrated, cut to the voice, rendering" : "transcribe, cut, design, render"} 9:16.`;
+        ? `${name}开始剪了：${o.clips} 段素材，${o.way === "assembled" ? "直接拼成片并渲染" : o.way === "narrated" ? "旁白配音、按配音剪、渲染" : "转写、粗剪、图形、渲染"} ${o.aspect ?? "9:16"}。`
+        : `Started on “${title}”: ${o.clips} clips, ${o.way === "assembled" ? "assembled and rendering" : o.way === "narrated" ? "narrated, cut to the voice, rendering" : "transcribe, cut, design, render"} ${o.aspect ?? "9:16"}.`;
     case "no-clips":
       return zh ? `${name}的素材箱是空的，还不能开剪：先把素材传到项目里。` : `“${title}” has no clips yet; upload them to the project first.`;
     case "running":
