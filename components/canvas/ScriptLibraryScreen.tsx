@@ -3,7 +3,6 @@
 import * as React from "react";
 import { FolderRail, type RailSection } from "@/components/projects/FolderRail";
 import type { Proposals } from "@/lib/agents/proposals";
-import { ProposalsStrip } from "@/components/agents/ProposalsStrip";
 import { ResearchAgentPanel } from "./ResearchAgentPanel";
 import type { ScriptListItem } from "@/lib/script/service";
 import { PersonAvatar } from "@/components/ui/PersonAvatar";
@@ -792,7 +791,6 @@ export function ScriptLibraryScreen(props: ScriptLibraryScreenProps): React.JSX.
         <div style={{ flexGrow: 1, display: "flex", minHeight: 0 }}>
           {tree && onProject ? (
             <FolderRail
-              footer={proposals && scope !== "topics" ? <ProposalsStrip layout="column" owner="script" items={proposals.items} planDate={proposals.planDate} zh={locale.startsWith("zh")} /> : null}
               sections={((): RailSection[] => {
                 const secs: RailSection[] = [
                   {
