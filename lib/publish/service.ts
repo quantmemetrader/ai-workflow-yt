@@ -1,4 +1,5 @@
 import "server-only";
+import { canReadFiles } from "@/lib/authz/rebac";
 import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import {
@@ -83,6 +84,8 @@ export type PostRow = {
   scheduledFor: Date | null;
   fileId: string | null;
   fileName: string | null;
+  /** The attached file's type, so the screen can draw a video as a video. */
+  fileMime: string | null;
   ownerName: string | null;
   updatedAt: Date;
   targets: TargetRow[];
@@ -212,7 +215,7 @@ export type PublishState = (typeof STATES)[number];
  */
 export async function listPosts(
   viewer: Viewer,
-  options: { state?: PublishState | null; limit?: number } = {},
+  options: { state?: PublishState | null; limit?: number; scriptId?: string } = {},
 ): Promise<PostRow[]> {
   const limit = Math.min(options.limit ?? 60, 200);
 
@@ -220,6 +223,7 @@ export async function listPosts(
     .select({
       post: publishPosts,
       fileName: files.name,
+      fileMime: files.mime,
       ownerName: users.name,
       ownerNameLocal: users.nameLocal,
     })
@@ -231,6 +235,7 @@ export async function listPosts(
         eq(publishPosts.tenantId, viewer.tenantId),
         isNull(publishPosts.deletedAt),
         options.state ? eq(publishPosts.state, options.state) : undefined,
+        options.scriptId ? eq(publishPosts.scriptId, options.scriptId) : undefined,
       ),
     )
     .orderBy(desc(publishPosts.updatedAt))
@@ -309,6 +314,7 @@ export async function listPosts(
       scheduledFor: p.post.scheduledFor,
       fileId: p.post.fileId,
       fileName: p.fileName,
+      fileMime: p.fileMime,
       ownerName: p.ownerNameLocal ?? p.ownerName,
       updatedAt: p.post.updatedAt,
       targets: byPost.get(p.post.id) ?? [],
@@ -362,11 +368,20 @@ async function projectForFile(viewer: Viewer, fileId: string): Promise<{ directo
 
 export async function createPost(
   viewer: Viewer,
-  input: { title: string; body?: string; tags?: string[]; fileId?: string | null; channelIds: string[] },
+  input: { title: string; body?: string; tags?: string[]; fileId?: string | null; scriptId?: string | null; channelIds: string[] },
 ) {
   const title = input.title.trim();
   if (!title) throw new Error("A post needs a title");
   if (title.length > 300) throw new Error("That title is too long");
+
+  if (input.fileId) {
+    const [f] = await db
+      .select({ id: files.id })
+      .from(files)
+      .where(and(eq(files.id, input.fileId), eq(files.tenantId, viewer.tenantId), isNull(files.deletedAt), canReadFiles(viewer)))
+      .limit(1);
+    if (!f) throw new Error("That video is not one you can use");
+  }
 
   /* A post made from a render carries the video's 素材来源 block (a lookup that cannot fail the post). */
   const project = input.fileId ? await projectForFile(viewer, input.fileId).catch(() => null) : null;
@@ -379,6 +394,7 @@ export async function createPost(
     body: withCredits(input.body ?? "", project).slice(0, 20_000),
     tags: (input.tags ?? []).slice(0, 30),
     fileId: input.fileId ?? null,
+    scriptId: input.scriptId ?? null,
     ownerId: viewer.id,
   });
 
@@ -459,12 +475,22 @@ export async function postById(viewer: Viewer, postId: string) {
 export async function updatePost(
   viewer: Viewer,
   postId: string,
-  input: { title?: string; body?: string; tags?: string[]; scheduledFor?: Date | null },
+  input: { title?: string; body?: string; tags?: string[]; scheduledFor?: Date | null; fileId?: string | null },
 ) {
   const post = await postById(viewer, postId);
   if (!post) throw new Error("That post does not exist");
   if (post.state === "published" || post.state === "publishing") {
     throw new Error("This post has already gone out and cannot be edited");
+  }
+  /* A video is attached only if it is a live file of this studio that the
+     person may read — the worker will hand a link to it to the platform. */
+  if (input.fileId) {
+    const [f] = await db
+      .select({ id: files.id })
+      .from(files)
+      .where(and(eq(files.id, input.fileId), eq(files.tenantId, viewer.tenantId), isNull(files.deletedAt), canReadFiles(viewer)))
+      .limit(1);
+    if (!f) throw new Error("That video is not one you can use");
   }
 
   await db
@@ -474,6 +500,7 @@ export async function updatePost(
       ...(input.body !== undefined ? { body: input.body.slice(0, 20_000) } : {}),
       ...(input.tags !== undefined ? { tags: input.tags.slice(0, 30) } : {}),
       ...(input.scheduledFor !== undefined ? { scheduledFor: input.scheduledFor } : {}),
+      ...(input.fileId !== undefined ? { fileId: input.fileId } : {}),
       updatedAt: new Date(),
     })
     .where(eq(publishPosts.id, postId));
