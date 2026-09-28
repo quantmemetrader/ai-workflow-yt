@@ -1,8 +1,7 @@
 import { requireModule } from "@/lib/auth/dal";
 import { answeringModel } from "@/lib/ai/models";
-import { ResearchSidebar } from "@/components/canvas/ResearchSidebar";
+import { ResearchShell } from "@/components/research/ResearchShell";
 import { InboxView } from "@/components/research/InboxView";
-import { connectedSources, decisionCount } from "@/lib/research/service";
 import { connectionState, inbox, inboxSummary, type InboxFilters } from "@/lib/social/service";
 import { isSentiment, priorCommentCounts } from "@/lib/social/service";
 
@@ -42,12 +41,10 @@ export default async function InboxPage({
     leads: one("leads") === "1" || undefined,
   };
 
-  const [groups, summary, state, sources, decisions] = await Promise.all([
+  const [groups, summary, state] = await Promise.all([
     inbox(viewer, filters),
     inboxSummary(viewer),
     connectionState(viewer),
-    connectedSources(),
-    decisionCount(viewer),
   ]);
 
   /*
@@ -60,19 +57,7 @@ export default async function InboxPage({
   );
 
   return (
-    <>
-      <ResearchSidebar
-        locale={viewer.locale ?? "zh-CN"}
-        decisionCount={decisions}
-        inboxCount={summary.open}
-        sources={sources.map((s) => ({
-          key: s.key,
-          name: s.name,
-          kind: s.kind,
-          status: s.status,
-          note: s.note ?? s.lastError,
-        }))}
-      />
+    <ResearchShell zh={(viewer.locale ?? "zh-CN").startsWith("zh")}>
       <InboxView
         locale={viewer.locale ?? "zh-CN"}
         groups={groups}
@@ -82,6 +67,6 @@ export default async function InboxPage({
         priorCounts={priorCounts}
         model={answeringModel()}
       />
-    </>
+    </ResearchShell>
   );
 }

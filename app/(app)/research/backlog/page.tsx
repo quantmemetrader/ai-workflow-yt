@@ -4,22 +4,27 @@ import { scripts, topics, users, workProjects } from "@/lib/db/schema";
 import { requireModule } from "@/lib/auth/dal";
 import { projectsVisibleTo } from "@/lib/projects/service";
 import { answeringModel } from "@/lib/ai/models";
-import { ResearchSidebar } from "@/components/canvas/ResearchSidebar";
+import { ResearchShell } from "@/components/research/ResearchShell";
+import { SavedBoard } from "@/components/research/SavedBoard";
+import { rankedTopics } from "@/lib/research/service";
+import { listCompetitors, ourMedianViews } from "@/lib/social/service";
+import { creatorMemoryState } from "@/lib/creator/service";
+import { env } from "@/lib/env";
+import { jobs } from "@/lib/db/schema";
 import { BacklogView } from "@/components/research/BacklogView";
-import { connectedSources, decisionCount } from "@/lib/research/service";
-import { openCommentCount } from "@/lib/social/service";
 
-export const metadata = { title: "选题储备 · Backlog" };
+export const metadata = { title: "我的储备 · Saved topics" };
 
 /** Adopted topics, with owner, target channel and due date — what Script needs
  * before it can start (brief §4.3, Topic backlog). */
 const CHANNELS = ["YouTube", "Instagram", "TikTok", "LinkedIn", "WeChat", "Xiaohongshu"];
 
-export default async function BacklogPage() {
+export default async function BacklogPage({ searchParams }: { searchParams: Promise<{ board?: string }> }) {
   const viewer = await requireModule("research");
   const zh = (viewer.locale ?? "zh-CN").startsWith("zh");
+  const board = (await searchParams).board === "1";
 
-  const [rows, people, sources, decisions, open] = await Promise.all([
+  const [rows, people, watched, competitors, ourMedian, creator, syncJobs] = await Promise.all([
     db
       .select({ topic: topics, ownerName: users.name, ownerNameLocal: users.nameLocal, ownerAvatar: users.avatarUrl })
       .from(topics)
@@ -31,9 +36,16 @@ export default async function BacklogPage() {
       .from(users)
       .where(and(eq(users.tenantId, viewer.tenantId), eq(users.isAgent, false)))
       .orderBy(users.name),
-    connectedSources(),
-    decisionCount(viewer),
-    openCommentCount(viewer),
+    /* The words being followed (a topic that is neither kept nor dropped). */
+    rankedTopics(viewer, { statuses: ["new"], limit: 40 }),
+    listCompetitors(viewer),
+    ourMedianViews(viewer),
+    creatorMemoryState(viewer.tenantId),
+    db
+      .select({ id: jobs.id })
+      .from(jobs)
+      .where(and(eq(jobs.tenantId, viewer.tenantId), eq(jobs.type, "creator.sync"), inArray(jobs.status, ["queued", "running"])))
+      .limit(1),
   ]);
 
   /* Where each topic has got to in Script: its project and its script, so a
@@ -97,21 +109,9 @@ export default async function BacklogPage() {
     if (projectId && !projectOf.has(sc.topicId)) projectOf.set(sc.topicId, { id: projectId, scriptId: sc.id });
   }
 
-  return (
-    <>
-      <ResearchSidebar
-        locale={viewer.locale ?? "zh-CN"}
-        decisionCount={decisions}
-        inboxCount={open}
-        backlogCount={rows.length}
-        sources={sources.map((s) => ({
-          key: s.key,
-          name: s.name,
-          kind: s.kind,
-          status: s.status,
-          note: s.note ?? s.lastError,
-        }))}
-      />
+  if (board) {
+    return (
+      <ResearchShell zh={zh} savedCount={rows.length}>
       <BacklogView
       locale={viewer.locale ?? "zh-CN"}
       region="HK / TW / SG"
@@ -141,6 +141,31 @@ export default async function BacklogPage() {
         beats: scriptOf.get(r.topic.id)?.beats ?? 0,
       }))}
       />
-    </>
+      </ResearchShell>
+    );
+  }
+  return (
+    <ResearchShell zh={zh} savedCount={rows.length}>
+      <SavedBoard
+        zh={zh}
+        canWrite={viewer.modules.includes("script")}
+        saved={rows.map((r) => ({
+          id: r.topic.id,
+          name: (zh && r.topic.nameLocal) || r.topic.name,
+          summary: r.topic.summary,
+          heat: r.topic.heat,
+          change: r.topic.change14d,
+          projectId: projectOf.get(r.topic.id)?.id ?? null,
+          scriptId: scriptOf.get(r.topic.id)?.id ?? projectOf.get(r.topic.id)?.scriptId ?? null,
+        }))}
+        watched={watched.map((t) => ({ id: t.id, name: (zh && t.nameLocal) || t.name, heat: t.heat, change: t.change14d, rising: t.rising, collecting: t.collecting }))}
+        competitors={competitors}
+        ourMedian={ourMedian}
+        tikhubConfigured={env.tikhub.configured}
+        creator={creator}
+        creatorSyncing={syncJobs.length > 0}
+        canAdmin={viewer.modules.includes("admin")}
+      />
+    </ResearchShell>
   );
 }

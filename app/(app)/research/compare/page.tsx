@@ -1,9 +1,8 @@
 import { requireModule } from "@/lib/auth/dal";
 import { answeringModel } from "@/lib/ai/models";
-import { connectedSources, decisionCount, rankedTopics, seriesFor, type Window } from "@/lib/research/service";
+import { connectedSources, rankedTopics, seriesFor, type Window } from "@/lib/research/service";
 import { trendingSearches } from "@/lib/research/trending";
-import { openCommentCount } from "@/lib/social/service";
-import { ResearchSidebar } from "@/components/canvas/ResearchSidebar";
+import { ResearchShell } from "@/components/research/ResearchShell";
 import { CompareView } from "@/components/research/CompareView";
 
 export const metadata = { title: "搜索与比较 · Search & compare" };
@@ -40,30 +39,13 @@ export default async function ComparePage({
   const watched = await rankedTopics(viewer, { limit: 60 });
   const queries = asked.length ? asked : watched.slice(0, 3).map((t) => t.query);
 
-  const [series, sources, decisions, open] = await Promise.all([
-    seriesFor(viewer, queries, window),
-    connectedSources(),
-    decisionCount(viewer),
-    openCommentCount(viewer),
-  ]);
+  const [series, sources] = await Promise.all([seriesFor(viewer, queries, window), connectedSources()]);
 
   // Suggestions only; a slow feed never fails the page.
   const trending = await trendingSearches("HK").catch(() => []);
 
   return (
-    <>
-      <ResearchSidebar
-        locale={viewer.locale ?? "zh-CN"}
-        decisionCount={decisions}
-        inboxCount={open}
-        sources={sources.map((s) => ({
-          key: s.key,
-          name: s.name,
-          kind: s.kind,
-          status: s.status,
-          note: s.note ?? s.lastError,
-        }))}
-      />
+    <ResearchShell zh={(viewer.locale ?? "zh-CN").startsWith("zh")}>
       <CompareView
       watched={watched
         .filter((t) => !queries.includes(t.query))
@@ -86,6 +68,6 @@ export default async function ComparePage({
         error: s.error,
       }))}
       />
-    </>
+    </ResearchShell>
   );
 }
