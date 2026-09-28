@@ -10,7 +10,6 @@ import { LiveProjects } from "@/components/shell/LiveProjects";
 import { Toaster } from "@/components/shell/Toaster";
 import { UploadTray } from "@/components/shell/UploadTray";
 import { BusyBar } from "@/components/shell/BusyBar";
-import { listWorkProjects } from "@/lib/projects/service";
 import { Warmup } from "@/components/shell/Warmup";
 
 /**
@@ -59,7 +58,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         modules={viewer.modules}
         locale={viewer.locale ?? "zh-CN"}
         account={{ id: viewer.id, name: viewer.name, nameLocal: viewer.nameLocal, role: viewer.role, avatarUrl: viewer.avatarUrl }}
-        projects={viewer.modules.includes("chat") ? (await listWorkProjects(viewer, 30, "created")).map((p) => ({ id: p.id, title: p.title, status: p.status, scriptId: p.scriptId, videoProjectId: p.videoProjectId })) : []}
+        isAdmin={viewer.role === "owner" || viewer.role === "admin"}
       />
 
       {/*

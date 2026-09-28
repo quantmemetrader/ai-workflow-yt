@@ -3,14 +3,11 @@
 import Link, { useLinkStatus } from "next/link";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { HistoryButton } from "@/components/shell/HistoryButton";
 import { RailAccount, type RailAccountInfo } from "@/components/shell/RailAccount";
 import { BrandMark } from "@/components/brand/BrandMark";
 import { useLocalPreference } from "@/lib/client/preference";
 import { useResizable } from "@/components/ui/Resizer";
-import { NAV } from "@/lib/nav";
-import { Suspense } from "react";
-import { ProjectTree, type TreeProject } from "@/components/projects/ProjectTree";
+import { RAIL_BACK, RAIL_MAIN, railActive, type RailItem } from "@/lib/nav";
 import type { Module } from "@/lib/db/schema";
 import { Tr, TR_EN } from "@/components/ui/Tr";
 
@@ -24,9 +21,13 @@ import { Tr, TR_EN } from "@/components/ui/Tr";
  * default, and 腾亚 is written next to its mark at the top rather than being a
  * tile you hover to identify.
  *
- * Collapsing back to the icons is kept, because somebody who has learned the
- * eleven modules would rather have the 130px, and the width is draggable in
- * between like every other column here. Both are remembered in this browser.
+ * Collapsing back to the icons is kept, and the width is draggable in between
+ * like every other column here. Both are remembered in this browser.
+ *
+ * Seven entries since 28 Sep (`RAIL_MAIN`: 首页 · 视频 · 选题 · 数据 · 文件 ·
+ * 消息 · AI 员工), with the back office folded under 后台 for owners and
+ * admins (`RAIL_BACK`) — the studio found eighteen entries and a project
+ * tree too much to find their way in.
  * The hover tooltip only exists while it is collapsed — a label beside a label
  * is noise.
  */
@@ -36,7 +37,7 @@ const RAIL_MAX = 268;
 const RAIL_DEFAULT = 186;
 const COLLAPSED = 52;
 
-export function Rail({ modules, locale, projects = [], account }: { modules: Module[]; locale: string; projects?: TreeProject[]; account?: RailAccountInfo }) {
+export function Rail({ modules, locale, account, isAdmin = false }: { modules: Module[]; locale: string; account?: RailAccountInfo; /** Owner or admin: sees the folded 后台 group. */ isAdmin?: boolean }) {
   const pathname = usePathname();
   const zh = locale.startsWith("zh");
   const [state, setState] = useLocalPreference("aura:rail", ["open", "icons"] as const, "open");
@@ -52,7 +53,13 @@ export function Rail({ modules, locale, projects = [], account }: { modules: Mod
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const warm = useRef(0);
 
-  const items = NAV.filter((n) => modules.includes(n.module));
+  const holds = (i: RailItem) => !i.module || modules.includes(i.module);
+  const items = RAIL_MAIN.filter(holds);
+  const back = isAdmin ? RAIL_BACK.filter(holds) : [];
+  /* 后台 is folded until opened, and opens by itself on one of its pages. */
+  const [backPref, setBackPref] = useLocalPreference("aura:rail-back", ["closed", "open"] as const, "closed");
+  const backActive = back.some((i) => railActive(i, pathname));
+  const backOpen = backPref === "open" || backActive;
 
   // A tooltip due after the rail has gone would set state on nothing.
   useEffect(() => () => {
@@ -150,56 +157,42 @@ export function Rail({ modules, locale, projects = [], account }: { modules: Mod
         )}
       </Link>
 
-      {items.map((item) => {
-        const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
-        const label = zh ? item.labelZh : item.label;
-        /* The name as it shows: in Chinese, translate-proof — the short
-           English from `TR_EN` is what a page translated by Chrome shows,
-           instead of its "front page" for 首页. */
-        const en = TR_EN[item.labelZh] ?? item.label;
-        const shown = zh ? <Tr zh={item.labelZh} en={en} /> : label;
-        return (
-          <span key={item.href} style={{ display: "contents" }}>
-            <Link
-              href={item.href}
-              /* No prefetch: every refresh on a working page re-prefetched all
-                 eleven modules, forty requests a minute for nothing. */
-              prefetch={false}
-              className={`r${active ? " on" : ""}${open ? " wide" : ""}`}
-              aria-label={label}
-              aria-current={active ? "page" : undefined}
-              onMouseEnter={open ? undefined : (e: React.MouseEvent<HTMLElement>) => show(e, label, en)}
-              onMouseLeave={open ? undefined : hide}
-              onClick={hide}
-            >
-              <svg viewBox="0 0 24 24" dangerouslySetInnerHTML={{ __html: item.icon }} />
-              {open && <span>{shown}</span>}
-              <RailSpinner wide={open} />
-            </Link>
-            {/* Right under Home: the projects, as a tree. */}
-            {item.href === "/home" ? (
-              <Suspense fallback={null}>
-                <ProjectTree projects={projects} zh={zh} wide={open} />
-              </Suspense>
+      {items.map((item) => (
+        <RailLink key={item.href} item={item} active={railActive(item, pathname)} open={open} zh={zh} show={show} hide={hide} />
+      ))}
+
+      {back.length ? (
+        <>
+          <div style={{ height: 1, background: "#e2e2e2", margin: open ? "8px 9px" : "8px 0", width: open ? "auto" : 22 }} />
+          <button
+            type="button"
+            onClick={() => setBackPref(backOpen && !backActive ? "closed" : "open")}
+            aria-expanded={backOpen}
+            className={`r${open ? " wide" : ""}`}
+            title={open ? undefined : zh ? "后台" : "Back office"}
+            style={{ border: 0, background: "transparent", cursor: "pointer", fontFamily: "inherit", letterSpacing: "inherit", color: "#7c7c7c" }}
+          >
+            <svg viewBox="0 0 24 24" aria-hidden>
+              <path d="M4.5 7.5h15M4.5 12h15M4.5 16.5h15" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+            </svg>
+            {open ? (
+              <>
+                <span>
+                  <Tr zh="后台" en="Back office" inZh={zh} />
+                </span>
+                <svg viewBox="0 0 24 24" aria-hidden style={{ marginLeft: "auto", width: 12, height: 12, transform: backOpen ? "rotate(90deg)" : "none", transition: "transform .15s ease" }}>
+                  <path d="M9.4 6.6 14.8 12l-5.4 5.4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </>
             ) : null}
-            {item.dividerAfter && (
-              <div
-                style={{
-                  height: 1,
-                  background: "#e2e2e2",
-                  margin: open ? "6px 9px" : "6px 0",
-                  width: open ? "auto" : 22,
-                }}
-              />
-            )}
-          </span>
-        );
-      })}
+          </button>
+          {backOpen
+            ? back.map((item) => <RailLink key={item.href} item={item} active={railActive(item, pathname)} open={open} zh={zh} show={show} hide={hide} small />)
+            : null}
+        </>
+      ) : null}
 
       </div>
-
-      {/* Your own history with the assistant, from any screen. */}
-      <HistoryButton locale={locale} wide={open} />
 
       <button
         type="button"
@@ -259,6 +252,47 @@ export function Rail({ modules, locale, projects = [], account }: { modules: Mod
         </span>
       )}
     </nav>
+  );
+}
+
+/** One entry: its icon, its name while the rail is open, a tooltip while it is not. */
+function RailLink({
+  item,
+  active,
+  open,
+  zh,
+  show,
+  hide,
+  small = false,
+}: {
+  item: RailItem;
+  active: boolean;
+  open: boolean;
+  zh: boolean;
+  show: (e: React.MouseEvent<HTMLElement>, text: string, en: string) => void;
+  hide: () => void;
+  small?: boolean;
+}) {
+  const label = zh ? item.labelZh : item.label;
+  /* Translate-proof in Chinese: the English a translated page shows. */
+  const en = TR_EN[item.labelZh] ?? item.label;
+  return (
+    <Link
+      href={item.href}
+      /* No prefetch: every refresh on a working page re-prefetched them all. */
+      prefetch={false}
+      className={`r${active ? " on" : ""}${open ? " wide" : ""}`}
+      aria-label={label}
+      aria-current={active ? "page" : undefined}
+      onMouseEnter={open ? undefined : (e: React.MouseEvent<HTMLElement>) => show(e, label, en)}
+      onMouseLeave={open ? undefined : hide}
+      onClick={hide}
+      style={small && open ? { paddingLeft: 18 } : undefined}
+    >
+      <svg viewBox="0 0 24 24" dangerouslySetInnerHTML={{ __html: item.icon }} />
+      {open && <span>{zh ? <Tr zh={item.labelZh} en={en} /> : label}</span>}
+      <RailSpinner wide={open} />
+    </Link>
   );
 }
 

@@ -3,7 +3,7 @@ import { listProjectStages } from "@/lib/projects/service";
 import { ProjectsList } from "@/components/projects/ProjectsList";
 import { publishedDay } from "@/lib/projects/publication";
 
-export const metadata = { title: "项目 · Projects" };
+export const metadata = { title: "视频 · Videos" };
 
 /**
  * Every project the person may see, newest activity first.
@@ -20,7 +20,7 @@ export default async function ProjectsPage() {
   const zh = (viewer.locale ?? "zh-CN").startsWith("zh");
   const rows = await listProjectStages(viewer, { limit: 200, zh });
   return (
-    <div style={{ flexGrow: 1, minWidth: 0, overflowY: "auto", backgroundColor: "#f4f3f0", backgroundImage: "radial-gradient(#d8d5cf 1px, transparent 1px)", backgroundSize: "22px 22px" }}>
+    <div style={{ flexGrow: 1, minWidth: 0, overflowY: "auto", background: "#f6f5f2" }}>
       <ProjectsList
         zh={zh}
         rows={rows.map((r) => ({

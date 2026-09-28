@@ -4,7 +4,6 @@ import * as React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { locate } from "@/lib/nav";
-import { Pulse } from "@/components/shell/Pulse";
 import { makeT, type Locale } from "@/lib/i18n";
 import type { Viewer } from "@/lib/auth/types";
 import { Tr, TR_EN } from "@/components/ui/Tr";
@@ -106,9 +105,6 @@ export function TopBar({
         * the team is doing and can never cover either. Empty otherwise, and
         * React renders nothing into it itself. */}
       <div id={TOPBAR_LIVE_SLOT} style={{ flexGrow: 1, minWidth: 0, display: "flex", justifyContent: "center" }} />
-
-      {/* What the team is doing, on every page. */}
-      <Pulse zh={zh} />
 
       <div style={{ width: 4 }} />
 

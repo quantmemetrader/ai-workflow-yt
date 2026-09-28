@@ -188,6 +188,59 @@ export const NAV: NavItem[] = ALL.filter((n) => !n.parked);
 
 export const NAV_BY_MODULE = new Map(NAV.filter((n) => !n.secondary).map((n) => [n.module, n]));
 
+/* -------------------------------------------------------------------- rail */
+
+/**
+ * What the left rail actually shows (28 Sep: "make it for non-technical
+ * people" — eighteen entries became seven). The work, in the order it is
+ * done, with everyday names; then, folded away and only for owners and
+ * admins, the back office.
+ *
+ * `NAV` above stays the full list of modules: the command palette, the
+ * crumbs and Admin's module names read it. The rail reads these.
+ */
+export type RailItem = {
+  href: string;
+  label: string;
+  labelZh: string;
+  icon: string;
+  /** The module that must be held to see it; none means everyone. */
+  module?: Module;
+  /** Other routes that belong to this entry (it lights up on them too). */
+  also?: string[];
+};
+
+const iconOf = (href: string) => ALL.find((n) => n.href === href)?.icon ?? "";
+
+const GEAR =
+  '<path d="M12 8.6a3.4 3.4 0 1 0 0 6.8 3.4 3.4 0 0 0 0-6.8z" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M19.4 13.4a7.6 7.6 0 0 0 0-2.8l2-1.5-2-3.4-2.3.9a7.5 7.5 0 0 0-2.4-1.4L14.4 2.8h-4l-.4 2.4a7.5 7.5 0 0 0-2.4 1.4l-2.3-.9-2 3.4 2 1.5a7.6 7.6 0 0 0 0 2.8l-2 1.5 2 3.4 2.3-.9a7.5 7.5 0 0 0 2.4 1.4l.4 2.4h4l.3-2.4a7.5 7.5 0 0 0 2.4-1.4l2.3.9 2-3.4z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>';
+
+export const RAIL_MAIN: RailItem[] = [
+  { href: "/home", label: "Home", labelZh: "首页", icon: iconOf("/home"), module: "chat" },
+  { href: "/projects", label: "Videos", labelZh: "视频", icon: iconOf("/video"), module: "chat", also: ["/script", "/video", "/article"] },
+  { href: "/research", label: "Topics", labelZh: "选题", icon: iconOf("/research"), module: "research" },
+  { href: "/review", label: "Results", labelZh: "数据", icon: iconOf("/review") },
+  { href: "/files", label: "Files", labelZh: "文件", icon: iconOf("/files"), module: "files" },
+  { href: "/chat", label: "Messages", labelZh: "消息", icon: iconOf("/chat"), module: "chat" },
+  { href: "/train", label: "AI team", labelZh: "AI 员工", icon: iconOf("/train"), module: "chat" },
+];
+
+/** The back office: owners and admins only, folded by default. */
+export const RAIL_BACK: RailItem[] = [
+  { href: "/admin", label: "People", labelZh: "员工管理", icon: iconOf("/admin"), module: "admin" },
+  { href: "/finance", label: "Finance", labelZh: "财务", icon: iconOf("/finance"), module: "finance" },
+  { href: "/accounting", label: "Accounting", labelZh: "账务", icon: iconOf("/accounting"), module: "accounting" },
+  { href: "/legal", label: "Legal", labelZh: "法务", icon: iconOf("/legal"), module: "legal" },
+  { href: "/hr", label: "HR", labelZh: "人事", icon: iconOf("/hr"), module: "hr" },
+  { href: "/publish", label: "Publishing", labelZh: "发布设置", icon: iconOf("/publish"), module: "publish" },
+  { href: "/settings", label: "Settings", labelZh: "设置", icon: GEAR },
+];
+
+/** Whether a rail entry is the page at this path. */
+export function railActive(item: RailItem, pathname: string): boolean {
+  return [item.href, ...(item.also ?? [])].some((h) => pathname === h || pathname.startsWith(`${h}/`));
+}
+
 /* ------------------------------------------------------------------ crumbs */
 
 /**
@@ -248,5 +301,10 @@ export function locate(pathname: string): { module: CrumbItem | null; screen: Cr
   const loose = longest(LOOSE);
   if (loose) return { module: loose, screen: null };
 
-  return { module: longest(NAV), screen: longest(SCREENS) };
+  /* The rail's own everyday name first (选题, not 市场调研), so the top bar
+     says what the rail says. */
+  const rail = [...RAIL_MAIN, ...RAIL_BACK].find((r) => railActive(r, pathname));
+  const screen = longest(SCREENS);
+  if (rail) return { module: { href: rail.href, label: rail.label, labelZh: rail.labelZh }, screen };
+  return { module: longest(NAV), screen };
 }
