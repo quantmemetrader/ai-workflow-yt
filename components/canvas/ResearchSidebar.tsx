@@ -28,7 +28,6 @@ export type SourceStatus = {
 const SCREENS = [
   { href: "/research", label: "Trends dashboard", labelZh: "趋势面板" },
   { href: "/research/compare", label: "Search & compare", labelZh: "搜索与对比" },
-  { href: "/research/performance", label: "Content performance", labelZh: "内容表现" },
   { href: "/research/inbox", label: "Comment inbox", labelZh: "评论收件箱" },
   { href: "/research/backlog", label: "Topic backlog", labelZh: "选题储备" },
 ];

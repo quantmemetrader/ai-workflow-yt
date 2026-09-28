@@ -1,79 +1,10 @@
-import { requireModule } from "@/lib/auth/dal";
-import { answeringModel } from "@/lib/ai/models";
-import { ResearchSidebar } from "@/components/canvas/ResearchSidebar";
-import { PerfView } from "@/components/research/PerfView";
-import { connectedSources, decisionCount } from "@/lib/research/service";
-import {
-  DEFAULT_WINDOW,
-  connectionState,
-  openCommentCount,
-  performance,
-  performanceTotals,
-  viewsSeries,
-  type Window,
-} from "@/lib/social/service";
+import { redirect } from "next/navigation";
 
-export const metadata = { title: "内容表现 · Performance" };
-
-/**
- * Content performance (spec §4.3).
- *
- * The studio's own videos, with views, engagement and comment counts, from the
- * accounts it connected to Zernio. Defaults to the last 28 days because the
- * brief says so, and every chart states its range and its source.
- */
-function isWindow(v: unknown): v is Window {
-  return v === "7d" || v === "28d" || v === "90d";
-}
-
-export default async function PerformancePage({
-  searchParams,
-}: {
-  searchParams: Promise<Record<string, string | string[] | undefined>>;
-}) {
-  const viewer = await requireModule("research");
-  const params = await searchParams;
-
-  const raw = params.window;
-  const window: Window = isWindow(raw) ? raw : DEFAULT_WINDOW;
-  const platform = typeof params.platform === "string" && params.platform ? params.platform : null;
-  const opts = { window, platform: platform ?? undefined };
-
-  const [rows, totals, series, state, sources, decisions, open] = await Promise.all([
-    performance(viewer, opts),
-    performanceTotals(viewer, opts),
-    viewsSeries(viewer, opts),
-    connectionState(viewer),
-    connectedSources(),
-    decisionCount(viewer),
-    openCommentCount(viewer),
-  ]);
-
-  return (
-    <>
-      <ResearchSidebar
-        locale={viewer.locale ?? "zh-CN"}
-        decisionCount={decisions}
-        inboxCount={open}
-        sources={sources.map((s) => ({
-          key: s.key,
-          name: s.name,
-          kind: s.kind,
-          status: s.status,
-          note: s.note ?? s.lastError,
-        }))}
-      />
-      <PerfView
-        locale={viewer.locale ?? "zh-CN"}
-        rows={rows}
-        totals={totals}
-        series={series}
-        window={window}
-        platform={platform}
-        channels={state.channels}
-        syncedAt={state.syncedAt}
-        model={answeringModel()}
-      />
-    </>
-  );
+/** 内容表现 moved to 作品复盘 → 已连接渠道 (the review comes after publishing, not inside trend research). */
+export default async function OldPerformancePage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
+  const p = await searchParams;
+  const q = new URLSearchParams();
+  for (const [k, v] of Object.entries(p)) if (typeof v === "string") q.set(k, v);
+  const s = q.toString();
+  redirect(s ? `/review/channels?${s}` : "/review/channels");
 }
