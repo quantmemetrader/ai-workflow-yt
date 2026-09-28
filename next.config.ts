@@ -45,6 +45,19 @@ const nextConfig: NextConfig = {
   distDir: process.env.NEXT_DIST_DIR || (process.env.VERCEL ? ".next" : ".next-build"),
 
   /*
+   * What the file tracer may never copy into a build. A single
+   * `path.join(process.cwd(), variable)` makes it take in the whole project,
+   * and releases/ gains a full build every deploy: on 29 Sep every page traced
+   * 215,000 files of old releases and the build was OOM-killed at 54 GB.
+   * scripts/check-trace-sources.mjs refuses such code before a build and
+   * scripts/check-trace-output.mjs checks the result after it; this is the
+   * third fence.
+   */
+  outputFileTracingExcludes: {
+    "*": ["releases/**", "static-archive/**", "logs/**", "backups/**", ".next-dev/**", "scripts/_*"],
+  },
+
+  /*
    * Skew protection. Each deploy gets its own id (scripts/deploy.sh); a tab
    * still running the previous build notices the mismatch on its next
    * navigation and does a full load of the new build instead of failing on

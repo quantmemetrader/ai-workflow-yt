@@ -23,7 +23,7 @@ async function list(): Promise<string[]> {
   // chunks folder also holds older builds' scripts, kept for tabs opened
   // before a deploy, and warming those would be wasted bandwidth.
   try {
-    const own = JSON.parse(await readFile(path.join(process.cwd(), "chunks.json"), "utf8")) as unknown;
+    const own = JSON.parse(await readFile(path.join(/*turbopackIgnore: true*/ process.cwd(), "chunks.json"), "utf8")) as unknown;
     if (Array.isArray(own)) {
       cached = own.filter((x): x is string => typeof x === "string");
       return cached;
@@ -33,7 +33,7 @@ async function list(): Promise<string[]> {
   }
   for (const dist of [".next-build", ".next"]) {
     try {
-      const names = await readdir(path.join(process.cwd(), dist, "static", "chunks"));
+      const names = await readdir(path.join(/*turbopackIgnore: true*/ process.cwd(), dist, "static", "chunks"));
       cached = names.filter((n) => n.endsWith(".js") || n.endsWith(".css")).map((n) => `/_next/static/chunks/${n}`);
       return cached;
     } catch {

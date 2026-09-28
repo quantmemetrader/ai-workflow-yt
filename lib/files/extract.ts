@@ -204,9 +204,9 @@ async function readPdf(file: string, dir: string, opts: Opts): Promise<string> {
   /* A scan: almost no text for its pages. The first pages go to the vision
      model instead — twelve at most, four to a call. */
   if (text.replace(/\s/g, "").length < Math.max(1, pages) * 8) {
-    const prefix = path.join(dir, "page");
+    const prefix = path.join(/*turbopackIgnore: true*/ dir, "page");
     await run("pdftoppm", ["-r", "110", "-jpeg", "-jpegopt", "quality=80", "-f", "1", "-l", "12", file, prefix]);
-    const imgs = (await readdir(dir)).filter((f) => f.startsWith("page") && f.endsWith(".jpg")).sort().map((f) => path.join(dir, f));
+    const imgs = (await readdir(dir)).filter((f) => f.startsWith("page") && f.endsWith(".jpg")).sort().map((f) => path.join(/*turbopackIgnore: true*/ dir, f));
     const parts: string[] = [];
     for (let i = 0; i < imgs.length; i += 4) {
       const batch = imgs.slice(i, i + 4);
@@ -220,26 +220,26 @@ async function readPdf(file: string, dir: string, opts: Opts): Promise<string> {
 }
 
 async function viaPdf(file: string, dir: string, opts: Opts): Promise<string> {
-  const profile = path.join(dir, "lo-profile");
+  const profile = path.join(/*turbopackIgnore: true*/ dir, "lo-profile");
   await run("soffice", [`-env:UserInstallation=file://${profile}`, "--headless", "--norestore", "--convert-to", "pdf", "--outdir", dir, file], { timeout: 180_000, env: { ...process.env, HOME: dir } });
-  const pdf = (await readdir(dir)).find((f) => f.endsWith(".pdf") && path.join(dir, f) !== file);
+  const pdf = (await readdir(dir)).find((f) => f.endsWith(".pdf") && path.join(/*turbopackIgnore: true*/ dir, f) !== file);
   if (!pdf) throw new Error("LibreOffice made no PDF");
-  const sub = await mkdtemp(path.join(dir, "p-"));
-  return readPdf(path.join(dir, pdf), sub, opts);
+  const sub = await mkdtemp(path.join(/*turbopackIgnore: true*/ dir, "p-"));
+  return readPdf(path.join(/*turbopackIgnore: true*/ dir, pdf), sub, opts);
 }
 
 async function readImage(file: string, dir: string, opts: Opts): Promise<string> {
   /* Any format in, one reasonable JPEG out (HEIC, TIFF, BMP, SVG…). */
-  const jpg = path.join(dir, "img.jpg");
+  const jpg = path.join(/*turbopackIgnore: true*/ dir, "img.jpg");
   await run("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-i", file, "-frames:v", "1", "-vf", "scale='min(1600,iw)':-2", jpg], { timeout: 60_000 }).catch(async () => {
-    await run("soffice", [`-env:UserInstallation=file://${path.join(dir, "lo")}`, "--headless", "--convert-to", "jpg", "--outdir", dir, file], { timeout: 60_000, env: { ...process.env, HOME: dir } });
+    await run("soffice", [`-env:UserInstallation=file://${path.join(/*turbopackIgnore: true*/ dir, "lo")}`, "--headless", "--convert-to", "jpg", "--outdir", dir, file], { timeout: 60_000, env: { ...process.env, HOME: dir } });
   });
   const src = (await stat(jpg).catch(() => null)) ? jpg : file;
   return readImages([src], "先把图里所有文字原样抄出来（保留原文语言和繁简；没有文字就写「无文字」），再用两三句话说明这张图是什么、画面里有什么。格式：\n【图中文字】…\n【图片内容】…", opts);
 }
 
 async function readMedia(file: string, dir: string): Promise<string> {
-  const wav = path.join(dir, "audio.wav");
+  const wav = path.join(/*turbopackIgnore: true*/ dir, "audio.wav");
   await run("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-i", file, "-t", String(MAX_MEDIA_SECS), "-vn", "-ac", "1", "-ar", "16000", wav], { timeout: 15 * 60_000 });
   const t = await transcribeLocal(wav, "audio.wav");
   const text = t.text.trim();
@@ -247,17 +247,17 @@ async function readMedia(file: string, dir: string): Promise<string> {
 }
 
 async function readArchive(file: string, ext: string, dir: string, opts: Opts): Promise<string> {
-  const out = path.join(dir, "unpacked");
+  const out = path.join(/*turbopackIgnore: true*/ dir, "unpacked");
   await run("7z", ["x", "-y", `-o${out}`, file], { timeout: 180_000, maxBuffer: 16 * 1024 * 1024 });
   if (ext === "tgz" || ext === "gz") {
     const inner = (await readdir(out)).find((f) => f.endsWith(".tar"));
-    if (inner) await run("7z", ["x", "-y", `-o${out}`, path.join(out, inner)], { timeout: 180_000 });
+    if (inner) await run("7z", ["x", "-y", `-o${out}`, path.join(/*turbopackIgnore: true*/ out, inner)], { timeout: 180_000 });
   }
   const list: string[] = [];
   const walk = async (d: string) => {
     for (const e of await readdir(d, { withFileTypes: true })) {
       if (e.name.startsWith(".") || e.name === "__MACOSX") continue;
-      const p = path.join(d, e.name);
+      const p = path.join(/*turbopackIgnore: true*/ d, e.name);
       if (e.isDirectory()) await walk(p);
       else list.push(p);
     }
@@ -288,7 +288,7 @@ export async function readLocal(file: string, name: string, mime: string | null,
   if (!ext && mime) {
     ext = mime.includes("pdf") ? "pdf" : mime.startsWith("image/") ? "png" : mime.startsWith("video/") ? "mp4" : mime.startsWith("audio/") ? "mp3" : mime.startsWith("text/") ? "txt" : "";
   }
-  const dir = await mkdtemp(path.join(tmpdir(), "tg-read-"));
+  const dir = await mkdtemp(path.join(/*turbopackIgnore: true*/ tmpdir(), "tg-read-"));
   try {
     let text: string;
     if (TEXT_EXT.has(ext)) text = decodeText(await readFile(file));
@@ -322,9 +322,9 @@ export async function readLocal(file: string, name: string, mime: string | null,
 
 /** Read bytes held in memory (an upload being handled on the server). */
 export async function readBytes(bytes: Buffer, name: string, mime: string | null, opts: Opts = {}): Promise<string | null> {
-  const dir = await mkdtemp(path.join(tmpdir(), "tg-bytes-"));
+  const dir = await mkdtemp(path.join(/*turbopackIgnore: true*/ tmpdir(), "tg-bytes-"));
   try {
-    const p = path.join(dir, `in.${extOf(name) || "bin"}`);
+    const p = path.join(/*turbopackIgnore: true*/ dir, `in.${extOf(name) || "bin"}`);
     await (await import("node:fs/promises")).writeFile(p, bytes);
     return await readLocal(p, name, mime, opts);
   } finally {
@@ -346,11 +346,11 @@ export function ensureFileText(fileId: string, opts: Opts & { force?: boolean } 
     if (!row) return null;
     if (!opts.force && row.text && row.text.trim().length > 0) return row.text;
     if (!row.storageKey || !readable(row.name, row.mime) || row.sizeBytes > MAX_BYTES) return row.text || null;
-    const dir = await mkdtemp(path.join(tmpdir(), "tg-file-"));
+    const dir = await mkdtemp(path.join(/*turbopackIgnore: true*/ tmpdir(), "tg-file-"));
     try {
       const res = await getObject(row.storageKey);
       if (!res.ok || !res.body) throw new Error(`storage said ${res.status}`);
-      const local = path.join(dir, `in.${extOf(row.name) || "bin"}`);
+      const local = path.join(/*turbopackIgnore: true*/ dir, `in.${extOf(row.name) || "bin"}`);
       await pipeline(Readable.fromWeb(res.body as unknown as import("node:stream/web").ReadableStream), createWriteStream(local));
       const text = await readLocal(local, row.name, row.mime, opts);
       if (text) await db.update(files).set({ text }).where(eq(files.id, fileId));

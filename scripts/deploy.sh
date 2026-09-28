@@ -12,9 +12,18 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 root=$(pwd)
 
+# One deploy at a time: two builds at once ran the box out of memory (29 Sep).
+exec 9>/tmp/aura-deploy.lock
+if ! flock -n 9; then
+  echo "!! another deploy is already running; wait for it to finish" >&2
+  exit 1
+fi
+
 echo "==> checks"
 # The project outgrew tsc's default 4 GB heap (it died with "heap out of memory"); the box has 64 GB.
 NODE_OPTIONS=--max-old-space-size=8192 npx tsc --noEmit
+# Code that would make the build trace the whole project (see the script).
+node scripts/check-trace-sources.mjs
 npm run smoke
 
 echo "==> renderer fonts"
@@ -32,7 +41,17 @@ echo "==> build"
 release="$(date -u +%Y%m%d%H%M%S)-$(git rev-parse --short HEAD)"
 # Lowest CPU and IO priority: the build uses every core for ~3 minutes, and
 # live chats streaming on the same box stalled while it ran.
-NEXT_DEPLOYMENT_ID="$release" NODE_OPTIONS=--max-old-space-size=8192 nice -n 19 ionice -c3 npx next build
+# Capped at 24 GB (a healthy build needs a few): a build that runs away is
+# stopped at once with a clear message, instead of the kernel OOM-killing it
+# ten minutes in — or killing the live server's processes instead.
+if ! systemd-run --user --scope --quiet -p MemoryMax=24G -p MemorySwapMax=0 -- \
+  env NEXT_DEPLOYMENT_ID="$release" NODE_OPTIONS=--max-old-space-size=8192 nice -n 19 ionice -c3 npx next build; then
+  echo "!! the build failed or passed its 24 GB memory cap." >&2
+  echo "   If it was the cap: node scripts/check-trace-output.mjs .next-build shows which pages trace too much." >&2
+  exit 1
+fi
+# Nothing traced from old releases, temp files, or thousands of stray files.
+node scripts/check-trace-output.mjs .next-build
 
 echo "==> stage release ${release}"
 # Moves the build into releases/<id>, keeps every older script an open tab

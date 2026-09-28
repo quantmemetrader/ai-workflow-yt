@@ -8,7 +8,6 @@ import { InlineAgentThread, useInlineAgent } from "@/components/shell/InlineAgen
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Markdown } from "@/components/ui/Markdown";
 import type { Proposals } from "@/lib/agents/proposals";
-import { ProposalsStrip } from "@/components/agents/ProposalsStrip";
 import { Badge, Empty, Label, Row, chip, clip, field, ghost, solid, useAction } from "@/components/ui/kit";
 import { DESTINATIONS, destinationLabel } from "@/lib/article/destinations";
 import type { ArticleDetail, ArticleListItem, ArticleStatus, PublicationRow } from "@/lib/article/service";
@@ -173,7 +172,6 @@ export function ArticleScreen({
         zh={zh}
         storageKey="article-sidebar"
       />
-        {proposals && tab === "library" ? <ProposalsStrip owner="article" items={proposals.items} planDate={proposals.planDate} zh={zh} /> : null}
 
 
         <div style={{ flexGrow: 1, minHeight: 0, display: "flex" }}>

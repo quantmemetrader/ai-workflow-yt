@@ -61,13 +61,13 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 <h1>${esc(title)}</h1>
 ${paras.map((p) => `<p>${esc(p.said)}</p>${notes && p.shot ? `<p class="shot">画面：${esc(p.shot)}</p>` : ""}`).join("\n")}
 </body></html>`;
-  const dir = await mkdtemp(path.join(tmpdir(), "tg-export-"));
+  const dir = await mkdtemp(path.join(/*turbopackIgnore: true*/ tmpdir(), "tg-export-"));
   try {
-    const src = path.join(dir, "script.html");
+    const src = path.join(/*turbopackIgnore: true*/ dir, "script.html");
     await writeFile(src, html);
     const target = format === "docx" ? "docx:MS Word 2007 XML" : "pdf:writer_web_pdf_Export";
-    await run("soffice", [`-env:UserInstallation=file://${path.join(dir, "lo")}`, "--headless", "--norestore", "--convert-to", target, "--outdir", dir, src], { timeout: 120_000, env: { ...process.env, HOME: dir } });
-    const out = await readFile(path.join(dir, `script.${format}`));
+    await run("soffice", [`-env:UserInstallation=file://${path.join(/*turbopackIgnore: true*/ dir, "lo")}`, "--headless", "--norestore", "--convert-to", target, "--outdir", dir, src], { timeout: 120_000, env: { ...process.env, HOME: dir } });
+    const out = await readFile(path.join(/*turbopackIgnore: true*/ dir, `script.${format}`));
     return new Response(new Uint8Array(out), {
       headers: {
         "content-type": format === "docx" ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document" : "application/pdf",
