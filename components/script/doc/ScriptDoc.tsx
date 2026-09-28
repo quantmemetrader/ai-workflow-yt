@@ -1353,8 +1353,8 @@ function Status({ tone, text, children }: { tone: "run" | "ok" | "you" | "wait" 
   return (
     <div className="gd-status" data-tone={tone}>
       <span className="gd-status-dot" />
-      <span style={{ flexGrow: 1, minWidth: 0 }}>{text}</span>
-      {children ? <span style={{ display: "flex", gap: 6, flexShrink: 0 }}>{children}</span> : null}
+      <span style={{ flexGrow: 1, minWidth: 200 }}>{text}</span>
+      {children ? <span style={{ display: "flex", gap: 8, flexWrap: "wrap", minWidth: 0 }}>{children}</span> : null}
     </div>
   );
 }

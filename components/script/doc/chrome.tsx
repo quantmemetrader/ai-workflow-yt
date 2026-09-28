@@ -152,7 +152,7 @@ export function Drop({ label, button, children, width, disabled, align = "left" 
         <GI name="chevron" size={15} style={{ color: "#5f6368", marginLeft: -2 }} />
       </button>
       {open ? (
-        <div className="gd-menu" style={{ minWidth: width ?? 180, [align === "right" ? "right" : "left"]: 0 }} onMouseDown={(e) => e.preventDefault()}>
+        <div className="gd-menu" style={{ minWidth: width ?? 180, ...(align === "right" ? { right: 0, left: "auto" } : { left: 0 }) }} onMouseDown={(e) => e.preventDefault()}>
           {children(close)}
         </div>
       ) : null}
