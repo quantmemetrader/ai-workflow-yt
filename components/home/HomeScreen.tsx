@@ -577,19 +577,20 @@ export function HomeScreen({
   return (
     <div style={{ flexGrow: 1, minWidth: 0, minHeight: 0, overflowY: "auto", ...PAPER }}>
       <style dangerouslySetInnerHTML={{ __html: `${DETAIL_LINK_CSS}${IDEAS_CSS}${TITLE_CHECK_CSS}${ROLE_TABS_CSS} .home-all:hover { color: #171717 !important; }` }} />
-      <div style={{ maxWidth: 1240, margin: "0 auto", padding: "22px 24px 48px", display: "flex", flexDirection: "column", gap: 14 }}>
+      <div style={{ maxWidth: 1080, margin: "0 auto", padding: "22px 24px 48px", display: "flex", flexDirection: "column", gap: 14 }}>
         <div>
           <h1 style={{ fontSize: 22, fontWeight: 600, margin: 0, letterSpacing: "-0.01em" }}>{t(`${greeting(zh)}，${me}`, `${greeting(zh)}, ${me}`)}</h1>
           <p style={{ margin: "5px 0 0", fontSize: 13.5, color: "#7c7c7c" }}>{subline}</p>
           <RoleTabs zh={zh} role={role} defaultRole={defaultRole} canSetDefault={canSetDefault} />
         </div>
 
-        {/* ---- the job's panels down the wide column; the project chats and
-             the team down the narrow one (drawn second in the DOM order of
-             the old screen, so `order: 2` keeps it on the right) ---- */}
-        <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 8fr) minmax(340px, 5fr)", gap: 14, alignItems: "start" }}>
-          <div style={{ minWidth: 0, order: 2, display: "flex", flexDirection: "column", gap: 14 }}>{column(layout.side)}</div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>{column(layout.main)}</div>
+        {/* ---- one block per row, all one width: the job's panels, then the
+             project chats and the team. It was two columns of different
+             widths, which the studio found messy (28 Sep: "one block each
+             row", like the reference board). ---- */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
+          {column(layout.main)}
+          {column(layout.side)}
         </div>
       </div>
     </div>
