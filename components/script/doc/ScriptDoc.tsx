@@ -116,6 +116,9 @@ export function ScriptDoc(props: ScriptDocProps) {
   /* ---------------- view state ---------------- */
   const [mode, setModeRaw] = React.useState<Mode>(me.canEdit ? "edit" : "view");
   const [outline, setOutline] = React.useState(true);
+  React.useEffect(() => {
+    if (typeof window !== "undefined" && window.innerWidth < 1600) setOutline(false);
+  }, []);
   const [ruler, setRuler] = React.useState(true);
   const [shots, setShots] = React.useState(false);
   /* The side panel is always open, on the AI assistant unless 批注 or 版本
@@ -123,7 +126,14 @@ export function ScriptDoc(props: ScriptDocProps) {
   const [panelPick, setPanelPick] = React.useState<Exclude<Panel, null>>("ai");
   const panel: Exclude<Panel, null> = panelPick;
   const setPanel = (p: Panel) => setPanelPick(p ?? "ai");
-  const [zoom, setZoom] = React.useState(1);
+  const [zoom, setZoomRaw] = React.useState(1);
+  /* The page scales down to fit the space there is (like Docs on a small
+     window): 816px page, plus the comment margin when there is room for it.
+     On a laptop the paper ran off the right edge (29 Sep). */
+  const [fit, setFit] = React.useState(1);
+  const [marginOn, setMarginOn] = React.useState(true);
+  const setZoom = setZoomRaw;
+  const z = zoom * fit;
   /* Unlocked for this approved version only: a newer approval locks it again. */
   const [unlockedFor, setUnlockedFor] = React.useState<number | null>(null);
   const unlocked = script?.lockedVersion != null && unlockedFor === script.lockedVersion;
@@ -282,7 +292,7 @@ export function ScriptDoc(props: ScriptDocProps) {
     const list = openComments
       .map((c) => {
         const el = root.querySelector(`.gd-cmt[data-cid="${c.id}"]`) as HTMLElement | null;
-        return { id: c.id, y: el ? (el.getBoundingClientRect().top - base) / zoom : null };
+        return { id: c.id, y: el ? (el.getBoundingClientRect().top - base) / z : null };
       })
       .filter((x): x is { id: string; y: number } => x.y !== null)
       .sort((a, b) => a.y - b.y);
@@ -297,13 +307,13 @@ export function ScriptDoc(props: ScriptDocProps) {
     if (!sel.empty) {
       try {
         const c = editor.view.coordsAtPos(sel.from);
-        setSelTop((c.top - base) / zoom);
+        setSelTop((c.top - base) / z);
       } catch {
         setSelTop(null);
       }
     } else setSelTop(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editor, commentsKey, zoom, activeComment]);
+  }, [editor, commentsKey, z, activeComment]);
   React.useEffect(() => {
     if (!editor) return;
     const run = () => window.requestAnimationFrame(layoutCards);
@@ -850,6 +860,22 @@ export function ScriptDoc(props: ScriptDocProps) {
   const trackedLeft = proposal ? trackedNow().length : 0;
   const noScript = !props.writing && !script;
 
+  React.useEffect(() => {
+    const el = canvas.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const measure = () => {
+      const w = el.clientWidth - 40;
+      const room = w >= (816 + 300) * zoom;
+      setMarginOn(room);
+      const need = (room ? 816 + 300 : 816) * zoom;
+      setFit(Math.max(0.45, Math.min(1, w / need)));
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [zoom, outline]);
+
   /* ---------------- render ---------------- */
   return (
     <div data-gd-root="" className={`gd-root${shots ? " gd-shots" : ""}`}>
@@ -858,41 +884,7 @@ export function ScriptDoc(props: ScriptDocProps) {
       <input ref={imgInput} type="file" hidden accept="image/*" multiple onChange={(e) => { if (e.target.files?.length) void insertImages(e.target.files); e.target.value = ""; }} />
       <input ref={refInput} type="file" multiple hidden accept=".pdf,.doc,.docx,.txt,.md,.rtf,.csv,.xlsx,.pptx,image/*" onChange={(e) => { if (e.target.files?.length) void uploadRefs(e.target.files); e.target.value = ""; }} />
 
-      {/* ---- header ---- */}
-      <header className="gd-head">
-        <div style={{ display: "flex", flexDirection: "column", minWidth: 0, flexGrow: 1 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-            <input
-              className="gd-title"
-              value={title}
-              disabled={!canEdit}
-              aria-label={t("文档标题", "Document title")}
-              onChange={(e) => setTitle(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); if (e.key === "Escape") { setTitleDraft(null); (e.target as HTMLInputElement).blur(); } }}
-              onBlur={() => renameTo(title)}
-              style={{ width: `${Math.min(52, Math.max(8, [...title].reduce((n, ch) => n + (/[\u2e80-\uffff]/.test(ch) ? 2 : 1.05), 0) + 2))}ch` }}
-            />
-            <button type="button" className="gd-saved" data-state={saveState} onClick={() => saveState === "error" && void save()} title={saveLabel}>
-              <GI name="cloud" size={17} />
-              <span>{saveLabel}</span>
-            </button>
-          </div>
-          <MenuBar menus={menus} />
-        </div>
-        <div className="gd-head-right">
-          <button type="button" className="gd-icon big" data-on={panel === "comments" ? "1" : undefined} title={t("打开批注记录", "Open comment history")} onClick={() => setPanel(panel === "comments" ? null : "comments")}>
-            <GI name="comments" size={22} />
-            {openComments.length ? <span className="gd-dot">{openComments.length}</span> : null}
-          </button>
-          <button type="button" className="gd-share" onClick={() => setSharing(true)}>
-            <GI name="lock" size={17} />
-            {t("分享", "Share")}
-          </button>
-          <button type="button" className="gd-icon big gd-spark" data-on={panel === "ai" ? "1" : undefined} title={t("AI 助手", "AI copilot")} onClick={() => setPanel(panel === "ai" ? null : "ai")}>
-            <GI name="sparkle" size={22} />
-          </button>
-        </div>
-      </header>
+
 
       <Toolbar
         editor={editor}
@@ -932,6 +924,15 @@ export function ScriptDoc(props: ScriptDocProps) {
         <button type="button" className="gd-big" onClick={print}><GI name="print" size={18} />{t("打印", "Print")}</button>
         <button type="button" className="gd-big" onClick={() => setPanel("versions")}><GI name="history" size={18} />{t("版本记录", "Versions")}</button>
         <button type="button" className="gd-big" onClick={() => setSharing(true)}><GI name="lock" size={18} />{t("分享链接", "Share link")}</button>
+        <label className="gd-big" style={{ cursor: "pointer" }}>
+          <input type="checkbox" checked={shots} onChange={() => setShots((v) => !v)} style={{ width: 16, height: 16 }} />
+          {t("画面说明", "Shot notes")}
+        </label>
+        <span style={{ flexGrow: 1 }} />
+        <button type="button" className="gd-saved" data-state={saveState} onClick={() => saveState === "error" && void save()} title={saveLabel}>
+          <GI name="cloud" size={17} />
+          <span>{saveLabel}</span>
+        </button>
       </div>
 
       {statusLine()}
@@ -1061,14 +1062,14 @@ export function ScriptDoc(props: ScriptDocProps) {
         <div className="gd-canvas" ref={canvas}>
           {ruler ? (
             <div className="gd-ruler-wrap">
-              <div className="gd-ruler" style={{ width: 816 * zoom }}>
+              <div className="gd-ruler" style={{ width: 816 * z }}>
                 {Array.from({ length: 17 }, (_, i) => (
                   <span key={i} style={{ left: `${((i * 37.8 + 96) / 816) * 100}%` }}>{i === 0 ? "" : i}</span>
                 ))}
               </div>
             </div>
           ) : null}
-          <div className="gd-sheet-row" style={{ zoom }}>
+          <div className="gd-sheet-row" style={{ zoom: z }}>
             <div className="gd-sheet" ref={sheet} onMouseDown={() => { if (locked && me.canEdit && mode === "edit") setLockPrompt(true); }}>
               {noScript ? (
                 <div className="gd-empty">
@@ -1098,7 +1099,7 @@ export function ScriptDoc(props: ScriptDocProps) {
               )}
             </div>
             {/* the right margin: comments */}
-            <div className="gd-margin">
+            <div className="gd-margin" style={marginOn ? undefined : { display: "none" }}>
               {!noScript && !viewing
                 ? openComments.map((c) =>
                     cardTops[c.id] !== undefined ? (
@@ -1395,7 +1396,7 @@ function PromptModal({ title, label, initial, zh, onClose, onOk, extra }: { titl
 }
 
 const CSS = `
-.gd-root { flex-grow: 1; min-height: 0; display: flex; flex-direction: column; background: #f9fbfd; color: #1f1f1f; font-family: "Google Sans", Roboto, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; }
+.gd-root { flex-grow: 1; min-width: 0; min-height: 0; overflow: hidden; display: flex; flex-direction: column; background: #f9fbfd; color: #1f1f1f; font-family: "Google Sans", Roboto, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; }
 .gd-root:fullscreen { background: #f9fbfd; }
 .gd-head { display: flex; align-items: center; gap: 10px; padding: 8px 16px 0 14px; flex-shrink: 0; }
 .gd-title { font: inherit; font-size: 18px; color: #1f1f1f; border: 1px solid transparent; border-radius: 4px; padding: 1px 6px; margin-left: -6px; background: transparent; min-width: 6ch; max-width: 52ch; text-overflow: ellipsis; }
@@ -1477,11 +1478,11 @@ const CSS = `
 .gd-outline-item { border: 0; background: none; text-align: left; font: inherit; font-size: 13.5px; color: #1f1f1f; padding: 6px 10px; border-radius: 999px; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .gd-outline-item:hover { background: #e8eaed; }
 .gd-canvas { flex-grow: 1; min-width: 0; overflow: auto; position: relative; }
-.gd-ruler-wrap { position: sticky; top: 0; z-index: 4; display: flex; justify-content: center; padding-right: 300px; background: #f9fbfd; }
+.gd-ruler-wrap { position: sticky; top: 0; z-index: 4; display: flex; justify-content: center; background: #f9fbfd; }
 .gd-ruler { position: relative; height: 22px; border-bottom: 1px solid #dadce0; background: linear-gradient(to right, #eef0f3 0, #eef0f3 11.76%, #fff 11.76%, #fff 88.24%, #eef0f3 88.24%) , #fff; background-clip: padding-box; box-sizing: border-box; }
 .gd-ruler::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 5px; background: repeating-linear-gradient(to right, #80868b 0, #80868b 1px, transparent 1px, transparent 9.45px); opacity: .55; }
 .gd-ruler span { position: absolute; top: 2px; transform: translateX(-50%); font-size: 10px; color: #5f6368; }
-.gd-sheet-row { display: flex; justify-content: center; gap: 16px; padding: 18px 0 150px; min-width: max-content; margin: 0 auto; }
+.gd-sheet-row { display: flex; justify-content: center; gap: 16px; padding: 18px 0 150px; margin: 0 auto; }
 .gd-sheet { width: 816px; min-height: 1056px; background: #fff; box-shadow: 0 0 0 .75pt #d1d1d1, 0 0 3pt .75pt #ccc; box-sizing: border-box; padding: 96px 96px 120px; position: relative; }
 .gd-margin { width: 284px; position: relative; flex-shrink: 0; }
 .gd-card { position: absolute; left: 0; width: 272px; box-sizing: border-box; background: #fff; border-radius: 8px; padding: 12px 12px 12px; box-shadow: 0 1px 3px rgba(60,64,67,.3), 0 4px 8px 3px rgba(60,64,67,.15); cursor: pointer; transition: top .15s ease, box-shadow .15s ease; }
@@ -1508,7 +1509,7 @@ const CSS = `
 .gd-chip { height: 30px; padding: 0 12px; border: 1px solid #c7c7c7; border-radius: 8px; background: #fff; color: #1f1f1f; font: inherit; font-size: 13px; cursor: pointer; white-space: nowrap; }
 .gd-chip:hover:not(:disabled) { background: #f1f3f4; }
 .gd-chip:disabled { opacity: .5; cursor: default; }
-.gd-ai-dock { position: sticky; bottom: 22px; z-index: 6; display: flex; flex-direction: column; align-items: center; gap: 8px; pointer-events: none; padding-right: 300px; margin-top: -120px; }
+.gd-ai-dock { position: sticky; bottom: 22px; z-index: 6; display: flex; flex-direction: column; align-items: center; gap: 8px; pointer-events: none; margin-top: -120px; padding: 0 16px; }
 .gd-ai-dock > * { pointer-events: auto; }
 .gd-ai-chips { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; max-width: 720px; }
 .gd-ai-chips .gd-chip { border-radius: 999px; box-shadow: 0 1px 3px rgba(60,64,67,.2); }
@@ -1583,7 +1584,8 @@ const CSS = `
   .gd-prose .gd-cmt, .gd-prose .gd-find { background: none !important; border: 0 !important; }
   @page { margin: 2.2cm; }
 }
-@media (max-width: 1280px) { .gd-outline { width: 210px; } .gd-margin { width: 240px; } .gd-card { width: 232px; } .gd-ruler-wrap, .gd-ai-dock { padding-right: 256px; } }
+@media (max-width: 1500px) { .gd-side { width: 300px; } .gd-outline { width: 210px; } }
+@media (max-width: 1200px) { .gd-side { width: 270px; padding: 14px 12px; } }
 `;
 
 /** A big button that opens a small menu under it (导入 / 导出). */
