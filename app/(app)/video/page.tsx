@@ -2,28 +2,11 @@ import { projectFor } from "@/lib/projects/service";
 import { publicationsByVideo } from "@/lib/projects/published";
 import { publishedDay } from "@/lib/projects/publication";
 import { ProjectBar } from "@/components/projects/ProjectBar";
-import { and, eq } from "drizzle-orm";
-import { db } from "@/lib/db/client";
-import { videoExports } from "@/lib/db/schema";
 import { requireModule } from "@/lib/auth/dal";
 import { proposalsFor } from "@/lib/agents/proposals";
 import { answeringModel } from "@/lib/ai/models";
-import {
-  availableFootage,
-  availablePictures,
-  listAudio,
-  listCaptions,
-  listGraphics,
-  autoEditRunning,
-  listClips,
-  listExports,
-  listProjects,
-  listTimeline,
-  scriptsForPicker,
-  transcriptionRunning,
-} from "@/lib/video/service";
+import { editorData } from "@/lib/video/editor-data";
 import { env } from "@/lib/env";
-import { voicesForUi } from "@/lib/video/tts";
 import { VideoScreen } from "@/components/video/VideoScreen";
 import { HEAVY_JOBS_PAUSED } from "@/lib/jobs/heavy";
 
@@ -34,7 +17,8 @@ export const metadata = { title: "视频剪辑 · Video Edit" };
  *
  * The project is in the URL so a cut is a link somebody can send. Everything
  * else is derived: the bin, the timeline, the captions and the renders all
- * belong to whichever project that names.
+ * belong to whichever project that names (`editorData`, which a project's
+ * 剪辑 page reads too).
  *
  * With no project named, the screen opens on its 项目 tab, which is the list.
  * It used to fall through to whichever cut was edited last, so pressing Video
@@ -51,86 +35,40 @@ export default async function VideoPage({
 }) {
   const viewer = await requireModule("video");
   const { project: wanted } = await searchParams;
+  const d = await editorData(viewer, wanted);
 
-  const [projects, footage, pictures, scripts] = await Promise.all([
-    listProjects(viewer),
-    availableFootage(viewer),
-    availablePictures(viewer),
-    scriptsForPicker(viewer),
-  ]);
   /* Which cuts went out: each video project's work project, when it is
      marked 已发布, with where it went and the day (formatted here, so the
      card and the server's HTML agree). */
   const zhDates = (viewer.locale ?? "zh-CN").startsWith("zh");
   const published = Object.fromEntries(
-    Object.entries(await publicationsByVideo(viewer, projects.map((p) => p.id))).map(([videoId, pub]) => [videoId, { projectId: pub.projectId, platforms: pub.platforms, at: pub.at, day: publishedDay(pub.at, zhDates) }]),
+    Object.entries(await publicationsByVideo(viewer, d.projects.map((p) => p.id))).map(([videoId, pub]) => [videoId, { projectId: pub.projectId, platforms: pub.platforms, at: pub.at, day: publishedDay(pub.at, zhDates) }]),
   );
-  /* A link to a cut that has since been deleted, or that this person cannot
-     read, lands on the library rather than on an error. */
-  const project = (wanted ? projects.find((p) => p.id === wanted) : undefined) ?? null;
-
-  const [clips, items, captions, graphics, exports, audio, transcribing, autoEditing, proxies] = project
-    ? await Promise.all([
-        listClips(viewer, project.id),
-        listTimeline(viewer, project.id),
-        listCaptions(viewer, project.id),
-        listGraphics(viewer, project.id),
-        listExports(viewer, project.id),
-        listAudio(viewer, project.id),
-        transcriptionRunning(viewer, project.id),
-        autoEditRunning(viewer, project.id),
-        /*
-         * Which small preview copy belongs to which render.
-         *
-         * Read beside `listExports` rather than widened into it: that row is
-         * the *deliverable*, and it is read by callers with no player in them.
-         * The proxy only matters to the one screen that watches the cut, and
-         * it rides along here for free — the query goes out with the other
-         * eight and is scoped to this studio the same way they are.
-         */
-        db
-          .select({ exportId: videoExports.id, proxyFileId: videoExports.proxyFileId })
-          .from(videoExports)
-          .where(and(eq(videoExports.projectId, project.id), eq(videoExports.tenantId, viewer.tenantId))),
-      ])
-    : [[], [], [], [], [], [], false, false, []];
-
-  const proxyByExport = new Map(proxies.map((p) => [p.exportId, p.proxyFileId]));
-  const renders = exports.map((e) => ({ ...e, proxyFileId: proxyByExport.get(e.id) ?? null }));
-
-  /*
-   * The voices the studio can use: its own (the speech engine on this
-   * server, `lib/video/tts`), and ElevenLabs' library only while ElevenLabs
-   * answers this server. Read here rather than in the browser, and cached in
-   * the module, so opening the tab costs no vendor round trip. The library
-   * has no audio on it, so it does not pay for this at all.
-   */
-  const voices = project ? await voicesForUi().catch(() => []) : [];
 
   /* What the page's own employee thinks should be made next, read from
      what already exists — this morning's plan, the backlog, the audience. */
   const proposals = await proposalsFor(viewer, "video");
 
   /* The project bar, only for a project this person may see. */
-  const inProject = project ? await projectFor(viewer, { videoProjectId: project.id }) : null;
+  const inProject = d.project ? await projectFor(viewer, { videoProjectId: d.project.id }) : null;
   const view = (
     <VideoScreen
       proposals={proposals}
-      projects={projects}
+      projects={d.projects}
       published={published}
-      project={project}
-      clips={clips}
-      items={items}
-      captions={captions}
-      graphics={graphics}
-      autoEditing={autoEditing}
-      exports={renders}
-      footage={footage}
-      pictures={pictures}
-      scripts={scripts}
-      audio={audio}
-      voices={voices}
-      transcribing={transcribing}
+      project={d.project}
+      clips={d.clips}
+      items={d.items}
+      captions={d.captions}
+      graphics={d.graphics}
+      autoEditing={d.autoEditing}
+      exports={d.renders}
+      footage={d.footage}
+      pictures={d.pictures}
+      scripts={d.scripts}
+      audio={d.audio}
+      voices={d.voices}
+      transcribing={d.transcribing}
       transcriptionConfigured={env.elevenlabs.configured}
       heavyPaused={HEAVY_JOBS_PAUSED}
       locale={viewer.locale ?? "zh-CN"}

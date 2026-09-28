@@ -37,6 +37,7 @@ export function Director({
   onMake,
   onLinkScript,
   onUpload,
+  defaultOpen = true,
 }: {
   director: DirectorState;
   clipCount: number;
@@ -48,6 +49,8 @@ export function Director({
   onMake: (input: { brief: string; aspect: string; render: boolean; pace: string }) => void;
   onLinkScript: (scriptId: string | null) => void;
   onUpload: (files: FileList) => void;
+  /** Whether the prompt box starts unfolded (a project's 剪辑 page folds it once there is a cut). */
+  defaultOpen?: boolean;
 }) {
   const [noteOpen, setNoteOpen] = useState(false);
   const t = (en: string, cn: string) => (zh ? cn : en);
@@ -60,7 +63,7 @@ export function Director({
     { key: "channel", en: "Channel", zh: "频道", note: "The channel's own rhythm", noteZh: "频道自己的节奏" },
     { key: "hype", en: "Hype", zh: "炸裂", note: "A full-frame visual for everything said, every 2 to 4 seconds", noteZh: "每提到的东西都满屏上图，每 2 到 4 秒一个" },
   ];
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(defaultOpen);
   const running = director.state === "queued" || director.state === "running";
 
   /* The clock on the strip, so five minutes reads as five minutes and not as

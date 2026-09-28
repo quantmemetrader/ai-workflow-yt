@@ -3,7 +3,7 @@
 import { Icon } from "@/components/ui/Icon";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { ProposalsStrip } from "@/components/agents/ProposalsStrip";
-import { startProjectAction } from "@/app/(app)/projects/actions";
+import { startCutFromPageAction, startProjectAction } from "@/app/(app)/projects/actions";
 import type { Proposals } from "@/lib/agents/proposals";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -77,6 +77,7 @@ import { Poster } from "@/components/files/Poster";
 import { Badge, Empty, Label, ModuleHeader, Row, Tabs, clip, field, ghost, solid, useAction } from "@/components/ui/kit";
 import { Tr } from "@/components/ui/Tr";
 import { PUBLISHED_TONE, PublishedCheck, PublishedMarks } from "@/components/projects/Published";
+import { EditBand } from "@/components/video/EditBand";
 import type { PublishedPlace } from "@/lib/projects/publication";
 
 /** A cut whose project is marked 已发布: where it went, when (ISO and as the day, formatted on the server). */
@@ -135,7 +136,16 @@ export function VideoScreen({
   heavyPaused = false,
   locale,
   model,
+  embedded,
 }: {
+  /**
+   * Drawn inside a project's 剪辑 page (`/projects/[id]/edit`) rather than as
+   * the Video module: the project's own header and tabs are above, so this
+   * leaves out its title bar, the list of cuts, the switcher and 新建项目,
+   * and draws instead the band that says what to do next (`EditBand`) and,
+   * in the desk's right column, the approved script and files (`brief`).
+   */
+  embedded?: { projectId: string; brief?: React.ReactNode };
   /** What 剪辑师 suggests cutting next, drawn above the project list. */
   proposals?: Proposals;
   projects: ProjectRow[];
@@ -415,11 +425,52 @@ export function VideoScreen({
    * no cut in the URL — or with 项目 picked while one is open — that pane is
    * the list.
    */
-  const onLibrary = !project || tab === "library";
+  const onLibrary = !project || (!embedded && tab === "library");
+
+  /* The band's facts: what exists on this cut, and what is running. */
+  const latestRender = renders[0] ?? null;
+  const renderPercent = latestRender && latestRender.state === "rendering"
+    ? Math.round(latestRender.progress <= 1 ? latestRender.progress * 100 : latestRender.progress)
+    : null;
 
   return (
-    <div style={{ flexGrow: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
-      <ModuleHeader
+    <div style={{ flexGrow: 1, minWidth: 0, minHeight: 0, display: "flex", flexDirection: "column" }}>
+      {embedded && project ? (
+        <EditBand
+          projectId={embedded.projectId}
+          zh={zh}
+          busy={busy}
+          facts={{
+            clips: clips.length,
+            items: items.length,
+            totalMs,
+            directing,
+            directorStep: project.director?.step ?? null,
+            rendering,
+            renderPercent,
+            lastRender: lastRender?.fileId ? { fileId: lastRender.fileId, subtitleFileId: lastRender.subtitleFileId, aspect: lastRender.aspect, durationMs: lastRender.durationMs } : null,
+            stale,
+          }}
+          onUpload={(files) => uploadIntoProject(files)}
+          onCut={() =>
+            run(async () => {
+              const res = await startCutFromPageAction(embedded.projectId, {});
+              if ("error" in res && res.error) return res;
+              if ("note" in res && res.note) notify(res.note, "ok");
+              writeRendering({ projectId: project.id, title: project.title });
+              return {};
+            }, undefined, t("Starting the cut", "开始剪辑"))
+          }
+          onRender={() =>
+            startRender({
+              aspect: lastRender?.aspect ?? project.director?.aspect ?? "16:9",
+              burnCaptions: lastRender ? lastRender.burnCaptions === "burn" : captions.length > 0,
+              captionLanguage: lastRender?.captionLanguage ?? captions[0]?.language ?? project.director?.language ?? "zh-CN",
+            })
+          }
+        />
+      ) : null}
+      {embedded ? null : <ModuleHeader
         title={project ? project.title : t("Video Edit", "视频剪辑")}
         note={
           project
@@ -479,9 +530,9 @@ export function VideoScreen({
             )}
           </>
         }
-      />
+      />}
 
-      {project && !onLibrary && clips.length === 0 ? (
+      {project && !onLibrary && !embedded && clips.length === 0 ? (
         /* A project with nothing in it has one job: get the host's clips in. */
         <label
           style={{ margin: "12px 22px 0", padding: "16px 18px", borderRadius: 12, border: "1.5px dashed #9fb8e8", background: "#f5f8fe", display: "flex", alignItems: "center", gap: 14, cursor: "pointer" }}
@@ -557,8 +608,9 @@ export function VideoScreen({
         foldKey="video"
         foldLabel={{ more: t("More", "高级"), less: t("Less", "收起") }}
         tabs={[
-          /* First, because it is the first thing somebody does here. */
-          { key: "library", label: t("Projects", "项目"), badge: projects.length },
+          /* First, because it is the first thing somebody does here — but not
+             inside a project, whose cut is the only one on its page. */
+          ...(embedded ? [] : [{ key: "library" as Tab, label: t("Projects", "项目"), badge: projects.length }]),
           { key: "edit", label: t("Edit", "剪辑"), badge: items.length },
           { key: "preview", label: t("Preview", "预览"), badge: done.length },
           { key: "exports", label: t("Export", "导出"), badge: renders.length },
@@ -635,9 +687,13 @@ export function VideoScreen({
           }
           onLinkScript={(scriptId) => run(() => linkScriptAction(project.id, scriptId))}
           onUpload={(files) => void uploadIntoProject(files)}
+          /* The full prompt box starts folded once there is a cut, so the
+             desk has the room ("the video is too small"); its one-line
+             summary stays, and a press unfolds it. */
+          defaultOpen={items.length === 0 && !directing}
         />
 
-        {askToRender && !rendering ? (
+        {askToRender && !rendering && !embedded ? (
           <StaleBar
             zh={zh}
             busy={busy}
@@ -664,6 +720,7 @@ export function VideoScreen({
           accent={project.accent}
           /* The preview draws the export's frame, not the source's. */
           aspect={project.director?.aspect ?? "16:9"}
+          brief={embedded?.brief}
           zh={zh}
           busy={busy}
           onTrim={(itemId, input) => edit(() => updateItemAction(itemId, input))}

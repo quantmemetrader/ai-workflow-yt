@@ -64,6 +64,9 @@ export type EditorProps = {
   inspector: (selected: Selection) => React.ReactNode;
   /** The assistant, under the inspector. It does most of the editing. */
   assistant?: React.ReactNode;
+  /** 脚本与资料: the approved script and the project's files, a third pane
+   * in the right column (a project's 剪辑 page passes it). */
+  brief?: React.ReactNode;
   /** A caption dragged along the timeline, or its edges pulled. */
   onRetimeCaption?: (id: string, input: { startMs: number; endMs: number }) => void;
   /** A graphic dragged along the timeline, or its edges pulled. */
@@ -137,7 +140,74 @@ export function Editor(props: EditorProps) {
   /* Which half of the right-hand column is open. Selecting something on the
      timeline opens the inspector, because that is what you just asked to look
      at; the assistant opens itself when touched. */
-  const [rail, setRail] = useState<"inspector" | "assistant">("assistant");
+  const [rail, setRail] = useState<"inspector" | "brief" | "assistant">(props.brief ? "brief" : "assistant");
+
+  /*
+   * The panes' sizes, which the person sets by dragging the lines between
+   * them. The client (28 Sep): "make the video size and each bar adjustable,
+   * now it is fixed and the video is too small". The bin and the right-hand
+   * column are widths, the timeline a height; the viewer takes whatever is
+   * left, and the picture in it is fitted to that room (`frame` below), so
+   * shrinking any of the three makes the video bigger. Remembered in this
+   * browser; a double-click on a line puts that one back.
+   */
+  const top = useRef<HTMLDivElement | null>(null);
+  const root = useRef<HTMLDivElement | null>(null);
+  const [sizes, setSizes] = useState<PaneSizes>(DEFAULT_SIZES);
+  /* The viewer big: the bin and the right-hand column folded away until
+     pressed again. Not remembered — it is a look, not a layout. */
+  const [theatre, setTheatre] = useState(false);
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(SIZES_KEY);
+      if (!raw) return;
+      const v = JSON.parse(raw) as Partial<PaneSizes>;
+      setSizes((was) => ({
+        bin: typeof v.bin === "number" ? clamp(v.bin, 140, 480) : was.bin,
+        rail: typeof v.rail === "number" ? clamp(v.rail, 240, 620) : was.rail,
+        timeline: typeof v.timeline === "number" ? clamp(v.timeline, 190, 640) : was.timeline,
+      }));
+    } catch {
+      /* No storage (a private window): the defaults. */
+    }
+  }, []);
+  const sizesRef = useRef(sizes);
+  useEffect(() => {
+    sizesRef.current = sizes;
+  }, [sizes]);
+  const keepSizes = useCallback(() => {
+    try {
+      window.localStorage.setItem(SIZES_KEY, JSON.stringify(sizesRef.current));
+    } catch {
+      /* Not remembered, still applied. */
+    }
+  }, []);
+  /** Drag one line: `pane` is what it sizes, `sign` which way is bigger. */
+  /* Where the dragged line started, in a ref: the drag re-renders the
+     editor, and a value in the closure would be lost with the old render. */
+  const dragBase = useRef(0);
+  const resizer = (pane: keyof PaneSizes) => {
+    return {
+      onStart: () => {
+        dragBase.current = sizesRef.current[pane];
+      },
+      onMove: (delta: number) => {
+        const base = dragBase.current;
+        const topW = top.current?.clientWidth ?? 1200;
+        const rootH = root.current?.clientHeight ?? 800;
+        setSizes((was) => {
+          if (pane === "bin") return { ...was, bin: clamp(base + delta, 140, Math.min(480, topW - was.rail - 300)) };
+          if (pane === "rail") return { ...was, rail: clamp(base - delta, 240, Math.min(620, topW - was.bin - 300)) };
+          return { ...was, timeline: clamp(base - delta, 190, Math.max(190, rootH - 220)) };
+        });
+      },
+      onEnd: keepSizes,
+      onReset: () => {
+        setSizes((was) => ({ ...was, [pane]: DEFAULT_SIZES[pane] }));
+        requestAnimationFrame(keepSizes);
+      },
+    };
+  };
 
   /** Select, and show what was selected. Everything on the timeline goes
    * through this rather than `setSelected`, so nothing can select something
@@ -469,6 +539,7 @@ export function Editor(props: EditorProps) {
 
   return (
     <div
+      ref={root}
       style={{
         flexGrow: 1,
         minWidth: 0,
@@ -479,8 +550,9 @@ export function Editor(props: EditorProps) {
         color: INK,
       }}
     >
+      <style>{SPLIT_CSS}</style>
       {/* ================================================== top: three panes */}
-      <div style={{ flexGrow: 1, minHeight: 0, display: "flex", gap: 1, background: LINE }}>
+      <div ref={top} style={{ flexGrow: 1, minHeight: 0, display: "flex", background: LINE }}>
         {/* ---- bin ---- */}
         <div
           onDragOver={(e) => {
@@ -500,8 +572,9 @@ export function Editor(props: EditorProps) {
             if (e.dataTransfer.files?.length) props.onUpload(e.dataTransfer.files);
           }}
           style={{
-            width: 208,
+            width: sizes.bin,
             flexShrink: 0,
+            display: theatre ? "none" : undefined,
             background: dropping ? "#eef5fd" : PANEL,
             outline: dropping ? `1.5px dashed ${accent}` : "1.5px dashed transparent",
             outlineOffset: -4,
@@ -567,6 +640,8 @@ export function Editor(props: EditorProps) {
             </div>
           )}
         </div>
+
+        {theatre ? null : <Splitter axis="x" label={t("Drag to resize · double-click to reset", "拖动调整宽度 · 双击复原")} {...resizer("bin")} />}
 
         {/* ---- viewer ---- */}
         <div
@@ -751,6 +826,20 @@ export function Editor(props: EditorProps) {
 
             <div style={{ flexGrow: 1 }} />
 
+            {/* The picture big: fold the bin and the right-hand column away. */}
+            <button
+              type="button"
+              onClick={() => setTheatre((v) => !v)}
+              aria-pressed={theatre}
+              title={theatre ? t("Show the side panels again", "恢复两侧面板") : t("Make the preview bigger", "放大预览，收起两侧面板")}
+              style={{ display: "inline-flex", alignItems: "center", gap: 5, height: 26, padding: "0 9px", borderRadius: 7, border: `1px solid ${theatre ? accent : LINE}`, background: theatre ? "#eef5fd" : "#fff", color: theatre ? accent : "#525252", fontFamily: "inherit", fontSize: 11.5, cursor: "pointer", whiteSpace: "nowrap" }}
+            >
+              <svg viewBox="0 0 24 24" width={13} height={13} fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                {theatre ? <path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5" /> : <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />}
+              </svg>
+              {theatre ? t("Normal", "还原") : t("Big preview", "大画面")}
+            </button>
+
             <span style={{ fontSize: 10.5, color: MUTED }}>{t("Zoom", "缩放")}</span>
             <input
               type="range"
@@ -771,12 +860,13 @@ export function Editor(props: EditorProps) {
              now. Selecting something on the timeline opens the inspector;
              touching the assistant opens the assistant; the other collapses to
              its title bar, which is one click from open. */}
+        {theatre ? null : <Splitter axis="x" label={t("Drag to resize · double-click to reset", "拖动调整宽度 · 双击复原")} {...resizer("rail")} />}
         <div
           style={{
-            width: 292,
+            width: sizes.rail,
             flexShrink: 0,
             background: PANEL,
-            display: "flex",
+            display: theatre ? "none" : "flex",
             flexDirection: "column",
             minHeight: 0,
           }}
@@ -798,6 +888,17 @@ export function Editor(props: EditorProps) {
             <div style={{ padding: "0 12px 12px" }}>{props.inspector(selected)}</div>
           </RailPane>
 
+          {props.brief ? (
+            <RailPane
+              title={t("Script & files", "脚本与资料")}
+              hint={rail === "brief" ? undefined : t("the approved script", "已批准的脚本")}
+              open={rail === "brief"}
+              onOpen={() => setRail("brief")}
+            >
+              {props.brief}
+            </RailPane>
+          ) : null}
+
           {props.assistant ? (
             <RailPane
               title={t("Assistant", "助理")}
@@ -816,11 +917,11 @@ export function Editor(props: EditorProps) {
       </div>
 
       {/* ==================================================== the timeline */}
+      <Splitter axis="y" label={t("Drag to resize the timeline · double-click to reset", "拖动调整时间线高度 · 双击复原")} {...resizer("timeline")} />
       <div
         style={{
           flexShrink: 0,
-          height: 212,
-          borderTop: `1px solid ${LINE}`,
+          height: sizes.timeline,
           background: PANEL,
           display: "flex",
           flexDirection: "column",
@@ -1203,6 +1304,87 @@ export function Editor(props: EditorProps) {
  * last fills the column and the other keeps its title bar — always visible,
  * always one click from open, so nothing is hidden, only folded.
  */
+type PaneSizes = { bin: number; rail: number; timeline: number };
+const DEFAULT_SIZES: PaneSizes = { bin: 208, rail: 292, timeline: 212 };
+const SIZES_KEY = "aura.editor.panes.v1";
+
+function clamp(n: number, lo: number, hi: number): number {
+  return Math.round(Math.min(Math.max(n, lo), Math.max(lo, hi)));
+}
+
+/**
+ * A line between two panes that can be dragged: a hairline at rest with a
+ * small grip in its middle, a wider hit area than it looks, the resize
+ * cursor, and the accent colour on hover and while dragging. Pointer capture
+ * keeps the drag going when the pointer runs over the video.
+ */
+function Splitter({
+  axis,
+  label,
+  onStart,
+  onMove,
+  onEnd,
+  onReset,
+}: {
+  axis: "x" | "y";
+  label: string;
+  onStart: () => void;
+  onMove: (delta: number) => void;
+  onEnd: () => void;
+  onReset: () => void;
+}) {
+  const from = useRef<number | null>(null);
+  const [dragging, setDragging] = useState(false);
+  return (
+    <div
+      role="separator"
+      aria-orientation={axis === "x" ? "vertical" : "horizontal"}
+      aria-label={label}
+      title={label}
+      className="ed-split"
+      data-axis={axis}
+      data-drag={dragging ? "1" : undefined}
+      onPointerDown={(e) => {
+        if (e.button !== 0) return;
+        e.preventDefault();
+        e.currentTarget.setPointerCapture(e.pointerId);
+        from.current = axis === "x" ? e.clientX : e.clientY;
+        setDragging(true);
+        onStart();
+      }}
+      onPointerMove={(e) => {
+        if (from.current === null) return;
+        onMove((axis === "x" ? e.clientX : e.clientY) - from.current);
+      }}
+      onPointerUp={() => {
+        if (from.current === null) return;
+        from.current = null;
+        setDragging(false);
+        onEnd();
+      }}
+      onPointerCancel={() => {
+        from.current = null;
+        setDragging(false);
+      }}
+      onDoubleClick={onReset}
+    />
+  );
+}
+
+const SPLIT_CSS = `
+.ed-split { position: relative; flex-shrink: 0; background: ${LINE}; z-index: 3; touch-action: none; transition: background-color .12s linear; }
+.ed-split[data-axis="x"] { width: 1px; cursor: col-resize; }
+.ed-split[data-axis="y"] { height: 1px; cursor: row-resize; }
+.ed-split::before { content: ""; position: absolute; }
+.ed-split[data-axis="x"]::before { top: 0; bottom: 0; left: -4px; right: -4px; }
+.ed-split[data-axis="y"]::before { left: 0; right: 0; top: -4px; bottom: -4px; }
+.ed-split::after { content: ""; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); border-radius: 3px; background: #d4d4d4; transition: background-color .12s linear; pointer-events: none; }
+.ed-split[data-axis="x"]::after { width: 4px; height: 30px; }
+.ed-split[data-axis="y"]::after { width: 36px; height: 4px; }
+.ed-split:hover, .ed-split[data-drag] { background: #007be0; }
+.ed-split:hover::after, .ed-split[data-drag]::after { background: #007be0; }
+`;
+
 function RailPane({
   title,
   hint,
