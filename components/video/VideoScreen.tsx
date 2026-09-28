@@ -3,6 +3,8 @@
 import { Icon } from "@/components/ui/Icon";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { ProposalsStrip } from "@/components/agents/ProposalsStrip";
+import { VideoFolders } from "@/components/video/VideoFolders";
+import type { VideoFolder } from "@/lib/video/folders";
 import { startCutFromPageAction, startProjectAction } from "@/app/(app)/projects/actions";
 import type { Proposals } from "@/lib/agents/proposals";
 import Link from "next/link";
@@ -118,6 +120,7 @@ type Render = ExportRow & { proxyFileId: string | null };
 export function VideoScreen({
   proposals,
   projects,
+  folders,
   published = {},
   project,
   clips,
@@ -149,6 +152,8 @@ export function VideoScreen({
   /** What 剪辑师 suggests cutting next, drawn above the project list. */
   proposals?: Proposals;
   projects: ProjectRow[];
+  /** One folder per project for the list (`lib/video/folders.ts`); absent draws the plain library. */
+  folders?: VideoFolder[];
   /** The published ones, by video project id (`publicationsByVideo`). */
   published?: Record<string, VideoPublished>;
   project: ProjectRow | null;
@@ -628,7 +633,35 @@ export function VideoScreen({
         <ProposalsStrip owner="video" items={proposals.items} planDate={proposals.planDate} zh={zh} />
       ) : null}
 
-      {onLibrary ? (
+      {onLibrary && folders && projects.length > 0 ? (
+        <VideoFolders
+          zh={zh}
+          folders={folders}
+          projects={projects}
+          library={(cuts) => (
+            <Library
+              projects={cuts}
+              published={published}
+              /* The cut that is open, marked 当前 in the list: the list is a
+                 tab now, so it is read with the editor still one tab away. */
+              current={project}
+              zh={zh}
+              locale={locale}
+              onOpen={(id) => {
+                /* Picking a cut moves along the tab bar into 剪辑 — the point
+                   of opening one is to work on it — and the URL still names
+                   it, so the link somebody pastes into the chat is unchanged.
+                   Reopening the cut already loaded needs no navigation. */
+                setTab("edit");
+                if (id !== project?.id) router.push(`/video?project=${id}`);
+              }}
+              onNew={() => setNaming(true)}
+              onRename={(id, title) => run(() => updateProjectAction(id, { title }))}
+              onDelete={(id) => run(() => deleteProjectAction(id))}
+            />
+          )}
+        />
+      ) : onLibrary ? (
         <div style={{ flexGrow: 1, minHeight: 0, overflowY: "auto", padding: "18px 22px 40px" }}>
           {projects.length === 0 ? (
             <Empty

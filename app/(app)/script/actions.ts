@@ -446,3 +446,24 @@ export async function commentAction(scriptId: unknown, body: unknown, beatOrd?: 
   await addComment(viewer, id, body, Number.isInteger(ord) ? ord : null);
   return done({ ok: true }, id);
 }
+
+/** Move a script that belongs to no project into one of the studio's own folders (null takes it out). */
+export async function moveScriptAction(scriptId: unknown, folderId: unknown) {
+  const viewer = await getViewer();
+  if (!viewer || !viewer.modules.includes("script")) return { error: "Not allowed" };
+  if (typeof scriptId !== "string" || (folderId !== null && typeof folderId !== "string")) return { error: "Not allowed" };
+  const { db } = await import("@/lib/db/client");
+  const { scripts, scriptFolders, workProjects } = await import("@/lib/db/schema");
+  const { and, eq, isNull } = await import("drizzle-orm");
+  const [s] = await db.select({ id: scripts.id }).from(scripts).where(and(eq(scripts.id, scriptId), eq(scripts.tenantId, viewer.tenantId), isNull(scripts.deletedAt))).limit(1);
+  if (!s) return { error: "Not allowed" };
+  const [inProject] = await db.select({ id: workProjects.id }).from(workProjects).where(and(eq(workProjects.scriptId, scriptId), isNull(workProjects.deletedAt))).limit(1);
+  if (inProject) return { error: (viewer.locale ?? "zh-CN").startsWith("zh") ? "项目里的脚本留在项目的文件夹里" : "A project's script stays in the project's folder" };
+  if (folderId) {
+    const [f] = await db.select({ id: scriptFolders.id }).from(scriptFolders).where(and(eq(scriptFolders.id, folderId), eq(scriptFolders.tenantId, viewer.tenantId), isNull(scriptFolders.deletedAt))).limit(1);
+    if (!f) return { error: "Not allowed" };
+  }
+  await db.update(scripts).set({ folderId: (folderId as string | null) ?? null, updatedAt: new Date() }).where(eq(scripts.id, scriptId));
+  revalidatePath("/script");
+  return { ok: true as const };
+}

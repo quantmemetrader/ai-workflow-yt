@@ -7,7 +7,8 @@ import type { Proposals } from "@/lib/agents/proposals";
 import { InlineAgentThread, useInlineAgent } from "@/components/shell/InlineAgent";
 import { AgentHistory } from "@/components/shell/AgentHistory";
 import type { ScriptListItem } from "@/lib/script/service";
-import { createFolderAction, createScriptAction, deleteScriptAction } from "@/app/(app)/script/actions";
+import { createFolderAction, createScriptAction, deleteScriptAction, moveScriptAction } from "@/app/(app)/script/actions";
+import type { ScriptTree } from "@/lib/script/folders";
 import { BriefComposer, type BriefDraft } from "@/components/script/BriefComposer";
 import { NameDialog } from "@/components/ui/NameDialog";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
@@ -39,7 +40,16 @@ export function LibraryView({
   model,
   queue = [],
   canStart = false,
+  tree,
+  projectId = null,
+  projectRefs = [],
 }: {
+  /** One folder per project, 未归入项目, the total (`lib/script/folders.ts`). */
+  tree?: ScriptTree;
+  /** The project folder open ("none" for 未归入项目). */
+  projectId?: string | null;
+  /** That project's reference files. */
+  projectRefs?: { id: string; name: string; sizeBytes: number }[];
   /** What 编剧 suggests writing next, drawn above the library. */
   proposals: Proposals;
   /** Topics waiting for a script, for the 选题 scope. */
@@ -126,7 +136,12 @@ export function LibraryView({
       pending={isPending}
       error={error}
       onOpen={(id) => router.push(`/script/${id}`)}
-      onFolder={(id) => push({ folder: id })}
+      onFolder={(id) => push({ folder: id, project: null })}
+      tree={tree}
+      projectId={projectId}
+      projectRefs={projectRefs}
+      onProject={(id) => push({ project: id, folder: null, scope: null })}
+      onMove={(scriptId, folder) => run(() => moveScriptAction(scriptId, folder))}
       onStatus={(s) => push({ status: s })}
       onScope={(s) => push({ scope: s === "all" ? null : s })}
       onSort={setSort}
