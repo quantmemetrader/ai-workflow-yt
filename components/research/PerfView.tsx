@@ -64,7 +64,7 @@ export function PerfView({
       if (next.platform === null) q.delete("platform");
       else if (next.platform !== undefined) q.set("platform", next.platform);
       const s = q.toString();
-      router.push(s ? `/research/performance?${s}` : "/research/performance");
+      router.push(s ? `/review/channels?${s}` : "/review/channels");
     },
     [params, router],
   );

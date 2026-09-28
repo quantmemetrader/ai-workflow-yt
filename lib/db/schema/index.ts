@@ -15,3 +15,4 @@ export * from "./hr";
 export * from "./video";
 export * from "./creator";
 export * from "./project";
+export * from "./review";
