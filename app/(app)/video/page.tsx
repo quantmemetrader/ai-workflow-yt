@@ -7,6 +7,7 @@ import { requireModule } from "@/lib/auth/dal";
 import { proposalsFor } from "@/lib/agents/proposals";
 import { answeringModel } from "@/lib/ai/models";
 import { editorData } from "@/lib/video/editor-data";
+import { videoFolders } from "@/lib/video/folders";
 import { env } from "@/lib/env";
 import { VideoScreen } from "@/components/video/VideoScreen";
 import { HEAVY_JOBS_PAUSED } from "@/lib/jobs/heavy";
@@ -55,6 +56,8 @@ export default async function VideoPage({
   /* What the page's own employee thinks should be made next, read from
      what already exists — this morning's plan, the backlog, the audience. */
   const proposals = await proposalsFor(viewer, "video");
+  /* One folder per project, for the list (not needed with a cut open). */
+  const folders = wanted ? undefined : await videoFolders(viewer).catch(() => undefined);
 
   /* The project bar, only for a project this person may see. */
   const inProject = d.project ? await projectFor(viewer, { videoProjectId: d.project.id }) : null;
@@ -62,6 +65,7 @@ export default async function VideoPage({
     <VideoScreen
       proposals={proposals}
       projects={d.projects}
+      folders={folders}
       published={published}
       project={d.project}
       clips={d.clips}

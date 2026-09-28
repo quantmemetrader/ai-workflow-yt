@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { FolderRail, type RailSection } from "@/components/projects/FolderRail";
 import type { Proposals } from "@/lib/agents/proposals";
 import { ProposalsStrip } from "@/components/agents/ProposalsStrip";
 import { ResearchAgentPanel } from "./ResearchAgentPanel";
@@ -69,6 +70,13 @@ export type ScriptLibraryScreenProps = {
 
   onOpen: (scriptId: string) => void;
   onFolder: (folderId: string | null) => void;
+  /** One folder per project, 未归入项目 and the total; absent draws no folder column. */
+  tree?: { projects: { id: string; title: string; count: number; updatedAt: string }[]; unassigned: number; total: number };
+  /** The project folder open ("none" for 未归入项目), null for none. */
+  projectId?: string | null;
+  projectRefs?: { id: string; name: string; sizeBytes: number }[];
+  onProject?: (projectId: string | null) => void;
+  onMove?: (scriptId: string, folderId: string | null) => void;
   onStatus: (status: ScriptListItem["status"] | null) => void;
   onScope: (scope: ScriptLibraryScreenProps["scope"]) => void;
   onSort: (sort: ScriptLibraryScreenProps["sort"]) => void;
@@ -454,6 +462,11 @@ export function ScriptLibraryScreen(props: ScriptLibraryScreenProps): React.JSX.
     error,
     onOpen,
     onFolder,
+    tree,
+    projectId = null,
+    projectRefs = [],
+    onProject,
+    onMove,
     onStatus,
     onScope,
     onSort,
@@ -778,6 +791,33 @@ export function ScriptLibraryScreen(props: ScriptLibraryScreenProps): React.JSX.
         {proposals && scope !== "topics" ? <ProposalsStrip owner="script" items={proposals.items} planDate={proposals.planDate} zh={locale.startsWith("zh")} /> : null}
 
         <div style={{ flexGrow: 1, display: "flex", minHeight: 0 }}>
+          {tree && onProject ? (
+            <FolderRail
+              sections={((): RailSection[] => {
+                const secs: RailSection[] = [
+                  {
+                    folders: [
+                      { key: "all", kind: "all", label: zh ? "全部脚本" : "All scripts", count: tree.total, active: !projectId && folderId === null && scope === "all", onClick: () => { onProject(null); onFolder(null); } },
+                    ],
+                  },
+                ];
+                if (tree.projects.length)
+                  secs.push({
+                    title: zh ? "项目" : "Projects",
+                    folders: tree.projects.map((p) => ({ key: p.id, kind: "project" as const, label: p.title, count: p.count, active: projectId === p.id, onClick: () => onProject(p.id) })),
+                  });
+                secs.push({
+                  title: zh ? "我的文件夹" : "My folders",
+                  action: { label: zh ? "新建" : "New", onClick: onNewFolder },
+                  folders: [
+                    ...folders.map((f) => ({ key: f.id, kind: "own" as const, label: f.name, count: f.count, active: !projectId && folderId === f.id, onClick: () => onFolder(f.id), onDrop: onMove ? (sid: string) => onMove(sid, f.id) : undefined })),
+                    { key: "none", kind: "loose" as const, label: zh ? "未归入项目" : "Not in a project", count: tree.unassigned, active: projectId === "none", onClick: () => onProject("none"), onDrop: onMove ? (sid: string) => onMove(sid, null) : undefined },
+                  ],
+                });
+                return secs;
+              })()}
+            />
+          ) : null}
           <div
             aria-busy={pending}
             style={{
@@ -791,6 +831,37 @@ export function ScriptLibraryScreen(props: ScriptLibraryScreenProps): React.JSX.
               transition: "opacity .12s ease",
             }}
           >
+            {projectId && tree ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 14, padding: "14px 16px", border: "1px solid #ecebe7", borderRadius: 12, background: "#fff", flexShrink: 0 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                  <span style={{ fontSize: 16, fontWeight: 600, color: "#171717", flexGrow: 1, minWidth: 0 }}>
+                    {projectId === "none" ? (zh ? "未归入项目的脚本" : "Scripts in no project") : (tree.projects.find((p) => p.id === projectId)?.title ?? "")}
+                  </span>
+                  {projectId !== "none" ? (
+                    <a href={`/projects/${projectId}`} style={{ display: "inline-flex", alignItems: "center", height: 34, padding: "0 14px", borderRadius: 9, background: "#171717", color: "#fff", fontSize: 13, fontWeight: 600, textDecoration: "none" }}>
+                      {zh ? "打开项目 →" : "Open the project →"}
+                    </a>
+                  ) : (
+                    <span style={{ fontSize: 12.5, color: "#8a8a8a" }}>{zh ? "可以把脚本拖到左边「我的文件夹」里" : "Drag a script onto one of your folders on the left"}</span>
+                  )}
+                </div>
+                {projectId !== "none" ? (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                    <span style={{ fontSize: 12, fontWeight: 600, color: "#8a8a8a" }}>{zh ? `参考资料 · ${projectRefs.length}` : `References · ${projectRefs.length}`}</span>
+                    {projectRefs.length ? (
+                      projectRefs.map((r) => (
+                        <a key={r.id} href={`/api/files/${r.id}/download?download=1`} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "#333", textDecoration: "none", padding: "3px 0" }}>
+                          <svg viewBox="0 0 24 24" width={15} height={15} fill="none" stroke="#8a8a8a" strokeWidth={1.8} aria-hidden><path d="M7 3.5h7l4 4v13H7z" /><path d="M14 3.5v4h4" /></svg>
+                          <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.name}</span>
+                        </a>
+                      ))
+                    ) : (
+                      <span style={{ fontSize: 12.5, color: "#a3a3a3" }}>{zh ? "还没有。在脚本页的「参考资料」里上传。" : "None yet — upload them on the script page."}</span>
+                    )}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
             {scope === "topics" && topicsView ? topicsView : null}
             {/* filter row */}
             <div style={{ display: scope === "topics" && topicsView ? "none" : "flex", alignItems: "center", gap: 6, marginBottom: 16, flexShrink: 0 }}>
@@ -902,6 +973,11 @@ export function ScriptLibraryScreen(props: ScriptLibraryScreenProps): React.JSX.
                         <div
                           key={s.id}
                           className="ic"
+                          draggable={!s.projectId && Boolean(onMove)}
+                          onDragStart={(e) => {
+                            e.dataTransfer.setData("text/x-script-id", s.id);
+                            e.dataTransfer.effectAllowed = "move";
+                          }}
                           role="button"
                           tabIndex={0}
                           onClick={() => onOpen(s.id)}
@@ -1004,6 +1080,11 @@ export function ScriptLibraryScreen(props: ScriptLibraryScreenProps): React.JSX.
                           <div
                             key={s.id}
                             className="tr"
+                            draggable={!s.projectId && Boolean(onMove)}
+                            onDragStart={(e) => {
+                              e.dataTransfer.setData("text/x-script-id", s.id);
+                              e.dataTransfer.effectAllowed = "move";
+                            }}
                             role="button"
                             tabIndex={0}
                             onClick={() => onOpen(s.id)}
