@@ -788,11 +788,11 @@ export function ScriptLibraryScreen(props: ScriptLibraryScreenProps): React.JSX.
             {t("New folder")}
           </button>
         </div>
-        {proposals && scope !== "topics" ? <ProposalsStrip owner="script" items={proposals.items} planDate={proposals.planDate} zh={locale.startsWith("zh")} /> : null}
 
         <div style={{ flexGrow: 1, display: "flex", minHeight: 0 }}>
           {tree && onProject ? (
             <FolderRail
+              footer={proposals && scope !== "topics" ? <ProposalsStrip layout="column" owner="script" items={proposals.items} planDate={proposals.planDate} zh={locale.startsWith("zh")} /> : null}
               sections={((): RailSection[] => {
                 const secs: RailSection[] = [
                   {

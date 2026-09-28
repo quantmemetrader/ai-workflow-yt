@@ -28,7 +28,10 @@ export function ProposalsStrip({
   items,
   planDate,
   zh,
+  layout = "row",
 }: {
+  /** "column": a compact list for a side rail (the script library's folder column). */
+  layout?: "row" | "column";
   owner: AgentKey;
   items: Proposal[];
   planDate: string | null;
@@ -83,6 +86,39 @@ export function ProposalsStrip({
       notify(t(`已交给${who}，在 #制作 里回复`, `Handed to ${who}; it answers in #制作`), "ok");
       router.refresh();
     });
+  }
+
+  if (layout === "column") {
+    return (
+      <div style={{ borderTop: "1px solid #ededed", marginTop: 6, paddingTop: 12 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 7, padding: "0 8px 8px" }}>
+          <AgentMark agent={owner} size={18} radius={5} />
+          <span style={{ fontSize: 12, fontWeight: 600, color: "#404040" }}>{t(`${who}建议做这些`, `${who} suggests`)}</span>
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {items.map((p, i) => {
+            const done = sent.has(i);
+            return (
+              <div key={`${p.source}-${i}`} style={{ border: "1px solid #ececea", borderRadius: 10, background: "#fff", padding: "8px 10px", display: "flex", flexDirection: "column", gap: 6, opacity: done ? 0.6 : 1 }}>
+                <div title={p.text} style={{ fontSize: 12.5, lineHeight: 1.5, color: "#171717", display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{p.text}</div>
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <span style={{ fontSize: 10.5, color: "#999999", background: "#f3f3f3", borderRadius: 5, padding: "1px 6px" }}>{sourceLabel(p.source)}</span>
+                  <span style={{ flexGrow: 1 }} />
+                  <button
+                    type="button"
+                    disabled={pending || done}
+                    onClick={() => go(i, p.text, p.source)}
+                    style={{ height: 26, padding: "0 10px", borderRadius: 7, border: `1px solid ${done ? "#e2e2e2" : "#171717"}`, background: done ? "#fff" : "#171717", color: done ? "#999" : "#fff", fontSize: 12, fontWeight: 600, fontFamily: "inherit", cursor: done ? "default" : "pointer" }}
+                  >
+                    {done ? t("已开始", "Started") : busy === i ? t("开始中…", "Starting…") : t("做这个", "Do it")}
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
   }
 
   return (

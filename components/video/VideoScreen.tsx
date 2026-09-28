@@ -2,7 +2,6 @@
 
 import { Icon } from "@/components/ui/Icon";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { ProposalsStrip } from "@/components/agents/ProposalsStrip";
 import { VideoFolders } from "@/components/video/VideoFolders";
 import type { VideoFolder } from "@/lib/video/folders";
 import { startCutFromPageAction, startProjectAction } from "@/app/(app)/projects/actions";
@@ -629,9 +628,6 @@ export function VideoScreen({
         ]}
       />
 
-      {onLibrary && proposals ? (
-        <ProposalsStrip owner="video" items={proposals.items} planDate={proposals.planDate} zh={zh} />
-      ) : null}
 
       {onLibrary && folders && projects.length > 0 ? (
         <VideoFolders

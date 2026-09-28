@@ -21,7 +21,7 @@ export type RailSection = { title?: string; folders: RailFolder[]; action?: { la
  * 全部, one folder per project (made with the project, nothing to do), the
  * studio's own folders, and what belongs to no project.
  */
-export function FolderRail({ sections }: { sections: RailSection[] }) {
+export function FolderRail({ sections, footer = null }: { sections: RailSection[]; footer?: React.ReactNode }) {
   const [over, setOver] = React.useState<string | null>(null);
   return (
     <nav aria-label="folders" style={{ width: 236, flexShrink: 0, borderRight: "1px solid #ededed", overflowY: "auto", padding: "14px 10px 24px", boxSizing: "border-box", background: "#fbfbfa" }}>
@@ -92,6 +92,7 @@ export function FolderRail({ sections }: { sections: RailSection[] }) {
           ))}
         </div>
       ))}
+      {footer}
     </nav>
   );
 }
