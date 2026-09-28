@@ -2,7 +2,6 @@
 
 import { PlatformSearch } from "@/components/research/PlatformSearch";
 
-import { ModelPicker } from "@/components/shell/ModelPicker";
 
 import * as React from "react";
 import { useResizable } from "@/components/ui/Resizer";
@@ -1087,7 +1086,7 @@ export function CompareScreen(props: {
                   }}
                 />
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 11 }}>
-                  <ModelPicker current={props.model} zh={zh} />
+                  <span />
                   <button
                     type="button"
                     aria-label={zh ? "发送" : "Send"}

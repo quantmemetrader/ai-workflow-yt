@@ -1,6 +1,5 @@
 "use client";
 
-import { ModelPicker } from "@/components/shell/ModelPicker";
 
 import * as React from "react";
 import Link from "next/link";
@@ -1074,7 +1073,7 @@ export function BacklogScreen(props: {
                   }}
                 />
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 11 }}>
-                  <ModelPicker current={model} zh={zh} />
+                  <span />
                   <button
                     type="button"
                     aria-label={zh ? "发送" : "Send"}
