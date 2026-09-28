@@ -1,7 +1,7 @@
 import "server-only";
 import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { knowledge, knowledgeVersions, ownAccountSnapshots, projectPostMetrics, workProjects } from "@/lib/db/schema";
+import { channelPosts, channels, knowledge, knowledgeVersions, ownAccountSnapshots, postMetrics, projectPostMetrics, workProjects } from "@/lib/db/schema";
 import type { Viewer } from "@/lib/auth/types";
 import { ulid } from "@/lib/ids";
 import { OWN_ACCOUNTS as ALL_ACCOUNTS, type OwnAccount } from "@/lib/social/own-accounts";
@@ -56,7 +56,75 @@ export async function accountViews(tenantId: string): Promise<AccountView[]> {
     .where(eq(ownAccountSnapshots.tenantId, tenantId))
     .orderBy(desc(ownAccountSnapshots.fetchedAt))
     .limit(400);
-  return OWN_ACCOUNTS.map((a) => viewOf(a, rows.filter((r) => r.platform === a.platform && r.accountId === a.id)));
+  const own = OWN_ACCOUNTS.map((a) => viewOf(a, rows.filter((r) => r.platform === a.platform && r.accountId === a.id)));
+  /* Every channel the studio has — the Chinese accounts read through TikHub
+     and the ones connected for publishing (the owner, 29 Sep: "I have given
+     you so many channels"). */
+  const linked = await connectedViews(tenantId).catch(() => []);
+  return [...own, ...linked];
+}
+
+function mergedStats(rows: SnapRow[]): AccountStats {
+  const out: AccountStats = { followers: null, likes: null, works: null, views: null };
+  for (const r of rows) {
+    const s = r.stats as Partial<AccountStats>;
+    for (const k of ["followers", "likes", "works", "views"] as const) if (out[k] === null && typeof s[k] === "number") out[k] = s[k] as number;
+  }
+  return out;
+}
+
+const CONNECTED_NAME: Record<string, { zh: string; en: string }> = {
+  youtube: { zh: "YouTube", en: "YouTube" },
+  linkedin: { zh: "LinkedIn", en: "LinkedIn" },
+  tiktok: { zh: "TikTok", en: "TikTok" },
+  instagram: { zh: "Instagram", en: "Instagram" },
+  facebook: { zh: "Facebook", en: "Facebook" },
+  x: { zh: "X", en: "X" },
+  threads: { zh: "Threads", en: "Threads" },
+};
+
+/** The channels connected through Zernio, as account tiles: followers, their posts' numbers, the latest three. */
+async function connectedViews(tenantId: string): Promise<AccountView[]> {
+  const list = await db.select().from(channels).where(eq(channels.tenantId, tenantId));
+  const out: AccountView[] = [];
+  for (const c of list) {
+    if (c.enabled === false || !CONNECTED_NAME[c.platform]) continue;
+    const posts = await db
+      .select({ id: channelPosts.id, title: channelPosts.title, body: channelPosts.body, url: channelPosts.permalink, at: channelPosts.publishedAt })
+      .from(channelPosts)
+      .where(and(eq(channelPosts.channelId, c.id), eq(channelPosts.tenantId, tenantId)))
+      .orderBy(desc(channelPosts.publishedAt))
+      .limit(40);
+    const ids = posts.map((p) => p.id);
+    const metrics = ids.length
+      ? await db.select({ postId: postMetrics.postId, views: postMetrics.views, likes: postMetrics.likes, comments: postMetrics.comments, shares: postMetrics.shares, asOf: postMetrics.asOf }).from(postMetrics).where(inArray(postMetrics.postId, ids)).orderBy(desc(postMetrics.asOf))
+      : [];
+    const last = new Map<string, (typeof metrics)[number]>();
+    for (const m of metrics) if (!last.has(m.postId)) last.set(m.postId, m);
+    const sum = (k: "views" | "likes") => posts.reduce((n, p) => n + (Number(last.get(p.id)?.[k] ?? 0) || 0), 0);
+    out.push({
+      platform: c.platform as AccountView["platform"],
+      connected: true,
+      zh: CONNECTED_NAME[c.platform].zh,
+      en: CONNECTED_NAME[c.platform].en,
+      name: c.displayName || c.username || c.platform,
+      accountId: c.id,
+      url: c.profileUrl ?? null,
+      stats: { followers: c.followers ?? null, likes: posts.length ? sum("likes") : null, works: posts.length || null, views: posts.length ? sum("views") : null },
+      source: null,
+      at: (c.syncedAt ?? c.createdAt)?.toISOString() ?? null,
+      prevFollowers: null,
+      followersSeries: [],
+      posts: posts.slice(0, 3).map((p) => {
+        const m = last.get(p.id);
+        return { id: p.id, title: (p.title || p.body || "").replace(/\s+/g, " ").slice(0, 80) || "—", url: p.url ?? null, at: p.at?.toISOString() ?? null, stats: { plays: m?.views ?? null, likes: m?.likes ?? null, comments: m?.comments ?? null, shares: m?.shares ?? null } as AccountPost["stats"] };
+      }),
+      error: c.needsReconnect ? "授权已过期，去「发布」重新授权" : null,
+      errorAt: null,
+      manualOnly: false,
+    });
+  }
+  return out;
 }
 
 function viewOf(a: OwnAccount, rows: SnapRow[]): AccountView {
@@ -79,7 +147,9 @@ function viewOf(a: OwnAccount, rows: SnapRow[]): AccountView {
     name: a.name,
     accountId: a.id,
     url: a.url,
-    stats: latest ? (latest.stats as AccountStats) : null,
+    /* Each number from the newest reading that has it: a refresh that got the
+       followers but not the likes (B站, 29 Sep) no longer blanks the likes. */
+    stats: latest ? mergedStats(good) : null,
     source: latest ? (latest.source as "tikhub" | "manual") : null,
     at: latest ? latest.fetchedAt.toISOString() : null,
     prevFollowers: prev ? followers(prev) : null,

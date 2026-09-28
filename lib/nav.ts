@@ -226,6 +226,7 @@ export const RAIL_MAIN: RailItem[] = [
   { href: "/files", label: "Files", labelZh: "文件", icon: iconOf("/files"), module: "files" },
   { href: "/chat", label: "Messages", labelZh: "消息", icon: iconOf("/chat"), module: "chat" },
   { href: "/team", label: "AI team", labelZh: "AI 同事", icon: iconOf("/train"), module: "chat", also: ["/train"] },
+  { href: "/publish", label: "Publishing", labelZh: "发布", icon: iconOf("/publish"), module: "publish" },
 ];
 
 /** The back office: owners and admins only, folded by default. */
@@ -235,7 +236,6 @@ export const RAIL_BACK: RailItem[] = [
   { href: "/accounting", label: "Accounting", labelZh: "账务", icon: iconOf("/accounting"), module: "accounting" },
   { href: "/legal", label: "Legal", labelZh: "法务", icon: iconOf("/legal"), module: "legal" },
   { href: "/hr", label: "HR", labelZh: "人事", icon: iconOf("/hr"), module: "hr" },
-  { href: "/publish", label: "Publishing", labelZh: "发布设置", icon: iconOf("/publish"), module: "publish" },
   { href: "/settings", label: "Settings", labelZh: "设置", icon: GEAR },
 ];
 

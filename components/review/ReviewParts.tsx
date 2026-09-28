@@ -1,5 +1,6 @@
 "use client";
 
+import { PlatformMark as BrandMark } from "@/components/ui/PlatformMark";
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/ui/Icon";
@@ -110,15 +111,16 @@ export function AccountTiles({ accounts, zh, canWork }: { accounts: AccountView[
   const router = useRouter();
   const [typing, setTyping] = React.useState<string | null>(null);
   return (
-    <div className="rv-tiles" style={{ display: "grid", gridTemplateColumns: `repeat(${Math.max(1, accounts.length)}, minmax(0, 1fr))`, gap: 12 }}>
-      <style>{`@media (max-width: 1100px){.rv-tiles{grid-template-columns:repeat(2,minmax(0,1fr)) !important}} @media (max-width: 560px){.rv-tiles{grid-template-columns:1fr !important}}`}</style>
+    <div className="rv-tiles" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(250px, 1fr))", gap: 12 }}>
       {accounts.map((a) => {
         const s = a.stats;
-        const lead: StatKey = a.platform === "bilibili" ? "plays" : "likes";
+        const lead: StatKey = a.platform === "bilibili" || a.platform === "youtube" || a.connected ? "plays" : "likes";
+        const followLabel = a.platform === "youtube" ? (zh ? "订阅" : "Subscribers") : a.connected ? (zh ? "关注者" : "Followers") : zh ? "粉丝" : "Followers";
+        const viewsFirst = a.platform === "bilibili" || a.connected;
         return (
-          <div key={a.platform} style={{ border: `1px solid ${LINE}`, borderRadius: 12, padding: 14, display: "flex", flexDirection: "column", gap: 10, minWidth: 0, background: "#fff" }}>
+          <div key={`${a.platform}-${a.accountId}`} style={{ border: `1px solid ${LINE}`, borderRadius: 12, padding: 14, display: "flex", flexDirection: "column", gap: 10, minWidth: 0, background: "#fff" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-              <PlatformMark platform={a.platform} />
+              <PlatformMark platform={a.platform} size={34} />
               <div style={{ minWidth: 0, flexGrow: 1 }}>
                 <div style={{ fontSize: 13.5, fontWeight: 600, color: INK }}>{zh ? a.zh : a.en}</div>
                 <div style={{ fontSize: 11.5, color: MUTED, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.name}</div>
@@ -130,12 +132,12 @@ export function AccountTiles({ accounts, zh, canWork }: { accounts: AccountView[
               ) : null}
             </div>
             <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 8 }}>
-              <Stat label={zh ? "粉丝" : "Followers"} value={fmtNum(s?.followers ?? null, zh)} sub={<Delta now={s?.followers ?? null} before={a.prevFollowers} zh={zh} />} />
+              <Stat label={followLabel} value={fmtNum(s?.followers ?? null, zh)} sub={<Delta now={s?.followers ?? null} before={a.prevFollowers} zh={zh} />} />
               <Sparkline points={a.followersSeries} label={zh ? "粉丝变化" : "Followers over time"} />
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
               <Stat label={a.platform === "xiaohongshu" ? (zh ? "赞与收藏" : "Likes & saves") : zh ? "获赞" : "Likes"} value={<span style={{ fontSize: 15 }}>{fmtNum(s?.likes ?? null, zh)}</span>} />
-              <Stat label={a.platform === "bilibili" ? (zh ? "总播放" : "Plays") : zh ? "作品" : "Posts"} value={<span style={{ fontSize: 15 }}>{fmtNum(a.platform === "bilibili" ? (s?.views ?? null) : (s?.works ?? null), zh)}</span>} />
+              <Stat label={viewsFirst ? (zh ? "总播放" : "Plays") : zh ? "作品" : "Posts"} value={<span style={{ fontSize: 15 }}>{fmtNum(viewsFirst ? (s?.views ?? null) : (s?.works ?? null), zh)}</span>} />
             </div>
             {a.posts.length ? (
               <div style={{ borderTop: `1px solid #f0efeb`, paddingTop: 8, display: "flex", flexDirection: "column", gap: 5 }}>
@@ -153,11 +155,11 @@ export function AccountTiles({ accounts, zh, canWork }: { accounts: AccountView[
             <div style={{ marginTop: "auto", display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", fontSize: 11.5, color: MUTED }}>
               {a.manualOnly ? <span>{zh ? "暂时无法自动读取，数字手动填写" : "Can't be read automatically; type the numbers in"}</span> : a.error ? <span style={{ color: "#b45309" }}>{a.error}</span> : null}
               <span>
-                {a.source === "manual" ? (zh ? "手动 · " : "Typed · ") : ""}
+                {a.connected ? (zh ? "已连接 · " : "Connected · ") : a.source === "manual" ? (zh ? "手动 · " : "Typed · ") : ""}
                 {zh ? "更新于 " : "Updated "}
                 {ago(a.at, zh)}
               </span>
-              {canWork ? (
+              {canWork && !a.connected ? (
                 <button type="button" onClick={() => setTyping(typing === a.platform ? null : a.platform)} style={{ border: 0, background: "none", padding: 0, color: "#1f5fbf", cursor: "pointer", fontSize: 11.5, fontFamily: "inherit" }}>
                   {zh ? "手动填写" : "Type in"}
                 </button>
@@ -198,12 +200,13 @@ const MARK: Record<string, { bg: string; fg: string; t: string }> = {
   weibo: { bg: "#e6162d", fg: "#fff", t: "微" },
 };
 
-/** A small square with the platform's initial in its colour (no logos, no emoji). */
+/** The platform's own logo on a white tile (the brand marks in components/ui/PlatformMark). */
 export function PlatformMark({ platform, size = 26 }: { platform: string; size?: number }) {
-  const m = MARK[platform] ?? { bg: "#e7e6e2", fg: "#555", t: "·" };
+  const key = platform === "wechat_channels" ? "shipinhao" : platform;
+  void MARK;
   return (
-    <span aria-hidden style={{ width: size, height: size, borderRadius: 7, background: m.bg, color: m.fg, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: size * 0.46, fontWeight: 700, flexShrink: 0 }}>
-      {m.t}
+    <span aria-hidden style={{ width: size, height: size, borderRadius: Math.round(size * 0.28), background: "#fff", border: "1px solid #ececea", display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+      <BrandMark platform={key} size={Math.round(size * 0.62)} />
     </span>
   );
 }

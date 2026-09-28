@@ -209,7 +209,7 @@ export function ReviewScreen({
       <Card
         icon="eye"
         title={t("账号概况", "Accounts")}
-        sub={t("工作室在抖音、小红书、B站的账号：粉丝、获赞和最近作品。每 6 小时自动更新一次。", "The studio's accounts on Douyin, Xiaohongshu and Bilibili: followers, likes and latest posts. Updated every 6 hours.")}
+        sub={t("工作室的所有账号：粉丝、获赞和最近作品（抖音、小红书、B站，以及已连接的 YouTube、LinkedIn）。", "The studio's accounts on Douyin, Xiaohongshu and Bilibili: followers, likes and latest posts. Updated every 6 hours.")}
         right={
           <Link href="/review" prefetch={false} style={smallButton(false)}>
             {t("全部作品复盘", "All published")}

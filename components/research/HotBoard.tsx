@@ -52,7 +52,7 @@ function platformOf(from: string): { mark: string; zh: string; en: string } {
   return byHot ? { mark: byHot.mark, zh: byHot.zh, en: byHot.label } : { mark: from, zh: from, en: from };
 }
 
-export function HotBoard({ zh, canWrite }: { zh: boolean; canWrite: boolean }) {
+export function HotBoard({ zh, canWrite, initial = null }: { zh: boolean; canWrite: boolean; initial?: Record<string, BeatRow[]> | null }) {
   const t = (a: string, b: string) => (zh ? a : b);
   const router = useRouter();
   const [lists, setLists] = React.useState<Lists | null>(null);
@@ -62,6 +62,8 @@ export function HotBoard({ zh, canWrite }: { zh: boolean; canWrite: boolean }) {
   const [busy, setBusy] = React.useState<string | null>(null);
 
   React.useEffect(() => {
+    /* Built on the server with the page: nothing to fetch. */
+    if (initial) return;
     let off = false;
     void fetch("/api/research/hot?platform=all")
       .then((r) => (r.ok ? r.json() : null))
@@ -85,11 +87,12 @@ export function HotBoard({ zh, canWrite }: { zh: boolean; canWrite: boolean }) {
 
   const keys = React.useMemo(() => beats.filter((b) => b.enabled).map((b) => b.key), [beats]);
   const rows: BeatRow[] = React.useMemo(() => {
+    if (initial) return initial[chip] ?? [];
     if (!lists) return [];
     if (chip === "all") return acrossPlatforms(lists, { limit: 300, beats: keys });
     const { charted, feed } = tabRows(chip, lists, { beats: keys, chartCap: 50 });
     return [...charted, ...feed];
-  }, [lists, chip, keys]);
+  }, [lists, chip, keys, initial]);
   React.useEffect(() => setShown(STEP), [chip]);
 
   async function make(r: BeatRow) {
@@ -137,7 +140,7 @@ export function HotBoard({ zh, canWrite }: { zh: boolean; canWrite: boolean }) {
           <span />
         </div>
         {lists === null ? (
-          <div style={{ padding: 28, textAlign: "center", color: MUTED, fontSize: 13.5 }}>{t("正在读取…", "Loading…")}</div>
+          <div style={{ padding: 28, textAlign: "center", color: MUTED, fontSize: 13.5 }}>{initial ? t("这个平台现在没有 AI、加密、科技、商业的热点", "Nothing on the four beats here right now") : t("正在读取…", "Loading…")}</div>
         ) : rows.length === 0 ? (
           <div style={{ padding: 28, textAlign: "center", color: MUTED, fontSize: 13.5 }}>{t("这个平台还没有数据，下一轮更新后会出现。", "Nothing here yet; it fills at the next refresh.")}</div>
         ) : (

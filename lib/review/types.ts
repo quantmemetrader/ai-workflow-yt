@@ -32,7 +32,9 @@ export type AccountStats = { followers: number | null; likes: number | null; wor
 export type AccountPost = { id: string; title: string; url: string | null; at: string | null; stats: Stats };
 
 export type AccountView = {
-  platform: "douyin" | "xiaohongshu" | "wechat_channels" | "bilibili";
+  platform: "douyin" | "xiaohongshu" | "wechat_channels" | "bilibili" | "youtube" | "linkedin" | "tiktok" | "instagram" | "facebook" | "x" | "threads";
+  /** A channel connected through Zernio (YouTube, LinkedIn…), read from its own sync, not TikHub. */
+  connected?: boolean;
   zh: string;
   en: string;
   name: string;
