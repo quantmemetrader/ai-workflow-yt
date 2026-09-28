@@ -17,6 +17,7 @@ import {
   approveDocAction,
   copilotAction,
   docCommentAction,
+  importDocAction,
   removeReferenceAction,
   requestChangesAction,
   resolveCommentAction,
@@ -651,6 +652,7 @@ export function ScriptDoc(props: ScriptDocProps) {
               <input type="checkbox" checked={showVisual} onChange={(e) => setShowVisual(e.target.checked)} />
               {t("显示画面说明", "Show shot notes")}
             </label>
+            <DocMenus projectId={projectId} zh={zh} notes={showVisual} accessMode={props.accessMode} canEdit={Boolean(script)} />
             <button type="button" style={smallButton()} onClick={() => setSharing(true)}>
               <Icon name="share" size={12} />
               {t("分享", "Share")}
@@ -1191,3 +1193,105 @@ const CSS = `
 .sd-version[data-on] { border-color: #9fb8e8; background: #f7faff; }
 .sd-badge { font-size: 10.5px; font-weight: 600; border-radius: 999px; padding: 0 7px; line-height: 17px; }
 `;
+
+/**
+ * 导入 and 导出, like a Google Doc's File menu (Ryan, 29 Sep: "more like
+ * google doc — got an export button, user can always upload").
+ *
+ *   导入  upload a Word / PDF / deck / text file; its text replaces the
+ *         script or is added after it (`importDocAction`). The file also
+ *         goes into 参考资料 and the Files drive under this project.
+ *   导出  the script as Word, PDF, plain text or Markdown, with the shot
+ *         notes when they are showing.
+ */
+function DocMenus({ projectId, zh, notes, accessMode, canEdit }: { projectId: string; zh: boolean; notes: boolean; accessMode?: string; canEdit: boolean }) {
+  const t = (a: string, b: string) => (zh ? a : b);
+  const [open, setOpen] = React.useState<null | "import" | "export">(null);
+  const [busy, setBusy] = React.useState<string | null>(null);
+  const mode = React.useRef<"replace" | "append">("replace");
+  const input = React.useRef<HTMLInputElement | null>(null);
+  const box = React.useRef<HTMLSpanElement | null>(null);
+  React.useEffect(() => {
+    if (!open) return;
+    const away = (e: Event) => {
+      if (!box.current?.contains(e.target as Node)) setOpen(null);
+    };
+    document.addEventListener("pointerdown", away);
+    return () => document.removeEventListener("pointerdown", away);
+  }, [open]);
+
+  async function onFiles(list: FileList | null) {
+    const file = list?.[0];
+    if (!file) return;
+    if (mode.current === "replace" && !window.confirm(t("用这个文件的内容替换现在的稿子？（旧的内容可以在「版本」里找回）", "Replace the script with this file's text? (The old text stays in Versions.)"))) return;
+    setBusy(t(`正在导入 ${file.name}…`, `Importing ${file.name}…`));
+    try {
+      const access = accessMode === "everyone" ? ({ mode: "everyone" } as const) : ({ mode: "private" } as const);
+      let result: { ok?: true; paragraphs?: number; error?: string } | null = null;
+      await uploadFiles([file] as unknown as FileList, {
+        access,
+        onDone: async (fileId) => {
+          result = (await importDocAction(projectId, fileId, mode.current)) as typeof result;
+        },
+      });
+      const r = result as { ok?: true; paragraphs?: number; error?: string } | null;
+      if (!r) notify(t("上传没成功", "The upload did not finish"));
+      else if (r.error) notify(r.error);
+      else {
+        notify(t(`已导入 ${r.paragraphs} 段`, `Imported ${r.paragraphs} paragraphs`), "ok");
+        window.location.reload();
+      }
+    } finally {
+      setBusy(null);
+      if (input.current) input.current.value = "";
+    }
+  }
+
+  const item: React.CSSProperties = { display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 1, width: "100%", padding: "8px 12px", border: 0, borderRadius: 8, background: "transparent", fontFamily: "inherit", fontSize: 13, color: "#171717", textAlign: "left", cursor: "pointer", textDecoration: "none" };
+  const sub: React.CSSProperties = { fontSize: 11.5, color: "#8a8a8a" };
+  const menu: React.CSSProperties = { position: "absolute", top: "calc(100% + 6px)", right: 0, zIndex: 40, minWidth: 220, padding: 6, background: "#fff", border: "1px solid #e3e2de", borderRadius: 12, boxShadow: "0 12px 32px rgba(0,0,0,.12)" };
+  const href = (format: string) => `/api/projects/${projectId}/script-export?format=${format}${notes ? "&notes=1" : ""}`;
+
+  return (
+    <span ref={box} style={{ position: "relative", display: "inline-flex", gap: 6 }}>
+      <input ref={input} type="file" hidden accept=".docx,.doc,.pdf,.txt,.md,.rtf,.odt,.pptx,.ppt,.pages,.wps,.html,.htm" onChange={(e) => void onFiles(e.target.files)} />
+      {canEdit ? (
+        <button type="button" style={smallButton(open === "import")} disabled={Boolean(busy)} onClick={() => setOpen(open === "import" ? null : "import")} title={busy ?? undefined}>
+          <Icon name="upload" size={12} />
+          {busy ? t("导入中…", "Importing…") : t("导入", "Import")}
+        </button>
+      ) : null}
+      <button type="button" style={smallButton(open === "export")} onClick={() => setOpen(open === "export" ? null : "export")}>
+        <Icon name="download" size={12} />
+        {t("导出", "Export")}
+      </button>
+      {open === "import" ? (
+        <div role="menu" style={menu}>
+          <button type="button" role="menuitem" style={item} onClick={() => { mode.current = "replace"; setOpen(null); input.current?.click(); }}>
+            {t("用文件替换现在的稿子", "Replace with a file")}
+            <span style={sub}>{t("Word、PDF、PPT、纯文本都可以", "Word, PDF, slides, text")}</span>
+          </button>
+          <button type="button" role="menuitem" style={item} onClick={() => { mode.current = "append"; setOpen(null); input.current?.click(); }}>
+            {t("把文件内容接在后面", "Add a file's text at the end")}
+            <span style={sub}>{t("现在的内容不动", "Keeps what is there")}</span>
+          </button>
+        </div>
+      ) : null}
+      {open === "export" ? (
+        <div role="menu" style={menu}>
+          {[
+            ["docx", t("Word 文档 (.docx)", "Word (.docx)")],
+            ["pdf", "PDF (.pdf)"],
+            ["txt", t("纯文本 (.txt)", "Plain text (.txt)")],
+            ["md", "Markdown (.md)"],
+          ].map(([f, label]) => (
+            <a key={f} role="menuitem" href={href(f)} download style={item} onClick={() => setOpen(null)}>
+              {label}
+            </a>
+          ))}
+          <div style={{ ...sub, padding: "6px 12px 4px" }}>{notes ? t("会带上画面说明", "Includes shot notes") : t("勾选「显示画面说明」可一起导出", "Tick 'Show shot notes' to include them")}</div>
+        </div>
+      ) : null}
+    </span>
+  );
+}

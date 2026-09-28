@@ -1,7 +1,7 @@
 import "server-only";
 import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { audioTracks, files, users, videoClips, videoExports, videoGraphics, videoProjects, workProjects } from "@/lib/db/schema";
+import { audioTracks, files, scripts, users, videoClips, videoExports, videoGraphics, videoProjects, workProjects } from "@/lib/db/schema";
 import type { Viewer } from "@/lib/auth/dal";
 import { canReadFiles } from "@/lib/authz/rebac";
 import { projectsVisibleTo } from "@/lib/projects/visible";
@@ -57,8 +57,8 @@ export async function listByType(viewer: Viewer, lens: "images" | "videos" | "do
 }
 
 /** What a file is to a project, in the order a project card lists them. */
-export type ProjectRole = "render" | "clip" | "graphic" | "audio";
-const ROLE_ORDER: ProjectRole[] = ["render", "clip", "graphic", "audio"];
+export type ProjectRole = "final" | "render" | "clip" | "graphic" | "audio" | "reference" | "other";
+const ROLE_ORDER: ProjectRole[] = ["final", "render", "clip", "graphic", "audio", "reference", "other"];
 
 export type ProjectGroup = {
   id: string;
@@ -97,6 +97,7 @@ export async function listByProject(
       id: workProjects.id,
       title: workProjects.title,
       videoProjectId: workProjects.videoProjectId,
+      scriptId: workProjects.scriptId,
       updatedAt: workProjects.updatedAt,
       cutUpdatedAt: videoProjects.updatedAt,
       masterFileId: videoProjects.masterFileId,
@@ -147,7 +148,35 @@ export async function listByProject(
   for (const g of graphics) add(g.cut, "graphic", g.fileId);
   for (const a of audio) add(a.cut, "audio", a.fileId);
 
-  const linkedIds = [...new Set([...links.values()].flatMap((l) => l.map((x) => x.fileId)))];
+  /* Files put in a project by hand (the project's 文件 page, a script's
+     参考资料, a final cut uploaded on 发布): tagged `wp:<id>` with a
+     `role:` box, and a script's reference files. Keyed by the project. */
+  const own = new Map<string, { role: ProjectRole; fileId: string }[]>();
+  const put = (pid: string, role: ProjectRole, fileId: string) => {
+    const list = own.get(pid) ?? [];
+    list.push({ role, fileId });
+    own.set(pid, list);
+  };
+  const pids = projects.map((p) => p.id);
+  if (pids.length) {
+    const tagged = await db
+      .select({ id: files.id, tags: files.tags })
+      .from(files)
+      .where(and(isNull(files.deletedAt), sql`exists (select 1 from unnest(${files.tags}) t where t like 'wp:%')`));
+    const known = new Set(pids);
+    for (const f of tagged) {
+      const role = (f.tags.find((t) => t.startsWith("role:"))?.slice(5) ?? "other") as ProjectRole;
+      for (const t of f.tags) if (t.startsWith("wp:") && known.has(t.slice(3))) put(t.slice(3), ROLE_ORDER.includes(role) ? role : "other", f.id);
+    }
+    const sids = projects.map((p) => p.scriptId).filter((x): x is string => Boolean(x));
+    if (sids.length) {
+      const refs = await db.select({ id: scripts.id, ids: scripts.sourceFileIds }).from(scripts).where(inArray(scripts.id, sids));
+      const bySid = new Map(refs.map((r) => [r.id, r.ids]));
+      for (const p of projects) for (const fid of (p.scriptId && bySid.get(p.scriptId)) || []) put(p.id, "reference", fid);
+    }
+  }
+
+  const linkedIds = [...new Set([...links.values(), ...own.values()].flatMap((l) => l.map((x) => x.fileId)))];
 
   /* The readable, live ones among them — the only rows that leave the server. */
   const readable = linkedIds.length
@@ -177,8 +206,8 @@ export async function listByProject(
     const seen = new Set<string>();
     const out: { role: ProjectRole; row: Row }[] = [];
     let hidden = 0;
-    const own = (p.videoProjectId && links.get(p.videoProjectId)) || [];
-    const ordered = [...own].sort((a, b) => ROLE_ORDER.indexOf(a.role) - ROLE_ORDER.indexOf(b.role));
+    const mine = [...(own.get(p.id) ?? []), ...((p.videoProjectId && links.get(p.videoProjectId)) || [])];
+    const ordered = [...mine].sort((a, b) => ROLE_ORDER.indexOf(a.role) - ROLE_ORDER.indexOf(b.role));
     for (const l of ordered) {
       if (seen.has(l.fileId)) continue;
       seen.add(l.fileId);
@@ -200,7 +229,9 @@ export async function listByProject(
     and not exists (select 1 from video_exports x where x.file_id = ${files.id} or x.subtitle_file_id = ${files.id})
     and not exists (select 1 from video_graphics g where g.file_id = ${files.id})
     and not exists (select 1 from audio_tracks a where a.file_id = ${files.id})
-    and not exists (select 1 from video_projects v where v.master_file_id = ${files.id})`;
+    and not exists (select 1 from video_projects v where v.master_file_id = ${files.id})
+    and not exists (select 1 from unnest(${files.tags}) t where t like 'wp:%')
+    and not exists (select 1 from scripts s where ${files.id} = any(s.source_file_ids) and s.deleted_at is null)`;
   const looseWhere = and(isNull(files.deletedAt), canReadFiles(viewer), notProxy(), sql`not ('stock' = any(${files.tags}))`, unused);
   const [loose, [{ n }]] = await Promise.all([
     db.select(rowFields).from(files).innerJoin(users, eq(users.id, files.ownerId)).where(looseWhere).orderBy(desc(files.updatedAt)).limit(looseLimit),

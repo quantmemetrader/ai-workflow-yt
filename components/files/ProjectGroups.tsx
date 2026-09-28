@@ -7,7 +7,7 @@ import { Icon } from "@/components/ui/Icon";
 import { Tr } from "@/components/ui/Tr";
 
 /** What a file is to a project, as `lib/files/lenses.ts` decided it. */
-export type ProjectRole = "render" | "clip" | "graphic" | "audio";
+export type ProjectRole = "final" | "render" | "clip" | "graphic" | "audio" | "reference" | "other";
 
 export type ProjectCard = {
   id: string;
@@ -21,10 +21,13 @@ export type ProjectCard = {
    last-first: the finished video is what somebody opening a project's files
    came for, so it leads. */
 const SHELVES: { role: ProjectRole; zh: string; en: string }[] = [
+  { role: "final", zh: "最终版视频", en: "Final videos" },
   { role: "render", zh: "成片", en: "Renders" },
   { role: "clip", zh: "素材", en: "Footage" },
   { role: "graphic", zh: "配图", en: "Pictures" },
   { role: "audio", zh: "配音", en: "Voice-over" },
+  { role: "reference", zh: "参考资料", en: "References" },
+  { role: "other", zh: "其他", en: "Other" },
 ];
 
 /*

@@ -11,6 +11,8 @@ import { BudgetStop } from "@/lib/ai/ledger";
 import { visibleProject } from "@/lib/projects/service";
 import { dmChannelWith, postMessage } from "@/lib/chat/service";
 import { tagProjectFile } from "@/lib/projects/files";
+import { ensureFileText } from "@/lib/files/extract";
+import { asc } from "drizzle-orm";
 import { readSentBack, recordSendBack, settleSendBack } from "@/lib/projects/sendback";
 import { createScript, cutVersion, decideApproval, requestApproval, restoreVersion, saveBeats, unlock } from "@/lib/script/service";
 import { addDocComment, copilotRewrite, openRequestFor, requestReviews, resolveDocComment, setReferences, versionBeats, withdrawOthers } from "@/lib/script/doc";
@@ -320,4 +322,39 @@ export async function withdrawReviewAction(projectId: unknown) {
   await db.update(scripts).set({ status: "drafting", updatedAt: new Date() }).where(and(eq(scripts.id, scriptId), eq(scripts.status, "awaiting_approval")));
   refresh(c.project.id);
   return { ok: true as const };
+}
+
+/**
+ * 导入: a document someone uploads — Word, PDF, a deck, plain text, anything
+ * the reader understands (`lib/files/extract.ts`) — becomes the script's
+ * paragraphs, replacing what is there or added after it. Allowed any time:
+ * an approved script is reopened as a new version first. The file also goes
+ * into the project's 参考资料 (and so into the Files drive under the project).
+ */
+export async function importDocAction(projectId: unknown, fileId: unknown, mode: unknown) {
+  const c = await ctx(projectId, true);
+  if ("error" in c) return c;
+  if (!c.project.scriptId || typeof fileId !== "string") return { error: "Not allowed" };
+  if (!(await tagProjectFile(c.viewer, c.project.id, fileId, "reference"))) return { error: c.zh ? "打不开这个文件" : "That file cannot be opened" };
+  const text = await ensureFileText(fileId, { ledger: { viewer: c.viewer, module: "script" } });
+  if (!text || !text.trim()) return { error: c.zh ? "这个文件里读不出文字" : "No text could be read from that file" };
+  const paras = text
+    .split(/\n/)
+    .map((l) => l.replace(/\s+$/g, "").trim())
+    .filter((l) => l && !/^【第 \d+ 页】$/.test(l))
+    .slice(0, 200)
+    .map((l) => ({ visual: "", voiceover: l, subtitle: "", naturalSound: false }));
+  if (!paras.length) return { error: c.zh ? "这个文件里读不出文字" : "No text could be read from that file" };
+  const [s] = await db.select({ status: scripts.status }).from(scripts).where(eq(scripts.id, c.project.scriptId)).limit(1);
+  if (s?.status === "locked") await unlock(c.viewer, c.project.scriptId);
+  const existing =
+    mode === "append"
+      ? (await db.select({ visual: scriptBeats.visual, voiceover: scriptBeats.voiceover, subtitle: scriptBeats.subtitle, naturalSound: scriptBeats.naturalSound }).from(scriptBeats).where(eq(scriptBeats.scriptId, c.project.scriptId)).orderBy(asc(scriptBeats.ord)))
+      : [];
+  const res = await saveBeats(c.viewer, c.project.scriptId, [...existing, ...paras].slice(0, 200));
+  if (!res) return { error: c.zh ? "没能写进稿子" : "Could not write it into the script" };
+  await setReferences(c.viewer, c.project.scriptId, { add: fileId }).catch(() => null);
+  await audit(c.viewer, "script.import", { objectType: "script", objectId: c.project.scriptId, module: "script", meta: { fileId, mode, paragraphs: paras.length } });
+  refresh(c.project.id);
+  return { ok: true as const, paragraphs: paras.length };
 }
