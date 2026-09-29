@@ -8,264 +8,177 @@ import type { ScriptListItem } from "@/lib/script/service";
 import { PersonAvatar } from "@/components/ui/PersonAvatar";
 
 /**
- * ScriptLibraryScreen — a transcription of design/canvas/Script-Library.dc.html.
+ * 脚本 — the script library, drawn like a drive (Ryan, 29 Sep: "more like
+ * google drive … more intuitive").
  *
- * Everything after the artboard's 52px rail: the Script module sidebar (the
- * library scopes, the folder list, the House style footer), the toolbar, the
- * status filter row, and the two views the artboard draws of the same list —
- * the Finder-style icon grid (.ic / .icn / .icl) and the seven-column table.
- * Markup, nesting, class names, SVG paths, pixel values and colours are the
- * artboard's; only the content is lifted into props. The artboard is the source
- * of truth — when it changes, change this file with it, and do not "improve"
- * anything here that the artboard does not do.
+ * One way to browse: the folder column on the left (全部脚本, one folder per
+ * project, the studio's own folders, 未归入项目) with a big 「新建」 on top; a
+ * breadcrumb 「脚本 › 项目名」 across the top; and ONE row of filters, where
+ * the old three layers were (the scope tabs, the status chips, the folders).
+ * Grid tiles and list rows open a script on click and give 打开 / 重命名 /
+ * 移到文件夹 / 分享 / 删除 on right-click or on their 「⋯」 — each only where
+ * the server has that action for that script (a project's script is renamed
+ * with its project and stays in the project's folder; a loose one moves
+ * between the studio's folders).
  *
- * What the artboard draws and this file does not, and why:
- *
- *   — The right-hand 320px Agent panel. It is a scripted conversation (a
- *     question nobody asked, a "0.9 s" tool run, a "Remind Michelle" button
- *     wired to nothing) and this screen is given no thread, model or onAsk, so
- *     every word of it would be invented.
- *   — The "Length" and "House style" columns. ScriptListItem carries neither a
- *     duration nor a conformance score, and a column of em-dashes is worse than
- *     no column. The remaining five columns keep the artboard's own widths.
- *   — "Style guide v7", "Prompt template plus 41 approved past scripts" and the
- *     "scored against guide v7" tail on the footer line. The guide's version and
- *     contents are not known to this screen.
- *   — The artboard's red "Changes requested" badge. `script_status` has no such
- *     value, so that treatment stays undrawn rather than being pinned onto a
- *     status that does not mean it.
- *   — `.ic.sel`, the selected tile. There is no selection in this screen's
- *     contract; opening a script is the whole interaction.
- *
- * What this file draws and the artboard does not: a delete control per row and
- * per tile, revealed on hover or keyboard focus, wearing the artboard's own
- * .ptog icon-button treatment; and the two empty states, in the artboard's
- * heading / .mut / .btn.s vocabulary.
+ * The pane under the filters is a size container: narrowed by the folder
+ * column and the assistant column (at 1024 it is about 330px), the list drops
+ * the owner column and the grid drops to fewer tiles, and nothing overflows.
  */
 
 export type ScriptLibraryScreenProps = {
   locale: string;
   scripts: ScriptListItem[];
-  /** What 编剧 suggests writing next. */
+  /** What 编剧 suggests writing next (kept for the page contract; not drawn). */
   proposals?: Proposals;
   folders: { id: string; name: string; count: number }[];
-  counts: { all: number; brief: number; drafting: number; awaiting: number; locked: number };
-  /** null = "All scripts" (no folder selected) */
+  /** Counts in the folder that is open, before the filter row is applied. */
+  counts: { all: number; brief: number; drafting: number; awaiting: number; locked: number; mine?: number; waitingMe?: number };
+  /** null = no own folder open */
   folderId: string | null;
-  /** null = the "All" chip */
+  /** null = no status filter */
   status: ScriptListItem["status"] | null;
   sort: "updated" | "title" | "status";
-  /** "list" | "grid" — the artboard draws both; default "list" */
   view: "list" | "grid";
-  /** the library filter in the sidebar; "topics" is the 选题 queue */
+  /** "topics" is the 选题 queue */
   scope: "all" | "mine" | "awaiting" | "shared" | "topics";
   /** The 选题 queue, drawn in place of the list when `scope` is "topics". */
   topicsView?: React.ReactNode;
-  /** How many topics are waiting, for the sidebar's badge. */
   topicCount?: number | null;
   query: string;
   pending: boolean;
   error: string | null;
 
   onOpen: (scriptId: string) => void;
-  onFolder: (folderId: string | null) => void;
   /** One folder per project, 未归入项目 and the total; absent draws no folder column. */
   tree?: { projects: { id: string; title: string; count: number; updatedAt: string }[]; unassigned: number; total: number };
   /** The project folder open ("none" for 未归入项目), null for none. */
   projectId?: string | null;
-  projectRefs?: { id: string; name: string; sizeBytes: number }[];
-  onProject?: (projectId: string | null) => void;
+  /** Change what is shown: `project`, `folder`, `status`, `scope`, `q` in one step (null clears). */
+  onNav: (patch: Record<string, string | null>) => void;
   onMove?: (scriptId: string, folderId: string | null) => void;
-  onStatus: (status: ScriptListItem["status"] | null) => void;
-  onScope: (scope: ScriptLibraryScreenProps["scope"]) => void;
+  onRename?: (script: ScriptListItem) => void;
+  onShare?: (script: ScriptListItem) => void;
   onSort: (sort: ScriptLibraryScreenProps["sort"]) => void;
   onView: (view: "list" | "grid") => void;
-  onQuery: (q: string) => void;
   onNewScript: () => void;
   onNewFolder: () => void;
   onDelete: (scriptId: string) => void;
   /** The model the right-hand panel names under its composer. */
   model: string;
-  /** Hands a question to the agent on /chat, where it can cite the files and
-   * scripts the asker is allowed to read. */
   onAsk: (prompt: string) => void;
-  /** The conversation so far, rendered in the agent panel. */
   thread?: React.ReactNode;
-  /** Controls above the composer: history, a new thread. */
   tools?: React.ReactNode;
 };
 
 type Status = ScriptListItem["status"];
 
-/** The artboard's `accent` prop, at its default (#007BE0). */
 const ACCENT = "#007be0";
 
-/** Whole days since a date. `Date.now()` is read here rather than in a render
- * body, which the repo's `react-hooks/purity` rule rejects. */
 function daysSince(d: Date): number {
-  return Math.floor((Date.now() - d.getTime()) / 86_400_000);
+  return Math.floor((Date.now() - new Date(d).getTime()) / 86_400_000);
 }
 
 /* --------------------------------------------------------------------- css */
 
-/**
- * The artboard's own <style>, minus the rail rules (.r — the rail is not ours),
- * the html/body rules (the artboard is a 1440x900 frame, the product fills the
- * viewport) and the rules for the other Script screens that share this
- * stylesheet (the editor, the page previews, the diff view). Every selector is
- * scoped to [data-script-library-screen] (the two roots below) so these
- * one-letter class names cannot collide with — or be overridden by — the rest
- * of the app, which defines its own .n / .lbl / .btn. Source order is the
- * artboard's, so the cascade inside is unchanged.
- */
 const CSS = `
 [data-script-library-screen] { font-family: Inter, 'Noto Sans SC', 'PingFang SC', system-ui, sans-serif; font-weight: 420; letter-spacing: 0.02em; -webkit-font-smoothing: antialiased; color: #171717; }
 [data-script-library-screen] * { box-sizing: border-box; }
-[data-script-library-screen] a { color: #007be0; text-decoration: none; }
-[data-script-library-screen] img { display: block; }
-[data-script-library-screen] p { margin: 0; }
+[data-script-library-screen] button { font-family: inherit; letter-spacing: inherit; }
+[data-script-library-screen] .folder-rail { width: 220px !important; }
+@media (max-width: 1180px) { [data-script-library-screen] .folder-rail { width: 188px !important; } }
 
-/* sidebar */
-[data-script-library-screen] .n { display: flex; align-items: center; gap: 8px; height: 28px; padding: 0 9px; border-radius: 8px; font-size: 12.5px; color: #525252; transition: background .16s ease; }
-[data-script-library-screen] .n.on { background: #ffffff; box-shadow: 0 1px 2px rgba(0,0,0,0.1); color: #171717; font-weight: 500; }
-[data-script-library-screen] .n b { margin-left: auto; font-size: 11.5px; font-weight: 500; color: #999999; }
-[data-script-library-screen] .n i { margin-left: auto; font-style: normal; display: inline-flex; align-items: center; height: 17px; padding: 0 6px; border-radius: 9px; background: #ffe7e7; color: #e03636; font-size: 11px; font-weight: 500; }
-[data-script-library-screen] .lbl { font-size: 11.5px; font-weight: 500; color: #999999; padding: 0 9px; }
+[data-script-library-screen] .sl-bar { min-height: 56px; flex-shrink: 0; border-bottom: 1px solid #ededed; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 10px 20px; min-width: 0; }
+[data-script-library-screen] .sl-crumb { display: flex; align-items: center; gap: 6px; min-width: 0; flex: 1 1 200px; min-height: 34px; }
+[data-script-library-screen] .sl-crumb button { border: 0; background: transparent; padding: 4px 6px; margin: 0 -6px; border-radius: 7px; font-size: 16px; color: #6b6b6b; cursor: pointer; white-space: nowrap; flex-shrink: 0; }
+[data-script-library-screen] .sl-crumb button:hover { background: #f3f3f1; color: #171717; }
+[data-script-library-screen] .sl-crumb .here { font-size: 16px; font-weight: 600; color: #171717; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+[data-script-library-screen] .sl-open { display: inline-flex; align-items: center; gap: 4px; height: 28px; padding: 0 10px; border: 1px solid #e2e2e2; border-radius: 8px; font-size: 12.5px; color: #383838; text-decoration: none; white-space: nowrap; flex-shrink: 0; }
+[data-script-library-screen] .sl-open:hover { background: #f7f7f7; }
+[data-script-library-screen] .sl-search { flex: 0 1 220px; min-width: 150px; height: 34px; border: 1px solid #ececea; border-radius: 17px; background: #f5f5f3; display: flex; align-items: center; gap: 7px; padding: 0 12px; }
+[data-script-library-screen] .sl-search:focus-within { background: #fff; border-color: #cfcfcc; }
+[data-script-library-screen] .sl-search input { width: 100%; min-width: 0; border: 0; outline: none; background: transparent; font-size: 13px; font-family: inherit; color: #171717; }
+[data-script-library-screen] .seg { width: 32px; height: 28px; border-radius: 6px; display: flex; align-items: center; justify-content: center; cursor: pointer; border: 0; padding: 0; }
+[data-script-library-screen] .seg svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 
-/* generic */
-[data-script-library-screen] .bar { height: 48px; flex-shrink: 0; border-bottom: 1px solid #ededed; display: flex; align-items: center; gap: 10px; padding: 0 20px; }
-[data-script-library-screen] .h1 { font-size: 15px; font-weight: 500; white-space: nowrap; }
-[data-script-library-screen] .mut { font-size: 12.5px; color: #999999; }
-/* The primary button is the app's ink black, as on every other screen; the
-   artboard's blue made "新建脚本" the one blue button in the product. */
-[data-script-library-screen] .btn { height: 30px; padding: 0 12px; border-radius: 8px; display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; white-space: nowrap; flex-shrink: 0; transition: background .15s ease, border-color .15s ease; }
-[data-script-library-screen] .btn.p { background: #171717; color: #fff; font-weight: 500; }
-[data-script-library-screen] .btn.p:hover { background: #2e2e2e; }
-[data-script-library-screen] .btn.s { border: 1px solid #e2e2e2; color: #383838; }
-[data-script-library-screen] .btn.s:hover { background: #f7f7f7; }
-[data-script-library-screen] .btn svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-[data-script-library-screen] .chip { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 11px; border: 1px solid #ededed; border-radius: 8px; font-size: 12.5px; color: #4a5763; white-space: nowrap; }
-[data-script-library-screen] .bd { display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border-radius: 6px; font-size: 11.5px; font-weight: 500; white-space: nowrap; }
+[data-script-library-screen] .sl-filters { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; flex-shrink: 0; }
+[data-script-library-screen] .fc { height: 30px; padding: 0 11px; border-radius: 15px; display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: #454545; border: 1px solid #e4e4e1; background: #fff; white-space: nowrap; cursor: pointer; }
+[data-script-library-screen] .fc b { font-weight: 500; color: #9a9a9a; font-size: 12px; }
+[data-script-library-screen] .fc:not(.on):hover { background: #f5f5f3; }
+[data-script-library-screen] .fc.on { background: #171717; border-color: #171717; color: #fff; }
+[data-script-library-screen] .fc.on b { color: #c7c7c7; }
+[data-script-library-screen] .fc .alert { color: #fff; background: #e03636; border-radius: 9px; padding: 0 6px; line-height: 17px; font-size: 11px; }
+[data-script-library-screen] .sl-div { width: 1px; height: 18px; background: #e4e4e1; margin: 0 4px; }
+[data-script-library-screen] .dot { width: 7px; height: 7px; border-radius: 4px; flex-shrink: 0; }
+[data-script-library-screen] .sl-sort { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: #8a8a8a; white-space: nowrap; }
+[data-script-library-screen] .sl-sort select { height: 30px; border: 1px solid #e4e4e1; border-radius: 8px; background: #fff; color: #171717; font-family: inherit; font-size: 12.5px; padding: 0 6px; cursor: pointer; }
+
+[data-script-library-screen] .sl-pane { container-type: inline-size; container-name: slpane; }
+[data-script-library-screen] .sl-lbl { font-size: 12.5px; font-weight: 600; color: #6b6b6b; margin: 2px 2px 10px; }
+
+/* grid */
+[data-script-library-screen] .sl-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(156px, 1fr)); gap: 12px; }
+[data-script-library-screen] .sl-tile { position: relative; display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 14px 8px 10px; border-radius: 12px; border: 1px solid #ecebe7; background: #fff; min-width: 0; cursor: pointer; transition: background .12s ease, border-color .12s ease; outline: none; }
+[data-script-library-screen] .sl-tile:hover { background: #f7f9fc; border-color: #d9e2ef; }
+[data-script-library-screen] .sl-tile:focus-visible { border-color: #007be0; box-shadow: 0 0 0 2px rgba(0,123,224,.18); }
+[data-script-library-screen] .sl-art { height: 62px; display: flex; align-items: flex-end; justify-content: center; }
+[data-script-library-screen] .sl-name { width: 100%; text-align: center; font-size: 13px; line-height: 1.4; height: 2.8em; color: #171717; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; word-break: break-word; }
+[data-script-library-screen] .sl-meta { width: 100%; display: flex; align-items: center; justify-content: center; gap: 5px; font-size: 11.5px; color: #8a8a8a; min-width: 0; }
+[data-script-library-screen] .sl-meta .dot { width: 6px; height: 6px; }
+[data-script-library-screen] .el { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+
+/* list */
+[data-script-library-screen] .sl-hd, [data-script-library-screen] .sl-row { display: grid; grid-template-columns: minmax(0, 1fr) 96px 140px 104px 40px; align-items: center; }
+[data-script-library-screen] .sl-hd { height: 36px; border-bottom: 1px solid #ededed; }
+[data-script-library-screen] .sl-hd > * { font-size: 12px; font-weight: 500; color: #7c7c7c; padding: 0 10px; white-space: nowrap; }
+[data-script-library-screen] .sl-row { min-height: 54px; border-bottom: 1px solid #f1f1ef; cursor: pointer; transition: background .12s ease; outline: none; }
+[data-script-library-screen] .sl-row:hover { background: #f7f9fc; }
+[data-script-library-screen] .sl-row:focus-visible { background: #eef5fd; }
+[data-script-library-screen] .sl-row > * { font-size: 13px; color: #383838; padding: 0 10px; min-width: 0; display: flex; align-items: center; }
+@container slpane (max-width: 640px) {
+  [data-script-library-screen] .sl-div { display: none; }
+  [data-script-library-screen] .sl-hd, [data-script-library-screen] .sl-row { grid-template-columns: minmax(0, 1fr) 82px 78px 36px; }
+  [data-script-library-screen] .sl-owner { display: none !important; }
+  [data-script-library-screen] .sl-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+}
+@container slpane (max-width: 380px) {
+  [data-script-library-screen] .sl-hd, [data-script-library-screen] .sl-row { grid-template-columns: minmax(0, 1fr) 76px 34px; }
+  [data-script-library-screen] .sl-when { display: none !important; }
+}
+[data-script-library-screen] .bd { display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 8px; border-radius: 6px; font-size: 12px; font-weight: 500; white-space: nowrap; }
 [data-script-library-screen] .gray { background: #f3f3f3; color: #525252 }
 [data-script-library-screen] .blue { background: #e6f4ff; color: #007be0 }
 [data-script-library-screen] .grn  { background: #e4faeb; color: #278f5e }
-[data-script-library-screen] .amb  { background: #fff7d3; color: #db7706 }
+[data-script-library-screen] .amb  { background: #fff4df; color: #b86200 }
 [data-script-library-screen] .red  { background: #ffe7e7; color: #e03636 }
 [data-script-library-screen] .av { width: 20px; height: 20px; border-radius: 10px; object-fit: cover; flex-shrink: 0; }
 
-/* table */
-[data-script-library-screen] .t { width: 100%; }
-[data-script-library-screen] .t .hd { height: 32px; border-bottom: 1px solid #ededed; display: grid; align-items: center; }
-[data-script-library-screen] .t .hd > * { font-size: 11.5px; font-weight: 500; color: #7c7c7c; padding: 0 12px; white-space: nowrap; }
-[data-script-library-screen] .t .hd > .num { text-align: right; }
-[data-script-library-screen] .tr { height: 46px; border-bottom: 1px solid #f3f3f3; display: grid; align-items: center; }
-[data-script-library-screen] .tr > * { font-size: 12.5px; color: #383838; padding: 0 12px; min-width: 0; display: flex; align-items: center; white-space: nowrap; }
-[data-script-library-screen] .num { justify-content: flex-end; font-variant-numeric: tabular-nums; }
-[data-script-library-screen] .el { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
+/* the 「⋯」 on a row or tile: always there for the keyboard, shown on hover */
+[data-script-library-screen] .more { width: 28px; height: 28px; border-radius: 8px; display: flex; align-items: center; justify-content: center; border: 0; background: transparent; color: #6b6b6b; cursor: pointer; opacity: 0; transition: opacity .12s ease, background .12s ease; flex-shrink: 0; }
+[data-script-library-screen] .more:hover { background: #ebebe8; color: #171717; }
+[data-script-library-screen] .sl-row:hover .more, [data-script-library-screen] .sl-row:focus-within .more,
+[data-script-library-screen] .sl-tile:hover .more, [data-script-library-screen] .sl-tile:focus-within .more,
+[data-script-library-screen] .more:focus-visible, [data-script-library-screen] .more[aria-expanded="true"] { opacity: 1; }
+@media (hover: none) { [data-script-library-screen] .more { opacity: 1; } }
 
-[data-script-library-screen] .cap { font-size: 11.5px; color: #999999; }
-[data-script-library-screen] .seg { width: 30px; height: 26px; border-radius: 6px; display: flex; align-items: center; justify-content: center; cursor: pointer; }
-[data-script-library-screen] .seg svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-[data-script-library-screen] .fc { height: 26px; padding: 0 10px; border-radius: 7px; display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: #525252; border: 1px solid #ededed; background: #fff; white-space: nowrap; }
-[data-script-library-screen] .fc b { font-weight: 500; color: #999999; font-size: 11.5px; }
-[data-script-library-screen] .fc.on { background: #171717; border-color: #171717; color: #fff; }
-[data-script-library-screen] .fc.on b { color: #c7c7c7; }
-[data-script-library-screen] .dot { width: 7px; height: 7px; border-radius: 4px; flex-shrink: 0; }
-[data-script-library-screen] .ptog { width: 26px; height: 26px; border-radius: 7px; display: flex; align-items: center; justify-content: center; color: #7c7c7c; cursor: pointer; flex-shrink: 0; }
-[data-script-library-screen] .ptog:hover { background: #ededed; }
-[data-script-library-screen] .ptog svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
-
-/* icon grid (library) */
-[data-script-library-screen] .ic { display: flex; flex-direction: column; align-items: center; padding: 8px 4px 6px; border-radius: 10px; min-width: 0; }
-[data-script-library-screen] .icn { height: 62px; width: 76px; display: flex; align-items: flex-end; justify-content: center; padding-bottom: 6px; border-radius: 9px; }
-[data-script-library-screen] .icl { margin-top: 7px; text-align: center; font-size: 12.5px; line-height: 1.4; color: #171717; max-width: 100%; }
-[data-script-library-screen] .icl span { padding: 1px 5px; border-radius: 5px; -webkit-box-decoration-break: clone; box-decoration-break: clone; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-[data-script-library-screen] .icm { display: flex; align-items: center; gap: 5px; margin-top: 4px; font-size: 11.5px; color: #999999; white-space: nowrap; }
-[data-script-library-screen] .icm .dot { width: 6px; height: 6px; }
-
-/* the product needs a pointer on what it made clickable; the artboard is static */
-[data-script-library-screen] .btn, [data-script-library-screen] .fc, [data-script-library-screen] .n, [data-script-library-screen] .ic { cursor: pointer; }
-[data-script-library-screen] .btn, [data-script-library-screen] .fc { border: 0; font-family: inherit; letter-spacing: inherit; }
-[data-script-library-screen] .btn.s, [data-script-library-screen] .fc { border: 1px solid #e2e2e2; }
-[data-script-library-screen] .fc.on { border-color: #171717; }
-[data-script-library-screen] .n { border: 0; background: transparent; font-family: inherit; letter-spacing: inherit; width: 100%; text-align: left; }
-[data-script-library-screen] .n.on { background: #ffffff; }
-[data-script-library-screen] .tr { transition: background .12s ease; }
-[data-script-library-screen] .tr:hover { background: #f8f8f8; }
-[data-script-library-screen] .fc:not(.on):hover { background: #f7f7f7; }
-
-/* the delete affordance the artboard has no room for: present to the keyboard,
-   invisible until the row or tile it belongs to is hovered or focused */
-[data-script-library-screen] .act { opacity: 0; border: 0; background: transparent; padding: 0; transition: opacity .12s ease; }
-[data-script-library-screen] .tr:hover .act,
-[data-script-library-screen] .tr:focus-within .act,
-[data-script-library-screen] .ic:hover .act,
-[data-script-library-screen] .ic:focus-within .act { opacity: 1; }
-[data-script-library-screen] .act:focus-visible { opacity: 1; }
+/* 新建 and its menu, and the right-click menu */
+[data-script-library-screen] .sl-new { display: inline-flex; align-items: center; gap: 10px; height: 46px; padding: 0 20px 0 16px; border: 0; border-radius: 16px; background: #fff; color: #171717; font-size: 14.5px; font-weight: 600; cursor: pointer; box-shadow: 0 1px 2px rgba(0,0,0,.12), 0 2px 8px rgba(0,0,0,.08); transition: box-shadow .15s ease, background .15s ease; }
+[data-script-library-screen] .sl-new:hover { background: #f7f9fc; box-shadow: 0 1px 3px rgba(0,0,0,.16), 0 4px 12px rgba(0,0,0,.1); }
+.sl-menu { position: fixed; z-index: 120; min-width: 188px; max-width: 260px; padding: 6px; background: #fff; border: 1px solid #e6e6e3; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,.14); font-family: Inter, 'Noto Sans SC', 'PingFang SC', system-ui, sans-serif; }
+.sl-menu button { display: flex; align-items: center; gap: 10px; width: 100%; height: 36px; padding: 0 10px; border: 0; border-radius: 8px; background: transparent; font-family: inherit; font-size: 13.5px; color: #262626; cursor: pointer; text-align: left; white-space: nowrap; }
+.sl-menu button:hover, .sl-menu button:focus-visible { background: #f3f5f8; outline: none; }
+.sl-menu button.danger { color: #d12c2c; }
+.sl-menu button.danger:hover { background: #fdeeee; }
+.sl-menu button span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.sl-menu svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
+.sl-menu hr { border: 0; border-top: 1px solid #efefec; margin: 5px 4px; }
+.sl-menu .sub { padding-left: 26px; }
 `;
-
-/* ---------------------------------------------------------------- language */
-
-/** zh-CN strings for the artboard's chrome; English is the artboard's own. */
-const ZH: Record<string, string> = {
-  Script: "脚本",
-  Library: "库",
-  "All scripts": "全部脚本",
-  "Assigned to me": "指派给我的",
-  "Waiting on approval": "等待审批",
-  "Shared with me": "共享给我的",
-  Topics: "选题",
-  Project: "项目",
-  "From the topic": "选题",
-  Folders: "文件夹",
-  "No folders yet": "还没有文件夹",
-  "House style": "团队风格",
-  "Style guide": "风格指南",
-  "New script": "新建脚本",
-  "New folder": "新建文件夹",
-  "Search scripts": "搜索脚本",
-  Scripts: "脚本",
-  All: "全部",
-  Briefs: "简报",
-  Brief: "简报",
-  Drafting: "撰写中",
-  "Awaiting approval": "待审批",
-  Locked: "已锁定",
-  Archived: "已归档",
-  Sort: "排序",
-  "Last edited": "最近编辑",
-  Title: "标题",
-  Status: "状态",
-  "Ver.": "版本",
-  Owner: "负责人",
-  Edited: "编辑时间",
-  Pages: "页面",
-  List: "列表",
-  docs: "个文档",
-  scripts: "个脚本",
-  Unassigned: "未指派",
-  "Delete script": "删除脚本",
-  "No scripts yet": "还没有脚本",
-  "New script writes the first one.": "点击“新建脚本”创建第一个。",
-  "No scripts match this search.": "没有符合条件的脚本。",
-  "Clear the search and the filters": "清除搜索与筛选",
-  "filtered to scripts you can read": "已按你的权限过滤",
-};
 
 /* ------------------------------------------------------------------ format */
 
-function count(n: number, locale: string): string {
-  return new Intl.NumberFormat(locale).format(n);
-}
-
-/** "28 Aug" — the artboard's Edited column, once a script is older than a week. */
-function shortDate(d: Date, locale: string): string {
-  return new Intl.DateTimeFormat(locale, { day: "numeric", month: "short" }).format(d);
-}
-
-/** "2 min ago", "2 h ago", "Yesterday" — the artboard's own recent stamps. */
 function relative(d: Date, locale: string): string {
-  const seconds = (d.getTime() - Date.now()) / 1000;
+  const seconds = (new Date(d).getTime() - Date.now()) / 1000;
   const steps: [Intl.RelativeTimeFormatUnit, number][] = [
     ["day", 86400],
     ["hour", 3600],
@@ -282,14 +195,11 @@ function relative(d: Date, locale: string): string {
   return "";
 }
 
-/**
- * The artboard mixes the two: "2 min ago" and "Yesterday" near the top of the
- * list, "28 Aug" further down. A week is the hinge.
- */
+/** "3小时前" inside a week, "9月28日" after. */
 function edited(value: Date, locale: string): string {
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return "";
-  return Math.abs(Date.now() - d.getTime()) < 7 * 86400000 ? relative(d, locale) : shortDate(d, locale);
+  return Math.abs(Date.now() - d.getTime()) < 7 * 86400000 ? relative(d, locale) : new Intl.DateTimeFormat(locale, { day: "numeric", month: "short" }).format(d);
 }
 
 function fullStamp(value: Date, locale: string): string {
@@ -298,43 +208,27 @@ function fullStamp(value: Date, locale: string): string {
   return new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short" }).format(d);
 }
 
-/* ------------------------------------------------------------------ status */
-
-/** The artboard's dot colour and badge class per status, and its English word. */
-const STATUS: Record<Status, { dot: string; badge: string; label: string }> = {
-  brief: { dot: "#c7c7c7", badge: "gray", label: "Brief" },
-  drafting: { dot: "#007be0", badge: "blue", label: "Drafting" },
-  awaiting_approval: { dot: "#db7706", badge: "amb", label: "Awaiting approval" },
-  locked: { dot: "#278f5e", badge: "grn", label: "Locked" },
-  /* The artboard has no archived row. Archived is finished and quiet, so it
-     wears the same neutral badge as a brief and is told apart by its word. */
-  archived: { dot: "#c7c7c7", badge: "gray", label: "Archived" },
+/** The same words the script page uses (待写 · 撰写中 · 审阅中 · 已批准). */
+const STATUS: Record<Status, { dot: string; badge: string; zh: string; en: string }> = {
+  brief: { dot: "#c7c7c7", badge: "gray", zh: "待写", en: "To write" },
+  drafting: { dot: "#007be0", badge: "blue", zh: "撰写中", en: "Drafting" },
+  awaiting_approval: { dot: "#db7706", badge: "amb", zh: "审阅中", en: "In review" },
+  locked: { dot: "#278f5e", badge: "grn", zh: "已批准", en: "Approved" },
+  archived: { dot: "#c7c7c7", badge: "gray", zh: "已归档", en: "Archived" },
 };
+
+/** A native tooltip only where the text is actually cut off. */
+function tipIfCut(e: React.MouseEvent<HTMLElement>, text: string) {
+  const el = e.currentTarget.querySelector<HTMLElement>("[data-cut]") ?? e.currentTarget;
+  const cut = el.scrollWidth > el.clientWidth + 1 || el.scrollHeight > el.clientHeight + 1;
+  e.currentTarget.title = cut ? text : "";
+}
 
 /* ------------------------------------------------------------------- icons */
 
-/** The folder tint the artboard gives the folder you are inside. */
-function SidebarFolder({ on }: { on: boolean }) {
-  return (
-    <svg viewBox="0 0 24 24" style={{ width: 14, height: 14, fill: on ? "#8fc3f1" : "#c7c7c7", flexShrink: 0 }}>
-      <path d="M3.6 6.9a2.1 2.1 0 0 1 2.1-2.1h3.2a2.1 2.1 0 0 1 1.62.76l1.02 1.24h6.76a2.1 2.1 0 0 1 2.1 2.1v8.3a2.1 2.1 0 0 1-2.1 2.1H5.7a2.1 2.1 0 0 1-2.1-2.1z" />
-    </svg>
-  );
-}
-
-/**
- * The artboard's Finder folder, 54x42. Its gradient is declared once at the
- * root of the screen (`#sl-mfold`) rather than per tile, which is where the
- * artboard's duplicated id would land in a list of any length.
- */
 function FolderTile() {
   return (
-    <svg
-      viewBox="0 0 60 46"
-      width="54"
-      height="42"
-      style={{ display: "block", flexShrink: 0, filter: "drop-shadow(0 1px 1.5px rgba(0,0,0,.14))" }}
-    >
+    <svg viewBox="0 0 60 46" width="54" height="42" style={{ display: "block", flexShrink: 0, filter: "drop-shadow(0 1px 1.5px rgba(0,0,0,.14))" }}>
       <path d="M2 5a4 4 0 0 1 4-4h14.2a4 4 0 0 1 3.1 1.5L26.4 6H54a4 4 0 0 1 4 4v5H2z" fill="#4e9ce0" />
       <rect x="1" y="10.5" width="58" height="34.5" rx="4.5" fill="url(#sl-mfold)" />
       <rect x="1.5" y="10.5" width="57" height="1.8" rx=".9" fill="#bfe3ff" />
@@ -432,11 +326,90 @@ function PageIcon({ status, width }: { status: Status; width: number }) {
   );
 }
 
-function TrashIcon() {
+function MoreIcon() {
   return (
-    <svg viewBox="0 0 24 24">
-      <path d="M5.5 7.5h13M9.5 7.5V5.8a1.3 1.3 0 0 1 1.3-1.3h2.4a1.3 1.3 0 0 1 1.3 1.3v1.7M7 7.5l.8 11.2h8.4L17 7.5" />
+    <svg viewBox="0 0 24 24" width={16} height={16} fill="currentColor" aria-hidden>
+      <circle cx="6" cy="12" r="1.6" />
+      <circle cx="12" cy="12" r="1.6" />
+      <circle cx="18" cy="12" r="1.6" />
     </svg>
+  );
+}
+
+const MENU_ICONS: Record<string, React.ReactNode> = {
+  open: <path d="M14 4.5h5.5V10M19.5 4.5 11 13M18 14v4.5a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 4 18.5v-11A1.5 1.5 0 0 1 5.5 6H10" />,
+  rename: <path d="M4.5 19.5h4l10-10a2.1 2.1 0 0 0-3-3l-10 10zM13.5 8.5l3 3" />,
+  move: <path d="M3.6 6.9a2.1 2.1 0 0 1 2.1-2.1h3.2a2.1 2.1 0 0 1 1.62.76l1.02 1.24h6.76a2.1 2.1 0 0 1 2.1 2.1v8.3a2.1 2.1 0 0 1-2.1 2.1H5.7a2.1 2.1 0 0 1-2.1-2.1zM10 13h5.5M13 10.5l2.5 2.5-2.5 2.5" />,
+  share: <path d="M8.5 11.5a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM3.5 19.5a5 5 0 0 1 10 0M16 8v6M13 11h6" />,
+  trash: <path d="M5.5 7.5h13M9.5 7.5V5.8a1.3 1.3 0 0 1 1.3-1.3h2.4a1.3 1.3 0 0 1 1.3 1.3v1.7M7 7.5l.8 11.2h8.4L17 7.5" />,
+  script: <path d="M7 3.5h7l4 4v13H7zM14 3.5v4h4M9.5 12h6M9.5 15.5h4" />,
+  folder: <path d="M3.6 6.9a2.1 2.1 0 0 1 2.1-2.1h3.2a2.1 2.1 0 0 1 1.62.76l1.02 1.24h6.76a2.1 2.1 0 0 1 2.1 2.1v8.3a2.1 2.1 0 0 1-2.1 2.1H5.7a2.1 2.1 0 0 1-2.1-2.1zM12 10.5v5M9.5 13h5" />,
+};
+const MI = ({ k }: { k: string }) => <svg viewBox="0 0 24 24" aria-hidden>{MENU_ICONS[k]}</svg>;
+
+/* ----------------------------------------------------------------- menus */
+
+type MenuItem = { key: string; label: string; icon?: string; danger?: boolean; sub?: boolean; run: () => void } | "hr";
+
+/** A small menu at a point on the screen, kept inside the window. */
+function PopMenu({ x, y, items, onClose, label }: { x: number; y: number; items: MenuItem[]; onClose: () => void; label: string }) {
+  const ref = React.useRef<HTMLDivElement | null>(null);
+  const [pos, setPos] = React.useState({ left: x, top: y });
+  React.useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const w = el.offsetWidth;
+    const h = el.offsetHeight;
+    setPos({ left: Math.max(8, Math.min(x, window.innerWidth - w - 8)), top: Math.max(8, Math.min(y, window.innerHeight - h - 8)) });
+    el.querySelector<HTMLButtonElement>("button")?.focus();
+  }, [x, y, items.length]);
+  React.useEffect(() => {
+    const down = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
+    };
+    const key = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        e.preventDefault();
+        const bs = Array.from(ref.current?.querySelectorAll<HTMLButtonElement>("button") ?? []);
+        const i = bs.indexOf(document.activeElement as HTMLButtonElement);
+        bs[(i + (e.key === "ArrowDown" ? 1 : -1) + bs.length) % bs.length]?.focus();
+      }
+    };
+    const away = () => onClose();
+    window.addEventListener("mousedown", down);
+    window.addEventListener("keydown", key);
+    window.addEventListener("resize", away);
+    window.addEventListener("scroll", away, true);
+    return () => {
+      window.removeEventListener("mousedown", down);
+      window.removeEventListener("keydown", key);
+      window.removeEventListener("resize", away);
+      window.removeEventListener("scroll", away, true);
+    };
+  }, [onClose]);
+  return (
+    <div ref={ref} className="sl-menu" role="menu" aria-label={label} style={pos} onContextMenu={(e) => e.preventDefault()}>
+      {items.map((it, i) =>
+        it === "hr" ? (
+          <hr key={`hr${i}`} />
+        ) : (
+          <button
+            key={it.key}
+            type="button"
+            role="menuitem"
+            className={[it.danger ? "danger" : "", it.sub ? "sub" : ""].join(" ").trim() || undefined}
+            onClick={() => {
+              onClose();
+              it.run();
+            }}
+          >
+            {it.icon ? <MI k={it.icon} /> : null}
+            <span>{it.label}</span>
+          </button>
+        ),
+      )}
+    </div>
   );
 }
 
@@ -446,7 +419,6 @@ export function ScriptLibraryScreen(props: ScriptLibraryScreenProps): React.JSX.
   const {
     locale,
     scripts,
-    proposals,
     folders,
     counts,
     folderId,
@@ -460,17 +432,14 @@ export function ScriptLibraryScreen(props: ScriptLibraryScreenProps): React.JSX.
     pending,
     error,
     onOpen,
-    onFolder,
     tree,
     projectId = null,
-    projectRefs = [],
-    onProject,
+    onNav,
     onMove,
-    onStatus,
-    onScope,
+    onRename,
+    onShare,
     onSort,
     onView,
-    onQuery,
     onNewScript,
     onNewFolder,
     onDelete,
@@ -481,134 +450,199 @@ export function ScriptLibraryScreen(props: ScriptLibraryScreenProps): React.JSX.
   } = props;
 
   const zh = locale.startsWith("zh");
-  const t = (key: string): string => (zh ? (ZH[key] ?? key) : key);
+  const t = (a: string, b: string) => (zh ? a : b);
+  const n = (v: number) => new Intl.NumberFormat(locale).format(v);
 
-  /**
-   * What the panel can say from these rows alone.
-   *
-   * The artboard asked "What is holding this folder up?" and answered with
-   * invented names and durations. This answers the same question from the
-   * dates that are actually here: what has been waiting longest, and what has
-   * not been touched.
-   */
+  /* The search box types locally and follows the URL after a pause, so a
+     keystroke is not a navigation. */
+  const [q, setQ] = React.useState(query);
+  const [urlQ, setUrlQ] = React.useState(query);
+  if (urlQ !== query) {
+    /* The URL moved on its own (a folder, 清除筛选): the box follows. */
+    setUrlQ(query);
+    setQ(query);
+  }
+  React.useEffect(() => {
+    if (q === query) return;
+    const id = window.setTimeout(() => onNav({ q: q.trim() || null }), 280);
+    return () => window.clearTimeout(id);
+  }, [q, query, onNav]);
+
+  const [menu, setMenu] = React.useState<{ x: number; y: number; items: MenuItem[]; label: string } | null>(null);
+  const [menuFor, setMenuFor] = React.useState<string | null>(null);
+  const closeMenu = React.useCallback(() => {
+    setMenu(null);
+    setMenuFor(null);
+  }, []);
+
   const agentNote = React.useMemo(() => {
-    if (scripts.length === 0) return zh ? "这里还没有脚本。" : "There are no scripts here yet.";
-
+    if (scripts.length === 0) return t("这里还没有脚本。", "There are no scripts here yet.");
     const waiting = scripts.filter((s) => s.status === "awaiting_approval");
     const stale = scripts.filter((s) => s.status === "drafting" && daysSince(s.updatedAt) >= 7);
-
     const parts: string[] = [];
     if (waiting.length) {
       const longest = waiting.reduce((a, b) => (a.updatedAt < b.updatedAt ? a : b));
       const d = daysSince(longest.updatedAt);
       parts.push(
         zh
-          ? `${waiting.length} 个脚本在等批准，等得最久的是《${longest.title}》，${d <= 0 ? "今天" : `${d} 天`}。`
-          : `${waiting.length} waiting on approval. The longest is “${longest.title}”, ${d <= 0 ? "since today" : `${d} days`}.`,
+          ? `${waiting.length} 个脚本在等审阅，最久的是《${longest.title}》，${d <= 0 ? "今天" : `${d} 天`}。`
+          : `${waiting.length} waiting for review. The longest is “${longest.title}”, ${d <= 0 ? "since today" : `${d} days`}.`,
       );
     }
-    if (stale.length) {
-      parts.push(
-        zh
-          ? `${stale.length} 个草稿超过一周没有改动。`
-          : `${stale.length} drafts have not been touched in over a week.`,
-      );
-    }
-    if (!parts.length) {
-      parts.push(zh ? "没有卡住的脚本。" : "Nothing is stuck.");
-    }
+    if (stale.length) parts.push(zh ? `${stale.length} 个草稿超过一周没改。` : `${stale.length} drafts untouched for over a week.`);
+    if (!parts.length) parts.push(t("没有卡住的脚本。", "Nothing is stuck."));
     return parts.join(zh ? "" : " ");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scripts, zh]);
 
-  const here = folders.find((f) => f.id === folderId) ?? null;
-  const filtered = query.trim() !== "" || status !== null || folderId !== null || scope !== "all";
+  const ownFolder = folders.find((f) => f.id === folderId) ?? null;
+  const project = projectId && projectId !== "none" ? (tree?.projects.find((p) => p.id === projectId) ?? null) : null;
+  const where = projectId === "none" ? t("未归入项目", "Not in a project") : project ? project.title : ownFolder ? ownFolder.name : null;
+  const filtered = query.trim() !== "" || status !== null || scope !== "all";
+  const atRoot = where === null;
+  const topics = scope === "topics" && Boolean(topicsView);
 
-  /** The artboard's library rows. Only two of the four have a count this screen
-   * can know: "all" and the approval queue. The other two are shown bare rather
-   * than with a number nobody computed. */
-  const scopes: { key: ScriptLibraryScreenProps["scope"]; label: string; badge: number | null; alert: boolean }[] = [
-    { key: "all", label: t("All scripts"), badge: counts.all, alert: false },
-    { key: "mine", label: t("Assigned to me"), badge: null, alert: false },
-    { key: "awaiting", label: t("Waiting on approval"), badge: counts.awaiting, alert: true },
-    { key: "shared", label: t("Shared with me"), badge: null, alert: false },
-    /* Not on the artboard: the topics chosen elsewhere (Home, Research, the
-       backlog, today's plan) that are waiting for a script. The client
-       could not find a topic page in Script; this is it. */
-    ...(topicsView ? [{ key: "topics" as const, label: t("Topics"), badge: topicCount ?? null, alert: false }] : []),
+  /* ---------------------------------------------------- the one filter row */
+  type Chip = { key: string; label: string; n?: number | null; dot?: string; alert?: boolean; on: boolean; go: Record<string, string | null>; keep?: boolean };
+  const statusChip = (s: Status, v: number): Chip => ({ key: s, label: zh ? STATUS[s].zh : STATUS[s].en, n: v, dot: STATUS[s].dot, on: status === s, go: { status: s, scope: null } });
+  const chips: (Chip | "div")[] = [
+    { key: "all", label: t("全部", "All"), n: counts.all, on: status === null && scope === "all", go: { status: null, scope: null }, keep: true },
+    statusChip("brief", counts.brief),
+    statusChip("drafting", counts.drafting),
+    statusChip("awaiting_approval", counts.awaiting),
+    statusChip("locked", counts.locked),
+    "div",
+    { key: "mine", label: t("我负责的", "Mine"), n: counts.mine ?? null, on: scope === "mine", go: { scope: "mine", status: null } },
+    { key: "awaiting", label: t("等我批准", "Waiting on me"), n: counts.waitingMe ?? null, alert: true, on: scope === "awaiting", go: { scope: "awaiting", status: null } },
+    { key: "shared", label: t("共享给我的", "Shared with me"), on: scope === "shared", go: { scope: "shared", status: null }, keep: true },
+    ...(topicsView ? [{ key: "topics", label: t("选题", "Topics"), n: topicCount ?? null, on: scope === "topics", go: { scope: "topics", status: null } } as Chip] : []),
   ];
+  /* A chip with nothing behind it is noise; it stays while it is the one on. */
+  const shownChips = chips.filter((c) => c === "div" || c.keep || c.on || (typeof c.n === "number" ? c.n > 0 : true));
 
-  /** The artboard's filter row, in its order, with its dot colours. */
-  const chips: { key: Status | null; label: string; n: number; dot: string | null }[] = [
-    { key: null, label: t("All"), n: counts.all, dot: null },
-    { key: "brief", label: t("Briefs"), n: counts.brief, dot: STATUS.brief.dot },
-    { key: "drafting", label: t("Drafting"), n: counts.drafting, dot: STATUS.drafting.dot },
-    {
-      key: "awaiting_approval",
-      label: t("Awaiting approval"),
-      n: counts.awaiting,
-      dot: STATUS.awaiting_approval.dot,
-    },
-    { key: "locked", label: t("Locked"), n: counts.locked, dot: STATUS.locked.dot },
-  ];
+  /* ------------------------------------------------ what a script offers */
+  function itemsFor(s: ScriptListItem): MenuItem[] {
+    const items: MenuItem[] = [{ key: "open", label: t("打开", "Open"), icon: "open", run: () => onOpen(s.id) }];
+    if (s.projectId && onRename) items.push({ key: "rename", label: t("重命名", "Rename"), icon: "rename", run: () => onRename(s) });
+    if (!s.projectId && onMove && (folders.length > 0 || s.folderId)) {
+      for (const f of folders)
+        if (f.id !== s.folderId) items.push({ key: `mv-${f.id}`, label: zh ? `移到「${f.name}」` : `Move to “${f.name}”`, icon: "move", run: () => onMove(s.id, f.id) });
+      if (s.folderId) items.push({ key: "mv-out", label: t("移出文件夹", "Take out of the folder"), icon: "move", run: () => onMove(s.id, null) });
+    }
+    if (s.projectId && onShare) items.push({ key: "share", label: t("分享", "Share"), icon: "share", run: () => onShare(s) });
+    items.push("hr", { key: "delete", label: t("删除", "Delete"), icon: "trash", danger: true, run: () => onDelete(s.id) });
+    return items;
+  }
+  function openMenu(s: ScriptListItem, x: number, y: number) {
+    setMenuFor(s.id);
+    setMenu({ x, y, items: itemsFor(s), label: s.title });
+  }
+  const onContext = (s: ScriptListItem) => (e: React.MouseEvent) => {
+    e.preventDefault();
+    openMenu(s, e.clientX, e.clientY);
+  };
+  const onMore = (s: ScriptListItem) => (e: React.MouseEvent<HTMLButtonElement>) => {
+    e.stopPropagation();
+    const r = e.currentTarget.getBoundingClientRect();
+    if (menuFor === s.id) return closeMenu();
+    openMenu(s, r.right - 190, r.bottom + 4);
+  };
+  const keyOpen = (s: ScriptListItem) => (e: React.KeyboardEvent) => {
+    if (e.target !== e.currentTarget) return;
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      onOpen(s.id);
+    }
+    if (e.key === "ContextMenu" || (e.shiftKey && e.key === "F10")) {
+      e.preventDefault();
+      const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+      openMenu(s, r.left + 24, r.top + 24);
+    }
+  };
+  const drag = (s: ScriptListItem) =>
+    !s.projectId && onMove
+      ? {
+          draggable: true,
+          onDragStart: (e: React.DragEvent) => {
+            e.dataTransfer.setData("text/x-script-id", s.id);
+            e.dataTransfer.effectAllowed = "move";
+          },
+        }
+      : {};
 
-  /** The artboard's list geometry, minus Length and House style (no data).
-   * Version and Edited are wide enough for their own header and a Chinese
-   * "10小时前" on one line (at 44px and 76px both broke onto two, "版/本");
-   * Status and Owner give back what their contents never used, so at 1280
-   * the title keeps about 180px rather than eighty. */
-  const COLS = "minmax(0, 1fr) 92px 56px 112px 88px 36px";
+  const sorted = React.useMemo(() => {
+    const out = [...scripts];
+    if (sort === "title") out.sort((a, b) => a.title.localeCompare(b.title, locale));
+    else if (sort === "status") {
+      const order: Status[] = ["awaiting_approval", "drafting", "brief", "locked", "archived"];
+      out.sort((a, b) => order.indexOf(a.status) - order.indexOf(b.status));
+    } else out.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+    return out;
+  }, [scripts, sort, locale]);
 
-  const frameStyle = { "--ac": ACCENT } as React.CSSProperties;
+  /* -------------------------------------------------------------- 新建 */
+  const [newOpen, setNewOpen] = React.useState<{ x: number; y: number } | null>(null);
+  const newButton = (
+    <div style={{ padding: "2px 4px 16px" }}>
+      <button
+        type="button"
+        className="sl-new"
+        aria-haspopup="menu"
+        aria-expanded={newOpen !== null}
+        onClick={(e) => {
+          const r = e.currentTarget.getBoundingClientRect();
+          setNewOpen((v) => (v ? null : { x: r.left, y: r.bottom + 6 }));
+        }}
+      >
+        <svg viewBox="0 0 24 24" width={20} height={20} fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" aria-hidden>
+          <path d="M12 5v14M5 12h14" />
+        </svg>
+        {t("新建", "New")}
+      </button>
+    </div>
+  );
 
-  /** "v4" while there is a version; a brief has none, and says so. */
-  function versionWord(s: ScriptListItem): string {
-    return s.version > 0 ? `v${count(s.version, locale)}` : t("Brief");
+  const railSections: RailSection[] = [];
+  if (tree) {
+    railSections.push({
+      folders: [{ key: "all", kind: "all", label: t("全部脚本", "All scripts"), count: tree.total, active: atRoot, onClick: () => onNav({ project: null, folder: null, scope: null, status: null, q: null }) }],
+    });
+    if (tree.projects.length)
+      railSections.push({
+        title: t("项目", "Projects"),
+        folders: tree.projects.map((p) => ({ key: p.id, kind: "project" as const, label: p.title, count: p.count, active: projectId === p.id, onClick: () => onNav({ project: p.id, folder: null }) })),
+      });
+    railSections.push({
+      title: folders.length ? t("我的文件夹", "My folders") : undefined,
+      folders: [
+        ...folders.map((f) => ({ key: f.id, kind: "own" as const, label: f.name, count: f.count, active: !projectId && folderId === f.id, onClick: () => onNav({ folder: f.id, project: null }), onDrop: onMove ? (sid: string) => onMove(sid, f.id) : undefined })),
+        { key: "none", kind: "loose" as const, label: t("未归入项目", "Not in a project"), count: tree.unassigned, active: projectId === "none", onClick: () => onNav({ project: "none", folder: null }), onDrop: onMove ? (sid: string) => onMove(sid, null) : undefined },
+      ],
+    });
   }
 
-  function clearAll() {
-    onQuery("");
-    onStatus(null);
-    onFolder(null);
-    onScope("all");
-  }
-
-  const footer = zh
-    ? `${count(scripts.length, locale)} ${t("scripts")} · ${t("filtered to scripts you can read")}`
-    : `${count(scripts.length, locale)} scripts · filtered to scripts you can read`;
-
-  /* ------------------------------------------------------------- empty states */
-
-  const emptyState =
-    scripts.length > 0 ? null : (
-      <div style={{ maxWidth: 460, padding: "6px 4px" }}>
-        <div style={{ fontSize: 15, fontWeight: 600 }}>
-          {filtered ? t("No scripts match this search.") : t("No scripts yet")}
-        </div>
-        <p className="mut" style={{ lineHeight: 1.55, marginTop: 6 }}>
-          {filtered ? t("Clear the search and the filters") : t("New script writes the first one.")}
-        </p>
+  /* ------------------------------------------------------------ empties */
+  const empty = (
+    <div style={{ padding: "36px 8px", textAlign: "center" }}>
+      <div style={{ fontSize: 15, fontWeight: 600 }}>{filtered ? t("没有符合的脚本", "No scripts match") : t("这里还没有脚本", "No scripts here yet")}</div>
+      <div style={{ marginTop: 14, display: "flex", justifyContent: "center" }}>
         {filtered ? (
-          <button type="button" className="btn s" onClick={clearAll} style={{ marginTop: 12 }}>
-            {t("Clear the search and the filters")}
+          <button type="button" className="fc" onClick={() => { setQ(""); onNav({ q: null, status: null, scope: null }); }}>
+            {t("清除筛选", "Clear the filters")}
           </button>
         ) : (
-          <button type="button" className="btn p" onClick={onNewScript} style={{ marginTop: 12 }}>
-            <svg viewBox="0 0 24 24">
-              <path d="M12 6v12M6 12h12" />
-            </svg>
-            {t("New script")}
+          <button type="button" className="fc on" onClick={onNewScript}>
+            {t("新建脚本", "New script")}
           </button>
         )}
       </div>
-    );
+    </div>
+  );
 
-  /* ------------------------------------------------------------------ render */
-
+  /* ------------------------------------------------------------- render */
   return (
     <>
       <style dangerouslySetInnerHTML={{ __html: CSS }} />
-
-      {/* The gradient the folder tiles share, declared once. */}
       <svg width="0" height="0" aria-hidden="true" style={{ position: "absolute" }} focusable="false">
         <defs>
           <linearGradient id="sl-mfold" x1="0" y1="0" x2="0" y2="1">
@@ -618,601 +652,264 @@ export function ScriptLibraryScreen(props: ScriptLibraryScreenProps): React.JSX.
         </defs>
       </svg>
 
-      {/* ============ MAIN ============ */}
-      <div
-        data-script-library-screen=""
-        style={{ ...frameStyle, flexGrow: 1, display: "flex", minWidth: 0 }}
-      >
-      <div style={{ flexGrow: 1, display: "flex", flexDirection: "column", minWidth: 0, minHeight: 0 }}>
-        {/* toolbar */}
-        <div className="bar">
-          {here === null ? (
-            <span className="h1">{t("Scripts")}</span>
-          ) : (
-            <>
-              <button
-                type="button"
-                onClick={() => onFolder(null)}
-                style={{
-                  fontSize: 13,
-                  color: "#999999",
-                  border: 0,
-                  background: "transparent",
-                  padding: 0,
-                  fontFamily: "inherit",
-                  letterSpacing: "inherit",
-                  cursor: "pointer",
-                }}
-              >
-                {t("Scripts")}
-              </button>
-              <svg
-                viewBox="0 0 24 24"
-                style={{ width: 12, height: 12, stroke: "#c7c7c7", fill: "none", strokeWidth: 2, strokeLinecap: "round" }}
-              >
-                <path d="m9.5 5.5 6 6.5-6 6.5" />
-              </svg>
-              <span className="h1">{here.name}</span>
-            </>
-          )}
-          <div style={{ flexGrow: 1 }}></div>
+      <div data-script-library-screen="" style={{ flexGrow: 1, display: "flex", minWidth: 0, minHeight: 0 }}>
+        {tree ? <FolderRail header={newButton} sections={railSections} /> : null}
 
-          {/* The artboard drew this as a static box; it is the real search. */}
-          <div
-            style={{
-              width: 200,
-              height: 28,
-              border: "1px solid #ededed",
-              borderRadius: 8,
-              background: "#f8f8f8",
-              display: "flex",
-              alignItems: "center",
-              gap: 7,
-              padding: "0 9px",
-            }}
-          >
-            <svg
-              viewBox="0 0 24 24"
-              style={{
-                width: 13,
-                height: 13,
-                flexShrink: 0,
-                stroke: "#999999",
-                fill: "none",
-                strokeWidth: 1.8,
-                strokeLinecap: "round",
-              }}
-            >
-              <circle cx="11" cy="11" r="6.4" />
-              <path d="m15.8 15.8 4 4" />
-            </svg>
-            <input
-              value={query}
-              onChange={(e) => onQuery(e.target.value)}
-              aria-label={t("Search scripts")}
-              placeholder={t("Search scripts")}
-              style={{
-                width: "100%",
-                minWidth: 0,
-                border: 0,
-                outline: "none",
-                background: "transparent",
-                fontSize: 12,
-                fontFamily: "inherit",
-                letterSpacing: "inherit",
-                color: "#171717",
-              }}
-            />
-          </div>
-
-          <div style={{ display: "flex", gap: 2, padding: 2, borderRadius: 8, background: "#f3f3f3" }}>
-            <button
-              type="button"
-              className="seg"
-              onClick={() => onView("grid")}
-              aria-pressed={view === "grid"}
-              title={t("Pages")}
-              aria-label={t("Pages")}
-              style={{
-                border: 0,
-                padding: 0,
-                background: view === "grid" ? "#ffffff" : "transparent",
-                color: view === "grid" ? "#171717" : "#7c7c7c",
-                boxShadow: view === "grid" ? "0px 1px 2px rgba(0, 0, 0, 0.1)" : "none",
-              }}
-            >
-              <svg viewBox="0 0 24 24">
-                <rect x="4.2" y="4.2" width="6.6" height="6.6" rx="1.6" />
-                <rect x="13.2" y="4.2" width="6.6" height="6.6" rx="1.6" />
-                <rect x="4.2" y="13.2" width="6.6" height="6.6" rx="1.6" />
-                <rect x="13.2" y="13.2" width="6.6" height="6.6" rx="1.6" />
-              </svg>
-            </button>
-            <button
-              type="button"
-              className="seg"
-              onClick={() => onView("list")}
-              aria-pressed={view === "list"}
-              title={t("List")}
-              aria-label={t("List")}
-              style={{
-                border: 0,
-                padding: 0,
-                background: view === "list" ? "#ffffff" : "transparent",
-                color: view === "list" ? "#171717" : "#7c7c7c",
-                boxShadow: view === "list" ? "0px 1px 2px rgba(0, 0, 0, 0.1)" : "none",
-              }}
-            >
-              <svg viewBox="0 0 24 24">
-                <path d="M9 6.5h11M9 12h11M9 17.5h11" />
-                <path d="M4.6 6.5h.01M4.6 12h.01M4.6 17.5h.01" />
-              </svg>
-            </button>
-          </div>
-
-          <button type="button" className="btn p" onClick={onNewScript}>
-            <svg viewBox="0 0 24 24" style={{ strokeWidth: 2 }}>
-              <path d="M12 6v12M6 12h12" />
-            </svg>
-            {t("New script")}
-          </button>
-        </div>
-
-        {/* Which scripts: tabs, not a second column down the left (the owner
-            wanted fewer columns and less on the page). The four status counts
-            that sat under the toolbar are on the filter chips below. */}
-        <div style={{ flexShrink: 0, display: "flex", alignItems: "center", gap: 2, padding: "0 16px", borderBottom: "1px solid #ededed", overflowX: "auto" }}>
-          {scopes.map((sc) => {
-            const on = scope === sc.key && (sc.key !== "all" || folderId === null);
-            return (
-              <button
-                key={sc.key}
-                type="button"
-                aria-pressed={on}
-                onClick={() => {
-                  onScope(sc.key);
-                  if (sc.key === "all" && folderId !== null) onFolder(null);
-                }}
-                style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 42, padding: "0 11px", border: 0, borderBottom: `2px solid ${on ? "#171717" : "transparent"}`, background: "transparent", fontFamily: "inherit", fontSize: 14, color: on ? "#171717" : "#6b6b6b", fontWeight: on ? 600 : 400, cursor: "pointer", whiteSpace: "nowrap" }}
-              >
-                {sc.label}
-                {sc.badge ? (
-                  <b style={{ fontSize: 11, fontWeight: 600, borderRadius: 9, padding: "0 6px", lineHeight: "17px", color: sc.alert ? "#fff" : "#6b6b6b", background: sc.alert ? "#e03636" : "#f0f0ee" }}>{count(sc.badge, locale)}</b>
-                ) : null}
-              </button>
-            );
-          })}
-          <span style={{ flexGrow: 1 }} />
-          <button type="button" onClick={onNewFolder} style={{ height: 30, padding: "0 10px", border: 0, borderRadius: 8, background: "transparent", color: "#525252", fontSize: 13, fontFamily: "inherit", cursor: "pointer", whiteSpace: "nowrap" }}>
-            {t("New folder")}
-          </button>
-        </div>
-
-        <div style={{ flexGrow: 1, display: "flex", minHeight: 0 }}>
-          {tree && onProject ? (
-            <FolderRail
-              sections={((): RailSection[] => {
-                const secs: RailSection[] = [
-                  {
-                    folders: [
-                      { key: "all", kind: "all", label: zh ? "全部脚本" : "All scripts", count: tree.total, active: !projectId && folderId === null && scope === "all", onClick: () => { onProject(null); onFolder(null); } },
-                    ],
-                  },
-                ];
-                if (tree.projects.length)
-                  secs.push({
-                    title: zh ? "项目" : "Projects",
-                    folders: tree.projects.map((p) => ({ key: p.id, kind: "project" as const, label: p.title, count: p.count, active: projectId === p.id, onClick: () => onProject(p.id) })),
-                  });
-                secs.push({
-                  title: zh ? "我的文件夹" : "My folders",
-                  action: { label: zh ? "新建" : "New", onClick: onNewFolder },
-                  folders: [
-                    ...folders.map((f) => ({ key: f.id, kind: "own" as const, label: f.name, count: f.count, active: !projectId && folderId === f.id, onClick: () => onFolder(f.id), onDrop: onMove ? (sid: string) => onMove(sid, f.id) : undefined })),
-                    { key: "none", kind: "loose" as const, label: zh ? "未归入项目" : "Not in a project", count: tree.unassigned, active: projectId === "none", onClick: () => onProject("none"), onDrop: onMove ? (sid: string) => onMove(sid, null) : undefined },
-                  ],
-                });
-                return secs;
-              })()}
-            />
-          ) : null}
-          <div
-            aria-busy={pending}
-            style={{
-              flexGrow: 1,
-              minWidth: 0,
-              display: "flex",
-              flexDirection: "column",
-              padding: "16px 22px 0",
-              overflow: "auto",
-              opacity: pending ? 0.6 : 1,
-              transition: "opacity .12s ease",
-            }}
-          >
-            {projectId && tree ? (
-              <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 14, padding: "14px 16px", border: "1px solid #ecebe7", borderRadius: 12, background: "#fff", flexShrink: 0 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                  <span style={{ fontSize: 16, fontWeight: 600, color: "#171717", flexGrow: 1, minWidth: 0 }}>
-                    {projectId === "none" ? (zh ? "未归入项目的脚本" : "Scripts in no project") : (tree.projects.find((p) => p.id === projectId)?.title ?? "")}
-                  </span>
-                  {projectId !== "none" ? (
-                    <a href={`/projects/${projectId}`} style={{ display: "inline-flex", alignItems: "center", height: 34, padding: "0 14px", borderRadius: 9, background: "#171717", color: "#fff", fontSize: 13, fontWeight: 600, textDecoration: "none" }}>
-                      {zh ? "打开项目 →" : "Open the project →"}
-                    </a>
-                  ) : (
-                    <span style={{ fontSize: 12.5, color: "#8a8a8a" }}>{zh ? "可以把脚本拖到左边「我的文件夹」里" : "Drag a script onto one of your folders on the left"}</span>
-                  )}
-                </div>
-                {projectId !== "none" ? (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                    <span style={{ fontSize: 12, fontWeight: 600, color: "#8a8a8a" }}>{zh ? `参考资料 · ${projectRefs.length}` : `References · ${projectRefs.length}`}</span>
-                    {projectRefs.length ? (
-                      projectRefs.map((r) => (
-                        <a key={r.id} href={`/api/files/${r.id}/download?download=1`} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "#333", textDecoration: "none", padding: "3px 0" }}>
-                          <svg viewBox="0 0 24 24" width={15} height={15} fill="none" stroke="#8a8a8a" strokeWidth={1.8} aria-hidden><path d="M7 3.5h7l4 4v13H7z" /><path d="M14 3.5v4h4" /></svg>
-                          <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.name}</span>
-                        </a>
-                      ))
-                    ) : (
-                      <span style={{ fontSize: 12.5, color: "#a3a3a3" }}>{zh ? "还没有。在脚本页的「参考资料」里上传。" : "None yet — upload them on the script page."}</span>
-                    )}
-                  </div>
-                ) : null}
-              </div>
-            ) : null}
-            {scope === "topics" && topicsView ? topicsView : null}
-            {/* filter row */}
-            <div style={{ display: scope === "topics" && topicsView ? "none" : "flex", alignItems: "center", gap: 6, marginBottom: 16, flexShrink: 0 }}>
-              {chips.map((c) => {
-                const on = status === c.key;
-                return (
-                  <button
-                    key={c.key ?? "all"}
-                    type="button"
-                    className={on ? "fc on" : "fc"}
-                    aria-pressed={on}
-                    onClick={() => onStatus(c.key)}
-                  >
-                    {c.dot === null ? null : <span className="dot" style={{ background: c.dot }}></span>}
-                    {c.label} <b>{count(c.n, locale)}</b>
+        <div style={{ flexGrow: 1, display: "flex", flexDirection: "column", minWidth: 0, minHeight: 0 }}>
+          {/* breadcrumb · search · view */}
+          <div className="sl-bar">
+            <div className="sl-crumb">
+              {atRoot ? (
+                <span className="here">{t("脚本", "Scripts")}</span>
+              ) : (
+                <>
+                  <button type="button" onClick={() => onNav({ project: null, folder: null })}>
+                    {t("脚本", "Scripts")}
                   </button>
-                );
-              })}
-              <div style={{ flexGrow: 1 }}></div>
-              <span className="cap">{t("Sort")}</span>
-              {/* The artboard drew a chip with a chevron and nothing behind it.
-                  The native picker brings its own chevron, so the artboard's is
-                  not drawn twice. */}
-              <div className="chip" style={{ height: 26, fontSize: 12 }}>
-                <select
-                  aria-label={t("Sort")}
-                  value={sort}
-                  onChange={(e) => onSort(e.target.value as ScriptLibraryScreenProps["sort"])}
-                  style={{
-                    border: "none",
-                    background: "transparent",
-                    color: "#171717",
-                    fontFamily: "inherit",
-                    fontSize: "inherit",
-                    letterSpacing: "inherit",
-                    padding: 0,
-                    cursor: "pointer",
-                  }}
+                  <svg viewBox="0 0 24 24" width={14} height={14} fill="none" stroke="#b5b5b1" strokeWidth={2} strokeLinecap="round" aria-hidden style={{ flexShrink: 0 }}>
+                    <path d="m9.5 5.5 6 6.5-6 6.5" />
+                  </svg>
+                  <span className="here" title={where ?? undefined}>
+                    {where}
+                  </span>
+                </>
+              )}
+              {project ? (
+                <a className="sl-open" href={`/projects/${project.id}`} style={{ marginLeft: 6 }}>
+                  {t("打开项目", "Open project")}
+                  <svg viewBox="0 0 24 24" width={12} height={12} fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" aria-hidden>
+                    <path d="m9.5 5.5 6 6.5-6 6.5" />
+                  </svg>
+                </a>
+              ) : null}
+            </div>
+
+            <label className="sl-search">
+              <svg viewBox="0 0 24 24" width={14} height={14} fill="none" stroke="#8a8a8a" strokeWidth={1.9} strokeLinecap="round" aria-hidden style={{ flexShrink: 0 }}>
+                <circle cx="11" cy="11" r="6.4" />
+                <path d="m15.8 15.8 4 4" />
+              </svg>
+              <input value={q} onChange={(e) => setQ(e.target.value)} aria-label={t("搜索脚本", "Search scripts")} placeholder={t("搜索脚本", "Search scripts")} />
+            </label>
+
+            <div style={{ display: "flex", gap: 2, padding: 2, borderRadius: 8, background: "#f3f3f1", flexShrink: 0 }}>
+              {(["list", "grid"] as const).map((v) => (
+                <button
+                  key={v}
+                  type="button"
+                  className="seg"
+                  onClick={() => onView(v)}
+                  aria-pressed={view === v}
+                  aria-label={v === "list" ? t("列表", "List") : t("网格", "Grid")}
+                  style={{ background: view === v ? "#fff" : "transparent", color: view === v ? "#171717" : "#7c7c7c", boxShadow: view === v ? "0 1px 2px rgba(0,0,0,.1)" : "none" }}
                 >
-                  <option value="updated">{t("Last edited")}</option>
-                  <option value="title">{t("Title")}</option>
-                  <option value="status">{t("Status")}</option>
-                </select>
-              </div>
+                  {v === "list" ? (
+                    <svg viewBox="0 0 24 24">
+                      <path d="M9 6.5h11M9 12h11M9 17.5h11" />
+                      <path d="M4.6 6.5h.01M4.6 12h.01M4.6 17.5h.01" />
+                    </svg>
+                  ) : (
+                    <svg viewBox="0 0 24 24">
+                      <rect x="4.2" y="4.2" width="6.6" height="6.6" rx="1.6" />
+                      <rect x="13.2" y="4.2" width="6.6" height="6.6" rx="1.6" />
+                      <rect x="4.2" y="13.2" width="6.6" height="6.6" rx="1.6" />
+                      <rect x="13.2" y="13.2" width="6.6" height="6.6" rx="1.6" />
+                    </svg>
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div
+            className="sl-pane"
+            aria-busy={pending}
+            style={{ flexGrow: 1, minWidth: 0, minHeight: 0, display: "flex", flexDirection: "column", padding: "14px 20px 0", overflowY: "auto", overflowX: "hidden", opacity: pending ? 0.6 : 1, transition: "opacity .12s ease" }}
+          >
+            <div className="sl-filters">
+              {shownChips.map((c, i) =>
+                c === "div" ? (
+                  <span key={`d${i}`} className="sl-div" aria-hidden />
+                ) : (
+                  <button key={c.key} type="button" className={c.on ? "fc on" : "fc"} aria-pressed={c.on} onClick={() => onNav(c.go)}>
+                    {c.dot ? <span className="dot" style={{ background: c.dot }} /> : null}
+                    {c.label}
+                    {typeof c.n === "number" && c.n > 0 ? c.alert && !c.on ? <b className="alert">{n(c.n)}</b> : <b>{n(c.n)}</b> : null}
+                  </button>
+                ),
+              )}
+              {topics ? null : (
+                <label className="sl-sort">
+                  {t("排序", "Sort")}
+                  <select value={sort} onChange={(e) => onSort(e.target.value as ScriptLibraryScreenProps["sort"])}>
+                    <option value="updated">{t("最近编辑", "Last edited")}</option>
+                    <option value="title">{t("名称", "Name")}</option>
+                    <option value="status">{t("状态", "Status")}</option>
+                  </select>
+                </label>
+              )}
             </div>
 
             {error === null ? null : (
-              <div className="bd red" style={{ height: "auto", padding: "7px 10px", marginBottom: 12, flexShrink: 0 }}>
+              <div className="bd red" style={{ height: "auto", padding: "8px 10px", marginBottom: 12, whiteSpace: "normal", flexShrink: 0 }}>
                 {error}
               </div>
             )}
 
-            {/* ============ GRID ============ */}
-            {scope === "topics" && topicsView ? null : view === "grid" ? (
+            {topics ? (
+              topicsView
+            ) : view === "grid" ? (
               <>
-                {folders.length === 0 ? null : (
+                {atRoot && !filtered && folders.length > 0 ? (
                   <>
-                    <div className="lbl" style={{ padding: "0 4px", flexShrink: 0 }}>
-                      {t("Folders")}
-                    </div>
-                    <div
-                      style={{
-                        display: "grid",
-                        gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
-                        gap: "2px 6px",
-                        margin: "4px 0 20px",
-                        flexShrink: 0,
-                      }}
-                    >
+                    <div className="sl-lbl">{t("文件夹", "Folders")}</div>
+                    <div className="sl-grid" style={{ marginBottom: 22 }}>
                       {folders.map((f) => (
-                        <button
-                          key={f.id}
-                          type="button"
-                          className="ic"
-                          onClick={() => onFolder(f.id)}
-                          style={{ border: 0, background: "transparent", fontFamily: "inherit", letterSpacing: "inherit" }}
-                        >
-                          <span className="icn">
+                        <button key={f.id} type="button" className="sl-tile" onClick={() => onNav({ folder: f.id, project: null })} onMouseEnter={(e) => tipIfCut(e, f.name)}>
+                          <span className="sl-art">
                             <FolderTile />
                           </span>
-                          <span className="icl">
-                            <span>{f.name}</span>
+                          <span className="sl-name" data-cut="">
+                            {f.name}
                           </span>
-                          <span className="icm">
-                            {zh ? `${count(f.count, locale)} ${t("docs")}` : `${count(f.count, locale)} docs`}
-                          </span>
+                          <span className="sl-meta">{zh ? `${n(f.count)} 个脚本` : `${n(f.count)} scripts`}</span>
                         </button>
                       ))}
                     </div>
+                    <div className="sl-lbl">{t("脚本", "Scripts")}</div>
                   </>
-                )}
-
-                <div className="lbl" style={{ padding: "0 4px", flexShrink: 0 }}>
-                  {t("Scripts")} · {count(scripts.length, locale)}
-                </div>
-                {scripts.length === 0 ? (
-                  <div style={{ marginTop: 10 }}>{emptyState}</div>
+                ) : null}
+                {sorted.length === 0 ? (
+                  empty
                 ) : (
-                  <>
-                    <div
-                      style={{
-                        display: "grid",
-                        gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
-                        gap: "10px 6px",
-                        marginTop: 4,
-                      }}
-                    >
-                      {scripts.map((s) => (
-                        <div
-                          key={s.id}
-                          className="ic"
-                          draggable={!s.projectId && Boolean(onMove)}
-                          onDragStart={(e) => {
-                            e.dataTransfer.setData("text/x-script-id", s.id);
-                            e.dataTransfer.effectAllowed = "move";
-                          }}
-                          role="button"
-                          tabIndex={0}
-                          onClick={() => onOpen(s.id)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter" || e.key === " ") {
-                              e.preventDefault();
-                              onOpen(s.id);
-                            }
-                          }}
-                          style={{ position: "relative", cursor: "pointer" }}
-                        >
-                          <button
-                            type="button"
-                            tabIndex={-1}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onOpen(s.id);
-                            }}
-                            title={s.title}
-                            style={{
-                              display: "flex",
-                              flexDirection: "column",
-                              alignItems: "center",
-                              minWidth: 0,
-                              maxWidth: "100%",
-                              width: "100%",
-                              border: 0,
-                              background: "transparent",
-                              padding: 0,
-                              fontFamily: "inherit",
-                              letterSpacing: "inherit",
-                              cursor: "pointer",
-                            }}
-                          >
-                            <span className="icn">
-                              <PageIcon status={s.status} width={42} />
-                            </span>
-                            <span className="icl">
-                              <span>{s.title}</span>
-                            </span>
-                            <span className="icm">
-                              <span className="dot" style={{ background: STATUS[s.status].dot }}></span>
-                              {versionWord(s)} · {edited(s.updatedAt, locale)}
-                            </span>
-                          </button>
-                          <button
-                            type="button"
-                            className="act ptog"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onDelete(s.id);
-                            }}
-                            aria-label={`${t("Delete script")} ${s.title}`}
-                            title={t("Delete script")}
-                            style={{ position: "absolute", top: 2, right: 2 }}
-                          >
-                            <TrashIcon />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                    <div className="cap" style={{ margin: "22px 0 18px", padding: "0 4px" }}>
-                      {footer}
-                    </div>
-                  </>
-                )}
-              </>
-            ) : (
-              /* ============ LIST ============ */
-              <>
-                {scripts.length === 0 ? (
-                  emptyState
-                ) : (
-                  <>
-                    <div className="t">
-                      <div className="hd" style={{ gridTemplateColumns: COLS }}>
-                        <div>{t("Scripts")}</div>
-                        <div>{t("Status")}</div>
-                        <div className="num">{t("Ver.")}</div>
-                        <div>{t("Owner")}</div>
-                        <div>{t("Edited")}</div>
-                        <div></div>
+                  <div className="sl-grid">
+                    {sorted.map((s) => (
+                      <div
+                        key={s.id}
+                        className="sl-tile"
+                        role="button"
+                        tabIndex={0}
+                        aria-label={s.title}
+                        onClick={() => onOpen(s.id)}
+                        onKeyDown={keyOpen(s)}
+                        onContextMenu={onContext(s)}
+                        onMouseEnter={(e) => tipIfCut(e, s.title)}
+                        {...drag(s)}
+                      >
+                        <span className="sl-art">
+                          <PageIcon status={s.status} width={42} />
+                        </span>
+                        <span className="sl-name" data-cut="">
+                          {s.title}
+                        </span>
+                        <span className="sl-meta">
+                          <span className="dot" style={{ background: STATUS[s.status].dot }} />
+                          <span className="el">
+                            {zh ? STATUS[s.status].zh : STATUS[s.status].en} · {edited(s.updatedAt, locale)}
+                          </span>
+                        </span>
+                        <button type="button" className="more" aria-label={t("更多操作", "More")} aria-haspopup="menu" aria-expanded={menuFor === s.id} onClick={onMore(s)} style={{ position: "absolute", top: 4, right: 4 }}>
+                          <MoreIcon />
+                        </button>
                       </div>
-
-                      {scripts.map((s) => {
-                        /* Where it came from, when it came from somewhere: the
-                           project it is the script of, what that project's
-                           topic came from, and the backlog topic. */
-                        const meta = [
-                          s.projectTitle && s.projectTitle !== s.title ? `${t("Project")} · ${s.projectTitle}` : null,
-                          s.sourceLabel,
-                          s.topicTitle && s.topicTitle !== s.title ? `${t("From the topic")} · ${s.topicTitle}` : null,
-                          s.targetChannel,
-                          s.aspect,
-                        ]
-                          .filter((x): x is string => !!x)
-                          .join(" · ");
-                        const st = STATUS[s.status];
-                        return (
-                          <div
-                            key={s.id}
-                            className="tr"
-                            draggable={!s.projectId && Boolean(onMove)}
-                            onDragStart={(e) => {
-                              e.dataTransfer.setData("text/x-script-id", s.id);
-                              e.dataTransfer.effectAllowed = "move";
-                            }}
-                            role="button"
-                            tabIndex={0}
-                            onClick={() => onOpen(s.id)}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter" || e.key === " ") {
-                                e.preventDefault();
-                                onOpen(s.id);
-                              }
-                            }}
-                            style={{ gridTemplateColumns: COLS, height: 54, cursor: "pointer" }}
-                          >
-                            <div style={{ gap: 11 }}>
-                              <div style={{ width: 26, display: "flex", justifyContent: "center", flexShrink: 0 }}>
-                                <PageIcon status={s.status} width={21} />
-                              </div>
-                              <button
-                                type="button"
-                                onClick={() => onOpen(s.id)}
-                                title={s.title}
-                                style={{
-                                  minWidth: 0,
-                                  flexGrow: 1,
-                                  textAlign: "left",
-                                  border: 0,
-                                  background: "transparent",
-                                  padding: 0,
-                                  fontFamily: "inherit",
-                                  letterSpacing: "inherit",
-                                  cursor: "pointer",
-                                }}
-                              >
-                                <span className="el" style={{ color: "#171717", fontWeight: 500, fontSize: 12.5 }}>
-                                  {s.title}
-                                </span>
-                                {meta === "" ? null : (
-                                  <span className="el cap" style={{ marginTop: 2 }}>
-                                    {meta}
-                                  </span>
-                                )}
-                              </button>
-                            </div>
-                            <div>
-                              <span className={`bd ${st.badge}`} style={{ gap: 4 }}>
-                                {s.status === "locked" ? (
-                                  <svg
-                                    viewBox="0 0 24 24"
-                                    style={{
-                                      width: 10,
-                                      height: 10,
-                                      stroke: "currentColor",
-                                      fill: "none",
-                                      strokeWidth: 2.2,
-                                      strokeLinecap: "round",
-                                      strokeLinejoin: "round",
-                                    }}
-                                  >
-                                    <path d="M6.8 10.5h10.4v8H6.8z" />
-                                    <path d="M9.2 10.5V8a2.8 2.8 0 0 1 5.6 0v2.5" />
-                                  </svg>
-                                ) : null}
-                                {t(st.label)}
-                              </span>
-                            </div>
-                            <div className="num">{s.version > 0 ? `v${count(s.version, locale)}` : "–"}</div>
-                            <div style={{ gap: 8 }}>
-                              {s.ownerName === null ? (
-                                <span style={{ color: "#c7c7c7" }}>–</span>
-                              ) : (
-                                <>
-                                  <PersonAvatar
-                                    className="av"
-                                    id={s.ownerId}
-                                    url={s.ownerAvatar}
-                                    name={s.ownerName}
-                                    title={s.ownerName}
-                                    size={18}
-                                    style={{ fontSize: 9 }}
-                                  />
-                                  <span className="el">{s.ownerName}</span>
-                                </>
-                              )}
-                            </div>
-                            <div style={{ color: "#7c7c7c" }} title={fullStamp(s.updatedAt, locale)}>
-                              {edited(s.updatedAt, locale)}
-                            </div>
-                            <div style={{ padding: "0 5px", justifyContent: "flex-end" }}>
-                              <button
-                                type="button"
-                                className="act ptog"
-                                onClick={() => onDelete(s.id)}
-                                aria-label={`${t("Delete script")} ${s.title}`}
-                                title={t("Delete script")}
-                              >
-                                <TrashIcon />
-                              </button>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                    <div className="cap" style={{ margin: "14px 0 18px" }}>
-                      {footer}
-                    </div>
-                  </>
+                    ))}
+                  </div>
                 )}
               </>
+            ) : sorted.length === 0 ? (
+              empty
+            ) : (
+              <div role="table" aria-label={t("脚本", "Scripts")}>
+                <div className="sl-hd" role="row">
+                  <div role="columnheader">{t("名称", "Name")}</div>
+                  <div role="columnheader">{t("状态", "Status")}</div>
+                  <div role="columnheader" className="sl-owner">
+                    {t("负责人", "Owner")}
+                  </div>
+                  <div role="columnheader" className="sl-when">
+                    {t("最近编辑", "Last edited")}
+                  </div>
+                  <div />
+                </div>
+                {sorted.map((s) => {
+                  const st = STATUS[s.status];
+                  const meta = s.projectTitle && s.projectTitle !== s.title && !project ? s.projectTitle : null;
+                  return (
+                    <div key={s.id} className="sl-row" role="row" tabIndex={0} onClick={() => onOpen(s.id)} onKeyDown={keyOpen(s)} onContextMenu={onContext(s)} {...drag(s)}>
+                      <div role="cell" style={{ gap: 11 }} onMouseEnter={(e) => tipIfCut(e, s.title)}>
+                        <span style={{ width: 24, display: "flex", justifyContent: "center", flexShrink: 0 }}>
+                          <PageIcon status={s.status} width={20} />
+                        </span>
+                        <span style={{ minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}>
+                          <span className="el" data-cut="" style={{ color: "#171717", fontWeight: 500, fontSize: 13.5 }}>
+                            {s.title}
+                          </span>
+                          {meta ? (
+                            <span className="el" style={{ fontSize: 12, color: "#9a9a9a" }}>
+                              {meta}
+                            </span>
+                          ) : null}
+                        </span>
+                      </div>
+                      <div role="cell">
+                        <span className={`bd ${st.badge}`}>{zh ? st.zh : st.en}</span>
+                      </div>
+                      <div role="cell" className="sl-owner" style={{ gap: 8 }}>
+                        {s.ownerName === null ? (
+                          <span style={{ color: "#c7c7c7" }}>–</span>
+                        ) : (
+                          <>
+                            <PersonAvatar className="av" id={s.ownerId} url={s.ownerAvatar} name={s.ownerName} size={20} style={{ fontSize: 9 }} />
+                            <span className="el">{s.ownerName}</span>
+                          </>
+                        )}
+                      </div>
+                      <div role="cell" className="sl-when" style={{ color: "#7c7c7c", whiteSpace: "nowrap" }} title={fullStamp(s.updatedAt, locale)}>
+                        <span className="el">{edited(s.updatedAt, locale)}</span>
+                      </div>
+                      <div role="cell" style={{ justifyContent: "flex-end", padding: "0 6px" }}>
+                        <button type="button" className="more" aria-label={t("更多操作", "More")} aria-haspopup="menu" aria-expanded={menuFor === s.id} onClick={onMore(s)}>
+                          <MoreIcon />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             )}
+
+            {!topics && sorted.length > 0 ? (
+              <div style={{ margin: "16px 2px 20px", fontSize: 12, color: "#9a9a9a" }}>{zh ? `共 ${n(sorted.length)} 个` : `${n(sorted.length)} scripts`}</div>
+            ) : null}
           </div>
         </div>
+
+        <ResearchAgentPanel
+          accent={ACCENT}
+          zh={zh}
+          scope={zh ? `${scripts.length} 个脚本 · ${counts.awaiting} 个在审阅` : `${scripts.length} scripts · ${counts.awaiting} in review`}
+          note={agentNote}
+          placeholder={t("问问这些脚本…", "Ask about these scripts…")}
+          model={model}
+          onAsk={onAsk}
+          thread={thread}
+          tools={tools}
+        />
       </div>
 
-      {/* The artboard's right-hand column. Its scripted conversation is not
-          drawn; what is left is the one thing this screen can say from its
-          own rows, which is what is waiting and for how long. */}
-      <ResearchAgentPanel
-        accent={ACCENT}
-        zh={zh}
-        scope={
-          zh
-            ? `${scripts.length} 个脚本 · ${counts.awaiting} 个待批准`
-            : `${scripts.length} scripts · ${counts.awaiting} awaiting approval`
-        }
-        note={agentNote}
-        placeholder={zh ? "询问这些脚本…" : "Ask about these scripts…"}
-        model={model}
-        onAsk={onAsk}
-        thread={thread}
-        tools={tools}
-      />
-      </div>
+      {menu ? <PopMenu x={menu.x} y={menu.y} items={menu.items} label={menu.label} onClose={closeMenu} /> : null}
+      {newOpen ? (
+        <PopMenu
+          x={newOpen.x}
+          y={newOpen.y}
+          label={t("新建", "New")}
+          onClose={() => setNewOpen(null)}
+          items={[
+            { key: "script", label: t("新建脚本", "New script"), icon: "script", run: onNewScript },
+            { key: "folder", label: t("新建文件夹", "New folder"), icon: "folder", run: onNewFolder },
+          ]}
+        />
+      ) : null}
     </>
   );
 }

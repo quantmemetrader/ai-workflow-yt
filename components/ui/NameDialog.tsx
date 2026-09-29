@@ -17,15 +17,18 @@ export function NameDialog({
   cancel,
   onSubmit,
   onClose,
+  initial = "",
 }: {
   title: string;
   placeholder: string;
+  /** What the box starts with (a rename starts from the current name). */
+  initial?: string;
   confirm: string;
   cancel: string;
   onSubmit: (name: string) => void;
   onClose: () => void;
 }) {
-  const [value, setValue] = useState("");
+  const [value, setValue] = useState(initial);
 
   function submit() {
     const name = value.trim();

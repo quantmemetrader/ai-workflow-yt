@@ -13,6 +13,7 @@ import { BriefComposer, type BriefDraft } from "@/components/script/BriefCompose
 import { NameDialog } from "@/components/ui/NameDialog";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { TopicQueue } from "@/components/script/TopicQueue";
+import { renameScriptAction } from "@/app/(app)/projects/[id]/script/actions";
 import type { TopicQueueItem } from "@/lib/script/topics";
 
 /**
@@ -42,14 +43,11 @@ export function LibraryView({
   canStart = false,
   tree,
   projectId = null,
-  projectRefs = [],
 }: {
   /** One folder per project, 未归入项目, the total (`lib/script/folders.ts`). */
   tree?: ScriptTree;
   /** The project folder open ("none" for 未归入项目). */
   projectId?: string | null;
-  /** That project's reference files. */
-  projectRefs?: { id: string; name: string; sizeBytes: number }[];
   /** What 编剧 suggests writing next, drawn above the library. */
   proposals: Proposals;
   /** Topics waiting for a script, for the 选题 scope. */
@@ -58,7 +56,7 @@ export function LibraryView({
   canStart?: boolean;
   scripts: ScriptListItem[];
   folders: { id: string; name: string; count: number }[];
-  counts: { all: number; brief: number; drafting: number; awaiting: number; locked: number };
+  counts: { all: number; brief: number; drafting: number; awaiting: number; locked: number; mine?: number; waitingMe?: number };
   folderId: string | null;
   status: Status | null;
   scope: Scope;
@@ -79,6 +77,7 @@ export function LibraryView({
   const [briefing, setBriefing] = useState(false);
   const [namingFolder, setNamingFolder] = useState(false);
   const [deleting, setDeleting] = useState<ScriptListItem | null>(null);
+  const [renaming, setRenaming] = useState<ScriptListItem | null>(null);
 
   // Sort and view are ways of looking rather than things to share, so they
   // stay local. Everything that changes *which* scripts you see is in the URL.
@@ -136,17 +135,14 @@ export function LibraryView({
       pending={isPending}
       error={error}
       onOpen={(id) => router.push(`/script/${id}`)}
-      onFolder={(id) => push({ folder: id, project: null })}
       tree={tree}
       projectId={projectId}
-      projectRefs={projectRefs}
-      onProject={(id) => push({ project: id, folder: null, scope: null })}
+      onNav={push}
       onMove={(scriptId, folder) => run(() => moveScriptAction(scriptId, folder))}
-      onStatus={(s) => push({ status: s })}
-      onScope={(s) => push({ scope: s === "all" ? null : s })}
+      onRename={(s) => setRenaming(s)}
+      onShare={(s) => router.push(`/script/${s.id}?share=1`)}
       onSort={setSort}
       onView={setView}
-      onQuery={(q) => push({ q })}
       onNewScript={() => setBriefing(true)}
       onNewFolder={() => setNamingFolder(true)}
       model={model}
@@ -202,6 +198,21 @@ export function LibraryView({
           cancel={zh ? "取消" : "Cancel"}
           onClose={() => setNamingFolder(false)}
           onSubmit={(name) => run(() => createFolderAction(name))}
+        />
+      )}
+
+      {renaming && renaming.projectId && (
+        <NameDialog
+          title={zh ? "重命名" : "Rename"}
+          placeholder={zh ? "脚本名称" : "Name it"}
+          initial={renaming.title}
+          confirm={zh ? "保存" : "Save"}
+          cancel={zh ? "取消" : "Cancel"}
+          onClose={() => setRenaming(null)}
+          onSubmit={(name) => {
+            const pid = renaming.projectId!;
+            run(() => renameScriptAction(pid, name));
+          }}
         />
       )}
 
