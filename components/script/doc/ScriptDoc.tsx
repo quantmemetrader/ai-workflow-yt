@@ -291,6 +291,32 @@ export function ScriptDoc(props: ScriptDocProps) {
 
   /* ---------------- the canvas & the margin ---------------- */
   const canvas = React.useRef<HTMLDivElement | null>(null);
+  /*
+   * The wheel scrolls the script wherever the pointer is — over the outline,
+   * the toolbar, the grey margins, the rail — not only over the paper (the
+   * owner, 29 Sep: "let me scroll this screen completely, if the mouse is not
+   * around the paper"). Anything that scrolls on its own (the AI panel, a
+   * menu, a dialog) keeps its wheel.
+   */
+  React.useEffect(() => {
+    const onWheel = (e: WheelEvent) => {
+      const c = canvas.current;
+      if (!c || e.ctrlKey || Math.abs(e.deltaY) < Math.abs(e.deltaX)) return;
+      const target = e.target as Element | null;
+      if (!target || c.contains(target) || target.closest("[role=dialog], [role=menu], [role=listbox], textarea, select")) return;
+      for (let el: Element | null = target; el && el !== document.body; el = el.parentElement) {
+        const st = getComputedStyle(el);
+        if (/(auto|scroll)/.test(st.overflowY) && el.scrollHeight > el.clientHeight + 1) {
+          const down = e.deltaY > 0;
+          const room = down ? el.scrollTop + el.clientHeight < el.scrollHeight - 1 : el.scrollTop > 0;
+          if (room) return;
+        }
+      }
+      c.scrollTop += e.deltaMode === 1 ? e.deltaY * 32 : e.deltaY;
+    };
+    window.addEventListener("wheel", onWheel, { passive: true });
+    return () => window.removeEventListener("wheel", onWheel);
+  }, []);
   const sheet = React.useRef<HTMLDivElement | null>(null);
   const [cardTops, setCardTops] = React.useState<Record<string, number>>({});
   const [selTop, setSelTop] = React.useState<number | null>(null);
@@ -1253,8 +1279,8 @@ export function ScriptDoc(props: ScriptDocProps) {
             </div>
           </div>
 
-          {/* the floating AI bar */}
-          {false ? (
+          {/* the floating AI bar: always at hand at the bottom of the page (the owner, 29 Sep: the side panel alone is not intuitive) */}
+          {me.canEdit && script && !noScript ? (
             <div className="gd-ai-dock">
               {askFocus && !thinking ? (
                 <div className="gd-ai-chips" onMouseDown={(e) => e.preventDefault()}>
