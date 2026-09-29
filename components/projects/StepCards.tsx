@@ -48,7 +48,7 @@ export function StepCards({ p, zh, me }: { p: ProjectDetail; zh: boolean; me: St
       : p.render?.state === "done"
         ? t("成片已出，下载改好后上传最终版再发", "Film ready: download, polish, upload the final and post")
         : t("等成片", "Waiting for the film");
-  const reviewLine = p.published ? t("看各平台数据，写复盘，把经验交回选题", "See the numbers, write the review, feed it back to topics") : t("发布后这里看数据", "Numbers show here once it is out");
+  const reviewLine = p.reviewDone ? t("复盘已完成，建议已交给选题", "Review done; ideas are with Topic") : p.published ? t("看各平台数据，写复盘，把经验交回选题", "See the numbers, write the review, feed it back to topics") : t("发布后这里看数据", "Numbers show here once it is out");
 
   const rows: { tab: ProjectTab; who: React.ReactNode; line: string; press: string }[] = [
     { tab: "topic", who: <Ai agent="research" name={agentName("research")} />, line: step("topic")?.line ?? "", press: t("查看选题", "Open topic") },
@@ -101,7 +101,7 @@ export function StepCards({ p, zh, me }: { p: ProjectDetail; zh: boolean; me: St
           </Link>
         </NextStep>
       ) : p.status === "done" ? (
-        <NextStep state="done" zh={zh} text={t("这条已经发布了。去「复盘」看数据。", "This one is out. See the numbers under Review.")}>
+        <NextStep state="done" zh={zh} text={p.reviewDone ? t("这条已经发布，复盘也做完了。", "Published and reviewed.") : t("这条已经发布了。去「复盘」看数据。", "This one is out. See the numbers under Review.")}>
           <Link prefetch={false} href={tabHref(p.id, "review")} style={bigButton("primary")}>
             {t("去复盘", "Go to review")} <Arrow />
           </Link>

@@ -26,6 +26,9 @@ import { scrubToolNames } from "@/lib/agents/steps";
  * streaming text, the tool trace, the citation list, the cost — comes from
  * this generator, so what the user watched is exactly what got persisted.
  */
+/** A first-person "I wrote / saved / started it" (see the nudge in the loop). */
+const CLAIMED_DONE = /(已为你|已经为你|我已|我已经|已帮你)[^。\n]{0,24}(写|存|建|创建|生成|撰写|保存)|已存入(新)?项目|脚本已(存入|写入|保存|生成)|已(新建|创建)(了)?(新)?项目/;
+
 export type AgentEvent =
   | { type: "message"; id: string }
   | { type: "delta"; text: string }
@@ -264,6 +267,10 @@ export async function* runAgent(opts: {
   let lastToolText = "";
   /** What the tools changed this turn, in their own words. */
   const changes: string[] = [];
+  /** Sent back once for saying it did something no tool did (see below). */
+  let nudged = false;
+  /** A tool that acts (not a read) ran and did not say nothing was written. */
+  let actedThisTurn = false;
 
   /** Every model call goes through here, so none of them can escape the
    * ledger (§5): user, module, model, provider, tokens, cost, request id. */
@@ -349,7 +356,27 @@ export async function* runAgent(opts: {
         throw creditError ?? err;
       }
 
-      if (!pendingCalls.length) break;
+      if (!pendingCalls.length) {
+        /*
+         * Said it did something no tool did. 29 Sep: 编剧 answered "脚本已存入
+         * 新项目《…》" after its write tool had refused twice, and in the next
+         * turn said it again with no tool call at all — nothing was made. A
+         * first-person claim of writing, saving or starting something, with
+         * nothing changed this turn, is sent back once: do it, or say plainly
+         * that it was not done. The person sees the correction, not a silent
+         * rewrite of what they already read.
+         */
+        if (!nudged && !actedThisTurn && changes.length === 0 && CLAIMED_DONE.test(roundText) && round < MAX_ROUNDS - 1 && !signal?.aborted) {
+          nudged = true;
+          const fix = "\n\n（更正：刚才还没有真正写入，现在去执行。）\n\n";
+          answer += fix;
+          yield { type: "delta", text: fix };
+          messages.push({ role: "assistant", content: roundText });
+          messages.push({ role: "user", content: "系统检查：你说已经写好、存入或新建了，但这一轮没有任何工具成功执行。现在调用相应的工具真正去做；如果做不了，就如实说没有写入以及原因。不要重复刚才的说法。" });
+          continue;
+        }
+        break;
+      }
 
       const lastRound = round === MAX_ROUNDS - 1;
 
@@ -388,6 +415,7 @@ export async function* runAgent(opts: {
            "nothing was lost, ask again" after a lower third has been added is
            how you end up with two lower thirds. */
         if (result.changed && !failed) changes.push(result.text.trim());
+        if (!failed && (result.changed || (!/^(search|list|read|get|check|find|look|fetch)_/.test(call.name) && !/nothing was written|not written|没有写入|未写入/i.test(result.text)))) actedThisTurn = true;
 
         // The trace is a record of the turn, not part of it: if writing the
         // row fails, the tool result still has to reach the model below.

@@ -74,6 +74,11 @@ export function ReviewScreen({
   };
 
   const hasNumbers = posts.some((p) => p.stats);
+  /* Only what some platform gives (the owner, 29 Sep: "for stuff we can't get just remove those"). */
+  const cols = STAT_KEYS.filter((k) => posts.some((p) => typeof p.stats?.[k] === "number"));
+  const showCompletion = posts.some((p) => typeof p.stats?.completion === "number");
+  const showTrend = posts.some((p) => p.series.length > 1);
+  const reviewDone = Boolean(review?.handedAt);
   const totals: Stats = { plays: null, likes: null, comments: null, shares: null, collects: null };
   for (const p of posts) for (const k of STAT_KEYS) if (typeof p.stats?.[k] === "number") totals[k] = (totals[k] ?? 0) + (p.stats![k] as number);
 
@@ -91,7 +96,17 @@ export function ReviewScreen({
           <GoButton href={`/projects/${projectId}/publish`}>{t("去发布 →", "Go to Publish →")}</GoButton>
         </NextStep>
       ) : (
-        <NextStep state="you" zh={zh} text={review ? t("数据会每小时更新。看看这条的表现，有新数据时可以让研究员重新复盘。", "Numbers update hourly. Check how it did and ask the researcher for a fresh review when there's more data.") : t("看看这条的表现，写下复盘：先刷新数据，再让研究员写复盘。", "See how it did and write the review: refresh the numbers, then ask the researcher.")}>
+        <NextStep
+          state={reviewDone ? "done" : "you"}
+          zh={zh}
+          text={
+            reviewDone
+              ? t("复盘做完了，建议已交给选题。数据还会每小时更新，有新数据时可以再复盘。", "The review is done and its ideas are with Topic. Numbers keep updating hourly.")
+              : review
+                ? t("最后一步：看完研究员的复盘，点下面的「完成复盘」，建议会交给选题。", "Last step: read the review, then press Finish below; its ideas go to Topic.")
+                : t("先刷新数据，再让研究员写复盘。", "Refresh the numbers, then ask the researcher for the review.")
+          }
+        >
           {refreshButton}
         </NextStep>
       )}
@@ -100,7 +115,7 @@ export function ReviewScreen({
       <Card
         icon="play"
         title={t("本片数据", "This video")}
-        sub={t("各平台的播放、点赞、评论、转发、收藏。抖音和小红书不公开播放量；读不到的平台可以手动填写。", "Plays, likes, comments, shares and saves on each platform. Douyin and Xiaohongshu don't show plays publicly; type in what can't be read.")}
+        sub={t("各平台的最新数据。读不到的数字可以手动填。", "Each platform's latest numbers. Type in what can't be read.")}
         right={posts.length ? <span style={{ fontSize: 12, color: MUTED }}>{t("更新于 ", "Updated ")}{ago(posts.map((p) => p.at).filter((x): x is string => Boolean(x)).sort().pop() ?? null, zh)}</span> : null}
         pad={false}
       >
@@ -110,26 +125,26 @@ export function ReviewScreen({
               <thead>
                 <tr style={{ color: MUTED, fontSize: 12, textAlign: "right" }}>
                   <th style={{ ...th, textAlign: "left", paddingLeft: 18 }}>{t("平台", "Platform")}</th>
-                  {STAT_KEYS.map((k) => (
+                  {cols.map((k) => (
                     <th key={k} style={th}>{zh ? STAT_LABEL[k].zh : STAT_LABEL[k].en}</th>
                   ))}
-                  <th style={th}>{t("完播率", "Completion")}</th>
-                  <th style={th}>{t("走势", "Trend")}</th>
+                  {showCompletion ? <th style={th}>{t("完播率", "Completion")}</th> : null}
+                  {showTrend ? <th style={th}>{t("走势", "Trend")}</th> : null}
                   <th style={{ ...th, paddingRight: 18 }} />
                 </tr>
               </thead>
               <tbody>
                 {posts.map((p) => (
-                  <PostRow key={`${p.platform}|${p.url}`} p={p} zh={zh} projectId={projectId} canWork={canWork} />
+                  <PostRow key={`${p.platform}|${p.url}`} p={p} zh={zh} projectId={projectId} canWork={canWork} cols={cols} showCompletion={showCompletion} showTrend={showTrend} />
                 ))}
                 {posts.length > 1 && hasNumbers ? (
                   <tr style={{ borderTop: `1px solid ${LINE}`, fontWeight: 600 }}>
                     <td style={{ ...td, paddingLeft: 18 }}>{t("合计", "Total")}</td>
-                    {STAT_KEYS.map((k) => (
+                    {cols.map((k) => (
                       <td key={k} style={num}>{fmtNum(totals[k], zh)}</td>
                     ))}
-                    <td style={num} />
-                    <td style={num} />
+                    {showCompletion ? <td style={num} /> : null}
+                    {showTrend ? <td style={num} /> : null}
                     <td style={{ ...td, paddingRight: 18 }} />
                   </tr>
                 ) : null}
@@ -161,12 +176,12 @@ export function ReviewScreen({
                 review.handedAt ? (
                   <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, color: "#1e7a4f" }}>
                     <Icon name="check" size={14} />
-                    {t(`已交给选题 · ${ago(review.handedAt, zh)}`, `Handed to Topic · ${ago(review.handedAt, zh)}`)}
+                    {t(`复盘已完成 · 建议已交给选题 · ${ago(review.handedAt, zh)}`, `Review done · ideas with Topic · ${ago(review.handedAt, zh)}`)}
                   </span>
                 ) : (
-                  <button type="button" disabled={busy !== null || !review.ideas.length} onClick={() => run("hand", () => handReviewAction(projectId), t("建议已交给选题：今天的选题里能看到", "Handed to Topic: see today's picks"))} style={bigButton("primary", busy !== null)}>
-                    <Icon name="share" size={15} />
-                    {busy === "hand" ? t("交接中…", "Handing over…") : t("把建议交给选题", "Hand the ideas to Topic")}
+                  <button type="button" disabled={busy !== null} onClick={() => run("hand", () => handReviewAction(projectId), t("复盘完成，建议已交给选题", "Review done; ideas are with Topic"))} style={bigButton("primary", busy !== null)}>
+                    <Icon name="check" size={15} />
+                    {busy === "hand" ? t("正在完成…", "Finishing…") : review.ideas.length ? t("完成复盘，把建议交给选题", "Finish and hand the ideas to Topic") : t("完成复盘", "Finish the review")}
                   </button>
                 )
               ) : null}
@@ -243,7 +258,7 @@ function Points({ title, items, color }: { title: string; items: string[]; color
   );
 }
 
-function PostRow({ p, zh, projectId, canWork }: { p: PostView; zh: boolean; projectId: string; canWork: boolean }) {
+function PostRow({ p, zh, projectId, canWork, cols, showCompletion, showTrend }: { p: PostView; zh: boolean; projectId: string; canWork: boolean; cols: readonly (typeof STAT_KEYS)[number][]; showCompletion: boolean; showTrend: boolean }) {
   const t = (a: string, b: string) => (zh ? a : b);
   const router = useRouter();
   const [typing, setTyping] = React.useState(false);
@@ -272,13 +287,15 @@ function PostRow({ p, zh, projectId, canWork }: { p: PostView; zh: boolean; proj
             </div>
           </div>
         </td>
-        {STAT_KEYS.map((k) => (
-          <td key={k} style={num}>{fmtNum(p.stats?.[k] ?? null, zh)}</td>
+        {cols.map((k) => (
+          <td key={k} style={num}>{typeof p.stats?.[k] === "number" ? fmtNum(p.stats[k] as number, zh) : ""}</td>
         ))}
-        <td style={num}>{typeof p.stats?.completion === "number" ? `${Math.round(p.stats.completion * 100)}%` : "—"}</td>
-        <td style={{ ...td, textAlign: "right" }}>
-          <span style={{ display: "inline-block" }}>{p.series.length > 1 ? <Sparkline points={p.series} width={72} height={22} label={t("走势", "Trend")} /> : <span style={{ color: MUTED }}>—</span>}</span>
-        </td>
+        {showCompletion ? <td style={num}>{typeof p.stats?.completion === "number" ? `${Math.round(p.stats.completion * 100)}%` : ""}</td> : null}
+        {showTrend ? (
+          <td style={{ ...td, textAlign: "right" }}>
+            <span style={{ display: "inline-block" }}>{p.series.length > 1 ? <Sparkline points={p.series} width={72} height={24} label={t("走势", "Trend")} /> : null}</span>
+          </td>
+        ) : null}
         <td style={{ ...td, paddingRight: 18, textAlign: "right", whiteSpace: "nowrap" }}>
           <span style={{ display: "inline-flex", gap: 6 }}>
             {p.url ? (

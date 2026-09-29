@@ -121,6 +121,12 @@ export function StudioReview({ zh, accounts, rows, videos, canWork, stale, hasCh
             }
           />
         ) : null}
+        <div style={{ fontSize: 11, color: "#b5b5b1", textAlign: "center", padding: "4px 0 8px" }}>
+          {t("图表：", "Charts: ")}
+          <a href="https://www.tradingview.com/" target="_blank" rel="noopener noreferrer" style={{ color: "inherit" }}>
+            TradingView Lightweight Charts
+          </a>
+        </div>
       </PageBody>
     </div>
   );

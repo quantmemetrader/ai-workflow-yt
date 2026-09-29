@@ -6,6 +6,7 @@ import { Icon } from "@/components/ui/Icon";
 import { Card, INK, LINE, MUTED, PageBody, smallButton } from "@/components/projects/kit";
 import { PlatformMark } from "@/components/review/ReviewParts";
 import { day } from "@/components/review/VideoTable";
+import { TrendChart } from "@/components/charts/TrendChart";
 import { publishPlatformName } from "@/lib/projects/publication";
 import { STAT_KEYS, STAT_LABEL, engagement, fmtNum, type Stats, type VideoRow } from "@/lib/review/types";
 
@@ -57,7 +58,7 @@ export function VideoDetail({ zh, video, siblings, typical }: { zh: boolean; vid
       <PageBody width={1180}>
         <Card icon="eye" title={t("数据", "Numbers")} sub={typical ? t(`和这个账号在${publishPlatformName(video.platform, zh)}的平常一条视频比`, `Against this account's usual post here`) : undefined}>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 10 }}>
-            {STAT_KEYS.map((k) => (
+            {STAT_KEYS.filter((k) => typeof video.stats[k] === "number").map((k) => (
               <Tile key={k} label={zh ? STAT_LABEL[k].zh : STAT_LABEL[k].en} value={video.stats[k]} usual={typical?.[k] ?? null} zh={zh} />
             ))}
             <div style={tile}>
@@ -111,30 +112,7 @@ function Tile({ label, value, usual, zh }: { label: string; value: number | null
   );
 }
 
-/** Total plays (or likes) at each reading: a line with its first and last day and the top value. */
+/** Total plays (or likes) at each reading. */
 function Chart({ points, zh }: { points: { at: string; v: number }[]; zh: boolean }) {
-  const W = 1000;
-  const H = 200;
-  const max = Math.max(...points.map((p) => p.v));
-  const min = Math.min(...points.map((p) => p.v));
-  const span = max - min || 1;
-  const xy = points.map((p, i) => [(i / (points.length - 1)) * W, H - 12 - ((p.v - min) / span) * (H - 28)] as const);
-  const line = xy.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(" ");
-  return (
-    <div>
-      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: MUTED, marginBottom: 4 }}>
-        <span>{fmtNum(max, zh)}</span>
-        <span>{zh ? `${points.length} 次读取` : `${points.length} readings`}</span>
-      </div>
-      <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" style={{ width: "100%", height: 200, display: "block" }} role="img" aria-label={zh ? "走势" : "Trend"}>
-        <polygon points={`0,${H} ${line} ${W},${H}`} fill="rgba(31,111,235,.08)" />
-        <polyline points={line} fill="none" stroke="#1f6feb" strokeWidth={2.2} vectorEffect="non-scaling-stroke" strokeLinejoin="round" />
-      </svg>
-      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: MUTED, marginTop: 4 }}>
-        <span>{day(points[0].at, zh)}</span>
-        <span>{fmtNum(min, zh)} → {fmtNum(points[points.length - 1].v, zh)}</span>
-        <span>{day(points[points.length - 1].at, zh)}</span>
-      </div>
-    </div>
-  );
+  return <TrendChart points={points} height={240} label={zh ? "走势" : "Trend"} format={(n) => fmtNum(Math.round(n), zh)} />;
 }

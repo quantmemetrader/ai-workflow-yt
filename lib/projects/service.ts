@@ -1,4 +1,5 @@
 import "server-only";
+import { readReview } from "@/lib/review/types";
 import { and, count, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { audioTracks, captions, chatChannels, chatMembers, chatMessages, files, hotSnapshots, ideas, relationTuples, seriesCache, settings, topics, users, scriptBeats, scripts, timelineItems, videoClips, videoExports, videoGraphics, videoProjects, workProjects } from "@/lib/db/schema";
@@ -462,6 +463,8 @@ export type ProjectDetail = {
   canPublish: boolean;
   /** Where it went, once marked published; null while it is not done. */
   published: Publication | null;
+  /** The researcher's review was finished and handed to 选题: the 复盘 step is done. */
+  reviewDone: boolean;
   source: { kind: string; label?: string; url?: string | null } | null;
   createdAt: string;
   channel: { id: string; slug: string; name: string };
@@ -904,6 +907,7 @@ export async function workProjectDetail(viewer: Viewer, id: string, zh: boolean,
     /* `mayPublish`: the managers (admin or creator), never a guest. */
     canPublish: mayPublish(viewer, p.createdBy),
     published,
+    reviewDone: Boolean(readReview(p.source)?.handedAt),
     source: (p.source as ProjectDetail["source"]) ?? null,
     createdAt: p.createdAt.toISOString(),
     channel: { id: ch.id, slug: ch.slug, name: ch.name },

@@ -1,6 +1,7 @@
 "use client";
 
 import { PlatformMark as BrandMark } from "@/components/ui/PlatformMark";
+import { TrendChart } from "@/components/charts/TrendChart";
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/ui/Icon";
@@ -24,20 +25,7 @@ export function ago(iso: string | null, zh: boolean): string {
 /** A small line over time; nothing when there are fewer than two points. */
 export function Sparkline({ points, width = 96, height = 28, color = "#1f6feb", label }: { points: { at: string; v: number }[]; width?: number; height?: number; color?: string; label?: string }) {
   if (points.length < 2) return null;
-  const vs = points.map((p) => p.v);
-  const min = Math.min(...vs);
-  const max = Math.max(...vs);
-  const span = max - min || 1;
-  const step = width / (points.length - 1);
-  const xy = points.map((p, i) => [i * step, height - 3 - ((p.v - min) / span) * (height - 6)] as const);
-  const d = xy.map(([x, y], i) => `${i ? "L" : "M"}${x.toFixed(1)},${y.toFixed(1)}`).join(" ");
-  const [lx, ly] = xy[xy.length - 1];
-  return (
-    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} role="img" aria-label={label} style={{ display: "block", overflow: "visible" }}>
-      <path d={d} fill="none" stroke={color} strokeWidth={1.6} strokeLinejoin="round" strokeLinecap="round" />
-      <circle cx={lx} cy={ly} r={2.4} fill={color} />
-    </svg>
-  );
+  return <TrendChart points={points} width={width} height={height} color={color} label={label} mini />;
 }
 
 /** + or − since the last reading, green or grey. */
@@ -136,8 +124,8 @@ export function AccountTiles({ accounts, zh, canWork }: { accounts: AccountView[
               <Sparkline points={a.followersSeries} label={zh ? "粉丝变化" : "Followers over time"} />
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-              <Stat label={a.platform === "xiaohongshu" ? (zh ? "赞与收藏" : "Likes & saves") : zh ? "获赞" : "Likes"} value={<span style={{ fontSize: 15 }}>{fmtNum(s?.likes ?? null, zh)}</span>} />
-              <Stat label={viewsFirst ? (zh ? "总播放" : "Plays") : zh ? "作品" : "Posts"} value={<span style={{ fontSize: 15 }}>{fmtNum(viewsFirst ? (s?.views ?? null) : (s?.works ?? null), zh)}</span>} />
+              {s?.likes != null ? <Stat label={a.platform === "xiaohongshu" ? (zh ? "赞与收藏" : "Likes & saves") : zh ? "获赞" : "Likes"} value={<span style={{ fontSize: 15 }}>{fmtNum(s.likes, zh)}</span>} /> : null}
+              {(viewsFirst ? s?.views : s?.works) != null ? <Stat label={viewsFirst ? (zh ? "总播放" : "Plays") : zh ? "作品" : "Posts"} value={<span style={{ fontSize: 15 }}>{fmtNum(viewsFirst ? (s?.views ?? null) : (s?.works ?? null), zh)}</span>} /> : null}
             </div>
             {a.posts.length ? (
               <div style={{ borderTop: `1px solid #f0efeb`, paddingTop: 8, display: "flex", flexDirection: "column", gap: 5 }}>

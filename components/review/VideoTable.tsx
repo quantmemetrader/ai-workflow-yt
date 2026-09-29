@@ -87,13 +87,13 @@ export function VideoTable({ videos, zh }: { videos: VideoRow[]; zh: boolean }) 
                 {v.project ? <span className="vt-proj">· {t("项目", "Project")}《{v.project.title}》</span> : null}
               </span>
             </span>
-            <span className="vt-n vt-big" key={`p${v.stats.plays}`}>{fmtNum(v.stats.plays, zh)}</span>
-            <span className="vt-n" key={`l${v.stats.likes}`}>{fmtNum(v.stats.likes, zh)}</span>
-            <span className="vt-n" key={`c${v.stats.comments}`}>{fmtNum(v.stats.comments, zh)}</span>
-            <span className="vt-n vt-h1">{fmtNum(v.stats.shares, zh)}</span>
-            <span className="vt-n vt-h1">{fmtNum(v.stats.collects, zh)}</span>
-            <span className="vt-n vt-h2">{eng === null ? "—" : `${(eng * 100).toFixed(1)}%`}</span>
-            <span className="vt-n vt-h2">{v.series.length > 1 ? <Sparkline points={v.series} width={64} height={20} label={t("走势", "Trend")} /> : <span style={{ color: "#c4c3be" }}>—</span>}</span>
+            <span className="vt-n vt-big" key={`p${v.stats.plays}`}>{v.stats.plays == null ? "" : fmtNum(v.stats.plays, zh)}</span>
+            <span className="vt-n" key={`l${v.stats.likes}`}>{v.stats.likes == null ? "" : fmtNum(v.stats.likes, zh)}</span>
+            <span className="vt-n" key={`c${v.stats.comments}`}>{v.stats.comments == null ? "" : fmtNum(v.stats.comments, zh)}</span>
+            <span className="vt-n vt-h1">{v.stats.shares == null ? "" : fmtNum(v.stats.shares, zh)}</span>
+            <span className="vt-n vt-h1">{v.stats.collects == null ? "" : fmtNum(v.stats.collects, zh)}</span>
+            <span className="vt-n vt-h2">{eng === null ? "" : `${(eng * 100).toFixed(1)}%`}</span>
+            <span className="vt-n vt-h2">{v.series.length > 1 ? <Sparkline points={v.series} width={64} height={24} label={t("走势", "Trend")} /> : null}</span>
           </Link>
         );
       })}

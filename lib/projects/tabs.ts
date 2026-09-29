@@ -51,7 +51,7 @@ const STEPS_OF: Partial<Record<ProjectTab, ProjectStep["key"][]>> = {
  * once the video is out (there is something to review) and never "done":
  * a review is looked at again as the numbers come in.
  */
-export function tabStates(p: Pick<ProjectDetail, "steps" | "status" | "published">): Partial<Record<ProjectTab, TabState>> {
+export function tabStates(p: Pick<ProjectDetail, "steps" | "status" | "published"> & { reviewDone?: boolean }): Partial<Record<ProjectTab, TabState>> {
   const now = p.status === "active" ? frontierStep(p.steps) : null;
   const out: Partial<Record<ProjectTab, TabState>> = {};
   for (const [tab, keys] of Object.entries(STEPS_OF) as [ProjectTab, ProjectStep["key"][]][]) {
@@ -59,12 +59,12 @@ export function tabStates(p: Pick<ProjectDetail, "steps" | "status" | "published
     const allDone = steps.length > 0 && steps.every((s) => s.state === "done" || s.state === "skipped");
     out[tab] = allDone ? "done" : now && keys.includes(now.key) ? "now" : "todo";
   }
-  out.review = p.published || p.status === "done" ? "now" : "todo";
+  out.review = p.reviewDone ? "done" : p.published || p.status === "done" ? "now" : "todo";
   return out;
 }
 
 /** The tab with the work to do now, for the overview's one big button. */
-export function nowTab(p: Pick<ProjectDetail, "steps" | "status" | "published">): ProjectTab | null {
+export function nowTab(p: Pick<ProjectDetail, "steps" | "status" | "published"> & { reviewDone?: boolean }): ProjectTab | null {
   const s = tabStates(p);
   return (["topic", "script", "edit", "publish", "review"] as ProjectTab[]).find((k) => s[k] === "now") ?? null;
 }
