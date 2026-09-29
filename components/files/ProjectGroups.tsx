@@ -20,11 +20,11 @@ export type ProjectCard = {
 };
 
 const SCRIPT_STATE: Record<string, { zh: string; en: string }> = {
-  brief: { zh: "简报", en: "Brief" },
-  drafting: { zh: "撰写中", en: "Drafting" },
+  brief: { zh: "待写", en: "To write" },
+  drafting: { zh: "未批准", en: "Not approved" },
   awaiting_approval: { zh: "待审批", en: "In review" },
   approved: { zh: "已批准", en: "Approved" },
-  locked: { zh: "已锁定", en: "Locked" },
+  locked: { zh: "已批准", en: "Approved" },
 };
 
 /* The four shelves of a project card, in the order the work produces them

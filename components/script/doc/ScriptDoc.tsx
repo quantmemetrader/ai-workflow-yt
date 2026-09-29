@@ -1036,6 +1036,7 @@ export function ScriptDoc(props: ScriptDocProps) {
           <span style={{ flexGrow: 1, minWidth: 160 }}>
             <b>{proposal.source === "sendback" ? t("按退回意见的改法", "Edits for the note") : t("编剧的修改建议", "The writer's edits")}</b>
             {t(` · 还剩 ${trackedLeft} 处`, ` · ${trackedLeft} left`)}
+            <span className="gd-status-dim">{t(" · 点文中的修改可以逐处接受或拒绝，处理完就能直接改字", " · click a change to take or drop it; then type freely")}</span>
             {proposal.summary ? <span className="gd-status-dim"> — {proposal.summary}</span> : null}
           </span>
           <button
@@ -1057,7 +1058,26 @@ export function ScriptDoc(props: ScriptDocProps) {
           >
             {t("接受全部", "Accept all")}
           </button>
-          <button type="button" className="gd-status-btn" onClick={() => { rejectTracked(trackedNow().map((x) => x.id)); setProposal(null); }}>{t("全部拒绝", "Reject all")}</button>
+          {/* Catherine, 29 Sep: "can I edit the text myself? I can only accept or reject" — accept, then the page is yours to type in. */}
+          <button
+            type="button"
+            className="gd-status-btn"
+            disabled={pending}
+            onClick={() =>
+              start(async () => {
+                if (saveState === "dirty") await save();
+                if (!locked) await saveVersionAction(projectId, t("AI 改写前", "Before the AI edits")).catch(() => null);
+                applyTracked(trackedNow().map((x) => x.id));
+                endProposalIfDone([], proposal.source);
+                setModeRaw("edit");
+                notify(t("已接受，现在可以直接改文字", "Accepted; type straight into the page"), "ok");
+                window.setTimeout(() => editor?.commands.focus("end"), 80);
+              })
+            }
+          >
+            {t("接受后自己改", "Accept, then edit")}
+          </button>
+          <button type="button" className="gd-status-btn" onClick={() => { rejectTracked(trackedNow().map((x) => x.id)); setProposal(null); window.setTimeout(() => editor?.commands.focus("end"), 80); }}>{t("全部拒绝", "Reject all")}</button>
         </div>
       ) : null}
       {viewing ? (

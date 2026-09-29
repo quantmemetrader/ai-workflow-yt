@@ -143,6 +143,8 @@ export const modelFor = {
     usable(modelChoice().assistant) ?? usable(process.env.AI_MODEL_ASSISTANT) ?? "qwen/qwen3-max",
   drafting: () =>
     usable(modelChoice().drafting) ?? usable(process.env.AI_MODEL_DRAFTING) ?? "moonshotai/kimi-k2.6",
+  /** One AI employee's own model, if the studio gave it one (AI 同事 › 训练); else null. */
+  agent: (key: string | null | undefined): string | null => (key ? usable(modelChoice().agents?.[key]) : null),
   utility: () =>
     usable(modelChoice().utility) ?? usable(process.env.AI_MODEL_UTILITY) ?? "deepseek/deepseek-v4-flash",
   /**

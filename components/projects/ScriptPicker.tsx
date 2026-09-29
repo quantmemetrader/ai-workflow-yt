@@ -8,8 +8,8 @@ type PickerGroup = { projectId: string | null; title: string; updatedAt: string;
 
 const STATUS: Record<PickerScript["status"], { zh: string; en: string; ink: string; bg: string }> = {
   brief: { zh: "待写", en: "To write", ink: "#5f5f5f", bg: "#f1f1ef" },
-  drafting: { zh: "撰写中", en: "Drafting", ink: "#1f5fbf", bg: "#e9f2fe" },
-  awaiting_approval: { zh: "等审阅", en: "In review", ink: "#95590a", bg: "#fff4df" },
+  drafting: { zh: "未批准", en: "Not approved", ink: "#1f5fbf", bg: "#e9f2fe" },
+  awaiting_approval: { zh: "待审批", en: "In review", ink: "#95590a", bg: "#fff4df" },
   locked: { zh: "已批准", en: "Approved", ink: "#1e7a4f", bg: "#e7f6ee" },
   archived: { zh: "已归档", en: "Archived", ink: "#7c7c7c", bg: "#f0f0f0" },
 };

@@ -293,7 +293,7 @@ const ZH: Record<string, string> = {
   "Flow": "流程",
   "All scripts": "全部脚本",
   "Jump to a script": "跳转到脚本",
-  Drafting: "撰写中",
+  Drafting: "未批准",
   "Awaiting approval": "待审批",
   Briefs: "简报",
   Brief: "简报",

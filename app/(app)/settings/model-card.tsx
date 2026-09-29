@@ -11,7 +11,7 @@ import { chooseModelAction, type ModelOption } from "./model-actions";
  * model id ("qwen/qwen3-max") to people who do not know what one is. Each
  * message can still pick its own in the chat box; this is the default.
  */
-const PLAIN: Record<string, { zh: string; en: string; noteZh: string; noteEn: string }> = {
+export const PLAIN: Record<string, { zh: string; en: string; noteZh: string; noteEn: string }> = {
   "qwen/qwen3-max": { zh: "标准", en: "Standard", noteZh: "中文好、最稳，推荐", noteEn: "Good Chinese, reliable — recommended" },
   "qwen/qwen3.7-max": { zh: "最强", en: "Strongest", noteZh: "长资料、长文章最好，价格约两倍", noteEn: "Best with long material, about twice the price" },
   "qwen/qwen3.7-plus": { zh: "省钱", en: "Economy", noteZh: "日常够用，便宜三分之二", noteEn: "Fine for everyday work, a third of the price" },

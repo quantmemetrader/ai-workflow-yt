@@ -130,7 +130,7 @@ export async function draftFromBrief(
     examples(viewer, script.title),
     creatorVoiceText(viewer.tenantId),
   ]);
-  const model = modelFor.drafting();
+  const model = modelFor.agent("script") ?? modelFor.drafting();
 
   const brief = [
     `Title: ${script.title}`,

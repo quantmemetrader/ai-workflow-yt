@@ -208,11 +208,11 @@ function fullStamp(value: Date, locale: string): string {
   return new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short" }).format(d);
 }
 
-/** The same words the script page uses (待写 · 撰写中 · 审阅中 · 已批准). */
+/** The same words the script page uses (待写 · 未批准 · 待审批 · 已批准). */
 const STATUS: Record<Status, { dot: string; badge: string; zh: string; en: string }> = {
   brief: { dot: "#c7c7c7", badge: "gray", zh: "待写", en: "To write" },
-  drafting: { dot: "#007be0", badge: "blue", zh: "撰写中", en: "Drafting" },
-  awaiting_approval: { dot: "#db7706", badge: "amb", zh: "审阅中", en: "In review" },
+  drafting: { dot: "#007be0", badge: "blue", zh: "未批准", en: "Not approved" },
+  awaiting_approval: { dot: "#db7706", badge: "amb", zh: "待审批", en: "In review" },
   locked: { dot: "#278f5e", badge: "grn", zh: "已批准", en: "Approved" },
   archived: { dot: "#c7c7c7", badge: "gray", zh: "已归档", en: "Archived" },
 };

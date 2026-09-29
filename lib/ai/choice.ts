@@ -29,6 +29,8 @@ export type ModelChoice = {
    * and a hidden switch like that is how a product lies to its owner.
    */
   preferDeepseek?: boolean;
+  /** One AI employee's own model (AI 同事 › 训练), by its key; absent means the default. */
+  agents?: Record<string, string>;
 };
 
 export const CHOICE_KEY = "ai.models";
@@ -76,6 +78,11 @@ export async function setModelChoice(next: ModelChoice, byUserId: string): Promi
     if (typeof id === "string" && id.trim() && id.length < 120) clean[role] = id.trim();
   }
   if (typeof next.preferDeepseek === "boolean") clean.preferDeepseek = next.preferDeepseek;
+  if (next.agents && typeof next.agents === "object") {
+    const agents: Record<string, string> = {};
+    for (const [k, v] of Object.entries(next.agents)) if (typeof v === "string" && v.trim() && v.length < 120 && /^[a-z]{2,20}$/.test(k)) agents[k] = v.trim();
+    if (Object.keys(agents).length) clean.agents = agents;
+  }
 
   await db
     .insert(settings)

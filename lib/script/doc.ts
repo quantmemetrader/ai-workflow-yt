@@ -280,7 +280,7 @@ export async function copilotRewrite(viewer: Viewer, scriptId: string, paragraph
   for (let attempt = 0; attempt < 2 && !raw; attempt++) {
     const out = await complete({
       /* The 「模型」 picked beside the copilot, else the studio default. */
-      model: pick ?? modelFor.assistant(),
+      model: pick ?? modelFor.agent("script") ?? modelFor.assistant(),
       temperature: attempt ? 0.2 : 0.5,
       maxTokens: 6000,
       messages: [

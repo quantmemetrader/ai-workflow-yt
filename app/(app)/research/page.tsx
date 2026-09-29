@@ -1,4 +1,6 @@
 import { requireModule } from "@/lib/auth/dal";
+import { chatChannels, chatMessages } from "@/lib/db/schema";
+import type { PlanToday } from "@/components/research/PickBoard";
 import { answeringModel } from "@/lib/ai/models";
 import { latestDigest } from "@/lib/home/pulse";
 import { latestIdeas } from "@/lib/ideas/service";
@@ -9,7 +11,7 @@ import { ResearchShell } from "@/components/research/ResearchShell";
 import { PickBoard, type PickCard } from "@/components/research/PickBoard";
 import { db } from "@/lib/db/client";
 import { topics } from "@/lib/db/schema";
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 
 export const metadata = { title: "选题 · Topics" };
 
@@ -81,9 +83,29 @@ export default async function PicksPage() {
     for (const p of proposals.items ?? []) push({ key: `plan:${p.text}`, title: p.text, why: p.why, proof: [], tag: "plan", ref: { kind: "own", text: p.text } });
   }
 
+  /* 策划's report for the day, from the plan it posted (the newest one, if it is from the last two days). */
+  const [planRow] = await db
+    .select({ id: chatMessages.id, meta: chatMessages.meta, createdAt: chatMessages.createdAt, slug: chatChannels.slug })
+    .from(chatMessages)
+    .innerJoin(chatChannels, eq(chatChannels.id, chatMessages.channelId))
+    .where(and(eq(chatChannels.tenantId, viewer.tenantId), sql`${chatMessages.deletedAt} is null`, sql`(${chatMessages.meta} -> 'plan' -> 'list') is not null`))
+    .orderBy(desc(chatMessages.createdAt))
+    .limit(1)
+    .catch(() => []);
+  let plan: PlanToday | null = null;
+  if (planRow && Date.now() - planRow.createdAt.getTime() < 2 * 86_400_000) {
+    const raw = (planRow.meta as { plan?: { date?: unknown; list?: unknown } } | null)?.plan;
+    const list = (Array.isArray(raw?.list) ? raw!.list : []) as { owner?: unknown; text?: unknown; why?: unknown }[];
+    const items = list
+      .filter((x) => typeof x.text === "string" && x.text.trim())
+      .map((x) => ({ owner: String(x.owner ?? ""), text: String(x.text).replace(/^\S{1,6}\s*[—-]\s*/, "").trim().slice(0, 260), why: typeof x.why === "string" && x.why.trim() ? x.why.trim().slice(0, 200) : null }));
+    const topic = list.map((x) => (typeof x.text === "string" ? /《([^》]{4,80})》/.exec(x.text)?.[1] : null)).find(Boolean) ?? null;
+    if (items.length) plan = { date: typeof raw?.date === "string" ? raw.date : planRow.createdAt.toISOString().slice(0, 10), topic, items, href: `/chat/c/${planRow.slug}` };
+  }
+
   return (
     <ResearchShell zh={zh} savedCount={saved[0]?.n ?? 0}>
-      <PickBoard picks={cards.slice(0, 8)} zh={zh} day={hkDate()} model={answeringModel()} canWrite={viewer.modules.includes("script")} />
+      <PickBoard picks={cards.slice(0, 8)} zh={zh} day={hkDate()} model={answeringModel()} canWrite={viewer.modules.includes("script")} plan={plan} />
     </ResearchShell>
   );
 }

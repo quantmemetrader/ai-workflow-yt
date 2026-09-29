@@ -34,7 +34,7 @@ type Version = { version: number; body: string; note: string | null; byName: str
  *                  be switched off, opened, edited or deleted
  *   试一试         ask for something small and see how it writes now
  */
-export function TrainAgent({ agent, zh, rows, canEdit }: { agent: TrainKey; zh: boolean; rows: TrainRow[]; canEdit: boolean }) {
+export function TrainAgent({ agent, zh, rows, canEdit, model }: { agent: TrainKey; zh: boolean; rows: TrainRow[]; canEdit: boolean; model?: React.ReactNode }) {
   const t = (a: string, b: string) => (zh ? a : b);
   const router = useRouter();
   const name = trainName(agent, zh);
@@ -63,6 +63,7 @@ export function TrainAgent({ agent, zh, rows, canEdit }: { agent: TrainKey; zh: 
         </div>
       </div>
       <NextStep state={trained ? "done" : "you"} zh={zh} text={<>{trained ? t("已经训练过，可以继续补充。", "Trained — you can keep adding.") : t("写几条工作说明、上传一两篇范例，它就会照着做。", "Write a few instructions and upload an example or two.")} <span style={{ color: MUTED }}>{zh ? TRAIN_USED[agent].zh : TRAIN_USED[agent].en}</span></>} />
+      {model}
       {!canEdit ? <div style={{ fontSize: 13, color: "#95590a" }}>{t("访客只能查看，不能修改。", "Guests can look but not change anything.")}</div> : null}
 
       <TextBlock

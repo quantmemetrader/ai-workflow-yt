@@ -248,7 +248,8 @@ export async function* runAgent(opts: {
   const citedFileIds = new Set<string>();
   let answer = "";
   let withheldAny = false;
-  let model = opts.model ?? modelFor.assistant();
+  /* A message's own pick, else this employee's own model, else the studio's. */
+  let model = opts.model ?? modelFor.agent(agentKeyFromEmail(viewer.email) ?? "assistant") ?? modelFor.assistant();
   /** Models still untried if the current one refuses. */
   const fallbacks = modelFor.fallbacks().filter((m) => m !== model);
   let toldAboutFallback = false;

@@ -29,7 +29,7 @@ export function StepCards({ p, zh, me }: { p: ProjectDetail; zh: boolean; me: St
     const s = p.script.status;
     const v = p.script.version ? t(`第 ${p.script.version} 版`, `v${p.script.version}`) : "";
     const n = p.script.beats ? t(`${p.script.beats} 段`, `${p.script.beats} paragraphs`) : "";
-    const st = s === "locked" ? t("已批准", "Approved") : s === "awaiting_approval" ? t("等审阅", "Awaiting review") : p.script.beats > 0 ? t("已写好 · 还没审批", "Written · not approved yet") : s === "drafting" ? t("撰写中", "Drafting") : t("待写", "To write");
+    const st = s === "locked" ? t("已批准", "Approved") : s === "awaiting_approval" ? t("待审批", "Awaiting approval") : p.script.beats > 0 ? t("已写好 · 还没审批", "Written · not approved yet") : s === "drafting" ? t("未批准", "Not approved") : t("待写", "To write");
     return [st, v, n].filter(Boolean).join(" · ");
   })();
   const editLine = (() => {
