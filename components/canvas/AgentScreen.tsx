@@ -7,6 +7,7 @@ import { ModelChip, useChatModel } from "@/components/chat/ModelChip";
 import { AUTO_MODEL } from "@/lib/ai/chat-models";
 
 import Link from "next/link";
+import { scriptPreviewAction, type ScriptPreview } from "@/app/(app)/chat/script-preview";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AgentIcon } from "@/components/agents/AgentIcon";
@@ -1609,30 +1610,67 @@ function groupTools(tools: ThreadTool[], zh: boolean): { tool: ThreadTool; count
 }
 
 /**
- * Under a reply that wrote a script: read it, open its project, send it to a
- * colleague for approval, or keep changing it right here (the owner, 29 Sep:
- * "why are there no buttons to open it in the project, send it for approval,
- * read it, or just change it right here").
+ * Under a reply that wrote a script: the script itself, open (the owner, 29
+ * Sep: "how can someone change the script without seeing it — show the
+ * script in the chat, as the default"), then open its project, send it for
+ * approval, or keep changing it right here.
  */
 function MadeActions({ made, zh }: { made: MadeScript; zh: boolean }) {
   const t = (a: string, b: string) => (zh ? a : b);
+  const [doc, setDoc] = useState<ScriptPreview | null | undefined>(undefined);
+  const [open, setOpen] = useState(true);
+  const [all, setAll] = useState(false);
+  useEffect(() => {
+    let off = false;
+    scriptPreviewAction(made.scriptId).then((d) => !off && setDoc(d)).catch(() => !off && setDoc(null));
+    return () => {
+      off = true;
+    };
+  }, [made.scriptId]);
   const btn = (primary = false): React.CSSProperties => ({ display: "inline-flex", alignItems: "center", gap: 6, height: 32, padding: "0 13px", borderRadius: 9, fontSize: 13, fontWeight: 600, textDecoration: "none", cursor: "pointer", fontFamily: "inherit", border: `1px solid ${primary ? "#171717" : "#dcdbd6"}`, background: primary ? "#171717" : "#fff", color: primary ? "#fff" : "#262626", whiteSpace: "nowrap" });
+  const chars = doc ? doc.paragraphs.join("").replace(/\s/g, "").length : 0;
+  const shown = doc ? (all ? doc.paragraphs : doc.paragraphs.slice(0, 6)) : [];
   return (
-    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
-      <Link href={`/script/${made.scriptId}`} prefetch={false} style={btn(true)}>
-        {t("打开脚本，看或改", "Open the script")}
-      </Link>
-      {made.projectId ? (
-        <Link href={`/projects/${made.projectId}`} prefetch={false} style={btn()}>
-          {t("打开项目", "Open the project")}
-        </Link>
+    <div style={{ marginTop: 10, maxWidth: 720 }}>
+      {doc ? (
+        <div style={{ border: "1px solid #e5e4df", borderRadius: 12, background: "#fff", overflow: "hidden" }}>
+          <button type="button" onClick={() => setOpen((v) => !v)} aria-expanded={open} style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "10px 14px", border: 0, borderBottom: open ? "1px solid #efeee9" : 0, background: "#fafaf8", cursor: "pointer", fontFamily: "inherit", textAlign: "left" }}>
+            <span style={{ fontSize: 13.5, fontWeight: 650, color: "#171717", flexGrow: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>《{doc.title || made.title}》</span>
+            <span style={{ fontSize: 12, color: "#8a8a8a", whiteSpace: "nowrap" }}>{t(`${doc.paragraphs.length} 段 · 约 ${Math.max(1, Math.round(chars / 4.5))} 秒`, `${doc.paragraphs.length} parts · about ${Math.max(1, Math.round(chars / 4.5))}s`)}</span>
+            <span style={{ fontSize: 12, color: "#525252", whiteSpace: "nowrap" }}>{open ? t("收起", "Hide") : t("展开", "Show")}</span>
+          </button>
+          {open ? (
+            <div style={{ padding: "12px 16px 14px", display: "flex", flexDirection: "column", gap: 10 }}>
+              {shown.map((p, i) => (
+                <p key={i} style={{ margin: 0, fontSize: 14, lineHeight: 1.75, color: "#262626", whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>
+                  {p}
+                </p>
+              ))}
+              {doc.paragraphs.length > 6 ? (
+                <button type="button" onClick={() => setAll((v) => !v)} style={{ alignSelf: "flex-start", border: 0, background: "none", padding: 0, color: "#1f5fbf", fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>
+                  {all ? t("收起一些", "Show less") : t(`看全部 ${doc.paragraphs.length} 段`, `Show all ${doc.paragraphs.length}`)}
+                </button>
+              ) : null}
+              {!doc.paragraphs.length ? <p style={{ margin: 0, fontSize: 13, color: "#8a8a8a" }}>{t("脚本还是空的。", "The script is empty.")}</p> : null}
+            </div>
+          ) : null}
+        </div>
+      ) : doc === undefined ? (
+        <div style={{ fontSize: 12.5, color: "#8a8a8a" }}>{t("正在打开脚本…", "Opening the script…")}</div>
       ) : null}
-      <Link href={`/script/${made.scriptId}?share=review`} prefetch={false} style={btn()}>
-        {t("发给同事审阅", "Send for approval")}
-      </Link>
-      <button type="button" onClick={() => window.dispatchEvent(new CustomEvent("tg-edit-script", { detail: made.title }))} style={btn()}>
-        {t("就在这里改", "Change it here")}
-      </button>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
+        <button type="button" onClick={() => window.dispatchEvent(new CustomEvent("tg-edit-script", { detail: made.title }))} style={btn(true)}>
+          {t("就在这里改", "Change it here")}
+        </button>
+        <Link href={`/script/${made.scriptId}?share=review`} prefetch={false} style={btn()}>
+          {t("发给同事审阅", "Send for approval")}
+        </Link>
+        {made.projectId ? (
+          <Link href={`/projects/${made.projectId}`} prefetch={false} style={btn()}>
+            {t("打开项目", "Open the project")}
+          </Link>
+        ) : null}
+      </div>
     </div>
   );
 }

@@ -74,7 +74,7 @@ export async function startProjectAction(input: { message?: string; title?: stri
   const source: ProjectSource | null = raw && typeof raw.kind === "string" ? { kind: raw.kind.slice(0, 20), label: typeof raw.label === "string" ? raw.label.slice(0, 60) : undefined, url: typeof raw.url === "string" ? raw.url.slice(0, 500) : null } : null;
   const typed = message.replace(/@\S+/g, " ").replace(/\s+/g, " ").trim();
   const brief = (typeof input.brief === "string" && input.brief.trim().slice(0, 1000)) || typed || source?.label || null;
-  let created: { id: string; channelSlug: string; channelId: string };
+  let created: { id: string; channelSlug: string; channelId: string; scriptId: string | null };
   try {
     created = await createWorkProject(viewer, { title, brief, mode, source: source ?? { kind: "person", label: viewer.nameLocal || viewer.name } });
   } catch (err) {
@@ -93,10 +93,19 @@ export async function startProjectAction(input: { message?: string; title?: stri
       });
     }
   }
+  /* Every new project starts with 编剧's first draft (the owner, 29 Sep: "when
+     any topic creates a project, why don't you draft the first script
+     automatically"), unless the first message already handed the work to
+     someone (an @ in it) or the project skips the script. */
+  let writing = false;
+  if (mode === "full" && !tagged.length && created.scriptId && viewer.modules.includes("script")) {
+    const w = await writeFromTopic(viewer, { id: created.id, title, scriptId: created.scriptId, channelId: created.channelId, source: source ?? null }, { chips: { angle: brief ? brief.slice(0, 400) : null } }).catch(() => ({ writing: false }));
+    writing = w.writing;
+  }
   /* No whole-app revalidation here: it re-rendered the shell before the
      page moved, which read as the site reloading. The caller navigates and
      then refreshes the sidebar quietly. */
-  return { id: created.id };
+  return { id: created.id, writing };
 }
 
 /* ------------------------------------------------ starting from a topic */

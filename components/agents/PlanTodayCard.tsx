@@ -29,6 +29,7 @@ export function PlanTodayCard({ plan, zh, canWrite }: { plan: PlanToday; zh: boo
     try {
       const res = await startFromTopicAction({ kind: "own", text: plan.topic }, { write: canWrite });
       if ("error" in res && res.error) return notify(res.error);
+      if ("existed" in res && res.existed) notify(t("这个选题已经有项目了，为你打开它", "This topic already has a project; opening it"), "info");
       if ("projectId" in res && res.projectId) router.push(res.writing ? `/projects/${res.projectId}/script` : `/projects/${res.projectId}`);
     } finally {
       setBusy(false);

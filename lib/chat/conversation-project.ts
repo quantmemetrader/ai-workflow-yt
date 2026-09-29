@@ -1,4 +1,5 @@
 import "server-only";
+import { draftInBackground } from "@/lib/script/background";
 import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { agentMessages, chatChannels, chatMessages, conversations, scripts, settings, toolCalls, videoProjects, workProjects } from "@/lib/db/schema";
@@ -557,6 +558,10 @@ export async function createFromConversation(viewer: Viewer, conversationId: str
       .filter(Boolean)
       .join("\n\n");
     await postMessage(viewer, made.channelId, note, { fromChat: { conversationId } }).catch((err) => console.error("[chat-project] could not post the note", err));
+    /* No script from the conversation: 编剧 starts the first draft now, like every new project. */
+    if (!loose && made.scriptId && viewer.modules.includes("script")) {
+      await draftInBackground(viewer, { projectId: made.id, channelId: made.channelId, scriptId: made.scriptId, req: { topicId: null, subject: title, angle: brief ? clip(brief, 400) : null, channel: null, aspect: null, seconds: null, language: null, subtitleLanguage: null, mandatoryPoints: [] } }).catch((err) => console.error("[chat-project] could not start the draft", err));
+    }
     await audit(viewer, "project.from_chat", { module: "chat", objectType: "project", objectId: made.id, meta: { conversationId, access, script: loose?.id ?? null } }).catch((err) =>
       console.error("[chat-project] could not audit", err),
     );
