@@ -1,4 +1,5 @@
 import "server-only";
+import { toSimplified } from "@/lib/text/simplified";
 import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import {
@@ -422,7 +423,7 @@ export async function inbox(viewer: Viewer, filters: InboxFilters = {}): Promise
     if (!g) {
       g = {
         postId: r.postId,
-        title: r.title,
+        title: r.title ? toSimplified(r.title) : r.title,
         platform: r.platform,
         thumbnailUrl: r.thumbnailUrl,
         permalink: r.postPermalink,
@@ -435,10 +436,11 @@ export async function inbox(viewer: Viewer, filters: InboxFilters = {}): Promise
       id: r.id,
       postId: r.postId,
       externalId: r.externalId,
-      authorName: r.authorName,
-      authorHandle: r.authorHandle,
+      /* Shown in Simplified, like everything else on screen; the reply is drafted from the stored words. */
+      authorName: r.authorName ? toSimplified(r.authorName) : r.authorName,
+      authorHandle: r.authorHandle ? toSimplified(r.authorHandle) : r.authorHandle,
       authorAvatarUrl: r.authorAvatarUrl,
-      body: r.body,
+      body: toSimplified(r.body),
       translation: r.translation,
       language: r.language,
       sentiment: r.sentiment,

@@ -577,11 +577,11 @@ Answer with a single JSON object and nothing else:
 {
   "sentiment": one of "very_negative" | "negative" | "neutral" | "positive" | "very_positive",
   "language": BCP-47 tag of the comment ("yue" for Cantonese, "zh-Hans", "zh-Hant", "en", ...),
-  "translation": the comment in English if it is not already English, else null,
+  "translation": the comment in Simplified Chinese (简体中文) if it is not already Simplified Chinese, else null,
   "flagged": true if it is abusive, spam, or politically sensitive in a Hong Kong context,
-  "flagReason": one short sentence saying why, else null,
+  "flagReason": one short sentence in Simplified Chinese saying why, else null,
   "isLead": true only if it is a genuine business or sponsorship enquiry,
-  "leadReason": one short sentence saying why, else null,
+  "leadReason": one short sentence in Simplified Chinese saying why, else null,
   "reply": a reply the studio could send, in the SAME language and register as the comment, at most two sentences. null if no reply is appropriate (spam, abuse, or nothing to say).
 }
 

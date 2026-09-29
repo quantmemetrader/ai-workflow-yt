@@ -87,12 +87,12 @@ const PLATFORM_NAMES: Record<string, string> = {
   tiktok: "TikTok",
   facebook: "Facebook",
   threads: "Threads",
-  wechat: "WeChat OA",
-  weibo: "Weibo",
-  bilibili: "Bilibili",
-  xiaohongshu: "Xiaohongshu",
-  douyin: "Douyin",
-  kuaishou: "Kuaishou",
+  wechat: "微信公众号",
+  weibo: "微博",
+  bilibili: "B站",
+  xiaohongshu: "小红书",
+  douyin: "抖音",
+  kuaishou: "快手",
 };
 
 /* The Chinese platforms by their Chinese names in a Chinese interface: the

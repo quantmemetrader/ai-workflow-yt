@@ -48,7 +48,7 @@ const WINDOW_WORDS_ZH: Record<Window, string> = { "1m": "1 个月", "3m": "3 个
    it; in a narrow column it was also the thing that wrapped. */
 const SOURCE_NAMES: Record<string, string> = {
   gdelt: "GDELT",
-  googlenews: "Google News",
+  googlenews: "Google 新闻",
   hackernews: "Hacker News",
   scmp: "SCMP",
   techcrunch: "TechCrunch",

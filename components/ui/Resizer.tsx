@@ -163,7 +163,7 @@ export function useResizableHeight(
     <div
       role="separator"
       aria-orientation="horizontal"
-      aria-label="Resize panel"
+      aria-label="调整面板大小"
       aria-valuenow={height}
       aria-valuemin={min}
       aria-valuemax={max}
@@ -171,7 +171,7 @@ export function useResizableHeight(
       onPointerDown={onPointerDown}
       onKeyDown={onKeyDown}
       onDoubleClick={reset}
-      title="Drag to resize · double-click to reset"
+      title="拖动调整大小 · 双击复原"
       style={{
         position: "absolute",
         left: 0,
@@ -216,7 +216,7 @@ function ResizeHandle({
     <div
       role="separator"
       aria-orientation="vertical"
-      aria-label="Resize panel"
+      aria-label="调整面板大小"
       aria-valuenow={width}
       aria-valuemin={min}
       aria-valuemax={max}
@@ -224,7 +224,7 @@ function ResizeHandle({
       onPointerDown={onPointerDown}
       onKeyDown={onKeyDown}
       onDoubleClick={onDoubleClick}
-      title="Drag to resize · double-click to reset"
+      title="拖动调整大小 · 双击复原"
       style={{
         position: "absolute",
         top: 0,

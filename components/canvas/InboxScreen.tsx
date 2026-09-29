@@ -386,10 +386,10 @@ function clock(at: Date, locale: string): string {
 /** A BCP-47 tag as a person would read it; unknown tags keep the tag. */
 function languageLabel(tag: string): string {
   const known: Record<string, string> = {
-    yue: "粤语 Cantonese",
+    yue: "粤语",
     "zh-Hant": "繁体中文",
     "zh-Hans": "简体中文",
-    en: "English",
+    en: "英文",
   };
   return known[tag] ?? tag;
 }

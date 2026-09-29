@@ -59,13 +59,13 @@ export function platformLabel(platform: string): string {
     twitter: "X",
     threads: "Threads",
     pinterest: "Pinterest",
-    bilibili: "Bilibili",
-    wechat: "WeChat",
-    weibo: "Weibo",
-    douyin: "Douyin",
-    xiaohongshu: "Xiaohongshu",
+    bilibili: "B站",
+    wechat: "微信",
+    weibo: "微博",
+    douyin: "抖音",
+    xiaohongshu: "小红书",
     reddit: "Reddit",
-    shipinhao: "WeChat Channels",
+    shipinhao: "视频号",
   };
   /* The 抖音 billboards (dy_finance, dy_breakout, …) are 抖音's own lists. */
   const key = platform.trim().toLowerCase().replace(/^dy_.*/, "douyin");

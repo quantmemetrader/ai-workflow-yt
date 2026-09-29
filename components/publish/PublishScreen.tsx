@@ -616,14 +616,14 @@ function ChannelCard({
         />
       ) : null}
 
-      {c.issues.length > 0 ? <Notice tone="warn" glyph="alert" title={c.issues.join(" · ")} /> : null}
+      {c.issues.length > 0 ? <Notice tone="warn" glyph="alert" title={zh ? c.issues.map((x) => describeError(x).zh).join(" · ") : c.issues.join(" · ")} /> : null}
 
       {error && c.lastError ? (
         <Notice
           tone={error.tone}
           glyph="alert"
           title={zh ? error.zh : error.en}
-          raw={c.lastError}
+          raw={zh ? undefined : c.lastError}
           action={
             error.reconnect ? (
               <NoticeAction onClick={() => onConnect(c.platform)} disabled={busy} tone={error.tone}>

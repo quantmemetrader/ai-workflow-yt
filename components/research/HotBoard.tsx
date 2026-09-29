@@ -53,6 +53,7 @@ function platformOf(from: string): { mark: string; zh: string; en: string } {
   const feed = BEAT_FEEDS.find((f) => f.key === from);
   if (feed) return { mark: feed.mark, zh: feed.zh, en: feed.label };
   if (from.startsWith("dy_") || from === "douyin") return { mark: "douyin", zh: "抖音", en: "Douyin" };
+  if (from === "google") return { mark: "google", zh: "Google 热搜", en: "Google Trends" };
   const byHot = BEAT_FEEDS.find((f) => (f.hot as readonly string[]).includes(from));
   return byHot ? { mark: byHot.mark, zh: byHot.zh, en: byHot.label } : { mark: from, zh: from, en: from };
 }
