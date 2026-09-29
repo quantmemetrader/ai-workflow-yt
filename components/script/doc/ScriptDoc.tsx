@@ -896,6 +896,7 @@ export function ScriptDoc(props: ScriptDocProps) {
       const who = approved?.deciderName ?? "";
       return (
         <Status tone="ok" text={<>{t(`已批准 · 第 ${script.lockedVersion} 版`, `Approved · v${script.lockedVersion}`)}{who ? ` · ${who}` : ""}{approved?.decidedAt ? ` · ${ago(approved.decidedAt, zh)}` : ""}<span className="gd-status-dim">{t("　剪辑师会照这一版剪。改动会生成新版本。", " — the edit follows this version.")}</span></>}>
+          {me.canEdit ? <button type="button" className="gd-status-btn" onClick={() => setLockPrompt(true)}>{t("继续编辑", "Continue editing")}</button> : null}
           <Link href={`/projects/${projectId}/edit`} prefetch={false} className="gd-status-btn primary">{t("下一步：去剪辑 →", "Next: the edit →")}</Link>
         </Status>
       );

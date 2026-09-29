@@ -1699,7 +1699,7 @@ function MadeActions({ made, zh }: { made: MadeScript; zh: boolean }) {
       ) : null}
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
         {doc && made.projectId && !editing ? (
-          <button type="button" onClick={() => (doc.locked ? notify(t("这份脚本已经批准锁定了，在项目的脚本页点「继续编辑」再改", "It is approved and locked; press Continue editing on its page first")) : (setEditing([...doc.lines]), setOpen(true)))} style={btn(true)}>
+          <button type="button" onClick={() => (doc.locked ? notify(t("这份脚本已经批准锁定了：点「打开项目」→「脚本」，在顶部绿色的「已批准」那一栏点「继续编辑」", "It is approved and locked: open the project, go to Script, and press Continue editing in the green Approved bar at the top")) : (setEditing([...doc.lines]), setOpen(true)))} style={btn(true)}>
             {t("直接编辑", "Edit it myself")}
           </button>
         ) : null}
