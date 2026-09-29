@@ -7,7 +7,9 @@ import { ModelChip, useChatModel } from "@/components/chat/ModelChip";
 import { AUTO_MODEL } from "@/lib/ai/chat-models";
 
 import Link from "next/link";
+import { notify } from "@/lib/client/notify";
 import { scriptPreviewAction, type ScriptPreview } from "@/app/(app)/chat/script-preview";
+import { saveLinesAction } from "@/app/(app)/projects/[id]/script/actions";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AgentIcon } from "@/components/agents/AgentIcon";
@@ -1620,13 +1622,27 @@ function MadeActions({ made, zh }: { made: MadeScript; zh: boolean }) {
   const [doc, setDoc] = useState<ScriptPreview | null | undefined>(undefined);
   const [open, setOpen] = useState(true);
   const [all, setAll] = useState(false);
+  const [editing, setEditing] = useState<string[] | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [rev, setRev] = useState(0);
   useEffect(() => {
     let off = false;
     scriptPreviewAction(made.scriptId).then((d) => !off && setDoc(d)).catch(() => !off && setDoc(null));
     return () => {
       off = true;
     };
-  }, [made.scriptId]);
+  }, [made.scriptId, rev]);
+  /* 直接编辑: type into the script right here; saved into the document (the owner, 29 Sep: "let me type and change the script from chat"). */
+  async function saveLines() {
+    if (!editing || !made.projectId || saving) return;
+    setSaving(true);
+    const r = await saveLinesAction(made.projectId, editing).catch(() => ({ error: t("没保存上，再试一次", "Not saved; try again") }));
+    setSaving(false);
+    if ("error" in r && r.error) return notify(r.error);
+    setEditing(null);
+    setRev((n) => n + 1);
+    notify(t("已保存到脚本", "Saved to the script"), "ok");
+  }
   const btn = (primary = false): React.CSSProperties => ({ display: "inline-flex", alignItems: "center", gap: 6, height: 32, padding: "0 13px", borderRadius: 9, fontSize: 13, fontWeight: 600, textDecoration: "none", cursor: "pointer", fontFamily: "inherit", border: `1px solid ${primary ? "#171717" : "#dcdbd6"}`, background: primary ? "#171717" : "#fff", color: primary ? "#fff" : "#262626", whiteSpace: "nowrap" });
   const chars = doc ? doc.paragraphs.join("").replace(/\s/g, "").length : 0;
   const shown = doc ? (all ? doc.paragraphs : doc.paragraphs.slice(0, 6)) : [];
@@ -1639,7 +1655,30 @@ function MadeActions({ made, zh }: { made: MadeScript; zh: boolean }) {
             <span style={{ fontSize: 12, color: "#8a8a8a", whiteSpace: "nowrap" }}>{t(`${doc.paragraphs.length} 段 · 约 ${Math.max(1, Math.round(chars / 4.5))} 秒`, `${doc.paragraphs.length} parts · about ${Math.max(1, Math.round(chars / 4.5))}s`)}</span>
             <span style={{ fontSize: 12, color: "#525252", whiteSpace: "nowrap" }}>{open ? t("收起", "Hide") : t("展开", "Show")}</span>
           </button>
-          {open ? (
+          {open && editing ? (
+            <div style={{ padding: "12px 16px 14px", display: "flex", flexDirection: "column", gap: 8 }}>
+              {editing.map((line, i) =>
+                doc.lines[i]?.trim() || line.trim() ? (
+                  <textarea
+                    key={i}
+                    value={line}
+                    onChange={(e) => setEditing((list) => (list ? list.map((x, j) => (j === i ? e.target.value : x)) : list))}
+                    rows={Math.max(2, Math.ceil(line.length / 42))}
+                    style={{ width: "100%", boxSizing: "border-box", resize: "vertical", border: "1px solid #dcdbd6", borderRadius: 8, padding: "8px 10px", fontFamily: "inherit", fontSize: 14, lineHeight: 1.7, color: "#262626", outline: "none" }}
+                  />
+                ) : null,
+              )}
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <button type="button" disabled={saving} onClick={() => void saveLines()} style={btn(true)}>
+                  {saving ? t("保存中…", "Saving…") : t("保存到脚本", "Save to the script")}
+                </button>
+                <button type="button" disabled={saving} onClick={() => setEditing(null)} style={btn()}>
+                  {t("取消", "Cancel")}
+                </button>
+                <span style={{ fontSize: 12, color: "#8a8a8a" }}>{t("清空一段就是删掉它", "Empty a part to delete it")}</span>
+              </div>
+            </div>
+          ) : open ? (
             <div style={{ padding: "12px 16px 14px", display: "flex", flexDirection: "column", gap: 10 }}>
               {shown.map((p, i) => (
                 <p key={i} style={{ margin: 0, fontSize: 14, lineHeight: 1.75, color: "#262626", whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>
@@ -1659,8 +1698,13 @@ function MadeActions({ made, zh }: { made: MadeScript; zh: boolean }) {
         <div style={{ fontSize: 12.5, color: "#8a8a8a" }}>{t("正在打开脚本…", "Opening the script…")}</div>
       ) : null}
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
-        <button type="button" onClick={() => window.dispatchEvent(new CustomEvent("tg-edit-script", { detail: made.title }))} style={btn(true)}>
-          {t("就在这里改", "Change it here")}
+        {doc && made.projectId && !editing ? (
+          <button type="button" onClick={() => (doc.locked ? notify(t("这份脚本已经批准锁定了，在项目的脚本页点「继续编辑」再改", "It is approved and locked; press Continue editing on its page first")) : (setEditing([...doc.lines]), setOpen(true)))} style={btn(true)}>
+            {t("直接编辑", "Edit it myself")}
+          </button>
+        ) : null}
+        <button type="button" onClick={() => window.dispatchEvent(new CustomEvent("tg-edit-script", { detail: made.title }))} style={btn(!made.projectId)}>
+          {t("让编剧改", "Ask the writer")}
         </button>
         <Link href={made.projectId ? `/projects/${made.projectId}/script?share=review` : `/script/${made.scriptId}?share=review`} prefetch={false} style={btn()}>
           {t("发给同事审阅", "Send for approval")}

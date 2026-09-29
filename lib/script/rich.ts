@@ -94,3 +94,29 @@ export function docForBeats(doc: RichNode | null | undefined, beats: BeatLike[])
 export function isRichDoc(v: unknown): v is RichDoc {
   return Boolean(v && typeof v === "object" && (v as RichNode).type === "doc" && Array.isArray((v as RichNode).content ?? []));
 }
+
+/**
+ * The same document with new words for its spoken lines (in `unitsOf`
+ * order): a line whose words changed gets them as plain text, keeping its
+ * shot note; a line emptied that has no shot note goes. Headings and the
+ * lines not touched stay as they were. For edits made outside the page
+ * (the chat's 直接编辑).
+ */
+export function withUnitTexts(doc: RichDoc, texts: string[]): RichDoc {
+  let i = 0;
+  const walk = (n: RichNode): RichNode | null => {
+    if (n.type === "paragraph") {
+      const text = textOf(n).replace(/\s+$/g, "");
+      const shot = typeof n.attrs?.shot === "string" ? (n.attrs.shot as string).trim() : "";
+      if (!text.trim() && !shot) return n;
+      const next = texts[i++];
+      if (next === undefined || next === text) return n;
+      if (!next.trim() && !shot) return null;
+      return { ...n, content: next ? [{ type: "text", text: next }] : undefined };
+    }
+    if (n.type === "heading" || !n.content) return n;
+    return { ...n, content: n.content.map(walk).filter((c): c is RichNode => c !== null) };
+  };
+  const out = walk(doc) as RichDoc;
+  return out.content && out.content.length ? out : { type: "doc", content: [{ type: "paragraph" }] };
+}

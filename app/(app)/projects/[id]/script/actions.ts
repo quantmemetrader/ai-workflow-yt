@@ -12,7 +12,7 @@ import { visibleProject } from "@/lib/projects/service";
 import { dmChannelWith, postMessage } from "@/lib/chat/service";
 import { tagProjectFile } from "@/lib/projects/files";
 import { ensureFileText } from "@/lib/files/extract";
-import { beatsFromDoc, isRichDoc } from "@/lib/script/rich";
+import { beatsFromDoc, isRichDoc, docForBeats, withUnitTexts, type RichNode } from "@/lib/script/rich";
 import { asc } from "drizzle-orm";
 import { readSentBack, recordSendBack, settleSendBack } from "@/lib/projects/sendback";
 import { createScript, cutVersion, decideApproval, requestApproval, restoreVersion, saveBeats, unlock } from "@/lib/script/service";
@@ -404,6 +404,21 @@ export async function saveRichAction(projectId: unknown, doc: unknown, html: unk
   const cleanHtml = typeof html === "string" ? html.slice(0, 3_000_000).replace(/<script[\s\S]*?<\/script>/gi, "").replace(/\son\w+="[^"]*"/gi, "") : null;
   await db.update(scripts).set({ doc: doc as unknown as Record<string, unknown>, docHtml: cleanHtml }).where(eq(scripts.id, scriptId));
   return { ok: true as const, at: new Date().toISOString() };
+}
+
+/** The chat's 直接编辑: new words for the script's spoken lines, saved into the document. */
+export async function saveLinesAction(projectId: unknown, texts: unknown) {
+  const c = await ctx(projectId, true);
+  if ("error" in c) return c;
+  const scriptId = c.project.scriptId;
+  if (!scriptId || !Array.isArray(texts) || texts.length > 400) return { error: "Not allowed" };
+  const lines = texts.map((x) => (typeof x === "string" ? x.slice(0, 4000) : ""));
+  const [row] = await db.select({ doc: scripts.doc }).from(scripts).where(eq(scripts.id, scriptId)).limit(1);
+  const beats = await db.select({ voiceover: scriptBeats.voiceover, visual: scriptBeats.visual }).from(scriptBeats).where(eq(scriptBeats.scriptId, scriptId)).orderBy(asc(scriptBeats.ord));
+  const base = docForBeats((row?.doc ?? null) as RichNode | null, beats);
+  const res = await saveRichAction(projectId, withUnitTexts(base, lines), null);
+  if ("ok" in res) refresh(c.project.id);
+  return res;
 }
 
 /** 重命名: the document's title is the script's (and the project's) name. */
