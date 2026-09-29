@@ -70,7 +70,7 @@ export async function ScriptDocPage({ id, standalone = false }: { id: string; st
   const sentBack = p.sentBack.script && p.sentBack.script.state === "open" ? p.sentBack.script : null;
 
   return (
-    <div style={{ flexGrow: 1, minWidth: 0, minHeight: 0, display: "flex", flexDirection: "column", background: standalone ? "#f9fbfd" : undefined }}>
+    <div data-script-page="" data-project-frame={standalone ? "" : undefined} style={{ flexGrow: 1, minWidth: 0, minHeight: 0, display: "flex", flexDirection: "column", background: standalone ? "#f9fbfd" : undefined, overflowY: standalone ? "auto" : undefined }}>
       {standalone ? (
         <div style={{ flexShrink: 0, display: "flex", alignItems: "center", gap: 12, padding: "10px 18px", borderBottom: "1px solid #e7e6e2", background: "#fff" }}>
           <Link href="/script" prefetch={false} style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 34, padding: "0 12px", borderRadius: 9, border: "1px solid #dcdbd6", color: "#171717", textDecoration: "none", fontSize: 13.5, fontWeight: 600 }}>

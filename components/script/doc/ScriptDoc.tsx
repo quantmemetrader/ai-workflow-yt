@@ -301,7 +301,7 @@ export function ScriptDoc(props: ScriptDocProps) {
    */
   React.useEffect(() => {
     const onWheel = (e: WheelEvent) => {
-      const c = canvas.current;
+      const c = (canvas.current?.closest("[data-project-frame]") as HTMLElement | null) ?? canvas.current;
       if (!c || e.ctrlKey || Math.abs(e.deltaY) < Math.abs(e.deltaX)) return;
       const target = e.target as Element | null;
       if (!target || c.contains(target) || target.closest("[role=dialog], [role=menu], [role=listbox], textarea, select")) return;
@@ -1676,8 +1676,11 @@ function PromptModal({ title, label, initial, zh, onClose, onOk, extra }: { titl
 }
 
 const CSS = `
-.gd-root { flex-grow: 1; min-width: 0; min-height: 0; overflow: hidden; display: flex; flex-direction: column; background: #f9fbfd; color: #1f1f1f; font-family: "Google Sans", Roboto, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; }
-.gd-root:fullscreen { background: #f9fbfd; }
+/* The whole page scrolls as one — header, tabs, toolbar and paper together (the owner, 30 Sep: "let the whole page scroll so the script gets more room"). */
+[data-project-frame]:has([data-gd-root]) { overflow-y: auto !important; }
+[data-project-frame]:has([data-gd-root]) > [data-project-body], [data-script-page] { flex-shrink: 0; min-height: auto !important; }
+.gd-root { flex-grow: 1; min-width: 0; display: flex; flex-direction: column; background: #f9fbfd; color: #1f1f1f; font-family: "Google Sans", Roboto, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; }
+.gd-root:fullscreen { background: #f9fbfd; overflow-y: auto; }
 .gd-head { display: flex; align-items: center; gap: 10px; padding: 8px 16px 0 14px; flex-shrink: 0; }
 .gd-title { font: inherit; font-size: 18px; color: #1f1f1f; border: 1px solid transparent; border-radius: 4px; padding: 1px 6px; margin-left: -6px; background: transparent; min-width: 6ch; max-width: 52ch; text-overflow: ellipsis; }
 .gd-title:hover:not(:disabled) { border-color: #c7c7c7; }
@@ -1774,13 +1777,13 @@ const CSS = `
 .gd-find-input:focus, .gd-field:focus, .gd-comment-box:focus { outline: none; border-color: #0b57d0; box-shadow: 0 0 0 1px #0b57d0; }
 .gd-link { border: 0; background: none; padding: 0; color: #0b57d0; font: inherit; font-size: 13px; cursor: pointer; text-decoration: none; }
 .gd-link:hover { text-decoration: underline; }
-.gd-body { flex-grow: 1; min-height: 0; display: flex; position: relative; }
-.gd-outline { width: 250px; flex-shrink: 0; padding: 14px 12px 24px 18px; overflow-y: auto; box-sizing: border-box; }
+.gd-body { flex-grow: 1; display: flex; align-items: flex-start; position: relative; }
+.gd-outline { width: 250px; flex-shrink: 0; padding: 14px 12px 24px 18px; overflow-y: auto; box-sizing: border-box; position: sticky; top: 0; max-height: calc(100vh - 40px); }
 .gd-outline-open { position: absolute; left: 16px; top: 14px; z-index: 5; width: 40px; height: 40px; border: 0; border-radius: 999px; background: #fff; color: #444746; box-shadow: 0 1px 3px rgba(60,64,67,.3); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
 .gd-tab-pill { display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 14px; border-radius: 999px; background: #d3e3fd; color: #041e49; font-size: 14px; font-weight: 500; }
 .gd-outline-item { border: 0; background: none; text-align: left; font: inherit; font-size: 13.5px; color: #1f1f1f; padding: 6px 10px; border-radius: 999px; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .gd-outline-item:hover { background: #e8eaed; }
-.gd-canvas { flex-grow: 1; min-width: 0; overflow: auto; position: relative; }
+.gd-canvas { flex-grow: 1; min-width: 0; overflow-x: clip; position: relative; align-self: stretch; }
 .gd-ruler-wrap { position: sticky; top: 0; z-index: 4; display: flex; justify-content: center; background: #f9fbfd; }
 .gd-ruler { position: relative; height: 22px; border-bottom: 1px solid #dadce0; background: linear-gradient(to right, #eef0f3 0, #eef0f3 11.76%, #fff 11.76%, #fff 88.24%, #eef0f3 88.24%) , #fff; background-clip: padding-box; box-sizing: border-box; }
 .gd-ruler::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 5px; background: repeating-linear-gradient(to right, #80868b 0, #80868b 1px, transparent 1px, transparent 9.45px); opacity: .55; }
@@ -1797,7 +1800,7 @@ const CSS = `
 .gd-add-comment { position: absolute; left: 0; width: 40px; height: 40px; border: 0; border-radius: 999px; background: #fff; color: #444746; box-shadow: 0 1px 3px rgba(60,64,67,.3); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
 .gd-add-comment:hover { background: #f1f3f4; }
 .gd-empty { display: flex; flex-direction: column; align-items: center; gap: 10px; text-align: center; padding: 160px 0; }
-.gd-side { width: 340px; flex-shrink: 0; border-left: 1px solid #e3e3e3; background: #fff; padding: 16px 18px 24px; overflow-y: auto; box-sizing: border-box; }
+.gd-side { width: 340px; flex-shrink: 0; border-left: 1px solid #e3e3e3; background: #fff; padding: 16px 18px 24px; overflow-y: auto; box-sizing: border-box; position: sticky; top: 0; max-height: calc(100vh - 40px); }
 .gd-side-block { display: flex; flex-direction: column; gap: 8px; padding: 12px; border: 1px solid #e3e3e3; border-radius: 12px; }
 .gd-ref { display: flex; align-items: center; gap: 8px; font-size: 13px; padding: 4px 0; }
 .gd-ref a { flex-grow: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #1f1f1f; text-decoration: none; }

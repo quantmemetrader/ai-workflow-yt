@@ -16,12 +16,12 @@ export default async function ProjectLayout({ children, params }: { children: Re
   const p = await projectForPage(viewer, id, zh);
   if (!p) notFound();
   return (
-    <div style={{ flexGrow: 1, minWidth: 0, minHeight: 0, display: "flex", flexDirection: "column", background: "#f6f5f2" }}>
+    <div data-project-frame="" style={{ flexGrow: 1, minWidth: 0, minHeight: 0, display: "flex", flexDirection: "column", background: "#f6f5f2" }}>
       <ProjectHeader
         zh={zh}
         p={{ id: p.id, title: p.title, status: p.status, canManage: p.canManage, access: p.access, published: p.published?.platforms ?? [], tabs: tabStates(p) }}
       />
-      <div style={{ flexGrow: 1, minHeight: 0, display: "flex" }}>{children}</div>
+      <div data-project-body="" style={{ flexGrow: 1, minHeight: 0, display: "flex" }}>{children}</div>
     </div>
   );
 }
