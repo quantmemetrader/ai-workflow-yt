@@ -1678,7 +1678,8 @@ function PromptModal({ title, label, initial, zh, onClose, onOk, extra }: { titl
 const CSS = `
 /* The whole page scrolls as one — header, tabs, toolbar and paper together (the owner, 30 Sep: "let the whole page scroll so the script gets more room"). */
 [data-project-frame]:has([data-gd-root]) { overflow-y: auto !important; }
-[data-project-frame]:has([data-gd-root]) > [data-project-body], [data-script-page] { flex-shrink: 0; min-height: auto !important; }
+[data-project-frame]:has([data-gd-root]) > [data-project-body] { flex-shrink: 0; min-height: auto !important; }
+[data-script-page] { min-height: auto !important; }
 .gd-root { flex-grow: 1; min-width: 0; display: flex; flex-direction: column; background: #f9fbfd; color: #1f1f1f; font-family: "Google Sans", Roboto, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; }
 .gd-root:fullscreen { background: #f9fbfd; overflow-y: auto; }
 .gd-head { display: flex; align-items: center; gap: 10px; padding: 8px 16px 0 14px; flex-shrink: 0; }
