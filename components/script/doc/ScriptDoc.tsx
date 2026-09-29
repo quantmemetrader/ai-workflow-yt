@@ -544,6 +544,16 @@ export function ScriptDoc(props: ScriptDocProps) {
 
   /* ---------------- approval & sharing ---------------- */
   const [sharing, setSharing] = React.useState(false);
+  /* 「分享」 in the script library lands here with ?share=1. */
+  React.useEffect(() => {
+    const url = new URL(window.location.href);
+    if (url.searchParams.get("share") !== "1") return;
+    url.searchParams.delete("share");
+    window.history.replaceState(null, "", url.pathname + url.search + url.hash);
+    /* Not cancelled on cleanup: the param is gone once read, so a second run
+       (React's dev double effect) would otherwise never open it. */
+    window.setTimeout(() => setSharing(true), 0);
+  }, []);
   const [noteOpen, setNoteOpen] = React.useState(false);
   const [note, setNote] = React.useState("");
   const open = props.approvals.filter((a) => a.state === "requested");

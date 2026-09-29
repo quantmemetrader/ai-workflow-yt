@@ -2,10 +2,9 @@ import { requireModule } from "@/lib/auth/dal";
 import { proposalsFor } from "@/lib/agents/proposals";
 import { answeringModel } from "@/lib/ai/models";
 import { LibraryView } from "@/components/script/LibraryView";
-import { libraryCounts, listFolders, listScripts, pendingApprovals, sharedScriptIds, type ScriptListItem } from "@/lib/script/service";
+import { listFolders, listScripts, pendingApprovals, sharedScriptIds, type ScriptListItem } from "@/lib/script/service";
 import { scriptTopicQueue } from "@/lib/script/topics";
 import { treeOf } from "@/lib/script/folders";
-import { listProjectFiles } from "@/lib/projects/files";
 
 export const metadata = { title: "脚本 · Script" };
 
@@ -45,23 +44,25 @@ export default async function ScriptLibraryPage({
   const scope: Scope = isScope(one("scope")) ? (one("scope") as Scope) : "all";
   const query = one("q") ?? "";
 
-  const [all, folders, counts, waiting, everything] = await Promise.all([
+  const [allRows, folders, waiting, everythingRows] = await Promise.all([
     listScripts(viewer, {
       folderId: folderId ?? undefined,
       status: status ?? undefined,
       query,
     }),
     listFolders(viewer),
-    libraryCounts(viewer, folderId ?? undefined),
     pendingApprovals(viewer),
     listScripts(viewer),
   ]);
+  /* A script can come back twice from the project join; each is listed once. */
+  const once = (rows: ScriptListItem[]) => {
+    const seen = new Set<string>();
+    return rows.filter((s) => (seen.has(s.id) ? false : (seen.add(s.id), true)));
+  };
+  const all = once(allRows);
+  const everything = once(everythingRows);
   /* One folder per project, from what exists now: a project made a moment ago is already here. */
   const tree = treeOf(everything);
-  const projectRefs =
-    projectPick && projectPick !== "none"
-      ? (await listProjectFiles(viewer, projectPick).catch(() => [])).filter((f) => f.role === "reference").map((f) => ({ id: f.id, name: f.name, sizeBytes: f.sizeBytes }))
-      : [];
 
   /**
    * The sidebar's scopes, applied here rather than in SQL.
@@ -74,6 +75,22 @@ export default async function ScriptLibraryPage({
    * person or their team appears here and one they wrote themselves does not.
    */
   const waitingIds = new Set(waiting.map((w) => w.objectId));
+  /* The filter row's numbers: the folder that is open, before a filter. */
+  const here = projectPick
+    ? everything.filter((s) => (projectPick === "none" ? !s.projectId : s.projectId === projectPick))
+    : folderId
+      ? everything.filter((s) => s.folderId === folderId)
+      : everything;
+  const by = (st: ScriptListItem["status"]) => here.filter((s) => s.status === st).length;
+  const counts = {
+    all: here.length,
+    brief: by("brief"),
+    drafting: by("drafting"),
+    awaiting: by("awaiting_approval"),
+    locked: by("locked"),
+    mine: here.filter((s) => s.ownerId === viewer.id).length,
+    waitingMe: here.filter((s) => waitingIds.has(s.id)).length,
+  };
   const sharedIds = scope === "shared" ? new Set(await sharedScriptIds(viewer)) : new Set<string>();
   const inFolder = projectPick ? all.filter((s) => (projectPick === "none" ? !s.projectId : s.projectId === projectPick)) : all;
   const scripts =
@@ -111,7 +128,6 @@ export default async function ScriptLibraryPage({
       canStart={viewer.modules.includes("chat")}
       tree={tree}
       projectId={projectPick}
-      projectRefs={projectRefs}
     />
   );
 }

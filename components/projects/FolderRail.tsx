@@ -21,10 +21,11 @@ export type RailSection = { title?: string; folders: RailFolder[]; action?: { la
  * 全部, one folder per project (made with the project, nothing to do), the
  * studio's own folders, and what belongs to no project.
  */
-export function FolderRail({ sections, footer = null }: { sections: RailSection[]; footer?: React.ReactNode }) {
+export function FolderRail({ sections, footer = null, header = null }: { sections: RailSection[]; footer?: React.ReactNode; /** Above the folders (the drive's 「新建」). */ header?: React.ReactNode }) {
   const [over, setOver] = React.useState<string | null>(null);
   return (
-    <nav aria-label="folders" style={{ width: 236, flexShrink: 0, borderRight: "1px solid #ededed", overflowY: "auto", padding: "14px 10px 24px", boxSizing: "border-box", background: "#fbfbfa" }}>
+    <nav aria-label="文件夹" className="folder-rail" style={{ width: 236, flexShrink: 0, borderRight: "1px solid #ededed", overflowY: "auto", padding: "14px 10px 24px", boxSizing: "border-box", background: "#fbfbfa" }}>
+      {header}
       {sections.map((sec, i) => (
         <div key={i} style={{ marginBottom: 14 }}>
           {sec.title || sec.action ? (
@@ -43,7 +44,13 @@ export function FolderRail({ sections, footer = null }: { sections: RailSection[
               type="button"
               onClick={f.onClick}
               aria-current={f.active ? "true" : undefined}
-              title={f.label}
+              onMouseEnter={(e) => {
+                /* The whole name on hover only where the column cut it off:
+                   a tooltip over a name that is already fully shown covered
+                   the tabs above it. */
+                const s = e.currentTarget.querySelector<HTMLElement>("[data-label]");
+                e.currentTarget.title = s && s.scrollWidth > s.clientWidth + 1 ? f.label : "";
+              }}
               onDragOver={
                 f.onDrop
                   ? (e) => {
@@ -86,7 +93,7 @@ export function FolderRail({ sections, footer = null }: { sections: RailSection[
               }}
             >
               <Glyph kind={f.kind ?? "project"} />
-              <span style={{ flexGrow: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.label}</span>
+              <span data-label="" style={{ flexGrow: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.label}</span>
               {typeof f.count === "number" ? <span style={{ fontSize: 11.5, color: "#9a9a9a" }}>{f.count}</span> : null}
             </button>
           ))}
