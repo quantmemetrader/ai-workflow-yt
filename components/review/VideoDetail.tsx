@@ -82,9 +82,9 @@ export function VideoDetail({ zh, video, siblings, typical }: { zh: boolean; vid
                   <span style={{ fontSize: 13.5, fontWeight: 500, whiteSpace: "nowrap" }}>{publishPlatformName(s.platform, zh)}</span>
                   <span style={{ fontSize: 12.5, color: MUTED, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>{s.at ? day(s.at, zh) : ""}</span>
                 </span>
-                <span style={num}>{t("播放", "Plays")} {fmtNum(s.stats.plays, zh)}</span>
-                <span style={num}>{t("点赞", "Likes")} {fmtNum(s.stats.likes, zh)}</span>
-                <span style={num}>{t("评论", "Cmts")} {fmtNum(s.stats.comments, zh)}</span>
+                <span style={num}>{typeof s.stats.plays === "number" ? `${t("播放", "Plays")} ${fmtNum(s.stats.plays, zh)}` : ""}</span>
+                <span style={num}>{typeof s.stats.likes === "number" ? `${t("点赞", "Likes")} ${fmtNum(s.stats.likes, zh)}` : ""}</span>
+                <span style={num}>{typeof s.stats.comments === "number" ? `${t("评论", "Cmts")} ${fmtNum(s.stats.comments, zh)}` : ""}</span>
               </Link>
             ))}
           </Card>

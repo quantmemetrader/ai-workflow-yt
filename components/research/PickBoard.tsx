@@ -9,10 +9,7 @@ import { ResearchAgentPanel } from "@/components/canvas/ResearchAgentPanel";
 import { InlineAgentThread, useInlineAgent } from "@/components/shell/InlineAgent";
 import { AgentHistory } from "@/components/shell/AgentHistory";
 import { startFromTopicAction } from "@/app/(app)/projects/actions";
-import { AgentIcon } from "@/components/agents/AgentIcon";
-import { AGENT_KEYS, AGENT_LABELS, type AgentKey } from "@/lib/agents/catalog";
-
-const isAgent = (k: string): k is AgentKey => (AGENT_KEYS as readonly string[]).includes(k);
+import { PlanTodayCard, type PlanToday } from "@/components/agents/PlanTodayCard";
 import { notify } from "@/lib/client/notify";
 import type { TopicRef } from "@/lib/projects/topic";
 
@@ -63,8 +60,6 @@ function writeHidden(day: string, keys: string[]) {
   }
 }
 
-/** 策划's plan for the day (posted at 08:05 in #研究日报): the topic it puts forward and each colleague's part. */
-export type PlanToday = { date: string; topic: string | null; items: { owner: string; text: string; why: string | null }[]; href: string | null };
 
 export function PickBoard({ picks, zh, day, model, canWrite, plan = null }: { picks: PickCard[]; zh: boolean; day: string; model: string; canWrite: boolean; plan?: PlanToday | null }) {
   const t = (a: string, b: string) => (zh ? a : b);
@@ -115,49 +110,7 @@ export function PickBoard({ picks, zh, day, model, canWrite, plan = null }: { pi
   return (
     <div style={{ flexGrow: 1, minWidth: 0, minHeight: 0, display: "flex" }}>
       <PageBody width={1040}>
-        {/* 策划's daily report, back in plain sight (Catherine, 29 Sep: "让策划每天提报选题也没有了"). */}
-        {plan ? (
-          <section style={{ background: "#fff", border: `1px solid ${LINE}`, borderRadius: 16, padding: "18px 22px", display: "flex", flexDirection: "column", gap: 12, marginTop: 4 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-              <AgentIcon agent="planning" size={30} radius={8} />
-              <div style={{ minWidth: 0, flexGrow: 1 }}>
-                <div style={{ fontSize: 15.5, fontWeight: 650, color: INK }}>{t("策划今日提报", "The planner's report today")}</div>
-                <div style={{ fontSize: 12.5, color: MUTED }}>{t(`${plan.date} · 每天早上 8 点自动提报`, `${plan.date} · every morning at 8`)}</div>
-              </div>
-              {plan.href ? (
-                <Link href={plan.href} prefetch={false} style={{ fontSize: 13, color: "#1f5fbf", textDecoration: "none", whiteSpace: "nowrap" }}>
-                  {t("看完整计划 →", "Full plan →")}
-                </Link>
-              ) : null}
-            </div>
-            {plan.topic ? (
-              <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", padding: "12px 14px", borderRadius: 12, background: "#f7f7f5" }}>
-                <div style={{ minWidth: 0, flexGrow: 1 }}>
-                  <div style={{ fontSize: 12, color: MUTED }}>{t("提报的选题", "Proposed topic")}</div>
-                  <div style={{ fontSize: 16, fontWeight: 650, color: INK, lineHeight: 1.45, overflowWrap: "anywhere" }}>{plan.topic}</div>
-                </div>
-                <button type="button" disabled={busy !== null} onClick={() => void start(`plan-topic:${plan.topic}`, { kind: "own", text: plan.topic! })} style={bigButton("primary", busy !== null)}>
-                  <Icon name="film" size={15} />
-                  {busy === `plan-topic:${plan.topic}` ? t("正在开始…", "Starting…") : t("用这个做一条视频", "Make this video")}
-                </button>
-              </div>
-            ) : null}
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {plan.items.map((it, i) => (
-                <div key={i} style={{ display: "flex", gap: 10, alignItems: "flex-start", minWidth: 0 }}>
-                  {isAgent(it.owner) ? <AgentIcon agent={it.owner} size={22} radius={6} /> : <span style={{ width: 22 }} />}
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ fontSize: 13.5, color: INK, lineHeight: 1.55, overflowWrap: "anywhere" }}>
-                      {isAgent(it.owner) ? <b style={{ fontWeight: 600 }}>{zh ? AGENT_LABELS[it.owner].nameLocal : AGENT_LABELS[it.owner].nameEn}：</b> : null}
-                      {it.text}
-                    </div>
-                    {it.why ? <div style={{ fontSize: 12, color: MUTED, lineHeight: 1.5, marginTop: 1 }}>{it.why}</div> : null}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </section>
-        ) : null}
+        {plan ? <PlanTodayCard plan={plan} zh={zh} canWrite={canWrite} /> : null}
         <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12, marginTop: 4 }}>
           <h2 style={{ margin: 0, fontSize: 20, fontWeight: 650, color: INK }}>{t("今天推荐拍这几个", "Worth making today")}</h2>
           <span style={{ fontSize: 12.5, color: MUTED }}>{t("研究员每天早上更新", "Updated every morning")}</span>

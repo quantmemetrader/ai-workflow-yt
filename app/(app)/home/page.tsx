@@ -5,6 +5,8 @@ import { readHome } from "@/lib/home/service";
 import { AGENT_KEYS } from "@/lib/agents/catalog";
 import { Card } from "@/components/projects/kit";
 import { TeamBoard, type TeamMember } from "@/components/agents/TeamBoard";
+import { PlanTodayCard } from "@/components/agents/PlanTodayCard";
+import { planToday } from "@/lib/agents/plan-today";
 
 export const metadata = { title: "首页 · Home" };
 
@@ -17,7 +19,7 @@ export const metadata = { title: "首页 · Home" };
 export default async function HomePage() {
   const viewer = await requireModule("chat");
   const zh = (viewer.locale ?? "zh-CN").startsWith("zh");
-  const [today, home] = await Promise.all([readToday(viewer, zh), readHome(viewer, zh)]);
+  const [today, home, plan] = await Promise.all([readToday(viewer, zh), readHome(viewer, zh), planToday(viewer.tenantId)]);
   /* The AI colleagues, in plain sight: faces, what each is doing, 派任务. */
   const byKey = new Map(home.agents.map((a) => [a.key, a]));
   const team: TeamMember[] = AGENT_KEYS.map((key) => {
@@ -31,6 +33,7 @@ export default async function HomePage() {
         me={(zh && viewer.nameLocal) || viewer.name}
         greeting={greeting(zh)}
         today={today}
+        plan={plan ? <PlanTodayCard plan={plan} zh={zh} canWrite={viewer.modules.includes("script")} /> : null}
         team={
           <Card icon="spark" title={zh ? "AI 同事" : "AI team"} right={<a href="/team" style={{ fontSize: 12.5, color: "#525252", textDecoration: "none" }}>{zh ? "全部同事 →" : "The whole team →"}</a>}>
             <TeamBoard team={team} zh={zh} />
