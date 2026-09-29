@@ -121,6 +121,22 @@ async function run(ctx: ToolContext, name: string, args: Record<string, unknown>
      */
     let project: { id: string; title: string; created: boolean } | null = null;
     let intoScriptId = ctx.scriptId ?? null;
+    /*
+     * The conversation's own script is approved (locked) or gone, and the ask
+     * is a different video: that is a new project, not a refusal. 29 Sep:
+     * "帮我做一条新视频：比特币…" in 编剧's chat, last about an approved
+     * script, was refused twice as "locked" — and the reply then said a
+     * project had been made. The same subject still gets the refusal, so an
+     * approved script is never quietly replaced.
+     */
+    if (intoScriptId) {
+      const [own] = await db
+        .select({ title: scripts.title, lockedVersion: scripts.lockedVersion })
+        .from(scripts)
+        .where(and(eq(scripts.id, intoScriptId), eq(scripts.tenantId, ctx.viewer.tenantId), isNull(scripts.deletedAt)))
+        .limit(1);
+      if (!own || (own.lockedVersion !== null && subject && !sameSubject(own.title, subject))) intoScriptId = null;
+    }
     const person = ctx.asker ?? (agentKeyFromEmail(ctx.viewer.email) ? null : ctx.viewer);
     const starter = person ?? ctx.viewer;
     /*
@@ -398,3 +414,13 @@ async function findScripts(ctx: ToolContext, query: string, limit: number): Prom
 }
 
 export const scriptPack: ToolPack = { module: "script", defs, run };
+
+/** Two titles about the same video: one holds the other's first eight letters, punctuation and spaces aside. */
+function sameSubject(a: string, b: string): boolean {
+  const norm = (x: string) => x.toLowerCase().replace(/[\s\p{P}\p{S}]+/gu, "");
+  const x = norm(a);
+  const y = norm(b);
+  if (!x || !y) return false;
+  const head = (z: string) => Array.from(z).slice(0, 8).join("");
+  return x.includes(head(y)) || y.includes(head(x));
+}

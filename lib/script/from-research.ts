@@ -162,7 +162,7 @@ export async function writeScript(viewer: Viewer, req: ScriptRequest): Promise<S
      locked script before touching it. This one used to rewrite its angle,
      channel and length first and only then have the draft refused, leaving
      an approved version's brief changed with nothing to show for it. */
-  if (into && into.lockedVersion !== null) return { ok: false, error: "That script is locked: it was approved. Unlock it on its page before writing a new draft." };
+  if (into && into.lockedVersion !== null) return { ok: false, error: "That script is locked: it was approved. Unlock it on its page before writing a new draft. Nothing was written and no project was created." };
   if (into) {
     await db
       .update(scripts)
