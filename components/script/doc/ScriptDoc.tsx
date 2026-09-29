@@ -544,6 +544,11 @@ export function ScriptDoc(props: ScriptDocProps) {
 
   /* ---------------- approval & sharing ---------------- */
   const [sharing, setSharing] = React.useState(false);
+  /* Arrived from 「发给同事审阅」 in a chat: open the share box, set to ask for approval. */
+  React.useEffect(() => {
+    if (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("share") === "review" && me.canEdit) setSharing(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   /* 「分享」 in the script library lands here with ?share=1. */
   React.useEffect(() => {
     const url = new URL(window.location.href);

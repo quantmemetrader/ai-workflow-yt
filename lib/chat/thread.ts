@@ -71,6 +71,7 @@ export async function threadMessagesOf(viewer: Viewer, detail: NonNullable<Await
         summary: summarise(c.name, c.args as Record<string, unknown>, c.durationMs),
       })),
     videos: videos.get(m.id) ?? [],
+    made: madeScript(detail.toolCalls.filter((c) => c.messageId === m.id)),
   }));
 }
 
@@ -107,4 +108,15 @@ function summarise(name: string, args: Record<string, unknown>, ms: number | nul
     default:
       return name + secs;
   }
+}
+
+/** The script a turn wrote, from its write_script receipt ("Open it at /script/scr_…"). */
+function madeScript(calls: { name: string; status: string; result?: unknown }[]): { scriptId: string; projectId: string | null; title: string } | null {
+  for (const c of [...calls].reverse()) {
+    if (c.name !== "write_script" || c.status !== "ok" || typeof c.result !== "string") continue;
+    const id = /\/script\/(scr_[0-9a-z]+)/i.exec(c.result)?.[1];
+    if (!id) continue;
+    return { scriptId: id, projectId: /\/projects\/(wp_[0-9a-z]+)/i.exec(c.result)?.[1] ?? null, title: /Written: "(.+?)"/.exec(c.result)?.[1] ?? "" };
+  }
+  return null;
 }

@@ -42,6 +42,7 @@ import type { Locale } from "@/lib/i18n";
  * where did it come from, what did it cost — are answered by the artboard's own
  * elements, not by anything added on top.
  */
+export type MadeScript = { scriptId: string; projectId: string | null; title: string };
 export type ThreadTool = { id: string; name: string; status: string; summary?: string; durationMs?: number | null };
 export type ThreadCitation = {
   fileId: string;
@@ -63,6 +64,8 @@ export type ThreadMessage = {
   createdAt?: string;
   citations: ThreadCitation[];
   tools: ThreadTool[];
+  /** The script this turn wrote, for the presses under it (open, send for review, change it here). */
+  made?: MadeScript | null;
   /** The employee who answered, when an @ handed the turn to one. */
   speaker?: AgentKey | null;
   /** The renders and video files this turn names — a person's upload, an
@@ -242,6 +245,21 @@ export function AgentScreen({
   const abort = useRef<AbortController | null>(null);
   const scroller = useRef<HTMLDivElement>(null);
   const box = useRef<HTMLTextAreaElement>(null);
+  /* 「就在这里改」 under a written script: the next message, to 编剧, about that script. */
+  useEffect(() => {
+    const on = (e: Event) => {
+      const title = (e as CustomEvent<string>).detail;
+      setInput(`${agentTag("script")} 把《${title}》改一下：`);
+      window.setTimeout(() => {
+        const el = box.current;
+        if (!el) return;
+        el.focus();
+        el.setSelectionRange(el.value.length, el.value.length);
+      }, 30);
+    };
+    window.addEventListener("tg-edit-script", on);
+    return () => window.removeEventListener("tg-edit-script", on);
+  }, []);
   const format = (f: Format) => formatTextarea(box.current, f, setInput);
   /* @ an employee to hand them this message; otherwise your assistant answers. */
   const mentions = useMentions({ people: undefined, zh, draft: input, setDraft: setInput, box });
@@ -504,6 +522,11 @@ export function AgentScreen({
                  receipts, and the ids in its result (`resultIds`) when it
                  looked one thing up rather than listed many — the rule a
                  reloaded thread applies too (`resultVideoRefs`). */
+              if (event.status === "ok" && event.name === "write_script" && Array.isArray(event.artifacts)) {
+                const sc = event.artifacts.find((a: { kind?: string }) => a?.kind === "script");
+                const pr = event.artifacts.find((a: { kind?: string }) => a?.kind === "work_project");
+                if (sc && typeof sc.id === "string") patchLast((m) => ({ ...m, made: { scriptId: sc.id, projectId: typeof pr?.id === "string" ? pr.id : null, title: String(sc.title ?? "") } }));
+              }
               if (event.status === "ok") {
                 for (const a of Array.isArray(event.artifacts) ? event.artifacts : []) {
                   if ((a?.kind === "render" || a?.kind === "file") && typeof a.id === "string") named.add(a.id);
@@ -1270,6 +1293,8 @@ function AgentRow({ message, zh, locale }: { message: ThreadMessage; zh: boolean
               下载, 打开项目 — "done" with the film under it. */}
           <VideoCards videos={message.videos} zh={zh} />
 
+          {message.made && message.status !== "streaming" ? <MadeActions made={message.made} zh={zh} /> : null}
+
           {message.error && (
             <div
               style={{
@@ -1581,4 +1606,33 @@ function groupTools(tools: ThreadTool[], zh: boolean): { tool: ThreadTool; count
     else out.push({ tool: t, count: 1, key });
   }
   return out;
+}
+
+/**
+ * Under a reply that wrote a script: read it, open its project, send it to a
+ * colleague for approval, or keep changing it right here (the owner, 29 Sep:
+ * "why are there no buttons to open it in the project, send it for approval,
+ * read it, or just change it right here").
+ */
+function MadeActions({ made, zh }: { made: MadeScript; zh: boolean }) {
+  const t = (a: string, b: string) => (zh ? a : b);
+  const btn = (primary = false): React.CSSProperties => ({ display: "inline-flex", alignItems: "center", gap: 6, height: 32, padding: "0 13px", borderRadius: 9, fontSize: 13, fontWeight: 600, textDecoration: "none", cursor: "pointer", fontFamily: "inherit", border: `1px solid ${primary ? "#171717" : "#dcdbd6"}`, background: primary ? "#171717" : "#fff", color: primary ? "#fff" : "#262626", whiteSpace: "nowrap" });
+  return (
+    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
+      <Link href={`/script/${made.scriptId}`} prefetch={false} style={btn(true)}>
+        {t("打开脚本，看或改", "Open the script")}
+      </Link>
+      {made.projectId ? (
+        <Link href={`/projects/${made.projectId}`} prefetch={false} style={btn()}>
+          {t("打开项目", "Open the project")}
+        </Link>
+      ) : null}
+      <Link href={`/script/${made.scriptId}?share=review`} prefetch={false} style={btn()}>
+        {t("发给同事审阅", "Send for approval")}
+      </Link>
+      <button type="button" onClick={() => window.dispatchEvent(new CustomEvent("tg-edit-script", { detail: made.title }))} style={btn()}>
+        {t("就在这里改", "Change it here")}
+      </button>
+    </div>
+  );
 }
