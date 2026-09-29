@@ -58,10 +58,14 @@ export async function ScriptDocPage({ id, standalone = false }: { id: string; st
 
   const s = detail?.script ?? null;
   const accessNote =
-    p.access.mode === "everyone"
+    p.access.link === "edit"
+      ? zh ? "工作室里有链接的人都能打开并编辑" : "Anyone in the studio with the link can open and edit"
+      : p.access.link === "view"
+        ? zh ? "工作室里有链接的人都能打开查看" : "Anyone in the studio with the link can view"
+        : p.access.mode === "everyone"
       ? zh ? "工作室里的人都能打开这个链接" : "Anyone in the studio can open this link"
       : p.access.mode === "private"
-        ? zh ? "项目现在仅自己可见 —— 发给同事前，先在顶部把项目改成他们可见" : "The project is private — make it visible to them first"
+        ? zh ? "项目仅自己可见：把下面「有链接的人」改成可查看或可编辑，发链接的人就能打开" : "The project is private: set Anyone with the link below so the people you send it to can open it"
         : zh ? "能看到这个项目的人可以打开这个链接" : "People who can see this project can open this link";
   const sentBack = p.sentBack.script && p.sentBack.script.state === "open" ? p.sentBack.script : null;
 
@@ -87,7 +91,7 @@ export async function ScriptDocPage({ id, standalone = false }: { id: string; st
           name: (zh && viewer.nameLocal) || viewer.name,
           avatarUrl: viewer.avatarUrl,
           isAdmin: viewer.role === "owner" || viewer.role === "admin",
-          canEdit: viewer.modules.includes("script"),
+          canEdit: viewer.modules.includes("script") && p.linkOnly !== "view",
         }}
         script={
           s
@@ -125,6 +129,7 @@ export async function ScriptDocPage({ id, standalone = false }: { id: string; st
         accessMode={p.access.mode}
         access={p.access}
         canManageAccess={p.canManage}
+        linkAccess={p.access.link ?? null}
       />
     </div>
   );

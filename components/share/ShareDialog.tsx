@@ -22,6 +22,8 @@ export function ShareDialog({
   title,
   url,
   accessNote,
+  linkAccess,
+  onLinkAccess,
   people,
   meId,
   allowReview = true,
@@ -38,6 +40,9 @@ export function ShareDialog({
   url: string;
   /** Who can open the link, in one line. */
   accessNote?: string;
+  /** 有链接的人 (Google-Docs style): nobody extra, view, or edit; `onLinkAccess` for whoever may change it. */
+  linkAccess?: "view" | "edit" | null;
+  onLinkAccess?: (v: "view" | "edit" | null) => Promise<void> | void;
   people: SharePerson[];
   meId?: string;
   allowReview?: boolean;
@@ -111,6 +116,24 @@ export function ShareDialog({
               {copied ? t("已复制", "Copied") : t("复制链接", "Copy link")}
             </button>
           </div>
+          {onLinkAccess || linkAccess !== undefined ? (
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10 }}>
+              <span style={{ fontSize: 12.5, color: "#404040", whiteSpace: "nowrap" }}>{t("有链接的人", "Anyone with the link")}</span>
+              {onLinkAccess ? (
+                <select
+                  value={linkAccess ?? "none"}
+                  onChange={(e) => void onLinkAccess(e.target.value === "none" ? null : (e.target.value as "view" | "edit"))}
+                  style={{ flexGrow: 1, minWidth: 0, height: 32, border: "1px solid #dcdbd6", borderRadius: 8, padding: "0 8px", fontSize: 13, fontFamily: "inherit", background: "#fff" }}
+                >
+                  <option value="none">{t("仅限能看到这个项目的人", "Only people who can see the project")}</option>
+                  <option value="view">{t("工作室里有链接的人：可查看", "Anyone in the studio with the link: can view")}</option>
+                  <option value="edit">{t("工作室里有链接的人：可编辑", "Anyone in the studio with the link: can edit")}</option>
+                </select>
+              ) : (
+                <span style={{ fontSize: 12.5, color: "#6b6b6b" }}>{linkAccess === "edit" ? t("可编辑", "can edit") : linkAccess === "view" ? t("可查看", "can view") : t("仅限能看到项目的人", "only people who can see the project")}</span>
+              )}
+            </div>
+          ) : null}
           {accessNote || onManageAccess ? (
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8 }}>
               {accessNote ? <span style={{ fontSize: 12, color: "#6b6b6b", flexGrow: 1 }}>{accessNote}</span> : <span style={{ flexGrow: 1 }} />}

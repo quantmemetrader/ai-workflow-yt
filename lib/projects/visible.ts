@@ -22,3 +22,15 @@ export function projectsVisibleTo(viewer: Viewer) {
     or (${workProjects.access} ->> 'mode' = 'groups' and ${viewer.role} = 'owner' and (${workProjects.access} -> 'groups') ? 'admin')
     or (${workProjects.access} ->> 'mode' = 'people' and (${workProjects.access} -> 'userIds') ? ${viewer.id}))`;
 }
+
+/**
+ * A project this person may open by its link, on top of `projectsVisibleTo`:
+ * link sharing (「有链接的人可查看 / 可编辑」, `access.link`) lets anyone in
+ * the studio (not guests) who was sent the link open it, like a Google Doc.
+ * For opening one project only: lists keep `projectsVisibleTo`, so a
+ * private project never shows up for people who were not sent it.
+ */
+export function projectOpenableBy(viewer: Viewer) {
+  if (viewer.isAdmin) return sql`true`;
+  return sql`(${projectsVisibleTo(viewer)} or (${workProjects.access} ->> 'link' in ('view', 'edit') and ${viewer.role} <> 'guest'))`;
+}

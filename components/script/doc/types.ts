@@ -49,6 +49,8 @@ export type ScriptDocProps = {
   /** The project's whole access setting, and whether this person may change it (谁能看). */
   access?: { mode: "private" | "everyone" | "groups" | "people"; groups?: string[]; userIds?: string[] };
   canManageAccess?: boolean;
+  /** 有链接的人: nobody extra, view, or edit. */
+  linkAccess?: "view" | "edit" | null;
 };
 
 export type { DocApproval, DocReference };

@@ -8,7 +8,7 @@ import { approvals, scriptBeats, scripts, users, workProjects } from "@/lib/db/s
 import { getViewer, type Viewer } from "@/lib/auth/dal";
 import { audit } from "@/lib/audit";
 import { BudgetStop } from "@/lib/ai/ledger";
-import { visibleProject } from "@/lib/projects/service";
+import { visibleProject, linkedProject } from "@/lib/projects/service";
 import { dmChannelWith, postMessage } from "@/lib/chat/service";
 import { tagProjectFile } from "@/lib/projects/files";
 import { ensureFileText } from "@/lib/files/extract";
@@ -34,8 +34,10 @@ async function ctx(projectId: unknown, needScript = false): Promise<Ctx | { erro
   if (!viewer || !viewer.modules.includes("chat")) return { error: "Not allowed" };
   const zh = (viewer.locale ?? "zh-CN").startsWith("zh");
   if (needScript && !viewer.modules.includes("script")) return { error: zh ? "改脚本需要脚本模块的权限" : "Editing needs the Script module" };
-  const project = typeof projectId === "string" && projectId.length < 64 ? await visibleProject(viewer, projectId) : null;
-  if (!project) return { error: zh ? "没有这个项目" : "No such project" };
+  const id = typeof projectId === "string" && projectId.length < 64 ? projectId : null;
+  /* A member, or someone who opened it by its link (有链接的人): 可编辑 for edits, either for reading. */
+  const project = id ? ((await visibleProject(viewer, id)) ?? (await linkedProject(viewer, id, needScript ? "edit" : "view"))) : null;
+  if (!project) return { error: id && needScript && (await linkedProject(viewer, id, "view")) ? (zh ? "你通过链接打开，只有查看权限" : "You opened this by its link and can only view it") : zh ? "没有这个项目" : "No such project" };
   return { viewer, zh, project };
 }
 

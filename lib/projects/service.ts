@@ -1,6 +1,6 @@
 import "server-only";
 import { readReview } from "@/lib/review/types";
-import { and, count, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, count, desc, eq, inArray, isNull, sql, getTableColumns } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { audioTracks, captions, chatChannels, chatMembers, chatMessages, files, hotSnapshots, ideas, relationTuples, seriesCache, settings, topics, users, scriptBeats, scripts, timelineItems, videoClips, videoExports, videoGraphics, videoProjects, workProjects } from "@/lib/db/schema";
 import { directorStepLabel } from "@/lib/agents/steps";
@@ -18,7 +18,7 @@ import { TITLE_NOISE, backlogQueryOf, channelNote, fromHotRow, fromIdea, fromSig
 import { isListKey, listName, type HotRow } from "@/lib/research/platform-catalog";
 import { HOT_TENANT } from "@/lib/research/platforms";
 import { mayPublish, platformsLine, readPublication, type Publication } from "@/lib/projects/publication";
-import { projectsVisibleTo } from "@/lib/projects/visible";
+import { projectOpenableBy, projectsVisibleTo } from "@/lib/projects/visible";
 import { liveAutoCut, type AutoCut } from "@/lib/projects/live-types";
 import { readSentBack, type SentBack } from "@/lib/projects/sendback";
 import { toSimplified } from "@/lib/text/simplified";
@@ -448,7 +448,9 @@ export type ProjectDetail = {
   brief: string | null;
   status: string;
   mode: string;
-  access: { mode: "private" | "everyone" | "groups" | "people"; groups?: string[]; userIds?: string[] };
+  access: { mode: "private" | "everyone" | "groups" | "people"; groups?: string[]; userIds?: string[]; link?: "view" | "edit" };
+  /** Opened by its link rather than as a member: "view" means read only. */
+  linkOnly: "view" | "edit" | null;
   canManage: boolean;
   /**
    * The people on the two steps a person does, by name: whoever uploaded
@@ -757,9 +759,9 @@ export async function projectOfChannel(viewer: Viewer, channelId: string): Promi
 
 export async function workProjectDetail(viewer: Viewer, id: string, zh: boolean, messageLimit = 80): Promise<ProjectDetail | null> {
   const [p] = await db
-    .select()
+    .select({ ...getTableColumns(workProjects), member: sql<boolean>`${visibleTo(viewer)}` })
     .from(workProjects)
-    .where(and(eq(workProjects.id, id), eq(workProjects.tenantId, viewer.tenantId), isNull(workProjects.deletedAt), visibleTo(viewer)))
+    .where(and(eq(workProjects.id, id), eq(workProjects.tenantId, viewer.tenantId), isNull(workProjects.deletedAt), projectOpenableBy(viewer)))
     .limit(1);
   if (!p) return null;
   const [ch] = await db.select({ id: chatChannels.id, slug: chatChannels.slug, name: chatChannels.name }).from(chatChannels).where(eq(chatChannels.id, p.channelId)).limit(1);
@@ -901,6 +903,7 @@ export async function workProjectDetail(viewer: Viewer, id: string, zh: boolean,
     status: p.status,
     mode: p.mode,
     access: p.access ?? { mode: "everyone" },
+    linkOnly: p.member ? null : ((p.access as Access | null)?.link ?? null),
     canManage: viewer.isAdmin || p.createdBy === viewer.id,
     people,
     sentBack: readSentBack(p.source),
@@ -1031,7 +1034,7 @@ export async function reachableThroughProjects(viewer: Viewer, by: { scriptId?: 
   return Number(row?.all ?? 0) === 0 || Number(row?.open ?? 0) > 0;
 }
 
-type Access = { mode: "private" | "everyone" | "groups" | "people"; groups?: string[]; userIds?: string[] };
+type Access = { mode: "private" | "everyone" | "groups" | "people"; groups?: string[]; userIds?: string[]; /** Anyone in the studio with the link may view or edit (Google-Docs style). */ link?: "view" | "edit" };
 
 /**
  * Change who can see and work on a project, and make the chat, the script
@@ -1045,6 +1048,8 @@ export async function setProjectAccess(viewer: Viewer, id: string, access: Acces
   const roles = (access.groups ?? []).filter((g) => ["owner", "admin", "member", "guest"].includes(g));
   const clean: Access =
     access.mode === "groups" ? { mode: "groups", groups: roles } : access.mode === "people" ? { mode: "people", userIds: (access.userIds ?? []).slice(0, 100) } : { mode: access.mode === "private" ? "private" : "everyone" };
+  const keptLink = (p.access as Access | null)?.link;
+  if (keptLink === "view" || keptLink === "edit") clean.link = keptLink;
 
   const tenantUsers = await db
     .select({ id: users.id, role: users.role, isAgent: users.isAgent })
@@ -1357,6 +1362,32 @@ export async function scriptsInProjects(tenantId: string): Promise<Map<string, s
 }
 
 /** One project this person may see, with what starting work on it needs. */
+/**
+ * 有链接的人: who in the studio may open a project by its link — nobody
+ * extra (null), to read ("view"), or to edit its script ("edit"). Only the
+ * person who started it, or an admin.
+ */
+export async function setProjectLink(viewer: Viewer, id: string, link: "view" | "edit" | null): Promise<void> {
+  const [p] = await db.select({ createdBy: workProjects.createdBy, access: workProjects.access }).from(workProjects).where(and(eq(workProjects.id, id), eq(workProjects.tenantId, viewer.tenantId), isNull(workProjects.deletedAt))).limit(1);
+  if (!p) throw new Error("没有这个项目");
+  if (!viewer.isAdmin && p.createdBy !== viewer.id) throw new Error("只有项目发起人或管理员可以改链接权限");
+  const next: Access = { ...((p.access as Access | null) ?? { mode: "everyone" }) };
+  if (link) next.link = link;
+  else delete next.link;
+  await db.update(workProjects).set({ access: next, updatedAt: new Date() }).where(eq(workProjects.id, id));
+}
+
+/** A project opened by its link (not as a member): for the script's own actions only. `need` "edit" asks for 可编辑. */
+export async function linkedProject(viewer: Viewer, id: string, need: "view" | "edit") {
+  if (viewer.role === "guest") return null;
+  const [row] = await db
+    .select({ id: workProjects.id, title: workProjects.title, brief: workProjects.brief, scriptId: workProjects.scriptId, channelId: workProjects.channelId, videoProjectId: workProjects.videoProjectId, source: workProjects.source, topicId: workProjects.topicId })
+    .from(workProjects)
+    .where(and(eq(workProjects.id, id), eq(workProjects.tenantId, viewer.tenantId), isNull(workProjects.deletedAt), need === "edit" ? sql`${workProjects.access} ->> 'link' = 'edit'` : sql`${workProjects.access} ->> 'link' in ('view', 'edit')`))
+    .limit(1);
+  return row ?? null;
+}
+
 export async function visibleProject(viewer: Viewer, id: string) {
   const [row] = await db
     .select({ id: workProjects.id, title: workProjects.title, brief: workProjects.brief, scriptId: workProjects.scriptId, channelId: workProjects.channelId, videoProjectId: workProjects.videoProjectId, source: workProjects.source, topicId: workProjects.topicId })

@@ -17,7 +17,7 @@ import { PersonAvatar } from "@/components/ui/PersonAvatar";
 import { ShareDialog } from "@/components/share/ShareDialog";
 import { notify } from "@/lib/client/notify";
 import { uploadFiles } from "@/lib/client/upload";
-import { renameProjectAction, setProjectAccessAction, setScriptLengthAction, startFromTopicAction } from "@/app/(app)/projects/actions";
+import { renameProjectAction, setProjectAccessAction, setProjectLinkAction, setScriptLengthAction, startFromTopicAction } from "@/app/(app)/projects/actions";
 import { AccessPicker } from "@/components/files/AccessPicker";
 import { AgentIcon } from "@/components/agents/AgentIcon";
 import { ScriptPicker } from "@/components/projects/ScriptPicker";
@@ -1598,6 +1598,17 @@ export function ScriptDoc(props: ScriptDocProps) {
           title={t(`分享脚本《${props.projectTitle}》`, `Share “${props.projectTitle}”`)}
           url={`/projects/${projectId}/script`}
           accessNote={props.accessNote}
+          linkAccess={props.linkAccess ?? null}
+          onLinkAccess={
+            props.canManageAccess
+              ? async (v) => {
+                  const r = await setProjectLinkAction(projectId, v);
+                  if (r?.error) return notify(r.error);
+                  notify(v === "edit" ? t("有链接的人现在可以编辑", "Anyone with the link can now edit") : v === "view" ? t("有链接的人现在可以查看", "Anyone with the link can now view") : t("只有能看到项目的人能打开", "Only people who can see the project can open it"), "ok");
+                  router.refresh();
+                }
+              : undefined
+          }
           people={props.people}
           meId={me.id}
           allowReview={!locked}

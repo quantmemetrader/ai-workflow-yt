@@ -15,6 +15,7 @@ import {
   setProjectAccess,
   setProjectStatus,
   visibleProject,
+  setProjectLink,
 } from "@/lib/projects/service";
 import { postMessage } from "@/lib/chat/service";
 import { agentViewer } from "@/lib/agents";
@@ -359,6 +360,20 @@ export async function setProjectAccessAction(id: string, access: { mode: "privat
     return { error: err instanceof Error ? err.message : "Could not change who sees it" };
   }
   revalidatePath("/", "layout");
+  return {};
+}
+
+/** 有链接的人: nobody extra, can view, or can edit (the share box). */
+export async function setProjectLinkAction(id: string, link: "view" | "edit" | null) {
+  const viewer = await getViewer();
+  if (!viewer || !viewer.modules.includes("chat")) return { error: "Not allowed" };
+  if (link !== null && link !== "view" && link !== "edit") return { error: "Not allowed" };
+  try {
+    await setProjectLink(viewer, String(id), link);
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "没改成" };
+  }
+  revalidatePath(`/projects/${String(id)}`, "layout");
   return {};
 }
 
