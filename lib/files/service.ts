@@ -15,6 +15,7 @@ import type { Viewer } from "@/lib/auth/dal";
 import { canReadFiles, canReadFolders, grantOwner, relationOn, type SharedObject } from "@/lib/authz/rebac";
 import { audit } from "@/lib/audit";
 import { newId } from "@/lib/ids";
+import { toSimplified } from "@/lib/text/simplified";
 import { deleteObject, headObject, putObjectConfirmed, storageKey } from "@/lib/storage/r2";
 import { enqueue } from "@/lib/jobs/queue";
 
@@ -206,6 +207,8 @@ export async function beginUpload(
   const admin = viewer.isAdmin && folder?.tenantId === viewer.tenantId;
   if (held !== "owner" && held !== "editor" && !admin) throw new Error("You need edit access to upload here");
 
+  /* Names are shown in Simplified like everything else (「修訂版」 becomes 「修订版」). */
+  input = { ...input, name: toSimplified(input.name) };
   const id = newId("fil");
   const key = storageKey(viewer.tenantId, id, input.name);
 

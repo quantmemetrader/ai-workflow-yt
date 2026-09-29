@@ -1,4 +1,7 @@
 import Link from "next/link";
+import { toSimplified } from "@/lib/text/simplified";
+
+const KIND_ZH: Record<string, string> = { doc: "文档", pdf: "PDF", image: "图片", video: "视频", audio: "音频", folder: "文件夹", sheet: "表格", slides: "演示文稿" };
 import { requireViewer } from "@/lib/auth/dal";
 import { searchFiles } from "@/lib/ai/retrieval";
 import { audit } from "@/lib/audit";
@@ -87,9 +90,9 @@ export default async function SearchPage({
                   }}
                 >
                   <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
-                    <span style={{ fontSize: 13.5, fontWeight: 500 }}>{hit.name}</span>
+                    <span style={{ fontSize: 13.5, fontWeight: 500 }}>{toSimplified(hit.name)}</span>
                     <span style={{ fontSize: 11, color: "#999999" }}>
-                      {hit.kind} · {formatDate(hit.updatedAt, viewer.locale ?? "zh-CN")}
+                      {(viewer.locale ?? "zh-CN").startsWith("zh") ? (KIND_ZH[hit.kind] ?? hit.kind) : hit.kind} · {formatDate(hit.updatedAt, viewer.locale ?? "zh-CN")}
                     </span>
                   </div>
                   {hit.snippet && (
@@ -105,7 +108,7 @@ export default async function SearchPage({
                         WebkitBoxOrient: "vertical",
                       }}
                     >
-                      {hit.snippet}
+                      {toSimplified(hit.snippet)}
                     </p>
                   )}
                 </Link>

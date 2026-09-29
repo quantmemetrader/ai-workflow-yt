@@ -482,7 +482,7 @@ export function VideoScreen({
             ? t(`${clock(totalMs)} on the timeline · ${clips.length} in the bin`, `时间线 ${clock(totalMs)} · 素材 ${clips.length} 个`)
             : t(
                 `${projects.length} project${projects.length === 1 ? "" : "s"} · cut, caption and export real footage`,
-                `${projects.length} 个项目 · 剪辑、加字幕并导出实拍素材`,
+                `${projects.length} 个剪辑 · 剪辑、加字幕并导出实拍素材`,
               )
         }
         right={
@@ -530,7 +530,7 @@ export function VideoScreen({
                 onClick={() => setNaming(true)}
                 style={project ? ghost : solid}
               >
-                {t("New project", "新建项目")}
+                {t("New edit", "新建剪辑")}
               </button>
             )}
           </>
@@ -615,7 +615,7 @@ export function VideoScreen({
         tabs={[
           /* First, because it is the first thing somebody does here — but not
              inside a project, whose cut is the only one on its page. */
-          ...(embedded ? [] : [{ key: "library" as Tab, label: t("Projects", "项目"), badge: projects.length }]),
+          ...(embedded ? [] : [{ key: "library" as Tab, label: t("All edits", "全部剪辑"), badge: projects.length }]),
           { key: "edit", label: t("Edit", "剪辑"), badge: items.length },
           { key: "preview", label: t("Preview", "预览"), badge: done.length },
           { key: "exports", label: t("Export", "导出"), badge: renders.length },
@@ -1010,7 +1010,7 @@ export function VideoScreen({
 
       {naming && (
         <NameDialog
-          title={t("New project", "新建项目")}
+          title={t("New edit", "新建剪辑")}
           placeholder={t("What is it called?", "项目名称")}
           confirm={t("Create", "创建")}
           cancel={t("Cancel", "取消")}
@@ -2086,7 +2086,7 @@ function Library({
           all sit on the same 30px line (the select was 26px beside a 30px
           button, and the heading sat on the text baseline above both). */}
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14, minHeight: 30 }}>
-        <span style={{ fontSize: 15, fontWeight: 500 }}>{t("Projects", "项目")}</span>
+        <span style={{ fontSize: 15, fontWeight: 500 }}>{t("Edits", "剪辑")}</span>
         <span style={{ fontSize: 12, color: "#999999", ...clip }}>
           {t("yours, and the ones shared with you", "你的项目，以及分享给你的")}
         </span>
@@ -2120,7 +2120,7 @@ function Library({
             the header hides its own rather than stack a second one under it. */}
         <button type="button" onClick={onNew} style={{ ...solid, fontSize: 12.5, flexShrink: 0, display: "inline-flex", alignItems: "center", gap: 6 }}>
           <Icon name="plus" size={13} />
-          {t("New project", "新建项目")}
+          {t("New edit", "新建剪辑")}
         </button>
       </div>
 

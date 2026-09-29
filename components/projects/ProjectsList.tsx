@@ -57,10 +57,10 @@ export function ProjectsList({ rows, zh }: { rows: ProjectListRow[]; zh: boolean
     <div style={{ maxWidth: 1080, padding: "22px 32px 56px", display: "flex", flexDirection: "column", gap: 14 }}>
       <style dangerouslySetInnerHTML={{ __html: LIST_CSS }} />
       <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-        <h1 style={{ fontSize: 24, fontWeight: 600, margin: 0 }}>{t("视频", "Videos")}</h1>
+        <h1 style={{ fontSize: 24, fontWeight: 600, margin: 0 }}>{t("项目", "Projects")}</h1>
         <span style={{ flexGrow: 1 }} />
         <button type="button" onClick={() => setStarting((v) => !v)} style={bigButton(starting ? "secondary" : "primary")}>
-          {starting ? t("收起", "Close") : t("新视频", "New video")}
+          {starting ? t("收起", "Close") : t("新项目", "New project")}
         </button>
       </div>
       {starting ? (
@@ -74,7 +74,7 @@ export function ProjectsList({ rows, zh }: { rows: ProjectListRow[]; zh: boolean
             <circle cx="11" cy="11" r="6.2" />
             <path d="m15.6 15.6 4.1 4.1" />
           </svg>
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("搜索视频", "Search videos")} aria-label={t("搜索视频", "Search videos")} />
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("搜索项目", "Search projects")} aria-label={t("搜索项目", "Search projects")} />
         </label>
         <nav className="pl-segs" aria-label={t("按状态", "By status")}>
           {seg("active", t("进行中", "In progress"))}
