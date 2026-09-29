@@ -1662,7 +1662,7 @@ function MadeActions({ made, zh }: { made: MadeScript; zh: boolean }) {
         <button type="button" onClick={() => window.dispatchEvent(new CustomEvent("tg-edit-script", { detail: made.title }))} style={btn(true)}>
           {t("就在这里改", "Change it here")}
         </button>
-        <Link href={`/script/${made.scriptId}?share=review`} prefetch={false} style={btn()}>
+        <Link href={made.projectId ? `/projects/${made.projectId}/script?share=review` : `/script/${made.scriptId}?share=review`} prefetch={false} style={btn()}>
           {t("发给同事审阅", "Send for approval")}
         </Link>
         {made.projectId ? (
