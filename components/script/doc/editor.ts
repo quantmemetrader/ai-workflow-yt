@@ -86,7 +86,7 @@ export function findMatches(doc: PMNode, term: string): { from: number; to: numb
   return out;
 }
 
-export type Tracked = { id: string; kind: "change" | "delete" | "insert"; from: number; to: number; text: string; why: string };
+export type Tracked = { id: string; kind: "change" | "delete" | "insert"; from: number; to: number; text: string; why: string; /** Bumped each time 编剧 redoes this one change (「再改改」). */ rev?: number; busy?: boolean };
 
 export type MarksState = {
   comments: { id: string; quote: string; unit: number | null }[];
@@ -125,7 +125,7 @@ function build(state: EditorState, v: MarksState): DecorationSet {
     }
     const at = t.kind === "insert" ? t.from : t.to;
     decos.push(
-      Decoration.widget(at, () => trackedWidget(t, v.zh), { side: t.kind === "insert" ? -1 : 1, key: `tr-${t.id}-${t.text.length}`, ignoreSelection: true }),
+      Decoration.widget(at, () => trackedWidget(t, v.zh), { side: t.kind === "insert" ? -1 : 1, key: `tr-${t.id}-${t.text.length}-${t.rev ?? 0}-${t.busy ? 1 : 0}`, ignoreSelection: true }),
     );
   }
   return DecorationSet.create(doc, decos);
@@ -155,8 +155,36 @@ function trackedWidget(t: Tracked, zh: boolean): HTMLElement {
   no.textContent = zh ? "拒绝" : "Reject";
   no.onmousedown = (e) => e.preventDefault();
   no.onclick = () => window.dispatchEvent(new CustomEvent("gd-tracked", { detail: { id: t.id, accept: false } }));
-  bar.append(why, ok, no);
-  box.append(body, bar);
+  /* 「再改改」: redo just this change with one more instruction (the owner, 29 Sep). */
+  const again = document.createElement("button");
+  again.type = "button";
+  again.className = "gd-new-no gd-new-again";
+  again.textContent = t.busy ? (zh ? "编剧在改…" : "Rewriting…") : zh ? "再改改" : "Redo";
+  again.disabled = Boolean(t.busy);
+  again.onmousedown = (e) => e.preventDefault();
+  const ask = document.createElement("form");
+  ask.className = "gd-new-ask";
+  ask.style.display = "none";
+  const input = document.createElement("input");
+  input.placeholder = zh ? "这一段想怎么改？比如：更口语、加个数字、短一半" : "How should this part change?";
+  const go = document.createElement("button");
+  go.type = "submit";
+  go.className = "gd-new-ok";
+  go.textContent = zh ? "改这段" : "Redo it";
+  ask.append(input, go);
+  ask.onsubmit = (e) => {
+    e.preventDefault();
+    const q = input.value.trim();
+    if (!q) return input.focus();
+    window.dispatchEvent(new CustomEvent("gd-tracked-again", { detail: { id: t.id, instruction: q } }));
+  };
+  again.onclick = () => {
+    ask.style.display = ask.style.display === "none" ? "flex" : "none";
+    if (ask.style.display === "flex") window.setTimeout(() => input.focus(), 20);
+  };
+  if (t.kind === "delete") bar.append(why, ok, no);
+  else bar.append(why, ok, no, again);
+  box.append(body, bar, ask);
   return box;
 }
 

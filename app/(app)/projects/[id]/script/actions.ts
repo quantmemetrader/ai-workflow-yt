@@ -16,7 +16,7 @@ import { beatsFromDoc, isRichDoc } from "@/lib/script/rich";
 import { asc } from "drizzle-orm";
 import { readSentBack, recordSendBack, settleSendBack } from "@/lib/projects/sendback";
 import { createScript, cutVersion, decideApproval, requestApproval, restoreVersion, saveBeats, unlock } from "@/lib/script/service";
-import { addDocComment, copilotRewrite, openRequestFor, requestReviews, resolveDocComment, setReferences, versionBeats, withdrawOthers } from "@/lib/script/doc";
+import { addDocComment, copilotRedo, copilotRewrite, openRequestFor, requestReviews, resolveDocComment, setReferences, versionBeats, withdrawOthers } from "@/lib/script/doc";
 
 /**
  * What the project's 脚本 page (the script as a document) can do.
@@ -104,6 +104,22 @@ export async function copilotAction(projectId: unknown, paragraphs: unknown, ins
   const list = paragraphs.slice(0, 200).map((p) => (typeof p === "string" ? p.slice(0, 4000) : ""));
   try {
     return await copilotRewrite(c.viewer, c.project.scriptId, list, instruction, pickedModel(model));
+  } catch (err) {
+    return { error: asMessage(err) };
+  }
+}
+
+/** 「再改改」: redo one suggested change to a new instruction. Nothing is saved. */
+export async function copilotRedoAction(projectId: unknown, input: unknown, model?: unknown) {
+  const c = await ctx(projectId, true);
+  if ("error" in c) return c;
+  if (!c.project.scriptId) return { error: "Not allowed" };
+  const v = (input && typeof input === "object" ? input : {}) as Record<string, unknown>;
+  const str = (x: unknown, n: number) => (typeof x === "string" ? x.slice(0, n) : "");
+  const instruction = str(v.instruction, 600).trim();
+  if (!instruction) return { error: c.zh ? "写下这一段想怎么改" : "Say how to change it" };
+  try {
+    return await copilotRedo(c.viewer, c.project.scriptId, { before: str(v.before, 4000), suggestion: str(v.suggestion, 4000), instruction, around: str(v.around, 3000) }, pickedModel(model));
   } catch (err) {
     return { error: asMessage(err) };
   }

@@ -25,6 +25,7 @@ import {
   addReferenceAction,
   approveDocAction,
   copilotAction,
+  copilotRedoAction,
   docCommentAction,
   docImageAction,
   importDocAction,
@@ -518,6 +519,34 @@ export function ScriptDoc(props: ScriptDocProps) {
     window.addEventListener("gd-tracked", on);
     return () => window.removeEventListener("gd-tracked", on);
   }, [proposal, applyTracked, rejectTracked, endProposalIfDone]);
+  /* 「再改改」 on one suggested change: 编剧 redoes just that paragraph to the new instruction. */
+  React.useEffect(() => {
+    const on = (e: Event) => {
+      const d = (e as CustomEvent<{ id: string; instruction: string }>).detail;
+      if (!editor || !d?.id) return;
+      const setTracked = (fn: (list: Tracked[]) => Tracked[]) =>
+        editor.view.dispatch(editor.state.tr.setMeta(marksKey, { tracked: fn(marksKey.getState(editor.state)?.tracked ?? []) }).setMeta("addToHistory", false));
+      const tr = (marksKey.getState(editor.state)?.tracked ?? []).find((x) => x.id === d.id);
+      if (!tr || tr.busy) return;
+      setTracked((list) => list.map((x) => (x.id === d.id ? { ...x, busy: true } : x)));
+      const size = editor.state.doc.content.size;
+      const before = tr.kind === "change" ? editor.state.doc.textBetween(tr.from, Math.min(tr.to, size), "\n").trim() : "";
+      const around = editor.state.doc.textBetween(Math.max(0, tr.from - 600), Math.min(size, tr.to + 600), "\n");
+      void copilotRedoAction(projectId, { before, suggestion: tr.text, instruction: d.instruction, around }, pickModel === AUTO_MODEL ? undefined : pickModel)
+        .then((r) => {
+          if (!r || "error" in r) {
+            notify((r && "error" in r && r.error) || t("没改成，再试一次", "Could not redo it; try again"));
+            setTracked((list) => list.map((x) => (x.id === d.id ? { ...x, busy: false } : x)));
+            return;
+          }
+          setTracked((list) => list.map((x) => (x.id === d.id ? { ...x, text: r.text, busy: false, rev: (x.rev ?? 0) + 1, why: t(`按「${d.instruction.slice(0, 16)}」又改了一版`, "Redone to your note") } : x)));
+        })
+        .catch(() => setTracked((list) => list.map((x) => (x.id === d.id ? { ...x, busy: false } : x))));
+    };
+    window.addEventListener("gd-tracked-again", on);
+    return () => window.removeEventListener("gd-tracked-again", on);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editor, projectId, pickModel]);
 
   /* ---------------- references & images ---------------- */
   const refInput = React.useRef<HTMLInputElement | null>(null);
@@ -1832,6 +1861,11 @@ const CSS = `
 .gd-new-ok, .gd-new-no { height: 26px; padding: 0 12px; border-radius: 999px; font-size: 12px; font-weight: 500; cursor: pointer; font-family: inherit; }
 .gd-new-ok { border: 0; background: #1e8e3e; color: #fff; }
 .gd-new-no { border: 1px solid #747775; background: #fff; color: #1f1f1f; }
+.gd-new-again { border-color: #0b57d0; color: #0b57d0; }
+.gd-new-again:disabled { opacity: .6; cursor: default; }
+.gd-new-ask { display: flex; gap: 6px; margin-top: 8px; font-family: "Google Sans", -apple-system, "PingFang SC", sans-serif; }
+.gd-new-ask input { flex-grow: 1; min-width: 0; height: 30px; border: 1px solid #c7c7c7; border-radius: 999px; padding: 0 12px; font: inherit; font-size: 13px; background: #fff; outline: none; }
+.gd-new-ask input:focus { border-color: #0b57d0; box-shadow: 0 0 0 1px #0b57d0; }
 .gd-shots .gd-prose p[data-shot]::after, .gd-shots .gd-readonly p[data-shot]::after { content: "画面：" attr(data-shot); display: block; margin-top: 4px; padding: 3px 8px; border-radius: 6px; background: #f1f3f4; color: #5f6368; font-size: 9.5pt; line-height: 1.45; }
 .gd-readonly p { margin: 0 0 8pt; }
 

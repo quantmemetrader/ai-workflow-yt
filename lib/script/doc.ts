@@ -317,6 +317,43 @@ export async function copilotRewrite(viewer: Viewer, scriptId: string, paragraph
   return { ok: true as const, changes: unique, inserts, summary: s(raw.summary, 200), model };
 }
 
+/**
+ * 「再改改」: one suggested change, done again to a new instruction. Only
+ * that paragraph comes back; the rest of the draft is not touched.
+ */
+export async function copilotRedo(viewer: Viewer, scriptId: string, input: { before: string; suggestion: string; instruction: string; around: string }, pick?: string | null) {
+  await assertBudget(viewer);
+  const [script] = await db.select({ title: scripts.title }).from(scripts).where(and(eq(scripts.id, scriptId), eq(scripts.tenantId, viewer.tenantId))).limit(1);
+  if (!script) return { error: "Not allowed" };
+  const style = await houseStyle(viewer, "script").catch(() => ({ text: "" }));
+  const system = [
+    "你是短视频工作室的编剧，正在和同事一起改一份口播脚本里的一段话。",
+    "按同事的新要求，重写你之前给出的这一段改法。只输出改好的这一段正文，不要引号、不要解释、不要编号。",
+    "中文一律用简体字。保持原来的人设和口吻，不要编造事实、数字、人名。",
+    style.text ? `工作室的写作规范与编剧的训练：\n${style.text.slice(0, 6000)}` : "",
+  ].filter(Boolean).join("\n");
+  const user = [
+    `标题：${script.title}`,
+    input.around ? `上下文（前后几段，只供参考）：\n${input.around.slice(0, 3000)}` : "",
+    input.before ? `原文这一段：${input.before.slice(0, 4000)}` : "原文：（新增的一段）",
+    `你上一次的改法：${input.suggestion.slice(0, 4000)}`,
+    `同事的新要求：${input.instruction.slice(0, 600)}`,
+  ].filter(Boolean).join("\n\n");
+  const out = await complete({
+    model: pick ?? modelFor.agent("script") ?? modelFor.assistant(),
+    temperature: 0.5,
+    maxTokens: 2000,
+    messages: [
+      { role: "system", content: system },
+      { role: "user", content: user },
+    ],
+  });
+  await recordUsage({ viewer, module: "script", provider: out.provider ?? "openrouter", model: out.model, promptTokens: out.promptTokens, completionTokens: out.completionTokens, costMicros: out.costMicros, requestId: out.requestId });
+  const text = out.text.replace(/<think(?:ing)?>[\s\S]*?<\/think(?:ing)?>/gi, "").replace(/^["“「]|["”」]$/g, "").trim().slice(0, 4000);
+  if (!text) return { error: "编剧这次没有给出改法，再试一次。" };
+  return { ok: true as const, text };
+}
+
 /** Names for the people a script's DMs and approvals mention. */
 export async function peopleNames(viewer: Viewer, ids: string[]) {
   if (!ids.length) return new Map<string, string>();
