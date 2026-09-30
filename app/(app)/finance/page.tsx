@@ -1,5 +1,8 @@
 import { requireModule } from "@/lib/auth/dal";
 import { answeringModel } from "@/lib/ai/models";
+import { libraryFiles, LIBRARIES } from "@/lib/files/module-library";
+import { ModuleLibrary } from "@/components/library/ModuleLibrary";
+import { mayTrain } from "@/lib/agents/training";
 import {
   budgetVsActual,
   cashSeries,
@@ -38,8 +41,11 @@ export default async function FinancePage() {
     viewer.role === "owner" || viewer.role === "admin" ? apiBalances(viewer).catch(() => null) : Promise.resolve(null),
   ]);
 
+  const lib = await libraryFiles(viewer, "finance");
+  const zh = (viewer.locale ?? "zh-CN").startsWith("zh");
   return (
     <FinanceScreen
+      library={<ModuleLibrary module="finance" title={zh ? LIBRARIES.finance.zh : LIBRARIES.finance.en} agentName={zh ? "财务" : "the finance assistant"} zh={zh} folderId={lib.folderId} files={lib.files} canTrain={mayTrain(viewer)} />}
       period={period}
       reports={reports}
       balances={balances}

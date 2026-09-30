@@ -1,5 +1,6 @@
 "use server";
 
+import { pickedModel } from "@/lib/ai/chat-models";
 import { after } from "next/server";
 import { revalidatePath } from "next/cache";
 import { getViewer } from "@/lib/auth/dal";
@@ -78,7 +79,10 @@ export async function sendChannelMessage(
   body: string,
   /** Files already uploaded and confirmed, in the order they were attached. */
   attachmentIds: string[] = [],
+  /** The composer's 「模型」 for the colleague who answers (30 Sep). */
+  model?: unknown,
 ) {
+  const picked = pickedModel(model) ?? undefined;
   const viewer = await getViewer();
   if (!viewer || !viewer.modules.includes("chat")) return { error: "Not allowed" };
   if (typeof slug !== "string" || !slug || slug.length > MAX_SLUG) {
@@ -248,7 +252,7 @@ export async function sendChannelMessage(
   if (parseAgentMentions(body).length) {
     after(async () => {
       try {
-        await dispatchAgentMentions({ viewer, channelId: channel.id, body, holdCut });
+        await dispatchAgentMentions({ viewer, channelId: channel.id, body, holdCut, model: picked });
       } catch (err) {
         console.error("[chat] a tagged agent could not be reached", err);
       }
@@ -262,7 +266,7 @@ export async function sendChannelMessage(
   if (to) {
     after(async () => {
       try {
-        await dispatchAgentMentions({ viewer, channelId: channel.id, body: `${agentTag(to)} ${body}`, holdCut });
+        await dispatchAgentMentions({ viewer, channelId: channel.id, body: `${agentTag(to)} ${body}`, holdCut, model: picked });
       } catch (err) {
         console.error("[chat] the employee being answered could not be reached", err);
       }

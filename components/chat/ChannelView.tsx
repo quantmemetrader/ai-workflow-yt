@@ -1,5 +1,6 @@
 "use client";
 
+import { getPanelModel } from "@/components/chat/ModelChip";
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { ChannelSurface, type ChannelMember, type ChannelMessage, type ChannelPending, type SentFile } from "@/components/chat/ChannelSurface";
@@ -183,7 +184,7 @@ export function ChannelView({
     setOptimistic((rest) => [...rest, mine]);
 
     start(async () => {
-      const res = await sendChannelMessage(slug, body, attachmentIds);
+      const res = await sendChannelMessage(slug, body, attachmentIds, getPanelModel());
       if (res?.error) {
         setOptimistic((rest) => rest.filter((m) => m.id !== mine.id));
         setFailed({ body, error: res.error });

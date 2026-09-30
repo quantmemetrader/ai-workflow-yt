@@ -10,6 +10,7 @@ import Link from "next/link";
 import { notify } from "@/lib/client/notify";
 import { scriptPreviewAction, type ScriptPreview } from "@/app/(app)/chat/script-preview";
 import { saveLinesAction } from "@/app/(app)/projects/[id]/script/actions";
+import { teachRuleAction } from "@/app/(app)/train/model-actions";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AgentIcon } from "@/components/agents/AgentIcon";
@@ -1297,6 +1298,7 @@ function AgentRow({ message, zh, locale }: { message: ThreadMessage; zh: boolean
           <VideoCards videos={message.videos} zh={zh} />
 
           {message.made && message.status !== "streaming" ? <MadeActions made={message.made} zh={zh} /> : null}
+          {message.status === "complete" && message.content ? <TeachLine agent={message.speaker ?? "assistant"} zh={zh} /> : null}
 
           {message.error && (
             <div
@@ -1716,5 +1718,47 @@ function MadeActions({ made, zh }: { made: MadeScript; zh: boolean }) {
         ) : null}
       </div>
     </div>
+  );
+}
+
+/**
+ * 「教它」: tell the employee something it should always do from now on; the
+ * rule goes into its 工作说明 (AI 同事 › 训练).
+ */
+function TeachLine({ agent, zh }: { agent: string; zh: boolean }) {
+  const t = (a: string, b: string) => (zh ? a : b);
+  const [open, setOpen] = useState(false);
+  const [rule, setRule] = useState("");
+  const [busy, setBusy] = useState(false);
+  const name = agent === "assistant" ? t("助理", "the assistant") : zh ? (AGENT_LABELS[agent as AgentKey]?.nameLocal ?? agent) : (AGENT_LABELS[agent as AgentKey]?.name ?? agent);
+  if (!open)
+    return (
+      <button type="button" onClick={() => setOpen(true)} style={{ marginTop: 6, border: 0, background: "none", padding: 0, color: "#8a8a8a", fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}>
+        {t(`教${name}：以后都这样做…`, `Teach ${name} a rule…`)}
+      </button>
+    );
+  return (
+    <form
+      onSubmit={async (e) => {
+        e.preventDefault();
+        if (!rule.trim() || busy) return;
+        setBusy(true);
+        const res = await teachRuleAction(agent, rule);
+        setBusy(false);
+        if (res.error) return notify(res.error);
+        notify(t(`${name}记住了，以后都会照做（在「AI 同事 → 训练」里可以改）`, `${name} will do this from now on (editable under AI team → Train)`), "ok");
+        setRule("");
+        setOpen(false);
+      }}
+      style={{ display: "flex", gap: 6, marginTop: 8, maxWidth: 620 }}
+    >
+      <input autoFocus value={rule} onChange={(e) => setRule(e.target.value)} placeholder={t("比如：开头先讲结论；不要用“家人们”；每段不超过 3 句", "e.g. lead with the conclusion; keep paragraphs short")} style={{ flexGrow: 1, minWidth: 0, height: 32, border: "1px solid #dcdbd6", borderRadius: 8, padding: "0 10px", fontFamily: "inherit", fontSize: 12.5, outline: "none" }} />
+      <button type="submit" disabled={busy || !rule.trim()} style={{ height: 32, padding: "0 12px", border: 0, borderRadius: 8, background: "#171717", color: "#fff", fontFamily: "inherit", fontSize: 12.5, fontWeight: 600, cursor: "pointer", opacity: busy || !rule.trim() ? 0.5 : 1 }}>
+        {busy ? t("记住中…", "Saving…") : t("记住", "Remember")}
+      </button>
+      <button type="button" onClick={() => setOpen(false)} style={{ height: 32, padding: "0 10px", border: "1px solid #dcdbd6", borderRadius: 8, background: "#fff", fontFamily: "inherit", fontSize: 12.5, cursor: "pointer" }}>
+        {t("取消", "Cancel")}
+      </button>
+    </form>
   );
 }

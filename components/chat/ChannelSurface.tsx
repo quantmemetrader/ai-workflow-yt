@@ -1,5 +1,6 @@
 "use client";
 
+import { ModelChip, usePanelModel } from "@/components/chat/ModelChip";
 import { DropVeil, useFileDrop } from "@/components/chat/DropVeil";
 import * as React from "react";
 import Link from "next/link";
@@ -770,6 +771,7 @@ export function ChannelSurface(props: {
       : `Message #${props.name}`;
   /* Says what the box can do, not only where it posts: tagging an employee is
      the thing people did not find. */
+  const [composerModel, setComposerModel] = usePanelModel();
   const composerPlaceholder = zh
     ? `${composerLabel}，输入 @ 叫上 AI 同事`
     : `${composerLabel} — type @ to bring in an AI teammate`;
@@ -1324,6 +1326,8 @@ export function ChannelSurface(props: {
                       </button>
                     </>
                   )}
+                  {/* Which model the colleague answers with (30 Sep: every AI box picks its model). */}
+                  <ModelChip value={composerModel} onChange={setComposerModel} zh={zh} placement="up" align="left" />
                   {/* Tagging, with the button the artboard implied. */}
                   <button
                     type="button"

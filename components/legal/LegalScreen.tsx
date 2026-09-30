@@ -1,5 +1,6 @@
 "use client";
 
+import type * as React from "react";
 import { useState } from "react";
 import type { ChecklistRow, ContractRow, RunRow, TemplateRow } from "@/lib/legal/service";
 import {
@@ -60,7 +61,7 @@ const nameZh = (name: string, zh: boolean) => (zh ? (TEMPLATE_ZH[name] ?? name) 
  * no score and no recommendation, because a plausible-sounding verdict from a
  * machine is worse than no verdict at all.
  */
-type Tab = "draft" | "review" | "repository" | "compliance" | "templates";
+type Tab = "draft" | "review" | "repository" | "compliance" | "templates" | "library";
 
 type Finding = {
   id: string;
@@ -80,6 +81,7 @@ export function LegalScreen({
   runs,
   locale,
   model,
+  library,
 }: {
   templates: TemplateRow[];
   contracts: ContractRow[];
@@ -87,6 +89,8 @@ export function LegalScreen({
   runs: RunRow[];
   locale: string;
   model: string;
+  /** The module's 资料库 (30 Sep), drawn by the page. */
+  library?: React.ReactNode;
 }) {
   const zh = locale.startsWith("zh");
   const t = (en: string, cn: string) => (zh ? cn : en);
@@ -107,6 +111,7 @@ export function LegalScreen({
   /* The design draws these down a 212px column, the way every other
      desktop artboard in the set does — not across the top. */
   const SCREENS: ScreenItem<Tab>[] = [
+    { key: "library", label: "Library", labelZh: "资料库" },
     { key: "draft", label: "Drafting", labelZh: "起草" },
     { key: "review", label: "Clause review", labelZh: "核对条款", badge: openFindings },
     { key: "repository", label: "Repository", labelZh: "合同库", badge: contracts.length },
@@ -131,6 +136,7 @@ export function LegalScreen({
 
       <div style={{ flexGrow: 1, minHeight: 0, display: "flex" }}>
         <div style={{ flexGrow: 1, minWidth: 0, overflowY: "auto", padding: "18px 22px 40px" }}>
+          {tab === "library" && library}
           {tab === "draft" && (
             <Drafting
               templates={templates}

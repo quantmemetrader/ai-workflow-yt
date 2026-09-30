@@ -1,5 +1,6 @@
 "use client";
 
+import { getPanelModel } from "@/components/chat/ModelChip";
 import { DropVeil, useFileDrop } from "@/components/chat/DropVeil";
 import { uploadToStudio } from "@/components/chat/upload";
 import { unlockAction } from "@/app/(app)/script/actions";
@@ -219,7 +220,7 @@ export function ProjectScreen({
   function ask(agent: AgentKey, text: string) {
     const body = `${agentTag(agent)} ${text.trim()}`;
     start(async () => {
-      const res = await sendChannelMessage(p.channel.slug, body);
+      const res = await sendChannelMessage(p.channel.slug, body, [], getPanelModel());
       if (res?.error) {
         notify(res.error);
         return;
@@ -817,7 +818,7 @@ function ChatDrawer({ project: p, zh, people, onClose }: { project: ProjectDetai
   });
   const say = (text: string) =>
     start(async () => {
-      const res = await sendChannelMessage(p.channel.slug, text);
+      const res = await sendChannelMessage(p.channel.slug, text, [], getPanelModel());
       if (res?.error) notify(res.error);
       if (parseAgentMentions(text).length || ("answering" in (res ?? {}) && (res as { answering?: string }).answering)) {
         const until = Date.now() + 120_000;

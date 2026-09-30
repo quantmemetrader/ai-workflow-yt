@@ -144,6 +144,8 @@ export function hrefFor(kind: ArtifactKind, id: string): string | undefined {
 export type MentionDispatch = {
   /** Who wrote the message: a person, or an agent answering one. */
   viewer: Viewer;
+  /** The model the person picked in the composer, for the direct reply (hand-offs keep each employee's own). */
+  model?: string;
   channelId: string;
   body: string;
   /**
@@ -971,7 +973,7 @@ export const WORKS_IN: Record<AgentKey, Module> = {
 };
 
 type Chain = Required<Pick<MentionDispatch, "viewer" | "channelId" | "body" | "spoken" | "hop" | "budget">> &
-  Pick<MentionDispatch, "handoff" | "replyMeta" | "holdCut"> & { origin: string | null; asker: Viewer | null };
+  Pick<MentionDispatch, "handoff" | "replyMeta" | "holdCut" | "model"> & { origin: string | null; asker: Viewer | null };
 
 /** The block a colleague's turn opens with when work was handed to it.
  * `facts` are lines the dispatcher looked up itself (how many clips are in
@@ -1197,6 +1199,7 @@ async function answerOne(input: Chain, key: AgentKey, channel: Channel) {
       conversationId,
       content,
       module: WORKS_IN[key],
+      ...(input.hop === 0 && input.model ? { model: input.model } : {}),
       // The room it was tagged in, so "this channel" means something. Re-checked
       // inside every tool against the *agent's* membership; what it picks for
       // somebody (a project, a channel to read) against the asker's as well.

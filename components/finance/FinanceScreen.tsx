@@ -1,5 +1,6 @@
 "use client";
 
+import type * as React from "react";
 import { useState } from "react";
 import type { ActualRow, BudgetCell, CentreRow, SpendRow, Thresholds } from "@/lib/finance/service";
 import {
@@ -52,7 +53,7 @@ import { ApiBalances } from "@/components/finance/ApiBalances";
  * has been the token ledger since the first week and nothing in Finance ever
  * looked at it.
  */
-type Tab = "budget" | "cash" | "cost" | "spend" | "reports";
+type Tab = "budget" | "cash" | "cost" | "spend" | "reports" | "library";
 
 export function FinanceScreen({
   period,
@@ -67,6 +68,7 @@ export function FinanceScreen({
   viewerId,
   locale,
   model,
+  library,
 }: {
   period: string;
   /** The monthly management reports, newest period first. */
@@ -82,6 +84,8 @@ export function FinanceScreen({
   viewerId: string;
   locale: string;
   model: string;
+  /** The module's 资料库 (30 Sep), drawn by the page. */
+  library?: React.ReactNode;
 }) {
   const zh = locale.startsWith("zh");
   const t = (en: string, cn: string) => (zh ? cn : en);
@@ -99,6 +103,7 @@ export function FinanceScreen({
   /* The design draws these down a 212px column, the way every other
      desktop artboard in the set does — not across the top. */
   const SCREENS: ScreenItem<Tab>[] = [
+    { key: "library", label: "Library", labelZh: "资料库" },
     { key: "budget", label: "Budget", labelZh: "预算" },
     { key: "cash", label: "Cash", labelZh: "现金" },
     { key: "cost", label: "Cost", labelZh: "成本" },
@@ -127,6 +132,7 @@ export function FinanceScreen({
         <div style={{ flexGrow: 1, minWidth: 0, overflowY: "auto", padding: "18px 22px 40px" }}>
           {/* Above every tab: what is left on each service we pay for. */}
           {balances ? <ApiBalances balances={balances} zh={zh} /> : null}
+          {tab === "library" && library}
           {tab === "budget" && (
             <Budget
               period={period}
