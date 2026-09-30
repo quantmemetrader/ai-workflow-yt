@@ -51,11 +51,11 @@ export async function createInvite(
   viewer: Viewer,
   input: { email: string; name?: string | null; role?: InviteRow["role"]; modules: Module[] },
 ): Promise<{ invite: InviteRow; token: string }> {
-  if (!canInvite(viewer)) throw new Error("Only an owner or an administrator can invite people");
+  if (!canInvite(viewer)) throw new Error("只有所有者或管理员可以邀请成员");
 
   const email = input.email.trim().toLowerCase();
   if (!email || email.length > 320 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    throw new Error("That does not look like an email address");
+    throw new Error("这不像是一个邮箱地址");
   }
 
   const [existing] = await db
@@ -63,10 +63,10 @@ export async function createInvite(
     .from(users)
     .where(and(eq(users.tenantId, viewer.tenantId), eq(users.email, email), isNull(users.deletedAt)))
     .limit(1);
-  if (existing) throw new Error("Somebody with that address is already in the studio");
+  if (existing) throw new Error("这个邮箱已经是工作室成员了");
 
   const role = input.role ?? "member";
-  if (role === "owner") throw new Error("A studio has one owner, and it is not handed over by invitation");
+  if (role === "owner") throw new Error("工作室只有一个所有者，不能通过邀请转交");
 
   const token = randomBytes(32).toString("base64url");
   const id = newId("inv");
@@ -244,13 +244,13 @@ export async function createAccountNow(
   viewer: Viewer,
   input: { email: string; name?: string | null; role?: InviteRow["role"]; modules: Module[] },
 ): Promise<{ userId: string; email: string; password: string }> {
-  if (!canInvite(viewer)) throw new Error("Only an owner or an administrator can add people");
+  if (!canInvite(viewer)) throw new Error("只有所有者或管理员可以添加成员");
   const email = input.email.trim().toLowerCase();
-  if (!email || email.length > 320 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error("That does not look like an email address");
+  if (!email || email.length > 320 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error("这不像是一个邮箱地址");
   const [existing] = await db.select({ id: users.id }).from(users).where(and(eq(users.tenantId, viewer.tenantId), eq(users.email, email), isNull(users.deletedAt))).limit(1);
-  if (existing) throw new Error("Somebody with that address is already in the studio");
+  if (existing) throw new Error("这个邮箱已经是工作室成员了");
   const role = input.role ?? "member";
-  if (role === "owner") throw new Error("A studio has one owner");
+  if (role === "owner") throw new Error("工作室只有一个所有者");
   const password = randomBytes(9).toString("base64url").replace(/[-_]/g, "x").slice(0, 12);
   const userId = newId("usr");
   const passwordHash = await hashPassword(password);

@@ -19,6 +19,7 @@ import { AgentDock } from "@/components/shell/AgentDock";
 import { answeringModel } from "@/lib/ai/models";
 import { modelOptionsAction } from "./model-actions";
 import { ModelCard } from "./model-card";
+import { SpendCard } from "./spend-card";
 
 export const metadata = { title: "设置 · Settings" };
 
@@ -88,31 +89,7 @@ export default async function SettingsPage() {
 
           {admin || canInvite(viewer) ? group(zh ? "团队（管理员）" : "Team (admins)") : null}
           {admin ? <ModelCard zh={zh} options={models} /> : null}
-          {admin ? (
-            <section className="rounded-xl border border-outline-gray-1 p-4">
-            <h2 className="mb-3 text-sm font-semibold text-ink-gray-9">{t("AI spend")}</h2>
-            <p className="text-p-2xl font-semibold text-ink-gray-9">{formatUsd(budget.usedMicros)}</p>
-            <p className="mt-1 text-xs text-ink-gray-5">
-              {budget.capMicros === null
-                ? t("No cap set")
-                : `${t("of")} ${formatUsd(budget.capMicros)} ${t("this period")}`}
-            </p>
-            {budget.capMicros !== null && (
-              <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-surface-gray-3">
-                <div
-                  className={`h-full ${budget.stopped ? "bg-surface-red-5" : "bg-surface-gray-7"}`}
-                  style={{ width: `${Math.round(budget.fraction * 100)}%` }}
-                />
-              </div>
-            )}
-            {budget.stopped && (
-              <p className="mt-3 rounded-lg border border-outline-red-1 bg-surface-red-1 px-3 py-2 text-xs text-ink-red-3">
-                {t("Budget reached — the assistant has stopped")}
-              </p>
-            )}
-          </section>
-
-          ) : null}
+          {admin ? <SpendCard tenantId={viewer.tenantId} zh={zh} ownMicros={budget.usedMicros} capMicros={budget.capMicros} stopped={budget.stopped} /> : null}
           {canInvite(viewer) && (
             <PeopleCard
               zh={zh}

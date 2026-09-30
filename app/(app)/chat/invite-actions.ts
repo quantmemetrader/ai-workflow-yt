@@ -6,6 +6,7 @@ import { getViewer } from "@/lib/auth/dal";
 import { MODULES, type Module } from "@/lib/db/schema";
 import { canInvite, createInvite, revokeInvite } from "@/lib/invites/service";
 import { env } from "@/lib/env";
+import { emailConfigured, inviteEmail, sendEmail } from "@/lib/email/send";
 
 /**
  * Inviting a colleague, from the product rather than from a shell.
@@ -36,7 +37,7 @@ function isModule(v: unknown): v is Module {
 
 export type InviteResult =
   | { ok: false; error: string }
-  | { ok: true; id: string; email: string; role: "admin" | "member" | "guest"; expiresAt: string; link: string };
+  | { ok: true; id: string; email: string; role: "admin" | "member" | "guest"; expiresAt: string; link: string; emailed: boolean; emailError: string | null };
 
 export async function inviteAction(input: {
   email: string;
@@ -46,13 +47,13 @@ export async function inviteAction(input: {
 }): Promise<InviteResult> {
   const viewer = await getViewer();
   if (!viewer || !canInvite(viewer)) {
-    return { ok: false, error: "Only an owner or an administrator can invite people" };
+    return { ok: false, error: "只有所有者或管理员可以邀请成员" };
   }
 
   const role =
     input.role === "admin" || input.role === "member" || input.role === "guest" ? input.role : "member";
   const modules = (input.modules ?? []).filter(isModule);
-  if (!modules.length) return { ok: false, error: "Choose at least one module they may open" };
+  if (!modules.length) return { ok: false, error: "至少选一个对方可以打开的模块" };
 
   try {
     const { invite, token } = await createInvite(viewer, {
@@ -68,18 +69,21 @@ export async function inviteAction(input: {
      * they normally would. An invitation that silently goes nowhere would be
      * worse than one you have to copy.
      */
-    return {
-      ok: true,
-      id: invite.id,
-      email: invite.email,
-      role,
-      expiresAt: invite.expiresAt.toISOString(),
-      link: `${await origin()}/invite/${token}`,
-    };
+    const link = `${await origin()}/invite/${token}`;
+    /* Emailed when the deployment has a mail service; the link comes back either way. */
+    let emailed = false;
+    let emailError: string | null = null;
+    if (emailConfigured()) {
+      const mail = inviteEmail({ to: invite.email, inviter: viewer.nameLocal || viewer.name, link, expires: invite.expiresAt.toISOString().slice(0, 10) });
+      const sent = await sendEmail({ to: invite.email, ...mail });
+      emailed = sent.ok;
+      emailError = sent.ok ? null : sent.error;
+    }
+    return { ok: true, id: invite.id, email: invite.email, role, expiresAt: invite.expiresAt.toISOString(), link, emailed, emailError };
   } catch (err) {
     return {
       ok: false,
-      error: err instanceof Error ? err.message : "Could not create that invitation",
+      error: err instanceof Error ? err.message : "没能创建邀请，稍后再试",
     };
   }
 }

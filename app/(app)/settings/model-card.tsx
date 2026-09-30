@@ -1,86 +1,76 @@
 "use client";
 
 import { ModelChip } from "@/components/chat/ModelChip";
-import { AUTO_MODEL } from "@/lib/ai/chat-models";
+import { ModelTiles, type ModelTile } from "@/components/chat/ModelTiles";
+import { AUTO_MODEL, CHAT_MODELS } from "@/lib/ai/chat-models";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { notify } from "@/lib/client/notify";
 import { chooseModelAction, type ModelOption } from "./model-actions";
 
 /**
  * The studio's default AI model, for owners and admins, in plain words.
- *
- * It lived as a picker under every chat box and every side panel, showing a
- * model id ("qwen/qwen3-max") to people who do not know what one is. Each
- * message can still pick its own in the chat box; this is the default.
+ * The same names and cards as the chat box's picker (the owner, 30 Sep:
+ * "change this for our new ui"); any other model is one chip away.
  */
-export const PLAIN: Record<string, { zh: string; en: string; noteZh: string; noteEn: string }> = {
-  "qwen/qwen3-max": { zh: "标准", en: "Standard", noteZh: "中文好、最稳，推荐", noteEn: "Good Chinese, reliable — recommended" },
-  "qwen/qwen3.7-max": { zh: "最强", en: "Strongest", noteZh: "长资料、长文章最好，价格约两倍", noteEn: "Best with long material, about twice the price" },
-  "qwen/qwen3.7-plus": { zh: "省钱", en: "Economy", noteZh: "日常够用，便宜三分之二", noteEn: "Fine for everyday work, a third of the price" },
-  "moonshotai/kimi-k2.6": { zh: "写作", en: "Writing", noteZh: "中文最自然，适合改稿", noteEn: "The most natural Chinese, good for rewrites" },
-  "z-ai/glm-5.3": { zh: "第二意见", en: "Second opinion", noteZh: "另一家的模型，想多听一个意见时用", noteEn: "A different house, for a second read" },
-  "deepseek/deepseek-v4-flash": { zh: "最便宜", en: "Cheapest", noteZh: "批量小活：标题、分类", noteEn: "Bulk small jobs: titles, sorting" },
-  "deepseek:direct": { zh: "DeepSeek 自有账号", en: "DeepSeek (own key)", noteZh: "工作室自己的 DeepSeek，最便宜", noteEn: "The studio's own DeepSeek key, cheapest" },
-};
+export const PLAIN: Record<string, { zh: string; en: string; noteZh: string; noteEn: string }> = Object.fromEntries(
+  CHAT_MODELS.filter((m) => m.id !== AUTO_MODEL).map((m) => [m.id, { zh: m.zh, en: m.en, noteZh: m.lineZh, noteEn: m.lineEn }]),
+);
+
+/** The usual models as tiles, in the chat picker's words. */
+export function usualTiles(zh: boolean): ModelTile[] {
+  return CHAT_MODELS.filter((m) => m.id !== AUTO_MODEL).map((m) => ({ id: m.id, title: zh ? m.zh : m.en, model: m.real, note: zh ? m.lineZh : m.lineEn }));
+}
 
 export function ModelCard({ zh, options }: { zh: boolean; options: ModelOption[] }) {
   const router = useRouter();
   const [busy, start] = useTransition();
   const [picked, setPicked] = useState(options.find((o) => o.current)?.id ?? null);
-  const shown = options.filter((o) => o.tier !== "free");
+  const direct = options.find((o) => o.id === "deepseek:direct");
+  const tiles: ModelTile[] = [
+    ...usualTiles(zh),
+    ...(direct ? [{ id: direct.id, title: zh ? "DeepSeek 自有账号" : "DeepSeek (own key)", model: "DeepSeek", note: zh ? "工作室自己的 DeepSeek 账号，最便宜" : "The studio's own DeepSeek key, cheapest", vendor: "deepseek" }] : []),
+  ];
+  const choose = (id: string) =>
+    start(async () => {
+      const before = picked;
+      setPicked(id);
+      const r = await chooseModelAction(id);
+      if ("error" in r && r.error) {
+        setPicked(before);
+        notify(r.error);
+        return;
+      }
+      notify(zh ? "已更换工作室默认模型" : "Studio default changed", "ok");
+      router.refresh();
+    });
+  const other = picked && !tiles.some((m) => m.id === picked) ? picked : null;
   return (
-    <section className="rounded-xl border border-outline-gray-1 p-4">
-      <h2 className="text-sm font-semibold text-ink-gray-9">{zh ? "默认 AI 模型" : "Default AI model"}</h2>
-      <p className="mb-3 mt-1 text-xs text-ink-gray-5">{zh ? "每次对话也可以在输入框里单独选。" : "Each message can still pick its own in the chat box."}</p>
-      <div className="flex flex-col gap-1.5">
-        {shown.map((o) => {
-          const p = PLAIN[o.id];
-          const on = picked === o.id;
-          return (
-            <button
-              key={o.id}
-              type="button"
-              disabled={busy}
-              onClick={() =>
-                start(async () => {
-                  const r = await chooseModelAction(o.id);
-                  if (!("error" in r && r.error)) setPicked(o.id);
-                  router.refresh();
-                })
-              }
-              style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 12px", borderRadius: 10, border: `1px solid ${on ? "#171717" : "#e7e6e2"}`, background: on ? "#fafaf8" : "#fff", textAlign: "left", fontFamily: "inherit", cursor: busy ? "default" : "pointer" }}
-            >
-              <span style={{ width: 14, height: 14, borderRadius: 99, border: `1.5px solid ${on ? "#171717" : "#c9c8c2"}`, display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                {on ? <span style={{ width: 6, height: 6, borderRadius: 99, background: "#171717" }} /> : null}
-              </span>
-              <span style={{ fontSize: 13.5, fontWeight: 600, color: "#171717", minWidth: 72 }}>{p ? (zh ? p.zh : p.en) : o.label}</span>
-              <span style={{ fontSize: 12.5, color: "#6b6b6b", flexGrow: 1 }}>{p ? (zh ? p.noteZh : p.noteEn) : o.use}</span>
-              <span style={{ fontSize: 11, color: "#b0b0ab" }}>{o.label}</span>
-            </button>
-          );
-        })}
+    <section className="rounded-xl border border-outline-gray-1" style={{ padding: "18px 18px 16px" }}>
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginBottom: 14 }}>
+        <div style={{ minWidth: 0, flex: "1 1 260px" }}>
+          <h2 style={{ margin: 0, fontSize: 15, fontWeight: 650, color: "#171717" }}>{zh ? "默认 AI 模型" : "Default AI model"}</h2>
+          <p style={{ margin: "4px 0 0", fontSize: 12.5, color: "#7a7a76", lineHeight: 1.55 }}>
+            {zh ? "全工作室默认用这个。每个 AI 同事可以在「AI 同事 › 训练」里单独设，每条消息也可以在输入框里临时换。" : "The whole studio's default. Each AI employee can have its own, and any message can pick another."}
+          </p>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+          <span style={{ fontSize: 12.5, color: "#7a7a76" }}>{zh ? "全部模型：" : "Every model:"}</span>
+          <ModelChip
+            value={other ?? AUTO_MODEL}
+            zh={zh}
+            placement="down"
+            align="right"
+            note={zh ? "全工作室默认用这个模型" : "The whole studio's default"}
+            autoLabel={{ zh: "选一个", en: "Choose", lineZh: "下面的常用模型之外的", lineEn: "Beyond the usual ones below" }}
+            onChange={(id) => (id === AUTO_MODEL ? undefined : choose(id))}
+          />
+        </div>
       </div>
-      {/* Any model the key can call, not only the ones above (30 Sep). */}
-      <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 10, flexWrap: "wrap" }}>
-        <span style={{ fontSize: 12.5, color: "#6b6b6b" }}>{zh ? "或者从全部模型里选：" : "Or pick from every model:"}</span>
-        <ModelChip
-          value={picked && !shown.some((o) => o.id === picked) ? picked : AUTO_MODEL}
-          zh={zh}
-          placement="down"
-          align="left"
-          note={zh ? "全工作室默认用这个模型" : "The whole studio's default"}
-          autoLabel={{ zh: "选一个", en: "Choose", lineZh: "上面列出的常用模型", lineEn: "The usual ones listed above" }}
-          onChange={(id) =>
-            id === AUTO_MODEL
-              ? undefined
-              : start(async () => {
-                  const r = await chooseModelAction(id);
-                  if (!("error" in r && r.error)) setPicked(id);
-                  router.refresh();
-                })
-          }
-        />
-      </div>
+      {other ? (
+        <p style={{ margin: "0 0 10px", fontSize: 12.5, color: "#1f5fbf" }}>{zh ? "现在用的是上面选的模型，不在下面的常用列表里。" : "Using the model chosen above, not one of the usual ones."}</p>
+      ) : null}
+      <ModelTiles tiles={tiles} value={picked} onPick={choose} disabled={busy} />
     </section>
   );
 }

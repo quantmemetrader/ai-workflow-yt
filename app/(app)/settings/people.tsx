@@ -17,7 +17,10 @@ import { inviteAction, revokeInviteAction } from "@/app/(app)/chat/invite-action
  * deployment, so the link comes back here to be passed on. A screen that said
  * "invitation sent" would be a screen telling a lie.
  */
-type Sent = { email: string; link: string; expiresAt: string };
+const ROLE_ZH = { admin: "管理员", member: "成员", guest: "访客" } as const;
+const MODULE_ZH: Record<string, string> = { chat: "聊天", files: "文件", research: "选题", script: "脚本", video: "视频", publish: "发布", accounting: "账务", finance: "财务", legal: "法务", hr: "人事", admin: "后台管理", article: "文章" };
+
+type Sent = { email: string; link: string; expiresAt: string; emailed?: boolean; emailError?: string | null };
 
 type InviteRow = {
   id: string;
@@ -49,7 +52,8 @@ export function PeopleCard({ zh, initialInvites }: { zh: boolean; initialInvites
         setError(res.error);
         return;
       }
-      setSent({ email: res.email, link: res.link, expiresAt: res.expiresAt });
+      setSent({ email: res.email, link: res.link, expiresAt: res.expiresAt, emailed: res.emailed, emailError: res.emailError });
+      setCopied(false);
       setRows((cur) => [
         { id: res.id, email: res.email, role: res.role, modules, expiresAt: res.expiresAt, acceptedAt: null },
         ...cur.filter((r) => r.email !== res.email),
@@ -97,7 +101,7 @@ export function PeopleCard({ zh, initialInvites }: { zh: boolean; initialInvites
                   role === r ? "bg-surface-gray-7 text-white" : "border border-outline-gray-2 text-ink-gray-6"
                 }`}
               >
-                {r}
+                {zh ? ROLE_ZH[r] : r}
               </button>
             ))}
           </div>
@@ -117,7 +121,7 @@ export function PeopleCard({ zh, initialInvites }: { zh: boolean; initialInvites
                     on ? "bg-surface-gray-7 text-white" : "border border-outline-gray-2 text-ink-gray-6"
                   }`}
                 >
-                  {m}
+                  {zh ? (MODULE_ZH[m] ?? m) : m}
                 </button>
               );
             })}
@@ -131,17 +135,25 @@ export function PeopleCard({ zh, initialInvites }: { zh: boolean; initialInvites
             disabled={busy || !email.trim() || modules.length === 0}
             className="mt-2 h-9 self-start rounded-lg bg-surface-gray-7 px-4 text-sm font-medium text-white disabled:opacity-45"
           >
-            {busy ? (zh ? "创建中…" : "Creating…") : zh ? "创建邀请链接" : "Create the invitation"}
+            {busy ? (zh ? "发送中…" : "Sending…") : zh ? "发送邀请" : "Send the invitation"}
           </button>
         </div>
       )}
 
       {sent && (
-        <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
-          <p className="text-xs text-amber-900">
-            {zh
-              ? "这个部署还没有配置邮件服务，所以系统没有发送任何邮件。把下面的链接发给他们：打开链接后，他们自己填写姓名并设置密码，随后直接登录。链接 14 天内有效，只能用一次。"
-              : "No mail provider is configured on this deployment, so nothing was sent. Pass this link on yourself: they open it, type their name, choose their own password and are signed in. It works once and expires in 14 days."}
+        <div className={`mt-3 rounded-lg border p-3 ${sent.emailed ? "border-green-200 bg-green-50" : "border-amber-200 bg-amber-50"}`}>
+          <p className={`text-xs ${sent.emailed ? "text-green-900" : "text-amber-900"}`}>
+            {sent.emailed
+              ? zh
+                ? `邀请邮件已发送到 ${sent.email}。对方点邮件里的按钮，填写姓名、设置密码就能登录。也可以把下面的链接直接发给对方。链接 14 天内有效，只能用一次。`
+                : `The invitation was emailed to ${sent.email}. You can also pass on the link below. It works once and expires in 14 days.`
+              : sent.emailError
+                ? zh
+                  ? `邮件没发出去（${sent.emailError}）。把下面的链接发给对方（微信或当面）：打开后自己填写姓名、设置密码就能登录。链接 14 天内有效，只能用一次。`
+                  : `The email did not go out (${sent.emailError}). Pass this link on yourself; it works once and expires in 14 days.`
+                : zh
+                  ? "把下面的链接发给对方（微信或当面）：打开后自己填写姓名、设置密码就能登录。链接 14 天内有效，只能用一次。"
+                  : "Pass this link on yourself: they open it, type their name, choose a password and are signed in. It works once and expires in 14 days."}
           </p>
           <div className="mt-2 flex items-center gap-2">
             <code className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap rounded bg-white px-2 py-1 text-[11px] text-ink-gray-7">
@@ -166,7 +178,7 @@ export function PeopleCard({ zh, initialInvites }: { zh: boolean; initialInvites
           {rows.map((r) => (
             <div key={r.id} className="flex items-center gap-3 border-t border-outline-gray-1 py-2 text-xs">
               <span className="text-ink-gray-8">{r.email}</span>
-              <span className="text-ink-gray-5">{r.role}</span>
+              <span className="text-ink-gray-5">{zh ? (ROLE_ZH[r.role as keyof typeof ROLE_ZH] ?? r.role) : r.role}</span>
               <span className="ml-auto text-ink-gray-5">
                 {r.acceptedAt
                   ? zh
@@ -176,6 +188,28 @@ export function PeopleCard({ zh, initialInvites }: { zh: boolean; initialInvites
                     ? `有效期至 ${r.expiresAt.slice(0, 10)}`
                     : `expires ${r.expiresAt.slice(0, 10)}`}
               </span>
+              {!r.acceptedAt && (
+                <button
+                  type="button"
+                  title={zh ? "换一个新链接，再发一次邀请邮件" : "Send a fresh link by email"}
+                  onClick={() =>
+                    start(async () => {
+                      setError(null);
+                      const res = await inviteAction({ email: r.email, role: r.role, modules: r.modules as string[] });
+                      if (!res.ok) {
+                        setError(res.error);
+                        return;
+                      }
+                      setSent({ email: res.email, link: res.link, expiresAt: res.expiresAt, emailed: res.emailed, emailError: res.emailError });
+                      setCopied(false);
+                      setRows((cur) => cur.map((x) => (x.id === r.id ? { ...x, id: res.id, expiresAt: res.expiresAt } : x)));
+                    })
+                  }
+                  className="text-ink-gray-5 hover:text-ink-gray-9"
+                >
+                  {zh ? "重发邮件" : "resend"}
+                </button>
+              )}
               {!r.acceptedAt && (
                 <button
                   type="button"
