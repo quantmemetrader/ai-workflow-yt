@@ -1,6 +1,6 @@
 "use client";
 
-import { getPanelModel } from "@/components/chat/ModelChip";
+import { ModelChip, getPanelModel, usePanelModel } from "@/components/chat/ModelChip";
 import { DropVeil, useFileDrop } from "@/components/chat/DropVeil";
 import { uploadToStudio } from "@/components/chat/upload";
 import { unlockAction } from "@/app/(app)/script/actions";
@@ -656,6 +656,7 @@ function AskBox({ people, zh, placeholder, onSend, disabled }: { people: Mention
   const [draft, setDraft] = React.useState("");
   const box = React.useRef<HTMLTextAreaElement | null>(null);
   const mentions = useMentions({ people, zh, draft, setDraft, box });
+  const [askModel, setAskModel] = usePanelModel();
   const send = () => {
     const v = draft.trim();
     if (!v || disabled) return;
@@ -686,6 +687,7 @@ function AskBox({ people, zh, placeholder, onSend, disabled }: { people: Mention
         placeholder={placeholder}
         style={{ flexGrow: 1, minWidth: 0, minHeight: 34, border: "1px solid #e2e2e2", borderRadius: 10, padding: "8px 11px", outline: "none", resize: "none", fontFamily: "inherit", fontSize: 12.5, lineHeight: 1.45, background: "#fcfcfc", boxSizing: "border-box" }}
       />
+      <ModelChip value={askModel} onChange={setAskModel} zh={zh} placement="up" align="right" />
       {/* Light grey until there is something to send, as Home's 开工 is;
           a 40% black block beside every empty box read as a grey slab. */}
       <button
