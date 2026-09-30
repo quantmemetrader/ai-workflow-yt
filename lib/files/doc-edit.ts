@@ -67,7 +67,7 @@ async function officeToHtml(storageKey: string, name: string): Promise<string | 
     if (!res.ok || !res.body) return null;
     const src = path.join(/*turbopackIgnore: true*/ dir, `in.${extOf(name) || "docx"}`);
     await pipeline(Readable.fromWeb(res.body as unknown as import("node:stream/web").ReadableStream), createWriteStream(src));
-    await run("soffice", [`-env:UserInstallation=file://${path.join(/*turbopackIgnore: true*/ dir, "lo")}`, "--headless", "--norestore", "--convert-to", "html:XHTML Writer File:UTF8", "--outdir", dir, src], { timeout: 120_000, env: { ...process.env, HOME: dir } });
+    await run("soffice", [`-env:UserInstallation=file://${path.join(/*turbopackIgnore: true*/ dir, "lo")}`, "--headless", "--norestore", "--convert-to", "html", "--outdir", dir, src], { timeout: 120_000, env: { ...process.env, HOME: dir } });
     const out = (await readdir(dir)).find((f) => /\.x?html?$/i.test(f));
     if (!out) return null;
     const html = await readFile(path.join(/*turbopackIgnore: true*/ dir, out), "utf8");
