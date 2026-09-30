@@ -33,6 +33,7 @@ export async function SpendCard({ tenantId, zh, ownMicros, capMicros, stopped }:
   const label = (r: (typeof rows)[number]) => {
     const agent = r.email ? agentKeyFromEmail(r.email) : null;
     if (agent) return { name: `${trainName(agent, zh)}${zh ? "（自动任务）" : " (on its own)"}`, ai: true };
+    if (r.email?.startsWith("service@")) return { name: zh ? "定时任务（自动）" : "Scheduled jobs", ai: true };
     return { name: (zh ? r.local || r.name : r.name || r.local) || (zh ? "系统" : "System"), ai: false };
   };
   const top = rows.filter((r) => Number(r.micros) > 0).slice(0, 8);
