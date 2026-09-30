@@ -51,9 +51,12 @@ export const viewport: Viewport = {
  * pronunciation and the browser the wrong font stack. */
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="zh-Hans-CN">
+    /* Never translated by the browser (the owner, 30 Sep: "we want all in simplified chinese"):
+       a Traditional-set browser rewrote the page into wrong characters. English is 设置 › 语言. */
+    <html lang="zh-Hans-CN" translate="no" className="notranslate">
       <head>
         <meta httpEquiv="Content-Language" content="zh-Hans-CN" />
+        <meta name="google" content="notranslate" />
         {/* Before any bundle: survive Chrome's translate rewriting the page,
             reload once on a script from an older deploy, report the rest. */}
         <script dangerouslySetInnerHTML={{ __html: BOOT_SCRIPT }} />

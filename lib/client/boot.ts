@@ -33,22 +33,38 @@ try{
   }
 }catch(e){}
 try{
-  /* Chrome set to Traditional Chinese "translates" this Simplified page into
-     Traditional, wrongly (30 Sep: the studio kept seeing wrong characters).
-     Chinese into Chinese is never wanted: when Chrome starts it, this
-     browser gets translate="no" for good and the page reloads once.
-     Translating into English (how Ryan reads it) is left alone. */
-  var NZ="tg:no-zh-translate",de=document.documentElement;
-  var off=function(){de.setAttribute("translate","no");de.classList.add("notranslate");};
-  try{if(localStorage.getItem(NZ)==="1")off();}catch(e){}
-  var zhToZh=function(){var l=(de.getAttribute("lang")||"").toLowerCase();return /translated-(ltr|rtl)/.test(de.className||"")&&l.indexOf("zh")===0&&l!=="zh-hans-cn"&&l!=="zh-cn"&&l!=="zh-hans"&&l!=="zh";};
-  if(typeof MutationObserver==="function")new MutationObserver(function(){
-    if(!zhToZh())return;
-    try{localStorage.setItem(NZ,"1");}catch(e){}
-    off();
-    try{if(sessionStorage.getItem(NZ))return;sessionStorage.setItem(NZ,"1");}catch(e){}
-    location.reload();
-  }).observe(de,{attributes:true,attributeFilter:["lang","class"]});
+  /* Everything stays Simplified (the owner, 30 Sep). The page says translate="no";
+     a browser or 繁简 extension that rewrites it anyway is caught by a hidden
+     probe: its text changes, the person is told how to turn it off, and it is
+     reported (kind "zh-convert") so we know whose browser does it. */
+  var de=document.documentElement;
+  de.setAttribute("translate","no");de.classList.add("notranslate");
+  var PROBE="简体中文：时间同事草稿你们这样";
+  var warned=0;
+  var warn=function(seen){
+    if(warned)return;warned=1;
+    try{var b=JSON.stringify({kind:"zh-convert",message:String(seen).slice(0,80),stack:"",digest:"",url:location.pathname});if(navigator.sendBeacon)navigator.sendBeacon("/api/client-error",new Blob([b],{type:"application/json"}));}catch(e){}
+    try{if(sessionStorage.getItem("tg:zh-warned"))return;sessionStorage.setItem("tg:zh-warned","1");}catch(e){}
+    var d=document.createElement("div");
+    d.setAttribute("translate","no");d.className="notranslate";d.setAttribute("role","alert");
+    d.style.cssText="position:fixed;left:50%;top:12px;transform:translateX(-50%);z-index:2147483647;max-width:min(640px,calc(100vw - 24px));background:#fff7e6;border:1px solid #f0c36d;color:#6b4a07;border-radius:12px;padding:12px 40px 12px 14px;font:13px/1.6 system-ui,sans-serif;box-shadow:0 8px 24px rgba(0,0,0,.12)";
+    d.textContent="你的浏览器正在把页面自动转成繁体，所以会看到错字。本站内容全部是简体中文：请关闭浏览器的「翻译」（地址栏右侧的翻译图标 › 一律不翻译），或停用繁简转换插件，然后刷新页面。";
+    var x=document.createElement("button");x.type="button";x.textContent="×";x.setAttribute("aria-label","关闭");
+    x.style.cssText="position:absolute;right:8px;top:6px;border:0;background:none;font-size:18px;color:#6b4a07;cursor:pointer";
+    x.onclick=function(){d.remove();};d.appendChild(x);
+    (document.body||de).appendChild(d);
+  };
+  var probe=function(){
+    var p=document.createElement("span");
+    p.id="tg-zh-probe";p.setAttribute("aria-hidden","true");p.textContent=PROBE;
+    p.style.cssText="position:absolute;left:-9999px;top:0;width:1px;height:1px;overflow:hidden;white-space:nowrap";
+    document.body.appendChild(p);
+    var check=function(){var t=p.textContent||"";if(t&&t!==PROBE)warn(t);};
+    if(typeof MutationObserver==="function")new MutationObserver(check).observe(p,{characterData:true,childList:true,subtree:true});
+    var n=0,iv=setInterval(function(){check();if(++n>30)clearInterval(iv);},2000);
+  };
+  var later=function(){setTimeout(probe,1500);};
+  if(document.readyState==="complete")later();else window.addEventListener("load",later);
 }catch(e){}
 var KEY="aura:reloaded-at",sent=0;
 function stale(m){return /ChunkLoadError|Loading (CSS )?chunk|Failed to fetch dynamically imported module|Importing a module script failed|error loading dynamically imported module|Failed to find Server Action|older or newer deployment/i.test(m||"");}
