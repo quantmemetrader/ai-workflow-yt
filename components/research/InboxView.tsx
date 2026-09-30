@@ -142,7 +142,7 @@ export function InboxView({
       }
       onSyncNow={() => run("sync", syncNowAction)}
       model={model}
-      onAsk={(prompt) => void agent.send(prompt)}
+      onAsk={(prompt, files) => void agent.send(prompt, files)}
       tools={<AgentHistory zh={locale.startsWith("zh")} current={agent.conversationId} onPick={(id) => void agent.load(id)} onNew={agent.reset} />}
       thread={
         <InlineAgentThread

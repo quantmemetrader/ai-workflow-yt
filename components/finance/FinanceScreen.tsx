@@ -1,5 +1,6 @@
 "use client";
 
+import { useSearchParams } from "next/navigation";
 import type * as React from "react";
 import { useState } from "react";
 import type { ActualRow, BudgetCell, CentreRow, SpendRow, Thresholds } from "@/lib/finance/service";
@@ -94,7 +95,8 @@ export function FinanceScreen({
      says so rather than looking dead. */
   const [generating, setGenerating] = useState(false);
   const agent = useInlineAgent({ module: "finance" });
-  const [tab, setTab] = useState<Tab>("budget");
+  const sp = useSearchParams();
+  const [tab, setTab] = useState<Tab>(sp?.get("tab") === "library" && library ? "library" : "budget");
 
   const waiting = spend.filter((s) => s.state === "awaiting_approval");
   const budgeted = budget.cells.reduce((n, c) => n + c.budgetMicros, 0);
@@ -210,7 +212,8 @@ export function FinanceScreen({
           )}
           placeholder={t("Ask about these numbers…", "询问这些数字…")}
           model={model}
-          onAsk={(prompt) => void agent.send(prompt)}
+          attach
+          onAsk={(prompt, files) => void agent.send(prompt, files)}
           thread={
             <InlineAgentThread
               messages={agent.messages}

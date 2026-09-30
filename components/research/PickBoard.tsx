@@ -203,7 +203,8 @@ export function PickBoard({ picks, zh, day, model, canWrite, plan = null }: { pi
         note={t("问研究员：哪个最值得拍，或者某个话题为什么火。", "Ask the researcher which one is worth making, or why a topic is hot.")}
         placeholder={t("问研究员…", "Ask the researcher…")}
         model={model}
-        onAsk={(prompt) => void agent.send(prompt)}
+        attach
+          onAsk={(prompt, files) => void agent.send(prompt, files)}
         tools={<AgentHistory zh={zh} current={agent.conversationId} onPick={(id) => void agent.load(id)} onNew={agent.reset} />}
         thread={<InlineAgentThread messages={agent.messages} notice={agent.notice} conversationId={agent.conversationId} zh={zh} />}
       />

@@ -1,5 +1,6 @@
 "use client";
 
+import { AttachButton, AttachChips, useAttachments } from "@/components/chat/Attach";
 import { ModelChip, getPanelModel, usePanelModel } from "@/components/chat/ModelChip";
 import { DropVeil, useFileDrop } from "@/components/chat/DropVeil";
 import { uploadToStudio } from "@/components/chat/upload";
@@ -217,10 +218,10 @@ export function ProjectScreen({
   }, [anyWorking, busyLive, armed, retrying, router, p.id]);
 
   /** Ask one employee something from its card; the answer comes back there. */
-  function ask(agent: AgentKey, text: string) {
-    const body = `${agentTag(agent)} ${text.trim()}`;
+  function ask(agent: AgentKey, text: string, files: string[] = []) {
+    const body = `${agentTag(agent)} ${text.trim() || (files.length ? "请看附件" : "")}`;
     start(async () => {
-      const res = await sendChannelMessage(p.channel.slug, body, [], getPanelModel());
+      const res = await sendChannelMessage(p.channel.slug, body, files, getPanelModel());
       if (res?.error) {
         notify(res.error);
         return;
@@ -358,7 +359,7 @@ export function ProjectScreen({
                 <Action icon="eye" label={t("对标怎么做", "How rivals did it")} onClick={() => ask("research", t("找对标账号做过的同题视频，说出播放和他们的开头怎么写。", "Find rival videos on this topic, with their views and how they open."))} disabled={pending} />
                 {topicChosen ? <Action icon="bulb" label={t("换成已有选题", "Use an existing topic")} onClick={() => setPicking("topics")} disabled={pending} /> : null}
               </Actions>
-              <AskBox people={people} zh={zh} placeholder={t("问研究员这个选题…", "Ask the researcher about this topic…")} onSend={(v) => ask("research", v)} disabled={pending} />
+              <AskBox people={people} zh={zh} placeholder={t("问研究员这个选题…", "Ask the researcher about this topic…")} onSend={(v, files) => ask("research", v, files)} disabled={pending} />
               </Disclose>
             </Workbench>
               </Board>
@@ -652,19 +653,24 @@ function Disclose({ zh, on, label, children }: { zh: boolean; on: boolean; label
 }
 
 /** A box to say something to the card's employee, with the @ picker. */
-function AskBox({ people, zh, placeholder, onSend, disabled }: { people: MentionPerson[]; zh: boolean; placeholder: string; onSend: (text: string) => void; disabled?: boolean }) {
+function AskBox({ people, zh, placeholder, onSend, disabled }: { people: MentionPerson[]; zh: boolean; placeholder: string; onSend: (text: string, files: string[]) => void; disabled?: boolean }) {
   const [draft, setDraft] = React.useState("");
   const box = React.useRef<HTMLTextAreaElement | null>(null);
   const mentions = useMentions({ people, zh, draft, setDraft, box });
   const [askModel, setAskModel] = usePanelModel();
+  const att = useAttachments(zh);
+  const can = (draft.trim() || att.ids.length > 0) && !att.uploading;
   const send = () => {
     const v = draft.trim();
-    if (!v || disabled) return;
-    onSend(v);
+    if (!can || disabled) return;
+    onSend(v, att.ids);
     setDraft("");
+    att.clear();
   };
   return (
-    <div style={{ position: "relative", display: "flex", gap: 6, marginTop: 10, alignItems: "flex-end" }}>
+    <div style={{ marginTop: 10 }}>
+    <AttachChips zh={zh} attached={att.attached} onRemove={att.remove} />
+    <div style={{ position: "relative", display: "flex", gap: 6, alignItems: "flex-end" }}>
       <MentionMenu matches={mentions.matches} active={mentions.active} zh={zh} onPick={mentions.pick} onHover={mentions.setActive} placement="up" />
       <textarea
         ref={box}
@@ -685,19 +691,24 @@ function AskBox({ people, zh, placeholder, onSend, disabled }: { people: Mention
           }
         }}
         placeholder={placeholder}
+        onPaste={att.onPaste}
         style={{ flexGrow: 1, minWidth: 0, minHeight: 34, border: "1px solid #e2e2e2", borderRadius: 10, padding: "8px 11px", outline: "none", resize: "none", fontFamily: "inherit", fontSize: 12.5, lineHeight: 1.45, background: "#fcfcfc", boxSizing: "border-box" }}
       />
+      <span style={{ display: "inline-flex", alignItems: "center", height: 34 }}>
+        <AttachButton zh={zh} onFiles={att.add} size={30} />
+      </span>
       <ModelChip value={askModel} onChange={setAskModel} zh={zh} placement="up" align="right" />
       {/* Light grey until there is something to send, as Home's 开工 is;
           a 40% black block beside every empty box read as a grey slab. */}
       <button
         type="button"
         onClick={send}
-        disabled={disabled || !draft.trim()}
-        style={draft.trim() ? { ...btn(true), height: 34, borderRadius: 10, opacity: disabled ? 0.5 : 1 } : { ...btn(false), height: 34, borderRadius: 10, background: "#f0f0ee", borderColor: "#f0f0ee", color: "#a3a3a3", cursor: "default" }}
+        disabled={disabled || !can}
+        style={can ? { ...btn(true), height: 34, borderRadius: 10, opacity: disabled ? 0.5 : 1 } : { ...btn(false), height: 34, borderRadius: 10, background: "#f0f0ee", borderColor: "#f0f0ee", color: "#a3a3a3", cursor: "default" }}
       >
         <Icon name="upload" size={13} style={{ transform: "rotate(90deg)" }} />
       </button>
+    </div>
     </div>
   );
 }
@@ -818,9 +829,9 @@ function ChatDrawer({ project: p, zh, people, onClose }: { project: ProjectDetai
       router.refresh();
     });
   });
-  const say = (text: string) =>
+  const say = (text: string, files: string[] = []) =>
     start(async () => {
-      const res = await sendChannelMessage(p.channel.slug, text, [], getPanelModel());
+      const res = await sendChannelMessage(p.channel.slug, text, files, getPanelModel());
       if (res?.error) notify(res.error);
       if (parseAgentMentions(text).length || ("answering" in (res ?? {}) && (res as { answering?: string }).answering)) {
         const until = Date.now() + 120_000;

@@ -5,7 +5,7 @@ import { and, eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { users, type Relation } from "@/lib/db/schema";
 import { getViewer } from "@/lib/auth/dal";
-import { atLeast, canWrite, isRelation, revoke, share, shareCeiling, type SharedObject } from "@/lib/authz/rebac";
+import { atLeast, canWrite, isRelation, relationOn, revoke, share, shareCeiling, type SharedObject } from "@/lib/authz/rebac";
 import {
   createFolder,
   deleteFolder,
@@ -144,7 +144,8 @@ export async function shareAction(
      holds Files. One sharing system, two entitlements — the alternative was a
      second sheet that would drift from this one. */
   const needed = objectType === "script" ? "script" : "files";
-  if (!viewer?.modules.includes(needed)) return { error: "Not allowed" };
+  /* A file's owner or editor shares it from the document editor without holding Files (法务, 财务, 1 Oct). */
+  if (!viewer || (!viewer.modules.includes(needed) && !(objectType === "file" && ["owner", "editor"].includes((await relationOn(viewer, "file", objectId)) ?? "")))) return { error: "Not allowed" };
   if (objectType !== "file" && objectType !== "folder" && objectType !== "script") {
     return { error: "Not allowed" };
   }
@@ -216,7 +217,8 @@ export async function revokeAction(
 ) {
   const viewer = await getViewer();
   const needed = objectType === "script" ? "script" : "files";
-  if (!viewer?.modules.includes(needed)) return { error: "Not allowed" };
+  /* A file's owner or editor shares it from the document editor without holding Files (法务, 财务, 1 Oct). */
+  if (!viewer || (!viewer.modules.includes(needed) && !(objectType === "file" && ["owner", "editor"].includes((await relationOn(viewer, "file", objectId)) ?? "")))) return { error: "Not allowed" };
   if (objectType !== "file" && objectType !== "folder" && objectType !== "script") {
     return { error: "Not allowed" };
   }
@@ -271,8 +273,10 @@ export async function renameFolderAction(folderId: unknown, name: unknown) {
 /** Who sees these files: private, everyone, or chosen groups. */
 export async function setFileAccessAction(fileIds: unknown, choice: unknown) {
   const viewer = await getViewer();
-  if (!viewer || !viewer.modules.includes("files")) return { error: "Not allowed" };
+  if (!viewer) return { error: "Not allowed" };
   if (!Array.isArray(fileIds)) return { error: "Nothing chosen" };
+  /* Without Files, only one's own documents (`setFileAccess` refuses anything else anyway). */
+  if (!viewer.modules.includes("files") && !(fileIds.length === 1 && typeof fileIds[0] === "string" && (await relationOn(viewer, "file", fileIds[0])) === "owner")) return { error: "Not allowed" };
   try {
     await setFileAccess(viewer, fileIds.filter((x): x is string => typeof x === "string"), parseChoice(choice));
     revalidatePath("/files", "layout");

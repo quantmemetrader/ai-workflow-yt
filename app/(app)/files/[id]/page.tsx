@@ -13,6 +13,7 @@ import { ShareSheet } from "@/components/files/ShareSheet";
 import { FileAccessControl } from "@/components/files/FileAccessControl";
 import { visibilityForFiles } from "@/lib/files/access";
 import { RenameFile } from "@/components/files/RenameFile";
+import { editable } from "@/lib/files/doc-edit";
 
 /**
  * One file: the thing itself, who can open it, and every version of it.
@@ -86,6 +87,11 @@ export default async function FilePage({ params }: { params: Promise<{ id: strin
           <RenameFile id={file.id} name={file.name} zh={zh} />
         ) : null}
         <div style={{ flexGrow: 1 }} />
+        {editable(file.name, file.kind, file.mime) ? (
+          <Link href={`/docs/${file.id}`} className="btn s" style={{ height: 30, textDecoration: "none", color: "#171717", marginRight: 6 }}>
+            {held === "owner" || held === "editor" ? (zh ? "在线编辑" : "Edit") : zh ? "打开" : "Open"}
+          </Link>
+        ) : null}
         <a
           href={`/api/files/${file.id}/download?download=1`}
           className="btn s"

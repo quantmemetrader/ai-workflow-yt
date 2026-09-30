@@ -98,7 +98,7 @@ export async function startBlankAction(projectId: unknown) {
 }
 
 /** The AI copilot: 编剧's tracked changes for an instruction. Nothing is saved. */
-export async function copilotAction(projectId: unknown, paragraphs: unknown, instruction: unknown, model?: unknown) {
+export async function copilotAction(projectId: unknown, paragraphs: unknown, instruction: unknown, model?: unknown, fileIds?: unknown) {
   const c = await ctx(projectId, true);
   if ("error" in c) return c;
   if (!c.project.scriptId) return { error: "Not allowed" };
@@ -106,7 +106,8 @@ export async function copilotAction(projectId: unknown, paragraphs: unknown, ins
   if (!Array.isArray(paragraphs) || !paragraphs.length) return { error: c.zh ? "脚本还是空的" : "The script is empty" };
   const list = paragraphs.slice(0, 200).map((p) => (typeof p === "string" ? p.slice(0, 4000) : ""));
   try {
-    return await copilotRewrite(c.viewer, c.project.scriptId, list, instruction, pickedModel(model));
+    const files = Array.isArray(fileIds) ? fileIds.filter((x): x is string => typeof x === "string" && /^fil_[0-9a-z]+$/i.test(x)).slice(0, 5) : [];
+    return await copilotRewrite(c.viewer, c.project.scriptId, list, instruction, pickedModel(model), files);
   } catch (err) {
     return { error: asMessage(err) };
   }

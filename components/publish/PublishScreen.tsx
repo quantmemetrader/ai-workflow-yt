@@ -210,7 +210,8 @@ export function PublishScreen({
           note={agentNote(channels, posts, waiting.length, zh)}
           placeholder={t("Ask about what is going out…", "询问即将发布的内容…")}
           model={model}
-          onAsk={(prompt) => void agent.send(prompt)}
+          attach
+          onAsk={(prompt, files) => void agent.send(prompt, files)}
           thread={
             <InlineAgentThread
               messages={agent.messages}

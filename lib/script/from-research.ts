@@ -1,4 +1,6 @@
 import "server-only";
+import { readFileText } from "@/lib/ai/retrieval";
+import { fileTextWithin } from "@/lib/files/extract";
 import { and, eq, inArray, isNull } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { scripts, seriesCache, topics, workProjects } from "@/lib/db/schema";
@@ -112,7 +114,28 @@ export async function sourcesForScript(viewer: Viewer, scriptId: string, topicId
   const tid = topicId ?? (await topicIdForScript(viewer.tenantId, scriptId));
   const topic = tid ? await topicFacts(viewer.tenantId, tid) : null;
   const fromProject = draftSources(snapshot) || (project?.brief ? `项目简介：${cleanCodes(project.brief).slice(0, 400)}` : "");
-  return [fromProject, topic?.facts ?? ""].filter(Boolean).join("\n\n").slice(0, 4000);
+  const refs = await sampleText(viewer, scriptId).catch(() => "");
+  return [[fromProject, topic?.facts ?? ""].filter(Boolean).join("\n\n").slice(0, 4000), refs].filter(Boolean).join("\n\n");
+}
+
+/**
+ * The script's 参考资料 for a first draft: a sample to write like, or notes to use
+ * (Ryan, 1 Oct: scripts "based on different samples and styles"). A file attached
+ * a moment ago is given up to a minute to be read.
+ */
+async function sampleText(viewer: Viewer, scriptId: string): Promise<string> {
+  const [s] = await db.select({ ids: scripts.sourceFileIds }).from(scripts).where(eq(scripts.id, scriptId)).limit(1);
+  const ids = (s?.ids ?? []).slice(0, 5);
+  if (!ids.length) return "";
+  const parts: string[] = [];
+  for (const id of ids) {
+    await fileTextWithin(id, 60_000).catch(() => null);
+    const f = await readFileText(viewer, id, 8000).catch(() => null);
+    if (f?.text?.trim()) parts.push(`### ${f.name}\n${f.text}`);
+  }
+  return parts.length
+    ? `同事附的范例 / 参考资料：是范例稿的，学它的结构、语气、节奏和开头方式来写这个选题（不要照抄内容）；是资料的，可以引用其中的事实。\n${parts.join("\n\n").slice(0, 16000)}`
+    : "";
 }
 
 export type ScriptResult =

@@ -402,7 +402,7 @@ export function CompareScreen(props: {
   onWindowChange: (window: "1m" | "3m" | "6m") => void;
   onExport: () => void;
   /** Hands a question to the employee's agent. */
-  onAsk: (prompt: string) => void;
+  onAsk: (prompt: string, files?: string[]) => void;
   /** The conversation so far, in the agent panel. Asking used to navigate to
    * /chat, which took the chart away in order to discuss the chart. */
   thread?: React.ReactNode;

@@ -1,5 +1,6 @@
 "use client";
 
+import { useSearchParams } from "next/navigation";
 import { useState } from "react";
 import type { AccountRow, DocumentRow, EntryRow } from "@/lib/accounting/service";
 import {
@@ -34,7 +35,7 @@ import { ModuleSidebar, type ScreenItem } from "@/components/shell/ModuleSidebar
  * refuses an entry that does not balance, and a posted entry cannot be edited.
  * A correction is another entry.
  */
-type Tab = "inbox" | "entries" | "period" | "accounts";
+type Tab = "inbox" | "entries" | "period" | "accounts" | "library";
 
 type Draft = {
   id: string | null;
@@ -52,6 +53,7 @@ export function AccountingScreen({
   summary,
   locale,
   model,
+  library,
 }: {
   period: string;
   accounts: AccountRow[];
@@ -64,12 +66,15 @@ export function AccountingScreen({
   };
   locale: string;
   model: string;
+  /** The 账务资料库 (1 Oct), drawn by the page. */
+  library?: React.ReactNode;
 }) {
   const zh = locale.startsWith("zh");
   const t = (en: string, cn: string) => (zh ? cn : en);
   const { busy, run } = useAction();
   const agent = useInlineAgent({ module: "accounting" });
-  const [tab, setTab] = useState<Tab>("inbox");
+  const sp = useSearchParams();
+  const [tab, setTab] = useState<Tab>(sp?.get("tab") === "library" && library ? "library" : "inbox");
   const [draft, setDraft] = useState<Draft | null>(null);
   const [voiding, setVoiding] = useState<EntryRow | null>(null);
 
@@ -92,6 +97,7 @@ export function AccountingScreen({
   /* The design draws these down a 212px column, the way every other
      desktop artboard in the set does — not across the top. */
   const SCREENS: ScreenItem<Tab>[] = [
+    ...(library ? [{ key: "library" as const, label: "Library", labelZh: "资料库" }] : []),
     { key: "inbox", label: "Document inbox", labelZh: "单据", badge: pending.length },
     { key: "entries", label: "Entries", labelZh: "账目", badge: summary.draftCount },
     { key: "period", label: "Period close", labelZh: "月结" },
@@ -122,6 +128,7 @@ export function AccountingScreen({
 
       <div style={{ flexGrow: 1, minHeight: 0, display: "flex" }}>
         <div style={{ flexGrow: 1, minWidth: 0, overflowY: "auto", padding: "18px 22px 40px" }}>
+          {tab === "library" && library}
           {tab === "inbox" && (
             <Inbox
               documents={documents}
@@ -216,7 +223,8 @@ export function AccountingScreen({
           )}
           placeholder={t("Ask about the books…", "询问账务…")}
           model={model}
-          onAsk={(prompt) => void agent.send(prompt)}
+          attach
+          onAsk={(prompt, files) => void agent.send(prompt, files)}
           thread={
             <InlineAgentThread
               messages={agent.messages}

@@ -166,7 +166,8 @@ export function HrScreen({
           )}
           placeholder={t("Ask about leave or hiring…", "询问请假或招聘…")}
           model={model}
-          onAsk={(prompt) => void agent.send(prompt)}
+          attach
+          onAsk={(prompt, files) => void agent.send(prompt, files)}
           thread={
             <InlineAgentThread
               messages={agent.messages}

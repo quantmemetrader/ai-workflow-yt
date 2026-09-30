@@ -826,7 +826,8 @@ export function VideoScreen({
               )}
               placeholder={t("What should change?", "要改什么？")}
               tools={history}
-              onAsk={(prompt) => void agent.send(prompt)}
+              attach
+          onAsk={(prompt, files) => void agent.send(prompt, files)}
               thread={
                 <InlineAgentThread
                   messages={agent.messages}
@@ -847,7 +848,7 @@ export function VideoScreen({
               zh={zh}
               busy={busy}
               hasCaptions={captions.length > 0}
-              onAsk={(prompt) => void agent.send(prompt)}
+          onAsk={(prompt, files) => void agent.send(prompt, files)}
               onTrim={(itemId, input) => edit(() => updateItemAction(itemId, input))}
               onTransition={(itemId, input) => edit(() => updateItemAction(itemId, input))}
               onMove={(itemId, dir) => edit(() => moveItemAction(itemId, dir))}
@@ -995,7 +996,8 @@ export function VideoScreen({
           placeholder={t("Ask about this cut…", "询问这次剪辑…")}
           model={model}
           tools={history}
-          onAsk={(prompt) => void agent.send(prompt)}
+          attach
+          onAsk={(prompt, files) => void agent.send(prompt, files)}
           thread={
             <InlineAgentThread
               messages={agent.messages}

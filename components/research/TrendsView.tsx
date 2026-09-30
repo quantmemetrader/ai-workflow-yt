@@ -298,7 +298,8 @@ export function TrendsView({
           }
           placeholder={zh ? "询问这个看板…" : "Ask about this board…"}
           model={model}
-          onAsk={(prompt) => void agent.send(prompt)}
+          attach
+          onAsk={(prompt, files) => void agent.send(prompt, files)}
           tools={<AgentHistory zh={zh} current={agent.conversationId} onPick={(id) => void agent.load(id)} onNew={agent.reset} />}
           thread={
             <InlineAgentThread

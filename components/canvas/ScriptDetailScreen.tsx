@@ -95,7 +95,7 @@ export type ScriptDetailScreenProps = {
   onComment: (body: string, beatOrd: number | null) => void;
   /** A cut for this script in Video Edit, made or found. Absent for somebody without Video. */
   onMakeVideo?: () => void;
-  onAsk: (prompt: string) => void;
+  onAsk: (prompt: string, files?: string[]) => void;
   /** The conversation so far, in the panel. It used to hand the question to
    * /chat, which took the script off the screen to discuss the script. */
   thread?: React.ReactNode;

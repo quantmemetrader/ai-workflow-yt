@@ -254,7 +254,7 @@ export function DetailView({
               })
           : undefined
       }
-      onAsk={(prompt) => void agent.send(prompt)}
+      onAsk={(prompt, files) => void agent.send(prompt, files)}
       run={
         flow ? (
           <RunPanel

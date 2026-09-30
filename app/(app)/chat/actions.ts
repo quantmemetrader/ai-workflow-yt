@@ -253,7 +253,7 @@ export async function sendChannelMessage(
   if (parseAgentMentions(body).length) {
     after(async () => {
       try {
-        await dispatchAgentMentions({ viewer, channelId: channel.id, body, holdCut, model: picked });
+        await dispatchAgentMentions({ viewer, channelId: channel.id, body, holdCut, model: picked, files: described.map((d) => ({ fileId: d.fileId, name: d.name, kind: String(d.kind) })) });
       } catch (err) {
         console.error("[chat] a tagged agent could not be reached", err);
       }
@@ -267,7 +267,7 @@ export async function sendChannelMessage(
   if (to) {
     after(async () => {
       try {
-        await dispatchAgentMentions({ viewer, channelId: channel.id, body: `${agentTag(to)} ${body}`, holdCut, model: picked });
+        await dispatchAgentMentions({ viewer, channelId: channel.id, body: `${agentTag(to)} ${body}`, holdCut, model: picked, files: described.map((d) => ({ fileId: d.fileId, name: d.name, kind: String(d.kind) })) });
       } catch (err) {
         console.error("[chat] the employee being answered could not be reached", err);
       }

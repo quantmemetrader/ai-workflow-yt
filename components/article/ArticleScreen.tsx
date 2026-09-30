@@ -222,7 +222,8 @@ export function ArticleScreen({
             note={agentNote(articles, log, detail, zh)}
             placeholder={t("Ask for an article, or about one…", "让助理写一篇，或询问某篇文章…")}
             model={model}
-            onAsk={(prompt) => void agent.send(prompt)}
+            attach
+          onAsk={(prompt, files) => void agent.send(prompt, files)}
             thread={
               <InlineAgentThread
                 messages={agent.messages}

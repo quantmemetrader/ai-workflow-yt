@@ -278,7 +278,8 @@ export function AdminScreen({
       }
       placeholder={zh ? "问管理相关的问题…" : "Ask about admin…"}
       model={model}
-      onAsk={(prompt) => void agent.send(prompt)}
+      attach
+          onAsk={(prompt, files) => void agent.send(prompt, files)}
       thread={
         <InlineAgentThread
           messages={agent.messages}

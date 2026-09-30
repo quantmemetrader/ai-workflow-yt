@@ -321,7 +321,7 @@ export function FilesScreen(props: {
   /** Hands a question to the employee's agent. The answer comes back into
    * `thread`, on this screen: asking about a folder used to navigate to Chat
    * and take the folder, the selection and the scroll with it. */
-  onAsk: (prompt: string) => void;
+  onAsk: (prompt: string, files?: string[]) => void;
   /** The conversation so far, rendered in the panel's thread region. */
   thread?: React.ReactNode;
   /** Which of the artboard's three views of a folder to draw. The artboard
@@ -1115,6 +1115,7 @@ export function FilesScreen(props: {
             note={agentNote}
             placeholder={zh ? "问这里的文件…" : "Ask about these files…"}
             model={model}
+            attach
             onAsk={onAsk}
             thread={thread ?? <div data-agent-empty="" style={{ flexGrow: 1, minHeight: 0 }} />}
             footnote={t("Answers use only files you can read")}

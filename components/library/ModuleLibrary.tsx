@@ -7,9 +7,12 @@ import { notify } from "@/lib/client/notify";
 import { uploadFiles } from "@/lib/client/upload";
 import { deleteFilesAction } from "@/app/(app)/files/actions";
 import { trainWithFileAction } from "@/app/(app)/library/actions";
+import { newDocAction } from "@/app/(app)/docs/actions";
 import type { LibraryFile, LibModule } from "@/lib/files/module-library";
 
 const size = (n: number) => (n > 1e6 ? `${(n / 1e6).toFixed(1)} MB` : n > 1e3 ? `${Math.round(n / 1e3)} KB` : `${n} B`);
+/* Opens in the document editor (`/docs/[id]`): documents, not footage. */
+const editable = (f: LibraryFile) => f.kind === "doc" || /\.(docx?|odt|rtf|wps|pages|txt|md|markdown|pdf|html?)$/i.test(f.name);
 const day = (iso: string) => {
   const d = new Date(iso);
   return `${d.getMonth() + 1}月${d.getDate()}日`;
@@ -60,6 +63,7 @@ export function ModuleLibrary({ module, title, agentName, zh, folderId, files, c
         <div style={{ fontSize: 13, color: "#6b6b6b", marginTop: 4, lineHeight: 1.6 }}>
           {t(`上传合同、发票、记录等。上传后 AI 会自动读完，问${agentName}时会用到。`, `Upload contracts, invoices, records. AI reads each on arrival and ${agentName} uses them when answering.`)}
           {canTrain ? t(`想让${agentName}以后照着某个文件的做法来做，就点那个文件右边的「用来训练」（现在 ${trainedCount} 个）。`, ` Files switched to "Train" teach ${agentName} how to work (${trainedCount} now).`) : null}
+          {t("同部门的同事都能看、能改这里的文件；点「编辑」直接在网页里改，点「分享」发给别的同事。", " Everyone in this team can open and edit these; Edit changes a file in the browser, Share sends it to someone else.")}
         </div>
       </div>
 
@@ -83,6 +87,22 @@ export function ModuleLibrary({ module, title, agentName, zh, folderId, files, c
 
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("按文件名或上传人搜索", "Search by name or uploader")} style={{ flexGrow: 1, minWidth: 200, height: 34, border: "1px solid #dcdbd6", borderRadius: 9, padding: "0 12px", fontFamily: "inherit", fontSize: 13, outline: "none" }} />
+        {!picking ? (
+          <button
+            type="button"
+            style={btn(true)}
+            disabled={pending}
+            onClick={() =>
+              start(async () => {
+                const r = await newDocAction(module);
+                if ("error" in r && r.error) return notify(r.error);
+                if ("id" in r && r.id) router.push(`/docs/${r.id}`);
+              })
+            }
+          >
+            {t("新建文档", "New document")}
+          </button>
+        ) : null}
         {picking ? (
           <>
             <span style={{ fontSize: 13, fontWeight: 600 }}>{t(`已选 ${picked.size} 个`, `${picked.size} selected`)}</span>
@@ -123,13 +143,29 @@ export function ModuleLibrary({ module, title, agentName, zh, folderId, files, c
                   {picking ? (
                     <div style={{ fontSize: 13.5, fontWeight: 500, color: "#171717", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.name}</div>
                   ) : (
-                    <Link href={`/files/${f.id}`} prefetch={false} style={{ display: "block", fontSize: 13.5, fontWeight: 500, color: "#171717", textDecoration: "none", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    <Link href={editable(f) ? `/docs/${f.id}` : `/api/files/${f.id}/download`} prefetch={false} target={editable(f) ? undefined : "_blank"} style={{ display: "block", fontSize: 13.5, fontWeight: 500, color: "#171717", textDecoration: "none", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                       {f.name}
                     </Link>
                   )}
                   <div style={{ fontSize: 12, color: "#8a8a8a", marginTop: 2 }}>{[f.ownerName, day(f.createdAt), size(f.sizeBytes)].filter(Boolean).join(" · ")}</div>
                 </div>
                 <span style={{ flexShrink: 0, fontSize: 11.5, fontWeight: 600, padding: "0 8px", lineHeight: "20px", borderRadius: 99, color: f.read ? "#1e7a4f" : "#95590a", background: f.read ? "#e7f6ee" : "#fff4df" }}>{f.read ? t("AI 已读", "AI read") : t("AI 读取中", "AI reading")}</span>
+                {!picking ? (
+                  editable(f) ? (
+                    <>
+                      <Link href={`/docs/${f.id}`} prefetch={false} style={{ ...btn(), height: 28, fontSize: 12, padding: "0 10px", display: "inline-flex", alignItems: "center", textDecoration: "none" }}>
+                        {t("编辑", "Edit")}
+                      </Link>
+                      <Link href={`/docs/${f.id}?share=1`} prefetch={false} style={{ ...btn(), height: 28, fontSize: 12, padding: "0 10px", display: "inline-flex", alignItems: "center", textDecoration: "none" }}>
+                        {t("分享", "Share")}
+                      </Link>
+                    </>
+                  ) : (
+                    <a href={`/api/files/${f.id}/download?download=1`} style={{ ...btn(), height: 28, fontSize: 12, padding: "0 10px", display: "inline-flex", alignItems: "center", textDecoration: "none" }}>
+                      {t("下载", "Download")}
+                    </a>
+                  )
+                ) : null}
                 {canTrain && !picking ? (
                   <button
                     type="button"

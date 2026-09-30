@@ -1,5 +1,6 @@
 "use client";
 
+import { useSearchParams } from "next/navigation";
 import type * as React from "react";
 import { useState } from "react";
 import type { ChecklistRow, ContractRow, RunRow, TemplateRow } from "@/lib/legal/service";
@@ -96,7 +97,8 @@ export function LegalScreen({
   const t = (en: string, cn: string) => (zh ? cn : en);
   const { busy, run } = useAction();
   const agent = useInlineAgent({ module: "legal" });
-  const [tab, setTab] = useState<Tab>(templates.length ? "draft" : "templates");
+  const sp = useSearchParams();
+  const [tab, setTab] = useState<Tab>(sp?.get("tab") === "library" ? ("library" as Tab) : templates.length ? "draft" : "templates");
   const [selected, setSelected] = useState<ContractRow | null>(contracts[0] ?? null);
   const [findings, setFindings] = useState<Finding[]>([]);
 
@@ -235,7 +237,8 @@ export function LegalScreen({
           )}
           placeholder={t("Ask about a contract…", "询问合同…")}
           model={model}
-          onAsk={(prompt) => void agent.send(prompt)}
+          attach
+          onAsk={(prompt, files) => void agent.send(prompt, files)}
           thread={
             <InlineAgentThread
               messages={agent.messages}

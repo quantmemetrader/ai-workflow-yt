@@ -1,4 +1,5 @@
 import "server-only";
+import { share } from "@/lib/authz/rebac";
 import { requesterOf } from "@/lib/auth/types";
 import { after } from "next/server";
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
@@ -149,6 +150,8 @@ export type MentionDispatch = {
   model?: string;
   channelId: string;
   body: string;
+  /** Files on the message: the employee reads their text with the question (Ryan, 1 Oct). */
+  files?: { fileId: string; name: string; kind: string }[];
   /**
    * A checked hand-off. When set, only `handoff.to` is dispatched, whatever
    * the text tags, and its turn starts with what was handed over.
@@ -974,7 +977,7 @@ export const WORKS_IN: Record<AgentKey, Module> = {
 };
 
 type Chain = Required<Pick<MentionDispatch, "viewer" | "channelId" | "body" | "spoken" | "hop" | "budget">> &
-  Pick<MentionDispatch, "handoff" | "replyMeta" | "holdCut" | "model"> & { origin: string | null; asker: Viewer | null };
+  Pick<MentionDispatch, "handoff" | "replyMeta" | "holdCut" | "model" | "files"> & { origin: string | null; asker: Viewer | null };
 
 /** The block a colleague's turn opens with when work was handed to it.
  * `facts` are lines the dispatcher looked up itself (how many clips are in
@@ -1012,6 +1015,10 @@ async function answerOne(input: Chain, key: AgentKey, channel: Channel) {
 
   const agent = await agentViewer(tenantId, key, requesterOf(viewer));
   const conversationId = await threadFor(agent, channel);
+  /* The message's files, readable by the employee answering it (a private channel's
+     files are opened to the people in it, and the employee may have just joined). */
+  const files = (input.files ?? []).slice(0, 10);
+  for (const f of files) await share(viewer, { type: "file", id: f.fileId }, "viewer", { type: "user", id: agent.id }).catch(() => null);
 
   const asker = viewer.nameLocal || viewer.name;
   const fromAgent = agentKeyFromEmail(viewer.email);
@@ -1111,6 +1118,7 @@ async function answerOne(input: Chain, key: AgentKey, channel: Channel) {
     "",
     "原话：",
     input.body,
+    ...(files.length ? ["", "消息里附的文件（内容附在下面，回答时直接用）：", ...files.map((f) => `[附件] ${f.name} (${f.kind}) file id ${f.fileId}`)] : []),
     "",
     handoff ? handoffBlock(handoff, origin, clipFacts) : clipFacts.length ? clipFacts.map((f) => `（系统核实）${f}`).join("\n") : null,
     handoff || clipFacts.length ? "" : null,

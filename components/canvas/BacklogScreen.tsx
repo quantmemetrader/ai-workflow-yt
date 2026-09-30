@@ -305,7 +305,7 @@ export function BacklogScreen(props: {
   onMoveStage: (topicId: string, stage: Stage) => void;
   onDrop: (topicId: string) => void; // back out of the backlog
   /** Hands a question to the employee's agent. */
-  onAsk: (prompt: string) => void;
+  onAsk: (prompt: string, files?: string[]) => void;
   /** The conversation so far, in the agent panel. */
   thread?: React.ReactNode;
 }): React.JSX.Element {

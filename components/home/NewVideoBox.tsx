@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { setScriptLengthAction, startFromTopicAction, startProjectAction } from "@/app/(app)/projects/actions";
 import { notify } from "@/lib/client/notify";
 import { bigButton } from "@/components/projects/kit";
+import { AttachButton, AttachChips, useAttachments } from "@/components/chat/Attach";
+import { addReferenceAction } from "@/app/(app)/projects/[id]/script/actions";
 
 /**
  * 「做一条新视频」: one sentence, one press. The project starts, 编剧 starts
@@ -18,9 +20,10 @@ export function NewVideoBox({ zh }: { zh: boolean }) {
   /* How long the video should be; the first draft is written to it. */
   const [secs, setSecs] = React.useState(180);
   const [customMin, setCustomMin] = React.useState("");
+  const att = useAttachments(zh, 5);
   const go = () => {
     const said = text.trim();
-    if (!said || pending) return;
+    if (!said || pending || att.uploading) return;
     start(async () => {
       const r = await startProjectAction({ message: said });
       if ("error" in r && r.error) {
@@ -31,6 +34,9 @@ export function NewVideoBox({ zh }: { zh: boolean }) {
       /* The first draft, in the background; a studio without the Script
          module still gets its project. */
       await setScriptLengthAction(r.id, secs).catch(() => null);
+      /* A sample or notes attached here become the script's 参考资料: the first draft follows them. */
+      for (const fileId of att.ids) await addReferenceAction(r.id, fileId).catch(() => null);
+      att.clear();
       await startFromTopicAction({ kind: "project", id: r.id }, { write: true }).catch(() => null);
       router.push(`/projects/${r.id}`);
     });
@@ -51,9 +57,18 @@ export function NewVideoBox({ zh }: { zh: boolean }) {
         disabled={pending}
         style={{ flex: "1 1 280px", minWidth: 0, height: 48, padding: "0 16px", fontSize: 15, fontFamily: "inherit", border: "1px solid #d6d5d0", borderRadius: 12, outline: "none", background: "#fff" }}
       />
-      <button type="submit" disabled={!text.trim() || pending} style={{ ...bigButton("primary", !text.trim() || pending), height: 48, padding: "0 26px", fontSize: 15 }}>
+      <span style={{ display: "inline-flex", alignItems: "center", height: 48 }}>
+        <AttachButton zh={zh} onFiles={att.add} size={40} title={t("附范例或资料：编剧会学范例的风格来写初稿", "Attach a sample or notes for the first draft")} />
+      </span>
+      <button type="submit" disabled={!text.trim() || pending || att.uploading} style={{ ...bigButton("primary", !text.trim() || pending), height: 48, padding: "0 26px", fontSize: 15 }}>
         {pending ? t("正在开始…", "Starting…") : t("开始", "Start")}
       </button>
+      {att.attached.length ? (
+        <div style={{ flexBasis: "100%" }}>
+          <AttachChips zh={zh} attached={att.attached} onRemove={att.remove} />
+          <div style={{ fontSize: 12, color: "#7a7a76" }}>{t("编剧写初稿时会照这些范例的结构和语气来写，资料里的事实也会用上。", "The first draft follows these samples and uses their facts.")}</div>
+        </div>
+      ) : null}
       <div style={{ flexBasis: "100%", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
         <span style={{ fontSize: 13, color: "#6b6b6b" }}>{t("视频多长：", "Length:")}</span>
         {[60, 180, 300, 480].map((n) => (

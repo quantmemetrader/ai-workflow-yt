@@ -1,5 +1,6 @@
 "use client";
 
+import { AttachButton, AttachChips, useAttachments } from "@/components/chat/Attach";
 import { feedbackAction } from "@/app/(app)/train/learn-actions";
 import * as React from "react";
 import Link from "next/link";
@@ -85,6 +86,17 @@ const CHIPS: { zh: string; en: string; icon?: string }[] = [
   { zh: "删掉绝对化说法", en: "Remove absolute claims" },
   { zh: "加生活化比喻", en: "Add an everyday metaphor" },
   { zh: "改成小红书版本", en: "Rewrite for Xiaohongshu" },
+];
+
+/* 换个风格 (Ryan, 1 Oct: "they might want to create scripts based on different samples and styles"). */
+const STYLES: { zh: string; label: string; en: string }[] = [
+  { label: "照范例风格重写", zh: "照参考范例的风格重写全文：学它的结构、语气、节奏和开头方式，内容还是这个选题（范例用这次附的文件，没附就用右边的参考资料）", en: "Rewrite in the style of the sample" },
+  { label: "故事型", zh: "改成故事型：用一个具体的人或事件串起来，有起因、转折、结果", en: "As a story" },
+  { label: "新闻快讯", zh: "改成新闻快讯风格：开头一句话说清发生了什么，然后讲影响，干脆利落", en: "As a news flash" },
+  { label: "干货清单", zh: "改成干货清单：开头抛问题，然后分 3 个要点讲清楚，最后一句总结", en: "As a 3-point list" },
+  { label: "对比测评", zh: "改成对比测评：把两个对象放在一起比，给出明确结论", en: "As a comparison" },
+  { label: "情绪共鸣", zh: "改成情绪共鸣型：从普通人的感受切入，语气更有温度", en: "More emotional" },
+  { label: "反常识开头", zh: "开头改成一个反常识的观点，再一步步解释为什么", en: "Counter-intuitive opening" },
 ];
 
 const CJK = /[㐀-鿿豈-﫿]/g;
@@ -414,6 +426,7 @@ export function ScriptDoc(props: ScriptDocProps) {
     setProposal({ summary, source, total: items.length });
   }
 
+  const refAtt = useAttachments(zh, 5);
   function runCopilot(text?: string) {
     const q = (text ?? ask).trim();
     if (q && editor && !locked) setAiLog((l) => [...l.slice(-5), { q, a: null }]);
@@ -428,9 +441,10 @@ export function ScriptDoc(props: ScriptDocProps) {
     setThinking(true);
     start(async () => {
       if (saveState === "dirty") await save();
-      const r = await copilotAction(projectId, units.map((u) => u.text), q, pickModel === AUTO_MODEL ? undefined : pickModel);
+      const r = await copilotAction(projectId, units.map((u) => u.text), q, pickModel === AUTO_MODEL ? undefined : pickModel, refAtt.ids);
       setThinking(false);
       if ("error" in r && r.error) return notify(r.error);
+      refAtt.clear();
       if (!("ok" in r) || !r.ok) return;
       const now = spokenUnits(editor.state.doc);
       const items: Tracked[] = [];
@@ -987,7 +1001,7 @@ export function ScriptDoc(props: ScriptDocProps) {
   /* ---------------- render ---------------- */
   return (
     <div data-gd-root="" className={`gd-root${shots ? " gd-shots" : ""}`}>
-      <style>{CSS}</style>
+      <style>{GD_CSS}</style>
       <input ref={importInput} type="file" hidden accept=".docx,.doc,.pdf,.txt,.md,.rtf,.odt,.pptx,.ppt,.pages,.wps,.html,.htm" onChange={(e) => void importFile(e.target.files)} />
       <input ref={imgInput} type="file" hidden accept="image/*" multiple onChange={(e) => { if (e.target.files?.length) void insertImages(e.target.files); e.target.value = ""; }} />
       <input ref={refInput} type="file" multiple hidden accept=".pdf,.doc,.docx,.txt,.md,.rtf,.csv,.xlsx,.pptx,image/*" onChange={(e) => { if (e.target.files?.length) void uploadRefs(e.target.files); e.target.value = ""; }} />
@@ -1318,6 +1332,7 @@ export function ScriptDoc(props: ScriptDocProps) {
           {/* the floating AI bar: always at hand at the bottom of the page (the owner, 29 Sep: the side panel alone is not intuitive) */}
           {me.canEdit && script && !noScript ? (
             <div className="gd-ai-dock">
+              {refAtt.attached.length ? <div style={{ display: "flex", justifyContent: "center" }}><AttachChips zh={zh} attached={refAtt.attached} onRemove={refAtt.remove} /></div> : null}
               {askFocus && !thinking ? (
                 <div className="gd-ai-chips" onMouseDown={(e) => e.preventDefault()}>
                   {CHIPS.map((c) => (
@@ -1338,8 +1353,10 @@ export function ScriptDoc(props: ScriptDocProps) {
                   onFocus={() => setAskFocus(true)}
                   onBlur={() => window.setTimeout(() => setAskFocus(false), 120)}
                   onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) runCopilot(); }}
-                  placeholder={thinking ? t("编剧正在改…", "The writer is on it…") : proposal ? t("先处理上面的修改建议", "Deal with the suggested edits first") : t("描述你想怎么改这份稿子…", "Describe how to change this script…")}
+                  onPaste={refAtt.onPaste}
+                  placeholder={thinking ? t("编剧正在改…", "The writer is on it…") : proposal ? t("先处理上面的修改建议", "Deal with the suggested edits first") : t("描述你想怎么改这份稿子…（可以附范例文件）", "Describe how to change this script… (attach a sample)")}
                 />
+                <AttachButton zh={zh} onFiles={refAtt.add} size={30} title={t("附参考文件：范例、资料、截图，只用于这次修改", "Attach a sample or notes for this edit")} />
                 <ModelChip value={pickModel} onChange={setPickModel} zh={zh} placement="up" align="right" />
                 <button type="button" className="gd-ai-send" disabled={thinking || !ask.trim() || Boolean(proposal)} onClick={() => runCopilot()} aria-label={t("发送", "Send")}>
                   {thinking ? <span className="gd-spin" /> : <GI name="send" size={18} />}
@@ -1391,8 +1408,18 @@ export function ScriptDoc(props: ScriptDocProps) {
                         </button>
                       ))}
                     </div>
+                    <div className="gd-ai-label">{t("换个风格", "Change the style")}</div>
+                    <div className="gd-ai-grid">
+                      {STYLES.map((c) => (
+                        <button key={c.label} type="button" className="gd-ai-action" disabled={thinking || Boolean(proposal)} onClick={() => runCopilot(zh ? c.zh : c.en)} title={zh ? c.zh : c.en}>
+                          {zh ? c.label : c.en}
+                        </button>
+                      ))}
+                    </div>
                     <div className="gd-ai-compose">
+                      <AttachChips zh={zh} attached={refAtt.attached} onRemove={refAtt.remove} />
                       <textarea
+                        onPaste={refAtt.onPaste}
                         ref={askBox as unknown as React.RefObject<HTMLTextAreaElement>}
                         value={ask}
                         rows={3}
@@ -1402,6 +1429,7 @@ export function ScriptDoc(props: ScriptDocProps) {
                         placeholder={thinking ? t("编剧正在改…", "The writer is on it…") : proposal ? t("先处理文档里的修改建议", "Deal with the suggested edits first") : t("想怎么改？例如：开头更抓人，第二段加一个真实数据", "How should it change?")}
                       />
                       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <AttachButton zh={zh} onFiles={refAtt.add} size={28} title={t("附参考文件：范例、资料、截图，只用于这次修改", "Attach a sample or notes for this edit")} />
                         <ModelChip value={pickModel} onChange={setPickModel} zh={zh} placement="up" align="left" />
                         <span style={{ flexGrow: 1 }} />
                         <button type="button" className="gd-ai-go" disabled={thinking || !ask.trim() || Boolean(proposal)} onClick={() => runCopilot()}>
@@ -1681,7 +1709,7 @@ function PromptModal({ title, label, initial, zh, onClose, onOk, extra }: { titl
   );
 }
 
-const CSS = `
+export const GD_CSS = `
 /* The whole page scrolls as one — header, tabs, toolbar and paper together (the owner, 30 Sep: "let the whole page scroll so the script gets more room"). */
 [data-project-frame]:has([data-gd-root]) { overflow-y: auto !important; }
 [data-project-frame]:has([data-gd-root]) > [data-project-body] { flex-shrink: 0; min-height: auto !important; }

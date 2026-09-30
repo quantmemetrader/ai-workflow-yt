@@ -375,7 +375,7 @@ export type PerfScreenProps = {
   model: string;
   /** Hands a question to the agent on /chat, where it can cite the files the
    * asker is allowed to read. */
-  onAsk: (prompt: string) => void;
+  onAsk: (prompt: string, files?: string[]) => void;
   /** The conversation so far, rendered in the agent panel. */
   thread?: React.ReactNode;
   /** Controls above the composer: history, a new thread. */
@@ -1000,7 +1000,8 @@ export function PerfScreen(props: PerfScreenProps): React.JSX.Element {
           note={agentNote}
           placeholder={zh ? "询问这些数据…" : "Ask about these numbers…"}
           model={model}
-          onAsk={onAsk}
+          attach
+            onAsk={onAsk}
           thread={thread}
           tools={tools}
         />

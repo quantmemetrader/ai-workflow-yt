@@ -78,7 +78,7 @@ export function Inspector({
   onTransition: (itemId: string, input: { transition: TransitionKind; transitionMs?: number }) => void;
   /** Hands a prompt to the assistant beside this panel. The examples used to
    * be dead text that looked exactly like buttons. */
-  onAsk?: (prompt: string) => void;
+  onAsk?: (prompt: string, files?: string[]) => void;
   onMove: (itemId: string, direction: "up" | "down") => void;
   onRemove: (itemId: string) => void;
   onCaption: (id: string, input: { text?: string; startMs?: number; endMs?: number }) => void;

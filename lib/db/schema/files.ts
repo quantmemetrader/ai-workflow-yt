@@ -92,6 +92,8 @@ export const files = pgTable(
     proxyFileId: text(),
     /** Plain text used for search and agent retrieval; extracted on upload. */
     text: text(),
+    /** The document as edited in the browser (`lib/files/doc-edit.ts`); null until someone edits it. */
+    docHtml: text(),
     tags: text().array().notNull().default([]),
     version: integer().notNull().default(1),
     ownerId: text().notNull().references(() => users.id),

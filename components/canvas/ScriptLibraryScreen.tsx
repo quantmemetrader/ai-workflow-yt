@@ -66,7 +66,7 @@ export type ScriptLibraryScreenProps = {
   onDelete: (scriptId: string) => void;
   /** The model the right-hand panel names under its composer. */
   model: string;
-  onAsk: (prompt: string) => void;
+  onAsk: (prompt: string, files?: string[]) => void;
   thread?: React.ReactNode;
   tools?: React.ReactNode;
 };
@@ -891,7 +891,8 @@ export function ScriptLibraryScreen(props: ScriptLibraryScreenProps): React.JSX.
           note={agentNote}
           placeholder={t("问问这些脚本…", "Ask about these scripts…")}
           model={model}
-          onAsk={onAsk}
+          attach
+            onAsk={onAsk}
           thread={thread}
           tools={tools}
         />

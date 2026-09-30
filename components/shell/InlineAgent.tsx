@@ -109,8 +109,9 @@ export function useInlineAgent(
   }, []);
 
   const send = useCallback(
-    async (text: string) => {
-      const content = text.trim();
+    async (text: string, attachments?: string[]) => {
+      const files = (attachments ?? []).filter((x) => typeof x === "string" && x).slice(0, 10);
+      const content = text.trim() || (files.length ? "请看附件" : "");
       if (!content || abort.current) return;
 
       setBusy(true);
@@ -122,7 +123,7 @@ export function useInlineAgent(
       const speaker = parseAgentMentions(content)[0] ?? defaultAgent;
       setMessages((prev) => [
         ...prev,
-        { id: `u-${stamp}`, role: "user", content, status: "complete", citations: [], tools: [] },
+        { id: `u-${stamp}`, role: "user", content: files.length ? `${content}\n（附了 ${files.length} 个参考文件）` : content, status: "complete", citations: [], tools: [] },
         { id: `a-${stamp}`, role: "assistant", content: "", status: "streaming", citations: [], tools: [], speaker },
       ]);
 
@@ -142,6 +143,7 @@ export function useInlineAgent(
           body: JSON.stringify({
             ...(conversationId ? { conversationId } : {}),
             content,
+            ...(files.length ? { attachments: files } : {}),
             context: latest.current,
             ...(defaultAgent ? { agent: defaultAgent } : {}),
             ...(getPanelModel() !== AUTO_MODEL ? { model: getPanelModel() } : {}),

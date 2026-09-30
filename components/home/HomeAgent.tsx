@@ -15,7 +15,8 @@ export function HomeAgent({ zh, model }: { zh: boolean; model: string }) {
       note={zh ? "问任何事：查资料、看项目进度、派活给 AI 同事。" : "Ask anything: look things up, check projects, hand work to an AI colleague."}
       placeholder={zh ? "问你的助理…" : "Ask your assistant…"}
       model={model}
-      onAsk={(prompt) => void agent.send(prompt)}
+      attach
+          onAsk={(prompt, files) => void agent.send(prompt, files)}
       tools={<AgentHistory zh={zh} current={agent.conversationId} onPick={(id) => void agent.load(id)} onNew={agent.reset} />}
       thread={<InlineAgentThread messages={agent.messages} notice={agent.notice} conversationId={agent.conversationId} zh={zh} />}
     />

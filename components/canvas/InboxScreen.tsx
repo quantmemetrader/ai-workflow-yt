@@ -85,7 +85,7 @@ export type InboxScreenProps = {
   model: string;
   /** Hands a question to the agent, which answers on /chat where it can cite
    * the files the asker is allowed to read. */
-  onAsk: (prompt: string) => void;
+  onAsk: (prompt: string, files?: string[]) => void;
   /** The conversation so far, rendered in the agent panel. */
   thread?: React.ReactNode;
   /** Controls above the composer: history, a new thread. */
@@ -1909,6 +1909,7 @@ export function InboxScreen(props: InboxScreenProps): React.JSX.Element {
             placeholder={t("Ask about these comments…")}
             model={model}
             footnote={t("Comment data is personal data, HK PDPO applies")}
+            attach
             onAsk={onAsk}
             thread={thread}
             tools={tools}

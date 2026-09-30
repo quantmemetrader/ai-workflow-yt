@@ -53,7 +53,7 @@ export function BacklogView({
       locale={locale}
       region={region}
       model={model}
-      onAsk={(prompt) => void agent.send(prompt)}
+      onAsk={(prompt, files) => void agent.send(prompt, files)}
       thread={
         <InlineAgentThread
           messages={agent.messages}

@@ -12,6 +12,7 @@ import { AnswerPicker } from "@/components/chat/AnswerPicker";
 import { AGENT_LABELS, agentTag, parseAgentMentions, screenAgentForPath, type AgentKey } from "@/lib/agents/catalog";
 import { useResizable } from "@/components/ui/Resizer";
 import { AgentName } from "@/components/ui/Tr";
+import { AttachButton, AttachChips, useAttachments } from "@/components/chat/Attach";
 
 /**
  * The 312px Agent panel every Market Research artboard draws down its right
@@ -70,6 +71,7 @@ export function ResearchAgentPanel({
   thread,
   tools,
   dock = false,
+  attach = false,
 }: {
   accent: string;
   zh: boolean;
@@ -79,7 +81,9 @@ export function ResearchAgentPanel({
   placeholder: string;
   model: string;
   footnote?: string;
-  onAsk: (prompt: string) => void;
+  onAsk: (prompt: string, files?: string[]) => void;
+  /** A paperclip for files this one question should read (its host sends them). */
+  attach?: boolean;
   /** The conversation so far. Asking used to navigate to /chat, which took the
    * screen you were reading away to answer a question about it. */
   thread?: React.ReactNode;
@@ -117,11 +121,13 @@ export function ResearchAgentPanel({
 
   /* "@编剧 " from a face button is who to ask, not a question: nothing to
      send until something follows it. */
-  const ready = asksSomething(ask);
+  const att = useAttachments(zh);
+  const ready = (asksSomething(ask) || att.ids.length > 0) && !att.uploading;
   const send = () => {
     if (!ready) return;
-    onAsk(ask.trim());
+    onAsk(ask.trim(), att.ids.length ? att.ids : undefined);
     setAsk("");
+    att.clear();
   };
 
   return (
@@ -225,7 +231,9 @@ export function ResearchAgentPanel({
         </div>
         <div className="ap-box">
           <MentionMenu matches={mentions.matches} active={mentions.active} zh={zh} onPick={mentions.pick} onHover={mentions.setActive} placement="up" />
+          {attach ? <AttachChips zh={zh} attached={att.attached} onRemove={att.remove} /> : null}
           <textarea
+            onPaste={attach ? att.onPaste : undefined}
             ref={box}
             rows={1}
             value={ask}
@@ -260,7 +268,10 @@ export function ResearchAgentPanel({
           />
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 11 }}>
             {/* Which model answers here: every model the studio's key can call (30 Sep). */}
-            <ModelChip value={panelModel} onChange={setPanelModel} zh={zh} placement="up" align="left" />
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 4, minWidth: 0 }}>
+              {attach ? <AttachButton zh={zh} onFiles={att.add} /> : null}
+              <ModelChip value={panelModel} onChange={setPanelModel} zh={zh} placement="up" align="left" />
+            </span>
             <button
               type="button"
               aria-label={zh ? "发送" : "Send"}

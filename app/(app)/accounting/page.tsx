@@ -2,6 +2,9 @@ import { requireModule } from "@/lib/auth/dal";
 import { answeringModel } from "@/lib/ai/models";
 import { listAccounts, listDocuments, listEntries, periodSummary } from "@/lib/accounting/service";
 import { AccountingScreen } from "@/components/accounting/AccountingScreen";
+import { libraryFiles, LIBRARIES } from "@/lib/files/module-library";
+import { ModuleLibrary } from "@/components/library/ModuleLibrary";
+import { mayTrain } from "@/lib/agents/training";
 
 export const metadata = { title: "会计 · Accounting" };
 
@@ -11,6 +14,8 @@ export default async function AccountingPage() {
   const viewer = await requireModule("accounting");
   const period = new Date().toISOString().slice(0, 7);
 
+  const zh = (viewer.locale ?? "zh-CN").startsWith("zh");
+  const lib = await libraryFiles(viewer, "accounting");
   const [accounts, documents, entries, summary] = await Promise.all([
     listAccounts(viewer),
     listDocuments(viewer),
@@ -27,6 +32,7 @@ export default async function AccountingPage() {
       summary={summary}
       locale={viewer.locale ?? "zh-CN"}
       model={answeringModel()}
+      library={<ModuleLibrary module="accounting" title={zh ? LIBRARIES.accounting.zh : LIBRARIES.accounting.en} agentName={zh ? "财务" : "the finance assistant"} zh={zh} folderId={lib.folderId} files={lib.files} canTrain={mayTrain(viewer)} />}
     />
   );
 }

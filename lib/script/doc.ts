@@ -1,4 +1,6 @@
 import "server-only";
+import { readFileText } from "@/lib/ai/retrieval";
+import { fileTextWithin } from "@/lib/files/extract";
 import { toSimplified } from "@/lib/text/simplified";
 import { and, asc, desc, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
@@ -256,13 +258,21 @@ async function referenceText(viewer: Viewer, scriptId: string): Promise<string> 
  * change, delete or add, for the page to show as tracked changes. Nothing is
  * saved here — the person accepts what they want.
  */
-export async function copilotRewrite(viewer: Viewer, scriptId: string, paragraphs: string[], instruction: string, pick?: string | null) {
+export async function copilotRewrite(viewer: Viewer, scriptId: string, paragraphs: string[], instruction: string, pick?: string | null, fileIds: string[] = []) {
   await assertBudget(viewer);
   const [script] = await db.select({ title: scripts.title, targetSeconds: scripts.targetSeconds }).from(scripts).where(and(eq(scripts.id, scriptId), eq(scripts.tenantId, viewer.tenantId))).limit(1);
   if (!script) return { error: "Not allowed" };
   /* The house style and 编剧's training (AI 训练) come in one piece from `houseStyle`. */
   const [style, refs] = await Promise.all([houseStyle(viewer, "script").catch(() => ({ text: "" })), referenceText(viewer, scriptId).catch(() => "")]);
-  const system = [COPILOT_PROMPT, style.text ? `工作室的写作规范与编剧的训练：\n${style.text.slice(0, 12000)}` : "", refs].filter(Boolean).join("\n\n");
+  /* Files attached to this one instruction (a sample to follow, notes, a screenshot): read now, not kept. */
+  const attached: string[] = [];
+  for (const id of fileIds) {
+    await fileTextWithin(id, 45_000, { ledger: { viewer, module: "script" } }).catch(() => null);
+    const f = await readFileText(viewer, id, 20_000).catch(() => null);
+    if (f?.text?.trim()) attached.push(`### ${f.name}\n${f.text}`);
+  }
+  const attachedText = attached.length ? `这次指令附的参考文件（指令说“照范例/照附件”时，学它的结构、语气、节奏和开头方式，但不要照抄它的内容）：\n${attached.join("\n\n").slice(0, 40000)}` : "";
+  const system = [COPILOT_PROMPT, style.text ? `工作室的写作规范与编剧的训练：\n${style.text.slice(0, 12000)}` : "", refs, attachedText].filter(Boolean).join("\n\n");
   const total = paragraphs.reduce((n, p) => n + spokenSeconds(p), 0);
   const user = [
     `标题：${script.title}`,
