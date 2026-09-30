@@ -81,19 +81,30 @@ function row(p: Omit<ProviderBalance, "state" | "error" | "note" | "noteZh" | "m
 }
 
 async function openRouter(key: string, which: "openrouter", monthUsd: number | null): Promise<ProviderBalance> {
+  /* The gateway is OpenRouter-compatible but may be another one (Orbio): name it after the host. */
+  const orbio = /orbio\./i.test(env.openrouter.baseUrl);
   const base = {
     key: which,
-    name: "OpenRouter",
-    nameZh: "OpenRouter",
+    name: orbio ? "Orbio" : "OpenRouter",
+    nameZh: orbio ? "Orbio" : "OpenRouter",
     what: "Every AI employee's and assistant's answers",
     whatZh: "所有 AI 员工和助理的回答",
-    topUp: "https://openrouter.ai/settings/credits",
+    topUp: orbio ? "https://orbio.so" : "https://openrouter.ai/settings/credits",
   } as const;
   const [credits, info] = await Promise.all([
     getJson(`${env.openrouter.baseUrl}/credits`, { Authorization: `Bearer ${key}` }),
     getJson(`${env.openrouter.baseUrl}/key`, { Authorization: `Bearer ${key}` }),
   ]);
-  if (!credits.ok) return row({ ...base, state: "error", error: credits.error, monthUsd });
+  if (!credits.ok) {
+    /* No /credits (Orbio): /auth/key carries the key's limit, usage and what is left. */
+    const auth = await getJson(`${env.openrouter.baseUrl}/auth/key`, { Authorization: `Bearer ${key}` });
+    if (!auth.ok) return row({ ...base, state: "error", error: credits.error, monthUsd });
+    const a = (auth.json as { data?: { limit?: unknown; usage?: unknown; limit_remaining?: unknown } }).data ?? {};
+    const total = num(a.limit);
+    const used = num(a.usage);
+    const left = num(a.limit_remaining) ?? (total !== null && used !== null ? Math.max(0, total - used) : null);
+    return row({ ...base, leftUsd: left, totalUsd: total, usedUsd: used, monthUsd, state: stateOf(left) });
+  }
   const d = (credits.json as { data?: { total_credits?: unknown; total_usage?: unknown } }).data ?? {};
   const total = num(d.total_credits);
   const used = num(d.total_usage);

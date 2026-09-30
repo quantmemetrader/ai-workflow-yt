@@ -6,6 +6,7 @@ import { readBeatsWithOrigin } from "@/lib/research/beat-store";
 import { BEAT_FEEDS } from "@/lib/research/platform-catalog";
 import { acrossPlatforms, tabRows, type BeatRow, type Lists } from "@/lib/research/beat-view";
 import { toSimplified } from "@/lib/text/simplified";
+import { hiddenHot } from "@/lib/research/hot-hidden";
 import type { ShownRow } from "@/components/research/HotBoard";
 
 export const metadata = { title: "热点榜 · Hot now" };
@@ -24,11 +25,18 @@ const FOUR = ["ai", "crypto", "tech", "biz"] as const;
 export default async function HotPage() {
   const viewer = await requireModule("research");
   const zh = (viewer.locale ?? "zh-CN").startsWith("zh");
-  const [all, { beats }] = await Promise.all([storedAll(), readBeatsWithOrigin(viewer.tenantId, {})]);
+  const [all, { beats }, hidden] = await Promise.all([storedAll(), readBeatsWithOrigin(viewer.tenantId, {}), hiddenHot(viewer.tenantId)]);
   const lists: Lists = {};
   for (const [k, v] of Object.entries(all ?? {})) if (v) lists[k as keyof Lists] = { rows: v.rows ?? [], relevance: (v.relevance as never) ?? null, fetchedAt: v.fetchedAt ?? null } as never;
   const keys = beats.filter((b) => b.enabled && (FOUR as readonly string[]).includes(b.key)).map((b) => b.key);
-  const onBeat = (r: BeatRow) => Boolean(r.beat && keys.includes(r.beat));
+  let hiddenCount = 0;
+  const onBeat = (r: BeatRow) => {
+    if (hidden.has(r.phrase)) {
+      hiddenCount++;
+      return false;
+    }
+    return Boolean(r.beat && keys.includes(r.beat));
+  };
   /* Everything shown in Simplified (the owner, 29 Sep: "simplified chinese for all"). */
   const shown = (rows: BeatRow[]): ShownRow[] => rows.map((r) => ({ ...r, label: toSimplified(r.phrase), extra: r.extra ? toSimplified(r.extra) : r.extra }));
   const byChip: Record<string, ShownRow[]> = { all: shown(acrossPlatforms(lists, { limit: 400, beats: keys as never }).filter(onBeat).slice(0, 150)) };
@@ -39,7 +47,7 @@ export default async function HotPage() {
   }
   return (
     <ResearchShell zh={zh}>
-      <HotBoard zh={zh} canWrite={viewer.modules.includes("script")} initial={byChip} />
+      <HotBoard zh={zh} canWrite={viewer.modules.includes("script")} initial={byChip} hiddenCount={hidden.size} />
     </ResearchShell>
   );
 }

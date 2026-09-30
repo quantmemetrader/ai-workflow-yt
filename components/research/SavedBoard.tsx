@@ -127,9 +127,14 @@ export function SavedBoard({
                   {s.summary ? <div style={{ fontSize: 12.5, color: MUTED, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.summary}</div> : null}
                 </div>
                 {s.projectId ? (
-                  <Link href={`/projects/${s.projectId}`} prefetch={false} style={smallButton()}>
-                    {t("打开项目 →", "Open project →")}
-                  </Link>
+                  <>
+                    <Link href={`/projects/${s.projectId}`} prefetch={false} style={smallButton()}>
+                      {t("打开项目 →", "Open project →")}
+                    </Link>
+                    <button type="button" onClick={() => decide(s.id, "reject", t("已移出储备，项目还在", "Removed; the project stays"))} className="sb-quiet" title={t("只从储备里拿掉，项目不受影响", "Only takes it off this list")}>
+                      {t("移出", "Remove")}
+                    </button>
+                  </>
                 ) : (
                   <>
                     <button type="button" onClick={() => void make(s.id)} disabled={busy !== null} style={smallButton(true)}>

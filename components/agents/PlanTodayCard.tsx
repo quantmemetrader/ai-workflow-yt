@@ -8,6 +8,7 @@ import { AgentIcon } from "@/components/agents/AgentIcon";
 import { INK, LINE, MUTED, bigButton } from "@/components/projects/kit";
 import { AGENT_KEYS, AGENT_LABELS, type AgentKey } from "@/lib/agents/catalog";
 import { startFromTopicAction } from "@/app/(app)/projects/actions";
+import { refreshPlanAction } from "@/app/(app)/research/plan-actions";
 import { notify } from "@/lib/client/notify";
 
 /** 策划's plan for the day (posted at 08:05 in #研究日报): the topic it puts forward and each colleague's part. */
@@ -23,6 +24,19 @@ export function PlanTodayCard({ plan, zh, canWrite }: { plan: PlanToday; zh: boo
   const t = (a: string, b: string) => (zh ? a : b);
   const router = useRouter();
   const [busy, setBusy] = React.useState(false);
+  const [redoing, setRedoing] = React.useState(false);
+  async function redo() {
+    if (redoing) return;
+    setRedoing(true);
+    try {
+      const res = await refreshPlanAction();
+      if (res.error) return notify(res.error);
+      notify(res.topic ? t(`策划换了一个选题：《${res.topic}》`, `New topic: ${res.topic}`) : t("策划重新提报了", "The planner posted a new plan"), "ok");
+      router.refresh();
+    } finally {
+      setRedoing(false);
+    }
+  }
   async function make() {
     if (!plan.topic || busy) return;
     setBusy(true);
@@ -36,13 +50,29 @@ export function PlanTodayCard({ plan, zh, canWrite }: { plan: PlanToday; zh: boo
     }
   }
   return (
-    <section style={{ background: "#fff", border: `1px solid ${LINE}`, borderRadius: 16, padding: "18px 22px", display: "flex", flexDirection: "column", gap: 12 }}>
+    <section style={{ background: "#fff", border: `1px solid ${LINE}`, borderRadius: 16, padding: "18px 22px", display: "flex", flexDirection: "column", gap: 12, opacity: redoing ? 0.75 : 1, transition: "opacity .2s ease" }}>
+      <style>{`@keyframes ptSpin{to{transform:rotate(360deg)}}.pt-spin{animation:ptSpin 1s linear infinite}@media (prefers-reduced-motion: reduce){.pt-spin{animation:none}}`}</style>
       <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
         <AgentIcon agent="planning" size={30} radius={8} />
         <div style={{ minWidth: 0, flexGrow: 1 }}>
           <div style={{ fontSize: 15.5, fontWeight: 650, color: INK }}>{t("策划今日提报", "The planner's report today")}</div>
           <div style={{ fontSize: 12.5, color: MUTED }}>{t(`${plan.date} · 每天早上 8 点自动提报`, `${plan.date} · every morning at 8`)}</div>
         </div>
+        <button
+          type="button"
+          onClick={() => void redo()}
+          disabled={redoing}
+          title={t("不喜欢这个选题？让策划换一个，重新提报", "Ask the planner for a different topic")}
+          style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 30, padding: "0 11px", borderRadius: 8, border: `1px solid ${LINE}`, background: "#fff", color: "#333", fontFamily: "inherit", fontSize: 12.5, cursor: redoing ? "default" : "pointer", whiteSpace: "nowrap" }}
+        >
+          <svg viewBox="0 0 24 24" width={13} height={13} aria-hidden fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className={redoing ? "pt-spin" : undefined}>
+            <path d="M20 11a8 8 0 0 0-14.3-4.9L4 8" />
+            <path d="M4 3.5V8h4.5" />
+            <path d="M4 13a8 8 0 0 0 14.3 4.9L20 16" />
+            <path d="M20 20.5V16h-4.5" />
+          </svg>
+          {redoing ? t("策划正在重新想…（约半分钟）", "Thinking again…") : t("换一份", "Another one")}
+        </button>
         {plan.href ? (
           <Link href={plan.href} prefetch={false} style={{ fontSize: 13, color: "#1f5fbf", textDecoration: "none", whiteSpace: "nowrap" }}>
             {t("看完整计划 →", "Full plan →")}

@@ -59,7 +59,7 @@ export function ModuleLibrary({ module, title, agentName, zh, folderId, files, c
         <div style={{ fontSize: 17, fontWeight: 650, color: "#171717" }}>{title}</div>
         <div style={{ fontSize: 13, color: "#6b6b6b", marginTop: 4, lineHeight: 1.6 }}>
           {t(`上传合同、发票、记录等。上传后 AI 会自动读完，问${agentName}时会用到。`, `Upload contracts, invoices, records. AI reads each on arrival and ${agentName} uses them when answering.`)}
-          {canTrain ? t(`打开「用来训练」的文件，会教${agentName}以后照着做（现在 ${trainedCount} 个）。`, ` Files switched to "Train" teach ${agentName} how to work (${trainedCount} now).`) : null}
+          {canTrain ? t(`想让${agentName}以后照着某个文件的做法来做，就点那个文件右边的「用来训练」（现在 ${trainedCount} 个）。`, ` Files switched to "Train" teach ${agentName} how to work (${trainedCount} now).`) : null}
         </div>
       </div>
 

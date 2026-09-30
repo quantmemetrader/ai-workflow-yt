@@ -10,6 +10,7 @@ import { acrossPlatforms, tabRows, type BeatRow, type Lists } from "@/lib/resear
 import { DEFAULT_BEATS, type BeatConfig } from "@/lib/research/beats";
 import { startFromTopicAction } from "@/app/(app)/projects/actions";
 import { notify } from "@/lib/client/notify";
+import { hideHotAction, restoreHotAction } from "@/app/(app)/research/plan-actions";
 
 /**
  * 选题 · 热点榜 — what is hot on each platform right now, as one plain list.
@@ -58,7 +59,7 @@ function platformOf(from: string): { mark: string; zh: string; en: string } {
   return byHot ? { mark: byHot.mark, zh: byHot.zh, en: byHot.label } : { mark: from, zh: from, en: from };
 }
 
-export function HotBoard({ zh, canWrite, initial = null }: { zh: boolean; canWrite: boolean; initial?: Record<string, ShownRow[]> | null }) {
+export function HotBoard({ zh, canWrite, initial = null, hiddenCount = 0 }: { zh: boolean; canWrite: boolean; initial?: Record<string, ShownRow[]> | null; hiddenCount?: number }) {
   const t = (a: string, b: string) => (zh ? a : b);
   const router = useRouter();
   const [lists, setLists] = React.useState<Lists | null>(null);
@@ -66,6 +67,26 @@ export function HotBoard({ zh, canWrite, initial = null }: { zh: boolean; canWri
   const [chip, setChip] = React.useState<Chip>("all");
   const [shown, setShown] = React.useState(STEP);
   const [busy, setBusy] = React.useState<string | null>(null);
+  const [gone, setGone] = React.useState<Set<string>>(() => new Set());
+  const hide = async (r: ShownRow) => {
+    setGone((s) => new Set(s).add(r.phrase));
+    const res = await hideHotAction(r.phrase);
+    if (res.error) {
+      notify(res.error);
+      setGone((s) => {
+        const n = new Set(s);
+        n.delete(r.phrase);
+        return n;
+      });
+    }
+  };
+  const restore = async () => {
+    const res = await restoreHotAction();
+    if (res.error) return notify(res.error);
+    setGone(new Set());
+    notify(t("隐藏的热点都恢复了", "Hidden rows are back"), "ok");
+    router.refresh();
+  };
 
   React.useEffect(() => {
     /* Built on the server with the page: nothing to fetch. */
@@ -93,12 +114,12 @@ export function HotBoard({ zh, canWrite, initial = null }: { zh: boolean; canWri
 
   const keys = React.useMemo(() => beats.filter((b) => b.enabled).map((b) => b.key), [beats]);
   const rows: ShownRow[] = React.useMemo(() => {
-    if (initial) return initial[chip] ?? [];
+    if (initial) return (initial[chip] ?? []).filter((r) => !gone.has(r.phrase));
     if (!lists) return [];
     if (chip === "all") return acrossPlatforms(lists, { limit: 300, beats: keys });
     const { charted, feed } = tabRows(chip, lists, { beats: keys, chartCap: 50 });
     return [...charted, ...feed];
-  }, [lists, chip, keys, initial]);
+  }, [lists, chip, keys, initial, gone]);
   React.useEffect(() => setShown(STEP), [chip]);
 
   async function make(r: ShownRow) {
@@ -172,15 +193,30 @@ export function HotBoard({ zh, canWrite, initial = null }: { zh: boolean; canWri
                 </span>
                 <span style={{ textAlign: "right", fontSize: 13, color: "#454545", fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>{heatOf(r, zh)}</span>
                 <span style={{ textAlign: "right" }}>
-                  <button type="button" className="hb-make" disabled={busy !== null} onClick={() => void make(r)}>
-                    <Icon name="film" size={12} /> {busy === id ? t("正在开始…", "Starting…") : t("做成视频", "Make it")}
-                  </button>
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                    <button type="button" className="hb-make" disabled={busy !== null} onClick={() => void make(r)}>
+                      <Icon name="film" size={12} /> {busy === id ? t("正在开始…", "Starting…") : t("做成视频", "Make it")}
+                    </button>
+                    <button type="button" className="hb-hide" onClick={() => void hide(r)} title={t("不再显示这条（整个工作室）", "Never show this again")} aria-label={t("不再显示", "Hide")}>
+                      <svg viewBox="0 0 24 24" width={13} height={13} aria-hidden fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round">
+                        <path d="M7 7l10 10M17 7 7 17" />
+                      </svg>
+                    </button>
+                  </span>
                 </span>
               </div>
             );
           })
         )}
       </section>
+      {hiddenCount + gone.size > 0 ? (
+        <div style={{ alignSelf: "center", fontSize: 12.5, color: MUTED }}>
+          {t(`已隐藏 ${hiddenCount + gone.size} 条`, `${hiddenCount + gone.size} hidden`)} ·{" "}
+          <button type="button" onClick={() => void restore()} style={{ border: 0, background: "none", padding: 0, font: "inherit", color: "#1f5fbf", cursor: "pointer" }}>
+            {t("全部恢复", "Show them again")}
+          </button>
+        </div>
+      ) : null}
       {rows.length > shown ? (
         <button type="button" onClick={() => setShown((n) => n + STEP)} style={{ ...smallButton(), alignSelf: "center", height: 36, padding: "0 20px", fontSize: 13.5 }}>
           {t(`再看 ${Math.min(STEP, rows.length - shown)} 条`, `Show ${Math.min(STEP, rows.length - shown)} more`)}
@@ -192,13 +228,16 @@ export function HotBoard({ zh, canWrite, initial = null }: { zh: boolean; canWri
 }
 
 const HB_CSS = `
-.hb-row { display: grid; grid-template-columns: 36px minmax(0,1fr) 110px 110px 104px; align-items: center; gap: 12px; padding: 11px 18px; border-top: 1px solid #f0efeb; }
+.hb-row { display: grid; grid-template-columns: 36px minmax(0,1fr) 110px 110px 136px; align-items: center; gap: 12px; padding: 11px 18px; border-top: 1px solid #f0efeb; }
 .hb-head { border-top: 0; font-size: 12px; color: #8a8a8a; background: #fafaf8; padding-top: 9px; padding-bottom: 9px; }
 .hb-title { display: block; font-size: 14px; color: #171717; text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 a.hb-title:hover { text-decoration: underline; }
 .hb-make { display: inline-flex; align-items: center; gap: 5px; height: 28px; padding: 0 10px; border-radius: 8px; border: 1px solid #dcdbd6; background: #fff; color: #333; font: inherit; font-size: 12.5px; cursor: pointer; opacity: 0; transition: opacity .15s ease; }
-.hb-row:hover .hb-make, .hb-make:focus-visible { opacity: 1; }
+.hb-hide { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 8px; border: 0; background: none; color: #a3a3a0; cursor: pointer; opacity: 0; transition: opacity .15s ease, background .12s ease, color .12s ease; }
+.hb-hide:hover { background: #f3f3f0; color: #171717; }
+.hb-row:hover .hb-make, .hb-make:focus-visible, .hb-row:hover .hb-hide, .hb-hide:focus-visible { opacity: 1; }
+@media (hover: none) { .hb-hide { opacity: 1; } }
 .hb-make:disabled { cursor: default; }
 @media (hover: none) { .hb-make { opacity: 1; } }
-@media (max-width: 760px) { .hb-row { grid-template-columns: 28px minmax(0,1fr) 90px; } .hb-row > :nth-child(3), .hb-row > :nth-child(5) { display: none; } }
+@media (max-width: 760px) { .hb-row { grid-template-columns: 28px minmax(0,1fr) 90px; } .hb-row > :nth-child(3) { display: none; } .hb-make { display: none; } .hb-row { grid-template-columns: 28px minmax(0,1fr) 90px 34px; } }
 `;
