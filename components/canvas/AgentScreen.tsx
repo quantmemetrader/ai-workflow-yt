@@ -1679,7 +1679,7 @@ function MadeActions({ made, zh }: { made: MadeScript; zh: boolean }) {
               </div>
             </div>
           ) : open ? (
-            <div style={{ padding: "12px 16px 14px", display: "flex", flexDirection: "column", gap: 10 }}>
+            <div translate="no" className="notranslate" style={{ padding: "12px 16px 14px", display: "flex", flexDirection: "column", gap: 10 }}>
               {shown.map((p, i) => (
                 <p key={i} style={{ margin: 0, fontSize: 14, lineHeight: 1.75, color: "#262626", whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>
                   {p}

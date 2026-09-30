@@ -1,4 +1,5 @@
 import "server-only";
+import { hiddenTodos } from "@/lib/home/hidden";
 import { and, eq, inArray, isNull } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { approvals, scripts, users, workProjects } from "@/lib/db/schema";
@@ -136,5 +137,7 @@ export async function readToday(viewer: Viewer, zh: boolean): Promise<Today> {
     };
   });
 
-  return { todo: todo.slice(0, 8), moreTodo: Math.max(0, todo.length - 8), active, activeCount: stages.length, busy };
+  const hidden = await hiddenTodos(viewer.id);
+  const left = todo.filter((r) => !hidden.has(`${r.id}:${r.verb}`));
+  return { todo: left.slice(0, 8), moreTodo: Math.max(0, left.length - 8), active, activeCount: stages.length, busy };
 }

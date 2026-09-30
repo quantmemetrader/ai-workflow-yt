@@ -62,6 +62,25 @@ export async function deleteFileAction(fileId: string) {
   }
 }
 
+/** 批量删除: many files to the trash at once (restorable there for 30 days). */
+export async function deleteFilesAction(fileIds: unknown): Promise<{ deleted: number; failed: number; error?: string }> {
+  const viewer = await getViewer();
+  if (!viewer?.modules.includes("files")) return { deleted: 0, failed: 0, error: "Not allowed" };
+  const ids = Array.isArray(fileIds) ? fileIds.filter((x): x is string => typeof x === "string" && x.length < 64).slice(0, 500) : [];
+  let deleted = 0;
+  let failed = 0;
+  for (const id of ids) {
+    try {
+      await softDelete(viewer, id);
+      deleted++;
+    } catch {
+      failed++;
+    }
+  }
+  revalidatePath("/files");
+  return { deleted, failed };
+}
+
 export async function restoreFileAction(fileId: string) {
   const viewer = await getViewer();
   if (!viewer?.modules.includes("files")) return { error: "Not allowed" };

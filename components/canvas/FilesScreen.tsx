@@ -82,6 +82,8 @@ const FILES_CSS = `
 [data-files-screen] .fs-tile { transition: border-color .15s ease, box-shadow .15s ease; }
 [data-files-screen] .fs-tile:hover { border-color: #e2e2e2; box-shadow: 0 4px 14px rgba(20,30,60,.06); }
 [data-files-screen] .fs-tile:focus-visible { outline: 2px solid #171717; outline-offset: 2px; }
+[data-files-screen] .fs-tile[data-picked] { border-color: #1f6feb !important; box-shadow: inset 0 0 0 2px #1f6feb; background: #f5f9ff; }
+[data-files-screen] .fs-tile[data-picked]::after { content: "✓"; position: absolute; top: 8px; left: 8px; width: 20px; height: 20px; border-radius: 99px; background: #1f6feb; color: #fff; font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
 @media (hover: hover) {
   [data-files-screen] .fs-acts { opacity: 0; transition: opacity .15s ease; }
   [data-files-screen] .fs-tile:hover .fs-acts, [data-files-screen] .fs-tile:focus-within .fs-acts, [data-files-screen] .fs-acts[data-keep] { opacity: 1; }
@@ -334,6 +336,9 @@ export function FilesScreen(props: {
    * a flat list (按项目). Given the filter box's text, so the filter still
    * narrows what is shown. */
   renderBody?: (needle: string) => React.ReactNode;
+  /** Batch select (30 Sep): the files ticked, drawn with a check; `banner` sits above the list (the 选择 / 删除 bar). */
+  selected?: Set<string>;
+  banner?: React.ReactNode;
 }): React.JSX.Element {
   const [filter, setFilter] = React.useState("");
   const {
@@ -362,6 +367,8 @@ export function FilesScreen(props: {
     onRestore,
     lens,
     renderBody,
+    selected,
+    banner,
   } = props;
   const canCreate = canCreateProp ?? canEdit;
 
@@ -700,6 +707,7 @@ export function FilesScreen(props: {
                 </div>
               ) : null}
 
+              {banner}
               {renderBody ? (
                 renderBody(needle)
               ) : empty ? (
@@ -767,6 +775,7 @@ export function FilesScreen(props: {
                     layout={layout}
                     folders={folders}
                     files={files}
+                    selected={selected}
                     locale={locale}
                     onOpenFolder={onOpenFolder}
                     onOpenFile={onOpenFile}
@@ -935,7 +944,8 @@ export function FilesScreen(props: {
                           onOpenFile(f.id);
                         }
                       }}
-                      style={{ height: 56, borderBottom: "1px solid #f3f3f3", cursor: "pointer" }}
+                      aria-pressed={selected ? selected.has(f.id) : undefined}
+                      style={{ height: 56, borderBottom: "1px solid #f3f3f3", cursor: "pointer", background: selected?.has(f.id) ? "#eaf2fe" : undefined, boxShadow: selected?.has(f.id) ? "inset 3px 0 0 #1f6feb" : undefined }}
                     >
                       <div className="c" style={{ justifyContent: "center", color: "#c7c7c7", fontSize: 11.5, fontVariantNumeric: "tabular-nums" }}>
                         {folders.length + index + 1}
@@ -1233,6 +1243,7 @@ export function Tiles({
   layout,
   folders,
   files,
+  selected,
   locale,
   onOpenFolder,
   onOpenFile,
@@ -1248,6 +1259,8 @@ export function Tiles({
   layout: "grid" | "gallery";
   folders: FolderRow[];
   files: FileRow[];
+  /** Batch select: the files ticked. */
+  selected?: Set<string>;
   locale: string;
   onOpenFolder: (id: string) => void;
   onOpenFile: (id: string) => void;
@@ -1364,6 +1377,8 @@ export function Tiles({
           className="fs-tile"
           role="button"
           tabIndex={0}
+          aria-pressed={selected ? selected.has(f.id) : undefined}
+          data-picked={selected?.has(f.id) ? "1" : undefined}
           onClick={() => onOpenFile(f.id)}
           onKeyDown={(e) => {
             if (e.key === "Enter" || e.key === " ") {

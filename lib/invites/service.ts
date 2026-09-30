@@ -232,3 +232,33 @@ export async function acceptInvite(
 
   return { userId };
 }
+
+/**
+ * 直接创建账号: the account made now, with a generated password the admin
+ * copies and sends (WeChat, in person) — for a studio with no mail service,
+ * where a link to pass on was one step too many (Ryan, 30 Sep: "add new
+ * member is weird — it asks for an email, then warns there is no email
+ * sending service"). The person can change the password in 设置.
+ */
+export async function createAccountNow(
+  viewer: Viewer,
+  input: { email: string; name?: string | null; role?: InviteRow["role"]; modules: Module[] },
+): Promise<{ userId: string; email: string; password: string }> {
+  if (!canInvite(viewer)) throw new Error("Only an owner or an administrator can add people");
+  const email = input.email.trim().toLowerCase();
+  if (!email || email.length > 320 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error("That does not look like an email address");
+  const [existing] = await db.select({ id: users.id }).from(users).where(and(eq(users.tenantId, viewer.tenantId), eq(users.email, email), isNull(users.deletedAt))).limit(1);
+  if (existing) throw new Error("Somebody with that address is already in the studio");
+  const role = input.role ?? "member";
+  if (role === "owner") throw new Error("A studio has one owner");
+  const password = randomBytes(9).toString("base64url").replace(/[-_]/g, "x").slice(0, 12);
+  const userId = newId("usr");
+  const passwordHash = await hashPassword(password);
+  const name = input.name?.trim() || email.split("@")[0];
+  await db.transaction(async (trx) => {
+    await trx.insert(users).values({ id: userId, tenantId: viewer.tenantId, email, name, role, status: "active", passwordHash });
+    if (input.modules.length) await trx.insert(entitlements).values(input.modules.map((m) => ({ userId, module: m, grantedBy: viewer.id }))).onConflictDoNothing();
+    await trx.insert(auditLog).values({ id: newId("aud"), tenantId: viewer.tenantId, actorId: viewer.id, action: "admin.account.create", objectType: "user", objectId: userId });
+  });
+  return { userId, email, password };
+}

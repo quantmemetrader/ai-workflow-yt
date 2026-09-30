@@ -9,7 +9,7 @@ import { MODULES, users, type Module } from "@/lib/db/schema";
 import { assemblePrompt } from "@/lib/ai/prompt";
 import { audit } from "@/lib/audit";
 import { env } from "@/lib/env";
-import { canInvite, createInvite } from "@/lib/invites/service";
+import { canInvite, createInvite, createAccountNow } from "@/lib/invites/service";
 import { createTeam, deleteTeam, setTeamMember } from "@/lib/teams/service";
 import {
   isAdmin,
@@ -177,6 +177,22 @@ export async function addPersonAction(input: {
       expiresAt: invite.expiresAt.toISOString(),
       link: `${await origin()}/invite/${token}`,
     };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "Could not add that person" };
+  }
+}
+
+/** 直接创建账号: made now, with a generated password to send yourself. */
+export async function createAccountAction(input: { email: string; name?: string; role?: string; modules?: string[] }): Promise<{ ok: true; email: string; password: string; loginUrl: string } | { ok: false; error: string }> {
+  const viewer = await getViewer();
+  if (!viewer || !canInvite(viewer)) return { ok: false, error: "Only an owner or an administrator can add people" };
+  const role = input.role === "admin" || input.role === "member" || input.role === "guest" ? input.role : "member";
+  const modules = (input.modules ?? []).filter(isModule);
+  if (!modules.length) return { ok: false, error: "Choose at least one module they may open" };
+  try {
+    const made = await createAccountNow(viewer, { email: String(input.email ?? ""), name: input.name, role, modules });
+    refresh();
+    return { ok: true, email: made.email, password: made.password, loginUrl: `${await origin()}/login` };
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : "Could not add that person" };
   }

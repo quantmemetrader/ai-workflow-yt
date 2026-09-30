@@ -59,7 +59,10 @@ export function Rail({ modules, locale, account, isAdmin = false }: { modules: M
   /* 后台 is folded until opened, and opens by itself on one of its pages. */
   const [backPref, setBackPref] = useLocalPreference("aura:rail-back", ["closed", "open"] as const, "closed");
   const backActive = back.some((i) => railActive(i, pathname));
-  const backOpen = backPref === "open" || backActive;
+  /* Always open (Ryan, 30 Sep: "no need to fold the back office"). */
+  const backOpen = true;
+  void backPref;
+  void setBackPref;
 
   // A tooltip due after the rail has gone would set state on nothing.
   useEffect(() => () => {
@@ -164,28 +167,16 @@ export function Rail({ modules, locale, account, isAdmin = false }: { modules: M
       {back.length ? (
         <>
           <div style={{ height: 1, background: "#e2e2e2", margin: open ? "8px 9px" : "8px 0", width: open ? "auto" : 22 }} />
-          <button
-            type="button"
-            onClick={() => setBackPref(backOpen && !backActive ? "closed" : "open")}
-            aria-expanded={backOpen}
-            className={`r${open ? " wide" : ""}`}
-            title={open ? undefined : zh ? "后台" : "Back office"}
-            style={{ border: 0, background: "transparent", cursor: "pointer", fontFamily: "inherit", letterSpacing: "inherit", color: "#7c7c7c" }}
-          >
+          <div className={`r${open ? " wide" : ""}`} title={open ? undefined : zh ? "后台" : "Back office"} style={{ color: "#7c7c7c", cursor: "default" }}>
             <svg viewBox="0 0 24 24" aria-hidden>
               <path d="M4.5 7.5h15M4.5 12h15M4.5 16.5h15" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
             </svg>
             {open ? (
-              <>
-                <span>
-                  <Tr zh="后台" en="Back office" inZh={zh} />
-                </span>
-                <svg viewBox="0 0 24 24" aria-hidden style={{ marginLeft: "auto", width: 12, height: 12, transform: backOpen ? "rotate(90deg)" : "none", transition: "transform .15s ease" }}>
-                  <path d="M9.4 6.6 14.8 12l-5.4 5.4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-              </>
+              <span>
+                <Tr zh="后台" en="Back office" inZh={zh} />
+              </span>
             ) : null}
-          </button>
+          </div>
           {backOpen
             ? back.map((item) => <RailLink key={item.href} item={item} active={railActive(item, pathname)} open={open} zh={zh} show={show} hide={hide} small />)
             : null}

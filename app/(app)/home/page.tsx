@@ -1,4 +1,6 @@
 import { requireModule } from "@/lib/auth/dal";
+import { HomeAgent } from "@/components/home/HomeAgent";
+import { answeringModel } from "@/lib/ai/models";
 import { HomeToday } from "@/components/home/HomeToday";
 import { readToday } from "@/lib/home/today";
 import { readHome } from "@/lib/home/service";
@@ -40,6 +42,7 @@ export default async function HomePage() {
           </Card>
         }
       />
+      <HomeAgent zh={zh} model={answeringModel()} />
     </div>
   );
 }

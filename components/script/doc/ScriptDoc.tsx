@@ -187,7 +187,7 @@ export function ScriptDoc(props: ScriptDocProps) {
       BlockExtras,
       Highlights.configure({ zh }),
     ],
-    editorProps: { attributes: { class: "gd-prose", spellcheck: "false" } },
+    editorProps: { attributes: { class: "gd-prose notranslate", spellcheck: "false", translate: "no" } },
     onUpdate: ({ transaction }) => {
       if (!transaction.docChanged || transaction.getMeta("gd-remote")) return;
       editSeq.current += 1;
@@ -1268,7 +1268,7 @@ export function ScriptDoc(props: ScriptDocProps) {
                   )}
                 </div>
               ) : viewing ? (
-                <div className="gd-prose gd-readonly">
+                <div className="gd-prose gd-readonly notranslate" translate="no">
                   {viewing.beats.map((b, i) => (
                     <p key={i} data-shot={b.visual || undefined} style={{ color: b.voiceover ? undefined : "#80868b" }}>{b.voiceover || t("（现场声，无口播）", "(natural sound)")}</p>
                   ))}

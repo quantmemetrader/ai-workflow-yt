@@ -6,6 +6,7 @@ import { and, eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { scripts } from "@/lib/db/schema";
 import { getViewer } from "@/lib/auth/dal";
+import { hideTodo } from "@/lib/home/hidden";
 import { ensureAgentChannel } from "@/lib/agents";
 import { AGENT_KEYS, agentTag, type AgentKey } from "@/lib/agents/catalog";
 import { dispatchAgentMentions, handoffMeta, type Handoff } from "@/lib/agents/mentions";
@@ -136,4 +137,14 @@ export async function sendScriptToVideoAction(scriptId: string) {
     meta: { projectId, workProjectId: work.id, from: "script", to: "video", by: "page" },
   });
   return { projectId, channelSlug: PRODUCTION_SLUG };
+}
+
+/** 「不再提醒」 on a 首页 task (Ryan, 30 Sep: tasks they do not want could not be put away). */
+export async function hideTodoAction(todoKey: unknown): Promise<{ error?: string }> {
+  const viewer = await getViewer();
+  if (!viewer) return { error: "Not signed in" };
+  if (typeof todoKey !== "string" || todoKey.length > 200) return { error: "Not allowed" };
+  await hideTodo(viewer.id, todoKey);
+  revalidatePath("/home");
+  return {};
 }

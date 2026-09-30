@@ -1,4 +1,5 @@
 import * as React from "react";
+import { TodoList } from "@/components/home/TodoList";
 import Link from "next/link";
 import { Card, Empty, PageBody, smallButton } from "@/components/projects/kit";
 import { NewVideoBox } from "@/components/home/NewVideoBox";
@@ -23,19 +24,7 @@ export function HomeToday({ zh, me, greeting, today, team = null, plan = null }:
       <Card icon="check" title={t("等你做的事", "Waiting for you")}>
         {today.todo.length ? (
           <div style={{ display: "flex", flexDirection: "column" }}>
-            {today.todo.map((r, i) => (
-              <Link key={r.id} href={r.href} prefetch={false} className="ht-row" style={{ borderTop: i ? "1px solid #f0efeb" : 0 }}>
-                <span className="ht-dot" aria-hidden />
-                <span style={{ minWidth: 0, flexGrow: 1, display: "flex", flexDirection: "column", gap: 2 }}>
-                  <span style={{ fontSize: 14.5, fontWeight: 600, color: "#171717" }}>{r.verb}</span>
-                  <span style={{ fontSize: 13, color: "#7a7a7a", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {r.title}
-                    {r.note ? ` · ${r.note}` : ""}
-                  </span>
-                </span>
-                <span style={{ ...smallButton(i === 0), height: 34, padding: "0 14px", fontSize: 13 }}>{r.press} →</span>
-              </Link>
-            ))}
+            <TodoList rows={today.todo} zh={zh} />
             {today.moreTodo ? (
               <Link href="/projects" prefetch={false} style={{ fontSize: 13, color: "#525252", padding: "10px 2px 0", textDecoration: "none" }}>
                 {t(`还有 ${today.moreTodo} 件 →`, `${today.moreTodo} more →`)}

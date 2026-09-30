@@ -13,6 +13,7 @@ import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 const LAYOUTS = ["list", "grid", "gallery"] as const;
 import {
   deleteFileAction,
+  deleteFilesAction,
   deleteFolderAction,
   newFolderAction,
   renameFileAction,
@@ -94,6 +95,11 @@ export function FilesView({
      people it was not meant for. */
   const [asking, setAsking] = useState<File[] | null>(null);
   const [changing, setChanging] = useState<FileRow | null>(null);
+  /* 批量选择 (Ryan, 30 Sep: "there needs to be a batch delete for files"). */
+  const [picking, setPicking] = useState(false);
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const togglePick = (id: string) => setPicked((cur) => { const n = new Set(cur); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  const stopPicking = () => { setPicking(false); setPicked(new Set()); };
 
   function upload(list: FileList | File[]) {
     const files = Array.from(list);
@@ -202,7 +208,41 @@ export function FilesView({
           />
         }
         onOpenFolder={(id) => router.push(id ? `/files/f/${id}` : "/files")}
-        onOpenFile={openFile}
+        onOpenFile={picking ? togglePick : openFile}
+        selected={picking ? picked : undefined}
+        banner={
+          canEdit && view !== "trash" && rows.length ? (
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", margin: "0 0 12px" }}>
+              {picking ? (
+                <>
+                  <span style={{ fontSize: 13, fontWeight: 600, color: "#171717" }}>{zh ? `已选 ${picked.size} 个文件` : `${picked.size} selected`}</span>
+                  <button type="button" className="fv-btn" onClick={() => setPicked(new Set(rows.map((r) => r.id)))}>{zh ? "全选" : "Select all"}</button>
+                  <button
+                    type="button"
+                    className="fv-btn danger"
+                    disabled={!picked.size}
+                    onClick={() => {
+                      if (!picked.size || !window.confirm(zh ? `把 ${picked.size} 个文件移到回收站？30 天内可以恢复。` : `Move ${picked.size} files to the trash? They can be restored for 30 days.`)) return;
+                      start(async () => {
+                        const res = await deleteFilesAction([...picked]);
+                        if (res.error) notify(res.error);
+                        else notify(zh ? `已删除 ${res.deleted} 个${res.failed ? `，${res.failed} 个没有权限` : ""}` : `Deleted ${res.deleted}${res.failed ? `, ${res.failed} not allowed` : ""}`, res.failed ? "info" : "ok");
+                        stopPicking();
+                        router.refresh();
+                      });
+                    }}
+                  >
+                    {zh ? "删除所选" : "Delete selected"}
+                  </button>
+                  <button type="button" className="fv-btn" onClick={stopPicking}>{zh ? "取消" : "Cancel"}</button>
+                </>
+              ) : (
+                <button type="button" className="fv-btn" onClick={() => setPicking(true)}>{zh ? "选择多个文件" : "Select files"}</button>
+              )}
+              <style>{`.fv-btn{height:30px;padding:0 12px;border:1px solid #dcdbd6;border-radius:8px;background:#fff;color:#262626;font:inherit;font-size:12.5px;cursor:pointer}.fv-btn:hover{background:#f7f7f5}.fv-btn.danger{border-color:#e5484d;color:#c62a2f}.fv-btn:disabled{opacity:.45;cursor:default}`}</style>
+            </div>
+          ) : null
+        }
         onUploadClick={() => input.current?.click()}
         onNewFolder={() => setNamingFolder(true)}
         onSetAccess={(f) => setChanging(f)}

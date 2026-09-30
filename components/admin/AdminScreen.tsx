@@ -18,6 +18,7 @@ import type {
 import type { TeamRow } from "@/lib/teams/service";
 import {
   addPersonAction,
+  createAccountAction,
   createTeamAction,
   deleteTeamAction,
   previewPromptAction,
@@ -800,6 +801,24 @@ function AddPerson({
   const [error, setError] = useState<string | null>(null);
   const [sent, setSent] = useState<{ email: string; link: string; expiresAt: string } | null>(null);
   const [copied, setCopied] = useState(false);
+  const [made, setMade] = useState<{ email: string; password: string; loginUrl: string } | null>(null);
+  const router = useRouter();
+
+  const makeNow = () =>
+    start(async () => {
+      setError(null);
+      const res = await createAccountAction({ email: email.trim(), name: name.trim(), role, modules });
+      if (!res.ok) {
+        setError(res.error);
+        return;
+      }
+      setMade({ email: res.email, password: res.password, loginUrl: res.loginUrl });
+      setSent(null);
+      setCopied(false);
+      setEmail("");
+      setName("");
+      router.refresh();
+    });
 
   const submit = () =>
     start(async () => {
@@ -810,6 +829,7 @@ function AddPerson({
         return;
       }
       setSent({ email: res.email, link: res.link, expiresAt: res.expiresAt });
+      setMade(null);
       setCopied(false);
       setEmail("");
       setName("");
@@ -902,13 +922,42 @@ function AddPerson({
       >
         {busy ? t("Creating…", "创建中…") : t("Create the invitation", "创建邀请链接")}
       </button>
+      <button
+        type="button"
+        disabled={busy || !email.trim() || modules.length === 0}
+        onClick={makeNow}
+        style={{ ...ghost, alignSelf: "flex-start", opacity: busy || !email.trim() || modules.length === 0 ? 0.45 : 1 }}
+      >
+        {t("Or create the account now (password generated)", "或者直接创建账号（自动生成密码）")}
+      </button>
+
+      {made ? (
+        <div style={{ border: "1px solid #c8e6c9", background: "#f1f8f2", borderRadius: 8, padding: 10 }}>
+          <p style={{ fontSize: 12, color: "#1e7a4f", lineHeight: 1.6, margin: 0 }}>
+            {t("Account created. Send these to them (WeChat, in person); they can change the password in Settings.", "账号已创建。把下面的登录信息发给对方（微信或当面），登录后可以在「设置」里改密码。")}
+          </p>
+          <code style={{ display: "block", marginTop: 8, background: "#fff", borderRadius: 6, padding: "8px 10px", fontSize: 12, color: "#262626", whiteSpace: "pre-wrap" }}>
+            {`${t("Login", "登录网址")}: ${made.loginUrl}\n${t("Email", "邮箱")}: ${made.email}\n${t("Password", "密码")}: ${made.password}`}
+          </code>
+          <button
+            type="button"
+            onClick={() => {
+              void navigator.clipboard?.writeText(`${t("Login", "登录网址")}: ${made.loginUrl}\n${t("Email", "邮箱")}: ${made.email}\n${t("Password", "密码")}: ${made.password}`);
+              setCopied(true);
+            }}
+            style={{ ...ghost, height: 28, marginTop: 8 }}
+          >
+            {copied ? t("Copied", "已复制") : t("Copy all", "全部复制")}
+          </button>
+        </div>
+      ) : null}
 
       {sent ? (
-        <div style={{ border: "1px solid #ffe0b2", background: "#fff8ec", borderRadius: 8, padding: 10 }}>
-          <p style={{ fontSize: 11.5, color: "#a35f00", lineHeight: 1.6, margin: 0 }}>
+        <div style={{ border: "1px solid #c8e6c9", background: "#f1f8f2", borderRadius: 8, padding: 10 }}>
+          <p style={{ fontSize: 12, color: "#1e7a4f", lineHeight: 1.6, margin: 0 }}>
             {t(
-              `No mail provider is configured on this deployment, so nothing was sent to ${sent.email}. Pass this link on yourself: they open it, type their name, choose their own password and are signed in. It works once and expires on ${sent.expiresAt.slice(0, 10)}.`,
-              `这个部署还没有配置邮件服务，所以系统没有向 ${sent.email} 发送任何邮件。请把下面的链接发给对方：打开链接后，他们自己填写姓名并设置密码，随后直接登录。链接只能用一次，有效期至 ${sent.expiresAt.slice(0, 10)}。`,
+              `Invitation link for ${sent.email} is ready. Send it to them (WeChat, in person): they open it, set their name and password, and are signed in. It works once, until ${sent.expiresAt.slice(0, 10)}.`,
+              `${sent.email} 的邀请链接已生成。把链接发给对方（微信或当面）：打开后自己填写姓名、设置密码就能登录。链接只能用一次，有效期至 ${sent.expiresAt.slice(0, 10)}。`,
             )}
           </p>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8 }}>
