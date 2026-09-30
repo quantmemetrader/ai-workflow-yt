@@ -1,6 +1,7 @@
 "use client";
 
 
+import { ModelChip, usePanelModel } from "@/components/chat/ModelChip";
 import { useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { MentionMenu } from "@/components/chat/MentionMenu";
@@ -108,6 +109,7 @@ export function ResearchAgentPanel({
   const pathname = usePathname();
   const home = screenAgentForPath(pathname ?? "");
   const box = useRef<HTMLTextAreaElement | null>(null);
+  const [panelModel, setPanelModel] = usePanelModel();
   const mentions = useMentions({ people: undefined, zh, draft: ask, setDraft: setAsk, box });
   const taggedNow = parseAgentMentions(ask)[0] ?? null;
   const answering: AgentKey | null = taggedNow ?? home;
@@ -257,8 +259,8 @@ export function ResearchAgentPanel({
             }}
           />
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 11 }}>
-            {/* The model is chosen per message in the chat box. */}
-            <span />
+            {/* Which model answers here: every model the studio's key can call (30 Sep). */}
+            <ModelChip value={panelModel} onChange={setPanelModel} zh={zh} placement="up" align="left" />
             <button
               type="button"
               aria-label={zh ? "发送" : "Send"}

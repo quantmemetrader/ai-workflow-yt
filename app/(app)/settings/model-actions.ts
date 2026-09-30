@@ -1,5 +1,6 @@
 "use server";
 
+import { isProviderModel } from "@/lib/ai/catalog";
 import { revalidatePath } from "next/cache";
 import { getViewer } from "@/lib/auth/dal";
 import { MODELS, answeringModel, modelFor } from "@/lib/ai/models";
@@ -94,7 +95,7 @@ export async function chooseModelAction(id: string) {
     if (!env.deepseek.configured) return { error: "There is no DeepSeek key on this deployment." };
     await setModelChoice({ ...current, preferDeepseek: true }, viewer.id);
   } else {
-    if (!MODELS.some((m) => m.id === id)) return { error: "That model is not in the catalogue." };
+    if (!MODELS.some((m) => m.id === id) && !(await isProviderModel(id))) return { error: "That model is not in the catalogue." };
     /* Picking a real model also turns the DeepSeek override off — otherwise
        the choice would appear to do nothing, which is the bug this screen
        exists to end. */

@@ -1,5 +1,7 @@
 "use client";
 
+import { getPanelModel } from "@/components/chat/ModelChip";
+import { AUTO_MODEL } from "@/lib/ai/chat-models";
 import { AgentIcon } from "@/components/agents/AgentIcon";
 import { AGENT_COLORS, SCREEN_AGENT, parseAgentMentions, type AgentKey } from "@/lib/agents/catalog";
 import { AgentTyping, streamStep } from "@/components/agents/AgentTyping";
@@ -142,6 +144,7 @@ export function useInlineAgent(
             content,
             context: latest.current,
             ...(defaultAgent ? { agent: defaultAgent } : {}),
+            ...(getPanelModel() !== AUTO_MODEL ? { model: getPanelModel() } : {}),
           }),
           signal: controller.signal,
         });

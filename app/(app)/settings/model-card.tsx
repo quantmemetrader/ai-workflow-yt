@@ -1,5 +1,7 @@
 "use client";
 
+import { ModelChip } from "@/components/chat/ModelChip";
+import { AUTO_MODEL } from "@/lib/ai/chat-models";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { chooseModelAction, type ModelOption } from "./model-actions";
@@ -57,6 +59,27 @@ export function ModelCard({ zh, options }: { zh: boolean; options: ModelOption[]
             </button>
           );
         })}
+      </div>
+      {/* Any model the key can call, not only the ones above (30 Sep). */}
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 10, flexWrap: "wrap" }}>
+        <span style={{ fontSize: 12.5, color: "#6b6b6b" }}>{zh ? "或者从全部模型里选：" : "Or pick from every model:"}</span>
+        <ModelChip
+          value={picked && !shown.some((o) => o.id === picked) ? picked : AUTO_MODEL}
+          zh={zh}
+          placement="down"
+          align="left"
+          note={zh ? "全工作室默认用这个模型" : "The whole studio's default"}
+          autoLabel={{ zh: "选一个", en: "Choose", lineZh: "上面列出的常用模型", lineEn: "The usual ones listed above" }}
+          onChange={(id) =>
+            id === AUTO_MODEL
+              ? undefined
+              : start(async () => {
+                  const r = await chooseModelAction(id);
+                  if (!("error" in r && r.error)) setPicked(id);
+                  router.refresh();
+                })
+          }
+        />
       </div>
     </section>
   );

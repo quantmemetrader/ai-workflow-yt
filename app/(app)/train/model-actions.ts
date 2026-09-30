@@ -1,5 +1,6 @@
 "use server";
 
+import { isProviderModel } from "@/lib/ai/catalog";
 import { revalidatePath } from "next/cache";
 import { requireViewer } from "@/lib/auth/dal";
 import { MODELS } from "@/lib/ai/models";
@@ -18,7 +19,7 @@ export async function setAgentModelAction(agent: string, id: string | null): Pro
   const viewer = await requireViewer();
   if (viewer.role !== "owner" && viewer.role !== "admin") return { error: "只有管理员可以更换模型" };
   if (!isTrainKey(agent)) return { error: "没有这个 AI 同事" };
-  if (id !== null && !MODELS.some((m) => m.id === id)) return { error: "没有这个模型" };
+  if (id !== null && !MODELS.some((m) => m.id === id) && !(await isProviderModel(id))) return { error: "没有这个模型" };
   const current = modelChoice();
   const agents = { ...(current.agents ?? {}) };
   if (id) agents[agent] = id;

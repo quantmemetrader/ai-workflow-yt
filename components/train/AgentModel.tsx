@@ -1,5 +1,7 @@
 "use client";
 
+import { ModelChip } from "@/components/chat/ModelChip";
+import { AUTO_MODEL } from "@/lib/ai/chat-models";
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { Card, INK, LINE, MUTED } from "@/components/projects/kit";
@@ -57,6 +59,19 @@ export function AgentModel({ agent, name, zh, current, fallback, options, canCho
   };
   return (
     <Card icon="spark" title={t("用哪个模型", "Which model")} sub={canChoose ? t(`只改${name}，其他同事不受影响。聊天框里每条消息也可以临时换。`, `Only for ${name}; the others keep theirs. Any message can still pick another in the chat box.`) : t("管理员可以在这里给它换模型。", "An admin can change its model here.")}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
+        <span style={{ fontSize: 13, color: "#525252" }}>{t(`${name}现在用：`, `${name} uses:`)}</span>
+        <ModelChip
+          value={picked ?? AUTO_MODEL}
+          zh={zh}
+          placement="down"
+          align="left"
+          note={t(`只改${name}，其他同事不受影响`, `Only for ${name}`)}
+          autoLabel={{ zh: "工作室默认", en: "Studio default", lineZh: labelOf(fallback), lineEn: labelOf(fallback) }}
+          onChange={(id) => choose(id === AUTO_MODEL ? null : id)}
+        />
+        <span style={{ fontSize: 12, color: MUTED }}>{t("可以选全部模型，包括 Claude、GPT、Gemini", "Any model, Claude, GPT and Gemini included")}</span>
+      </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 8 }}>
         {row(null, t("工作室默认", "Studio default"), labelOf(fallback))}
         {options
