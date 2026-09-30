@@ -22,7 +22,7 @@ export async function newDocAction(module: unknown, name?: unknown) {
   if (!isLibModule(module) || !viewer.modules.includes(module)) return { error: "没有权限" };
   if (viewer.role === "guest") return { error: "访客不能新建文档" };
   const folderId = await libraryFolder(viewer, module);
-  const title = (typeof name === "string" && name.trim() ? name.trim() : `未命名文档 ${new Date().toISOString().slice(0, 10)}`).slice(0, 120);
+  const title = (typeof name === "string" && name.trim() ? name.trim() : `未命名文档 ${new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Hong_Kong" }).format(new Date())}`).slice(0, 120);
   const row = await createDocument(viewer, { name: title, text: "", folderId });
   revalidatePath(`/${module}`);
   return { id: row.id };
