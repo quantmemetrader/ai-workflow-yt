@@ -1,4 +1,5 @@
 import "server-only";
+import { requesterOf } from "@/lib/auth/types";
 import { after } from "next/server";
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
@@ -1009,7 +1010,7 @@ async function answerOne(input: Chain, key: AgentKey, channel: Channel) {
     .values({ channelId, userId: agentId })
     .onConflictDoNothing();
 
-  const agent = await agentViewer(tenantId, key);
+  const agent = await agentViewer(tenantId, key, requesterOf(viewer));
   const conversationId = await threadFor(agent, channel);
 
   const asker = viewer.nameLocal || viewer.name;

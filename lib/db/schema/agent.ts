@@ -110,6 +110,8 @@ export const aiUsage = pgTable(
     conversationId: text(),
     messageId: text(),
     requestId: text(),
+    /** The person an AI employee was working for when it spent this (null: it ran on its own, or a person spent it themselves). */
+    requestedBy: text(),
     createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [

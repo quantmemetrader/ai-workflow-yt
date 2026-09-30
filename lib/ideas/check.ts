@@ -1,4 +1,5 @@
 import "server-only";
+import { requesterOf } from "@/lib/auth/types";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { chatChannels, chatMessages, creatorVideos, ideas, topics } from "@/lib/db/schema";
@@ -572,7 +573,7 @@ export async function checkTitle(
   if (!text) return { ok: false, error: zh ? "先写下想做的题目。" : "Write the topic first." };
   const instruction = (input.instruction ?? "").replace(/\s+/g, " ").trim().slice(0, 120) || null;
 
-  const researcher = await agentViewer(viewer.tenantId, "research");
+  const researcher = await agentViewer(viewer.tenantId, "research", requesterOf(viewer));
   try {
     await assertBudget(researcher);
   } catch (err) {

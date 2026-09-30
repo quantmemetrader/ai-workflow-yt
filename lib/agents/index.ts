@@ -205,11 +205,12 @@ export async function ensureAllAgents(tenantId: string): Promise<void> {
 }
 
 /** The agent as a viewer: what every tool and service takes. */
-export async function agentViewer(tenantId: string, key: AgentKey): Promise<Viewer> {
+export async function agentViewer(tenantId: string, key: AgentKey, onBehalfOf: string | null = null): Promise<Viewer> {
   const id = await ensureAgent(tenantId, key);
   const viewer = await viewerById(id);
   if (!viewer) throw new Error(`The ${key} agent is disabled in this studio`);
-  return viewer;
+  /* Working for somebody: what it spends is shown under them. A copy — the viewer may be shared. */
+  return onBehalfOf && onBehalfOf !== viewer.id ? { ...viewer, onBehalfOf } : viewer;
 }
 
 /** The channel's id, creating it (as its agent) the first time. */

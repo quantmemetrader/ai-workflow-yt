@@ -155,6 +155,8 @@ export async function enqueue(input: {
   objectType?: string;
   objectId?: string;
   createdBy?: string;
+  /** The person an AI employee queued this for (AI 支出 shows it under them). */
+  onBehalfOf?: string | null;
   priority?: number;
   runAfter?: Date;
   /** When set, an identical unfinished job is reused instead of queued twice —
@@ -171,7 +173,7 @@ export async function enqueue(input: {
     tenantId: input.tenantId,
     type: input.type,
     module: input.module,
-    payload: { ...(input.payload ?? {}), ...(input.dedupeKey ? { dedupeKey: input.dedupeKey } : {}) },
+    payload: { ...(input.payload ?? {}), ...(input.dedupeKey ? { dedupeKey: input.dedupeKey } : {}), ...(input.onBehalfOf ? { onBehalfOf: input.onBehalfOf } : {}) },
     objectType: input.objectType,
     objectId: input.objectId,
     createdBy: input.createdBy,

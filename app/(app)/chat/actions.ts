@@ -1,5 +1,6 @@
 "use server";
 
+import { requesterOf } from "@/lib/auth/types";
 import { pickedModel } from "@/lib/ai/chat-models";
 import { after } from "next/server";
 import { revalidatePath } from "next/cache";
@@ -364,7 +365,7 @@ export async function pressCardAction(slug: string, messageId: string, actionId:
       : writing
         ? `好的，《${title}》的初稿我在项目里写，一两分钟后出现在项目的脚本里。`
         : `《${title}》的项目里已经有脚本了，去项目里看。`;
-    const writer = await agentViewer(viewer.tenantId, "script");
+    const writer = await agentViewer(viewer.tenantId, "script", requesterOf(viewer));
     await postMessage(writer, channel.id, line, { agent: "script", project: { id: handoff.workProjectId, title } }).catch((err) => console.error("[chat] could not say where the draft is", err));
     revalidatePath(`/chat/c/${slug}`);
     /* The screen goes straight to the project, where the draft is being written. */
@@ -434,7 +435,7 @@ async function runCardAction(
   revalidatePath(`/chat/c/${slug}`);
 
   after(async () => {
-    const editor = await agentViewer(viewer.tenantId, "video");
+    const editor = await agentViewer(viewer.tenantId, "video", requesterOf(viewer));
     const pendingId = await startPending(editor, channel.id, "video", "footage");
     try {
       const res = await oneGo(viewer, project.id, {});

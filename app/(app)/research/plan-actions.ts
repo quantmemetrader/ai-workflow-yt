@@ -19,7 +19,7 @@ export async function refreshPlanAction(): Promise<{ error?: string; topic?: str
   if (viewer.role === "guest") return { error: "访客不能重新提报" };
   const before = await planToday(viewer.tenantId).catch(() => null);
   try {
-    const out = await runPlan({ tenant: viewer.tenantId, force: true, avoid: before?.topic ? [before.topic] : [] });
+    const out = await runPlan({ tenant: viewer.tenantId, force: true, avoid: before?.topic ? [before.topic] : [], requestedBy: viewer.id });
     if (!out.posted) return { error: out.skipped === "budget" ? "策划这个月的 AI 预算用完了" : "这次没有提报出来，稍后再试" };
   } catch (err) {
     console.error("[plan] refresh failed", err);

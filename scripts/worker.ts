@@ -163,6 +163,8 @@ const HANDLERS: Record<string, Handler> = {
     // pressing the button and the worker reaching the job.
     const viewer = job.createdBy ? await viewerById(job.createdBy) : null;
     if (!viewer) throw new Error("The person who asked for this is no longer active");
+    const behalf = (job.payload as { onBehalfOf?: unknown }).onBehalfOf;
+    if (typeof behalf === "string" && behalf !== viewer.id) viewer.onBehalfOf = behalf;
     return autoEdit(viewer, projectId, { language, brief });
   },
 
@@ -177,6 +179,8 @@ const HANDLERS: Record<string, Handler> = {
     const { projectId } = job.payload as { projectId: string };
     const viewer = job.createdBy ? await viewerById(job.createdBy) : null;
     if (!viewer) throw new Error("The person who asked for this is no longer active");
+    const behalf = (job.payload as { onBehalfOf?: unknown }).onBehalfOf;
+    if (typeof behalf === "string" && behalf !== viewer.id) viewer.onBehalfOf = behalf;
     return direct(viewer, projectId, job.id);
   },
 

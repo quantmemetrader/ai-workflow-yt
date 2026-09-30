@@ -140,7 +140,7 @@ export async function assertBudget(viewer: BudgetSubject): Promise<BudgetState> 
 }
 
 export type UsageRecord = {
-  viewer: Pick<Viewer, "id" | "tenantId">;
+  viewer: Pick<Viewer, "id" | "tenantId"> & { onBehalfOf?: string | null };
   module: Module | null;
   model: string;
   provider?: string;
@@ -172,6 +172,7 @@ export async function recordUsage(rec: UsageRecord): Promise<void> {
       conversationId: rec.conversationId,
       messageId: rec.messageId,
       requestId: rec.requestId,
+      requestedBy: rec.viewer.onBehalfOf ?? null,
     });
   } catch (err) {
     console.error("[ledger] failed to record usage", err);
@@ -221,7 +222,7 @@ export async function notifyBudgetStop(viewer: Viewer, state: BudgetState) {
 
 export function formatUsd(micros: number): string {
   const usd = micros / USD;
-  if (usd === 0) return "US$0.00";
-  if (usd < 0.01) return `US$${usd.toFixed(4)}`;
-  return `US$${usd.toFixed(2)}`;
+  if (usd === 0) return "US$ 0.00";
+  if (usd < 0.01) return `US$ ${usd.toFixed(4)}`;
+  return `US$ ${usd.toFixed(2)}`;
 }

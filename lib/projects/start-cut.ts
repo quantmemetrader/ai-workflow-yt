@@ -1,4 +1,5 @@
 import "server-only";
+import { requesterOf } from "@/lib/auth/types";
 import { sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { chatMembers, workProjects } from "@/lib/db/schema";
@@ -59,7 +60,7 @@ export type StartCutOptions = {
 };
 
 export async function startCutForProject(viewer: Viewer, project: CutProject, opts: StartCutOptions): Promise<StartCutOutcome> {
-  const editor = await agentViewer(viewer.tenantId, "video");
+  const editor = await agentViewer(viewer.tenantId, "video", requesterOf(viewer));
   /* In the room before it speaks in it: a private project's chat lists its
      members, and 剪辑师 posting where it is not a member is refused. */
   await db.insert(chatMembers).values({ channelId: project.channelId, userId: editor.id }).onConflictDoNothing();

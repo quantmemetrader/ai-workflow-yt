@@ -1,4 +1,5 @@
 import "server-only";
+import { requesterOf } from "@/lib/auth/types";
 import { after } from "next/server";
 import { db } from "@/lib/db/client";
 import { chatMembers } from "@/lib/db/schema";
@@ -59,7 +60,7 @@ export async function draftInBackground(
       await setProjectWriting(input.projectId, null).catch(() => {});
     }
     try {
-      const writer = await agentViewer(viewer.tenantId, "script");
+      const writer = await agentViewer(viewer.tenantId, "script", requesterOf(viewer));
       /* In the room before speaking in it, as a tagged employee is. */
       await db.insert(chatMembers).values({ channelId: input.channelId, userId: writer.id }).onConflictDoNothing();
       await postMessage(writer, input.channelId, text, { draft: { scriptId: input.scriptId } });

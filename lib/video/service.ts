@@ -1280,6 +1280,7 @@ export async function requestAutoEdit(viewer: Viewer, projectId: string, languag
     objectType: "video_project",
     objectId: projectId,
     createdBy: viewer.id,
+    onBehalfOf: viewer.onBehalfOf ?? null,
     // One at a time per project: two of these racing would write two timelines
     // over each other.
     dedupeKey: `video:autoedit:${projectId}`,
@@ -1351,6 +1352,7 @@ export async function requestDirector(
     objectType: "video_project",
     objectId: projectId,
     createdBy: viewer.id,
+    onBehalfOf: viewer.onBehalfOf ?? null,
     dedupeKey: `video:direct:${projectId}`,
     priority: 3,
   });

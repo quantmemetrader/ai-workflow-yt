@@ -38,7 +38,14 @@ export type Viewer = {
   /** Set when this request should refresh "last seen"; done after the response
    * rather than in the middle of rendering. */
   staleSeen: boolean;
+  /** An AI employee working for a person: who asked. Spend is shown under them (AI 支出). */
+  onBehalfOf?: string | null;
 };
+
+/** Who a piece of AI work is for: the person themselves, the person an employee works for, or nobody (it ran on its own). */
+export function requesterOf(v: Pick<Viewer, "id" | "email" | "onBehalfOf">): string | null {
+  return v.onBehalfOf ?? (v.email.endsWith("@agents.invalid") ? null : v.id);
+}
 
 /**
  * `users.work_role` as a Viewer holds it.

@@ -1,5 +1,6 @@
 "use server";
 
+import { requesterOf } from "@/lib/auth/types";
 import { recordFeedback } from "@/lib/agents/learning";
 import { toSimplified } from "@/lib/text/simplified";
 import { after } from "next/server";
@@ -641,7 +642,7 @@ export async function sendBackAction(projectId: string, step: string, note: stri
     await postMessage(viewer, project.channelId, `退回给${who ?? "上一步"}：${text}`, { flow: true, sentBack: step });
   }
   if (step === "script") {
-    const writer = await agentViewer(viewer.tenantId, "script");
+    const writer = await agentViewer(viewer.tenantId, "script", requesterOf(viewer));
     const body = kept.suggestions?.length
       ? [`收到退回意见。具体改法如下，项目页「脚本」卡上可以一键按建议改写：`, ...kept.suggestions.map((x) => `- 第 ${x.ord} 镜：「${x.before}」→「${x.after}」（${x.why}）`)].join("\n")
       : `收到退回意见：「${text}」。项目页「脚本」卡上按「按建议改写」，我就按这条意见改。`;

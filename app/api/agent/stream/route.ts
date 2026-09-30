@@ -1,4 +1,5 @@
 import { pickedModel } from "@/lib/ai/chat-models";
+import { requesterOf } from "@/lib/auth/types";
 import { fileTextWithin, readable as canBeRead, slowToRead } from "@/lib/files/extract";
 import { endTurn, registerTurn } from "@/lib/ai/turns";
 import { after } from "next/server";
@@ -307,7 +308,7 @@ export async function POST(request: Request) {
   const tagged = parseAgentMentions(content)[0] ?? null;
   const asked = typeof body.agent === "string" && AGENT_KEYS.includes(body.agent as AgentKey) ? (body.agent as AgentKey) : null;
   const speaker: AgentKey | null = tagged ?? asked;
-  const speakerViewer = speaker ? await agentViewer(viewer.tenantId, speaker) : viewer;
+  const speakerViewer = speaker ? await agentViewer(viewer.tenantId, speaker, requesterOf(viewer)) : viewer;
   /* The employee's trade, from the same table a channel turn reads, so 法务
      answers here with the Legal house rules as it does when tagged. */
   const speakerModule: Module = speaker ? WORKS_IN[speaker] : (context.module ?? "chat");

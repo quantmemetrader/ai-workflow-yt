@@ -151,7 +151,7 @@ export type PlanRun = { posted?: string; skipped?: string; body?: string; topic?
  * One run of the plan: the hourly cron (`scripts/plan.ts`) and 「换一份」 on
  * the plan card (`force`, with the topic being replaced in `avoid`).
  */
-export async function runPlan(opts: { tenant: string; force?: boolean; dry?: boolean; avoid?: string[] }): Promise<PlanRun> {
+export async function runPlan(opts: { tenant: string; force?: boolean; dry?: boolean; avoid?: string[]; requestedBy?: string | null }): Promise<PlanRun> {
   const TENANT = opts.tenant;
   const FORCE = Boolean(opts.force);
   const DRY = Boolean(opts.dry);
@@ -170,7 +170,7 @@ export async function runPlan(opts: { tenant: string; force?: boolean; dry?: boo
     return { skipped: why };
   }
 
-  const viewer = await agentViewer(TENANT, setting.agent);
+  const viewer = await agentViewer(TENANT, setting.agent, opts.requestedBy ?? null);
   const channelId = await ensureAgentChannel(TENANT, "digest");
 
   if (!FORCE && !DRY && (await alreadyPosted(channelId, date))) {

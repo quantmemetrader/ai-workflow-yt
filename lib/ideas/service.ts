@@ -1,4 +1,5 @@
 import "server-only";
+import { requesterOf } from "@/lib/auth/types";
 import { and, desc, eq, gte, isNull, ne, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { chatChannels, chatMessages, creatorVideos, ideas, settings, topics, workProjects } from "@/lib/db/schema";
@@ -451,7 +452,7 @@ export async function generateIdeas(viewer: Viewer, opts: { seed?: string | null
   const seed = (opts.seed ?? "").replace(/\s+/g, " ").trim().slice(0, 200) || null;
   const store = opts.store !== false;
 
-  const researcher = await agentViewer(viewer.tenantId, "research");
+  const researcher = await agentViewer(viewer.tenantId, "research", requesterOf(viewer));
   try {
     await assertBudget(researcher);
   } catch (err) {
