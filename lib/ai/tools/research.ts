@@ -325,7 +325,7 @@ async function run(ctx: ToolContext, name: string, args: Record<string, unknown>
     for (const [label, res] of [["YouTube", yt], ["抖音", dy]] as const) {
       const rows = res?.rows?.slice(0, 6) ?? [];
       if (!rows.length) continue;
-      lines.push(`${label} videos about "${q}":`);
+      lines.push(`${label} 上关于「${q}」的视频：`);
       for (const r of rows) lines.push(`- ${r.phrase}${r.extra ? ` · ${r.extra}` : ""}${r.heatLabel ? ` · ${r.heatLabel}` : r.stats?.views != null ? ` · ${r.stats.views.toLocaleString("en-US")} views` : ""}${r.url ? ` (${r.url})` : ""}`);
     }
     if (!lines.length) return { text: `Nothing came back for "${q}" from news, YouTube or 抖音 just now. Try another name for it (English / Chinese / the project's full name), then answer from what you know, saying it is background.` };

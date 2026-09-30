@@ -96,15 +96,15 @@ function summarise(name: string, args: Record<string, unknown>, ms: number | nul
   const secs = ms ? ` · ${(ms / 1000).toFixed(1)} s` : "";
   switch (name) {
     case "search_files":
-      return `Searched files for “${args.query ?? ""}”${secs}`;
+      return `查找文件「${args.query ?? ""}」${secs}`;
     case "read_file":
-      return `Read a document${secs}`;
+      return `读了一个文件${secs}`;
     case "list_recent_files":
-      return `Listed recent files${secs}`;
+      return `看了最近的文件${secs}`;
     case "create_document":
-      return `Wrote “${args.title ?? "a document"}”${secs}`;
+      return `写了「${args.title ?? "一个文件"}」${secs}`;
     case "check_ai_spend":
-      return `Checked AI spend${secs}`;
+      return `查了 AI 花费${secs}`;
     default:
       return name + secs;
   }

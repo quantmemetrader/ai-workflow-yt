@@ -723,36 +723,36 @@ function summarise(name: string, args: string, result: string): string {
   const a = safeParse(args);
   switch (name) {
     case "search_files":
-      return `Searched files for “${a.query ?? ""}” · ${result.startsWith("No documents") ? "no matches" : `${result.split("\n- ").length - 1 || 1} result(s)`}`;
+      return `查找文件「${a.query ?? ""}」 · ${result.startsWith("No documents") ? "没有找到" : `找到 ${result.split("\n- ").length - 1 || 1} 个`}`;
     case "read_file":
-      return `Read ${result.split("\n")[0].replace(/^#\s*/, "") || "a document"}`;
+      return `读了 ${result.split("\n")[0].replace(/^#\s*/, "") || "一个文件"}`;
     case "list_recent_files":
-      return "Listed recent files";
+      return "看了最近的文件";
     case "create_document":
       return result;
     case "check_ai_spend":
       return result;
     case "describe_timeline":
-      return "Looked at the timeline";
+      return "看了时间线";
     case "find_in_transcript":
-      return `Searched the transcript for “${a.query ?? ""}”`;
+      return `在字幕里找「${a.query ?? ""}」`;
     case "list_clips":
-      return "Listed the clips in the bin";
+      return "看了素材箱里的片段";
     case "list_pictures":
     case "find_a_picture":
-      return `Looked for a picture${a.query ? ` of “${a.query}”` : ""}`;
+      return `找图片${a.query ? `「${a.query}」` : ""}`;
     case "creator_videos":
-      return `Looked at the channel's own videos${a.query ? ` for “${a.query}”` : ""}`;
+      return `看了自己频道的视频${a.query ? `「${a.query}」` : ""}`;
     case "creator_video":
-      return "Read one of the channel's videos";
+      return "看了频道里的一条视频";
     case "list_topics":
-      return "Listed the watched topics";
+      return "看了关注的选题";
     case "read_topic":
-      return `Read the topic “${a.phrase ?? ""}”`;
+      return `看了选题「${a.phrase ?? ""}」`;
     case "list_scripts":
-      return "Listed the scripts";
+      return "看了脚本列表";
     case "read_script":
-      return "Read the script";
+      return "读了脚本";
     default:
       /* Anything that changed something says what it did in its own words:
          "Cut 0:14–0:19", "Punch in ×1.15 at 1:02", "Written: …". */

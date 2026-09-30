@@ -1,4 +1,5 @@
 import "server-only";
+import { libraryDigest } from "@/lib/files/library-digest";
 import { and, eq, or } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { knowledge, type Module } from "@/lib/db/schema";
@@ -139,6 +140,9 @@ You are assisting ${viewer.name}${viewer.title ? `, ${viewer.title}` : ""}. Toda
      an employee speaking reads its own; a person's assistant reads the
      assistant's. Last, so it is the freshest thing in the prompt. */
   const training = await trainingFor(viewer.tenantId, agent ?? "assistant");
+  /* 法务 / 财务: the module's 资料库, listed, so an uploaded file is used without anyone naming it. */
+  const libModule = scoped === "legal" || scoped === "finance" ? scoped : agent === "legal" || agent === "finance" ? agent : null;
+  const library = libModule ? await libraryDigest(viewer.tenantId, libModule) : "";
 
   /*
    * The video craft rules are built in rather than seeded.
@@ -162,7 +166,7 @@ You are assisting ${viewer.name}${viewer.title ? `, ${viewer.title}` : ""}. Toda
             : "";
 
   return {
-    text: header + builtIn + sections.join("") + (training.text ? `\n\n${training.text}` : ""),
+    text: header + builtIn + library + sections.join("") + (training.text ? `\n\n${training.text}` : ""),
     parts: [
       ...(scoped === "video"
         ? [{ id: "builtin:video-craft", title: "Cutting video", kind: "house", scope: "module: video" }]

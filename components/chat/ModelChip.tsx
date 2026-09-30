@@ -33,35 +33,31 @@ export function useProviderModels(active = true): ProviderModel[] | null {
 }
 
 const VENDOR: Record<string, string> = { anthropic: "Claude（Anthropic）", openai: "OpenAI", google: "Google Gemini", qwen: "通义千问 Qwen", deepseek: "DeepSeek", moonshotai: "Kimi", "z-ai": "智谱 GLM", "x-ai": "xAI Grok", "meta-llama": "Meta Llama", mistralai: "Mistral", typesafe: "TypeSafe Jev" };
-/* A maker's badge: a letter on its colour, so a long list reads at a glance. */
-const BADGE: Record<string, [string, string]> = {
-  anthropic: ["#d97757", "C"],
-  openai: ["#10a37f", "O"],
-  google: ["#4285f4", "G"],
-  qwen: ["#615ced", "Q"],
-  deepseek: ["#4d6bfe", "D"],
-  moonshotai: ["#1f2328", "K"],
-  "z-ai": ["#3859ff", "Z"],
-  "x-ai": ["#111111", "X"],
-  "meta-llama": ["#0467df", "M"],
-  mistralai: ["#fa520f", "M"],
-  typesafe: ["#0f766e", "J"],
-};
-const vendorOf = (id: string) => (id.includes("/") ? id.split("/")[0] : "");
+/* Each maker's own logo (public/ai-logos, from @lobehub/icons, MIT), served from our host so it loads in China. */
+const LOGO: Record<string, string> = {"openai":"openai","qwen":"qwen-color","google":"gemini-color","mistralai":"mistral-color","anthropic":"claude-color","z-ai":"zhipu-color","recraft":"recraft","deepseek":"deepseek-color","x-ai":"grok","minimax":"minimax-color","bytedance-seed":"bytedance-color","bytedance":"bytedance-color","microsoft":"microsoft-color","cohere":"cohere-color","meta":"meta-color","meta-llama":"meta-color","moonshotai":"kimi-color","black-forest-labs":"bfl","tencent":"hunyuan-color","nvidia":"nvidia-color","voyageai":"voyage-color","perplexity":"perplexity-color","aion-labs":"aionlabs-color","alibaba":"alibaba-color","xiaomi":"xiaomimimo","openrouter":"openrouter-color","amazon":"nova-color","upstage":"upstage-color","sakana":"sakana-color","nousresearch":"nousresearch","inception":"inception","ibm-granite":"ibm","stepfun":"stepfun-color","rekaai":"reka","relace":"relace","morph":"morph-color","poolside":"poolside-color","fireworks":"fireworks-color","meituan":"longcat-color","kwaipilot":"kwaipilot-color","kwaivgi":"kling-color","arcee-ai":"arcee-color","baidu":"baidu-color"};
+const vendorOf = (id: string) => (id.includes("/") ? id.split("/")[0].replace(/^~/, "") : "");
 const price = (m: ProviderModel, zh: boolean) =>
   m.inPerM === null || m.outPerM === null ? "" : zh ? `每百万 token $${m.inPerM} / $${m.outPerM}` : `$${m.inPerM} / $${m.outPerM} per M`;
 
 function Badge({ vendor, size = 28, auto = false }: { vendor: string; size?: number; auto?: boolean }) {
-  const [bg, letter] = BADGE[vendor] ?? ["#8a8a86", (vendor[0] ?? "?").toUpperCase()];
+  const logo = LOGO[vendor.replace(/^~/, "")];
+  const inner = Math.round(size * 0.64);
   return (
-    <span aria-hidden style={{ width: size, height: size, flexShrink: 0, borderRadius: Math.round(size * 0.3), background: auto ? "#171717" : bg, color: "#fff", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: Math.round(size * 0.46), fontWeight: 700, letterSpacing: 0, lineHeight: 1 }}>
+    <span aria-hidden style={{ width: size, height: size, flexShrink: 0, borderRadius: Math.round(size * 0.28), background: auto ? "#171717" : "#fff", border: auto ? 0 : "1px solid #ecebe7", boxSizing: "border-box", color: auto ? "#fff" : "#8a8a86", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
       {auto ? (
         <svg viewBox="0 0 24 24" width={Math.round(size * 0.55)} height={Math.round(size * 0.55)} fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
           <path d="M12 3.5l1.9 5.1 5.1 1.9-5.1 1.9L12 17.5l-1.9-5.1L5 10.5l5.1-1.9z" />
           <path d="M18.5 16.5l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7z" />
         </svg>
+      ) : logo ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={`/ai-logos/${logo}.svg`} alt="" width={inner} height={inner} style={{ display: "block", width: inner, height: inner }} loading="lazy" decoding="async" />
       ) : (
-        letter
+        /* A maker without a logo on file: a plain chip, not a made-up letter mark. */
+        <svg viewBox="0 0 24 24" width={inner} height={inner} fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+          <rect x="6" y="6" width="12" height="12" rx="2.5" />
+          <path d="M9.5 3v3M14.5 3v3M9.5 18v3M14.5 18v3M3 9.5h3M3 14.5h3M18 9.5h3M18 14.5h3" />
+        </svg>
       )}
     </span>
   );

@@ -1,0 +1,1 @@
+Model maker logos from @lobehub/icons-static-svg (MIT License, https://github.com/lobehub/lobe-icons). Logos are trademarks of their owners.

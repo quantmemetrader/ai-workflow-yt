@@ -42,6 +42,12 @@ export async function searchFiles(
 
   const subjects = subjectList(viewer);
   const like = `%${q}%`;
+  /* The model writes queries like "蓝鲸星图科技 合同": as one string that
+     matched nothing. Each word counts on its own; more words matched ranks higher. */
+  const terms = [...new Set([q, ...q.split(/[\s,，、;；:：。.!！?？"“”'‘’()（）《》【】\[\]/|]+/)].map((s) => s.trim()).filter((s) => s.length >= 2))].slice(0, 7);
+  const lead = [...terms].sort((a, b) => b.length - a.length).find((s) => s !== q) ?? q;
+  const termMatch = sql.join(terms.map((t) => sql`f.name ilike ${`%${t}%`} or f.text ilike ${`%${t}%`}`), sql` or `);
+  const termScore = sql.join(terms.map((t) => sql`(case when f.name ilike ${`%${t}%`} then 0.5 else 0 end + case when f.text ilike ${`%${t}%`} then 0.4 else 0 end)`), sql` + `);
 
   const permitted = sql`exists (
     select 1 from relation_tuples t
@@ -54,6 +60,7 @@ export async function searchFiles(
   const matches = sql`(
     f.name ilike ${like}
     or f.text ilike ${like}
+    or ${termMatch}
     or similarity(f.name, ${q}) > 0.25
     or ${q} = any(f.tags)
   )`;
@@ -68,8 +75,8 @@ export async function searchFiles(
     updated_at: Date;
   }>(sql`
     select f.id, f.name, f.kind, f.folder_id, f.updated_at,
-           left(coalesce(substring(f.text from greatest(1, position(${q} in f.text) - 120)), f.text, ''), 320) as snippet,
-           greatest(similarity(f.name, ${q}), case when f.text ilike ${like} then 0.4 else 0 end) as score
+           left(coalesce(substring(f.text from greatest(1, (case when position(${q} in f.text) > 0 then position(${q} in f.text) else position(${lead} in f.text) end) - 120)), f.text, ''), 320) as snippet,
+           similarity(f.name, ${q}) + ${termScore} as score
     from files f
     where f.tenant_id = ${viewer.tenantId} and f.deleted_at is null and ${matches} and ${permitted}
     order by score desc, f.updated_at desc
