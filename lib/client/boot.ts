@@ -32,6 +32,24 @@ try{
     Node.prototype.__auraGuard=true;
   }
 }catch(e){}
+try{
+  /* Chrome set to Traditional Chinese "translates" this Simplified page into
+     Traditional, wrongly (30 Sep: the studio kept seeing wrong characters).
+     Chinese into Chinese is never wanted: when Chrome starts it, this
+     browser gets translate="no" for good and the page reloads once.
+     Translating into English (how Ryan reads it) is left alone. */
+  var NZ="tg:no-zh-translate",de=document.documentElement;
+  var off=function(){de.setAttribute("translate","no");de.classList.add("notranslate");};
+  try{if(localStorage.getItem(NZ)==="1")off();}catch(e){}
+  var zhToZh=function(){var l=(de.getAttribute("lang")||"").toLowerCase();return /translated-(ltr|rtl)/.test(de.className||"")&&l.indexOf("zh")===0&&l!=="zh-hans-cn"&&l!=="zh-cn"&&l!=="zh-hans"&&l!=="zh";};
+  if(typeof MutationObserver==="function")new MutationObserver(function(){
+    if(!zhToZh())return;
+    try{localStorage.setItem(NZ,"1");}catch(e){}
+    off();
+    try{if(sessionStorage.getItem(NZ))return;sessionStorage.setItem(NZ,"1");}catch(e){}
+    location.reload();
+  }).observe(de,{attributes:true,attributeFilter:["lang","class"]});
+}catch(e){}
 var KEY="aura:reloaded-at",sent=0;
 function stale(m){return /ChunkLoadError|Loading (CSS )?chunk|Failed to fetch dynamically imported module|Importing a module script failed|error loading dynamically imported module|Failed to find Server Action|older or newer deployment/i.test(m||"");}
 function reloadOnce(){try{var t=+sessionStorage.getItem(KEY)||0;if(Date.now()-t<30000)return false;sessionStorage.setItem(KEY,String(Date.now()));}catch(e){}location.reload();return true;}

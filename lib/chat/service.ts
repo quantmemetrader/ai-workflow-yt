@@ -1,4 +1,5 @@
 import "server-only";
+import { toSimplified } from "@/lib/text/simplified";
 import { cache } from "react";
 import { and, asc, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { db, toDate } from "@/lib/db/client";
@@ -156,7 +157,7 @@ export async function postMessage(
    * reader, not when it was sent. */
   attachments?: string[],
 ) {
-  const text = body.trim();
+  const text = toSimplified(body.trim());
   const files = attachments?.length ? [...new Set(attachments)].slice(0, 10) : [];
   // A message with a file on it and nothing typed is a perfectly ordinary
   // thing to send; an empty one with nothing attached is not.

@@ -1,4 +1,5 @@
 import "server-only";
+import { toSimplified } from "@/lib/text/simplified";
 import { withAttachmentText } from "@/lib/files/attach-text";
 import { and, desc, eq, inArray, isNull, lt } from "drizzle-orm";
 import { db } from "@/lib/db/client";
@@ -134,7 +135,9 @@ export async function* runAgent(opts: {
    *  fallback chain still applies if it refuses. */
   model?: string;
 }): AsyncGenerator<AgentEvent> {
-  const { viewer, conversationId, content, signal } = opts;
+  const { viewer, conversationId, signal } = opts;
+  /* The question as the person meant it, in Simplified (a browser translating into Traditional rewrote what they typed). */
+  const content = toSimplified(opts.content);
   const startedAt = Date.now();
 
   // 1. The question goes in the record before anything can fail — including

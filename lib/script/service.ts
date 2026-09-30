@@ -1,4 +1,5 @@
 import "server-only";
+import { toSimplified } from "@/lib/text/simplified";
 import { createHash } from "node:crypto";
 import { and, asc, desc, eq, gt, inArray, isNull, or, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
@@ -696,9 +697,9 @@ export async function saveBeats(
       scriptId,
       ord: i,
       startSeconds: start,
-      visual: b.visual.slice(0, 5000),
-      voiceover: b.voiceover.slice(0, 20000),
-      subtitle: b.subtitle.slice(0, 20000),
+      visual: toSimplified(b.visual).slice(0, 5000),
+      voiceover: toSimplified(b.voiceover).slice(0, 20000),
+      subtitle: toSimplified(b.subtitle).slice(0, 20000),
       naturalSound: b.naturalSound ?? false,
       spokenSeconds: seconds,
       updatedBy: viewer.id,

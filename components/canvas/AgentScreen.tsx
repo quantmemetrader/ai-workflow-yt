@@ -11,6 +11,7 @@ import { notify } from "@/lib/client/notify";
 import { scriptPreviewAction, type ScriptPreview } from "@/app/(app)/chat/script-preview";
 import { saveLinesAction } from "@/app/(app)/projects/[id]/script/actions";
 import { teachRuleAction } from "@/app/(app)/train/model-actions";
+import { feedbackAction } from "@/app/(app)/train/learn-actions";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AgentIcon } from "@/components/agents/AgentIcon";
@@ -1298,7 +1299,7 @@ function AgentRow({ message, zh, locale }: { message: ThreadMessage; zh: boolean
           <VideoCards videos={message.videos} zh={zh} />
 
           {message.made && message.status !== "streaming" ? <MadeActions made={message.made} zh={zh} /> : null}
-          {message.status === "complete" && message.content ? <TeachLine agent={message.speaker ?? "assistant"} zh={zh} /> : null}
+          {message.status === "complete" && message.content ? <TeachLine agent={message.speaker ?? "assistant"} zh={zh} reply={message.content} /> : null}
 
           {message.error && (
             <div
@@ -1725,17 +1726,44 @@ function MadeActions({ made, zh }: { made: MadeScript; zh: boolean }) {
  * 「教它」: tell the employee something it should always do from now on; the
  * rule goes into its 工作说明 (AI 同事 › 训练).
  */
-function TeachLine({ agent, zh }: { agent: string; zh: boolean }) {
+function TeachLine({ agent, zh, reply }: { agent: string; zh: boolean; reply: string }) {
   const t = (a: string, b: string) => (zh ? a : b);
   const [open, setOpen] = useState(false);
+  const [rated, setRated] = useState<"good" | "bad" | null>(null);
+  const [why, setWhy] = useState("");
+  const rate = async (kind: "good" | "bad", text = "") => {
+    setRated(kind);
+    const r = await feedbackAction(agent, kind, text, reply.slice(0, 300));
+    if (r.error) notify(r.error);
+    else notify(kind === "good" ? t("收到，会多这样做", "Thanks — noted") : t("收到，会从这次反馈里改进", "Noted — it will learn from this"), "ok");
+  };
   const [rule, setRule] = useState("");
   const [busy, setBusy] = useState(false);
   const name = agent === "assistant" ? t("助理", "the assistant") : zh ? (AGENT_LABELS[agent as AgentKey]?.nameLocal ?? agent) : (AGENT_LABELS[agent as AgentKey]?.name ?? agent);
+  const quiet: React.CSSProperties = { border: 0, background: "none", padding: 0, color: "#8a8a8a", fontSize: 12, cursor: "pointer", fontFamily: "inherit", display: "inline-flex", alignItems: "center", gap: 4 };
+  const thumb = (down: boolean) => (
+    <svg viewBox="0 0 24 24" width={13} height={13} fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden style={down ? { transform: "scaleY(-1)" } : undefined}>
+      <path d="M7 11v9H4v-9h3zM7 11l4-7a2 2 0 0 1 2 2v4h5.5a2 2 0 0 1 2 2.3l-1.2 6A2 2 0 0 1 17.3 20H7" />
+    </svg>
+  );
   if (!open)
     return (
-      <button type="button" onClick={() => setOpen(true)} style={{ marginTop: 6, border: 0, background: "none", padding: 0, color: "#8a8a8a", fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}>
-        {t(`教${name}：以后都这样做…`, `Teach ${name} a rule…`)}
-      </button>
+      <div style={{ display: "flex", alignItems: "center", gap: 14, marginTop: 6, flexWrap: "wrap" }}>
+        {rated === "bad" && why !== "\u0000" ? (
+          <form onSubmit={(e) => { e.preventDefault(); void rate("bad", why); setWhy("\u0000"); }} style={{ display: "flex", gap: 6 }}>
+            <input autoFocus value={why} onChange={(e) => setWhy(e.target.value)} placeholder={t("哪里不好？（可以不写）", "What was off? (optional)")} style={{ width: 260, height: 28, border: "1px solid #dcdbd6", borderRadius: 8, padding: "0 9px", fontFamily: "inherit", fontSize: 12, outline: "none" }} />
+            <button type="submit" style={{ height: 28, padding: "0 10px", border: 0, borderRadius: 8, background: "#171717", color: "#fff", fontFamily: "inherit", fontSize: 12, cursor: "pointer" }}>{t("告诉它", "Send")}</button>
+          </form>
+        ) : (
+          <>
+            <button type="button" disabled={rated !== null} onClick={() => void rate("good")} style={{ ...quiet, color: rated === "good" ? "#1e7a4f" : "#8a8a8a" }} title={t("这次回答有用", "Helpful")}>{thumb(false)}{t("有用", "Helpful")}</button>
+            <button type="button" disabled={rated !== null} onClick={() => { setRated("bad"); setWhy(""); }} style={{ ...quiet, color: rated === "bad" ? "#b4532a" : "#8a8a8a" }} title={t("这次回答不好", "Not good")}>{thumb(true)}{t("不好", "Not good")}</button>
+          </>
+        )}
+        <button type="button" onClick={() => setOpen(true)} style={quiet}>
+          {t(`教${name}：以后都这样做…`, `Teach ${name} a rule…`)}
+        </button>
+      </div>
     );
   return (
     <form

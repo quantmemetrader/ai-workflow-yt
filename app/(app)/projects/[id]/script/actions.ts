@@ -1,5 +1,6 @@
 "use server";
 
+import { toSimplified } from "@/lib/text/simplified";
 import { pickedModel } from "@/lib/ai/chat-models";
 import { revalidatePath } from "next/cache";
 import { and, eq } from "drizzle-orm";
@@ -12,7 +13,7 @@ import { visibleProject, linkedProject } from "@/lib/projects/service";
 import { dmChannelWith, postMessage } from "@/lib/chat/service";
 import { tagProjectFile } from "@/lib/projects/files";
 import { ensureFileText } from "@/lib/files/extract";
-import { beatsFromDoc, isRichDoc, docForBeats, withUnitTexts, type RichNode } from "@/lib/script/rich";
+import { beatsFromDoc, isRichDoc, docForBeats, withUnitTexts, type RichDoc, type RichNode } from "@/lib/script/rich";
 import { asc } from "drizzle-orm";
 import { readSentBack, recordSendBack, settleSendBack } from "@/lib/projects/sendback";
 import { createScript, cutVersion, decideApproval, requestApproval, restoreVersion, saveBeats, unlock } from "@/lib/script/service";
@@ -394,17 +395,20 @@ export async function saveRichAction(projectId: unknown, doc: unknown, html: unk
   if ("error" in c) return c;
   const scriptId = c.project.scriptId;
   if (!scriptId || !isRichDoc(doc)) return { error: "Not allowed" };
-  const json = JSON.stringify(doc);
+  /* Simplified whatever the browser did to it (Chrome translating into Traditional). */
+  const clean = JSON.parse(toSimplified(JSON.stringify(doc))) as RichDoc;
+  if (typeof html === "string") html = toSimplified(html);
+  const json = JSON.stringify(clean);
   if (json.length > 3_000_000) return { error: c.zh ? "文档太大了" : "The document is too large" };
   const before = await db.select({ voiceover: scriptBeats.voiceover, subtitle: scriptBeats.subtitle }).from(scriptBeats).where(eq(scriptBeats.scriptId, scriptId)).orderBy(asc(scriptBeats.ord));
   const subtitleOf = new Map(before.filter((b) => b.subtitle && b.subtitle !== b.voiceover).map((b) => [b.voiceover, b.subtitle]));
-  const beats = beatsFromDoc(doc)
+  const beats = beatsFromDoc(clean)
     .slice(0, 400)
     .map((b) => ({ ...b, subtitle: subtitleOf.get(b.voiceover) ?? b.subtitle }));
   const res = await saveBeats(c.viewer, scriptId, beats.length ? beats : [{ visual: "", voiceover: "", subtitle: "", naturalSound: false }]);
   if (!res) return { error: c.zh ? "脚本已批准锁定，先点「继续编辑」" : "The script is locked" };
   const cleanHtml = typeof html === "string" ? html.slice(0, 3_000_000).replace(/<script[\s\S]*?<\/script>/gi, "").replace(/\son\w+="[^"]*"/gi, "") : null;
-  await db.update(scripts).set({ doc: doc as unknown as Record<string, unknown>, docHtml: cleanHtml }).where(eq(scripts.id, scriptId));
+  await db.update(scripts).set({ doc: clean as unknown as Record<string, unknown>, docHtml: cleanHtml }).where(eq(scripts.id, scriptId));
   return { ok: true as const, at: new Date().toISOString() };
 }
 
@@ -427,7 +431,7 @@ export async function saveLinesAction(projectId: unknown, texts: unknown) {
 export async function renameScriptAction(projectId: unknown, title: unknown) {
   const c = await ctx(projectId, true);
   if ("error" in c) return c;
-  const name = typeof title === "string" ? title.trim().slice(0, 200) : "";
+  const name = typeof title === "string" ? toSimplified(title.trim()).slice(0, 200) : "";
   if (!name) return { error: c.zh ? "标题不能是空的" : "The title cannot be empty" };
   if (c.project.scriptId) await db.update(scripts).set({ title: name, updatedAt: new Date() }).where(eq(scripts.id, c.project.scriptId));
   refresh(c.project.id);

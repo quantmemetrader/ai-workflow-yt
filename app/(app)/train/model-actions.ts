@@ -1,5 +1,6 @@
 "use server";
 
+import { recordFeedback } from "@/lib/agents/learning";
 import { isProviderModel } from "@/lib/ai/catalog";
 import { revalidatePath } from "next/cache";
 import { requireViewer } from "@/lib/auth/dal";
@@ -49,6 +50,7 @@ export async function teachRuleAction(agent: string, rule: string): Promise<{ er
   const next = now ? `${now}\n- ${line}` : `- ${line}`;
   if (next.length > TRAIN_BUDGET.instructions) return { error: "工作说明已经很长了，先去「训练」页整理一下" };
   await saveTrainingText(viewer, agent, "instructions", next, "从对话里教的");
+  await recordFeedback(viewer, agent, { kind: "taught", text: line }).catch(() => false);
   revalidatePath(`/train/${agent}`);
   return {};
 }

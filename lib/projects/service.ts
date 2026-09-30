@@ -76,7 +76,8 @@ export async function createWorkProject(
     script?: { topicId?: string | null; angle?: string | null; mandatoryPoints?: string[]; targetChannel?: string | null; aspect?: string | null; targetSeconds?: number | null; language?: string | null; subtitleLanguage?: string | null };
   },
 ): Promise<{ id: string; channelSlug: string; channelId: string; scriptId: string; videoProjectId: string }> {
-  const title = input.title.replace(/\s+/g, " ").trim().slice(0, 80) || "新项目";
+  const title = toSimplified(input.title.replace(/\s+/g, " ").trim()).slice(0, 80) || "新项目";
+  if (input.brief) input = { ...input, brief: toSimplified(input.brief) };
   const id = newId("wp");
   const snapshot = (input.source ?? null) as ProjectSource | null;
   const scriptId =

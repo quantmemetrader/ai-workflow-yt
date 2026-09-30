@@ -799,7 +799,7 @@ function AddPerson({
   /* What almost everybody needs on day one, and nothing that costs money. */
   const [modules, setModules] = useState<Module[]>(["chat", "files"]);
   const [error, setError] = useState<string | null>(null);
-  const [sent, setSent] = useState<{ email: string; link: string; expiresAt: string } | null>(null);
+  const [sent, setSent] = useState<{ email: string; link: string; expiresAt: string; emailed?: boolean } | null>(null);
   const [copied, setCopied] = useState(false);
   const [made, setMade] = useState<{ email: string; password: string; loginUrl: string } | null>(null);
   const router = useRouter();
@@ -828,7 +828,7 @@ function AddPerson({
         setError(res.error);
         return;
       }
-      setSent({ email: res.email, link: res.link, expiresAt: res.expiresAt });
+      setSent({ email: res.email, link: res.link, expiresAt: res.expiresAt, emailed: Boolean((res as { emailed?: boolean }).emailed) });
       setMade(null);
       setCopied(false);
       setEmail("");
@@ -920,7 +920,7 @@ function AddPerson({
           opacity: busy || !email.trim() || modules.length === 0 ? 0.45 : 1,
         }}
       >
-        {busy ? t("Creating…", "创建中…") : t("Create the invitation", "创建邀请链接")}
+        {busy ? t("Sending…", "发送中…") : t("Send the invitation", "发送邀请")}
       </button>
       <button
         type="button"
@@ -956,8 +956,12 @@ function AddPerson({
         <div style={{ border: "1px solid #c8e6c9", background: "#f1f8f2", borderRadius: 8, padding: 10 }}>
           <p style={{ fontSize: 12, color: "#1e7a4f", lineHeight: 1.6, margin: 0 }}>
             {t(
-              `Invitation link for ${sent.email} is ready. Send it to them (WeChat, in person): they open it, set their name and password, and are signed in. It works once, until ${sent.expiresAt.slice(0, 10)}.`,
-              `${sent.email} 的邀请链接已生成。把链接发给对方（微信或当面）：打开后自己填写姓名、设置密码就能登录。链接只能用一次，有效期至 ${sent.expiresAt.slice(0, 10)}。`,
+              sent.emailed
+                ? `The invitation email is on its way to ${sent.email}. They open it, set their name and password, and are signed in. You can also send the link yourself. It works once, until ${sent.expiresAt.slice(0, 10)}.`
+                : `Invitation link for ${sent.email} is ready. Send it to them (WeChat, in person): they open it, set their name and password, and are signed in. It works once, until ${sent.expiresAt.slice(0, 10)}.`,
+              sent.emailed
+                ? `邀请邮件已发送到 ${sent.email}。对方打开邮件里的按钮，填写姓名、设置密码就能登录。也可以把下面的链接直接发给对方。链接只能用一次，有效期至 ${sent.expiresAt.slice(0, 10)}。`
+                : `${sent.email} 的邀请链接已生成。把链接发给对方（微信或当面）：打开后自己填写姓名、设置密码就能登录。链接只能用一次，有效期至 ${sent.expiresAt.slice(0, 10)}。`,
             )}
           </p>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8 }}>

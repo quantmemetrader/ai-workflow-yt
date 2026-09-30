@@ -1,5 +1,7 @@
 "use server";
 
+import { recordFeedback } from "@/lib/agents/learning";
+import { toSimplified } from "@/lib/text/simplified";
 import { after } from "next/server";
 import { revalidatePath } from "next/cache";
 import { getViewer, type Viewer } from "@/lib/auth/dal";
@@ -338,7 +340,7 @@ export async function unpublishAction(id: string) {
 export async function renameProjectAction(id: string, title: string) {
   const viewer = await getViewer();
   if (!viewer || !viewer.modules.includes("chat")) return { error: "Not allowed" };
-  const t = String(title ?? "").trim().slice(0, 80);
+  const t = toSimplified(String(title ?? "").trim()).slice(0, 80);
   if (!t) return { error: "A project needs a name" };
   const renamed = await db
     .update(workProjects)
@@ -630,6 +632,10 @@ export async function sendBackAction(projectId: string, step: string, note: stri
   const project = await visibleProject(viewer, String(projectId ?? ""));
   if (!project) return { error: (viewer.locale ?? "zh-CN").startsWith("zh") ? "没有这个项目" : "No such project" };
   const kept = await recordSendBack(viewer, project, step, text);
+  {
+    const learner = step === "script" ? "script" : step === "topic" ? "research" : step === "edit" ? "video" : null;
+    if (learner) await recordFeedback(viewer, learner, { kind: "sendback", text }).catch(() => false);
+  }
   const who = step === "script" ? "编剧" : step === "topic" ? "研究员" : step === "edit" ? "剪辑师" : null;
   if (step === "script" || step === "clips") {
     await postMessage(viewer, project.channelId, `退回给${who ?? "上一步"}：${text}`, { flow: true, sentBack: step });

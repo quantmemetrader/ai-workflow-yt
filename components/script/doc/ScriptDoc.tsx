@@ -1,5 +1,6 @@
 "use client";
 
+import { feedbackAction } from "@/app/(app)/train/learn-actions";
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -513,6 +514,10 @@ export function ScriptDoc(props: ScriptDocProps) {
     const on = (e: Event) => {
       const d = (e as CustomEvent<{ id: string; accept: boolean }>).detail;
       if (!proposal) return;
+      if (!d.accept) {
+        const tr = trackedNow().find((x) => x.id === d.id);
+        if (tr) void feedbackAction("script", "reject", tr.kind === "delete" ? "删一段的改法" : tr.text.slice(0, 200), tr.why);
+      }
       const left = d.accept ? applyTracked([d.id]) : rejectTracked([d.id]);
       endProposalIfDone(left, proposal.source);
     };
@@ -529,6 +534,7 @@ export function ScriptDoc(props: ScriptDocProps) {
       const tr = (marksKey.getState(editor.state)?.tracked ?? []).find((x) => x.id === d.id);
       if (!tr || tr.busy) return;
       setTracked((list) => list.map((x) => (x.id === d.id ? { ...x, busy: true } : x)));
+      void feedbackAction("script", "redo", d.instruction, tr.text.slice(0, 200));
       const size = editor.state.doc.content.size;
       const before = tr.kind === "change" ? editor.state.doc.textBetween(tr.from, Math.min(tr.to, size), "\n").trim() : "";
       const around = editor.state.doc.textBetween(Math.max(0, tr.from - 600), Math.min(size, tr.to + 600), "\n");

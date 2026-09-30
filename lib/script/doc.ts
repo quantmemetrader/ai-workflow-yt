@@ -1,4 +1,5 @@
 import "server-only";
+import { toSimplified } from "@/lib/text/simplified";
 import { and, asc, desc, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { approvals, files, scriptBeats, scriptComments, scriptVersions, scripts, users } from "@/lib/db/schema";
@@ -113,6 +114,7 @@ export async function versionBeats(viewer: Viewer, scriptId: string, versionNo: 
 /* ------------------------------------------------------------ comments */
 
 export async function addDocComment(viewer: Viewer, scriptId: string, input: { beatOrd: number | null; quote: string | null; body: string }) {
+  input = { ...input, body: toSimplified(input.body), quote: input.quote ? toSimplified(input.quote) : input.quote };
   const [s] = await db.select({ version: scripts.version }).from(scripts).where(and(eq(scripts.id, scriptId), eq(scripts.tenantId, viewer.tenantId))).limit(1);
   if (!s) return null;
   const id = newId("cmt");

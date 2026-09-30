@@ -53,6 +53,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="zh-Hans-CN">
       <head>
+        <meta httpEquiv="Content-Language" content="zh-Hans-CN" />
         {/* Before any bundle: survive Chrome's translate rewriting the page,
             reload once on a script from an older deploy, report the rest. */}
         <script dangerouslySetInnerHTML={{ __html: BOOT_SCRIPT }} />

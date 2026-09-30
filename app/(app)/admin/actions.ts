@@ -1,5 +1,6 @@
 "use server";
 
+import { emailConfigured, inviteEmail, sendEmail } from "@/lib/email/send";
 import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 import { and, eq, isNull } from "drizzle-orm";
@@ -111,7 +112,7 @@ export async function setStatusAction(userId: string, status: string) {
 /** What the screen needs back: the link, because nothing sends it. */
 export type AddedPerson =
   | { ok: false; error: string }
-  | { ok: true; email: string; role: "admin" | "member" | "guest"; expiresAt: string; link: string };
+  | { ok: true; email: string; role: "admin" | "member" | "guest"; expiresAt: string; link: string; emailed?: boolean; emailError?: string | null };
 
 /**
  * The address the person is using right now, for the link they will pass on.
@@ -170,12 +171,27 @@ export async function addPersonAction(input: {
      * they normally would. A screen that said "invitation sent" would be a
      * screen telling a lie.
      */
+    const link = `${await origin()}/invite/${token}`;
+    /* Emailed when the deployment has a mail service (RESEND_API_KEY or SMTP_URL); the link comes back either way. */
+    let emailed = false;
+    let emailError: string | null = null;
+    if (emailConfigured()) {
+      const mail = inviteEmail({ to: invite.email, inviter: viewer.nameLocal || viewer.name, link, expires: invite.expiresAt.toISOString().slice(0, 10) });
+      const sent = await sendEmail({ to: invite.email, ...mail });
+      emailed = sent.ok;
+      if (!sent.ok) {
+        emailError = sent.error;
+        console.error("[invite] email failed", sent.error);
+      }
+    }
     return {
       ok: true,
       email: invite.email,
       role,
       expiresAt: invite.expiresAt.toISOString(),
-      link: `${await origin()}/invite/${token}`,
+      link,
+      emailed,
+      emailError,
     };
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : "Could not add that person" };

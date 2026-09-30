@@ -1,4 +1,5 @@
 import "server-only";
+import { toSimplified } from "@/lib/text/simplified";
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { knowledge, knowledgeVersions, users, type Module } from "@/lib/db/schema";
@@ -200,7 +201,7 @@ async function rewrite(viewer: Viewer, row: typeof knowledge.$inferSelect, patch
  */
 export async function saveTrainingText(viewer: Viewer, key: unknown, kind: "instructions" | "style", body: string, note?: string) {
   guard(viewer, key);
-  const text = body.replace(/\r\n/g, "\n").slice(0, 20_000);
+  const text = toSimplified(body.replace(/\r\n/g, "\n")).slice(0, 20_000);
   const [row] = await db.select().from(knowledge).where(and(scoped(viewer.tenantId, key), eq(knowledge.kind, kind))).orderBy(desc(knowledge.updatedAt)).limit(1);
   const active = text.trim().length > 0;
   if (row) {
