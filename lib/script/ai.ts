@@ -113,7 +113,7 @@ export async function draftFromBrief(
    * research topic collected, a note somebody pasted. Facts the model may
    * use, listed so it does not have to invent any.
    */
-  opts: { sources?: string } = {},
+  opts: { sources?: string; instruction?: string } = {},
 ) {
   await assertBudget(viewer);
 
@@ -159,6 +159,7 @@ export async function draftFromBrief(
       {
         role: "user",
         content: [
+          opts.instruction ? `What the person asked for — follow it (if they point to a sample or attached file, write like it):\n${opts.instruction.slice(0, 1500)}` : null,
           brief,
           opts.sources ? `Facts and headlines you may draw on (cite the outlet in the visual field when you use one; do not go beyond them):\n${opts.sources}` : null,
           refs ? `Approved scripts to match in tone:\n${refs}` : null,

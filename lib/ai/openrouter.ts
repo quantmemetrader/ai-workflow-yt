@@ -93,13 +93,15 @@ export class AiError extends Error {
   get userMessage(): string {
     switch (this.kind) {
       case "credit":
-        return "The OpenRouter account funding this assistant is out of credit. This is a billing state on that account, not a fault in the platform. An admin can top it up in Admin → Channels and credentials.";
+        return "AI 服务的账户余额用完了（这是账户余额问题，不是系统故障）。管理员充值后就能继续用。";
       case "rate_limit":
-        return "The model provider is rate-limiting this account right now. Nothing was charged. Try again shortly.";
+        return "AI 服务现在太忙，暂时限流了，没有扣费。稍等一下再试。";
       case "bad_request":
-        return `The request was rejected by the provider: ${this.message}`;
+        return `AI 服务拒绝了这次请求：${this.message}`;
       default:
-        return `The model provider failed: ${this.message}`;
+        return /no provider|not found|unavailable|no endpoints/i.test(this.message)
+          ? "选的模型暂时没有服务商可用，换个模型（或用「自动」）再试一次。"
+          : `AI 服务出错了：${this.message}`;
     }
   }
 }
@@ -434,7 +436,7 @@ function* fromCompletion(json: ProviderPayload, fallbackModel: string): Generato
 }
 
 /** Non-streaming helper for short internal calls (titles, extraction). */
-export async function complete(opts: Omit<StreamOptions, "tools">): Promise<{
+type Completion = {
   text: string;
   promptTokens: number;
   completionTokens: number;
@@ -442,7 +444,40 @@ export async function complete(opts: Omit<StreamOptions, "tools">): Promise<{
   model: string;
   provider?: string;
   requestId?: string;
-}> {
+};
+
+/**
+ * One answer, with a way out when the chosen model is down.
+ *
+ * 2026-10-01: 编剧's own model (Claude Sonnet 5) briefly had "No provider is
+ * currently serving this model" on the gateway, and 谢总's first draft failed
+ * twice with nothing written. Chat already walks down the fallbacks; the
+ * one-shot calls (drafts, rewrites, plans) now do too: the studio default,
+ * then the configured fallbacks, two more tries at most.
+ */
+export async function complete(opts: Omit<StreamOptions, "tools">): Promise<Completion> {
+  try {
+    return await completeOnce(opts);
+  } catch (err) {
+    if (!(err instanceof AiError) || err.kind === "credit" || opts.signal?.aborted) throw err;
+    if (err.kind === "bad_request" && !/model|provider|endpoint/i.test(err.message)) throw err;
+    const { modelFor } = await import("./models");
+    const chain = [modelFor.assistant(), ...modelFor.fallbacks()].filter((m, i, all) => m && m !== opts.model && all.indexOf(m) === i).slice(0, 2);
+    let last: unknown = err;
+    for (const model of chain) {
+      try {
+        console.warn(`[ai] ${opts.model} failed (${err.message.slice(0, 80)}); trying ${model}`);
+        return await completeOnce({ ...opts, model });
+      } catch (next) {
+        last = next;
+        if (!(next instanceof AiError) || next.kind === "credit") break;
+      }
+    }
+    throw last;
+  }
+}
+
+async function completeOnce(opts: Omit<StreamOptions, "tools">): Promise<Completion> {
   /*
    * Which service answers. OpenRouter normally; DeepSeek while the OpenRouter
    * account has no credit and every call would otherwise fall to a free

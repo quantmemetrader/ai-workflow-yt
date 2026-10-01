@@ -1,4 +1,5 @@
 import "server-only";
+import { AiError } from "@/lib/ai/openrouter";
 import { readFileText } from "@/lib/ai/retrieval";
 import { fileTextWithin } from "@/lib/files/extract";
 import { and, eq, inArray, isNull } from "drizzle-orm";
@@ -44,6 +45,8 @@ export type ScriptRequest = {
    * topic and its project (`sourcesForScript`).
    */
   sources?: string | null;
+  /** What the person asked for in their own words (typed into the AI bar on an empty page). */
+  instruction?: string | null;
 };
 
 /* --------------------------------------------------------- the facts */
@@ -237,7 +240,7 @@ export async function writeScript(viewer: Viewer, req: ScriptRequest): Promise<S
      second try almost always lands, and a script with no beats is useless. */
   for (let attempt = 0; attempt < 2 && beats === 0; attempt++) {
     try {
-      const draft = await draftFromBrief(viewer, id, { sources });
+      const draft = await draftFromBrief(viewer, id, { sources, instruction: req.instruction ?? undefined });
       if ("error" in draft) note = draft.error ?? "The draft could not be written.";
       else {
         beats = draft.beats;
@@ -245,7 +248,7 @@ export async function writeScript(viewer: Viewer, req: ScriptRequest): Promise<S
         note = null;
       }
     } catch (err) {
-      note = err instanceof Error ? err.message : "The draft could not be written.";
+      note = err instanceof AiError ? err.userMessage : err instanceof Error ? err.message : "初稿没写成。";
     }
   }
 

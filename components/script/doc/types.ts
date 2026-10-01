@@ -40,6 +40,8 @@ export type ScriptDocProps = {
   comments: DocComment[];
   references: DocReference[];
   writing: boolean;
+  /** Why the last first draft failed (null once one lands). */
+  draftFailed?: { at: string; note: string } | null;
   sentBack: SentBack | null;
   people: { id: string; name: string; avatarUrl: string | null; title: string | null }[];
   /** Who can open the project (and so the link), in one line. */

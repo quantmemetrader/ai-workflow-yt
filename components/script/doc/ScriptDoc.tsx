@@ -44,6 +44,7 @@ import {
   unlockDocAction,
   versionBeatsAction,
   withdrawReviewAction,
+  draftWithInstructionAction,
 } from "@/app/(app)/projects/[id]/script/actions";
 import { BlockExtras, Highlights, findMatches, marksKey, spokenUnits, type MarksState, type Tracked } from "./editor";
 import { MenuBar, Modal, type Menu } from "./chrome";
@@ -437,7 +438,20 @@ export function ScriptDoc(props: ScriptDocProps) {
       return notify(t("脚本已批准。先点「继续编辑」，再让编剧改", "Approved. Press Continue editing first"));
     }
     const units = spokenUnits(editor.state.doc);
-    if (!units.length) return notify(t("文档还是空的", "The document is empty"));
+    if (!units.length) {
+      /* Nothing to rewrite yet: the instruction becomes the first draft. */
+      setThinking(true);
+      start(async () => {
+        const r = await draftWithInstructionAction(projectId, q, refAtt.ids);
+        setThinking(false);
+        if ("error" in r && r.error) return notify(r.error);
+        refAtt.clear();
+        setAsk("");
+        notify(t("编剧开始按你的要求写初稿了，写好会出现在文档里", "The writer is drafting from your instruction"), "ok");
+        router.refresh();
+      });
+      return;
+    }
     setThinking(true);
     start(async () => {
       if (saveState === "dirty") await save();
@@ -911,6 +925,16 @@ export function ScriptDoc(props: ScriptDocProps) {
   /* ---------------- status line (the approval flow) ---------------- */
   function statusLine(): React.ReactNode {
     if (props.writing) return <Status tone="run" text={t("编剧正在写初稿，写好会自动出现在文档里。", "The writer is drafting; it appears in the document when done.")} />;
+    if (props.draftFailed && !docState?.words)
+      return (
+        <Status tone="wait" text={<><b>{t("初稿没写成：", "The draft did not land: ")}</b>{props.draftFailed.note}</>}>
+          {me.canEdit ? (
+            <button type="button" className="gd-status-btn primary" disabled={pending} onClick={() => start(async () => { const r = await startFromTopicAction({ kind: "project", id: projectId }, { write: true, rewrite: false }); if ("error" in r && r.error) return notify(r.error); notify(t("编剧重新开始写初稿了", "Drafting again"), "ok"); router.refresh(); })}>
+              {t("重试", "Retry")}
+            </button>
+          ) : null}
+        </Status>
+      );
     if (!script) return null;
     if (script.lockedVersion != null && !unlocked) {
       const who = approved?.deciderName ?? "";

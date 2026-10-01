@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { and, asc, eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { scriptComments, scripts, users } from "@/lib/db/schema";
+import { workProjects, scriptComments, scripts, users } from "@/lib/db/schema";
 import { requireModule } from "@/lib/auth/dal";
 import { projectForPage } from "@/lib/projects/page-data";
 import { listPeople } from "@/lib/chat/service";
@@ -52,6 +52,9 @@ export async function ScriptDocPage({ id, standalone = false }: { id: string; st
     scriptId ? scriptWriting(viewer.tenantId, scriptId).then((w) => w.writing) : Promise.resolve(false),
   ]);
   const [stored] = scriptId ? await db.select({ doc: scripts.doc }).from(scripts).where(eq(scripts.id, scriptId)).limit(1) : [];
+  const [src] = await db.select({ source: workProjects.source }).from(workProjects).where(eq(workProjects.id, p.id)).limit(1);
+  const failedRaw = (src?.source as { draftFailed?: { at?: string; note?: string } | null } | null)?.draftFailed ?? null;
+  const draftFailed = failedRaw?.note ? { at: failedRaw.at ?? "", note: failedRaw.note } : null;
   const beats = (detail?.beats ?? []).map((b) => ({ visual: b.visual, voiceover: b.voiceover, subtitle: b.subtitle, naturalSound: b.naturalSound }));
   /* The rich document if it still says what the beats say; else one built from them. */
   const doc = docForBeats((stored?.doc as RichNode | null) ?? null, beats);
@@ -123,6 +126,7 @@ export async function ScriptDocPage({ id, standalone = false }: { id: string; st
         }))}
         references={references}
         writing={writing}
+        draftFailed={writing ? null : draftFailed}
         sentBack={sentBack}
         people={people.map((x) => ({ id: x.id, name: (zh && x.nameLocal) || x.name, avatarUrl: x.avatarUrl, title: x.title }))}
         accessNote={accessNote}

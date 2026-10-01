@@ -159,7 +159,7 @@ function cleanRef(ref: unknown): TopicRef | null {
 async function writeFromTopic(
   viewer: Viewer,
   project: { id: string; title: string; scriptId: string | null; channelId: string; source: unknown },
-  opts: { rewrite?: boolean; chips?: ScriptChips; mandatoryPoints?: string[]; topicId?: string | null } = {},
+  opts: { rewrite?: boolean; chips?: ScriptChips; mandatoryPoints?: string[]; topicId?: string | null; instruction?: string | null } = {},
 ): Promise<{ writing: boolean; note?: string }> {
   if (!project.scriptId) return { writing: false, note: "这个项目没有脚本。" };
   const src = (project.source as ProjectSource | null) ?? null;
@@ -188,6 +188,7 @@ async function writeFromTopic(
       language: chips.language ?? null,
       subtitleLanguage: chips.subtitleLanguage ?? null,
       mandatoryPoints: opts.mandatoryPoints ?? [],
+      instruction: opts.instruction ?? null,
     },
   });
   return { writing: true };
@@ -208,7 +209,7 @@ async function writeFromTopic(
  * when the draft lands. Starting a project needs Chat; writing needs Script,
  * and someone without it gets the project and no draft.
  */
-export async function startFromTopicAction(rawRef: TopicRef, opts: { write?: boolean; rewrite?: boolean; chips?: ScriptChips } = {}) {
+export async function startFromTopicAction(rawRef: TopicRef, opts: { write?: boolean; rewrite?: boolean; chips?: ScriptChips; instruction?: string } = {}) {
   const viewer = await getViewer();
   if (!viewer || !viewer.modules.includes("chat")) return { error: "Not allowed" };
   const zh = (viewer.locale ?? "zh-CN").startsWith("zh");
@@ -230,7 +231,8 @@ export async function startFromTopicAction(rawRef: TopicRef, opts: { write?: boo
   if (ref.kind === "project") {
     const p = await visibleProject(viewer, ref.id);
     if (!p) return { error: zh ? "没有这个项目" : "No such project" };
-    const w = write ? await writeFromTopic(viewer, p, { rewrite: opts.rewrite === true, chips }) : { writing: false };
+    const instruction = typeof opts.instruction === "string" ? opts.instruction.slice(0, 1500) : null;
+    const w = write ? await writeFromTopic(viewer, p, { rewrite: opts.rewrite === true, chips, instruction }) : { writing: false };
     return { projectId: p.id, scriptId: p.scriptId, existed: true, writing: w.writing, note: w.note ?? denied };
   }
 

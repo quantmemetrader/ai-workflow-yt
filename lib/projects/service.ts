@@ -1343,6 +1343,15 @@ export async function setProjectWriting(projectId: string, at: string | null): P
     .where(eq(workProjects.id, projectId));
 }
 
+/** Why the last first draft did not land (shown on the script page with 重试); null once one does. */
+export async function setDraftFailed(projectId: string, note: string | null): Promise<void> {
+  const patch = JSON.stringify({ draftFailed: note ? { at: new Date().toISOString(), note: note.slice(0, 300) } : null });
+  await db
+    .update(workProjects)
+    .set({ source: sql`coalesce(${workProjects.source}, '{}'::jsonb) || ${patch}::jsonb` })
+    .where(eq(workProjects.id, projectId));
+}
+
 /** The live project a script belongs to, other than `exceptProjectId`. */
 export async function otherProjectWithScript(tenantId: string, scriptId: string, exceptProjectId: string) {
   const [row] = await db

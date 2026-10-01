@@ -7,7 +7,7 @@ import type { Viewer } from "@/lib/auth/types";
 import { agentViewer } from "@/lib/agents";
 import { postMessage } from "@/lib/chat/service";
 import { BudgetStop } from "@/lib/ai/ledger";
-import { setProjectWriting } from "@/lib/projects/service";
+import { setProjectWriting, setDraftFailed } from "@/lib/projects/service";
 import { writeScript, type ScriptRequest } from "./from-research";
 import { cutVersion } from "./service";
 
@@ -40,10 +40,14 @@ export async function draftInBackground(
   await setProjectWriting(input.projectId, new Date().toISOString());
   after(async () => {
     let text: string;
+    let failed: string | null = null;
     try {
       if (input.rewrite) await cutVersion(viewer, input.scriptId, { note: "按选题重写之前" }).catch(() => null);
       const res = await writeScript(viewer, { ...input.req, intoScriptId: input.scriptId });
-      if (!res.ok) text = `这次没写成：${res.error}`;
+      if (!res.ok) {
+        text = `这次没写成：${res.error}`;
+        failed = res.error;
+      }
       else if (res.beats > 0)
         text = [
           `《${res.title}》的${input.rewrite ? "新一版" : "初稿"}写好了：${res.beats} 个分镜。`,
@@ -52,12 +56,17 @@ export async function draftInBackground(
         ]
           .filter(Boolean)
           .join("\n");
-      else text = `《${res.title}》这次没写出分镜：${res.note ?? "模型没有返回能读的脚本"}。在脚本页按「按选题重写」可以再试一次。`;
+      else {
+        text = `《${res.title}》这次没写出分镜：${res.note ?? "模型没有返回能读的脚本"}。在脚本页按「重试」可以再写一次。`;
+        failed = res.note ?? "模型没有返回能读的脚本";
+      }
     } catch (err) {
       text = err instanceof BudgetStop ? "这次没写成：本期的 AI 额度已经用完。" : `这次没写成：${err instanceof Error ? err.message : String(err)}`;
+      failed = err instanceof BudgetStop ? "本期的 AI 额度已经用完" : err instanceof Error ? err.message : String(err);
       console.error("[script] the draft from the topic failed", err);
     } finally {
       await setProjectWriting(input.projectId, null).catch(() => {});
+      await setDraftFailed(input.projectId, failed).catch(() => {});
     }
     try {
       const writer = await agentViewer(viewer.tenantId, "script", requesterOf(viewer));

@@ -48,7 +48,7 @@ try{
     var d=document.createElement("div");
     d.setAttribute("translate","no");d.className="notranslate";d.setAttribute("role","alert");
     d.style.cssText="position:fixed;left:50%;top:12px;transform:translateX(-50%);z-index:2147483647;max-width:min(640px,calc(100vw - 24px));background:#fff7e6;border:1px solid #f0c36d;color:#6b4a07;border-radius:12px;padding:12px 40px 12px 14px;font:13px/1.6 system-ui,sans-serif;box-shadow:0 8px 24px rgba(0,0,0,.12)";
-    d.textContent="你的浏览器正在把页面自动转成繁体，所以会看到错字。本站内容全部是简体中文：请关闭浏览器的「翻译」（地址栏右侧的翻译图标 › 一律不翻译），或停用繁简转换插件，然后刷新页面。";
+    d.textContent="你的浏览器正在把页面自动转成繁体，所以会看到错字（例如「峕長」「參攷」）。本站内容全部是简体中文。这通常是浏览器里装了繁简转换插件（例如「新同文堂」「繁簡轉換」）：点地址栏右边的拼图图标 › 管理扩展程序，把它关掉，或者在插件里把 tengya.media 设为不转换，然后刷新页面。";
     var x=document.createElement("button");x.type="button";x.textContent="×";x.setAttribute("aria-label","关闭");
     x.style.cssText="position:absolute;right:8px;top:6px;border:0;background:none;font-size:18px;color:#6b4a07;cursor:pointer";
     x.onclick=function(){d.remove();};d.appendChild(x);
@@ -61,7 +61,17 @@ try{
     document.body.appendChild(p);
     var check=function(){var t=p.textContent||"";if(t&&t!==PROBE)warn(t);};
     if(typeof MutationObserver==="function")new MutationObserver(check).observe(p,{characterData:true,childList:true,subtree:true});
-    var n=0,iv=setInterval(function(){check();if(++n>30)clearInterval(iv);},2000);
+    /* A converter that only rewrites what was on the page at load never touches the
+       probe (谢总, 1 Oct: the sidebar read 首頁 / 項目 / 腳本). The sidebar labels are
+       always there and never Traditional: look for their converted forms too. */
+    var CONVERTED={"首頁":1,"項目":1,"腳本":1,"視頻":1,"選題":1,"設置":1,"後台":1,"員工管理":1,"財務":1,"賬務":1,"帳務":1,"法務":1};
+    var scan=function(){
+      try{
+        var w=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT,null),k=0,t;
+        while((t=w.nextNode())&&k<4000){k++;var v=(t.nodeValue||"").trim();if(v&&CONVERTED[v]){warn(v+" | "+navigator.userAgent.slice(0,120));return;}}
+      }catch(e){}
+    };
+    var n=0,iv=setInterval(function(){check();scan();if(++n>30)clearInterval(iv);},2000);
   };
   var later=function(){setTimeout(probe,1500);};
   if(document.readyState==="complete")later();else window.addEventListener("load",later);

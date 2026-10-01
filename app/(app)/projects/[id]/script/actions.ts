@@ -1,5 +1,6 @@
 "use server";
 
+import { startFromTopicAction } from "@/app/(app)/projects/actions";
 import { toSimplified } from "@/lib/text/simplified";
 import { pickedModel } from "@/lib/ai/chat-models";
 import { revalidatePath } from "next/cache";
@@ -127,6 +128,26 @@ export async function copilotRedoAction(projectId: unknown, input: unknown, mode
   } catch (err) {
     return { error: asMessage(err) };
   }
+}
+
+/**
+ * An instruction typed into the AI bar while the page is empty: 编剧 writes the
+ * first draft from it, with any attached files as the script's 参考资料
+ * (谢总, 1 Oct: pressed send on an empty page and nothing happened).
+ */
+export async function draftWithInstructionAction(projectId: unknown, instruction: unknown, fileIds?: unknown) {
+  const c = await ctx(projectId, true);
+  if ("error" in c) return c;
+  if (!c.project.scriptId) return { error: "Not allowed" };
+  if (typeof instruction !== "string" || !instruction.trim()) return { error: c.zh ? "写下想要什么样的稿子" : "Say what the draft should be" };
+  const ids = Array.isArray(fileIds) ? fileIds.filter((x): x is string => typeof x === "string" && /^fil_[0-9a-z]+$/i.test(x)).slice(0, 5) : [];
+  for (const id of ids) {
+    if (await tagProjectFile(c.viewer, c.project.id, id, "reference").catch(() => false)) await setReferences(c.viewer, c.project.scriptId, { add: id }).catch(() => null);
+  }
+  const r = await startFromTopicAction({ kind: "project", id: c.project.id }, { write: true, instruction: instruction.trim() });
+  refresh(c.project.id);
+  if ("error" in r && r.error) return { error: r.error };
+  return { ok: true as const };
 }
 
 /** A file just uploaded (or picked) into the script's 参考资料. */
