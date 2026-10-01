@@ -20,6 +20,17 @@ import { Markdown } from "@/components/ui/Markdown";
  *     written.** The screen says so, once, under the title — so a number that
  *     disagrees with today's dashboard reads as history rather than as a bug.
  */
+/* (QA, 2 Oct: drafts written before this date carry an English title.) The
+   title is the period's, so it is shown in the reader's language; a title
+   somebody typed is left as it is. */
+function titleFor(r: ReportRow, zh: boolean): string {
+  if (!zh || r.title !== `${r.period} management report`) return r.title;
+  const m = /^(\d{4})-(\d{2})$/.exec(r.period);
+  if (m) return `${m[1]} 年 ${Number(m[2])} 月管理报告`;
+  const q = /^(\d{4})-Q([1-4])$/.exec(r.period);
+  return q ? `${q[1]} 年第 ${q[2]} 季度管理报告` : `${r.period} 管理报告`;
+}
+
 export function Reports({
   reports,
   period,
@@ -121,7 +132,7 @@ export function Reports({
         ) : (
           <>
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4, flexWrap: "wrap" }}>
-              <span style={{ fontSize: 15, fontWeight: 600 }}>{open.title}</span>
+              <span style={{ fontSize: 15, fontWeight: 600 }}>{titleFor(open, zh)}</span>
               <Badge tone={open.state === "shared" ? "good" : "quiet"}>
                 {open.state === "shared" ? t("shared", "已分享") : t("draft", "草稿")}
               </Badge>
@@ -154,8 +165,8 @@ export function Reports({
                       onClick={() => onGenerate(open.period)}
                       style={ghost}
                       title={t(
-                        "Writes a fresh draft for this period from today's figures. The existing one is kept.",
-                        "按今天的数据为该期间重新生成草稿，原有的会保留。",
+                        "Rewrites this period's draft from today's figures. A shared report is never changed.",
+                        "按今天的数据重写这一期的草稿。已分享的报告不会改动。",
                       )}
                     >
                       {t("Regenerate", "重新生成")}
@@ -187,6 +198,12 @@ export function Reports({
                 "这里的每个数字都是撰写当时的数字，之后不会随仪表盘变化，这正是它作为记录的意义。",
               )}
             </p>
+
+            {zh && !editing && open.state === "draft" && !/[\u4e00-\u9fff]/.test(open.body) ? (
+              <p style={{ fontSize: 12, color: "#95590a", margin: "0 0 10px" }}>
+                这份草稿是之前用英文写的，点「重新生成」会按今天的数据改写成中文。
+              </p>
+            ) : null}
 
             {editing ? (
               <textarea

@@ -5,12 +5,13 @@ import { and, eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { users, type Relation } from "@/lib/db/schema";
 import { getViewer } from "@/lib/auth/dal";
-import { atLeast, canWrite, isRelation, relationOn, revoke, share, shareCeiling, type SharedObject } from "@/lib/authz/rebac";
+import { atLeast, canWrite, isProtectedOwner, isRelation, relationOn, revoke, share, shareCeiling, type SharedObject } from "@/lib/authz/rebac";
 import {
   createFolder,
   deleteFolder,
   renameFile,
   renameFolder,
+  purgeFile,
   restore,
   restoreFolder,
   softDelete,
@@ -25,11 +26,14 @@ import { parseChoice, setFileAccess, studioPeople } from "@/lib/files/access";
  * whatever the input element allowed. */
 const MAX_NAME = 200;
 
+/* (QA, 2 Oct: every error here is shown to people as is, so it is in Chinese.) */
+const REL_ZH: Record<Relation, string> = { owner: "所有者", editor: "可编辑", commenter: "可评论", viewer: "可查看" };
+
 export async function newFolderAction(parentId: string | null, name: string) {
   const viewer = await getViewer();
-  if (!viewer?.modules.includes("files")) return { error: "Not allowed" };
-  if (typeof name !== "string" || !name.trim()) return { error: "A folder needs a name" };
-  if (name.length > MAX_NAME) return { error: "That name is too long" };
+  if (!viewer?.modules.includes("files")) return { error: "你没有权限做这件事" };
+  if (typeof name !== "string" || !name.trim()) return { error: "请填写文件夹名称" };
+  if (name.length > MAX_NAME) return { error: "名称太长了" };
 
   // `createFolder` says "Parent folder not found" for an id that does not
   // exist and "You need edit access" for one that does, which is a way to test
@@ -37,7 +41,7 @@ export async function newFolderAction(parentId: string | null, name: string) {
   // both cases get the same answer.
   if (parentId) {
     if (!(await canWrite(viewer, "folder", parentId))) {
-      return { error: "You need edit access to add a folder here" };
+      return { error: "你没有这里的编辑权限，不能新建文件夹" };
     }
   }
 
@@ -46,26 +50,26 @@ export async function newFolderAction(parentId: string | null, name: string) {
     revalidatePath("/files");
     return { id: folder.id };
   } catch (err) {
-    return { error: err instanceof Error ? err.message : "Could not create the folder" };
+    return { error: err instanceof Error ? err.message : "文件夹没建成，请再试一次" };
   }
 }
 
 export async function deleteFileAction(fileId: string) {
   const viewer = await getViewer();
-  if (!viewer?.modules.includes("files")) return { error: "Not allowed" };
+  if (!viewer?.modules.includes("files")) return { error: "你没有权限做这件事" };
   try {
     await softDelete(viewer, fileId);
     revalidatePath("/files");
     return {};
   } catch (err) {
-    return { error: err instanceof Error ? err.message : "Could not delete" };
+    return { error: err instanceof Error ? err.message : "没删掉，请再试一次" };
   }
 }
 
 /** 批量删除: many files to the trash at once (restorable there for 30 days). */
 export async function deleteFilesAction(fileIds: unknown): Promise<{ deleted: number; failed: number; error?: string }> {
   const viewer = await getViewer();
-  if (!viewer?.modules.includes("files")) return { deleted: 0, failed: 0, error: "Not allowed" };
+  if (!viewer?.modules.includes("files")) return { deleted: 0, failed: 0, error: "你没有权限做这件事" };
   const ids = Array.isArray(fileIds) ? fileIds.filter((x): x is string => typeof x === "string" && x.length < 64).slice(0, 500) : [];
   let deleted = 0;
   let failed = 0;
@@ -83,14 +87,28 @@ export async function deleteFilesAction(fileIds: unknown): Promise<{ deleted: nu
 
 export async function restoreFileAction(fileId: string) {
   const viewer = await getViewer();
-  if (!viewer?.modules.includes("files")) return { error: "Not allowed" };
-  if (typeof fileId !== "string" || !fileId || fileId.length > 64) return { error: "Not found" };
+  if (!viewer?.modules.includes("files")) return { error: "你没有权限做这件事" };
+  if (typeof fileId !== "string" || !fileId || fileId.length > 64) return { error: "找不到这个文件" };
   try {
     await restore(viewer, fileId);
     revalidatePath("/files");
     return {};
   } catch (err) {
-    return { error: err instanceof Error ? err.message : "Could not restore that" };
+    return { error: err instanceof Error ? err.message : "没恢复成功，请再试一次" };
+  }
+}
+
+/** 永久删除 from the trash: owner or admin, file already in the trash (QA, 2 Oct). */
+export async function purgeFileAction(fileId: unknown) {
+  const viewer = await getViewer();
+  if (!viewer?.modules.includes("files")) return { error: "你没有权限做这件事" };
+  if (typeof fileId !== "string" || !fileId || fileId.length > 64) return { error: "找不到这个文件" };
+  try {
+    await purgeFile(viewer, fileId);
+    revalidatePath("/files/trash");
+    return {};
+  } catch (err) {
+    return { error: err instanceof Error && /[\u4e00-\u9fff]/.test(err.message) ? err.message : "没能永久删除，这个文件可能还在别处用着" };
   }
 }
 
@@ -103,27 +121,27 @@ export async function restoreFileAction(fileId: string) {
  */
 export async function deleteFolderAction(folderId: unknown) {
   const viewer = await getViewer();
-  if (!viewer?.modules.includes("files")) return { error: "Not allowed" };
-  if (typeof folderId !== "string" || !folderId || folderId.length > 64) return { error: "Not allowed" };
+  if (!viewer?.modules.includes("files")) return { error: "你没有权限做这件事" };
+  if (typeof folderId !== "string" || !folderId || folderId.length > 64) return { error: "你没有权限做这件事" };
   try {
     const { files } = await deleteFolder(viewer, folderId);
     revalidatePath("/files");
     return { files };
   } catch (err) {
-    return { error: err instanceof Error ? err.message : "Could not delete the folder" };
+    return { error: err instanceof Error ? err.message : "文件夹没删掉，请再试一次" };
   }
 }
 
 export async function restoreFolderAction(folderId: unknown) {
   const viewer = await getViewer();
-  if (!viewer?.modules.includes("files")) return { error: "Not allowed" };
-  if (typeof folderId !== "string" || !folderId || folderId.length > 64) return { error: "Not allowed" };
+  if (!viewer?.modules.includes("files")) return { error: "你没有权限做这件事" };
+  if (typeof folderId !== "string" || !folderId || folderId.length > 64) return { error: "你没有权限做这件事" };
   try {
     await restoreFolder(viewer, folderId);
     revalidatePath("/files");
     return {};
   } catch (err) {
-    return { error: err instanceof Error ? err.message : "Could not restore the folder" };
+    return { error: err instanceof Error ? err.message : "文件夹没恢复成功，请再试一次" };
   }
 }
 
@@ -145,19 +163,19 @@ export async function shareAction(
      second sheet that would drift from this one. */
   const needed = objectType === "script" ? "script" : "files";
   /* A file's owner or editor shares it from the document editor without holding Files (法务, 财务, 1 Oct). */
-  if (!viewer || (!viewer.modules.includes(needed) && !(objectType === "file" && ["owner", "editor"].includes((await relationOn(viewer, "file", objectId)) ?? "")))) return { error: "Not allowed" };
+  if (!viewer || (!viewer.modules.includes(needed) && !(objectType === "file" && ["owner", "editor"].includes((await relationOn(viewer, "file", objectId)) ?? "")))) return { error: "你没有权限做这件事" };
   if (objectType !== "file" && objectType !== "folder" && objectType !== "script") {
-    return { error: "Not allowed" };
+    return { error: "你没有权限做这件事" };
   }
-  if (!isRelation(relation)) return { error: "That is not a level of access" };
-  if (typeof email !== "string" || email.length > 320) return { error: "That is not an email address" };
+  if (!isRelation(relation)) return { error: "没有这个权限级别" };
+  if (typeof email !== "string" || email.length > 320) return { error: "请填写有效的邮箱" };
 
   let expiresAt: Date | undefined;
   if (expiresInDays !== undefined && expiresInDays !== null) {
     // Straight from the wire: NaN would become an Invalid Date and a negative
     // number an already-dead grant, both of which the insert would take.
     if (!Number.isFinite(expiresInDays) || expiresInDays <= 0 || expiresInDays > 3650) {
-      return { error: "Choose an expiry between 1 and 3650 days" };
+      return { error: "有效期请选 1 到 3650 天" };
     }
     expiresAt = new Date(Date.now() + expiresInDays * 86_400_000);
   }
@@ -167,20 +185,20 @@ export async function shareAction(
   // person have an account here", answerable by anyone signed in, on an object
   // they hold nothing on.
   const ceiling = await shareCeiling(viewer, objectType, objectId);
-  if (!ceiling) return { error: "You do not have access to share this." };
+  if (!ceiling) return { error: "你没有共享这个文件的权限" };
   if (!atLeast(ceiling, relation)) {
-    return { error: `You hold ${ceiling} on this, so you can share up to ${ceiling}.` };
+    return { error: `你的权限是「${REL_ZH[ceiling]}」，最多只能共享到这一级` };
   }
 
   // Scoped to the viewer's own tenant. Unscoped, this granted a relation on a
   // studio's file to an account in a different studio, and told the caller
   // which addresses exist across every tenant on the box.
   const [target] = await db
-    .select({ id: users.id, name: users.name })
+    .select({ id: users.id, name: users.name, nameLocal: users.nameLocal })
     .from(users)
     .where(and(eq(users.tenantId, viewer.tenantId), eq(users.email, email.trim().toLowerCase())))
     .limit(1);
-  if (!target) return { error: "Nobody here has that email address" };
+  if (!target) return { error: "工作室里没有这个邮箱的同事" };
 
   const result = await share(
     viewer,
@@ -194,8 +212,8 @@ export async function shareAction(
     return {
       error:
         result.reason === "above-ceiling"
-          ? `You hold ${result.ceiling} on this, so you can share up to ${result.ceiling}.`
-          : "You do not have access to share this.",
+          ? `你的权限是「${result.ceiling ? REL_ZH[result.ceiling] : ""}」，最多只能共享到这一级`
+          : "你没有共享这个文件的权限",
     };
   }
 
@@ -206,7 +224,8 @@ export async function shareAction(
     meta: { to: target.id, relation },
   });
   revalidatePath(objectType === "script" ? `/script/${objectId}` : `/files/${objectId}`);
-  return { sharedWith: target.name };
+  const zh = (viewer.locale ?? "zh-CN").startsWith("zh");
+  return { sharedWith: (zh && target.nameLocal) || target.name };
 }
 
 export async function revokeAction(
@@ -218,16 +237,20 @@ export async function revokeAction(
   const viewer = await getViewer();
   const needed = objectType === "script" ? "script" : "files";
   /* A file's owner or editor shares it from the document editor without holding Files (法务, 财务, 1 Oct). */
-  if (!viewer || (!viewer.modules.includes(needed) && !(objectType === "file" && ["owner", "editor"].includes((await relationOn(viewer, "file", objectId)) ?? "")))) return { error: "Not allowed" };
+  if (!viewer || (!viewer.modules.includes(needed) && !(objectType === "file" && ["owner", "editor"].includes((await relationOn(viewer, "file", objectId)) ?? "")))) return { error: "你没有权限做这件事" };
   if (objectType !== "file" && objectType !== "folder" && objectType !== "script") {
-    return { error: "Not allowed" };
+    return { error: "你没有权限做这件事" };
   }
-  if (!isRelation(relation)) return { error: "That is not a level of access" };
+  if (!isRelation(relation)) return { error: "没有这个权限级别" };
   if (typeof subjectId !== "string" || !subjectId || subjectId.length > 64) {
-    return { error: "Not allowed" };
+    return { error: "你没有权限做这件事" };
+  }
+  /* The owner's own grant, or the last owner grant, stays (QA, 2 Oct). */
+  if (await isProtectedOwner({ type: objectType, id: objectId }, { type: "user", id: subjectId }, relation)) {
+    return { error: "所有者不能被移除" };
   }
   const ok = await revoke(viewer, { type: objectType, id: objectId }, { type: "user", id: subjectId }, relation);
-  if (!ok) return { error: "You need edit access to change sharing" };
+  if (!ok) return { error: "你没有编辑权限，不能改共享设置" };
   await audit(viewer, "file.unshare", { objectType, objectId, module: "files", meta: { subjectId } });
   revalidatePath(objectType === "script" ? `/script/${objectId}` : `/files/${objectId}`);
   return {};
@@ -242,54 +265,54 @@ export async function revokeAction(
  */
 export async function renameFileAction(fileId: unknown, name: unknown) {
   const viewer = await getViewer();
-  if (!viewer || !viewer.modules.includes("files")) return { error: "Not allowed" };
-  if (typeof fileId !== "string" || !fileId || fileId.length > 64) return { error: "Not found" };
-  if (typeof name !== "string") return { error: "A file needs a name" };
+  if (!viewer || !viewer.modules.includes("files")) return { error: "你没有权限做这件事" };
+  if (typeof fileId !== "string" || !fileId || fileId.length > 64) return { error: "找不到这个文件" };
+  if (typeof name !== "string") return { error: "请填写文件名" };
 
   try {
     const row = await renameFile(viewer, fileId, name);
     revalidatePath("/files", "layout");
     return { name: row.name };
   } catch (err) {
-    return { error: err instanceof Error ? err.message : "Could not rename that" };
+    return { error: err instanceof Error ? err.message : "没改成功，请再试一次" };
   }
 }
 
 export async function renameFolderAction(folderId: unknown, name: unknown) {
   const viewer = await getViewer();
-  if (!viewer || !viewer.modules.includes("files")) return { error: "Not allowed" };
-  if (typeof folderId !== "string" || !folderId || folderId.length > 64) return { error: "Not found" };
-  if (typeof name !== "string") return { error: "A folder needs a name" };
+  if (!viewer || !viewer.modules.includes("files")) return { error: "你没有权限做这件事" };
+  if (typeof folderId !== "string" || !folderId || folderId.length > 64) return { error: "找不到这个文件" };
+  if (typeof name !== "string") return { error: "请填写文件夹名称" };
 
   try {
     const row = await renameFolder(viewer, folderId, name);
     revalidatePath("/files", "layout");
     return { name: row.name };
   } catch (err) {
-    return { error: err instanceof Error ? err.message : "Could not rename that" };
+    return { error: err instanceof Error ? err.message : "没改成功，请再试一次" };
   }
 }
 
 /** Who sees these files: private, everyone, or chosen groups. */
 export async function setFileAccessAction(fileIds: unknown, choice: unknown) {
   const viewer = await getViewer();
-  if (!viewer) return { error: "Not allowed" };
-  if (!Array.isArray(fileIds)) return { error: "Nothing chosen" };
+  if (!viewer) return { error: "你没有权限做这件事" };
+  if (!Array.isArray(fileIds)) return { error: "还没选文件" };
   /* Without Files, only one's own documents (`setFileAccess` refuses anything else anyway). */
-  if (!viewer.modules.includes("files") && !(fileIds.length === 1 && typeof fileIds[0] === "string" && (await relationOn(viewer, "file", fileIds[0])) === "owner")) return { error: "Not allowed" };
+  if (!viewer.modules.includes("files") && !(fileIds.length === 1 && typeof fileIds[0] === "string" && (await relationOn(viewer, "file", fileIds[0])) === "owner")) return { error: "你没有权限做这件事" };
   try {
     await setFileAccess(viewer, fileIds.filter((x): x is string => typeof x === "string"), parseChoice(choice));
     revalidatePath("/files", "layout");
     return {};
   } catch (err) {
-    return { error: err instanceof Error ? err.message : "Could not change that" };
+    return { error: err instanceof Error ? err.message : "没改成功，请再试一次" };
   }
 }
 
 /** The studio's people, for "specific people" in the access picker. */
 export async function studioPeopleAction() {
   const viewer = await getViewer();
-  if (!viewer) return { error: "Not allowed" };
+  if (!viewer) return { error: "你没有权限做这件事" };
   // A guest is not handed the studio's staff list.
   if (viewer.role === "guest") return { people: [] };
   return { people: await studioPeople(viewer) };

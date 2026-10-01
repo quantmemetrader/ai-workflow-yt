@@ -616,6 +616,10 @@ export function VideoScreen({
           /* First, because it is the first thing somebody does here — but not
              inside a project, whose cut is the only one on its page. */
           ...(embedded ? [] : [{ key: "library" as Tab, label: t("All edits", "全部剪辑"), badge: projects.length }]),
+          /* (QA, 2 Oct) With no cut open, pressing 剪辑/预览/导出 stacked red
+             「请先选择一个项目。」 toasts. The editing tabs now appear once a
+             cut is open; until then the list is the whole screen. */
+          ...(!project && !embedded ? [] : ([
           { key: "edit", label: t("Edit", "剪辑"), badge: items.length },
           { key: "preview", label: t("Preview", "预览"), badge: done.length },
           { key: "exports", label: t("Export", "导出"), badge: renders.length },
@@ -625,6 +629,7 @@ export function VideoScreen({
           { key: "timeline", label: t("Cut list", "片段列表"), badge: items.length, advanced: true },
           { key: "audio", label: t("Audio", "音频"), badge: audio.length + captions.length, advanced: true },
           { key: "graphics", label: t("Graphics", "图形"), badge: graphics.length, advanced: true },
+          ] as { key: Tab; label: string; badge?: number; advanced?: boolean }[])),
         ]}
       />
 
@@ -1094,7 +1099,9 @@ function StaleBar({
         <span style={{ display: "block", fontSize: 13, fontWeight: 600, color: "#5f4708", lineHeight: 1.45 }}>
           {t("You have new changes. Render them into the video?", "有新的改动还没做进成片，现在渲染吗？")}
         </span>
-        <span style={{ display: "block", fontSize: 12, color: "#8a6a17", lineHeight: 1.5, marginTop: 2 }}>
+        {/* "5 分钟前" is read from the clock, which moves between the server's
+            render and the browser's (QA, 2 Oct: hydration error #418). */}
+        <span style={{ display: "block", fontSize: 12, color: "#8a6a17", lineHeight: 1.5, marginTop: 2 }} suppressHydrationWarning>
           {at
             ? t(
                 `Until you do, the file anyone opens is the version from ${sinceThen(at, false)}.`,
@@ -2255,42 +2262,52 @@ function Library({
                 cards whose badges wrap differently. Was 10.5px in #c7c7c7,
                 which is below what reads on a white card. */}
             <span style={{ fontSize: 11.5, color: "#999999", display: "flex", alignItems: "center", gap: 10, marginTop: "auto", paddingTop: 10, borderTop: "1px solid #f3f3f3" }}>
-              <span style={{ ...clip, minWidth: 0 }}>
+              <span style={{ ...clip, minWidth: 0, marginRight: "auto" }}>
                 {p.ownerName ?? ""} · {when(p.updatedAt)}
               </span>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setSharing(p);
-                }}
-                className="vlib-act"
-                style={{ marginLeft: "auto", border: 0, background: "transparent", color: "#7c7c7c", cursor: "pointer", font: "inherit", fontSize: 11.5, padding: 0, flexShrink: 0 }}
-              >
-                {t("access", "权限")}
-              </button>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setRenaming({ id: p.id, title: p.title });
-                }}
-                className="vlib-act"
-                style={{ border: 0, background: "transparent", color: "#7c7c7c", cursor: "pointer", font: "inherit", fontSize: 11.5, padding: 0, flexShrink: 0 }}
-              >
-                {t("rename", "重命名")}
-              </button>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setDeleting(p);
-                }}
-                className="vlib-act"
-                style={{ border: 0, background: "transparent", color: "#7c7c7c", cursor: "pointer", font: "inherit", fontSize: 11.5, padding: 0, flexShrink: 0 }}
-              >
-                {t("delete", "删除")}
-              </button>
+              {/* (QA, 2 Oct) Members saw 权限/重命名/删除 on other people's
+                  cuts and got a refusal on the press. Access and delete are
+                  the owner's (or an admin's, who reads as owner); renaming
+                  is anyone who may edit. The server checks again. */}
+              {p.relation === "owner" ? (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSharing(p);
+                  }}
+                  className="vlib-act"
+                  style={{ border: 0, background: "transparent", color: "#7c7c7c", cursor: "pointer", font: "inherit", fontSize: 11.5, padding: 0, flexShrink: 0 }}
+                >
+                  {t("access", "权限")}
+                </button>
+              ) : null}
+              {p.relation === "owner" || p.relation === "editor" ? (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setRenaming({ id: p.id, title: p.title });
+                  }}
+                  className="vlib-act"
+                  style={{ border: 0, background: "transparent", color: "#7c7c7c", cursor: "pointer", font: "inherit", fontSize: 11.5, padding: 0, flexShrink: 0 }}
+                >
+                  {t("rename", "重命名")}
+                </button>
+              ) : null}
+              {p.relation === "owner" ? (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setDeleting(p);
+                  }}
+                  className="vlib-act"
+                  style={{ border: 0, background: "transparent", color: "#7c7c7c", cursor: "pointer", font: "inherit", fontSize: 11.5, padding: 0, flexShrink: 0 }}
+                >
+                  {t("delete", "删除")}
+                </button>
+              ) : null}
             </span>
           </div>
           );

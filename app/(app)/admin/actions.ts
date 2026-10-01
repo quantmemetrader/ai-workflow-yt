@@ -48,62 +48,62 @@ const isModule = (v: unknown): v is Module =>
 
 export async function setEntitlementAction(userId: string, module: string, granted: boolean) {
   const viewer = await admin();
-  if (!viewer) return { error: "Not allowed" };
-  if (!id(userId) || !isModule(module)) return { error: "Not allowed" };
+  if (!viewer) return { error: "没有权限" };
+  if (!id(userId) || !isModule(module)) return { error: "没有权限" };
 
   try {
     await setEntitlement(viewer, userId, module, Boolean(granted));
     refresh();
     return {};
   } catch (err) {
-    return { error: err instanceof Error ? err.message : "Could not change that" };
+    return { error: err instanceof Error ? err.message : "没能改好，稍后再试" };
   }
 }
 
 export async function setRoleAction(userId: string, role: string) {
   const viewer = await admin();
-  if (!viewer) return { error: "Not allowed" };
-  if (!id(userId)) return { error: "Not allowed" };
-  if (role !== "admin" && role !== "member" && role !== "guest") return { error: "No such role" };
+  if (!viewer) return { error: "没有权限" };
+  if (!id(userId)) return { error: "没有权限" };
+  if (role !== "admin" && role !== "member" && role !== "guest") return { error: "没有这个角色" };
 
   try {
     await setUserRole(viewer, userId, role);
     refresh();
     return {};
   } catch (err) {
-    return { error: err instanceof Error ? err.message : "Could not change that" };
+    return { error: err instanceof Error ? err.message : "没能改好，稍后再试" };
   }
 }
 
 /** A person's job (岗位), which picks their Home. Empty or null clears it. */
 export async function setWorkRoleAction(userId: string, role: string | null) {
   const viewer = await admin();
-  if (!viewer) return { error: "Not allowed" };
-  if (!id(userId)) return { error: "Not allowed" };
+  if (!viewer) return { error: "没有权限" };
+  if (!id(userId)) return { error: "没有权限" };
   const next = role === null || role === "" ? null : isProductionKey(role) ? role : undefined;
-  if (next === undefined) return { error: "No such job" };
+  if (next === undefined) return { error: "没有这个岗位" };
 
   try {
     await setWorkRole(viewer, userId, next);
     refresh();
     return {};
   } catch (err) {
-    return { error: err instanceof Error ? err.message : "Could not change that" };
+    return { error: err instanceof Error ? err.message : "没能改好，稍后再试" };
   }
 }
 
 export async function setStatusAction(userId: string, status: string) {
   const viewer = await admin();
-  if (!viewer) return { error: "Not allowed" };
-  if (!id(userId)) return { error: "Not allowed" };
-  if (status !== "active" && status !== "suspended") return { error: "No such status" };
+  if (!viewer) return { error: "没有权限" };
+  if (!id(userId)) return { error: "没有权限" };
+  if (status !== "active" && status !== "suspended") return { error: "没有这个状态" };
 
   try {
     await setUserStatus(viewer, userId, status);
     refresh();
     return {};
   } catch (err) {
-    return { error: err instanceof Error ? err.message : "Could not change that" };
+    return { error: err instanceof Error ? err.message : "没能改好，稍后再试" };
   }
 }
 
@@ -149,13 +149,13 @@ export async function addPersonAction(input: {
 }): Promise<AddedPerson> {
   const viewer = await getViewer();
   if (!viewer || !canInvite(viewer)) {
-    return { ok: false, error: "Only an owner or an administrator can add people" };
+    return { ok: false, error: "只有所有者或管理员可以添加成员" };
   }
 
   const role =
     input.role === "admin" || input.role === "member" || input.role === "guest" ? input.role : "member";
   const modules = (input.modules ?? []).filter(isModule);
-  if (!modules.length) return { ok: false, error: "Choose at least one module they may open" };
+  if (!modules.length) return { ok: false, error: "至少选一个对方可以打开的模块" };
 
   try {
     const { invite, token } = await createInvite(viewer, {
@@ -194,23 +194,23 @@ export async function addPersonAction(input: {
       emailError,
     };
   } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : "Could not add that person" };
+    return { ok: false, error: err instanceof Error ? err.message : "没能添加这个人，稍后再试" };
   }
 }
 
 /** 直接创建账号: made now, with a generated password to send yourself. */
 export async function createAccountAction(input: { email: string; name?: string; role?: string; modules?: string[] }): Promise<{ ok: true; email: string; password: string; loginUrl: string } | { ok: false; error: string }> {
   const viewer = await getViewer();
-  if (!viewer || !canInvite(viewer)) return { ok: false, error: "Only an owner or an administrator can add people" };
+  if (!viewer || !canInvite(viewer)) return { ok: false, error: "只有所有者或管理员可以添加成员" };
   const role = input.role === "admin" || input.role === "member" || input.role === "guest" ? input.role : "member";
   const modules = (input.modules ?? []).filter(isModule);
-  if (!modules.length) return { ok: false, error: "Choose at least one module they may open" };
+  if (!modules.length) return { ok: false, error: "至少选一个对方可以打开的模块" };
   try {
     const made = await createAccountNow(viewer, { email: String(input.email ?? ""), name: input.name, role, modules });
     refresh();
     return { ok: true, email: made.email, password: made.password, loginUrl: `${await origin()}/login` };
   } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : "Could not add that person" };
+    return { ok: false, error: err instanceof Error ? err.message : "没能添加这个人，稍后再试" };
   }
 }
 
@@ -231,15 +231,15 @@ export async function setProfileAction(
   input: { name: string; nameLocal: string; title: string },
 ) {
   const viewer = await admin();
-  if (!viewer) return { error: "Not allowed" };
-  if (!id(userId)) return { error: "Not allowed" };
+  if (!viewer) return { error: "没有权限" };
+  if (!id(userId)) return { error: "没有权限" };
 
   const name = String(input.name ?? "").trim();
   const nameLocal = String(input.nameLocal ?? "").trim();
   const title = String(input.title ?? "").trim();
-  if (!name) return { error: "They need a name people can see" };
+  if (!name) return { error: "请填写一个大家看得到的名字" };
   if (name.length > 120 || nameLocal.length > 120 || title.length > 120) {
-    return { error: "That is longer than a name needs to be" };
+    return { error: "名字太长了" };
   }
 
   const [target] = await db
@@ -247,9 +247,9 @@ export async function setProfileAction(
     .from(users)
     .where(and(eq(users.id, userId), eq(users.tenantId, viewer.tenantId), isNull(users.deletedAt)))
     .limit(1);
-  if (!target) return { error: "Nobody here has that id" };
+  if (!target) return { error: "工作室里找不到这个人" };
   if (target.role === "owner" && viewer.role !== "owner") {
-    return { error: "The owner's name is changed by the owner" };
+    return { error: "所有者的名字只能由所有者自己改" };
   }
 
   await db
@@ -272,7 +272,7 @@ export async function setProfileAction(
 
 export async function createTeamAction(input: { name: string; nameLocal?: string }) {
   const viewer = await admin();
-  if (!viewer) return { error: "Not allowed" };
+  if (!viewer) return { error: "没有权限" };
   try {
     const teamId = await createTeam(viewer, {
       name: String(input.name ?? "").slice(0, 80),
@@ -281,33 +281,33 @@ export async function createTeamAction(input: { name: string; nameLocal?: string
     refresh();
     return { id: teamId };
   } catch (err) {
-    return { error: err instanceof Error ? err.message : "Could not create that team" };
+    return { error: err instanceof Error ? err.message : "没能新建团队，稍后再试" };
   }
 }
 
 export async function setTeamMemberAction(teamId: string, userId: string, member: boolean) {
   const viewer = await admin();
-  if (!viewer) return { error: "Not allowed" };
-  if (!id(teamId) || !id(userId)) return { error: "Not allowed" };
+  if (!viewer) return { error: "没有权限" };
+  if (!id(teamId) || !id(userId)) return { error: "没有权限" };
   try {
     await setTeamMember(viewer, teamId, userId, Boolean(member));
     refresh();
     return {};
   } catch (err) {
-    return { error: err instanceof Error ? err.message : "Could not change that" };
+    return { error: err instanceof Error ? err.message : "没能改好，稍后再试" };
   }
 }
 
 export async function deleteTeamAction(teamId: string) {
   const viewer = await admin();
-  if (!viewer) return { error: "Not allowed" };
-  if (!id(teamId)) return { error: "Not allowed" };
+  if (!viewer) return { error: "没有权限" };
+  if (!id(teamId)) return { error: "没有权限" };
   try {
     await deleteTeam(viewer, teamId);
     refresh();
     return {};
   } catch (err) {
-    return { error: err instanceof Error ? err.message : "Could not dissolve that team" };
+    return { error: err instanceof Error ? err.message : "没能解散团队，稍后再试" };
   }
 }
 
@@ -319,13 +319,13 @@ export async function setBudgetAction(input: {
   period: string | null;
 }) {
   const viewer = await admin();
-  if (!viewer) return { error: "Not allowed" };
+  if (!viewer) return { error: "没有权限" };
   if (input.scope !== "tenant" && input.scope !== "user" && input.scope !== "team") {
-    return { error: "No such scope" };
+    return { error: "没有这个范围" };
   }
   const dollars = Number(input.dollars);
   if (!Number.isFinite(dollars) || dollars < 0 || dollars > 1_000_000) {
-    return { error: "That is not an amount" };
+    return { error: "请填写一个金额" };
   }
 
   try {
@@ -338,20 +338,20 @@ export async function setBudgetAction(input: {
     refresh();
     return {};
   } catch (err) {
-    return { error: err instanceof Error ? err.message : "Could not set that cap" };
+    return { error: err instanceof Error ? err.message : "没能设置上限，稍后再试" };
   }
 }
 
 export async function removeBudgetAction(budgetId: string) {
   const viewer = await admin();
-  if (!viewer) return { error: "Not allowed" };
-  if (!id(budgetId)) return { error: "Not allowed" };
+  if (!viewer) return { error: "没有权限" };
+  if (!id(budgetId)) return { error: "没有权限" };
   try {
     await removeBudget(viewer, budgetId);
     refresh();
     return {};
   } catch (err) {
-    return { error: err instanceof Error ? err.message : "Could not remove that cap" };
+    return { error: err instanceof Error ? err.message : "没能移除上限，稍后再试" };
   }
 }
 
@@ -364,12 +364,12 @@ export async function saveKnowledgeAction(input: {
   body: string;
 }) {
   const viewer = await admin();
-  if (!viewer) return { error: "Not allowed" };
+  if (!viewer) return { error: "没有权限" };
 
   const kinds = ["instructions", "style", "skill", "example"] as const;
   const scopes = ["tenant", "module", "role"] as const;
-  if (!(kinds as readonly string[]).includes(input.kind)) return { error: "No such kind" };
-  if (!(scopes as readonly string[]).includes(input.scope)) return { error: "No such scope" };
+  if (!(kinds as readonly string[]).includes(input.kind)) return { error: "没有这个类型" };
+  if (!(scopes as readonly string[]).includes(input.scope)) return { error: "没有这个范围" };
 
   try {
     const saved = await saveKnowledge(viewer, {
@@ -383,20 +383,20 @@ export async function saveKnowledgeAction(input: {
     refresh();
     return { id: saved };
   } catch (err) {
-    return { error: err instanceof Error ? err.message : "Could not save that" };
+    return { error: err instanceof Error ? err.message : "没能保存，稍后再试" };
   }
 }
 
 export async function setKnowledgeActiveAction(knowledgeId: string, active: boolean) {
   const viewer = await admin();
-  if (!viewer) return { error: "Not allowed" };
-  if (!id(knowledgeId)) return { error: "Not allowed" };
+  if (!viewer) return { error: "没有权限" };
+  if (!id(knowledgeId)) return { error: "没有权限" };
   try {
     await setKnowledgeActive(viewer, knowledgeId, Boolean(active));
     refresh();
     return {};
   } catch (err) {
-    return { error: err instanceof Error ? err.message : "Could not change that" };
+    return { error: err instanceof Error ? err.message : "没能改好，稍后再试" };
   }
 }
 
@@ -418,14 +418,14 @@ export async function knowledgeHistoryAction(knowledgeId: string) {
 
 export async function rollbackKnowledgeAction(knowledgeId: string, version: number) {
   const viewer = await admin();
-  if (!viewer) return { error: "Not allowed" };
-  if (!id(knowledgeId) || !Number.isInteger(version)) return { error: "Not allowed" };
+  if (!viewer) return { error: "没有权限" };
+  if (!id(knowledgeId) || !Number.isInteger(version)) return { error: "没有权限" };
   try {
     await rollbackKnowledge(viewer, knowledgeId, version);
     refresh();
     return {};
   } catch (err) {
-    return { error: err instanceof Error ? err.message : "Could not roll back" };
+    return { error: err instanceof Error ? err.message : "没能回滚，稍后再试" };
   }
 }
 
@@ -443,7 +443,7 @@ export async function rollbackKnowledgeAction(knowledgeId: string, version: numb
  */
 export async function previewPromptAction(module: string | null) {
   const viewer = await admin();
-  if (!viewer) return { error: "Not allowed" as const };
+  if (!viewer) return { error: "没有权限" as const };
 
   const scoped = isModule(module) ? module : undefined;
   const { text, parts } = await assemblePrompt(viewer, scoped);

@@ -11,8 +11,11 @@ import { videoFolders } from "@/lib/video/folders";
 import { env } from "@/lib/env";
 import { VideoScreen } from "@/components/video/VideoScreen";
 import { HEAVY_JOBS_PAUSED } from "@/lib/jobs/heavy";
+import { and, eq, inArray, isNotNull } from "drizzle-orm";
+import { db } from "@/lib/db/client";
+import { files } from "@/lib/db/schema";
 
-export const metadata = { title: "视频剪辑 · Video Edit" };
+export const metadata = { title: "视频剪辑" };
 
 /**
  * Video Edit (spec §4.5), as an assembly module.
@@ -45,12 +48,30 @@ export default async function VideoPage({
   }
   const d = await editorData(viewer, wanted);
 
+  /* A cut whose poster is a file that has since been deleted asked for its
+     thumbnail on every load and got a 404 each time (QA, 2 Oct:
+     fil_01m3myg20j4s66gfgh2ghagazs, fil_01m3m2x7d148cmdnnqmppyp21x). Those
+     cards draw the "no footage" tile instead of asking. */
+  const posterIds = [...new Set(d.projects.map((p) => p.posterFileId).filter((x): x is string => Boolean(x)))];
+  const gone = posterIds.length
+    ? new Set(
+        (
+          await db
+            .select({ id: files.id })
+            .from(files)
+            .where(and(eq(files.tenantId, viewer.tenantId), inArray(files.id, posterIds), isNotNull(files.deletedAt)))
+            .catch(() => [] as { id: string }[])
+        ).map((r) => r.id),
+      )
+    : new Set<string>();
+  const projects = gone.size ? d.projects.map((p) => (p.posterFileId && gone.has(p.posterFileId) ? { ...p, posterFileId: null } : p)) : d.projects;
+
   /* Which cuts went out: each video project's work project, when it is
      marked 已发布, with where it went and the day (formatted here, so the
      card and the server's HTML agree). */
   const zhDates = (viewer.locale ?? "zh-CN").startsWith("zh");
   const published = Object.fromEntries(
-    Object.entries(await publicationsByVideo(viewer, d.projects.map((p) => p.id))).map(([videoId, pub]) => [videoId, { projectId: pub.projectId, platforms: pub.platforms, at: pub.at, day: publishedDay(pub.at, zhDates) }]),
+    Object.entries(await publicationsByVideo(viewer, projects.map((p) => p.id))).map(([videoId, pub]) => [videoId, { projectId: pub.projectId, platforms: pub.platforms, at: pub.at, day: publishedDay(pub.at, zhDates) }]),
   );
 
   /* What the page's own employee thinks should be made next, read from
@@ -64,7 +85,7 @@ export default async function VideoPage({
   const view = (
     <VideoScreen
       proposals={proposals}
-      projects={d.projects}
+      projects={projects}
       folders={folders}
       published={published}
       project={d.project}

@@ -2,7 +2,7 @@ import { requireModule } from "@/lib/auth/dal";
 import { trainingSummaries } from "@/lib/agents/training";
 import { TrainOverview } from "@/components/train/TrainOverview";
 
-export const metadata = { title: "AI 训练 · Train the AI" };
+export const metadata = { title: "AI 训练" };
 
 /** AI 训练: every AI employee, how much it has been taught, and the way in. */
 export default async function TrainPage() {

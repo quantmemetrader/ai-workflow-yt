@@ -6,7 +6,7 @@ import { pickedModel } from "@/lib/ai/chat-models";
 import { revalidatePath } from "next/cache";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { approvals, scriptBeats, scripts, users, workProjects } from "@/lib/db/schema";
+import { approvals, scriptBeats, scriptVersions, scripts, users, workProjects } from "@/lib/db/schema";
 import { getViewer, type Viewer } from "@/lib/auth/dal";
 import { audit } from "@/lib/audit";
 import { BudgetStop } from "@/lib/ai/ledger";
@@ -15,9 +15,9 @@ import { dmChannelWith, postMessage } from "@/lib/chat/service";
 import { tagProjectFile } from "@/lib/projects/files";
 import { ensureFileText } from "@/lib/files/extract";
 import { beatsFromDoc, isRichDoc, docForBeats, withUnitTexts, type RichDoc, type RichNode } from "@/lib/script/rich";
-import { asc } from "drizzle-orm";
+import { asc, desc } from "drizzle-orm";
 import { readSentBack, recordSendBack, settleSendBack } from "@/lib/projects/sendback";
-import { createScript, cutVersion, decideApproval, requestApproval, restoreVersion, saveBeats, unlock } from "@/lib/script/service";
+import { checksumOf, createScript, cutVersion, decideApproval, requestApproval, restoreVersion, saveBeats, unlock, versionDoc } from "@/lib/script/service";
 import { addDocComment, copilotRedo, copilotRewrite, openRequestFor, requestReviews, resolveDocComment, setReferences, versionBeats, withdrawOthers } from "@/lib/script/doc";
 
 /**
@@ -204,7 +204,26 @@ export async function versionBeatsAction(projectId: unknown, versionNo: unknown)
   if (!c.project.scriptId || !Number.isInteger(n)) return { error: "Not allowed" };
   const v = await versionBeats(c.viewer, c.project.scriptId, n);
   if (!v) return { error: "Not found" };
-  return { ok: true as const, beats: v.beats.map((b) => ({ visual: b.visual, voiceover: b.voiceover, naturalSound: b.naturalSound })) };
+  /* The version's rich document too, when it kept one, so the preview shows
+     its headings and bold (QA, 2 Oct). */
+  const kept = await versionDoc(v.id).catch(() => null);
+  return { ok: true as const, beats: v.beats.map((b) => ({ visual: b.visual, voiceover: b.voiceover, naturalSound: b.naturalSound })), doc: kept?.doc ?? null };
+}
+
+/**
+ * The draft as it stands kept as a version, unless the newest version
+ * already says exactly this (an approved script reopened, a second press).
+ */
+async function keepDraft(c: Ctx, scriptId: string, note: string) {
+  const beats = await db
+    .select({ ord: scriptBeats.ord, visual: scriptBeats.visual, voiceover: scriptBeats.voiceover, subtitle: scriptBeats.subtitle, naturalSound: scriptBeats.naturalSound })
+    .from(scriptBeats)
+    .where(eq(scriptBeats.scriptId, scriptId))
+    .orderBy(asc(scriptBeats.ord));
+  if (!beats.some((b) => b.voiceover.trim() || b.visual.trim())) return null;
+  const [latest] = await db.select({ checksum: scriptVersions.checksum }).from(scriptVersions).where(eq(scriptVersions.scriptId, scriptId)).orderBy(desc(scriptVersions.versionNo)).limit(1);
+  if (latest?.checksum === checksumOf(beats)) return null;
+  return cutVersion(c.viewer, scriptId, { note });
 }
 
 /** 恢复此版本: the draft as it stands is kept as a version first, then the old one comes back. */
@@ -216,7 +235,7 @@ export async function restoreDocVersionAction(projectId: unknown, versionNo: unk
   if (!scriptId || !Number.isInteger(n) || n < 1) return { error: "Not allowed" };
   const [s] = await db.select({ locked: scripts.lockedVersion }).from(scripts).where(eq(scripts.id, scriptId)).limit(1);
   if (s?.locked !== null && s?.locked !== undefined) await unlock(c.viewer, scriptId);
-  await cutVersion(c.viewer, scriptId, { note: "before restoring an earlier version" });
+  await cutVersion(c.viewer, scriptId, { note: c.zh ? "恢复旧版本前的稿子" : "Before restoring an earlier version" });
   const res = await restoreVersion(c.viewer, scriptId, n);
   if (!res) return { error: c.zh ? "这个版本不存在" : "That version does not exist" };
   await audit(c.viewer, "script.restore", { objectType: "script", objectId: scriptId, module: "script", meta: { versionNo: n, from: "doc" } });
@@ -390,15 +409,24 @@ export async function importDocAction(projectId: unknown, fileId: unknown, mode:
     .slice(0, 200)
     .map((l) => ({ visual: "", voiceover: l, subtitle: "", naturalSound: false }));
   if (!paras.length) return { error: c.zh ? "这个文件里读不出文字" : "No text could be read from that file" };
-  const [s] = await db.select({ status: scripts.status }).from(scripts).where(eq(scripts.id, c.project.scriptId)).limit(1);
-  if (s?.status === "locked") await unlock(c.viewer, c.project.scriptId);
-  const existing =
-    mode === "append"
-      ? (await db.select({ visual: scriptBeats.visual, voiceover: scriptBeats.voiceover, subtitle: scriptBeats.subtitle, naturalSound: scriptBeats.naturalSound }).from(scriptBeats).where(eq(scriptBeats.scriptId, c.project.scriptId)).orderBy(asc(scriptBeats.ord)))
-      : [];
-  const kept = existing.filter((b) => b.voiceover.trim() || b.visual.trim());
-  const res = await saveBeats(c.viewer, c.project.scriptId, [...kept, ...paras].slice(0, 200));
-  if (!res) return { error: c.zh ? "没能写进稿子" : "Could not write it into the script" };
+  const scriptId = c.project.scriptId;
+  const [s] = await db.select({ status: scripts.status, doc: scripts.doc }).from(scripts).where(eq(scripts.id, scriptId)).limit(1);
+  if (s?.status === "locked") await unlock(c.viewer, scriptId);
+  if (mode === "append") {
+    /* Added to the rich document as it is, so the headings and bold already
+       there stay (QA, 2 Oct: append rebuilt the page from plain beats). */
+    const beatsNow = await db.select({ voiceover: scriptBeats.voiceover, visual: scriptBeats.visual }).from(scriptBeats).where(eq(scriptBeats.scriptId, scriptId)).orderBy(asc(scriptBeats.ord));
+    const base = docForBeats((s?.doc ?? null) as RichNode | null, beatsNow);
+    const kept = (base.content ?? []).filter((n, i, all) => !(all.length === 1 && n.type === "paragraph" && !n.content?.length && !n.attrs?.shot));
+    const next: RichDoc = { type: "doc", content: [...kept, ...paras.map((p) => ({ type: "paragraph", content: [{ type: "text", text: p.voiceover }] }))] };
+    const saved = await saveRichAction(c.project.id, next, null);
+    if ("error" in saved) return { error: saved.error ?? (c.zh ? "没能写进稿子" : "Could not write it into the script") };
+  } else {
+    /* The confirm promises the old text is in 版本记录: keep it there first (QA, 2 Oct). */
+    await keepDraft(c, scriptId, c.zh ? "用文件替换前的稿子" : "Before replacing it with a file");
+    const res = await saveBeats(c.viewer, scriptId, paras);
+    if (!res) return { error: c.zh ? "没能写进稿子" : "Could not write it into the script" };
+  }
   await setReferences(c.viewer, c.project.scriptId, { add: fileId }).catch(() => null);
   await audit(c.viewer, "script.import", { objectType: "script", objectId: c.project.scriptId, module: "script", meta: { fileId, mode, paragraphs: paras.length } });
   refresh(c.project.id);

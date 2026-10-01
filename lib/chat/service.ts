@@ -226,6 +226,32 @@ export async function listConversations(viewer: Viewer, limit = 20) {
 }
 
 /**
+ * Renaming and deleting one's own AI chat (QA, 2 Oct: 「最近」 had neither).
+ * Only the owner's row is touched (`user_id`), and delete is an archive:
+ * the thread leaves every list but its turns, costs and receipts stay.
+ * False when nothing was changed (not theirs, or gone).
+ */
+export async function renameConversation(viewer: Viewer, conversationId: string, title: string): Promise<boolean> {
+  const clean = title.replace(/\s+/g, " ").trim().slice(0, 80);
+  if (!clean) return false;
+  const rows = await db
+    .update(conversations)
+    .set({ title: clean })
+    .where(and(eq(conversations.id, conversationId), eq(conversations.userId, viewer.id), isNull(conversations.archivedAt)))
+    .returning({ id: conversations.id });
+  return rows.length > 0;
+}
+
+export async function archiveConversation(viewer: Viewer, conversationId: string): Promise<boolean> {
+  const rows = await db
+    .update(conversations)
+    .set({ archivedAt: new Date() })
+    .where(and(eq(conversations.id, conversationId), eq(conversations.userId, viewer.id), isNull(conversations.archivedAt)))
+    .returning({ id: conversations.id });
+  return rows.length > 0;
+}
+
+/**
  * This person's own conversations in which one employee answered, newest
  * first, with the employee's last line in each.
  *
@@ -525,7 +551,11 @@ export async function channelThread(viewer: Viewer, slug: string, limit = 80) {
     topic: string | null;
     is_private: boolean;
     kind: string;
+    slug: string | null;
+    created_by: string | null;
+    archived_at: unknown;
     message_id: string | null;
+    edited_at: unknown;
     body: string | null;
     created_at: unknown;
     author_id: string | null;
@@ -539,7 +569,7 @@ export async function channelThread(viewer: Viewer, slug: string, limit = 80) {
     meta: unknown;
   }>(sql`
     with ch as (
-      select c.id, c.name, c.topic, c.is_private, c.kind
+      select c.id, c.name, c.topic, c.is_private, c.kind, c.slug, c.created_by, c.archived_at
         from ${chatChannels} c
        where c.tenant_id = ${viewer.tenantId} and c.slug = ${slug}
          and (c.is_private = false or exists (
@@ -551,7 +581,8 @@ export async function channelThread(viewer: Viewer, slug: string, limit = 80) {
        it as undefined -- which is why the announcements channel drew a
        composer for everybody. */
     select ch.id as channel_id, ch.name as channel_name, ch.topic, ch.is_private, ch.kind,
-           m.id as message_id, m.body, m.created_at, m.author_id, m.attachments, m.meta,
+           ch.slug, ch.created_by, ch.archived_at,
+           m.id as message_id, m.body, m.created_at, m.edited_at, m.author_id, m.attachments, m.meta,
            u.name as author_name, u.name_local as author_name_local, u.avatar_url as author_avatar,
            u.is_agent as author_is_agent, u.title as author_title, u.email as author_email
       from ch
@@ -613,6 +644,10 @@ export async function channelThread(viewer: Viewer, slug: string, limit = 80) {
       topic: first.topic,
       isPrivate: first.is_private,
       kind: first.kind,
+      /* For the header's 退出 / 归档 (QA, 2 Oct). */
+      slug: first.slug,
+      createdBy: first.created_by,
+      archivedAt: toDate(first.archived_at),
     },
     messages: withMessages.map((r) => ({
       id: r.message_id!,
@@ -648,6 +683,7 @@ export async function channelThread(viewer: Viewer, slug: string, limit = 80) {
       /* The renders and video files it names, as cards this reader may open. */
       videos: videos.get(r.message_id!) ?? [],
       createdAt: toDate(r.created_at) ?? new Date(),
+      editedAt: toDate(r.edited_at),
     })),
     pending,
   };
@@ -793,7 +829,7 @@ export async function announcementsChannel(viewer: Viewer) {
           kind: "announce",
           slug: "announcements",
           name: "announcements",
-          topic: "Company-wide updates",
+          topic: "全员公告",
           isPrivate: false,
           createdBy: viewer.id,
         })
@@ -815,21 +851,28 @@ export async function createChannel(
   input: { name: string; topic?: string | null; isPrivate?: boolean },
 ) {
   const name = input.name.trim().replace(/^#/, "");
-  if (!name) throw new Error("A channel needs a name");
-  if (name.length > 60) throw new Error("That name is too long for a channel");
+  /* Said in Chinese: these go straight to the person naming it (QA, 2 Oct). */
+  if (!name) throw new Error("请给频道起个名字");
+  if (name.length > 60) throw new Error("频道名最多 60 个字");
 
   const slug = name
     .toLowerCase()
     .replace(/[^\p{L}\p{N}]+/gu, "-")
     .replace(/^-|-$/g, "")
     .slice(0, 60);
-  if (!slug) throw new Error("That name has no letters or numbers in it");
+  if (!slug) throw new Error("频道名里要有文字或数字");
 
   const [clash] = await db
     .select()
     .from(chatChannels)
     .where(and(eq(chatChannels.tenantId, viewer.tenantId), eq(chatChannels.slug, slug)))
     .limit(1);
+  /* A name that belonged to a channel since archived opens it again rather
+     than leading to a read-only room (archiving is new, QA 2 Oct). */
+  if (clash?.archivedAt && clash.kind === "channel") {
+    await db.update(chatChannels).set({ archivedAt: null }).where(eq(chatChannels.id, clash.id));
+    return { ...clash, archivedAt: null };
+  }
   if (clash) return clash;
 
   const id = newId("ch");
@@ -854,7 +897,7 @@ export async function createChannel(
   if (!created) {
     const existing = await channelBySlugRaw(viewer.tenantId, slug);
     if (existing) return existing;
-    throw new Error("Could not create that channel");
+    throw new Error("频道没建成，再试一次");
   }
 
   await db.insert(chatMembers).values({ channelId: id, userId: viewer.id }).onConflictDoNothing();
@@ -959,4 +1002,90 @@ export async function removeChannelMember(viewer: Viewer, channelId: string, use
     module: "chat",
     meta: { userId },
   });
+}
+
+/* ---------- editing, deleting, leaving, archiving (QA, 2 Oct) ---------- */
+
+/**
+ * The rooms the studio's own work runs through: the employees post into
+ * them on a schedule (`ensureAgentChannel`), so they are never archived.
+ * Matched by slug and by name, in both languages.
+ */
+const SYSTEM_CHANNELS = new Set(["研究日报", "制作", "公告", "research-daily", "production", "announcements"]);
+
+export function isSystemChannel(channel: { slug: string | null; name: string; kind: string }): boolean {
+  return channel.kind !== "channel" || SYSTEM_CHANNELS.has(channel.slug ?? "") || SYSTEM_CHANNELS.has(channel.name);
+}
+
+/** May this person archive the room: whoever started it, or an admin. */
+export function canArchiveChannel(viewer: Viewer, channel: { createdBy: string | null; slug: string | null; name: string; kind: string }): boolean {
+  if (isSystemChannel(channel)) return false;
+  return channel.createdBy === viewer.id || viewer.isAdmin || viewer.role === "owner" || viewer.role === "admin";
+}
+
+/** A project's own chat is closed with its project, not from the chat. */
+async function isProjectChannel(channelId: string): Promise<boolean> {
+  const { rows } = await db.execute<{ n: number }>(sql`select count(*)::int as n from work_projects where channel_id = ${channelId} and deleted_at is null`);
+  return Number(rows[0]?.n ?? 0) > 0;
+}
+
+/** Change one's own message. Only the author, only a live message. */
+export async function editChannelMessage(viewer: Viewer, channelId: string, messageId: string, body: string): Promise<string | null> {
+  const channel = await channelById(viewer, channelId);
+  if (!channel || channel.archivedAt) return "这条消息改不了了";
+  const text = toSimplified(body.trim());
+  if (text.length > 16_000) return "消息太长了";
+  const [row] = await db
+    .select({ id: chatMessages.id, authorId: chatMessages.authorId, attachments: chatMessages.attachments })
+    .from(chatMessages)
+    .where(and(eq(chatMessages.id, messageId), eq(chatMessages.channelId, channelId), isNull(chatMessages.deletedAt)))
+    .limit(1);
+  if (!row || row.authorId !== viewer.id) return "只能改自己发的消息";
+  if (!text && !toIds(row.attachments).length) return "消息不能是空的，不要了就删除";
+  await db.update(chatMessages).set({ body: text, editedAt: new Date() }).where(eq(chatMessages.id, messageId));
+  return null;
+}
+
+/** Take back one's own message (soft: `deleted_at`, as every list reads). */
+export async function deleteChannelMessage(viewer: Viewer, channelId: string, messageId: string): Promise<string | null> {
+  const channel = await channelById(viewer, channelId);
+  if (!channel) return "找不到这个频道";
+  const rows = await db
+    .update(chatMessages)
+    .set({ deletedAt: new Date() })
+    .where(and(eq(chatMessages.id, messageId), eq(chatMessages.channelId, channelId), eq(chatMessages.authorId, viewer.id), isNull(chatMessages.deletedAt)))
+    .returning({ id: chatMessages.id });
+  if (!rows.length) return "只能删除自己发的消息";
+  await audit(viewer, "chat.message.delete", { objectType: "channel", objectId: channelId, module: "chat", meta: { messageId } });
+  return null;
+}
+
+/**
+ * Leave a private channel. A public one is the whole studio's and stays in
+ * everyone's list, so there is nothing to leave; the last person in a
+ * private one archives it instead of leaving an empty room behind.
+ */
+export async function leaveChannel(viewer: Viewer, channelId: string): Promise<string | null> {
+  const channel = await channelById(viewer, channelId);
+  if (!channel) return "找不到这个频道";
+  if (channel.kind !== "channel" || !channel.isPrivate) return "公开频道所有人都能看到，不能退出";
+  if (await isProjectChannel(channelId)) return "项目的对话跟着项目走，不能单独退出";
+  const members = await db.select({ userId: chatMembers.userId }).from(chatMembers).where(eq(chatMembers.channelId, channelId));
+  if (!members.some((m) => m.userId === viewer.id)) return "你不在这个频道里";
+  if (members.length <= 1) return "你是这里唯一的成员，要关掉它请用「归档频道」";
+  await removeChannelMember(viewer, channelId, viewer.id);
+  return null;
+}
+
+/** Archive a channel: gone from every list, its messages kept, read-only. */
+export async function archiveChannel(viewer: Viewer, channelId: string): Promise<string | null> {
+  const channel = await channelById(viewer, channelId);
+  if (!channel) return "找不到这个频道";
+  if (channel.archivedAt) return null;
+  if (isSystemChannel(channel)) return "这是工作室的系统频道，不能归档";
+  if (!canArchiveChannel(viewer, channel)) return "只有频道的创建人或管理员可以归档";
+  if (await isProjectChannel(channelId)) return "项目的对话跟着项目走，归档项目即可";
+  await db.update(chatChannels).set({ archivedAt: new Date() }).where(and(eq(chatChannels.id, channelId), isNull(chatChannels.archivedAt)));
+  await audit(viewer, "chat.channel.archive", { objectType: "channel", objectId: channelId, module: "chat", meta: { name: channel.name } });
+  return null;
 }

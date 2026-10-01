@@ -160,7 +160,7 @@ export function Drop({ label, button, children, width, disabled, align = "left" 
   );
 }
 
-export function Modal({ title, onClose, children, width = 440 }: { title: string; onClose: () => void; children: React.ReactNode; width?: number }) {
+export function Modal({ title, onClose, children, width = 440, closeLabel = "关闭" }: { title: string; onClose: () => void; children: React.ReactNode; width?: number; closeLabel?: string }) {
   React.useEffect(() => {
     const esc = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
@@ -173,7 +173,7 @@ export function Modal({ title, onClose, children, width = 440 }: { title: string
       <div className="gd-modal" style={{ width }} onMouseDown={(e) => e.stopPropagation()} role="dialog" aria-label={title}>
         <div style={{ display: "flex", alignItems: "center", marginBottom: 14 }}>
           <div style={{ fontSize: 18, fontWeight: 500, color: "#1f1f1f", flexGrow: 1 }}>{title}</div>
-          <button type="button" className="gd-icon" onClick={onClose} aria-label="close">
+          <button type="button" className="gd-icon" onClick={onClose} aria-label={closeLabel} title={closeLabel}>
             <GI name="x" size={18} />
           </button>
         </div>

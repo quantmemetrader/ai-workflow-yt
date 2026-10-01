@@ -1,6 +1,6 @@
 "use client";
 
-import type * as React from "react";
+import * as React from "react";
 import Link from "next/link";
 import { Icon } from "@/components/ui/Icon";
 import { Card, INK, LINE, MUTED, PageBody, smallButton } from "@/components/projects/kit";
@@ -61,11 +61,14 @@ export function VideoDetail({ zh, video, siblings, typical }: { zh: boolean; vid
             {STAT_KEYS.filter((k) => typeof video.stats[k] === "number").map((k) => (
               <Tile key={k} label={zh ? STAT_LABEL[k].zh : STAT_LABEL[k].en} value={video.stats[k]} usual={typical?.[k] ?? null} zh={zh} />
             ))}
-            <div style={tile}>
-              <div style={{ fontSize: 12, color: MUTED }}>{t("互动率", "Engagement")}</div>
-              <div style={{ fontSize: 22, fontWeight: 650, color: INK, marginTop: 4, fontVariantNumeric: "tabular-nums" }}>{eng === null ? "—" : `${(eng * 100).toFixed(1)}%`}</div>
-              <div style={{ fontSize: 11.5, color: MUTED, marginTop: 2 }}>{t("点赞、评论、转发、收藏 ÷ 播放", "Likes, comments, shares, saves ÷ plays")}</div>
-            </div>
+            {/* No rate, no tile: a 「—」 said nothing (QA, 2 Oct). */}
+            {eng !== null ? (
+              <div style={tile}>
+                <div style={{ fontSize: 12, color: MUTED }}>{t("互动率", "Engagement")}</div>
+                <div style={{ fontSize: 22, fontWeight: 650, color: INK, marginTop: 4, fontVariantNumeric: "tabular-nums" }}>{`${(eng * 100).toFixed(1)}%`}</div>
+                <div style={{ fontSize: 11.5, color: MUTED, marginTop: 2 }}>{t("点赞、评论、转发、收藏 ÷ 播放", "Likes, comments, shares, saves ÷ plays")}</div>
+              </div>
+            ) : null}
           </div>
         </Card>
 
@@ -106,13 +109,47 @@ function Tile({ label, value, usual, zh }: { label: string; value: number | null
       <div style={{ fontSize: 12, color: MUTED }}>{label}</div>
       <div key={String(value)} style={{ fontSize: 22, fontWeight: 650, color: INK, marginTop: 4, fontVariantNumeric: "tabular-nums" }}>{fmtNum(value, zh)}</div>
       <div style={{ fontSize: 11.5, marginTop: 2, color: up ? "#0b7a63" : down ? "#b4532a" : MUTED, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-        {usual === null || value === null ? (zh ? "—" : "—") : `${zh ? "平时" : "usual"} ${fmtNum(usual, zh)}${ratio !== null && (up || down) ? ` · ${ratio >= 1 ? `${ratio.toFixed(1)}${zh ? " 倍" : "×"}` : `${Math.round(ratio * 100)}%`}` : ""}`}
+        {usual === null || value === null ? "\u00a0" : `${zh ? "平时" : "usual"} ${fmtNum(usual, zh)}${ratio !== null && (up || down) ? ` · ${ratio >= 1 ? `${ratio.toFixed(1)}${zh ? " 倍" : "×"}` : `${Math.round(ratio * 100)}%`}` : ""}`}
       </div>
     </div>
   );
 }
 
-/** Total plays (or likes) at each reading. */
+const RANGES = [7, 28, 90] as const;
+
+/** Total plays (or likes) at each reading, over the last 7, 28 or 90 days
+ * (QA, 2 Oct: asked for a range control). The control shows only when the
+ * readings span more than a week; the newest reading anchors the window so
+ * the server and the browser cut the same points. */
 function Chart({ points, zh }: { points: { at: string; v: number }[]; zh: boolean }) {
-  return <TrendChart points={points} height={240} label={zh ? "走势" : "Trend"} format={(n) => fmtNum(Math.round(n), zh)} />;
+  const times = points.map((p) => Date.parse(p.at)).filter(Number.isFinite);
+  const last = times.length ? Math.max(...times) : 0;
+  const span = times.length ? last - Math.min(...times) : 0;
+  const [days, setDays] = React.useState<(typeof RANGES)[number]>(28);
+  const DAY = 86_400_000;
+  const cut = span > 7 * DAY ? points.filter((p) => Date.parse(p.at) >= last - days * DAY) : points;
+  return (
+    <div>
+      {span > 7 * DAY ? (
+        <div style={{ display: "flex", gap: 2, padding: 2, borderRadius: 8, background: "#f3f3f1", width: "fit-content", marginBottom: 8 }}>
+          {RANGES.map((d) => (
+            <button
+              key={d}
+              type="button"
+              aria-pressed={days === d}
+              onClick={() => setDays(d)}
+              style={{ height: 24, padding: "0 10px", borderRadius: 6, border: 0, fontFamily: "inherit", fontSize: 12, cursor: "pointer", background: days === d ? "#fff" : "transparent", color: days === d ? INK : MUTED, boxShadow: days === d ? "0 1px 2px rgba(0,0,0,.1)" : "none" }}
+            >
+              {zh ? `${d} 天` : `${d}d`}
+            </button>
+          ))}
+        </div>
+      ) : null}
+      {cut.length > 1 ? (
+        <TrendChart points={cut} height={240} label={zh ? "走势" : "Trend"} format={(n) => fmtNum(Math.round(n), zh)} />
+      ) : (
+        <div style={{ fontSize: 13.5, color: MUTED, padding: "8px 0" }}>{zh ? "这段时间只有一次读数，换个更长的范围看看。" : "One reading in this range; try a longer one."}</div>
+      )}
+    </div>
+  );
 }

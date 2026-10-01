@@ -101,7 +101,7 @@ export async function projectsLiveWithSpent(viewer: Viewer, options: { ids?: str
      where wp.tenant_id = ${viewer.tenantId}
        and wp.deleted_at is null
        and wp.status <> 'archived'
-       and ${projectsVisibleTo(viewer)}
+       and wp.id in (select ${workProjects.id} from ${workProjects} where ${projectsVisibleTo(viewer)})
        and ${
          byIds
            ? sql`wp.id in (${sql.join(

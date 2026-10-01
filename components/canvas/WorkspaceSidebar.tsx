@@ -1,5 +1,6 @@
 "use client";
 
+import { ConversationMenu } from "@/components/chat/RowMenu";
 import Link, { useLinkStatus } from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState, useTransition } from "react";
@@ -53,6 +54,8 @@ export type SidebarPerson = {
  * middle, and an unread count in the product's ink rather than alarm red.
  */
 const CSS = `
+.ws-row .ws-more{position:absolute;right:4px;top:50%;transform:translateY(-50%);opacity:0;transition:opacity .12s ease}.ws-row:hover .ws-more,.ws-row .ws-more:focus-within{opacity:1}.ws-row:hover .ws>span:last-of-type{visibility:hidden}
+
 [data-ws-sidebar] .ws { height: 30px; border-radius: 8px; transition: background .12s; }
 [data-ws-sidebar] .ws:hover { background: rgba(0,0,0,.045); }
 [data-ws-sidebar] .ws.on { background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.07), 0 0 0 1px rgba(0,0,0,.035); }
@@ -297,7 +300,8 @@ export function WorkspaceSidebar({
               {(historyOpen ? conversations : conversations.slice(0, 3)).map((c) => {
                 const active = pathname === `/chat/t/${c.id}`;
                 return (
-                  <Link key={c.id} href={`/chat/t/${c.id}`} prefetch={false} className={`ws${active ? " on" : ""}`} title={c.title}>
+                  <div key={c.id} className="ws-row" style={{ position: "relative" }}>
+                  <Link href={`/chat/t/${c.id}`} prefetch={false} className={`ws${active ? " on" : ""}`} title={c.title}>
                     <span className="hs" aria-hidden>
                       <Icon name="chat" size={12} color="#a3a3a3" />
                     </span>
@@ -309,6 +313,8 @@ export function WorkspaceSidebar({
                     </span>
                     <NavSpinner />
                   </Link>
+                  <ConversationMenu id={c.id} title={c.title} zh={zh} current={active} size={22} className="ws-more" />
+                  </div>
                 );
               })}
               {/* Two at a glance, the rest a press away ("just a few, the

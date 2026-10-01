@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { MODULES, type Module } from "@/lib/db/schema";
 import { ResearchAgentPanel } from "@/components/canvas/ResearchAgentPanel";
@@ -36,6 +36,9 @@ import {
   knowledgeHistoryAction,
   type AddedPerson,
 } from "@/app/(app)/admin/actions";
+import { inviteAction, revokeInviteAction } from "@/app/(app)/chat/invite-actions";
+import { isTrainKey } from "@/lib/agents/train-keys";
+import { trainName } from "@/components/train/names";
 import { notify } from "@/lib/client/notify";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { PRODUCTION_KEYS } from "@/lib/agents/catalog";
@@ -61,7 +64,7 @@ import { PersonAvatar } from "@/components/ui/PersonAvatar";
  */
 type Tab = "people" | "ent" | "tokens" | "budgets" | "credentials" | "audit" | "knowledge" | "prompt";
 
-export type PendingInvite = { id: string; email: string; role: string; expiresAt: string };
+export type PendingInvite = { id: string; email: string; role: string; modules: string[]; expiresAt: string };
 
 export function AdminScreen({
   people,
@@ -297,6 +300,9 @@ export function AdminScreen({
 function TAB_SCOPE(tab: string, zh: boolean): string {
   const names: Record<string, [string, string]> = {
     people: ["People & access", "人员与权限"],
+    /* (QA, 2 Oct: the pill read 「ent」 and 「tokens」, the tab keys.) */
+    ent: ["Entitlements matrix", "权限矩阵"],
+    tokens: ["Token dashboard", "用量看板"],
     usage: ["Usage & cost", "用量与成本"],
     budgets: ["Budgets", "预算"],
     credentials: ["Credentials", "凭据"],
@@ -349,7 +355,7 @@ function WorkRoleSelect({
       title={zh ? "岗位决定这个人打开首页时看到的版面" : "The job decides which Home this person lands on"}
       style={{ ...field, height: 26, width, fontSize: 11.5 }}
     >
-      <option value="">{zh ? "— 未设" : "— not set"}</option>
+      <option value="">{zh ? "未设" : "Not set"}</option>
       {/* The production line's jobs only: 法务 and 财务 have no Home of
           their own to land on (`HOME_ROLES`). */}
       {PRODUCTION_KEYS.map((k) => (
@@ -445,7 +451,7 @@ function People({
   return (
     <>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
-        <select value={team} onChange={(e) => setTeam(e.target.value)} style={{ ...field, width: 150, height: 30 }}>
+        <select value={team} onChange={(e) => setTeam(e.target.value)} aria-label={t("Team", "团队")} style={{ ...field, width: 150, height: 30 }}>
           <option value="all">{t("Team: All", "团队：全部")}</option>
           {allTeams.map((x) => (
             <option key={x} value={x}>
@@ -453,11 +459,11 @@ function People({
             </option>
           ))}
         </select>
-        <select value={role} onChange={(e) => setRole(e.target.value)} style={{ ...field, width: 150, height: 30 }}>
+        <select value={role} onChange={(e) => setRole(e.target.value)} aria-label={t("Role", "角色")} style={{ ...field, width: 150, height: 30 }}>
           <option value="all">{t("Role: All", "角色：全部")}</option>
           {["owner", "admin", "member", "guest"].map((x) => (
             <option key={x} value={x}>
-              {x}
+              {roleName(x, zh)}
             </option>
           ))}
         </select>
@@ -588,6 +594,7 @@ function People({
                   value={p.role}
                   disabled={busy}
                   onChange={(e) => onRole(p.id, e.target.value)}
+                  aria-label={t("Role", "角色")}
                   style={{ ...field, height: 26, width: 100, fontSize: 11.5 }}
                 >
                   {["admin", "member", "guest"].map((r) => (
@@ -653,37 +660,12 @@ function People({
           so without this the roster looks unchanged the moment after you add
           them. The link itself is not here: the token is hashed the second it
           is made and shown once, to whoever made it. */}
-      {invites.length ? (
-        <div style={{ marginTop: 16, borderTop: "1px solid #ededed", paddingTop: 10 }}>
-          <div style={{ fontSize: 10.5, color: "#999999", marginBottom: 5 }}>
-            {t("Invited, not joined yet", "已邀请，尚未加入")}
-          </div>
-          {invites.map((i) => (
-            <div
-              key={i.id}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 10,
-                padding: "4px 0",
-                fontSize: 11.5,
-                color: "#7c7c7c",
-              }}
-            >
-              <span style={{ ...clip }}>{i.email}</span>
-              <span style={{ color: "#999999" }}>{i.role}</span>
-              <span style={{ marginLeft: "auto", color: "#999999" }}>
-                {t(`expires ${i.expiresAt.slice(0, 10)}`, `有效期至 ${i.expiresAt.slice(0, 10)}`)}
-              </span>
-            </div>
-          ))}
-        </div>
-      ) : null}
+      {invites.length ? <PendingInvites invites={invites} zh={zh} /> : null}
 
       {suspending ? (
         <ConfirmDialog
           danger
-          title={t(`Suspend ${suspending.name}?`, `停用 ${suspending.name}？`)}
+          title={t(`Suspend ${suspending.name}?`, `停用 ${suspending.nameLocal || suspending.name}？`)}
           body={t(
             "Their sessions end at once and they cannot sign in. Nothing they made is deleted, and restoring them gives everything back.",
             "其会话会立即结束，且无法再登录。他们创建的内容不会被删除，恢复后一切照旧。",
@@ -873,18 +855,20 @@ function AddPerson({
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           placeholder={t("Their email address", "邮箱地址")}
+          aria-label={t("Email", "邮箱")}
           style={{ ...field, height: 30, width: 240 }}
         />
         <input
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder={t("Their name (optional)", "姓名（可留空）")}
+          aria-label={t("Name", "姓名")}
           style={{ ...field, height: 30, width: 190 }}
         />
         <span style={{ display: "flex", gap: 6 }}>
           {(["admin", "member", "guest"] as const).map((r) => (
             <button key={r} type="button" onClick={() => setRole(r)} style={chip(role === r)}>
-              {r}
+              {roleName(r, zh)}
             </button>
           ))}
         </span>
@@ -903,7 +887,7 @@ function AddPerson({
               onClick={() => setModules((cur) => (on ? cur.filter((x) => x !== m) : [...cur, m]))}
               style={chip(on)}
             >
-              {m}
+              {moduleName(m, zh)}
             </button>
           );
         })}
@@ -1077,8 +1061,8 @@ function Teams({
       {teams.length === 0 ? (
         <p style={{ fontSize: 11.5, color: "#999999", lineHeight: 1.6, margin: 0 }}>
           {t(
-            "There are no teams yet. Make one above, then open it to put people on it — the Team column and the filter at the top of this screen read the result.",
-            "还没有任何团队。请在上方新建一个，然后展开它来添加成员——本页的“团队”列和上方的筛选都会读取结果。",
+            "There are no teams yet. Make one above, then open it to put people on it. The Team column and the filter at the top follow it.",
+            "还没有团队。先在上方新建一个，再展开它添加成员，本页的「团队」列和筛选会跟着更新。",
           )}
         </p>
       ) : null}
@@ -1214,6 +1198,26 @@ function Entitlements({
 }) {
   const t = (en: string, cn: string) => (zh ? cn : en);
   const [suspending, setSuspending] = useState<PersonRow | null>(null);
+  /* (QA, 2 Oct: at 1280px only 6 of 11 module columns showed and the sideways
+     scroll had no visible cue.) Columns are narrower now, the name column
+     stays put while scrolling, and when the table is still wider than the
+     pane a line says so and the right edge fades. */
+  const scroller = useRef<HTMLDivElement>(null);
+  const [overflow, setOverflow] = useState<{ more: boolean; atEnd: boolean }>({ more: false, atEnd: true });
+  useEffect(() => {
+    const el = scroller.current;
+    if (!el) return;
+    const check = () => setOverflow({ more: el.scrollWidth > el.clientWidth + 2, atEnd: el.scrollLeft + el.clientWidth >= el.scrollWidth - 2 });
+    check();
+    const ro = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(check);
+    ro?.observe(el);
+    el.addEventListener("scroll", check, { passive: true });
+    return () => {
+      ro?.disconnect();
+      el.removeEventListener("scroll", check);
+    };
+  }, []);
+  const sticky: React.CSSProperties = { position: "sticky", left: 0, background: "#fff", zIndex: 1 };
 
   return (
     <>
@@ -1224,26 +1228,35 @@ function Entitlements({
         )}
       </p>
 
-      <div style={{ overflowX: "auto" }}>
-        <table style={{ borderCollapse: "collapse", fontSize: 12, minWidth: 860 }}>
+      {overflow.more ? (
+        <p style={{ fontSize: 11.5, color: "#7c7c7c", margin: "0 0 8px" }}>
+          {t("The table is wider than the pane: scroll sideways for the rest of the modules.", "表格比窗口宽，左右滑动可以看到其余模块。")}
+        </p>
+      ) : null}
+      <div style={{ position: "relative" }}>
+      <div ref={scroller} style={{ overflowX: "auto" }}>
+        <table style={{ borderCollapse: "collapse", fontSize: 12 }}>
           <thead>
             <tr>
-              <th style={{ ...th, textAlign: "left", minWidth: 190 }}>{t("Person", "成员")}</th>
-              <th style={{ ...th, minWidth: 86 }}>{t("Role", "角色")}</th>
-              <th style={{ ...th, minWidth: 100 }}>{t("Job", "岗位")}</th>
-              <th style={{ ...th, minWidth: 74 }}>{t("Spend", "花费")}</th>
+              <th style={{ ...th, ...sticky, textAlign: "left", minWidth: 150 }}>{t("Person", "成员")}</th>
+              <th style={{ ...th, minWidth: 76 }}>{t("Role", "角色")}</th>
+              <th style={{ ...th, minWidth: 92 }}>{t("Job", "岗位")}</th>
+              <th style={{ ...th, minWidth: 54 }}>{t("Spend", "花费")}</th>
               {MODULES.map((m) => (
-                <th key={m} style={{ ...th, width: 52 }}>
-                  <span style={{ display: "inline-block", whiteSpace: "nowrap", fontSize: 10.5 }}>{m}</span>
+                <th key={m} title={moduleName(m, zh)} style={{ ...th, width: zh ? 36 : 52, padding: "6px 2px" }}>
+                  <span style={{ display: "inline-block", whiteSpace: "nowrap", fontSize: 10.5 }}>{moduleShort(m, zh)}</span>
                 </th>
               ))}
+              <th style={{ ...th, minWidth: 44 }}>
+                <span style={{ position: "absolute", width: 1, height: 1, overflow: "hidden", clip: "rect(0 0 0 0)" }}>{t("Actions", "操作")}</span>
+              </th>
             </tr>
           </thead>
           <tbody>
             {people.map((p) => (
               <tr key={p.id} style={{ borderTop: "1px solid #f3f3f3" }}>
-                <td style={{ ...td, textAlign: "left" }}>
-                  <span style={{ display: "block", fontWeight: 500 }}>
+                <td style={{ ...td, ...sticky, textAlign: "left", maxWidth: 190 }}>
+                  <span style={{ display: "block", fontWeight: 500, ...clip }}>
                     {(zh && p.nameLocal) || p.name}
                     {p.status === "suspended" && (
                       <span style={{ color: "#e03636", fontSize: 10.5, marginLeft: 6 }}>
@@ -1251,7 +1264,7 @@ function Entitlements({
                       </span>
                     )}
                   </span>
-                  <span style={{ display: "block", fontSize: 11, color: "#999999" }}>{p.email}</span>
+                  <span style={{ display: "block", fontSize: 11, color: "#999999", ...clip }}>{p.email}</span>
                 </td>
                 <td style={td}>
                   {p.role === "owner" ? (
@@ -1261,11 +1274,14 @@ function Entitlements({
                       value={p.role}
                       disabled={busy || p.id === viewerId}
                       onChange={(e) => onRole(p.id, e.target.value)}
-                      style={{ ...field, height: 26, fontSize: 11.5, width: 84 }}
+                      aria-label={t("Role", "角色")}
+                      style={{ ...field, height: 26, fontSize: 11.5, width: 72, padding: "0 4px" }}
                     >
-                      <option value="admin">admin</option>
-                      <option value="member">member</option>
-                      <option value="guest">guest</option>
+                      {["admin", "member", "guest"].map((r) => (
+                        <option key={r} value={r}>
+                          {roleName(r, zh)}
+                        </option>
+                      ))}
                     </select>
                   )}
                 </td>
@@ -1278,7 +1294,7 @@ function Entitlements({
                       {p.workRole ? (zh ? ROLE_LABELS[p.workRole].zh : ROLE_LABELS[p.workRole].en) : "—"}
                     </span>
                   ) : (
-                    <WorkRoleSelect value={p.workRole} zh={zh} disabled={busy} onChange={(r) => onWorkRole(p.id, r)} width={96} />
+                    <WorkRoleSelect value={p.workRole} zh={zh} disabled={busy} onChange={(r) => onWorkRole(p.id, r)} width={86} />
                   )}
                 </td>
                 <td style={{ ...td, fontVariantNumeric: "tabular-nums", color: "#7c7c7c" }}>
@@ -1287,10 +1303,10 @@ function Entitlements({
                 {MODULES.map((m) => {
                   const on = p.modules.includes(m);
                   return (
-                    <td key={m} style={td}>
+                    <td key={m} style={{ ...td, padding: "9px 2px" }}>
                       <button
                         type="button"
-                        aria-label={`${p.name} · ${m}`}
+                        aria-label={`${(zh && p.nameLocal) || p.name} · ${moduleName(m, zh)}`}
                         aria-pressed={on}
                         disabled={busy}
                         onClick={() => onToggle(p.id, m, !on)}
@@ -1335,11 +1351,15 @@ function Entitlements({
           </tbody>
         </table>
       </div>
+      {overflow.more && !overflow.atEnd ? (
+        <div aria-hidden style={{ position: "absolute", top: 0, right: 0, bottom: 0, width: 36, pointerEvents: "none", background: "linear-gradient(to right, rgba(255,255,255,0), #fff)" }} />
+      ) : null}
+      </div>
 
       {suspending && (
         <ConfirmDialog
           danger
-          title={t(`Suspend ${suspending.name}?`, `停用 ${suspending.name}？`)}
+          title={t(`Suspend ${suspending.name}?`, `停用 ${suspending.nameLocal || suspending.name}？`)}
           body={t(
             "They stay in the studio and keep their files. They cannot sign in until somebody restores them.",
             "该成员仍在工作室内，文件保留，但在恢复前无法登录。",
@@ -1418,8 +1438,9 @@ function Tokens({
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))", gap: 22 }}>
-        <Slice title={t("By module", "按模块")} rows={usage.byModule} zh={zh} />
-        <Slice title={t("By person", "按成员")} rows={usage.byPerson} zh={zh} />
+        {/* (QA, 2 Oct: module keys and English account names showed raw.) */}
+        <Slice title={t("By module", "按模块")} rows={usage.byModule.map((r) => ({ ...r, label: r.key === "unassigned" ? t("Unassigned", "未归类") : moduleName(r.key, zh) }))} zh={zh} />
+        <Slice title={t("By person", "按成员")} rows={usage.byPerson.map((r) => ({ ...r, label: (zh && r.labelLocal) || r.label || t("System", "系统") }))} zh={zh} />
         <Slice title={t("By model", "按模型")} rows={usage.byModel} zh={zh} />
       </div>
     </>
@@ -1501,9 +1522,9 @@ function Budgets({
         return (
           <div key={b.id} style={{ borderTop: "1px solid #f3f3f3", padding: "11px 0" }}>
             <div style={{ display: "flex", alignItems: "baseline", gap: 10, fontSize: 12.5 }}>
-              <span style={{ fontWeight: 500 }}>{b.label}</span>
+              <span style={{ fontWeight: 500 }}>{b.scope === "tenant" ? t("The whole studio", "整个工作室") : b.label}</span>
               <span style={{ fontSize: 11, color: "#999999" }}>
-                {b.scope}
+                {({ tenant: t("Studio", "工作室"), user: t("Person", "个人"), team: t("Team", "团队") } as Record<string, string>)[b.scope] ?? b.scope}
                 {b.period ? ` · ${b.period}` : ` · ${t("all time", "累计")}`}
               </span>
               <span style={{ marginLeft: "auto", fontVariantNumeric: "tabular-nums", color: "#7c7c7c" }}>
@@ -1611,7 +1632,7 @@ function Credentials({
       {keys.map((k) => (
         <div key={k.name} style={{ display: "flex", gap: 10, alignItems: "baseline", borderTop: "1px solid #f3f3f3", padding: "9px 0" }}>
           <code style={{ fontSize: 11.5, color: "#383838", minWidth: 190 }}>{k.name}</code>
-          <span style={{ fontSize: 11.5, color: "#999999", flexGrow: 1 }}>{k.unlocks}</span>
+          <span style={{ fontSize: 11.5, color: "#999999", flexGrow: 1 }}>{zh ? k.unlocksZh : k.unlocks}</span>
           <span
             style={{
               fontSize: 10.5,
@@ -1634,10 +1655,10 @@ function Credentials({
         connections.map((c) => (
           <div key={c.id} style={{ borderTop: "1px solid #f3f3f3", padding: "10px 0" }}>
             <div style={{ display: "flex", gap: 10, alignItems: "baseline", fontSize: 12.5 }}>
-              <span style={{ fontWeight: 500 }}>{c.name}</span>
-              <span style={{ fontSize: 11, color: "#999999" }}>{c.platform}</span>
+              <span style={{ fontWeight: 500 }}>{zh ? cjkNameOrder(c.name) : c.name}</span>
+              <span style={{ fontSize: 11, color: "#999999" }}>{PLATFORM[c.platform] ?? c.platform}</span>
               <span style={{ marginLeft: "auto", fontSize: 11, color: c.needsReconnect ? "#e03636" : "#278f5e" }}>
-                {c.needsReconnect ? t("needs reconnecting", "需重新连接") : c.status}
+                {c.needsReconnect ? t("needs reconnecting", "需重新连接") : channelStatus(c.status, zh)}
               </span>
             </div>
             {c.scopes.length > 0 && (
@@ -1666,7 +1687,7 @@ function Audit({ rows, actions, zh }: { rows: AuditRow[]; actions: string[]; zh:
      instead of reading everybody's activity interleaved. */
   const groups = new Map<string, AuditRow[]>();
   for (const r of shown) {
-    const key = r.actorName ?? t("System", "系统");
+    const key = (zh && r.actorNameLocal) || r.actorName || t("System", "系统");
     const list = groups.get(key);
     if (list) list.push(r);
     else groups.set(key, [r]);
@@ -1675,11 +1696,11 @@ function Audit({ rows, actions, zh }: { rows: AuditRow[]; actions: string[]; zh:
   return (
     <>
       <div style={{ display: "flex", gap: 12, alignItems: "center", marginBottom: 12, flexWrap: "wrap" }}>
-        <select value={filter} onChange={(e) => setFilter(e.target.value)} style={{ ...field, width: 240, height: 30 }}>
+        <select value={filter} onChange={(e) => setFilter(e.target.value)} aria-label={t("Action", "操作")} style={{ ...field, width: 240, height: 30 }}>
           <option value="">{t("Every action", "全部操作")}</option>
           {actions.map((a) => (
             <option key={a} value={a}>
-              {a}
+              {auditPhrase(a, zh)}
             </option>
           ))}
         </select>
@@ -1698,25 +1719,26 @@ function Audit({ rows, actions, zh }: { rows: AuditRow[]; actions: string[]; zh:
       {[...groups.entries()].map(([name, list]) => (
         <details key={name} style={{ borderTop: "1px solid #ededed" }}>
           <summary style={{ display: "flex", gap: 10, alignItems: "baseline", padding: "11px 0", cursor: "pointer", fontSize: 12.5, listStyle: "none" }}>
-            <span style={{ color: "#999999", fontSize: 10 }}>▸</span>
+            <span aria-hidden style={{ color: "#999999", fontSize: 10 }}>▸</span>
             <span style={{ fontWeight: 500 }}>{name}</span>
             <span style={{ fontSize: 11.5, color: "#999999" }}>
               {list.length} {t(list.length === 1 ? "event" : "events", "条记录")}
             </span>
             <span style={{ marginLeft: "auto", fontSize: 11.5, color: "#999999" }}>
-              {t("last", "最近")} {list[0].at.toISOString().slice(0, 16).replace("T", " ")}
+              {t("last", "最近")} {hkTime(list[0].at)}
             </span>
           </summary>
           <div style={{ paddingBottom: 8 }}>
             {list.map((r) => (
               <div key={r.id} style={{ display: "flex", gap: 12, borderTop: "1px solid #f6f6f6", padding: "8px 0 8px 18px", fontSize: 12 }}>
                 <span style={{ width: 128, color: "#999999", fontSize: 11.5, flexShrink: 0 }}>
-                  {r.at.toISOString().slice(0, 16).replace("T", " ")}
+                  {hkTime(r.at)}
                 </span>
-                <code style={{ width: 210, flexShrink: 0, fontSize: 11.5, color: "#383838" }}>{r.action}</code>
+                {/* (QA, 2 Oct: raw action keys, object ids and JSON.) A phrase,
+                    and the few details a person reads; the key stays on hover. */}
+                <span title={r.action} style={{ width: 170, flexShrink: 0, fontSize: 12, color: "#383838" }}>{auditPhrase(r.action, zh)}</span>
                 <span style={{ minWidth: 0, color: "#7c7c7c", fontSize: 11.5, overflowWrap: "anywhere" }}>
-                  {r.objectType ? `${r.objectType} ${r.objectId ?? ""}` : ""}
-                  {Object.keys(r.meta).length ? ` · ${JSON.stringify(r.meta)}` : ""}
+                  {metaText(r.meta, zh)}
                 </span>
               </div>
             ))}
@@ -1799,9 +1821,9 @@ function Knowledge({
         <div key={r.id} style={{ borderTop: "1px solid #f3f3f3", padding: "11px 0" }}>
           <div style={{ display: "flex", gap: 10, alignItems: "baseline" }}>
             <span style={{ fontSize: 12.5, fontWeight: 500, opacity: r.active ? 1 : 0.5 }}>{r.title}</span>
+            {/* (QA, 2 Oct: read 「instructions · module:research · v1」.) */}
             <span style={{ fontSize: 10.5, color: "#999999" }}>
-              {r.kind} · {r.scope}
-              {r.scopeValue ? `:${r.scopeValue}` : ""} · v{r.version}
+              {kindName(r.kind, zh)} · {scopeText(r.scope, r.scopeValue, zh)} · {zh ? `第 ${r.version} 版` : `v${r.version}`}
             </span>
             <button
               type="button"
@@ -1866,32 +1888,32 @@ function Knowledge({
               </div>
 
               <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
-                <select value={form.kind} onChange={(e) => setForm((f) => ({ ...f, kind: e.target.value }))} style={{ ...field, width: 150, height: 32 }}>
+                <select value={form.kind} aria-label={t("Kind", "类型")} onChange={(e) => setForm((f) => ({ ...f, kind: e.target.value }))} style={{ ...field, width: 150, height: 32 }}>
                   {KINDS.map((k) => (
                     <option key={k} value={k}>
-                      {k}
+                      {kindName(k, zh)}
                     </option>
                   ))}
                 </select>
-                <select value={form.scope} onChange={(e) => setForm((f) => ({ ...f, scope: e.target.value, scopeValue: null }))} style={{ ...field, width: 130, height: 32 }}>
+                <select value={form.scope} aria-label={t("Scope", "范围")} onChange={(e) => setForm((f) => ({ ...f, scope: e.target.value, scopeValue: null }))} style={{ ...field, width: 130, height: 32 }}>
                   {SCOPES.map((s) => (
                     <option key={s} value={s}>
-                      {s}
+                      {scopeName(s, zh)}
                     </option>
                   ))}
                 </select>
                 {form.scope === "module" && (
-                  <select value={form.scopeValue ?? ""} onChange={(e) => setForm((f) => ({ ...f, scopeValue: e.target.value }))} style={{ ...field, width: 150, height: 32 }}>
+                  <select value={form.scopeValue ?? ""} aria-label={t("Module", "模块")} onChange={(e) => setForm((f) => ({ ...f, scopeValue: e.target.value }))} style={{ ...field, width: 150, height: 32 }}>
                     <option value="">{t("which module", "哪个模块")}</option>
                     {MODULES.map((m) => (
                       <option key={m} value={m}>
-                        {m}
+                        {moduleName(m, zh)}
                       </option>
                     ))}
                   </select>
                 )}
                 {form.scope === "role" && (
-                  <select value={form.scopeValue ?? ""} onChange={(e) => setForm((f) => ({ ...f, scopeValue: e.target.value }))} style={{ ...field, width: 150, height: 32 }}>
+                  <select value={form.scopeValue ?? ""} aria-label={t("Role", "角色")} onChange={(e) => setForm((f) => ({ ...f, scopeValue: e.target.value }))} style={{ ...field, width: 150, height: 32 }}>
                     <option value="">{t("which role", "哪个角色")}</option>
                     {["owner", "admin", "member", "guest"].map((r) => (
                       <option key={r} value={r}>
@@ -1906,12 +1928,14 @@ function Knowledge({
                 value={form.title}
                 onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
                 placeholder={t("A name for it", "名称")}
+                aria-label={t("Name", "名称")}
                 style={{ ...field, marginTop: 8 }}
               />
               <textarea
                 value={form.body}
                 onChange={(e) => setForm((f) => ({ ...f, body: e.target.value }))}
                 placeholder={t("What the agent should know or do.", "助理应知道或遵循的内容。")}
+                aria-label={t("Content", "内容")}
                 style={{ ...field, marginTop: 8, minHeight: 210, resize: "vertical", lineHeight: 1.65, padding: "10px 12px" }}
               />
 
@@ -1990,17 +2014,17 @@ function PromptPreview({ zh }: { zh: boolean }) {
     <>
       <p style={{ fontSize: 12, color: "#999999", margin: "0 0 14px", lineHeight: 1.6, maxWidth: 620 }}>
         {t(
-          "Exactly what the agent is given before your first word, assembled for you: your role, and only the modules you hold. Spec §9 asks for this, and until now nothing rendered it.",
-          "在你说第一句话之前，助理收到的完整内容，按你的角色和你实际拥有的模块拼装。规格书 §9 要求有这个界面，此前一直没有。",
+          "Exactly what the agent is given before your first word, assembled for your role and only the modules you hold.",
+          "你开口之前，助理先收到的全部内容。按你的角色和你能打开的模块拼起来。",
         )}
       </p>
 
       <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 16 }}>
-        <select value={module} onChange={(e) => setModule(e.target.value)} style={{ ...field, width: 190, height: 32 }}>
+        <select value={module} onChange={(e) => setModule(e.target.value)} aria-label={t("Module", "模块")} style={{ ...field, width: 190, height: 32 }}>
           <option value="">{t("No module in particular", "不限定模块")}</option>
           {MODULES.map((m) => (
             <option key={m} value={m}>
-              {m}
+              {moduleName(m, zh)}
             </option>
           ))}
         </select>
@@ -2011,7 +2035,7 @@ function PromptPreview({ zh }: { zh: boolean }) {
             start(async () => {
               const res = await previewPromptAction(module || null);
               if ("error" in res) {
-                notify(res.error ?? "Not allowed");
+                notify(res.error ?? t("Not allowed", "没有权限"));
                 return;
               }
               setResult({ text: res.text, parts: res.parts });
@@ -2047,7 +2071,7 @@ function PromptPreview({ zh }: { zh: boolean }) {
                 >
                   {p.title}
                   <span style={{ color: "#999999", marginLeft: 5 }}>
-                    {p.kind}/{p.scope}
+                    {kindName(p.kind, zh)} · {scopeName(p.scope, zh)}
                   </span>
                 </span>
               ))
@@ -2147,6 +2171,397 @@ const solid: React.CSSProperties = {
   letterSpacing: "inherit",
   cursor: "pointer",
 };
+
+/* ---------------------------------------------------- invites, still open */
+
+/**
+ * Invited and not joined yet, with the same two moves /settings has: send a
+ * fresh link by email, or take the invitation back (QA, 2 Oct: the list here
+ * had neither, and showed the role as 「member」).
+ */
+function PendingInvites({ invites, zh }: { invites: PendingInvite[]; zh: boolean }) {
+  const t = (en: string, cn: string) => (zh ? cn : en);
+  const router = useRouter();
+  const [busy, start] = useTransition();
+  const [sent, setSent] = useState<{ email: string; link: string; emailed: boolean } | null>(null);
+  const [copied, setCopied] = useState(false);
+  const linkBtn: React.CSSProperties = { border: 0, background: "none", padding: 0, fontSize: 11.5, color: "#7c7c7c", cursor: "pointer", fontFamily: "inherit" };
+
+  return (
+    <div style={{ marginTop: 16, borderTop: "1px solid #ededed", paddingTop: 10 }}>
+      <div style={{ fontSize: 10.5, color: "#999999", marginBottom: 5 }}>{t("Invited, not joined yet", "已邀请，尚未加入")}</div>
+      {invites.map((i) => (
+        <div key={i.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "4px 0", fontSize: 11.5, color: "#7c7c7c" }}>
+          <span style={{ ...clip }}>{i.email}</span>
+          <span style={{ color: "#999999" }}>{roleName(i.role, zh)}</span>
+          <span style={{ marginLeft: "auto", color: "#999999" }}>
+            {t(`expires ${i.expiresAt.slice(0, 10)}`, `有效期至 ${i.expiresAt.slice(0, 10)}`)}
+          </span>
+          <button
+            type="button"
+            disabled={busy}
+            title={t("Send a fresh link by email", "换一个新链接，再发一次邀请邮件")}
+            onClick={() =>
+              start(async () => {
+                const res = await inviteAction({ email: i.email, role: i.role, modules: i.modules });
+                if (!res.ok) {
+                  notify(res.error);
+                  return;
+                }
+                setSent({ email: res.email, link: res.link, emailed: res.emailed });
+                setCopied(false);
+                notify(res.emailed ? t("Invitation sent again", "邀请邮件已重新发送") : t("New link ready", "新链接已生成"), "ok");
+                router.refresh();
+              })
+            }
+            style={linkBtn}
+          >
+            {t("Resend", "重发邮件")}
+          </button>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() =>
+              start(async () => {
+                const res = await revokeInviteAction(i.id);
+                if (res && "error" in res && res.error) {
+                  notify(t(res.error, "没能撤销这个邀请，稍后再试"));
+                  return;
+                }
+                notify(t("Invitation revoked", "邀请已撤销"), "ok");
+                router.refresh();
+              })
+            }
+            style={{ ...linkBtn, color: "#b42318" }}
+          >
+            {t("Revoke", "撤销")}
+          </button>
+        </div>
+      ))}
+      {sent ? (
+        <div style={{ marginTop: 8, border: "1px solid #c8e6c9", background: "#f1f8f2", borderRadius: 8, padding: 10 }}>
+          <p style={{ fontSize: 12, color: "#1e7a4f", lineHeight: 1.6, margin: 0 }}>
+            {sent.emailed
+              ? t(`A fresh invitation went to ${sent.email}. You can also pass on this link.`, `新的邀请邮件已发到 ${sent.email}，也可以把下面的链接直接发给对方。`)
+              : t(`A fresh link for ${sent.email}. Send it to them yourself.`, `${sent.email} 的新链接已生成，请把它发给对方（微信或当面）。`)}
+          </p>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8 }}>
+            <code style={{ flex: 1, minWidth: 0, background: "#fff", borderRadius: 6, padding: "5px 8px", fontSize: 11, color: "#525252", ...clip }}>{sent.link}</code>
+            <button
+              type="button"
+              onClick={() => {
+                void navigator.clipboard?.writeText(sent.link);
+                setCopied(true);
+              }}
+              style={{ ...ghost, height: 26, flexShrink: 0 }}
+            >
+              {copied ? t("Copied", "已复制") : t("Copy", "复制")}
+            </button>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------- words, not keys */
+
+/* (QA, 2 Oct: /admin showed module keys, role keys and audit keys as they are
+   stored.) Everything below turns a stored value into what a person reads. */
+const MODULE_ZH: Record<string, string> = {
+  chat: "聊天",
+  files: "文件",
+  research: "选题",
+  script: "脚本",
+  video: "视频",
+  publish: "发布",
+  accounting: "账务",
+  finance: "财务",
+  legal: "法务",
+  hr: "人事",
+  admin: "后台",
+};
+const MODULE_EN: Record<string, string> = {
+  chat: "Chat",
+  files: "Files",
+  research: "Research",
+  script: "Script",
+  video: "Video",
+  publish: "Publish",
+  accounting: "Accounting",
+  finance: "Finance",
+  legal: "Legal",
+  hr: "HR",
+  admin: "Admin",
+};
+function moduleName(m: string, zh: boolean): string {
+  return (zh ? MODULE_ZH[m] : MODULE_EN[m]) ?? m;
+}
+/** The matrix header: the Chinese names are already two characters; English is cut to fit, with the full name on hover. */
+function moduleShort(m: string, zh: boolean): string {
+  if (zh) return MODULE_ZH[m] ?? m;
+  const en = MODULE_EN[m] ?? m;
+  return en.length > 6 ? `${en.slice(0, 5)}.` : en;
+}
+
+const PLATFORM: Record<string, string> = { youtube: "YouTube", linkedin: "LinkedIn", tiktok: "TikTok", douyin: "抖音", instagram: "Instagram", facebook: "Facebook", x: "X", twitter: "X", bilibili: "哔哩哔哩", xiaohongshu: "小红书" };
+
+function channelStatus(status: string, zh: boolean): string {
+  const map: Record<string, [string, string]> = { healthy: ["Healthy", "正常"], active: ["Active", "正常"], expired: ["Expired", "已过期"], error: ["Error", "出错"], disconnected: ["Disconnected", "已断开"], pending: ["Pending", "连接中"] };
+  const pair = map[status];
+  return pair ? (zh ? pair[1] : pair[0]) : status;
+}
+
+/** A Chinese name written given-name first, the way LinkedIn sends it
+ * ("亚芳 谢"), back in Chinese order (谢亚芳). Only when both parts are CJK. */
+function cjkNameOrder(name: string): string {
+  const m = /^([一-鿿]{1,3}) ([一-鿿]{1,2})$/.exec(name.trim());
+  return m ? `${m[2]}${m[1]}` : name;
+}
+
+/** Studio time (Hong Kong, no daylight saving), the same on server and browser. */
+function hkTime(at: Date): string {
+  return new Date(new Date(at).getTime() + 8 * 3_600_000).toISOString().slice(0, 16).replace("T", " ");
+}
+
+function kindName(kind: string, zh: boolean): string {
+  const map: Record<string, [string, string]> = { instructions: ["Instructions", "工作说明"], style: ["Style", "风格"], skill: ["Skill", "技能"], example: ["Example", "示例"] };
+  const pair = map[kind];
+  return pair ? (zh ? pair[1] : pair[0]) : kind;
+}
+function scopeName(scope: string, zh: boolean): string {
+  const map: Record<string, [string, string]> = { tenant: ["Whole studio", "全工作室"], module: ["One module", "某个模块"], role: ["One role", "某个角色"] };
+  const pair = map[scope];
+  return pair ? (zh ? pair[1] : pair[0]) : scope;
+}
+function scopeText(scope: string, value: string | null, zh: boolean): string {
+  if (scope === "tenant" || !value) return scopeName(scope, zh);
+  if (scope === "module") return zh ? `${moduleName(value, zh)}模块` : `${moduleName(value, zh)} module`;
+  const who = isTrainKey(value) ? trainName(value, zh) : roleName(value, zh);
+  return zh ? `只给${who}` : `For ${who}`;
+}
+
+const AUDIT_ZH: Record<string, string> = {
+  "auth.login": "登录",
+  "auth.fail": "登录失败",
+  "auth.password.change": "修改密码",
+  "auth.2fa.begin": "开始设置两步验证",
+  "auth.2fa.enable": "开启两步验证",
+  "auth.2fa.disable": "关闭两步验证",
+  "auth.2fa.challenge": "两步验证",
+  "auth.2fa.fail": "两步验证失败",
+  "auth.2fa.device.forget": "移除信任设备",
+  "auth.2fa.recovery.reissue": "重新生成恢复码",
+  "file.thumbnail": "查看缩略图",
+  "file.open": "打开文件",
+  "file.view": "查看文件",
+  "file.open.admin_override": "管理员查看他人文件",
+  "file.import": "导入文件",
+  "file.upload": "上传文件",
+  "file.create": "新建文件",
+  "file.edit": "编辑文件",
+  "file.delete": "删除文件",
+  "file.restore": "恢复文件",
+  "file.rename": "重命名文件",
+  "file.share": "共享文件",
+  "file.unshare": "取消共享",
+  "file.access": "修改文件可见范围",
+  "file.abandon": "取消上传",
+  "file.export": "导出文件",
+  "folder.create": "新建文件夹",
+  "folder.delete": "删除文件夹",
+  "folder.rename": "重命名文件夹",
+  "folder.restore": "恢复文件夹",
+  "agent.answer": "助理回答",
+  "agent.mention.reply": "AI 同事回复",
+  "agent.chat.read": "助理读聊天",
+  "agent.chat.send": "助理发消息",
+  "agent.search": "助理搜索",
+  "agent.read": "助理读文件",
+  "agent.video": "助理改视频",
+  "agent.handoff": "AI 同事交接",
+  "agent.assign": "派活",
+  "agent.proposal.start": "开始执行提议",
+  "agent.research.discover": "研究员找选题",
+  "cron.sweep": "每晚清理",
+  search: "搜索",
+  "chat.channel.create": "新建频道",
+  "chat.channel.members.add": "频道加人",
+  "chat.channel.members.remove": "频道移除成员",
+  "video.project.create": "新建视频项目",
+  "video.project.delete": "删除视频项目",
+  "video.project.share": "共享视频项目",
+  "video.project.unshare": "取消共享视频项目",
+  "video.direct.request": "请导演剪辑",
+  "video.direct": "导演剪辑完成",
+  "video.autoedit": "自动粗剪",
+  "video.autoedit.request": "请求自动粗剪",
+  "video.transcribe.auto": "自动转写",
+  "video.transcribe.request": "请求转写",
+  "video.export.request": "导出视频",
+  "video.split": "切分片段",
+  "video.look": "设置画面风格",
+  "video.graphic.add": "添加图形",
+  "video.graphic.remove": "移除图形",
+  "video.captions.from_voiceover": "按配音生成字幕",
+  "video.captions.split": "拆分字幕",
+  "video.voiceover.request": "请求配音",
+  "script.write": "AI 写稿",
+  "script.generate": "AI 生成脚本",
+  "script.create": "新建脚本",
+  "script.export": "导出脚本",
+  "script.restore": "恢复脚本版本",
+  "script.unlock": "解锁脚本",
+  "script.version.saved": "保存脚本版本",
+  "script.share": "共享脚本",
+  "script.delete": "删除脚本",
+  "script.import": "导入到脚本",
+  "script.approval.request": "提交脚本审批",
+  "script.approval.approved": "脚本审批通过",
+  "research.watch": "关注话题",
+  "research.unwatch": "取消关注话题",
+  "research.adopt": "采用选题",
+  "research.reject": "放弃选题",
+  "research.save": "保存选题",
+  "research.stage": "选题换阶段",
+  "research.plan": "排选题计划",
+  "research.export": "导出选题",
+  "research.competitor.add": "添加对标频道",
+  "research.competitor.remove": "移除对标频道",
+  "research.youtube.discover": "在 YouTube 找选题",
+  "topic.angles": "生成切入角度",
+  "project.create": "新建项目",
+  "project.delete": "删除项目",
+  "project.access": "修改项目可见范围",
+  "project.cut.start": "开始剪辑",
+  "project.publish": "发布项目",
+  "project.unpublish": "撤下项目",
+  "project.publish.place": "登记发布位置",
+  "project.unpublish.place": "撤下发布位置",
+  "project.from_chat": "从聊天建项目",
+  "admin.invite.create": "发出邀请",
+  "admin.invite.accept": "接受邀请",
+  "admin.invite.revoke": "撤销邀请",
+  "admin.model.change": "更换默认模型",
+  "admin.model.agent": "更换 AI 同事的模型",
+  "admin.entitlement.grant": "修改模块权限",
+  "admin.user.role": "修改角色",
+  "admin.user.profile": "修改成员资料",
+  "admin.team.create": "新建团队",
+  "admin.team.delete": "解散团队",
+  "admin.budget.set": "设置预算",
+  "admin.budget.remove": "移除预算",
+  "admin.knowledge.create": "新增知识",
+  "admin.knowledge.update": "修改知识",
+  "user.avatar.change": "更换头像",
+  "user.workRole": "设置岗位",
+  "user.profile.change": "修改个人资料",
+  "automation.set": "修改自动任务",
+  "train.create": "新建训练",
+  "train.update": "更新训练",
+  "train.restore": "恢复训练版本",
+  "train.example.add": "添加训练示例",
+  "train.example.update": "修改训练示例",
+  "train.example.delete": "删除训练示例",
+  "train.example.off": "停用训练示例",
+  "publish.post.create": "新建发布",
+  "publish.channels.sync": "同步频道",
+  "publish.approval.request": "提交发布审批",
+  "publish.approval.approve": "发布审批通过",
+  "publish.approval.reject": "发布审批退回",
+  "publish.retry": "重试发布",
+  "channel.connect.start": "开始连接频道",
+  "comment.reply.send": "回复评论",
+  "comment.reply.fail": "回复评论失败",
+  "finance.report.generate": "生成财务报告",
+  "finance.spend.raise": "发起用款申请",
+  "finance.spend.paid": "用款已付",
+  "legal.contract.draft": "起草合同",
+  "legal.contract.review": "审阅合同",
+  "legal.contract.update": "修改合同",
+  "legal.templates.seed": "载入合同模板",
+  "legal.checklist.seed": "载入核对清单",
+  "legal.checklist.run": "核对条款",
+  "hr.balances.seed": "初始化假期余额",
+  "hr.leave.request": "申请休假",
+  "hr.leave.approved": "批准休假",
+  "hr.leave.cancel": "取消休假",
+  "hr.entitlement.set": "设置假期额度",
+};
+const AUDIT_AREA_ZH: Record<string, string> = { file: "文件", folder: "文件夹", video: "视频", script: "脚本", research: "选题", topic: "选题", project: "项目", publish: "发布", finance: "财务", legal: "法务", hr: "人事", accounting: "账务", admin: "后台", train: "训练", agent: "助理", auth: "登录", chat: "聊天", article: "文章", user: "账号", comment: "评论", channel: "频道", automation: "自动任务", cron: "定时任务" };
+const AUDIT_VERB_ZH: Record<string, string> = { create: "新建", add: "添加", delete: "删除", remove: "移除", update: "修改", edit: "编辑", set: "设置", save: "保存", request: "申请", approve: "通过", approved: "通过", reject: "退回", share: "共享", unshare: "取消共享", restore: "恢复", export: "导出", import: "导入", generate: "生成", fork: "另存", view: "查看", open: "打开", rename: "重命名", seed: "初始化", publish: "发布", retract: "撤回", cancel: "取消", fail: "失败", archive: "归档", post: "过账", void: "作废", stage: "换阶段", state: "改状态", tick: "勾选", run: "运行", acknowledge: "确认", paid: "已付" };
+
+/** An audit key as a short phrase: the common ones by name, the rest as area and verb. */
+function auditPhrase(action: string, zh: boolean): string {
+  if (!zh) return action;
+  if (AUDIT_ZH[action]) return AUDIT_ZH[action];
+  const parts = action.split(".");
+  const area = AUDIT_AREA_ZH[parts[0]];
+  const verb = AUDIT_VERB_ZH[parts[parts.length - 1]];
+  if (area && verb) return `${area}：${verb}`;
+  return area ? `${area}操作` : action;
+}
+
+const META_LABEL: Record<string, string> = {
+  name: "名称",
+  title: "标题",
+  query: "搜索",
+  phrase: "搜索",
+  subject: "话题",
+  model: "模型",
+  relation: "权限",
+  role: "角色",
+  email: "邮箱",
+  format: "格式",
+  files: "文件数",
+  platform: "平台",
+  period: "期间",
+  days: "天数",
+  year: "年份",
+  people: "人数",
+  bytes: "大小",
+  hits: "结果",
+  found: "找到",
+  agent: "AI 同事",
+  workRole: "岗位",
+  versionNo: "版本",
+  version: "版本",
+  language: "语言",
+  aspect: "画幅",
+  findings: "问题",
+  lines: "行数",
+  cuts: "剪切",
+  stage: "阶段",
+  choice: "可见范围",
+  mode: "方式",
+  error: "错误",
+};
+const RELATION_ZH: Record<string, string> = { owner: "所有者", editor: "可编辑", commenter: "可评论", viewer: "可查看" };
+const MODE_ZH: Record<string, string> = { private: "仅自己", everyone: "全工作室", groups: "按分组", people: "指定的人", full: "完整流程" };
+const ID_LIKE = /\b[a-z]{2,5}_[0-9a-z]{20,}\b/;
+
+/** The few details of an audit line a person reads, without ids or JSON. */
+function metaText(meta: Record<string, unknown>, zh: boolean): string {
+  const out: string[] = [];
+  for (const [k, raw] of Object.entries(meta ?? {})) {
+    if (out.length >= 4) break;
+    let v: unknown = raw;
+    if (k === "choice" && v && typeof v === "object") v = (v as { mode?: unknown }).mode;
+    if (v === null || v === undefined || v === "" || typeof v === "boolean" || typeof v === "object") continue;
+    let text = String(v);
+    if (ID_LIKE.test(text) || /^https?:\/\//.test(text)) continue;
+    if (k === "relation") text = zh ? (RELATION_ZH[text] ?? text) : text;
+    else if (k === "role") text = roleName(text, zh);
+    else if (k === "mode" || k === "choice") text = zh ? (MODE_ZH[text] ?? text) : text;
+    else if ((k === "agent" || k === "workRole") && isTrainKey(text)) text = trainName(text, zh);
+    else if (k === "bytes" && typeof v === "number") text = v < 1024 ? `${v} B` : v < 1048576 ? `${(v / 1024).toFixed(1)} KB` : `${(v / 1048576).toFixed(1)} MB`;
+    if (text.length > 40) text = `${text.slice(0, 40)}…`;
+    const label = zh ? META_LABEL[k] : k;
+    if (!label) continue;
+    out.push(`${label}${zh ? "：" : ": "}${text}`);
+  }
+  return out.join(" · ");
+}
 
 /* Roles and states in words, not the database's values ("owner", "active"). */
 function roleName(role: string, zh: boolean): string {

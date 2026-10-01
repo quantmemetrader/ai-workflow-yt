@@ -15,6 +15,14 @@ import type { Viewer } from "@/lib/auth/dal";
 import { audit } from "@/lib/audit";
 import { newId } from "@/lib/ids";
 
+/** (QA, 2 Oct) A person's name the way the reader reads it: the Chinese name on a Chinese screen. */
+function personName(viewer: Viewer) {
+  return (viewer.locale ?? "zh-CN").startsWith("zh")
+    ? sql<string | null>`coalesce(nullif(${users.nameLocal}, ''), ${users.name})`
+    : sql<string | null>`${users.name}`;
+}
+
+
 /**
  * Finance (spec §4.9).
  *
@@ -60,10 +68,10 @@ export async function thresholds(viewer: Viewer): Promise<Thresholds> {
 
 export async function setThresholds(viewer: Viewer, next: Thresholds) {
   if (viewer.role !== "owner" && viewer.role !== "admin") {
-    throw new Error("Only an owner or an administrator changes the signing thresholds");
+    throw new Error("只有所有者或管理员可以改审批额度");
   }
   if (!(next.autoBelow >= 0) || !(next.oneApproverBelow >= next.autoBelow)) {
-    throw new Error("The second threshold has to be at least the first");
+    throw new Error("第二个额度不能低于第一个");
   }
 
   await db
@@ -99,7 +107,7 @@ export async function listCentres(viewer: Viewer): Promise<CentreRow[]> {
 
 export async function createCentre(viewer: Viewer, input: { kind: string; name: string; code?: string }) {
   const name = input.name.trim();
-  if (!name) throw new Error("It needs a name");
+  if (!name) throw new Error("请填写名称");
   const id = newId("cf");
   await db
     .insert(costCentres)
@@ -216,7 +224,7 @@ export type ActualRow = {
 
 export async function listActuals(viewer: Viewer, period?: string): Promise<ActualRow[]> {
   const rows = await db
-    .select({ a: actuals, centreName: costCentres.name, byName: users.name })
+    .select({ a: actuals, centreName: costCentres.name, byName: personName(viewer) })
     .from(actuals)
     .leftJoin(costCentres, eq(costCentres.id, actuals.centreId))
     .leftJoin(users, eq(users.id, actuals.enteredBy))
@@ -279,8 +287,12 @@ export type SpendRow = {
 };
 
 export async function listSpend(viewer: Viewer): Promise<SpendRow[]> {
+  /* (QA, 2 Oct: "提交人 Finance agent".) People are named the way the reader
+     reads: the Chinese name when there is one and the screen is Chinese. */
+  const zh = (viewer.locale ?? "zh-CN").startsWith("zh");
+  const pick = (name: string | null, local: string | null) => (zh && local ? local : name);
   const rows = await db
-    .select({ r: spendRequests, centreName: costCentres.name, byName: users.name })
+    .select({ r: spendRequests, centreName: costCentres.name, byName: users.name, byLocal: users.nameLocal })
     .from(spendRequests)
     .leftJoin(costCentres, eq(costCentres.id, spendRequests.centreId))
     .leftJoin(users, eq(users.id, spendRequests.requestedBy))
@@ -291,7 +303,7 @@ export async function listSpend(viewer: Viewer): Promise<SpendRow[]> {
   if (!rows.length) return [];
 
   const decisions = await db
-    .select({ d: spendDecisions, name: users.name })
+    .select({ d: spendDecisions, name: users.name, local: users.nameLocal })
     .from(spendDecisions)
     .leftJoin(users, eq(users.id, spendDecisions.deciderId))
     .where(inArray(spendDecisions.requestId, rows.map((r) => r.r.id)));
@@ -299,7 +311,7 @@ export async function listSpend(viewer: Viewer): Promise<SpendRow[]> {
   const byRequest = new Map<string, SpendRow["decisions"]>();
   for (const d of decisions) {
     const list = byRequest.get(d.d.requestId) ?? [];
-    list.push({ deciderName: d.name, decision: d.d.decision, note: d.d.note, at: d.d.at });
+    list.push({ deciderName: pick(d.name, d.local), decision: d.d.decision, note: d.d.note, at: d.d.at });
     byRequest.set(d.d.requestId, list);
   }
 
@@ -312,7 +324,7 @@ export async function listSpend(viewer: Viewer): Promise<SpendRow[]> {
     state: r.r.state,
     approvalsNeeded: r.r.approvalsNeeded,
     requestedById: r.r.requestedBy,
-    requestedByName: r.byName,
+    requestedByName: pick(r.byName, r.byLocal),
     neededBy: r.r.neededBy,
     createdAt: r.r.createdAt,
     decisions: byRequest.get(r.r.id) ?? [],
@@ -334,8 +346,8 @@ export async function raiseSpend(
   },
 ) {
   const title = input.title.trim();
-  if (!title) throw new Error("It needs a title");
-  if (!(input.amountMicros > 0)) throw new Error("An amount is a positive number");
+  if (!title) throw new Error("请填写标题");
+  if (!(input.amountMicros > 0)) throw new Error("金额要大于零");
 
   const t = await thresholds(viewer);
   const needed = Math.max(approvalsFor(input.amountMicros / 1_000_000, t), input.minApprovals ?? 0);
@@ -383,9 +395,9 @@ export async function decideSpend(
     .from(spendRequests)
     .where(and(eq(spendRequests.id, requestId), eq(spendRequests.tenantId, viewer.tenantId)))
     .limit(1);
-  if (!req) throw new Error("That request does not exist");
-  if (req.state !== "awaiting_approval") throw new Error("That request is not waiting for a decision");
-  if (req.requestedBy === viewer.id) throw new Error("Somebody other than the person who asked has to decide");
+  if (!req) throw new Error("这条申请不存在");
+  if (req.state !== "awaiting_approval") throw new Error("这条申请已经不在待审批状态");
+  if (req.requestedBy === viewer.id) throw new Error("需要由提交人以外的人审批");
 
   await db
     .insert(spendDecisions)
@@ -428,8 +440,8 @@ export async function markSpendPaid(viewer: Viewer, requestId: string, period: s
     .from(spendRequests)
     .where(and(eq(spendRequests.id, requestId), eq(spendRequests.tenantId, viewer.tenantId)))
     .limit(1);
-  if (!req) throw new Error("That request does not exist");
-  if (req.state !== "approved") throw new Error("Only an approved request is paid");
+  if (!req) throw new Error("这条申请不存在");
+  if (req.state !== "approved") throw new Error("只有已批准的申请才能标记为已付");
 
   await db
     .update(spendRequests)

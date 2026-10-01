@@ -43,7 +43,15 @@ export async function draftInBackground(
     let failed: string | null = null;
     try {
       if (input.rewrite) await cutVersion(viewer, input.scriptId, { note: "按选题重写之前" }).catch(() => null);
-      const res = await writeScript(viewer, { ...input.req, intoScriptId: input.scriptId });
+      /* Never left empty because one model was down (2 Oct): up to three rounds,
+         each already walking down the fallback models, a short pause between. */
+      let res = await writeScript(viewer, { ...input.req, intoScriptId: input.scriptId });
+      for (const wait of [10_000, 45_000]) {
+        if (res.ok && res.beats > 0) break;
+        await new Promise((r) => setTimeout(r, wait));
+        await setProjectWriting(input.projectId, new Date().toISOString()).catch(() => {});
+        res = await writeScript(viewer, { ...input.req, intoScriptId: input.scriptId });
+      }
       if (!res.ok) {
         text = `这次没写成：${res.error}`;
         failed = res.error;

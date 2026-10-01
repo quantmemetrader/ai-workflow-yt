@@ -12,6 +12,32 @@ import { Markdown } from "@/components/ui/Markdown";
 import { conversationMessagesAction } from "@/app/(app)/chat/actions";
 import { tidyMarkdown } from "@/components/chat/look";
 import { ProjectBridge } from "@/components/chat/ProjectBridge";
+import { STEP_LABELS, stepForTool } from "@/lib/agents/steps";
+
+/**
+ * A person's message as they read it: the "[附件] 名称 (doc) file id fil_… ·
+ * 已读取全文 38 字" lines the stream route writes for the employee become
+ * small file chips, and only what was typed is shown as text (QA, 2 Oct:
+ * a reloaded Home thread printed those lines).
+ */
+function splitAttached(content: string): { text: string; files: { id: string; name: string; kind: string; read: boolean }[] } {
+  const files: { id: string; name: string; kind: string; read: boolean }[] = [];
+  const kept: string[] = [];
+  for (const line of content.split("\n")) {
+    const m = /^\[附件\]\s+(.+?)\s+\(([a-z]+)[^)]*\)\s+file id\s+(fil_[0-9a-z]+)/i.exec(line.trim());
+    if (m) files.push({ id: m[3].toLowerCase(), name: m[1], kind: m[2], read: /已读取/.test(line) });
+    else if (!line.trim().startsWith("[附件]")) kept.push(line);
+  }
+  return { text: kept.join("\n").trim(), files };
+}
+
+/** A tool step in words ("查资料", "正在写脚本"), never the tool's raw output (QA, 2 Oct). */
+function stepWords(name: string, status: string, zh: boolean): string {
+  const label = STEP_LABELS[stepForTool(name)] ?? STEP_LABELS.working;
+  const words = (zh ? label.zh : label.en).replace(/…$/, "");
+  if (status === "running") return words;
+  return zh ? words.replace(/^正在/, "") : words.replace(/^(\w)/, (c) => c.toUpperCase());
+}
 
 /**
  * The agent, answering inside the module you are already in.
@@ -196,6 +222,7 @@ export function useInlineAgent(
                 patchLast((m) => ({ ...m, speaker: event.agent ?? null }));
                 break;
               case "delta":
+                setNotice(null);
                 patchLast((m) => ({ ...m, content: m.content + event.text }));
                 break;
               case "citations":
@@ -217,6 +244,7 @@ export function useInlineAgent(
                 });
                 break;
               case "done":
+                setNotice(null);
                 patchLast((m) => ({ ...m, status: "complete" }));
                 break;
               case "error":
@@ -342,21 +370,7 @@ export function InlineAgentThread({
       <ProjectBridge compact conversationId={conversationId} messages={messages} zh={zh} />
       {messages.map((m) =>
         m.role === "user" ? (
-          <div
-            key={m.id}
-            style={{
-              alignSelf: "flex-end",
-              maxWidth: "88%",
-              background: "#171717",
-              color: "#fff",
-              borderRadius: "11px 11px 3px 11px",
-              padding: "7px 10px",
-              fontSize: 12.5,
-              lineHeight: 1.55,
-            }}
-          >
-            {m.content}
-          </div>
+          <UserLine key={m.id} content={m.content} zh={zh} />
         ) : (
           <div key={m.id} style={{ fontSize: 12.5, lineHeight: 1.65, color: "#383838" }}>
             {/* Who is speaking, with their face: the employee who answered
@@ -370,7 +384,10 @@ export function InlineAgentThread({
             </div>
             {m.tools.length > 0 && (
               <div style={{ display: "flex", flexDirection: "column", gap: 3, marginBottom: m.content ? 8 : 4 }}>
-                {m.tools.map((x) => (
+                {/* One line per step, the same step once: what it did in
+                    words. The tool's own first line (「《…》 (id: wp_…) —
+                    active」) is for the model, not the person (QA, 2 Oct). */}
+                {m.tools.filter((x, i, all) => x.status === "running" || all.findIndex((y) => y.status !== "running" && stepWords(y.name, y.status, zh) === stepWords(x.name, x.status, zh) && (y.status === "error") === (x.status === "error")) === i).map((x) => (
                   <div
                     key={x.id}
                     style={{
@@ -391,7 +408,7 @@ export function InlineAgentThread({
                       <span style={{ width: 5, height: 5, borderRadius: 3, background: x.status === "error" ? "#e03636" : "#278f5e", flexShrink: 0 }} />
                     )}
                     <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {x.summary ?? x.name.replace(/_/g, " ")}
+                      {stepWords(x.name, x.status, zh)}
                     </span>
                   </div>
                 ))}
@@ -459,6 +476,32 @@ export function InlineAgentThread({
           {zh ? "在聊天中继续 →" : "Continue in Chat →"}
         </Link>
       )}
+    </div>
+  );
+}
+
+/** The person's own line, with the files on it as chips. */
+function UserLine({ content, zh }: { content: string; zh: boolean }) {
+  const { text, files } = splitAttached(content);
+  return (
+    <div style={{ alignSelf: "flex-end", maxWidth: "88%", display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
+      {text ? (
+        <div style={{ background: "#171717", color: "#fff", borderRadius: "11px 11px 3px 11px", padding: "7px 10px", fontSize: 12.5, lineHeight: 1.55, whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{text}</div>
+      ) : null}
+      {files.length ? (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 4, justifyContent: "flex-end" }}>
+          {files.map((f) => (
+            <Link key={f.id} href={`/files/${f.id}`} prefetch={false} title={f.name} style={{ display: "inline-flex", alignItems: "center", gap: 5, height: 24, maxWidth: 220, padding: "0 8px", borderRadius: 7, border: "1px solid #e7e6e2", background: "#fafaf8", fontSize: 11.5, color: "#404040", textDecoration: "none" }}>
+              <svg viewBox="0 0 24 24" width={12} height={12} fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden style={{ flexShrink: 0 }}>
+                <path d="M14 3.5H7a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8.5z" />
+                <path d="M14 3.5v5h5" />
+              </svg>
+              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.name}</span>
+              {f.read ? <span style={{ color: "#1e7a4f", flexShrink: 0 }}>{zh ? "已读取" : "Read"}</span> : null}
+            </Link>
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }

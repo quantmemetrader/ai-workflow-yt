@@ -113,12 +113,15 @@ export function makeT(locale: Locale | null | undefined): T {
   return (s) => dict[s] ?? s;
 }
 
-/** Dates the way each locale writes them. */
+/** Dates the way each locale writes them, on the studio's clock: the server
+ * runs in UTC, so without a zone a late-evening edit showed the next day, and
+ * server and browser could disagree (QA, 2 Oct). */
 export function formatDate(d: Date, locale: Locale): string {
   return new Intl.DateTimeFormat(locale === "en" ? "en-GB" : locale, {
     year: "numeric",
     month: "short",
     day: "numeric",
+    timeZone: "Asia/Hong_Kong",
   }).format(d);
 }
 

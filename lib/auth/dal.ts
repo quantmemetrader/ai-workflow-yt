@@ -98,6 +98,14 @@ export async function requireViewer(): Promise<Viewer> {
  * not get a locked page — the module does not exist for them. */
 export async function requireModule(module: Module): Promise<Viewer> {
   const viewer = await requireViewer();
-  if (!viewer.modules.includes(module)) redirect("/");
+  if (!viewer.modules.includes(module)) {
+    /* Where "/" would send them, plus why: the shell's toaster reads
+       `?denied=` and says so (QA, 2 Oct: members were silently bounced to
+       首页 from 财务, 法务 …). Never back to the module that refused them. */
+    const first = viewer.modules.includes("chat")
+      ? "home"
+      : (["files", "research", "script", "video", "publish"] as const).find((m) => m !== module && viewer.modules.includes(m));
+    redirect(`/${first ?? "settings"}?denied=${module}`);
+  }
   return viewer;
 }

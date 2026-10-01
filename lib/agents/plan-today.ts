@@ -1,8 +1,28 @@
 import "server-only";
+import { readerLine } from "@/lib/text/reader";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { chatChannels, chatMessages } from "@/lib/db/schema";
 import type { PlanToday } from "@/components/agents/PlanTodayCard";
+
+/* An internal id as the planner writes it: a known prefix and a run of id
+   characters, any case, maybe cut short with an ellipsis. */
+const PLAN_ID = String.raw`\b(?:scr|wp|fil|prj|rnd|cnv|msg|top|job|vp|req|idea|use|am|tc|ch|chn|cmt|sug|sv|apr|inv|usr|tup|ver|brf)_(?:[0-9A-Za-z]{6,}(?:…|\.\.\.)?|[0-9A-Za-z]*(?:…|\.\.\.))`;
+
+/**
+ * The planner's ids out of a line a person reads (QA, 2 Oct: 「该脚本已在起草中
+ * （scr_01m3…）」 and 「（如scr_01m3…等）」 on 策划今日提报). The brackets go
+ * with the id, and 「如…等」 with them, so no 「（如等）」 is left behind.
+ * Also run on what the planner writes before it is stored (`plan-run.ts`).
+ */
+export function scrubPlanIds(text: string): string {
+  return text
+    .replace(new RegExp(String.raw`\s*[（(]\s*(?:如|例如|比如)?\s*(?:id|ID|编号)?[:：]?\s*\`?${PLAN_ID}\`?(?:\s*[、,，]\s*\`?${PLAN_ID}\`?)*\s*(?:等)?\s*[）)]`, "g"), "")
+    .replace(new RegExp(String.raw`(?:如|例如|比如)?\s*\`?${PLAN_ID}\`?\s*(?:等)?`, "g"), "")
+    .replace(/[（(]\s*[）)]/g, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
 
 /**
  * 策划's report for the day: the plan it posts at 08:05 HKT in #研究日报, the
@@ -25,8 +45,8 @@ export async function planToday(tenantId: string): Promise<PlanToday | null> {
     .filter((x) => typeof x.text === "string" && x.text.trim())
     .map((x) => ({
       owner: String(x.owner ?? ""),
-      text: String(x.text).replace(/^\S{1,6}\s*[—-]\s*/, "").trim().slice(0, 260),
-      why: typeof x.why === "string" && x.why.trim() ? x.why.trim().slice(0, 200) : null,
+      text: readerLine(scrubPlanIds(String(x.text).replace(/^\S{1,6}\s*[—-]\s*/, "")), 260),
+      why: typeof x.why === "string" && scrubPlanIds(x.why) ? readerLine(scrubPlanIds(x.why), 200) : null,
     }));
   if (!items.length) return null;
   const topic = list.map((x) => (typeof x.text === "string" ? /《([^》]{4,80})》/.exec(x.text)?.[1] : null)).find(Boolean) ?? null;

@@ -23,6 +23,9 @@ import { scriptWriting } from "@/lib/script/writing";
 import { grantOwner } from "@/lib/authz/rebac";
 import type { Viewer } from "@/lib/auth/dal";
 import { handOffToVideo } from "@/lib/agents/handoff";
+import { settings } from "@/lib/db/schema";
+import { spokenSeconds, wordCount } from "./count";
+import { docMatchesBeats, type RichDoc, type RichNode } from "./rich";
 
 /**
  * Script (spec §4.4).
@@ -55,26 +58,8 @@ import { handOffToVideo } from "@/lib/agents/handoff";
  * CJK characters are counted individually and everything else by whitespace
  * word, which is also how a mixed line comes out roughly right.
  */
-export const CJK_PER_SECOND = 4.5;
-export const WORDS_PER_SECOND = 2.6;
-
-const CJK = /[㐀-䶿一-鿿豈-﫿぀-ヿ]/gu;
-
-export function spokenSeconds(text: string): number {
-  const cjk = (text.match(CJK) ?? []).length;
-  const rest = text.replace(CJK, " ");
-  const words = rest.split(/\s+/).filter((w) => /[\p{L}\p{N}]/u.test(w)).length;
-  return cjk / CJK_PER_SECOND + words / WORDS_PER_SECOND;
-}
-
-export function wordCount(text: string): number {
-  const cjk = (text.match(CJK) ?? []).length;
-  const words = text
-    .replace(CJK, " ")
-    .split(/\s+/)
-    .filter((w) => /[\p{L}\p{N}]/u.test(w)).length;
-  return cjk + words;
-}
+/* The counter itself lives in ./count, shared with the 脚本 page (QA, 2 Oct). */
+export { CJK_PER_SECOND, WORDS_PER_SECOND, spokenSeconds, wordCount } from "./count";
 
 /* ------------------------------------------------------------ reading it */
 
@@ -781,9 +766,31 @@ export async function cutVersion(
       model: opts.model ?? null,
     });
 
+    /* The rich document (headings, bold, lists) rides along when it still
+       says what the beats say, so restoring this version brings the
+       formatting back (QA, 2 Oct: versions only kept plain paragraphs).
+       Kept in `settings` under the version's id: script_versions has no
+       column for it. */
+    const rich = script.doc as RichNode | null;
+    if (rich && rich.type === "doc" && docMatchesBeats(rich, beats)) {
+      await tx
+        .insert(settings)
+        .values({ key: versionDocKey(id), value: { doc: rich, html: script.docHtml ?? null }, updatedBy: viewer.id })
+        .onConflictDoNothing();
+    }
+
     await tx.update(scripts).set({ version: versionNo, updatedAt: new Date() }).where(eq(scripts.id, scriptId));
     return { id, versionNo };
   });
+}
+
+const versionDocKey = (versionId: string) => `script-version-doc:${versionId}`;
+
+/** The rich document kept with a version, when one was (older versions have none). */
+export async function versionDoc(versionId: string): Promise<{ doc: RichDoc; html: string | null } | null> {
+  const [row] = await db.select({ value: settings.value }).from(settings).where(eq(settings.key, versionDocKey(versionId))).limit(1);
+  const v = row?.value as { doc?: RichNode; html?: string | null } | undefined;
+  return v?.doc && v.doc.type === "doc" ? { doc: v.doc as RichDoc, html: v.html ?? null } : null;
 }
 
 /** How many of the brief's mandatory points appear anywhere in the draft.
@@ -808,7 +815,7 @@ export async function restoreVersion(viewer: Viewer, scriptId: string, versionNo
     .limit(1);
   if (!version) return null;
 
-  return saveBeats(
+  const res = await saveBeats(
     viewer,
     scriptId,
     version.beats.map((b) => ({
@@ -818,6 +825,15 @@ export async function restoreVersion(viewer: Viewer, scriptId: string, versionNo
       naturalSound: b.naturalSound,
     })),
   );
+  /* The version's own rich document back on the page, formatting and all;
+     a version kept before that existed opens as plain paragraphs, as before. */
+  if (res) {
+    const kept = await versionDoc(version.id).catch(() => null);
+    if (kept && docMatchesBeats(kept.doc, version.beats)) {
+      await db.update(scripts).set({ doc: kept.doc as unknown as Record<string, unknown>, docHtml: kept.html }).where(eq(scripts.id, scriptId));
+    }
+  }
+  return res;
 }
 
 /* ------------------------------------------------------------ approving */

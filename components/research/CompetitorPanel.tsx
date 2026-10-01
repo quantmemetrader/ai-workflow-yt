@@ -8,6 +8,7 @@ import {
   syncCompetitorsAction,
 } from "@/app/(app)/research/competitor-actions";
 import { Badge, Empty, Row, clip, field, ghost, solid, useAction } from "@/components/ui/kit";
+import { PlatformMark, platformLabel } from "@/components/ui/PlatformMark";
 
 /**
  * How the studio compares with the channels it watches.
@@ -26,11 +27,14 @@ import { Badge, Empty, Row, clip, field, ghost, solid, useAction } from "@/compo
 export function CompetitorPanel({
   competitors,
   ourMedian,
+  ourPosts = null,
   configured,
   zh,
 }: {
   competitors: CompetitorRow[];
   ourMedian: number | null;
+  /** The studio's posts behind `ourMedian`; null leaves the cell empty. */
+  ourPosts?: number | null;
   configured: boolean;
   zh: boolean;
 }) {
@@ -138,7 +142,7 @@ export function CompetitorPanel({
               table of other people's numbers. */}
           <Row style={{ alignItems: "center", background: "#fafafa" }}>
             <span style={{ flexGrow: 1, fontWeight: 500 }}>{t("The studio", "本工作室")}</span>
-            <span style={{ width: 90, color: "#c7c7c7" }}>—</span>
+            <span style={{ width: 90, color: "#7c7c7c", fontVariantNumeric: "tabular-nums" }}>{ourPosts ?? ""}</span>
             <span style={{ width: 200 }}>
               <Bar value={ourMedian} best={best} tone="#171717" zh={zh} />
             </span>
@@ -150,8 +154,10 @@ export function CompetitorPanel({
             <Row key={c.id} style={{ alignItems: "center" }}>
               <span style={{ flexGrow: 1, ...clip }} title={c.displayName ?? ""}>
                 {c.displayName ?? c.handle ?? c.id}
-                <span style={{ marginLeft: 7 }}>
-                  <Badge tone="quiet">{c.platform}</Badge>
+                {/* The platform's mark and name, not the raw key 「youtube」 (QA, 2 Oct). */}
+                <span style={{ marginLeft: 7, display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, color: "#8a8a8a", verticalAlign: "middle" }}>
+                  <PlatformMark platform={c.platform} size={11} />
+                  {platformLabel(c.platform)}
                 </span>
                 {c.lastError && (
                   <span style={{ marginLeft: 7 }}>
@@ -168,9 +174,7 @@ export function CompetitorPanel({
                   <a href={c.topPost.permalink} target="_blank" rel="noreferrer" style={{ color: "#007be0", fontSize: 11.5 }}>
                     {c.topPost.title ?? t("(untitled)", "（无标题）")}
                   </a>
-                ) : (
-                  <span style={{ color: "#c7c7c7", fontSize: 11.5 }}>—</span>
-                )}
+                ) : null}
               </span>
               <span style={{ width: 60, textAlign: "right" }}>
                 <button

@@ -352,7 +352,7 @@ async function readLive(platform: PlatformKey): Promise<PlatformHot> {
         return done([], "微信没有公开的热榜接口，所以这里不显示别人的猜测。");
       default: {
         if (!env.tikhub.configured) {
-          return done([], "没有配置 TikHub 密钥，读不到这个平台。在 管理 → 渠道与凭证 里设置。");
+          return done([], "没有配置外部数据密钥，读不到这个平台。在 管理 → 渠道与凭证 里设置。");
         }
         const rows =
           platform === "dy_breakout"

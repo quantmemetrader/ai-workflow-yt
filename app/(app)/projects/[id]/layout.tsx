@@ -19,7 +19,7 @@ export default async function ProjectLayout({ children, params }: { children: Re
     <div data-project-frame="" style={{ flexGrow: 1, minWidth: 0, minHeight: 0, display: "flex", flexDirection: "column", background: "#f6f5f2" }}>
       <ProjectHeader
         zh={zh}
-        p={{ id: p.id, title: p.title, status: p.status, canManage: p.canManage, access: p.access, published: p.published?.platforms ?? [], tabs: tabStates(p) }}
+        p={{ id: p.id, title: p.title, status: p.status, canManage: p.canManage, mine: p.mine, linkOnly: p.linkOnly, access: p.access, published: p.published?.platforms ?? [], tabs: tabStates(p) }}
       />
       <div data-project-body="" style={{ flexGrow: 1, minHeight: 0, display: "flex" }}>{children}</div>
     </div>

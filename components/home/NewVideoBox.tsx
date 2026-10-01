@@ -20,6 +20,9 @@ export function NewVideoBox({ zh }: { zh: boolean }) {
   /* How long the video should be; the first draft is written to it. */
   const [secs, setSecs] = React.useState(180);
   const [customMin, setCustomMin] = React.useState("");
+  /* A custom length outside 15 秒 to 30 分钟 was ignored without a word (QA, 2 Oct). */
+  const customN = customMin ? Number(customMin) * 60 : null;
+  const customBad = customN !== null && (!Number.isFinite(customN) || customN < 15 || customN > 1800);
   const att = useAttachments(zh, 5);
   const go = () => {
     const said = text.trim();
@@ -75,14 +78,18 @@ export function NewVideoBox({ zh }: { zh: boolean }) {
           <button
             key={n}
             type="button"
-            onClick={() => setSecs(n)}
+            onClick={() => {
+              setSecs(n);
+              /* The preset wins: a 2.5 left in the box read as still chosen. */
+              setCustomMin("");
+            }}
             aria-pressed={secs === n}
             style={{ height: 32, padding: "0 14px", borderRadius: 999, border: `1px solid ${secs === n ? "#171717" : "#d6d5d0"}`, background: secs === n ? "#171717" : "#fff", color: secs === n ? "#fff" : "#333", fontFamily: "inherit", fontSize: 13, fontWeight: 600, cursor: "pointer" }}
           >
             {t(`${n / 60} 分钟${n === 180 ? "（推荐）" : ""}`, `${n / 60} min`)}
           </button>
         ))}
-        <span style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 32, padding: "0 10px", borderRadius: 999, border: `1px solid ${![60, 180, 300, 480].includes(secs) ? "#171717" : "#d6d5d0"}`, background: "#fff", fontSize: 13 }}>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 32, padding: "0 10px", borderRadius: 999, border: `1px solid ${customBad ? "#d9534f" : ![60, 180, 300, 480].includes(secs) ? "#171717" : "#d6d5d0"}`, background: "#fff", fontSize: 13 }}>
           {t("自定义", "Custom")}
           <input
             inputMode="decimal"
@@ -94,10 +101,17 @@ export function NewVideoBox({ zh }: { zh: boolean }) {
               const n = Math.round(Number(v) * 60);
               if (n >= 15 && n <= 1800) setSecs(n);
             }}
+            aria-label={t("自定义时长（分钟）", "Custom length in minutes")}
+            aria-invalid={customBad || undefined}
             style={{ width: 50, height: 24, border: "1px solid #dcdbd6", borderRadius: 6, padding: "0 4px", fontFamily: "inherit", fontSize: 13, textAlign: "center" }}
           />
           {t("分钟", "min")}
         </span>
+        {customBad ? (
+          <span role="status" style={{ fontSize: 12.5, color: "#b42318" }}>
+            {t(`时长要在 15 秒到 30 分钟之间，现在按 ${secs >= 60 ? `${+(secs / 60).toFixed(1)} 分钟` : `${secs} 秒`}来写`, `Pick 15 s to 30 min; using ${+(secs / 60).toFixed(1)} min for now`)}
+          </span>
+        ) : null}
       </div>
     </form>
   );

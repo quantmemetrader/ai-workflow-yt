@@ -103,7 +103,12 @@ export function NewChannelDialog({
           <input
             autoFocus
             value={name}
-            onChange={(e) => setName(e.target.value)}
+            onChange={(e) => {
+              setName(e.target.value);
+              /* The old complaint goes as soon as the name is being fixed (QA, 2 Oct). */
+              if (error) setError(null);
+            }}
+            maxLength={60}
             placeholder={zh ? "名称，例如 制作组" : "Name it, for example production"}
             style={field}
           />
@@ -114,16 +119,31 @@ export function NewChannelDialog({
             style={{ ...field, marginTop: 8 }}
           />
 
-          <label
+          {/* The whole row toggles, words included (QA, 2 Oct: pressing
+              「私密」 did nothing, because a <label> with no form control in
+              it has nothing to pass the click to). */}
+          <div
+            role="checkbox"
+            aria-checked={isPrivate}
+            tabIndex={0}
+            onClick={() => setPrivate((p) => !p)}
+            onKeyDown={(e) => {
+              if (e.key === " " || e.key === "Enter") {
+                e.preventDefault();
+                e.stopPropagation();
+                setPrivate((p) => !p);
+              }
+            }}
             style={{
               display: "flex",
               gap: 10,
               alignItems: "flex-start",
               margin: "14px 0 0",
               cursor: "pointer",
+              outline: "none",
             }}
           >
-            <Check on={isPrivate} onToggle={() => setPrivate((p) => !p)} />
+            <Check on={isPrivate} />
             <span>
               <span style={{ fontSize: 12.5, fontWeight: 500, display: "block" }}>
                 {zh ? "私密" : "Private"}
@@ -134,7 +154,7 @@ export function NewChannelDialog({
                   : "Only the people added to it can see it, or anything said in it."}
               </span>
             </span>
-          </label>
+          </div>
         </div>
 
         <div className="lbl" style={{ padding: "16px 18px 6px", margin: 0 }}>

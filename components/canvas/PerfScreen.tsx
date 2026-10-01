@@ -43,8 +43,8 @@ const ACCENT = "#007be0";
 const ZH: Record<string, string> = {
   "Content performance": "内容表现",
   Views: "播放量",
-  "Views in window": "窗口期播放量",
-  "Lifetime views": "累计播放量",
+  "Views in window": "期内播放量",
+  "Views on new posts": "新发贴文播放量",
   Likes: "点赞",
   Comments: "评论",
   "Engagement rate": "互动率",
@@ -469,8 +469,13 @@ export function PerfScreen(props: PerfScreenProps): React.JSX.Element {
   const yBot = plotH * 0.94;
 
   const drawable = points.length >= 2;
-  const tMin = drawable ? points[0].t : 0;
-  const tMax = drawable ? points[points.length - 1].t : 0;
+  /* The axis spans the whole window, not only the days that have readings
+     (QA, 2 Oct: the chart stopped at 9月28日 under a header that said
+     through 10月1日). Platforms report a few days late; those days stay
+     empty on the right and the caption says so. */
+  const lastPoint = drawable ? points[points.length - 1].t : 0;
+  const tMin = drawable ? Math.min(points[0].t, range.start.getTime()) : 0;
+  const tMax = drawable ? Math.max(lastPoint, range.end.getTime()) : 0;
   const values = points.map((p) => p.v);
   const vMax = values.length > 0 ? Math.max(...values) : 0;
   /* Views per day start at zero: a chart zoomed to the top of the range makes
@@ -484,31 +489,39 @@ export function PerfScreen(props: PerfScreenProps): React.JSX.Element {
   const xTickCount = Math.max(2, Math.min(7, Math.round(plotW / 130)));
   const xTicks: number[] = [];
   if (drawable) {
-    for (let i = 0; i < xTickCount; i++) xTicks.push(tMin + ((tMax - tMin) * i) / (xTickCount - 1));
+    // Whole days only, and each day once: a short range used to print the
+    // same date twice along the axis.
+    const DAY = 86_400_000;
+    for (let i = 0; i < xTickCount; i++) {
+      const ms = Math.round((tMin + ((tMax - tMin) * i) / (xTickCount - 1)) / DAY) * DAY;
+      if (!xTicks.includes(ms)) xTicks.push(ms);
+    }
   }
 
   const line = drawable
     ? points.map((p, i) => `${i ? "L" : "M"}${x(p.t).toFixed(2)} ${y(p.v).toFixed(2)}`).join(" ")
     : "";
   const area = drawable
-    ? `${line} L${x(tMax).toFixed(2)} ${yBot.toFixed(2)} L${x(tMin).toFixed(2)} ${yBot.toFixed(2)} Z`
+    ? `${line} L${x(lastPoint).toFixed(2)} ${yBot.toFixed(2)} L${x(points[0].t).toFixed(2)} ${yBot.toFixed(2)} Z`
     : "";
 
   /** The chart states its own range: the days it actually holds when it holds
    * any, the requested window when it does not. */
-  const chartRange = drawable
-    ? `${day(new Date(tMin), locale)} – ${day(new Date(tMax), locale)}`
-    : `${day(range.start, locale)} – ${day(range.end, locale)}`;
+  const chartRange = `${day(range.start, locale)} – ${day(range.end, locale)}`;
+  const lagNote =
+    drawable && lastPoint < range.end.getTime()
+      ? zh
+        ? `平台数据更新到 ${day(new Date(lastPoint), locale)}`
+        : `platform figures up to ${day(new Date(lastPoint), locale)}`
+      : "";
   const chartCaption =
-    sourceLine === "" ? chartRange : `${chartRange} · ${zh ? "来源" : "source"}: ${sourceLine}`;
+    [chartRange, lagNote, sourceLine === "" ? "" : `${zh ? "来源" : "source"}: ${sourceLine}`].filter(Boolean).join(" · ");
 
   /* --------------------------------------------------------- fragments */
 
-  const dash = (why: string) => (
-    <span style={{ color: "#c7c7c7" }} title={why}>
-      —
-    </span>
-  );
+  /* A figure the platform never gave is left blank, with the reason on
+     hover, rather than a column of dashes (QA, 2 Oct). */
+  const dash = (why: string) => <span title={why} aria-label={why} />;
   const notReported = t("not reported by this platform");
 
   const syncButton = (
@@ -534,19 +547,22 @@ export function PerfScreen(props: PerfScreenProps): React.JSX.Element {
      * channel with history that is 1.4M over a chart totalling 40k, and
      * neither figure is wrong — together, unlabelled, they were unreadable.
      */
+    /* (QA, 2 Oct) The second tile was called 累计播放量 and read smaller
+       than the first, which looked like a bug: older posts keep earning
+       views inside the window. It is named for what it is now. */
     {
       label: t("Views in window"),
       value: compact(totals.viewsInWindow, locale),
       title: zh
-        ? `窗口期内新增播放量：${full(totals.viewsInWindow, locale)}（与下方图表一致）`
-        : `${full(totals.viewsInWindow, locale)} gained during this window. This is what the chart below sums.`,
+        ? `这段时间所有贴文新增的播放：${full(totals.viewsInWindow, locale)}，和下方图表一致`
+        : `${full(totals.viewsInWindow, locale)} gained during this window by every post, old or new. This is what the chart below sums.`,
     },
     {
-      label: t("Lifetime views"),
+      label: t("Views on new posts"),
       value: compact(totals.views, locale),
       title: zh
-        ? `本窗口期发布的贴文的累计播放量：${full(totals.views, locale)}`
-        : `${full(totals.views, locale)} in total, for the posts published in this window, over their whole lives.`,
+        ? `这段时间新发的 ${full(totals.posts, locale)} 条贴文，发布至今一共 ${full(totals.views, locale)} 次播放`
+        : `${full(totals.views, locale)} views so far for the ${full(totals.posts, locale)} posts published in this window.`,
     },
     {
       label: t("Likes"),
@@ -560,15 +576,16 @@ export function PerfScreen(props: PerfScreenProps): React.JSX.Element {
     },
     {
       label: t("Engagement rate"),
-      value: totals.engagementRate === null ? "—" : pct1(totals.engagementRate, locale),
-      title: totals.engagementRate === null ? notReported : pct1(totals.engagementRate, locale),
+      value: totals.engagementRate === null ? "" : pct1(totals.engagementRate, locale),
+      title: zh ? "点赞、评论、转发合计 ÷ 播放量" : "Likes, comments and shares over views",
     },
     {
       label: t("Posts"),
       value: full(totals.posts, locale),
       title: full(totals.posts, locale),
     },
-  ];
+    // A rate nobody reported is left off rather than shown as a dash (QA, 2 Oct).
+  ].filter((s) => s.value !== "");
 
   /** A sortable column head: the artboard's 10.5px label, plus the arrow that
    * says which way the table is actually ordered. */
@@ -1040,8 +1057,12 @@ function PlatformTiles({ rows, channels, active, zh, onPick }: { rows: Performan
         const mine = rows.filter((r) => r.platform === k);
         const views = mine.reduce((n, r) => n + (r.views ?? 0), 0);
         const likes = mine.reduce((n, r) => n + (r.likes ?? 0), 0);
-        const comments = mine.reduce((n, r) => n + (r.comments ?? 0), 0);
-        const eng = views ? (likes + comments) / views : null;
+        /* The same sum as the headline rate (lib/social/service.ts), over
+           the posts that report likes, so the two always agree (QA, 2 Oct). */
+        const rated = mine.filter((r) => r.likes !== null && (r.views ?? 0) > 0);
+        const ratedViews = rated.reduce((n, r) => n + (r.views ?? 0), 0);
+        const acts = rated.reduce((n, r) => n + (r.likes ?? 0) + (r.comments ?? 0) + (r.shares ?? 0), 0);
+        const eng = ratedViews ? acts / ratedViews : null;
         const selected = active === k;
         return (
           <button
@@ -1075,8 +1096,12 @@ function PlatformTiles({ rows, channels, active, zh, onPick }: { rows: Performan
             </div>
             <div style={{ fontSize: 11, color: "#7c7c7c", marginTop: 3, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
               {zh ? "赞" : "likes"} {fmt(likes)}
-              <span style={{ color: "#d0d0d0" }}> · </span>
-              {zh ? "互动率" : "engagement"} {eng !== null ? `${(eng * 100).toFixed(1)}%` : "—"}
+              {eng !== null ? (
+                <>
+                  <span style={{ color: "#d0d0d0" }}> · </span>
+                  {zh ? "互动率" : "engagement"} {`${(eng * 100).toFixed(1)}%`}
+                </>
+              ) : null}
             </div>
           </button>
         );

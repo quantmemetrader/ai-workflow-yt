@@ -1,3 +1,4 @@
+import { readerMarkdown } from "@/lib/text/reader";
 import React from "react";
 
 /**
@@ -10,7 +11,25 @@ import React from "react";
  * failure mode for a work tool.
  */
 export function Markdown({ text }: { text: string }) {
-  return <div className="flex flex-col gap-2 text-sm leading-[1.55] text-ink-gray-8">{blocks(text)}</div>;
+  /* Which language a bare link's words are in: the text's own (QA, 2 Oct). */
+  const zh = /[\u4e00-\u9fff]/.test(text);
+  return <div className="flex flex-col gap-2 text-sm leading-[1.55] text-ink-gray-8">{blocks(readerMarkdown(text), zh)}</div>;
+}
+
+/**
+ * A bare app path an employee writes (「在脚本页看、改：/script/scr_…」) as a
+ * link with words, not a raw address (QA, 2 Oct).
+ */
+const APP_PATH = /^\/(?:script|projects|files|chat|video|videos|topics|trends|publish|article|legal|finance|accounting|research)\/[A-Za-z0-9_\-/?=&#.%]+$/;
+function pathLabel(path: string, zh: boolean): string {
+  if (/^\/script\/|\/script(?:[/?#]|$)/.test(path)) return zh ? "打开脚本" : "Open the script";
+  if (path.startsWith("/projects/")) return zh ? "打开项目" : "Open the project";
+  if (path.startsWith("/files/")) return zh ? "打开文件" : "Open the file";
+  if (path.startsWith("/chat/c/")) return zh ? "打开频道" : "Open the channel";
+  if (path.startsWith("/chat/")) return zh ? "打开对话" : "Open the chat";
+  if (path.startsWith("/video")) return zh ? "打开剪辑台" : "Open the editor";
+  if (path.startsWith("/topics/") || path.startsWith("/trends/") || path.startsWith("/research/")) return zh ? "打开选题" : "Open the topic";
+  return zh ? "打开" : "Open";
 }
 
 const LIST_RE = /^(\s*)(?:[-*+]|(\d+)\.)\s+(.*)$/;
@@ -18,7 +37,7 @@ const LIST_RE = /^(\s*)(?:[-*+]|(\d+)\.)\s+(.*)$/;
 type ListRow = { indent: number; ordered: boolean; num: number; text: string };
 
 /** One list from its rows: the least-indented rows are its items, anything deeper belongs to the item above it. */
-function listTree(rows: ListRow[], nextKey: () => number): React.ReactNode {
+function listTree(rows: ListRow[], nextKey: () => number, zh: boolean): React.ReactNode {
   const base = Math.min(...rows.map((r) => r.indent));
   const tops: { row: ListRow; kids: ListRow[] }[] = [];
   for (const r of rows) {
@@ -28,8 +47,8 @@ function listTree(rows: ListRow[], nextKey: () => number): React.ReactNode {
   const ordered = tops[0].row.ordered;
   const items = tops.map((t, n) => (
     <li key={n} className="pl-0.5">
-      {inline(t.row.text)}
-      {t.kids.length ? <div className="mt-1">{listTree(t.kids, nextKey)}</div> : null}
+      {inline(t.row.text, zh)}
+      {t.kids.length ? <div className="mt-1">{listTree(t.kids, nextKey, zh)}</div> : null}
     </li>
   ));
   const k = nextKey();
@@ -41,7 +60,7 @@ function listTree(rows: ListRow[], nextKey: () => number): React.ReactNode {
   );
 }
 
-function blocks(src: string): React.ReactNode[] {
+function blocks(src: string, zh: boolean): React.ReactNode[] {
   const lines = src.replace(/\r\n/g, "\n").split("\n");
   const out: React.ReactNode[] = [];
   let i = 0;
@@ -85,7 +104,7 @@ function blocks(src: string): React.ReactNode[] {
               : "mt-1 text-sm font-semibold text-ink-gray-9"
           }
         >
-          {inline(heading[2])}
+          {inline(heading[2], zh)}
         </p>,
       );
       i++;
@@ -122,7 +141,7 @@ function blocks(src: string): React.ReactNode[] {
         }
         break;
       }
-      out.push(listTree(rows, () => key++));
+      out.push(listTree(rows, () => key++, zh));
       continue;
     }
 
@@ -143,7 +162,7 @@ function blocks(src: string): React.ReactNode[] {
                       .split("|")
                       .map((cell, cIdx) => (
                         <td key={cIdx} className={`px-2 py-1.5 align-top ${rIdx === 0 ? "font-medium text-ink-gray-9" : "text-ink-gray-7"}`}>
-                          {inline(cell.trim())}
+                          {inline(cell.trim(), zh)}
                         </td>
                       ))}
                   </tr>
@@ -160,7 +179,7 @@ function blocks(src: string): React.ReactNode[] {
     while (i < lines.length && lines[i].trim() && !/^(#{1,4}\s|```|\s*([-*+]|\d+\.)\s)/.test(lines[i])) {
       para.push(lines[i++]);
     }
-    out.push(<p key={key++}>{inline(para.join(" "))}</p>);
+    out.push(<p key={key++}>{inline(para.join(" "), zh)}</p>);
   }
 
   return out;
@@ -172,9 +191,9 @@ function blocks(src: string): React.ReactNode[] {
  * stays an email address. It gets the chat's `.ment` pill, which is what an
  * agent's hand-off ("@视频助理 …") needs to read as addressed to someone
  * while its links stay clickable. */
-function inline(src: string): React.ReactNode[] {
+function inline(src: string, zh = true): React.ReactNode[] {
   const nodes: React.ReactNode[] = [];
-  const pattern = /(\*\*[^*]+\*\*|`[^`]+`|\*[^*]+\*|\[[^\]]+\]\([^)]+\)|(?<=^|\s)@[A-Za-z0-9_\u4e00-\u9fff-]+)/g;
+  const pattern = /(\*\*[^*]+\*\*|`[^`]+`|\*[^*]+\*|(?<=^|[\s\u3000-\u303f\uff00-\uffef])_[^_\n]+_(?=$|[\s\u3000-\u303f\uff00-\uffef])|\[[^\]]+\]\([^)]+\)|(?<=^|\s)@[A-Za-z0-9_\u4e00-\u9fff-]+|(?<=^|[\s:(\u3000-\u303f\uff00-\uffef])\/(?:script|projects|files|chat|video|videos|topics|trends|publish|article|legal|finance|accounting|research)\/[A-Za-z0-9_\-/?=&#.%]*[A-Za-z0-9_\-/=&#%])/g;
   let last = 0;
   let match: RegExpExecArray | null;
   let key = 0;
@@ -189,11 +208,23 @@ function inline(src: string): React.ReactNode[] {
           {token.slice(2, -2)}
         </strong>,
       );
+    } else if (token.startsWith("_") && token.endsWith("_")) {
+      nodes.push(
+        <em key={key++} className="text-ink-gray-6" style={{ fontStyle: "normal" }}>
+          {token.slice(1, -1)}
+        </em>,
+      );
     } else if (token.startsWith("`")) {
       nodes.push(
         <code key={key++} className="rounded bg-surface-gray-2 px-1 py-0.5 text-[12px] text-ink-gray-8">
           {token.slice(1, -1)}
         </code>,
+      );
+    } else if (token.startsWith("/") && APP_PATH.test(token)) {
+      nodes.push(
+        <a key={key++} href={token} className="text-ink-blue-3 underline underline-offset-2">
+          {pathLabel(token, zh)}
+        </a>,
       );
     } else if (token.startsWith("@")) {
       nodes.push(

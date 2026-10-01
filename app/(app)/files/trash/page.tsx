@@ -5,7 +5,7 @@ import { answeringModel } from "@/lib/ai/models";
 import { FilesView } from "@/components/files/FilesView";
 import { toRows } from "@/components/files/rows";
 
-export const metadata = { title: "回收站 · Trash" };
+export const metadata = { title: "回收站" };
 
 /** Deleted files inside the 30-day recovery window. After that the sweeper
  * takes the bytes too, so "deleted" eventually means deleted. */

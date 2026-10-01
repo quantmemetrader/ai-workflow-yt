@@ -4,7 +4,7 @@ import { AGENT_KEYS } from "@/lib/agents/catalog";
 import { Card, PageBody } from "@/components/projects/kit";
 import { TeamBoard, type TeamMember } from "@/components/agents/TeamBoard";
 
-export const metadata = { title: "AI 同事 · AI team" };
+export const metadata = { title: "AI 同事" };
 
 /**
  * The AI colleagues' own page: every one of them with its face, what it is

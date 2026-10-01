@@ -55,6 +55,37 @@ const CHECK_ZH: Record<string, string> = {
 };
 const nameZh = (name: string, zh: boolean) => (zh ? (TEMPLATE_ZH[name] ?? name) : name);
 
+/* (QA, 2 Oct: the repository menus read "draft" / "in review", a template's
+   type "release", a finding's badge "missing".) Stored keys, shown in Chinese. */
+const STATE_ZH: Record<string, string> = {
+  draft: "草稿",
+  in_review: "审阅中",
+  sent: "已发出",
+  signed: "已签署",
+  expired: "已到期",
+  terminated: "已终止",
+};
+const KIND_ZH: Record<string, string> = {
+  release: "授权书",
+  agreement: "协议",
+  nda: "保密协议",
+};
+const DEPARTURE_ZH: Record<string, string> = {
+  missing: "缺失",
+  added: "新增",
+  changed: "有改动",
+  reworded: "措辞不同",
+  same: "一致",
+};
+/* The service writes the explanation in English; it follows from the departure, so say it in Chinese here. */
+const EXPLAIN_ZH: Record<string, string> = {
+  missing: "模板里有这一条，合同里没有。",
+  added: "合同里多了一条模板没有的条款。",
+  changed: "措辞和模板不一样。",
+  reworded: "字句相同，只是标点或空格不同。",
+};
+const label = (map: Record<string, string>, key: string, zh: boolean) => (zh ? (map[key] ?? key) : key.replace(/_/g, " "));
+
 /**
  * Legal (spec §4.10), transcribed from the four `Legal-*` artboards.
  *
@@ -413,7 +444,7 @@ function Review({
           >
             <span style={{ fontSize: 12.5, fontWeight: 500, display: "block" }}>{c.title}</span>
             <span style={{ fontSize: 11, color: "#999999", display: "block", marginTop: 2 }}>
-              {c.templateName ?? t("no template", "无模板")}
+              {c.templateName ? nameZh(c.templateName, zh) : t("no template", "无模板")}
               {c.unacknowledged > 0 ? ` · ${c.unacknowledged} ${t("to read", "待查看")}` : ""}
             </span>
           </button>
@@ -444,9 +475,9 @@ function Review({
                     {t("Clause", "条款")} {f.clause}
                   </span>
                   <Badge tone={f.departure === "missing" ? "bad" : f.departure === "reworded" ? "quiet" : "warn"}>
-                    {f.departure}
+                    {label(DEPARTURE_ZH, f.departure, zh)}
                   </Badge>
-                  <span style={{ fontSize: 11.5, color: "#7c7c7c" }}>{f.explanation}</span>
+                  <span style={{ fontSize: 11.5, color: "#7c7c7c" }}>{(zh && EXPLAIN_ZH[f.departure]) || f.explanation}</span>
                   {f.acknowledged ? (
                     <span style={{ marginLeft: "auto", fontSize: 11, color: "#278f5e" }}>
                       {t("read by", "已查看")} {f.acknowledgedByName ?? "—"}
@@ -549,7 +580,7 @@ function Repository({
             >
               {["draft", "in_review", "sent", "signed", "expired", "terminated"].map((s) => (
                 <option key={s} value={s}>
-                  {s.replace("_", " ")}
+                  {label(STATE_ZH, s, zh)}
                 </option>
               ))}
             </select>
@@ -698,8 +729,8 @@ function Compliance({
                 {r.createdAt.toISOString().slice(0, 10)}
               </span>
               <span style={{ flexGrow: 1, minWidth: 0 }}>
-                {r.subject || r.checklistName}
-                <span style={{ color: "#999999", marginLeft: 8, fontSize: 11 }}>{r.checklistName}</span>
+                {r.subject || nameZh(r.checklistName, zh)}
+                <span style={{ color: "#999999", marginLeft: 8, fontSize: 11 }}>{nameZh(r.checklistName, zh)}</span>
               </span>
               <span style={{ width: 120, color: "#7c7c7c", fontSize: 11.5 }}>{r.ranByName ?? "—"}</span>
               <span style={{ width: 110, textAlign: "right" }}>
@@ -770,7 +801,7 @@ function Templates({
       {templates.map((x) => (
         <Row key={x.id} style={{ alignItems: "center" }}>
           <span style={{ flexGrow: 1, ...clip }} title={x.name}>{nameZh(x.name, zh)}</span>
-          <span style={{ width: 120, fontSize: 11, color: "#999999" }}>{x.kind}</span>
+          <span style={{ width: 120, fontSize: 11, color: "#999999" }}>{label(KIND_ZH, x.kind, zh)}</span>
           <span style={{ width: 120, fontSize: 11, color: "#999999" }}>
             {x.fields.length} {t("fields", "个字段")}
           </span>

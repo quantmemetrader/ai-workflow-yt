@@ -95,13 +95,13 @@ export class AiError extends Error {
       case "credit":
         return "AI 服务的账户余额用完了（这是账户余额问题，不是系统故障）。管理员充值后就能继续用。";
       case "rate_limit":
-        return "AI 服务现在太忙，暂时限流了，没有扣费。稍等一下再试。";
+        return "AI 服务现在太忙，这次没有回应，稍等一下再试。";
       case "bad_request":
         return `AI 服务拒绝了这次请求：${this.message}`;
       default:
         return /no provider|not found|unavailable|no endpoints/i.test(this.message)
-          ? "选的模型暂时没有服务商可用，换个模型（或用「自动」）再试一次。"
-          : `AI 服务出错了：${this.message}`;
+          ? "选的模型暂时没有服务商可用，已经自动换过模型也没成功，稍后再试一次。"
+          : "AI 服务暂时出错了，已经自动换过模型也没成功，稍后再试一次。";
     }
   }
 }
@@ -462,7 +462,7 @@ export async function complete(opts: Omit<StreamOptions, "tools">): Promise<Comp
     if (!(err instanceof AiError) || err.kind === "credit" || opts.signal?.aborted) throw err;
     if (err.kind === "bad_request" && !/model|provider|endpoint/i.test(err.message)) throw err;
     const { modelFor } = await import("./models");
-    const chain = [modelFor.assistant(), ...modelFor.fallbacks()].filter((m, i, all) => m && m !== opts.model && all.indexOf(m) === i).slice(0, 2);
+    const chain = [modelFor.assistant(), modelFor.drafting(), ...modelFor.fallbacks(), "qwen/qwen3-max", "deepseek/deepseek-v4-flash"].filter((m, i, all) => m && m !== opts.model && all.indexOf(m) === i).slice(0, 4);
     let last: unknown = err;
     for (const model of chain) {
       try {

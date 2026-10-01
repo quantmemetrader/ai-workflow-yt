@@ -3,7 +3,7 @@ import { listProjectStages } from "@/lib/projects/service";
 import { ProjectsList } from "@/components/projects/ProjectsList";
 import { publishedDay } from "@/lib/projects/publication";
 
-export const metadata = { title: "视频 · Videos" };
+export const metadata = { title: "项目" };
 
 /**
  * Every project the person may see, newest activity first.

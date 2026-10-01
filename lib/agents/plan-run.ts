@@ -18,6 +18,7 @@ import { modelFor } from "@/lib/ai/models";
 import { BudgetStop, assertBudget, recordUsage } from "@/lib/ai/ledger";
 import { dueNow, readAutomation } from "@/lib/automations/service";
 import { studioBrief } from "@/lib/research/studio";
+import { scrubPlanIds } from "@/lib/agents/plan-today";
 
 
 /** Today, in Hong Kong: the plan's identity, and the digest's. */
@@ -41,6 +42,7 @@ ${PLAN_COLLEAGUES}
 - 每条都要指定一个负责人（上面六个里的一个）。
 - 不要把「审批」派给 AI 员工。
 - 至少一条跟今天晨报里的选题直接相关。
+- 不要写内部编号（比如 scr_ 开头的脚本编号），用《标题》称呼脚本和选题。
 - 简体中文。
 
 只输出 JSON，不要写别的：
@@ -87,20 +89,21 @@ function readPlan(text: string): Plan | null {
     return null;
   }
   const obj = raw as { focus?: unknown; todos?: unknown };
-  const focus = typeof obj.focus === "string" ? obj.focus.trim().slice(0, 200) : "";
+  const focus = typeof obj.focus === "string" ? scrubPlanIds(obj.focus.trim()).slice(0, 200) : "";
   if (!Array.isArray(obj.todos)) return null;
 
   const todos: Plan["todos"] = [];
   for (const item of obj.todos.slice(0, 6)) {
     const t = item as { text?: unknown; owner?: unknown; why?: unknown };
-    const text_ = typeof t.text === "string" ? t.text.trim().slice(0, 240) : "";
+    /* No internal ids in what people read, whatever the model wrote (QA, 2 Oct). */
+    const text_ = typeof t.text === "string" ? scrubPlanIds(t.text.trim()).slice(0, 240) : "";
     if (!text_) continue;
     const owner = OWNERS.includes(t.owner as Owner) ? (t.owner as Owner) : "human";
     todos.push({
       text: text_,
       // Approving is a person's, whatever the model decided.
       owner: /审批|批准|approve/i.test(text_) ? "human" : owner,
-      why: typeof t.why === "string" ? t.why.trim().slice(0, 240) : undefined,
+      why: typeof t.why === "string" && scrubPlanIds(t.why) ? scrubPlanIds(t.why.trim()).slice(0, 240) : undefined,
     });
   }
   return todos.length ? { focus, todos } : null;
@@ -140,7 +143,7 @@ function render(date: string, plan: Plan): string {
   if (plan.focus) lines.push(`**今天最重要：**${plan.focus}`, "");
   for (const todo of plan.todos) {
     const who = todo.owner === "human" ? "**人**" : AGENT_LABELS[todo.owner as AgentKey].nameLocal;
-    lines.push(`- ${who} — ${todo.text}${todo.why ? `\n  _${todo.why}_` : ""}`);
+    lines.push(`- ${who}：${todo.text.replace(/^\S{1,6}\s*[—\-–:：]\s*/, "")}${todo.why ? `\n  （${todo.why}）` : ""}`);
   }
   return lines.join("\n");
 }

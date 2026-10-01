@@ -8,6 +8,8 @@ import { publishPlatformName } from "@/lib/projects/publication";
 import { engagement, fmtNum, type VideoRow } from "@/lib/review/types";
 
 const STEP = 20;
+/** Plays a video needs before its engagement rate ranks it. */
+const MIN_PLAYS = 50;
 const ORDER = ["douyin", "xiaohongshu", "bilibili", "youtube"];
 type Sort = "new" | "plays" | "likes" | "eng";
 
@@ -29,7 +31,12 @@ export function VideoTable({ videos, zh }: { videos: VideoRow[]; zh: boolean }) 
     const n = (x: number | null | undefined) => (typeof x === "number" ? x : -1);
     if (sort === "plays") list.sort((a, b) => n(b.stats.plays) - n(a.stats.plays));
     else if (sort === "likes") list.sort((a, b) => n(b.stats.likes) - n(a.stats.likes));
-    else if (sort === "eng") list.sort((a, b) => n(engagement(b.stats)) - n(engagement(a.stats)));
+    // A 4-view video with one like is not the best engagement: below
+    // MIN_PLAYS the rate sorts last (QA, 2 Oct).
+    else if (sort === "eng") {
+      const rate = (v: VideoRow) => ((v.stats.plays ?? 0) >= MIN_PLAYS ? n(engagement(v.stats)) : -1);
+      list.sort((a, b) => rate(b) - rate(a));
+    }
     return list;
   }, [videos, chip, sort]);
   React.useEffect(() => setShown(STEP), [chip, sort]);

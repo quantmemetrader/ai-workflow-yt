@@ -30,10 +30,10 @@ const PRODUCTION_SLUG = "制作";
  */
 export async function startProposalAction(owner: AgentKey, text: string) {
   const viewer = await getViewer();
-  if (!viewer || !viewer.modules.includes("chat")) return { error: "Not allowed" };
-  if (!AGENT_KEYS.includes(owner)) return { error: "No such colleague" };
+  if (!viewer || !viewer.modules.includes("chat")) return { error: "没有权限" };
+  if (!AGENT_KEYS.includes(owner)) return { error: "没有这位同事" };
   const task = typeof text === "string" ? text.trim().slice(0, MAX_TEXT) : "";
-  if (!task) return { error: "Nothing to start" };
+  if (!task) return { error: "没有要开始的任务" };
 
   const channelId = await ensureAgentChannel(viewer.tenantId, "production");
   const body = `${agentTag(owner)} ${task}`;
@@ -76,24 +76,24 @@ export async function startProposalAction(owner: AgentKey, text: string) {
 export async function sendScriptToVideoAction(scriptId: string) {
   const viewer = await getViewer();
   if (!viewer || !viewer.modules.includes("video") || !viewer.modules.includes("chat")) {
-    return { error: "Not allowed" };
+    return { error: "没有权限" };
   }
-  if (typeof scriptId !== "string" || scriptId.length > 64) return { error: "No such script" };
+  if (typeof scriptId !== "string" || scriptId.length > 64) return { error: "没有这个脚本" };
 
   const [script] = await db
     .select({ id: scripts.id, title: scripts.title })
     .from(scripts)
     .where(and(eq(scripts.id, scriptId), eq(scripts.tenantId, viewer.tenantId)))
     .limit(1);
-  if (!script) return { error: "No such script" };
+  if (!script) return { error: "没有这个脚本" };
 
   let work: Awaited<ReturnType<typeof ensureScriptProject>>;
   try {
     work = await ensureScriptProject(viewer, scriptId);
   } catch (err) {
-    return { error: err instanceof Error ? err.message : "Could not make the project" };
+    return { error: err instanceof Error ? err.message : "项目没有建成，再试一次" };
   }
-  if (!work?.videoProjectId) return { error: "Could not make the project" };
+  if (!work?.videoProjectId) return { error: "项目没有建成，再试一次" };
   const projectId = work.videoProjectId;
 
   const href = `/video?project=${projectId}`;
@@ -142,8 +142,8 @@ export async function sendScriptToVideoAction(scriptId: string) {
 /** 「不再提醒」 on a 首页 task (Ryan, 30 Sep: tasks they do not want could not be put away). */
 export async function hideTodoAction(todoKey: unknown): Promise<{ error?: string }> {
   const viewer = await getViewer();
-  if (!viewer) return { error: "Not signed in" };
-  if (typeof todoKey !== "string" || todoKey.length > 200) return { error: "Not allowed" };
+  if (!viewer) return { error: "请先登录" };
+  if (typeof todoKey !== "string" || todoKey.length > 200) return { error: "没有权限" };
   await hideTodo(viewer.id, todoKey);
   revalidatePath("/home");
   return {};

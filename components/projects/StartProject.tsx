@@ -77,7 +77,19 @@ export function StartProject({
           {t("新项目", "New project")}
           {from === "digest" || signal ? ` · ${t("来自晨报", "from the morning brief")}${signal ? ` ${signal.date}` : ""}` : ""}
         </div>
-        <input value={name} onChange={(e) => setName(e.target.value)} style={{ width: "100%", marginTop: 10, fontSize: 20, fontWeight: 600, border: "1px solid #e2e2e2", borderRadius: 10, padding: "8px 12px", fontFamily: "inherit", outline: "none", boxSizing: "border-box" }} />
+        {/* Said what goes here (QA, 2 Oct: an empty box with no hint). */}
+        <input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          maxLength={80}
+          aria-label={t("项目名字", "Project name")}
+          placeholder={t("项目名字，比如：AI 失控，人类还剩多少时间", "Project name, e.g. How long do we have left")}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.nativeEvent.isComposing) void go(Boolean(signal && canWrite));
+          }}
+          style={{ width: "100%", marginTop: 10, fontSize: 20, fontWeight: 600, border: "1px solid #e2e2e2", borderRadius: 10, padding: "8px 12px", fontFamily: "inherit", outline: "none", boxSizing: "border-box" }}
+        />
+        <div style={{ fontSize: 12, color: "#999999", marginTop: 6 }}>{t("一句话说清这条视频讲什么，开始后随时能改。", "One line on what the video is about; you can change it later.")}</div>
         {brief ? <p style={{ fontSize: 13, color: "#525252", lineHeight: 1.65, margin: "12px 0 0", whiteSpace: "pre-wrap" }}>{brief}</p> : null}
         {evidence.length ? (
           <div style={{ display: "flex", flexDirection: "column", gap: 3, marginTop: 10 }}>

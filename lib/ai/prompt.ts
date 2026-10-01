@@ -1,4 +1,5 @@
 import "server-only";
+import { HUMAN_STYLE_ZH } from "@/lib/text/human";
 import { libraryDigest } from "@/lib/files/library-digest";
 import { and, eq, or } from "drizzle-orm";
 import { db } from "@/lib/db/client";
@@ -166,7 +167,7 @@ You are assisting ${viewer.name}${viewer.title ? `, ${viewer.title}` : ""}. Toda
             : "";
 
   return {
-    text: header + builtIn + library + sections.join("") + (training.text ? `\n\n${training.text}` : ""),
+    text: header + `\n\n${HUMAN_STYLE_ZH}` + builtIn + library + sections.join("") + (training.text ? `\n\n${training.text}` : ""),
     parts: [
       ...(scoped === "video"
         ? [{ id: "builtin:video-craft", title: "Cutting video", kind: "house", scope: "module: video" }]

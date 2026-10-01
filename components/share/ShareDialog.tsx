@@ -125,12 +125,16 @@ export function ShareDialog({
                   onChange={(e) => void onLinkAccess(e.target.value === "none" ? null : (e.target.value as "view" | "edit"))}
                   style={{ flexGrow: 1, minWidth: 0, height: 32, border: "1px solid #dcdbd6", borderRadius: 8, padding: "0 8px", fontSize: 13, fontFamily: "inherit", background: "#fff" }}
                 >
-                  <option value="none">{t("仅限能看到这个项目的人", "Only people who can see the project")}</option>
+                  {/* "None" adds nobody: who opens it is then the project's own
+                      setting, which the line under this says. It read 「仅限能看到
+                      这个项目的人」 above 「工作室里的人都能打开这个链接」 and
+                      looked like two rules (QA, 2 Oct). */}
+                  <option value="none">{t("不另外开放，按项目的可见范围", "No extra access: the project's own setting")}</option>
                   <option value="view">{t("工作室里有链接的人：可查看", "Anyone in the studio with the link: can view")}</option>
                   <option value="edit">{t("工作室里有链接的人：可编辑", "Anyone in the studio with the link: can edit")}</option>
                 </select>
               ) : (
-                <span style={{ fontSize: 12.5, color: "#6b6b6b" }}>{linkAccess === "edit" ? t("可编辑", "can edit") : linkAccess === "view" ? t("可查看", "can view") : t("仅限能看到项目的人", "only people who can see the project")}</span>
+                <span style={{ fontSize: 12.5, color: "#6b6b6b" }}>{linkAccess === "edit" ? t("可编辑", "can edit") : linkAccess === "view" ? t("可查看", "can view") : t("不另外开放，按项目的可见范围", "no extra access: the project's own setting")}</span>
               )}
             </div>
           ) : null}

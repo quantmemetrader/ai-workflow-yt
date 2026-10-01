@@ -15,6 +15,7 @@ export function FileAccessControl({
   userIds,
   canChange,
   zh,
+  sharedPeople,
 }: {
   fileId: string;
   fileName: string;
@@ -23,6 +24,9 @@ export function FileAccessControl({
   userIds: string[];
   canChange: boolean;
   zh: boolean;
+  /** Everyone other than the owner who holds any grant on the file, including
+   * edit grants made in the Share box below. */
+  sharedPeople?: number;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -35,15 +39,24 @@ export function FileAccessControl({
         : visibility === "people"
           ? { mode: "people", userIds }
           : { mode: "private" };
+  /* (QA, 2 Oct: sharing someone as editor left this saying 仅自己. The line
+     counts every person the file is shared with; the picker still edits only
+     the view grants.) */
+  const extra = Math.max(sharedPeople ?? 0, visibility === "people" ? userIds.length : 0);
+  const shown = (visibility === "private" || visibility === "people") && extra > 0 ? "people" : visibility;
+  const label =
+    shown === "groups" && extra > 0
+      ? `${visibilityLabel(shown, groups, zh)}${zh ? `，另有 ${extra} 人` : ` + ${extra}`}`
+      : visibilityLabel(shown, groups, zh, extra);
   const glyph =
-    visibility === "private" ? <EyeOffGlyph /> : visibility === "everyone" ? <GlobeGlyph /> : visibility === "people" ? <PersonGlyph /> : <PeopleGlyph />;
+    shown === "private" ? <EyeOffGlyph /> : shown === "everyone" ? <GlobeGlyph /> : shown === "people" ? <PersonGlyph /> : <PeopleGlyph />;
 
   return (
     <section style={{ border: "1px solid #ededed", borderRadius: 10, background: "#fff", padding: "10px 12px" }}>
       <div className="lbl" style={{ padding: 0, marginBottom: 8 }}>{zh ? "谁可以看" : "Who can see this"}</div>
       <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
         <span style={{ color: "#525252", display: "inline-flex" }}>{glyph}</span>
-        <span style={{ flex: 1 }}>{visibilityLabel(visibility, groups, zh, userIds.length)}</span>
+        <span style={{ flex: 1 }}>{label}</span>
         {canChange && (
           <button
             type="button"

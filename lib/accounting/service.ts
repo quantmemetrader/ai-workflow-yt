@@ -6,6 +6,14 @@ import type { Viewer } from "@/lib/auth/dal";
 import { audit } from "@/lib/audit";
 import { newId } from "@/lib/ids";
 
+/** (QA, 2 Oct) A person's name the way the reader reads it: the Chinese name on a Chinese screen. */
+function personName(viewer: Viewer) {
+  return (viewer.locale ?? "zh-CN").startsWith("zh")
+    ? sql<string | null>`coalesce(nullif(${users.nameLocal}, ''), ${users.name})`
+    : sql<string | null>`${users.name}`;
+}
+
+
 /**
  * Accounting (spec §4.7).
  *
@@ -68,7 +76,7 @@ export async function seedAccounts(viewer: Viewer) {
 export async function createAccount(viewer: Viewer, input: { code: string; name: string; kind: string }) {
   const code = input.code.trim();
   const name = input.name.trim();
-  if (!code || !name) throw new Error("An account needs a code and a name");
+  if (!code || !name) throw new Error("科目需要编号和名称");
   const id = newId("acct");
   await db
     .insert(accounts)
@@ -104,7 +112,7 @@ export type DocumentRow = {
 
 export async function listDocuments(viewer: Viewer, onlyPending = false): Promise<DocumentRow[]> {
   const rows = await db
-    .select({ d: documents, byName: users.name })
+    .select({ d: documents, byName: personName(viewer) })
     .from(documents)
     .leftJoin(users, eq(users.id, documents.addedBy))
     .where(
@@ -144,7 +152,7 @@ export async function addDocument(
   },
 ) {
   const title = input.title.trim();
-  if (!title) throw new Error("It needs a title");
+  if (!title) throw new Error("请填写标题");
   const id = newId("doc");
   await db.insert(documents).values({
     id,
@@ -261,7 +269,7 @@ export async function saveEntry(
   },
 ) {
   const clean = input.lines.filter((l) => l.accountId && Number.isFinite(l.amountMicros) && l.amountMicros !== 0);
-  if (clean.length < 2) throw new Error("An entry needs at least two lines");
+  if (clean.length < 2) throw new Error("一笔分录至少要有两行");
 
   if (input.id) {
     const [current] = await db
@@ -269,9 +277,9 @@ export async function saveEntry(
       .from(journalEntries)
       .where(and(eq(journalEntries.id, input.id), eq(journalEntries.tenantId, viewer.tenantId)))
       .limit(1);
-    if (!current) throw new Error("That entry does not exist");
+    if (!current) throw new Error("这笔分录不存在");
     // A posted entry is immutable. A correction is another entry.
-    if (current.state === "posted") throw new Error("A posted entry cannot be edited. Write a correcting entry.");
+    if (current.state === "posted") throw new Error("已过账的分录不能修改，请另写一笔更正分录。");
 
     await db
       .update(journalEntries)
@@ -344,8 +352,8 @@ export async function postEntry(viewer: Viewer, entryId: string) {
     .from(journalEntries)
     .where(and(eq(journalEntries.id, entryId), eq(journalEntries.tenantId, viewer.tenantId)))
     .limit(1);
-  if (!entry) throw new Error("That entry does not exist");
-  if (entry.state === "posted") throw new Error("That entry is already posted");
+  if (!entry) throw new Error("这笔分录不存在");
+  if (entry.state === "posted") throw new Error("这笔分录已经过账");
 
   const [sum] = await db
     .select({ total: sql<number>`coalesce(sum(${journalLines.amountMicros}), 0)::bigint` })
@@ -354,7 +362,7 @@ export async function postEntry(viewer: Viewer, entryId: string) {
 
   const balance = Number(sum?.total ?? 0);
   if (balance !== 0) {
-    throw new Error(`This entry is out by ${(balance / 1_000_000).toFixed(2)}. It has to balance before it posts.`);
+    throw new Error(`借贷差 ${(balance / 1_000_000).toFixed(2)}，平衡后才能过账。`);
   }
 
   const claimed = await db
@@ -362,7 +370,7 @@ export async function postEntry(viewer: Viewer, entryId: string) {
     .set({ state: "posted", postedBy: viewer.id, postedAt: new Date(), updatedAt: new Date() })
     .where(and(eq(journalEntries.id, entryId), eq(journalEntries.state, "draft")))
     .returning({ id: journalEntries.id });
-  if (!claimed.length) throw new Error("That entry is no longer a draft");
+  if (!claimed.length) throw new Error("这笔分录已经不是草稿");
 
   if (entry.documentId) {
     await db
@@ -392,7 +400,7 @@ export async function voidEntry(viewer: Viewer, entryId: string) {
       ),
     )
     .returning({ id: journalEntries.id });
-  if (!claimed.length) throw new Error("Only a posted entry is voided");
+  if (!claimed.length) throw new Error("只有已过账的分录才能作废");
 
   await audit(viewer, "accounting.entry.void", {
     module: "accounting",
@@ -412,7 +420,7 @@ export async function deleteDraft(viewer: Viewer, entryId: string) {
       ),
     )
     .returning({ id: journalEntries.id });
-  if (!deleted.length) throw new Error("Only a draft is deleted");
+  if (!deleted.length) throw new Error("只有草稿可以删除");
   await audit(viewer, "accounting.entry.delete", { module: "accounting", objectId: entryId });
 }
 

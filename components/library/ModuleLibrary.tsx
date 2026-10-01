@@ -13,9 +13,13 @@ import type { LibraryFile, LibModule } from "@/lib/files/module-library";
 const size = (n: number) => (n > 1e6 ? `${(n / 1e6).toFixed(1)} MB` : n > 1e3 ? `${Math.round(n / 1e3)} KB` : `${n} B`);
 /* Opens in the document editor (`/docs/[id]`): documents, not footage. */
 const editable = (f: LibraryFile) => f.kind === "doc" || /\.(docx?|odt|rtf|wps|pages|txt|md|markdown|pdf|html?)$/i.test(f.name);
+/* On the studio's clock, so the server's render (UTC) and the browser's agree
+   (QA, 2 Oct: local-time getters here caused React error #418). */
+const DAY = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Hong_Kong", month: "numeric", day: "numeric" });
 const day = (iso: string) => {
-  const d = new Date(iso);
-  return `${d.getMonth() + 1}月${d.getDate()}日`;
+  const parts = DAY.formatToParts(new Date(iso));
+  const get = (k: string) => parts.find((p) => p.type === k)?.value ?? "";
+  return `${get("month")}月${get("day")}日`;
 };
 
 /**

@@ -6,7 +6,7 @@ import { mayTrain } from "@/lib/agents/training";
 import { listChecklists, listContracts, listRuns, listTemplates } from "@/lib/legal/service";
 import { LegalScreen } from "@/components/legal/LegalScreen";
 
-export const metadata = { title: "法务 · Legal" };
+export const metadata = { title: "法务" };
 
 /** Legal (spec §4.10). Drafting and comparison, never a verdict; the
  * non-advice notice (contract 8.4) is on every tab. */

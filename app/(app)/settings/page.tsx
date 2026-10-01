@@ -16,12 +16,14 @@ import { db } from "@/lib/db/client";
 import { users } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { AgentDock } from "@/components/shell/AgentDock";
-import { answeringModel } from "@/lib/ai/models";
+import { answeringModel, modelFor } from "@/lib/ai/models";
+import { modelChoice } from "@/lib/ai/choice";
 import { modelOptionsAction } from "./model-actions";
 import { ModelCard } from "./model-card";
 import { SpendCard } from "./spend-card";
 
-export const metadata = { title: "设置 · Settings" };
+/* Chinese only in the tab (QA, 2 Oct). */
+export const metadata = { title: "设置" };
 
 /** The person's own account: what they hold, what they have spent, and the way
  * out. Spend is shown to the employee, not only to an admin (spec §5). */
@@ -49,6 +51,10 @@ export default async function SettingsPage() {
   const devices = account?.confirmedAt ? await listTrustedDevices(viewer.id) : [];
   const day = (d: Date) => d.toISOString().slice(0, 10);
   const admin = viewer.role === "owner" || viewer.role === "admin";
+  /* The studio's model as chosen, even when it is not in the short catalogue
+     the options come from: the card marked nothing and the chip said 选一个
+     (QA, 2 Oct). */
+  const currentModel = admin ? (modelChoice().preferDeepseek === true ? "deepseek:direct" : modelFor.assistant()) : null;
   const models = admin ? ((await modelOptionsAction().catch(() => ({}))) as { options?: import("./model-actions").ModelOption[] }).options ?? [] : [];
   /* A heading over each group, so the page reads as three short sections
      (me, the team, security) rather than one long column of cards. */
@@ -88,8 +94,8 @@ export default async function SettingsPage() {
           <LocaleSwitch current={locale} />
 
           {admin || canInvite(viewer) ? group(zh ? "团队（管理员）" : "Team (admins)") : null}
-          {admin ? <ModelCard zh={zh} options={models} /> : null}
-          {admin ? <SpendCard tenantId={viewer.tenantId} zh={zh} ownMicros={budget.usedMicros} capMicros={budget.capMicros} stopped={budget.stopped} /> : null}
+          {admin ? <ModelCard zh={zh} options={models} current={currentModel} /> : null}
+          {admin ? <SpendCard tenantId={viewer.tenantId} viewerId={viewer.id} zh={zh} ownMicros={budget.usedMicros} capMicros={budget.capMicros} stopped={budget.stopped} /> : null}
           {canInvite(viewer) && (
             <PeopleCard
               zh={zh}

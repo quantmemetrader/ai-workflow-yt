@@ -56,7 +56,9 @@ export async function GET(request: Request, ctx: { params: Promise<{ id: string 
   ]);
 
   const file = rows[0];
-  if (!file || file.deletedAt || (held === null && !inProject)) return new Response("Not found", { status: 404 });
+  /* A file in the trash still shows its picture to someone who holds it, so
+     the trash is not a wall of 404s (QA, 2 Oct). Never a new poster job for it. */
+  if (!file || (file.deletedAt && held === null) || (held === null && !inProject)) return new Response("Not found", { status: 404 });
   if (!file.storageKey) return new Response("Not found", { status: 404 });
   /* Still uploading. Asking the worker for a poster now used to queue a job
      for bytes that had not arrived: it failed into a minute of back-off, the
@@ -80,6 +82,8 @@ export async function GET(request: Request, ctx: { params: Promise<{ id: string 
   if (await posterExists(file.storageKey)) {
     return Response.redirect(await presignDownload(posterKeyFor(file.storageKey), { expiresIn: 300 }), 302);
   }
+
+  if (file.deletedAt) return new Response("Not found", { status: 404 });
 
   /*
    * No poster yet — an older upload, or one whose job has not run. Ask for it

@@ -36,8 +36,10 @@ const VENDOR: Record<string, string> = { anthropic: "Claude（Anthropic）", ope
 /* Each maker's own logo (public/ai-logos, from @lobehub/icons, MIT), served from our host so it loads in China. */
 const LOGO: Record<string, string> = {"openai":"openai","qwen":"qwen-color","google":"gemini-color","mistralai":"mistral-color","anthropic":"claude-color","z-ai":"zhipu-color","recraft":"recraft","deepseek":"deepseek-color","x-ai":"grok","minimax":"minimax-color","bytedance-seed":"bytedance-color","bytedance":"bytedance-color","microsoft":"microsoft-color","cohere":"cohere-color","meta":"meta-color","meta-llama":"meta-color","moonshotai":"kimi","black-forest-labs":"bfl","tencent":"hunyuan-color","nvidia":"nvidia-color","voyageai":"voyage-color","perplexity":"perplexity-color","aion-labs":"aionlabs-color","alibaba":"alibaba-color","xiaomi":"xiaomimimo","openrouter":"openrouter-color","amazon":"nova-color","upstage":"upstage-color","sakana":"sakana-color","nousresearch":"nousresearch","inception":"inception","ibm-granite":"ibm","stepfun":"stepfun-color","rekaai":"reka","relace":"relace","morph":"morph-color","poolside":"poolside-color","fireworks":"fireworks-color","meituan":"longcat-color","kwaipilot":"kwaipilot-color","kwaivgi":"kling-color","arcee-ai":"arcee-color","baidu":"baidu-color"};
 export const vendorOf = (id: string) => (id.includes("/") ? id.split("/")[0].replace(/^~/, "") : "");
-const price = (m: ProviderModel, zh: boolean) =>
-  m.inPerM === null || m.outPerM === null ? "" : zh ? `每百万 token $${m.inPerM} / $${m.outPerM}` : `$${m.inPerM} / $${m.outPerM} per M`;
+/* A model as a person reads it: the maker heads the group, so the name is
+   shown without its 「Anthropic: 」 prefix, and the raw id and the per-token
+   price stay out of sight (QA, 2 Oct). Search still matches the id. */
+const friendly = (name: string) => name.replace(/^[^:：]{1,40}[:：]\s*/, "").trim() || name;
 
 export function Badge({ vendor, size = 28, auto = false }: { vendor: string; size?: number; auto?: boolean }) {
   const logo = LOGO[vendor.replace(/^~/, "")];
@@ -268,8 +270,7 @@ export function ModelChip({
                   <button key={m.id} type="button" role="option" aria-selected={on} data-mc-i={i} data-on={on || undefined} data-active={i === active || undefined} onMouseEnter={() => setActive(i)} onClick={() => pick(m.id)} className="mc-row mc-row-sm">
                     <Badge vendor={m.vendor} size={22} />
                     <span style={{ minWidth: 0, flexGrow: 1 }}>
-                      <span style={{ display: "block", fontSize: 13, fontWeight: 500, color: "#171717", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.name}</span>
-                      <span style={{ display: "block", fontSize: 11, color: "#a3a3a0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{[m.id, price(m, zh)].filter(Boolean).join(" · ")}</span>
+                      <span style={{ display: "block", fontSize: 13, fontWeight: 500, color: "#171717", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{friendly(m.name)}</span>
                     </span>
                     {on ? <Check /> : null}
                   </button>
@@ -298,7 +299,7 @@ export function ModelChip({
       >
         <Badge vendor={vendorOf(value)} size={16} auto={value === AUTO_MODEL} />
         <span style={{ color: "#8a8a8a" }}>{zh ? "模型" : "Model"}</span>
-        <b style={{ fontWeight: 600, color: "#171717", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0 }}>{zh ? now.zh : now.en}</b>
+        <b style={{ fontWeight: 600, color: "#171717", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0 }}>{friendly(zh ? now.zh : now.en)}</b>
         <svg viewBox="0 0 24 24" width={11} height={11} aria-hidden fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, transition: "transform .15s ease", transform: open ? "rotate(180deg)" : "none" }}>
           <path d={placement === "up" ? "m6 15 6-6 6 6" : "m6 9 6 6 6-6"} />
         </svg>

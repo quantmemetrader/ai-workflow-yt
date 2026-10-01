@@ -285,6 +285,11 @@ function count(n: number, locale: string): string {
   return new Intl.NumberFormat(locale).format(n);
 }
 
+/* The channels are stored by their English names (the values the board has
+   always written); a Chinese screen says them in Chinese (QA, 2 Oct). */
+const CHANNEL_ZH: Record<string, string> = { WeChat: "微信", Xiaohongshu: "小红书", LinkedIn: "领英", Douyin: "抖音", Bilibili: "B站", Weibo: "微博" };
+const channelName = (c: string, zh: boolean) => (zh ? (CHANNEL_ZH[c] ?? c) : c);
+
 /* --------------------------------------------------------------- component */
 
 export function BacklogScreen(props: {
@@ -487,16 +492,18 @@ export function BacklogScreen(props: {
                   <option value="">{t("All")}</option>
                   {channels.map((c) => (
                     <option key={c} value={c}>
-                      {c}
+                      {channelName(c, zh)}
                     </option>
                   ))}
                 </select>
               </div>
               <div style={{ flexGrow: 1 }}></div>
               <span className="cap">
+                {/* Every card on the board, saved ones too: it said 「2 个已采纳选题」
+                    over an 已采纳 lane of one (QA, 2 Oct). */}
                 {zh
-                  ? `${count(shown.length, locale)} 个已采纳选题`
-                  : `${count(shown.length, locale)} adopted topics`}
+                  ? `共 ${count(shown.length, locale)} 个选题`
+                  : `${count(shown.length, locale)} topics`}
               </span>
               <button
                 type="button"
@@ -720,7 +727,7 @@ export function BacklogScreen(props: {
                           >
                             <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
                               <span
-                                title={`${zh ? "热度" : "Heat"} ${count(item.heat, locale)} · ${pct(item.change, locale)}`}
+                                title={`${zh ? "热度" : "Heat"} ${count(Math.round(item.heat), locale)} · ${pct(item.change, locale)}`}
                                 style={{
                                   fontSize: 11.5,
                                   fontWeight: 600,
@@ -728,7 +735,9 @@ export function BacklogScreen(props: {
                                   fontVariantNumeric: "tabular-nums",
                                 }}
                               >
-                                {count(item.heat, locale)}
+                                {/* Labelled and whole: a bare 「9.814」 read as nothing (QA, 2 Oct). */}
+                                {zh ? "热度 " : "heat "}
+                                {count(Math.round(item.heat), locale)}
                               </span>
                               <select
                                 className="bd gray"
@@ -754,11 +763,11 @@ export function BacklogScreen(props: {
                               >
                                 <option value="">{t("No channel")}</option>
                                 {item.targetChannel !== null && !channelKnown ? (
-                                  <option value={item.targetChannel}>{item.targetChannel}</option>
+                                  <option value={item.targetChannel}>{channelName(item.targetChannel, zh)}</option>
                                 ) : null}
                                 {channels.map((c) => (
                                   <option key={c} value={c}>
-                                    {c}
+                                    {channelName(c, zh)}
                                   </option>
                                 ))}
                               </select>

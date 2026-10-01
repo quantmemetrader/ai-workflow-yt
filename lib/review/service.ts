@@ -43,7 +43,8 @@ export const ACCOUNT_TTL_MS = 6 * 3600_000;
 export const POST_TTL_MS = 3600_000;
 
 const idOf = (p: string) => `${p}_${ulid()}`;
-const errText = (e: unknown) => (e instanceof Error ? e.message : String(e)).slice(0, 300);
+/* Shown to people under a tile: the vendor's name is not theirs to read (QA, 2 Oct). */
+const errText = (e: unknown) => (e instanceof Error ? e.message : String(e)).replace(/TikHub\s*/gi, "").slice(0, 300);
 
 // ------------------------------------------------------------------ accounts
 
@@ -97,11 +98,32 @@ async function connectedViews(tenantId: string): Promise<AccountView[]> {
       .limit(40);
     const ids = posts.map((p) => p.id);
     const metrics = ids.length
-      ? await db.select({ postId: postMetrics.postId, views: postMetrics.views, likes: postMetrics.likes, comments: postMetrics.comments, shares: postMetrics.shares, asOf: postMetrics.asOf }).from(postMetrics).where(inArray(postMetrics.postId, ids)).orderBy(desc(postMetrics.asOf))
+      ? await db
+          .select({ postId: postMetrics.postId, views: postMetrics.views, likes: postMetrics.likes, comments: postMetrics.comments, shares: postMetrics.shares, asOf: postMetrics.asOf })
+          .from(postMetrics)
+          // Only rows that carry running totals: the daily backfill writes
+          // per-day rows with `views` null, and taking those as "the newest"
+          // read as zero (QA, 2 Oct).
+          .where(and(inArray(postMetrics.postId, ids), sql`${postMetrics.views} is not null`))
+          .orderBy(desc(postMetrics.asOf))
       : [];
     const last = new Map<string, (typeof metrics)[number]>();
     for (const m of metrics) if (!last.has(m.postId)) last.set(m.postId, m);
-    const sum = (k: "views" | "likes") => posts.reduce((n, p) => n + (Number(last.get(p.id)?.[k] ?? 0) || 0), 0);
+    /* Lifetime totals over every post on the channel, not the latest 40 the
+       tile lists (QA, 2 Oct: 总播放 2.3万 read lower than the 90-day figure
+       on 账号数据, 2.6万, because older posts were cut off). */
+    const { rows: totals } = await db.execute<{ posts: number; views: string | number | null; likes: string | number | null }>(sql`
+      select count(*)::int as posts, sum(m.views)::bigint as views, sum(m.likes)::bigint as likes
+        from channel_posts p
+        left join lateral (
+          select pm.views, pm.likes from post_metrics pm
+           where pm.post_id = p.id and pm.views is not null
+           order by pm.as_of desc limit 1
+        ) m on true
+       where p.channel_id = ${c.id} and p.tenant_id = ${tenantId}
+    `);
+    const all = totals[0];
+    const total = (k: "views" | "likes") => (all && all[k] != null ? Number(all[k]) : null);
     out.push({
       platform: c.platform as AccountView["platform"],
       connected: true,
@@ -110,7 +132,7 @@ async function connectedViews(tenantId: string): Promise<AccountView[]> {
       name: c.displayName || c.username || c.platform,
       accountId: c.id,
       url: c.profileUrl ?? null,
-      stats: { followers: c.followers ?? null, likes: posts.length ? sum("likes") : null, works: posts.length || null, views: posts.length ? sum("views") : null },
+      stats: { followers: c.followers ?? null, likes: posts.length ? total("likes") : null, works: (all?.posts ?? posts.length) || null, views: posts.length ? total("views") : null },
       source: null,
       at: (c.syncedAt ?? c.createdAt)?.toISOString() ?? null,
       prevFollowers: null,

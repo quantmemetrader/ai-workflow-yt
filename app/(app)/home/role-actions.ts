@@ -17,13 +17,13 @@ import { setMyWorkRole } from "@/lib/home/service";
  */
 export async function setMyWorkRoleAction(role: string | null) {
   const viewer = await getViewer();
-  if (!viewer || !viewer.modules.includes("chat")) return { error: "Not allowed" };
+  if (!viewer || !viewer.modules.includes("chat")) return { error: "没有权限" };
   const next = role === null || role === "overview" ? null : isProductionKey(role) ? role : undefined;
-  if (next === undefined) return { error: "No such job" };
+  if (next === undefined) return { error: "没有这个岗位" };
   try {
     await setMyWorkRole(viewer, next);
     return { ok: true as const, workRole: next };
   } catch (err) {
-    return { error: err instanceof Error ? err.message : "Could not save that" };
+    return { error: err instanceof Error ? err.message : "没有保存成功，再试一次" };
   }
 }

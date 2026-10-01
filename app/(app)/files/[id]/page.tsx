@@ -22,6 +22,8 @@ import { editable } from "@/lib/files/doc-edit";
  * sharing sit in the 320px panel on the right — so it belongs to the same
  * screen family as the list it came from.
  */
+export const metadata = { title: "文件" };
+
 export default async function FilePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const viewer = await requireModule("files");
@@ -33,7 +35,7 @@ export default async function FilePage({ params }: { params: Promise<{ id: strin
   if (!held) notFound();
 
   const [row] = await db
-    .select({ file: files, ownerName: users.name })
+    .select({ file: files, ownerName: users.name, ownerNameLocal: users.nameLocal })
     .from(files)
     .innerJoin(users, eq(users.id, files.ownerId))
     .where(eq(files.id, id))
@@ -49,6 +51,12 @@ export default async function FilePage({ params }: { params: Promise<{ id: strin
     visibilityForFiles([id]),
   ]);
   const seen = vis.get(id) ?? { visibility: "private" as const, groups: [], userIds: [] };
+  /* (QA, 2 Oct: people shares of every level are listed, viewers included, so
+     each can be removed; everyone/group grants stay in 谁可以看.) */
+  const people = shares.filter((s) => s.tuple.subjectType !== "tenant" && s.tuple.subjectType !== "role");
+  const sharedPeople = new Set(
+    people.filter((s) => s.tuple.subjectId !== row.file.ownerId && (!s.tuple.expiresAt || s.tuple.expiresAt > new Date())).map((s) => s.tuple.subjectId),
+  ).size;
 
   const file = row.file;
   const isMedia = ["image", "video", "audio"].includes(file.kind);
@@ -105,7 +113,22 @@ export default async function FilePage({ params }: { params: Promise<{ id: strin
         <div style={{ flexGrow: 1, minWidth: 0, overflowY: "auto", padding: "22px 26px" }}>
           {file.text ? (
             <article style={{ maxWidth: 780 }}>
-              <Markdown text={file.text} />
+              {/* (QA, 2 Oct: a .docx came out as one run-on block. Only Markdown
+                  files go through the Markdown renderer; anything else keeps
+                  its own line breaks.) */}
+              {/\.(md|markdown)$/i.test(file.name) ? (
+                <Markdown text={file.text} />
+              ) : (
+                <div style={{ fontSize: 14, lineHeight: 1.8, color: "#262626" }}>
+                  {file.text.split(/\n+/).map((para, i) =>
+                    para.trim() ? (
+                      <p key={i} style={{ margin: "0 0 10px", whiteSpace: "pre-wrap" }}>
+                        {para}
+                      </p>
+                    ) : null,
+                  )}
+                </div>
+              )}
             </article>
           ) : isMedia ? (
             <div
@@ -136,7 +159,7 @@ export default async function FilePage({ params }: { params: Promise<{ id: strin
                 color: "#999999",
               }}
             >
-              {file.mime ?? "Binary file"} · {formatBytes(file.sizeBytes)}
+              {file.mime ?? (zh ? "无法预览的文件" : "Binary file")} · {formatBytes(file.sizeBytes)}
             </div>
           )}
         </div>
@@ -157,12 +180,13 @@ export default async function FilePage({ params }: { params: Promise<{ id: strin
           <section
             style={{ border: "1px solid #ededed", borderRadius: 10, background: "#fff", padding: "10px 12px" }}
           >
-            <Row label={t("Owner")} value={row.ownerName} />
+            <Row label={t("Owner")} value={(zh && row.ownerNameLocal) || row.ownerName} />
             <Row label={t("Size")} value={formatBytes(file.sizeBytes)} />
             <Row label={t("Modified")} value={formatDate(file.updatedAt, locale)} />
-            {file.durationMs ? <Row label={zh ? "过渡时长" : "Duration"} value={`${Math.round(file.durationMs / 1000)}s`} /> : null}
+            {file.durationMs ? <Row label={zh ? "时长" : "Duration"} value={`${Math.round(file.durationMs / 1000)}s`} /> : null}
             {file.width ? <Row label={zh ? "分辨率" : "Resolution"} value={`${file.width}×${file.height}`} /> : null}
-            {file.checksum ? <Row label={zh ? "校验和" : "Checksum"} value={file.checksum.slice(0, 16)} /> : null}
+            {/* A checksum means nothing to most people; admins keep it (QA, 2 Oct). */}
+            {file.checksum && viewer.isAdmin ? <Row label={zh ? "校验和" : "Checksum"} value={file.checksum.slice(0, 16)} /> : null}
           </section>
 
           <FileAccessControl
@@ -173,6 +197,7 @@ export default async function FilePage({ params }: { params: Promise<{ id: strin
             userIds={seen.userIds}
             canChange={viewer.isAdmin || file.ownerId === viewer.id}
             zh={zh}
+            sharedPeople={sharedPeople}
           />
 
           <ShareSheet
@@ -181,13 +206,12 @@ export default async function FilePage({ params }: { params: Promise<{ id: strin
             ceiling={ceiling}
             locale={locale}
             /* Everyone and group grants are set in "Who can see this" above. */
-            shares={shares
-              .filter((s) => s.tuple.subjectType !== "tenant" && s.tuple.subjectType !== "role" && s.tuple.relation !== "viewer")
-              .map((s) => ({
+            ownerId={file.ownerId}
+            shares={people.map((s) => ({
               subjectId: s.tuple.subjectId,
               subjectType: s.tuple.subjectType,
               relation: s.tuple.relation,
-              name: s.userName,
+              name: (zh && s.userNameLocal) || s.userName,
               expiresAt: s.tuple.expiresAt?.toISOString() ?? null,
             }))}
           />
@@ -202,8 +226,8 @@ export default async function FilePage({ params }: { params: Promise<{ id: strin
               {versions.map((v) => (
                 <li key={v.version.id} style={{ fontSize: 11.5, color: "#7c7c7c" }}>
                   <span style={{ fontWeight: 500, color: "#171717" }}>v{v.version.versionNo}</span> ·{" "}
-                  {v.authorName} · {formatDate(v.version.createdAt, locale)}
-                  {v.version.note ? ` — ${v.version.note}` : ""}
+                  {(zh && v.authorNameLocal) || v.authorName} · {formatDate(v.version.createdAt, locale)}
+                  {v.version.note ? ` · ${versionNote(v.version.note, zh)}` : ""}
                 </li>
               ))}
             </ul>
@@ -212,6 +236,14 @@ export default async function FilePage({ params }: { params: Promise<{ id: strin
       </div>
     </div>
   );
+}
+
+/** Version notes written by the server in English, said in the viewer's
+ * language (QA, 2 Oct: the line read "— Uploaded"). */
+function versionNote(note: string, zh: boolean) {
+  if (!zh) return note;
+  const known: Record<string, string> = { Uploaded: "上传", Created: "新建", "Edited online": "在线编辑" };
+  return known[note] ?? note;
 }
 
 function Row({ label, value }: { label: string; value: string }) {

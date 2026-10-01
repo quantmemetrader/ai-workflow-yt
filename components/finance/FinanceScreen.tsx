@@ -30,7 +30,6 @@ import {
   clip,
   field,
   ghost,
-  money,
   solid,
   useAction,
   useAmount,
@@ -40,6 +39,7 @@ import { Reports } from "@/components/finance/Reports";
 import type { ReportRow } from "@/lib/finance/reports";
 import type { Balances } from "@/lib/finance/providers";
 import { ApiBalances } from "@/components/finance/ApiBalances";
+import { usd } from "@/components/finance/usd";
 
 /**
  * Finance (spec §4.9), transcribed from the five `Fin-*` artboards.
@@ -55,6 +55,20 @@ import { ApiBalances } from "@/components/finance/ApiBalances";
  * looked at it.
  */
 type Tab = "budget" | "cash" | "cost" | "spend" | "reports" | "library";
+
+/* (QA, 2 Oct: the badges read "awaiting approval" and decisions "approve".) */
+const STATE_LABEL: Record<string, { zh: string; en: string }> = {
+  draft: { zh: "草稿", en: "draft" },
+  awaiting_approval: { zh: "待审批", en: "awaiting approval" },
+  approved: { zh: "已批准", en: "approved" },
+  rejected: { zh: "已拒绝", en: "rejected" },
+  paid: { zh: "已付款", en: "paid" },
+  cancelled: { zh: "已取消", en: "cancelled" },
+};
+const DECISION_LABEL: Record<string, { zh: string; en: string }> = {
+  approve: { zh: "批准", en: "approved" },
+  reject: { zh: "拒绝", en: "rejected" },
+};
 
 export function FinanceScreen({
   period,
@@ -207,8 +221,8 @@ export function FinanceScreen({
           zh={zh}
           scope={t("Finance", "财务")}
           note={t(
-            `${money(budgeted)} budgeted, ${money(spent)} spent this period. ${waiting.length} spend request${waiting.length === 1 ? "" : "s"} waiting.`,
-            `本期预算 ${money(budgeted)}，已花 ${money(spent)}。${waiting.length} 条用款申请待批。`,
+            `${usd(budgeted)} budgeted, ${usd(spent + budget.modelSpendMicros)} spent this period. ${waiting.length} spend request${waiting.length === 1 ? "" : "s"} waiting.`,
+            `本期预算 ${usd(budgeted)}，已花 ${usd(spent + budget.modelSpendMicros)}（含 AI）。${waiting.length} 条用款申请待批。`,
           )}
           placeholder={t("Ask about these numbers…", "询问这些数字…")}
           model={model}
@@ -294,7 +308,7 @@ function Budget({
           <Row key={c.centreId} style={{ alignItems: "center" }}>
             <span style={{ flexGrow: 1, ...clip }} title={c.centreName}>
               {c.centreName}
-              <span style={{ color: "#c7c7c7", fontSize: 10.5, marginLeft: 7 }}>{c.kind}</span>
+              <span style={{ color: "#c7c7c7", fontSize: 10.5, marginLeft: 7 }}>{c.kind === "department" ? t("department", "部门") : c.kind === "project" ? t("project", "项目") : c.kind}</span>
             </span>
             <span style={{ width: 130, textAlign: "right" }}>
               <input
@@ -311,7 +325,7 @@ function Budget({
               />
             </span>
             <span style={{ width: 110, textAlign: "right", fontVariantNumeric: "tabular-nums", color: "#7c7c7c" }}>
-              {money(c.actualMicros)}
+              {usd(c.actualMicros)}
             </span>
             <span
               style={{
@@ -321,7 +335,7 @@ function Budget({
                 color: left < 0 ? "#e03636" : "#278f5e",
               }}
             >
-              {money(left)}
+              {usd(left)}
             </span>
             <span style={{ width: 60, textAlign: "right" }}>
               <button type="button" disabled={busy} onClick={() => onArchive(c.centreId)} style={{ ...ghost, height: 24, fontSize: 11 }}>
@@ -335,8 +349,8 @@ function Budget({
       {unfiled !== 0 && (
         <p style={{ fontSize: 11.5, color: "#a35f00", margin: "10px 0 0" }}>
           {t(
-            `${money(unfiled)} of spending is not filed under anything.`,
-            `有 ${money(unfiled)} 的支出未归入任何部门或项目。`,
+            `${usd(unfiled)} of spending is not filed under anything.`,
+            `有 ${usd(unfiled)} 的支出未归入任何部门或项目。`,
           )}
         </p>
       )}
@@ -431,7 +445,7 @@ function Cash({
       {cash.length > 0 && (
         <div style={{ display: "flex", alignItems: "flex-end", gap: 4, height: 70, marginBottom: 22 }}>
           {cash.map((c) => (
-            <div key={c.period} style={{ flexGrow: 1, textAlign: "center" }} title={`${c.period} · ${money(c.netMicros)}`}>
+            <div key={c.period} style={{ flexGrow: 1, textAlign: "center" }} title={`${c.period} · ${usd(c.netMicros)}`}>
               <div
                 style={{
                   height: `${Math.max(3, Math.round((Math.abs(c.netMicros) / peak) * 56))}px`,
@@ -458,13 +472,13 @@ function Cash({
               {a.description || t("(no description)", "（无说明）")}
               {a.source !== "manual" && (
                 <span style={{ marginLeft: 7 }}>
-                  <Badge tone="info">{a.source}</Badge>
+                  <Badge tone="info">{a.source === "spend_request" ? t("spend request", "用款申请") : a.source}</Badge>
                 </span>
               )}
             </span>
             <span style={{ width: 150, color: "#7c7c7c" }}>{a.centreName ?? t("unfiled", "未归类")}</span>
             <span style={{ width: 110, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
-              {money(a.amountMicros)}
+              {usd(a.amountMicros)}
             </span>
             <span style={{ width: 50, textAlign: "right" }}>
               {a.source === "manual" && (
@@ -534,11 +548,14 @@ function Cost({
   return (
     <>
       <div style={{ display: "flex", gap: 34, flexWrap: "wrap", marginBottom: 20 }}>
-        <Stat label={t("Budgeted this period", "本期预算")} value={money(budgeted)} />
-        <Stat label={t("Spent this period", "本期支出")} value={money(spent)} />
+        <Stat label={t("Budgeted this period", "本期预算")} value={usd(budgeted)} />
+        {/* (QA, 2 Oct: "spent $0.00, of which AI $0.87".) AI spend is not an
+            entry on the Cash tab, so the total adds it rather than claiming a
+            part bigger than the whole. */}
+        <Stat label={t("Spent this period", "本期支出")} value={usd(spent + modelSpendMicros)} />
         <Stat
           label={t("Of which AI", "其中 AI 花费")}
-          value={money(modelSpendMicros)}
+          value={usd(modelSpendMicros)}
           note={t("recorded automatically", "系统自动记录")}
         />
       </div>
@@ -678,7 +695,7 @@ function Spend({
             <div key={s.id} style={{ border: "1px solid #ededed", borderRadius: 11, padding: 13, marginBottom: 10 }}>
               <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
                 <span style={{ fontSize: 13.5, fontWeight: 500 }}>{s.title}</span>
-                <span style={{ fontVariantNumeric: "tabular-nums", fontSize: 13 }}>{money(s.amountMicros)}</span>
+                <span style={{ fontVariantNumeric: "tabular-nums", fontSize: 13 }}>{usd(s.amountMicros)}</span>
                 {s.centreName && <span style={{ fontSize: 11, color: "#999999" }}>{s.centreName}</span>}
                 <Badge
                   tone={
@@ -691,17 +708,21 @@ function Spend({
                           : "quiet"
                   }
                 >
-                  {s.state.replace("_", " ")}
+                  {STATE_LABEL[s.state] ? (zh ? STATE_LABEL[s.state].zh : STATE_LABEL[s.state].en) : s.state.replace("_", " ")}
                 </Badge>
                 <span style={{ marginLeft: "auto", fontSize: 11, color: "#999999" }}>
-                  {t("by", "提交人")} {s.requestedByName ?? "—"} · {approvals}/{s.approvalsNeeded}{" "}
-                  {t("approvals", "人已批准")}
+                  {t("by", "提交人")} {s.requestedByName ?? t("unknown", "未知")} · {zh ? `已批准 ${approvals}/${s.approvalsNeeded}` : `${approvals}/${s.approvalsNeeded} approvals`}
                 </span>
               </div>
 
               {s.decisions.length > 0 && (
                 <p style={{ fontSize: 11, color: "#7c7c7c", margin: "7px 0 0", lineHeight: 1.5 }}>
-                  {s.decisions.map((d) => `${d.deciderName ?? "—"}: ${d.decision}${d.note ? ` (${d.note})` : ""}`).join(" · ")}
+                  {s.decisions
+                    .map((d) => {
+                      const said = DECISION_LABEL[d.decision] ? (zh ? DECISION_LABEL[d.decision].zh : DECISION_LABEL[d.decision].en) : d.decision;
+                      return zh ? `${d.deciderName ?? "某人"}${said}${d.note ? `（${d.note}）` : ""}` : `${d.deciderName ?? "Somebody"}: ${said}${d.note ? ` (${d.note})` : ""}`;
+                    })
+                    .join(" · ")}
                 </p>
               )}
 
@@ -711,12 +732,13 @@ function Spend({
                     value={notes[s.id] ?? ""}
                     onChange={(e) => setNotes((n) => ({ ...n, [s.id]: e.target.value }))}
                     placeholder={t("A note, on the record", "备注，会记录在案")}
-                    style={{ ...field, flexGrow: 1, height: 30 }}
+                    style={{ ...field, flexGrow: 1, minWidth: 0, height: 30 }}
                   />
-                  <button type="button" disabled={busy} onClick={() => onDecide(s.id, "reject", notes[s.id] ?? "")} style={ghost}>
+                  {/* (QA, 2 Oct: at 1280px the buttons wrapped one character per line.) */}
+                  <button type="button" disabled={busy} onClick={() => onDecide(s.id, "reject", notes[s.id] ?? "")} style={{ ...ghost, flexShrink: 0, whiteSpace: "nowrap", minWidth: 64 }}>
                     {t("Reject", "拒绝")}
                   </button>
-                  <button type="button" disabled={busy} onClick={() => onDecide(s.id, "approve", notes[s.id] ?? "")} style={solid}>
+                  <button type="button" disabled={busy} onClick={() => onDecide(s.id, "approve", notes[s.id] ?? "")} style={{ ...solid, flexShrink: 0, whiteSpace: "nowrap", minWidth: 64 }}>
                     {t("Approve", "批准")}
                   </button>
                 </div>

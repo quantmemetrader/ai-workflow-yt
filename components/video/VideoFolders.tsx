@@ -126,7 +126,11 @@ function clock(ms: number) {
 function size(n: number) {
   return n >= 1e9 ? `${(n / 1e9).toFixed(1)} GB` : n >= 1e6 ? `${Math.round(n / 1e6)} MB` : `${Math.max(1, Math.round(n / 1e3))} KB`;
 }
+/* Read on Hong Kong's clock, not the machine's: the server (UTC) and the
+   browser (HKT) printed different days for the same file near midnight, and
+   React threw hydration error #418 on /video (QA, 2 Oct). */
 function day(iso: string, zh: boolean) {
-  const d = new Date(iso);
-  return zh ? `${d.getMonth() + 1}月${d.getDate()}日` : d.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+  const d = new Date(new Date(iso).getTime() + 8 * 3_600_000);
+  const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  return zh ? `${d.getUTCMonth() + 1}月${d.getUTCDate()}日` : `${d.getUTCDate()} ${MON[d.getUTCMonth()]}`;
 }

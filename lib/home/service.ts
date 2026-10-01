@@ -446,6 +446,9 @@ function firstLine(body: string): string {
   for (const raw of body.split("\n")) {
     const line = raw
       .replace(/^[#>\-*\s]+/, "")
+      /* A link down to its words before the cut, so a cut never leaves half
+         of "[…](/script/…)" on 首页's team cards (QA, 2 Oct). */
+      .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
       .replace(/\*\*/g, "")
       .replace(/[_`]/g, "")
       .trim();

@@ -55,6 +55,39 @@ Tone: a competent finance person writing to two colleagues who already know the
 business. No preamble, no "in this report", no restating the headings as
 sentences. Plain figures, no adjectives about them.`;
 
+/* (QA, 2 Oct: the studio reads in Chinese and the drafts came out in English.)
+   Same rules, Chinese headings, written for zh readers. */
+const PROMPT_ZH = `你为一家香港小型视频工作室撰写月度管理报告。
+
+你会拿到工作室自己的数据。只用这些数据：不要估算，不要凭记忆写数字，
+没给你的数字一个都不要写。缺什么就直说缺什么。
+
+用 Markdown、简体中文写，300 到 450 字，结构如下：
+
+## 本月一句话
+一句话说清钱这个月发生了什么。
+
+## 预算执行
+各部门或项目的花费和计划相比落在哪里。只点名变化最大的两三个，没变化的不提。
+
+## 现金
+钱往哪里走，到什么时候需要做决定。
+
+## 待决定事项
+用列表。只列真正需要决定的事，每条附上数字。没有就写"暂无"，然后结束。
+
+语气：像一位能干的财务写给两位熟悉业务的同事。不要开场白，不要"本报告"，
+不要把标题再复述一遍。数字直接写，不加形容词。不要用破折号。`;
+
+/** "2026-09" → "2026 年 9 月管理报告" (zh) or "2026-09 management report". */
+export function reportTitle(period: string, zh: boolean): string {
+  if (!zh) return `${period} management report`;
+  const m = /^(\d{4})-(\d{2})$/.exec(period);
+  if (m) return `${m[1]} 年 ${Number(m[2])} 月管理报告`;
+  const q = /^(\d{4})-Q([1-4])$/.exec(period);
+  return q ? `${q[1]} 年第 ${q[2]} 季度管理报告` : `${period} 管理报告`;
+}
+
 export type ReportRow = {
   id: string;
   period: string;
@@ -72,7 +105,18 @@ export async function listReports(viewer: Viewer): Promise<ReportRow[]> {
     .where(eq(financeReports.tenantId, viewer.tenantId))
     .orderBy(desc(financeReports.period), desc(financeReports.updatedAt));
 
-  return rows.map((r) => ({
+  /* (QA, 2 Oct: the list showed two identical 2026-09 drafts.) One draft per
+     period is what the screen means by "the draft"; the newest wins. Shared
+     reports are records and are all kept. */
+  const draftSeen = new Set<string>();
+  const kept = rows.filter((r) => {
+    if (r.state !== "draft") return true;
+    if (draftSeen.has(r.period)) return false;
+    draftSeen.add(r.period);
+    return true;
+  });
+
+  return kept.map((r) => ({
     id: r.id,
     period: r.period,
     title: r.title,
@@ -98,7 +142,8 @@ export async function generateReport(viewer: Viewer, period: string): Promise<Re
     cashSeries(viewer),
   ]);
 
-  const usd = (micros: number) => `$${(micros / 1_000_000).toFixed(2)}`;
+  const usd = (micros: number) => `US$ ${(Math.round(micros / 10_000) / 100).toFixed(2)}`;
+  const zh = (viewer.locale ?? "zh-CN").startsWith("zh");
   const figures: Record<string, number> = {};
 
   const lines: string[] = [`Period: ${period}`, "", "Budget against actual, by cost centre:"];
@@ -119,6 +164,9 @@ export async function generateReport(viewer: Viewer, period: string): Promise<Re
   figures.totalSpent = spentTotal;
   figures.totalBudget = plannedTotal;
   lines.push("", `Total: budget ${usd(plannedTotal)}, spent ${usd(spentTotal)}.`);
+  /* AI spend comes straight from the ledger and is not in the entries above. */
+  figures.aiSpend = budget.modelSpendMicros;
+  lines.push(`AI model spend this period (recorded automatically, not in the entries above): ${usd(budget.modelSpendMicros)}.`);
 
   /* `cashSeries` is net movement per period, not a running balance — so the
      report says movement, which is what the data is. Calling it a balance
@@ -140,7 +188,7 @@ export async function generateReport(viewer: Viewer, period: string): Promise<Re
   if (waiting.length) {
     lines.push("", "Spend requests waiting on a decision:");
     for (const s of waiting.slice(0, 10)) {
-      lines.push(`- ${s.title} — ${usd(s.amountMicros)}, asked by ${s.requestedByName ?? "somebody"}`);
+      lines.push(`- ${s.title}: ${usd(s.amountMicros)}, asked by ${s.requestedByName ?? "somebody"}`);
     }
   }
 
@@ -154,7 +202,7 @@ export async function generateReport(viewer: Viewer, period: string): Promise<Re
       temperature: 0.3,
       maxTokens: 2400,
       messages: [
-        { role: "system", content: PROMPT },
+        { role: "system", content: zh ? PROMPT_ZH : PROMPT },
         { role: "user", content: lines.join("\n") },
       ],
     });
@@ -178,30 +226,48 @@ export async function generateReport(viewer: Viewer, period: string): Promise<Re
   } catch (err) {
     /* The figures are the hard part and they are already here. A draft that
        says the prose is missing beats an error that throws the lot away. */
+    const why = err instanceof Error ? err.message.slice(0, 120) : "unknown";
     body = [
-      `## The month in one line`,
+      zh ? `## 本月一句话` : `## The month in one line`,
       ``,
-      `_The model could not be reached (${
-        err instanceof Error ? err.message.slice(0, 120) : "unknown"
-      }), so this draft is the figures only. Press Regenerate to try again._`,
+      zh
+        ? `_这次没能连上 AI（${why}），草稿里只有数据。点「重新生成」再试一次。_`
+        : `_The model could not be reached (${why}), so this draft is the figures only. Press Regenerate to try again._`,
       ``,
-      `## The figures`,
+      zh ? `## 数据` : `## The figures`,
       ``,
       ...lines.map((l) => (l.startsWith("- ") ? l : l ? `${l}` : "")),
     ].join("\n");
   }
 
-  const id = newId("rep");
-  await db.insert(financeReports).values({
-    id,
-    tenantId: viewer.tenantId,
-    period,
-    title: `${period} management report`,
-    body,
-    state: "draft",
-    figures,
-    generatedBy: viewer.id,
-  });
+  /* (QA, 2 Oct: pressing 撰写 or 重新生成 twice left two identical drafts for
+     the same month.) A period has one draft: writing again rewrites it. A
+     shared report is never touched, so the record stays what people read. */
+  const title = reportTitle(period, zh);
+  const [existing] = await db
+    .select({ id: financeReports.id })
+    .from(financeReports)
+    .where(and(eq(financeReports.tenantId, viewer.tenantId), eq(financeReports.period, period), eq(financeReports.state, "draft")))
+    .orderBy(desc(financeReports.updatedAt))
+    .limit(1);
+  const id = existing?.id ?? newId("rep");
+  if (existing) {
+    await db
+      .update(financeReports)
+      .set({ title, body, figures, generatedBy: viewer.id, updatedAt: new Date() })
+      .where(eq(financeReports.id, id));
+  } else {
+    await db.insert(financeReports).values({
+      id,
+      tenantId: viewer.tenantId,
+      period,
+      title,
+      body,
+      state: "draft",
+      figures,
+      generatedBy: viewer.id,
+    });
+  }
 
   await audit(viewer, "finance.report.generate", {
     objectType: "finance_report",
@@ -234,7 +300,7 @@ export async function saveReport(viewer: Viewer, reportId: string, body: string)
     .from(financeReports)
     .where(and(eq(financeReports.id, reportId), eq(financeReports.tenantId, viewer.tenantId)))
     .limit(1);
-  if (!row) throw new Error("That report does not exist");
+  if (!row) throw new Error("这份报告不存在");
 
   const text = String(body ?? "").slice(0, 60_000);
 
@@ -272,7 +338,7 @@ export async function shareReport(viewer: Viewer, reportId: string) {
     .from(financeReports)
     .where(and(eq(financeReports.id, reportId), eq(financeReports.tenantId, viewer.tenantId)))
     .limit(1);
-  if (!row) throw new Error("That report does not exist");
+  if (!row) throw new Error("这份报告不存在");
   if (row.state === "shared") return;
 
   await db

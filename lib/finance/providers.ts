@@ -74,7 +74,9 @@ const num = (v: unknown): number | null => {
   return Number.isFinite(n) ? n : null;
 };
 const stateOf = (left: number | null): ProviderBalance["state"] => (left === null ? "error" : left <= 0.005 ? "empty" : left < LOW_BALANCE_USD ? "low" : "ok");
-const usd = (n: number) => `$${n.toFixed(2)}`;
+/* (QA, 2 Oct) Same "US$ 1.00" style as /settings; rounded on whole cents so
+   a float like 9.995 does not print differently from one load to the next. */
+const usd = (n: number) => `US$ ${(Math.round(Math.round(n * 1_000_000) / 10_000) / 100).toFixed(2)}`;
 
 function row(p: Omit<ProviderBalance, "state" | "error" | "note" | "noteZh" | "monthUsd" | "totalUsd" | "usedUsd" | "leftUsd"> & Partial<ProviderBalance>): ProviderBalance {
   return { leftUsd: null, totalUsd: null, usedUsd: null, monthUsd: null, note: null, noteZh: null, error: null, state: "ok", ...p };

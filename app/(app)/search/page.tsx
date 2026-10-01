@@ -9,8 +9,16 @@ import { formatDate } from "@/lib/i18n";
 import { SearchBox } from "./search-box";
 import { AgentDock } from "@/components/shell/AgentDock";
 import { answeringModel } from "@/lib/ai/models";
+import { and, desc, ilike, isNull, eq } from "drizzle-orm";
+import { db } from "@/lib/db/client";
+import { workProjects } from "@/lib/db/schema";
+import { projectsVisibleTo } from "@/lib/projects/visible";
+import { listScripts } from "@/lib/script/service";
 
-export const metadata = { title: "搜索 · Search" };
+export const metadata = { title: "搜索" };
+
+/** A project or a script found by its title. */
+type TitleHit = { id: string; href: string; title: string; sub: string | null };
 
 /**
  * Search across everything this person can read (spec §4.1, "global search,
@@ -31,9 +39,30 @@ export default async function SearchPage({
   const { q = "" } = await searchParams;
   const zh = (viewer.locale ?? "zh-CN").startsWith("zh");
 
-  const { hits, withheld } = q.trim()
-    ? await searchFiles(viewer, q, 40)
-    : { hits: [], withheld: 0 };
+  /* Projects and scripts by title too (QA, 2 Oct: the page only searched
+     files while the ⌘K palette found projects). Projects by the palette's
+     rule (/api/palette): the ones this person may open. Scripts are the
+     studio's for anyone with the Script module (lib/script/service.ts). */
+  const term = q.trim().slice(0, 120);
+  const [{ hits, withheld }, projectHits, scriptHits] = term
+    ? await Promise.all([
+        searchFiles(viewer, term, 40),
+        db
+          .select({ id: workProjects.id, title: workProjects.title, updatedAt: workProjects.updatedAt })
+          .from(workProjects)
+          .where(and(eq(workProjects.tenantId, viewer.tenantId), isNull(workProjects.deletedAt), ilike(workProjects.title, `%${term}%`), projectsVisibleTo(viewer)))
+          .orderBy(desc(workProjects.updatedAt))
+          .limit(8)
+          .then((rows): TitleHit[] => rows.map((p) => ({ id: p.id, href: `/projects/${p.id}`, title: p.title, sub: formatDate(p.updatedAt, viewer.locale ?? "zh-CN") })))
+          .catch((): TitleHit[] => []),
+        viewer.modules.includes("script")
+          ? listScripts(viewer, { query: term })
+              .then((rows): TitleHit[] => rows.slice(0, 8).map((s) => ({ id: s.id, href: `/script/${s.id}`, title: s.title, sub: s.projectTitle ? (zh ? `项目：${s.projectTitle}` : `Project: ${s.projectTitle}`) : null })))
+              .catch((): TitleHit[] => [])
+          : Promise.resolve([] as TitleHit[]),
+      ])
+    : [{ hits: [], withheld: 0 }, [] as TitleHit[], [] as TitleHit[]];
+  const total = hits.length + projectHits.length + scriptHits.length;
 
   if (q.trim()) {
     await audit(viewer, "search", { module: "files", meta: { query: q, hits: hits.length } });
@@ -62,13 +91,13 @@ export default async function SearchPage({
         {!q.trim() ? (
           <p className="mut">
             {zh
-              ? "搜索文件名和文件内容。结果只包含你有权查看的内容。"
-              : "Search file names and their contents. Results are only ever what you may read."}
+              ? "搜索项目、脚本的标题，以及文件名和文件内容。结果只包含你有权查看的内容。"
+              : "Search project and script titles, file names and file contents. Results are only ever what you may read."}
           </p>
         ) : (
           <>
             <p className="mut" style={{ marginBottom: 12 }}>
-              {hits.length} {zh ? "个结果" : hits.length === 1 ? "result" : "results"}
+              {total} {zh ? "个结果" : total === 1 ? "result" : "results"}
               {withheld > 0 &&
                 (zh
                   ? ` · 另有 ${withheld} 个匹配超出你的权限`
@@ -76,6 +105,25 @@ export default async function SearchPage({
             </p>
 
             <div style={{ display: "flex", flexDirection: "column", gap: 8, maxWidth: 820 }}>
+              {(
+                [
+                  [zh ? "项目" : "Projects", projectHits],
+                  [zh ? "脚本" : "Scripts", scriptHits],
+                ] as const
+              ).map(([label, list]) =>
+                list.length ? (
+                  <div key={label} style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 6 }}>
+                    <div style={{ fontSize: 11.5, fontWeight: 600, color: "#8a8a8a" }}>{label}</div>
+                    {list.map((h) => (
+                      <Link key={h.id} href={h.href} prefetch={false} style={{ border: "1px solid #ededed", borderRadius: 10, background: "#fff", padding: "10px 13px", color: "#171717", display: "flex", alignItems: "baseline", gap: 8 }}>
+                        <span style={{ fontSize: 13.5, fontWeight: 500, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{toSimplified(h.title)}</span>
+                        {h.sub ? <span style={{ fontSize: 11, color: "#999999", flexShrink: 0 }}>{h.sub}</span> : null}
+                      </Link>
+                    ))}
+                  </div>
+                ) : null,
+              )}
+              {hits.length && (projectHits.length || scriptHits.length) ? <div style={{ fontSize: 11.5, fontWeight: 600, color: "#8a8a8a" }}>{zh ? "文件" : "Files"}</div> : null}
               {hits.map((hit) => (
                 <Link
                   key={hit.fileId}
@@ -114,7 +162,7 @@ export default async function SearchPage({
                 </Link>
               ))}
 
-              {hits.length === 0 && (
+              {total === 0 && (
                 <p className="mut">
                   {withheld > 0
                     ? zh
@@ -135,7 +183,7 @@ export default async function SearchPage({
       context={{ module: "files" }}
       zh={zh}
       model={answeringModel()}
-      scope={q.trim() ? `${hits.length} ${zh ? "个结果" : "results"}` : zh ? "全部内容" : "Everything"}
+      scope={q.trim() ? `${total} ${zh ? "个结果" : "results"}` : zh ? "全部内容" : "Everything"}
       note={
         zh
           ? "助理和你搜到的是同一批内容：它也只能读你有权查看的文件。"

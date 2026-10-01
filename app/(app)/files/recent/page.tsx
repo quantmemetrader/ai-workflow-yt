@@ -6,7 +6,7 @@ import { FilesView } from "@/components/files/FilesView";
 import { toRows } from "@/components/files/rows";
 import { relationsForFiles } from "@/lib/authz/rebac";
 
-export const metadata = { title: "最近文件 · Recent" };
+export const metadata = { title: "最近文件" };
 
 export default async function RecentPage() {
   const viewer = await requireModule("files");

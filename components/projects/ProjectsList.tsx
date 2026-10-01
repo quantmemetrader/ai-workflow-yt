@@ -29,7 +29,7 @@ export type ProjectListRow = {
   published: { platforms: PublishedPlace[]; day: string; byName: string } | null;
 };
 
-type StatusFilter = "active" | "done" | "all";
+type StatusFilter = "active" | "done" | "archived" | "all";
 
 /**
  * 视频: every video the person may see, one calm row each (28 Sep — the
@@ -45,10 +45,13 @@ export function ProjectsList({ rows, zh }: { rows: ProjectListRow[]; zh: boolean
   const [status, setStatus] = React.useState<StatusFilter>("active");
   const [starting, setStarting] = React.useState(false);
   const needle = q.trim().toLowerCase();
-  const shown = rows.filter((r) => (status === "all" || r.status === status) && (!needle || r.title.toLowerCase().includes(needle)));
+  /* A search looks through every project, whatever tab is open: it only
+     searched the open one, so a published or archived video "was not
+     there" (QA, 2 Oct). */
+  const shown = rows.filter((r) => (needle ? r.title.toLowerCase().includes(needle) : status === "all" || r.status === status));
   const count = (s: StatusFilter) => rows.filter((r) => s === "all" || r.status === s).length;
   const seg = (value: StatusFilter, label: string) => (
-    <button key={value} type="button" aria-pressed={status === value} onClick={() => setStatus(value)} className="pl-seg" data-on={status === value ? "" : undefined}>
+    <button key={value} type="button" aria-pressed={!needle && status === value} onClick={() => { setStatus(value); setQ(""); }} className="pl-seg" data-on={!needle && status === value ? "" : undefined}>
       {label}
       <span className="pl-n">{count(value)}</span>
     </button>
@@ -79,11 +82,14 @@ export function ProjectsList({ rows, zh }: { rows: ProjectListRow[]; zh: boolean
         <nav className="pl-segs" aria-label={t("按状态", "By status")}>
           {seg("active", t("进行中", "In progress"))}
           {seg("done", t("已发布", "Published"))}
+          {/* Archived has its own tab, so the three add up to 全部 (QA, 2 Oct). */}
+          {seg("archived", t("已归档", "Archived"))}
           {seg("all", t("全部", "All"))}
         </nav>
+        {needle ? <span style={{ fontSize: 12.5, color: "#7a7a7a" }}>{t(`在全部项目里搜索 · 找到 ${shown.length} 个`, `Searching every project · ${shown.length} found`)}</span> : null}
       </div>
       {shown.length === 0 ? (
-        <Empty icon="film" text={rows.length === 0 ? t("还没有视频，点右上角「新视频」开始", "No videos yet: press New video") : t("没有找到", "Nothing found")} />
+        <Empty icon="film" text={rows.length === 0 ? t("还没有项目，点右上角「新项目」开始", "No projects yet: press New project") : t("没有找到", "Nothing found")} />
       ) : (
         <div style={{ background: "#fff", border: "1px solid #e7e6e2", borderRadius: 14, overflow: "hidden" }}>
           {shown.map((r, i) => (

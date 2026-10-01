@@ -3,7 +3,7 @@ import { and, desc, eq, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { videoExports } from "@/lib/db/schema";
 import { requireModule } from "@/lib/auth/dal";
-import { projectForPage } from "@/lib/projects/page-data";
+import { onlyTheSharedPage, projectForPage } from "@/lib/projects/page-data";
 import { listProjectFiles } from "@/lib/projects/files";
 import { listByType } from "@/lib/files/lenses";
 import { listChannels, listPosts } from "@/lib/publish/service";
@@ -11,7 +11,7 @@ import { listPeople } from "@/lib/chat/service";
 import { projectForPublish, readPublishDraft } from "@/lib/projects/publish-page";
 import { PublishStep, type PublishVideo } from "@/components/projects/PublishStep";
 
-export const metadata = { title: "发布 · Publish" };
+export const metadata = { title: "发布" };
 
 /**
  * 4 发布: the AI's render to download, the team's own final cut uploaded
@@ -24,6 +24,7 @@ export default async function PublishPage({ params }: { params: Promise<{ id: st
   const zh = (viewer.locale ?? "zh-CN").startsWith("zh");
   const p = await projectForPage(viewer, id, zh);
   if (!p) notFound();
+  onlyTheSharedPage(p);
   const canChannels = viewer.modules.includes("publish") && viewer.role !== "guest";
 
   const [row, renders, files, recent, channels, posts, people] = await Promise.all([

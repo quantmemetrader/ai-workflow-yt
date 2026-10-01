@@ -97,6 +97,8 @@ const nextConfig: NextConfig = {
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
           { key: "X-Frame-Options", value: "SAMEORIGIN" },
           { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
+          /* The pages are Simplified Chinese; browsers and translators read this before any HTML (2 Oct). */
+          { key: "Content-Language", value: "zh-CN" },
         ],
       },
     ];

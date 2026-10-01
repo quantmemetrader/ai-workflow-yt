@@ -13,6 +13,14 @@ import type { Viewer } from "@/lib/auth/dal";
 import { audit } from "@/lib/audit";
 import { newId } from "@/lib/ids";
 
+/** (QA, 2 Oct) A person's name the way the reader reads it: the Chinese name on a Chinese screen. */
+function personName(viewer: Viewer) {
+  return (viewer.locale ?? "zh-CN").startsWith("zh")
+    ? sql<string | null>`coalesce(nullif(${users.nameLocal}, ''), ${users.name})`
+    : sql<string | null>`${users.name}`;
+}
+
+
 /**
  * Legal (spec §4.10).
  *
@@ -169,7 +177,7 @@ export async function saveTemplate(
   input: { id?: string | null; name: string; kind: string; body: string; fields: { key: string; label: string }[] },
 ) {
   const name = input.name.trim();
-  if (!name) throw new Error("A template needs a name");
+  if (!name) throw new Error("请给模板起个名字");
 
   if (input.id) {
     await db
@@ -215,7 +223,7 @@ export type ContractRow = {
 
 export async function listContracts(viewer: Viewer): Promise<ContractRow[]> {
   const rows = await db
-    .select({ c: contracts, templateName: templates.name, ownerName: users.name })
+    .select({ c: contracts, templateName: templates.name, ownerName: personName(viewer) })
     .from(contracts)
     .leftJoin(templates, eq(templates.id, contracts.templateId))
     .leftJoin(users, eq(users.id, contracts.ownerId))
@@ -275,7 +283,7 @@ export async function draftContract(
     .from(templates)
     .where(and(eq(templates.id, input.templateId), eq(templates.tenantId, viewer.tenantId)))
     .limit(1);
-  if (!template) throw new Error("That template does not exist");
+  if (!template) throw new Error("这个模板不存在");
 
   const id = newId("con");
   await db.insert(contracts).values({
@@ -349,7 +357,7 @@ export async function listFindings(viewer: Viewer, contractId: string): Promise<
   if (!own) return [];
 
   const rows = await db
-    .select({ f: clauseFindings, byName: users.name })
+    .select({ f: clauseFindings, byName: personName(viewer) })
     .from(clauseFindings)
     .leftJoin(users, eq(users.id, clauseFindings.acknowledgedBy))
     .where(eq(clauseFindings.contractId, contractId))
@@ -386,8 +394,8 @@ export async function reviewContract(viewer: Viewer, contractId: string) {
     .leftJoin(templates, eq(templates.id, contracts.templateId))
     .where(and(eq(contracts.id, contractId), eq(contracts.tenantId, viewer.tenantId)))
     .limit(1);
-  if (!row) throw new Error("That contract does not exist");
-  if (!row.template) throw new Error("This contract did not come from a template, so there is nothing to compare it with");
+  if (!row) throw new Error("这份合同不存在");
+  if (!row.template) throw new Error("这份合同不是用模板生成的，没有可以对照的版本");
 
   const templateClauses = splitClauses(row.template.body);
   const contractClauses = splitClauses(row.c.body);
@@ -571,7 +579,7 @@ export type RunRow = {
 
 export async function listRuns(viewer: Viewer, limit = 40): Promise<RunRow[]> {
   const rows = await db
-    .select({ r: checklistRuns, name: checklists.name, byName: users.name })
+    .select({ r: checklistRuns, name: checklists.name, byName: personName(viewer) })
     .from(checklistRuns)
     .innerJoin(checklists, eq(checklists.id, checklistRuns.checklistId))
     .leftJoin(users, eq(users.id, checklistRuns.ranBy))

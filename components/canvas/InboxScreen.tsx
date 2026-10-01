@@ -232,6 +232,14 @@ const CSS = `
 [data-inbox-screen] .ib-nav svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
 [data-inbox-screen] .ib-ctx { display: flex; gap: 10px; width: 100%; padding: 9px 16px; border: 0; border-top: 1px solid #f1f1f1; background: transparent; font-family: inherit; letter-spacing: inherit; text-align: left; cursor: pointer; }
 [data-inbox-screen] .ib-ctx:hover { background: #fafcff; }
+/* (QA, 2 Oct) At 1024 the list, the reading pane and the agent panel did
+   not fit: the search placeholder and the reply bar were cut. Below 1180 the
+   list gives up width first and the header's subtitle steps aside. */
+@media (max-width: 1180px) {
+  [data-inbox-screen] .ib-list { max-width: 260px; }
+  [data-inbox-screen] .ib-sub { display: none; }
+  [data-inbox-screen] .ib-steer { flex-basis: 140px; }
+}
 [data-inbox-screen] .ib-ai { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 7px; background: #f5d4e6; color: #8a3a66; flex-shrink: 0; }
 `;
 
@@ -709,7 +717,7 @@ export function InboxScreen(props: InboxScreenProps): React.JSX.Element {
   const header = (
     <div className="bar">
       <span className="h1">{t("Comment inbox")}</span>
-      <span className="mut">{t("replies require human approval")}</span>
+      <span className="mut ib-sub">{t("replies require human approval")}</span>
       <div style={{ flexGrow: 1 }} />
       <span className="cap" style={{ whiteSpace: "nowrap" }} suppressHydrationWarning>
         {syncLine}
@@ -720,7 +728,8 @@ export function InboxScreen(props: InboxScreenProps): React.JSX.Element {
       {channelCount === 0 ? null : (
         <div
           style={{
-            width: 240,
+            flex: "0 1 240px",
+            minWidth: 150,
             height: 28,
             border: "1px solid #ededed",
             borderRadius: 8,
@@ -1159,6 +1168,7 @@ export function InboxScreen(props: InboxScreenProps): React.JSX.Element {
 
   const list = (
     <div
+      className="ib-list"
       style={{
         width: listWidth,
         flexShrink: 0,

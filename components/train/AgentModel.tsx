@@ -48,7 +48,7 @@ export function AgentModel({ agent, name, zh, current, fallback, options, canCho
     <Card
       icon="spark"
       title={t("用哪个模型", "Which model")}
-      sub={canChoose ? t(`只改${name}，其他同事不受影响。聊天框里每条消息也可以临时换。`, `Only for ${name}; the others keep theirs. Any message can still pick another in the chat box.`) : t("管理员可以在这里给它换模型。", "An admin can change its model here.")}
+      sub={canChoose ? (agent === "assistant" ? t("全工作室的助理共用这一个设置，改了所有人的助理都会换。聊天框里每条消息也可以临时换。", "One setting for every colleague's assistant. Any message can still pick another in the chat box.") : t(`只改${name}，其他 AI 同事不受影响。聊天框里每条消息也可以临时换。`, `Only for ${name}; the others keep theirs. Any message can still pick another in the chat box.`)) : t("管理员可以在这里给它换模型。", "An admin can change its model here.")}
       right={
         canChoose ? (
           <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>

@@ -1,5 +1,6 @@
 "use client";
 
+import { readerMarkdown } from "@/lib/text/reader";
 import * as React from "react";
 import Link from "next/link";
 import { AgentIcon } from "@/components/agents/AgentIcon";
@@ -82,11 +83,18 @@ export function TeamBoard({ team, zh, full = false }: { team: TeamMember[]; zh: 
   );
 }
 
+/**
+ * One plain line, as `readerLine` makes it, but keeping an opening 《「（“【
+ * at the start: 「QA测试…》的初稿写好了」 lost its 《 (QA, 2 Oct). Links come
+ * down to their words, so no raw Markdown shows.
+ */
 function clean(line: string): string {
-  return line
+  return readerMarkdown(line)
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
     .replace(/[*_#>`]+/g, "")
     .replace(/\s+/g, " ")
-    .replace(/^[^\p{L}\p{N}]+/u, "")
+    .replace(/^[^\p{L}\p{N}《「『（(“"【]+/u, "")
+    .trim()
     .slice(0, 160);
 }
 

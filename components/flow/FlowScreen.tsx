@@ -55,6 +55,21 @@ export function FlowScreen({ pipeline, automations, zh, canEdit }: { pipeline: P
   const router = useRouter();
   const [pending, start] = React.useTransition();
   const [talk, setTalk] = React.useState<string | null>(null);
+  /* The board is drawn at 1254 wide. On a 1024 or 1280 screen the right
+     column (编剧写脚本, 批准脚本, the legend) fell off the edge (QA, 2 Oct):
+     it now scales down to the room there is, to 72% at most, and scrolls
+     sideways below that so the type stays readable. */
+  const room = React.useRef<HTMLDivElement | null>(null);
+  const [scale, setScale] = React.useState(1);
+  React.useEffect(() => {
+    const el = room.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const fit = () => setScale(Math.max(0.72, Math.min(1, (el.clientWidth - 8) / W)));
+    fit();
+    const ro = new ResizeObserver(fit);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
   const by = new Map(pipeline.stages.map((s) => [s.key, s]));
   const auto = new Map(automations.map((a) => [a.key, a]));
   const S = (k: Stage["key"]) => by.get(k)!;
@@ -111,8 +126,9 @@ export function FlowScreen({ pipeline, automations, zh, canEdit }: { pipeline: P
   const next = nodes.find((n) => n.state === "you") ?? null;
 
   return (
-    <div style={{ flexGrow: 1, minWidth: 0, minHeight: 0, overflow: "auto", ...PAPER }}>
-      <div style={{ position: "relative", width: W, height: H, margin: "0 auto" }}>
+    <div ref={room} style={{ flexGrow: 1, minWidth: 0, minHeight: 0, overflow: "auto", ...PAPER }}>
+      <div style={{ position: "relative", width: Math.round(W * scale), height: Math.round(H * scale), margin: "0 auto" }}>
+      <div style={{ position: "absolute", left: 0, top: 0, width: W, height: H, transform: scale === 1 ? undefined : `scale(${scale})`, transformOrigin: "0 0" }}>
         {/* ---- title row ---- */}
         <div style={{ position: "absolute", left: 26, right: 26, top: 0, height: 56, display: "flex", alignItems: "center", gap: 14 }}>
           <Link href="/home" style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 32, padding: "0 12px", borderRadius: 9, border: "1px solid #d9d9d9", background: "#fff", color: "#171717", fontSize: 12.5, textDecoration: "none", flexShrink: 0 }}>
@@ -209,6 +225,7 @@ export function FlowScreen({ pipeline, automations, zh, canEdit }: { pipeline: P
             ← {t("回首页", "Home")}
           </Link>
         </div>
+      </div>
       </div>
     </div>
   );

@@ -61,7 +61,7 @@ function writeHidden(day: string, keys: string[]) {
 }
 
 
-export function PickBoard({ picks, zh, day, model, canWrite, plan = null }: { picks: PickCard[]; zh: boolean; day: string; model: string; canWrite: boolean; plan?: PlanToday | null }) {
+export function PickBoard({ picks, zh, day, model, canWrite, plan = null, canRedo = false }: { picks: PickCard[]; zh: boolean; day: string; model: string; canWrite: boolean; plan?: PlanToday | null; canRedo?: boolean }) {
   const t = (a: string, b: string) => (zh ? a : b);
   const router = useRouter();
   const [hidden, setHidden] = React.useState<string[]>([]);
@@ -90,13 +90,34 @@ export function PickBoard({ picks, zh, day, model, canWrite, plan = null }: { pi
     }
   }
 
+  /* (QA, 2 Oct) 不感兴趣 took the card away with no word and no way back.
+     The last one put away is named under the list with 撤销 for a while. */
+  const [undo, setUndo] = React.useState<PickCard | null>(null);
+  React.useEffect(() => {
+    if (!undo) return;
+    const id = setTimeout(() => setUndo(null), 10_000);
+    return () => clearTimeout(id);
+  }, [undo]);
+
   async function dismiss(p: PickCard) {
     const next = [...hidden, p.key];
     setHidden(next);
     writeHidden(day, next);
+    setUndo(p);
     if (p.ideaId) {
       const r = await fetch(`/api/ideas/${p.ideaId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: "dismissed" }) }).catch(() => null);
       if (!r?.ok) notify(t("没收起来，再试一次。", "Could not put it away; try again."));
+    }
+  }
+
+  async function restore(p: PickCard) {
+    setUndo(null);
+    const next = hidden.filter((k) => k !== p.key);
+    setHidden(next);
+    writeHidden(day, next);
+    if (p.ideaId) {
+      const r = await fetch(`/api/ideas/${p.ideaId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: "new" }) }).catch(() => null);
+      if (!r?.ok) notify(t("没能放回去，再试一次。", "Could not bring it back; try again."));
     }
   }
 
@@ -110,7 +131,7 @@ export function PickBoard({ picks, zh, day, model, canWrite, plan = null }: { pi
   return (
     <div style={{ flexGrow: 1, minWidth: 0, minHeight: 0, display: "flex" }}>
       <PageBody width={1040}>
-        {plan ? <PlanTodayCard plan={plan} zh={zh} canWrite={canWrite} /> : null}
+        {plan ? <PlanTodayCard plan={plan} zh={zh} canWrite={canWrite} canRedo={canRedo} /> : null}
         <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12, marginTop: 4 }}>
           <h2 style={{ margin: 0, fontSize: 20, fontWeight: 650, color: INK }}>{t("今天推荐拍这几个", "Worth making today")}</h2>
           <span style={{ fontSize: 12.5, color: MUTED }}>{t("研究员每天早上更新", "Updated every morning")}</span>
@@ -169,6 +190,16 @@ export function PickBoard({ picks, zh, day, model, canWrite, plan = null }: { pi
             </article>
           ))
         )}
+
+        {undo ? (
+          <div role="status" style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13, color: "#5f5f5f", padding: "2px 4px" }}>
+            <Icon name="check" size={13} />
+            <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t(`已收起「${undo.title}」`, `Put away “${undo.title}”`)}</span>
+            <button type="button" onClick={() => void restore(undo)} style={{ border: 0, background: "none", padding: 0, font: "inherit", fontSize: 13, color: "#1f5fbf", cursor: "pointer", flexShrink: 0 }}>
+              {t("撤销", "Undo")}
+            </button>
+          </div>
+        ) : null}
 
         <section style={{ background: "#fff", border: `1px solid ${LINE}`, borderRadius: 16, padding: "18px 22px", display: "flex", flexDirection: "column", gap: 10, marginTop: 6 }}>
           <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600, color: INK }}>{t("自己查一个话题", "Look up your own topic")}</h3>

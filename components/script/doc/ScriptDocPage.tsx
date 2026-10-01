@@ -60,13 +60,14 @@ export async function ScriptDocPage({ id, standalone = false }: { id: string; st
   const doc = docForBeats((stored?.doc as RichNode | null) ?? null, beats);
 
   const s = detail?.script ?? null;
+  /* Says why the whole studio can open it when the project is open to everyone, so it does not read as the opposite of the dialog's 「仅限能看到这个项目的人」 (QA, 2 Oct). */
   const accessNote =
     p.access.link === "edit"
       ? zh ? "工作室里有链接的人都能打开并编辑" : "Anyone in the studio with the link can open and edit"
       : p.access.link === "view"
         ? zh ? "工作室里有链接的人都能打开查看" : "Anyone in the studio with the link can view"
         : p.access.mode === "everyone"
-      ? zh ? "工作室里的人都能打开这个链接" : "Anyone in the studio can open this link"
+      ? zh ? "这个项目全工作室可见，所以工作室里的人都能打开这个链接" : "The whole studio can see this project, so anyone in the studio can open this link"
       : p.access.mode === "private"
         ? zh ? "项目仅自己可见：把下面「有链接的人」改成可查看或可编辑，发链接的人就能打开" : "The project is private: set Anyone with the link below so the people you send it to can open it"
         : zh ? "能看到这个项目的人可以打开这个链接" : "People who can see this project can open this link";
@@ -76,7 +77,7 @@ export async function ScriptDocPage({ id, standalone = false }: { id: string; st
     <div data-script-page="" data-project-frame={standalone ? "" : undefined} style={{ flexGrow: 1, minWidth: 0, minHeight: 0, display: "flex", flexDirection: "column", background: standalone ? "#f9fbfd" : undefined, overflowY: standalone ? "auto" : undefined }}>
       {standalone ? (
         <div style={{ flexShrink: 0, display: "flex", alignItems: "center", gap: 12, padding: "10px 18px", borderBottom: "1px solid #e7e6e2", background: "#fff" }}>
-          <Link href="/script" prefetch={false} style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 34, padding: "0 12px", borderRadius: 9, border: "1px solid #dcdbd6", color: "#171717", textDecoration: "none", fontSize: 13.5, fontWeight: 600 }}>
+          <Link href="/script" prefetch={false} style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 34, padding: "0 12px", borderRadius: 9, border: "1px solid #dcdbd6", color: "#171717", textDecoration: "none", fontSize: 13.5, fontWeight: 600, whiteSpace: "nowrap", flexShrink: 0 }}>
             ← {zh ? "所有脚本" : "All scripts"}
           </Link>
           <span style={{ fontSize: 16, fontWeight: 600, color: "#171717", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flexGrow: 1 }}>{detail?.script.title ?? p.title}</span>
@@ -94,7 +95,7 @@ export async function ScriptDocPage({ id, standalone = false }: { id: string; st
           name: (zh && viewer.nameLocal) || viewer.name,
           avatarUrl: viewer.avatarUrl,
           isAdmin: viewer.role === "owner" || viewer.role === "admin",
-          canEdit: viewer.modules.includes("script") && p.linkOnly !== "view",
+          canEdit: viewer.modules.includes("script") && p.linkOnly !== "view" && p.status !== "archived",
         }}
         script={
           s

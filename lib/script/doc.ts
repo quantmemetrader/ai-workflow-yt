@@ -1,4 +1,5 @@
 import "server-only";
+import { HUMAN_STYLE_ZH, humanize } from "@/lib/text/human";
 import { readFileText } from "@/lib/ai/retrieval";
 import { fileTextWithin } from "@/lib/files/extract";
 import { toSimplified } from "@/lib/text/simplified";
@@ -106,7 +107,7 @@ export async function versionBeats(viewer: Viewer, scriptId: string, versionNo: 
   const [s] = await db.select({ id: scripts.id }).from(scripts).where(and(eq(scripts.id, scriptId), eq(scripts.tenantId, viewer.tenantId))).limit(1);
   if (!s) return null;
   const [v] = await db
-    .select({ beats: scriptVersions.beats, versionNo: scriptVersions.versionNo })
+    .select({ id: scriptVersions.id, beats: scriptVersions.beats, versionNo: scriptVersions.versionNo })
     .from(scriptVersions)
     .where(and(eq(scriptVersions.scriptId, scriptId), eq(scriptVersions.versionNo, versionNo)))
     .limit(1);
@@ -272,7 +273,7 @@ export async function copilotRewrite(viewer: Viewer, scriptId: string, paragraph
     if (f?.text?.trim()) attached.push(`### ${f.name}\n${f.text}`);
   }
   const attachedText = attached.length ? `这次指令附的参考文件（指令说“照范例/照附件”时，学它的结构、语气、节奏和开头方式，但不要照抄它的内容）：\n${attached.join("\n\n").slice(0, 40000)}` : "";
-  const system = [COPILOT_PROMPT, style.text ? `工作室的写作规范与编剧的训练：\n${style.text.slice(0, 12000)}` : "", refs, attachedText].filter(Boolean).join("\n\n");
+  const system = [COPILOT_PROMPT, HUMAN_STYLE_ZH, style.text ? `工作室的写作规范与编剧的训练：\n${style.text.slice(0, 12000)}` : "", refs, attachedText].filter(Boolean).join("\n\n");
   const total = paragraphs.reduce((n, p) => n + spokenSeconds(p), 0);
   const user = [
     `标题：${script.title}`,
@@ -316,13 +317,13 @@ export async function copilotRewrite(viewer: Viewer, scriptId: string, paragraph
   const s = (v: unknown, max: number) => (typeof v === "string" ? v.trim().slice(0, max) : "");
   const changes: DocChange[] = (Array.isArray(raw.changes) ? raw.changes : [])
     .map((c) => c as Record<string, unknown>)
-    .map((c) => ({ i: Number(c.i), text: s(c.text, 4000), why: s(c.why, 80) }))
+    .map((c) => ({ i: Number(c.i), text: humanize(s(c.text, 4000)), why: humanize(s(c.why, 80)) }))
     .filter((c) => Number.isInteger(c.i) && c.i >= 0 && c.i < paragraphs.length && c.text !== paragraphs[c.i]);
   const seen = new Set<number>();
   const unique = changes.filter((c) => (seen.has(c.i) ? false : (seen.add(c.i), true)));
   const inserts: DocInsert[] = (Array.isArray(raw.inserts) ? raw.inserts : [])
     .map((c) => c as Record<string, unknown>)
-    .map((c) => ({ after: Number(c.after), text: s(c.text, 4000), why: s(c.why, 80) }))
+    .map((c) => ({ after: Number(c.after), text: humanize(s(c.text, 4000)), why: humanize(s(c.why, 80)) }))
     .filter((c) => Number.isInteger(c.after) && c.after >= -1 && c.after < paragraphs.length && c.text)
     .slice(0, 8);
   if (!unique.length && !inserts.length) return { error: "编剧觉得按这个指令不需要改动。换个说法试试。" };
@@ -363,7 +364,7 @@ export async function copilotRedo(viewer: Viewer, scriptId: string, input: { bef
   await recordUsage({ viewer, module: "script", provider: out.provider ?? "openrouter", model: out.model, promptTokens: out.promptTokens, completionTokens: out.completionTokens, costMicros: out.costMicros, requestId: out.requestId });
   const text = out.text.replace(/<think(?:ing)?>[\s\S]*?<\/think(?:ing)?>/gi, "").replace(/^["“「]|["”」]$/g, "").trim().slice(0, 4000);
   if (!text) return { error: "编剧这次没有给出改法，再试一次。" };
-  return { ok: true as const, text };
+  return { ok: true as const, text: humanize(text) };
 }
 
 /** Names for the people a script's DMs and approvals mention. */

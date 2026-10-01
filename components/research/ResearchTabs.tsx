@@ -20,8 +20,18 @@ const TABS = [
   { href: "/research/backlog", zh: "我的储备", en: "Saved" },
 ] as const;
 
+/* Pages reached from 推荐 and 数据 rather than from a tab. While one is open
+   it shows as a fourth tab, so the bar always says where you are (QA, 2 Oct:
+   nothing was highlighted on 搜索与对比 or the comment inbox). */
+const SIDE_PAGES = [
+  { href: "/research/compare", zh: "搜索与对比", en: "Search & compare" },
+  { href: "/research/inbox", zh: "评论收件箱", en: "Comment inbox" },
+] as const;
+
 export function ResearchTabs({ zh, savedCount }: { zh: boolean; savedCount?: number }) {
   const pathname = usePathname() ?? "/research";
+  const side = SIDE_PAGES.find((p) => pathname.startsWith(p.href));
+  const tabs = side ? [...TABS, side] : TABS;
   return (
     <div style={{ flexShrink: 0, background: "rgba(250,250,248,.92)", borderBottom: "1px solid #e7e6e2" }}>
       <style>{TAB_CSS}</style>
@@ -31,7 +41,7 @@ export function ResearchTabs({ zh, savedCount }: { zh: boolean; savedCount?: num
           <span style={{ fontSize: 13, color: "#8a8a8a" }}>{zh ? "今天拍什么？" : "What should we make today?"}</span>
         </div>
         <nav aria-label={zh ? "选题页面" : "Topic pages"} style={{ display: "flex", gap: 2, marginTop: 8 }}>
-          {TABS.map((t) => {
+          {tabs.map((t) => {
             const on = t.href === "/research" ? pathname === "/research" : pathname.startsWith(t.href);
             return (
               <Link key={t.href} href={t.href} prefetch={false} className="rt-tab" data-on={on ? "1" : undefined} aria-current={on ? "page" : undefined}>

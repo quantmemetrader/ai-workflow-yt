@@ -15,7 +15,8 @@ import { listTeams } from "@/lib/teams/service";
 import { AdminScreen } from "@/components/admin/AdminScreen";
 import { answeringModel } from "@/lib/ai/models";
 
-export const metadata = { title: "后台 · Admin" };
+/* Chinese only in the tab (QA, 2 Oct). */
+export const metadata = { title: "后台" };
 
 /**
  * Admin (spec §4.8, §8).
@@ -78,6 +79,7 @@ export default async function AdminPage() {
           id: i.id,
           email: i.email,
           role: i.role,
+          modules: i.modules as string[],
           expiresAt: i.expiresAt.toISOString(),
         }))}
       usage={tokens}

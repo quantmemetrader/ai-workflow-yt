@@ -41,7 +41,7 @@ import { env } from "@/lib/env";
  */
 function assertAdmin(viewer: Viewer) {
   if (viewer.role !== "owner" && viewer.role !== "admin") {
-    throw new Error("Only an owner or an administrator can do that");
+    throw new Error("只有所有者或管理员可以这样做");
   }
 }
 
@@ -148,14 +148,14 @@ export async function setEntitlement(
   granted: boolean,
 ) {
   assertAdmin(viewer);
-  if (!(MODULES as readonly string[]).includes(module)) throw new Error("No such module");
+  if (!(MODULES as readonly string[]).includes(module)) throw new Error("没有这个模块");
 
   const [target] = await db
     .select({ id: users.id, role: users.role })
     .from(users)
     .where(and(eq(users.id, userId), eq(users.tenantId, viewer.tenantId), isNull(users.deletedAt)))
     .limit(1);
-  if (!target) throw new Error("Nobody here has that id");
+  if (!target) throw new Error("工作室里找不到这个人");
 
   if (granted) {
     await db
@@ -167,7 +167,7 @@ export async function setEntitlement(
     // is a support call nobody can make, because the screen that fixes it is
     // the one they lost.
     if (module === "admin" && target.role === "owner") {
-      throw new Error("The owner keeps the Admin module");
+      throw new Error("所有者必须保留后台模块");
     }
     await db
       .delete(entitlements)
@@ -188,15 +188,15 @@ export async function setUserRole(
   role: "admin" | "member" | "guest",
 ) {
   assertAdmin(viewer);
-  if (userId === viewer.id) throw new Error("Change somebody else's role, not your own");
+  if (userId === viewer.id) throw new Error("不能修改自己的角色");
 
   const [target] = await db
     .select({ role: users.role })
     .from(users)
     .where(and(eq(users.id, userId), eq(users.tenantId, viewer.tenantId)))
     .limit(1);
-  if (!target) throw new Error("Nobody here has that id");
-  if (target.role === "owner") throw new Error("The owner's role is not changed from here");
+  if (!target) throw new Error("工作室里找不到这个人");
+  if (target.role === "owner") throw new Error("所有者的角色不能在这里修改");
 
   await db.update(users).set({ role }).where(eq(users.id, userId));
   await audit(viewer, "admin.user.role", {
@@ -222,15 +222,15 @@ export async function setUserRole(
  */
 export async function setWorkRole(viewer: Viewer, userId: string, role: ProductionKey | null) {
   assertAdmin(viewer);
-  if (role !== null && !isProductionKey(role)) throw new Error("No such job");
+  if (role !== null && !isProductionKey(role)) throw new Error("没有这个岗位");
 
   const [target] = await db
     .select({ id: users.id, role: users.role })
     .from(users)
     .where(and(eq(users.id, userId), eq(users.tenantId, viewer.tenantId), isNull(users.deletedAt), eq(users.isAgent, false)))
     .limit(1);
-  if (!target) throw new Error("Nobody here has that id");
-  if (target.role === "owner" && viewer.role !== "owner") throw new Error("The owner's job is set by the owner");
+  if (!target) throw new Error("工作室里找不到这个人");
+  if (target.role === "owner" && viewer.role !== "owner") throw new Error("所有者的岗位只能由所有者自己设");
 
   const grantedChat = await db.transaction(async (trx) => {
     await trx.update(users).set({ workRole: role }).where(and(eq(users.id, userId), eq(users.tenantId, viewer.tenantId)));
@@ -261,15 +261,15 @@ export async function setWorkRole(viewer: Viewer, userId: string, role: Producti
 
 export async function setUserStatus(viewer: Viewer, userId: string, status: "active" | "suspended") {
   assertAdmin(viewer);
-  if (userId === viewer.id) throw new Error("Suspend somebody else, not yourself");
+  if (userId === viewer.id) throw new Error("不能停用自己");
 
   const [target] = await db
     .select({ role: users.role })
     .from(users)
     .where(and(eq(users.id, userId), eq(users.tenantId, viewer.tenantId)))
     .limit(1);
-  if (!target) throw new Error("Nobody here has that id");
-  if (target.role === "owner") throw new Error("The owner cannot be suspended");
+  if (!target) throw new Error("工作室里找不到这个人");
+  if (target.role === "owner") throw new Error("所有者不能被停用");
 
   await db.update(users).set({ status }).where(eq(users.id, userId));
   await audit(viewer, status === "suspended" ? "admin.user.suspend" : "admin.user.restore", {
@@ -281,7 +281,9 @@ export async function setUserStatus(viewer: Viewer, userId: string, status: "act
 
 /* ---------------------------------------------------------------- tokens */
 
-export type UsageSlice = { key: string; label: string; costMicros: number; tokens: number; calls: number };
+/* `labelLocal` is the person's Chinese name (users.name_local), so the board
+reads 研究员 and 定时任务 rather than "Research agent" (QA, 2 Oct). */
+export type UsageSlice = { key: string; label: string; labelLocal?: string | null; costMicros: number; tokens: number; calls: number };
 
 export async function usage(viewer: Viewer, days = 30) {
   assertAdmin(viewer);
@@ -315,6 +317,7 @@ export async function usage(viewer: Viewer, days = 30) {
       .select({
         key: aiUsage.userId,
         label: users.name,
+        labelLocal: users.nameLocal,
         cost: sql<number>`sum(${aiUsage.costMicros})::bigint`,
         tokens: sql<number>`sum(${aiUsage.promptTokens} + ${aiUsage.completionTokens})::bigint`,
         calls: sql<number>`count(*)::int`,
@@ -322,7 +325,7 @@ export async function usage(viewer: Viewer, days = 30) {
       .from(aiUsage)
       .leftJoin(users, eq(users.id, aiUsage.userId))
       .where(where)
-      .groupBy(aiUsage.userId, users.name),
+      .groupBy(aiUsage.userId, users.name, users.nameLocal),
 
     db
       .select({
@@ -335,11 +338,12 @@ export async function usage(viewer: Viewer, days = 30) {
       .orderBy(sql`date_trunc('day', ${aiUsage.createdAt})`),
   ]);
 
-  const slice = (rows: { key: string; label?: string | null; cost: number; tokens: number; calls: number }[]) =>
+  const slice = (rows: { key: string; label?: string | null; labelLocal?: string | null; cost: number; tokens: number; calls: number }[]) =>
     rows
       .map((r) => ({
         key: r.key,
         label: r.label ?? r.key,
+        labelLocal: r.labelLocal ?? null,
         costMicros: Number(r.cost),
         tokens: Number(r.tokens),
         calls: r.calls,
@@ -428,7 +432,7 @@ export async function setBudget(
   input: { scope: "tenant" | "user" | "team"; scopeId: string; capMicros: number; period: string | null },
 ) {
   assertAdmin(viewer);
-  if (!Number.isFinite(input.capMicros) || input.capMicros < 0) throw new Error("A cap is a positive number");
+  if (!Number.isFinite(input.capMicros) || input.capMicros < 0) throw new Error("上限必须是正数");
 
   await db
     .insert(budgets)
@@ -460,7 +464,7 @@ export async function removeBudget(viewer: Viewer, budgetId: string) {
 
 /* ----------------------------------------------------------- credentials */
 
-export type KeyRow = { name: string; set: boolean; unlocks: string };
+export type KeyRow = { name: string; set: boolean; unlocks: string; unlocksZh: string };
 
 /**
  * What this deployment holds, without holding it up to the light.
@@ -471,12 +475,12 @@ export type KeyRow = { name: string; set: boolean; unlocks: string };
  */
 export function keyInventory(): KeyRow[] {
   return [
-    { name: "DATABASE_URL", set: Boolean(env.databaseUrl), unlocks: "Everything. The studio's own data." },
-    { name: "R2_ACCESS_KEY_ID", set: Boolean(env.r2.accessKeyId), unlocks: "File storage, uploads and exports." },
-    { name: "OPENROUTER_API_KEY", set: Boolean(env.openrouter.apiKey), unlocks: "The agent, and every model call." },
-    { name: "ZERNIO_API_KEY", set: env.zernio.configured, unlocks: "Publishing, the comment inbox, channel analytics." },
-    { name: "TIKHUB_TOKEN", set: env.tikhub.configured, unlocks: "Reading channels the studio does not own." },
-    { name: "CRON_SECRET", set: Boolean(process.env.CRON_SECRET), unlocks: "The nightly housekeeping endpoint." },
+    { name: "DATABASE_URL", set: Boolean(env.databaseUrl), unlocks: "Everything. The studio's own data.", unlocksZh: "全部功能，工作室自己的数据都在这里。" },
+    { name: "R2_ACCESS_KEY_ID", set: Boolean(env.r2.accessKeyId), unlocks: "File storage, uploads and exports.", unlocksZh: "文件存储、上传和导出。" },
+    { name: "OPENROUTER_API_KEY", set: Boolean(env.openrouter.apiKey), unlocks: "The agent, and every model call.", unlocksZh: "AI 助理和所有模型调用。" },
+    { name: "ZERNIO_API_KEY", set: env.zernio.configured, unlocks: "Publishing, the comment inbox, channel analytics.", unlocksZh: "发布、评论收件箱和频道数据。" },
+    { name: "TIKHUB_TOKEN", set: env.tikhub.configured, unlocks: "Reading channels the studio does not own.", unlocksZh: "读取别人的频道（非工作室自有）。" },
+    { name: "CRON_SECRET", set: Boolean(process.env.CRON_SECRET), unlocks: "The nightly housekeeping endpoint.", unlocksZh: "每晚自动清理的入口。" },
   ];
 }
 
@@ -506,6 +510,8 @@ export type AuditRow = {
   id: string;
   at: Date;
   actorName: string | null;
+  /** users.name_local, shown when the screen is in Chinese (QA, 2 Oct). */
+  actorNameLocal: string | null;
   action: string;
   objectType: string | null;
   objectId: string | null;
@@ -521,7 +527,7 @@ export async function listAudit(
   assertAdmin(viewer);
 
   const rows = await db
-    .select({ log: auditLog, actorName: users.name })
+    .select({ log: auditLog, actorName: users.name, actorNameLocal: users.nameLocal })
     .from(auditLog)
     .leftJoin(users, eq(users.id, auditLog.actorId))
     .where(
@@ -538,6 +544,7 @@ export async function listAudit(
     id: r.log.id,
     at: r.log.at,
     actorName: r.actorName,
+    actorNameLocal: r.actorNameLocal,
     action: r.log.action,
     objectType: r.log.objectType,
     objectId: r.log.objectId,
@@ -612,8 +619,8 @@ export async function saveKnowledge(
 ) {
   assertAdmin(viewer);
   const title = input.title.trim();
-  if (!title) throw new Error("It needs a title");
-  if (!input.body.trim()) throw new Error("It needs a body");
+  if (!title) throw new Error("请填写名称");
+  if (!input.body.trim()) throw new Error("请填写内容");
 
   if (input.id) {
     const [current] = await db
@@ -621,7 +628,7 @@ export async function saveKnowledge(
       .from(knowledge)
       .where(and(eq(knowledge.id, input.id), eq(knowledge.tenantId, viewer.tenantId)))
       .limit(1);
-    if (!current) throw new Error("That does not exist");
+    if (!current) throw new Error("找不到这一条");
 
     // The previous body becomes a version before the new one lands, so the
     // rollback on screen has something to roll back to.
@@ -725,14 +732,14 @@ export async function rollbackKnowledge(viewer: Viewer, id: string, version: num
     .from(knowledge)
     .where(and(eq(knowledge.id, id), eq(knowledge.tenantId, viewer.tenantId)))
     .limit(1);
-  if (!current) throw new Error("That does not exist");
+  if (!current) throw new Error("找不到这一条");
 
   const [old] = await db
     .select()
     .from(knowledgeVersions)
     .where(and(eq(knowledgeVersions.knowledgeId, id), eq(knowledgeVersions.version, version)))
     .limit(1);
-  if (!old) throw new Error("There is no such version");
+  if (!old) throw new Error("没有这个版本");
 
   // A rollback is a new version, not an erasure: the thing being rolled back
   // from stays in the history.

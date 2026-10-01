@@ -232,6 +232,30 @@ export async function shareCeiling(viewer: Viewer, objectType: SharedObject, id:
 }
 
 /**
+ * An owner grant that must never be removed: the one naming the object's own
+ * owner, or the last owner grant left on it.
+ * (QA, 2 Oct: the share box let the owner delete their own owner row.)
+ */
+export async function isProtectedOwner(
+  object: { type: SharedObject; id: string },
+  subject: { type: string; id: string },
+  relation: Relation,
+): Promise<boolean> {
+  if (relation !== "owner") return false;
+  const table =
+    object.type === "file" ? sql`files` : object.type === "folder" ? sql`folders` : object.type === "script" ? sql`scripts` : null;
+  if (table && subject.type === "user") {
+    const own = await db.execute<{ owner_id: string | null }>(sql`select owner_id from ${table} where id = ${object.id} limit 1`);
+    if (own.rows[0]?.owner_id === subject.id) return true;
+  }
+  const left = await db.execute<{ n: number }>(sql`
+    select count(*)::int as n from ${relationTuples}
+    where object_type = ${object.type} and object_id = ${object.id} and relation = 'owner'
+  `);
+  return (left.rows[0]?.n ?? 0) <= 1;
+}
+
+/**
  * Remove a grant. Bounded by the sharer in the same way `share` is: an editor
  * may take back an editor or a viewer, but may not delete the owner's tuple.
  * Without the second test, anyone holding `editor` on a folder could revoke the
@@ -247,6 +271,7 @@ export async function revoke(
   const held = await relationOn(viewer, object.type, object.id);
   if (!atLeast(held, "editor")) return false;
   if (!atLeast(held, relation)) return false;
+  if (await isProtectedOwner(object, subject, relation)) return false;
   await db
     .delete(relationTuples)
     .where(

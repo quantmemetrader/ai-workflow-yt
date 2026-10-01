@@ -281,6 +281,15 @@ export function ProjectScreen({
           {view === "overview" ? (
             <>
           {/* ---- one line of activity; the whole conversation on demand ---- */}
+          {/* Opened by its link, not as a member: the chat is the members'
+              and none of it is read for this person, so the card says so
+              rather than 「0 · 还没有对话」 over a chat that has messages
+              (QA, 2 Oct). */}
+          {p.linkOnly ? (
+            <Card icon="chat" title={t("项目对话", "Project chat")} sub={t("只有项目成员能看和发言", "Only the project's members can read and post")}>
+              <div style={{ fontSize: 13, color: "#8a8a8a" }}>{t("你是通过分享链接打开的，看不到这个项目的对话。要参与，请项目负责人把你加进来。", "You opened this from a shared link, so the project's chat is hidden. Ask its owner to add you.")}</div>
+            </Card>
+          ) : (
           <Card
             icon="chat"
             title={t("项目对话", "Project chat")}
@@ -306,6 +315,7 @@ export function ProjectScreen({
               <div style={{ fontSize: 13, color: "#8a8a8a" }}>{t("还没有对话。", "No messages yet.")}</div>
             )}
           </Card>
+          )}
 
           {privateChats.length ? (
             <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", margin: "-4px 2px 0", fontSize: 12, color: "#7c7c7c" }}>
@@ -704,6 +714,8 @@ function AskBox({ people, zh, placeholder, onSend, disabled }: { people: Mention
         type="button"
         onClick={send}
         disabled={disabled || !can}
+        aria-label={zh ? "发送" : "Send"}
+        title={zh ? "发送（Enter）" : "Send (Enter)"}
         style={can ? { ...btn(true), height: 34, borderRadius: 10, opacity: disabled ? 0.5 : 1 } : { ...btn(false), height: 34, borderRadius: 10, background: "#f0f0ee", borderColor: "#f0f0ee", color: "#a3a3a3", cursor: "default" }}
       >
         <Icon name="upload" size={13} style={{ transform: "rotate(90deg)" }} />
@@ -799,6 +811,33 @@ function Popup({ title, children, onClose }: { title: string; children: React.Re
   );
 }
 
+/** A message's files in the drawer, as the channel draws them: a picture as its thumbnail, anything else as a chip. */
+function DrawerFiles({ files }: { files: Msg["attachments"] }) {
+  if (!files.length) return null;
+  return (
+    <div style={{ display: "flex", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
+      {files.map((f) =>
+        f.kind === "image" ? (
+          <Link key={f.id} prefetch={false} href={`/files/${f.id}`} title={f.name}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={`/api/files/${f.id}/thumb`} alt={f.name} loading="lazy" style={{ maxWidth: 180, maxHeight: 130, borderRadius: 10, border: "1px solid #ededed", display: "block", objectFit: "cover" }} />
+          </Link>
+        ) : (
+          <Link key={f.id} prefetch={false} href={`/files/${f.id}`} title={f.name} style={{ display: "inline-flex", alignItems: "center", gap: 5, maxWidth: 260, height: 26, padding: "0 9px", borderRadius: 8, border: "1px solid #dfe3ea", background: "#f7f9fc", color: "#2b343d", fontSize: 11.5, textDecoration: "none" }}>
+            <Icon name={f.kind === "video" ? "clapper" : f.kind === "audio" ? "play" : "doc"} size={12} />
+            <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.name}</span>
+            {f.sizeBytes ? <span style={{ color: "#8a94a3", flexShrink: 0 }}>{fileSize(f.sizeBytes)}</span> : null}
+          </Link>
+        ),
+      )}
+    </div>
+  );
+}
+
+function fileSize(n: number): string {
+  return n >= 1_048_576 ? `${(n / 1_048_576).toFixed(1)} MB` : n >= 1024 ? `${Math.round(n / 1024)} KB` : `${n} B`;
+}
+
 /** The whole conversation, only when somebody opens it. */
 function ChatDrawer({ project: p, zh, people, onClose }: { project: ProjectDetail; zh: boolean; people: MentionPerson[]; onClose: () => void }) {
   const t = (a: string, b: string) => (zh ? a : b);
@@ -809,6 +848,16 @@ function ChatDrawer({ project: p, zh, people, onClose }: { project: ProjectDetai
   const lastId = p.messages[p.messages.length - 1]?.id;
   const working = p.pending.map((r) => `${r.id}:${r.step}`).join(",");
   const liveRow = useLiveRow(p.id, (exportId) => p.messages.some((m) => m.videos.some((v) => v.kind === "render" && v.id === exportId)));
+  /* Esc closes it, as every other panel here does (QA, 2 Oct). Not while
+     the @ menu is open in the box: that Esc is the menu's. */
+  React.useEffect(() => {
+    const k = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || e.defaultPrevented) return;
+      onClose();
+    };
+    window.addEventListener("keydown", k);
+    return () => window.removeEventListener("keydown", k);
+  }, [onClose]);
   React.useEffect(() => {
     const el = scroller.current;
     if (el) el.scrollTop = el.scrollHeight;
@@ -847,7 +896,7 @@ function ChatDrawer({ project: p, zh, people, onClose }: { project: ProjectDetai
         <Icon name="chat" size={15} />
         <span style={{ fontSize: 13.5, fontWeight: 600 }}>{t("项目对话", "Project chat")}</span>
         <span style={{ fontSize: 12, color: "#a3a3a3", flexGrow: 1 }}>{p.messages.length}</span>
-        <button type="button" onClick={onClose} aria-label="Close" style={{ border: 0, background: "transparent", cursor: "pointer", fontSize: 18, color: "#999999" }}>
+        <button type="button" onClick={onClose} aria-label={t("关闭对话", "Close the chat")} title={t("关闭（Esc）", "Close (Esc)")} style={{ border: 0, background: "transparent", cursor: "pointer", fontSize: 18, color: "#999999" }}>
           ×
         </button>
       </div>
@@ -895,6 +944,7 @@ function ChatDrawer({ project: p, zh, people, onClose }: { project: ProjectDetai
                   {/* "渲染好了" with the film under it: the poster that
                       plays, 下载, 在剪辑台打开 — right here in the drawer. */}
                   <VideoCards videos={m.videos} zh={zh} here={{ projectId: p.id }} />
+                  <DrawerFiles files={m.attachments} />
                   {/* The live row at the foot follows this film while it
                       is made; the message's own chip stands down meanwhile. */}
                   {m.job && !(liveRow && p.video?.id === m.job.videoProjectId) ? (
@@ -943,6 +993,11 @@ function ChatDrawer({ project: p, zh, people, onClose }: { project: ProjectDetai
                   their line, the way the channel draws it. */}
               <div style={{ display: "flex", justifyContent: "flex-end" }}>
                 <VideoCards videos={m.videos} zh={zh} here={{ projectId: p.id }} />
+              </div>
+              {/* The files on it: they were posted, but the drawer drew
+                  nothing, so a file sent from here looked dropped (QA, 2 Oct). */}
+              <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                <DrawerFiles files={m.attachments} />
               </div>
             </div>
           ),

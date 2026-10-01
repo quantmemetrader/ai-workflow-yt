@@ -10,7 +10,7 @@ import { TeamBoard, type TeamMember } from "@/components/agents/TeamBoard";
 import { PlanTodayCard } from "@/components/agents/PlanTodayCard";
 import { planToday } from "@/lib/agents/plan-today";
 
-export const metadata = { title: "首页 · Home" };
+export const metadata = { title: "首页" };
 
 /**
  * 首页: what is waiting on you, the AI colleagues (faces, what each is doing,
@@ -35,7 +35,7 @@ export default async function HomePage() {
         me={(zh && viewer.nameLocal) || viewer.name}
         greeting={greeting(zh)}
         today={today}
-        plan={plan ? <PlanTodayCard plan={plan} zh={zh} canWrite={viewer.modules.includes("script")} /> : null}
+        plan={plan ? <PlanTodayCard plan={plan} zh={zh} canWrite={viewer.modules.includes("script")} canRedo={viewer.role === "owner" || viewer.role === "admin"} /> : null}
         team={
           <Card icon="spark" title={zh ? "AI 同事" : "AI team"} right={<a href="/team" style={{ fontSize: 12.5, color: "#525252", textDecoration: "none" }}>{zh ? "全部同事 →" : "The whole team →"}</a>}>
             <TeamBoard team={team} zh={zh} />

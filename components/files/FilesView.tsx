@@ -16,6 +16,7 @@ import {
   deleteFilesAction,
   deleteFolderAction,
   newFolderAction,
+  purgeFileAction,
   renameFileAction,
   renameFolderAction,
   restoreFileAction,
@@ -79,6 +80,8 @@ export function FilesView({
   /* Deleting a folder takes everything in it, so it is confirmed by name
      rather than by a bin icon that acts the moment it is clicked. */
   const [deleting, setDeleting] = useState<{ kind: "file" | "folder"; id: string; name: string } | null>(null);
+  /* 永久删除 from the trash, confirmed by name (QA, 2 Oct). */
+  const [purging, setPurging] = useState<{ id: string; name: string } | null>(null);
 
   // Which view of a folder this person likes, remembered in their browser.
   const [layout, setLayout] = useLocalPreference("aura:files-layout", LAYOUTS, "grid");
@@ -170,10 +173,12 @@ export function FilesView({
                     ? await restoreFolderAction(id)
                     : await restoreFileAction(id);
                   if (res.error) notify(res.error);
+                  else notify(zh ? "已恢复到原来的位置" : "Restored to where it was", "ok");
                   router.refresh();
                 })
             : undefined
         }
+        onPurge={view === "trash" ? (id, name) => setPurging({ id, name }) : undefined}
         layout={layout}
         onLayoutChange={setLayout}
         lens={lens}
@@ -253,6 +258,8 @@ export function FilesView({
         <NameDialog
           title={zh ? "重命名" : "Rename"}
           placeholder={renaming.name}
+          /* Starts from the current name (QA, 2 Oct: it opened empty). */
+          initial={renaming.name}
           confirm={zh ? "保存" : "Save"}
           cancel={zh ? "取消" : "Cancel"}
           onClose={() => setRenaming(null)}
@@ -303,6 +310,28 @@ export function FilesView({
         />
       )}
 
+      {purging && (
+        <ConfirmDialog
+          title={zh ? "永久删除" : "Delete forever"}
+          body={zh ? `“${purging.name}”会被彻底删除，之后无法恢复。` : `“${purging.name}” will be gone for good. This cannot be undone.`}
+          confirm={zh ? "永久删除" : "Delete forever"}
+          danger
+          cancel={zh ? "取消" : "Cancel"}
+          onClose={() => setPurging(null)}
+          onConfirm={() =>
+            start(async () => {
+              const target = purging;
+              setPurging(null);
+              if (!target) return;
+              const res = await purgeFileAction(target.id);
+              if (res.error) notify(res.error);
+              else notify(zh ? `已永久删除“${target.name}”` : `Deleted “${target.name}” for good`, "ok");
+              router.refresh();
+            })
+          }
+        />
+      )}
+
       {namingFolder && (
         <NameDialog
           title={zh ? "新建文件夹" : "New folder"}
@@ -314,6 +343,7 @@ export function FilesView({
             start(async () => {
               const res = await newFolderAction(folderId, name);
               if (res.error) notify(res.error);
+              else notify(zh ? `已新建文件夹「${name}」` : `Folder “${name}” created`, "ok");
               router.refresh();
             })
           }

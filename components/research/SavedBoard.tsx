@@ -27,7 +27,7 @@ import type { CreatorMemoryState } from "@/lib/creator/service";
  * person who plans the week (`?board=1`).
  */
 export type SavedTopic = { id: string; name: string; summary: string | null; heat: number; change: number; projectId: string | null; scriptId: string | null };
-export type WatchedTopic = { id: string; name: string; heat: number; change: number; rising: boolean; collecting: boolean };
+export type WatchedTopic = { id: string; name: string; heat: number; change: number; rising: boolean; collecting: boolean; projectId?: string | null };
 
 function pct(n: number): string {
   if (!Number.isFinite(n) || n === 0) return "0%";
@@ -41,6 +41,7 @@ export function SavedBoard({
   canWrite,
   competitors,
   ourMedian,
+  ourPosts = null,
   tikhubConfigured,
   creator,
   creatorSyncing,
@@ -52,6 +53,7 @@ export function SavedBoard({
   canWrite: boolean;
   competitors: CompetitorRow[];
   ourMedian: number | null;
+  ourPosts?: number | null;
   tikhubConfigured: boolean;
   creator: CreatorMemoryState;
   creatorSyncing: boolean;
@@ -179,9 +181,15 @@ export function SavedBoard({
                     </>
                   )}
                 </span>
-                <button type="button" onClick={() => void make(w.id)} disabled={busy !== null} style={smallButton()}>
-                  <Icon name="film" size={13} /> {busy === w.id ? t("正在开始…", "Starting…") : t("做成视频", "Make it")}
-                </button>
+                {w.projectId ? (
+                  <Link href={`/projects/${w.projectId}`} prefetch={false} style={smallButton()}>
+                    {t("打开项目 →", "Open project →")}
+                  </Link>
+                ) : (
+                  <button type="button" onClick={() => void make(w.id)} disabled={busy !== null} style={smallButton()}>
+                    <Icon name="film" size={13} /> {busy === w.id ? t("正在开始…", "Starting…") : t("做成视频", "Make it")}
+                  </button>
+                )}
                 <button type="button" onClick={() => decide(w.id, "save", t("已存进储备", "Saved"))} className="sb-quiet">
                   {t("存起来", "Save")}
                 </button>
@@ -202,7 +210,7 @@ export function SavedBoard({
       </button>
       {more ? (
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-          <CompetitorPanel competitors={competitors} ourMedian={ourMedian} configured={tikhubConfigured} zh={zh} />
+          <CompetitorPanel competitors={competitors} ourMedian={ourMedian} ourPosts={ourPosts} configured={tikhubConfigured} zh={zh} />
           <DiscoverChannels zh={zh} watching={competitors.map((c) => c.externalId)} suggestion={watched[0]?.name ?? null} />
           <CreatorMemory state={creator} syncing={creatorSyncing} zh={zh} canAdmin={canAdmin} />
         </div>

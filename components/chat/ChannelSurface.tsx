@@ -32,6 +32,7 @@ import { AgentName, Tr } from "@/components/ui/Tr";
 import { VideoCards } from "./VideoCard";
 import { LivePill, useLiveRow } from "./LivePill";
 import type { VideoCard } from "@/lib/chat/video-card";
+import { RowMenu } from "./RowMenu";
 
 /**
  * The channel's main column: header, messages, composer.
@@ -94,6 +95,8 @@ export type ChannelMessage = {
   /** A take this message dropped into a project's bin: offer "素材传好了 ·
    * 开始剪" under it, until somebody presses it (`startCutFromChatAction`). */
   cutOffer?: { projectId: string; title: string } | null;
+  /** When its author last changed it (ISO), for 「已编辑」. */
+  editedAt?: string | null;
 };
 
 /** An employee at work in the room right now (`lib/chat/pending.ts`). */
@@ -148,6 +151,15 @@ ${threadCss("[data-chat-surface]")}
 [data-chat-surface] a.proj:hover { border-color: #a3a3a3; background: #fafafa; }
 [data-chat-surface] .hdr-btn { background: transparent; border: 0; cursor: pointer; padding: 0; }
 [data-chat-surface] .hdr-btn:hover, [data-chat-surface] .ico2.note:hover { background: #f4f4f5; }
+[data-chat-surface] .mact { position: absolute; top: 4px; right: 18px; display: none; align-items: center; gap: 2px; padding: 2px; background: #fff; border: 1px solid #ececec; border-radius: 8px; box-shadow: 0 2px 6px rgba(0,0,0,.05); z-index: 3; }
+[data-chat-surface] .msg:hover .mact, [data-chat-surface] .mact:focus-within, [data-chat-surface] .mact[data-on] { display: flex; }
+[data-chat-surface] .mact button.mb { border: 0; background: transparent; border-radius: 6px; height: 24px; padding: 0 8px; font: inherit; font-size: 11.5px; color: #525252; cursor: pointer; }
+[data-chat-surface] .mact button.mb:hover { background: #f4f4f5; color: #171717; }
+[data-chat-surface] .mact button.mb[data-danger] { color: #b42318; }
+[data-chat-surface] .mact button.mb[data-armed] { background: #fdecea; color: #b42318; font-weight: 600; }
+[data-chat-surface] .edited { font-size: 11px; color: #a3a3a3; margin-left: 4px; }
+[data-chat-surface] .edit-box { margin-top: 4px; max-width: 72ch; border: 1px solid #d4d4d4; border-radius: 10px; background: #fff; padding: 6px 8px 8px; }
+[data-chat-surface] .edit-box textarea { display: block; width: 100%; border: 0; outline: none; resize: vertical; font: inherit; font-size: 13.5px; line-height: 1.6; color: #171717; background: transparent; min-height: 44px; }
 `;
 
 /**
@@ -497,7 +509,7 @@ function Card({
 /** What a message carries. Re-checked server-side for every reader, so an
  * attachment that is not listed here is one this person may not open. A
  * video drawn as a card (`videos`) is not listed a second time as a chip. */
-function Attachments({ items, drawn }: { items: ChannelAttachment[]; drawn: ReadonlySet<string> }) {
+export function Attachments({ items, drawn = new Set() }: { items: ChannelAttachment[]; drawn?: ReadonlySet<string> }) {
   const rest = items.filter((f) => !drawn.has(f.id));
   if (!rest.length) return null;
   return (
@@ -579,6 +591,19 @@ export function ChannelSurface(props: {
   directAvatar?: string | null;
   /** And their user id, for their default picture. */
   directId?: string | null;
+  /** Who is reading: their own messages can be changed and taken back. */
+  meId?: string | null;
+  /** A private channel: only its members see it (the empty state says so). */
+  isPrivate?: boolean;
+  /** Saving a changed message; resolves to the refusal, if any. */
+  onEdit?: (messageId: string, body: string) => Promise<string | null>;
+  /** Taking one's own message back. */
+  onDelete?: (messageId: string) => void;
+  /** 退出频道 / 归档频道 in the header, when this reader may. */
+  onLeave?: () => void;
+  onArchive?: () => void;
+  /** Shows the assistant beside the channel on a narrow window. */
+  onToggleAssistant?: () => void;
 }): React.JSX.Element {
   const zh = props.locale.startsWith("zh");
   /* Falls back to the newest message rather than the clock, so a caller that
@@ -618,6 +643,17 @@ export function ChannelSurface(props: {
     return () => el.removeEventListener("scroll", onScroll);
   }, []);
   const format = (f: Format) => formatTextarea(box.current, f, setDraft);
+  /* Changing or taking back one's own message (QA, 2 Oct). */
+  const [editing, setEditing] = React.useState<{ id: string; text: string } | null>(null);
+  const [savingEdit, setSavingEdit] = React.useState(false);
+  const [armed, setArmed] = React.useState<string | null>(null);
+  async function saveEdit() {
+    if (!editing || savingEdit || !props.onEdit) return;
+    setSavingEdit(true);
+    const refused = await props.onEdit(editing.id, editing.text);
+    setSavingEdit(false);
+    if (!refused) setEditing(null);
+  }
 
   /* ---------- tagging ---------- */
 
@@ -911,6 +947,27 @@ export function ChannelSurface(props: {
             <path d="m15.8 15.8 4 4" />
           </svg>
         </button>
+        {props.onToggleAssistant ? (
+          <button
+            type="button"
+            className="ico2 hdr-btn cv-dock-btn"
+            onClick={props.onToggleAssistant}
+            aria-label={zh ? "助理" : "Assistant"}
+            title={zh ? "打开助理" : "Open the assistant"}
+          >
+            <svg viewBox="0 0 24 24">
+              <path d="M12 3.5 13.9 10l6.6 2-6.6 2L12 20.5 10.1 14l-6.6-2 6.6-2z" />
+            </svg>
+          </button>
+        ) : null}
+        <RowMenu
+          size={32}
+          label={zh ? "频道操作" : "Channel actions"}
+          items={[
+            ...(props.onLeave ? [{ key: "leave", label: zh ? "退出频道" : "Leave channel", confirm: zh ? "确认退出" : "Really leave", onSelect: props.onLeave }] : []),
+            ...(props.onArchive ? [{ key: "archive", label: zh ? "归档频道" : "Archive channel", danger: true, confirm: zh ? "确认归档" : "Really archive", onSelect: props.onArchive }] : []),
+          ]}
+        />
         <span
           className="ico2 note"
           role="note"
@@ -951,10 +1008,20 @@ export function ChannelSurface(props: {
                 <div style={{ fontSize: 15, fontWeight: 600 }}>
                   {zh ? `这里还没有消息` : "No messages here yet"}
                 </div>
+                {/* Says who will actually see it (QA, 2 Oct: a DM and a private
+                    channel both promised 「这里的所有人都能看到」). */}
                 <p className="mut" style={{ marginTop: 4, lineHeight: 1.6, maxWidth: 460 }}>
-                  {zh
-                    ? "写下第一条消息，这里的所有人都能看到。输入 @ 可以叫上同事或 AI 同事。"
-                    : "Write the first message; everyone here will see it. Type @ to bring in a colleague or an AI teammate."}
+                  {props.isDirect
+                    ? zh
+                      ? `写下第一条消息，只有你和${props.name}能看到。输入 @ 可以叫上 AI 同事。`
+                      : `Write the first message; only you and ${props.name} will see it. Type @ to bring in an AI teammate.`
+                    : props.isPrivate
+                      ? zh
+                        ? "写下第一条消息，只有这个私密频道的成员能看到。输入 @ 可以叫上同事或 AI 同事。"
+                        : "Write the first message; only the members of this private channel will see it. Type @ to bring in a colleague or an AI teammate."
+                      : zh
+                        ? "写下第一条消息，工作室里的所有人都能看到。输入 @ 可以叫上同事或 AI 同事。"
+                        : "Write the first message; everyone in the studio will see it. Type @ to bring in a colleague or an AI teammate."}
                 </p>
               </div>
             ) : null}
@@ -1009,6 +1076,33 @@ export function ChannelSurface(props: {
                       </span>
                     ) : null}
                     {avatar}
+                    {/* Change or take back what you wrote yourself. Not an
+                        employee's message, not one still on its way. */}
+                    {props.meId && m.authorId === props.meId && m.isAgent !== true && !m.pending && !m.id.startsWith("pending-") && editing?.id !== m.id && (props.onEdit || props.onDelete) ? (
+                      <span className="mact" data-on={armed === m.id || undefined}>
+                        {props.onEdit ? (
+                          <button type="button" className="mb" onClick={() => { setArmed(null); setEditing({ id: m.id, text: m.body }); }}>
+                            {zh ? "编辑" : "Edit"}
+                          </button>
+                        ) : null}
+                        {props.onDelete ? (
+                          <button
+                            type="button"
+                            className="mb"
+                            data-danger=""
+                            data-armed={armed === m.id || undefined}
+                            onBlur={() => setArmed((a) => (a === m.id ? null : a))}
+                            onClick={() => {
+                              if (armed !== m.id) return setArmed(m.id);
+                              setArmed(null);
+                              props.onDelete?.(m.id);
+                            }}
+                          >
+                            {armed === m.id ? (zh ? "确认删除" : "Really delete") : zh ? "删除" : "Delete"}
+                          </button>
+                        ) : null}
+                      </span>
+                    ) : null}
                     <div style={{ minWidth: 0, flexGrow: 1 }}>
                       {cont ? null : (
                         <div className="head">
@@ -1033,7 +1127,32 @@ export function ChannelSurface(props: {
                           <span className="when">{at}</span>
                         </div>
                       )}
-                      {m.card ? (
+                      {editing?.id === m.id ? (
+                        <div className="edit-box">
+                          <textarea
+                            autoFocus
+                            value={editing.text}
+                            aria-label={zh ? "修改消息" : "Edit the message"}
+                            onChange={(e) => setEditing({ id: m.id, text: e.target.value })}
+                            onKeyDown={(e) => {
+                              if (e.key === "Escape") setEditing(null);
+                              if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+                                e.preventDefault();
+                                void saveEdit();
+                              }
+                            }}
+                          />
+                          <div style={{ display: "flex", gap: 6, justifyContent: "flex-end", alignItems: "center" }}>
+                            <span style={{ fontSize: 11, color: "#a3a3a3", marginRight: "auto" }}>{zh ? "回车保存，Esc 取消" : "Enter to save, Esc to cancel"}</span>
+                            <button type="button" onClick={() => setEditing(null)} style={{ height: 26, padding: "0 10px", border: "1px solid #e5e5e5", borderRadius: 7, background: "#fff", fontFamily: "inherit", fontSize: 12, cursor: "pointer" }}>
+                              {zh ? "取消" : "Cancel"}
+                            </button>
+                            <button type="button" disabled={savingEdit} onClick={() => void saveEdit()} style={{ height: 26, padding: "0 12px", border: 0, borderRadius: 7, background: "#171717", color: "#fff", fontFamily: "inherit", fontSize: 12, cursor: "pointer", opacity: savingEdit ? 0.55 : 1 }}>
+                              {savingEdit ? (zh ? "保存中…" : "Saving…") : zh ? "保存" : "Save"}
+                            </button>
+                          </div>
+                        </div>
+                      ) : m.card ? (
                         <div
                           className="doc"
                           style={{
@@ -1046,6 +1165,7 @@ export function ChannelSurface(props: {
                       ) : (
                         <Body body={body} />
                       )}
+                      {m.editedAt && editing?.id !== m.id ? <span className="edited">{zh ? "（已编辑）" : "(edited)"}</span> : null}
                       {/* A render or a video it names, or a video attached to
                           it: the poster that plays, 下载, 打开项目. On a message
                           that already has its "打开项目" button the card does
@@ -1355,28 +1475,28 @@ export function ChannelSurface(props: {
                       <path d="M15.6 8.6v4.6a2.4 2.4 0 0 0 4.8 0V12a8.4 8.4 0 1 0-3.3 6.7" />
                     </svg>
                   </button>
-                  <span className="sep" aria-hidden />
-                  <button type="button" className="ico2" onClick={() => format("bold")} aria-label="Bold" title={zh ? "加粗" : "Bold"}>
+                  <span className="sep fmt" aria-hidden />
+                  <button type="button" className="ico2 fmt" onClick={() => format("bold")} aria-label={zh ? "加粗" : "Bold"} title={zh ? "加粗" : "Bold"}>
                     <svg viewBox="0 0 24 24">
                       <path d="M7 5h6a3.5 3.5 0 0 1 0 7H7zM7 12h7a3.5 3.5 0 0 1 0 7H7z" />
                     </svg>
                   </button>
-                  <button type="button" className="ico2" onClick={() => format("italic")} aria-label="Italic" title={zh ? "斜体" : "Italic"}>
+                  <button type="button" className="ico2 fmt" onClick={() => format("italic")} aria-label={zh ? "斜体" : "Italic"} title={zh ? "斜体" : "Italic"}>
                     <svg viewBox="0 0 24 24">
                       <path d="M10 5h8M6 19h8M14.5 5 9.5 19" />
                     </svg>
                   </button>
-                  <button type="button" className="ico2" onClick={() => format("link")} aria-label="Link" title={zh ? "链接" : "Link"}>
+                  <button type="button" className="ico2 fmt" onClick={() => format("link")} aria-label={zh ? "链接" : "Link"} title={zh ? "链接" : "Link"}>
                     <svg viewBox="0 0 24 24">
                       <path d="M9.5 14.5 14.5 9.5M8 11l-2 2a3.5 3.5 0 0 0 5 5l2-2M16 13l2-2a3.5 3.5 0 0 0-5-5l-2 2" />
                     </svg>
                   </button>
-                  <button type="button" className="ico2" onClick={() => format("list")} aria-label="List" title={zh ? "列表" : "List"}>
+                  <button type="button" className="ico2 fmt" onClick={() => format("list")} aria-label={zh ? "列表" : "List"} title={zh ? "列表" : "List"}>
                     <svg viewBox="0 0 24 24">
                       <path d="M8 6.5h11M8 12h11M8 17.5h11M4.5 6.5h.01M4.5 12h.01M4.5 17.5h.01" />
                     </svg>
                   </button>
-                  <button type="button" className="ico2" onClick={() => format("code")} aria-label="Code" title={zh ? "代码" : "Code"}>
+                  <button type="button" className="ico2 fmt" onClick={() => format("code")} aria-label={zh ? "代码" : "Code"} title={zh ? "代码" : "Code"}>
                     <svg viewBox="0 0 24 24">
                       <path d="m8 8-4 4 4 4M16 8l4 4-4 4" />
                     </svg>

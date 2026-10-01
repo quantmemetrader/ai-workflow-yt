@@ -28,6 +28,11 @@ import { notify } from "@/lib/client/notify";
 import { ModuleSidebar, type ScreenItem } from "@/components/shell/ModuleSidebar";
 import { PostVideo, type ComposerVideo } from "@/components/publish/PostVideo";
 
+/** A project somebody marked 已发布 on its own page (work_projects.source.published).
+ * Those never pass through this module's queue, so the log read empty while
+ * videos had gone out (QA, 2 Oct). */
+export type MarkedPublication = { projectId: string; title: string; at: string; platform: string; platformName: string; url: string | null; byName: string };
+
 /**
  * Publish (spec §4.6), transcribed from the four `Pub-*` artboards.
  *
@@ -54,7 +59,9 @@ export function PublishScreen({
   locale,
   model,
   videos = [],
+  marked = [],
 }: {
+  marked?: MarkedPublication[];
   channels: ChannelRow[];
   posts: PostRow[];
   log: LogRow[];
@@ -119,7 +126,7 @@ export function PublishScreen({
       >
         <span style={{ fontSize: 15, fontWeight: 600 }}>{t("Publishing", "发布设置")}</span>
         <span style={{ fontSize: 11.5, color: "#999999" }}>
-          {t("connect the accounts you post to. Each video is posted from its own 发布 tab.", "在这里连接要发布的账号。每条视频在它自己的「发布」页里发。")}
+          {t("connect the accounts you post to. Videos usually go out from their project; you can also start a post here.", "连接要发布的账号。视频通常在项目里发布，也可以在这里新建。")}
         </span>
         <button
           type="button"
@@ -131,7 +138,7 @@ export function PublishScreen({
       </header>
       <ModuleSidebar
       title="Publish"
-      titleZh="发布中"
+      titleZh="发布"
       screens={SCREENS}
       active={tab}
       onChange={setTab}
@@ -199,14 +206,14 @@ export function PublishScreen({
           )}
 
           {tab === "log" && (
-            <LogTable log={log} zh={zh} busy={busy} onRetry={(id) => run(() => retryTargetAction(id))} />
+            <LogTable log={log} marked={marked} zh={zh} busy={busy} onRetry={(id) => run(() => retryTargetAction(id))} />
           )}
         </div>
 
         <ResearchAgentPanel
           accent={ACCENT}
           zh={zh}
-          scope={t("Publishing", "发布中")}
+          scope={t("Publishing", "发布")}
           note={agentNote(channels, posts, waiting.length, zh)}
           placeholder={t("Ask about what is going out…", "询问即将发布的内容…")}
           model={model}
@@ -397,11 +404,20 @@ const TONES = {
 
 type Tone = keyof typeof TONES;
 
-/** The pill in a card's corner: can it post, in one word. */
-function channelHealth(c: ChannelRow): { tone: Tone; en: string; zh: string } {
+/** The pill in a card's corner: can it post, in one word.
+ *
+ * (QA, 2 Oct) It said 可发布 in green on a card whose sign-in had run out
+ * and whose platform was rate-limiting. An expired sign-in or a standing
+ * platform error now wins over `canPost`. `tokenExpired` is read on the
+ * server (app/(app)/publish/page.tsx) so the pill never changes on hydration. */
+function channelHealth(c: ChannelRow & { tokenExpired?: boolean }): { tone: Tone; en: string; zh: string } {
   if (!c.enabled) return { tone: "quiet", en: "switched off", zh: "已停用" };
   if (c.needsReconnect) return { tone: "bad", en: "needs reconnecting", zh: "需重新连接" };
+  if (c.tokenExpired) return { tone: "bad", en: "sign in again", zh: "需要重新授权" };
   if (c.status === "error") return { tone: "bad", en: "connection error", zh: "连接出错" };
+  const said = [c.lastError, ...c.issues].filter((x): x is string => Boolean(x)).map(describeError);
+  if (said.some((e) => e.reconnect)) return { tone: "bad", en: "sign in again", zh: "需要重新授权" };
+  if (said.some((e) => e.tone === "warn")) return { tone: "warn", en: "limited for now", zh: "暂时受限" };
   if (c.canPost) return { tone: "good", en: "can post", zh: "可发布" };
   return { tone: "quiet", en: "read only", zh: "只读" };
 }
@@ -1414,18 +1430,58 @@ function Approvals({
 
 /* ------------------------------------------------------------------ log */
 
+function MarkedList({ marked, zh }: { marked: MarkedPublication[]; zh: boolean }) {
+  const t = (en: string, cn: string) => (zh ? cn : en);
+  return (
+    <div style={{ display: "flex", flexDirection: "column" }}>
+      <div style={{ fontSize: 12.5, fontWeight: 600, color: "#383838", margin: "4px 4px 6px" }}>{t("Marked published on the project", "在项目里标记为已发布")}</div>
+      {marked.map((m) => (
+        <div key={`${m.projectId}-${m.platform}`} style={{ ...row, borderBottom: "1px solid #f3f3f3", minHeight: 44 }}>
+          <span style={{ width: 130, fontSize: 11.5, color: "#7c7c7c" }}>{hkStamp(new Date(m.at))}</span>
+          <span style={{ flexGrow: 1, minWidth: 0 }}>
+            <a href={`/projects/${m.projectId}`} title={m.title} style={{ fontSize: 12.5, color: "#171717", textDecoration: "none", display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {m.title}
+            </a>
+            {m.byName ? <span style={{ fontSize: 11, color: "#999999" }}>{t(`marked by ${m.byName}`, `${m.byName} 标记`)}</span> : null}
+          </span>
+          <span style={{ width: 140, fontSize: 11.5, color: "#7c7c7c" }}>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+              <PlatformMark platform={m.platform} size={11} />
+              {m.platformName}
+            </span>
+          </span>
+          <span style={{ width: 90 }}>
+            <Badge tone="good" text={t("published", "已发布")} />
+          </span>
+          <span style={{ width: 70, display: "flex", justifyContent: "flex-end" }}>
+            {m.url ? (
+              <a href={m.url} target="_blank" rel="noreferrer" style={{ fontSize: 11.5, color: ACCENT }}>
+                {t("open", "打开")}
+              </a>
+            ) : null}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function LogTable({
   log,
+  marked = [],
   zh,
   busy,
   onRetry,
 }: {
   log: LogRow[];
+  marked?: MarkedPublication[];
   zh: boolean;
   busy: boolean;
   onRetry: (targetId: string) => void;
 }) {
   const t = (en: string, cn: string) => (zh ? cn : en);
+
+  if (!log.length && marked.length) return <MarkedList marked={marked} zh={zh} />;
 
   if (!log.length) {
     /* An empty log is a true statement and a dead end. It now says what the
@@ -1522,6 +1578,11 @@ function LogTable({
           </span>
         </div>
       ))}
+      {marked.length ? (
+        <div style={{ marginTop: 22 }}>
+          <MarkedList marked={marked} zh={zh} />
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -5,11 +5,13 @@ import { db } from "@/lib/db/client";
 import { folders } from "@/lib/db/schema";
 import { requireModule } from "@/lib/auth/dal";
 import { canReadFolders, relationOn } from "@/lib/authz/rebac";
-import { listFolder } from "@/lib/files/service";
+import { folderLabel, listFolder } from "@/lib/files/service";
 import { answeringModel } from "@/lib/ai/models";
 import { FilesView } from "@/components/files/FilesView";
 import { toRows } from "@/components/files/rows";
 import { relationsForFiles } from "@/lib/authz/rebac";
+
+export const metadata = { title: "文件" };
 
 export default async function FolderPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -38,7 +40,8 @@ export default async function FolderPage({ params }: { params: Promise<{ id: str
 
   const breadcrumbs = folder.path
     .map((pid) => trail.find((t) => t.id === pid))
-    .filter((x): x is { id: string; name: string } => Boolean(x));
+    .filter((x): x is { id: string; name: string } => Boolean(x))
+    .map((b) => ({ ...b, name: folderLabel(b.name) }));
 
   return (
     <FilesView
@@ -47,7 +50,7 @@ export default async function FolderPage({ params }: { params: Promise<{ id: str
       locale={viewer.locale ?? "zh-CN"}
       model={answeringModel()}
       canEdit={held === "owner" || held === "editor" || viewer.isAdmin}
-      sidebarFolders={roots.filter((f) => f.name !== "__home")}
+      sidebarFolders={roots.filter((f) => f.name !== "__home").map((f) => ({ ...f, name: folderLabel(f.name) }))}
       folders={contents.folders.map((f) => ({ id: f.id, name: f.name }))}
       files={toRows(contents.files, access, await visibilityForFiles(contents.files.map((r) => r.file.id)), viewer)}
     />

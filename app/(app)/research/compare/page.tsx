@@ -5,7 +5,7 @@ import { trendingSearches } from "@/lib/research/trending";
 import { ResearchShell } from "@/components/research/ResearchShell";
 import { CompareView } from "@/components/research/CompareView";
 
-export const metadata = { title: "搜索与比较 · Search & compare" };
+export const metadata = { title: "搜索与比较" };
 
 const COLOURS = ["#007be0", "#383838", "#8d99a6", "#c7c7c7", "#278f5e"];
 
@@ -45,7 +45,7 @@ export default async function ComparePage({
   const trending = await trendingSearches("HK").catch(() => []);
 
   return (
-    <ResearchShell zh={(viewer.locale ?? "zh-CN").startsWith("zh")}>
+    <ResearchShell zh={(viewer.locale ?? "zh-CN").startsWith("zh")} tenantId={viewer.tenantId}>
       <CompareView
       watched={watched
         .filter((t) => !queries.includes(t.query))

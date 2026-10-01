@@ -5,7 +5,7 @@ import { listWorkProjects, workProjectDetail, type ProjectDetail } from "@/lib/p
 import type { Pipeline, Stage } from "@/lib/home/pipeline";
 import { FlowProjectPicker } from "@/components/projects/FlowProjectPicker";
 
-export const metadata = { title: "自动化流程 · Flow" };
+export const metadata = { title: "自动化流程" };
 
 /**
  * 自动化流程 — one project's whole line on the board.
@@ -56,7 +56,7 @@ function pipelineOf(p: ProjectDetail, zh: boolean): Pipeline {
     { key: "topic", n: 1, owner: "research", state: "done", line: p.source?.label ?? t("项目已开", "Project started"), href: `/projects/${p.id}`, progress: null },
     { key: "plan", n: 2, owner: "planning", state: "done", line: t("项目已开", "Project started"), href: `/projects/${p.id}`, progress: null },
     { key: "script", n: 3, owner: "script", state: sv(script.state), line: script.line, href: scriptHref, progress: null },
-    { key: "approve", n: 4, owner: "you", state: p.script?.status === "locked" || script.state === "skipped" ? "done" : p.script?.status === "awaiting_approval" ? "you" : "todo", line: p.script?.status === "locked" ? t("已批准", "Approved") : script.state === "skipped" ? t("跳过", "Skipped") : t("写完后", "After the script"), href: scriptHref ? `${scriptHref}?tab=approval` : null, progress: null },
+    { key: "approve", n: 4, owner: "you", state: p.script?.status === "locked" || script.state === "skipped" || p.status === "done" ? "done" : p.script?.status === "awaiting_approval" ? "you" : "todo", line: p.script?.status === "locked" ? t("已批准", "Approved") : script.state === "skipped" ? t("跳过", "Skipped") : p.status === "done" ? t("已发布", "Published") : t("写完后", "After the script"), href: scriptHref ? `${scriptHref}?tab=approval` : null, progress: null },
     { key: "cut", n: 5, owner: "video", state: clips.state === "skipped" ? sv(edit.state) : p.video && p.video.items > 0 ? "done" : p.video && p.video.clips > 0 ? "running" : "todo", line: clips.line, href: videoHref, progress: null },
     { key: "export", n: 6, owner: "video", state: sv(edit.state), line: edit.line, href: videoHref, progress: p.render && !rendered ? p.render.progress : null },
     { key: "publish", n: 7, owner: "article", state: p.status === "done" ? "done" : rendered ? "you" : "todo", line: deliver.line, href: `/projects/${p.id}`, progress: null },

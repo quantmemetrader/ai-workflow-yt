@@ -23,10 +23,10 @@ const isId = (v: unknown): v is string => typeof v === "string" && v.length > 0 
 
 async function projectOf(projectId: unknown): Promise<{ viewer: Viewer; project: NonNullable<Awaited<ReturnType<typeof visibleProject>>> } | { error: string }> {
   const viewer = await getViewer();
-  if (!viewer || !viewer.modules.includes("chat")) return { error: "Not allowed" };
-  if (!isId(projectId)) return { error: "Not found" };
+  if (!viewer || !viewer.modules.includes("chat")) return { error: "没有权限" };
+  if (!isId(projectId)) return { error: "找不到了，可能已被删除" };
   const project = await visibleProject(viewer, projectId);
-  if (!project) return { error: "Not found" };
+  if (!project) return { error: "找不到了，可能已被删除" };
   return { viewer, project };
 }
 
@@ -59,7 +59,7 @@ export async function landProjectFileAction(projectId: unknown, fileId: unknown,
   if ("error" in ok) return ok;
   const { viewer, project } = ok;
   const zh = zhOf(viewer);
-  if (!isId(fileId) || !isProjectFileRole(role)) return { error: "Not found" };
+  if (!isId(fileId) || !isProjectFileRole(role)) return { error: "找不到了，可能已被删除" };
   if (!(await tagProjectFile(viewer, project.id, fileId, role))) return { error: zh ? "找不到这个文件" : "That file was not found" };
   let note: string | null = null;
   if (role === "clip" && project.videoProjectId) {
@@ -80,7 +80,7 @@ export async function moveProjectFilesAction(projectId: unknown, fileIds: unknow
   const ok = await projectOf(projectId);
   if ("error" in ok) return ok;
   const { viewer, project } = ok;
-  if (!Array.isArray(fileIds) || !fileIds.every(isId) || fileIds.length > 200 || !isProjectFileRole(role)) return { error: "Not found" };
+  if (!Array.isArray(fileIds) || !fileIds.every(isId) || fileIds.length > 200 || !isProjectFileRole(role)) return { error: "找不到了，可能已被删除" };
   let moved = 0;
   for (const id of fileIds as string[]) {
     if (!(await tagProjectFile(viewer, project.id, id, role as ProjectFileRole))) continue;
@@ -96,7 +96,7 @@ export async function unlinkProjectFileAction(projectId: unknown, fileId: unknow
   const ok = await projectOf(projectId);
   if ("error" in ok) return ok;
   const { viewer, project } = ok;
-  if (!isId(fileId)) return { error: "Not found" };
+  if (!isId(fileId)) return { error: "找不到了，可能已被删除" };
   await untagProjectFile(viewer, project.id, fileId);
   await setScriptSource(viewer, project.scriptId, fileId, false);
   refresh(project.id);
@@ -108,7 +108,7 @@ export async function renameProjectFileAction(projectId: unknown, fileId: unknow
   if ("error" in ok) return ok;
   const { viewer, project } = ok;
   const zh = zhOf(viewer);
-  if (!isId(fileId) || typeof name !== "string") return { error: "Not found" };
+  if (!isId(fileId) || typeof name !== "string") return { error: "找不到了，可能已被删除" };
   try {
     const row = await renameFile(viewer, fileId, name.slice(0, 255));
     refresh(project.id);
@@ -125,7 +125,7 @@ export async function deleteProjectFilesAction(projectId: unknown, fileIds: unkn
   if ("error" in ok) return ok;
   const { viewer, project } = ok;
   const zh = zhOf(viewer);
-  if (!Array.isArray(fileIds) || !fileIds.every(isId) || fileIds.length > 200) return { error: "Not found" };
+  if (!Array.isArray(fileIds) || !fileIds.every(isId) || fileIds.length > 200) return { error: "找不到了，可能已被删除" };
   let deleted = 0;
   let refused = 0;
   for (const id of fileIds as string[]) {
@@ -150,12 +150,12 @@ export async function previewTextAction(projectId: unknown, fileId: unknown) {
   const ok = await projectOf(projectId);
   if ("error" in ok) return ok;
   const { viewer } = ok;
-  if (!isId(fileId)) return { error: "Not found" };
+  if (!isId(fileId)) return { error: "找不到了，可能已被删除" };
   const [row] = await db
     .select({ text: files.text })
     .from(files)
     .where(and(eq(files.id, fileId), eq(files.tenantId, viewer.tenantId), isNull(files.deletedAt), canReadFiles(viewer)))
     .limit(1);
-  if (!row) return { error: "Not found" };
+  if (!row) return { error: "找不到了，可能已被删除" };
   return { text: (row.text ?? "").slice(0, 40000) };
 }

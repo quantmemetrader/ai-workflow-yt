@@ -49,7 +49,10 @@ import {
 import { BlockExtras, Highlights, findMatches, marksKey, spokenUnits, type MarksState, type Tracked } from "./editor";
 import { MenuBar, Modal, type Menu } from "./chrome";
 import { BLOCKS, SPACINGS, Toolbar, changeIndent, setBlock, setLineHeight, type Mode } from "./toolbar";
-import { DocGlyph, GI } from "./icons";
+import { GI } from "./icons";
+import { measureText } from "@/lib/script/count";
+import { richToHtml } from "@/lib/script/rich-html";
+import type { RichDoc } from "@/lib/script/rich";
 import type { DocComment, ScriptDocProps } from "./types";
 
 /**
@@ -100,25 +103,48 @@ const STYLES: { zh: string; label: string; en: string }[] = [
   { label: "反常识开头", zh: "开头改成一个反常识的观点，再一步步解释为什么", en: "Counter-intuitive opening" },
 ];
 
-const CJK = /[㐀-鿿豈-﫿]/g;
-function measureText(s: string) {
-  const cjk = (s.match(CJK) ?? []).length;
-  const words = (s.replace(CJK, " ").match(/[A-Za-z0-9']+/g) ?? []).length;
-  return { count: cjk + words, cjk, words, seconds: cjk / 4.5 + words / 2.6 };
-}
+/* 字数 and 时长 come from lib/script/count, the same counter the versions use (QA, 2 Oct). */
 function clock(sec: number, zh: boolean) {
   const s = Math.max(0, Math.round(sec));
   const m = Math.floor(s / 60);
   return zh ? (m ? `${m} 分 ${s % 60} 秒` : `${s} 秒`) : `${m}:${String(s % 60).padStart(2, "0")}`;
 }
-function ago(iso: string, zh: boolean) {
-  const d = new Date(iso);
-  const mins = Math.round((Date.now() - d.getTime()) / 60000);
+/*
+ * Times on the page. The server and the browser must write the same text or
+ * React throws #418 (QA, 2 Oct: 「已批准 · 9月28日 02:15」 came out in UTC on
+ * the server and in local time in the browser). So the first render writes
+ * the Hong Kong clock by hand, no locale or timezone involved, and "3 分钟前"
+ * only appears once the page is running (`useNow`).
+ */
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+function hkStamp(iso: string, zh: boolean) {
+  const d = new Date(new Date(iso).getTime() + 8 * 3600_000);
+  const hm = `${String(d.getUTCHours()).padStart(2, "0")}:${String(d.getUTCMinutes()).padStart(2, "0")}`;
+  return zh ? `${d.getUTCMonth() + 1}月${d.getUTCDate()}日 ${hm}` : `${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}, ${hm}`;
+}
+function ago(iso: string, zh: boolean, now: number | null) {
+  if (now === null) return hkStamp(iso, zh);
+  const mins = Math.round((now - new Date(iso).getTime()) / 60000);
   if (mins < 1) return zh ? "刚刚" : "just now";
   if (mins < 60) return zh ? `${mins} 分钟前` : `${mins}m ago`;
   const h = Math.round(mins / 60);
   if (h < 24) return zh ? `${h} 小时前` : `${h}h ago`;
-  return d.toLocaleDateString(zh ? "zh-CN" : "en", { month: "short", day: "numeric" }) + " " + d.toLocaleTimeString(zh ? "zh-CN" : "en", { hour: "2-digit", minute: "2-digit" });
+  return hkStamp(iso, zh);
+}
+/** The time now, once the page runs in the browser (null on the server and the first render). */
+function useNow() {
+  const [now, setNow] = React.useState<number | null>(null);
+  React.useEffect(() => {
+    setNow(Date.now());
+    const h = window.setInterval(() => setNow(Date.now()), 60_000);
+    return () => window.clearInterval(h);
+  }, []);
+  return now;
+}
+/* Notes written by the app itself before they were in Chinese. */
+function noteText(note: string, zh: boolean) {
+  if (zh && note === "before restoring an earlier version") return "恢复旧版本前的稿子";
+  return note;
 }
 
 type Panel = null | "ai" | "versions" | "comments";
@@ -133,6 +159,7 @@ export function ScriptDoc(props: ScriptDocProps) {
   const t = (a: string, b: string) => (zh ? a : b);
   const router = useRouter();
   const [pending, start] = React.useTransition();
+  const now = useNow();
 
   /* ---------------- view state ---------------- */
   const [mode, setModeRaw] = React.useState<Mode>(me.canEdit ? "edit" : "view");
@@ -157,8 +184,11 @@ export function ScriptDoc(props: ScriptDocProps) {
      On a laptop the paper ran off the right edge (29 Sep). */
   const [fit, setFit] = React.useState(1);
   const [marginOn, setMarginOn] = React.useState(true);
+  const [canvasW, setCanvasW] = React.useState(0);
   const setZoom = setZoomRaw;
   const z = zoom * fit;
+  /* Zoomed wider than the window: the page row scrolls sideways. */
+  const wide = canvasW > 0 && (816 + (marginOn ? 300 : 0)) * z > canvasW - 8;
   /* Unlocked for this approved version only: a newer approval locks it again. */
   const [unlockedFor, setUnlockedFor] = React.useState<number | null>(null);
   const unlocked = script?.lockedVersion != null && unlockedFor === script.lockedVersion;
@@ -167,7 +197,7 @@ export function ScriptDoc(props: ScriptDocProps) {
   const [lockPrompt, setLockPrompt] = React.useState(false);
   const [proposal, setProposal] = React.useState<Proposal | null>(null);
   const [thinking, setThinking] = React.useState(false);
-  const [viewing, setViewing] = React.useState<{ versionNo: number; beats: { visual: string; voiceover: string; naturalSound: boolean }[] } | null>(null);
+  const [viewing, setViewing] = React.useState<{ versionNo: number; beats: { visual: string; voiceover: string; naturalSound: boolean }[]; doc: RichDoc | null } | null>(null);
   const [dialog, setDialog] = React.useState<null | "count" | "keys" | "rename" | "link" | "shot">(null);
   const [find, setFind] = React.useState<{ term: string; replace: string; current: number; withReplace: boolean } | null>(null);
   const [saveState, setSaveState] = React.useState<"saved" | "dirty" | "saving" | "error">("saved");
@@ -179,8 +209,10 @@ export function ScriptDoc(props: ScriptDocProps) {
   const editable = me.canEdit && mode === "edit" && !locked && !proposal && !viewing && !props.writing && !thinking;
 
   /* ---------------- the editor ---------------- */
-  const saving = React.useRef(false);
+  /* editSeq counts edits; savedSeq is the last edit the server has. */
   const editSeq = React.useRef(0);
+  const savedSeq = React.useRef(0);
+  const inflight = React.useRef<Promise<void> | null>(null);
   const lastDoc = React.useRef(JSON.stringify(props.doc));
   const editor = useEditor({
     immediatelyRender: false,
@@ -196,7 +228,8 @@ export function ScriptDoc(props: ScriptDocProps) {
       TextAlign.configure({ types: ["heading", "paragraph"] }),
       Image.configure({ inline: false }),
       TaskList,
-      TaskItem.configure({ nested: true }),
+      /* The checkbox's screen-reader label in the page's language (QA, 2 Oct: it read "Task item checkbox for …"). */
+      TaskItem.configure({ nested: true, a11y: { checkboxLabel: (node, checked) => (zh ? `${checked ? "已完成" : "待办"}：${node.textContent || "空白事项"}` : `${checked ? "Done" : "To do"}: ${node.textContent || "empty item"}`) } }),
       Placeholder.configure({ placeholder: () => (zh ? "从这里开始写…" : "Start writing…"), showOnlyCurrent: true }),
       BlockExtras,
       Highlights.configure({ zh }),
@@ -213,32 +246,66 @@ export function ScriptDoc(props: ScriptDocProps) {
     editor?.setEditable(editable);
   }, [editor, editable]);
 
-  const save = React.useCallback(async () => {
-    if (!editor || saving.current) return;
-    saving.current = true;
+  /*
+   * Saving. One save at a time; a save asked for while one is in flight waits
+   * for it and then saves whatever is newer, so no edit is ever left without
+   * a save coming (QA, 2 Oct: with a slow server the timer fired mid-save,
+   * the save bailed out, and the page sat on 有改动未保存 for good; the last
+   * lines were gone on reload). Resolves true once the server has every edit
+   * made before the call.
+   */
+  const errorShown = React.useRef(false);
+  const saveRef = React.useRef<() => Promise<boolean>>(async () => false);
+  const save = React.useCallback(async (): Promise<boolean> => {
+    if (!editor) return false;
+    while (inflight.current) await inflight.current;
+    if (editSeq.current === savedSeq.current) return true;
     const mySeq = editSeq.current;
-    setSaveState("saving");
     /* Plain objects only: ProseMirror's attrs have no prototype, which a server action cannot take. */
     const json = JSON.parse(JSON.stringify(editor.getJSON())) as Record<string, unknown>;
-    const r = await saveRichAction(projectId, json, editor.getHTML()).catch((e: unknown) => ({ error: e instanceof Error ? e.message : String(e) }));
-    saving.current = false;
-    if ("error" in r && r.error) {
-      setSaveState("error");
-      notify(r.error);
-      return;
-    }
-    lastDoc.current = JSON.stringify(json);
-    setSaveState(editSeq.current === mySeq ? "saved" : "dirty");
+    const html = editor.getHTML();
+    let ok = false;
+    const run = (async () => {
+      try {
+        setSaveState("saving");
+        const r = await saveRichAction(projectId, json, html).catch((e: unknown) => ({ error: e instanceof Error ? e.message : String(e) }));
+        if ("error" in r && r.error) {
+          setSaveState("error");
+          if (!errorShown.current) notify(r.error);
+          errorShown.current = true;
+          return;
+        }
+        errorShown.current = false;
+        ok = true;
+        savedSeq.current = mySeq;
+        lastDoc.current = JSON.stringify(json);
+        setSaveState(editSeq.current === mySeq ? "saved" : "dirty");
+      } finally {
+        inflight.current = null;
+      }
+    })();
+    inflight.current = run;
+    await run;
+    /* Typed while that save was on its way: save again shortly. */
+    if (ok && editSeq.current !== savedSeq.current) window.setTimeout(() => void saveRef.current(), 900);
+    return ok && editSeq.current === savedSeq.current;
   }, [editor, projectId]);
+  saveRef.current = save;
 
   React.useEffect(() => {
     if (saveState !== "dirty") return;
     const h = window.setTimeout(() => void save(), 900);
     return () => window.clearTimeout(h);
   }, [saveState, save]);
+  /* A failed save tries again by itself (the button under 已保存 still works too). */
+  React.useEffect(() => {
+    if (saveState !== "error") return;
+    const h = window.setTimeout(() => void save(), 8000);
+    return () => window.clearTimeout(h);
+  }, [saveState, save]);
   React.useEffect(() => {
     const warn = (e: BeforeUnloadEvent) => {
-      if (saveState === "dirty" || saveState === "saving") e.preventDefault();
+      if (saveState !== "saved" || editSeq.current !== savedSeq.current) e.preventDefault();
     };
     window.addEventListener("beforeunload", warn);
     return () => window.removeEventListener("beforeunload", warn);
@@ -249,7 +316,7 @@ export function ScriptDoc(props: ScriptDocProps) {
   const propDoc = JSON.stringify(props.doc);
   React.useEffect(() => {
     if (!editor || propDoc === lastDoc.current) return;
-    if (saveState === "dirty" || saveState === "saving") return;
+    if (saveState !== "saved" || editSeq.current !== savedSeq.current) return;
     lastDoc.current = propDoc;
     editor.chain().setMeta("gd-remote", true).setContent(props.doc, { emitUpdate: false }).run();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -387,6 +454,10 @@ export function ScriptDoc(props: ScriptDocProps) {
     const unit = spokenUnits(editor.state.doc).find((u) => sel.from >= u.from && sel.from <= u.to)?.index ?? null;
     setDraft({ unit, quote, top: selTop ?? 40 });
     setDraftText("");
+    /* No room for the right margin (below ~1700px wide): the comment box opens
+       in the side panel's 批注 tab instead of in a margin nobody can see
+       (QA, 2 Oct: comments could not be added at 1280 or 1440). */
+    if (!marginOn) setPanel("comments");
   }
   function sendComment() {
     if (!draft || !draftText.trim()) return;
@@ -454,7 +525,7 @@ export function ScriptDoc(props: ScriptDocProps) {
     }
     setThinking(true);
     start(async () => {
-      if (saveState === "dirty") await save();
+      await save();
       const r = await copilotAction(projectId, units.map((u) => u.text), q, pickModel === AUTO_MODEL ? undefined : pickModel, refAtt.ids);
       setThinking(false);
       if ("error" in r && r.error) return notify(r.error);
@@ -589,6 +660,22 @@ export function ScriptDoc(props: ScriptDocProps) {
   const importMode = React.useRef<"replace" | "append">("replace");
   const [uploading, setUploading] = React.useState<{ name: string; pct: number }[]>([]);
   const access = props.accessMode === "everyone" ? ({ mode: "everyone" } as const) : ({ mode: "private" } as const);
+  /* A file just added is read in the background: ask again for a while so
+     「无文字」 turns into the file's text without a reload (QA, 2 Oct). */
+  const [refPollUntil, setRefPollUntil] = React.useState(0);
+  const refsUnread = props.references.some((f) => !f.hasText);
+  React.useEffect(() => {
+    if (!refsUnread || !refPollUntil) return;
+    const h = window.setInterval(() => {
+      if (Date.now() > refPollUntil) {
+        window.clearInterval(h);
+        setRefPollUntil(0);
+        return;
+      }
+      router.refresh();
+    }, 4000);
+    return () => window.clearInterval(h);
+  }, [refsUnread, refPollUntil, router]);
   async function uploadRefs(list: FileList) {
     await uploadFiles(list, {
       access,
@@ -599,6 +686,7 @@ export function ScriptDoc(props: ScriptDocProps) {
       },
     });
     setUploading([]);
+    setRefPollUntil(Date.now() + 90_000);
     router.refresh();
   }
   async function insertImages(list: FileList) {
@@ -615,6 +703,8 @@ export function ScriptDoc(props: ScriptDocProps) {
     const file = list?.[0];
     if (!file) return;
     if (importMode.current === "replace" && !window.confirm(t("用这个文件的内容替换现在的稿子？（旧的内容可以在「版本记录」里找回）", "Replace the script with this file's text? (The old text stays in Version history.)"))) return;
+    /* What is typed but not saved yet goes first: the import builds on the saved document and the page reloads after. */
+    await save();
     notify(t(`正在导入 ${file.name}…`, `Importing ${file.name}…`), "info");
     let result: { ok?: true; paragraphs?: number; error?: string } | null = null;
     await uploadFiles([file] as unknown as FileList, {
@@ -627,7 +717,8 @@ export function ScriptDoc(props: ScriptDocProps) {
     if (importInput.current) importInput.current.value = "";
     if (!r) return notify(t("上传没成功", "The upload did not finish"));
     if (r.error) return notify(r.error);
-    notify(t(`已导入 ${r.paragraphs} 段`, `Imported ${r.paragraphs} paragraphs`), "ok");
+    /* The file also lands in 参考资料; say so rather than let it appear there unexplained (QA, 2 Oct). */
+    notify(t(`已导入 ${r.paragraphs} 段，原文件也放进了参考资料`, `Imported ${r.paragraphs} paragraphs; the file is also in References`), "ok");
     window.location.reload();
   }
 
@@ -648,6 +739,17 @@ export function ScriptDoc(props: ScriptDocProps) {
        (React's dev double effect) would otherwise never open it. */
     window.setTimeout(() => setSharing(true), 0);
   }, []);
+  /* ?tab=… from a link (an approval notice, the old script page's tabs):
+     open the matching side panel rather than ignore it (QA, 2 Oct). */
+  React.useEffect(() => {
+    const url = new URL(window.location.href);
+    const tab = url.searchParams.get("tab");
+    if (!tab) return;
+    if (tab === "versions" || tab === "approval") setPanelPick("versions");
+    else if (tab === "comments") setPanelPick("comments");
+    url.searchParams.delete("tab");
+    window.history.replaceState(null, "", url.pathname + url.search + url.hash);
+  }, []);
   const [noteOpen, setNoteOpen] = React.useState(false);
   const [note, setNote] = React.useState("");
   const open = props.approvals.filter((a) => a.state === "requested");
@@ -658,7 +760,7 @@ export function ScriptDoc(props: ScriptDocProps) {
 
   function approve() {
     start(async () => {
-      if (saveState === "dirty") await save();
+      await save();
       const r = await approveDocAction(projectId);
       if ("error" in r && r.error) return notify(r.error);
       notify(t("已批准，交给剪辑", "Approved — on to the edit"), "ok");
@@ -741,30 +843,48 @@ export function ScriptDoc(props: ScriptDocProps) {
   }
 
   /* ---------------- keys ---------------- */
+  /*
+   * Listened for on the window's capture phase, ahead of the site-wide
+   * shortcuts: in the editor ⌘K is 插入链接, not 跳转到 (QA, 2 Oct: the
+   * palette opened instead). Only the keys handled here are stopped.
+   */
   React.useEffect(() => {
     const key = (e: KeyboardEvent) => {
       const mod = e.metaKey || e.ctrlKey;
       if (!mod) return;
       const k = e.key.toLowerCase();
+      const take = () => {
+        e.preventDefault();
+        e.stopPropagation();
+      };
       if (k === "k" && !e.shiftKey && !e.altKey && editor?.isFocused) {
-        e.preventDefault();
-        setDialog("link");
+        take();
+        if (editor.isEditable) setDialog("link");
       } else if (e.altKey && (k === "m" || e.code === "KeyM")) {
-        e.preventDefault();
+        take();
         startComment();
-      } else if ((k === "h" || (k === "f" && editor?.isFocused)) && !e.altKey) {
-        e.preventDefault();
+      } else if ((k === "/" || e.code === "Slash") && !e.altKey) {
+        take();
+        setDialog("keys");
+      } else if (e.shiftKey && !e.altKey && (k === "c" || e.code === "KeyC")) {
+        take();
+        setDialog("count");
+      } else if (e.shiftKey && !e.altKey && (k === "x" || e.code === "KeyX") && editor?.isFocused && editor.isEditable) {
+        take();
+        editor.chain().focus().toggleStrike().run();
+      } else if ((k === "h" || (k === "f" && editor?.isFocused)) && !e.altKey && !e.shiftKey) {
+        take();
         setFind((f) => f ?? { term: "", replace: "", current: 0, withReplace: k === "h" });
-      } else if (k === "s") {
-        e.preventDefault();
+      } else if (k === "s" && !e.altKey && !e.shiftKey) {
+        take();
         void save();
-      } else if (k === "\\") {
-        e.preventDefault();
-        editor?.chain().focus().unsetAllMarks().clearNodes().run();
+      } else if (k === "\\" && editor?.isEditable) {
+        take();
+        editor.chain().focus().unsetAllMarks().clearNodes().run();
       }
     };
-    window.addEventListener("keydown", key);
-    return () => window.removeEventListener("keydown", key);
+    window.addEventListener("keydown", key, true);
+    return () => window.removeEventListener("keydown", key, true);
   });
 
   function print() {
@@ -837,7 +957,6 @@ export function ScriptDoc(props: ScriptDocProps) {
           label: t("模式", "Mode"),
           submenu: [
             { label: t("编辑", "Editing"), checked: mode === "edit", disabled: !me.canEdit, onClick: () => setMode("edit") },
-            { label: t("建议", "Suggesting"), disabled: !me.canEdit, onClick: () => setMode("suggest") },
             { label: t("查看", "Viewing"), checked: mode === "view", onClick: () => setMode("view") },
           ],
         },
@@ -939,7 +1058,7 @@ export function ScriptDoc(props: ScriptDocProps) {
     if (script.lockedVersion != null && !unlocked) {
       const who = approved?.deciderName ?? "";
       return (
-        <Status tone="ok" text={<>{t(`已批准 · 第 ${script.lockedVersion} 版`, `Approved · v${script.lockedVersion}`)}{who ? ` · ${who}` : ""}{approved?.decidedAt ? ` · ${ago(approved.decidedAt, zh)}` : ""}<span className="gd-status-dim">{t("　剪辑师会照这一版剪。改动会生成新版本。", " — the edit follows this version.")}</span></>}>
+        <Status tone="ok" text={<>{t(`已批准 · 第 ${script.lockedVersion} 版`, `Approved · v${script.lockedVersion}`)}{who ? ` · ${who}` : ""}{approved?.decidedAt ? ` · ${ago(approved.decidedAt, zh, now)}` : ""}<span className="gd-status-dim">{t("　剪辑师会照这一版剪。改动会生成新版本。", " The edit follows this version.")}</span></>}>
           {me.canEdit ? <button type="button" className="gd-status-btn" onClick={() => setLockPrompt(true)}>{t("继续编辑", "Continue editing")}</button> : null}
           <Link href={`/projects/${projectId}/edit`} prefetch={false} className="gd-status-btn primary">{t("下一步：去剪辑 →", "Next: the edit →")}</Link>
         </Status>
@@ -974,7 +1093,7 @@ export function ScriptDoc(props: ScriptDocProps) {
     }
     return (
       <Status tone="draft" text={<><b>{t("写好了？选一个往下走：", "Done? Pick the way forward:")}</b><span className="gd-status-dim">{t(`　草稿 · 第 ${(script.version ?? 0) + 1} 版`, `  Draft · v${(script.version ?? 0) + 1}`)}</span></>}>
-        <button type="button" className="gd-status-btn primary" onClick={() => setSharing(true)}>{t("发给同事审阅", "Send for review")}</button>
+        {me.canEdit ? <button type="button" className="gd-status-btn primary" onClick={() => setSharing(true)}>{t("发给同事审阅", "Send for review")}</button> : null}
         {me.canEdit ? <button type="button" className="gd-status-btn" disabled={pending} onClick={approve}>{t("我自己审阅通过", "I approve it myself")}</button> : null}
         <Link href={`/projects/${projectId}/edit`} prefetch={false} className="gd-status-btn">{t("先去剪辑 →", "Skip to the edit →")}</Link>
       </Status>
@@ -990,12 +1109,15 @@ export function ScriptDoc(props: ScriptDocProps) {
   React.useEffect(() => {
     const el = canvas.current;
     if (!el || typeof ResizeObserver === "undefined") return;
+    /* Fit shrinks the page to the window at 100%; a zoom above that is
+       honoured and the page scrolls sideways (QA, 2 Oct: 150% grew the page
+       only ~12% because fit undid the zoom). */
     const measure = () => {
       const w = el.clientWidth - 40;
       const room = w >= (816 + 300) * zoom;
       setMarginOn(room);
-      const need = (room ? 816 + 300 : 816) * zoom;
-      setFit(Math.max(0.45, Math.min(1, w / need)));
+      setCanvasW(el.clientWidth);
+      setFit(Math.max(0.45, Math.min(1, w / (room ? 816 + 300 : 816))));
     };
     measure();
     const ro = new ResizeObserver(measure);
@@ -1022,6 +1144,22 @@ export function ScriptDoc(props: ScriptDocProps) {
     );
   }
 
+  /* The new-comment box: in the page's right margin when it shows, else at the top of the 批注 tab. */
+  const composer = draft ? (
+    <>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+        <PersonAvatar id={me.id} url={me.avatarUrl} name={me.name} size={28} />
+        <span style={{ fontSize: 13.5, fontWeight: 500 }}>{me.name}</span>
+      </div>
+      {draft.quote ? <div className="gd-quote">「{draft.quote}」</div> : null}
+      <textarea autoFocus value={draftText} onChange={(e) => setDraftText(e.target.value)} rows={3} onKeyDown={(e) => { if ((e.metaKey || e.ctrlKey) && e.key === "Enter") sendComment(); if (e.key === "Escape") setDraft(null); }} placeholder={t("添加批注，或 @ 提及某人", "Comment or add others with @")} className="gd-comment-box" />
+      <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 8 }}>
+        <button type="button" className="gd-status-btn" onClick={() => setDraft(null)}>{t("取消", "Cancel")}</button>
+        <button type="button" className="gd-status-btn blue" disabled={pending || !draftText.trim()} onClick={sendComment}>{t("批注", "Comment")}</button>
+      </div>
+    </>
+  ) : null;
+
   /* ---------------- render ---------------- */
   return (
     <div data-gd-root="" className={`gd-root${shots ? " gd-shots" : ""}`}>
@@ -1030,7 +1168,15 @@ export function ScriptDoc(props: ScriptDocProps) {
       <input ref={imgInput} type="file" hidden accept="image/*" multiple onChange={(e) => { if (e.target.files?.length) void insertImages(e.target.files); e.target.value = ""; }} />
       <input ref={refInput} type="file" multiple hidden accept=".pdf,.doc,.docx,.txt,.md,.rtf,.csv,.xlsx,.pptx,image/*" onChange={(e) => { if (e.target.files?.length) void uploadRefs(e.target.files); e.target.value = ""; }} />
 
-
+      {/* The menu bar, slim like Docs' (QA, 2 Oct: it was built but never drawn, so 重命名, 字数统计, 快捷键, 删除线, 分隔线, 全屏, 标尺 and 画面说明 had no way in). */}
+      <div className="gd-head">
+        <MenuBar menus={menus} />
+        <span style={{ flexGrow: 1 }} />
+        <button type="button" className="gd-saved" data-state={saveState} onClick={() => saveState === "error" && void save()} title={saveLabel}>
+          <GI name="cloud" size={17} />
+          <span>{saveLabel}</span>
+        </button>
+      </div>
 
       <Toolbar
         editor={editor}
@@ -1048,7 +1194,7 @@ export function ScriptDoc(props: ScriptDocProps) {
       />
 
       <div className="gd-actions">
-        <button type="button" className="gd-big" onClick={() => setPicking(true)}><GI name="outline" size={18} />{t("所有脚本", "All scripts")}</button>
+        <button type="button" className="gd-big" onClick={() => setPicking(true)}><GI name="outline" size={16} />{t("所有脚本", "All scripts")}</button>
         {me.canEdit ? (
           <BigDrop icon="upload" label={t("导入文档", "Import")}>
             {(close) => (
@@ -1068,18 +1214,18 @@ export function ScriptDoc(props: ScriptDocProps) {
             </>
           )}
         </BigDrop>
-        <button type="button" className="gd-big" onClick={print}><GI name="print" size={18} />{t("打印", "Print")}</button>
-        <button type="button" className="gd-big" onClick={() => setPanel("versions")}><GI name="history" size={18} />{t("版本记录", "Versions")}</button>
-        <button type="button" className="gd-big" onClick={() => setSharing(true)}><GI name="lock" size={18} />{t("分享链接", "Share link")}</button>
+        <button type="button" className="gd-big" onClick={print}><GI name="print" size={16} />{t("打印", "Print")}</button>
+        <button type="button" className="gd-big" onClick={() => setPanel("versions")}><GI name="history" size={16} />{t("版本记录", "Versions")}</button>
+        <button type="button" className="gd-big" onClick={() => setSharing(true)}><GI name="lock" size={16} />{t("分享链接", "Share link")}</button>
         {props.canManageAccess ? (
           <button type="button" className="gd-big" onClick={() => setAccessOpen(true)}>
-            <GI name="people" size={18} />
+            <GI name="people" size={16} />
             {props.access?.mode === "private" ? t("谁能看：仅自己", "Access: only me") : props.access?.mode === "everyone" ? t("谁能看：全工作室", "Access: everyone") : props.access?.mode === "groups" ? t("谁能看：部分分组", "Access: groups") : t(`谁能看：${props.access?.userIds?.length ?? 0} 人`, "Access: people")}
           </button>
         ) : null}
         {script ? (
           <span className="gd-big gd-length" title={t("视频时长", "Video length")}>
-            <GI name="clock" size={18} />
+            <GI name="clock" size={16} />
             <span>{t("时长", "Length")}</span>
             <span key={`len-${docState.seconds}`}>{clock(docState.seconds, zh)}</span>
             <span style={{ color: "#8a8a8a", fontWeight: 500 }}>/ {t("目标", "target")}</span>
@@ -1110,14 +1256,9 @@ export function ScriptDoc(props: ScriptDocProps) {
           </span>
         ) : null}
         <label className="gd-big" style={{ cursor: "pointer" }}>
-          <input type="checkbox" checked={shots} onChange={() => setShots((v) => !v)} style={{ width: 16, height: 16 }} />
+          <input type="checkbox" checked={shots} onChange={() => setShots((v) => !v)} style={{ width: 15, height: 15 }} />
           {t("画面说明", "Shot notes")}
         </label>
-        <span style={{ flexGrow: 1 }} />
-        <button type="button" className="gd-saved" data-state={saveState} onClick={() => saveState === "error" && void save()} title={saveLabel}>
-          <GI name="cloud" size={17} />
-          <span>{saveLabel}</span>
-        </button>
       </div>
 
       {statusLine()}
@@ -1151,7 +1292,7 @@ export function ScriptDoc(props: ScriptDocProps) {
             onClick={() =>
               start(async () => {
                 /* The draft as it was, kept as a version first, so the AI's edits can be undone from 版本. */
-                if (saveState === "dirty") await save();
+                await save();
                 if (!locked) await saveVersionAction(projectId, t("AI 改写前", "Before the AI edits")).catch(() => null);
                 const ids = trackedNow().map((x) => x.id);
                 applyTracked(ids);
@@ -1170,7 +1311,7 @@ export function ScriptDoc(props: ScriptDocProps) {
             disabled={pending}
             onClick={() =>
               start(async () => {
-                if (saveState === "dirty") await save();
+                await save();
                 if (!locked) await saveVersionAction(projectId, t("AI 改写前", "Before the AI edits")).catch(() => null);
                 applyTracked(trackedNow().map((x) => x.id));
                 endProposalIfDone([], proposal.source);
@@ -1217,8 +1358,8 @@ export function ScriptDoc(props: ScriptDocProps) {
           <GI name="search" size={16} style={{ color: "#5f6368" }} />
           <input autoFocus className="gd-find-input" placeholder={t("在文档中查找", "Find in document")} value={find.term} onChange={(e) => setFind({ ...find, term: e.target.value, current: 0 })} onKeyDown={(e) => { if (e.key === "Enter") gotoMatch(find.current + (e.shiftKey ? -1 : 1)); if (e.key === "Escape") setFind(null); }} />
           <span style={{ fontSize: 12.5, color: "#5f6368", minWidth: 54 }}>{find.term ? (matches.length ? `${Math.min(find.current + 1, matches.length)} / ${matches.length}` : t("无结果", "No results")) : ""}</span>
-          <button type="button" className="gd-icon" onClick={() => gotoMatch(find.current - 1)} aria-label="prev"><GI name="up" size={17} /></button>
-          <button type="button" className="gd-icon" onClick={() => gotoMatch(find.current + 1)} aria-label="next"><GI name="chevron" size={17} /></button>
+          <button type="button" className="gd-icon" onClick={() => gotoMatch(find.current - 1)} aria-label={t("上一个", "Previous")} title={t("上一个", "Previous")}><GI name="up" size={17} /></button>
+          <button type="button" className="gd-icon" onClick={() => gotoMatch(find.current + 1)} aria-label={t("下一个", "Next")} title={t("下一个", "Next")}><GI name="chevron" size={17} /></button>
           {find.withReplace ? (
             <>
               <input className="gd-find-input" placeholder={t("替换为", "Replace with")} value={find.replace} onChange={(e) => setFind({ ...find, replace: e.target.value })} />
@@ -1228,7 +1369,7 @@ export function ScriptDoc(props: ScriptDocProps) {
           ) : (
             <button type="button" className="gd-link" onClick={() => setFind({ ...find, withReplace: true })}>{t("替换…", "Replace…")}</button>
           )}
-          <button type="button" className="gd-icon" onClick={() => setFind(null)} aria-label="close"><GI name="x" size={17} /></button>
+          <button type="button" className="gd-icon" onClick={() => setFind(null)} aria-label={t("关闭查找", "Close find")} title={t("关闭查找", "Close find")}><GI name="x" size={17} /></button>
         </div>
       ) : null}
 
@@ -1292,6 +1433,7 @@ export function ScriptDoc(props: ScriptDocProps) {
               </div>
             </div>
           ) : null}
+          <div className="gd-sheet-scroll" style={wide ? { overflowX: "auto" } : undefined}>
           <div className="gd-sheet-row" style={{ zoom: z }}>
             <div className="gd-sheet" ref={sheet} onMouseDown={() => { if (locked && me.canEdit && mode === "edit") setLockPrompt(true); }}>
               {noScript ? (
@@ -1311,6 +1453,9 @@ export function ScriptDoc(props: ScriptDocProps) {
                     <div style={{ fontSize: 13, color: "#5f6368" }}>{t("你没有脚本模块的权限，等同事写好。", "You need the Script module to write it.")}</div>
                   )}
                 </div>
+              ) : viewing?.doc ? (
+                /* The version as it was written, headings and bold included (QA, 2 Oct). Built and escaped by richToHtml from the JSON. */
+                <div className="gd-prose gd-readonly notranslate" translate="no" dangerouslySetInnerHTML={{ __html: richToHtml(viewing.doc, { natural: t("（现场声，无口播）", "(natural sound)") }) }} />
               ) : viewing ? (
                 <div className="gd-prose gd-readonly notranslate" translate="no">
                   {viewing.beats.map((b, i) => (
@@ -1327,23 +1472,14 @@ export function ScriptDoc(props: ScriptDocProps) {
                 ? openComments.map((c) =>
                     cardTops[c.id] !== undefined ? (
                       <div key={c.id} className="gd-card" data-on={activeComment === c.id ? "1" : undefined} style={{ top: cardTops[c.id] }} onClick={() => setActiveComment(c.id)}>
-                        <CommentBody c={c} zh={zh} onResolve={() => start(async () => { await resolveCommentAction(projectId, c.id); router.refresh(); })} />
+                        <CommentBody c={c} zh={zh} now={now} onResolve={() => start(async () => { await resolveCommentAction(projectId, c.id); router.refresh(); })} />
                       </div>
                     ) : null,
                   )
                 : null}
-              {draft ? (
+              {draft && marginOn ? (
                 <div className="gd-card on" style={{ top: draft.top, zIndex: 3 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-                    <PersonAvatar id={me.id} url={me.avatarUrl} name={me.name} size={28} />
-                    <span style={{ fontSize: 13.5, fontWeight: 500 }}>{me.name}</span>
-                  </div>
-                  {draft.quote ? <div className="gd-quote">「{draft.quote}」</div> : null}
-                  <textarea autoFocus value={draftText} onChange={(e) => setDraftText(e.target.value)} rows={3} onKeyDown={(e) => { if ((e.metaKey || e.ctrlKey) && e.key === "Enter") sendComment(); if (e.key === "Escape") setDraft(null); }} placeholder={t("添加批注，或 @ 提及某人", "Comment or add others with @")} className="gd-comment-box" />
-                  <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 8 }}>
-                    <button type="button" className="gd-status-btn" onClick={() => setDraft(null)}>{t("取消", "Cancel")}</button>
-                    <button type="button" className="gd-status-btn blue" disabled={pending || !draftText.trim()} onClick={sendComment}>{t("批注", "Comment")}</button>
-                  </div>
+                  {composer}
                 </div>
               ) : selTop !== null && !noScript && !viewing ? (
                 <button type="button" className="gd-add-comment" style={{ top: selTop }} onMouseDown={(e) => e.preventDefault()} onClick={startComment} title={t("添加批注", "Add comment")}>
@@ -1352,9 +1488,11 @@ export function ScriptDoc(props: ScriptDocProps) {
               ) : null}
             </div>
           </div>
+          </div>
 
           {/* the floating AI bar: always at hand at the bottom of the page (the owner, 29 Sep: the side panel alone is not intuitive) */}
-          {me.canEdit && script && !noScript ? (
+          {/* Not in 查看 mode: that is for reading (QA, 2 Oct). */}
+          {me.canEdit && script && !noScript && mode !== "view" && !viewing ? (
             <div className="gd-ai-dock">
               {refAtt.attached.length ? <div style={{ display: "flex", justifyContent: "center" }}><AttachChips zh={zh} attached={refAtt.attached} onRemove={refAtt.remove} /></div> : null}
               {askFocus && !thinking ? (
@@ -1475,7 +1613,7 @@ export function ScriptDoc(props: ScriptDocProps) {
                     <div key={f.id} className="gd-ref">
                       <GI name="doc" size={14} />
                       <a href={`/files/${f.id}`} target="_blank" rel="noreferrer" title={f.name}>{f.name}</a>
-                      {!f.hasText ? <span style={{ fontSize: 11, color: "#b06000" }}>{t("无文字", "no text")}</span> : null}
+                      {!f.hasText ? <span style={{ fontSize: 11, color: refPollUntil ? "#5f6368" : "#b06000", whiteSpace: "nowrap" }}>{refPollUntil ? t("读取中…", "Reading…") : t("无文字", "no text")}</span> : null}
                       {me.canEdit ? <button type="button" className="gd-icon" aria-label={t("移除", "Remove")} onClick={() => start(async () => { await removeReferenceAction(projectId, f.id); router.refresh(); })}><GI name="x" size={14} /></button> : null}
                     </div>
                   ))}
@@ -1510,7 +1648,7 @@ export function ScriptDoc(props: ScriptDocProps) {
                         disabled={pending || docState.count === 0}
                         onClick={() =>
                           start(async () => {
-                            if (saveState === "dirty") await save();
+                            await save();
                             const r = await saveVersionAction(projectId, versionNote.trim() || null);
                             if ("error" in r && r.error) return notify(r.error);
                             setVersionNote("");
@@ -1537,7 +1675,7 @@ export function ScriptDoc(props: ScriptDocProps) {
                         start(async () => {
                           const r = await versionBeatsAction(projectId, v.versionNo);
                           if ("error" in r && r.error) return notify(r.error);
-                          if ("beats" in r) setViewing({ versionNo: v.versionNo, beats: r.beats });
+                          if ("beats" in r) setViewing({ versionNo: v.versionNo, beats: r.beats, doc: r.doc ?? null });
                         })
                       }
                     >
@@ -1547,7 +1685,8 @@ export function ScriptDoc(props: ScriptDocProps) {
                         {inReview ? <span className="gd-badge wait">{t("审阅中", "In review")}</span> : null}
                         {v.model ? <span className="gd-badge ai">AI</span> : null}
                       </span>
-                      <span style={{ fontSize: 12, color: "#5f6368" }}>{v.authorName ?? "—"} · {ago(v.createdAt, zh)} · {t(`${v.wordCount} 字`, `${v.wordCount} words`)}</span>
+                      <span style={{ fontSize: 12, color: "#5f6368" }}>{v.authorName ?? "—"} · {ago(v.createdAt, zh, now)} · {t(`${v.wordCount} 字`, `${v.wordCount} words`)}</span>
+                      {v.note ? <span style={{ fontSize: 12.5, color: "#1f1f1f", lineHeight: 1.45, overflowWrap: "anywhere" }}>{noteText(v.note, zh)}</span> : null}
                     </button>
                   );
                 })}
@@ -1556,14 +1695,15 @@ export function ScriptDoc(props: ScriptDocProps) {
             ) : null}
             {panel === "comments" ? (
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {draft && !marginOn ? <div className="gd-card static on">{composer}</div> : null}
                 {props.comments.length ? (
                   props.comments.map((c) => (
                     <div key={c.id} className="gd-card static" data-on={activeComment === c.id ? "1" : undefined} style={{ opacity: c.resolvedAt ? 0.6 : 1 }} onClick={() => jumpTo(c)}>
-                      <CommentBody c={c} zh={zh} resolved={Boolean(c.resolvedAt)} onResolve={() => start(async () => { await resolveCommentAction(projectId, c.id, Boolean(c.resolvedAt)); router.refresh(); })} />
+                      <CommentBody c={c} zh={zh} now={now} resolved={Boolean(c.resolvedAt)} onResolve={() => start(async () => { await resolveCommentAction(projectId, c.id, Boolean(c.resolvedAt)); router.refresh(); })} />
                     </div>
                   ))
                 ) : (
-                  <div style={{ fontSize: 13, color: "#80868b" }}>{t("还没有批注。选中文字，点工具栏的批注按钮。", "No comments yet. Select text and press the comment button.")}</div>
+                  draft && !marginOn ? null : <div style={{ fontSize: 13, color: "#80868b" }}>{t("还没有批注。选中文字，点工具栏的批注按钮。", "No comments yet. Select text and press the comment button.")}</div>
                 )}
               </div>
             ) : null}
@@ -1573,7 +1713,7 @@ export function ScriptDoc(props: ScriptDocProps) {
 
       {/* ---- dialogs ---- */}
       {dialog === "count" ? (
-        <Modal title={t("字数统计", "Word count")} onClose={() => setDialog(null)} width={380}>
+        <Modal title={t("字数统计", "Word count")} onClose={() => setDialog(null)} width={380} closeLabel={t("关闭", "Close")}>
           <table className="gd-count">
             <tbody>
               <tr><td>{t("字数（汉字 + 英文单词）", "Words")}</td><td>{docState.count}</td></tr>
@@ -1588,7 +1728,7 @@ export function ScriptDoc(props: ScriptDocProps) {
         </Modal>
       ) : null}
       {dialog === "keys" ? (
-        <Modal title={t("键盘快捷键", "Keyboard shortcuts")} onClose={() => setDialog(null)} width={480}>
+        <Modal title={t("键盘快捷键", "Keyboard shortcuts")} onClose={() => setDialog(null)} width={480} closeLabel={t("关闭", "Close")}>
           <table className="gd-count">
             <tbody>
               {(
@@ -1602,6 +1742,9 @@ export function ScriptDoc(props: ScriptDocProps) {
                   [t("查找 / 查找和替换", "Find / find and replace"), `${MOD}F / ${MOD}H`],
                   [t("撤销 / 重做", "Undo / redo"), `${MOD}Z / ${MOD}Y`],
                   [t("清除格式", "Clear formatting"), `${MOD}\\`],
+                  [t("删除线", "Strikethrough"), isMac ? "⌘⇧X" : "Ctrl+Shift+X"],
+                  [t("字数统计", "Word count"), isMac ? "⌘⇧C" : "Ctrl+Shift+C"],
+                  [t("键盘快捷键", "Keyboard shortcuts"), `${MOD}/`],
                   [t("保存", "Save"), `${MOD}S`],
                   [t("打印", "Print"), `${MOD}P`],
                 ] as [string, string][]
@@ -1673,7 +1816,7 @@ export function ScriptDoc(props: ScriptDocProps) {
           defaultAsk={locked ? "view" : "review"}
           onClose={() => setSharing(false)}
           onSend={async (userIds, askFor, message) => {
-            if (saveState === "dirty") await save();
+            await save();
             const r = await shareScriptAction(projectId, { userIds, ask: askFor, message });
             if ("error" in r) return { error: r.error };
             const n = r.sent;
@@ -1697,14 +1840,14 @@ function Status({ tone, text, children }: { tone: "run" | "ok" | "you" | "wait" 
   );
 }
 
-function CommentBody({ c, zh, resolved = false, onResolve }: { c: DocComment; zh: boolean; resolved?: boolean; onResolve: () => void }) {
+function CommentBody({ c, zh, now, resolved = false, onResolve }: { c: DocComment; zh: boolean; now: number | null; resolved?: boolean; onResolve: () => void }) {
   return (
     <>
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         <PersonAvatar id={c.authorId} url={c.authorAvatar} name={c.authorName} size={28} />
         <div style={{ minWidth: 0, flexGrow: 1 }}>
           <div style={{ fontSize: 13.5, fontWeight: 500, color: "#1f1f1f", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.authorName}</div>
-          <div style={{ fontSize: 11.5, color: "#5f6368" }}>{ago(c.createdAt, zh)}</div>
+          <div style={{ fontSize: 11.5, color: "#5f6368" }}>{ago(c.createdAt, zh, now)}</div>
         </div>
         <button type="button" className="gd-icon" title={resolved ? (zh ? "重新打开" : "Reopen") : zh ? "标记为已解决并隐藏" : "Mark as resolved"} onClick={(e) => { e.stopPropagation(); onResolve(); }}>
           <GI name={resolved ? "undo" : "check"} size={18} style={{ color: resolved ? "#5f6368" : "#1a73e8" }} />
@@ -1719,7 +1862,7 @@ function CommentBody({ c, zh, resolved = false, onResolve }: { c: DocComment; zh
 function PromptModal({ title, label, initial, zh, onClose, onOk, extra }: { title: string; label: string; initial: string; zh: boolean; onClose: () => void; onOk: (v: string) => void; extra?: { label: string; run: () => void } }) {
   const [v, setV] = React.useState(initial);
   return (
-    <Modal title={title} onClose={onClose}>
+    <Modal title={title} onClose={onClose} closeLabel={zh ? "关闭" : "Close"}>
       <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 13, color: "#444746" }}>
         {label}
         <input autoFocus value={v} onChange={(e) => setV(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { onOk(v); onClose(); } }} className="gd-field" />
@@ -1740,7 +1883,7 @@ export const GD_CSS = `
 [data-script-page] { min-height: auto !important; }
 .gd-root { flex-grow: 1; min-width: 0; display: flex; flex-direction: column; background: #f9fbfd; color: #1f1f1f; font-family: "Google Sans", Roboto, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; }
 .gd-root:fullscreen { background: #f9fbfd; overflow-y: auto; }
-.gd-head { display: flex; align-items: center; gap: 10px; padding: 8px 16px 0 14px; flex-shrink: 0; }
+.gd-head { display: flex; align-items: center; gap: 8px; min-height: 30px; padding: 4px 16px 0 22px; flex-shrink: 0; position: relative; z-index: 30; }
 .gd-title { font: inherit; font-size: 18px; color: #1f1f1f; border: 1px solid transparent; border-radius: 4px; padding: 1px 6px; margin-left: -6px; background: transparent; min-width: 6ch; max-width: 52ch; text-overflow: ellipsis; }
 .gd-title:hover:not(:disabled) { border-color: #c7c7c7; }
 .gd-title:focus { outline: none; border-color: #1a73e8; box-shadow: inset 0 0 0 1px #1a73e8; }
@@ -1748,7 +1891,7 @@ export const GD_CSS = `
 .gd-saved[data-state="error"] { color: #b3261e; cursor: pointer; }
 .gd-saved[data-state="saving"] span, .gd-saved[data-state="dirty"] span { color: #5f6368; }
 .gd-menubar { display: flex; align-items: center; margin-left: -8px; }
-.gd-menubtn { border: 0; background: transparent; font: inherit; font-size: 14px; color: #1f1f1f; padding: 3px 8px; border-radius: 4px; cursor: pointer; }
+.gd-menubtn { border: 0; background: transparent; font: inherit; font-size: 13.5px; color: #1f1f1f; padding: 3px 8px; border-radius: 4px; cursor: pointer; white-space: nowrap; }
 .gd-menubtn:hover, .gd-menubtn[data-on] { background: #e3e3e3; }
 .gd-menu { position: absolute; top: calc(100% + 2px); left: 0; z-index: 60; min-width: 250px; padding: 6px 0; background: #fff; border-radius: 8px; box-shadow: 0 2px 6px 2px rgba(60,64,67,.15), 0 1px 2px rgba(60,64,67,.3); }
 .gd-sub { top: -6px; left: 100%; }
@@ -1768,18 +1911,21 @@ export const GD_CSS = `
 .gd-dot { position: absolute; top: 3px; right: 2px; min-width: 16px; height: 16px; border-radius: 999px; background: #1a73e8; color: #fff; font-size: 10px; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; padding: 0 4px; }
 .gd-share { display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 22px 0 18px; border: 0; border-radius: 999px; background: #c2e7ff; color: #001d35; font: inherit; font-size: 14px; font-weight: 500; cursor: pointer; }
 .gd-share:hover { background: #b3dcf6; box-shadow: 0 1px 2px rgba(0,0,0,.2); }
-.gd-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 1px; margin: 8px 16px 6px; padding: 6px 8px; min-height: 40px; box-sizing: border-box; background: #edf2fa; border-radius: 24px; flex-shrink: 0; position: relative; z-index: 20; }
-.gd-tb { display: inline-flex; align-items: center; justify-content: center; gap: 2px; min-width: 28px; height: 28px; padding: 0 4px; border: 0; border-radius: 4px; background: transparent; color: #444746; font: inherit; font-size: 14px; cursor: pointer; flex-shrink: 0; }
+.gd-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 1px; margin: 4px 16px 6px; padding: 5px 8px; min-height: 40px; box-sizing: border-box; background: #edf2fa; border-radius: 24px; flex-shrink: 0; position: relative; z-index: 20; }
+.gd-tb { display: inline-flex; align-items: center; justify-content: center; gap: 2px; min-width: 27px; height: 28px; padding: 0 4px; border: 0; border-radius: 4px; background: transparent; color: #444746; font: inherit; font-size: 14px; cursor: pointer; flex-shrink: 0; }
 .gd-tb[data-wide] { padding: 0 6px; }
 .gd-tb:hover:not(:disabled) { background: #dfe3eb; }
 .gd-tb[data-on] { background: #d3e3fd; color: #041e49; }
 .gd-tb:disabled { color: #b0b3b8; cursor: default; }
 .gd-tb-text { font-size: 14px; color: inherit; white-space: nowrap; }
 .gd-glyph { font-size: 16px; font-family: Arial, sans-serif; width: 16px; text-align: center; }
-.gd-sep { width: 1px; height: 20px; background: #c7c7c7; margin: 0 5px; flex-shrink: 0; }
+.gd-sep { width: 1px; height: 20px; background: #c7c7c7; margin: 0 3px; flex-shrink: 0; }
+.gd-tb-wide { display: inline-flex; }
+/* Tighter on a laptop so the toolbar stays on one line (QA, 2 Oct: at 1280 清除格式 sat alone on a second row). Print and the mode's word are in the menus too. */
+@media (max-width: 1400px) { .gd-tb-wide { display: none; } }
 .gd-size { width: 34px; height: 24px; border: 1px solid #747775; border-radius: 4px; text-align: center; font: inherit; font-size: 14px; background: transparent; color: #1f1f1f; flex-shrink: 0; }
 .gd-size:disabled { border-color: #c7c7c7; color: #9aa0a6; }
-.gd-status { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin: 0 16px 8px; padding: 10px 12px 10px 16px; border-radius: 12px; font-size: 15px; color: #1f1f1f; flex-shrink: 0; min-height: 60px; box-sizing: border-box; border: 1px solid #e3e3e3; }
+.gd-status { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 10px; margin: 0 16px 8px; padding: 6px 10px 6px 14px; border-radius: 12px; font-size: 14px; color: #1f1f1f; flex-shrink: 0; min-height: 48px; box-sizing: border-box; border: 1px solid #e3e3e3; }
 .gd-status[data-tone="draft"] { background: #fff8e8; border-color: #f4ddb0; }
 .gd-status[data-tone="you"] { background: #fef7e0; }
 .gd-status[data-tone="wait"] { background: #f1f3f4; }
@@ -1790,13 +1936,14 @@ export const GD_CSS = `
 .gd-status[data-tone="ok"] .gd-status-dot { background: #1e8e3e; }
 .gd-status[data-tone="run"] .gd-status-dot { background: #1a73e8; animation: auraPulse 1.4s ease-in-out infinite; }
 .gd-status-dim { color: #5f6368; }
-.gd-status-btn { display: inline-flex; align-items: center; justify-content: center; height: 42px; padding: 0 20px; border: 1px solid #c4c7c5; border-radius: 12px; background: #fff; color: #1f1f1f; font: inherit; font-size: 15px; font-weight: 600; cursor: pointer; text-decoration: none; white-space: nowrap; }
-.gd-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 2px 16px 8px; flex-shrink: 0; }
-.gd-big { display: inline-flex; align-items: center; gap: 8px; height: 42px; padding: 0 16px; border: 1px solid #d3d3d0; border-radius: 12px; background: #fff; color: #1f1f1f; font: inherit; font-size: 14.5px; font-weight: 600; cursor: pointer; white-space: nowrap; text-decoration: none; }
+.gd-status-btn { display: inline-flex; align-items: center; justify-content: center; height: 34px; padding: 0 14px; border: 1px solid #c4c7c5; border-radius: 10px; background: #fff; color: #1f1f1f; font: inherit; font-size: 13.5px; font-weight: 600; cursor: pointer; text-decoration: none; white-space: nowrap; }
+.gd-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: 0 16px 8px; flex-shrink: 0; }
+/* Same weight and size as the toolbar's words (QA, 2 Oct: this row read heavier and larger than the rest). */
+.gd-big { display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px; border: 1px solid #d3d3d0; border-radius: 10px; background: #fff; color: #1f1f1f; font: inherit; font-size: 13.5px; font-weight: 500; cursor: pointer; white-space: nowrap; text-decoration: none; }
 .gd-big:hover { background: #f3f3f1; }
 .gd-length { gap: 6px; cursor: default; }
-.gd-length select { height: 30px; border: 1px solid #d3d3d0; border-radius: 8px; background: #fff; font: inherit; font-size: 13.5px; font-weight: 600; padding: 0 6px; cursor: pointer; }
-.gd-length-fit { height: 30px; padding: 0 10px; border: 0; border-radius: 8px; background: #171717; color: #fff; font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+.gd-length select { height: 26px; border: 1px solid #d3d3d0; border-radius: 8px; background: #fff; font: inherit; font-size: 13.5px; font-weight: 600; padding: 0 6px; cursor: pointer; }
+.gd-length-fit { height: 26px; padding: 0 10px; border: 0; border-radius: 8px; background: #171717; color: #fff; font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; white-space: nowrap; }
 .gd-length-fit:disabled { opacity: .5; cursor: default; }
 .gd-ai-panel { display: flex; flex-direction: column; gap: 14px; margin-top: 14px; }
 .gd-ai-who { display: flex; align-items: center; gap: 10px; }
@@ -1811,7 +1958,7 @@ export const GD_CSS = `
 .gd-ai-compose { display: flex; flex-direction: column; gap: 8px; padding: 10px; border: 1px solid #d3d3d0; border-radius: 14px; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.04); }
 .gd-ai-compose:focus-within { border-color: #8ab4f8; box-shadow: 0 0 0 3px rgba(26,115,232,.12); }
 .gd-ai-compose textarea { border: 0; outline: none; resize: none; font: inherit; font-size: 14px; line-height: 1.5; background: transparent; }
-.gd-ai-go { display: inline-flex; align-items: center; gap: 6px; height: 36px; padding: 0 14px; border: 0; border-radius: 10px; background: #171717; color: #fff; font: inherit; font-size: 13.5px; font-weight: 600; cursor: pointer; }
+.gd-ai-go { display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px; border: 0; border-radius: 10px; background: #171717; color: #fff; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap; flex-shrink: 0; }
 .gd-ai-go:disabled { opacity: .4; cursor: default; }
 .gd-ai-refs { display: flex; flex-direction: column; gap: 8px; padding: 12px; border: 1px solid #e3e3e3; border-radius: 12px; background: #fbfbfa; }
 .gd-ai-up { display: inline-flex; align-items: center; gap: 5px; height: 30px; padding: 0 10px; border: 1px solid #d3d3d0; border-radius: 8px; background: #fff; font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; }
@@ -1843,11 +1990,11 @@ export const GD_CSS = `
 .gd-outline-item { border: 0; background: none; text-align: left; font: inherit; font-size: 13.5px; color: #1f1f1f; padding: 6px 10px; border-radius: 999px; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .gd-outline-item:hover { background: #e8eaed; }
 .gd-canvas { flex-grow: 1; min-width: 0; overflow-x: clip; position: relative; align-self: stretch; }
-.gd-ruler-wrap { position: sticky; top: 0; z-index: 4; display: flex; justify-content: center; background: #f9fbfd; }
+.gd-ruler-wrap { position: sticky; top: 0; z-index: 4; display: flex; justify-content: safe center; overflow: hidden; background: #f9fbfd; }
 .gd-ruler { position: relative; height: 22px; border-bottom: 1px solid #dadce0; background: linear-gradient(to right, #eef0f3 0, #eef0f3 11.76%, #fff 11.76%, #fff 88.24%, #eef0f3 88.24%) , #fff; background-clip: padding-box; box-sizing: border-box; }
 .gd-ruler::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 5px; background: repeating-linear-gradient(to right, #80868b 0, #80868b 1px, transparent 1px, transparent 9.45px); opacity: .55; }
 .gd-ruler span { position: absolute; top: 2px; transform: translateX(-50%); font-size: 10px; color: #5f6368; }
-.gd-sheet-row { display: flex; justify-content: center; gap: 16px; padding: 18px 0 150px; margin: 0 auto; }
+.gd-sheet-row { display: flex; justify-content: center; gap: 16px; padding: 18px 0 150px; margin: 0 auto; width: fit-content; }
 .gd-sheet { width: 816px; min-height: 1056px; background: #fff; box-shadow: 0 0 0 .75pt #d1d1d1, 0 0 3pt .75pt #ccc; box-sizing: border-box; padding: 96px 96px 120px; position: relative; }
 .gd-margin { width: 284px; position: relative; flex-shrink: 0; }
 .gd-card { position: absolute; left: 0; width: 272px; box-sizing: border-box; background: #fff; border-radius: 8px; padding: 12px 12px 12px; box-shadow: 0 1px 3px rgba(60,64,67,.3), 0 4px 8px 3px rgba(60,64,67,.15); cursor: pointer; transition: top .15s ease, box-shadow .15s ease; }
@@ -1974,7 +2121,7 @@ function BigDrop({ icon, label, children }: { icon: "upload" | "download"; label
   return (
     <div ref={ref} style={{ position: "relative", display: "inline-flex" }}>
       <button type="button" className="gd-big" aria-expanded={open} data-on={open ? "1" : undefined} onClick={() => setOpen((v) => !v)}>
-        <GI name={icon} size={18} />
+        <GI name={icon} size={16} />
         {label}
         <GI name="chevron" size={15} style={{ color: "#5f6368" }} />
       </button>

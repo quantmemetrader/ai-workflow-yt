@@ -226,7 +226,12 @@ export async function performanceTotals(viewer: Viewer, opts: { window?: Window;
            coalesce(sum(m.views), 0)::bigint                  as views,
            coalesce(sum(m.likes), 0)::bigint                  as likes,
            coalesce(sum(m.comments), 0)::bigint               as comments,
-           avg(m.engagement_rate) filter (where m.engagement_rate is not null) as engagement_rate
+           -- Weighted by views, the way each platform tile works it out: the
+           -- plain average let a 4-view post count as much as a 1,200-view one,
+           -- so the headline rate matched no platform (QA, 2 Oct).
+           (sum(coalesce(m.likes, 0) + coalesce(m.comments, 0) + coalesce(m.shares, 0))
+              filter (where m.likes is not null and m.views > 0))::float
+             / nullif(sum(m.views) filter (where m.likes is not null and m.views > 0), 0) as engagement_rate
       from channel_posts p
       join channels c on c.id = p.channel_id
       left join lateral (
@@ -268,8 +273,8 @@ export async function performanceTotals(viewer: Viewer, opts: { window?: Window;
     viewsInWindow: Number(gained[0]?.v ?? 0),
     likes: Number(r.likes ?? 0),
     comments: Number(r.comments ?? 0),
-    /** Averaged over the posts that actually report it, so one platform's
-     * silence does not drag the number to zero. */
+    /** Interactions over views, over the posts that report likes, so one
+     * platform's silence does not drag the number to zero. */
     engagementRate: r.engagement_rate === null || r.engagement_rate === undefined ? null : Number(r.engagement_rate),
   };
 }
@@ -649,13 +654,14 @@ export async function listCompetitors(viewer: Viewer): Promise<CompetitorRow[]> 
       platform: c.platform,
       externalId: c.externalId,
       handle: c.handle,
-      displayName: c.displayName,
+      // Rival channels publish in Traditional; the studio reads Simplified (QA, 2 Oct).
+      displayName: c.displayName ? toSimplified(c.displayName) : c.displayName,
       note: c.note,
       syncedAt: c.syncedAt,
       lastError: c.lastError,
       postCount: own.length,
       medianViews: views.length ? views[Math.floor(views.length / 2)] : null,
-      topPost: top ? { title: top.title, permalink: top.permalink, views: top.views } : null,
+      topPost: top ? { title: top.title ? toSimplified(top.title) : top.title, permalink: top.permalink, views: top.views } : null,
     };
   });
 }
@@ -683,6 +689,21 @@ export async function ourMedianViews(viewer: Viewer, opts: { window?: Window } =
   `);
   const v = rows[0]?.v;
   return v === null || v === undefined ? null : Number(v);
+}
+
+/** How many posts that median is over, for the studio's row in the same
+ * table (QA, 2 Oct: it showed 「—」 beside every rival's count). */
+export async function ourPostCount(viewer: Viewer, opts: { window?: Window } = {}): Promise<number> {
+  const since = windowStart(opts.window ?? DEFAULT_WINDOW);
+  const { rows } = await db.execute<{ n: string | number }>(sql`
+    select count(*)::int as n
+      from channel_posts p
+     where p.tenant_id = ${viewer.tenantId}
+       and p.status = 'published'
+       and p.published_at is not null
+       and p.published_at >= ${since}
+  `);
+  return Number(rows[0]?.n ?? 0);
 }
 
 export async function addCompetitor(

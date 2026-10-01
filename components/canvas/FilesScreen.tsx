@@ -25,6 +25,11 @@ import { Tr } from "@/components/ui/Tr";
  * artboard's default state: view = "list", coach card shown, nothing selected.
  */
 
+/** Whether this person may rename or delete the file: the row's own relation
+ * when it was read, else the screen-wide flag decides (QA, 2 Oct: a member
+ * saw rename and delete on files shared with them to view). */
+const writable = (f: { access?: FileRow["access"] }) => f.access == null || f.access === "owner" || f.access === "editor";
+
 export type FileRow = {
   id: string;
   name: string;
@@ -135,6 +140,7 @@ const ZH: Record<string, string> = {
   "No folders yet": "还没有文件夹",
   Rename: "重命名",
   Restore: "恢复",
+  "Delete forever": "永久删除",
   Delete: "删除",
   "New folder makes the first one": "点击“新建文件夹”创建第一个",
 };
@@ -308,6 +314,8 @@ export function FilesScreen(props: {
   view?: "folder" | "recent" | "shared" | "trash";
   /** Trash only: put a file back inside its recovery window. */
   onRestore?: (id: string) => void;
+  /** Trash only: delete a file for good, for its owner or an admin (QA, 2 Oct). */
+  onPurge?: (id: string, name: string) => void;
   /** The model actually answering, for the line under the composer. */
   model: string;
   /** Rename a file or a folder in place. A camera's filename is not a name a
@@ -365,6 +373,7 @@ export function FilesScreen(props: {
     onLayoutChange,
     view = "folder",
     onRestore,
+    onPurge,
     lens,
     renderBody,
     selected,
@@ -395,22 +404,24 @@ export function FilesScreen(props: {
   const viewTitle =
     view === "recent" ? (zh ? "最近" : "Recent") : view === "shared" ? (zh ? "共享给我的" : "Shared with me") : view === "trash" ? (zh ? "回收站" : "Trash") : t("Files");
 
+  /* Counts folders too, the same as the number beside the title (QA, 2 Oct:
+     the header said 28, this said 26). */
   const agentNote =
     view === "trash"
-      ? files.length === 0
+      ? files.length + folders.length === 0
         ? zh
           ? "回收站是空的。删除的文件会在这里保留 30 天，随时可以恢复。"
           : "The trash is empty. Deleted files wait here for 30 days, and can be put back any time."
         : zh
-          ? `回收站里有 ${files.length} 个文件，30 天内都能恢复。可以在下面问我它们是什么。`
-          : `${files.length} ${files.length === 1 ? "file" : "files"} in the trash, each restorable for 30 days. Ask below what they are.`
+          ? `回收站里有 ${files.length} 个文件${folders.length ? `、${folders.length} 个文件夹` : ""}，30 天内都能恢复。可以在下面问我它们是什么。`
+          : `${files.length} ${files.length === 1 ? "file" : "files"}${folders.length ? ` and ${folders.length} ${folders.length === 1 ? "folder" : "folders"}` : ""} in the trash, each restorable for 30 days. Ask below what they are.`
       : folders.length === 0 && files.length === 0
         ? zh
           ? "这里还是空的。上传的文件会出现在这里，之后可以在下面问我它们的内容。"
           : "Nothing here yet. Uploaded files appear here; then ask below about what is in them."
         : zh
         ? `这里有${folders.length ? ` ${folders.length} 个文件夹、` : " "}${files.length} 个文件，共 ${formatBytes(totalBytes, locale)}。在下面问我这里的任何事，比如某段素材拍了什么、适合放进哪条片。`
-        : `${folders.length ? `${folders.length} ${folders.length === 1 ? "folder" : "folders"} and ` : ""}${files.length} ${files.length === 1 ? "file" : "files"} here, ${formatBytes(totalBytes, locale)} in all. Ask below about anything in them — what a clip shows, which video it suits.`;
+        : `${folders.length ? `${folders.length} ${folders.length === 1 ? "folder" : "folders"} and ` : ""}${files.length} ${files.length === 1 ? "file" : "files"} here, ${formatBytes(totalBytes, locale)} in all. Ask below about anything in them: what a clip shows, which video it suits.`;
 
   return (
     <>
@@ -751,21 +762,32 @@ export function FilesScreen(props: {
                         margin: "0 auto",
                       }}
                     >
+                      {/* A plus only where pressing it uploads (QA, 2 Oct). */}
                       {view === "trash" ? (
                         <path d="M5.5 7.5h13M9.5 7.5V5.8a1.3 1.3 0 0 1 1.3-1.3h2.4a1.3 1.3 0 0 1 1.3 1.3v1.7M7 7.5l.8 11.2h8.4L17 7.5" />
-                      ) : (
+                      ) : canEdit ? (
                         <path d="M12 6v12M6 12h12" />
+                      ) : (
+                        <path d="M3.5 7.5a2 2 0 0 1 2-2h4l2 2h7a2 2 0 0 1 2 2v7.5a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z" />
                       )}
                     </svg>
+                    {/* Two lines that say two things (QA, 2 Oct: on 共享给我的
+                        they said "nothing here" twice). */}
                     <div style={{ fontSize: 12.5, color: "#525252", marginTop: 8 }}>
-                      {t("Nothing here yet")}
+                      {view === "shared" ? (zh ? "还没有人共享文件给你" : "Nothing has been shared with you yet") : t("Nothing here yet")}
                     </div>
                     <div style={{ fontSize: 12, color: "#999999", marginTop: 4, lineHeight: 1.5 }}>
                       {view === "trash"
                         ? t("Deleted files stay here for 30 days")
-                        : canEdit
-                          ? t("Drop a file here, or press Upload")
-                          : t("Nothing you can see here")}
+                        : view === "shared"
+                          ? zh
+                            ? "同事把文件共享给你后，会出现在这里。"
+                            : "Files colleagues share with you will show up here."
+                          : canEdit
+                            ? t("Drop a file here, or press Upload")
+                            : zh
+                              ? "有人把文件放进来或共享给你后，会出现在这里。"
+                              : "Files appear here once someone adds or shares them."}
                     </div>
                   </div>
                 </div>
@@ -782,6 +804,7 @@ export function FilesScreen(props: {
                     onRename={onRename}
                     onDelete={onDelete}
                     onRestore={view === "trash" ? onRestore : undefined}
+                    onPurge={view === "trash" ? onPurge : undefined}
                     onSetAccess={view === "trash" ? undefined : onSetAccess}
                     showDate={lens != null && lens !== "all"}
                     zh={zh}
@@ -1039,22 +1062,38 @@ export function FilesScreen(props: {
                       </div>
                       <div className="c">
                         {view === "trash" && onRestore ? (
-                          <span
-                            role="button"
-                            tabIndex={0}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onRestore(f.id);
-                            }}
-                            className="bdg"
-                            style={{ background: "#e6f4ff", color: ACCENT, cursor: "pointer" }}
-                          >
-                            {zh ? "恢复" : "Restore"}
+                          <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            <span
+                              role="button"
+                              tabIndex={0}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onRestore(f.id);
+                              }}
+                              className="bdg"
+                              style={{ background: "#e6f4ff", color: ACCENT, cursor: "pointer" }}
+                            >
+                              {zh ? "恢复" : "Restore"}
+                            </span>
+                            {onPurge && f.canSetAccess ? (
+                              <span
+                                role="button"
+                                tabIndex={0}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onPurge(f.id, f.name);
+                                }}
+                                className="bdg"
+                                style={{ background: "#fdecec", color: "#c62a2f", cursor: "pointer" }}
+                              >
+                                {zh ? "永久删除" : "Delete forever"}
+                              </span>
+                            ) : null}
                           </span>
                         ) : canEdit ? (
                           <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
                             <AccessBadge access={f.access} canEdit={canEdit} t={t} />
-                            {onRename && (
+                            {onRename && writable(f) && (
                               <button
                                 type="button"
                                 title={t("Rename")}
@@ -1069,7 +1108,7 @@ export function FilesScreen(props: {
                                 <PencilGlyph />
                               </button>
                             )}
-                            {onDelete && (
+                            {onDelete && writable(f) && (
                               <button
                                 type="button"
                                 title={t("Delete")}
@@ -1251,6 +1290,7 @@ export function Tiles({
   onRename,
   onDelete,
   onRestore,
+  onPurge,
   onSetAccess,
   showDate,
   tag,
@@ -1273,6 +1313,7 @@ export function Tiles({
   /* Trash only. Restore lived in the list layout alone, and the default
      layout is the grid — so the trash had no way out of it for most people. */
   onRestore?: (id: string) => void;
+  onPurge?: (id: string, name: string) => void;
   onSetAccess?: (file: FileRow) => void;
   /* The date on the second line, where tiles from many places are mixed (a
      project's files, all the pictures) and "when" is how one is told apart. */
@@ -1403,7 +1444,7 @@ export function Tiles({
             minWidth: 0,
           }}
         >
-          <TileActions kind="file" id={f.id} name={f.name} onRename={onRename} onDelete={onDelete} onRestore={onRestore} t={t} />
+          <TileActions kind="file" id={f.id} name={f.name} onRename={writable(f) ? onRename : undefined} onDelete={writable(f) ? onDelete : undefined} onRestore={onRestore} onPurge={f.canSetAccess ? onPurge : undefined} t={t} />
           <div
             style={{
               height: thumbHeight,
@@ -1482,6 +1523,7 @@ function TileActions({
   onRename,
   onDelete,
   onRestore,
+  onPurge,
   t,
 }: {
   kind: "file" | "folder";
@@ -1492,6 +1534,7 @@ function TileActions({
   /* Trash only. Restore lived in the list layout alone, and the default
      layout is the grid — so the trash had no way out of it for most people. */
   onRestore?: (id: string) => void;
+  onPurge?: (id: string, name: string) => void;
   t: (key: string) => string;
 }) {
   if (!onRename && !onDelete && !onRestore) return null;
@@ -1517,6 +1560,20 @@ function TileActions({
           style={{ background: "#e6f4ff", color: ACCENT, cursor: "pointer", border: 0, font: "inherit" }}
         >
           {t("Restore")}
+        </button>
+      )}
+      {onPurge && (
+        <button
+          type="button"
+          aria-label={`${t("Delete forever")} ${name}`}
+          onClick={(e) => {
+            e.stopPropagation();
+            onPurge(id, name);
+          }}
+          className="bdg"
+          style={{ background: "#fdecec", color: "#c62a2f", cursor: "pointer", border: 0, font: "inherit" }}
+        >
+          {t("Delete forever")}
         </button>
       )}
       {onRename && (

@@ -68,11 +68,31 @@ export async function createProjectAction(title: string, scriptId: string | null
   }
 }
 
+/**
+ * The refusals lib/video writes in English, said in the viewer's language
+ * (QA, 2 Oct: a member pressing 删除 on someone else's cut read "Only the
+ * project's owner or an admin can delete it"). Anything else passes through.
+ */
+function said(viewer: { locale?: string | null }, err: unknown, fallback: [string, string]): string {
+  const zh = (viewer.locale ?? "zh-CN").startsWith("zh");
+  const msg = err instanceof Error ? err.message : "";
+  if (!zh) return msg || fallback[1];
+  if (/can delete it/.test(msg)) return "只有剪辑的创建人或管理员可以删除。";
+  if (/change who has access/.test(msg)) return "只有剪辑的创建人或管理员可以改权限。";
+  if (/shared with you to view/.test(msg)) return "这个剪辑只分享给你查看。需要修改的话，请找创建人开编辑权限。";
+  if (msg === "Not found") return "找不到这个剪辑了。";
+  return msg || fallback[0];
+}
+
 export async function updateProjectAction(projectId: string, input: { title?: string; notes?: string }) {
   const viewer = await editor();
   if (!viewer) return { error: "Not allowed" };
   if (!id(projectId)) return { error: "Not found" };
-  await updateProject(viewer, projectId, input);
+  try {
+    await updateProject(viewer, projectId, input);
+  } catch (err) {
+    return { error: said(viewer, err, ["没能保存。", "Could not save that"]) };
+  }
   refresh();
   return {};
 }
@@ -81,7 +101,11 @@ export async function deleteProjectAction(projectId: string) {
   const viewer = await editor();
   if (!viewer) return { error: "Not allowed" };
   if (!id(projectId)) return { error: "Not found" };
-  await deleteProject(viewer, projectId);
+  try {
+    await deleteProject(viewer, projectId);
+  } catch (err) {
+    return { error: said(viewer, err, ["没能删除。", "Could not delete that"]) };
+  }
   refresh();
   return {};
 }
@@ -767,7 +791,7 @@ export async function shareProjectAction(projectId: string, target: string, rela
     refresh();
     return {};
   } catch (err) {
-    return { error: err instanceof Error ? err.message : "Could not share that" };
+    return { error: said(viewer, err, ["没能分享。", "Could not share that"]) };
   }
 }
 
@@ -779,6 +803,6 @@ export async function unshareProjectAction(projectId: string, subjectType: strin
     refresh();
     return {};
   } catch (err) {
-    return { error: err instanceof Error ? err.message : "Could not change that" };
+    return { error: said(viewer, err, ["没能修改。", "Could not change that"]) };
   }
 }

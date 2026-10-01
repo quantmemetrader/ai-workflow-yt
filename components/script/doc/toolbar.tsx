@@ -127,7 +127,14 @@ export function Toolbar({
   const f = useFormat(editor);
   const off = !editor || !f || mode !== "edit" || !editor.isEditable;
   const size = f?.size ?? 11;
-  const setSize = (n: number) => editor?.chain().focus().setFontSize(`${Math.max(6, Math.min(96, n))}pt`).run();
+  const setSize = (n: number) => editor?.chain().focus().setFontSize(`${Math.max(6, Math.min(96, Math.round(n)))}pt`).run();
+  /* What is typed in the size box until Enter or leaving it applies it (QA, 2 Oct: the box could not be typed in). */
+  const [sizeText, setSizeText] = React.useState<string | null>(null);
+  const applySize = (raw: string) => {
+    setSizeText(null);
+    const n = Number(raw.trim());
+    if (Number.isFinite(n) && n > 0 && Math.max(6, Math.min(96, Math.round(n))) !== size) setSize(n);
+  };
   const blockLabel = BLOCKS.find((b) => b.key === (f?.block ?? "p"));
   const fontLabel = FONTS.find((x) => x.value === (f?.font ?? null)) ?? FONTS[0];
   const alignIcon = f?.align === "center" ? "alignCenter" : f?.align === "right" ? "alignRight" : f?.align === "justify" ? "alignJustify" : "alignLeft";
@@ -138,8 +145,8 @@ export function Toolbar({
       <TB icon="search" label={t("查找和替换 (Ctrl+H)", "Find and replace (Ctrl+H)")} onClick={onFind} />
       <TB icon="undo" label={t("撤销 (Ctrl+Z)", "Undo (Ctrl+Z)")} disabled={off || !f?.canUndo} onClick={() => editor?.chain().focus().undo().run()} />
       <TB icon="redo" label={t("重做 (Ctrl+Y)", "Redo (Ctrl+Y)")} disabled={off || !f?.canRedo} onClick={() => editor?.chain().focus().redo().run()} />
-      <TB icon="print" label={t("打印 (Ctrl+P)", "Print (Ctrl+P)")} onClick={onPrint} />
-      <Drop label={t("缩放", "Zoom")} button={<span className="gd-tb-text" style={{ minWidth: 38 }}>{Math.round(zoom * 100)}%</span>} width={110}>
+      <span className="gd-tb-wide"><TB icon="print" label={t("打印 (Ctrl+P)", "Print (Ctrl+P)")} onClick={onPrint} /></span>
+      <Drop label={t("缩放", "Zoom")} button={<span className="gd-tb-text" style={{ minWidth: 34 }}>{Math.round(zoom * 100)}%</span>} width={110}>
         {(close) =>
           [0.5, 0.75, 0.9, 1, 1.25, 1.5, 2].map((z) => (
             <button key={z} type="button" className="gd-menu-item" onClick={() => { setZoom(z); close(); }}>
@@ -150,7 +157,7 @@ export function Toolbar({
         }
       </Drop>
       <span className="gd-sep" />
-      <Drop label={t("样式", "Styles")} disabled={off} button={<span className="gd-tb-text" style={{ minWidth: 72, textAlign: "left" }}>{zh ? blockLabel?.zh : blockLabel?.en}</span>} width={230}>
+      <Drop label={t("样式", "Styles")} disabled={off} button={<span className="gd-tb-text" style={{ minWidth: 58, textAlign: "left" }}>{zh ? blockLabel?.zh : blockLabel?.en}</span>} width={230}>
         {(close) =>
           BLOCKS.map((b) => (
             <button key={b.key} type="button" className="gd-menu-item" onClick={() => { if (editor) setBlock(editor, b.key); close(); }}>
@@ -161,7 +168,7 @@ export function Toolbar({
         }
       </Drop>
       <span className="gd-sep" />
-      <Drop label={t("字体", "Font")} disabled={off} button={<span className="gd-tb-text" style={{ minWidth: 64, textAlign: "left" }}>{zh ? fontLabel.label : fontLabel.labelEn}</span>} width={200}>
+      <Drop label={t("字体", "Font")} disabled={off} button={<span className="gd-tb-text" style={{ minWidth: 50, maxWidth: 84, overflow: "hidden", textOverflow: "ellipsis", textAlign: "left" }}>{zh ? fontLabel.label : fontLabel.labelEn}</span>} width={200}>
         {(close) =>
           FONTS.map((x) => (
             <button key={x.label} type="button" className="gd-menu-item" onClick={() => { if (x.value) editor?.chain().focus().setFontFamily(x.value).run(); else editor?.chain().focus().unsetFontFamily().run(); close(); }}>
@@ -176,18 +183,22 @@ export function Toolbar({
       <input
         className="gd-size"
         aria-label={t("字号", "Font size")}
-        value={size}
+        inputMode="numeric"
+        value={sizeText ?? String(size)}
         disabled={off}
-        onChange={() => undefined}
+        onFocus={(e) => e.target.select()}
+        onChange={(e) => setSizeText(e.target.value.replace(/[^\d.]/g, "").slice(0, 4))}
         onKeyDown={(e) => {
           if (e.key === "Enter") {
-            const n = Number((e.target as HTMLInputElement).value);
-            if (n > 0) setSize(n);
+            e.preventDefault();
+            applySize((e.target as HTMLInputElement).value);
+          } else if (e.key === "Escape") {
+            setSizeText(null);
+            editor?.commands.focus();
           }
         }}
         onBlur={(e) => {
-          const n = Number(e.target.value);
-          if (n > 0 && n !== size) setSize(n);
+          if (sizeText !== null) applySize(e.target.value);
         }}
       />
       <TB icon="plus" label={t("增大字号", "Increase font size")} disabled={off} onClick={() => setSize(size + 1)} />
@@ -226,7 +237,7 @@ export function Toolbar({
         {(close) => (
           <div style={{ display: "flex", gap: 2, padding: 2 }}>
             {(["left", "center", "right", "justify"] as const).map((a) => (
-              <TB key={a} icon={a === "left" ? "alignLeft" : a === "center" ? "alignCenter" : a === "right" ? "alignRight" : "alignJustify"} label={a} on={f?.align === a} onClick={() => { editor?.chain().focus().setTextAlign(a).run(); close(); }} />
+              <TB key={a} icon={a === "left" ? "alignLeft" : a === "center" ? "alignCenter" : a === "right" ? "alignRight" : "alignJustify"} label={a === "left" ? t("左对齐", "Left") : a === "center" ? t("居中", "Centre") : a === "right" ? t("右对齐", "Right") : t("两端对齐", "Justified")} on={f?.align === a} onClick={() => { editor?.chain().focus().setTextAlign(a).run(); close(); }} />
             ))}
           </div>
         )}
@@ -255,15 +266,16 @@ export function Toolbar({
         button={
           <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
             <GI name={mode === "edit" ? "pencil" : mode === "suggest" ? "suggest" : "eye"} size={17} />
-            <span className="gd-tb-text">{modeLabel}</span>
+            <span className="gd-tb-text gd-tb-wide">{modeLabel}</span>
           </span>
         }
       >
         {(close) =>
+          /* No 建议 here: it only focused the AI box while the label stayed
+             编辑 (QA, 2 Oct). 编剧's edits already arrive as tracked changes. */
           (
             [
               ["edit", "pencil", t("编辑", "Editing"), t("直接修改文档", "Edit the document directly")],
-              ["suggest", "suggest", t("建议", "Suggesting"), t("让编剧提出修改，以修订显示，接受了才生效", "The writer proposes edits as tracked changes")],
               ["view", "eye", t("查看", "Viewing"), t("阅读或打印最终文档", "Read or print the final document")],
             ] as [Mode, string, string, string][]
           ).map(([m, icon, label, sub]) => (

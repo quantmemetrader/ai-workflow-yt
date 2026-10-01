@@ -9,7 +9,7 @@ import { AgentModel } from "@/components/train/AgentModel";
 import { MODELS, modelFor } from "@/lib/ai/models";
 import { modelChoice } from "@/lib/ai/choice";
 
-export const metadata = { title: "AI 训练 · Train the AI" };
+export const metadata = { title: "AI 训练" };
 
 /** One employee's training: its model, its instructions, style list, examples and a try-out. */
 export default async function TrainAgentPage({ params }: { params: Promise<{ agent: string }> }) {

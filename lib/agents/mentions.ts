@@ -1,4 +1,5 @@
 import "server-only";
+import { humanize } from "@/lib/text/human";
 import { share } from "@/lib/authz/rebac";
 import { requesterOf } from "@/lib/auth/types";
 import { after } from "next/server";
@@ -258,6 +259,18 @@ export async function dispatchAgentMentions(input: MentionDispatch): Promise<voi
  * hour, nobody else in between), is that employee's to answer.
  */
 const REPLY_WINDOW_MS = 30 * 60_000;
+
+/**
+ * "无需回复" / "不用回复" / "仅供参考" said outright: a note for the room, not
+ * a question for the employee who spoke last (QA, 2 Oct: every plain message
+ * got an AI answer, even ones that asked for none). Only the untagged
+ * reply-to-last-speaker path reads this; an @ is still an @.
+ */
+const NO_REPLY = /(无需|不用|不需要|不必|别|勿|毋需|无须|不要)\s*(回复|回答|答复|理会)|仅供参考|只是(记录|备注|说一下|告诉大家)|\bno (reply|response) (needed|required)\b|\b(fyi|nrn)\b/i;
+
+export function wantsNoReply(body: string): boolean {
+  return NO_REPLY.test(body);
+}
 
 export async function replyTarget(channelId: string, authorId: string): Promise<AgentKey | null> {
   const recent = await db
@@ -1494,6 +1507,7 @@ async function answerOne(input: Chain, key: AgentKey, channel: Channel) {
           ? `@${asker} 我暂时答不上来${failure ? `：${failure}` : "。"}`
           : `@${asker} I could not answer just now${failure ? `: ${failure}` : "."}`;
 
+    body = humanize(body);
     await postMessage(agent, channelId, body, {
       ...(input.replyMeta ?? {}),
       ...(replyActions ? { actions: replyActions } : {}),

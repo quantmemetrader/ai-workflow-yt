@@ -12,7 +12,7 @@ import { DocEditor } from "@/components/files/DocEditor";
 import { ShareSheet } from "@/components/files/ShareSheet";
 import { FileAccessControl } from "@/components/files/FileAccessControl";
 
-export const metadata = { title: "文档 · Document" };
+export const metadata = { title: "文档" };
 
 /** A document open for editing (`DocEditor`): anyone who may read it may open it; editors may change it. */
 export default async function DocPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ share?: string }> }) {
@@ -29,6 +29,12 @@ export default async function DocPage({ params, searchParams }: { params: Promis
   const back = lib ? { href: `/${lib[0]}?tab=library`, label: zh ? lib[1].zh : lib[1].en } : { href: "/files", label: zh ? "文件" : "Files" };
   const [shares, ceiling, vis] = await Promise.all([sharesWithNames("file", id), shareCeiling(viewer, "file", id), visibilityForFiles([id])]);
   const seen = vis.get(id) ?? { visibility: "private" as const, groups: [], userIds: [] };
+  /* (QA, 2 Oct: people shares of every level are listed, viewers included, so
+     each can be removed; everyone/group grants stay in 谁可以看.) */
+  const people = shares.filter((s) => s.tuple.subjectType !== "tenant" && s.tuple.subjectType !== "role");
+  const sharedPeople = new Set(
+    people.filter((s) => s.tuple.subjectId !== row?.ownerId && (!s.tuple.expiresAt || s.tuple.expiresAt > new Date())).map((s) => s.tuple.subjectId),
+  ).size;
   return (
     <div style={{ flexGrow: 1, minWidth: 0, display: "flex", flexDirection: "column", overflowY: "auto" }}>
       <DocEditor
@@ -43,15 +49,14 @@ export default async function DocPage({ params, searchParams }: { params: Promis
         openShare={openShare === "1"}
         share={
           <>
-            <FileAccessControl fileId={doc.id} fileName={doc.name} visibility={seen.visibility} groups={seen.groups} userIds={seen.userIds} canChange={viewer.isAdmin || row?.ownerId === viewer.id} zh={zh} />
+            <FileAccessControl fileId={doc.id} fileName={doc.name} visibility={seen.visibility} groups={seen.groups} userIds={seen.userIds} canChange={viewer.isAdmin || row?.ownerId === viewer.id} zh={zh} sharedPeople={sharedPeople} />
             <ShareSheet
               objectType="file"
               objectId={doc.id}
               ceiling={ceiling}
               locale={locale}
-              shares={shares
-                .filter((s) => s.tuple.subjectType !== "tenant" && s.tuple.subjectType !== "role" && s.tuple.relation !== "viewer")
-                .map((s) => ({ subjectId: s.tuple.subjectId, subjectType: s.tuple.subjectType, relation: s.tuple.relation, name: s.userName, expiresAt: s.tuple.expiresAt?.toISOString() ?? null }))}
+              ownerId={row?.ownerId}
+              shares={people.map((s) => ({ subjectId: s.tuple.subjectId, subjectType: s.tuple.subjectType, relation: s.tuple.relation, name: (zh && s.userNameLocal) || s.userName, expiresAt: s.tuple.expiresAt?.toISOString() ?? null }))}
             />
           </>
         }

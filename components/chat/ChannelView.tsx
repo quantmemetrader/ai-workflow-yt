@@ -6,7 +6,8 @@ import { useRouter } from "next/navigation";
 import { ChannelSurface, type ChannelMember, type ChannelMessage, type ChannelPending, type SentFile } from "@/components/chat/ChannelSurface";
 import { pendingStamp } from "@/lib/agents/steps";
 import { parseAgentMentions } from "@/lib/agents/catalog";
-import { pressCardAction, sendChannelMessage, startCutFromChatAction } from "@/app/(app)/chat/actions";
+import { archiveChannelAction, deleteChannelMessageAction, editChannelMessageAction, leaveChannelAction, pressCardAction, sendChannelMessage, startCutFromChatAction } from "@/app/(app)/chat/actions";
+import { notify } from "@/lib/client/notify";
 import { bumpLive } from "@/lib/client/live";
 import { MembersSheet } from "@/components/chat/MembersSheet";
 import { AgentDock } from "@/components/shell/AgentDock";
@@ -49,7 +50,16 @@ export function ChannelView({
   directId = null,
   pending: workingRows = [],
   project = null,
+  canLeave = false,
+  canArchive = false,
+  archived = false,
 }: {
+  /** A member of a private channel may leave it (退出频道). */
+  canLeave?: boolean;
+  /** Whoever started it, or an admin, may archive it; never a system room. */
+  canArchive?: boolean;
+  /** Archived: read-only, said where the composer was. */
+  archived?: boolean;
   slug: string;
   /** The project this chat belongs to, when it is a project's own. */
   project?: { id: string; title: string; videoProjectId: string | null } | null;
@@ -109,10 +119,17 @@ export function ChannelView({
   const [pressing, setPressing] = useState<string | null>(null);
   /** The dropped take whose 开始剪 press is on its way to the server. */
   const [cutting, setCutting] = useState<string | null>(null);
+  /* Edits and deletions shown at once, until the server's copy agrees. */
+  const [patched, setPatched] = useState<Record<string, string>>({});
+  const [gone, setGone] = useState<string[]>([]);
+  /* The assistant beside the channel, opened by hand on a narrow window. */
+  const [dockOpen, setDockOpen] = useState(false);
   const [seen, setSeen] = useState(messages);
   if (seen !== messages) {
     setSeen(messages);
     setOptimistic([]);
+    setPatched({});
+    setGone([]);
   }
 
   // Polling asks a one-row question ("newest message id?") and only re-renders
@@ -252,15 +269,59 @@ export function ChannelView({
     });
   }
 
+  /** Saving a change to one's own message (QA, 2 Oct). */
+  async function edit(messageId: string, body: string): Promise<string | null> {
+    const res = await editChannelMessageAction(slug, messageId, body).catch(() => ({ error: zh ? "没改成，再试一次" : "Not saved; try again" }));
+    if (res?.error) {
+      notify(res.error);
+      return res.error;
+    }
+    setPatched((p) => ({ ...p, [messageId]: body.trim() }));
+    router.refresh();
+    return null;
+  }
+
+  function remove(messageId: string) {
+    setGone((g) => [...g, messageId]);
+    start(async () => {
+      const res = await deleteChannelMessageAction(slug, messageId).catch(() => ({ error: zh ? "没删掉，再试一次" : "Not deleted; try again" }));
+      if (res?.error) {
+        setGone((g) => g.filter((id) => id !== messageId));
+        notify(res.error);
+        return;
+      }
+      router.refresh();
+    });
+  }
+
+  /** 退出频道 / 归档频道: done, the room leaves the list and the screen. */
+  function closeRoom(kind: "leave" | "archive") {
+    start(async () => {
+      const res = await (kind === "leave" ? leaveChannelAction(slug) : archiveChannelAction(slug)).catch(() => ({ error: zh ? "没成功，再试一次" : "That did not work; try again" }));
+      if (res?.error) return notify(res.error);
+      notify(kind === "leave" ? (zh ? `已退出 #${name}` : `Left #${name}`) : zh ? `#${name} 已归档` : `#${name} archived`, "ok");
+      router.push("/chat");
+      router.refresh();
+    });
+  }
+
+  const shown = [...messages, ...optimistic]
+    .filter((m) => !gone.includes(m.id))
+    .map((m) => (m.id in patched ? { ...m, body: patched[m.id], editedAt: m.editedAt ?? new Date().toISOString() } : m));
+
   return (
     <>
-      <div style={{ flexGrow: 1, minWidth: 0, minHeight: 0, display: "flex" }}>
+      {/* Below ~1200px the assistant column folds away, so the messages keep
+          their width; the header's spark button opens it over the channel
+          (QA, 2 Oct: at 1024px four columns left the messages ~270px). */}
+      <style>{DOCK_CSS}</style>
+      <div style={{ flexGrow: 1, minWidth: 0, minHeight: 0, display: "flex", position: "relative" }}>
         <ChannelSurface
           name={name}
           topic={topic}
           memberCount={memberCount}
           members={members}
-          messages={[...messages, ...optimistic]}
+          messages={shown}
           pending={workingRows}
           sending={pending}
           onSend={send}
@@ -273,14 +334,25 @@ export function ChannelView({
           canAttach={canAttach}
           failed={failed}
           onDismissFailure={() => setFailed(null)}
-          canPost={canPost}
+          canPost={canPost && !archived}
           readOnlyNote={
-            canPost
-              ? undefined
-              : zh
-                ? "公司公告，仅管理员可以发布。"
-                : "Company-wide announcements. Only an administrator posts here."
+            archived
+              ? zh
+                ? "这个频道已归档，只能查看，不能再发消息。"
+                : "This channel is archived. You can read it but not post."
+              : canPost
+                ? undefined
+                : zh
+                  ? "公司公告，仅管理员可以发布。"
+                  : "Company-wide announcements. Only an administrator posts here."
           }
+          meId={me.id ?? null}
+          isPrivate={isPrivate}
+          onEdit={archived ? undefined : edit}
+          onDelete={archived ? undefined : remove}
+          onLeave={canLeave && !archived ? () => closeRoom("leave") : undefined}
+          onArchive={canArchive && !archived ? () => closeRoom("archive") : undefined}
+          onToggleAssistant={() => setDockOpen((v) => !v)}
           locale={locale}
           now={now}
           isDirect={isDirect}
@@ -296,18 +368,25 @@ export function ChannelView({
             and it posts as the person, never as a bot. The AI employees tagged
             in the channel itself are a different thing: they post as
             themselves, under their own names and their own permissions. */}
-        <AgentDock
-          zh={zh}
-          model={model}
-          context={{ module: "chat", channelId }}
-          scope={isDirect ? `@${name}` : `#${name}`}
-          note={
-            zh
-              ? "可以让它总结这个频道、找某条消息，或替你发一条。它以你的身份发送。要叫 AI 员工，在下面的输入框里 @ 它们。"
-              : "Ask it to summarise this channel, find a message, or send one for you. It posts as you. To bring in an AI employee, @ them in the composer below."
-          }
-          placeholder={zh ? "问这个频道…" : "Ask about this channel…"}
-        />
+        <div className="cv-dock" data-open={dockOpen || undefined}>
+          <AgentDock
+            zh={zh}
+            model={model}
+            context={{ module: "chat", channelId }}
+            scope={isDirect ? `@${name}` : `#${name}`}
+            /* A direct message is a conversation, not a 频道 (QA, 2 Oct). */
+            note={
+              isDirect
+                ? zh
+                  ? `可以让它总结你和${name}的对话、找某条消息，或替你发一条。它以你的身份发送。要叫 AI 员工，在下面的输入框里 @ 它们。`
+                  : `Ask it to summarise your conversation with ${name}, find a message, or send one for you. It posts as you. To bring in an AI employee, @ them in the composer below.`
+                : zh
+                  ? "可以让它总结这个频道、找某条消息，或替你发一条。它以你的身份发送。要叫 AI 员工，在下面的输入框里 @ 它们。"
+                  : "Ask it to summarise this channel, find a message, or send one for you. It posts as you. To bring in an AI employee, @ them in the composer below."
+            }
+            placeholder={isDirect ? (zh ? "问这段对话…" : "Ask about this conversation…") : zh ? "问这个频道…" : "Ask about this channel…"}
+          />
+        </div>
       </div>
 
       {showMembers && studioPeople && (
@@ -323,3 +402,15 @@ export function ChannelView({
     </>
   );
 }
+
+/* The assistant column, folded below 1200px and opened over the channel by
+   the header's spark button (QA, 2 Oct). */
+const DOCK_CSS = `
+.cv-dock { display: flex; flex-shrink: 0; min-height: 0; }
+.cv-dock-btn { display: none !important; }
+@media (max-width: 1199px) {
+  .cv-dock { display: none; }
+  .cv-dock[data-open] { display: flex; position: absolute; top: 0; right: 0; bottom: 0; z-index: 30; background: #fff; box-shadow: -12px 0 32px rgba(0,0,0,.08); }
+  .cv-dock-btn { display: inline-flex !important; align-items: center; justify-content: center; }
+}
+`;

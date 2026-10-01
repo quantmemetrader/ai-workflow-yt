@@ -32,28 +32,28 @@ const STAGES = ["applied", "screening", "interview", "offer", "hired", "rejected
 
 export async function seedBalancesAction(year: number) {
   const viewer = await hr();
-  if (!viewer) return { error: "Not allowed" };
+  if (!viewer) return { error: "你没有权限这样做" };
   const y = Number(year);
-  if (!Number.isInteger(y) || y < 2000 || y > 2100) return { error: "That is not a year" };
+  if (!Number.isInteger(y) || y < 2000 || y > 2100) return { error: "年份不对" };
   try {
     await seedBalances(viewer, y);
     refresh();
     return {};
   } catch (err) {
-    return { error: err instanceof Error ? err.message : "Could not do that" };
+    return { error: err instanceof Error ? err.message : "没能完成，请再试一次" };
   }
 }
 
 export async function setEntitlementAction(balanceId: string, days: number) {
   const viewer = await hr();
-  if (!viewer) return { error: "Not allowed" };
-  if (!id(balanceId)) return { error: "Not found" };
+  if (!viewer) return { error: "你没有权限这样做" };
+  if (!id(balanceId)) return { error: "找不到这一项" };
   try {
     await setEntitlement(viewer, balanceId, Number(days));
     refresh();
     return {};
   } catch (err) {
-    return { error: err instanceof Error ? err.message : "Could not save that" };
+    return { error: err instanceof Error ? err.message : "没能保存，请再试一次" };
   }
 }
 
@@ -65,10 +65,10 @@ export async function requestLeaveAction(input: {
   reason: string;
 }) {
   const viewer = await hr();
-  if (!viewer) return { error: "Not allowed" };
+  if (!viewer) return { error: "你没有权限这样做" };
   const start = day(input.startOn);
   const end = day(input.endOn);
-  if (!start || !end) return { error: "Both dates are needed" };
+  if (!start || !end) return { error: "开始和结束日期都要填" };
 
   try {
     await requestLeave(viewer, {
@@ -81,34 +81,34 @@ export async function requestLeaveAction(input: {
     refresh();
     return {};
   } catch (err) {
-    return { error: err instanceof Error ? err.message : "Could not request that" };
+    return { error: err instanceof Error ? err.message : "没能提交申请，请再试一次" };
   }
 }
 
 export async function decideLeaveAction(requestId: string, decision: string, note: string) {
   const viewer = await hr();
-  if (!viewer) return { error: "Not allowed" };
-  if (!id(requestId)) return { error: "Not found" };
-  if (decision !== "approved" && decision !== "rejected") return { error: "Not allowed" };
+  if (!viewer) return { error: "你没有权限这样做" };
+  if (!id(requestId)) return { error: "找不到这一项" };
+  if (decision !== "approved" && decision !== "rejected") return { error: "你没有权限这样做" };
   try {
     await decideLeave(viewer, requestId, decision, String(note ?? "").slice(0, 1000) || null);
     refresh();
     return {};
   } catch (err) {
-    return { error: err instanceof Error ? err.message : "Could not record that" };
+    return { error: err instanceof Error ? err.message : "没能记录，请再试一次" };
   }
 }
 
 export async function cancelLeaveAction(requestId: string) {
   const viewer = await hr();
-  if (!viewer) return { error: "Not allowed" };
-  if (!id(requestId)) return { error: "Not found" };
+  if (!viewer) return { error: "你没有权限这样做" };
+  if (!id(requestId)) return { error: "找不到这一项" };
   try {
     await cancelLeave(viewer, requestId);
     refresh();
     return {};
   } catch (err) {
-    return { error: err instanceof Error ? err.message : "Could not cancel that" };
+    return { error: err instanceof Error ? err.message : "没能撤回，请再试一次" };
   }
 }
 
@@ -119,7 +119,7 @@ export async function openRequisitionAction(input: {
   description: string;
 }) {
   const viewer = await hr();
-  if (!viewer) return { error: "Not allowed" };
+  if (!viewer) return { error: "你没有权限这样做" };
   try {
     await openRequisition(viewer, {
       title: String(input.title ?? "").slice(0, 200),
@@ -130,21 +130,21 @@ export async function openRequisitionAction(input: {
     refresh();
     return {};
   } catch (err) {
-    return { error: err instanceof Error ? err.message : "Could not open that" };
+    return { error: err instanceof Error ? err.message : "没能开启，请再试一次" };
   }
 }
 
 export async function setRequisitionStateAction(requisitionId: string, state: string) {
   const viewer = await hr();
-  if (!viewer) return { error: "Not allowed" };
-  if (!id(requisitionId)) return { error: "Not found" };
-  if (!["open", "on_hold", "filled", "closed"].includes(state)) return { error: "No such state" };
+  if (!viewer) return { error: "你没有权限这样做" };
+  if (!id(requisitionId)) return { error: "找不到这一项" };
+  if (!["open", "on_hold", "filled", "closed"].includes(state)) return { error: "没有这个状态" };
   try {
     await setRequisitionState(viewer, requisitionId, state);
     refresh();
     return {};
   } catch (err) {
-    return { error: err instanceof Error ? err.message : "Could not change that" };
+    return { error: err instanceof Error ? err.message : "没能修改，请再试一次" };
   }
 }
 
@@ -159,7 +159,7 @@ export async function addCandidateAction(input: {
   requisitionId: string | null;
 }) {
   const viewer = await hr();
-  if (!viewer) return { error: "Not allowed" };
+  if (!viewer) return { error: "你没有权限这样做" };
   try {
     await addCandidate(viewer, {
       name: String(input.name ?? "").slice(0, 200),
@@ -174,34 +174,34 @@ export async function addCandidateAction(input: {
     refresh();
     return {};
   } catch (err) {
-    return { error: err instanceof Error ? err.message : "Could not add that" };
+    return { error: err instanceof Error ? err.message : "没能添加，请再试一次" };
   }
 }
 
 export async function setStageAction(applicationId: string, stage: string) {
   const viewer = await hr();
-  if (!viewer) return { error: "Not allowed" };
-  if (!id(applicationId)) return { error: "Not found" };
-  if (!STAGES.includes(stage)) return { error: "No such stage" };
+  if (!viewer) return { error: "你没有权限这样做" };
+  if (!id(applicationId)) return { error: "找不到这一项" };
+  if (!STAGES.includes(stage)) return { error: "没有这个阶段" };
   try {
     await setStage(viewer, applicationId, stage);
     refresh();
     return {};
   } catch (err) {
-    return { error: err instanceof Error ? err.message : "Could not change that" };
+    return { error: err instanceof Error ? err.message : "没能修改，请再试一次" };
   }
 }
 
 export async function deleteCandidateAction(candidateId: string) {
   const viewer = await hr();
-  if (!viewer) return { error: "Not allowed" };
-  if (!id(candidateId)) return { error: "Not found" };
+  if (!viewer) return { error: "你没有权限这样做" };
+  if (!id(candidateId)) return { error: "找不到这一项" };
   try {
     await deleteCandidate(viewer, candidateId);
     refresh();
     return {};
   } catch (err) {
-    return { error: err instanceof Error ? err.message : "Could not delete that" };
+    return { error: err instanceof Error ? err.message : "没能删除，请再试一次" };
   }
 }
 
@@ -210,8 +210,8 @@ export async function saveEmployeeAction(
   input: { jobTitle: string; department: string; startedOn: string; employmentType: string },
 ) {
   const viewer = await hr();
-  if (!viewer) return { error: "Not allowed" };
-  if (!id(userId)) return { error: "Not found" };
+  if (!viewer) return { error: "你没有权限这样做" };
+  if (!id(userId)) return { error: "找不到这一项" };
   try {
     await saveEmployee(viewer, userId, {
       jobTitle: String(input.jobTitle ?? "").slice(0, 160) || null,
@@ -224,32 +224,32 @@ export async function saveEmployeeAction(
     refresh();
     return {};
   } catch (err) {
-    return { error: err instanceof Error ? err.message : "Could not save that" };
+    return { error: err instanceof Error ? err.message : "没能保存，请再试一次" };
   }
 }
 
 export async function addTaskAction(userId: string, label: string, dueOn: string) {
   const viewer = await hr();
-  if (!viewer) return { error: "Not allowed" };
-  if (!id(userId)) return { error: "Not found" };
+  if (!viewer) return { error: "你没有权限这样做" };
+  if (!id(userId)) return { error: "找不到这一项" };
   try {
     await addOnboardingTask(viewer, userId, String(label ?? "").slice(0, 200), day(dueOn));
     refresh();
     return {};
   } catch (err) {
-    return { error: err instanceof Error ? err.message : "Could not add that" };
+    return { error: err instanceof Error ? err.message : "没能添加，请再试一次" };
   }
 }
 
 export async function setTaskDoneAction(taskId: string, done: boolean) {
   const viewer = await hr();
-  if (!viewer) return { error: "Not allowed" };
-  if (!id(taskId)) return { error: "Not found" };
+  if (!viewer) return { error: "你没有权限这样做" };
+  if (!id(taskId)) return { error: "找不到这一项" };
   try {
     await setTaskDone(viewer, taskId, Boolean(done));
     refresh();
     return {};
   } catch (err) {
-    return { error: err instanceof Error ? err.message : "Could not change that" };
+    return { error: err instanceof Error ? err.message : "没能修改，请再试一次" };
   }
 }

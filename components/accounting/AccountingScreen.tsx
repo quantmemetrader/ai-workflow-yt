@@ -606,7 +606,7 @@ function Period({
             <Row key={b.code} style={{ alignItems: "center" }}>
               <span style={{ width: 80, color: "#7c7c7c" }}>{b.code}</span>
               <span style={{ flexGrow: 1, ...clip }} title={b.name}>{b.name}</span>
-              <span style={{ width: 90, color: "#999999", fontSize: 11 }}>{b.kind}</span>
+              <span style={{ width: 90, color: "#999999", fontSize: 11 }}>{kindLabel(b.kind, zh)}</span>
               <span style={{ width: 130, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
                 {money(b.totalMicros)}
               </span>
@@ -617,6 +617,10 @@ function Period({
     </>
   );
 }
+
+/* (QA, 2 Oct) Account kinds are stored as English keys; shown in Chinese. */
+const KIND_ZH: Record<string, string> = { asset: "资产", liability: "负债", equity: "权益", income: "收入", expense: "费用" };
+const kindLabel = (k: string, zh: boolean) => (zh ? (KIND_ZH[k] ?? k) : k);
 
 /* -------------------------------------------------------------- accounts */
 
@@ -637,6 +641,30 @@ function Accounts({
 }) {
   const t = (en: string, cn: string) => (zh ? cn : en);
   const [form, setForm] = useState({ code: "", name: "", kind: "expense" });
+  const addForm = (
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+        <input value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} placeholder={t("Code", "科目号")} style={{ ...field, width: 110, height: 32 }} />
+        <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder={t("Name", "名称")} style={{ ...field, width: 240, height: 32 }} />
+        <select value={form.kind} onChange={(e) => setForm({ ...form, kind: e.target.value })} style={{ ...field, width: 140, height: 32 }}>
+          {["asset", "liability", "equity", "income", "expense"].map((k) => (
+            <option key={k} value={k}>
+              {kindLabel(k, zh)}
+            </option>
+          ))}
+        </select>
+        <button
+          type="button"
+          disabled={busy || !form.code.trim() || !form.name.trim()}
+          onClick={() => {
+            onCreate(form.code, form.name, form.kind);
+            setForm({ code: "", name: "", kind: "expense" });
+          }}
+          style={{ ...solid, opacity: busy || !form.code.trim() ? 0.45 : 1 }}
+        >
+          {t("Add", "添加")}
+        </button>
+      </div>
+  );
 
   if (!accounts.length) {
     return (
@@ -651,6 +679,9 @@ function Accounts({
         <button type="button" disabled={busy} onClick={onSeed} style={solid}>
           {t("Use a starting chart", "使用初始科目表")}
         </button>
+        {/* (QA, 2 Oct: the hint said "add them one at a time below" and there was nothing below.) */}
+        <Label>{t("Or add an account", "或者逐个添加科目")}</Label>
+        {addForm}
       </>
     );
   }
@@ -667,7 +698,7 @@ function Accounts({
         <Row key={a.id} style={{ alignItems: "center" }}>
           <span style={{ width: 90, color: "#7c7c7c" }}>{a.code}</span>
           <span style={{ flexGrow: 1, ...clip }} title={a.name}>{a.name}</span>
-          <span style={{ width: 110, fontSize: 11, color: "#999999" }}>{a.kind}</span>
+          <span style={{ width: 110, fontSize: 11, color: "#999999" }}>{kindLabel(a.kind, zh)}</span>
           <span style={{ width: 60, textAlign: "right" }}>
             <button type="button" disabled={busy} onClick={() => onArchive(a.id)} style={{ ...ghost, height: 22, fontSize: 10.5 }}>
               {t("hide", "隐藏")}
@@ -677,28 +708,7 @@ function Accounts({
       ))}
 
       <Label>{t("Add an account", "添加科目")}</Label>
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-        <input value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} placeholder={t("Code", "科目号")} style={{ ...field, width: 110, height: 32 }} />
-        <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder={t("Name", "名称")} style={{ ...field, width: 240, height: 32 }} />
-        <select value={form.kind} onChange={(e) => setForm({ ...form, kind: e.target.value })} style={{ ...field, width: 140, height: 32 }}>
-          {["asset", "liability", "equity", "income", "expense"].map((k) => (
-            <option key={k} value={k}>
-              {k}
-            </option>
-          ))}
-        </select>
-        <button
-          type="button"
-          disabled={busy || !form.code.trim() || !form.name.trim()}
-          onClick={() => {
-            onCreate(form.code, form.name, form.kind);
-            setForm({ code: "", name: "", kind: "expense" });
-          }}
-          style={{ ...solid, opacity: busy || !form.code.trim() ? 0.45 : 1 }}
-        >
-          {t("Add", "添加")}
-        </button>
-      </div>
+      {addForm}
     </>
   );
 }

@@ -10,7 +10,7 @@ import {
   type Window,
 } from "@/lib/social/service";
 
-export const metadata = { title: "已连接渠道 · Channels" };
+export const metadata = { title: "已连接渠道" };
 
 /**
  * Connected channels' performance (spec §4.3), moved out of trend research

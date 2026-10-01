@@ -1,5 +1,6 @@
 "use client";
 
+import type * as React from "react";
 import { useState } from "react";
 import type { BalanceRow, CandidateRow, EmployeeRow, LeaveRow, RequisitionRow } from "@/lib/hr/service";
 import {
@@ -37,6 +38,16 @@ import { ModuleSidebar, type ScreenItem } from "@/components/shell/ModuleSidebar
  * document.
  */
 type Tab = "leave" | "roles" | "candidates" | "people";
+
+/* (QA, 2 Oct: the leave tables read "annual" and "approved", and days mixed
+   "4.0" with "4".) Stored keys shown in Chinese, days written one way. */
+const KIND_ZH: Record<string, string> = { annual: "年假", sick: "病假", unpaid: "无薪假", other: "其他" };
+const LEAVE_STATE_ZH: Record<string, string> = { requested: "待审批", approved: "已批准", rejected: "已拒绝", cancelled: "已撤回" };
+const REQ_STATE_ZH: Record<string, string> = { open: "在招", on_hold: "暂停", filled: "已招满", closed: "已关闭" };
+const STAGE_ZH: Record<string, string> = { applied: "已投递", screening: "筛选中", interview: "面试", offer: "已发录用", hired: "已入职", rejected: "未通过", withdrawn: "已撤回" };
+const days = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1));
+/* Fixed columns keep their width, so a long name cannot push the row out of line with the header. */
+const col = (width: number, extra?: React.CSSProperties): React.CSSProperties => ({ width, flexShrink: 0, ...extra });
 
 const STAGES = ["applied", "screening", "interview", "offer", "hired", "rejected", "withdrawn"] as const;
 
@@ -240,8 +251,8 @@ function Leave({
           <option value="unpaid">{t("unpaid", "无薪假")}</option>
           <option value="other">{t("other", "其他")}</option>
         </select>
-        <label style={{ display: "flex", flexDirection: "column", gap: 3 }}><span style={{ fontSize: 11.5, color: "#8a8a8a" }}>{t("From", "从")}</span><input type="date" value={form.startOn} onChange={(e) => setForm({ ...form, startOn: e.target.value })} style={{ ...field, width: 150, height: 32 }} /></label>
-        <label style={{ display: "flex", flexDirection: "column", gap: 3 }}><span style={{ fontSize: 11.5, color: "#8a8a8a" }}>{t("To", "到")}</span><input type="date" value={form.endOn} onChange={(e) => setForm({ ...form, endOn: e.target.value })} style={{ ...field, width: 150, height: 32 }} /></label>
+        <label style={{ display: "flex", flexDirection: "column", gap: 3 }}><span style={{ fontSize: 11.5, color: "#8a8a8a" }}>{t("From", "从")}</span><input type="date" lang={zh ? "zh-CN" : undefined} value={form.startOn} onChange={(e) => setForm({ ...form, startOn: e.target.value })} style={{ ...field, width: 150, height: 32 }} /></label>
+        <label style={{ display: "flex", flexDirection: "column", gap: 3 }}><span style={{ fontSize: 11.5, color: "#8a8a8a" }}>{t("To", "到")}</span><input type="date" lang={zh ? "zh-CN" : undefined} value={form.endOn} onChange={(e) => setForm({ ...form, endOn: e.target.value })} style={{ ...field, width: 150, height: 32 }} /></label>
         <label style={{ display: "flex", flexDirection: "column", gap: 3 }}><span style={{ fontSize: 11.5, color: "#8a8a8a" }}>{t("Days", "天数")}</span><input value={form.days} onChange={(e) => setForm({ ...form, days: e.target.value.replace(/[^\d.]/g, "") })} placeholder={t("Days", "天数")} style={{ ...field, width: 90, height: 32, textAlign: "right" }} /></label>
         <input value={form.reason} onChange={(e) => setForm({ ...form, reason: e.target.value })} placeholder={t("Reason, if you want to give one", "原因（可选）")} style={{ ...field, width: 240, height: 32 }} />
         <button
@@ -262,40 +273,40 @@ function Leave({
       ) : (
         <>
           <Row head>
-            {canManage && <span style={{ width: 140 }}>{t("Who", "成员")}</span>}
-            <span style={{ width: 90 }}>{t("Kind", "类型")}</span>
-            <span style={{ width: 200 }}>{t("Dates", "日期")}</span>
-            <span style={{ width: 60, textAlign: "right" }}>{t("Days", "天数")}</span>
-            <span style={{ flexGrow: 1 }}>{t("Reason", "原因")}</span>
-            <span style={{ width: 200 }} />
+            {canManage && <span style={col(140)}>{t("Who", "成员")}</span>}
+            <span style={col(90)}>{t("Kind", "类型")}</span>
+            <span style={col(200)}>{t("Dates", "日期")}</span>
+            <span style={col(60, { textAlign: "right" })}>{t("Days", "天数")}</span>
+            <span style={{ flex: "1 1 0", minWidth: 0 }}>{t("Reason", "原因")}</span>
+            <span style={col(200)} />
           </Row>
           {leave.map((l) => (
             <Row key={l.id} style={{ alignItems: "center" }}>
-              {canManage && <span style={{ width: 140, minWidth: 0 }}>{l.personName ?? "—"}</span>}
-              <span style={{ width: 90, color: "#7c7c7c" }}>{l.kind}</span>
-              <span style={{ width: 200, color: "#7c7c7c", fontSize: 11.5 }}>
-                {l.startOn} → {l.endOn}
+              {canManage && <span style={col(140, clip)} title={l.personName ?? ""}>{l.personName ?? "—"}</span>}
+              <span style={col(90, { color: "#7c7c7c" })}>{zh ? (KIND_ZH[l.kind] ?? l.kind) : l.kind}</span>
+              <span style={col(200, { color: "#7c7c7c", fontSize: 11.5 })}>
+                {l.startOn} {zh ? "至" : "to"} {l.endOn}
               </span>
-              <span style={{ width: 60, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{l.days}</span>
-              <span style={{ flexGrow: 1, minWidth: 0, color: "#7c7c7c", fontSize: 11.5 }}>{l.reason ?? ""}</span>
-              <span style={{ width: 200, display: "flex", gap: 6, justifyContent: "flex-end", alignItems: "center" }}>
+              <span style={col(60, { textAlign: "right", fontVariantNumeric: "tabular-nums" })}>{days(l.days)}</span>
+              <span style={{ flex: "1 1 0", ...clip, color: "#7c7c7c", fontSize: 11.5 }} title={l.reason ?? ""}>{l.reason ?? ""}</span>
+              <span style={col(200, { display: "flex", gap: 6, justifyContent: "flex-end", alignItems: "center" })}>
                 <Badge
                   tone={l.state === "approved" ? "good" : l.state === "rejected" ? "bad" : l.state === "cancelled" ? "quiet" : "warn"}
                 >
-                  {l.state}
+                  {zh ? (LEAVE_STATE_ZH[l.state] ?? l.state) : l.state}
                 </Badge>
                 {l.state === "requested" && canManage && l.userId !== viewerId && (
                   <>
-                    <button type="button" disabled={busy} onClick={() => onDecide(l.id, "rejected", "")} style={{ ...ghost, height: 24, fontSize: 11 }}>
+                    <button type="button" disabled={busy} onClick={() => onDecide(l.id, "rejected", "")} style={{ ...ghost, height: 24, fontSize: 11, whiteSpace: "nowrap" }}>
                       {t("refuse", "拒绝")}
                     </button>
-                    <button type="button" disabled={busy} onClick={() => onDecide(l.id, "approved", "")} style={{ ...solid, height: 24, fontSize: 11 }}>
+                    <button type="button" disabled={busy} onClick={() => onDecide(l.id, "approved", "")} style={{ ...solid, height: 24, fontSize: 11, whiteSpace: "nowrap" }}>
                       {t("approve", "批准")}
                     </button>
                   </>
                 )}
                 {l.state === "requested" && l.userId === viewerId && (
-                  <button type="button" disabled={busy} onClick={() => onCancel(l.id)} style={{ ...ghost, height: 24, fontSize: 11 }}>
+                  <button type="button" disabled={busy} onClick={() => onCancel(l.id)} style={{ ...ghost, height: 24, fontSize: 11, whiteSpace: "nowrap" }}>
                     {t("cancel", "撤回")}
                   </button>
                 )}
@@ -323,21 +334,22 @@ function Leave({
       ) : (
         <>
           <Row head>
-            <span style={{ flexGrow: 1 }}>{t("Person", "成员")}</span>
-            <span style={{ width: 90 }}>{t("Kind", "类型")}</span>
-            <span style={{ width: 120, textAlign: "right" }}>{t("Entitled", "额度")}</span>
-            <span style={{ width: 90, textAlign: "right" }}>{t("Taken", "已用")}</span>
-            <span style={{ width: 90, textAlign: "right" }}>{t("Left", "剩余")}</span>
+            <span style={{ flex: "1 1 0", minWidth: 0 }}>{t("Person", "成员")}</span>
+            <span style={col(90)}>{t("Kind", "类型")}</span>
+            <span style={col(120, { textAlign: "right" })}>{t("Entitled", "额度")}</span>
+            <span style={col(90, { textAlign: "right" })}>{t("Taken", "已用")}</span>
+            <span style={col(90, { textAlign: "right" })}>{t("Left", "剩余")}</span>
           </Row>
           {balances.map((b) => (
             <Row key={b.id} style={{ alignItems: "center" }}>
-              <span style={{ flexGrow: 1, ...clip }} title={b.personName ?? ""}>{b.personName ?? "—"}</span>
-              <span style={{ width: 90, color: "#7c7c7c" }}>{b.kind}</span>
-              <span style={{ width: 120, textAlign: "right" }}>
+              <span style={{ flex: "1 1 0", ...clip }} title={b.personName ?? ""}>{b.personName ?? "—"}</span>
+              <span style={col(90, { color: "#7c7c7c" })}>{zh ? (KIND_ZH[b.kind] ?? b.kind) : b.kind}</span>
+              <span style={col(120, { textAlign: "right" })}>
                 {canManage ? (
                   <input
                     key={b.id}
-                    defaultValue={String(b.entitlementDays)}
+                    defaultValue={days(b.entitlementDays)}
+                    aria-label={t(`Entitlement for ${b.personName ?? ""}`, `${b.personName ?? ""}的额度`)}
                     onBlur={(e) => {
                       const n = Number(e.target.value);
                       if (Number.isFinite(n) && n !== b.entitlementDays) onEntitlement(b.id, n);
@@ -345,21 +357,20 @@ function Leave({
                     style={{ ...field, height: 26, width: 78, textAlign: "right" }}
                   />
                 ) : (
-                  b.entitlementDays
+                  days(b.entitlementDays)
                 )}
               </span>
-              <span style={{ width: 90, textAlign: "right", color: "#7c7c7c", fontVariantNumeric: "tabular-nums" }}>
-                {b.takenDays}
+              <span style={col(90, { textAlign: "right", color: "#7c7c7c", fontVariantNumeric: "tabular-nums" })}>
+                {days(b.takenDays)}
               </span>
               <span
-                style={{
-                  width: 90,
+                style={col(90, {
                   textAlign: "right",
                   fontVariantNumeric: "tabular-nums",
                   color: b.entitlementDays + b.carriedDays - b.takenDays < 0 ? "#e03636" : "#278f5e",
-                }}
+                })}
               >
-                {(b.entitlementDays + b.carriedDays - b.takenDays).toFixed(1)}
+                {days(b.entitlementDays + b.carriedDays - b.takenDays)}
               </span>
             </Row>
           ))}
@@ -407,7 +418,7 @@ function Roles({
               }}
               style={{ ...solid, opacity: busy || !form.title.trim() ? 0.45 : 1 }}
             >
-              {t("Open", "发布中")}
+              {t("Open", "发布")}
             </button>
           </div>
         </>
@@ -433,12 +444,12 @@ function Roles({
                 <select value={r.state} disabled={busy} onChange={(e) => onState(r.id, e.target.value)} style={{ ...field, height: 26, width: 118, fontSize: 11.5 }}>
                   {["open", "on_hold", "filled", "closed"].map((s) => (
                     <option key={s} value={s}>
-                      {s.replace("_", " ")}
+                      {zh ? REQ_STATE_ZH[s] : s.replace("_", " ")}
                     </option>
                   ))}
                 </select>
               ) : (
-                <Badge tone={r.state === "open" ? "good" : "quiet"}>{r.state}</Badge>
+                <Badge tone={r.state === "open" ? "good" : "quiet"}>{zh ? (REQ_STATE_ZH[r.state] ?? r.state) : r.state.replace("_", " ")}</Badge>
               )}
             </span>
           </Row>
@@ -590,7 +601,7 @@ function Candidates({
                     <select value={a.stage} disabled={busy} onChange={(e) => onStage(a.id, e.target.value)} style={{ ...field, height: 24, width: 120, fontSize: 11 }}>
                       {STAGES.map((s) => (
                         <option key={s} value={s}>
-                          {s}
+                          {zh ? STAGE_ZH[s] : s}
                         </option>
                       ))}
                     </select>
@@ -668,6 +679,7 @@ function People({
                 <input
                   key={`${e.userId}-start`}
                   type="date"
+                  lang={zh ? "zh-CN" : undefined}
                   defaultValue={e.startedOn ?? ""}
                   onBlur={(ev) =>
                     ev.target.value !== (e.startedOn ?? "") &&

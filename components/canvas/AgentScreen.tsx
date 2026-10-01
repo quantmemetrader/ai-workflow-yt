@@ -12,7 +12,7 @@ import { scriptPreviewAction, type ScriptPreview } from "@/app/(app)/chat/script
 import { saveLinesAction } from "@/app/(app)/projects/[id]/script/actions";
 import { teachRuleAction } from "@/app/(app)/train/model-actions";
 import { feedbackAction } from "@/app/(app)/train/learn-actions";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import { AgentIcon } from "@/components/agents/AgentIcon";
 import { AnswerPicker } from "@/components/chat/AnswerPicker";
@@ -35,6 +35,8 @@ import { ATTACH_ACCEPT, bytes, kindOf, uploadToStudio, type Attaching } from "@/
 import { VideoCards } from "@/components/chat/VideoCard";
 import { RESULT_VIDEOS_MAX, videoRefsOf, type VideoCard } from "@/lib/chat/video-card";
 import type { Locale } from "@/lib/i18n";
+import { readerLine } from "@/lib/text/reader";
+import { ConversationMenu } from "@/components/chat/RowMenu";
 
 /**
  * The agent screen, transcribed from design/canvas/Main.dc.html.
@@ -614,7 +616,19 @@ export function AgentScreen({
   /* Your own recent chats are in the list on the left (「最近」), so the
      assistant's page has no second copy on the right; an employee's page
      keeps its rail of that employee's threads. */
-  const showRail = Boolean(history && (history.conversations.length > 0 || (messages.length > 0 && history.lines.length > 0)));
+  /* The chat on screen is in the rail from its first message: a new chat
+     gets its address without a reload, so the server's list did not have it
+     yet and the rail said 「和研究员的对话 · 0 / 还没有对话。」 beside it (QA, 2 Oct). */
+  const firstAsk = messages.find((m) => m.role === "user")?.content ?? "";
+  const listed = history?.conversations.find((c) => c.id === conversationId);
+  const storedTitle = listed?.title ?? recent?.find((c) => c.id === conversationId)?.title ?? "";
+  const threadTitle = (storedTitle && storedTitle !== "New chat" ? storedTitle : readerLine(firstAsk.replace(/@\S+/g, "").replace(/\[附件\][^\n]*/g, ""), 24)) || (zh ? "新对话" : "New chat");
+  const rail: AgentHistory | null = history
+    ? conversationId && !listed && messages.length
+      ? { ...history, currentId: conversationId, conversations: [{ id: conversationId, title: threadTitle, updatedAt: messages[messages.length - 1]?.createdAt ?? today, last: "" }, ...history.conversations] }
+      : { ...history, currentId: conversationId ?? history.currentId }
+    : null;
+  const showRail = Boolean(rail && (rail.conversations.length > 0 || (messages.length > 0 && rail.lines.length > 0)));
 
   return (
     <div data-agent-screen="" style={{ flexGrow: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
@@ -682,6 +696,9 @@ export function AgentScreen({
             {zh ? "新对话" : "New chat"}
           </button>
         ) : null}
+        {/* 重命名 / 删除 for the chat on screen (QA, 2 Oct: there was no way to
+            do either). */}
+        {conversationId ? <ConversationMenu id={conversationId} title={threadTitle} zh={zh} current size={28} /> : null}
         {/* The model is chosen per message in the composer (「模型」), not
             here for the whole studio (Ryan, 28 Sep). */}
         <button type="button" className="ico2" aria-label={zh ? "搜索" : "Search"} title={zh ? "搜索（⌘K）" : "Search (⌘K)"} onClick={() => window.dispatchEvent(new CustomEvent("aura:jump"))} style={{ border: 0, background: "transparent", cursor: "pointer" }}>
@@ -911,28 +928,28 @@ export function AgentScreen({
                     }
                   }}
                 />
-                <span className="sep" aria-hidden />
-                <button type="button" className="ico2" onClick={() => format("bold")} aria-label="Bold" title={zh ? "加粗" : "Bold"}>
+                <span className="sep fmt" aria-hidden />
+                <button type="button" className="ico2 fmt" onClick={() => format("bold")} aria-label={zh ? "加粗" : "Bold"} title={zh ? "加粗" : "Bold"}>
                   <svg viewBox="0 0 24 24">
                     <path d="M7 5h6a3.5 3.5 0 0 1 0 7H7zM7 12h7a3.5 3.5 0 0 1 0 7H7z" />
                   </svg>
                 </button>
-                <button type="button" className="ico2" onClick={() => format("italic")} aria-label="Italic" title={zh ? "斜体" : "Italic"}>
+                <button type="button" className="ico2 fmt" onClick={() => format("italic")} aria-label={zh ? "斜体" : "Italic"} title={zh ? "斜体" : "Italic"}>
                   <svg viewBox="0 0 24 24">
                     <path d="M10 5h8M6 19h8M14.5 5 9.5 19" />
                   </svg>
                 </button>
-                <button type="button" className="ico2" onClick={() => format("link")} aria-label="Link" title={zh ? "链接" : "Link"}>
+                <button type="button" className="ico2 fmt" onClick={() => format("link")} aria-label={zh ? "链接" : "Link"} title={zh ? "链接" : "Link"}>
                   <svg viewBox="0 0 24 24">
                     <path d="M9.5 14.5 14.5 9.5M8 11l-2 2a3.5 3.5 0 0 0 5 5l2-2M16 13l2-2a3.5 3.5 0 0 0-5-5l-2 2" />
                   </svg>
                 </button>
-                <button type="button" className="ico2" onClick={() => format("list")} aria-label="List" title={zh ? "列表" : "List"}>
+                <button type="button" className="ico2 fmt" onClick={() => format("list")} aria-label={zh ? "列表" : "List"} title={zh ? "列表" : "List"}>
                   <svg viewBox="0 0 24 24">
                     <path d="M8 6.5h11M8 12h11M8 17.5h11M4.5 6.5h.01M4.5 12h.01M4.5 17.5h.01" />
                   </svg>
                 </button>
-                <button type="button" className="ico2" onClick={() => format("code")} aria-label="Code" title={zh ? "代码" : "Code"}>
+                <button type="button" className="ico2 fmt" onClick={() => format("code")} aria-label={zh ? "代码" : "Code"} title={zh ? "代码" : "Code"}>
                   <svg viewBox="0 0 24 24">
                     <path d="m8 8-4 4 4 4M16 8l4 4-4 4" />
                   </svg>
@@ -1011,7 +1028,7 @@ export function AgentScreen({
             }}
           >
             {sourcesHandle}
-            {history && showRail ? <HistoryRail history={history} zh={zh} locale={locale} today={today} /> : null}
+            {rail && showRail ? <HistoryRail history={rail} zh={zh} locale={locale} today={today} /> : null}
             {sources.length > 0 ? (
             <>
             <div
@@ -1022,7 +1039,7 @@ export function AgentScreen({
                 alignItems: "center",
                 padding: "0 16px",
                 borderBottom: "1px solid #ededed",
-                borderTop: history && showRail ? "1px solid #ededed" : undefined,
+                borderTop: rail && showRail ? "1px solid #ededed" : undefined,
               }}
             >
               <span className="lbl" style={{ padding: 0 }}>
@@ -1299,7 +1316,7 @@ function AgentRow({ message, zh, locale }: { message: ThreadMessage; zh: boolean
           <VideoCards videos={message.videos} zh={zh} />
 
           {message.made && message.status !== "streaming" ? <MadeActions made={message.made} zh={zh} /> : null}
-          {message.status === "complete" && message.content ? <TeachLine agent={message.speaker ?? "assistant"} zh={zh} reply={message.content} /> : null}
+          {message.status === "complete" && message.content ? <TeachLine agent={message.speaker ?? "assistant"} zh={zh} reply={message.content} messageId={message.id} /> : null}
 
           {message.error && (
             <div
@@ -1481,7 +1498,7 @@ function HistoryRail({ history, zh, locale, today }: { history: AgentHistory; zh
               <Link key={l.id} href={l.where.href} prefetch={false} className="hist">
                 <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
                   <span style={{ fontSize: 11.5, color: "#525252", flexGrow: 1, minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                    {l.where.kind === "project" ? (zh ? `项目 · ${l.where.name}` : `Project · ${l.where.name}`) : `#${l.where.name}`}
+                    {l.where.kind === "project" ? (zh ? `项目 · ${roomName(l.where.name)}` : `Project · ${roomName(l.where.name)}`) : `#${roomName(l.where.name)}`}
                   </span>
                   <span style={{ fontSize: 11, color: "#a3a3a3", flexShrink: 0 }}>{whenLabel(l.at, today, locale)}</span>
                 </div>
@@ -1560,7 +1577,7 @@ function AgentEmpty({
                   <div style={{ display: "flex", alignItems: "baseline", gap: 7, fontSize: 11.5 }}>
                     <span style={{ fontWeight: 600, color: AGENT_COLORS[k] }}>{who}</span>
                     <span style={{ color: "#525252", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0 }}>
-                      {l.where.kind === "project" ? (zh ? `在项目《${l.where.name}》` : `in the project “${l.where.name}”`) : zh ? `在 #${l.where.name}` : `in #${l.where.name}`}
+                      {l.where.kind === "project" ? (zh ? `在项目《${roomName(l.where.name)}》` : `in the project “${roomName(l.where.name)}”`) : zh ? `在 #${roomName(l.where.name)}` : `in #${roomName(l.where.name)}`}
                     </span>
                     <span style={{ color: "#a3a3a3", marginLeft: "auto", flexShrink: 0 }}>{whenLabel(l.at, today, locale)}</span>
                   </div>
@@ -1580,15 +1597,26 @@ function AgentEmpty({
  * their words (a link back to a project page dropped), and the internal ids
  * an employee writes for its colleagues (`scr_…`, `wp_…`) taken out — the
  * panel printed "[Open Project](/projects/wp_…)" and "`scr_01m3…`".
+ * Then the shared reader rules (`readerLine`): no **, no tool names, and no
+ * bare app path left behind once its id is gone (QA, 2 Oct: 「/script/」).
  */
 function plainLine(text: string): string {
-  return text
-    .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (_m, label: string, url: string) => (url.startsWith("/projects/") ? "" : label))
-    .replace(/[（(]?\s*(?:id[:：]\s*)?`?\b(?:scr|wp|prj|fil|rnd|shot|cnv|msg|am|job|ch|usr|top|idea)_[0-9a-z]{6,}\b`?\s*[)）]?/gi, "")
+  return readerLine(
+    text
+      .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (_m, label: string, url: string) => (url.startsWith("/projects/") ? "" : label))
+      .replace(/[（(]?\s*(?:id[:：]\s*)?`?\b(?:scr|wp|prj|fil|rnd|shot|cnv|msg|am|job|ch|usr|top|idea)_[0-9a-z]{6,}\b`?\s*[)）]?/gi, "")
+      .replace(/(?:^|\s|[：:，,（(])\/(?:script|projects|files|chat|video|videos|topics|trends)\/?\S*/g, " "),
+    400,
+  )
+    .replace(/\s*[：:]\s*$/, "")
     .replace(/\s{2,}/g, " ")
     .trim();
 }
 
+/** A project chat's name without the four-letter tail that keeps its address unique (「… · w2qy」). */
+function roomName(name: string): string {
+  return name.replace(/\s*·\s*[0-9a-z]{4}$/, "");
+}
 
 /** A tool call as a person reads it: "查资料 · 3.8 s", "正在写脚本". */
 function toolWords(name: string, status: string, zh: boolean): string {
@@ -1622,7 +1650,8 @@ function groupTools(tools: ThreadTool[], zh: boolean): { tool: ThreadTool; count
  */
 function MadeActions({ made, zh }: { made: MadeScript; zh: boolean }) {
   const t = (a: string, b: string) => (zh ? a : b);
-  const [doc, setDoc] = useState<ScriptPreview | null | undefined>(undefined);
+  const [got, setDoc] = useState<ScriptPreview | "gone" | null | undefined>(undefined);
+  const doc = got === "gone" ? null : got;
   const [open, setOpen] = useState(true);
   const [all, setAll] = useState(false);
   const [editing, setEditing] = useState<string[] | null>(null);
@@ -1647,7 +1676,21 @@ function MadeActions({ made, zh }: { made: MadeScript; zh: boolean }) {
     notify(t("已保存到脚本", "Saved to the script"), "ok");
   }
   const btn = (primary = false): React.CSSProperties => ({ display: "inline-flex", alignItems: "center", gap: 6, height: 32, padding: "0 13px", borderRadius: 9, fontSize: 13, fontWeight: 600, textDecoration: "none", cursor: "pointer", fontFamily: "inherit", border: `1px solid ${primary ? "#171717" : "#dcdbd6"}`, background: primary ? "#171717" : "#fff", color: primary ? "#fff" : "#262626", whiteSpace: "nowrap" });
-  const chars = doc ? doc.paragraphs.join("").replace(/\s/g, "").length : 0;
+  /* The card's numbers are the script's own (shots, spoken length worked
+     out as the editor does, the target), so they match the editor and the
+     reply (QA, 2 Oct). */
+  const summary = doc
+    ? doc.beats
+      ? t(`${doc.beats} 个分镜 · 约 ${Math.max(1, doc.seconds)} 秒${doc.targetSeconds ? ` · 目标 ${doc.targetSeconds} 秒` : ""}`, `${doc.beats} shots · about ${Math.max(1, doc.seconds)}s${doc.targetSeconds ? ` · target ${doc.targetSeconds}s` : ""}`)
+      : t(`${doc.paragraphs.length} 段`, `${doc.paragraphs.length} parts`)
+    : "";
+  /* Deleted since: say so, and offer nothing that would lead nowhere. */
+  if (got === "gone")
+    return (
+      <div style={{ marginTop: 10, maxWidth: 720, border: "1px dashed #dcdbd6", borderRadius: 12, padding: "10px 14px", fontSize: 12.5, color: "#8a8a8a" }}>
+        {t(`《${made.title || "脚本"}》这份脚本已删除。`, `The script “${made.title || "script"}” has been deleted.`)}
+      </div>
+    );
   const shown = doc ? (all ? doc.paragraphs : doc.paragraphs.slice(0, 6)) : [];
   return (
     <div style={{ marginTop: 10, maxWidth: 720 }}>
@@ -1655,7 +1698,7 @@ function MadeActions({ made, zh }: { made: MadeScript; zh: boolean }) {
         <div style={{ border: "1px solid #e5e4df", borderRadius: 12, background: "#fff", overflow: "hidden" }}>
           <button type="button" onClick={() => setOpen((v) => !v)} aria-expanded={open} style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "10px 14px", border: 0, borderBottom: open ? "1px solid #efeee9" : 0, background: "#fafaf8", cursor: "pointer", fontFamily: "inherit", textAlign: "left" }}>
             <span style={{ fontSize: 13.5, fontWeight: 650, color: "#171717", flexGrow: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>《{doc.title || made.title}》</span>
-            <span style={{ fontSize: 12, color: "#8a8a8a", whiteSpace: "nowrap" }}>{t(`${doc.paragraphs.length} 段 · 约 ${Math.max(1, Math.round(chars / 4.5))} 秒`, `${doc.paragraphs.length} parts · about ${Math.max(1, Math.round(chars / 4.5))}s`)}</span>
+            <span style={{ fontSize: 12, color: "#8a8a8a", whiteSpace: "nowrap" }}>{summary}</span>
             <span style={{ fontSize: 12, color: "#525252", whiteSpace: "nowrap" }}>{open ? t("收起", "Hide") : t("展开", "Show")}</span>
           </button>
           {open && editing ? (
@@ -1722,17 +1765,50 @@ function MadeActions({ made, zh }: { made: MadeScript; zh: boolean }) {
   );
 }
 
+/* Ratings stored in this browser; a rating anywhere tells every line to look again. */
+const ratedSubs = new Set<() => void>();
+function subscribeRated(cb: () => void) {
+  ratedSubs.add(cb);
+  return () => {
+    ratedSubs.delete(cb);
+  };
+}
+
 /**
  * 「教它」: tell the employee something it should always do from now on; the
  * rule goes into its 工作说明 (AI 同事 › 训练).
  */
-function TeachLine({ agent, zh, reply }: { agent: string; zh: boolean; reply: string }) {
+function TeachLine({ agent, zh, reply, messageId }: { agent: string; zh: boolean; reply: string; messageId: string }) {
   const t = (a: string, b: string) => (zh ? a : b);
   const [open, setOpen] = useState(false);
   const [rated, setRated] = useState<"good" | "bad" | null>(null);
   const [why, setWhy] = useState("");
+  /* 有用 / 不好 is remembered in this browser per reply (QA, 2 Oct: a reload
+     offered both again). Only stored ids count: a live row's id ("a-…") is
+     replaced by the server's when the reply is saved. */
+  const key = /^(a-|u-)/.test(messageId) ? null : `tg-rated:${messageId}`;
+  const stored = useSyncExternalStore(
+    subscribeRated,
+    () => {
+      try {
+        const v = key ? window.localStorage.getItem(key) : null;
+        return v === "good" || v === "bad" ? v : null;
+      } catch {
+        return null;
+      }
+    },
+    () => null,
+  );
+  const shownRating = rated ?? stored;
   const rate = async (kind: "good" | "bad", text = "") => {
     setRated(kind);
+    if (key)
+      try {
+        window.localStorage.setItem(key, kind);
+        ratedSubs.forEach((f) => f());
+      } catch {
+        /* fine */
+      }
     const r = await feedbackAction(agent, kind, text, reply.slice(0, 300));
     if (r.error) notify(r.error);
     else notify(kind === "good" ? t("收到，会多这样做", "Thanks — noted") : t("收到，会从这次反馈里改进", "Noted — it will learn from this"), "ok");
@@ -1749,15 +1825,15 @@ function TeachLine({ agent, zh, reply }: { agent: string; zh: boolean; reply: st
   if (!open)
     return (
       <div style={{ display: "flex", alignItems: "center", gap: 14, marginTop: 6, flexWrap: "wrap" }}>
-        {rated === "bad" && why !== "\u0000" ? (
+        {rated === "bad" && stored !== "bad" && why !== "\u0000" ? (
           <form onSubmit={(e) => { e.preventDefault(); void rate("bad", why); setWhy("\u0000"); }} style={{ display: "flex", gap: 6 }}>
             <input autoFocus value={why} onChange={(e) => setWhy(e.target.value)} placeholder={t("哪里不好？（可以不写）", "What was off? (optional)")} style={{ width: 260, height: 28, border: "1px solid #dcdbd6", borderRadius: 8, padding: "0 9px", fontFamily: "inherit", fontSize: 12, outline: "none" }} />
             <button type="submit" style={{ height: 28, padding: "0 10px", border: 0, borderRadius: 8, background: "#171717", color: "#fff", fontFamily: "inherit", fontSize: 12, cursor: "pointer" }}>{t("告诉它", "Send")}</button>
           </form>
         ) : (
           <>
-            <button type="button" disabled={rated !== null} onClick={() => void rate("good")} style={{ ...quiet, color: rated === "good" ? "#1e7a4f" : "#8a8a8a" }} title={t("这次回答有用", "Helpful")}>{thumb(false)}{t("有用", "Helpful")}</button>
-            <button type="button" disabled={rated !== null} onClick={() => { setRated("bad"); setWhy(""); }} style={{ ...quiet, color: rated === "bad" ? "#b4532a" : "#8a8a8a" }} title={t("这次回答不好", "Not good")}>{thumb(true)}{t("不好", "Not good")}</button>
+            <button type="button" disabled={shownRating !== null} onClick={() => void rate("good")} style={{ ...quiet, color: shownRating === "good" ? "#1e7a4f" : "#8a8a8a" }} title={t("这次回答有用", "Helpful")}>{thumb(false)}{t("有用", "Helpful")}</button>
+            <button type="button" disabled={shownRating !== null} onClick={() => { setRated("bad"); setWhy(""); }} style={{ ...quiet, color: shownRating === "bad" ? "#b4532a" : "#8a8a8a" }} title={t("这次回答不好", "Not good")}>{thumb(true)}{t("不好", "Not good")}</button>
           </>
         )}
         <button type="button" onClick={() => setOpen(true)} style={quiet}>

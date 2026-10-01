@@ -182,6 +182,12 @@ export async function addTopicAction(
     if (where === "backlog" && topic.status === "new") {
       await decide(viewer, topic.id, "save");
     }
+    // (QA, 2 Oct: following a word again after 不再关注 said 开始关注 but the
+    // old row stayed `rejected` and never came back.) Asking for a dropped
+    // phrase again is a fresh decision, so the row is revived where it was asked for.
+    if (topic.status === "rejected") {
+      await decide(viewer, topic.id, where === "backlog" ? "save" : "unsave");
+    }
 
     revalidatePath("/research");
     revalidatePath("/research/backlog");

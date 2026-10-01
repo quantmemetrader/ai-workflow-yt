@@ -199,13 +199,13 @@ function relative(d: Date, locale: string): string {
 function edited(value: Date, locale: string): string {
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return "";
-  return Math.abs(Date.now() - d.getTime()) < 7 * 86400000 ? relative(d, locale) : new Intl.DateTimeFormat(locale, { day: "numeric", month: "short" }).format(d);
+  return Math.abs(Date.now() - d.getTime()) < 7 * 86400000 ? relative(d, locale) : new Intl.DateTimeFormat(locale, { day: "numeric", month: "short", timeZone: "Asia/Hong_Kong" }).format(d);
 }
 
 function fullStamp(value: Date, locale: string): string {
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return "";
-  return new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short" }).format(d);
+  return new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Hong_Kong" }).format(d);
 }
 
 /** The same words the script page uses (待写 · 未批准 · 待审批 · 已批准). */

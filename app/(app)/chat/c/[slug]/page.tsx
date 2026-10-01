@@ -2,7 +2,8 @@ import { channelName } from "@/lib/chat/channel-name";
 import { after } from "next/server";
 import { notFound } from "next/navigation";
 import { requireModule } from "@/lib/auth/dal";
-import { announcementsChannel, channelMembers, channelThread, listPeople, markRead } from "@/lib/chat/service";
+import { announcementsChannel, canArchiveChannel, channelMembers, channelThread, listPeople, markRead } from "@/lib/chat/service";
+import { distinctNames } from "@/lib/chat/people";
 import { ChannelView } from "@/components/chat/ChannelView";
 import { answeringModel } from "@/lib/ai/models";
 import { agentKeyFromEmail } from "@/lib/agents/catalog";
@@ -51,6 +52,11 @@ export default async function ChannelPage({ params }: { params: Promise<{ slug: 
   after(() => markRead(viewer, channel.id));
 
   const zh = (viewer.locale ?? "zh-CN").startsWith("zh");
+  /* 退出 / 归档 (QA, 2 Oct): a project's chat is closed with its project. */
+  const roomCanArchive = !project && canArchiveChannel(viewer, { createdBy: channel.createdBy, slug: channel.slug, name: channel.name, kind: channel.kind });
+  const roomCanLeave = !project && channel.kind === "channel" && channel.isPrivate && members.some((m) => m.id === viewer.id) && members.length > 1;
+  /* Two people with one name are told apart (QA, 2 Oct: two 「Ryan」). */
+  const label = distinctNames(people.map((p) => ({ id: p.id, name: (zh && p.nameLocal) || p.name, email: p.email, title: p.title })));
 
   return (
     <ChannelView
@@ -60,6 +66,9 @@ export default async function ChannelPage({ params }: { params: Promise<{ slug: 
       name={zh ? channelName(slug, channel.name) : channel.name}
       topic={channel.topic}
       isPrivate={channel.isPrivate}
+      archived={channel.archivedAt !== null}
+      canArchive={roomCanArchive}
+      canLeave={roomCanLeave}
       canPost={channel.kind !== "announce" || viewer.isAdmin}
       /* The composer's paperclip goes through /api/files/presign, which
          refuses anybody without the Files module. Better not drawn than
@@ -71,7 +80,7 @@ export default async function ChannelPage({ params }: { params: Promise<{ slug: 
       members={members.map((m) => ({ id: m.id, name: (zh && m.nameLocal) || m.name, avatar: m.avatarUrl }))}
       studioPeople={people.map((p) => ({
         id: p.id,
-        name: (zh && p.nameLocal) || p.name,
+        name: label.get(p.id) ?? ((zh && p.nameLocal) || p.name),
         avatarUrl: p.avatarUrl,
         title: p.title,
         /* Searched by the @-picker so `@ry` finds somebody whose display name
@@ -105,6 +114,7 @@ export default async function ChannelPage({ params }: { params: Promise<{ slug: 
         videos: m.videos,
         body: m.body,
         createdAt: m.createdAt.toISOString(),
+        editedAt: m.editedAt ? m.editedAt.toISOString() : null,
       }))}
       /* The employees at work here right now, drawn after the last message
          with the step each one is on. */

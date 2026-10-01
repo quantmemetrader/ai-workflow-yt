@@ -53,6 +53,8 @@ export function RenameFile({ id, name, zh }: { id: string; name: string; zh: boo
         <NameDialog
           title={t("Rename file", "重命名文件")}
           placeholder={name}
+          /* Starts from the current name, ready to tweak (QA, 2 Oct). */
+          initial={name}
           confirm={t("Rename", "重命名")}
           cancel={t("Cancel", "取消")}
           onClose={() => setOpen(false)}

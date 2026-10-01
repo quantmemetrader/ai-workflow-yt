@@ -39,8 +39,10 @@ export function toRows(
      * beside the file. Everything else has no picture to show and keeps its
      * kind glyph.
      */
+    /* In the trash only a picture asks for itself: a deleted video gets no
+       new poster, and waiting for one showed 处理中 for ever (QA, 2 Oct). */
     posterUrl:
-      r.file.kind === "image" || r.file.kind === "video"
+      r.file.kind === "image" || (r.file.kind === "video" && !r.file.deletedAt)
         ? `/api/files/${r.file.id}/thumb`
         : null,
     access: access?.get(r.file.id) ?? null,

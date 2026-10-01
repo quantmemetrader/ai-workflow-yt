@@ -35,6 +35,26 @@ import { newId } from "@/lib/ids";
  * can always see their own leave, and everything about anybody else needs
  * `canManage`.
  */
+/* (QA, 2 Oct: the allowance table listed 定时任务, the AI staff and other
+   system accounts.) Leave and the staff list are for people who work here:
+   not an AI employee, not the service account, not suspended or deleted. */
+function realStaff() {
+  return and(
+    eq(users.isAgent, false),
+    eq(users.status, "active"),
+    isNull(users.deletedAt),
+    sql`${users.email} not like 'service@%'`,
+    sql`${users.email} not like '%.invalid'`,
+  );
+}
+
+/** A person's name the way the reader reads it: the Chinese name on a Chinese screen. */
+function personName(viewer: Viewer) {
+  return (viewer.locale ?? "zh-CN").startsWith("zh")
+    ? sql<string | null>`coalesce(nullif(${users.nameLocal}, ''), ${users.name})`
+    : sql<string | null>`${users.name}`;
+}
+
 export function canManage(viewer: Viewer): boolean {
   return viewer.role === "owner" || viewer.role === "admin";
 }
@@ -69,7 +89,13 @@ export type LeaveRow = {
 
 export async function listLeave(viewer: Viewer): Promise<LeaveRow[]> {
   const rows = await db
-    .select({ r: leaveRequests, personName: users.name, deciderName: sql<string | null>`decider.name` })
+    .select({
+      r: leaveRequests,
+      personName: personName(viewer),
+      deciderName: (viewer.locale ?? "zh-CN").startsWith("zh")
+        ? sql<string | null>`coalesce(nullif(decider.name_local, ''), decider.name)`
+        : sql<string | null>`decider.name`,
+    })
     .from(leaveRequests)
     .leftJoin(users, eq(users.id, leaveRequests.userId))
     .leftJoin(sql`${users} as decider`, sql`decider.id = ${leaveRequests.decidedBy}`)
@@ -112,13 +138,14 @@ export type BalanceRow = {
 
 export async function listBalances(viewer: Viewer, year: number): Promise<BalanceRow[]> {
   const rows = await db
-    .select({ b: leaveBalances, personName: users.name })
+    .select({ b: leaveBalances, personName: personName(viewer) })
     .from(leaveBalances)
-    .leftJoin(users, eq(users.id, leaveBalances.userId))
+    .innerJoin(users, eq(users.id, leaveBalances.userId))
     .where(
       and(
         eq(leaveBalances.tenantId, viewer.tenantId),
         eq(leaveBalances.year, year),
+        realStaff(),
         canManage(viewer) ? undefined : eq(leaveBalances.userId, viewer.id),
       ),
     )
@@ -161,13 +188,13 @@ export async function listBalances(viewer: Viewer, year: number): Promise<Balanc
 /** Give everybody a starting balance for the year, at statutory entitlement.
  * Editable afterwards; run again and it adds only what is missing. */
 export async function seedBalances(viewer: Viewer, year: number) {
-  if (!canManage(viewer)) throw new Error("Only an owner or an administrator sets entitlements");
+  if (!canManage(viewer)) throw new Error("只有所有者或管理员可以设置假期额度");
 
   const people = await db
     .select({ id: users.id, startedOn: employeeRecords.startedOn })
     .from(users)
     .leftJoin(employeeRecords, eq(employeeRecords.userId, users.id))
-    .where(and(eq(users.tenantId, viewer.tenantId), isNull(users.deletedAt), eq(users.isAgent, false)));
+    .where(and(eq(users.tenantId, viewer.tenantId), realStaff()));
 
   if (!people.length) return 0;
 
@@ -189,8 +216,8 @@ export async function seedBalances(viewer: Viewer, year: number) {
 }
 
 export async function setEntitlement(viewer: Viewer, balanceId: string, days: number) {
-  if (!canManage(viewer)) throw new Error("Only an owner or an administrator sets entitlements");
-  if (!Number.isFinite(days) || days < 0 || days > 365) throw new Error("That is not a number of days");
+  if (!canManage(viewer)) throw new Error("只有所有者或管理员可以设置假期额度");
+  if (!Number.isFinite(days) || days < 0 || days > 365) throw new Error("天数不对");
   await db
     .update(leaveBalances)
     .set({ entitlementDays: days, updatedAt: new Date() })
@@ -202,8 +229,8 @@ export async function requestLeave(
   viewer: Viewer,
   input: { kind: string; startOn: string; endOn: string; days: number; reason: string | null },
 ) {
-  if (!(input.days > 0)) throw new Error("How many days?");
-  if (input.endOn < input.startOn) throw new Error("It ends before it starts");
+  if (!(input.days > 0)) throw new Error("请填写天数");
+  if (input.endOn < input.startOn) throw new Error("结束日期早于开始日期");
 
   const id = newId("lv");
   await db.insert(leaveRequests).values({
@@ -233,22 +260,22 @@ export async function decideLeave(
   decision: "approved" | "rejected",
   note: string | null,
 ) {
-  if (!canManage(viewer)) throw new Error("Only an owner or an administrator decides leave");
+  if (!canManage(viewer)) throw new Error("只有所有者或管理员可以审批请假");
 
   const [req] = await db
     .select({ userId: leaveRequests.userId })
     .from(leaveRequests)
     .where(and(eq(leaveRequests.id, requestId), eq(leaveRequests.tenantId, viewer.tenantId)))
     .limit(1);
-  if (!req) throw new Error("That request does not exist");
-  if (req.userId === viewer.id) throw new Error("Somebody else has to decide your own leave");
+  if (!req) throw new Error("这条申请不存在");
+  if (req.userId === viewer.id) throw new Error("自己的请假需要由别人审批");
 
   const claimed = await db
     .update(leaveRequests)
     .set({ state: decision, decidedBy: viewer.id, decidedAt: new Date(), decisionNote: note })
     .where(and(eq(leaveRequests.id, requestId), eq(leaveRequests.state, "requested")))
     .returning({ id: leaveRequests.id });
-  if (!claimed.length) throw new Error("That request has already been decided");
+  if (!claimed.length) throw new Error("这条申请已经处理过了");
 
   await audit(viewer, `hr.leave.${decision}`, {
     module: "hr",
@@ -270,7 +297,7 @@ export async function cancelLeave(viewer: Viewer, requestId: string) {
       ),
     )
     .returning({ id: leaveRequests.id });
-  if (!claimed.length) throw new Error("Only your own request, and only while it is waiting");
+  if (!claimed.length) throw new Error("只能撤回自己还在等待审批的申请");
   await audit(viewer, "hr.leave.cancel", { module: "hr", objectId: requestId });
 }
 
@@ -290,7 +317,7 @@ export type RequisitionRow = {
 
 export async function listRequisitions(viewer: Viewer): Promise<RequisitionRow[]> {
   const rows = await db
-    .select({ r: requisitions, byName: users.name })
+    .select({ r: requisitions, byName: personName(viewer) })
     .from(requisitions)
     .leftJoin(users, eq(users.id, requisitions.openedBy))
     .where(eq(requisitions.tenantId, viewer.tenantId))
@@ -322,9 +349,9 @@ export async function openRequisition(
   viewer: Viewer,
   input: { title: string; department: string | null; headcount: number; description: string },
 ) {
-  if (!canManage(viewer)) throw new Error("Only an owner or an administrator opens a role");
+  if (!canManage(viewer)) throw new Error("只有所有者或管理员可以开放职位");
   const title = input.title.trim();
-  if (!title) throw new Error("A role needs a title");
+  if (!title) throw new Error("请填写职位名称");
 
   const id = newId("rq");
   await db.insert(requisitions).values({
@@ -341,7 +368,7 @@ export async function openRequisition(
 }
 
 export async function setRequisitionState(viewer: Viewer, requisitionId: string, state: string) {
-  if (!canManage(viewer)) throw new Error("Not allowed");
+  if (!canManage(viewer)) throw new Error("你没有权限这样做");
   await db
     .update(requisitions)
     .set({ state, closedAt: state === "closed" || state === "filled" ? new Date() : null })
@@ -367,7 +394,7 @@ export async function listCandidates(viewer: Viewer): Promise<CandidateRow[]> {
   if (!canManage(viewer)) return [];
 
   const rows = await db
-    .select({ c: candidates, byName: users.name })
+    .select({ c: candidates, byName: personName(viewer) })
     .from(candidates)
     .leftJoin(users, eq(users.id, candidates.addedBy))
     .where(eq(candidates.tenantId, viewer.tenantId))
@@ -417,9 +444,9 @@ export async function addCandidate(
     requisitionId: string | null;
   },
 ) {
-  if (!canManage(viewer)) throw new Error("Not allowed");
+  if (!canManage(viewer)) throw new Error("你没有权限这样做");
   const name = input.name.trim();
-  if (!name) throw new Error("A candidate needs a name");
+  if (!name) throw new Error("请填写候选人姓名");
 
   const retain = new Date();
   retain.setMonth(retain.getMonth() + Math.max(1, Math.min(60, input.retainMonths || 12)));
@@ -451,7 +478,7 @@ export async function addCandidate(
 }
 
 export async function setStage(viewer: Viewer, applicationId: string, stage: string) {
-  if (!canManage(viewer)) throw new Error("Not allowed");
+  if (!canManage(viewer)) throw new Error("你没有权限这样做");
   await db
     .update(applications)
     .set({ stage: stage as "applied", updatedAt: new Date() })
@@ -460,7 +487,7 @@ export async function setStage(viewer: Viewer, applicationId: string, stage: str
 }
 
 export async function deleteCandidate(viewer: Viewer, candidateId: string) {
-  if (!canManage(viewer)) throw new Error("Not allowed");
+  if (!canManage(viewer)) throw new Error("你没有权限这样做");
   await db
     .delete(candidates)
     .where(and(eq(candidates.id, candidateId), eq(candidates.tenantId, viewer.tenantId)));
@@ -499,7 +526,7 @@ export async function listEmployees(viewer: Viewer): Promise<EmployeeRow[]> {
       and(
         eq(users.tenantId, viewer.tenantId),
         isNull(users.deletedAt),
-        canManage(viewer) ? undefined : eq(users.id, viewer.id),
+        canManage(viewer) ? realStaff() : eq(users.id, viewer.id),
       ),
     )
     .orderBy(users.name);
@@ -524,7 +551,7 @@ export async function listEmployees(viewer: Viewer): Promise<EmployeeRow[]> {
   return rows.map((r) => ({
     id: r.r?.id ?? r.u.id,
     userId: r.u.id,
-    name: r.u.nameLocal ?? r.u.name,
+    name: ((viewer.locale ?? "zh-CN").startsWith("zh") && r.u.nameLocal) || r.u.name,
     email: r.u.email,
     jobTitle: r.r?.jobTitle ?? r.u.title,
     department: r.r?.department ?? null,
@@ -539,7 +566,7 @@ export async function saveEmployee(
   userId: string,
   input: { jobTitle: string | null; department: string | null; startedOn: string | null; employmentType: string },
 ) {
-  if (!canManage(viewer)) throw new Error("Not allowed");
+  if (!canManage(viewer)) throw new Error("你没有权限这样做");
 
   await db
     .insert(employeeRecords)
@@ -567,7 +594,7 @@ export async function saveEmployee(
 }
 
 export async function addOnboardingTask(viewer: Viewer, userId: string, label: string, dueOn: string | null) {
-  if (!canManage(viewer)) throw new Error("Not allowed");
+  if (!canManage(viewer)) throw new Error("你没有权限这样做");
   const id = newId("emp");
   await db.insert(onboardingTasks).values({
     id,

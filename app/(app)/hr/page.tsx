@@ -11,7 +11,7 @@ import {
 } from "@/lib/hr/service";
 import { HrScreen } from "@/components/hr/HrScreen";
 
-export const metadata = { title: "人事 · HR" };
+export const metadata = { title: "人事" };
 
 /**
  * Human Resources (spec §4.11).

@@ -30,7 +30,7 @@ const day = (v: unknown) => (typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test
 
 export async function seedTemplatesAction() {
   const viewer = await lawyer();
-  if (!viewer) return { error: "Not allowed" };
+  if (!viewer) return { error: "你没有权限这样做" };
   await seedTemplates(viewer);
   await seedChecklist(viewer);
   refresh();
@@ -45,7 +45,7 @@ export async function saveTemplateAction(input: {
   fields: { key: string; label: string }[];
 }) {
   const viewer = await lawyer();
-  if (!viewer) return { error: "Not allowed" };
+  if (!viewer) return { error: "你没有权限这样做" };
   try {
     await saveTemplate(viewer, {
       id: id(input.id),
@@ -62,7 +62,7 @@ export async function saveTemplateAction(input: {
     refresh();
     return {};
   } catch (err) {
-    return { error: err instanceof Error ? err.message : "Could not save that" };
+    return { error: err instanceof Error ? err.message : "没能保存，请再试一次" };
   }
 }
 
@@ -73,8 +73,8 @@ export async function draftContractAction(input: {
   values: Record<string, string>;
 }) {
   const viewer = await lawyer();
-  if (!viewer) return { error: "Not allowed" };
-  if (!id(input.templateId)) return { error: "Choose a template" };
+  if (!viewer) return { error: "你没有权限这样做" };
+  if (!id(input.templateId)) return { error: "请先选一个模板" };
 
   const [studio] = await db
     .select({ name: tenants.name })
@@ -98,7 +98,7 @@ export async function draftContractAction(input: {
     refresh();
     return { id: contractId };
   } catch (err) {
-    return { error: err instanceof Error ? err.message : "Could not draft that" };
+    return { error: err instanceof Error ? err.message : "没能起草，请再试一次" };
   }
 }
 
@@ -107,9 +107,9 @@ export async function updateContractAction(
   input: { title?: string; body?: string; counterparty?: string; state?: string; signedOn?: string; expiresOn?: string },
 ) {
   const viewer = await lawyer();
-  if (!viewer) return { error: "Not allowed" };
-  if (!id(contractId)) return { error: "Not found" };
-  if (input.state !== undefined && !isContractState(input.state)) return { error: "No such state" };
+  if (!viewer) return { error: "你没有权限这样做" };
+  if (!id(contractId)) return { error: "找不到这一项" };
+  if (input.state !== undefined && !isContractState(input.state)) return { error: "没有这个状态" };
 
   try {
     await updateContract(viewer, contractId, {
@@ -123,20 +123,20 @@ export async function updateContractAction(
     refresh();
     return {};
   } catch (err) {
-    return { error: err instanceof Error ? err.message : "Could not save that" };
+    return { error: err instanceof Error ? err.message : "没能保存，请再试一次" };
   }
 }
 
 export async function reviewContractAction(contractId: string) {
   const viewer = await lawyer();
-  if (!viewer) return { error: "Not allowed" as const };
-  if (!id(contractId)) return { error: "Not found" as const };
+  if (!viewer) return { error: "你没有权限这样做" as const };
+  if (!id(contractId)) return { error: "找不到这一项" as const };
   try {
     const found = await reviewContract(viewer, contractId);
     refresh();
     return { found };
   } catch (err) {
-    return { error: err instanceof Error ? err.message : "Could not compare that" };
+    return { error: err instanceof Error ? err.message : "没能核对，请再试一次" };
   }
 }
 
@@ -161,8 +161,8 @@ export async function findingsAction(contractId: string) {
 
 export async function acknowledgeFindingAction(findingId: string) {
   const viewer = await lawyer();
-  if (!viewer) return { error: "Not allowed" };
-  if (!id(findingId)) return { error: "Not found" };
+  if (!viewer) return { error: "你没有权限这样做" };
+  if (!id(findingId)) return { error: "找不到这一项" };
   await acknowledgeFinding(viewer, findingId);
   refresh();
   return {};
@@ -176,8 +176,8 @@ export async function saveRunAction(input: {
   complete: boolean;
 }) {
   const viewer = await lawyer();
-  if (!viewer) return { error: "Not allowed" };
-  if (!id(input.checklistId)) return { error: "Not found" };
+  if (!viewer) return { error: "你没有权限这样做" };
+  if (!id(input.checklistId)) return { error: "找不到这一项" };
 
   const answers: Record<string, { value: string; note?: string }> = {};
   for (const [k, v] of Object.entries(input.answers ?? {})) {
@@ -197,6 +197,6 @@ export async function saveRunAction(input: {
     refresh();
     return {};
   } catch (err) {
-    return { error: err instanceof Error ? err.message : "Could not save that" };
+    return { error: err instanceof Error ? err.message : "没能保存，请再试一次" };
   }
 }

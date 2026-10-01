@@ -38,15 +38,17 @@ function compact(n: number): string {
   return String(n);
 }
 
-/** One number that says how hot, in words anybody reads. */
-function heatOf(r: HotRow, zh: boolean): string {
+/** One number that says how hot, in words anybody reads. Nothing when no
+ * platform gave a figure, rather than a dash (QA, 2 Oct). */
+function heatOf(r: ShownRow, zh: boolean): string {
   const s = r.stats ?? {};
   if (s.views) return `${zh ? "播放" : "plays"} ${compact(s.views)}`;
   if (s.likes) return `${zh ? "点赞" : "likes"} ${compact(s.likes)}`;
-  if (r.heatLabel) return r.heatLabel;
+  // Google's "1000+" is searches; a bare number with a plus said nothing.
+  if (r.heatLabel) return r.from === "google" && /^[\d,.]+\+?$/.test(r.heatLabel) ? `${zh ? "搜索" : "searches"} ${r.heatLabel}` : r.heatLabel;
   if (r.heat) return `${zh ? "热度" : "heat"} ${compact(r.heat)}`;
   if (s.comments) return `${zh ? "评论" : "comments"} ${compact(s.comments)}`;
-  return "—";
+  return "";
 }
 
 /** The platform a row is on: a beat feed's own, or a 抖音 billboard's. */
@@ -59,7 +61,7 @@ function platformOf(from: string): { mark: string; zh: string; en: string } {
   return byHot ? { mark: byHot.mark, zh: byHot.zh, en: byHot.label } : { mark: from, zh: from, en: from };
 }
 
-export function HotBoard({ zh, canWrite, initial = null, hiddenCount = 0 }: { zh: boolean; canWrite: boolean; initial?: Record<string, ShownRow[]> | null; hiddenCount?: number }) {
+export function HotBoard({ zh, canWrite, canHide = false, initial = null, hiddenCount = 0 }: { zh: boolean; canWrite: boolean; canHide?: boolean; initial?: Record<string, ShownRow[]> | null; hiddenCount?: number }) {
   const t = (a: string, b: string) => (zh ? a : b);
   const router = useRouter();
   const [lists, setLists] = React.useState<Lists | null>(null);
@@ -197,11 +199,13 @@ export function HotBoard({ zh, canWrite, initial = null, hiddenCount = 0 }: { zh
                     <button type="button" className="hb-make" disabled={busy !== null} onClick={() => void make(r)}>
                       <Icon name="film" size={12} /> {busy === id ? t("正在开始…", "Starting…") : t("做成视频", "Make it")}
                     </button>
-                    <button type="button" className="hb-hide" onClick={() => void hide(r)} title={t("不再显示这条（整个工作室）", "Never show this again")} aria-label={t("不再显示", "Hide")}>
-                      <svg viewBox="0 0 24 24" width={13} height={13} aria-hidden fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round">
-                        <path d="M7 7l10 10M17 7 7 17" />
-                      </svg>
-                    </button>
+                    {canHide ? (
+                      <button type="button" className="hb-hide" onClick={() => void hide(r)} title={t("不再显示这条（整个工作室）", "Never show this again")} aria-label={t("不再显示", "Hide")}>
+                        <svg viewBox="0 0 24 24" width={13} height={13} aria-hidden fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round">
+                          <path d="M7 7l10 10M17 7 7 17" />
+                        </svg>
+                      </button>
+                    ) : null}
                   </span>
                 </span>
               </div>
@@ -209,7 +213,7 @@ export function HotBoard({ zh, canWrite, initial = null, hiddenCount = 0 }: { zh
           })
         )}
       </section>
-      {hiddenCount + gone.size > 0 ? (
+      {canHide && hiddenCount + gone.size > 0 ? (
         <div style={{ alignSelf: "center", fontSize: 12.5, color: MUTED }}>
           {t(`已隐藏 ${hiddenCount + gone.size} 条`, `${hiddenCount + gone.size} hidden`)} ·{" "}
           <button type="button" onClick={() => void restore()} style={{ border: 0, background: "none", padding: 0, font: "inherit", color: "#1f5fbf", cursor: "pointer" }}>

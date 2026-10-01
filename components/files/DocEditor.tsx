@@ -14,7 +14,7 @@ import { Toolbar, type Mode } from "@/components/script/doc/toolbar";
 import { GD_CSS } from "@/components/script/doc/ScriptDoc";
 import { GI } from "@/components/script/doc/icons";
 import { notify } from "@/lib/client/notify";
-import { saveDocAction } from "@/app/(app)/docs/actions";
+import { renameDocAction, saveDocAction } from "@/app/(app)/docs/actions";
 
 /**
  * A document edited in the browser, on the same paper and toolbar as the
@@ -50,6 +50,9 @@ export function DocEditor({
   const [zoom, setZoom] = React.useState(1);
   const [state, setState] = React.useState<"saved" | "dirty" | "saving" | "error">("saved");
   const [panel, setPanel] = React.useState(openShare);
+  const [title, setTitle] = React.useState(name);
+  const [, setTick] = React.useState(0);
+  const dl = React.useRef<HTMLDetailsElement | null>(null);
   const seq = React.useRef(0);
   const timer = React.useRef<number | null>(null);
 
@@ -80,9 +83,37 @@ export function DocEditor({
     },
   });
 
+  /* (QA, 2 Oct: after 查看 → 编辑 every toolbar button stayed grey until a key
+     was pressed. setEditable alone does not reach the toolbar's state hook, so
+     an empty transaction tells it, and a tick re-renders this screen.) */
   React.useEffect(() => {
-    editor?.setEditable(canEdit && mode === "edit");
+    if (!editor || editor.isDestroyed) return;
+    editor.setEditable(canEdit && mode === "edit");
+    try {
+      editor.view.dispatch(editor.state.tr.setMeta("addToHistory", false));
+    } catch {
+      /* Not mounted yet: the first render reads the right state anyway. */
+    }
+    setTick((n) => n + 1);
   }, [editor, canEdit, mode]);
+
+  /* The title is the file's name; editors rename it in place (QA, 2 Oct: a new
+     document stayed 「未命名文档」 for good). */
+  const rename = async () => {
+    const next = title.trim();
+    if (!next || next === name) {
+      setTitle(name);
+      return;
+    }
+    const r = await renameDocAction(id, next);
+    if ("error" in r && r.error) {
+      notify(r.error);
+      setTitle(name);
+    } else if ("name" in r && r.name) {
+      setTitle(r.name);
+      notify(t("已重命名", "Renamed"), "ok");
+    }
+  };
 
   const saving = React.useRef(false);
   const save = React.useCallback(async () => {
@@ -139,10 +170,10 @@ export function DocEditor({
     else editor.chain().focus().extendMarkRange("link").setLink({ href: url.trim() }).run();
   };
 
-  const stateLabel = state === "saving" ? t("正在保存…", "Saving…") : state === "dirty" ? t("有改动，稍后自动保存", "Unsaved changes") : state === "error" ? t("没保存上，点这里重试", "Not saved — retry") : t("已保存", "Saved");
+  const stateLabel = state === "saving" ? t("正在保存…", "Saving…") : state === "dirty" ? t("有改动，稍后自动保存", "Unsaved changes") : state === "error" ? t("没保存上，点这里重试", "Not saved, click to retry") : t("已保存", "Saved");
 
   return (
-    <div className="gd-root" data-gd-root="" style={{ minHeight: "100%" }}>
+    <div className="gd-root doc-root" data-gd-root="" style={{ minHeight: "100%" }}>
       <style>{GD_CSS}</style>
       <style>{DOC_CSS}</style>
       <div className="gd-head" style={{ paddingBottom: 8 }}>
@@ -151,9 +182,28 @@ export function DocEditor({
         </Link>
         <GI name="doc" size={24} />
         <div style={{ minWidth: 0, display: "flex", flexDirection: "column" }}>
-          <span style={{ fontSize: 17, color: "#1f1f1f", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={name}>
-            {name}
-          </span>
+          {canEdit ? (
+            <input
+              className="doc-title"
+              value={title}
+              maxLength={200}
+              aria-label={t("文档名称", "Document name")}
+              title={t("点这里改名", "Click to rename")}
+              onChange={(e) => setTitle(e.target.value)}
+              onBlur={() => void rename()}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") e.currentTarget.blur();
+                if (e.key === "Escape") {
+                  setTitle(name);
+                  e.currentTarget.blur();
+                }
+              }}
+            />
+          ) : (
+            <span style={{ fontSize: 17, color: "#1f1f1f", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={name}>
+              {name}
+            </span>
+          )}
           <span style={{ fontSize: 12, color: "#5f6368" }}>
             {back.label}
             {canEdit ? "" : t(" · 只读", " · read only")}
@@ -167,12 +217,13 @@ export function DocEditor({
         ) : null}
         <div style={{ flexGrow: 1 }} />
         <div className="gd-head-right">
-          <details className="doc-dl">
+          <details className="doc-dl" ref={dl}>
             <summary className="doc-btn">
               <GI name="download" size={16} />
               {t("下载", "Download")}
             </summary>
-            <div className="doc-menu">
+            {/* Picking a format closes the menu (QA, 2 Oct: it stayed open). */}
+            <div className="doc-menu" onClick={() => dl.current?.removeAttribute("open")}>
               <a href={`/api/docs/${id}/export?format=docx`} download>{t("Word 文档 (.docx)", "Word (.docx)")}</a>
               <a href={`/api/docs/${id}/export?format=pdf`} download>PDF (.pdf)</a>
               {hasOriginal ? <a href={`/api/files/${id}/download?download=1`}>{t("上传时的原文件", "The original upload")}</a> : null}
@@ -187,7 +238,23 @@ export function DocEditor({
       {fromOriginal && canEdit ? (
         <div className="doc-note">{t("这是从原文件转出来的可编辑版本，排版可能和原文件略有不同。改动会自动保存；原文件一直保留，可以在「下载」里拿到。", "An editable copy of the original upload; layout may differ slightly. The original is kept under Download.")}</div>
       ) : null}
-      <Toolbar editor={editor} zh={zh} mode={mode} setMode={setMode} canEdit={canEdit} zoom={zoom} setZoom={setZoom} onFind={() => notify(t("用 Ctrl+F（Mac 用 ⌘F）在页面里查找", "Use Ctrl+F / ⌘F to find"), "info")} onPrint={() => window.print()} onLink={link} onComment={() => notify(t("批注目前只在脚本页有", "Comments are on the script page for now"), "info")} onImage={() => notify(t("这里暂时不能插图片", "Images are not supported here yet"), "info")} />
+      {/* 建议 (tracked changes), 批注 and 图片 belong to the script page; here
+          they only made the page read-only or showed a "not yet" toast, so
+          they are hidden (DOC_CSS) and 建议 falls back to 编辑 (QA, 2 Oct). */}
+      <Toolbar
+        editor={editor}
+        zh={zh}
+        mode={mode}
+        setMode={(m) => setMode(m === "suggest" ? "edit" : m)}
+        canEdit={canEdit}
+        zoom={zoom}
+        setZoom={setZoom}
+        onFind={() => notify(t("按 Ctrl+F（Mac 上按 ⌘F）就能在文档里查找", "Press Ctrl+F (⌘F on a Mac) to find text"), "info")}
+        onPrint={() => window.print()}
+        onLink={link}
+        onComment={() => undefined}
+        onImage={() => undefined}
+      />
       <div className="gd-body">
         <div className="gd-canvas">
           <div className="gd-sheet-row" style={{ zoom }}>
@@ -219,6 +286,13 @@ const DOC_CSS = `
 .doc-menu { position: absolute; right: 0; top: calc(100% + 6px); z-index: 60; min-width: 220px; background: #fff; border-radius: 8px; padding: 6px 0; box-shadow: 0 2px 6px 2px rgba(60,64,67,.15), 0 1px 2px rgba(60,64,67,.3); display: flex; flex-direction: column; }
 .doc-menu a { padding: 8px 16px; font-size: 14px; color: #1f1f1f; text-decoration: none; }
 .doc-menu a:hover { background: #f1f3f4; }
+.doc-title { font: inherit; font-size: 17px; color: #1f1f1f; border: 1px solid transparent; border-radius: 4px; padding: 1px 4px; margin-left: -5px; background: transparent; min-width: 120px; width: min(520px, 40vw); text-overflow: ellipsis; }
+.doc-title:hover { border-color: #dadce0; }
+.doc-title:focus { outline: none; border-color: #1a73e8; }
+.doc-root .gd-toolbar .gd-tb[aria-label^="添加批注"], .doc-root .gd-toolbar .gd-tb[aria-label^="Add comment"],
+.doc-root .gd-toolbar .gd-tb[aria-label="插入图片"], .doc-root .gd-toolbar .gd-tb[aria-label="Insert image"] { display: none; }
+.doc-root .gd-toolbar div:has(> button[aria-label="模式"]) .gd-menu > .gd-menu-item:nth-child(2),
+.doc-root .gd-toolbar div:has(> button[aria-label="Mode"]) .gd-menu > .gd-menu-item:nth-child(2) { display: none; }
 .doc-note { margin: 0 16px 8px; padding: 8px 12px; border-radius: 8px; background: #fef7e0; color: #5c4400; font-size: 12.5px; }
 .doc-panel { width: 340px; flex-shrink: 0; align-self: stretch; border-left: 1px solid #e3e3e3; background: #fff; padding: 14px; box-sizing: border-box; display: flex; flex-direction: column; gap: 12px; position: sticky; top: 0; max-height: 100vh; overflow-y: auto; }
 @media print { .gd-head, .gd-toolbar, .doc-note, .doc-panel { display: none !important; } .gd-sheet { box-shadow: none !important; } }

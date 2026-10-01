@@ -3,7 +3,7 @@ import { accountViews, accountsStale, publishedProjects } from "@/lib/review/ser
 import { allVideos } from "@/lib/review/videos";
 import { StudioReview } from "@/components/review/StudioReview";
 
-export const metadata = { title: "账号数据 · Account data" };
+export const metadata = { title: "账号数据" };
 
 /**
  * 账号数据: the studio's accounts, every video on them with its numbers, and

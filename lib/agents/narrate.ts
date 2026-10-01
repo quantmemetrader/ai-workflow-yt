@@ -1,4 +1,5 @@
 import { answerFilmOrigin } from "@/lib/agents/film-origin";
+import { AiError } from "@/lib/ai/openrouter";
 import "server-only";
 import { sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
@@ -239,7 +240,9 @@ export async function narrateFailed(job: Job, err: unknown): Promise<void> {
   if (!SPEAKS[job.type]) return;
   const title = await projectTitle(job);
   const name = title ? `《${title}》` : "这条片";
-  const why = (err instanceof Error ? err.message : String(err)).slice(0, 200);
+  /* Said in Chinese: a provider error in English means nothing to the studio. */
+  const raw = (err instanceof Error ? err.message : String(err)).slice(0, 200);
+  const why = err instanceof AiError ? err.userMessage : /[一-鿿]/.test(raw) ? raw : /did not respond|timed? ?out|stalled/i.test(raw) ? "AI 服务这次没有回应" : "出了点问题（技术细节已记录）";
   const what = job.type === "video.export" ? "渲染" : job.type === "video.autoedit" ? "粗剪" : "制作";
   await say(job, "failed", `${name}的${what}没成功：${why}\n我不会自己重试；改好了再让我来一次。`);
 }

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import type { Balances, ProviderBalance } from "@/lib/finance/providers";
 import { refreshBalancesAction } from "@/app/(app)/finance/actions";
 import { Icon } from "@/components/ui/Icon";
+import { usdDollars } from "@/components/finance/usd";
 
 /**
  * What is left on each paid service, above every Finance tab: the dollars
@@ -29,7 +30,17 @@ const FRIENDLY: Record<string, { zh: string; en: string }> = {
   r2: { zh: "存储", en: "Storage" },
 };
 
-const usd = (n: number) => `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+/* (QA, 2 Oct) Same money style as /settings, rounded once on whole cents. */
+const usd = usdDollars;
+
+/* The provider errors are written in English on the server; say them in Chinese here. */
+function errorZh(e: string): string {
+  if (e === "timed out") return "对方没有及时回应";
+  if (e === "could not be reached") return "连不上对方";
+  if (/blocked before it reached/.test(e)) return "请求在到达服务之前被拦下了";
+  const m = /^HTTP (\d+)/.exec(e);
+  return m ? `对方返回错误 ${m[1]}` : e;
+}
 
 export function ApiBalances({ balances, zh }: { balances: Balances; zh: boolean }) {
   const t = (en: string, cn: string) => (zh ? cn : en);
@@ -42,7 +53,8 @@ export function ApiBalances({ balances, zh }: { balances: Balances; zh: boolean 
       <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
         <span style={{ fontSize: 14, fontWeight: 600 }}>{t("AI services balance", "AI 服务余额")}</span>
         <span style={{ fontSize: 11.5, color: "#999999" }}>
-          {t("admins only", "仅管理员可见")} · {at.toLocaleTimeString(zh ? "zh-CN" : "en-US", { hour: "2-digit", minute: "2-digit" })}
+          {t("admins only", "仅管理员可见")} · {/* Hong Kong time on server and browser alike, or the two renders disagree (QA, 2 Oct: hydration error). */}
+          {at.toLocaleTimeString(zh ? "zh-CN" : "en-US", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Hong_Kong" })}
         </span>
         {low.length ? (
           <span style={{ fontSize: 11.5, fontWeight: 600, color: "#95590a" }}>
@@ -106,7 +118,7 @@ function Card({ r, zh }: { r: ProviderBalance; zh: boolean }) {
           r.totalUsd !== null && r.usedUsd !== null ? t(`${usd(r.usedUsd)} used of ${usd(r.totalUsd)}`, `共 ${usd(r.totalUsd)} · 已用 ${usd(r.usedUsd)}`) : null,
           r.monthUsd !== null && r.key !== "r2" ? t(`this month ${usd(r.monthUsd)}`, `本月 ${usd(r.monthUsd)}`) : null,
           zh ? r.noteZh : r.note,
-          r.state === "error" && r.error ? t(`Could not read: ${r.error}`, `查不到：${r.error}`) : null,
+          r.state === "error" && r.error ? t(`Could not read: ${r.error}`, `查不到：${errorZh(r.error)}`) : null,
           r.state === "off" ? t("Not set up", "还没接上") : null,
         ]
           .filter(Boolean)

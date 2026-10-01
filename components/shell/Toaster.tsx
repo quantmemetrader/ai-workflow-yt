@@ -2,7 +2,23 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { NOTIFY_EVENT, type Notice } from "@/lib/client/notify";
+import { usePathname } from "next/navigation";
+import { NOTIFY_EVENT, notifyRich, type Notice } from "@/lib/client/notify";
+
+/** Module names for the "no access" notice below. */
+const MODULE_ZH: Record<string, string> = {
+  chat: "聊天",
+  files: "文件",
+  research: "选题",
+  script: "脚本",
+  video: "视频",
+  publish: "发布",
+  accounting: "账务",
+  finance: "财务",
+  legal: "法务",
+  hr: "人事",
+  admin: "后台",
+};
 
 /**
  * Where a failure goes now that nothing calls `window.alert` — and where
@@ -41,6 +57,26 @@ export function Toaster() {
       for (const t of timers) clearTimeout(t);
     };
   }, [drop]);
+
+  /* `requireModule` sends someone without a module to where they can work,
+     with `?denied=<module>`; this says why, then tidies the address
+     (QA, 2 Oct: the redirect used to be silent). */
+  const pathname = usePathname();
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    const denied = url.searchParams.get("denied");
+    if (!denied) return;
+    url.searchParams.delete("denied");
+    window.history.replaceState(window.history.state, "", url.pathname + url.search + url.hash);
+    const zh = !document.documentElement.lang.startsWith("en");
+    const name = MODULE_ZH[denied];
+    notifyRich({
+      kind: "info",
+      title: zh ? (name ? `你还没有「${name}」的权限` : "你还没有这个模块的权限") : "You do not have access to that module",
+      text: zh ? "需要的话，可以请管理员帮你开通。" : "Ask an admin if you need it.",
+      hold: 9000,
+    });
+  }, [pathname]);
 
   if (!notices.length) return null;
 
@@ -120,7 +156,7 @@ export function Toaster() {
           </span>
           <button
             type="button"
-            aria-label="Dismiss"
+            aria-label="关闭"
             onClick={() => drop(n.id)}
             style={{
               marginLeft: "auto",

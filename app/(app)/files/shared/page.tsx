@@ -6,7 +6,7 @@ import { FilesView } from "@/components/files/FilesView";
 import { toRows } from "@/components/files/rows";
 import { relationsForFiles } from "@/lib/authz/rebac";
 
-export const metadata = { title: "共享文件 · Shared with me" };
+export const metadata = { title: "共享给我的" };
 
 /** Files someone chose to share with this person — not their own, and not the
  * studio-wide grant everyone holds. */

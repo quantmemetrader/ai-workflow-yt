@@ -41,15 +41,15 @@ function micros(v: unknown): number | null {
  * than optimistic — the screen shows it working. */
 export async function generateReportAction(period: string) {
   const viewer = await finance();
-  if (!viewer) return { error: "Not allowed" };
+  if (!viewer) return { error: "你没有权限这样做" };
   const p = String(period ?? "").trim();
-  if (!/^\d{4}-(?:\d{2}|Q[1-4])$/.test(p)) return { error: "That is not a period." };
+  if (!/^\d{4}-(?:\d{2}|Q[1-4])$/.test(p)) return { error: "期间格式不对" };
   try {
     const report = await generateReport(viewer, p);
     refresh();
     return { id: report.id };
   } catch (err) {
-    return { error: err instanceof Error ? err.message : "Could not write that" };
+    return { error: err instanceof Error ? err.message : "没能写好，请再试一次" };
   }
 }
 
@@ -57,64 +57,64 @@ export async function generateReportAction(period: string) {
  * have read stays what they read. */
 export async function saveReportAction(reportId: string, body: string) {
   const viewer = await finance();
-  if (!viewer) return { error: "Not allowed" };
+  if (!viewer) return { error: "你没有权限这样做" };
   try {
     const id = await saveReport(viewer, String(reportId), String(body ?? ""));
     refresh();
     return { id };
   } catch (err) {
-    return { error: err instanceof Error ? err.message : "Could not save that" };
+    return { error: err instanceof Error ? err.message : "没能保存，请再试一次" };
   }
 }
 
 export async function shareReportAction(reportId: string) {
   const viewer = await finance();
-  if (!viewer) return { error: "Not allowed" };
+  if (!viewer) return { error: "你没有权限这样做" };
   try {
     await shareReport(viewer, String(reportId));
     refresh();
     return {};
   } catch (err) {
-    return { error: err instanceof Error ? err.message : "Could not share that" };
+    return { error: err instanceof Error ? err.message : "没能分享，请再试一次" };
   }
 }
 
 export async function createCentreAction(kind: string, name: string, code: string) {
   const viewer = await finance();
-  if (!viewer) return { error: "Not allowed" };
+  if (!viewer) return { error: "你没有权限这样做" };
   try {
     await createCentre(viewer, { kind, name: String(name ?? "").slice(0, 120), code: String(code ?? "").slice(0, 32) });
     refresh();
     return {};
   } catch (err) {
-    return { error: err instanceof Error ? err.message : "Could not add that" };
+    return { error: err instanceof Error ? err.message : "没能添加，请再试一次" };
   }
 }
 
 export async function archiveCentreAction(centreId: string) {
   const viewer = await finance();
-  if (!viewer) return { error: "Not allowed" };
-  if (!id(centreId)) return { error: "Not found" };
+  if (!viewer) return { error: "你没有权限这样做" };
+  if (!id(centreId)) return { error: "找不到这一项" };
   try {
     await archiveCentre(viewer, centreId);
     refresh();
     return {};
   } catch (err) {
-    return { error: err instanceof Error ? err.message : "Could not archive that" };
+    return { error: err instanceof Error ? err.message : "没能隐藏，请再试一次" };
   }
 }
 
 export async function setBudgetLineAction(centreId: string, p: string, amount: number) {
   const viewer = await finance();
-  if (!viewer) return { error: "Not allowed" };
+  if (!viewer) return { error: "你没有权限这样做" };
   const m = micros(amount);
-  if (!id(centreId) || !period(p) || m === null) return { error: "Not allowed" };
+  if (!id(centreId) || !period(p) || m === null) return { error: "你没有权限这样做" };
   try {
     await setBudgetLine(viewer, centreId, p, m);
     refresh();
     return {};
   } catch (err) {
-    return { error: err instanceof Error ? err.message : "Could not save that line" };
+    return { error: err instanceof Error ? err.message : "没能保存这一行，请再试一次" };
   }
 }
 
@@ -125,9 +125,9 @@ export async function addActualAction(input: {
   description: string;
 }) {
   const viewer = await finance();
-  if (!viewer) return { error: "Not allowed" };
+  if (!viewer) return { error: "你没有权限这样做" };
   const m = micros(input.amount);
-  if (!period(input.period) || m === null) return { error: "That is not an amount" };
+  if (!period(input.period) || m === null) return { error: "金额格式不对" };
   try {
     await addActual(viewer, {
       period: input.period,
@@ -138,20 +138,20 @@ export async function addActualAction(input: {
     refresh();
     return {};
   } catch (err) {
-    return { error: err instanceof Error ? err.message : "Could not add that" };
+    return { error: err instanceof Error ? err.message : "没能添加，请再试一次" };
   }
 }
 
 export async function removeActualAction(actualId: string) {
   const viewer = await finance();
-  if (!viewer) return { error: "Not allowed" };
-  if (!id(actualId)) return { error: "Not found" };
+  if (!viewer) return { error: "你没有权限这样做" };
+  if (!id(actualId)) return { error: "找不到这一项" };
   try {
     await removeActual(viewer, actualId);
     refresh();
     return {};
   } catch (err) {
-    return { error: err instanceof Error ? err.message : "Could not remove that" };
+    return { error: err instanceof Error ? err.message : "没能删除，请再试一次" };
   }
 }
 
@@ -163,14 +163,14 @@ export async function raiseSpendAction(input: {
   neededBy: string | null;
 }) {
   const viewer = await finance();
-  if (!viewer) return { error: "Not allowed" };
+  if (!viewer) return { error: "你没有权限这样做" };
   const m = micros(input.amount);
-  if (m === null || m <= 0) return { error: "An amount is a positive number" };
+  if (m === null || m <= 0) return { error: "金额要大于零" };
 
   let neededBy: Date | null = null;
   if (input.neededBy) {
     const parsed = new Date(input.neededBy);
-    if (Number.isNaN(parsed.getTime())) return { error: "That is not a date" };
+    if (Number.isNaN(parsed.getTime())) return { error: "日期格式不对" };
     neededBy = parsed;
   }
 
@@ -185,57 +185,57 @@ export async function raiseSpendAction(input: {
     refresh();
     return {};
   } catch (err) {
-    return { error: err instanceof Error ? err.message : "Could not raise that" };
+    return { error: err instanceof Error ? err.message : "没能提交，请再试一次" };
   }
 }
 
 export async function decideSpendAction(requestId: string, decision: string, note: string) {
   const viewer = await finance();
-  if (!viewer) return { error: "Not allowed" };
-  if (!id(requestId)) return { error: "Not found" };
-  if (decision !== "approve" && decision !== "reject") return { error: "Not allowed" };
+  if (!viewer) return { error: "你没有权限这样做" };
+  if (!id(requestId)) return { error: "找不到这一项" };
+  if (decision !== "approve" && decision !== "reject") return { error: "你没有权限这样做" };
 
   try {
     await decideSpend(viewer, requestId, decision, String(note ?? "").slice(0, 1000) || null);
     refresh();
     return {};
   } catch (err) {
-    return { error: err instanceof Error ? err.message : "Could not record that" };
+    return { error: err instanceof Error ? err.message : "没能记录，请再试一次" };
   }
 }
 
 export async function markPaidAction(requestId: string, p: string) {
   const viewer = await finance();
-  if (!viewer) return { error: "Not allowed" };
-  if (!id(requestId) || !period(p)) return { error: "Not allowed" };
+  if (!viewer) return { error: "你没有权限这样做" };
+  if (!id(requestId) || !period(p)) return { error: "你没有权限这样做" };
   try {
     await markSpendPaid(viewer, requestId, p);
     refresh();
     return {};
   } catch (err) {
-    return { error: err instanceof Error ? err.message : "Could not mark that paid" };
+    return { error: err instanceof Error ? err.message : "没能标记为已付，请再试一次" };
   }
 }
 
 export async function setThresholdsAction(autoBelow: number, oneApproverBelow: number) {
   const viewer = await finance();
-  if (!viewer) return { error: "Not allowed" };
+  if (!viewer) return { error: "你没有权限这样做" };
   const a = Number(autoBelow);
   const b = Number(oneApproverBelow);
-  if (!Number.isFinite(a) || !Number.isFinite(b)) return { error: "Those are not amounts" };
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return { error: "金额格式不对" };
   try {
     await setThresholds(viewer, { autoBelow: a, oneApproverBelow: b });
     refresh();
     return {};
   } catch (err) {
-    return { error: err instanceof Error ? err.message : "Could not save those" };
+    return { error: err instanceof Error ? err.message : "没能保存，请再试一次" };
   }
 }
 
 /** 刷新: read every provider's balance again now, past the five-minute copy. */
 export async function refreshBalancesAction() {
   const viewer = await finance();
-  if (!viewer) return { error: "Not allowed" };
+  if (!viewer) return { error: "你没有权限这样做" };
   await apiBalances(viewer, { fresh: true });
   revalidatePath("/finance");
   return {};

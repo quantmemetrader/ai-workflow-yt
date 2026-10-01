@@ -7,13 +7,13 @@ import { answeringModel } from "@/lib/ai/models";
 import { ResearchShell } from "@/components/research/ResearchShell";
 import { SavedBoard } from "@/components/research/SavedBoard";
 import { rankedTopics } from "@/lib/research/service";
-import { listCompetitors, ourMedianViews } from "@/lib/social/service";
+import { listCompetitors, ourMedianViews, ourPostCount } from "@/lib/social/service";
 import { creatorMemoryState } from "@/lib/creator/service";
 import { env } from "@/lib/env";
 import { jobs } from "@/lib/db/schema";
 import { BacklogView } from "@/components/research/BacklogView";
 
-export const metadata = { title: "我的储备 · Saved topics" };
+export const metadata = { title: "我的储备" };
 
 /** Adopted topics, with owner, target channel and due date — what Script needs
  * before it can start (brief §4.3, Topic backlog). */
@@ -24,17 +24,20 @@ export default async function BacklogPage({ searchParams }: { searchParams: Prom
   const zh = (viewer.locale ?? "zh-CN").startsWith("zh");
   const board = (await searchParams).board === "1";
 
-  const [rows, people, watched, competitors, ourMedian, creator, syncJobs] = await Promise.all([
+  const [rows, people, watched, competitors, ourMedian, creator, syncJobs, ourPosts] = await Promise.all([
     db
       .select({ topic: topics, ownerName: users.name, ownerNameLocal: users.nameLocal, ownerAvatar: users.avatarUrl })
       .from(topics)
       .leftJoin(users, eq(users.id, topics.ownerId))
       .where(and(eq(topics.tenantId, viewer.tenantId), inArray(topics.status, ["adopted", "saved"])))
       .orderBy(topics.dueDate),
+    /* People only: the suspended service principal (定时任务) is neither an
+       agent nor deleted, so it sat in the owner list (QA, 2 Oct). Same rule
+       as the chat's people list. */
     db
-      .select({ id: users.id, name: users.name, nameLocal: users.nameLocal })
+      .select({ id: users.id, name: users.name, nameLocal: users.nameLocal, email: users.email })
       .from(users)
-      .where(and(eq(users.tenantId, viewer.tenantId), eq(users.isAgent, false)))
+      .where(and(eq(users.tenantId, viewer.tenantId), eq(users.isAgent, false), isNull(users.deletedAt), eq(users.status, "active")))
       .orderBy(users.name),
     /* The words being followed (a topic that is neither kept nor dropped). */
     rankedTopics(viewer, { statuses: ["new"], limit: 40 }),
@@ -46,6 +49,7 @@ export default async function BacklogPage({ searchParams }: { searchParams: Prom
       .from(jobs)
       .where(and(eq(jobs.tenantId, viewer.tenantId), eq(jobs.type, "creator.sync"), inArray(jobs.status, ["queued", "running"])))
       .limit(1),
+    ourPostCount(viewer).catch(() => null),
   ]);
 
   /* Where each topic has got to in Script: its project and its script, so a
@@ -59,7 +63,9 @@ export default async function BacklogPage({ searchParams }: { searchParams: Prom
      the project page itself). A teammate's private project used to show as
      "项目 →" here and 404 on the click, and handed its id and its script's
      to everyone with Research. */
-  const ids = rows.map((r) => r.topic.id);
+  // Followed words too (QA, 2 Oct): a word already started as a project
+  // offered 做成视频 again instead of opening it.
+  const ids = [...rows.map((r) => r.topic.id), ...watched.map((w) => w.id)];
   const [projects, written, writtenProjects] = ids.length
     ? await Promise.all([
         db
@@ -109,6 +115,12 @@ export default async function BacklogPage({ searchParams }: { searchParams: Prom
     if (projectId && !projectOf.has(sc.topicId)) projectOf.set(sc.topicId, { id: projectId, scriptId: sc.id });
   }
 
+  /* Two people with one name (two 「Ryan」) are told apart by their email's
+     first part. */
+  const named = people.map((p) => ({ id: p.id, name: (zh && p.nameLocal) || p.name, email: p.email }));
+  const dup = new Set(named.filter((p, i) => named.findIndex((q) => q.name === p.name) !== i).map((p) => p.name));
+  const owners = named.map((p) => ({ id: p.id, name: dup.has(p.name) && p.email ? `${p.name}（${p.email.split("@")[0]}）` : p.name }));
+
   if (board) {
     return (
       <ResearchShell zh={zh} savedCount={rows.length}>
@@ -118,7 +130,7 @@ export default async function BacklogPage({ searchParams }: { searchParams: Prom
       model={answeringModel()}
       canWriteScripts={viewer.modules.includes("script")}
       channels={CHANNELS}
-      people={people.map((p) => ({ id: p.id, name: (zh && p.nameLocal) || p.name }))}
+      people={owners}
       items={rows.map((r) => ({
         id: r.topic.id,
         name: (zh && r.topic.nameLocal) || r.topic.name,
@@ -158,9 +170,10 @@ export default async function BacklogPage({ searchParams }: { searchParams: Prom
           projectId: projectOf.get(r.topic.id)?.id ?? null,
           scriptId: scriptOf.get(r.topic.id)?.id ?? projectOf.get(r.topic.id)?.scriptId ?? null,
         }))}
-        watched={watched.map((t) => ({ id: t.id, name: (zh && t.nameLocal) || t.name, heat: t.heat, change: t.change14d, rising: t.rising, collecting: t.collecting }))}
+        watched={watched.map((t) => ({ id: t.id, name: (zh && t.nameLocal) || t.name, heat: t.heat, change: t.change14d, rising: t.rising, collecting: t.collecting, projectId: projectOf.get(t.id)?.id ?? null }))}
         competitors={competitors}
         ourMedian={ourMedian}
+        ourPosts={ourPosts}
         tikhubConfigured={env.tikhub.configured}
         creator={creator}
         creatorSyncing={syncJobs.length > 0}

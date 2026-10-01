@@ -32,9 +32,9 @@ function refresh(projectId: string) {
 /** Put uploaded or picked videos in the project's 最终版 box. */
 export async function markFinalAction(projectId: string, fileIds: string[]) {
   const viewer = await member();
-  if (!viewer) return { error: "Not allowed" };
+  if (!viewer) return { error: "没有权限" };
   const p = await projectForPublish(viewer, String(projectId));
-  if (!p) return { error: "Not found" };
+  if (!p) return { error: "找不到了，可能已被删除" };
   let n = 0;
   for (const f of (Array.isArray(fileIds) ? fileIds : []).slice(0, 20)) {
     const fid = id(f);
@@ -47,10 +47,10 @@ export async function markFinalAction(projectId: string, fileIds: string[]) {
 /** Take a video out of the project's 最终版 box (the file stays in Files). */
 export async function unmarkFinalAction(projectId: string, fileId: string) {
   const viewer = await member();
-  if (!viewer) return { error: "Not allowed" };
+  if (!viewer) return { error: "没有权限" };
   const p = await projectForPublish(viewer, String(projectId));
   const fid = id(fileId);
-  if (!p || !fid) return { error: "Not found" };
+  if (!p || !fid) return { error: "找不到了，可能已被删除" };
   await untagProjectFile(viewer, p.id, fid);
   refresh(p.id);
   return {};
@@ -58,22 +58,22 @@ export async function unmarkFinalAction(projectId: string, fileId: string) {
 
 export async function savePublishDraftAction(projectId: string, draft: PublishDraft) {
   const viewer = await member();
-  if (!viewer) return { error: "Not allowed" };
+  if (!viewer) return { error: "没有权限" };
   return savePublishDraft(viewer, String(projectId), draft);
 }
 
 /** 撰稿人 writes titles and captions for the given rows. */
 export async function writeCaptionsAction(projectId: string, keys: string[], script: string) {
   const viewer = await member();
-  if (!viewer) return { error: "Not allowed" };
+  if (!viewer) return { error: "没有权限" };
   return writeCaptions(viewer, String(projectId), Array.isArray(keys) ? keys.map(String) : [], typeof script === "string" ? script : "");
 }
 
 /** 「我已发布」 on one platform, with the post's link. */
 export async function markPlacePublishedAction(projectId: string, key: string, url: string, fileId: string | null) {
   const viewer = await member();
-  if (!viewer) return { error: "Not allowed" };
-  if (!isPublishPlatform(key)) return { error: "Not found" };
+  if (!viewer) return { error: "没有权限" };
+  if (!isPublishPlatform(key)) return { error: "找不到了，可能已被删除" };
   const res = await addPublishedPlace(viewer, String(projectId), { key, url, fileId: id(fileId) }, zhOf(viewer.locale));
   if ("error" in res) return { error: res.error };
   revalidatePath(`/projects/${projectId}`, "layout");
@@ -82,8 +82,8 @@ export async function markPlacePublishedAction(projectId: string, key: string, u
 
 export async function unmarkPlaceAction(projectId: string, key: string) {
   const viewer = await member();
-  if (!viewer) return { error: "Not allowed" };
-  if (!isPublishPlatform(key)) return { error: "Not found" };
+  if (!viewer) return { error: "没有权限" };
+  if (!isPublishPlatform(key)) return { error: "找不到了，可能已被删除" };
   const res = await removePublishedPlace(viewer, String(projectId), key, zhOf(viewer.locale));
   if ("error" in res) return { error: res.error };
   revalidatePath(`/projects/${projectId}`, "layout");
@@ -100,9 +100,9 @@ export async function sendChannelsForApprovalAction(
   input: { fileId: string | null; rows: { channelId: string; title: string; body: string }[]; approverId: string | null },
 ) {
   const viewer = await getViewer();
-  if (!viewer || !viewer.modules.includes("publish") || viewer.role === "guest") return { error: "Not allowed" };
+  if (!viewer || !viewer.modules.includes("publish") || viewer.role === "guest") return { error: "没有权限" };
   const p = await projectForPublish(viewer, String(projectId));
-  if (!p) return { error: "Not found" };
+  if (!p) return { error: "找不到了，可能已被删除" };
   const rows = (Array.isArray(input?.rows) ? input.rows : []).filter((r) => id(r?.channelId)).slice(0, 10);
   if (!rows.length) return { error: zhOf(viewer.locale) ? "先打开至少一个渠道" : "Turn on at least one channel" };
   const fileId = id(input.fileId);

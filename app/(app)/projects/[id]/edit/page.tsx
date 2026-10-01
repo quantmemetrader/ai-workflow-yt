@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { requireModule } from "@/lib/auth/dal";
-import { projectForPage } from "@/lib/projects/page-data";
+import { onlyTheSharedPage, projectForPage } from "@/lib/projects/page-data";
 import { listProjectFiles } from "@/lib/projects/files";
 import { editorBrief } from "@/lib/projects/brief";
 import { editorData } from "@/lib/video/editor-data";
@@ -13,7 +13,7 @@ import { Card, Empty, PageBody } from "@/components/projects/kit";
 import { EditModes, ModeSwitch } from "@/components/video/EditModes";
 import { SimpleEdit } from "@/components/video/SimpleEdit";
 
-export const metadata = { title: "剪辑 · Edit" };
+export const metadata = { title: "剪辑" };
 
 /**
  * A project's 剪辑 page, in two modes (`EditModes`, kept per browser):
@@ -37,6 +37,7 @@ export default async function EditPage({ params }: { params: Promise<{ id: strin
   const zh = (viewer.locale ?? "zh-CN").startsWith("zh");
   const p = await projectForPage(viewer, id, zh);
   if (!p) notFound();
+  onlyTheSharedPage(p);
 
   if (!viewer.modules.includes("video") || !p.video) {
     return (

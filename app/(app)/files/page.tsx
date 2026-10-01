@@ -7,7 +7,7 @@ import { FilesView } from "@/components/files/FilesView";
 import { toRows } from "@/components/files/rows";
 import { relationsForFiles } from "@/lib/authz/rebac";
 
-export const metadata = { title: "文件 · Files" };
+export const metadata = { title: "文件" };
 
 export default async function FilesPage({ searchParams }: { searchParams: Promise<{ view?: string | string[] }> }) {
   const viewer = await requireModule("files");

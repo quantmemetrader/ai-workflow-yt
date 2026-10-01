@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { SimplifiedGuard } from "@/components/zh/SimplifiedGuard";
 import "./globals.css";
 import { BOOT_SCRIPT } from "@/lib/client/boot";
 
@@ -61,8 +62,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             reload once on a script from an older deploy, report the rest. */}
         <script dangerouslySetInnerHTML={{ __html: BOOT_SCRIPT }} />
       </head>
-      <body>
+      <body translate="no" className="notranslate">
         {children}
+        {/* Anything that still rewrites our text gets turned back into Simplified (2 Oct). */}
+        <SimplifiedGuard />
         {/* Desktop only until the next release: the editor, timeline and
             tables are not built for a phone, and half-working is worse than
             a clear "not yet". CSS alone, so it is there before any script. */}

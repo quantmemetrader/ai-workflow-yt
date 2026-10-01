@@ -434,7 +434,8 @@ function AddPost({ projectId, zh, accounts }: { projectId: string; zh: boolean; 
           ))}
         </div>
       ) : null}
-      <div style={{ fontSize: 11.5, color: MUTED }}>{t("说明：读取数据走 TikHub，按次计费，所以每条作品最多每小时读一次；「刷新数据」会立即重读。", "Numbers come from TikHub, billed per read, so each post is read at most hourly; Refresh reads now.")}</div>
+      <div style={{ fontSize: 11.5, color: MUTED }}>{/* No vendor names in user text (QA, 2 Oct). */}
+        {t("说明：数据按次计费读取，所以每条作品最多每小时读一次；「刷新数据」会立即重读。", "Numbers are billed per read, so each post is read at most hourly; Refresh reads now.")}</div>
     </div>
   );
 }

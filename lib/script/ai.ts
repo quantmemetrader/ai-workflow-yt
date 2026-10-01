@@ -1,4 +1,6 @@
 import "server-only";
+import { toSimplified } from "@/lib/text/simplified";
+import { HUMAN_STYLE_ZH, humanize } from "@/lib/text/human";
 import { and, asc, eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { knowledge, scriptBeats, scripts } from "@/lib/db/schema";
@@ -68,26 +70,60 @@ async function examples(viewer: Viewer, query: string): Promise<string> {
   return found.hits.map((f) => `### ${f.name}\n${f.snippet.slice(0, 1200)}`).join("\n\n");
 }
 
-const DRAFT_PROMPT = `You write shooting scripts for a Hong Kong video studio.
+const DRAFT_PROMPT = `你是一名顶级的中文短视频编剧，给一家香港视频工作室写口播脚本（抖音、小红书、视频号、YouTube Shorts）。你写的稿子要像真人在镜头前说话，观众听完第一句就想看下去。
 
-Chinese is always written in Simplified Chinese (简体中文), never Traditional — even when the brief or a source is in Traditional.
+一律用简体中文，不用繁体字（简报或资料是繁体的，也改成简体）。
 
-A script is a list of beats. Each beat has three parts:
-  "visual"    what is on screen: framing, camera, archive credits, on-screen text
-  "voiceover" what is spoken, in the script's own language
-  "subtitle"  the subtitle line, in the subtitle language
+脚本由若干分镜组成，每个分镜三部分：
+- "visual"：画面。镜头、景别、画面上的字；用了别人的素材要注明出处
+- "voiceover"：口播，真正要说出口的话
+- "subtitle"：字幕，一般和口播一样
 
-Answer with a single JSON object and nothing else:
+只输出一个 JSON 对象，不要写别的：
 { "beats": [ { "visual": "...", "voiceover": "...", "subtitle": "...", "naturalSound": false } ] }
 
-Rules:
-- Write to the target duration. Roughly 4.5 Chinese characters or 2.6 English words per second of voiceover.
-- Write a complete video script, not a summary or an outline: a hook in the first lines, a body where every point is developed with its detail, number, example or consequence, and a closing line that invites comments.
-- Open on an image, not on narration. The first beat is usually natural sound: set "naturalSound": true and leave "voiceover" empty.
-- Name concrete things: an hour, a street, a number, a person. Never "recently", never "many people".
-- Cover every mandatory point the brief lists.
-- Credit any archive or third-party footage in the "visual" field.
-- Do not invent facts, names, dates or quotes. If the brief does not give you a fact, write the beat without it.`;
+怎么写才像真人：
+- 说人话。一句话尽量不超过 20 个字，一句只讲一件事。读出来顺口，像跟朋友聊天，不像念新闻稿。
+- 开头三秒定生死：用一个反常识的事实、一个具体数字、一个扎心的问题，或者一个画面开场。不要“大家好”“今天我们来聊聊”。
+- 每个观点都要落地：给数字、给例子、给后果，让观众看得见、记得住。不写空话，不写“很多人”“最近”“非常重要”。
+- 节奏有起伏：短句为主，偶尔一句稍长的；关键处停一下，留一句让人想截图的话。
+- 结尾给一个具体的互动：抛一个让人忍不住想回答的问题，或一句让人想转发的话。不要“喜欢的话点赞关注”这种套话。
+
+绝对不要（一出现就是 AI 味或翻译腔）：
+- 破折号（——、—）。要停顿，用逗号或句号。
+- “首先、其次、最后、总之、综上所述、值得注意的是、不仅……而且……、让我们、一起来看看”
+- “赋能、助力、打造、深度解析、全方位、一站式、颠覆性、革命性、重磅”这类空洞大词
+- 翻译腔：“进行……”“对于……来说”“被……所……”“作为一个……”“这是一个……的时代”“在……的同时”，以及一长串定语堆在名词前面
+- 排比凑数、每段结尾都总结一句、感叹号连用
+
+其他规则：
+- 按目标时长写：口播大约每秒 4.5 个汉字（英文每秒 2.6 个词）。写完整的视频稿，不是提纲，也不是摘要。
+- 第一个分镜通常是画面开场：naturalSound 设为 true，voiceover 留空。
+- 简报里列出的必讲要点，全部讲到。
+- 不编造事实、人名、日期、引语和数字。简报和资料里没有的事实，就不写。`;
+
+/**
+ * The polish pass: a second editor with strong Chinese goes over every spoken
+ * line of a fresh draft (the owner, 2 Oct: the scripts "feel too AI" and the
+ * Chinese reads like a translation). Facts, numbers, order and length stay;
+ * only the wording changes. A failure leaves the draft as it was.
+ */
+const POLISH_PROMPT = `你是中文短视频行业最贵的文案编辑。下面是一份口播稿，已经按分镜编好号。请逐条润色口播，让它听起来像一个会说话的真人在镜头前讲，而不是 AI 写的、也不是翻译过来的。
+
+改什么：
+- 去掉翻译腔：“进行……”“对于……来说”“被……所……”“作为一个……”“在……的同时”、长定语堆叠，改成中国人平时说话的说法。
+- 去掉 AI 腔：“首先/其次/最后/总之/值得注意的是/让我们/不仅……而且……”、“赋能/打造/重磅/颠覆/全方位”这类大词、空洞的总结句。
+- 不要破折号（——、—），停顿用逗号或句号。
+- 句子短一点、口语一点、有节奏；该有画面感的地方，换成具体的词。
+- 前后说法不能打架：如果某一条和前面的说法矛盾，改成和前文一致的说法（不加新事实）。
+
+不能改：
+- 事实、数字、人名、时间、引用和每条的意思，一个都不能变，也不能加新的事实。
+- 条数和顺序不变，不合并、不拆分；每条长度和原来差不多（上下 15% 以内）。
+- 一律简体中文。
+
+只输出一个 JSON 对象，只列出改了的条目：
+{"lines":[{"i":条目编号,"voiceover":"润色后的整条口播"}]}`;
 
 type DraftBeat = { visual: string; voiceover: string; subtitle: string; naturalSound: boolean };
 
@@ -133,13 +169,13 @@ export async function draftFromBrief(
   const model = modelFor.agent("script") ?? modelFor.drafting();
 
   const brief = [
-    `Title: ${script.title}`,
-    script.angle ? `Angle: ${script.angle}` : null,
-    script.targetChannel ? `Channel: ${script.targetChannel}${script.aspect ? ` (${script.aspect})` : ""}` : null,
-    `Target duration: ${formatDuration(script.targetSeconds ?? DEFAULT_TARGET_SECONDS)} (±${script.tolerancePercent}%) — about ${Math.round((script.targetSeconds ?? DEFAULT_TARGET_SECONDS) * 4.5)} Chinese characters or ${Math.round((script.targetSeconds ?? DEFAULT_TARGET_SECONDS) * 2.6)} English words of voice-over in total, across enough beats to carry it`,
-    script.language ? `Spoken language: ${script.language}` : null,
-    script.subtitleLanguage ? `Subtitle language: ${script.subtitleLanguage}` : null,
-    script.mandatoryPoints.length ? `Must cover:\n${script.mandatoryPoints.map((p) => `- ${p}`).join("\n")}` : null,
+    `标题：${script.title}`,
+    script.angle ? `切入角度：${script.angle}` : null,
+    script.targetChannel ? `平台：${script.targetChannel}${script.aspect ? `（${script.aspect}）` : ""}` : null,
+    `目标时长：${formatDuration(script.targetSeconds ?? DEFAULT_TARGET_SECONDS)}（上下 ${script.tolerancePercent}%），口播一共大约 ${Math.round((script.targetSeconds ?? DEFAULT_TARGET_SECONDS) * 4.5)} 个汉字（英文约 ${Math.round((script.targetSeconds ?? DEFAULT_TARGET_SECONDS) * 2.6)} 个词），分镜要够把故事讲完`,
+    script.language ? `口播语言：${script.language}` : null,
+    script.subtitleLanguage ? `字幕语言：${script.subtitleLanguage}` : null,
+    script.mandatoryPoints.length ? `必须讲到：\n${script.mandatoryPoints.map((p) => `- ${p}`).join("\n")}` : null,
   ]
     .filter(Boolean)
     .join("\n");
@@ -153,16 +189,17 @@ export async function draftFromBrief(
         role: "system",
         content:
           DRAFT_PROMPT +
-          (voice ? `\n\nThe creator this is written for, from their own channel. Sound like them:\n${voice}` : "") +
-          (style.text ? `\n\nThe studio's house style:\n${style.text}` : ""),
+          `\n\n${HUMAN_STYLE_ZH}` +
+          (voice ? `\n\n这条视频是给这位创作者的，下面是他自己频道的内容，说话要像他：\n${voice}` : "") +
+          (style.text ? `\n\n工作室的写作规范：\n${style.text}` : ""),
       },
       {
         role: "user",
         content: [
-          opts.instruction ? `What the person asked for — follow it (if they point to a sample or attached file, write like it):\n${opts.instruction.slice(0, 1500)}` : null,
+          opts.instruction ? `提出这条需求的同事是这样说的，照着做（提到范例或附件的，就照它的写法来写）：\n${opts.instruction.slice(0, 1500)}` : null,
           brief,
-          opts.sources ? `Facts and headlines you may draw on (cite the outlet in the visual field when you use one; do not go beyond them):\n${opts.sources}` : null,
-          refs ? `Approved scripts to match in tone:\n${refs}` : null,
+          opts.sources ? `可以用的事实和新闻（用到哪条，就在画面里注明出处；不要超出这些资料）：\n${opts.sources}` : null,
+          refs ? `已经批准的脚本，语气照这些来：\n${refs}` : null,
         ]
           .filter(Boolean)
           .join("\n\n"),
@@ -204,15 +241,15 @@ export async function draftFromBrief(
           role: "system",
           content:
             DRAFT_PROMPT +
-            (voice ? `\n\nThe creator this is written for, from their own channel. Sound like them:\n${voice}` : "") +
-            (style.text ? `\n\nThe studio's house style:\n${style.text}` : ""),
+            (voice ? `\n\n这条视频是给这位创作者的，下面是他自己频道的内容，说话要像他：\n${voice}` : "") +
+            (style.text ? `\n\n工作室的写作规范：\n${style.text}` : ""),
         },
         {
           role: "user",
           content: [
             brief,
-            opts.sources ? `Facts and headlines you may draw on (do not go beyond them):\n${opts.sources}` : null,
-            `Here is a first draft. Its voice-over runs about ${formatDuration(have)}, and the target is ${formatDuration(target)}. Rewrite it to the full length: keep every fact and the order, say more about each — the detail, the number, the consequence, the example — and add beats where the story has room. Answer with the complete script as the same JSON shape.`,
+            opts.sources ? `可以用的事实和新闻（不要超出这些资料）：\n${opts.sources}` : null,
+            `这是初稿，口播大约 ${formatDuration(have)}，目标是 ${formatDuration(target)}。把它写到足够的长度：事实和顺序都保留，每个点多讲一些细节、数字、后果和例子，故事有空间的地方加分镜。用同样的 JSON 格式输出完整的脚本。`,
             JSON.stringify({ beats }),
           ]
             .filter(Boolean)
@@ -236,8 +273,48 @@ export async function draftFromBrief(
     if (longer.length && spoken(longer) > spoken(beats) * 1.2) beats = longer;
   }
 
+  beats = await polishBeats(viewer, beats, script.language ?? null);
   await saveBeats(viewer, scriptId, beats);
   return { ok: true, beats: beats.length, model: out.model };
+}
+
+/** Every spoken line of a fresh draft, edited for native, human Chinese (`POLISH_PROMPT`). */
+async function polishBeats(viewer: Viewer, beats: DraftBeat[], language: string | null): Promise<DraftBeat[]> {
+  if (language && !/zh|中文|普通话|国语|粤语|mandarin|chinese|cantonese/i.test(language)) return beats;
+  const lines = beats.map((b, i) => ({ i, v: b.voiceover })).filter((x) => x.v.trim());
+  if (!lines.length) return beats;
+  try {
+    const out = await complete({
+      model: modelFor.drafting(),
+      temperature: 0.4,
+      maxTokens: 6000,
+      messages: [
+        { role: "system", content: POLISH_PROMPT },
+        { role: "user", content: lines.map((x) => `[${x.i}] ${x.v}`).join("\n") },
+      ],
+    });
+    await recordUsage({ viewer, module: "script", provider: out.provider ?? "openrouter", model: out.model, promptTokens: out.promptTokens, completionTokens: out.completionTokens, costMicros: out.costMicros, requestId: out.requestId });
+    const text = out.text.replace(/<think(?:ing)?>[\s\S]*?<\/think(?:ing)?>/gi, "").replace(/```(?:json)?/g, "");
+    const start = text.indexOf("{");
+    const end = text.lastIndexOf("}");
+    if (start < 0 || end <= start) return beats;
+    const raw = JSON.parse(text.slice(start, end + 1)) as { lines?: { i?: unknown; voiceover?: unknown }[] };
+    const next = beats.map((b) => ({ ...b }));
+    for (const l of Array.isArray(raw.lines) ? raw.lines : []) {
+      const b = next[Number(l.i)];
+      const v = typeof l.voiceover === "string" ? humanize(toSimplified(l.voiceover.trim())) : "";
+      if (!b || !v || !b.voiceover.trim()) continue;
+      const ratio = v.length / Math.max(1, b.voiceover.length);
+      if (ratio < 0.7 || ratio > 1.35) continue;
+      const sameSubtitle = !b.subtitle.trim() || b.subtitle.trim() === b.voiceover.trim();
+      b.voiceover = v;
+      if (sameSubtitle) b.subtitle = v;
+    }
+    return next;
+  } catch (err) {
+    console.warn("[script] polish skipped:", err instanceof Error ? err.message : err);
+    return beats;
+  }
 }
 
 const CONFORM_PROMPT = `You check a shooting script against a Hong Kong video studio's house style, beat by beat.
@@ -417,9 +494,9 @@ function parseBeats(text: string): DraftBeat[] {
     .map((b) => {
       const o = b as Record<string, unknown>;
       return {
-        visual: str(o.visual, 5000),
-        voiceover: str(o.voiceover),
-        subtitle: str(o.subtitle),
+        visual: humanize(str(o.visual, 5000)).replace(/^\s*(画面|镜头)\s*[：:]\s*/, ""),
+        voiceover: humanize(str(o.voiceover)),
+        subtitle: humanize(str(o.subtitle)),
         naturalSound: o.naturalSound === true,
       };
     })

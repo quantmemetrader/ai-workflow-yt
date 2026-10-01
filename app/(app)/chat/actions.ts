@@ -7,7 +7,7 @@ import { revalidatePath } from "next/cache";
 import { getViewer } from "@/lib/auth/dal";
 import { AGENT_KEYS, parseAgentMentions, type AgentKey } from "@/lib/agents/catalog";
 import { readCardActions, readCardDone } from "@/lib/agents/cards";
-import { dispatchAgentMentions, handoffMeta, replyTarget } from "@/lib/agents/mentions";
+import { dispatchAgentMentions, handoffMeta, replyTarget, wantsNoReply } from "@/lib/agents/mentions";
 import { planHandoff, pressedHandoff } from "@/lib/agents/handoff";
 import { agentViewer } from "@/lib/agents";
 import { endPending, startPending, stepPending } from "@/lib/chat/pending";
@@ -40,6 +40,12 @@ import {
   listConversations,
   postMessage,
   removeChannelMember,
+  archiveChannel,
+  archiveConversation,
+  deleteChannelMessage,
+  editChannelMessage,
+  leaveChannel,
+  renameConversation,
 } from "@/lib/chat/service";
 
 /** Post to a channel. Authorisation is re-checked here: a server action is a
@@ -103,6 +109,7 @@ export async function sendChannelMessage(
 
   const channel = await channelBySlug(viewer, slug);
   if (!channel) return { error: "Channel not found" };
+  if (channel.archivedAt) return { error: "这个频道已归档，不能再发消息" };
 
   /* Ids off the wire are a claim. Only files this person can actually read
      become attachments; anything else is dropped rather than refused, so a
@@ -263,7 +270,8 @@ export async function sendChannelMessage(
 
   /* No tag: an answer to the employee who just spoke, if one did. The
      message stays as written; only the dispatch names who it is for. */
-  const to = body.trim() ? await replyTarget(channel.id, viewer.id) : null;
+  /* "无需回复" in the message: nobody is dispatched (QA, 2 Oct). */
+  const to = body.trim() && !wantsNoReply(body) ? await replyTarget(channel.id, viewer.id) : null;
   if (to) {
     after(async () => {
       try {
@@ -533,8 +541,9 @@ export async function createChannelAction(
 ) {
   const viewer = await getViewer();
   if (!viewer || !viewer.modules.includes("chat")) return { error: "Not allowed" };
-  if (typeof name !== "string" || !name.trim()) return { error: "A channel needs a name" };
-  if (name.length > 200) return { error: "That name is too long for a channel" };
+  /* Chinese: the dialog shows these as they are (QA, 2 Oct). */
+  if (typeof name !== "string" || !name.trim()) return { error: "请给频道起个名字" };
+  if (name.trim().replace(/^#/, "").length > 60) return { error: "频道名最多 60 个字" };
 
   const topic = typeof options.topic === "string" ? options.topic.trim().slice(0, 300) : null;
   const memberIds = Array.isArray(options.memberIds)
@@ -553,7 +562,7 @@ export async function createChannelAction(
     revalidatePath("/chat", "layout");
     return { slug: channel.slug };
   } catch (err) {
-    return { error: err instanceof Error ? err.message : "Could not create that channel" };
+    return { error: err instanceof Error ? err.message : "频道没建成，再试一次" };
   }
 }
 
@@ -682,4 +691,81 @@ export async function conversationMessagesAction(conversationId: string): Promis
             : null,
       })),
   };
+}
+
+/* ---------- edit, delete, leave, archive (QA, 2 Oct) ---------- */
+
+/** A channel by slug for one of the presses below, or the refusal to show. */
+async function roomFor(slug: unknown) {
+  const viewer = await getViewer();
+  if (!viewer || !viewer.modules.includes("chat")) return { error: "没有权限" as const };
+  if (typeof slug !== "string" || !slug || slug.length > MAX_SLUG) return { error: "找不到这个频道" as const };
+  const channel = await channelBySlug(viewer, slug);
+  if (!channel) return { error: "找不到这个频道" as const };
+  return { viewer, channel };
+}
+
+/** Change one's own message in a channel or a direct message. */
+export async function editChannelMessageAction(slug: string, messageId: string, body: string) {
+  const room = await roomFor(slug);
+  if ("error" in room) return { error: room.error };
+  if (typeof messageId !== "string" || messageId.length > 64) return { error: "找不到这条消息" };
+  if (typeof body !== "string" || body.length > MAX_BODY) return { error: "消息太长了" };
+  const error = await editChannelMessage(room.viewer, room.channel.id, messageId, body);
+  if (error) return { error };
+  revalidatePath(`/chat/c/${slug}`);
+  return {};
+}
+
+/** Take back one's own message. */
+export async function deleteChannelMessageAction(slug: string, messageId: string) {
+  const room = await roomFor(slug);
+  if ("error" in room) return { error: room.error };
+  if (typeof messageId !== "string" || messageId.length > 64) return { error: "找不到这条消息" };
+  const error = await deleteChannelMessage(room.viewer, room.channel.id, messageId);
+  if (error) return { error };
+  revalidatePath(`/chat/c/${slug}`);
+  return {};
+}
+
+/** 退出频道: a member of a private channel leaves it. */
+export async function leaveChannelAction(slug: string) {
+  const room = await roomFor(slug);
+  if ("error" in room) return { error: room.error };
+  const error = await leaveChannel(room.viewer, room.channel.id);
+  if (error) return { error };
+  revalidatePath("/chat", "layout");
+  return {};
+}
+
+/** 归档频道: whoever started it, or an admin; never a system channel. */
+export async function archiveChannelAction(slug: string) {
+  const room = await roomFor(slug);
+  if ("error" in room) return { error: room.error };
+  const error = await archiveChannel(room.viewer, room.channel.id);
+  if (error) return { error };
+  revalidatePath("/chat", "layout");
+  return {};
+}
+
+/** Rename one's own AI chat (「最近」, the chat's own header). */
+export async function renameConversationAction(conversationId: string, title: string) {
+  const viewer = await getViewer();
+  if (!viewer || !viewer.modules.includes("chat")) return { error: "没有权限" };
+  if (typeof conversationId !== "string" || !conversationId || conversationId.length > 64) return { error: "找不到这个对话" };
+  if (typeof title !== "string" || !title.trim()) return { error: "名字不能是空的" };
+  if (title.length > 200) return { error: "名字太长了" };
+  if (!(await renameConversation(viewer, conversationId, title))) return { error: "找不到这个对话" };
+  revalidatePath("/chat", "layout");
+  return {};
+}
+
+/** Delete one's own AI chat: archived, so it leaves every list. */
+export async function archiveConversationAction(conversationId: string) {
+  const viewer = await getViewer();
+  if (!viewer || !viewer.modules.includes("chat")) return { error: "没有权限" };
+  if (typeof conversationId !== "string" || !conversationId || conversationId.length > 64) return { error: "找不到这个对话" };
+  if (!(await archiveConversation(viewer, conversationId))) return { error: "找不到这个对话" };
+  revalidatePath("/chat", "layout");
+  return {};
 }

@@ -4,6 +4,7 @@ import { getViewer } from "@/lib/auth/dal";
 import { audit } from "@/lib/audit";
 import { env } from "@/lib/env";
 import { channelsForPhrase, type BeatChannel } from "@/lib/research/youtube";
+import { toSimplified } from "@/lib/text/simplified";
 
 /**
  * Finding channels and videos worth knowing about.
@@ -47,7 +48,14 @@ export async function discoverChannelsAction(
       meta: { phrase: q, query: found.query, days: found.days, found: found.channels.length },
     });
     // Twelve is what the panel draws; the rest is a longer list nobody reads.
-    return { channels: found.channels.slice(0, 12) };
+    // Shown in Simplified: rival channels write in Traditional (QA, 2 Oct).
+    return {
+      channels: found.channels.slice(0, 12).map((c) => ({
+        ...c,
+        title: toSimplified(c.title),
+        topVideo: c.topVideo ? { ...c.topVideo, title: toSimplified(c.topVideo.title) } : null,
+      })),
+    };
   } catch (err) {
     return { error: err instanceof Error ? err.message : "YouTube could not be reached." };
   }

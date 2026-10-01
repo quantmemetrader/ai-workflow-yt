@@ -64,10 +64,10 @@ function titleFrom(text: string): string {
  */
 export async function startProjectAction(input: { message?: string; title?: string; brief?: string | null; source?: { kind: string; label?: string; url?: string | null } | null }) {
   const viewer = await getViewer();
-  if (!viewer || !viewer.modules.includes("chat")) return { error: "Not allowed" };
+  if (!viewer || !viewer.modules.includes("chat")) return { error: "没有权限" };
   const message = typeof input.message === "string" ? input.message.trim().slice(0, 2000) : "";
   const title = (typeof input.title === "string" && input.title.trim()) || titleFrom(message);
-  if (!title) return { error: "A project needs a name or a first message" };
+  if (!title) return { error: "项目要有名字，或者先写一句话" };
 
   const tagged = message ? parseAgentMentions(message) : [];
   const mode = tagged.length === 1 && tagged[0] === "video" ? "direct:video" : "full";
@@ -211,10 +211,10 @@ async function writeFromTopic(
  */
 export async function startFromTopicAction(rawRef: TopicRef, opts: { write?: boolean; rewrite?: boolean; chips?: ScriptChips; instruction?: string } = {}) {
   const viewer = await getViewer();
-  if (!viewer || !viewer.modules.includes("chat")) return { error: "Not allowed" };
+  if (!viewer || !viewer.modules.includes("chat")) return { error: "没有权限" };
   const zh = (viewer.locale ?? "zh-CN").startsWith("zh");
   const ref = cleanRef(rawRef);
-  if (!ref) return { error: "Not allowed" };
+  if (!ref) return { error: "没有权限" };
   const write = opts.write === true && viewer.modules.includes("script");
   /* Asked to write without the Script module: the project still starts
      (or opens), and the answer says why no draft is coming rather than
@@ -291,11 +291,11 @@ export async function startFromTopicAction(rawRef: TopicRef, opts: { write?: boo
 
 export async function setProjectStatusAction(id: string, status: "active" | "archived") {
   const viewer = await getViewer();
-  if (!viewer || !viewer.modules.includes("chat")) return { error: "Not allowed" };
+  if (!viewer || !viewer.modules.includes("chat")) return { error: "没有权限" };
   /* Not "done": finishing a project is 「已发布 · 标记完成」
      (`markPublishedAction`), which checks who may and keeps where it went —
      this action would be a way round both. */
-  if (!["active", "archived"].includes(status)) return { error: "No such status" };
+  if (!["active", "archived"].includes(status)) return { error: "没有这个状态" };
   /* Only a project this person may see and manage (`setProjectStatus`
      checks): an action can be called with any id, not just the ones on screen. */
   if (!(await setProjectStatus(viewer, String(id ?? ""), status))) {
@@ -316,7 +316,7 @@ export async function setProjectStatusAction(id: string, status: "active" | "arc
  */
 export async function markPublishedAction(id: string, input: PublishInput) {
   const viewer = await getViewer();
-  if (!viewer || !viewer.modules.includes("chat")) return { error: "Not allowed" };
+  if (!viewer || !viewer.modules.includes("chat")) return { error: "没有权限" };
   const zh = (viewer.locale ?? "zh-CN").startsWith("zh");
   const res = await markPublished(viewer, String(id ?? ""), input && typeof input === "object" ? input : {}, zh);
   if ("error" in res) return { error: res.error };
@@ -327,7 +327,7 @@ export async function markPublishedAction(id: string, input: PublishInput) {
 /** 「撤回，改回进行中」: undo 已发布 — back in progress, the record gone. */
 export async function unpublishAction(id: string) {
   const viewer = await getViewer();
-  if (!viewer || !viewer.modules.includes("chat")) return { error: "Not allowed" };
+  if (!viewer || !viewer.modules.includes("chat")) return { error: "没有权限" };
   const zh = (viewer.locale ?? "zh-CN").startsWith("zh");
   const res = await unmarkPublished(viewer, String(id ?? ""), zh);
   if ("error" in res) return { error: res.error };
@@ -342,15 +342,24 @@ export async function unpublishAction(id: string) {
  */
 export async function renameProjectAction(id: string, title: string) {
   const viewer = await getViewer();
-  if (!viewer || !viewer.modules.includes("chat")) return { error: "Not allowed" };
+  if (!viewer || !viewer.modules.includes("chat")) return { error: "没有权限" };
   const t = toSimplified(String(title ?? "").trim()).slice(0, 80);
-  if (!t) return { error: "A project needs a name" };
+  if (!t) return { error: "名字不能为空，原来的名字没有改" };
   const renamed = await db
     .update(workProjects)
     .set({ title: t, updatedAt: new Date() })
     .where(and(eq(workProjects.id, String(id ?? "")), eq(workProjects.tenantId, viewer.tenantId), isNull(workProjects.deletedAt), projectsVisibleTo(viewer)))
-    .returning({ id: workProjects.id });
+    .returning({ id: workProjects.id, scriptId: workProjects.scriptId });
   if (!renamed.length) return { error: (viewer.locale ?? "zh-CN").startsWith("zh") ? "没有这个项目" : "No such project" };
+  /* The script carries the project's name (QA, 2 Oct: renamed project, old
+     title still on its script page and in the script library). */
+  if (renamed[0].scriptId) {
+    await db
+      .update(scripts)
+      .set({ title: t, titleLocal: null, updatedAt: new Date() })
+      .where(and(eq(scripts.id, renamed[0].scriptId), eq(scripts.tenantId, viewer.tenantId), isNull(scripts.deletedAt)))
+      .catch((err: unknown) => console.error("[projects] could not rename the script", err));
+  }
   revalidatePath("/", "layout");
   return {};
 }
@@ -358,7 +367,7 @@ export async function renameProjectAction(id: string, title: string) {
 /** Who can see and work on a project. */
 export async function setProjectAccessAction(id: string, access: { mode: "private" | "everyone" | "groups" | "people"; groups?: string[]; userIds?: string[] }) {
   const viewer = await getViewer();
-  if (!viewer || !viewer.modules.includes("chat")) return { error: "Not allowed" };
+  if (!viewer || !viewer.modules.includes("chat")) return { error: "没有权限" };
   try {
     await setProjectAccess(viewer, String(id), access);
   } catch (err) {
@@ -371,8 +380,8 @@ export async function setProjectAccessAction(id: string, access: { mode: "privat
 /** 有链接的人: nobody extra, can view, or can edit (the share box). */
 export async function setProjectLinkAction(id: string, link: "view" | "edit" | null) {
   const viewer = await getViewer();
-  if (!viewer || !viewer.modules.includes("chat")) return { error: "Not allowed" };
-  if (link !== null && link !== "view" && link !== "edit") return { error: "Not allowed" };
+  if (!viewer || !viewer.modules.includes("chat")) return { error: "没有权限" };
+  if (link !== null && link !== "view" && link !== "edit") return { error: "没有权限" };
   try {
     await setProjectLink(viewer, String(id), link);
   } catch (err) {
@@ -384,7 +393,7 @@ export async function setProjectLinkAction(id: string, link: "view" | "edit" | n
 
 export async function deleteProjectAction(id: string) {
   const viewer = await getViewer();
-  if (!viewer || !viewer.modules.includes("chat")) return { error: "Not allowed" };
+  if (!viewer || !viewer.modules.includes("chat")) return { error: "没有权限" };
   try {
     await deleteProject(viewer, String(id));
   } catch (err) {
@@ -405,7 +414,7 @@ export async function deleteProjectAction(id: string) {
  */
 export async function chooseScriptAction(projectId: string, scriptId: string) {
   const viewer = await getViewer();
-  if (!viewer || !viewer.modules.includes("chat")) return { error: "Not allowed" };
+  if (!viewer || !viewer.modules.includes("chat")) return { error: "没有权限" };
   const zh = (viewer.locale ?? "zh-CN").startsWith("zh");
   /* Only a project this person may see, and not a deleted one. It used to
      be any project in the studio by id: pointing somebody's private project
@@ -414,7 +423,7 @@ export async function chooseScriptAction(projectId: string, scriptId: string) {
   const p = await visibleProject(viewer, String(projectId ?? ""));
   if (!p) return { error: zh ? "没有这个项目" : "No such project" };
   const [sc] = await db.select({ id: scripts.id, title: scripts.title }).from(scripts).where(and(eq(scripts.id, String(scriptId ?? "")), eq(scripts.tenantId, viewer.tenantId), isNull(scripts.deletedAt))).limit(1);
-  if (!sc) return { error: zh ? "没有这个脚本" : "No such script" };
+  if (!sc) return { error: zh ? "没有这个脚本" : "没有这个脚本" };
   const other = await otherProjectWithScript(viewer.tenantId, sc.id, p.id);
   if (other) {
     /* Named only when this person may see that project: the refusal was a
@@ -472,7 +481,7 @@ function keepWriting(next: ProjectSource | { kind: string; label?: string }) {
  */
 export async function chooseTopicAction(projectId: string, input: { id?: string; title?: string; brief?: string; label?: string }) {
   const viewer = await getViewer();
-  if (!viewer || !viewer.modules.includes("chat")) return { error: "Not allowed" };
+  if (!viewer || !viewer.modules.includes("chat")) return { error: "没有权限" };
   const zh = (viewer.locale ?? "zh-CN").startsWith("zh");
   const p = await visibleProject(viewer, String(projectId ?? ""));
   if (!p) return { error: zh ? "没有这个项目" : "No such project" };
@@ -481,7 +490,7 @@ export async function chooseTopicAction(projectId: string, input: { id?: string;
   if (!ref) {
     /* An older picker with only words: title and brief as given. */
     const title = String(input.title ?? "").trim().slice(0, 80);
-    if (!title) return { error: "A topic needs a name" };
+    if (!title) return { error: "选题要有名字" };
     await db
       .update(workProjects)
       .set({ title, brief: String(input.brief ?? "").slice(0, 1000) || title, source: keepWriting({ kind: "pick", label: input.label ?? "选题" }), updatedAt: new Date() })
@@ -545,7 +554,7 @@ async function cuttable(viewer: Viewer, projectId: string, zh: boolean) {
  */
 export async function startCutFromPageAction(projectId: string, input: { prompt?: unknown; narrate?: unknown; voiceId?: unknown; aspect?: unknown } = {}) {
   const viewer = await getViewer();
-  if (!viewer || !viewer.modules.includes("chat")) return { error: "Not allowed" };
+  if (!viewer || !viewer.modules.includes("chat")) return { error: "没有权限" };
   const zh = (viewer.locale ?? "zh-CN").startsWith("zh");
   const ok = await cuttable(viewer, projectId, zh);
   if ("error" in ok) return { error: ok.error };
@@ -563,7 +572,7 @@ export async function startCutFromPageAction(projectId: string, input: { prompt?
 /** "传完自动开始剪", on or off, kept on the project. */
 export async function setAutoCutAction(projectId: string, on: boolean) {
   const viewer = await getViewer();
-  if (!viewer || !viewer.modules.includes("chat")) return { error: "Not allowed" };
+  if (!viewer || !viewer.modules.includes("chat")) return { error: "没有权限" };
   const zh = (viewer.locale ?? "zh-CN").startsWith("zh");
   const ok = await cuttable(viewer, projectId, zh);
   if ("error" in ok) return { error: ok.error };
@@ -579,7 +588,7 @@ export async function setAutoCutAction(projectId: string, on: boolean) {
  */
 export async function clipLandedAction(projectId: string) {
   const viewer = await getViewer();
-  if (!viewer || !viewer.modules.includes("chat")) return { error: "Not allowed" };
+  if (!viewer || !viewer.modules.includes("chat")) return { error: "没有权限" };
   const zh = (viewer.locale ?? "zh-CN").startsWith("zh");
   const ok = await cuttable(viewer, projectId, zh);
   if ("error" in ok) return { error: ok.error };
@@ -590,7 +599,7 @@ export async function clipLandedAction(projectId: string) {
 /** "取消": the armed cut will not fire; the setting stays. */
 export async function cancelAutoCutAction(projectId: string) {
   const viewer = await getViewer();
-  if (!viewer || !viewer.modules.includes("chat")) return { error: "Not allowed" };
+  if (!viewer || !viewer.modules.includes("chat")) return { error: "没有权限" };
   const zh = (viewer.locale ?? "zh-CN").startsWith("zh");
   const ok = await cuttable(viewer, projectId, zh);
   if ("error" in ok) return { error: ok.error };
@@ -607,13 +616,13 @@ export async function cancelAutoCutAction(projectId: string) {
  */
 export async function flowNoteAction(projectId: string, body: string) {
   const viewer = await getViewer();
-  if (!viewer || !viewer.modules.includes("chat")) return { error: "Not allowed" };
+  if (!viewer || !viewer.modules.includes("chat")) return { error: "没有权限" };
   const text = typeof body === "string" ? body.trim().slice(0, 2000) : "";
-  if (!text) return { error: "Nothing to send" };
+  if (!text) return { error: "没有要发送的内容" };
   const project = await visibleProject(viewer, String(projectId ?? ""));
   if (!project) return { error: (viewer.locale ?? "zh-CN").startsWith("zh") ? "没有这个项目" : "No such project" };
   const id = await postMessage(viewer, project.channelId, text, { flow: true });
-  if (!id) return { error: "Not posted" };
+  if (!id) return { error: "没有发出去，再试一次" };
   revalidatePath(`/projects/${project.id}`);
   return { ok: true };
 }
@@ -628,10 +637,10 @@ export async function flowNoteAction(projectId: string, body: string) {
  */
 export async function sendBackAction(projectId: string, step: string, note: string) {
   const viewer = await getViewer();
-  if (!viewer || !viewer.modules.includes("chat")) return { error: "Not allowed" };
+  if (!viewer || !viewer.modules.includes("chat")) return { error: "没有权限" };
   const text = typeof note === "string" ? note.trim().slice(0, 1000) : "";
   if (!text) return { error: (viewer.locale ?? "zh-CN").startsWith("zh") ? "写下要改什么" : "Say what to change" };
-  if (!isStepKey(step)) return { error: "No such step" };
+  if (!isStepKey(step)) return { error: "没有这一步" };
   const project = await visibleProject(viewer, String(projectId ?? ""));
   if (!project) return { error: (viewer.locale ?? "zh-CN").startsWith("zh") ? "没有这个项目" : "No such project" };
   const kept = await recordSendBack(viewer, project, step, text);
@@ -657,12 +666,12 @@ export async function sendBackAction(projectId: string, step: string, note: stri
 /** 按建议改写: 编剧 is asked to make the edits it suggested (or to act on the note), in the project's chat. */
 export async function applySendBackAction(projectId: string) {
   const viewer = await getViewer();
-  if (!viewer || !viewer.modules.includes("chat")) return { error: "Not allowed" };
+  if (!viewer || !viewer.modules.includes("chat")) return { error: "没有权限" };
   const project = await visibleProject(viewer, String(projectId ?? ""));
-  if (!project) return { error: "No such project" };
+  if (!project) return { error: "没有这个项目" };
   const [row] = await db.select({ source: workProjects.source }).from(workProjects).where(eq(workProjects.id, project.id)).limit(1);
   const back = readSentBack(row?.source).script;
-  if (!back) return { error: "Nothing was sent back" };
+  if (!back) return { error: "这一步没有退回意见" };
   const body = [
     `@编剧 按退回意见改好项目里的脚本：${back.note}`,
     ...(back.suggestions ?? []).map((x) => `- 第 ${x.ord} 镜：「${x.before}」改成「${x.after}」`),
@@ -683,10 +692,10 @@ export async function applySendBackAction(projectId: string) {
 /** 标记已处理: the note has been dealt with. */
 export async function settleSendBackAction(projectId: string, step: string) {
   const viewer = await getViewer();
-  if (!viewer || !viewer.modules.includes("chat")) return { error: "Not allowed" };
-  if (!isStepKey(step)) return { error: "No such step" };
+  if (!viewer || !viewer.modules.includes("chat")) return { error: "没有权限" };
+  if (!isStepKey(step)) return { error: "没有这一步" };
   const project = await visibleProject(viewer, String(projectId ?? ""));
-  if (!project) return { error: "No such project" };
+  if (!project) return { error: "没有这个项目" };
   await settleSendBack(project.id, step, "done");
   revalidatePath(`/projects/${project.id}`);
   return { ok: true };
@@ -695,11 +704,11 @@ export async function settleSendBackAction(projectId: string, step: string) {
 /** The length picked when starting a video (1 / 3 / 5 / 8 minutes), set on its script before the first draft. */
 export async function setScriptLengthAction(projectId: unknown, seconds: unknown) {
   const viewer = await getViewer();
-  if (!viewer || !viewer.modules.includes("chat")) return { error: "Not allowed" };
+  if (!viewer || !viewer.modules.includes("chat")) return { error: "没有权限" };
   const secs = typeof seconds === "number" && Number.isFinite(seconds) ? Math.round(seconds) : NaN;
-  if (typeof projectId !== "string" || !(secs >= 15 && secs <= 1800)) return { error: "Not allowed" };
+  if (typeof projectId !== "string" || !(secs >= 15 && secs <= 1800)) return { error: "没有权限" };
   const [p] = await db.select({ scriptId: workProjects.scriptId }).from(workProjects).where(and(eq(workProjects.id, projectId), eq(workProjects.tenantId, viewer.tenantId), isNull(workProjects.deletedAt))).limit(1);
-  if (!p?.scriptId) return { error: "Not allowed" };
+  if (!p?.scriptId) return { error: "没有权限" };
   await db.update(scripts).set({ targetSeconds: secs, updatedAt: new Date() }).where(eq(scripts.id, p.scriptId));
   return { ok: true as const };
 }

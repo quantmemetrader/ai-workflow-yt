@@ -12,7 +12,7 @@ import { db } from "@/lib/db/client";
 import { topics } from "@/lib/db/schema";
 import { and, eq, inArray, sql } from "drizzle-orm";
 
-export const metadata = { title: "选题 · Topics" };
+export const metadata = { title: "选题" };
 
 const hkDate = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Hong_Kong" }).format(new Date());
 
@@ -86,7 +86,7 @@ export default async function PicksPage() {
 
   return (
     <ResearchShell zh={zh} savedCount={saved[0]?.n ?? 0}>
-      <PickBoard picks={cards.slice(0, 8)} zh={zh} day={hkDate()} model={answeringModel()} canWrite={viewer.modules.includes("script")} plan={plan} />
+      <PickBoard picks={cards.slice(0, 8)} zh={zh} day={hkDate()} model={answeringModel()} canWrite={viewer.modules.includes("script")} plan={plan} canRedo={viewer.role === "owner" || viewer.role === "admin"} />
     </ResearchShell>
   );
 }

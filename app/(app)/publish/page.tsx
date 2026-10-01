@@ -4,8 +4,40 @@ import { listPeople } from "@/lib/chat/service";
 import { listChannels, listLog, listPosts, stateCounts } from "@/lib/publish/service";
 import { PublishScreen } from "@/components/publish/PublishScreen";
 import { listByType } from "@/lib/files/lenses";
+import { and, desc, eq, isNull, sql } from "drizzle-orm";
+import { db } from "@/lib/db/client";
+import { workProjects } from "@/lib/db/schema";
+import { projectsVisibleTo } from "@/lib/projects/visible";
+import { publishPlatformName, readPublication } from "@/lib/projects/publication";
+import type { MarkedPublication } from "@/components/publish/PublishScreen";
 
-export const metadata = { title: "发布 · Publish" };
+/** Whether each sign-in has run out, read here on the server so a card's
+ * pill does not flip colour on hydration (QA, 2 Oct: an expired sign-in
+ * still showed 可发布). */
+function withExpiry<T extends { tokenExpiresAt: Date | null }>(list: T[]): (T & { tokenExpired: boolean })[] {
+  const now = Date.now();
+  return list.map((c) => ({ ...c, tokenExpired: c.tokenExpiresAt !== null && c.tokenExpiresAt.getTime() <= now }));
+}
+
+/** Projects marked 已发布 on their own page, which this module never sent, so
+ * 发布记录 was empty while 蒸馏之战 had gone out (QA, 2 Oct). Only projects
+ * this viewer may open, newest first. */
+async function markedPublications(viewer: Awaited<ReturnType<typeof requireModule>>, zh: boolean): Promise<MarkedPublication[]> {
+  const rows = await db
+    .select({ id: workProjects.id, title: workProjects.title, published: sql<unknown>`${workProjects.source} -> 'published'` })
+    .from(workProjects)
+    .where(and(eq(workProjects.tenantId, viewer.tenantId), isNull(workProjects.deletedAt), sql`${workProjects.source} ? 'published'`, projectsVisibleTo(viewer)))
+    .orderBy(desc(sql`${workProjects.source} -> 'published' ->> 'at'`))
+    .limit(40);
+  return rows.flatMap((r) => {
+    const pub = readPublication({ published: r.published });
+    if (!pub) return [];
+    const places = pub.platforms.length ? pub.platforms : [{ key: "other", url: null }];
+    return places.map((pl) => ({ projectId: r.id, title: r.title, at: pub.at, platform: pl.key, platformName: publishPlatformName(pl.key, zh), url: pl.url, byName: pub.byName }));
+  });
+}
+
+export const metadata = { title: "发布" };
 
 /**
  * Publish (spec §4.6).
@@ -21,7 +53,8 @@ export const metadata = { title: "发布 · Publish" };
 export default async function PublishPage() {
   const viewer = await requireModule("publish");
 
-  const [channels, posts, log, counts, people, videos] = await Promise.all([
+  const zh = (viewer.locale ?? "zh-CN").startsWith("zh");
+  const [channels, posts, log, counts, people, videos, marked] = await Promise.all([
     listChannels(viewer),
     listPosts(viewer),
     listLog(viewer),
@@ -32,13 +65,14 @@ export default async function PublishPage() {
     listPeople(viewer),
     // A post's 视频 box picks from the studio's recent videos (renders included).
     listByType(viewer, "videos", 60).catch(() => []),
+    markedPublications(viewer, zh).catch(() => []),
   ]);
 
-  const zh = (viewer.locale ?? "zh-CN").startsWith("zh");
 
   return (
     <PublishScreen
-      channels={channels}
+      marked={marked}
+      channels={withExpiry(channels)}
       posts={posts}
       log={log}
       counts={counts}

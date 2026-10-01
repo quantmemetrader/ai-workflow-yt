@@ -111,7 +111,11 @@ export function initials(name: string): string {
  *     Han characters, which is where a Chinese paragraph stops being a wall;
  *   — Markdown that looks like the rest of the product (lists, code, links)
  *     rather than the model's raw output;
- *   — one composer: the text first, then a single quiet row of tools and send.
+ *   — one composer: the text first, then a single quiet row of tools and send;
+ *     on a narrow column the formatting buttons and the quick faces fold away
+ *     and the row may wrap, so send is never cut off (QA, 2 Oct: at 1024px it
+ *     was). The composer is its own container for that, and sits above the
+ *     thread's sticky live row so its menus are not drawn under it.
  *
  * Returned as a string for a `<style dangerouslySetInnerHTML>`, which renders
  * the same bytes on the server and in the browser.
@@ -155,5 +159,9 @@ ${s} .bar .ico2:hover { background: #f4f4f5; }
 ${s} .bar .ico2:hover svg { stroke: #171717; }
 ${s} .bar .sep { width: 1px; height: 16px; background: #ececec; margin: 0 5px; flex-shrink: 0; }
 ${s} .bar .hint { font-size: 11.5px; color: #a3a3a3; padding-left: 8px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+${s} .composer { container: tgc / inline-size; z-index: 5; }
+${s} .bar { flex-wrap: wrap; row-gap: 4px; min-width: 0; }
+@container tgc (max-width: 640px) { ${s} .bar .fmt { display: none !important; } ${s} .bar .hint { display: none; } }
+@container tgc (max-width: 480px) { ${s} .bar .answer-face:not([aria-haspopup]) { display: none !important; } }
 `;
 }

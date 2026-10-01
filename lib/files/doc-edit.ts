@@ -134,7 +134,7 @@ export async function saveDoc(viewer: Viewer, fileId: string, rawHtml: string): 
   if (!can.write) return { error: "你没有编辑这个文件的权限" };
   const html = toSimplified(clean(rawHtml));
   const text = htmlToText(html);
-  const [f] = await db.select({ version: files.version, tenantId: files.tenantId, deletedAt: files.deletedAt, updatedAt: files.updatedAt, updatedBy: files.updatedBy }).from(files).where(eq(files.id, fileId)).limit(1);
+  const [f] = await db.select({ version: files.version, tenantId: files.tenantId, deletedAt: files.deletedAt, updatedAt: files.updatedAt, updatedBy: files.updatedBy, storageKey: files.storageKey }).from(files).where(eq(files.id, fileId)).limit(1);
   if (!f || f.deletedAt || f.tenantId !== viewer.tenantId) return { error: "文件不存在" };
   /* One version per sitting, not per keystroke: a new number when someone else
      edited last, or the last save is more than ten minutes old. */
@@ -143,7 +143,10 @@ export async function saveDoc(viewer: Viewer, fileId: string, rawHtml: string): 
   const now = new Date();
   await db
     .update(files)
-    .set({ text, sizeBytes: Buffer.byteLength(html), version, updatedAt: now, updatedBy: viewer.id, docHtml: html })
+    /* An uploaded file keeps the size of its original; only a document born in
+       the editor is measured by its text (QA, 2 Oct: a 2 MB contract turned
+       into "18 KB" after one edit). */
+    .set({ text, ...(f.storageKey ? {} : { sizeBytes: Buffer.byteLength(html) }), version, updatedAt: now, updatedBy: viewer.id, docHtml: html })
     .where(eq(files.id, fileId));
   if (fresh) {
     await db.insert(fileVersions).values({ id: newId("ver"), fileId, versionNo: version, sizeBytes: Buffer.byteLength(html), note: "在线编辑", authorId: viewer.id }).onConflictDoNothing();

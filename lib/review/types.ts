@@ -146,9 +146,11 @@ export type VideoRow = {
   project: { id: string; title: string } | null;
 };
 
-/** Likes + comments + shares + saves over plays, when there are plays. */
+/** Likes + comments + shares + saves over plays, when there are plays and
+ * likes. A platform that gives plays but no likes (B站's reading at times)
+ * has no rate, rather than 0% (QA, 2 Oct). */
 export function engagement(s: Stats): number | null {
-  if (!s.plays) return null;
+  if (!s.plays || s.likes === null || s.likes === undefined) return null;
   const n = (s.likes ?? 0) + (s.comments ?? 0) + (s.shares ?? 0) + (s.collects ?? 0);
   return n / s.plays;
 }

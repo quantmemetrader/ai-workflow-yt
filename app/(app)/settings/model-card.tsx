@@ -22,10 +22,10 @@ export function usualTiles(zh: boolean): ModelTile[] {
   return CHAT_MODELS.filter((m) => m.id !== AUTO_MODEL).map((m) => ({ id: m.id, title: zh ? m.zh : m.en, model: m.real, note: zh ? m.lineZh : m.lineEn }));
 }
 
-export function ModelCard({ zh, options }: { zh: boolean; options: ModelOption[] }) {
+export function ModelCard({ zh, options, current }: { zh: boolean; options: ModelOption[]; current?: string | null }) {
   const router = useRouter();
   const [busy, start] = useTransition();
-  const [picked, setPicked] = useState(options.find((o) => o.current)?.id ?? null);
+  const [picked, setPicked] = useState(current ?? options.find((o) => o.current)?.id ?? null);
   const direct = options.find((o) => o.id === "deepseek:direct");
   const tiles: ModelTile[] = [
     ...usualTiles(zh),

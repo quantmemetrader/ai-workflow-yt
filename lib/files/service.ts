@@ -63,11 +63,11 @@ export async function createFolder(
   let path: string[] = [];
   if (input.parentId) {
     const [parent] = await db.select().from(folders).where(eq(folders.id, input.parentId)).limit(1);
-    if (!parent) throw new Error("Parent folder not found");
+    if (!parent) throw new Error("找不到上级文件夹");
     const held = await relationOn(viewer, "folder", parent.id);
     // The studio's owner and admins can add anywhere in their own studio.
     const admin = viewer.isAdmin && parent.tenantId === viewer.tenantId;
-    if (held !== "owner" && held !== "editor" && !admin) throw new Error("You need edit access to add a folder here");
+    if (held !== "owner" && held !== "editor" && !admin) throw new Error("你没有这里的编辑权限，不能新建文件夹");
     path = parent.path;
   }
 
@@ -110,6 +110,9 @@ export async function ensureHomeFolder(viewer: Viewer): Promise<FolderRow> {
  * person's home, made on first use.
  */
 export const STOCK_FOLDER = "素材库 · Stock";
+/** How a folder's name is shown. The stock folder keeps its stored name (it is
+ * found by it) but reads as plain 素材库 (QA, 2 Oct). */
+export const folderLabel = (name: string) => (name === STOCK_FOLDER ? "素材库" : name);
 
 export async function ensureStockFolder(viewer: Viewer): Promise<FolderRow> {
   // One per studio, not one per person: a top-level folder (so it is in the
@@ -132,7 +135,7 @@ export async function ensureStockFolder(viewer: Viewer): Promise<FolderRow> {
       objectType: "folder",
       objectId: folder.id,
       /* Editor, not viewer: the employees bring clips into it on everyone's
-         behalf ("You need edit access to upload here" stopped 剪辑师 cold). */
+         behalf ("你没有这里的编辑权限，不能上传" stopped 剪辑师 cold). */
       relation: "editor",
       subjectType: "tenant",
       subjectId: viewer.tenantId,
@@ -177,7 +180,7 @@ export async function listFolder(viewer: Viewer, folderId: string | null) {
       .orderBy(folders.name),
   ]);
 
-  return { files: rows, folders: subfolders.filter((f) => f.name !== "__home") };
+  return { files: rows, folders: subfolders.filter((f) => f.name !== "__home").map((f) => ({ ...f, name: folderLabel(f.name) })) };
 }
 
 /** The folders the sidebar lists: every top-level folder this person can
@@ -190,7 +193,7 @@ export async function sidebarFolders(viewer: Viewer) {
     .from(folders)
     .where(and(isNull(folders.parentId), isNull(folders.deletedAt), canReadFolders(viewer)))
     .orderBy(folders.name);
-  return rows.filter((f) => f.name !== "__home");
+  return rows.filter((f) => f.name !== "__home").map((f) => ({ ...f, name: folderLabel(f.name) }));
 }
 
 /** Registers an object the browser has already PUT to R2. The row is created
@@ -205,7 +208,7 @@ export async function beginUpload(
   const [folder] = await db.select().from(folders).where(eq(folders.id, folderId)).limit(1);
   // The studio's owner and admins can upload anywhere in their own studio.
   const admin = viewer.isAdmin && folder?.tenantId === viewer.tenantId;
-  if (held !== "owner" && held !== "editor" && !admin) throw new Error("You need edit access to upload here");
+  if (held !== "owner" && held !== "editor" && !admin) throw new Error("你没有这里的编辑权限，不能上传");
 
   /* Names are shown in Simplified like everything else (「修訂版」 becomes 「修订版」). */
   input = { ...input, name: toSimplified(input.name) };
@@ -517,7 +520,7 @@ export async function completeUpload(viewer: Viewer, fileId: string, checksum?: 
 
   // An id that matches nothing used to come back as `undefined` and throw on
   // the next line, turning a stale confirm into a 500.
-  if (!row) throw new Error("File not found");
+  if (!row) throw new Error("找不到这个文件");
 
   /* No size from the browser (some small text files arrive as 0): take the
      stored object's own length, so lists do not say "0 B". */
@@ -639,7 +642,7 @@ export async function createDocument(
   if (input.folderId) {
     const held = await relationOn(viewer, "folder", input.folderId);
     if (held !== "owner" && held !== "editor") {
-      throw new Error("You need edit access to add a document here");
+      throw new Error("你没有这里的编辑权限，不能新建文档");
     }
   }
 
@@ -681,7 +684,7 @@ export async function createDocument(
 export async function listVersions(viewer: Viewer, fileId: string) {
   if (!(await relationOn(viewer, "file", fileId))) return [];
   return db
-    .select({ version: fileVersions, authorName: users.name })
+    .select({ version: fileVersions, authorName: users.name, authorNameLocal: users.nameLocal })
     .from(fileVersions)
     .innerJoin(users, eq(users.id, fileVersions.authorId))
     .where(eq(fileVersions.fileId, fileId))
@@ -690,16 +693,17 @@ export async function listVersions(viewer: Viewer, fileId: string) {
 
 /** Soft delete with a 30-day window (brief). Nothing leaves R2 until the
  * sweeper runs, so "restore" is a database write, not a re-upload. */
+/* (QA, 2 Oct: these messages reach people as toasts, so they are in Chinese.) */
 export async function softDelete(viewer: Viewer, fileId: string) {
   const held = await relationOn(viewer, "file", fileId);
-  if (held !== "owner" && held !== "editor") throw new Error("You need edit access to delete this");
+  if (held !== "owner" && held !== "editor") throw new Error("你没有这个文件的编辑权限，不能删除");
   await db.update(files).set({ deletedAt: new Date(), deletedBy: viewer.id }).where(eq(files.id, fileId));
   await audit(viewer, "file.delete", { objectType: "file", objectId: fileId, module: "files" });
 }
 
 export async function restore(viewer: Viewer, fileId: string) {
   const held = await relationOn(viewer, "file", fileId);
-  if (held !== "owner" && held !== "editor") throw new Error("You need edit access to restore this");
+  if (held !== "owner" && held !== "editor") throw new Error("你没有这个文件的编辑权限，不能恢复");
   await db.update(files).set({ deletedAt: null, deletedBy: null }).where(eq(files.id, fileId));
   await audit(viewer, "file.restore", { objectType: "file", objectId: fileId, module: "files" });
 }
@@ -719,11 +723,11 @@ export async function restore(viewer: Viewer, fileId: string) {
  */
 export async function deleteFolder(viewer: Viewer, folderId: string) {
   const held = await relationOn(viewer, "folder", folderId);
-  if (held !== "owner" && held !== "editor") throw new Error("You need edit access to delete this folder");
+  if (held !== "owner" && held !== "editor") throw new Error("你没有这个文件夹的编辑权限，不能删除");
 
   const [folder] = await db.select().from(folders).where(eq(folders.id, folderId)).limit(1);
-  if (!folder || folder.deletedAt) throw new Error("That folder does not exist");
-  if (folder.name === "__home") throw new Error("The home folder cannot be deleted");
+  if (!folder || folder.deletedAt) throw new Error("这个文件夹不存在");
+  if (folder.name === "__home") throw new Error("个人文件夹不能删除");
 
   const now = new Date();
   await db.transaction(async (trx) => {
@@ -764,10 +768,10 @@ export async function deleteFolder(viewer: Viewer, folderId: string) {
  */
 export async function restoreFolder(viewer: Viewer, folderId: string) {
   const held = await relationOn(viewer, "folder", folderId);
-  if (held !== "owner" && held !== "editor") throw new Error("You need edit access to restore this folder");
+  if (held !== "owner" && held !== "editor") throw new Error("你没有这个文件夹的编辑权限，不能恢复");
 
   const [folder] = await db.select().from(folders).where(eq(folders.id, folderId)).limit(1);
-  if (!folder?.deletedAt) throw new Error("That folder is not in the trash");
+  if (!folder?.deletedAt) throw new Error("这个文件夹不在回收站里");
   const stamp = folder.deletedAt;
 
   await db.transaction(async (trx) => {
@@ -820,39 +824,7 @@ export async function purgeDeleted(olderThanDays = 30) {
     .limit(500);
 
   if (!doomed.length) return 0;
-  const ids = doomed.map((f) => f.id);
-
-  // Every version has its own object in R2, and `saveVersion` never overwrites
-  // one. Deleting only the current key left every earlier version's bytes in
-  // the bucket for ever — paid for, unreachable, and past the window in which
-  // the studio promised they were gone.
-  const versions = await db
-    .select({ storageKey: fileVersions.storageKey })
-    .from(fileVersions)
-    .where(inArray(fileVersions.fileId, ids));
-
-  const keys = new Set(
-    [...doomed.map((f) => f.storageKey), ...versions.map((v) => v.storageKey)].filter(
-      (k): k is string => Boolean(k),
-    ),
-  );
-  for (const key of keys) await deleteObject(key).catch(() => {});
-
-  await db.transaction(async (trx) => {
-    // Tuples name their object by id and have no foreign key to follow, so
-    // nothing else would ever collect them. A later file that reused the id
-    // would inherit the dead grants.
-    await trx
-      .delete(relationTuples)
-      .where(and(eq(relationTuples.objectType, "file"), inArray(relationTuples.objectId, ids)));
-    /* A master must not be left pointing at a preview copy that no longer
-       exists: the editor would ask for a file id that 404s rather than fall
-       back to the master. `files.proxy_file_id` has no foreign key (see the
-       schema for why), so nothing else would ever clear it, and the next
-       `files.proxy` job makes a fresh one. */
-    await trx.update(files).set({ proxyFileId: null }).where(inArray(files.proxyFileId, ids));
-    await trx.delete(files).where(inArray(files.id, ids));
-  });
+  await purgeFiles(doomed);
 
   /* Folders go the same way, once nothing deleted with them is left. Without
      this the tree kept a skeleton of empty folders nobody could see into and
@@ -875,12 +847,68 @@ export async function purgeDeleted(olderThanDays = 30) {
   return doomed.length;
 }
 
+/**
+ * 永久删除 from the trash, before the 30 days are up: the file's owner or an
+ * admin only, and only for a file already in the trash (QA, 2 Oct).
+ */
+export async function purgeFile(viewer: Viewer, fileId: string) {
+  const [row] = await db
+    .select({ id: files.id, storageKey: files.storageKey, ownerId: files.ownerId, deletedAt: files.deletedAt, name: files.name })
+    .from(files)
+    .where(and(eq(files.id, fileId), eq(files.tenantId, viewer.tenantId)))
+    .limit(1);
+  if (!row) throw new Error("找不到这个文件");
+  if (!row.deletedAt) throw new Error("请先把文件移到回收站");
+  if (!viewer.isAdmin && row.ownerId !== viewer.id) throw new Error("只有上传者或管理员可以永久删除");
+  await purgeFiles([row]);
+  await audit(viewer, "file.purge", { objectType: "file", objectId: fileId, module: "files", meta: { name: row.name } });
+}
+
+/** The bytes, every version's bytes, the grants and the rows of these files. */
+async function purgeFiles(doomed: { id: string; storageKey: string | null }[]) {
+  const ids = doomed.map((f) => f.id);
+  // Every version has its own object in R2, and `saveVersion` never overwrites
+  // one. Deleting only the current key left every earlier version's bytes in
+  // the bucket for ever — paid for, unreachable, and past the window in which
+  // the studio promised they were gone.
+  const versions = await db
+    .select({ storageKey: fileVersions.storageKey })
+    .from(fileVersions)
+    .where(inArray(fileVersions.fileId, ids));
+
+  const keys = new Set(
+    [...doomed.map((f) => f.storageKey), ...versions.map((v) => v.storageKey)].filter(
+      (k): k is string => Boolean(k),
+    ),
+  );
+
+  /* Rows first, bytes after: if the delete is refused (something still points
+     at the file) nothing is lost (QA, 2 Oct, with 永久删除 calling this). */
+  await db.transaction(async (trx) => {
+    // Tuples name their object by id and have no foreign key to follow, so
+    // nothing else would ever collect them. A later file that reused the id
+    // would inherit the dead grants.
+    await trx
+      .delete(relationTuples)
+      .where(and(eq(relationTuples.objectType, "file"), inArray(relationTuples.objectId, ids)));
+    /* A master must not be left pointing at a preview copy that no longer
+       exists: the editor would ask for a file id that 404s rather than fall
+       back to the master. `files.proxy_file_id` has no foreign key (see the
+       schema for why), so nothing else would ever clear it, and the next
+       `files.proxy` job makes a fresh one. */
+    await trx.update(files).set({ proxyFileId: null }).where(inArray(files.proxyFileId, ids));
+    await trx.delete(files).where(inArray(files.id, ids));
+  });
+  for (const key of keys) await deleteObject(key).catch(() => {});
+}
+
 /** Who this is shared with, resolved to names for the share sheet. */
 export async function sharesWithNames(objectType: SharedObject, objectId: string) {
   return db
     .select({
       tuple: relationTuples,
       userName: users.name,
+      userNameLocal: users.nameLocal,
       userEmail: users.email,
     })
     .from(relationTuples)
@@ -965,19 +993,19 @@ export async function listTrash(viewer: Viewer, limit = 100) {
  */
 export async function renameFile(viewer: Viewer, fileId: string, name: string): Promise<FileRow> {
   const clean = name.trim();
-  if (!clean) throw new Error("A file needs a name");
-  if (clean.length > 255) throw new Error("That name is too long");
+  if (!clean) throw new Error("请填写文件名");
+  if (clean.length > 255) throw new Error("名称太长了");
 
   // Editing is editing: the same relation uploading a new version needs.
   const held = await relationOn(viewer, "file", fileId);
-  if (held !== "owner" && held !== "editor") throw new Error("You need edit access to rename this");
+  if (held !== "owner" && held !== "editor") throw new Error("你没有编辑权限，不能重命名");
 
   const [row] = await db
     .update(files)
     .set({ name: clean, updatedAt: new Date(), updatedBy: viewer.id })
     .where(and(eq(files.id, fileId), eq(files.tenantId, viewer.tenantId), isNull(files.deletedAt)))
     .returning();
-  if (!row) throw new Error("File not found");
+  if (!row) throw new Error("找不到这个文件");
 
   await audit(viewer, "file.rename", {
     objectType: "file",
@@ -990,21 +1018,21 @@ export async function renameFile(viewer: Viewer, fileId: string, name: string): 
 
 export async function renameFolder(viewer: Viewer, folderId: string, name: string) {
   const clean = name.trim();
-  if (!clean) throw new Error("A folder needs a name");
-  if (clean.length > 255) throw new Error("That name is too long");
+  if (!clean) throw new Error("请填写文件夹名称");
+  if (clean.length > 255) throw new Error("名称太长了");
   // The private home folder is addressed by this name, so it is not free to
   // change: renaming it would give that person a second one on next sight.
-  if (clean === "__home") throw new Error("That name is reserved");
+  if (clean === "__home") throw new Error("这个名称不能用");
 
   const held = await relationOn(viewer, "folder", folderId);
-  if (held !== "owner" && held !== "editor") throw new Error("You need edit access to rename this");
+  if (held !== "owner" && held !== "editor") throw new Error("你没有编辑权限，不能重命名");
 
   const [row] = await db
     .update(folders)
     .set({ name: clean, updatedAt: new Date() })
     .where(and(eq(folders.id, folderId), eq(folders.tenantId, viewer.tenantId), isNull(folders.deletedAt)))
     .returning();
-  if (!row) throw new Error("Folder not found");
+  if (!row) throw new Error("找不到这个文件夹");
 
   await audit(viewer, "folder.rename", {
     objectType: "folder",

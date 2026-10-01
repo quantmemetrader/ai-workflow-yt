@@ -16,7 +16,7 @@ async function researcher() {
 export async function refreshPlanAction(): Promise<{ error?: string; topic?: string | null }> {
   const viewer = await researcher();
   if (!viewer) return { error: "没有权限" };
-  if (viewer.role === "guest") return { error: "访客不能重新提报" };
+  if (viewer.role !== "owner" && viewer.role !== "admin") return { error: "只有管理员能让策划换一份" };
   const before = await planToday(viewer.tenantId).catch(() => null);
   try {
     const out = await runPlan({ tenant: viewer.tenantId, force: true, avoid: before?.topic ? [before.topic] : [], requestedBy: viewer.id });
@@ -31,10 +31,13 @@ export async function refreshPlanAction(): Promise<{ error?: string; topic?: str
   return { topic: after?.topic ?? null };
 }
 
-/** 「不再显示」 on a 热点榜 row, for the whole studio. */
+/** 「不再显示」 on a 热点榜 row, for the whole studio. It changes what
+ * everybody sees, so it is the owner's and admins' press (QA, 2 Oct: members
+ * were offered it); the screen hides the × from everyone else. */
 export async function hideHotAction(phrase: unknown): Promise<{ error?: string }> {
   const viewer = await researcher();
   if (!viewer) return { error: "没有权限" };
+  if (!viewer.isAdmin) return { error: "只有工作室负责人或管理员可以隐藏热点" };
   if (typeof phrase !== "string" || !phrase.trim() || phrase.length > 400) return { error: "Not allowed" };
   await hideHot(viewer.tenantId, viewer.id, phrase);
   revalidatePath("/research/hot");
@@ -44,6 +47,7 @@ export async function hideHotAction(phrase: unknown): Promise<{ error?: string }
 export async function restoreHotAction(): Promise<{ error?: string }> {
   const viewer = await researcher();
   if (!viewer) return { error: "没有权限" };
+  if (!viewer.isAdmin) return { error: "只有工作室负责人或管理员可以恢复隐藏的热点" };
   await restoreHot(viewer.tenantId, viewer.id);
   revalidatePath("/research/hot");
   return {};

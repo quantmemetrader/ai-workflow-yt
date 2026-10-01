@@ -23,13 +23,26 @@ export function StepCards({ p, zh, me }: { p: ProjectDetail; zh: boolean; me: St
   const step = (k: string) => p.steps.find((s) => s.key === k) ?? null;
   const agentName = (a: AgentKey) => (zh ? AGENT_LABELS[a].nameLocal : AGENT_LABELS[a].nameEn);
 
+  /* The script block says what the step says (QA, 2 Oct): 「编剧正在写初稿」
+     while the draft is being written, not 「待写」; and once the step is done
+     (cut from it, or published) no 「还没审批」 beside its 「已完成」. */
   const scriptLine = (() => {
-    if (!p.script) return step("script")?.line ?? t("还没有脚本", "No script yet");
-    if (step("script")?.state === "skipped") return step("script")!.line;
+    const sc = step("script");
+    if (!p.script) return sc?.line ?? t("还没有脚本", "No script yet");
+    if (sc?.state === "skipped" || sc?.state === "running") return sc.line;
     const s = p.script.status;
     const v = p.script.version ? t(`第 ${p.script.version} 版`, `v${p.script.version}`) : "";
     const n = p.script.beats ? t(`${p.script.beats} 段`, `${p.script.beats} paragraphs`) : "";
-    const st = s === "locked" ? t("已批准", "Approved") : s === "awaiting_approval" ? t("待审批", "Awaiting approval") : p.script.beats > 0 ? t("已写好 · 还没审批", "Written · not approved yet") : s === "drafting" ? t("未批准", "Not approved") : t("待写", "To write");
+    const st =
+      s === "locked"
+        ? t("已批准", "Approved")
+        : sc?.state === "done"
+          ? t("已写好", "Written")
+          : s === "awaiting_approval"
+            ? t("待审批", "Awaiting approval")
+            : p.script.beats > 0
+              ? t("已写好 · 还没审批", "Written · not approved yet")
+              : t("待写", "To write");
     return [st, v, n].filter(Boolean).join(" · ");
   })();
   const editLine = (() => {

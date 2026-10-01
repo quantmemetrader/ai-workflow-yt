@@ -453,6 +453,8 @@ export type ProjectDetail = {
   /** Opened by its link rather than as a member: "view" means read only. */
   linkOnly: "view" | "edit" | null;
   canManage: boolean;
+  /** Started by this person: the header says 「仅自己」 only to them (QA, 2 Oct). */
+  mine: boolean;
   /**
    * The people on the two steps a person does, by name: whoever uploaded
    * the clips (else the project's owner, who is to), and whoever marked it
@@ -543,6 +545,9 @@ export type ProjectDetail = {
     job: { videoProjectId: string } | null;
     /** The renders and video files it names, as cards this reader may open. */
     videos: import("@/lib/chat/video-card").VideoCard[];
+    /** The other files on it this reader may open (QA, 2 Oct: a file sent
+     * from the drawer posted, but the drawer drew nothing of it). */
+    attachments: { id: string; name: string; kind: string; sizeBytes: number | null }[];
   }[];
   /** The employees at work in this project's chat right now, and on what. */
   pending: import("@/lib/chat/pending").PendingRow[];
@@ -636,6 +641,11 @@ export function buildSteps(f: StepFacts, zh: boolean): ProjectStep[] {
      script step was passed over, not waiting — 「等编剧开写」 sat grey above
      a finished film. */
   const talkCut = scriptState === "todo" && (Boolean(rendered) || items.n > 0);
+  /* Published: every step before it is behind it. A project already out
+     showed 「已完成」 beside 「已写好 · 还没审批」 and a grey 剪辑 step
+     (QA, 2 Oct). */
+  const out = f.status === "done";
+  const scriptPassed = skip("script") || talkCut || (out && !script);
   const editLine = rendered
     ? t(`成片已出${render!.durationMs ? ` · ${stepClock(render!.durationMs)}` : ""}`, `Rendered${render!.durationMs ? ` · ${stepClock(render!.durationMs)}` : ""}`)
     : directing
@@ -659,11 +669,17 @@ export function buildSteps(f: StepFacts, zh: boolean): ProjectStep[] {
       key: "script",
       label: t("脚本", "Script"),
       owner: "script",
-      state: skip("script") || talkCut ? "skipped" : scriptState,
+      state: scriptPassed ? "skipped" : out ? "done" : scriptState,
       line: skip("script")
         ? t("跳过 · 直接剪辑", "Skipped · straight to the edit")
         : talkCut
           ? t("跳过 · 按口播直接剪", "Skipped · cut straight from the talk")
+        : out && !script
+          ? t("跳过 · 没有写脚本", "Skipped · no script")
+        : out && script!.status !== "locked"
+          ? beats.n > 0
+            ? t(`已写好 · ${beats.n} 个分镜`, `Written · ${beats.n} beats`)
+            : t("已写好", "Written")
         : scriptState === "done"
           ? script!.status === "locked"
             ? t(`第 ${script!.version} 版已锁定`, `v${script!.version} locked`)
@@ -673,15 +689,17 @@ export function buildSteps(f: StepFacts, zh: boolean): ProjectStep[] {
             : draftWriting
               ? t("编剧正在写初稿…", "The writer is drafting…")
               : scriptState === "running"
-              ? t(`草稿 · ${beats.n} 个分镜`, `Draft · ${beats.n} beats`)
+              ? beats.n > 0
+                ? t(`草稿 · ${beats.n} 个分镜`, `Draft · ${beats.n} beats`)
+                : t("草稿 · 还没有内容", "Draft · empty so far")
               : t("等编剧开写", "Waiting for the writer"),
     },
     {
       key: "clips",
       label: t("上传素材", "Upload clips"),
       owner: "you",
-      state: skip("clips") ? "skipped" : clips.n > 0 ? "done" : scriptState === "done" ? "you" : "todo",
-      line: skip("clips") ? t("跳过 · 用素材库", "Skipped · stock footage") : clips.n > 0 ? t(`${clips.n} 段素材`, `${clips.n} clips`) : t("主持人拍好后上传", "The host uploads when filmed"),
+      state: skip("clips") ? "skipped" : clips.n > 0 ? "done" : out ? "skipped" : scriptState === "done" ? "you" : "todo",
+      line: skip("clips") ? t("跳过 · 用素材库", "Skipped · stock footage") : clips.n > 0 ? t(`${clips.n} 段素材`, `${clips.n} clips`) : out ? t("发布前没有在这里传素材", "No clips were uploaded here") : t("主持人拍好后上传", "The host uploads when filmed"),
     },
     {
       key: "edit",
@@ -689,8 +707,8 @@ export function buildSteps(f: StepFacts, zh: boolean): ProjectStep[] {
       owner: "video",
       /* "you" once the cut is ready and not rendered: the next press (渲染)
          is the owner's, and the card says so in black. */
-      state: rendered ? "done" : directing || rendering ? "running" : cutReady ? "you" : "todo",
-      line: editLine,
+      state: rendered || out ? "done" : directing || rendering ? "running" : cutReady ? "you" : "todo",
+      line: out && !rendered ? t("成片已发布", "Published") : editLine,
     },
     {
       key: "deliver",
@@ -906,6 +924,7 @@ export async function workProjectDetail(viewer: Viewer, id: string, zh: boolean,
     access: p.access ?? { mode: "everyone" },
     linkOnly: p.member ? null : ((p.access as Access | null)?.link ?? null),
     canManage: viewer.isAdmin || p.createdBy === viewer.id,
+    mine: p.createdBy === viewer.id,
     people,
     sentBack: readSentBack(p.source),
     /* `mayPublish`: the managers (admin or creator), never a guest. */
@@ -957,6 +976,9 @@ export async function workProjectDetail(viewer: Viewer, id: string, zh: boolean,
       otherProject: links.get(m.id) && links.get(m.id)!.id !== p.id ? links.get(m.id)! : null,
       job: m.job,
       videos: m.videos,
+      attachments: m.attachments
+        .filter((a) => !m.videos.some((v) => v.fileId === a.id))
+        .map((a) => ({ id: a.id, name: a.name, kind: a.kind, sizeBytes: a.sizeBytes })),
     })),
     pending: thread?.pending ?? [],
   };
@@ -1102,6 +1124,13 @@ export async function deleteProject(viewer: Viewer, id: string): Promise<void> {
   if (!p) throw new Error("No such project");
   if (!viewer.isAdmin && p.createdBy !== viewer.id) throw new Error("Only the person who started it, or an admin, can delete it");
   await db.update(workProjects).set({ deletedAt: new Date() }).where(eq(workProjects.id, id));
+  /* Its script goes with it (2 Oct: deleted projects' scripts stayed in 脚本 as 「待写」
+     and opened in the old editor), unless another live project still uses it. */
+  const [own] = await db.select({ scriptId: workProjects.scriptId }).from(workProjects).where(eq(workProjects.id, id)).limit(1);
+  if (own?.scriptId) {
+    const [other] = await db.select({ id: workProjects.id }).from(workProjects).where(and(eq(workProjects.scriptId, own.scriptId), isNull(workProjects.deletedAt))).limit(1);
+    if (!other) await db.update(scripts).set({ deletedAt: new Date() }).where(and(eq(scripts.id, own.scriptId), eq(scripts.tenantId, viewer.tenantId)));
+  }
   await audit(viewer, "project.delete", { module: "chat", objectType: "project", objectId: id });
 }
 

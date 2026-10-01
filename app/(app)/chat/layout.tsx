@@ -5,6 +5,7 @@ import { requireModule } from "@/lib/auth/dal";
 import { listChannels, listConversations, listPeople } from "@/lib/chat/service";
 import { WorkspaceSidebar } from "@/components/canvas/WorkspaceSidebar";
 import { projectChannelIds } from "@/lib/projects/service";
+import { distinctNames } from "@/lib/chat/people";
 
 export default async function ChatLayout({ children }: { children: React.ReactNode }) {
   const viewer = await requireModule("chat");
@@ -21,6 +22,10 @@ export default async function ChatLayout({ children }: { children: React.ReactNo
   ]);
   /* A project's chat lives on the project's page, not in this list. */
   const hidden = new Set(projectChannels);
+  /* Two people with one name are told apart, and you are not listed among
+     your colleagues (QA, 2 Oct: two 「Ryan」). */
+  const others = people.filter((p) => p.id !== viewer.id);
+  const label = distinctNames(others.map((p) => ({ id: p.id, name: zh && p.nameLocal ? p.nameLocal : p.name, email: p.email, title: p.title })));
 
   return (
     <>
@@ -41,9 +46,9 @@ export default async function ChatLayout({ children }: { children: React.ReactNo
           title: c.title,
           updatedAt: c.updatedAt.toISOString(),
         }))}
-        people={people.map((p) => ({
+        people={others.map((p) => ({
           id: p.id,
-          name: zh && p.nameLocal ? p.nameLocal : p.name,
+          name: label.get(p.id) ?? (zh && p.nameLocal ? p.nameLocal : p.name),
           avatarUrl: p.avatarUrl,
           presence: p.presence,
           isGuest: p.isGuest,

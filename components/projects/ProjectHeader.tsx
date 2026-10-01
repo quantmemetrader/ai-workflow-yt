@@ -16,14 +16,18 @@ export type HeaderProject = {
   title: string;
   status: string;
   canManage: boolean;
-  access: { mode: "private" | "everyone" | "groups" | "people"; groups?: string[]; userIds?: string[] };
+  /** Started by this person: 「仅自己」 is only true for them. */
+  mine?: boolean;
+  /** Opened by its shared link rather than as a member (`ProjectDetail.linkOnly`). */
+  linkOnly?: "view" | "edit" | null;
+  access: { mode: "private" | "everyone" | "groups" | "people"; groups?: string[]; userIds?: string[]; link?: "view" | "edit" };
   published: PublishedPlace[];
   tabs: Partial<Record<ProjectTab, TabState>>;
 };
 
 /**
  * The top of every project page: where you are (项目 / name), the name
- * itself (double-click to rename), its state, who can see it, archive and
+ * itself (the pencil, or a double-click, to rename), its state, who can see it, archive and
  * delete — and the row of tabs, one per page, the numbered steps with a
  * green tick once done and an orange dot on the one to do now.
  */
@@ -37,6 +41,52 @@ export function ProjectHeader({ p, zh }: { p: HeaderProject; zh: boolean }) {
   const [name, setName] = React.useState(p.title);
   const [sharing, setSharing] = React.useState(false);
   React.useEffect(() => setName(p.title), [p.title]);
+  /* A rename that would leave it nameless says so and keeps the old name
+     (QA, 2 Oct: an empty name silently went back). */
+  /* Esc drops the edit; the blur that may follow must not save it. */
+  const dropName = React.useRef(false);
+  React.useEffect(() => {
+    if (naming) dropName.current = false;
+  }, [naming]);
+  const saveName = () => {
+    if (pending || dropName.current) return;
+    const next = name.trim();
+    if (!next) {
+      notify(t("名字不能为空，原来的名字没有改", "A project needs a name; the old one is kept"));
+      setName(p.title);
+      setNaming(false);
+      return;
+    }
+    if (next === p.title) return setNaming(false);
+    start(async () => {
+      const r = await renameProjectAction(p.id, next);
+      if (r?.error) notify(r.error);
+      else notify(t("已改名，脚本标题也一起改了", "Renamed; the script's title follows"), "ok");
+      setNaming(false);
+      router.refresh();
+    });
+  };
+  /* Who can see it, said to whoever is looking (QA, 2 Oct: a colleague
+     who opened a private project by its link was told 「仅自己」). */
+  const linkWord = (l: "view" | "edit" | undefined | null) => (l === "edit" ? t("有链接可编辑", "link can edit") : l === "view" ? t("有链接可查看", "link can view") : "");
+  const reach =
+    p.access.mode === "everyone"
+      ? t("全工作室可见", "Everyone")
+      : p.access.mode === "private"
+        ? p.mine
+          ? t("仅自己", "Private")
+          : t("仅创建者可见", "Owner only")
+        : p.access.mode === "groups"
+          ? t("部分分组", "Groups")
+          : t(`${p.access.userIds?.length ?? 0} 人可见`, `${p.access.userIds?.length ?? 0} people`);
+  const reachLine = p.linkOnly
+    ? `${reach} · ${p.linkOnly === "edit" ? t("你通过链接打开，可编辑", "you opened the link: can edit") : t("你通过链接打开，只能查看", "you opened the link: view only")}`
+    : p.access.mode !== "everyone" && p.access.link
+      ? `${reach} · ${linkWord(p.access.link)}`
+      : reach;
+  /* Someone who came by the shared link sees the page it was shared from,
+     the script, not every page of the project (QA, 2 Oct). */
+  const tabs = p.linkOnly ? PROJECT_TABS.filter((x) => x.key === "script") : PROJECT_TABS;
 
   const statusPill =
     p.status === "done" ? (
@@ -62,30 +112,65 @@ export function ProjectHeader({ p, zh }: { p: HeaderProject; zh: boolean }) {
               style={{ flexGrow: 1, minWidth: 0 }}
               onSubmit={(e) => {
                 e.preventDefault();
-                start(async () => {
-                  const r = await renameProjectAction(p.id, name);
-                  if (r?.error) notify(r.error);
-                  setNaming(false);
-                  router.refresh();
-                });
+                saveName();
               }}
             >
-              <input autoFocus value={name} onChange={(e) => setName(e.target.value)} onBlur={() => setNaming(false)} style={{ fontSize: 18, fontWeight: 600, border: "1px solid #d9d9d9", borderRadius: 8, padding: "2px 8px", width: "100%", fontFamily: "inherit" }} />
+              <input
+                autoFocus
+                value={name}
+                maxLength={80}
+                aria-label={t("项目名字", "Project name")}
+                placeholder={t("给项目起个名字", "Name the project")}
+                onChange={(e) => setName(e.target.value)}
+                onBlur={saveName}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") {
+                    dropName.current = true;
+                    setName(p.title);
+                    setNaming(false);
+                  }
+                }}
+                style={{ fontSize: 18, fontWeight: 600, border: "1px solid #d9d9d9", borderRadius: 8, padding: "2px 8px", width: "100%", fontFamily: "inherit" }}
+              />
             </form>
           ) : (
-            <h1 onDoubleClick={() => p.canManage && setNaming(true)} title={p.canManage ? t("双击改名", "Double-click to rename") : undefined} style={{ fontSize: 18, fontWeight: 600, margin: 0, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", cursor: p.canManage ? "text" : "default" }}>
-              {p.title}
-            </h1>
+            <>
+              <h1 onDoubleClick={() => p.canManage && setNaming(true)} title={p.canManage ? t("双击或点旁边的笔改名", "Double-click or press the pencil to rename") : undefined} style={{ fontSize: 18, fontWeight: 600, margin: 0, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", cursor: p.canManage ? "text" : "default" }}>
+                {p.title}
+              </h1>
+              {/* A press you can see: double-click alone was a hidden way in (QA, 2 Oct). */}
+              {p.canManage ? (
+                <button type="button" className="ph-quiet" onClick={() => setNaming(true)} aria-label={t("改名", "Rename")} title={t("改名", "Rename")} style={{ ...quiet("#8a8a8a"), width: 26, padding: 0, justifyContent: "center" }}>
+                  <Icon name="pen" size={13} />
+                </button>
+              ) : null}
+            </>
           )}
           {statusPill}
           <span style={{ flexGrow: 1 }} />
-          <button type="button" className="ph-quiet" onClick={() => p.canManage && setSharing(true)} disabled={!p.canManage} style={quiet("#7a7a7a")}>
+          <button type="button" className="ph-quiet" onClick={() => p.canManage && setSharing(true)} disabled={!p.canManage} title={p.canManage ? t("更改谁能看到", "Change who can see it") : undefined} style={quiet("#7a7a7a")}>
             <Icon name={p.access.mode === "everyone" ? "eye" : "lock"} size={12} />
-            {p.access.mode === "everyone" ? t("全工作室可见", "Everyone") : p.access.mode === "private" ? t("仅自己", "Private") : p.access.mode === "groups" ? t("部分分组", "Groups") : t(`${p.access.userIds?.length ?? 0} 人可见`, `${p.access.userIds?.length ?? 0} people`)}
+            {reachLine}
           </button>
           {p.canManage ? (
             <>
-              <button type="button" className="ph-quiet" disabled={pending} onClick={() => start(async () => { await setProjectStatusAction(p.id, p.status === "archived" ? "active" : "archived"); router.refresh(); })} style={quiet("#7a7a7a")}>
+              {/* Said, not silent (QA, 2 Oct: one press and nothing told you
+                  where it went). The same button reads 取消归档 after, which is the undo. */}
+              <button
+                type="button"
+                className="ph-quiet"
+                disabled={pending}
+                onClick={() =>
+                  start(async () => {
+                    const archiving = p.status !== "archived";
+                    const r = await setProjectStatusAction(p.id, archiving ? "archived" : "active");
+                    if (r?.error) notify(r.error);
+                    else notify(archiving ? t("已归档。在项目列表的「已归档」里能找到，按「取消归档」就能恢复。", "Archived. Find it under Archived in the list; press Unarchive to bring it back.") : t("已恢复为进行中", "Back in progress"), "ok");
+                    router.refresh();
+                  })
+                }
+                style={quiet("#7a7a7a")}
+              >
                 {p.status === "archived" ? t("取消归档", "Unarchive") : t("归档", "Archive")}
               </button>
               <button
@@ -108,7 +193,7 @@ export function ProjectHeader({ p, zh }: { p: HeaderProject; zh: boolean }) {
           ) : null}
         </div>
         <nav aria-label={t("项目页面", "Project pages")} style={{ display: "flex", gap: 2, marginTop: 10, overflowX: "auto" }}>
-          {PROJECT_TABS.map((tab) => {
+          {tabs.map((tab) => {
             const state = tab.n ? p.tabs[tab.key] : undefined;
             const on = active === tab.key;
             return (

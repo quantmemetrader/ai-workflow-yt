@@ -15,7 +15,7 @@ import { FinanceScreen } from "@/components/finance/FinanceScreen";
 import { listReports } from "@/lib/finance/reports";
 import { apiBalances } from "@/lib/finance/providers";
 
-export const metadata = { title: "财务 · Finance" };
+export const metadata = { title: "财务" };
 
 /**
  * Finance (spec §4.9).

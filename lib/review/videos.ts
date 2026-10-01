@@ -93,8 +93,10 @@ export async function allVideos(viewer: Viewer): Promise<VideoRow[]> {
       plays: Math.max(v.views ?? 0, last?.views ?? 0),
       likes: Math.max(v.likes ?? 0, last?.likes ?? 0),
       comments: Math.max(v.comments ?? 0, last?.comments ?? 0),
-      shares: last?.shares ?? null,
-      collects: last?.saves ?? null,
+      // YouTube never reports shares or saves publicly; the sync writes 0,
+      // which read as "nobody shared it" (QA, 2 Oct). Left unknown instead.
+      shares: null,
+      collects: null,
       completion: null,
     };
     const title = toSimplified(v.title);

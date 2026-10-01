@@ -5,7 +5,7 @@ import { InboxView } from "@/components/research/InboxView";
 import { connectionState, inbox, inboxSummary, type InboxFilters } from "@/lib/social/service";
 import { isSentiment, priorCommentCounts } from "@/lib/social/service";
 
-export const metadata = { title: "评论收件箱 · Comment inbox" };
+export const metadata = { title: "评论收件箱" };
 
 /**
  * Comment inbox (spec §4.3).
@@ -57,7 +57,7 @@ export default async function InboxPage({
   );
 
   return (
-    <ResearchShell zh={(viewer.locale ?? "zh-CN").startsWith("zh")}>
+    <ResearchShell zh={(viewer.locale ?? "zh-CN").startsWith("zh")} tenantId={viewer.tenantId}>
       <InboxView
         locale={viewer.locale ?? "zh-CN"}
         groups={groups}

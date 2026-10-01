@@ -7,6 +7,7 @@ import { agentKeyFromEmail } from "@/lib/agents/catalog";
 import { readCardKind, readHandoff } from "@/lib/chat/handoff";
 import { videoRefsOf, type VideoCard } from "@/lib/chat/video-card";
 import { videoCardsFor } from "@/lib/chat/videos";
+import { distinctNames } from "@/lib/chat/people";
 
 /** A one-to-one conversation. The room is created the first time either person
  * opens it, so there is no "start a chat" step to get wrong. */
@@ -41,7 +42,9 @@ export default async function DirectMessagePage({ params }: { params: Promise<{ 
   ).catch(() => new Map<string, VideoCard[]>());
 
   const zh = (viewer.locale ?? "zh-CN").startsWith("zh");
-  const otherName = (zh && dm.other.nameLocal) || dm.other.name;
+  /* Two people with one name are told apart (QA, 2 Oct: two 「Ryan」). */
+  const label = distinctNames(people.map((p) => ({ id: p.id, name: (zh && p.nameLocal) || p.name, email: p.email, title: p.title })));
+  const otherName = label.get(dm.other.id) ?? ((zh && dm.other.nameLocal) || dm.other.name);
 
   return (
     <ChannelView
@@ -66,7 +69,7 @@ export default async function DirectMessagePage({ params }: { params: Promise<{ 
          offer, because an AI employee can be pulled into a DM too. */
       mentionPeople={people.map((p) => ({
         id: p.id,
-        name: (zh && p.nameLocal) || p.name,
+        name: label.get(p.id) ?? ((zh && p.nameLocal) || p.name),
         avatarUrl: p.avatarUrl,
         title: p.title,
       }))}
@@ -87,6 +90,7 @@ export default async function DirectMessagePage({ params }: { params: Promise<{ 
         card: readCardKind(r.message.meta),
         body: r.message.body,
         createdAt: r.message.createdAt.toISOString(),
+        editedAt: r.message.editedAt ? r.message.editedAt.toISOString() : null,
       }))}
       now={new Date().toISOString()}
     />

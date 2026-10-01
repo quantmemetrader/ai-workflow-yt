@@ -10,13 +10,13 @@ import { trainName } from "@/components/train/names";
  * number under 「团队」, which read as the studio's (the owner, 30 Sep:
  * "US$0.11 — is this correct?").
  */
-export async function SpendCard({ tenantId, zh, ownMicros, capMicros, stopped }: { tenantId: string; zh: boolean; ownMicros: number; capMicros: number | null; stopped: boolean }) {
+export async function SpendCard({ tenantId, viewerId, zh, ownMicros, capMicros, stopped }: { tenantId: string; viewerId?: string; zh: boolean; ownMicros: number; capMicros: number | null; stopped: boolean }) {
   /* Grouped by who it was for: an AI employee's work for Catherine is Catherine's
      (the owner, 30 Sep: "if catherine calls that than it shld show there"). What
      no person asked for — the morning brief, the hot lists — stays under the employee. */
   const { rows } = await db
-    .execute<{ email: string | null; name: string | null; local: string | null; micros: string; via: string }>(sql`
-      select u.email, u.name, u.name_local as local, sum(x.cost)::bigint as micros, sum(x.via)::bigint as via
+    .execute<{ id: string | null; email: string | null; name: string | null; local: string | null; micros: string; via: string }>(sql`
+      select u.id, u.email, u.name, u.name_local as local, sum(x.cost)::bigint as micros, sum(x.via)::bigint as via
         from (
           select a.cost_micros as cost,
                  coalesce(a.requested_by, a.user_id) as who,
@@ -25,11 +25,17 @@ export async function SpendCard({ tenantId, zh, ownMicros, capMicros, stopped }:
            where a.tenant_id = ${tenantId} and a.created_at >= date_trunc('month', now() at time zone 'UTC')
         ) x
         left join users u on u.id = x.who
-       group by u.email, u.name, u.name_local
+       group by u.id, u.email, u.name, u.name_local
        order by micros desc
     `)
-    .catch(() => ({ rows: [] as { email: string | null; name: string | null; local: string | null; micros: string; via: string }[] }));
+    .catch(() => ({ rows: [] as { id: string | null; email: string | null; name: string | null; local: string | null; micros: string; via: string }[] }));
   const total = rows.reduce((n, r) => n + Number(r.micros ?? 0), 0);
+  /* 你自己 is read from the same grouping as the rows below (requested_by,
+     else user), so it matches your own row. The ledger's figure counted only
+     calls made under your own user id (QA, 2 Oct: US$ 0.06 against a row of
+     US$ 0.12). */
+  const mine = viewerId ? rows.find((r) => r.id === viewerId) : undefined;
+  const own = viewerId ? Number(mine?.micros ?? 0) : ownMicros;
   const label = (r: (typeof rows)[number]) => {
     const agent = r.email ? agentKeyFromEmail(r.email) : null;
     if (agent) return { name: `${trainName(agent, zh)}${zh ? "（自动任务）" : " (on its own)"}`, ai: true };
@@ -46,7 +52,7 @@ export async function SpendCard({ tenantId, zh, ownMicros, capMicros, stopped }:
         <span style={{ fontSize: 28, fontWeight: 650, color: "#171717", fontVariantNumeric: "tabular-nums", letterSpacing: "-0.01em" }}>{formatUsd(total)}</span>
         <span style={{ fontSize: 12.5, color: "#7a7a76" }}>
           {zh ? "你自己 " : "You "}
-          <b style={{ color: "#404040", fontWeight: 600 }}>{formatUsd(ownMicros)}</b>
+          <b style={{ color: "#404040", fontWeight: 600 }}>{formatUsd(own)}</b>
           {" · "}
           {capMicros === null ? (zh ? "没有设上限" : "no cap") : zh ? `你的上限 ${formatUsd(capMicros)}` : `your cap ${formatUsd(capMicros)}`}
         </span>
@@ -72,7 +78,7 @@ export async function SpendCard({ tenantId, zh, ownMicros, capMicros, stopped }:
         </div>
       ) : null}
       {stopped ? (
-        <p style={{ margin: "12px 0 0", padding: "8px 12px", borderRadius: 8, border: "1px solid #f3c7c0", background: "#fdf3f1", fontSize: 12.5, color: "#a4331f" }}>{zh ? "你的预算用完了，助理已暂停" : "Budget reached — the assistant has stopped"}</p>
+        <p style={{ margin: "12px 0 0", padding: "8px 12px", borderRadius: 8, border: "1px solid #f3c7c0", background: "#fdf3f1", fontSize: 12.5, color: "#a4331f" }}>{zh ? "你的预算用完了，助理已暂停" : "Budget reached. The assistant has stopped."}</p>
       ) : null}
     </section>
   );

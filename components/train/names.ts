@@ -8,7 +8,7 @@ export function trainName(key: TrainKey, zh: boolean): string {
 }
 
 export function trainHint(key: TrainKey, zh: boolean): string {
-  if (key === "assistant") return zh ? "每个人自己的 AI 助理：查资料、派活、回答问题" : "Everyone's own assistant: looks things up, hands out work, answers";
+  if (key === "assistant") return zh ? "每个同事的 AI 助理（全工作室共用这一套设置）：查资料、派活、回答问题" : "Everyone's assistant (one shared setup for the studio): looks things up, hands out work, answers";
   return zh ? AGENT_LABELS[key].hint : AGENT_LABELS[key].hintEn;
 }
 

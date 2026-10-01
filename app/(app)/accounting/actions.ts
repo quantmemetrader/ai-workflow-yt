@@ -34,21 +34,21 @@ function micros(v: unknown): number | null {
 
 export async function seedAccountsAction() {
   const viewer = await bookkeeper();
-  if (!viewer) return { error: "Not allowed" };
+  if (!viewer) return { error: "你没有权限这样做" };
   try {
     await seedAccounts(viewer);
     refresh();
     return {};
   } catch (err) {
-    return { error: err instanceof Error ? err.message : "Could not do that" };
+    return { error: err instanceof Error ? err.message : "没能完成，请再试一次" };
   }
 }
 
 export async function createAccountAction(code: string, name: string, kind: string) {
   const viewer = await bookkeeper();
-  if (!viewer) return { error: "Not allowed" };
+  if (!viewer) return { error: "你没有权限这样做" };
   const kinds = ["asset", "liability", "equity", "income", "expense"];
-  if (!kinds.includes(kind)) return { error: "No such kind of account" };
+  if (!kinds.includes(kind)) return { error: "没有这种科目类型" };
   try {
     await createAccount(viewer, {
       code: String(code ?? "").slice(0, 24),
@@ -58,20 +58,20 @@ export async function createAccountAction(code: string, name: string, kind: stri
     refresh();
     return {};
   } catch (err) {
-    return { error: err instanceof Error ? err.message : "Could not add that" };
+    return { error: err instanceof Error ? err.message : "没能添加，请再试一次" };
   }
 }
 
 export async function archiveAccountAction(accountId: string) {
   const viewer = await bookkeeper();
-  if (!viewer) return { error: "Not allowed" };
-  if (!id(accountId)) return { error: "Not found" };
+  if (!viewer) return { error: "你没有权限这样做" };
+  if (!id(accountId)) return { error: "找不到这一项" };
   try {
     await archiveAccount(viewer, accountId);
     refresh();
     return {};
   } catch (err) {
-    return { error: err instanceof Error ? err.message : "Could not do that" };
+    return { error: err instanceof Error ? err.message : "没能完成，请再试一次" };
   }
 }
 
@@ -84,7 +84,7 @@ export async function addDocumentAction(input: {
   fileId: string | null;
 }) {
   const viewer = await bookkeeper();
-  if (!viewer) return { error: "Not allowed" };
+  if (!viewer) return { error: "你没有权限这样做" };
   try {
     await addDocument(viewer, {
       title: String(input.title ?? "").slice(0, 200),
@@ -97,20 +97,20 @@ export async function addDocumentAction(input: {
     refresh();
     return {};
   } catch (err) {
-    return { error: err instanceof Error ? err.message : "Could not add that" };
+    return { error: err instanceof Error ? err.message : "没能添加，请再试一次" };
   }
 }
 
 export async function removeDocumentAction(documentId: string) {
   const viewer = await bookkeeper();
-  if (!viewer) return { error: "Not allowed" };
-  if (!id(documentId)) return { error: "Not found" };
+  if (!viewer) return { error: "你没有权限这样做" };
+  if (!id(documentId)) return { error: "找不到这一项" };
   try {
     await removeDocument(viewer, documentId);
     refresh();
     return {};
   } catch (err) {
-    return { error: err instanceof Error ? err.message : "Could not do that" };
+    return { error: err instanceof Error ? err.message : "没能完成，请再试一次" };
   }
 }
 
@@ -123,11 +123,11 @@ export async function saveEntryAction(input: {
   lines: { accountId: string; amount: string; description?: string }[];
 }) {
   const viewer = await bookkeeper();
-  if (!viewer) return { error: "Not allowed" };
+  if (!viewer) return { error: "你没有权限这样做" };
 
   const p = period(input.period);
   const d = day(input.entryDate);
-  if (!p || !d) return { error: "A date and a period are needed" };
+  if (!p || !d) return { error: "日期和期间都要填" };
 
   const lines = (Array.isArray(input.lines) ? input.lines : [])
     .map((l) => ({
@@ -149,46 +149,46 @@ export async function saveEntryAction(input: {
     refresh();
     return { id: entryId };
   } catch (err) {
-    return { error: err instanceof Error ? err.message : "Could not save that" };
+    return { error: err instanceof Error ? err.message : "没能保存，请再试一次" };
   }
 }
 
 export async function postEntryAction(entryId: string) {
   const viewer = await bookkeeper();
-  if (!viewer) return { error: "Not allowed" };
-  if (!id(entryId)) return { error: "Not found" };
+  if (!viewer) return { error: "你没有权限这样做" };
+  if (!id(entryId)) return { error: "找不到这一项" };
   try {
     await postEntry(viewer, entryId);
     refresh();
     return {};
   } catch (err) {
-    return { error: err instanceof Error ? err.message : "Could not post that" };
+    return { error: err instanceof Error ? err.message : "没能过账，请再试一次" };
   }
 }
 
 export async function voidEntryAction(entryId: string) {
   const viewer = await bookkeeper();
-  if (!viewer) return { error: "Not allowed" };
-  if (!id(entryId)) return { error: "Not found" };
+  if (!viewer) return { error: "你没有权限这样做" };
+  if (!id(entryId)) return { error: "找不到这一项" };
   try {
     await voidEntry(viewer, entryId);
     refresh();
     return {};
   } catch (err) {
-    return { error: err instanceof Error ? err.message : "Could not void that" };
+    return { error: err instanceof Error ? err.message : "没能作废，请再试一次" };
   }
 }
 
 export async function deleteDraftAction(entryId: string) {
   const viewer = await bookkeeper();
-  if (!viewer) return { error: "Not allowed" };
-  if (!id(entryId)) return { error: "Not found" };
+  if (!viewer) return { error: "你没有权限这样做" };
+  if (!id(entryId)) return { error: "找不到这一项" };
   try {
     await deleteDraft(viewer, entryId);
     refresh();
     return {};
   } catch (err) {
-    return { error: err instanceof Error ? err.message : "Could not delete that" };
+    return { error: err instanceof Error ? err.message : "没能删除，请再试一次" };
   }
 }
 
@@ -196,9 +196,9 @@ export async function deleteDraftAction(entryId: string) {
  * without a route that would have to repeat the permission check. */
 export async function exportPeriodAction(p: string) {
   const viewer = await bookkeeper();
-  if (!viewer) return { error: "Not allowed" as const };
+  if (!viewer) return { error: "你没有权限这样做" as const };
   const valid = period(p);
-  if (!valid) return { error: "That is not a period" as const };
+  if (!valid) return { error: "期间格式不对" as const };
   const csv = await exportPeriodCsv(viewer, valid);
   return { csv, filename: `journal-${valid}.csv` };
 }

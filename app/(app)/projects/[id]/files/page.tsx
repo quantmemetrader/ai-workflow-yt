@@ -3,11 +3,11 @@ import { and, eq, inArray } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { files, videoClips } from "@/lib/db/schema";
 import { requireModule } from "@/lib/auth/dal";
-import { projectForPage } from "@/lib/projects/page-data";
+import { onlyTheSharedPage, projectForPage } from "@/lib/projects/page-data";
 import { listProjectFiles, projectTag } from "@/lib/projects/files";
 import { ProjectFiles } from "@/components/projects/files/ProjectFiles";
 
-export const metadata = { title: "文件 · Files" };
+export const metadata = { title: "文件" };
 
 /**
  * Every file of one project in its boxes — 最终版视频, AI 成片, 素材,
@@ -21,6 +21,7 @@ export default async function ProjectFilesPage({ params }: { params: Promise<{ i
   const zh = (viewer.locale ?? "zh-CN").startsWith("zh");
   const p = await projectForPage(viewer, id, zh);
   if (!p) notFound();
+  onlyTheSharedPage(p);
 
   const list = await listProjectFiles(viewer, p.id);
   const ids = list.map((f) => f.id);

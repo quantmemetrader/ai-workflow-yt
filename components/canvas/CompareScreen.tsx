@@ -40,6 +40,8 @@ type Window = "1m" | "3m" | "6m";
 
 const WINDOW_DAYS: Record<Window, number> = { "1m": 30, "3m": 90, "6m": 180 };
 const WINDOW_LABEL: Record<Window, string> = { "1m": "1M", "3m": "3M", "6m": "6M" };
+/* Said in words on a Chinese screen (QA, 2 Oct). */
+const WINDOW_LABEL_ZH: Record<Window, string> = { "1m": "1 个月", "3m": "3 个月", "6m": "6 个月" };
 const WINDOW_WORDS: Record<Window, string> = { "1m": "1 month", "3m": "3 months", "6m": "6 months" };
 const WINDOW_WORDS_ZH: Record<Window, string> = { "1m": "1 个月", "3m": "3 个月", "6m": "6 个月" };
 
@@ -227,20 +229,27 @@ function changeOver(points: { d: string; v: number }[]): number {
   return (avg(points.slice(-third)) - start) / start;
 }
 
-/** Pearson r between two series, over the days they share. */
-function correlation(a: Pt[], b: Pt[]): number {
-  const other = new Map(b.map((p) => [p.t, p.v]));
+/** Pearson r between two series, over the days they share, or null when
+ * there is too little overlap to say.
+ *
+ * (QA, 2 Oct) Every row read 0.00: two sources stamp the same day at
+ * different hours, so matching on the exact timestamp found no shared days
+ * and the function fell back to 0. Points are matched by calendar day now,
+ * and "not enough to tell" is null (an empty cell), never a fake 0. */
+function correlation(a: Pt[], b: Pt[]): number | null {
+  const dayOf = (t: number) => Math.floor(t / 86_400_000);
+  const other = new Map(b.map((p) => [dayOf(p.t), p.v]));
   const xs: number[] = [];
   const ys: number[] = [];
   for (const p of a) {
-    const q = other.get(p.t);
+    const q = other.get(dayOf(p.t));
     if (q !== undefined) {
       xs.push(p.v);
       ys.push(q);
     }
   }
   const n = xs.length;
-  if (n < 3) return 0;
+  if (n < 3) return null;
   const mx = xs.reduce((s, x) => s + x, 0) / n;
   const my = ys.reduce((s, y) => s + y, 0) / n;
   let num = 0;
@@ -253,7 +262,7 @@ function correlation(a: Pt[], b: Pt[]): number {
     dx += a1 * a1;
     dy += b1 * b1;
   }
-  if (!dx || !dy) return 0;
+  if (!dx || !dy) return null;
   const r = num / Math.sqrt(dx * dy);
   return Math.max(-1, Math.min(1, r));
 }
@@ -458,6 +467,9 @@ export function CompareScreen(props: {
   );
 
   const first = rows.length ? rows[0].pts : [];
+  /** Whether any series can be compared with the first at all; when none
+   * can, the first row's trivial 1.00 is left blank too. */
+  const anyCorr = rows.slice(1).some((r) => correlation(first, r.pts) !== null);
   const drawable = rows.filter((r) => r.pts.length >= 2);
 
   const tMin = drawable.length ? Math.min(...drawable.map((r) => r.pts[0].t)) : 0;
@@ -514,6 +526,7 @@ export function CompareScreen(props: {
   const follower = rows
     .filter((r) => r !== leader && r.pts.length >= 2 && first.length >= 2)
     .map((r) => ({ r, corr: correlation(first, r.pts) }))
+    .filter((x): x is { r: (typeof rows)[number]; corr: number } => x.corr !== null)
     .sort((a, b) => b.corr - a.corr)[0];
   const fading = rows.filter((r) => r !== leader && r.change < 0).sort((a, b) => a.change - b.change)[0];
 
@@ -711,7 +724,7 @@ export function CompareScreen(props: {
                     className={props.window === w ? "on" : undefined}
                     onClick={() => props.onWindowChange(w)}
                   >
-                    {WINDOW_LABEL[w]}
+                    {zh ? WINDOW_LABEL_ZH[w] : WINDOW_LABEL[w]}
                   </div>
                 ))}
               </div>
@@ -911,7 +924,7 @@ export function CompareScreen(props: {
                   <div>{t("Sources")}</div>
                 </div>
                 {rows.map((r, i) => {
-                  const corr = i === 0 ? (r.pts.length ? 1 : 0) : correlation(first, r.pts);
+                  const corr = i === 0 ? (anyCorr ? 1 : null) : correlation(first, r.pts);
                   const quiet = r.series.pending || !r.series.points.length;
                   return (
                     <div
@@ -924,22 +937,14 @@ export function CompareScreen(props: {
                         <span className="nm" title={r.series.query}>{r.series.query}</span>
                       </div>
                       {quiet ? (
+                        /* One calm word, not a row of dashes (QA, 2 Oct). */
                         <>
-                          <div className="num" style={{ color: "#c7c7c7" }}>
-                            {collecting}
+                          <div className="num" style={{ color: "#a3a3a3", whiteSpace: "nowrap" }}>
+                            {zh ? "正在收集" : "collecting"}
                           </div>
-                          <div className="num" style={{ color: "#c7c7c7" }}>
-                            —
-                          </div>
-                          <div className="num" style={{ color: "#c7c7c7" }}>
-                            —
-                          </div>
-                          <div className="num" style={{ gap: 7, color: "#c7c7c7" }}>
-                            <div className="cbar" style={{ width: 36, height: 4, borderRadius: 2, background: "#ededed", flexShrink: 0 }}>
-                              <div style={{ width: "0%", height: 4, borderRadius: 2, background: "#c7c7c7" }}></div>
-                            </div>
-                            —
-                          </div>
+                          <div className="num" />
+                          <div className="num" />
+                          <div className="num" />
                         </>
                       ) : (
                         <>
@@ -947,17 +952,21 @@ export function CompareScreen(props: {
                           <div className="num">{fmtN(r.avg)}</div>
                           <div className={r.change < 0 ? "num dn" : "num up"}>{fmtPct(r.change)}</div>
                           <div className="num" style={{ gap: 7 }}>
-                            <div className="cbar" style={{ width: 36, height: 4, borderRadius: 2, background: "#ededed", flexShrink: 0 }}>
-                              <div
-                                style={{
-                                  width: `${Math.round(Math.abs(corr) * 100)}%`,
-                                  height: 4,
-                                  borderRadius: 2,
-                                  background: "#c7c7c7",
-                                }}
-                              ></div>
-                            </div>
-                            {corr.toFixed(2)}
+                            {corr === null ? null : (
+                              <>
+                                <div className="cbar" style={{ width: 36, height: 4, borderRadius: 2, background: "#ededed", flexShrink: 0 }}>
+                                  <div
+                                    style={{
+                                      width: `${Math.round(Math.abs(corr) * 100)}%`,
+                                      height: 4,
+                                      borderRadius: 2,
+                                      background: "#c7c7c7",
+                                    }}
+                                  ></div>
+                                </div>
+                                {corr.toFixed(2)}
+                              </>
+                            )}
                           </div>
                         </>
                       )}
@@ -1030,7 +1039,7 @@ export function CompareScreen(props: {
                 {t("Agent")}
               </div>
               <div style={{ flexGrow: 1 }}></div>
-              <span className="cap">{props.region}</span>
+              <span className="cap" style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0 }}>{props.region}</span>
             </div>
 
             <div style={{ flexShrink: 0, padding: "11px 13px", borderBottom: "1px solid #f3f3f3" }}>

@@ -20,7 +20,18 @@ const isAgent = (k: string): k is AgentKey => (AGENT_KEYS as readonly string[]).
  * 策划今日提报, on 首页 and at the top of 选题 (Catherine, 29 Sep: "让策划每天
  * 提报选题也没有了" — it was there, below the fold, so it read as gone).
  */
-export function PlanTodayCard({ plan, zh, canWrite }: { plan: PlanToday; zh: boolean; canWrite: boolean }) {
+export function PlanTodayCard({
+  plan,
+  zh,
+  canWrite,
+  canRedo = true,
+}: {
+  plan: PlanToday;
+  zh: boolean;
+  canWrite: boolean;
+  /** 换一份 replaces the plan for the whole studio: an owner's or admin's press (QA, 2 Oct). */
+  canRedo?: boolean;
+}) {
   const t = (a: string, b: string) => (zh ? a : b);
   const router = useRouter();
   const [busy, setBusy] = React.useState(false);
@@ -58,6 +69,7 @@ export function PlanTodayCard({ plan, zh, canWrite }: { plan: PlanToday; zh: boo
           <div style={{ fontSize: 15.5, fontWeight: 650, color: INK }}>{t("策划今日提报", "The planner's report today")}</div>
           <div style={{ fontSize: 12.5, color: MUTED }}>{t(`${plan.date} · 每天早上 8 点自动提报`, `${plan.date} · every morning at 8`)}</div>
         </div>
+        {canRedo ? (
         <button
           type="button"
           onClick={() => void redo()}
@@ -73,6 +85,7 @@ export function PlanTodayCard({ plan, zh, canWrite }: { plan: PlanToday; zh: boo
           </svg>
           {redoing ? t("策划正在重新想…（约半分钟）", "Thinking again…") : t("换一份", "Another one")}
         </button>
+        ) : null}
         {plan.href ? (
           <Link href={plan.href} prefetch={false} style={{ fontSize: 13, color: "#1f5fbf", textDecoration: "none", whiteSpace: "nowrap" }}>
             {t("看完整计划 →", "Full plan →")}

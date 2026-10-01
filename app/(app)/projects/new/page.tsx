@@ -3,7 +3,7 @@ import { StartProject } from "@/components/projects/StartProject";
 import { resolveTopicRef } from "@/lib/projects/service";
 import { briefText, evidenceLine } from "@/lib/projects/topic";
 
-export const metadata = { title: "新项目 · New project" };
+export const metadata = { title: "新项目" };
 
 /**
  * A project from a link: `/projects/new?title=…&brief=…&from=…`, or from a
