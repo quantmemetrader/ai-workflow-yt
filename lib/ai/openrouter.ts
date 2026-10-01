@@ -477,7 +477,31 @@ export async function complete(opts: Omit<StreamOptions, "tools">): Promise<Comp
   }
 }
 
+/**
+ * One answer, streamed underneath and collected (1 Oct): the gateway dropped or
+ * timed out long non-streaming answers — a full first draft — while the same
+ * models streamed chat answers fine.
+ */
 async function completeOnce(opts: Omit<StreamOptions, "tools">): Promise<Completion> {
+  let text = "";
+  const out: Omit<Completion, "text"> = { promptTokens: 0, completionTokens: 0, costMicros: 0, model: opts.model };
+  for await (const ev of streamChat({ ...opts })) {
+    if (ev.type === "text") text += ev.text;
+    else if (ev.type === "usage") {
+      out.promptTokens += ev.promptTokens;
+      out.completionTokens += ev.completionTokens;
+      out.costMicros += ev.costMicros;
+      if (ev.model) out.model = ev.model;
+      if (ev.provider) out.provider = ev.provider;
+      if (ev.requestId) out.requestId = ev.requestId;
+    } else if (ev.type === "error") throw new AiError(ev.kind, ev.message, ev.status);
+  }
+  if (!text.trim()) throw new AiError("provider", `${opts.model} returned an empty answer`);
+  return { text, ...out };
+}
+
+/** The same call without streaming: one JSON body back. Kept for callers that need it. */
+export async function completeJson(opts: Omit<StreamOptions, "tools">): Promise<Completion> {
   /*
    * Which service answers. OpenRouter normally; DeepSeek while the OpenRouter
    * account has no credit and every call would otherwise fall to a free
