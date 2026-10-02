@@ -3,11 +3,11 @@
 import { getPanelModel } from "@/components/chat/ModelChip";
 import { AUTO_MODEL } from "@/lib/ai/chat-models";
 import { AgentIcon } from "@/components/agents/AgentIcon";
-import { AGENT_COLORS, SCREEN_AGENT, parseAgentMentions, type AgentKey } from "@/lib/agents/catalog";
+import { AGENT_COLORS, AGENT_KEYS, AGENT_LABELS, SCREEN_AGENT, agentAliases, parseAgentMentions, type AgentKey } from "@/lib/agents/catalog";
 import { AgentTyping, streamStep } from "@/components/agents/AgentTyping";
 import { AgentName } from "@/components/ui/Tr";
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Markdown } from "@/components/ui/Markdown";
 import { conversationMessagesAction } from "@/app/(app)/chat/actions";
 import { tidyMarkdown } from "@/components/chat/look";
@@ -91,6 +91,24 @@ export type AgentContext = {
   articleId?: string;
 };
 
+
+/**
+ * Whom the assistant just handed work to, read off its own receipt line
+ * ("已交给策划，…"). That colleague answers in a channel and the answer is
+ * copied into this thread (`handoff-origin.ts`); until it lands, the thread
+ * shows them typing, so a hand-off never looks like silence (Avon, 2 Oct).
+ */
+const esc = (t: string) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+function handedTo(text: string): AgentKey | null {
+  if (!text) return null;
+  for (const key of AGENT_KEYS) {
+    const names = [AGENT_LABELS[key].nameLocal, AGENT_LABELS[key].nameEn, ...agentAliases(key)].filter((n) => n.length >= 2).map(esc).join("|");
+    if (new RegExp(`(?:已交给|交给了?|已派给|派给了?|安排给|已安排|已转给|handed (?:it |this |that )?(?:on )?to|asked)\\s*(?:${names})`, "i").test(text)) return key;
+  }
+  return null;
+}
+const AWAIT_MS = 4 * 60_000;
+
 export function useInlineAgent(
   context: AgentContext = {},
   opts: {
@@ -122,6 +140,20 @@ export function useInlineAgent(
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const abort = useRef<AbortController | null>(null);
+  /* A colleague whose answer is on its way (the last line is a hand-off receipt
+     and nothing from them has arrived yet), for up to four minutes. */
+  const [clock, setClock] = useState(0);
+  const awaitSince = useRef<{ id: string; at: number } | null>(null);
+  const awaiting: AgentKey | null = useMemo(() => {
+    void clock;
+    if (busy || !messages.length) return null;
+    const last = messages[messages.length - 1];
+    if (last.role !== "assistant" || last.status !== "complete" || last.speaker) return null;
+    const key = handedTo(last.content);
+    if (!key) return null;
+    if (awaitSince.current?.id !== last.id) awaitSince.current = { id: last.id, at: Date.now() };
+    return Date.now() - awaitSince.current.at < AWAIT_MS ? key : null;
+  }, [messages, busy, clock]);
 
   const patchLast = useCallback((fn: (m: InlineMessage) => InlineMessage) => {
     setMessages((prev) => {
@@ -345,14 +377,24 @@ export function useInlineAgent(
       if (stopped || !list) return;
       setMessages((prev) => (list.length > prev.length ? list.map((m) => ({ ...m, citations: [], tools: [] })) : prev));
     };
-    const timer = window.setInterval(() => void tick(), 15_000);
+    /* Quicker while a colleague's answer is on its way. */
+    const timer = window.setInterval(() => {
+      void tick();
+      if (awaiting) setClock((c) => c + 1);
+    }, awaiting ? 5_000 : 15_000);
     return () => {
       stopped = true;
       window.clearInterval(timer);
     };
-  }, [conversationId, busy]);
+  }, [conversationId, busy, awaiting]);
 
-  return { messages, conversationId, busy, notice, send, stop, load, reset };
+  /* The colleague typing at the end of the thread until their answer lands. */
+  const shown = useMemo<InlineMessage[]>(
+    () => (awaiting ? [...messages, { id: `awaiting-${awaiting}`, role: "assistant", content: "", status: "streaming", citations: [], tools: [], speaker: awaiting }] : messages),
+    [messages, awaiting],
+  );
+
+  return { messages: shown, conversationId, busy, notice, send, stop, load, reset };
 }
 
 /** The thread itself, sized for a 312px panel. */
