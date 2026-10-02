@@ -75,6 +75,8 @@ export type ThreadMessage = {
   made?: MadeScript | null;
   /** The employee who answered, when an @ handed the turn to one. */
   speaker?: AgentKey | null;
+  /** What this turn made or touched (an article, a project), as links under the answer. */
+  links?: { kind: string; id: string; title?: string }[];
   /** The renders and video files this turn names — a person's upload, an
    * employee's receipt — as cards this reader may open. */
   videos?: VideoCard[];
@@ -540,6 +542,9 @@ export function AgentScreen({
                 for (const a of Array.isArray(event.artifacts) ? event.artifacts : []) {
                   if ((a?.kind === "render" || a?.kind === "file") && typeof a.id === "string") named.add(a.id);
                 }
+                /* The article it wrote, the project it started: a link each (an article from chat used to be named and not linked). */
+                const linkable = (Array.isArray(event.artifacts) ? event.artifacts : []).filter((a: { kind?: string; id?: unknown }) => typeof a?.id === "string" && ["article", "script", "work_project", "video_project"].includes(String(a.kind)));
+                if (linkable.length) patchLast((m) => ({ ...m, links: [...(m.links ?? []), ...linkable.filter((a: { kind: string; id: string }) => !(m.links ?? []).some((l) => l.kind === a.kind && l.id === a.id)).map((a: { kind: string; id: string; title?: string }) => ({ kind: a.kind, id: a.id, title: a.title }))] }));
                 const inResult = (Array.isArray(event.resultIds) ? event.resultIds : []).filter((id: unknown): id is string => typeof id === "string" && /^(rnd|fil)_/i.test(id));
                 if (inResult.length <= RESULT_VIDEOS_MAX) for (const id of inResult) named.add(id);
               }
@@ -1323,6 +1328,7 @@ function AgentRow({ message, zh, locale }: { message: ThreadMessage; zh: boolean
           <VideoCards videos={message.videos} zh={zh} />
 
           {message.made && message.status !== "streaming" ? <MadeActions made={message.made} zh={zh} /> : null}
+          {message.links?.length && message.status !== "streaming" ? <ArtifactLinks links={message.links.filter((l) => !(message.made && (l.kind === "script" || l.kind === "work_project")))} zh={zh} /> : null}
           {message.status === "complete" && message.content ? <TeachLine agent={message.speaker ?? "assistant"} zh={zh} reply={message.content} messageId={message.id} /> : null}
 
           {message.error && (
@@ -1871,5 +1877,24 @@ function TeachLine({ agent, zh, reply, messageId }: { agent: string; zh: boolean
         {t("取消", "Cancel")}
       </button>
     </form>
+  );
+}
+
+
+/** Links to what a turn made: the article, the project, the script, the video. */
+const LINK_HREF: Record<string, (id: string) => string> = { article: (id) => `/article?id=${id}`, script: (id) => `/script/${id}`, work_project: (id) => `/projects/${id}`, video_project: (id) => `/video?project=${id}` };
+const LINK_WORD: Record<string, [string, string]> = { article: ["打开文章", "Open the article"], script: ["打开脚本", "Open the script"], work_project: ["打开项目", "Open the project"], video_project: ["打开视频", "Open the video"] };
+function ArtifactLinks({ links, zh }: { links: { kind: string; id: string; title?: string }[]; zh: boolean }) {
+  const shown = links.filter((l) => LINK_HREF[l.kind]);
+  if (!shown.length) return null;
+  return (
+    <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
+      {shown.map((l) => (
+        <Link key={l.kind + l.id} href={LINK_HREF[l.kind](l.id)} prefetch={false} style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12.5, fontWeight: 600, color: "#171717", background: "#f3f3f1", border: "1px solid #e3e1dc", borderRadius: 999, padding: "4px 11px", textDecoration: "none", maxWidth: 300, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {zh ? LINK_WORD[l.kind][0] : LINK_WORD[l.kind][1]}
+          {l.title ? <span style={{ fontWeight: 400, color: "#525252" }}>《{l.title.slice(0, 24)}》</span> : null}
+        </Link>
+      ))}
+    </div>
   );
 }
