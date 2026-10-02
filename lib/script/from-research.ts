@@ -1,4 +1,5 @@
 import "server-only";
+import { modelFor } from "@/lib/ai/models";
 import { AiError } from "@/lib/ai/openrouter";
 import { readFileText } from "@/lib/ai/retrieval";
 import { fileTextWithin } from "@/lib/files/extract";
@@ -240,7 +241,11 @@ export async function writeScript(viewer: Viewer, req: ScriptRequest): Promise<S
      second try almost always lands, and a script with no beats is useless. */
   for (let attempt = 0; attempt < 2 && beats === 0; attempt++) {
     try {
-      const draft = await draftFromBrief(viewer, id, { sources, instruction: req.instruction ?? undefined });
+      /* The second try goes to a different model at once: a provider that
+         answered empty or unreadable a moment ago usually does it again, and
+         that cost a client three minutes (stress run, 2 Oct). */
+      const retryModel = attempt ? (modelFor.assistant() !== (modelFor.agent("script") ?? modelFor.drafting()) ? modelFor.assistant() : "deepseek/deepseek-v4-flash") : undefined;
+      const draft = await draftFromBrief(viewer, id, { sources, instruction: req.instruction ?? undefined, ...(retryModel ? { model: retryModel } : {}) });
       if ("error" in draft) note = draft.error ?? "The draft could not be written.";
       else {
         beats = draft.beats;

@@ -156,7 +156,7 @@ export async function draftFromBrief(
    * research topic collected, a note somebody pasted. Facts the model may
    * use, listed so it does not have to invent any.
    */
-  opts: { sources?: string; instruction?: string } = {},
+  opts: { sources?: string; instruction?: string; /** A model to use instead of the writer's own (a retry after an empty answer). */ model?: string } = {},
 ) {
   await assertBudget(viewer);
 
@@ -173,7 +173,7 @@ export async function draftFromBrief(
     examples(viewer, script.title),
     creatorVoiceText(viewer.tenantId),
   ]);
-  const model = modelFor.agent("script") ?? modelFor.drafting();
+  const model = opts.model ?? modelFor.agent("script") ?? modelFor.drafting();
 
   const brief = [
     `标题：${script.title}`,
