@@ -43,7 +43,7 @@ export async function setAgentModelAction(agent: string, id: string | null): Pro
  */
 export async function teachRuleAction(agent: string, rule: string): Promise<{ error?: string }> {
   const viewer = await requireViewer();
-  if (!mayTrain(viewer)) return { error: "访客不能训练 AI 同事" };
+  if (!mayTrain(viewer)) return { error: "只有管理员可以训练 AI 同事" };
   if (!isTrainKey(agent)) return { error: "没有这个 AI 同事" };
   const line = String(rule ?? "").replace(/\s+/g, " ").trim().slice(0, 300);
   if (!line) return { error: "写下要它记住的一句话" };

@@ -56,7 +56,9 @@ const REFUSAL = /努力学习|无法回答|不能回答|无法提供|换个话�
 /** The line a list with nothing on the beat gets, without a model call. */
 export const NOTHING_ON_BEAT = "这份榜此刻没有 AI、加密、科技或商业相关的条目。";
 
-export async function summarizeHot(platform: ListKey | "beat_all", all: HotRow[], relevance?: RelevanceMap | null): Promise<string | null> {
+type Usage = { model: string; provider?: string; promptTokens: number; completionTokens: number; costMicros: number; requestId?: string };
+
+export async function summarizeHot(platform: ListKey | "beat_all", all: HotRow[], relevance?: RelevanceMap | null, onUsage?: (res: Usage) => Promise<void> | void): Promise<string | null> {
   if (!all.length) return null;
   const feed = platform === "beat_all" || isBeatFeedKey(platform);
   /* Each row keeps its place on the platform's list, so "第 10 名" in the
@@ -100,9 +102,10 @@ export async function summarizeHot(platform: ListKey | "beat_all", all: HotRow[]
   /* A model that declines (political lists trip some filters) answers with a
      canned line; that is not a summary, so the next model tries, and failing
      all of them the page shows nothing rather than the refusal. */
-  for (const model of [modelFor.utility(), modelFor.assistant()]) {
+  for (const model of [...new Set([modelFor.hot(), modelFor.utility(), modelFor.assistant()])]) {
     try {
       const res = await complete({ model, messages: [{ role: "user", content: prompt }], temperature: 0.3, maxTokens: 400 });
+      await onUsage?.(res);
       const text = toSimplified(res.text.replace(/<think>[\s\S]*?<\/think>/g, "").trim()).replace(/^["“「]|["”」]$/g, "");
       if (text && !REFUSAL.test(text)) return text.slice(0, 160);
     } catch (err) {

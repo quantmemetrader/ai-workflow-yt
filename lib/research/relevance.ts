@@ -329,7 +329,7 @@ async function markBatch(
     return `${i + 1}. ${r.phrase.replace(/\s+/g, " ").slice(0, 90)}${hint ? ` ｜${hint.slice(0, 40)}` : ""}`;
   });
   const content = prompt(platform, lines, pillars, beats);
-  const chain = [...new Set([modelFor.utility(), modelFor.assistant()])];
+  const chain = [...new Set([modelFor.hot(), modelFor.utility(), modelFor.assistant()])];
   for (const model of chain) {
     try {
       const res = await complete({ model, messages: [{ role: "user", content }], temperature: 0, maxTokens: 4000 });

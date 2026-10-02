@@ -74,7 +74,7 @@ export type GlossaryResult = {
 
 /* ------------------------------------------------------------------ terms */
 
-const HAN = /[㐀-䶿一-鿿豈-﫿]/;
+const HAN = /[㐀-䶿一-鿿豈-﫿]/; // zh-ok: a Unicode range, not a word
 const LATIN_TOKEN = /[A-Za-z][A-Za-z0-9.'-]*[A-Za-z0-9]|[A-Za-z]{2,}/g;
 
 /** Lines that name spellings on purpose: 专有名词写法：Anthropic、Claude… and the term cards. */

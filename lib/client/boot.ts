@@ -48,7 +48,7 @@ try{
     var d=document.createElement("div");
     d.setAttribute("translate","no");d.className="notranslate";d.setAttribute("role","alert");
     d.style.cssText="position:fixed;left:50%;top:12px;transform:translateX(-50%);z-index:2147483647;max-width:min(640px,calc(100vw - 24px));background:#fff7e6;border:1px solid #f0c36d;color:#6b4a07;border-radius:12px;padding:12px 40px 12px 14px;font:13px/1.6 system-ui,sans-serif;box-shadow:0 8px 24px rgba(0,0,0,.12)";
-    d.textContent="你的浏览器正在把页面自动转成繁体，所以会看到错字（例如「峕長」「參攷」）。本站内容全部是简体中文。这通常是浏览器里装了繁简转换插件（例如「新同文堂」「繁簡轉換」）：点地址栏右边的拼图图标 › 管理扩展程序，把它关掉，或者在插件里把 tengya.media 设为不转换，然后刷新页面。";
+    d.textContent="你的浏览器正在把页面自动转成繁体，所以会看到错字（例如「峕長」「參攷」）。本站内容全部是简体中文。这通常是浏览器里装了繁简转换插件（例如「新同文堂」「繁簡轉換」）：点地址栏右边的拼图图标 › 管理扩展程序，把它关掉，或者在插件里把 tengya.media 设为不转换，然后刷新页面。"; /* zh-ok: the garbage quoted to the person */
     var x=document.createElement("button");x.type="button";x.textContent="×";x.setAttribute("aria-label","关闭");
     x.style.cssText="position:absolute;right:8px;top:6px;border:0;background:none;font-size:18px;color:#6b4a07;cursor:pointer";
     x.onclick=function(){d.remove();};d.appendChild(x);
@@ -62,9 +62,9 @@ try{
     var check=function(){var t=p.textContent||"";if(t&&t!==PROBE)warn(t);};
     if(typeof MutationObserver==="function")new MutationObserver(check).observe(p,{characterData:true,childList:true,subtree:true});
     /* A converter that only rewrites what was on the page at load never touches the
-       probe (谢总, 1 Oct: the sidebar read 首頁 / 項目 / 腳本). The sidebar labels are
+       probe (谢总, 1 Oct: the sidebar read 首頁 / 項目 / 腳本). The sidebar labels are (zh-ok)
        always there and never Traditional: look for their converted forms too. */
-    var CONVERTED={"首頁":1,"項目":1,"腳本":1,"視頻":1,"選題":1,"設置":1,"後台":1,"員工管理":1,"財務":1,"賬務":1,"帳務":1,"法務":1};
+    var CONVERTED={"首頁":1,"項目":1,"腳本":1,"視頻":1,"選題":1,"設置":1,"後台":1,"員工管理":1,"財務":1,"賬務":1,"帳務":1,"法務":1}; /* zh-ok: what a converter turns the sidebar into */
     var scan=function(){
       try{
         var w=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT,null),k=0,t;
@@ -89,9 +89,16 @@ function report(kind,msg,stack,digest){
   }catch(e){}
 }
 window.__aura={report:report,stale:stale,reloadOnce:reloadOnce};
+/* A file dropped where nothing takes it (Avon, 2 Oct: drag-and-drop "works
+   in some chat windows, not others"): Chrome would replace the page with the
+   file. A box that takes files handles the event first, and a screen that
+   takes drops anywhere counts itself in window.__fileDropZones; otherwise the
+   drop is swallowed here and a notice says where files go. */
+document.addEventListener("dragover",function(e){try{var t=e.dataTransfer;if(!t||!t.types||Array.prototype.indexOf.call(t.types,"Files")<0)return;if(e.defaultPrevented||window.__fileDropZones)return;e.preventDefault();t.dropEffect="none";}catch(x){}});
+document.addEventListener("drop",function(e){try{var t=e.dataTransfer;if(!t||!t.files||!t.files.length)return;if(e.defaultPrevented||window.__fileDropZones)return;e.preventDefault();window.dispatchEvent(new CustomEvent("aura:notify",{detail:{id:Date.now(),kind:"info",text:"\u628a\u6587\u4ef6\u62d6\u5230\u5bf9\u8bdd\u6846\u3001\u53c2\u8003\u8d44\u6599\u6216\u6587\u4ef6\u533a\u91cc\uff0c\u677e\u624b\u5c31\u4f1a\u4e0a\u4f20\u3002"}}));}catch(x){}});
 /* Every text node's words, recorded the moment the browser inserts them and
    before any extension can rewrite them (2 Oct: a 繁简 converter turned the
-   script page's labels into 「導入文檔」「艸藁」「棠訪藁」). SimplifiedGuard
+   script page's labels into 「導入文檔」「艸藁」「棠訪藁」). SimplifiedGuard (zh-ok)
    (components/zh) puts these exact words back when a node is rewritten, and
    takes this watch over once React is up. */
 try{

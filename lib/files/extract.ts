@@ -221,7 +221,7 @@ async function readPdf(file: string, dir: string, opts: Opts): Promise<string> {
 
 async function viaPdf(file: string, dir: string, opts: Opts): Promise<string> {
   const profile = path.join(/*turbopackIgnore: true*/ dir, "lo-profile");
-  await run("soffice", [`-env:UserInstallation=file://${profile}`, "--headless", "--norestore", "--convert-to", "pdf", "--outdir", dir, file], { timeout: 180_000, env: { ...process.env, HOME: dir } });
+  await run("soffice", [`-env:UserInstallation=file://${profile}`, "--headless", "--norestore", "--convert-to", "pdf", "--outdir", dir, file], { timeout: 180_000, env: { NODE_ENV: process.env.NODE_ENV, PATH: process.env.PATH ?? "", HOME: dir, LANG: "C.UTF-8" } });
   const pdf = (await readdir(dir)).find((f) => f.endsWith(".pdf") && path.join(/*turbopackIgnore: true*/ dir, f) !== file);
   if (!pdf) throw new Error("LibreOffice made no PDF");
   const sub = await mkdtemp(path.join(/*turbopackIgnore: true*/ dir, "p-"));
@@ -232,7 +232,7 @@ async function readImage(file: string, dir: string, opts: Opts): Promise<string>
   /* Any format in, one reasonable JPEG out (HEIC, TIFF, BMP, SVG…). */
   const jpg = path.join(/*turbopackIgnore: true*/ dir, "img.jpg");
   await run("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-i", file, "-frames:v", "1", "-vf", "scale='min(1600,iw)':-2", jpg], { timeout: 60_000 }).catch(async () => {
-    await run("soffice", [`-env:UserInstallation=file://${path.join(/*turbopackIgnore: true*/ dir, "lo")}`, "--headless", "--convert-to", "jpg", "--outdir", dir, file], { timeout: 60_000, env: { ...process.env, HOME: dir } });
+    await run("soffice", [`-env:UserInstallation=file://${path.join(/*turbopackIgnore: true*/ dir, "lo")}`, "--headless", "--convert-to", "jpg", "--outdir", dir, file], { timeout: 60_000, env: { NODE_ENV: process.env.NODE_ENV, PATH: process.env.PATH ?? "", HOME: dir, LANG: "C.UTF-8" } });
   });
   const src = (await stat(jpg).catch(() => null)) ? jpg : file;
   return readImages([src], "先把图里所有文字原样抄出来（保留原文语言和繁简；没有文字就写「无文字」），再用两三句话说明这张图是什么、画面里有什么。格式：\n【图中文字】…\n【图片内容】…", opts);

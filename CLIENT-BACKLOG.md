@@ -302,7 +302,7 @@ Three things, all reading state that already exists:
 
 ## BLOCKER — ElevenLabs refuses this server (found 2026-09-23)
 
-Every ElevenLabs request from this box (84.32.64.46, Cherry Servers,
+Every ElevenLabs request from this box (tengya.media, Cherry Servers,
 Amsterdam) is redirected to their "restricted countries" help page, or a
 Cloudflare 403. So **transcription and voice-over do not work here**, whether
 started by hand or automatically; the last success was 2026-09-20, from the
@@ -436,7 +436,7 @@ there when you need the exact wording; do not copy it into the repo.
 
 ## ElevenLabs egress workaround (2026-09-23) — TEMPORARY
 
-ElevenLabs refuses this host's IP: API calls from `84.32.64.46` 302-redirect to
+ElevenLabs refuses this host's IP: API calls from `tengya.media` 302-redirect to
 their "do you restrict access by country" article, with and without an API key,
 so it is IP-based, not auth. The **old box `the old shared box` is accepted** — same
 provider, same city, same AS — so it is that one address, not Cherry Servers
@@ -677,11 +677,11 @@ Everything below was exercised in production, not just built.
 - **Cloudflare orange** on yt.okbro.xyz, SSL Full (strict). Honest measurement from Mumbai: handshakes 7–35 ms vs 280–330 ms direct, worst cases much better, medians only modestly better. Not a cure for Amsterdam↔HK distance.
 - Service account renamed to `service@tengya.internal`; owner account `avon@tengya.media` created (Avon / 谢亚芳, 创始人, all modules).
 
-**Still on the studio:** point `tengya.media` A records (Porkbun) at 84.32.64.46 or move the zone to Cloudflare — Caddy already serves the name; then set `APP_URL`, add the 301 from yt.okbro.xyz. Retry the 590 MB browser upload. Rotate the credentials that were pasted into chat. Watch the ElevenLabs voice-over quota.
+**Still on the studio:** point `tengya.media` A records (Porkbun) at tengya.media or move the zone to Cloudflare — Caddy already serves the name; then set `APP_URL`, add the 301 from yt.okbro.xyz. Retry the 590 MB browser upload. Rotate the credentials that were pasted into chat. Watch the ElevenLabs voice-over quota.
 
 `scripts/director-smoke.ts <userId> <fileId> [startSec] [len]` proves the whole pipeline on a short cut in ~2 minutes. Run it before believing any pipeline change.
 
-**Domain cutover done 2026-09-24:** the site is `https://tengya.media` (Cloudflare, orange, SSL Full strict). `APP_URL` flipped; `yt.okbro.xyz` 301s to it (kept on purpose — old links and cached chat previews still land). `server.okbro.xyz` (code-server) untouched. Rollback is one line, printed by `/root/cutover-tengya.sh`. Pending on the studio: an A record for `www` (→ 84.32.64.46, proxied). Sessions are per-host, so everyone signs in once more on the new domain.
+**Domain cutover done 2026-09-24:** the site is `https://tengya.media` (Cloudflare, orange, SSL Full strict). `APP_URL` flipped; `yt.okbro.xyz` 301s to it (kept on purpose — old links and cached chat previews still land). `server.okbro.xyz` (code-server) untouched. Rollback is one line, printed by `/root/cutover-tengya.sh`. Pending on the studio: an A record for `www` (→ tengya.media, proxied). Sessions are per-host, so everyone signs in once more on the new domain.
 
 ## DONE — 25 Sep, the second pass on "agentic" (Home, Flow, Trends, Script)
 

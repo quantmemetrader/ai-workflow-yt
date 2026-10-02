@@ -201,10 +201,10 @@ export async function collectPlatform(
        what it would have stored, without the model call and the brief. */
     const nothingToJudge = !!relevance && !hot.rows.some((r) => onFocus(relevance[r.phrase], 1));
     const [summary, judged] = await Promise.all([
-      summarizeHot(platform, hot.rows, relevance),
+      summarizeHot(platform, hot.rows, relevance, meterFor(tenantId)),
       nothingToJudge
         ? Promise.resolve<Judged>({})
-        : judgeHot(tenantId, platform, relevance && focus.length >= 3 ? focus : hot.rows, hot.fetchedAt, { brief: opts.brief }).catch(() => null),
+        : judgeHot(tenantId, platform, relevance && focus.length >= 3 ? focus : hot.rows, hot.fetchedAt, { brief: opts.brief, onUsage: meterFor(tenantId) }).catch(() => null),
     ]);
     hot.summary = summary;
     hot.judged = judged;

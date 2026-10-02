@@ -8,6 +8,7 @@ import { db } from "@/lib/db/client";
 import { approvals, files, notifications, scriptBeats, scriptComments, scriptVersions, scripts, users } from "@/lib/db/schema";
 import type { Viewer } from "@/lib/auth/dal";
 import { complete } from "@/lib/ai/openrouter";
+import { disclosureForWriting } from "@/lib/ai/disclosure";
 import { modelFor } from "@/lib/ai/models";
 import { assertBudget, recordUsage } from "@/lib/ai/ledger";
 import { canReadFiles } from "@/lib/authz/rebac";
@@ -335,7 +336,8 @@ export async function copilotRewrite(viewer: Viewer, scriptId: string, paragraph
     if (f?.text?.trim()) attached.push(`### ${f.name}\n${f.text}`);
   }
   const attachedText = attached.length ? `这次指令附的参考文件（指令说“照范例/照附件”时，学它的结构、语气、节奏和开头方式，但不要照抄它的内容）：\n${attached.join("\n\n").slice(0, 40000)}` : "";
-  const system = [COPILOT_PROMPT, HUMAN_STYLE_ZH, style.text ? `工作室的写作规范与文案的训练：\n${style.text.slice(0, 12000)}` : "", refs, attachedText].filter(Boolean).join("\n\n");
+  const model0 = pick ?? modelFor.agent("script") ?? modelFor.assistant();
+  const system = [COPILOT_PROMPT, disclosureForWriting(model0), HUMAN_STYLE_ZH, style.text ? `工作室的写作规范与文案的训练：\n${style.text.slice(0, 12000)}` : "", refs, attachedText].filter(Boolean).join("\n\n");
   const total = paragraphs.reduce((n, p) => n + spokenSeconds(p), 0);
   const user = [
     `标题：${script.title}`,
@@ -405,6 +407,7 @@ export async function copilotRedo(viewer: Viewer, scriptId: string, input: { bef
     "你是短视频工作室的文案，正在和同事一起改一份口播脚本里的一段话。",
     "按同事的新要求，重写你之前给出的这一段改法。只输出改好的这一段正文，不要引号、不要解释、不要编号。",
     "中文一律用简体字。保持原来的人设和口吻，不要编造事实、数字、人名。",
+    disclosureForWriting(pick ?? modelFor.agent("script") ?? modelFor.assistant()),
     style.text ? `工作室的写作规范与文案的训练：\n${style.text.slice(0, 6000)}` : "",
   ].filter(Boolean).join("\n");
   const user = [

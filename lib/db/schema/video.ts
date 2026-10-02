@@ -281,7 +281,7 @@ export const videoExports = pgTable(
     finishedAt: timestamp({ withTimezone: true }),
     createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index("video_exports_idx").on(t.tenantId, t.state, t.createdAt)],
+  (t) => [index("video_exports_idx").on(t.tenantId, t.state, t.createdAt), index("video_exports_project_idx").on(t.projectId, t.createdAt)],
 );
 
 /**

@@ -161,13 +161,13 @@ export async function trainingFor(tenantId: string, key: TrainKey): Promise<Trai
 
 export class TrainError extends Error {}
 
-/** Anybody on the team may teach the employees; a guest may only look. */
+/** Admins teach the employees (what they are told shapes every answer in the studio); everyone else may look. */
 export function mayTrain(viewer: Viewer): boolean {
-  return viewer.role !== "guest";
+  return viewer.isAdmin;
 }
 
 function guard(viewer: Viewer, key: unknown): asserts key is TrainKey {
-  if (!mayTrain(viewer)) throw new TrainError("访客不能修改训练内容");
+  if (!mayTrain(viewer)) throw new TrainError("只有管理员可以修改训练内容");
   if (!isTrainKey(key)) throw new TrainError("没有这位员工");
 }
 
@@ -232,7 +232,7 @@ export async function trainingHistory(viewer: Viewer, id: string) {
 
 /** Go back to an older version — as a new version, so nothing is lost. */
 export async function restoreTraining(viewer: Viewer, id: string, version: number) {
-  if (!mayTrain(viewer)) throw new TrainError("访客不能修改训练内容");
+  if (!mayTrain(viewer)) throw new TrainError("只有管理员可以修改训练内容");
   const row = await ownRow(viewer, id);
   const [old] = await db.select().from(knowledgeVersions).where(and(eq(knowledgeVersions.knowledgeId, id), eq(knowledgeVersions.version, version))).limit(1);
   if (!old) throw new TrainError("没有这个版本");
@@ -253,7 +253,7 @@ export async function addExample(viewer: Viewer, key: unknown, title: string, bo
 }
 
 export async function updateExample(viewer: Viewer, id: string, title: string, body: string) {
-  if (!mayTrain(viewer)) throw new TrainError("访客不能修改训练内容");
+  if (!mayTrain(viewer)) throw new TrainError("只有管理员可以修改训练内容");
   const row = await ownRow(viewer, id);
   if (row.kind !== "example") throw new TrainError("找不到这一条");
   const b = body.replace(/\r\n/g, "\n").trim().slice(0, 40_000);
@@ -263,7 +263,7 @@ export async function updateExample(viewer: Viewer, id: string, title: string, b
 }
 
 export async function setExampleActive(viewer: Viewer, id: string, active: boolean) {
-  if (!mayTrain(viewer)) throw new TrainError("访客不能修改训练内容");
+  if (!mayTrain(viewer)) throw new TrainError("只有管理员可以修改训练内容");
   const row = await ownRow(viewer, id);
   await db.update(knowledge).set({ active, updatedBy: viewer.id, updatedAt: new Date() }).where(eq(knowledge.id, row.id));
   await audit(viewer, active ? "train.example.on" : "train.example.off", { objectType: "knowledge", objectId: id, module: AUDIT_MODULE });
@@ -271,7 +271,7 @@ export async function setExampleActive(viewer: Viewer, id: string, active: boole
 
 /** Delete an example for good (the person pressed 删除 and confirmed). */
 export async function deleteExample(viewer: Viewer, id: string) {
-  if (!mayTrain(viewer)) throw new TrainError("访客不能修改训练内容");
+  if (!mayTrain(viewer)) throw new TrainError("只有管理员可以修改训练内容");
   const row = await ownRow(viewer, id);
   if (row.kind !== "example") throw new TrainError("只能删除范例");
   await db.delete(knowledge).where(eq(knowledge.id, row.id));

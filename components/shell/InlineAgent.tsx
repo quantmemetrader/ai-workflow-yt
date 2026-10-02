@@ -253,7 +253,9 @@ export function useInlineAgent(
             res.status === 401
               ? "Your session has ended. Sign in again."
               : res.status === 403
-                ? "You do not hold a module that can use the assistant here."
+                ? said && said.length < 200
+                  ? said
+                  : "你没有可以在这里使用助理的模块权限。"
                 : res.status === 413
                   ? "That message is too long."
                   : said && said.length < 200

@@ -12,13 +12,13 @@ Everything here was verified in that session unless marked *unverified*.
 
 ## 2. Server and repo
 
-- Box: `ubuntu@84.32.64.46` (also `root@84.32.64.46`). Ryzen 7700X, 63 GB RAM, plenty of disk. Only `root` and `ubuntu` users — do not create personal users.
+- Box: `ubuntu@tengya.media` (also `root@tengya.media`). Ryzen 7700X, 63 GB RAM, plenty of disk. Only `root` and `ubuntu` users — do not create personal users.
 - Repo on the box: `/home/ubuntu/projects/aiVideoFreeLance`. GitHub: `quantmemetrader/ai-workflow-yt` (**public** — check what you stage; never commit `.env.local`).
 - Commit identity: `git -c user.name=quantmemetrader -c user.email=quantmemetrader@users.noreply.github.com commit …`. Push uses a stored PAT already configured on the box. **No "Co-Authored-By: Claude" / "Generated with Claude Code" lines in commits** (owner's rule).
 - Next.js 16 App Router, `output: standalone`. `npm run deploy` = typecheck → smoke → build → `pm2 reload` (rolling) → health check on :3300. A deploy causes a few seconds of 502 through Caddy; that is what "the site is down" was on 2026-09-24 evening — Caddy logs showed 5xx only at deploy times.
 - pm2 apps: `aura` (4 cluster instances, port 3300), `aura-worker` (×2, job queue), cron-style: `aura-digest` (hourly, posts 08:00 HKT brief), `aura-plan` (hourly, 08:05 to-dos), `aura-research`, `aura-social`, `aura-social-daily`, `aura-sweep`, `aura-backup`. Config in `ecosystem.config.cjs`. Logs in `logs/`. `pm2 logs aura --lines 200 --nostream`.
 - Caddy fronts it (`server.okbro.xyz` box; tengya.media site). Access log via `sudo journalctl -u caddy`.
-- DB: Neon Postgres. Connection string in `/root/.neonuri` (root only): `ssh root@84.32.64.46 'psql "$(cat /root/.neonuri)" -c "…"'`. Schema in `lib/db/schema/*.ts` (drizzle). **Migrations only via `npx drizzle-kit generate`** — hand-written SQL got ignored once.
+- DB: Neon Postgres. Connection string in `/root/.neonuri` (root only): `ssh root@tengya.media 'psql "$(cat /root/.neonuri)" -c "…"'`. Schema in `lib/db/schema/*.ts` (drizzle). **Migrations only via `npx drizzle-kit generate`** — hand-written SQL got ignored once.
 - Env: `.env.local` on the box (never print it). Keys that matter: OpenRouter, DeepSeek fallback, YouTube Data API, `TICKHUB_TOKEN` (TikHub; note the spelling, both `TIKHUB_TOKEN`/`TICKHUB_TOKEN` are accepted by `lib/env.ts`), R2 storage, Neon.
 - Running a TS script on the box: `node --env-file=.env.local --dns-result-order=ipv4first --conditions=react-server --import tsx scripts/<x>.ts` (must be run from the repo dir; tsx compiles to CJS, so **no top-level await** in ad-hoc scripts — wrap in `async function main()`).
 - Verification pattern used all session: Playwright is installed on the box (`chromium` full build). Put a `.mjs` under `scripts/` (so `playwright` resolves), log in with the Catherine test account (default credentials live in `scripts/demo-video.mjs`), screenshot to `/tmp/boards/`, `scp` back. Chrome MCP from the Mac was flaky; prefer this.

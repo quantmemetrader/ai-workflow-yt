@@ -149,6 +149,13 @@ export const modelFor = {
   utility: () =>
     usable(modelChoice().utility) ?? usable(process.env.AI_MODEL_UTILITY) ?? "deepseek/deepseek-v4-flash",
   /**
+   * The hourly hot lists (judge, relevance marks, summaries): a model that
+   * answers a 30-row JSON list without reasoning first. The utility model
+   * reasoned its budget away and came back empty 200 times in two days
+   * (3 Oct), each time paid for and then paid for again by the fallback.
+   */
+  hot: () => usable(process.env.AI_MODEL_HOT) ?? "qwen/qwen-plus",
+  /**
    * Tried in order when the account is out of credit or a provider is
    * rate-limiting. Free models share an upstream pool and refuse often, so one
    * fallback is not enough to keep the product answering — a chain is.

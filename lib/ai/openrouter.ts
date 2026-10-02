@@ -109,7 +109,9 @@ export class AiError extends Error {
 
 function classify(status: number, body: string): AiError {
   const message = extractMessage(body) || body.slice(0, 400).trim() || `the provider returned HTTP ${status}`;
-  if (status === 402 || /insufficient|credit|quota|billing/i.test(message)) {
+  /* Only the gateway's own 402 is "out of credit" (it stops every fallback);
+     a provider that says "quota" in a 4xx is a provider to move on from. */
+  if (status === 402 || (status === 403 && /insufficient credit|insufficient_quota/i.test(message))) {
     return new AiError("credit", message, status);
   }
   if (status === 429) return new AiError("rate_limit", message, status);

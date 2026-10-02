@@ -396,7 +396,7 @@ const REEL_DEFAULTS = { aimChars: 8, maxChars: 12, minChars: 4, minMs: 500, paus
 /** The longest glossary term a line keeps whole; longer ones are quoted sentences, not names. */
 const REEL_MAX_ATOMIC_TERM = 8;
 
-const HAN_CHAR = /[㐀-䶿一-鿿豈-﫿]/;
+const HAN_CHAR = /[㐀-䶿一-鿿豈-﫿]/; // zh-ok: a Unicode range, not a word
 const R_DIGIT_RUN = /[0-9][0-9.,]*[0-9]|[0-9]/g;
 /** Scale words a figure may run through (3500多, 1.51亿, 30万), then at most one measure or unit (个, 次, 条, 美金, %). */
 const R_FIGURE_SCALE = "万亿千百十多余";

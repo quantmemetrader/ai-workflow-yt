@@ -1,0 +1,1 @@
+CREATE INDEX "video_exports_project_idx" ON "video_exports" USING btree ("project_id","created_at");

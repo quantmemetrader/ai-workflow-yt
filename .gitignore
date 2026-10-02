@@ -53,3 +53,8 @@ remotion/public/fonts/*.otf
 /.next-build/
 /releases/
 /static-archive/
+
+# Server notes and client documents are not for a public repository.
+api-host.log
+*.pdf
+*.log

@@ -43,7 +43,7 @@ export const VISION = {
   scoreFallback: process.env.VISION_MODEL_SCORE_FALLBACK || "qwen/qwen3-vl-235b-a22b-instruct",
   check: process.env.VISION_MODEL_CHECK || "qwen/qwen3.7-flash",
   /** OpenRouter provider slug the calls are pinned to; empty string means unpinned. */
-  provider: process.env.VISION_PROVIDER ?? "alibaba",
+  provider: process.env.VISION_PROVIDER ?? "",
   timeoutMs: Number(process.env.VISION_TIMEOUT_MS || 60_000),
 } as const;
 

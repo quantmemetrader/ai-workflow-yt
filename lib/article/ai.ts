@@ -3,6 +3,7 @@ import { and, asc, desc, eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { articles, scriptBeats, scriptVersions, scripts } from "@/lib/db/schema";
 import { complete } from "@/lib/ai/openrouter";
+import { disclosureForWriting } from "@/lib/ai/disclosure";
 import { modelFor } from "@/lib/ai/models";
 import { assertBudget, recordUsage } from "@/lib/ai/ledger";
 import { searchFiles, type Hit } from "@/lib/ai/retrieval";
@@ -106,6 +107,7 @@ export async function draftArticle(
         role: "system",
         content:
           ARTICLE_PROMPT +
+          `\n\n${disclosureForWriting(model)}` +
           (voice ? `\n\nThe creator this is written for, from their own channel. Sound like them:\n${voice}` : "") +
           (style.text ? `\n\nThe studio's house style:\n${style.text}` : ""),
       },

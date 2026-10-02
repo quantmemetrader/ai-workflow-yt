@@ -6,6 +6,7 @@ import { setScriptLengthAction, startFromTopicAction, startProjectAction } from 
 import { notify } from "@/lib/client/notify";
 import { bigButton } from "@/components/projects/kit";
 import { AttachButton, AttachChips, useAttachments } from "@/components/chat/Attach";
+import { dropFilesProps } from "@/components/chat/DropVeil";
 import { addReferenceAction } from "@/app/(app)/projects/[id]/script/actions";
 
 /**
@@ -53,6 +54,7 @@ export function NewVideoBox({ zh }: { zh: boolean }) {
   };
   return (
     <form
+      {...dropFilesProps(att.add, !pending)}
       onSubmit={(e) => {
         e.preventDefault();
         go();

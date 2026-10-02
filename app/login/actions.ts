@@ -83,7 +83,9 @@ export async function signIn(_prev: LoginState, formData: FormData): Promise<Log
      What this browser gets instead is a five-minute signed challenge that
      names the account and nothing else. */
   if (user.totpConfirmedAt && !(await browserIsTrusted(user.id))) {
-    await clearLoginThrottle(email);
+    /* The failures stay counted until the whole sign-in succeeds: clearing
+       them here let a password holder guess six-digit codes with a fresh
+       budget (security review, 3 Oct). */
     await startChallenge(user.id);
     await audit({ id: user.id, tenantId: user.tenantId }, "auth.2fa.challenge");
     redirect("/login/verify");
@@ -167,7 +169,9 @@ export async function verifySecondFactor(_prev: VerifyState, formData: FormData)
     const stored = user.totpRecovery ?? [];
     const hit = stored.length ? matchRecovery(typed, stored) : null;
     if (!hit) {
-      await audit({ id: user.id, tenantId: user.tenantId }, "auth.2fa.fail");
+      /* Counted by the sign-in throttle (`auth.fail` with the address), so a
+         wrong code costs the same as a wrong password. */
+      await audit({ id: user.id, tenantId: user.tenantId }, "auth.fail", { meta: { email: user.email, secondFactor: true } });
       return { error: "That code is not right." };
     }
     await db

@@ -478,7 +478,7 @@ export function cleanGroups(v: unknown): Groups {
 }
 
 /** The prompt's example answer; also how an answer that only repeats it is recognised. */
-const EXAMPLE_GROUPS = [["比特币", "比特幣", "BTC", "Bitcoin"], ["ETF", "现货ETF", "現貨ETF"]];
+const EXAMPLE_GROUPS = [["比特币", "比特幣", "BTC", "Bitcoin"], ["ETF", "现货ETF", "現貨ETF"]]; // zh-ok: the model is shown both spellings
 
 /**
  * The topic as search groups, by the utility model; the local split when it
@@ -493,7 +493,7 @@ async function searchGroups(researcher: Viewer, text: string, store: boolean): P
   const prompt = [
     "把下面这个短视频选题拆成 1 到 3 个检索概念，用来在热榜标题里做“包含”匹配。",
     "第一个概念必须是题目的核心对象（事件、公司、技术、资产、政策）。人群（普通人、散户、年轻人、老百姓）不要单独做概念，标题里很少写。",
-    "每个概念给 3 到 8 个检索词：短词（2 到 6 个字，或一个英文词/缩写），包括同义词、常见说法、英文缩写；简体和繁体写法不同的，两种都给（比如 失业、失業）。",
+    "每个概念给 3 到 8 个检索词：短词（2 到 6 个字，或一个英文词/缩写），包括同义词、常见说法、英文缩写；简体和繁体写法不同的，两种都给（比如 失业、失業）。", // zh-ok: the model is told to give both spellings
     "不要给整句，不要给“影响”“分析”“普通人”这类放在哪个标题里都成立的泛词。一个词只含一个概念：不要写“比特币ETF”，写成“比特币”和“ETF”两组。",
     `选题：「${text}」`,
     `只回答一个 JSON 对象：${JSON.stringify({ groups: EXAMPLE_GROUPS })}`,

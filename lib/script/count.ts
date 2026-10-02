@@ -11,7 +11,7 @@
 export const CJK_PER_SECOND = 4.5;
 export const WORDS_PER_SECOND = 2.6;
 
-const CJK = /[㐀-䶿一-鿿豈-﫿぀-ヿ]/gu;
+const CJK = /[㐀-䶿一-鿿豈-﫿぀-ヿ]/gu; // zh-ok: a Unicode range, not a word
 
 function split(text: string) {
   const cjk = (text.match(CJK) ?? []).length;

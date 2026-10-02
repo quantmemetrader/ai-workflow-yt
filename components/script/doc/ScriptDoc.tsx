@@ -1,6 +1,7 @@
 "use client";
 
 import { AttachButton, AttachChips, useAttachments } from "@/components/chat/Attach";
+import { dropFilesProps } from "@/components/chat/DropVeil";
 import { feedbackAction } from "@/app/(app)/train/learn-actions";
 import * as React from "react";
 import Link from "next/link";
@@ -1540,7 +1541,7 @@ export function ScriptDoc(props: ScriptDocProps) {
                   ))}
                 </div>
               ) : null}
-              <div className="gd-ai-bar" data-busy={thinking ? "1" : undefined}>
+              <div className="gd-ai-bar" data-busy={thinking ? "1" : undefined} {...dropFilesProps(refAtt.add, me.canEdit && !thinking)}>
                 <span className="gd-ai-mark"><GI name="sparkle" size={18} /></span>
                 <input
                   ref={askBox}
@@ -1614,7 +1615,7 @@ export function ScriptDoc(props: ScriptDocProps) {
                         </button>
                       ))}
                     </div>
-                    <div className="gd-ai-compose">
+                    <div className="gd-ai-compose" {...dropFilesProps(refAtt.add, !thinking)}>
                       <AttachChips zh={zh} attached={refAtt.attached} onRemove={refAtt.remove} />
                       <textarea
                         onPaste={refAtt.onPaste}

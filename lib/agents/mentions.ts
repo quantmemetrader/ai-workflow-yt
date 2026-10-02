@@ -223,7 +223,12 @@ export async function dispatchAgentMentions(input: MentionDispatch): Promise<voi
   const tagged = (input.handoff ? [input.handoff.to] : parseAgentMentions(input.body)).filter(
     (key) => !spoken.includes(key),
   );
-  const wanted = hop > 0 ? tagged.slice(0, 1) : tagged;
+  const asked = hop > 0 ? tagged.slice(0, 1) : tagged;
+  /* A person calls on an employee only in a module they hold: a Chat-only
+     member must not read the contracts by tagging 法务 (security review,
+     3 Oct). Admins hold everything; an employee passing work on is not gated. */
+  const author = input.viewer;
+  const wanted = agentKeyFromEmail(author.email) || author.isAdmin ? asked : asked.filter((key) => author.modules.includes(WORKS_IN[key]));
   if (!wanted.length) return;
 
   const channel = await channelFor(input.viewer, input.channelId);

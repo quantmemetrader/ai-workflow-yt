@@ -18,7 +18,7 @@ const FOUR = ["ai", "crypto", "tech", "biz"] as const;
    (房贷贴息, 女装退货, a burger chain's data leak) still reached the list.
    Read on the mark's tag and the headline; property-market analysis such
    as 楼市/地产 stays, the studio makes those. */
-const OFF_BEAT = /房贷|贴息|公积金|装修|女装|服装|退货|穿搭|美妆|美食|餐饮|外卖|汉堡|漢堡|奶茶|天气|天氣|旅游|旅遊|育儿|彩票|个资|個資|一卡通/;
+const OFF_BEAT = /房贷|贴息|公积金|装修|女装|服装|退货|穿搭|美妆|美食|餐饮|外卖|汉堡|漢堡|奶茶|天气|天氣|旅游|旅遊|育儿|彩票|个资|個資|一卡通/; // zh-ok: both spellings, as the lists carry them
 
 /** 「普 发 一 万」: spaces some feeds put between Chinese characters. */
 const tidy = (s: string) => s.replace(/([㐀-鿿])[ 　]+(?=[㐀-鿿])/g, "$1").trim();

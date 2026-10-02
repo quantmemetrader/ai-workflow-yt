@@ -25,6 +25,8 @@ NODE_OPTIONS=--max-old-space-size=8192 npx tsc --noEmit
 # Code that would make the build trace the whole project (see the script).
 node scripts/check-trace-sources.mjs
 npm run smoke
+# Simplified Chinese only, spelt from the standard set (the client's screenshots, 30 Sep to 2 Oct).
+npm run check:zh
 
 echo "==> renderer fonts"
 # Director v2 draws its captions (libass) and graphics (Remotion) in Noto
@@ -68,7 +70,10 @@ if pm2 describe aura >/dev/null 2>&1; then
   # time it is (re)loaded: reloading them on each deploy ran the paid TikHub
   # collection and the social sync every few minutes on a busy day. They pick
   # up new code on their next scheduled run anyway.
-  pm2 reload ecosystem.config.cjs --only aura,aura-worker --update-env
+  # By name, not through the ecosystem file: that re-created every cron app
+  # and ran each one at once (31 hot-list pulls on 2 Oct instead of 24).
+  pm2 reload aura --update-env
+  pm2 reload aura-worker --update-env
   # A scheduled app that is new in the ecosystem file is started once, so it
   # exists; the ones already there are left alone.
   for app in $(node -e "console.log(require(\"./ecosystem.config.cjs\").apps.map(a=>a.name).join(\" \"))"); do

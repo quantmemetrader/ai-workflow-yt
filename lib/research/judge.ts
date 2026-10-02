@@ -75,6 +75,8 @@ function rowFor(rows: HotRow[], n: number, echo: string): HotRow | null {
   return rows.find(opens) ?? null;
 }
 
+type Usage = { model: string; provider?: string; promptTokens: number; completionTokens: number; costMicros: number; requestId?: string };
+
 export async function judgeHot(
   tenantId: string,
   platform: ListKey,
@@ -82,7 +84,7 @@ export async function judgeHot(
   fetchedAt: number,
   /* `brief`: the studio's brief from the caller, when it judges many lists
      for one studio (the collector builds it once per run); otherwise read here. */
-  opts: { borrow?: boolean; brief?: () => Promise<StudioBrief> } = {},
+  opts: { borrow?: boolean; brief?: () => Promise<StudioBrief>; /** Each model call's usage, for the ledger (`meterFor`). */ onUsage?: (res: Usage) => Promise<void> | void } = {},
 ): Promise<Judged> {
   const key = `${tenantId}:${platform}:${fetchedAt}:${rows.length}:${opts.borrow ? "b" : "f"}`;
   const hit = cache.get(key);
@@ -125,9 +127,10 @@ export async function judgeHot(
    * array at all (cut off, or refused) goes to the assistant model once.
    */
   let judged: Judged = {};
-  for (const model of [...new Set([modelFor.utility(), modelFor.assistant()])]) {
+  for (const model of [...new Set([modelFor.hot(), modelFor.utility(), modelFor.assistant()])]) {
     try {
       const res = await complete({ model, messages: [{ role: "user", content: prompt }], temperature: 0.2, maxTokens: 3000 });
+      await opts.onUsage?.(res);
       const text = res.text.replace(/<think>[\s\S]*?<\/think>/g, "").trim();
       const start = text.indexOf("[");
       const end = text.lastIndexOf("]");

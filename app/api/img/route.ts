@@ -72,13 +72,22 @@ export async function GET(request: NextRequest) {
   if (target.protocol === "http:") target.protocol = "https:";
   if (target.protocol !== "https:") return new NextResponse("not allowed", { status: 403 });
 
-  const upstream = await fetch(target, {
-    // No cookies, no referrer: this is a fetch of a public picture, and it
-    // should look like nothing else.
-    headers: { accept: "image/*" },
-    redirect: "follow",
-    cache: "no-store",
-  }).catch(() => null);
+  // No cookies, no referrer: this is a fetch of a public picture, and it
+  // should look like nothing else.
+  const get = (u: URL) => fetch(u, { headers: { accept: "image/*" }, redirect: "manual", cache: "no-store" }).catch(() => null);
+  let upstream = await get(target);
+  /* One redirect, and only to a host on the list: a permitted CDN must not
+     become a door to anywhere (security review, 3 Oct). */
+  if (upstream && upstream.status >= 300 && upstream.status < 400) {
+    let hop: URL | null = null;
+    try {
+      const next = upstream.headers.get("location");
+      hop = next ? new URL(next, target) : null;
+    } catch {
+      hop = null;
+    }
+    upstream = hop && hop.protocol === "https:" && allowed(hop.hostname) ? await get(hop) : null;
+  }
 
   if (!upstream?.ok) return new NextResponse("upstream said no", { status: 502 });
 

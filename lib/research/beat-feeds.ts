@@ -739,8 +739,8 @@ async function buildFeed(
   }
 
   const [summary, judged] = await Promise.all([
-    summarizeHot(feed, rows, rel),
-    feed === "beat_crypto" ? Promise.resolve<Judged>({}) : judgeHot(ctx.tenantId, feed, rows, ctx.now, { brief: ctx.brief }).catch(() => null),
+    summarizeHot(feed, rows, rel, meterFor(ctx.tenantId)),
+    feed === "beat_crypto" ? Promise.resolve<Judged>({}) : judgeHot(ctx.tenantId, feed, rows, ctx.now, { brief: ctx.brief, onUsage: meterFor(ctx.tenantId) }).catch(() => null),
   ]);
   const note = [NOTES[feed], ctx.budget.refused.some((w) => w.startsWith(feed)) ? "本轮请求额度用完，部分关键词没搜。" : null].filter(Boolean).join(" ") || null;
   report.note = note;

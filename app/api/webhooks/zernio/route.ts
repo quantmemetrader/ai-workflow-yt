@@ -25,21 +25,22 @@ import { newId } from "@/lib/ids";
  *
  * Point Zernio at `<APP_URL>/api/webhooks/zernio`. If `ZERNIO_WEBHOOK_SECRET`
  * is set, the body must carry a matching `X-Zernio-Signature` (hex HMAC-SHA256
- * of the raw body); without the variable set, the route still works and says
- * so in the log, because a studio that has not configured signing is better
- * served by late-but-working than by silence.
+ * of the raw body). Without the variable, or without a matching signature,
+ * the request is refused: the same secret goes into Zernio's webhook settings.
  */
 export const maxDuration = 30;
 
 export async function POST(request: Request) {
   const raw = await request.text();
-  if (raw.length > 256_000) return new Response("Too large", { status: 413 });
+  if (raw.length > 64_000) return new Response("Too large", { status: 413 });
 
   const secret = process.env.ZERNIO_WEBHOOK_SECRET;
   const signed = verify(raw, request.headers.get("x-zernio-signature"), secret);
-  if (secret && !signed) {
+  if (!secret || !signed) {
     // Deliberately terse: a signature check that explains itself is a
-    // signature check that helps somebody get past it.
+    // signature check that helps somebody get past it. No secret configured
+    // is refused too (security review, 3 Oct): an unsigned body could flip
+    // a post's state for anyone who knew its platform id.
     return new Response("Bad signature", { status: 401 });
   }
 
@@ -86,7 +87,7 @@ export async function POST(request: Request) {
   }
 
   const status = (firstString(body.event, body.status, post.status) ?? "").toLowerCase();
-  const url = firstString(post.url, post.permalink, body.url);
+  const url = platformUrl(firstString(post.url, post.permalink, body.url));
   const error = firstString(post.error, body.error, body.message);
 
   /*
@@ -147,4 +148,19 @@ function firstString(...values: unknown[]): string | null {
     if (typeof v === "string" && v.trim()) return v.trim();
   }
   return null;
+}
+
+/** The platforms a post can live on; a link anywhere else is dropped (it is shown as a link to the studio). */
+const PLATFORM_HOSTS = ["youtube.com", "youtu.be", "tiktok.com", "instagram.com", "facebook.com", "x.com", "twitter.com", "xiaohongshu.com", "bilibili.com", "weixin.qq.com", "douyin.com", "kuaishou.com", "weibo.com", "linkedin.com", "threads.net", "channels.weixin.qq.com"];
+
+function platformUrl(raw: string | null): string | null {
+  if (!raw) return null;
+  try {
+    const u = new URL(raw);
+    if (u.protocol !== "https:") return null;
+    const host = u.hostname.toLowerCase();
+    return PLATFORM_HOSTS.some((h) => host === h || host.endsWith(`.${h}`)) ? u.toString().slice(0, 500) : null;
+  } catch {
+    return null;
+  }
 }

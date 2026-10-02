@@ -11,7 +11,7 @@ import type { Module } from "@/lib/db/schema";
 import { runAgent, titleConversation } from "@/lib/ai/agent";
 import type { ToolContext } from "@/lib/ai/tools/types";
 import { newId } from "@/lib/ids";
-import { AGENT_KEYS, parseAgentMentions, type AgentKey } from "@/lib/agents/catalog";
+import { AGENT_KEYS, AGENT_LABELS, parseAgentMentions, type AgentKey } from "@/lib/agents/catalog";
 import { agentViewer } from "@/lib/agents";
 import { CUT_TOOLS, MAX_REPLIES, WORKS_IN, findStartClaims, later } from "@/lib/agents/mentions";
 import { attachmentsFor, channelById } from "@/lib/chat/service";
@@ -317,6 +317,12 @@ export async function POST(request: Request) {
   const tagged = parseAgentMentions(content)[0] ?? null;
   const asked = typeof body.agent === "string" && AGENT_KEYS.includes(body.agent as AgentKey) ? (body.agent as AgentKey) : null;
   const speaker: AgentKey | null = tagged ?? asked;
+  /* An employee answers with its own permissions, but only to somebody who
+     holds its module: a Chat-only member must not read the contracts through
+     法务 (security review, 3 Oct). Admins hold everything. */
+  if (speaker && !viewer.isAdmin && !viewer.modules.includes(WORKS_IN[speaker])) {
+    return new Response(`${AGENT_LABELS[speaker].nameLocal}只回复持有「${WORKS_IN[speaker]}」模块权限的同事。`, { status: 403 });
+  }
   const speakerViewer = speaker ? await agentViewer(viewer.tenantId, speaker, requesterOf(viewer)) : viewer;
   /* The employee's trade, from the same table a channel turn reads, so 法务
      answers here with the Legal house rules as it does when tagged. */

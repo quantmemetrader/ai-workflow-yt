@@ -8,10 +8,28 @@
  * the same log as every server error (`pm2 logs aura`), so the next one can
  * be read instead of guessed at.
  *
- * Nothing is stored and nothing is returned. Bodies are capped; a signed-out
+ * Nothing is stored and nothing is returned. Bodies are capped, one address
+ * gets thirty a minute; a signed-out
  * page never gets here (the proxy sends it to /login), which is fine.
  */
+/* So many reports a minute from one address and the rest are dropped: the
+   endpoint is open, and the log is shared (security review, 3 Oct). */
+const RECENT = new Map<string, { n: number; at: number }>();
+const PER_MINUTE = 30;
+function allowed(ip: string): boolean {
+  const now = Date.now();
+  const r = RECENT.get(ip);
+  if (!r || now - r.at > 60_000) {
+    if (RECENT.size > 5000) RECENT.clear();
+    RECENT.set(ip, { n: 1, at: now });
+    return true;
+  }
+  r.n += 1;
+  return r.n <= PER_MINUTE;
+}
+
 export async function POST(request: Request) {
+  if (!allowed(request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "?")) return new Response(null, { status: 204 });
   let text = "";
   try {
     text = (await request.text()).slice(0, 4000);

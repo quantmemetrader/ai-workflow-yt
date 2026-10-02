@@ -17,6 +17,10 @@ export function useFileDrop(enabled: boolean, onFiles: (files: FileList) => void
   handler.current = onFiles;
   React.useEffect(() => {
     if (!enabled) return;
+    /* The boot script (lib/client/boot.ts) swallows a drop nothing takes; while a
+       screen takes drops anywhere, it stands aside. */
+    const w = window as unknown as { __fileDropZones?: number };
+    w.__fileDropZones = (w.__fileDropZones ?? 0) + 1;
     let depth = 0;
     const hasFiles = (e: DragEvent) => Array.from(e.dataTransfer?.types ?? []).includes("Files");
     const enter = (e: DragEvent) => {
@@ -46,6 +50,7 @@ export function useFileDrop(enabled: boolean, onFiles: (files: FileList) => void
     window.addEventListener("dragleave", leave);
     window.addEventListener("drop", drop);
     return () => {
+      w.__fileDropZones = Math.max(0, (w.__fileDropZones ?? 1) - 1);
       window.removeEventListener("dragenter", enter);
       window.removeEventListener("dragover", over);
       window.removeEventListener("dragleave", leave);
@@ -67,4 +72,27 @@ export function DropVeil({ on, zh }: { on: boolean; zh: boolean }) {
       </div>
     </div>
   );
+}
+
+/**
+ * Drop props for one box that takes files (a composer, the home box): the
+ * dragged files go to `onFiles`, nothing else on the page sees the drop, and
+ * the browser never opens the file instead (Avon, 2 Oct: drag-and-drop
+ * "works in some chat windows, not others"; in the others the page was
+ * replaced by the file).
+ */
+export function dropFilesProps(onFiles: (files: FileList) => void, enabled = true): Pick<React.HTMLAttributes<HTMLElement>, "onDragOver" | "onDrop"> {
+  return {
+    onDragOver: (e) => {
+      if (!enabled || !Array.from(e.dataTransfer.types).includes("Files")) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "copy";
+    },
+    onDrop: (e) => {
+      if (!enabled || !e.dataTransfer.files.length) return;
+      e.preventDefault();
+      e.stopPropagation();
+      onFiles(e.dataTransfer.files);
+    },
+  };
 }

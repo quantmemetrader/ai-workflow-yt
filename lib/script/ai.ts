@@ -5,6 +5,7 @@ import { and, asc, eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { knowledge, scriptBeats, scripts } from "@/lib/db/schema";
 import { complete } from "@/lib/ai/openrouter";
+import { disclosureForWriting } from "@/lib/ai/disclosure";
 import { modelFor } from "@/lib/ai/models";
 import { recordUsage, assertBudget } from "@/lib/ai/ledger";
 import { searchFiles, type Hit } from "@/lib/ai/retrieval";
@@ -196,6 +197,7 @@ export async function draftFromBrief(
         role: "system",
         content:
           DRAFT_PROMPT +
+          `\n\n${disclosureForWriting(model)}` +
           `\n\n${HUMAN_STYLE_ZH}` +
           (voice ? `\n\n这条视频是给这位创作者的，下面是他自己频道的内容，说话要像他：\n${voice}` : "") +
           (style.text ? `\n\n工作室的写作规范：\n${style.text}` : ""),

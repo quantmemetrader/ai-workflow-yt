@@ -1,3 +1,4 @@
+import { recordUsage } from "@/lib/ai/ledger";
 import "server-only";
 import { and, asc, count, eq, isNull } from "drizzle-orm";
 import { db } from "@/lib/db/client";
@@ -87,7 +88,7 @@ export async function oneGo(
        three clips looped under two minutes of narration is a slideshow. */
     const narratedBeats = narration ? beats.filter((b) => !b.naturalSound && b.voiceover.trim()) : [];
     const want = narratedBeats.length ? Math.min(8, Math.max(3, narratedBeats.length)) : 3;
-    const queries = narratedBeats.length ? await beatSearchWords(brief, narratedBeats.slice(0, want)) : await searchWords(brief);
+    const queries = narratedBeats.length ? await beatSearchWords(viewer, brief, narratedBeats.slice(0, want)) : await searchWords(viewer, brief);
     const seen = new Set<string>();
     for (const q of queries) {
       if (brought >= want) break;
@@ -182,7 +183,7 @@ export async function oneGo(
 }
 
 /** Two or three English stock-search phrases for a topic. */
-async function searchWords(topic: string): Promise<string[]> {
+async function searchWords(viewer: Viewer, topic: string): Promise<string[]> {
   try {
     const res = await complete({
       model: modelFor.utility(),
@@ -190,6 +191,7 @@ async function searchWords(topic: string): Promise<string[]> {
       maxTokens: 120,
       messages: [{ role: "user", content: `Give 3 short English search phrases for stock video footage that would illustrate this topic. One per line, 2 to 4 words each, generic scenes only (no brand names, no people's names). Topic: ${topic}` }],
     });
+    await recordUsage({ viewer, module: "video", provider: res.provider ?? "openrouter", model: res.model, promptTokens: res.promptTokens, completionTokens: res.completionTokens, costMicros: res.costMicros, requestId: res.requestId });
     const lines = res.text.replace(/<think>[\s\S]*?<\/think>/g, "").split("\n").map((l) => l.replace(/^[\s\d.\-*"]+|["\s]+$/g, "")).filter((l) => /^[a-zA-Z][a-zA-Z\s'-]{2,40}$/.test(l));
     if (lines.length) return lines.slice(0, 3);
   } catch {
@@ -203,7 +205,7 @@ async function searchWords(topic: string): Promise<string[]> {
  * is on screen (its 画面 column) and, failing that, what it says. In beat
  * order, so the narrated cut can start each beat on its own clip.
  */
-async function beatSearchWords(topic: string, beats: { visual: string; voiceover: string }[]): Promise<string[]> {
+async function beatSearchWords(viewer: Viewer, topic: string, beats: { visual: string; voiceover: string }[]): Promise<string[]> {
   try {
     const res = await complete({
       model: modelFor.utility(),
@@ -220,6 +222,7 @@ async function beatSearchWords(topic: string, beats: { visual: string; voiceover
         },
       ],
     });
+    await recordUsage({ viewer, module: "video", provider: res.provider ?? "openrouter", model: res.model, promptTokens: res.promptTokens, completionTokens: res.completionTokens, costMicros: res.costMicros, requestId: res.requestId });
     const lines = res.text
       .replace(/<think>[\s\S]*?<\/think>/g, "")
       .split("\n")
@@ -229,5 +232,5 @@ async function beatSearchWords(topic: string, beats: { visual: string; voiceover
   } catch {
     // fall through to the topic's own phrases
   }
-  return searchWords(topic);
+  return searchWords(viewer, topic);
 }
