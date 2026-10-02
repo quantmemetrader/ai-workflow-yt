@@ -26,6 +26,8 @@ const PUBLIC = [
   /^\/login\/verify$/,
   /^\/demo(\/|$)/,
   /^\/invite\/[^/]+$/,
+  /* The user guide is for anyone with the link (the owner, 2 Oct): no sign-in. */
+  /^\/userguide$/,
   /^\/api\/health$/,
   /* The favicon, the home-screen icon and the link preview. Drawn by routes
      rather than served as files, so the asset exclusion in `matcher` misses
