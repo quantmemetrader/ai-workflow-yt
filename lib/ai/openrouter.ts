@@ -1,3 +1,4 @@
+import { aliasModel } from "@/lib/ai/alias";
 import "server-only";
 import { env } from "@/lib/env";
 import { backendFor, estimateCostMicros } from "@/lib/ai/backend";
@@ -191,6 +192,7 @@ export type StreamOptions = {
  * model asked for, then exactly one usage event with OpenRouter's own costing.
  */
 export async function* streamChat(opts: StreamOptions): AsyncGenerator<StreamEvent> {
+  opts = { ...opts, model: aliasModel(opts.model) };
   // Which service answers. See `ai/backend.ts`: DeepSeek while OpenRouter has
   // no credit, OpenRouter the moment it does.
   const backend = backendFor(opts.model);

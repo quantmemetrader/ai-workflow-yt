@@ -19,7 +19,7 @@ export const AUTO_MODEL = "auto";
 
 export const CHAT_MODELS: ChatModel[] = [
   { id: AUTO_MODEL, zh: "自动", en: "Auto", lineZh: "工作室默认，一般选这个", lineEn: "The studio's default — usually right", real: "" },
-  { id: "anthropic/claude-sonnet-5", zh: "Claude", en: "Claude", lineZh: "写作和推理都很强，价格中等", lineEn: "Strong writing and reasoning", real: "Claude Sonnet 5" },
+  { id: "anthropic/claude-sonnet-5.5", zh: "Claude", en: "Claude", lineZh: "写作和推理都很强，价格中等", lineEn: "Strong writing and reasoning", real: "Claude Sonnet 5.5" },
   { id: "anthropic/claude-opus-5.5", zh: "Claude 最强", en: "Claude Opus", lineZh: "最聪明，贵一些", lineEn: "The smartest, costs more", real: "Claude Opus 5.5" },
   { id: "qwen/qwen3-max", zh: "标准", en: "Standard", lineZh: "中文好，最稳", lineEn: "Strong Chinese, the steady one", real: "Qwen3 Max" },
   { id: "qwen/qwen3.7-max", zh: "最强", en: "Strongest", lineZh: "难的问题、很长的文件", lineEn: "Hard questions, long files", real: "Qwen3.7 Max" },

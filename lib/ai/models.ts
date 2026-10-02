@@ -1,5 +1,6 @@
 import "server-only";
 import { modelChoice } from "@/lib/ai/choice";
+import { aliasModel } from "@/lib/ai/alias";
 
 /**
  * The model catalogue. Ids are OpenRouter ids; prices are per million tokens
@@ -131,7 +132,7 @@ export const MODEL_BY_ID = new Map(MODELS.map((m) => [m.id, m]));
  * nor one of DeepSeek's own is treated as the mistake it is.
  */
 function usable(id: string | null | undefined): string | null {
-  const s = (id ?? "").trim();
+  const s = aliasModel((id ?? "").trim());
   if (!s || s.length > 120) return null;
   if (/^[A-Za-z0-9._-]+\/[A-Za-z0-9._:-]+$/.test(s)) return s;
   // DeepSeek's own two ids are bare, and `backendFor` routes them there.
