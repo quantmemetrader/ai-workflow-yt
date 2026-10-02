@@ -54,7 +54,7 @@ export type SidebarPerson = {
  * middle, and an unread count in the product's ink rather than alarm red.
  */
 const CSS = `
-.ws-row .ws-more{opacity:0;transition:opacity .12s ease}.ws-row:hover .ws-more,.ws-row .ws-more:focus-within{opacity:1}.ws-row:hover .ws>span:last-of-type{visibility:hidden}
+.ws-row .ws-more{opacity:0;transition:opacity .12s ease}.ws-row:focus-within,.ws-row:has([aria-expanded="true"]){z-index:30}.ws-row:hover .ws-more,.ws-row .ws-more:focus-within{opacity:1}.ws-row:hover .ws>span:last-of-type{visibility:hidden}
 
 [data-ws-sidebar] .ws { height: 30px; border-radius: 8px; transition: background .12s; }
 [data-ws-sidebar] .ws:hover { background: rgba(0,0,0,.045); }

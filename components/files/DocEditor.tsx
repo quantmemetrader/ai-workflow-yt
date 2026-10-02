@@ -1,5 +1,6 @@
 "use client";
 
+import { TextSelection } from "@tiptap/pm/state";
 import * as React from "react";
 import Link from "next/link";
 import { EditorContent, useEditor } from "@tiptap/react";
@@ -73,7 +74,26 @@ export function DocEditor({
       Placeholder.configure({ placeholder: () => (zh ? "从这里开始写…" : "Start writing…"), showOnlyCurrent: true }),
       BlockExtras,
     ],
-    editorProps: { attributes: { class: "gd-prose notranslate", spellcheck: "false", translate: "no" } },
+    editorProps: {
+      attributes: { class: "gd-prose notranslate", spellcheck: "false", translate: "no" },
+      /* Enter splits where the caret is on screen: if the editor ever holds a stale
+         position (a click it has not caught up with), take the browser's selection
+         first (QA round 2: the new line once landed at the top of the document). */
+      handleKeyDown: (view, event) => {
+        if (event.key !== "Enter" || event.isComposing || !view.state.selection.empty) return false;
+        const dom = window.getSelection();
+        if (!dom || !dom.anchorNode || !view.dom.contains(dom.anchorNode)) return false;
+        try {
+          const pos = view.posAtDOM(dom.anchorNode, dom.anchorOffset);
+          if (pos !== view.state.selection.from && pos > 0 && pos <= view.state.doc.content.size) {
+            view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, pos)));
+          }
+        } catch {
+          /* a position the document cannot hold: leave the editor as it is */
+        }
+        return false;
+      },
+    },
     onUpdate: ({ transaction }) => {
       if (!transaction.docChanged) return;
       seq.current += 1;
