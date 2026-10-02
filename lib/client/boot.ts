@@ -109,8 +109,8 @@ try{
    comes back to the front, the page asks which release is answering. A newer
    one: the page reloads itself if nobody is typing in it, else a bar offers to. */
 (function(){
-  var meta=document.querySelector('meta[name="tg-release"]'),mine=meta&&meta.getAttribute("content");
-  if(!mine)return;
+  var mine=function(){var m=document.querySelector('meta[name="tg-release"]');return m&&m.getAttribute("content");};
+  if(!mine())return;
   var shown=0,hiddenAt=0;
   function typing(){var a=document.activeElement;return !!(a&&(a.tagName==="TEXTAREA"||a.tagName==="INPUT"||a.isContentEditable));}
   function bar(){
@@ -124,7 +124,7 @@ try{
   function check(force){
     if(document.visibilityState!=="visible")return;
     fetch("/api/health",{cache:"no-store"}).then(function(r){return r.json();}).then(function(j){
-      if(!j||!j.release||j.release===mine)return;
+      if(!j||!j.release||j.release===mine())return;
       if((force||!typing())&&Date.now()-hiddenAt<120000&&hiddenAt){location.reload();return;}
       if(!typing()&&!force){location.reload();return;}
       bar();

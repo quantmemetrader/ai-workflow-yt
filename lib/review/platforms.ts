@@ -1,4 +1,5 @@
 import "server-only";
+import { OWN_ACCOUNTS } from "@/lib/social/own-accounts";
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { settings } from "@/lib/db/schema";
@@ -281,6 +282,19 @@ export async function readPost(platform: string, url: string): Promise<PostReadi
   }
   if (platform === "shipinhao") {
     const d = await tikhubRequest<J>("/api/v1/wechat_channels/v2/fetch_video_detail", {}, { share_url: url, raw: false });
+    /* The video's author is our own account: its finder username unlocks the
+       account's profile and video list, which the channel-id lookup could not
+       (it answered with somebody else's account). Remembered for the tile. */
+    try {
+      const username = String(deepFind(d, ["username", "finder_username", "author_username", "finderUsername"]) ?? "");
+      const nick = String(deepFind(d, ["nickname", "author_nickname", "author_name", "nick_name"]) ?? "");
+      const own = OWN_ACCOUNTS.find((a) => a.platform === "wechat_channels");
+      if (own && /^v2_[0-9a-fA-F]+@finder$/.test(username) && own.name.split(/[-·\s]/).filter((x) => x.length >= 2).some((x) => nick.includes(x))) {
+        await keep(`review:wx-username:${own.id}`, { username, checkedAt: new Date().toISOString() });
+      }
+    } catch {
+      /* the reading itself is what matters */
+    }
     return {
       title: clip(d.title) || null,
       stats: { plays: zeroIsUnknown(num(d.read_count)), likes: num(d.like_count), comments: num(d.comment_count), shares: num(d.forward_count), collects: num(d.fav_count) },
