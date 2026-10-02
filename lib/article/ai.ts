@@ -141,8 +141,11 @@ export async function draftArticle(
     requestId: out.requestId,
   });
 
-  const drafted = parseArticle(out.text);
-  if (!drafted || !drafted.body.trim()) return { error: "The model did not return an article we could read." };
+  const parsedOut = parseArticle(out.text);
+  if (!parsedOut || !parsedOut.body.trim()) return { error: "The model did not return an article we could read." };
+  /* A second pair of eyes with the most natural Chinese (Kimi K2.6): the
+     wording only, never the facts; a failure leaves the draft as it was. */
+  const drafted = { ...parsedOut, body: await polishProse(viewer, parsedOut.body) };
 
   const saved = await saveArticle(viewer, articleId, {
     title: drafted.title || article.title,
@@ -328,5 +331,32 @@ function readJson<T>(text: string): T | null {
     return JSON.parse(m[0]) as T;
   } catch {
     return null;
+  }
+}
+
+
+/* ------------------------------------------------------------- polish */
+
+const POLISH_MODEL = "moonshotai/kimi-k2.6";
+const POLISH_PROMPT = `你是中文最好的文案编辑。下面是一篇文章的正文（Markdown）。逐句润色，让它像一个会写的真人写的，不像 AI 写的、也不像翻译过来的。
+
+改什么：翻译腔（“进行……”“对于……来说”“作为一个……”“在……的同时”、长定语堆叠）、AI 腔（“首先/其次/总之/值得注意的是/不仅……而且”、“赋能/打造/重磅/颠覆”）、破折号、空洞的总结句、排比凑数。句子短一点、口语一点。
+不能改：事实、数字、人名、时间、引语、段落顺序、小标题、Markdown 结构，一个都不能变，也不能加新的事实。总长度上下 15% 以内。
+只输出润色后的正文，不要说明，不要加标题。`;
+
+async function polishProse(viewer: Viewer, body: string): Promise<string> {
+  if (body.length < 200 || !/[\u4e00-\u9fff]/.test(body)) return body;
+  try {
+    const out = await complete({ model: POLISH_MODEL, temperature: 0.3, maxTokens: 6000, user: viewer.id, messages: [{ role: "system", content: POLISH_PROMPT }, { role: "user", content: body.slice(0, 16_000) }] });
+    await recordUsage({ viewer, module: "script", provider: out.provider ?? "openrouter", model: out.model, promptTokens: out.promptTokens, completionTokens: out.completionTokens, costMicros: out.costMicros, requestId: out.requestId }).catch(() => {});
+    const text = out.text.replace(/<think>[\s\S]*?<\/think>/g, "").trim();
+    const ratio = text.length / body.length;
+    if (!text || ratio < 0.7 || ratio > 1.35) return body;
+    /* The numbers must survive the polish, every one of them. */
+    const nums = (t: string) => (t.match(/\d+(?:[.,]\d+)?%?/g) ?? []).sort().join("|");
+    if (nums(text) !== nums(body)) return body;
+    return text;
+  } catch {
+    return body;
   }
 }

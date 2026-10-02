@@ -51,6 +51,7 @@ export function SimplifiedGuard() {
     let warned = false;
     const fights = new WeakMap<Node, number>();
     const nextAt = new WeakMap<Node, number>();
+    const queued = new WeakSet<Node>();
     /* The words each text node was given by React (or by the server), kept
        from the moment it appeared. The boot script started this record. */
     const orig: Orig = window.__zhOrig ?? new WeakMap<Node, string>();
@@ -119,7 +120,18 @@ export function SimplifiedGuard() {
       }
       if (skip(n.parentElement)) return;
       const now = Date.now();
-      if ((nextAt.get(n) ?? 0) > now) return;
+      const due = nextAt.get(n) ?? 0;
+      if (due > now) {
+        /* Backing off: the fix is still coming, when the wait is over. */
+        if (!queued.has(n)) {
+          queued.add(n);
+          window.setTimeout(() => {
+            queued.delete(n);
+            if (n.isConnected) fixNode(n);
+          }, due - now + 20);
+        }
+        return;
+      }
       const next = cleanFor(n, v);
       if (next === v) return;
       const round = (fights.get(n) ?? 0) + 1;

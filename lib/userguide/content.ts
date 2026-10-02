@@ -326,14 +326,38 @@ export const SECTIONS: Section[] = [
         [
           "渠道：「发布」里连接 YouTube、LinkedIn 等账号。每个渠道会显示「可发布」「需要重新授权」或「暂时受限」。授权到期的渠道，重新授权后才能发。",
           "发布一条视频：一般在项目的「发布」一步里发；也可以在发布页「新建发布」。先写文案、选渠道，批准后后台自动发出。「封面」卡片里是剪辑师做的三张封面，各配一个标题：选一张，发布时会随视频发到支持封面的平台（比如 YouTube）；不满意点「重做封面」。在别的地方发了的，可以在项目里标记为已发布。",
-          "账号数据：每个账号和每条视频的播放、点赞、评论、互动率。点进一条视频可以看走势图，数据覆盖超过一周时可以切 7 / 28 / 90 天。",
+          "账号数据：每个账号和每条视频的播放、点赞、评论、互动率。点进一条视频可以看走势图，数据覆盖超过一周时可以切 7 / 28 / 90 天。视频号（谢亚芳-创变派）的数字平台不开放读取，点卡片上的「手动填写」填进去；单条视频贴分享链接就能加。",
           "复盘：项目发出后，在「复盘」里看各平台的数据，AI 会写一份复盘结论，告诉你哪里做得好、下次怎么改。平台没提供的数据会留空，不会显示一个假的 0。",
         ],
         [
           "Channels: connect YouTube, LinkedIn and other accounts under 发布. Each shows 可发布 (ready), 需要重新授权 (reconnect) or 暂时受限 (limited). An expired channel posts again once reconnected.",
           "Posting a video: usually from the project's 发布 step; or 新建发布 on the publish page. Write the caption, pick channels; once approved it goes out from the back end. The 封面 card holds the editor's three covers, each with a title: pick one and it goes out with the video to platforms that take a cover (YouTube, for one); 重做封面 makes new ones. A video posted elsewhere can be marked as published in the project.",
-          "Account data: views, likes, comments and engagement per account and per video. Open a video for its trend; with more than a week of data you can switch 7 / 28 / 90 days.",
+          "Account data: views, likes, comments and engagement per account and per video. Open a video for its trend; with more than a week of data you can switch 7 / 28 / 90 days. WeChat Channels (谢亚芳-创变派) cannot be read by the platform, so its tile takes numbers through 手动填写, and a video by its share link.",
           "Review: after posting, 复盘 shows each platform's numbers and the AI writes a review: what worked, what to change next time. Numbers a platform does not provide are left blank, never shown as a fake 0.",
+        ],
+      ),
+    ],
+  },
+  {
+    id: "article",
+    zh: "文章",
+    en: "Articles",
+    blocks: [
+      p("「文章」是撰稿人写长文的地方：公众号、专栏、平台长帖。每篇文章有版本、审批和发布记录。", "文章 is where the writer makes long-form pieces: WeChat articles, columns, long posts. Each has versions, an approval and a publishing log."),
+      ul(
+        [
+          "写初稿：填标题、角度、语言，点「写初稿」。撰稿人只用脚本和你给的资料里的事实，不编数字。在聊天里对撰稿人说「写一篇关于……的文章」也一样。",
+          "改稿：在「这一版需要有什么不同」里写要求（比如「第一段缩短到两句，其他不动」），点「重写」。要求会当作修改指令来执行，其余内容保持原样，不会把你的话抄进文章。在页面右边的聊天里说「把开头改成提问」也可以。",
+          "核对事实：点「核对事实」，文中的数字、日期、人名、引语会逐条上网核对，标出「属实」「有出入」「无法证实」和依据。它只给结论，不改文章。",
+          "版本：每次重写前自动存一版，列表里能看到全部版本，点「恢复」回到任何一版。已批准并锁定的文章要先在「发布日志」里撤回，再恢复。",
+          "审批和发布：发给同事审批，批准后可以发布到各个目的地，发布记录都在「发布日志」里。",
+        ],
+        [
+          "First draft: fill in the title, angle and language, press 写初稿. The writer uses only the facts from the script and the material you give it. Asking the writer in chat for an article does the same.",
+          "Revising: write what should change under 这一版需要有什么不同 (such as shortening the first paragraph) and press 重写. The request is applied as an edit; the rest stays, and your words are never pasted into the piece. Telling the writer in the chat on the right works too.",
+          "核对事实: every number, date, name and quote in the text is looked up live and marked 属实, 有出入 or 无法证实 with the evidence. It reports; it does not change the article.",
+          "Versions: one is kept before every rewrite, all are listed, and 恢复 returns to any of them. An approved, locked article is retracted in 发布日志 first.",
+          "Approval and publishing: send it to a colleague to approve; once approved it can go to each destination, logged under 发布日志.",
         ],
       ),
     ],
@@ -403,6 +427,7 @@ export const SECTIONS: Section[] = [
       p("在「AI 同事 › 训练」里，可以把每位 AI 同事教成工作室想要的样子。每位同事一页：", "Under AI 同事 › 训练 you shape each AI colleague the way the studio wants. One page per colleague:"),
       ul(
         [
+          "名字和职责：管理员可以给每位 AI 同事改名字（比如把「文案」叫成你们习惯的称呼）和改一句话职责。改完后所有页面、@ 和它自己的提示都用新名字，旧名字也还认得。",
           "用哪个模型：给这位同事单独选一个模型，其他同事不受影响；不选就跟着工作室默认。「全部模型」里可以选任何可用的模型。",
           "工作说明：它每次干活都必须遵守的要求，一行一条，比如「开头 3 秒必须有钩子」「不要用‘家人们’」。每次修改都会留版本。",
           "范例：上传一两篇你喜欢的稿子，它会照着写。",
@@ -411,6 +436,7 @@ export const SECTIONS: Section[] = [
           "普通同事可以看、可以在聊天里给反馈；修改说明和模型由管理员来做。",
         ],
         [
+          "Name and role: admins can rename any AI colleague (call 文案 whatever the team says) and rewrite its one-line role. The new name appears on every screen, in @mentions and in its own prompt; the old name still works.",
           "Model: give this colleague its own model without affecting the others; unset, it follows the studio default. 全部模型 lists every model available.",
           "Instructions: the rules it follows every time, one per line, such as a hook in the first 3 seconds, or never saying 家人们. Every edit keeps a version.",
           "Samples: upload one or two pieces you like and it writes like them.",

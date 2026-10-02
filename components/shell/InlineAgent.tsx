@@ -327,6 +327,29 @@ export function useInlineAgent(
     }
   }, [opts.key, conversationId]);
 
+  /* A colleague's reply written into this thread from the server (a hand-off
+     made here is answered in a channel and copied back: `handoff-origin.ts`)
+     shows up without a reload: while the thread is open and idle, the server
+     is asked every 15 s for ten minutes whether it has more than we show. */
+  useEffect(() => {
+    if (!conversationId || busy) return;
+    let stopped = false;
+    const started = Date.now();
+    const id = conversationId;
+    const tick = async () => {
+      if (stopped || document.visibilityState !== "visible" || Date.now() - started > 10 * 60_000) return;
+      const res = await conversationMessagesAction(id).catch(() => null);
+      const list = res?.messages;
+      if (stopped || !list) return;
+      setMessages((prev) => (list.length > prev.length ? list.map((m) => ({ ...m, citations: [], tools: [] })) : prev));
+    };
+    const timer = window.setInterval(() => void tick(), 15_000);
+    return () => {
+      stopped = true;
+      window.clearInterval(timer);
+    };
+  }, [conversationId, busy]);
+
   return { messages, conversationId, busy, notice, send, stop, load, reset };
 }
 
