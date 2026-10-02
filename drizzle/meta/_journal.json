@@ -295,6 +295,13 @@
       "when": 1790926909732,
       "tag": "0041_empty_moonstone",
       "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1790934777460,
+      "tag": "0042_slow_invaders",
+      "breakpoints": true
     }
   ]
 }

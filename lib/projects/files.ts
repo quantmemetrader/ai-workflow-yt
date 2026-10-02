@@ -24,7 +24,7 @@ import { notProxy } from "@/lib/files/service";
  * project files page is tagged too, so it shows before it reaches the bin.
  * One file can sit in several projects; nothing is copied.
  */
-export const PROJECT_FILE_ROLES = ["clip", "reference", "render", "final", "other"] as const;
+export const PROJECT_FILE_ROLES = ["clip", "reference", "render", "final", "cover", "other"] as const;
 export type ProjectFileRole = (typeof PROJECT_FILE_ROLES)[number];
 
 export const ROLE_LABEL: Record<ProjectFileRole, { zh: string; en: string }> = {
@@ -32,6 +32,7 @@ export const ROLE_LABEL: Record<ProjectFileRole, { zh: string; en: string }> = {
   reference: { zh: "参考资料", en: "References" },
   render: { zh: "AI 成片", en: "AI renders" },
   final: { zh: "最终版视频", en: "Final videos" },
+  cover: { zh: "封面", en: "Covers" },
   other: { zh: "其他", en: "Other" },
 };
 

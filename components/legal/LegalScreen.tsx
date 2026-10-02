@@ -129,7 +129,7 @@ export function LegalScreen({
   const { busy, run } = useAction();
   const agent = useInlineAgent({ module: "legal" });
   const sp = useSearchParams();
-  const [tab, setTab] = useState<Tab>(sp?.get("tab") === "library" ? ("library" as Tab) : templates.length ? "draft" : "templates");
+  const [tab, setTab] = useState<Tab>(sp?.get("tab") === "draft" ? "draft" : sp?.get("tab") === "templates" ? "templates" : ("library" as Tab));
   const [selected, setSelected] = useState<ContractRow | null>(contracts[0] ?? null);
   const [findings, setFindings] = useState<Finding[]>([]);
 

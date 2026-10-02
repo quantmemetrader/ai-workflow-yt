@@ -29,6 +29,7 @@ import { makePeaks } from "../lib/video/peaks";
 import { autoEdit } from "../lib/video/autoedit";
 import { proposeFromFootage } from "../lib/agents/footage";
 import { afterPlan, autoCut, autoPublishCopy, exportOfJob } from "../lib/agents/autorun";
+import { makeCovers } from "../lib/video/cover";
 import { narrateDone, narrateFailed, narrateStart } from "../lib/agents/narrate";
 import { direct } from "../lib/video/director";
 import { refreshCreatorMemory } from "../lib/creator/service";
@@ -65,6 +66,7 @@ const TIMEOUT_BY_TYPE: Record<string, number> = {
   "video.export": 70 * 60_000,
   // A first draft with retries, plus each colleague answering its to-do.
   "agent.plan-followup": 25 * 60_000,
+  "video.cover": 15 * 60_000,
   // Transcribe, cut, design and render, end to end.
   "video.direct": 120 * 60_000,
   "video.transcribe": 45 * 60_000,
@@ -241,6 +243,12 @@ const HANDLERS: Record<string, Handler> = {
     return afterPlan(job.tenantId, messageId);
   },
 
+  /* A render is done: 剪辑师 makes the covers. */
+  "video.cover": (job) => {
+    const { exportId, again } = job.payload as { exportId: string; again?: boolean };
+    return makeCovers(exportId, { again: Boolean(again) });
+  },
+
   /* A render is done: 撰稿人 writes the post. */
   "agent.publish-copy": (job) => {
     const { exportId } = job.payload as { exportId: string };
@@ -370,5 +378,6 @@ async function followUp(job: JobRow, result: unknown): Promise<void> {
   if (job.type !== "video.export" && job.type !== "video.direct") return;
   const exportId = await exportOfJob(result, job.payload);
   if (!exportId) return;
+  await enqueue({ tenantId: job.tenantId, type: "video.cover", module: "video", payload: { exportId }, dedupeKey: `cover:${exportId}` });
   await enqueue({ tenantId: job.tenantId, type: "agent.publish-copy", module: "publish", payload: { exportId }, dedupeKey: `post:${exportId}` });
 }

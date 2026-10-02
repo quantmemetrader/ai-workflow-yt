@@ -47,6 +47,7 @@ export async function createPostAction(input: {
   body?: string;
   tags?: string[];
   fileId?: string | null;
+  coverFileId?: string | null;
   channelIds?: string[];
 }) {
   const viewer = await publisher();
@@ -58,6 +59,7 @@ export async function createPostAction(input: {
       body: str(input.body, 20_000),
       tags: Array.isArray(input.tags) ? input.tags.map((t) => str(t, 60)).filter(Boolean) : [],
       fileId: id(input.fileId),
+      coverFileId: id(input.coverFileId),
       channelIds: Array.isArray(input.channelIds) ? input.channelIds.map(id).filter((c): c is string => !!c) : [],
     });
     refresh();

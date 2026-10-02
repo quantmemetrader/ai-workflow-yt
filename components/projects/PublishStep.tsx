@@ -3,6 +3,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/ui/Icon";
+import type { Cover } from "@/lib/video/cover";
 import { PlatformMark } from "@/components/ui/PlatformMark";
 import { Card, Empty, Fact, GoButton, NextStep, PageBody, bigButton, smallButton, INK, MUTED, LINE } from "@/components/projects/kit";
 import { uploadFiles, type UploadProgress } from "@/lib/client/upload";
@@ -15,6 +16,7 @@ import {
   markFinalAction,
   markPlacePublishedAction,
   savePublishDraftAction,
+  remakeCoversAction,
   sendChannelsForApprovalAction,
   unmarkFinalAction,
   unmarkPlaceAction,
@@ -81,6 +83,7 @@ export function PublishStep({
   renders,
   rendering,
   finals,
+  covers,
   pickable,
   published,
   draft: initialDraft,
@@ -99,6 +102,8 @@ export function PublishStep({
   renders: Render[];
   rendering: { progress: number } | null;
   finals: PublishVideo[];
+  /** 剪辑师's covers for the render, newest first (`video.cover`). */
+  covers: Cover[];
   pickable: PublishVideo[];
   published: Publication | null;
   draft: PublishDraft;
@@ -130,7 +135,7 @@ export function PublishStep({
   const allVideoIds = React.useMemo(() => new Set([...finals.map((f) => f.id), ...renders.map((r) => r.fileId)]), [finals, renders]);
   const [draft, setDraft] = React.useState<PublishDraft>(() => {
     const fileId = initialDraft.fileId && allVideoIds.has(initialDraft.fileId) ? initialDraft.fileId : (finals[0]?.id ?? renders[0]?.fileId ?? null);
-    return { fileId, rows: initialDraft.rows };
+    return { fileId, coverFileId: initialDraft.coverFileId ?? null, rows: initialDraft.rows };
   });
   /* A new upload lands: pick it if nothing is picked yet. */
   React.useEffect(() => {
@@ -278,6 +283,60 @@ export function PublishStep({
         }}
       />
       {band}
+
+      {/* ---- 封面 ---- */}
+      <Card
+        icon="image"
+        title={t("封面", "Cover")}
+        sub={t("成片出来后剪辑师自动做三张，各配一个标题。选一张，发布时一起发到支持封面的平台（YouTube 等）。", "Three covers with titles, made when a render lands. Pick one; it goes out with the post where the platform takes a thumbnail.")}
+        right={
+          latest || covers.length ? (
+            <button
+              type="button"
+              disabled={pending}
+              onClick={() =>
+                start(async () => {
+                  const r = await remakeCoversAction(projectId);
+                  if (failed(r)) return;
+                  notify(t("剪辑师正在重做封面，一两分钟后出现在这里", "Making new covers; they appear here in a minute or two"), "ok");
+                  window.setTimeout(() => router.refresh(), 60_000);
+                })
+              }
+              style={smallButton()}
+            >
+              {covers.length ? t("重做封面", "Make new ones") : t("做封面", "Make covers")}
+            </button>
+          ) : null
+        }
+      >
+        {covers.length ? (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 12 }}>
+            {covers.map((c) => {
+              const on = draft.coverFileId === c.fileId;
+              return (
+                <div key={c.fileId} style={{ display: "flex", flexDirection: "column", gap: 6, minWidth: 0 }}>
+                  <button
+                    type="button"
+                    onClick={() => setDraft((d) => ({ ...d, coverFileId: on ? null : c.fileId }))}
+                    title={on ? t("已选这张封面", "Chosen") : t("用这张封面", "Use this cover")}
+                    style={{ position: "relative", padding: 0, border: on ? "2px solid #171717" : `1px solid ${LINE}`, borderRadius: 10, overflow: "hidden", background: "#111", cursor: "pointer", aspectRatio: c.aspect === "9:16" ? "9 / 16" : "16 / 9" }}
+                  >
+                    <img src={`/api/files/${c.fileId}/thumb`} alt={c.title} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                    {on ? <span style={{ position: "absolute", top: 8, left: 8, background: "#171717", color: "#fff", fontSize: 11.5, fontWeight: 600, borderRadius: 999, padding: "2px 8px" }}>{t("发布用这张", "Posting this")}</span> : null}
+                  </button>
+                  <div style={{ fontSize: 12.5, color: INK, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={c.title}>{c.title}</div>
+                  <div style={{ display: "flex", gap: 8, fontSize: 12, color: MUTED }}>
+                    <span>{c.aspect}</span>
+                    <a href={`/api/files/${c.fileId}/download?download=1`} style={{ color: "#525252" }}>{t("下载", "Download")}</a>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <Empty icon="image" text={latest ? t("剪辑师还没做封面。点右上角「做封面」。", "No covers yet. Press 「Make covers」.") : t("成片出来后，剪辑师会自动做三张封面。", "Covers are made when the render lands.")} />
+        )}
+      </Card>
 
       {/* ---- AI 成片 ---- */}
       <Card
@@ -530,6 +589,7 @@ export function PublishStep({
                       const on = channelRows.filter((r) => rowOf(r.key).on);
                       const res = await sendChannelsForApprovalAction(projectId, {
                         fileId: chosen?.id ?? null,
+                        coverFileId: draft.coverFileId ?? null,
                         approverId,
                         rows: on.map((r) => ({ channelId: r.channel!.id, title: rowOf(r.key).title || title, body: rowOf(r.key).body })),
                       });
@@ -545,6 +605,7 @@ export function PublishStep({
                       const on = channelRows.filter((r) => rowOf(r.key).on);
                       const res = await sendChannelsForApprovalAction(projectId, {
                         fileId: chosen?.id ?? null,
+                        coverFileId: draft.coverFileId ?? null,
                         approverId: viewerId,
                         rows: on.map((r) => ({ channelId: r.channel!.id, title: rowOf(r.key).title || title, body: rowOf(r.key).body })),
                       });

@@ -294,7 +294,7 @@ export async function direct(viewer: Viewer, projectId: string, jobId?: string):
 
   try {
     /* ---- 1. footage ------------------------------------------------- */
-    await say("footage", "Looking at what is in the bin");
+    await say("footage", "先看看素材箱里有什么");
 
     const bin = await db
       .select({ c: videoClips, name: files.name, kind: files.kind })
@@ -317,12 +317,12 @@ export async function direct(viewer: Viewer, projectId: string, jobId?: string):
       throw new Error("The script has no narration (旁白) to voice yet. Write the beats' voiceover first, or turn AI voice-over off.");
     }
     if (!narrated && narrateMode === "auto" && narration) {
-      await say("footage", "Listening for speech in the footage");
+      await say("footage", "听一下素材里有没有人说话");
       const heard = await footageHasSound(footage.map((f) => ({ id: f.c.id, fileId: f.c.fileId, peaksError: f.c.peaksError })));
       console.log(`[director ${projectId}] sound check: ${heard.notes.join("; ")}`);
       if (!heard.any) {
         narrated = true;
-        await say("footage", "The footage has no sound to cut on, so the script's narration will carry the video");
+        await say("footage", "素材里没有可以剪的声音，这条片用脚本的口播来带");
       }
     }
 
@@ -363,7 +363,7 @@ export async function direct(viewer: Viewer, projectId: string, jobId?: string):
       if (asked.narration?.trackId && (await dropNarration(viewer, projectId, asked.narration.trackId))) {
         await patch(projectId, (d) => ({ ...d, narration: undefined }));
         await db.delete(captions).where(eq(captions.projectId, projectId));
-        await say("footage", "The footage speaks this time, so the earlier AI voice-over is off the cut");
+        await say("footage", "这次素材里有人声，之前的 AI 配音就不用了");
       }
 
       /* ---- v2: the lab's pipeline, from the take up ------------------- */
@@ -385,7 +385,7 @@ export async function direct(viewer: Viewer, projectId: string, jobId?: string):
           chosen.map((f, i) => ({ id: newId("beat"), projectId, kind: "clip", clipId: f.c.id, ord: i * 10, inMs: 0, outMs: f.c.durationMs ?? null })),
         );
         items = await db.select().from(timelineItems).where(eq(timelineItems.projectId, projectId)).orderBy(asc(timelineItems.ord));
-        await say("footage", joinAll ? `Put all ${chosen.length} clips on the timeline in order` : `Put ${chosen[0].name ?? "the longest take"} on the timeline; the other ${footage.length - 1} stay as cutaways`);
+        await say("footage", joinAll ? `把 ${chosen.length} 段素材按顺序放上时间线` : `把${chosen[0].name ? `「${chosen[0].name}」` : "最长的一条"}放上时间线，其余 ${footage.length - 1} 段留作插画面`);
       }
 
       /* ---- 2. transcribe -------------------------------------------- */
@@ -397,17 +397,17 @@ export async function direct(viewer: Viewer, projectId: string, jobId?: string):
         .from(captions)
         .where(and(eq(captions.projectId, projectId), eq(captions.language, language), sql`${captions.words} is not null`));
       if (Number(timed[0]?.n ?? 0) === 0) {
-        await say("transcribe", "Transcribing the footage with word timings. A minute or two on a long take.");
+        await say("transcribe", "正在逐字转写素材，长的要一两分钟");
         try {
           const t = await transcribeProject(projectId, { language, diarize: true });
-          await say("transcribe", `Transcribed: ${t.captions} lines, ${t.languageCode} (${Math.round(t.languageProbability * 100)}% sure)`);
+          await say("transcribe", `转写完成：${t.captions} 句，语言 ${t.languageCode}（${Math.round(t.languageProbability * 100)}% 把握）`);
         } catch (err) {
           /* Footage the sound check let through (it has *a* sound — music,
              wind) but in which nobody speaks. With a script to read, that is
              a narrated video, not a failed one. */
           const msg = err instanceof Error ? err.message : String(err);
           if (narrateMode === "auto" && narration && NO_SPEECH.test(msg)) {
-            await say("transcribe", "Nobody speaks in the footage, so the script's narration will carry the video");
+            await say("transcribe", "素材里没有人说话，这条片用脚本的口播来带");
             narrated = true;
             language = await narrate();
           } else {
@@ -415,7 +415,7 @@ export async function direct(viewer: Viewer, projectId: string, jobId?: string):
           }
         }
       } else {
-        await say("transcribe", "The transcript is already here");
+        await say("transcribe", "转写已经有了，直接用");
       }
 
       /* ---- 3. cut --------------------------------------------------- */
@@ -423,16 +423,16 @@ export async function direct(viewer: Viewer, projectId: string, jobId?: string):
       if (narrated) {
         // Already cut to the narration.
       } else if (keepAll) {
-        await say("cut", "Leaving the cut as it is, as asked");
+        await say("cut", "按要求不动剪辑");
       } else {
-        await say("cut", "Taking out the dead air and choosing what to keep");
+        await say("cut", "去掉空白和口误，挑出要留的");
         const r = await autoEdit(viewer, projectId, { language, brief });
-        await say("cut", `Cut to ${r.cuts} piece${r.cuts === 1 ? "" : "s"}, ${(r.removedMs / 1000).toFixed(1)}s removed${r.note ? ` (${r.note})` : ""}`);
+        await say("cut", `剪成 ${r.cuts} 段，去掉 ${(r.removedMs / 1000).toFixed(1)} 秒${r.note ? `（${r.note}）` : ""}`);
       }
     }
 
     /* ---- 4. design -------------------------------------------------- */
-    await say("design", "Designing the titles, the captions, the punch-ins and the cutaways");
+    await say("design", "设计标题、字幕、推近镜头和插画面");
 
     const { rows: cutRows, totalMs } = await timelineOf(projectId);
     const cues = await db
@@ -583,7 +583,7 @@ export async function direct(viewer: Viewer, projectId: string, jobId?: string):
     }
 
     /* ---- 5. check and write ----------------------------------------- */
-    await say("write", "Writing the design onto the timeline");
+    await say("write", "把设计写进时间线");
 
     const said = `${transcript}\n${brief}`.replace(/[,，]/g, "");
     const clipById = new Map(footage.map((f) => [f.c.id, f.c]));
@@ -750,7 +750,7 @@ export async function direct(viewer: Viewer, projectId: string, jobId?: string):
         const startMs = f.startMs;
         const endMs = Math.min(totalMs, Math.max(startMs + 2500, Math.min(startMs + P.clipMs, f.endMs)));
         if (endMs - startMs < 2500) continue;
-        await say("pictures", `Looking for footage of "${f.query}"`);
+        await say("pictures", `找「${f.query}」的画面`);
         const found = await searchStockClips(f.query, {
           orientation: aspect === "9:16" ? "portrait" : aspect === "1:1" ? "square" : "landscape",
           limit: 5,
@@ -799,7 +799,7 @@ export async function direct(viewer: Viewer, projectId: string, jobId?: string):
       let fileId: string | null = p.fileId && known.has(p.fileId) ? p.fileId : null;
       let credit: string | null = null;
       if (!fileId && p.query) {
-        await say("pictures", `Looking for a picture of "${p.query}"`);
+        await say("pictures", `找一张「${p.query}」的图`);
         const found = await searchAnyPicture(p.query, 4).catch(() => []);
         const pick = found.find((f) => (f.width ?? 0) >= 800) ?? found[0];
         if (pick) {
@@ -850,7 +850,7 @@ export async function direct(viewer: Viewer, projectId: string, jobId?: string):
        the first. The channel's own look, and the only preset that reads it. */
     const bilingual = plan.look.bilingual || plan.look.captionPreset === "bilingual";
     if (bilingual && cues.length) {
-      await say("write", "Translating the captions and choosing the keywords");
+      await say("write", "翻译字幕，挑出关键词");
       await translateCues(viewer, projectId, language, cues);
     }
     const wantedPreset = plan.look.captionPreset && CAPTION_PRESETS.some((p) => p.key === plan.look.captionPreset) ? plan.look.captionPreset : null;
@@ -1168,7 +1168,7 @@ export function parseTranslation(text: string, cues: { text: string }[]): Transl
 }
 
 async function renderStep(viewer: Viewer, projectId: string, aspect: string, language: string, result: DirectResult, say: Say) {
-  await say("render", `Rendering ${aspect} with the captions burnt in. Minutes on a long cut.`);
+  await say("render", `正在渲染 ${aspect}，字幕压进画面。长片要几分钟。`);
   const exportId = newId("rnd");
   await db.insert(videoExports).values({
     id: exportId,
@@ -1182,7 +1182,7 @@ async function renderStep(viewer: Viewer, projectId: string, aspect: string, lan
   const rendered = await renderExport(exportId);
   result.exportId = exportId;
   result.fileId = rendered.fileId;
-  await say("render", `Rendered: ${(rendered.durationMs / 1000).toFixed(0)}s`);
+  await say("render", `渲染完成：${(rendered.durationMs / 1000).toFixed(0)} 秒`);
   return result;
 }
 
@@ -1216,7 +1216,7 @@ async function onFailure(projectId: string, err: unknown) {
       ...d,
       state: "queued",
       resume: d.result ? "render" : undefined,
-      note: "The worker restarted during the render. Picking it up again in a moment.",
+      note: "渲染中途服务重启了，马上接着来。",
       error: undefined,
     }));
     return;

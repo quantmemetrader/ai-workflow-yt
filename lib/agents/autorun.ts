@@ -14,6 +14,7 @@ import { draftFromBrief } from "@/lib/script/ai";
 import { formatHints } from "@/lib/projects/topic";
 import { requestDirector } from "@/lib/video/service";
 import { createPost, listChannels } from "@/lib/publish/service";
+import { coversFor } from "@/lib/video/cover";
 import { complete } from "@/lib/ai/openrouter";
 import { modelFor } from "@/lib/ai/models";
 import { assertBudget, recordUsage } from "@/lib/ai/ledger";
@@ -306,7 +307,8 @@ export async function autoPublishCopy(exportId: string): Promise<{ postId: strin
   const body = humanize(toSimplified(typeof copy.body === "string" ? copy.body.trim() : ""));
   const tags = (Array.isArray(copy.tags) ? copy.tags : []).filter((t): t is string => typeof t === "string").map((t) => toSimplified(t.replace(/^#/, "").trim())).filter(Boolean).slice(0, 6);
   const channels = (await listChannels(owner).catch(() => [])).filter((c) => c.canPost && !c.needsReconnect).map((c) => c.id);
-  const postId = await createPost(owner, { title, body, tags, fileId: ex.fileId, scriptId: vp.scriptId, channelIds: channels });
+  const cover = (await coversFor(owner, wp.id).catch(() => []))[0] ?? null;
+  const postId = await createPost(owner, { title, body, tags, fileId: ex.fileId, coverFileId: cover?.fileId ?? null, scriptId: vp.scriptId, channelIds: channels });
 
   const article = await agentViewer(vp.tenantId, "article", owner.id);
   await postMessage(

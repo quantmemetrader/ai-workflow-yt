@@ -368,7 +368,7 @@ async function projectForFile(viewer: Viewer, fileId: string): Promise<{ directo
 
 export async function createPost(
   viewer: Viewer,
-  input: { title: string; body?: string; tags?: string[]; fileId?: string | null; scriptId?: string | null; channelIds: string[] },
+  input: { title: string; body?: string; tags?: string[]; fileId?: string | null; coverFileId?: string | null; scriptId?: string | null; channelIds: string[] },
 ) {
   const title = input.title.trim();
   if (!title) throw new Error("A post needs a title");
@@ -394,6 +394,7 @@ export async function createPost(
     body: withCredits(input.body ?? "", project).slice(0, 20_000),
     tags: (input.tags ?? []).slice(0, 30),
     fileId: input.fileId ?? null,
+    coverFileId: input.coverFileId ?? null,
     scriptId: input.scriptId ?? null,
     ownerId: viewer.id,
   });

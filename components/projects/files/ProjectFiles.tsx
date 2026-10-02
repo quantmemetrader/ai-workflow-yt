@@ -28,6 +28,7 @@ const ROLE_LABEL: Record<ProjectFileRole, { zh: string; en: string }> = {
   reference: { zh: "参考资料", en: "References" },
   render: { zh: "AI 成片", en: "AI renders" },
   final: { zh: "最终版视频", en: "Final videos" },
+  cover: { zh: "封面", en: "Covers" },
   other: { zh: "其他", en: "Other" },
 };
 
@@ -41,6 +42,7 @@ const HINT: Record<ProjectFileRole, { zh: string; en: string }> = {
   render: { zh: "剪辑师渲染出来的成片，下载后可以自己再修改", en: "What the editor rendered; download it to fix it up yourself" },
   clip: { zh: "主持人拍好的口播和空镜，剪辑师从这里取素材", en: "What the host filmed; the editor cuts from these" },
   reference: { zh: "范例、笔记、资料，编剧写脚本时会参考", en: "Examples, notes and research the writer reads" },
+  cover: { zh: "剪辑师做的封面，发布时选一张", en: "Covers the editor made; pick one when posting" },
   other: { zh: "其他放进这个项目的文件", en: "Anything else put in this project" },
 };
 
@@ -49,10 +51,11 @@ const EMPTY: Record<ProjectFileRole, { zh: string; en: string }> = {
   render: { zh: "还没有成片。素材到了，剪辑师剪完渲染后会出现在这里。", en: "No render yet. It appears here once the editor has cut and rendered." },
   clip: { zh: "主持人拍好的口播和空镜传到这里，剪辑师会自动拿到。", en: "Upload the host's takes and b-roll here; the editor picks them up." },
   reference: { zh: "把范例脚本、笔记、PDF 传到这里，编剧写的时候会看。", en: "Upload example scripts, notes and PDFs; the writer reads them." },
+  cover: { zh: "成片出来后，剪辑师会自动做三张封面。", en: "Covers are made when the render lands." },
   other: { zh: "暂时没有其他文件。", en: "Nothing else yet." },
 };
 
-const ROLE_ICON: Record<ProjectFileRole, IconName> = { final: "play", render: "film", clip: "clapper", reference: "doc", other: "folder" };
+const ROLE_ICON: Record<ProjectFileRole, IconName> = { final: "play", render: "film", clip: "clapper", reference: "doc", cover: "image", other: "folder" };
 
 type View = "list" | "grid";
 const VIEW_KEY = "pj-files-view";

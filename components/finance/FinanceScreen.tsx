@@ -110,7 +110,7 @@ export function FinanceScreen({
   const [generating, setGenerating] = useState(false);
   const agent = useInlineAgent({ module: "finance" });
   const sp = useSearchParams();
-  const [tab, setTab] = useState<Tab>(sp?.get("tab") === "library" && library ? "library" : "budget");
+  const [tab, setTab] = useState<Tab>(sp?.get("tab") === "budget" || !library ? "budget" : "library");
 
   const waiting = spend.filter((s) => s.state === "awaiting_approval");
   const budgeted = budget.cells.reduce((n, c) => n + c.budgetMicros, 0);

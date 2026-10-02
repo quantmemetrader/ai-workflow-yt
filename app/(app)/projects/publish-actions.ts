@@ -7,6 +7,8 @@ import { tagProjectFile, untagProjectFile } from "@/lib/projects/files";
 import { addPublishedPlace, projectForPublish, removePublishedPlace, savePublishDraft, writeCaptions } from "@/lib/projects/publish-page";
 import type { PublishDraft } from "@/lib/projects/publish-rows";
 import { createPost, requestApproval, setOverride, listPosts } from "@/lib/publish/service";
+import { enqueue } from "@/lib/jobs/queue";
+import { latestExportId } from "@/lib/video/cover";
 
 /**
  * The 发布 page's presses (`components/projects/PublishStep.tsx`).
@@ -97,7 +99,7 @@ export async function unmarkPlaceAction(projectId: string, key: string) {
  */
 export async function sendChannelsForApprovalAction(
   projectId: string,
-  input: { fileId: string | null; rows: { channelId: string; title: string; body: string }[]; approverId: string | null },
+  input: { fileId: string | null; coverFileId?: string | null; rows: { channelId: string; title: string; body: string }[]; approverId: string | null },
 ) {
   const viewer = await getViewer();
   if (!viewer || !viewer.modules.includes("publish") || viewer.role === "guest") return { error: "没有权限" };
@@ -113,6 +115,7 @@ export async function sendChannelsForApprovalAction(
       title: (first.title || p.title).slice(0, 300),
       body: String(first.body ?? "").slice(0, 20_000),
       fileId,
+      coverFileId: id(input.coverFileId ?? null),
       scriptId: p.scriptId,
       channelIds: rows.map((r) => r.channelId),
     });
@@ -128,4 +131,20 @@ export async function sendChannelsForApprovalAction(
   } catch (err) {
     return { error: err instanceof Error ? err.message : "Could not send it for approval" };
   }
+}
+
+/**
+ * 重做封面 / 做封面 on the 发布 step: 剪辑师 draws three new covers for the
+ * newest render (`video.cover` on the worker), replacing the earlier set.
+ * Anyone who may see the project and has Video or Publish may ask.
+ */
+export async function remakeCoversAction(projectId: string) {
+  const viewer = await getViewer();
+  if (!viewer || viewer.role === "guest" || !(viewer.modules.includes("publish") || viewer.modules.includes("video"))) return { error: "没有权限" };
+  const p = await projectForPublish(viewer, String(projectId));
+  if (!p?.videoProjectId) return { error: "找不到了，可能已被删除" };
+  const exportId = await latestExportId(p.videoProjectId);
+  if (!exportId) return { error: zhOf(viewer.locale) ? "还没有成片，出成片后会自动做封面" : "No render yet; covers are made when one lands" };
+  await enqueue({ tenantId: viewer.tenantId, type: "video.cover", module: "video", objectType: "video_project", objectId: p.videoProjectId, payload: { exportId, again: true }, createdBy: viewer.id });
+  return { ok: true as const };
 }

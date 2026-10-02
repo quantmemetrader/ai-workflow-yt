@@ -110,12 +110,19 @@ export async function sendPost(postId: string, onlyTargetId?: string): Promise<S
    * signature may (7 days); an immediate one for a day. This was the reason
    * every post left as text: the file was stored on the post and never sent.
    */
-  let media: { url: string; type: "video" | "image" }[] | undefined;
+  let media: { url: string; type: "video" | "image"; thumbnail?: string }[] | undefined;
   if (post.fileId) {
     const [f] = await db.select({ key: files.storageKey, mime: files.mime, deletedAt: files.deletedAt }).from(files).where(eq(files.id, post.fileId)).limit(1);
     if (f?.key && !f.deletedAt) {
       const expiresIn = post.scheduledFor ? 7 * 86_400 - 60 : 86_400;
       media = [{ url: await presignDownload(f.key, { expiresIn }), type: f.mime?.startsWith("image/") ? "image" : "video" }];
+      /* The cover picked on the 发布 step (`video.cover`): Zernio sets it as the
+         video's custom thumbnail where the platform allows one (YouTube: JPEG
+         under 2 MB, which ours are). */
+      if (post.coverFileId && media[0].type === "video") {
+        const [c] = await db.select({ key: files.storageKey, deletedAt: files.deletedAt }).from(files).where(eq(files.id, post.coverFileId)).limit(1);
+        if (c?.key && !c.deletedAt) media[0].thumbnail = await presignDownload(c.key, { expiresIn });
+      }
     }
   }
 

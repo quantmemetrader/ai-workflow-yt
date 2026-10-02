@@ -32,10 +32,11 @@ import { PUBLISH_ROWS, captionLimits, type PublishDraft, type PublishRowKey } fr
 
 export function readPublishDraft(source: unknown): PublishDraft {
   const raw = source && typeof source === "object" ? (source as { publishDraft?: unknown }).publishDraft : null;
-  const out: PublishDraft = { fileId: null, rows: {} };
+  const out: PublishDraft = { fileId: null, coverFileId: null, rows: {} };
   if (!raw || typeof raw !== "object") return out;
   const r = raw as Record<string, unknown>;
   out.fileId = typeof r.fileId === "string" && r.fileId.length <= 64 ? r.fileId : null;
+  out.coverFileId = typeof r.coverFileId === "string" && r.coverFileId.length <= 64 ? r.coverFileId : null;
   const rows = r.rows && typeof r.rows === "object" ? (r.rows as Record<string, unknown>) : {};
   for (const [k, v] of Object.entries(rows)) {
     if (!v || typeof v !== "object" || k.length > 64) continue;

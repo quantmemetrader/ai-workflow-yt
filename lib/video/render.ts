@@ -200,7 +200,7 @@ export type RenderProgress = { phase: "graphics" | "encode"; totalMs: number; do
  * Written directly rather than through `share()`, which needs a signed-in
  * granter holding the relation, and the worker is nobody.
  */
-async function inheritProjectAudience(projectId: string, fileId: string, grantedBy: string) {
+export async function inheritProjectAudience(projectId: string, fileId: string, grantedBy: string) {
   const audience = await db
     .select({ relation: relationTuples.relation, subjectType: relationTuples.subjectType, subjectId: relationTuples.subjectId })
     .from(relationTuples)

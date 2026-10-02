@@ -14,6 +14,7 @@ const ROLE_LABEL: Record<ProjectFileRole, { zh: string; en: string }> = {
   reference: { zh: "参考资料", en: "References" },
   render: { zh: "AI 成片", en: "AI renders" },
   final: { zh: "最终版视频", en: "Final videos" },
+  cover: { zh: "封面", en: "Covers" },
   other: { zh: "其他", en: "Other" },
 };
 

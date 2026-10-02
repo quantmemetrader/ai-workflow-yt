@@ -64,7 +64,9 @@ export type JobType =
    * to-dos go to their owners (`lib/agents/autorun.ts`). */
   | "agent.plan-followup"
   /** After a render: 撰稿人 writes the post and puts it in 发布. */
-  | "agent.publish-copy";
+  | "agent.publish-copy"
+  /** After a render: three covers with titles, filed with the project (`lib/video/cover.ts`). */
+  | "video.cover";
 
 export type JobRow = typeof jobs.$inferSelect;
 

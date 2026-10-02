@@ -1,0 +1,1 @@
+ALTER TABLE "publish_posts" ADD COLUMN IF NOT EXISTS "cover_file_id" text;

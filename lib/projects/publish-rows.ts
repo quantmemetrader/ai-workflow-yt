@@ -14,6 +14,8 @@ export type PublishRowKey = string;
 export type PublishDraft = {
   /** The video picked to post: a final cut or a render. */
   fileId: string | null;
+  /** The cover picked for it, one of the project's 封面 files. */
+  coverFileId: string | null;
   rows: Record<PublishRowKey, { on: boolean; title: string; body: string }>;
 };
 

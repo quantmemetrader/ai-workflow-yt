@@ -74,7 +74,7 @@ export function AccountingScreen({
   const { busy, run } = useAction();
   const agent = useInlineAgent({ module: "accounting" });
   const sp = useSearchParams();
-  const [tab, setTab] = useState<Tab>(sp?.get("tab") === "library" && library ? "library" : "inbox");
+  const [tab, setTab] = useState<Tab>(sp?.get("tab") === "inbox" || !library ? "inbox" : "library");
   const [draft, setDraft] = useState<Draft | null>(null);
   const [voiding, setVoiding] = useState<EntryRow | null>(null);
 

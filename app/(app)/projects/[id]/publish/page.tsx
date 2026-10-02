@@ -10,6 +10,7 @@ import { listChannels, listPosts } from "@/lib/publish/service";
 import { listPeople } from "@/lib/chat/service";
 import { projectForPublish, readPublishDraft } from "@/lib/projects/publish-page";
 import { PublishStep, type PublishVideo } from "@/components/projects/PublishStep";
+import { coversFor } from "@/lib/video/cover";
 
 export const metadata = { title: "发布" };
 
@@ -77,6 +78,7 @@ export default async function PublishPage({ params }: { params: Promise<{ id: st
       renders={renders.map((r) => ({ id: r.id, fileId: r.fileId!, proxyFileId: r.proxyFileId, subtitleFileId: r.subtitleFileId, aspect: r.aspect, durationMs: r.durationMs, sizeBytes: r.sizeBytes, at: r.createdAt.toISOString() }))}
       rendering={p.render && (p.render.state === "queued" || p.render.state === "running") ? { progress: p.render.progress } : null}
       finals={finals}
+      covers={await coversFor(viewer, p.id)}
       pickable={pickable}
       published={p.published}
       draft={readPublishDraft(row?.source)}

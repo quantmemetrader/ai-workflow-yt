@@ -57,6 +57,8 @@ export const publishPosts = pgTable(
     scriptId: text(),
     /** The export in the file store that is actually being posted. */
     fileId: text(),
+    /** The cover picked for it (an image in files), sent to the platforms that take one. */
+    coverFileId: text(),
     title: text().notNull(),
     /** The master caption. A channel that overrides nothing uses this. */
     body: text().notNull().default(""),
