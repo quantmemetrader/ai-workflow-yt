@@ -56,7 +56,44 @@ function stepWords(name: string, status: string, zh: boolean): string {
  */
 export type InlineCitation = { fileId: string; name: string; relation?: string | null };
 
-export type InlineTool = { id: string; name: string; status: "running" | "ok" | "error"; summary?: string };
+/** What a tool made or touched, with its id: the thread links to it (an article written from chat used to be named and not linked). */
+export type InlineArtifact = { kind: string; id: string; title?: string; action?: string };
+export type InlineTool = { id: string; name: string; status: "running" | "ok" | "error"; summary?: string; artifacts?: InlineArtifact[] };
+
+const ARTIFACT_HREF: Record<string, (id: string) => string | null> = {
+  script: (id) => `/script/${id}`,
+  work_project: (id) => `/projects/${id}`,
+  video_project: (id) => `/video?project=${id}`,
+  article: (id) => `/article?id=${id}`,
+  file: (id) => `/files/${id}`,
+  contract: () => "/legal",
+  spend_request: () => "/finance",
+  finance_report: () => "/finance",
+};
+const ARTIFACT_WORD: Record<string, [string, string]> = {
+  script: ["打开脚本", "Open the script"],
+  work_project: ["打开项目", "Open the project"],
+  video_project: ["打开视频", "Open the video"],
+  article: ["打开文章", "Open the article"],
+  file: ["打开文件", "Open the file"],
+  contract: ["打开法务", "Open legal"],
+  spend_request: ["打开财务", "Open finance"],
+  finance_report: ["打开财务", "Open finance"],
+};
+function artifactLinks(tools: InlineTool[]): { href: string; label: string }[] {
+  const out: { href: string; label: string }[] = [];
+  const seen = new Set<string>();
+  for (const t of tools) {
+    for (const a of t.artifacts ?? []) {
+      const to = ARTIFACT_HREF[a.kind]?.(a.id);
+      if (!to || seen.has(a.kind + a.id)) continue;
+      seen.add(a.kind + a.id);
+      out.push({ href: to, label: a.title ? `《${a.title.slice(0, 24)}》` : "" });
+      out[out.length - 1].label = (out[out.length - 1].label ? out[out.length - 1].label + " · " : "") + a.kind;
+    }
+  }
+  return out;
+}
 
 export type InlineMessage = {
   id: string;
@@ -272,8 +309,8 @@ export function useInlineAgent(
                    seconds and then a paragraph. */
                 patchLast((m) => {
                   const tools = m.tools.some((x) => x.id === event.id)
-                    ? m.tools.map((x) => (x.id === event.id ? { ...x, status: event.status, summary: event.summary ?? x.summary } : x))
-                    : [...m.tools, { id: event.id, name: event.name, status: event.status, summary: event.summary }];
+                    ? m.tools.map((x) => (x.id === event.id ? { ...x, status: event.status, summary: event.summary ?? x.summary, artifacts: event.artifacts ?? x.artifacts } : x))
+                    : [...m.tools, { id: event.id, name: event.name, status: event.status, summary: event.summary, artifacts: event.artifacts }];
                   return { ...m, tools };
                 });
                 break;
@@ -482,6 +519,22 @@ export function InlineAgentThread({
               </div>
             )}
             {m.content ? <Markdown text={tidyMarkdown(m.content)} /> : null}
+            {/* What this turn made, as links: the article it wrote, the project it started. */}
+            {m.status !== "streaming" && artifactLinks(m.tools).length ? (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
+                {artifactLinks(m.tools).map((a) => {
+                  const kind = a.label.split(" · ").pop() ?? "";
+                  const word = ARTIFACT_WORD[kind] ? (zh ? ARTIFACT_WORD[kind][0] : ARTIFACT_WORD[kind][1]) : kind;
+                  const title = a.label.includes(" · ") ? a.label.split(" · ")[0] : "";
+                  return (
+                    <Link key={a.href} href={a.href} prefetch={false} style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, fontWeight: 600, color: "#171717", background: "#f3f3f1", border: "1px solid #e3e1dc", borderRadius: 999, padding: "3px 10px", textDecoration: "none", maxWidth: 260, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {word}
+                      {title ? <span style={{ fontWeight: 400, color: "#525252" }}>{title}</span> : null}
+                    </Link>
+                  );
+                })}
+              </div>
+            ) : null}
             {/* The agent's waiting belongs to the agent's panel, where its
                 answer will appear — not to an indicator somewhere else. The
                 shared typing pill (`AgentTyping`): until the first word, and

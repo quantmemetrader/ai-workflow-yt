@@ -307,7 +307,7 @@ export function ProjectScreen({
                   <button key={i} type="button" onClick={() => setChatOpen(true)} style={{ display: "flex", alignItems: "baseline", gap: 8, padding: "7px 0", border: 0, borderTop: i ? "1px solid #f0efeb" : 0, background: "none", font: "inherit", textAlign: "left", cursor: "pointer", minWidth: 0 }}>
                     <span style={{ fontSize: 12.5, fontWeight: 600, color: "#171717", flexShrink: 0 }}>{m.agent ? <AgentName agent={m.agent} zh={zh} /> : m.author}</span>
                     <span style={{ fontSize: 12.5, color: "#5f5f5f", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flexGrow: 1 }}>{oneLine(m.body).replace(/\s*(?:在脚本页看、改：)?\/(?:script|video|projects|chat)\/\S+/g, "")}</span>
-                    <span style={{ fontSize: 11.5, color: "#a3a3a3", flexShrink: 0 }}>{ago(m.at, zh)}</span>
+                    <span style={{ fontSize: 11.5, color: "#a3a3a3", flexShrink: 0 }}><span suppressHydrationWarning>{ago(m.at, zh)}</span></span>
                   </button>
                 ))}
               </div>
@@ -738,7 +738,7 @@ function AgentOutput({ agent, msg, working, zh, onOpen, copyable = false, compac
       <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11.5, color: msg.agent ? AGENT_COLORS[msg.agent] : "#525252", fontWeight: 600 }}>
         {msg.agent ? <AgentIcon agent={msg.agent} size={16} radius={4} /> : <PersonAvatar id={msg.authorId} url={msg.authorAvatar} name={msg.author} size={16} radius={4} />}
         {msg.agent ? <AgentName agent={msg.agent} zh={zh} /> : msg.author}
-        <span style={{ fontWeight: 400, color: "#b3b3b3" }}>{ago(msg.at, zh)}</span>
+        <span style={{ fontWeight: 400, color: "#b3b3b3" }}><span suppressHydrationWarning>{ago(msg.at, zh)}</span></span>
         <span style={{ flexGrow: 1 }} />
         {copyable ? (
           <button type="button" onClick={() => { void navigator.clipboard.writeText(text); notify(t("已复制", "Copied"), "ok"); }} style={{ border: 0, background: "transparent", cursor: "pointer", fontSize: 11.5, color: "#525252", fontFamily: "inherit" }}>
@@ -913,7 +913,7 @@ function ChatDrawer({ project: p, zh, people, onClose }: { project: ProjectDetai
               <div style={{ minWidth: 0 }}>
                 <div style={{ display: "flex", alignItems: "baseline", gap: 6, fontSize: 11.5, fontWeight: 600, color: AGENT_COLORS[m.agent] }}>
                   <AgentName agent={m.agent} zh={zh} />
-                  <span style={{ fontWeight: 400, color: "#b3b3b3" }}>{ago(m.at, zh)}</span>
+                  <span style={{ fontWeight: 400, color: "#b3b3b3" }}><span suppressHydrationWarning>{ago(m.at, zh)}</span></span>
                 </div>
                 <div style={{ marginTop: 3, background: "#f7f8fb", border: `1px solid ${AGENT_TINTS[m.agent]}`, borderRadius: "4px 12px 12px 12px", padding: "9px 12px", fontSize: 12.5, lineHeight: 1.65, color: "#2b343d", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
                   {/* Bare app paths (「在脚本页看、改：/script/scr_…」) as short
@@ -988,7 +988,7 @@ function ChatDrawer({ project: p, zh, people, onClose }: { project: ProjectDetai
                   employees" rather than as themselves. */}
               <div style={{ fontSize: 11, color: "#b3b3b3", display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 5 }}>
                 <span>
-                  {m.author} · {ago(m.at, zh)}
+                  {m.author} · <span suppressHydrationWarning>{ago(m.at, zh)}</span>
                 </span>
                 <PersonAvatar id={m.authorId} url={m.authorAvatar} name={m.author} size={18} radius={5} />
               </div>

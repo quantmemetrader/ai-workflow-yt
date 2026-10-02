@@ -159,7 +159,7 @@ function TextBlock({
       right={
         row ? (
           <span style={{ fontSize: 12, color: MUTED }}>
-            {t(`第 ${row.version} 版`, `v${row.version}`)} · {ago(row.updatedAt, zh)}
+            {t(`第 ${row.version} 版`, `v${row.version}`)} · <span suppressHydrationWarning>{ago(row.updatedAt, zh)}</span>
             {row.updatedByName ? ` · ${row.updatedByName}` : ""}
           </span>
         ) : null
@@ -207,7 +207,7 @@ function TextBlock({
               <div key={v.version} style={{ border: `1px solid ${LINE}`, borderRadius: 10, padding: "10px 12px", background: "#fafaf8" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: MUTED, marginBottom: 6 }}>
                   <b style={{ color: INK }}>{t(`第 ${v.version} 版`, `v${v.version}`)}</b>
-                  <span>{ago(v.at, zh)}</span>
+                  <span><span suppressHydrationWarning>{ago(v.at, zh)}</span></span>
                   {v.byName ? <span>· {v.byName}</span> : null}
                   {v.note ? <span>· {v.note}</span> : null}
                   <span style={{ flexGrow: 1 }} />
@@ -414,7 +414,7 @@ function Examples({ agent, zh, examples, activeChars, canEdit, onChanged }: { ag
                   <button type="button" onClick={() => setOpen(open === e.id ? null : e.id)} style={{ flexGrow: 1, minWidth: 0, border: 0, background: "none", padding: 0, textAlign: "left", cursor: "pointer", fontFamily: "inherit" }}>
                     <div style={{ fontSize: 14, fontWeight: 600, color: e.active ? INK : MUTED, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.title}</div>
                     <div style={{ fontSize: 12, color: MUTED, marginTop: 1 }}>
-                      {e.body.trim().length.toLocaleString()} {t("字", "chars")} · {ago(e.updatedAt, zh)}
+                      {e.body.trim().length.toLocaleString()} {t("字", "chars")} · <span suppressHydrationWarning>{ago(e.updatedAt, zh)}</span>
                       {e.updatedByName ? ` · ${e.updatedByName}` : ""}
                       {!e.active ? ` · ${t("已停用", "off")}` : ""}
                     </div>

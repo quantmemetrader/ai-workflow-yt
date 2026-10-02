@@ -68,7 +68,7 @@ export function TrainOverview({ zh, summaries }: { zh: boolean; summaries: Train
                   </span>
                   {s.updatedAt ? (
                     <span style={{ color: MUTED }}>
-                      {t("上次更新", "Updated")} {ago(s.updatedAt, zh)}
+                      {t("上次更新", "Updated")} <span suppressHydrationWarning>{ago(s.updatedAt, zh)}</span>
                       {s.updatedByName ? ` · ${s.updatedByName}` : ""}
                     </span>
                   ) : null}
