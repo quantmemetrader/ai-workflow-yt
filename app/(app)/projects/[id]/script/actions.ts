@@ -240,7 +240,10 @@ export async function restoreDocVersionAction(projectId: unknown, versionNo: unk
   if (!res) return { error: c.zh ? "这个版本不存在" : "That version does not exist" };
   await audit(c.viewer, "script.restore", { objectType: "script", objectId: scriptId, module: "script", meta: { versionNo: n, from: "doc" } });
   refresh(c.project.id);
-  return { ok: true as const };
+  /* The restored document goes back to the page, which loads it at once (QA round 2:
+     the page kept the typed text and its next autosave wrote over the restore). */
+  const [after] = await db.select({ doc: scripts.doc }).from(scripts).where(eq(scripts.id, scriptId)).limit(1);
+  return { ok: true as const, doc: (after?.doc as Record<string, unknown> | null) ?? null };
 }
 
 /**

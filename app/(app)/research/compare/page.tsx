@@ -53,7 +53,7 @@ export default async function ComparePage({
       trending={trending.map((x) => ({ phrase: x.phrase, traffic: x.traffic, headline: x.headline }))}
       queries={queries}
       window={window}
-      region="HK / TW / SG"
+      region="香港 / 台湾 / 新加坡"
       locale={viewer.locale ?? "zh-CN"}
       model={answeringModel()}
       sourceCount={sources.filter((s) => s.status === "live").length}

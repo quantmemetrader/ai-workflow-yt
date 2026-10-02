@@ -915,7 +915,10 @@ function ChatDrawer({ project: p, zh, people, onClose }: { project: ProjectDetai
                   <span style={{ fontWeight: 400, color: "#b3b3b3" }}>{ago(m.at, zh)}</span>
                 </div>
                 <div style={{ marginTop: 3, background: "#f7f8fb", border: `1px solid ${AGENT_TINTS[m.agent]}`, borderRadius: "4px 12px 12px 12px", padding: "9px 12px", fontSize: 12.5, lineHeight: 1.65, color: "#2b343d", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
-                  {clean(m.body)}
+                  {/* Bare app paths (「在脚本页看、改：/script/scr_…」) as short
+                      links, not a raw address that breaks across lines
+                      (QA, 2 Oct). */}
+                  <LinkedText text={linkPaths(m.body, p.id, zh)} />
                   {/* What it handed over, as links (this project itself is
                       already on screen), another project it names, and the
                       live chip of an edit it started. */}
@@ -1121,6 +1124,29 @@ function clean(body: string): string {
      "[打开项目](/projects/wp_…)" wherever the page quoted them. */
   return body
     .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (_m, label: string, url: string) => (url.startsWith("/projects/") ? "" : label))
+    .replace(/\*\*/g, "")
+    .replace(/^#+\s*/gm, "")
+    .replace(/@\S+\s?/g, "")
+    .trim();
+}
+
+/* The drawer's version of `clean`: in-app links stay links (LinkedText
+   draws them) and a bare path an employee wrote becomes one with words; a
+   link to this very project is dropped, you are on it (QA, 2 Oct). */
+const BARE_PATH = /(^|[\s：:（，,、])(\/(?:script|projects|files|chat|video|videos|topics|trends|publish|research|article)\/[A-Za-z0-9_\-/?=&#%]+)/g;
+function linkPaths(body: string, projectId: string, zh: boolean): string {
+  const here = (url: string) => url === `/projects/${projectId}` || url.startsWith(`/projects/${projectId}?`);
+  const label = (url: string) =>
+    url.startsWith("/script/") ? (zh ? "打开脚本" : "Open the script")
+    : url.startsWith("/projects/") ? (zh ? "打开项目" : "Open the project")
+    : url.startsWith("/files/") ? (zh ? "打开文件" : "Open the file")
+    : url.startsWith("/chat/") ? (zh ? "打开对话" : "Open the chat")
+    : url.startsWith("/video") ? (zh ? "打开剪辑台" : "Open the editor")
+    : url.startsWith("/publish") ? (zh ? "打开发布" : "Open Publish")
+    : zh ? "打开" : "Open";
+  return body
+    .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (all, text: string, url: string) => (here(url) ? "" : url.startsWith("/") ? all : text))
+    .replace(BARE_PATH, (_m, lead: string, url: string) => (here(url) ? lead.trim() : `${lead}[${label(url)}](${url})`))
     .replace(/\*\*/g, "")
     .replace(/^#+\s*/gm, "")
     .replace(/@\S+\s?/g, "")

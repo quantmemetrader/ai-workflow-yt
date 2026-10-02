@@ -1,4 +1,4 @@
-import { visibilityForFiles } from "@/lib/files/access";
+import { manageableFiles, visibilityForFiles } from "@/lib/files/access";
 import { notFound } from "next/navigation";
 import { eq, inArray, isNull, and } from "drizzle-orm";
 import { db } from "@/lib/db/client";
@@ -36,7 +36,10 @@ export default async function FolderPage({ params }: { params: Promise<{ id: str
     listFolder(viewer, id),
   ]);
 
-  const access = await relationsForFiles(viewer, contents.files.map((r) => r.file));
+  const [access, manage] = await Promise.all([
+    relationsForFiles(viewer, contents.files.map((r) => r.file)),
+    manageableFiles(viewer, contents.files.map((r) => r.file)),
+  ]);
 
   const breadcrumbs = folder.path
     .map((pid) => trail.find((t) => t.id === pid))
@@ -52,7 +55,7 @@ export default async function FolderPage({ params }: { params: Promise<{ id: str
       canEdit={held === "owner" || held === "editor" || viewer.isAdmin}
       sidebarFolders={roots.filter((f) => f.name !== "__home").map((f) => ({ ...f, name: folderLabel(f.name) }))}
       folders={contents.folders.map((f) => ({ id: f.id, name: f.name }))}
-      files={toRows(contents.files, access, await visibilityForFiles(contents.files.map((r) => r.file.id)), viewer)}
+      files={toRows(contents.files, access, await visibilityForFiles(contents.files.map((r) => r.file.id)), viewer, manage)}
     />
   );
 }

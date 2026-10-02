@@ -183,7 +183,10 @@ export function ProjectHeader({ p, zh }: { p: HeaderProject; zh: boolean }) {
                   start(async () => {
                     const r = await deleteProjectAction(p.id);
                     if (r?.error) notify(r.error);
-                    else router.push("/projects");
+                    else {
+                      notify(t("项目已删除", "Project deleted"), "ok");
+                      router.push("/projects");
+                    }
                   });
                 }}
               >

@@ -6,7 +6,7 @@ import { listFolders, listScripts, pendingApprovals, sharedScriptIds, type Scrip
 import { scriptTopicQueue } from "@/lib/script/topics";
 import { treeOf } from "@/lib/script/folders";
 
-export const metadata = { title: "脚本 · Script" };
+export const metadata = { title: "脚本" };
 
 /**
  * Script library (spec §4.4).

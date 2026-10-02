@@ -240,7 +240,10 @@ const COPILOT_PROMPT = `你是短视频工作室的编剧，正在和同事一�
 - 口播按每秒约 4.5 个汉字估算时长；"缩短 30 秒"就是删减约 135 个字。
 - "text" 是完整的一段，不是片段。
 - 扩写或改写时，优先改原段落本身（changes 里给出改后的整段），不要在原段落旁边另加一段意思相同的新段落；只有真正的新内容才用 inserts。
-- 指令给了目标字数时，改完后全文总字数要落在目标上下 10% 以内：先算清楚再写。`;
+- 指令给了目标字数时，改完后全文总字数要落在目标上下 10% 以内：先算清楚再写。
+- 编号里写“（空，现场声）”的是空段落，不算正文：指令说“第一段/开头”时，指的是第一个有文字的段落。
+- 只改指令要求改的地方。除非指令要求删减、缩短或重写全文，不要删掉同事写的段落。
+- “不是……而是……”这种句式最多用一次；不要口号式金句和套话（拐点、王道、战略性）；不夸大，不编数字和比喻。`;
 
 async function referenceText(viewer: Viewer, scriptId: string): Promise<string> {
   const [s] = await db.select({ ids: scripts.sourceFileIds }).from(scripts).where(eq(scripts.id, scriptId)).limit(1);

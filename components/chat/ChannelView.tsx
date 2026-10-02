@@ -1,7 +1,7 @@
 "use client";
 
 import { getPanelModel } from "@/components/chat/ModelChip";
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { ChannelSurface, type ChannelMember, type ChannelMessage, type ChannelPending, type SentFile } from "@/components/chat/ChannelSurface";
 import { pendingStamp } from "@/lib/agents/steps";
@@ -124,6 +124,25 @@ export function ChannelView({
   const [gone, setGone] = useState<string[]>([]);
   /* The assistant beside the channel, opened by hand on a narrow window. */
   const [dockOpen, setDockOpen] = useState(false);
+  /* The folded assistant closes with its ×, Esc, or a click outside it (QA round 2). */
+  const dockRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!dockOpen) return;
+    const key = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setDockOpen(false);
+    };
+    const away = (e: MouseEvent) => {
+      const t = e.target as Element | null;
+      if (dockRef.current?.contains(t as Node) || t?.closest?.(".cv-dock-btn")) return;
+      if (window.innerWidth < 1200) setDockOpen(false);
+    };
+    window.addEventListener("keydown", key);
+    window.addEventListener("mousedown", away);
+    return () => {
+      window.removeEventListener("keydown", key);
+      window.removeEventListener("mousedown", away);
+    };
+  }, [dockOpen]);
   const [seen, setSeen] = useState(messages);
   if (seen !== messages) {
     setSeen(messages);
@@ -368,7 +387,12 @@ export function ChannelView({
             and it posts as the person, never as a bot. The AI employees tagged
             in the channel itself are a different thing: they post as
             themselves, under their own names and their own permissions. */}
-        <div className="cv-dock" data-open={dockOpen || undefined}>
+        <div className="cv-dock" data-open={dockOpen || undefined} ref={dockRef}>
+          <button type="button" className="cv-dock-close" onClick={() => setDockOpen(false)} aria-label={zh ? "收起助理" : "Close the assistant"} title={zh ? "收起助理" : "Close"}>
+            <svg viewBox="0 0 24 24" width={16} height={16} fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" aria-hidden>
+              <path d="M7 7l10 10M17 7 7 17" />
+            </svg>
+          </button>
           <AgentDock
             zh={zh}
             model={model}
@@ -408,9 +432,11 @@ export function ChannelView({
 const DOCK_CSS = `
 .cv-dock { display: flex; flex-shrink: 0; min-height: 0; }
 .cv-dock-btn { display: none !important; }
+.cv-dock-close { display: none; }
 @media (max-width: 1199px) {
   .cv-dock { display: none; }
   .cv-dock[data-open] { display: flex; position: absolute; top: 0; right: 0; bottom: 0; z-index: 30; background: #fff; box-shadow: -12px 0 32px rgba(0,0,0,.08); }
   .cv-dock-btn { display: inline-flex !important; align-items: center; justify-content: center; }
+  .cv-dock[data-open] .cv-dock-close { display: inline-flex; position: absolute; top: 8px; left: -40px; width: 32px; height: 32px; align-items: center; justify-content: center; border: 1px solid #e3e3e0; border-radius: 99px; background: #fff; color: #444; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,.08); }
 }
 `;

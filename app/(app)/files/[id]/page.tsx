@@ -11,7 +11,7 @@ import { formatBytes, formatDate, makeT } from "@/lib/i18n";
 import { Markdown } from "@/components/ui/Markdown";
 import { ShareSheet } from "@/components/files/ShareSheet";
 import { FileAccessControl } from "@/components/files/FileAccessControl";
-import { visibilityForFiles } from "@/lib/files/access";
+import { manageableFiles, visibilityForFiles } from "@/lib/files/access";
 import { RenameFile } from "@/components/files/RenameFile";
 import { editable } from "@/lib/files/doc-edit";
 
@@ -22,7 +22,17 @@ import { editable } from "@/lib/files/doc-edit";
  * sharing sit in the 320px panel on the right — so it belongs to the same
  * screen family as the list it came from.
  */
-export const metadata = { title: "文件" };
+const fallbackMeta = { title: "文件" };
+
+/* The tab says which file it is, not just 文件 (QA, 2 Oct). Only a name the
+   viewer may open; anything else keeps the generic title. */
+export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  const viewer = await requireModule("files");
+  if (!(await relationOn(viewer, "file", id))) return fallbackMeta;
+  const [row] = await db.select({ name: files.name }).from(files).where(eq(files.id, id)).limit(1);
+  return row ? { title: row.name } : fallbackMeta;
+}
 
 export default async function FilePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -44,11 +54,12 @@ export default async function FilePage({ params }: { params: Promise<{ id: strin
 
   await audit(viewer, "file.view", { objectType: "file", objectId: id, module: "files" });
 
-  const [versions, shares, ceiling, vis] = await Promise.all([
+  const [versions, shares, ceiling, vis, manage] = await Promise.all([
     listVersions(viewer, id),
     sharesWithNames("file", id),
     shareCeiling(viewer, "file", id),
     visibilityForFiles([id]),
+    manageableFiles(viewer, [row.file]),
   ]);
   const seen = vis.get(id) ?? { visibility: "private" as const, groups: [], userIds: [] };
   /* (QA, 2 Oct: people shares of every level are listed, viewers included, so
@@ -91,7 +102,9 @@ export default async function FilePage({ params }: { params: Promise<{ id: strin
         </span>
         {/* The one screen certain to be showing the right file was the one
             screen with no way to fix its name. */}
-        {held === "owner" || held === "editor" ? (
+        {/* Same rule as the list's pencil: a studio-wide grant is visibility,
+            not the right to rename (QA, 2 Oct). */}
+        {manage.has(id) ? (
           <RenameFile id={file.id} name={file.name} zh={zh} />
         ) : null}
         <div style={{ flexGrow: 1 }} />
@@ -185,8 +198,14 @@ export default async function FilePage({ params }: { params: Promise<{ id: strin
             <Row label={t("Modified")} value={formatDate(file.updatedAt, locale)} />
             {file.durationMs ? <Row label={zh ? "时长" : "Duration"} value={`${Math.round(file.durationMs / 1000)}s`} /> : null}
             {file.width ? <Row label={zh ? "分辨率" : "Resolution"} value={`${file.width}×${file.height}`} /> : null}
-            {/* A checksum means nothing to most people; admins keep it (QA, 2 Oct). */}
-            {file.checksum && viewer.isAdmin ? <Row label={zh ? "校验和" : "Checksum"} value={file.checksum.slice(0, 16)} /> : null}
+            {/* A checksum means nothing to most people: admins find it folded
+                away under 技术细节 (QA, 2 Oct). */}
+            {file.checksum && viewer.isAdmin ? (
+              <details style={{ fontSize: 11.5, paddingTop: 6 }}>
+                <summary style={{ cursor: "pointer", color: "#7c7c7c", listStyle: "revert" }}>{zh ? "技术细节" : "Technical details"}</summary>
+                <Row label={zh ? "校验和" : "Checksum"} value={file.checksum.slice(0, 16)} />
+              </details>
+            ) : null}
           </section>
 
           <FileAccessControl

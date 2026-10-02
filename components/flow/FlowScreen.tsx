@@ -57,14 +57,15 @@ export function FlowScreen({ pipeline, automations, zh, canEdit }: { pipeline: P
   const [talk, setTalk] = React.useState<string | null>(null);
   /* The board is drawn at 1254 wide. On a 1024 or 1280 screen the right
      column (编剧写脚本, 批准脚本, the legend) fell off the edge (QA, 2 Oct):
-     it now scales down to the room there is, to 72% at most, and scrolls
-     sideways below that so the type stays readable. */
+     it now scales down to the room there is, to 60% at most (72% still
+     cut the right column at 1024, QA round 2), and scrolls sideways below
+     that so the type stays readable. */
   const room = React.useRef<HTMLDivElement | null>(null);
   const [scale, setScale] = React.useState(1);
   React.useEffect(() => {
     const el = room.current;
     if (!el || typeof ResizeObserver === "undefined") return;
-    const fit = () => setScale(Math.max(0.72, Math.min(1, (el.clientWidth - 8) / W)));
+    const fit = () => setScale(Math.max(0.6, Math.min(1, (el.clientWidth - 8) / W)));
     fit();
     const ro = new ResizeObserver(fit);
     ro.observe(el);

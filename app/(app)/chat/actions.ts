@@ -24,7 +24,7 @@ import { readAutoCut } from "@/lib/projects/live-types";
 import { readBinned, readCutPressed } from "@/lib/chat/handoff";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { workProjects } from "@/lib/db/schema";
+import { chatChannels, workProjects } from "@/lib/db/schema";
 import { conversationDetail } from "@/lib/chat/service";
 import { startFromTopicAction } from "@/app/(app)/projects/actions";
 import {
@@ -91,12 +91,12 @@ export async function sendChannelMessage(
 ) {
   const picked = pickedModel(model) ?? undefined;
   const viewer = await getViewer();
-  if (!viewer || !viewer.modules.includes("chat")) return { error: "Not allowed" };
+  if (!viewer || !viewer.modules.includes("chat")) return { error: "没有权限" };
   if (typeof slug !== "string" || !slug || slug.length > MAX_SLUG) {
-    return { error: "Channel not found" };
+    return { error: "找不到这个频道" };
   }
-  if (typeof body !== "string") return { error: "Nothing to send" };
-  if (body.length > MAX_BODY) return { error: "That message is too long" };
+  if (typeof body !== "string") return { error: "没有要发送的内容" };
+  if (body.length > MAX_BODY) return { error: "消息太长了" };
 
   const wanted = Array.isArray(attachmentIds)
     ? [
@@ -105,10 +105,10 @@ export async function sendChannelMessage(
     : [];
   // A message with a file on it and nothing typed is an ordinary thing to
   // send; an empty one with nothing attached is not.
-  if (!body.trim() && !wanted.length) return { error: "Nothing to send" };
+  if (!body.trim() && !wanted.length) return { error: "没有要发送的内容" };
 
   const channel = await channelBySlug(viewer, slug);
-  if (!channel) return { error: "Channel not found" };
+  if (!channel) return { error: "找不到这个频道" };
   if (channel.archivedAt) return { error: "这个频道已归档，不能再发消息" };
 
   /* Ids off the wire are a claim. Only files this person can actually read
@@ -301,14 +301,14 @@ export async function sendChannelMessage(
  */
 export async function pressCardAction(slug: string, messageId: string, actionId: string) {
   const viewer = await getViewer();
-  if (!viewer || !viewer.modules.includes("chat")) return { error: "Not allowed" };
-  if (typeof slug !== "string" || !slug || slug.length > MAX_SLUG) return { error: "Channel not found" };
+  if (!viewer || !viewer.modules.includes("chat")) return { error: "没有权限" };
+  if (typeof slug !== "string" || !slug || slug.length > MAX_SLUG) return { error: "找不到这个频道" };
   if (typeof messageId !== "string" || messageId.length > 64) return { error: "No such message" };
   if (typeof actionId !== "string" || actionId.length > 64) return { error: "No such button" };
 
   const channel = await channelBySlug(viewer, slug);
-  if (!channel) return { error: "Channel not found" };
-  if (channel.kind === "announce") return { error: "Not allowed" };
+  if (!channel) return { error: "找不到这个频道" };
+  if (channel.kind === "announce") return { error: "没有权限" };
 
   const message = await channelMessage(channel.id, messageId);
   if (!message) return { error: "No such message" };
@@ -482,14 +482,14 @@ async function runCardAction(
  */
 export async function startCutFromChatAction(slug: string, messageId: string) {
   const viewer = await getViewer();
-  if (!viewer || !viewer.modules.includes("chat")) return { error: "Not allowed" };
+  if (!viewer || !viewer.modules.includes("chat")) return { error: "没有权限" };
   const zh = (viewer.locale ?? "zh-CN").startsWith("zh");
   if (!viewer.modules.includes("video")) return { error: zh ? "需要视频模块的权限" : "This needs the Video module" };
-  if (typeof slug !== "string" || !slug || slug.length > MAX_SLUG) return { error: "Channel not found" };
+  if (typeof slug !== "string" || !slug || slug.length > MAX_SLUG) return { error: "找不到这个频道" };
   if (typeof messageId !== "string" || messageId.length > 64) return { error: "No such message" };
 
   const channel = await channelBySlug(viewer, slug);
-  if (!channel) return { error: "Channel not found" };
+  if (!channel) return { error: "找不到这个频道" };
   const message = await channelMessage(channel.id, messageId);
   if (!message) return { error: "No such message" };
   const binned = readBinned(message.meta);
@@ -540,7 +540,7 @@ export async function createChannelAction(
   options: { topic?: string; isPrivate?: boolean; memberIds?: string[] } = {},
 ) {
   const viewer = await getViewer();
-  if (!viewer || !viewer.modules.includes("chat")) return { error: "Not allowed" };
+  if (!viewer || !viewer.modules.includes("chat")) return { error: "没有权限" };
   /* Chinese: the dialog shows these as they are (QA, 2 Oct). */
   if (typeof name !== "string" || !name.trim()) return { error: "请给频道起个名字" };
   if (name.trim().replace(/^#/, "").length > 60) return { error: "频道名最多 60 个字" };
@@ -550,6 +550,14 @@ export async function createChannelAction(
     ? options.memberIds.filter((id): id is string => typeof id === "string" && id.length <= 64).slice(0, 200)
     : [];
 
+  /* A name already in use is said so, never silently opens (or reopens) that channel (QA round 2). */
+  {
+    const wanted = name.trim().replace(/^#/, "").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "-").replace(/^-|-$/g, "").slice(0, 60);
+    const [taken] = wanted
+      ? await db.select({ id: chatChannels.id, archivedAt: chatChannels.archivedAt }).from(chatChannels).where(and(eq(chatChannels.tenantId, viewer.tenantId), eq(chatChannels.slug, wanted))).limit(1)
+      : [];
+    if (taken) return { error: taken.archivedAt ? `已经有一个叫「${name.trim()}」的频道（已归档），换个名字吧` : `已经有叫「${name.trim()}」的频道了，换个名字，或者直接去那个频道` };
+  }
   try {
     const channel = await createChannel(viewer, {
       name,
@@ -569,13 +577,13 @@ export async function createChannelAction(
 /** Who is in a channel, for the members sheet. */
 export async function channelMembersAction(slug: string) {
   const viewer = await getViewer();
-  if (!viewer || !viewer.modules.includes("chat")) return { error: "Not allowed" as const };
+  if (!viewer || !viewer.modules.includes("chat")) return { error: "没有权限" as const };
   if (typeof slug !== "string" || !slug || slug.length > MAX_SLUG) {
-    return { error: "Channel not found" as const };
+    return { error: "找不到这个频道" as const };
   }
 
   const channel = await channelBySlug(viewer, slug);
-  if (!channel) return { error: "Channel not found" as const };
+  if (!channel) return { error: "找不到这个频道" as const };
 
   const members = await channelMembers(viewer, channel.id);
   return {
@@ -593,8 +601,8 @@ export async function channelMembersAction(slug: string) {
 
 export async function addChannelMembersAction(channelId: string, userIds: string[]) {
   const viewer = await getViewer();
-  if (!viewer || !viewer.modules.includes("chat")) return { error: "Not allowed" };
-  if (!(await channelById(viewer, channelId))) return { error: "Channel not found" };
+  if (!viewer || !viewer.modules.includes("chat")) return { error: "没有权限" };
+  if (!(await channelById(viewer, channelId))) return { error: "找不到这个频道" };
   if (!Array.isArray(userIds)) return { error: "Nobody to add" };
 
   try {
@@ -612,9 +620,9 @@ export async function addChannelMembersAction(channelId: string, userIds: string
 
 export async function removeChannelMemberAction(channelId: string, userId: string) {
   const viewer = await getViewer();
-  if (!viewer || !viewer.modules.includes("chat")) return { error: "Not allowed" };
-  if (typeof userId !== "string" || !userId || userId.length > 64) return { error: "Not allowed" };
-  if (!(await channelById(viewer, channelId))) return { error: "Channel not found" };
+  if (!viewer || !viewer.modules.includes("chat")) return { error: "没有权限" };
+  if (typeof userId !== "string" || !userId || userId.length > 64) return { error: "没有权限" };
+  if (!(await channelById(viewer, channelId))) return { error: "找不到这个频道" };
 
   try {
     await removeChannelMember(viewer, channelId, userId);
@@ -633,7 +641,7 @@ export async function recentConversationsAction(): Promise<{
   error?: string;
 }> {
   const viewer = await getViewer();
-  if (!viewer) return { error: "Not signed in" };
+  if (!viewer) return { error: "请先登录" };
 
   const rows = await listConversations(viewer, 30);
   const locale = viewer.locale === "en" ? "en-GB" : (viewer.locale ?? "zh-CN");
@@ -670,7 +678,7 @@ export async function conversationMessagesAction(conversationId: string): Promis
   error?: string;
 }> {
   const viewer = await getViewer();
-  if (!viewer) return { error: "Not signed in" };
+  if (!viewer) return { error: "请先登录" };
   if (typeof conversationId !== "string" || !conversationId || conversationId.length > 64) return { error: "Not found" };
   const detail = await conversationDetail(viewer, conversationId);
   if (!detail) return { error: "Not found" };

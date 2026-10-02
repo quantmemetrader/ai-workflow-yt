@@ -86,9 +86,15 @@ export function DocEditor({
   /* (QA, 2 Oct: after 查看 → 编辑 every toolbar button stayed grey until a key
      was pressed. setEditable alone does not reach the toolbar's state hook, so
      an empty transaction tells it, and a tick re-renders this screen.) */
+  const lastMode = React.useRef(mode);
   React.useEffect(() => {
     if (!editor || editor.isDestroyed) return;
     editor.setEditable(canEdit && mode === "edit");
+    /* Only when the mode really changed: an empty transaction sent on load left
+       ProseMirror with a stale cursor, and the first Enter after a click jumped
+       to the top of the document (QA round 2, 2 Oct). */
+    if (lastMode.current === mode) return;
+    lastMode.current = mode;
     try {
       editor.view.dispatch(editor.state.tr.setMeta("addToHistory", false));
     } catch {
@@ -99,18 +105,26 @@ export function DocEditor({
 
   /* The title is the file's name; editors rename it in place (QA, 2 Oct: a new
      document stayed 「未命名文档」 for good). */
+  const [savedName, setSavedName] = React.useState(name);
+  const cancelRename = React.useRef(false);
   const rename = async () => {
+    if (cancelRename.current) {
+      cancelRename.current = false;
+      setTitle(savedName);
+      return;
+    }
     const next = title.trim();
-    if (!next || next === name) {
-      setTitle(name);
+    if (!next || next === savedName) {
+      setTitle(savedName);
       return;
     }
     const r = await renameDocAction(id, next);
     if ("error" in r && r.error) {
       notify(r.error);
-      setTitle(name);
+      setTitle(savedName);
     } else if ("name" in r && r.name) {
       setTitle(r.name);
+      setSavedName(r.name);
       notify(t("已重命名", "Renamed"), "ok");
     }
   };
@@ -194,7 +208,8 @@ export function DocEditor({
               onKeyDown={(e) => {
                 if (e.key === "Enter") e.currentTarget.blur();
                 if (e.key === "Escape") {
-                  setTitle(name);
+                  cancelRename.current = true;
+                  setTitle(savedName);
                   e.currentTarget.blur();
                 }
               }}
@@ -291,8 +306,6 @@ const DOC_CSS = `
 .doc-title:focus { outline: none; border-color: #1a73e8; }
 .doc-root .gd-toolbar .gd-tb[aria-label^="添加批注"], .doc-root .gd-toolbar .gd-tb[aria-label^="Add comment"],
 .doc-root .gd-toolbar .gd-tb[aria-label="插入图片"], .doc-root .gd-toolbar .gd-tb[aria-label="Insert image"] { display: none; }
-.doc-root .gd-toolbar div:has(> button[aria-label="模式"]) .gd-menu > .gd-menu-item:nth-child(2),
-.doc-root .gd-toolbar div:has(> button[aria-label="Mode"]) .gd-menu > .gd-menu-item:nth-child(2) { display: none; }
 .doc-note { margin: 0 16px 8px; padding: 8px 12px; border-radius: 8px; background: #fef7e0; color: #5c4400; font-size: 12.5px; }
 .doc-panel { width: 340px; flex-shrink: 0; align-self: stretch; border-left: 1px solid #e3e3e3; background: #fff; padding: 14px; box-sizing: border-box; display: flex; flex-direction: column; gap: 12px; position: sticky; top: 0; max-height: 100vh; overflow-y: auto; }
 @media print { .gd-head, .gd-toolbar, .doc-note, .doc-panel { display: none !important; } .gd-sheet { box-shadow: none !important; } }

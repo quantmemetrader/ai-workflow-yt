@@ -1338,8 +1338,19 @@ export function ScriptDoc(props: ScriptDocProps) {
               onClick={() => {
                 if (!window.confirm(t(`用第 ${viewing.versionNo} 版替换现在的稿子？现在的稿子会先存成一个版本。`, `Replace the draft with v${viewing.versionNo}? The current draft is kept as a version first.`))) return;
                 start(async () => {
+                  /* Typing not saved yet goes in first: it becomes the 「恢复旧版本前的稿子」 version. */
+                  await save();
                   const r = await restoreDocVersionAction(projectId, viewing.versionNo);
                   if ("error" in r && r.error) return notify(r.error);
+                  /* Load the restored text now and mark the page clean, so no autosave can write over it. */
+                  savedSeq.current = editSeq.current;
+                  if ("doc" in r && r.doc && editor) {
+                    lastDoc.current = JSON.stringify(r.doc);
+                    editor.chain().setMeta("gd-remote", true).setContent(r.doc as never, { emitUpdate: false }).run();
+                  } else {
+                    lastDoc.current = "";
+                  }
+                  setSaveState("saved");
                   setViewing(null);
                   setUnlocked(false);
                   notify(t("已恢复", "Restored"), "ok");

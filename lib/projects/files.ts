@@ -1,7 +1,7 @@
 import "server-only";
 import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { files, scripts, users, videoClips, videoExports, videoProjects, workProjects } from "@/lib/db/schema";
+import { chatMessages, files, scripts, users, videoClips, videoExports, videoProjects, workProjects } from "@/lib/db/schema";
 import type { Viewer } from "@/lib/auth/dal";
 import { canReadFiles } from "@/lib/authz/rebac";
 import { notProxy } from "@/lib/files/service";
@@ -94,7 +94,7 @@ export type ProjectFile = {
  */
 export async function listProjectFiles(viewer: Viewer, projectId: string): Promise<ProjectFile[]> {
   const [p] = await db
-    .select({ id: workProjects.id, scriptId: workProjects.scriptId, videoProjectId: workProjects.videoProjectId })
+    .select({ id: workProjects.id, scriptId: workProjects.scriptId, videoProjectId: workProjects.videoProjectId, channelId: workProjects.channelId })
     .from(workProjects)
     .where(and(eq(workProjects.id, projectId), eq(workProjects.tenantId, viewer.tenantId), isNull(workProjects.deletedAt)))
     .limit(1);
@@ -117,6 +117,17 @@ export async function listProjectFiles(viewer: Viewer, projectId: string): Promi
   if (p.scriptId) {
     const [s] = await db.select({ ids: scripts.sourceFileIds }).from(scripts).where(eq(scripts.id, p.scriptId)).limit(1);
     for (const id of s?.ids ?? []) imply(id, "reference");
+  }
+
+  /* Files dropped into the project chat are the project's too: the 文件 tab
+     listed only tagged ones, so a brief attached in the drawer never showed
+     there (QA, 2 Oct). They land under 参考资料 unless the team moved them. */
+  if (p.channelId) {
+    const sent = await db
+      .select({ attachments: chatMessages.attachments })
+      .from(chatMessages)
+      .where(and(eq(chatMessages.channelId, p.channelId), isNull(chatMessages.deletedAt), sql`jsonb_array_length(${chatMessages.attachments}) > 0`));
+    for (const m of sent) for (const id of m.attachments ?? []) if (typeof id === "string") imply(id, "reference");
   }
 
   const tagged = sql`${projectTag(projectId)} = any(${files.tags})`;

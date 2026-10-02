@@ -1,4 +1,4 @@
-import { visibilityForFiles } from "@/lib/files/access";
+import { manageableFiles, visibilityForFiles } from "@/lib/files/access";
 import { requireModule } from "@/lib/auth/dal";
 import { listFolder, sidebarFolders } from "@/lib/files/service";
 import { listByProject, listByType, parseLens } from "@/lib/files/lenses";
@@ -30,11 +30,12 @@ export default async function FilesPage({ searchParams }: { searchParams: Promis
        about once. */
     const all = new Map([...projects.flatMap((p) => p.files.map((f) => f.row)), ...loose].map((r) => [r.file.id, r]));
     const rows = [...all.values()];
-    const [access, vis] = await Promise.all([
+    const [access, vis, manage] = await Promise.all([
       relationsForFiles(viewer, rows.map((r) => r.file)),
       visibilityForFiles(rows.map((r) => r.file.id)),
+      manageableFiles(viewer, rows.map((r) => r.file)),
     ]);
-    const asRow = new Map(toRows(rows, access, vis, viewer).map((r) => [r.id, r]));
+    const asRow = new Map(toRows(rows, access, vis, viewer, manage).map((r) => [r.id, r]));
     return (
       <FilesView
         {...common}
@@ -57,17 +58,21 @@ export default async function FilesPage({ searchParams }: { searchParams: Promis
 
   if (lens !== "all") {
     const [rows, sidebar] = await Promise.all([listByType(viewer, lens), sidebarFolders(viewer)]);
-    const [access, vis] = await Promise.all([
+    const [access, vis, manage] = await Promise.all([
       relationsForFiles(viewer, rows.map((r) => r.file)),
       visibilityForFiles(rows.map((r) => r.file.id)),
+      manageableFiles(viewer, rows.map((r) => r.file)),
     ]);
-    return <FilesView {...common} sidebarFolders={sidebar} folders={[]} files={toRows(rows, access, vis, viewer)} />;
+    return <FilesView {...common} sidebarFolders={sidebar} folders={[]} files={toRows(rows, access, vis, viewer, manage)} />;
   }
 
   const { files, folders } = await listFolder(viewer, null);
   /* One query for the whole page: the badge on each row is a permission, so
      it is read per file rather than from one screen-wide flag. */
-  const access = await relationsForFiles(viewer, files.map((r) => r.file));
+  const [access, manage] = await Promise.all([
+    relationsForFiles(viewer, files.map((r) => r.file)),
+    manageableFiles(viewer, files.map((r) => r.file)),
+  ]);
 
   return (
     <FilesView
@@ -78,7 +83,7 @@ export default async function FilesPage({ searchParams }: { searchParams: Promis
          why it exists. Both of the main Files pages had their own copy of the
          mapping, and both copies predated `posterUrl` — so thumbnails worked
          in recent, shared and trash and nowhere anybody actually looks. */
-      files={toRows(files, access, await visibilityForFiles(files.map((r) => r.file.id)), viewer)}
+      files={toRows(files, access, await visibilityForFiles(files.map((r) => r.file.id)), viewer, manage)}
     />
   );
 }

@@ -73,8 +73,9 @@ try{
     };
     var n=0,iv=setInterval(function(){check();scan();if(++n>30)clearInterval(iv);},2000);
   };
-  var later=function(){setTimeout(probe,1500);};
-  if(document.readyState==="complete")later();else window.addEventListener("load",later);
+  /* The hidden probe and its banner were retired on 2 Oct: SimplifiedGuard (components/zh)
+     now turns converted text back itself, and the probe text leaked into copy-paste. */
+  void probe;
 }catch(e){}
 var KEY="aura:reloaded-at",sent=0;
 function stale(m){return /ChunkLoadError|Loading (CSS )?chunk|Failed to fetch dynamically imported module|Importing a module script failed|error loading dynamically imported module|Failed to find Server Action|older or newer deployment/i.test(m||"");}

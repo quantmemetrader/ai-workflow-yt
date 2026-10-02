@@ -7,7 +7,7 @@ import { AGENT_KEYS, type AgentKey } from "@/lib/agents/catalog";
 import { conversationDetail, listConversations } from "@/lib/chat/service";
 import { agentHistoryFor, threadMessagesOf } from "@/lib/chat/thread";
 
-export const metadata = { title: "聊天 · Chat" };
+export const metadata = { title: "聊天" };
 
 /** Set by 新对话, cleared by the new chat's first message (components/canvas/AgentScreen.tsx). */
 const NEW_CHAT_COOKIE = "tg_chat_new";

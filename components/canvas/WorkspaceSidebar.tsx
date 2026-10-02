@@ -54,7 +54,7 @@ export type SidebarPerson = {
  * middle, and an unread count in the product's ink rather than alarm red.
  */
 const CSS = `
-.ws-row .ws-more{position:absolute;right:4px;top:50%;transform:translateY(-50%);opacity:0;transition:opacity .12s ease}.ws-row:hover .ws-more,.ws-row .ws-more:focus-within{opacity:1}.ws-row:hover .ws>span:last-of-type{visibility:hidden}
+.ws-row .ws-more{opacity:0;transition:opacity .12s ease}.ws-row:hover .ws-more,.ws-row .ws-more:focus-within{opacity:1}.ws-row:hover .ws>span:last-of-type{visibility:hidden}
 
 [data-ws-sidebar] .ws { height: 30px; border-radius: 8px; transition: background .12s; }
 [data-ws-sidebar] .ws:hover { background: rgba(0,0,0,.045); }
@@ -301,19 +301,19 @@ export function WorkspaceSidebar({
                 const active = pathname === `/chat/t/${c.id}`;
                 return (
                   <div key={c.id} className="ws-row" style={{ position: "relative" }}>
-                  <Link href={`/chat/t/${c.id}`} prefetch={false} className={`ws${active ? " on" : ""}`} title={c.title}>
+                  <Link href={`/chat/t/${c.id}`} prefetch={false} className={`ws${active ? " on" : ""}`} title={c.title === "New chat" ? (zh ? "新对话" : "New chat") : c.title}>
                     <span className="hs" aria-hidden>
                       <Icon name="chat" size={12} color="#a3a3a3" />
                     </span>
                     <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {c.title}
+                      {c.title === "New chat" ? (zh ? "新对话" : "New chat") : c.title}
                     </span>
                     <span style={{ marginLeft: "auto", fontSize: 11.5, color: "#b5b5b5", flexShrink: 0, fontWeight: 400 }}>
                       {shortDay(c.updatedAt, now, locale)}
                     </span>
                     <NavSpinner />
                   </Link>
-                  <ConversationMenu id={c.id} title={c.title} zh={zh} current={active} size={22} className="ws-more" />
+                  <ConversationMenu id={c.id} title={c.title} zh={zh} current={active} size={22} className="ws-more" style={{ position: "absolute", right: 4, top: "50%", transform: "translateY(-50%)" }} />
                   </div>
                 );
               })}

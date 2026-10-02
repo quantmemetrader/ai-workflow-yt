@@ -269,7 +269,10 @@ export function FilesView({
                 renaming.kind === "file"
                   ? await renameFileAction(renaming.id, name)
                   : await renameFolderAction(renaming.id, name);
+              /* Say it worked: inside a folder the list reorders and the row
+                 can move out of sight (QA, 2 Oct: no toast). */
               if ("error" in res && res.error) notify(res.error);
+              else if (name.trim() && name.trim() !== renaming.name) notify(zh ? `已改名为“${"name" in res && res.name ? res.name : name.trim()}”` : `Renamed to “${"name" in res && res.name ? res.name : name.trim()}”`, "ok");
               router.refresh();
             })
           }

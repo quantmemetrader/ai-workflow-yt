@@ -28,7 +28,8 @@ import { Tr } from "@/components/ui/Tr";
 /** Whether this person may rename or delete the file: the row's own relation
  * when it was read, else the screen-wide flag decides (QA, 2 Oct: a member
  * saw rename and delete on files shared with them to view). */
-const writable = (f: { access?: FileRow["access"] }) => f.access == null || f.access === "owner" || f.access === "editor";
+const writable = (f: { access?: FileRow["access"]; canManage?: boolean }) =>
+  f.canManage ?? (f.access == null || f.access === "owner" || f.access === "editor");
 
 export type FileRow = {
   id: string;
@@ -60,6 +61,9 @@ export type FileRow = {
   people?: { name: string; email: string }[];
   /** Whether this person may change that (its owner, or an admin). */
   canSetAccess?: boolean;
+  /** Whether rename and delete show on this row: owner, admin, or an editor
+   * grant naming this person. A studio-wide grant does not count (QA, 2 Oct). */
+  canManage?: boolean;
 };
 
 export type FolderRow = { id: string; name: string; count?: number };

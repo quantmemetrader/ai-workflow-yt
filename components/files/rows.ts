@@ -20,6 +20,9 @@ export function toRows(
     { visibility: "private" | "everyone" | "groups" | "people"; groups: string[]; userIds: string[]; people: { name: string; email: string }[] }
   >,
   viewer?: { id: string; isAdmin: boolean },
+  /** Files this person may rename or delete (`manageableFiles`); left out,
+   * the row falls back to its relation. */
+  manage?: Set<string>,
 ): FileRow[] {
   return rows.map((r) => ({
     id: r.file.id,
@@ -51,5 +54,6 @@ export function toRows(
     userIds: vis?.get(r.file.id)?.userIds,
     people: vis?.get(r.file.id)?.people,
     canSetAccess: viewer ? viewer.isAdmin || r.file.ownerId === viewer.id : false,
+    canManage: manage ? manage.has(r.file.id) : undefined,
   }));
 }

@@ -12,7 +12,7 @@ import {
 } from "@/lib/article/service";
 import { ArticleScreen } from "@/components/article/ArticleScreen";
 
-export const metadata = { title: "文章 · Articles" };
+export const metadata = { title: "文章" };
 
 /**
  * Article — the written sibling of Script.

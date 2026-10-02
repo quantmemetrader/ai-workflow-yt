@@ -804,7 +804,7 @@ export function ScriptLibraryScreen(props: ScriptLibraryScreenProps): React.JSX.
                         </span>
                         <span className="sl-meta">
                           <span className="dot" style={{ background: STATUS[s.status].dot }} />
-                          <span className="el">
+                          <span className="el" suppressHydrationWarning>
                             {zh ? STATUS[s.status].zh : STATUS[s.status].en} · {edited(s.updatedAt, locale)}
                           </span>
                         </span>
@@ -865,7 +865,7 @@ export function ScriptLibraryScreen(props: ScriptLibraryScreenProps): React.JSX.
                         )}
                       </div>
                       <div role="cell" className="sl-when" style={{ color: "#7c7c7c", whiteSpace: "nowrap" }} title={fullStamp(s.updatedAt, locale)}>
-                        <span className="el">{edited(s.updatedAt, locale)}</span>
+                        <span className="el" suppressHydrationWarning>{edited(s.updatedAt, locale)}</span>
                       </div>
                       <div role="cell" style={{ justifyContent: "flex-end", padding: "0 6px" }}>
                         <button type="button" className="more" aria-label={t("更多操作", "More")} aria-haspopup="menu" aria-expanded={menuFor === s.id} onClick={onMore(s)}>

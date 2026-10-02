@@ -164,13 +164,13 @@ export async function postMessage(
   if (!text && !files.length) return null;
 
   const [channel] = await db.select().from(chatChannels).where(eq(chatChannels.id, channelId)).limit(1);
-  if (!channel || channel.tenantId !== viewer.tenantId) throw new Error("Channel not found");
+  if (!channel || channel.tenantId !== viewer.tenantId) throw new Error("找不到这个频道（可能已经退出或被删除）");
 
   /* An announcements channel is read-only to everybody but an administrator.
      Enforced here rather than by hiding the composer: a composer that is not
      drawn is a UI decision, and this is a rule. */
   if (channel.kind === "announce" && !viewer.isAdmin) {
-    throw new Error("Only an administrator posts in announcements.");
+    throw new Error("公告频道只有管理员能发消息");
   }
 
   if (channel.isPrivate) {
@@ -179,7 +179,7 @@ export async function postMessage(
       .from(chatMembers)
       .where(and(eq(chatMembers.channelId, channelId), eq(chatMembers.userId, viewer.id)))
       .limit(1);
-    if (!member) throw new Error("Channel not found");
+    if (!member) throw new Error("找不到这个频道（可能已经退出或被删除）");
   }
 
   const id = newId("msg");
@@ -869,7 +869,7 @@ export async function createChannel(
     .limit(1);
   /* A name that belonged to a channel since archived opens it again rather
      than leading to a read-only room (archiving is new, QA 2 Oct). */
-  if (clash?.archivedAt && clash.kind === "channel") {
+  if (clash?.archivedAt && clash.kind === "channel" && (clash.createdBy === viewer.id || viewer.isAdmin)) {
     await db.update(chatChannels).set({ archivedAt: null }).where(eq(chatChannels.id, clash.id));
     return { ...clash, archivedAt: null };
   }
@@ -944,7 +944,7 @@ export async function channelMembers(viewer: Viewer, channelId: string) {
  * what keeps a private channel private. */
 export async function addChannelMembers(viewer: Viewer, channelId: string, userIds: string[]) {
   const channel = await channelById(viewer, channelId);
-  if (!channel) throw new Error("Channel not found");
+  if (!channel) throw new Error("找不到这个频道（可能已经退出或被删除）");
 
   if (channel.isPrivate) {
     const [mine] = await db
@@ -952,7 +952,7 @@ export async function addChannelMembers(viewer: Viewer, channelId: string, userI
       .from(chatMembers)
       .where(and(eq(chatMembers.channelId, channelId), eq(chatMembers.userId, viewer.id)))
       .limit(1);
-    if (!mine) throw new Error("Only someone already in this channel can add people to it");
+    if (!mine) throw new Error("只有频道里的人才能拉人进来");
   }
 
   // Ids off the wire are not people. Each one has to be a live account in this
@@ -983,13 +983,13 @@ export async function addChannelMembers(viewer: Viewer, channelId: string, userI
 /** Remove somebody, or leave yourself. */
 export async function removeChannelMember(viewer: Viewer, channelId: string, userId: string) {
   const channel = await channelById(viewer, channelId);
-  if (!channel) throw new Error("Channel not found");
+  if (!channel) throw new Error("找不到这个频道（可能已经退出或被删除）");
 
   // Anyone in the channel may leave it; removing somebody else is for the
   // person who created it, or an administrator.
   const self = userId === viewer.id;
   if (!self && channel.createdBy !== viewer.id && viewer.role !== "owner" && viewer.role !== "admin") {
-    throw new Error("Only whoever started this channel can remove people from it");
+    throw new Error("只有建这个频道的人才能把人移出去");
   }
 
   await db
@@ -1082,6 +1082,7 @@ export async function archiveChannel(viewer: Viewer, channelId: string): Promise
   const channel = await channelById(viewer, channelId);
   if (!channel) return "找不到这个频道";
   if (channel.archivedAt) return null;
+  if (channel.kind === "dm") return "私信对话不能归档";
   if (isSystemChannel(channel)) return "这是工作室的系统频道，不能归档";
   if (!canArchiveChannel(viewer, channel)) return "只有频道的创建人或管理员可以归档";
   if (await isProjectChannel(channelId)) return "项目的对话跟着项目走，归档项目即可";

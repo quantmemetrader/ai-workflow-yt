@@ -137,7 +137,7 @@ async function sampleText(viewer: Viewer, scriptId: string): Promise<string> {
     if (f?.text?.trim()) parts.push(`### ${f.name}\n${f.text}`);
   }
   return parts.length
-    ? `同事附的范例 / 参考资料：是范例稿的，学它的结构、语气、节奏和开头方式来写这个选题（不要照抄内容）；是资料的，可以引用其中的事实。\n${parts.join("\n\n").slice(0, 16000)}`
+    ? `同事附的范例 / 参考资料（选题永远是主线，不能被资料带跑题）：是范例稿的，只学它的结构、语气、节奏和开头方式，不要照搬它的内容和话题；是资料的，只有和这个选题直接相关的事实才可以用，和选题无关的内容一句都不要写进稿子。\n${parts.join("\n\n").slice(0, 16000)}`
     : "";
 }
 

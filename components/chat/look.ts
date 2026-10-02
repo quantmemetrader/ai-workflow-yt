@@ -161,7 +161,7 @@ ${s} .bar .sep { width: 1px; height: 16px; background: #ececec; margin: 0 5px; f
 ${s} .bar .hint { font-size: 11.5px; color: #a3a3a3; padding-left: 8px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 ${s} .composer { container: tgc / inline-size; z-index: 5; }
 ${s} .bar { flex-wrap: wrap; row-gap: 4px; min-width: 0; }
-@container tgc (max-width: 640px) { ${s} .bar .fmt { display: none !important; } ${s} .bar .hint { display: none; } }
-@container tgc (max-width: 480px) { ${s} .bar .answer-face:not([aria-haspopup]) { display: none !important; } }
+@container tgc (max-width: 780px) { ${s} .bar .fmt { display: none !important; } ${s} .bar .hint { display: none; } }
+@container tgc (max-width: 600px) { ${s} .bar .answer-face:not([aria-haspopup]) { display: none !important; } ${s} .bar .sep { display: none; } }
 `;
 }

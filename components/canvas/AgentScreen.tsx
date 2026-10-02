@@ -460,6 +460,8 @@ export function AgentScreen({
         body: JSON.stringify({
           ...(opts.retry ? { conversationId, retry: true } : { conversationId, content: text, ...(files.length ? { attachments: files.map((f) => f.id) } : {}) }),
           ...(pickModel !== AUTO_MODEL ? { model: pickModel } : {}),
+          /* On an employee page, that employee answers unless the message tags someone else (QA round 2). */
+          ...((history?.agent ?? initialAgent) ? { agent: history?.agent ?? initialAgent } : {}),
         }),
         signal: controller.signal,
       });
@@ -566,6 +568,11 @@ export function AgentScreen({
               const written = videoRefsOf(null, answer);
               for (const id of [...written.exportIds, ...written.fileIds]) named.add(id);
               if (named.size) void cardsFor([...named]).then((videos) => videos.length && patchLast((m) => ({ ...m, videos })));
+              /* A new chat shows up in 最近 now, and again once its title is written (QA round 2). */
+              if (created) {
+                router.refresh();
+                window.setTimeout(() => router.refresh(), 6000);
+              }
               break;
             }
             case "error":

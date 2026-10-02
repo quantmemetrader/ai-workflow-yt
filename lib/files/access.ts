@@ -181,6 +181,58 @@ export async function visibilityForFiles(ids: string[]): Promise<Map<string, Fil
   return out;
 }
 
+/**
+ * Which of these files this person may rename or delete from a list: they own
+ * it, they run the studio, or an editor grant names them (a share to them or
+ * their team, on the file or a folder above it). A studio-wide grant on the
+ * file itself is its visibility, so it does not count (QA, 2 Oct: a member
+ * saw rename and delete on a colleague's render set to everyone, while its
+ * own page offered only download and share).
+ */
+export async function manageableFiles(
+  viewer: Viewer,
+  rows: { id: string; folderPath: string[] | null; ownerId?: string | null }[],
+): Promise<Set<string>> {
+  const out = new Set<string>();
+  if (!rows.length) return out;
+  if (viewer.isAdmin) return new Set(rows.map((r) => r.id));
+  for (const r of rows) if (r.ownerId && r.ownerId === viewer.id) out.add(r.id);
+  const rest = rows.filter((r) => !out.has(r.id));
+  if (!rest.length) return out;
+  const personal = viewer.subjects.filter((s) => !s.startsWith("tenant:") && !s.startsWith("role:"));
+  const folderIds = [...new Set(rest.flatMap((r) => r.folderPath ?? []))];
+  const list = (xs: string[]) => sql.join(xs.map((x) => sql`${x}`), sql`, `);
+  const tuples = await db
+    .select({ objectType: relationTuples.objectType, objectId: relationTuples.objectId })
+    .from(relationTuples)
+    .where(
+      and(
+        inArray(relationTuples.relation, ["owner", "editor"]),
+        sql`(${relationTuples.expiresAt} is null or ${relationTuples.expiresAt} > now())`,
+        or(
+          personal.length
+            ? and(
+                eq(relationTuples.objectType, "file"),
+                inArray(relationTuples.objectId, rest.map((r) => r.id)),
+                sql`(${relationTuples.subjectType} || ':' || ${relationTuples.subjectId}) in (${list(personal)})`,
+              )
+            : sql`false`,
+          folderIds.length
+            ? and(
+                eq(relationTuples.objectType, "folder"),
+                inArray(relationTuples.objectId, folderIds),
+                sql`(${relationTuples.subjectType} || ':' || ${relationTuples.subjectId}) in (${list(viewer.subjects)})`,
+              )
+            : sql`false`,
+        ),
+      ),
+    );
+  const onFile = new Set(tuples.filter((t) => t.objectType === "file").map((t) => t.objectId));
+  const onFolder = new Set(tuples.filter((t) => t.objectType === "folder").map((t) => t.objectId));
+  for (const r of rest) if (onFile.has(r.id) || (r.folderPath ?? []).some((f) => onFolder.has(f))) out.add(r.id);
+  return out;
+}
+
 /** Everyone active in the studio but the viewer, for the "specific people" list. */
 export async function studioPeople(viewer: Viewer) {
   return db

@@ -67,7 +67,10 @@ export function RenameFile({ id, name, zh }: { id: string; name: string; zh: boo
               try {
                 const res = await renameFileAction(id, wanted);
                 if (res.error) notify(res.error);
-                else router.refresh();
+                else {
+                  notify(t(`Renamed to “${res.name ?? wanted}”`, `已改名为“${res.name ?? wanted}”`), "ok");
+                  router.refresh();
+                }
               } finally {
                 done();
               }

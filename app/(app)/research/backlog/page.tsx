@@ -126,7 +126,7 @@ export default async function BacklogPage({ searchParams }: { searchParams: Prom
       <ResearchShell zh={zh} savedCount={rows.length}>
       <BacklogView
       locale={viewer.locale ?? "zh-CN"}
-      region="HK / TW / SG"
+      region="香港 / 台湾 / 新加坡"
       model={answeringModel()}
       canWriteScripts={viewer.modules.includes("script")}
       channels={CHANNELS}

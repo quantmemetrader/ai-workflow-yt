@@ -62,7 +62,7 @@ export function ModelCard({ zh, options, current }: { zh: boolean; options: Mode
             placement="down"
             align="right"
             note={zh ? "全工作室默认用这个模型" : "The whole studio's default"}
-            autoLabel={{ zh: "选一个", en: "Choose", lineZh: "下面的常用模型之外的", lineEn: "Beyond the usual ones below" }}
+            autoLabel={{ zh: "更多模型", en: "More models", lineZh: "下面的常用模型之外的", lineEn: "Beyond the usual ones below" }}
             onChange={(id) => (id === AUTO_MODEL ? undefined : choose(id))}
           />
         </div>

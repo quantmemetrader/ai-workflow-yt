@@ -1126,10 +1126,15 @@ export async function deleteProject(viewer: Viewer, id: string): Promise<void> {
   await db.update(workProjects).set({ deletedAt: new Date() }).where(eq(workProjects.id, id));
   /* Its script goes with it (2 Oct: deleted projects' scripts stayed in 脚本 as 「待写」
      and opened in the old editor), unless another live project still uses it. */
-  const [own] = await db.select({ scriptId: workProjects.scriptId }).from(workProjects).where(eq(workProjects.id, id)).limit(1);
+  const [own] = await db.select({ scriptId: workProjects.scriptId, videoProjectId: workProjects.videoProjectId }).from(workProjects).where(eq(workProjects.id, id)).limit(1);
   if (own?.scriptId) {
     const [other] = await db.select({ id: workProjects.id }).from(workProjects).where(and(eq(workProjects.scriptId, own.scriptId), isNull(workProjects.deletedAt))).limit(1);
     if (!other) await db.update(scripts).set({ deletedAt: new Date() }).where(and(eq(scripts.id, own.scriptId), eq(scripts.tenantId, viewer.tenantId)));
+  }
+  /* And its cut, the same way (QA round 2: the cut stayed in /video). */
+  if (own?.videoProjectId) {
+    const [other] = await db.select({ id: workProjects.id }).from(workProjects).where(and(eq(workProjects.videoProjectId, own.videoProjectId), isNull(workProjects.deletedAt))).limit(1);
+    if (!other) await db.update(videoProjects).set({ deletedAt: new Date() }).where(and(eq(videoProjects.id, own.videoProjectId), eq(videoProjects.tenantId, viewer.tenantId)));
   }
   await audit(viewer, "project.delete", { module: "chat", objectType: "project", objectId: id });
 }

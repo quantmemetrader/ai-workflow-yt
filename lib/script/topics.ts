@@ -1,4 +1,5 @@
 import "server-only";
+import { readerLine } from "@/lib/text/reader";
 import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { chatChannels, chatMessages, ideas, scripts, settings, topics, workProjects } from "@/lib/db/schema";
@@ -280,9 +281,10 @@ export async function scriptTopicQueue(viewer: Viewer, opts: { proposals?: Propo
     out.push({
       key: `plan:${p.text}`,
       kind: "plan",
-      title: p.text,
+      /* Shown without the ids the plan carries (「（scr_…）」, QA round 2). */
+      title: readerLine(p.text, 200),
       label: zh ? `今天的计划${proposals.planDate ? ` · ${proposals.planDate}` : ""}` : `Today's plan${proposals.planDate ? ` · ${proposals.planDate}` : ""}`,
-      why: p.why,
+      why: p.why ? readerLine(p.why, 200) : null,
       hook: null,
       angle: null,
       strength: null,

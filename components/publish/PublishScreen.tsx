@@ -552,7 +552,7 @@ function ChannelCard({
         </span>
         <span style={{ minWidth: 0, flexGrow: 1 }}>
           <span style={{ fontSize: 13.5, fontWeight: 600, display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {c.displayName ?? c.username ?? c.platform}
+            {zhName(c.displayName) ?? c.username ?? c.platform}
           </span>
           <span style={{ fontSize: 11.5, color: "#999999", display: "flex", alignItems: "center", gap: 5, minWidth: 0, marginTop: 1 }}>
             <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
@@ -1161,11 +1161,14 @@ function Caption({
             {channels.map((c) => {
               const on = selected.targets.some((x) => x.channelId === c.id);
               const sent = selected.targets.find((x) => x.channelId === c.id)?.state === "published";
+              /* A channel whose sign-in has expired cannot take a post until it is authorised again (QA round 2). */
+              const expired = Boolean((c as ChannelRow & { tokenExpired?: boolean }).tokenExpired) || c.needsReconnect;
               return (
                 <button
                   key={c.id}
                   type="button"
-                  disabled={busy || sent || !c.enabled}
+                  title={expired && !on ? t("Sign in again before posting here", "授权已到期，重新授权后才能发到这里") : undefined}
+                  disabled={busy || sent || !c.enabled || (expired && !on)}
                   onClick={() =>
                     onTargets(
                       selected.id,
@@ -1179,12 +1182,12 @@ function Caption({
                     background: on ? "#171717" : "#fff",
                     color: on ? "#fff" : "#525252",
                     borderColor: on ? "#171717" : "#ededed",
-                    opacity: c.enabled ? 1 : 0.5,
+                    opacity: c.enabled && !(expired && !on) ? 1 : 0.5,
                   }}
                 >
                   <PlatformMark platform={c.platform} size={12} mono={on} />
-                  {c.displayName ?? c.username ?? c.platform}
-                  {sent ? ` · ${t("sent", "已发送")}` : ""}
+                  {zhName(c.displayName) ?? c.username ?? c.platform}
+                  {sent ? ` · ${t("sent", "已发送")}` : expired ? ` · ${t("sign in again", "需重新授权")}` : ""}
                 </button>
               );
             })}
@@ -1689,7 +1692,7 @@ function NewPostDialog({
                   }}
                 >
                   <PlatformMark platform={c.platform} size={12} mono={on} />
-                  {c.displayName ?? c.username ?? c.platform}
+                  {zhName(c.displayName) ?? c.username ?? c.platform}
                 </button>
               );
             })
@@ -1794,7 +1797,7 @@ function countWord(n: number, zh: boolean): string {
 /* ------------------------------------------------------------- fragments */
 
 function agentNote(channels: ChannelRow[], posts: PostRow[], waiting: number, zh: boolean) {
-  const live = channels.filter((c) => c.canPost && c.enabled && !c.needsReconnect).length;
+  const live = channels.filter((c) => c.canPost && c.enabled && !c.needsReconnect && !(c as ChannelRow & { tokenExpired?: boolean }).tokenExpired).length;
   if (zh) {
     return `${live} 个账号可以发布，${waiting} 条等待批准。`;
   }
@@ -1938,3 +1941,10 @@ const solid: React.CSSProperties = {
   letterSpacing: "inherit",
   cursor: "pointer",
 };
+
+/** LinkedIn sends Chinese names in Western order (「亚芳 谢」): show 「谢亚芳」. */
+function zhName(name: string | null | undefined): string | null {
+  if (!name) return null;
+  const m = /^([\u4e00-\u9fff]{1,3})\s+([\u4e00-\u9fff]{1,2})$/.exec(name.trim());
+  return m ? `${m[2]}${m[1]}` : name;
+}
