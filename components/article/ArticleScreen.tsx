@@ -110,7 +110,9 @@ export function ArticleScreen({
   const router = useRouter();
   const params = useSearchParams();
   const { busy, run } = useAction();
-  const agent = useInlineAgent({ module: "script" }, { key: "article" });
+  /* The writer, with the article open on screen in hand: "把标题改成问句" is about this one (Ryan, 2 Oct). */
+  const openArticleId = useSearchParams()?.get("id") ?? undefined;
+  const agent = useInlineAgent({ module: "script", articleId: openArticleId }, { key: openArticleId ? `article:${openArticleId}` : "article", agent: "article" });
 
   const [composing, setComposing] = useState(false);
   const [deleting, setDeleting] = useState<ArticleListItem | null>(null);

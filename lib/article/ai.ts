@@ -145,7 +145,8 @@ export async function draftArticle(
   if (!parsedOut || !parsedOut.body.trim()) return { error: "The model did not return an article we could read." };
   /* A second pair of eyes with the most natural Chinese (Kimi K2.6): the
      wording only, never the facts; a failure leaves the draft as it was. */
-  const drafted = { ...parsedOut, body: await polishProse(viewer, parsedOut.body) };
+  /* Not on a revision: the person asked for one change and the rest kept, and a polish would reword the rest. */
+  const drafted = revising ? parsedOut : { ...parsedOut, body: await polishProse(viewer, parsedOut.body) };
 
   const saved = await saveArticle(viewer, articleId, {
     title: drafted.title || article.title,

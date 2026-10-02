@@ -49,7 +49,7 @@ const defs: ToolDef[] = [
       parameters: {
         type: "object",
         properties: {
-          id: { type: "string", description: "The article's id (from list_articles or the screen). Optional: the newest article when left out." },
+          id: { type: "string", description: "The article's id. Optional: the article open on screen, else the newest one." },
           instruction: { type: "string", description: "What to change, in the person's words." },
         },
         required: ["instruction"],
@@ -132,7 +132,7 @@ async function run(ctx: ToolContext, name: string, args: Record<string, unknown>
   if (name === "revise_article") {
     const instruction = str(args.instruction, 1500);
     if (!instruction) return { text: "Say what should change." };
-    const id = str(args.id, 64) || (await latestArticleId(ctx.viewer)) || "";
+    const id = str(args.id, 64) || ctx.articleId || (await latestArticleId(ctx.viewer)) || "";
     const [row] = id ? await db.select({ id: articles.id, title: articles.title }).from(articles).where(and(eq(articles.id, id), eq(articles.tenantId, ctx.viewer.tenantId), isNull(articles.deletedAt))).limit(1) : [];
     if (!row) return { text: "No such article. Use an id from list_articles." };
     await cutVersion(ctx.viewer, row.id, { note: "改稿前" });
@@ -161,7 +161,7 @@ async function run(ctx: ToolContext, name: string, args: Record<string, unknown>
   }
 
   if (name === "read_article") {
-    const id = str(args.id, 64) || (await latestArticleId(ctx.viewer)) || "";
+    const id = str(args.id, 64) || ctx.articleId || (await latestArticleId(ctx.viewer)) || "";
     const [row] = id
       ? await db
           .select()

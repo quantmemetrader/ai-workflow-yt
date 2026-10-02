@@ -5,7 +5,7 @@ import { endTurn, registerTurn } from "@/lib/ai/turns";
 import { after } from "next/server";
 import { and, eq, isNull, sql, desc, inArray } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { agentMessages, conversations, files, scripts, topics } from "@/lib/db/schema";
+import { agentMessages, articles, conversations, files, scripts, topics } from "@/lib/db/schema";
 import { getViewer, type Viewer } from "@/lib/auth/dal";
 import type { Module } from "@/lib/db/schema";
 import { runAgent, titleConversation } from "@/lib/ai/agent";
@@ -26,7 +26,7 @@ import { describeOutcome, startCutForProject, type StartCutOutcome } from "@/lib
 import { workProjects } from "@/lib/db/schema";
 import { videoClock } from "@/lib/chat/video-card";
 
-type ScreenIds = Pick<ToolContext, "channelId" | "projectId" | "topicId" | "fileId" | "scriptId">;
+type ScreenIds = Pick<ToolContext, "channelId" | "projectId" | "topicId" | "fileId" | "scriptId" | "articleId">;
 
 /**
  * Files the person put on their message, as lines the employee reads.
@@ -133,8 +133,8 @@ async function describeAttachments(viewer: Viewer, conversationId: string, raw: 
  */
 async function screenIds(viewer: Viewer, raw: Record<string, unknown>): Promise<ScreenIds> {
   const pick = (k: string) => (typeof raw[k] === "string" && raw[k] ? (raw[k] as string).slice(0, 64) : undefined);
-  const want = { channelId: pick("channelId"), projectId: pick("projectId"), topicId: pick("topicId"), fileId: pick("fileId"), scriptId: pick("scriptId") };
-  const [channelId, projectId, topicId, fileId, scriptId] = await Promise.all([
+  const want = { channelId: pick("channelId"), projectId: pick("projectId"), topicId: pick("topicId"), fileId: pick("fileId"), scriptId: pick("scriptId"), articleId: pick("articleId") };
+  const [channelId, projectId, topicId, fileId, scriptId, articleId] = await Promise.all([
     want.channelId ? channelById(viewer, want.channelId).then((c) => c?.id) : undefined,
     want.projectId
       ? Promise.all([projectById(viewer, want.projectId, "viewer"), reachableThroughProjects(viewer, { videoProjectId: want.projectId })]).then(([p, ok]) => (p && ok ? p.id : undefined))
@@ -167,8 +167,17 @@ async function screenIds(viewer: Viewer, raw: Record<string, unknown>): Promise<
           reachableThroughProjects(viewer, { scriptId: want.scriptId }),
         ]).then(([[sc], ok]) => (sc && ok ? sc.id : undefined))
       : undefined,
+    /* An article: one of the studio's, not deleted (the Article page is the writing module's). */
+    want.articleId
+      ? db
+          .select({ id: articles.id })
+          .from(articles)
+          .where(and(eq(articles.id, want.articleId), eq(articles.tenantId, viewer.tenantId), isNull(articles.deletedAt)))
+          .limit(1)
+          .then(([a]) => a?.id)
+      : undefined,
   ]);
-  return { channelId, projectId, topicId, fileId, scriptId };
+  return { channelId, projectId, topicId, fileId, scriptId, articleId };
 }
 
 /**

@@ -87,6 +87,8 @@ export type AgentContext = {
   topicId?: string;
   fileId?: string;
   scriptId?: string;
+  /** The article on screen (the Article page): its writer revises that one. */
+  articleId?: string;
 };
 
 export function useInlineAgent(

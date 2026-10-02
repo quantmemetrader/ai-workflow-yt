@@ -129,6 +129,8 @@ export type ToolContext = {
   fileId?: string;
   /** The script on screen. */
   scriptId?: string;
+  /** The article on screen. */
+  articleId?: string;
   /**
    * Only tools that read. Set for an employee answering a colleague with
    * nothing verified in hand: it looks things up and says what it found, it
