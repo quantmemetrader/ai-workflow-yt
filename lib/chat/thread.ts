@@ -72,6 +72,7 @@ export async function threadMessagesOf(viewer: Viewer, detail: NonNullable<Await
       })),
     videos: videos.get(m.id) ?? [],
     made: madeScript(detail.toolCalls.filter((c) => c.messageId === m.id)),
+    links: linksOf(detail.toolCalls.filter((c) => c.messageId === m.id)),
   }));
 }
 
@@ -119,4 +120,23 @@ function madeScript(calls: { name: string; status: string; result?: unknown }[])
     return { scriptId: id, projectId: /\/projects\/(wp_[0-9a-z]+)/i.exec(c.result)?.[1] ?? null, title: /Written: "(.+?)"/.exec(c.result)?.[1] ?? "" };
   }
   return null;
+}
+
+/**
+ * What a turn made or changed, as links under its answer, from the
+ * receipts the tools wrote ("Open it at /article?id=art_…"): the article it
+ * wrote or revised. The screen draws the same links live from the tool
+ * events; this keeps them when the thread is read back (an article written
+ * from chat used to be named and not linked, 2 Oct).
+ */
+function linksOf(calls: { name: string; status: string; result?: unknown }[]): { kind: string; id: string; title?: string }[] {
+  const out: { kind: string; id: string; title?: string }[] = [];
+  for (const c of calls) {
+    if (c.status !== "ok" || typeof c.result !== "string") continue;
+    if (c.name === "write_article" || c.name === "revise_article") {
+      const id = /\/article\?id=(art_[0-9a-z]+)/i.exec(c.result)?.[1];
+      if (id && !out.some((l) => l.id === id)) out.push({ kind: "article", id, title: /(?:Written|Revised):? "(.+?)"/.exec(c.result)?.[1] });
+    }
+  }
+  return out;
 }
