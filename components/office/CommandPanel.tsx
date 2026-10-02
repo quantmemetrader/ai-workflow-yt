@@ -10,6 +10,8 @@ import type { LookKey } from "@/components/office/art";
 export type CommandPanelHandle = {
   /** Put this colleague in the composer ("@编剧 "), or the assistant for "host". */
   pick: (key: LookKey) => void;
+  /** Send these words to this colleague now (the desk popover's 派任务). */
+  say: (key: LookKey, text: string) => void;
 };
 
 /**
@@ -30,6 +32,10 @@ export const CommandPanel = React.forwardRef<CommandPanelHandle, { zh: boolean; 
   React.useImperativeHandle(
     ref,
     () => ({
+      say(key, text) {
+        const tag = key === "host" ? "" : agentTag(key as AgentKey);
+        void agent.send(`${tag} ${text}`.trim());
+      },
       pick(key) {
         const box = wrap.current?.querySelector("textarea");
         if (!box) return;
@@ -42,7 +48,7 @@ export const CommandPanel = React.forwardRef<CommandPanelHandle, { zh: boolean; 
         box.setSelectionRange(next.length, next.length);
       },
     }),
-    [],
+    [agent],
   );
 
   /* Whoever is answering right now is at work on the floor too: that is a

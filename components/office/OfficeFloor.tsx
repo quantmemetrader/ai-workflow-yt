@@ -26,6 +26,19 @@ const CSS = `
 [data-office] .of-bub .dot { width: 6px; height: 6px; background: currentColor; animation: ofBlink 1s steps(2, jump-none) infinite; }
 [data-office] .of-bub .bang { display: inline-flex; align-items: center; justify-content: center; width: 12px; height: 12px; border-radius: 2px; background: #c77d0a; color: #fff; font-size: 10px; line-height: 1; }
 [data-office] .of-bub.idle { font-weight: 500; opacity: .92; }
+[data-office] .of-bub.cloud { white-space: normal; max-width: 168px; text-align: left; line-height: 14px; padding: 4px 8px; border-radius: 10px; font-weight: 500; display: block; }
+[data-office] .of-bub.cloud .what { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; color: #1f1f1f; }
+[data-office] .of-bub.cloud .pct { color: #0b7a63; font-weight: 700; margin-left: 4px; }
+[data-office] .of-bub.cloud::after { bottom: -5px; width: 5px; height: 5px; border-radius: 50%; margin-left: -8px; }
+[data-office] .of-bub.cloud::before { content: ""; position: absolute; left: 50%; bottom: -10px; width: 3px; height: 3px; border-radius: 50%; margin-left: -4px; background: var(--edge); }
+[data-office] .of-tip.live { pointer-events: auto; }
+[data-office] .of-acts { display: flex; gap: 6px; margin-top: 10px; }
+[data-office] .of-act { flex: 1; display: inline-flex; align-items: center; justify-content: center; height: 28px; border-radius: 7px; border: 1px solid #e3e1dc; background: #fff; color: #333; font: inherit; font-size: 12px; font-weight: 500; text-decoration: none; cursor: pointer; white-space: nowrap; }
+[data-office] .of-act:hover { background: #faf9f7; border-color: #c9c6bf; }
+[data-office] .of-act.primary { background: #171717; border-color: #171717; color: #fff; }
+[data-office] .of-say { margin-top: 8px; display: flex; flex-direction: column; gap: 6px; }
+[data-office] .of-say textarea { width: 100%; box-sizing: border-box; min-height: 64px; resize: vertical; border: 1px solid #d6d4ce; border-radius: 8px; padding: 8px 10px; font: inherit; font-size: 13px; line-height: 1.5; outline: none; }
+[data-office] .of-say textarea:focus { border-color: #3a2f3d; }
 [data-office] .of-tip { position: absolute; z-index: 3; width: 220px; padding: 10px 12px; border-radius: 10px; background: #fff; border: 1px solid #e6e4df;
   box-shadow: 0 8px 24px rgba(30,25,20,.12), 0 1px 2px rgba(0,0,0,.06); pointer-events: none; }
 [data-office] .of-step { position: absolute; transform: translateX(-50%); white-space: nowrap; pointer-events: none; font-size: 11px; line-height: 16px; color: #6f665a; font-weight: 600; }
@@ -58,11 +71,40 @@ function useReducedMotion(): boolean {
   return reduced;
 }
 
-export function OfficeFloor({ members, zh, selected, onPick }: { members: OfficeMember[]; zh: boolean; selected: LookKey | null; onPick: (key: LookKey) => void }) {
+export function OfficeFloor({
+  members,
+  zh,
+  selected,
+  onPick,
+  onAssign,
+}: {
+  members: OfficeMember[];
+  zh: boolean;
+  selected: LookKey | null;
+  onPick: (key: LookKey) => void;
+  /** 派任务 from the desk's own popover: the words go to that colleague (owner, 2 Oct). */
+  onAssign?: (key: LookKey, text: string) => void;
+}) {
   const wrap = React.useRef<HTMLDivElement | null>(null);
   const canvas = React.useRef<HTMLCanvasElement | null>(null);
   const [width, setWidth] = React.useState(0);
   const [hover, setHover] = React.useState<LookKey | null>(null);
+  /* A desk that was clicked keeps its popover open (with the buttons and the
+     message box) until Esc, a click elsewhere, or another desk. */
+  const [open, setOpen] = React.useState<LookKey | null>(null);
+  React.useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(null);
+    const onDown = (e: MouseEvent) => {
+      if (!wrap.current?.contains(e.target as Node)) setOpen(null);
+    };
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("mousedown", onDown);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("mousedown", onDown);
+    };
+  }, [open]);
   const reduced = useReducedMotion();
 
   const seats = React.useMemo(() => seatsFor(members.map((m) => m.key)), [members]);
@@ -163,8 +205,9 @@ export function OfficeFloor({ members, zh, selected, onPick }: { members: Office
     ? `像素办公室：${members.length} 位同事，${working} 位工作中，${waiting} 位等你`
     : `Pixel office: ${members.length} colleagues, ${working} working, ${waiting} waiting on you`;
   const compact = scale < 2.4;
-  const tipSeat = hover ? seats.find((s) => s.key === hover) : null;
-  const tipMember = hover ? byKey.get(hover) : null;
+  const shown = open ?? hover;
+  const tipSeat = shown ? seats.find((s) => s.key === shown) : null;
+  const tipMember = shown ? byKey.get(shown) : null;
 
   return (
     <div data-office="" ref={wrap} style={{ position: "relative", width: "100%" }}>
@@ -180,16 +223,27 @@ export function OfficeFloor({ members, zh, selected, onPick }: { members: Office
           const name = nameOf(s.key, zh);
           return (
             <React.Fragment key={s.key}>
-              <span
-                aria-hidden
-                className={`of-bub ${status === "waiting" ? "wait" : status === "idle" ? "idle" : ""}`}
-                style={{ left: b.headX * scale, top: b.headY * scale - 3, color: tone.ink, background: status === "idle" ? "#fbfaf8" : tone.bg, borderColor: tone.edge, ["--edge" as string]: tone.edge }}
-              >
-                {status === "waiting" ? <span className="bang">!</span> : status === "working" ? <span className="dot" /> : null}
-                {compact ? null : <span style={{ color: "#3a2f3d" }}>{name}</span>}
-                {compact ? null : <span style={{ opacity: 0.5 }}>·</span>}
-                <span>{statusWord(status, zh)}</span>
-              </span>
+              {status === "working" && m && !compact ? (
+                /* A thought cloud: what they are on right now, and how far (owner, 2 Oct). */
+                <span aria-hidden className="of-bub cloud" style={{ left: b.headX * scale, top: b.headY * scale - 6, color: tone.ink, background: tone.bg, borderColor: tone.edge, ["--edge" as string]: tone.edge }}>
+                  <span className="what">
+                    <span className="dot" style={{ display: "inline-block", verticalAlign: "middle", marginRight: 4 }} />
+                    {taskLine(m, zh)}
+                    {m.progress != null ? <span className="pct">{m.progress}%</span> : null}
+                  </span>
+                </span>
+              ) : (
+                <span
+                  aria-hidden
+                  className={`of-bub ${status === "waiting" ? "wait" : status === "idle" ? "idle" : ""}`}
+                  style={{ left: b.headX * scale, top: b.headY * scale - 3, color: tone.ink, background: status === "idle" ? "#fbfaf8" : tone.bg, borderColor: tone.edge, ["--edge" as string]: tone.edge }}
+                >
+                  {status === "waiting" ? <span className="bang">!</span> : status === "working" ? <span className="dot" /> : null}
+                  {compact ? null : <span style={{ color: "#3a2f3d" }}>{name}</span>}
+                  {compact ? null : <span style={{ opacity: 0.5 }}>·</span>}
+                  <span>{statusWord(status, zh)}</span>
+                </span>
+              )}
               <button
                 type="button"
                 className="of-hit"
@@ -198,7 +252,10 @@ export function OfficeFloor({ members, zh, selected, onPick }: { members: Office
                 onMouseEnter={() => setHover(s.key)}
                 onFocus={() => setHover(s.key)}
                 onBlur={() => setHover((h) => (h === s.key ? null : h))}
-                onClick={() => onPick(s.key)}
+                onClick={() => {
+                  onPick(s.key);
+                  setOpen((o) => (o === s.key ? null : s.key));
+                }}
                 style={{ left: b.x * scale, top: b.y * scale, width: b.w * scale, height: b.h * scale }}
               />
             </React.Fragment>
@@ -222,7 +279,20 @@ export function OfficeFloor({ members, zh, selected, onPick }: { members: Office
           </span>
         ) : null}
 
-        {tipSeat && tipMember ? <Tip member={tipMember} zh={zh} x={tipSeat.cx * scale} top={(tipSeat.dy - 30) * scale} bottom={(tipSeat.dy + 20) * scale} areaW={cssW} areaH={cssH} /> : null}
+        {tipSeat && tipMember ? (
+          <Tip
+            member={tipMember}
+            zh={zh}
+            x={tipSeat.cx * scale}
+            top={(tipSeat.dy - 30) * scale}
+            bottom={(tipSeat.dy + 20) * scale}
+            areaW={cssW}
+            areaH={cssH}
+            pinned={open === tipMember.key}
+            onAssign={onAssign ? (text) => { onAssign(tipMember.key, text); setOpen(null); } : undefined}
+            onClose={() => setOpen(null)}
+          />
+        ) : null}
       </div>
 
       <ul className="of-sr">
@@ -249,21 +319,80 @@ function stepWord(key: LookKey, zh: boolean): string {
   return w ? (zh ? w[0] : w[1]) : "";
 }
 
-function Tip({ member, zh, x, top, bottom, areaW, areaH }: { member: OfficeMember; zh: boolean; x: number; top: number; bottom: number; areaW: number; areaH: number }) {
+function Tip({ member, zh, x, top, bottom, areaW, areaH, pinned, onAssign, onClose }: { member: OfficeMember; zh: boolean; x: number; top: number; bottom: number; areaW: number; areaH: number; pinned: boolean; onAssign?: (text: string) => void; onClose: () => void }) {
   const tone = STATUS_TONE[member.status];
-  const w = 220;
+  const w = 240;
   const left = Math.max(4, Math.min(areaW - w - 4, x - w / 2));
   // Under the desk, unless that runs off the floor; then over the head.
-  const style: React.CSSProperties = bottom + 120 < areaH ? { left, top: bottom + 4 } : { left, bottom: areaH - top + 4 };
+  const style: React.CSSProperties = bottom + 200 < areaH ? { left, top: bottom + 4, width: w } : { left, bottom: areaH - top + 4, width: w };
+  const [say, setSay] = React.useState(false);
+  const [text, setText] = React.useState("");
+  const box = React.useRef<HTMLTextAreaElement | null>(null);
+  React.useEffect(() => {
+    if (!pinned) setSay(false);
+  }, [pinned]);
+  React.useEffect(() => {
+    if (say) box.current?.focus();
+  }, [say]);
+  const name = nameOf(member.key, zh);
+  const chatHref = member.key === "host" ? "/chat" : `/chat?agent=${member.key}`;
+  const send = () => {
+    const t = text.trim();
+    if (!t || !onAssign) return;
+    onAssign(t);
+    setText("");
+    setSay(false);
+  };
   return (
-    <div className="of-tip" role="tooltip" style={style}>
+    <div className={`of-tip ${pinned ? "live" : ""}`} role={pinned ? "dialog" : "tooltip"} style={style} onMouseDown={(e) => e.stopPropagation()}>
       <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-        <span style={{ fontSize: 13.5, fontWeight: 600, color: "#171717" }}>{nameOf(member.key, zh)}</span>
+        <span style={{ fontSize: 13.5, fontWeight: 600, color: "#171717" }}>{name}</span>
         <span style={{ fontSize: 11, fontWeight: 500, color: tone.ink, background: tone.bg, borderRadius: 999, padding: "0 7px", lineHeight: "18px" }}>{statusWord(member.status, zh)}</span>
+        {pinned ? (
+          <button type="button" onClick={onClose} aria-label={zh ? "关闭" : "Close"} style={{ marginLeft: "auto", border: 0, background: "transparent", color: "#8a8a8a", fontSize: 16, cursor: "pointer", padding: "0 2px" }}>
+            ×
+          </button>
+        ) : null}
       </div>
       <div style={{ fontSize: 12, color: "#8a8a8a", marginTop: 3, lineHeight: 1.5 }}>{jobOf(member.key, zh)}</div>
       <div style={{ fontSize: 12.5, color: "#3f3f3f", marginTop: 6, lineHeight: 1.55, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{taskLine(member, zh)}</div>
-      <div style={{ fontSize: 11.5, color: "#a3a3a3", marginTop: 6 }}>{zh ? "点一下派任务；聊天、训练在下面的卡片上" : "Click to assign; chat and train on the card below"}</div>
+      {pinned ? (
+        <>
+          <div className="of-acts">
+            {onAssign ? (
+              <button type="button" className="of-act primary" onClick={() => setSay((v) => !v)}>
+                {zh ? "派任务" : "Assign"}
+              </button>
+            ) : null}
+            <a className="of-act" href={chatHref}>{zh ? "聊天" : "Chat"}</a>
+            {member.key === "host" ? null : <a className="of-act" href={`/train/${member.key}`}>{zh ? "训练" : "Train"}</a>}
+          </div>
+          {say ? (
+            <div className="of-say">
+              <textarea
+                ref={box}
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                placeholder={zh ? `交代给${name}…（回车发送）` : `Tell ${name}… (Enter to send)`}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+                    e.preventDefault();
+                    send();
+                  }
+                }}
+              />
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ fontSize: 11.5, color: "#a3a3a3", flexGrow: 1 }}>{zh ? "回答会出现在右边的指挥中心" : "The answer lands in the command centre"}</span>
+                <button type="button" className="of-act primary" style={{ flex: "0 0 auto", padding: "0 12px" }} disabled={!text.trim()} onClick={send}>
+                  {zh ? "发送" : "Send"}
+                </button>
+              </div>
+            </div>
+          ) : null}
+        </>
+      ) : (
+        <div style={{ fontSize: 11.5, color: "#a3a3a3", marginTop: 6 }}>{zh ? "点一下：派任务、聊天、训练" : "Click for assign, chat and train"}</div>
+      )}
     </div>
   );
 }

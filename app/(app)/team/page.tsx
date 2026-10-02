@@ -18,11 +18,11 @@ export const metadata = { title: "AI 同事" };
  * doing, the roster underneath and 指挥中心 on the right. 列表 keeps the
  * board of cards with 派任务 / 聊天 / 训练.
  */
-export default async function TeamPage({ searchParams }: { searchParams: Promise<{ view?: string; pick?: string }> }) {
+export default async function TeamPage({ searchParams }: { searchParams: Promise<{ view?: string; pick?: string; say?: string }> }) {
   const viewer = await requireModule("chat");
   const zh = (viewer.locale ?? "zh-CN").startsWith("zh");
   const t = (a: string, b: string) => (zh ? a : b);
-  const { view, pick } = await searchParams;
+  const { view, pick, say } = await searchParams;
   const list = view === "list";
   const home = await readHome(viewer, zh);
   const byKey = new Map(home.agents.map((a) => [a.key, a]));
@@ -62,5 +62,5 @@ export default async function TeamPage({ searchParams }: { searchParams: Promise
   const members = officeMembers(home, zh);
   const initialPick = OFFICE_KEYS.includes(pick as LookKey) ? (pick as LookKey) : null;
 
-  return <OfficeView members={members} zh={zh} model={answeringModel()} header={header} initialPick={initialPick} />;
+  return <OfficeView members={members} zh={zh} model={answeringModel()} header={header} initialPick={initialPick} initialSay={typeof say === "string" && say.trim() ? say.trim().slice(0, 2000) : null} />;
 }

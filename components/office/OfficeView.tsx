@@ -15,7 +15,7 @@ import { STATUS_TONE, type OfficeMember } from "@/components/office/text";
  * roster along the bottom, and 指挥中心 on the right to message any of them.
  * Picking someone on the floor or on a card puts them in the composer.
  */
-export function OfficeView({ members, zh, model, header, initialPick = null }: { members: OfficeMember[]; zh: boolean; model: string; header: React.ReactNode; initialPick?: LookKey | null }) {
+export function OfficeView({ members, zh, model, header, initialPick = null, initialSay = null }: { members: OfficeMember[]; zh: boolean; model: string; header: React.ReactNode; initialPick?: LookKey | null; initialSay?: string | null }) {
   const panel = React.useRef<CommandPanelHandle | null>(null);
   const [selected, setSelected] = React.useState<LookKey | null>(null);
   const [speaking, setSpeaking] = React.useState<LookKey | null>(null);
@@ -26,9 +26,18 @@ export function OfficeView({ members, zh, model, header, initialPick = null }: {
   /* Arrived from a desk on 首页 (?pick=…): that colleague is already in the composer. */
   React.useEffect(() => {
     if (!initialPick) return;
-    const id = window.setTimeout(() => pick(initialPick), 300);
+    const id = window.setTimeout(() => {
+      if (initialSay) {
+        setSelected(initialPick);
+        panel.current?.say(initialPick, initialSay);
+      } else pick(initialPick);
+    }, 300);
     return () => window.clearTimeout(id);
-  }, [initialPick, pick]);
+  }, [initialPick, initialSay, pick]);
+  const assign = React.useCallback((key: LookKey, text: string) => {
+    setSelected(key);
+    panel.current?.say(key, text);
+  }, []);
 
   /* The one answering in the panel is at work, whatever the last refresh said. */
   const shown = React.useMemo(
@@ -61,7 +70,7 @@ export function OfficeView({ members, zh, model, header, initialPick = null }: {
               ) : null}
               <Legend zh={zh} />
             </div>
-            <OfficeFloor members={shown} zh={zh} selected={selected} onPick={pick} />
+            <OfficeFloor members={shown} zh={zh} selected={selected} onPick={pick} onAssign={assign} />
           </section>
           <RosterStrip members={shown} zh={zh} selected={selected} onPick={pick} />
         </div>

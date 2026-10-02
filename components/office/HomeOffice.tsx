@@ -17,6 +17,7 @@ import { STATUS_TONE, type OfficeMember } from "@/components/office/text";
 export function HomeOffice({ members, zh }: { members: OfficeMember[]; zh: boolean }) {
   const router = useRouter();
   const open = React.useCallback((key: LookKey) => router.push(`/team?pick=${key}`), [router]);
+  const assign = React.useCallback((key: LookKey, text: string) => router.push(`/team?pick=${key}&say=${encodeURIComponent(text)}`), [router]);
   const working = members.filter((m) => m.status === "working").length;
   const waiting = members.filter((m) => m.status === "waiting").length;
   return (
@@ -42,7 +43,7 @@ export function HomeOffice({ members, zh }: { members: OfficeMember[]; zh: boole
           {zh ? "进办公室 →" : "Open the office →"}
         </Link>
       </div>
-      <OfficeFloor members={members} zh={zh} selected={null} onPick={open} />
+      <OfficeFloor members={members} zh={zh} selected={null} onPick={() => {}} onAssign={assign} />
       <RosterStrip members={members} zh={zh} selected={null} onPick={open} />
     </section>
   );
