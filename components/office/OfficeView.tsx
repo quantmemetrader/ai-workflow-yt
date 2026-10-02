@@ -1,7 +1,9 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import type { LookKey } from "@/components/office/art";
+import { nameOf } from "@/components/office/text";
 import { OfficeFloor } from "@/components/office/OfficeFloor";
 import { RosterStrip } from "@/components/office/RosterStrip";
 import { CommandPanel, type CommandPanelHandle } from "@/components/office/CommandPanel";
@@ -49,6 +51,14 @@ export function OfficeView({ members, zh, model, header, initialPick = null }: {
                 {zh ? `${working} 位在忙 · ${waiting} 位等你` : `${working} busy · ${waiting} waiting on you`}
               </span>
               <span style={{ flexGrow: 1 }} />
+              {selected ? (
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 8, fontSize: 12.5, color: "#525252" }}>
+                  <span style={{ fontWeight: 600, color: "#171717" }}>{nameOf(selected, zh)}</span>
+                  <span style={{ color: "#8a8a8a" }}>{zh ? "已选，在右边交代" : "picked; tell them on the right"}</span>
+                  <Link prefetch={false} href={selected === "host" ? "/chat" : `/chat?agent=${selected}`} style={{ color: "#1f5fbf", textDecoration: "none" }}>{zh ? "聊天" : "Chat"}</Link>
+                  {selected === "host" ? null : <Link prefetch={false} href={`/train/${selected}`} style={{ color: "#1f5fbf", textDecoration: "none" }}>{zh ? "训练" : "Train"}</Link>}
+                </span>
+              ) : null}
               <Legend zh={zh} />
             </div>
             <OfficeFloor members={shown} zh={zh} selected={selected} onPick={pick} />

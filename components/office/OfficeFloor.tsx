@@ -263,7 +263,7 @@ function Tip({ member, zh, x, top, bottom, areaW, areaH }: { member: OfficeMembe
       </div>
       <div style={{ fontSize: 12, color: "#8a8a8a", marginTop: 3, lineHeight: 1.5 }}>{jobOf(member.key, zh)}</div>
       <div style={{ fontSize: 12.5, color: "#3f3f3f", marginTop: 6, lineHeight: 1.55, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{taskLine(member, zh)}</div>
-      <div style={{ fontSize: 11.5, color: "#a3a3a3", marginTop: 6 }}>{zh ? "点一下，在右边给 TA 派活" : "Click to message them on the right"}</div>
+      <div style={{ fontSize: 11.5, color: "#a3a3a3", marginTop: 6 }}>{zh ? "点一下派任务；聊天、训练在下面的卡片上" : "Click to assign; chat and train on the card below"}</div>
     </div>
   );
 }

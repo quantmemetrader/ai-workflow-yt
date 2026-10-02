@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { AGENT_TINTS, type AgentKey } from "@/lib/agents/catalog";
 import type { LookKey } from "@/components/office/art";
 import { Portrait } from "@/components/office/Portrait";
@@ -8,7 +9,11 @@ import { STATUS_TONE, nameOf, statusWord, taskLine, type OfficeMember } from "@/
 
 const CSS = `
 [data-roster] { display: flex; gap: 10px; overflow-x: auto; padding: 2px 2px 8px; scroll-snap-type: x proximity; scrollbar-width: thin; }
-[data-roster] .rs-item { flex: 0 0 204px; display: flex; scroll-snap-align: start; min-width: 0; }
+[data-roster] .rs-item { flex: 0 0 204px; display: flex; flex-direction: column; gap: 6px; scroll-snap-align: start; min-width: 0; }
+[data-roster] .rs-acts { display: flex; gap: 6px; padding: 0 2px; }
+[data-roster] .rs-act { flex: 1; display: inline-flex; align-items: center; justify-content: center; height: 26px; border-radius: 7px; border: 1px solid #e3e1dc; background: #fff; color: #333; font: inherit; font-size: 12px; font-weight: 500; text-decoration: none; cursor: pointer; white-space: nowrap; }
+[data-roster] .rs-act:hover { border-color: #c9c6bf; background: #faf9f7; }
+[data-roster] .rs-act.primary { background: #171717; border-color: #171717; color: #fff; }
 [data-roster] .rs-card { width: 100%; min-width: 0; display: flex; gap: 10px; align-items: stretch; text-align: left; padding: 10px; border-radius: 12px; border: 1px solid #ecebe7; background: #fff; cursor: pointer; font-family: inherit; transition: border-color .15s, box-shadow .15s, transform .15s; }
 [data-roster] .rs-card:hover { border-color: #d6d4ce; box-shadow: 0 2px 8px rgba(30,25,20,.06); }
 [data-roster] .rs-card:active { transform: scale(.98); }
@@ -25,6 +30,12 @@ const CSS = `
  * The cast along the bottom of the office: face, name, status, what each one
  * is on, and a thin bar while a job runs. A card picks that colleague in the
  * 指挥中心 on the right.
+ */
+/**
+ * The same three things the list view offers (owner, 2 Oct: "let me assign,
+ * chat or train them from the office too"): 派任务 picks them in 指挥中心,
+ * 聊天 opens their own conversation, 训练 their training page (the assistant
+ * has no training page: it uses the studio's shared instructions).
  */
 export function RosterStrip({ members, zh, selected, onPick }: { members: OfficeMember[]; zh: boolean; selected: LookKey | null; onPick: (key: LookKey) => void }) {
   return (
@@ -64,6 +75,11 @@ export function RosterStrip({ members, zh, selected, onPick }: { members: Office
                 )}
               </span>
             </button>
+            <span className="rs-acts">
+              <button type="button" className="rs-act primary" onClick={() => onPick(m.key)}>{zh ? "派任务" : "Assign"}</button>
+              <Link prefetch={false} className="rs-act" href={m.key === "host" ? "/chat" : `/chat?agent=${m.key}`}>{zh ? "聊天" : "Chat"}</Link>
+              {m.key === "host" ? null : <Link prefetch={false} className="rs-act" href={`/train/${m.key}`}>{zh ? "训练" : "Train"}</Link>}
+            </span>
           </div>
         );
       })}
