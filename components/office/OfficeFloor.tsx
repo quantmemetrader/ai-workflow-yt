@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { ART_H, ART_W, FLOW_KEYS, SUPPORT_ZONE, drawAmbient, drawClock, drawFlow, drawRoom, drawStation, seatBox, seatsFor, type LookKey } from "@/components/office/art";
+import { ART_H, ART_W, FLOW_KEYS, drawAmbient, drawClock, drawFlow, drawRoom, drawStation, seatBox, seatsFor, type LookKey } from "@/components/office/art";
 import { LOOKS } from "@/components/office/looks";
 import { STATUS_TONE, jobOf, nameOf, statusWord, taskLine, type OfficeMember } from "@/components/office/text";
 
@@ -273,11 +273,6 @@ export function OfficeFloor({
               </span>
             );
           })}
-        {seats.some((s) => !FLOW_KEYS.includes(s.key)) ? (
-          <span className="of-zone" aria-hidden style={{ left: (SUPPORT_ZONE.x + 6) * scale, top: (SUPPORT_ZONE.y + SUPPORT_ZONE.h) * scale }}>
-            {zh ? "随叫随到" : "On call"}
-          </span>
-        ) : null}
 
         {tipSeat && tipMember ? (
           <Tip
