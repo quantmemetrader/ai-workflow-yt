@@ -464,7 +464,7 @@ export async function importDocAction(projectId: unknown, fileId: unknown, mode:
   const paragraphs = incoming.reduce((n, x) => n + lineCount(x), 0);
   await audit(c.viewer, "script.import", { objectType: "script", objectId: scriptId, module: "script", meta: { fileId, mode, paragraphs, rich: Boolean(html), reference: keep } });
   refresh(c.project.id);
-  return { ok: true as const, paragraphs, reference: keep };
+  return { ok: true as const, paragraphs, reference: keep, doc: next };
 }
 
 /**

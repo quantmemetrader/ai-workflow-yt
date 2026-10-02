@@ -19,7 +19,6 @@ const CSS = `
 .ug a { color: #1f5fbf; }
 .ug .top { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 8px; }
 .ug .brand { display: inline-flex; align-items: center; gap: 10px; text-decoration: none; color: var(--ink); font-weight: 700; }
-.ug .brand span { display: inline-flex; width: 30px; height: 30px; border-radius: 8px; background: #171717; color: #fff; align-items: center; justify-content: center; font-size: 12px; }
 .ug .lang { margin-left: auto; display: inline-flex; border: 1px solid var(--line); border-radius: 999px; overflow: hidden; font-size: 13px; }
 .ug .lang a { padding: 5px 12px; text-decoration: none; color: var(--muted); }
 .ug .lang a[aria-current="page"] { background: #171717; color: #fff; }
@@ -118,7 +117,6 @@ export default async function UserGuidePage({ searchParams }: { searchParams: Pr
       <style dangerouslySetInnerHTML={{ __html: CSS }} />
       <div className="top">
         <a className="brand" href="/">
-          <span>腾亚</span>
           {en ? "Tengya Studio" : "腾亚创变"}
         </a>
         <div className="lang" role="group" aria-label="Language">

@@ -728,12 +728,19 @@ export function ScriptDoc(props: ScriptDocProps) {
         result = (await importDocAction(projectId, fileId, importMode.current, importAsRef)) as typeof result;
       },
     });
-    const r = result as { ok?: true; paragraphs?: number; error?: string } | null;
+    const r = result as { ok?: true; paragraphs?: number; error?: string; doc?: RichDoc } | null;
     if (importInput.current) importInput.current.value = "";
     if (!r) return notify(t("上传没成功", "The upload did not finish"));
     if (r.error) return notify(r.error);
     notify(importAsRef ? t(`已导入 ${r.paragraphs} 段，原文件也放进了参考资料`, `Imported ${r.paragraphs} paragraphs; the file is also in References`) : t(`已导入 ${r.paragraphs} 段`, `Imported ${r.paragraphs} paragraphs`), "ok");
-    window.location.reload();
+    /* The imported page straight into the editor, as a restore does (owner, 2 Oct: no page reloads). */
+    if (r.doc && editor) {
+      savedSeq.current = editSeq.current;
+      lastDoc.current = JSON.stringify(r.doc);
+      editor.chain().setMeta("gd-remote", true).setContent(r.doc as never, { emitUpdate: false }).run();
+      setSaveState("saved");
+    }
+    router.refresh();
   }
 
   /* ---------------- approval & sharing ---------------- */
