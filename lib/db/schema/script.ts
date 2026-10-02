@@ -1,4 +1,5 @@
 import {
+  type AnyPgColumn,
   boolean,
   index,
   integer,
@@ -310,6 +311,9 @@ export const scriptComments = pgTable(
      * as a comment on v4. */
     versionNo: integer(),
     authorId: text().references(() => users.id),
+    /** A reply: the comment it answers (always a top-level one). Deleting
+     * that comment takes its replies with it. */
+    parentId: text().references((): AnyPgColumn => scriptComments.id, { onDelete: "cascade" }),
     body: text().notNull(),
     /** The words the comment was made on (the doc page's 批注), when it was
      * made on a selection; the page highlights them where they still are. */

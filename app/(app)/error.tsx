@@ -32,6 +32,19 @@ export default function AppError({
     if (aura && (aura.stale(message) || /NotFoundError|removeChild|insertBefore/.test(message))) aura.reloadOnce();
   }, [error]);
 
+  const stale = /unexpected response was received|ChunkLoadError|Server Action|deployment/i.test(error?.message ?? "");
+  if (stale)
+    return (
+      <div style={{ flexGrow: 1, minWidth: 0, display: "flex", alignItems: "center", justifyContent: "center", padding: 40 }}>
+        <div style={{ maxWidth: 420 }}>
+          <div style={{ fontSize: 15, fontWeight: 600, color: "#171717" }}>系统刚更新了一个新版本</div>
+          <p style={{ fontSize: 13, lineHeight: 1.6, color: "#525252", marginTop: 10 }}>这个页面还是旧版本，刷新一下就好。已经保存的内容都在。</p>
+          <button type="button" onClick={() => window.location.reload()} style={{ marginTop: 16, height: 32, padding: "0 14px", borderRadius: 8, border: 0, background: "#171717", color: "#fff", fontSize: 13, fontWeight: 500, fontFamily: "inherit", cursor: "pointer" }}>
+            刷新页面
+          </button>
+        </div>
+      </div>
+    );
   return (
     <div
       style={{

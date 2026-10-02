@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { ART_H, ART_W, drawAmbient, drawClock, drawRoom, drawStation, seatBox, seatsFor, type LookKey } from "@/components/office/art";
+import { ART_H, ART_W, FLOW_KEYS, SUPPORT_ZONE, drawAmbient, drawClock, drawFlow, drawRoom, drawStation, seatBox, seatsFor, type LookKey } from "@/components/office/art";
 import { LOOKS } from "@/components/office/looks";
 import { STATUS_TONE, jobOf, nameOf, statusWord, taskLine, type OfficeMember } from "@/components/office/text";
 
@@ -28,6 +28,9 @@ const CSS = `
 [data-office] .of-bub.idle { font-weight: 500; opacity: .92; }
 [data-office] .of-tip { position: absolute; z-index: 3; width: 220px; padding: 10px 12px; border-radius: 10px; background: #fff; border: 1px solid #e6e4df;
   box-shadow: 0 8px 24px rgba(30,25,20,.12), 0 1px 2px rgba(0,0,0,.06); pointer-events: none; }
+[data-office] .of-step { position: absolute; transform: translateX(-50%); white-space: nowrap; pointer-events: none; font-size: 11px; line-height: 16px; color: #6f665a; font-weight: 600; }
+[data-office] .of-step b { display: inline-flex; align-items: center; justify-content: center; width: 15px; height: 15px; margin-right: 4px; border-radius: 3px; background: #3a2f3d; color: #fff; font-size: 10px; font-weight: 700; }
+[data-office] .of-zone { position: absolute; transform: translateY(-50%); pointer-events: none; font-size: 11px; line-height: 16px; font-weight: 600; color: #5d6b7a; background: #e3eaf1; padding: 0 6px; border-radius: 3px; border: 1px solid #c7d3e0; }
 [data-office] .of-sr { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 @keyframes ofBob { 0%, 100% { transform: translate(-50%, -100%); } 50% { transform: translate(-50%, calc(-100% - 2px)); } }
 @keyframes ofBlink { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
@@ -108,6 +111,7 @@ export function OfficeFloor({ members, zh, selected, onPick }: { members: Office
       sc.drawImage(room, 0, 0);
       drawClock(sc, new Date());
       drawAmbient(sc, tick, motion);
+      drawFlow(sc, ss, (k) => bk.get(k)?.status ?? "idle", tick, motion);
       ss.forEach((s, i) => {
         const m = bk.get(s.key);
         drawStation(sc, s, LOOKS[s.key], m?.status ?? "idle", { tick, seed: i * 3 + 1 }, motion, hv === s.key || sel === s.key);
@@ -201,6 +205,23 @@ export function OfficeFloor({ members, zh, selected, onPick }: { members: Office
           );
         })}
 
+        {seats
+          .filter((s) => FLOW_KEYS.includes(s.key))
+          .map((s) => {
+            const i = FLOW_KEYS.indexOf(s.key);
+            return compact && scale < 1.6 ? null : (
+              <span key={`step-${s.key}`} className="of-step" aria-hidden style={{ left: s.cx * scale, top: (s.dy + 19) * scale + 2 }}>
+                <b>{i + 1}</b>
+                {stepWord(s.key, zh)}
+              </span>
+            );
+          })}
+        {seats.some((s) => !FLOW_KEYS.includes(s.key)) ? (
+          <span className="of-zone" aria-hidden style={{ left: (SUPPORT_ZONE.x + 6) * scale, top: (SUPPORT_ZONE.y + SUPPORT_ZONE.h) * scale }}>
+            {zh ? "随叫随到" : "On call"}
+          </span>
+        ) : null}
+
         {tipSeat && tipMember ? <Tip member={tipMember} zh={zh} x={tipSeat.cx * scale} top={(tipSeat.dy - 30) * scale} bottom={(tipSeat.dy + 20) * scale} areaW={cssW} areaH={cssH} /> : null}
       </div>
 
@@ -213,6 +234,19 @@ export function OfficeFloor({ members, zh, selected, onPick }: { members: Office
       </ul>
     </div>
   );
+}
+
+/** What each desk on the line does, in the order the work goes. */
+function stepWord(key: LookKey, zh: boolean): string {
+  const words: Partial<Record<LookKey, [string, string]>> = {
+    research: ["找选题", "Find topics"],
+    planning: ["定计划", "Plan the day"],
+    script: ["写脚本", "Write the script"],
+    video: ["剪视频", "Cut the video"],
+    article: ["写文案发布", "Copy and publish"],
+  };
+  const w = words[key];
+  return w ? (zh ? w[0] : w[1]) : "";
 }
 
 function Tip({ member, zh, x, top, bottom, areaW, areaH }: { member: OfficeMember; zh: boolean; x: number; top: number; bottom: number; areaW: number; areaH: number }) {

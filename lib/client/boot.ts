@@ -78,7 +78,7 @@ try{
   void probe;
 }catch(e){}
 var KEY="aura:reloaded-at",sent=0;
-function stale(m){return /ChunkLoadError|Loading (CSS )?chunk|Failed to fetch dynamically imported module|Importing a module script failed|error loading dynamically imported module|Failed to find Server Action|older or newer deployment/i.test(m||"");}
+function stale(m){return /ChunkLoadError|Loading (CSS )?chunk|Failed to fetch dynamically imported module|Importing a module script failed|error loading dynamically imported module|Failed to find Server Action|older or newer deployment|unexpected response was received from the server/i.test(m||"");}
 function reloadOnce(){try{var t=+sessionStorage.getItem(KEY)||0;if(Date.now()-t<30000)return false;sessionStorage.setItem(KEY,String(Date.now()));}catch(e){}location.reload();return true;}
 function report(kind,msg,stack,digest){
   if(sent>=5)return;sent++;
@@ -89,10 +89,41 @@ function report(kind,msg,stack,digest){
   }catch(e){}
 }
 window.__aura={report:report,stale:stale,reloadOnce:reloadOnce};
+/* A tab left open across a deploy (2 Oct): every few minutes, and when the tab
+   comes back to the front, the page asks which release is answering. A newer
+   one: the page reloads itself if nobody is typing in it, else a bar offers to. */
+(function(){
+  var meta=document.querySelector('meta[name="tg-release"]'),mine=meta&&meta.getAttribute("content");
+  if(!mine)return;
+  var shown=0,hiddenAt=0;
+  function typing(){var a=document.activeElement;return !!(a&&(a.tagName==="TEXTAREA"||a.tagName==="INPUT"||a.isContentEditable));}
+  function bar(){
+    if(shown)return;shown=1;
+    var d=document.createElement("div");d.setAttribute("translate","no");d.className="notranslate";d.setAttribute("role","status");
+    d.style.cssText="position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:2147483647;display:flex;align-items:center;gap:12px;background:#171717;color:#fff;border-radius:12px;padding:10px 12px 10px 16px;font:13px/1.5 system-ui,sans-serif;box-shadow:0 8px 24px rgba(0,0,0,.2)";
+    var s=document.createElement("span");s.textContent="系统更新了一个新版本，刷新后继续。";d.appendChild(s);
+    var b=document.createElement("button");b.type="button";b.textContent="刷新";b.style.cssText="border:0;border-radius:8px;background:#fff;color:#171717;font:inherit;font-weight:600;padding:5px 12px;cursor:pointer";b.onclick=function(){location.reload();};d.appendChild(b);
+    (document.body||document.documentElement).appendChild(d);
+  }
+  function check(force){
+    if(document.visibilityState!=="visible")return;
+    fetch("/api/health",{cache:"no-store"}).then(function(r){return r.json();}).then(function(j){
+      if(!j||!j.release||j.release===mine)return;
+      if((force||!typing())&&Date.now()-hiddenAt<120000&&hiddenAt){location.reload();return;}
+      if(!typing()&&!force){location.reload();return;}
+      bar();
+    }).catch(function(){});
+  }
+  document.addEventListener("visibilitychange",function(){if(document.visibilityState==="hidden")hiddenAt=Date.now();else if(hiddenAt&&Date.now()-hiddenAt>60000)check(true);});
+  setInterval(function(){check(false);},300000);
+})();
 window.addEventListener("error",function(e){
   var t=e&&e.target,m="";
   if(t&&t!==window&&(t.tagName==="SCRIPT"||(t.tagName==="LINK"&&t.rel==="stylesheet"))){
-    m="ChunkLoadError: failed to load "+(t.src||t.href);
+    var u=String(t.src||t.href||"");
+    /* A third-party script an ad blocker refused (the Cloudflare beacon) is not ours and not a stale build. */
+    if(u.indexOf(location.host)<0&&u.indexOf("/_next/")<0)return;
+    m="ChunkLoadError: failed to load "+u;
   }else if(t&&t!==window){return;}
   else{m=(e&&(e.message||(e.error&&e.error.message)))||"";}
   report("error",m,e&&e.error&&e.error.stack);

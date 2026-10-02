@@ -33,6 +33,7 @@ export async function ScriptDocPage({ id, standalone = false }: { id: string; st
       ? db
           .select({
             id: scriptComments.id,
+            parentId: scriptComments.parentId,
             beatOrd: scriptComments.beatOrd,
             quote: scriptComments.quote,
             body: scriptComments.body,
@@ -116,6 +117,7 @@ export async function ScriptDocPage({ id, standalone = false }: { id: string; st
         approvals={approvals}
         comments={comments.map((c) => ({
           id: c.id,
+          parentId: c.parentId,
           beatOrd: c.beatOrd,
           quote: c.quote,
           body: c.body,

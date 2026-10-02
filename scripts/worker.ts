@@ -28,6 +28,7 @@ import { makeSourceProxy } from "../lib/video/proxy";
 import { makePeaks } from "../lib/video/peaks";
 import { autoEdit } from "../lib/video/autoedit";
 import { proposeFromFootage } from "../lib/agents/footage";
+import { afterPlan, autoCut, autoPublishCopy, exportOfJob } from "../lib/agents/autorun";
 import { narrateDone, narrateFailed, narrateStart } from "../lib/agents/narrate";
 import { direct } from "../lib/video/director";
 import { refreshCreatorMemory } from "../lib/creator/service";
@@ -62,6 +63,8 @@ const JOB_TIMEOUT_MS = Number(process.env.WORKER_JOB_TIMEOUT_MS ?? 10 * 60_000);
  */
 const TIMEOUT_BY_TYPE: Record<string, number> = {
   "video.export": 70 * 60_000,
+  // A first draft with retries, plus each colleague answering its to-do.
+  "agent.plan-followup": 25 * 60_000,
   // Transcribe, cut, design and render, end to end.
   "video.direct": 120 * 60_000,
   "video.transcribe": 45 * 60_000,
@@ -222,10 +225,26 @@ const HANDLERS: Record<string, Handler> = {
     return result;
   },
 
-  /* 策划, reading a tape nobody has asked it about yet. */
-  "agent.footage": (job) => {
+  /* Footage read. With an approved script already there, 剪辑师 simply
+     starts (owner, 2 Oct: everything runs itself once the clips are in);
+     otherwise 策划 says what could be made from the tape. */
+  "agent.footage": async (job) => {
     const { projectId } = job.payload as { projectId: string };
+    const cut = await autoCut(projectId).catch((err) => ({ started: false, why: err instanceof Error ? err.message : String(err) }));
+    if (cut.started) return { autoCut: true };
     return proposeFromFootage(projectId);
+  },
+
+  /* The morning plan is out: 编剧 drafts ahead, the to-dos go to their owners. */
+  "agent.plan-followup": (job) => {
+    const { messageId } = job.payload as { messageId: string };
+    return afterPlan(job.tenantId, messageId);
+  },
+
+  /* A render is done: 撰稿人 writes the post. */
+  "agent.publish-copy": (job) => {
+    const { exportId } = job.payload as { exportId: string };
+    return autoPublishCopy(exportId);
   },
 };
 
@@ -263,6 +282,7 @@ async function tick(): Promise<boolean> {
     const result = await withTimeout(handler(job), job.type);
     await succeed(job, result);
     await narrateDone(job, result).catch(() => {});
+    await followUp(job, result).catch((err) => console.error("[worker] follow-up not queued", err));
     console.log(`[worker] ${job.type} ok in ${Date.now() - started}ms`, JSON.stringify(result).slice(0, 200));
   } catch (err) {
     if (isInterrupted(err) || stopping) {
@@ -339,3 +359,16 @@ main().catch((err) => {
   console.error("[worker] fatal", err);
   process.exit(1);
 });
+
+/**
+ * The next step, queued as soon as one finishes (owner, 2 Oct: "it all
+ * should run itself once one thing is done"): a finished render gets its
+ * post written. Plain jobs, so a failure is a row with a reason, not a
+ * render that looks broken.
+ */
+async function followUp(job: JobRow, result: unknown): Promise<void> {
+  if (job.type !== "video.export" && job.type !== "video.direct") return;
+  const exportId = await exportOfJob(result, job.payload);
+  if (!exportId) return;
+  await enqueue({ tenantId: job.tenantId, type: "agent.publish-copy", module: "publish", payload: { exportId }, dedupeKey: `post:${exportId}` });
+}

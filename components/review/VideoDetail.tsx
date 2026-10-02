@@ -146,7 +146,7 @@ function Chart({ points, zh }: { points: { at: string; v: number }[]; zh: boolea
         </div>
       ) : null}
       {cut.length > 1 ? (
-        <TrendChart points={cut} height={240} label={zh ? "走势" : "Trend"} format={(n) => fmtNum(Math.round(n), zh)} />
+        <TrendChart points={cut} height={240} zh={zh} label={zh ? "走势" : "Trend"} format={(n) => fmtNum(Math.round(n), zh)} />
       ) : (
         <div style={{ fontSize: 13.5, color: MUTED, padding: "8px 0" }}>{zh ? "这段时间只有一次读数，换个更长的范围看看。" : "One reading in this range; try a longer one."}</div>
       )}

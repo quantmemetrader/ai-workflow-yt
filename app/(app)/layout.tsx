@@ -98,7 +98,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <UploadTray locale={viewer.locale ?? "zh-CN"} />
 
       {/* Where a failure goes, now that nothing calls window.alert. */}
-      <Toaster />
+      <Toaster locale={viewer.locale ?? "zh-CN"} />
 
       {/* And where "something is happening" goes. */}
       <BusyBar />

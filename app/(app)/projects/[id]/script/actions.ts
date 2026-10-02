@@ -14,11 +14,13 @@ import { visibleProject, linkedProject } from "@/lib/projects/service";
 import { dmChannelWith, postMessage } from "@/lib/chat/service";
 import { tagProjectFile } from "@/lib/projects/files";
 import { ensureFileText } from "@/lib/files/extract";
+import { importableHtml } from "@/lib/files/doc-edit";
+import { htmlToRichDoc, lineCount } from "@/lib/script/html-import";
 import { beatsFromDoc, isRichDoc, docForBeats, withUnitTexts, type RichDoc, type RichNode } from "@/lib/script/rich";
 import { asc, desc } from "drizzle-orm";
 import { readSentBack, recordSendBack, settleSendBack } from "@/lib/projects/sendback";
 import { checksumOf, createScript, cutVersion, decideApproval, requestApproval, restoreVersion, saveBeats, unlock, versionDoc } from "@/lib/script/service";
-import { addDocComment, copilotRedo, copilotRewrite, openRequestFor, requestReviews, resolveDocComment, setReferences, versionBeats, withdrawOthers } from "@/lib/script/doc";
+import { addDocComment, copilotRedo, deleteDocComment, copilotRewrite, openRequestFor, requestReviews, resolveDocComment, setReferences, versionBeats, withdrawOthers } from "@/lib/script/doc";
 
 /**
  * What the project's 脚本 page (the script as a document) can do.
@@ -192,6 +194,28 @@ export async function resolveCommentAction(projectId: unknown, commentId: unknow
   if ("error" in c) return c;
   if (!c.project.scriptId || typeof commentId !== "string") return { error: "Not allowed" };
   await resolveDocComment(c.viewer, c.project.scriptId, commentId, reopen === true);
+  refresh(c.project.id);
+  return { ok: true as const };
+}
+
+/** A reply under a comment (Ryan's team, 2 Oct: talk a point through where it was made). Whoever may comment may reply. */
+export async function replyCommentAction(projectId: unknown, parentId: unknown, body: unknown) {
+  const c = await ctx(projectId);
+  if ("error" in c) return c;
+  if (!c.project.scriptId || typeof parentId !== "string" || parentId.length > 64) return { error: "Not allowed" };
+  if (typeof body !== "string" || !body.trim()) return { error: c.zh ? "写点什么" : "Write something first" };
+  const id = await addDocComment(c.viewer, c.project.scriptId, { beatOrd: null, quote: null, body, parentId, href: scriptUrl(c.project.id) });
+  refresh(c.project.id);
+  return id ? { ok: true as const, id } : { error: c.zh ? "这条批注已经不在了" : "That comment is gone" };
+}
+
+/** Deleting a comment (its author, or an owner or admin). A thread's first comment takes its replies with it. */
+export async function deleteCommentAction(projectId: unknown, commentId: unknown) {
+  const c = await ctx(projectId);
+  if ("error" in c) return c;
+  if (!c.project.scriptId || typeof commentId !== "string" || commentId.length > 64) return { error: "Not allowed" };
+  const ok = await deleteDocComment(c.viewer, c.project.scriptId, commentId);
+  if (!ok) return { error: c.zh ? "只能删除自己写的批注" : "You can only delete your own comments" };
   refresh(c.project.id);
   return { ok: true as const };
 }
@@ -392,48 +416,55 @@ export async function withdrawReviewAction(projectId: unknown) {
 }
 
 /**
- * 导入: a document someone uploads — Word, PDF, a deck, plain text, anything
- * the reader understands (`lib/files/extract.ts`) — becomes the script's
- * paragraphs, replacing what is there or added after it. Allowed any time:
- * an approved script is reopened as a new version first. The file also goes
- * into the project's 参考资料 (and so into the Files drive under the project).
+ * 导入: a document someone uploads becomes the script's page, replacing what is
+ * there or added after it. A Word file keeps its headings, bold, italic,
+ * links and lists (QA, 2 Oct: it came in as plain lines); anything else the
+ * reader understands (`lib/files/extract.ts`) comes in as its lines. Allowed
+ * any time: an approved script is reopened as a new version first. The file
+ * goes into the project's files (其他), and into 参考资料 only when the person
+ * ticked that (QA, 2 Oct: it appeared there unasked).
  */
-export async function importDocAction(projectId: unknown, fileId: unknown, mode: unknown) {
+export async function importDocAction(projectId: unknown, fileId: unknown, mode: unknown, asReference?: unknown) {
   const c = await ctx(projectId, true);
   if ("error" in c) return c;
   if (!c.project.scriptId || typeof fileId !== "string") return { error: "Not allowed" };
-  if (!(await tagProjectFile(c.viewer, c.project.id, fileId, "reference"))) return { error: c.zh ? "打不开这个文件" : "That file cannot be opened" };
-  const text = await ensureFileText(fileId, { ledger: { viewer: c.viewer, module: "script" } });
-  if (!text || !text.trim()) return { error: c.zh ? "这个文件里读不出文字" : "No text could be read from that file" };
-  const paras = text
-    .split(/\n/)
-    .map((l) => l.replace(/\s+$/g, "").trim())
-    .filter((l) => l && !/^【第 \d+ 页】$/.test(l))
-    .slice(0, 200)
-    .map((l) => ({ visual: "", voiceover: l, subtitle: "", naturalSound: false }));
-  if (!paras.length) return { error: c.zh ? "这个文件里读不出文字" : "No text could be read from that file" };
+  const keep = asReference === true;
+  if (!(await tagProjectFile(c.viewer, c.project.id, fileId, keep ? "reference" : "other"))) return { error: c.zh ? "打不开这个文件" : "That file cannot be opened" };
+  const html = await importableHtml(c.viewer, fileId).catch(() => null);
+  let incoming: RichNode[] = html ? (htmlToRichDoc(html).content ?? []).filter((n) => lineCount(n) > 0) : [];
+  if (!incoming.length) {
+    const text = await ensureFileText(fileId, { ledger: { viewer: c.viewer, module: "script" } });
+    incoming = (text ?? "")
+      .split(/\n/)
+      .map((l) => l.replace(/\s+$/g, "").trim())
+      .filter((l) => l && !/^【第 \d+ 页】$/.test(l))
+      .slice(0, 400)
+      .map((l) => ({ type: "paragraph", content: [{ type: "text", text: toSimplified(l) }] }));
+  }
+  if (!incoming.length) return { error: c.zh ? "这个文件里读不出文字" : "No text could be read from that file" };
   const scriptId = c.project.scriptId;
   const [s] = await db.select({ status: scripts.status, doc: scripts.doc }).from(scripts).where(eq(scripts.id, scriptId)).limit(1);
   if (s?.status === "locked") await unlock(c.viewer, scriptId);
+  let next: RichDoc;
   if (mode === "append") {
     /* Added to the rich document as it is, so the headings and bold already
        there stay (QA, 2 Oct: append rebuilt the page from plain beats). */
     const beatsNow = await db.select({ voiceover: scriptBeats.voiceover, visual: scriptBeats.visual }).from(scriptBeats).where(eq(scriptBeats.scriptId, scriptId)).orderBy(asc(scriptBeats.ord));
     const base = docForBeats((s?.doc ?? null) as RichNode | null, beatsNow);
     const kept = (base.content ?? []).filter((n, i, all) => !(all.length === 1 && n.type === "paragraph" && !n.content?.length && !n.attrs?.shot));
-    const next: RichDoc = { type: "doc", content: [...kept, ...paras.map((p) => ({ type: "paragraph", content: [{ type: "text", text: p.voiceover }] }))] };
-    const saved = await saveRichAction(c.project.id, next, null);
-    if ("error" in saved) return { error: saved.error ?? (c.zh ? "没能写进稿子" : "Could not write it into the script") };
+    next = { type: "doc", content: [...kept, ...incoming] };
   } else {
     /* The confirm promises the old text is in 版本记录: keep it there first (QA, 2 Oct). */
     await keepDraft(c, scriptId, c.zh ? "用文件替换前的稿子" : "Before replacing it with a file");
-    const res = await saveBeats(c.viewer, scriptId, paras);
-    if (!res) return { error: c.zh ? "没能写进稿子" : "Could not write it into the script" };
+    next = { type: "doc", content: incoming };
   }
-  await setReferences(c.viewer, c.project.scriptId, { add: fileId }).catch(() => null);
-  await audit(c.viewer, "script.import", { objectType: "script", objectId: c.project.scriptId, module: "script", meta: { fileId, mode, paragraphs: paras.length } });
+  const saved = await saveRichAction(c.project.id, next, null);
+  if ("error" in saved) return { error: saved.error ?? (c.zh ? "没能写进稿子" : "Could not write it into the script") };
+  if (keep) await setReferences(c.viewer, scriptId, { add: fileId }).catch(() => null);
+  const paragraphs = incoming.reduce((n, x) => n + lineCount(x), 0);
+  await audit(c.viewer, "script.import", { objectType: "script", objectId: scriptId, module: "script", meta: { fileId, mode, paragraphs, rich: Boolean(html), reference: keep } });
   refresh(c.project.id);
-  return { ok: true as const, paragraphs: paras.length };
+  return { ok: true as const, paragraphs, reference: keep };
 }
 
 /**

@@ -1,5 +1,6 @@
 import { requireModule } from "@/lib/auth/dal";
-import { readHome, JOB_OWNER, jobName } from "@/lib/home/service";
+import { readHome } from "@/lib/home/service";
+import { officeMembers } from "@/lib/home/office";
 import { answeringModel } from "@/lib/ai/models";
 import { AGENT_KEYS } from "@/lib/agents/catalog";
 import { Card, PageBody } from "@/components/projects/kit";
@@ -7,7 +8,7 @@ import { TeamBoard, type TeamMember } from "@/components/agents/TeamBoard";
 import { OfficeView } from "@/components/office/OfficeView";
 import { ViewToggle } from "@/components/office/ViewToggle";
 import { OFFICE_KEYS } from "@/components/office/looks";
-import type { OfficeMember } from "@/components/office/text";
+import type { LookKey } from "@/components/office/art";
 
 export const metadata = { title: "AI 同事" };
 
@@ -17,11 +18,11 @@ export const metadata = { title: "AI 同事" };
  * doing, the roster underneath and 指挥中心 on the right. 列表 keeps the
  * board of cards with 派任务 / 聊天 / 训练.
  */
-export default async function TeamPage({ searchParams }: { searchParams: Promise<{ view?: string }> }) {
+export default async function TeamPage({ searchParams }: { searchParams: Promise<{ view?: string; pick?: string }> }) {
   const viewer = await requireModule("chat");
   const zh = (viewer.locale ?? "zh-CN").startsWith("zh");
   const t = (a: string, b: string) => (zh ? a : b);
-  const { view } = await searchParams;
+  const { view, pick } = await searchParams;
   const list = view === "list";
   const home = await readHome(viewer, zh);
   const byKey = new Map(home.agents.map((a) => [a.key, a]));
@@ -58,22 +59,8 @@ export default async function TeamPage({ searchParams }: { searchParams: Promise
     );
   }
 
-  /* Each desk's status and line come from the same readHome the board uses;
-     a running job adds what it is ("正在渲染") and how far it has got. 法务,
-     财务 and the assistant have nothing there, so they show 空闲. */
-  const members: OfficeMember[] = OFFICE_KEYS.map((key) => {
-    if (key === "host") return { key, status: "idle", task: null, line: null, progress: null };
-    const a = byKey.get(key);
-    const status = a?.status ?? "idle";
-    const job = status === "working" ? home.running.find((j) => JOB_OWNER[j.type] === key) : undefined;
-    return {
-      key,
-      status,
-      task: job ? jobName(job.type, zh) : null,
-      line: a?.line ?? null,
-      progress: job && job.status === "running" && job.progress > 0 ? Math.round(Math.min(1, job.progress) * 100) : null,
-    };
-  });
+  const members = officeMembers(home, zh);
+  const initialPick = OFFICE_KEYS.includes(pick as LookKey) ? (pick as LookKey) : null;
 
-  return <OfficeView members={members} zh={zh} model={answeringModel()} header={header} />;
+  return <OfficeView members={members} zh={zh} model={answeringModel()} header={header} initialPick={initialPick} />;
 }

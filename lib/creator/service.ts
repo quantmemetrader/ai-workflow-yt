@@ -35,7 +35,9 @@ import { channelUploads } from "./youtube";
  * mean hidden.
  */
 
-export const VOICE_TITLE_PREFIX = "Creator voice · ";
+export const VOICE_TITLE_PREFIX = "创作者风格 · ";
+/** The title the note had before it was written in Chinese (2 Oct); still found by it. */
+const OLD_VOICE_TITLE_PREFIX = "Creator voice · ";
 
 export type CreatorVideoRow = typeof creatorVideos.$inferSelect;
 
@@ -232,7 +234,7 @@ async function voiceRow(tenantId: string) {
   const [row] = await db
     .select()
     .from(knowledge)
-    .where(and(eq(knowledge.tenantId, tenantId), sql`${knowledge.title} like ${VOICE_TITLE_PREFIX + "%"}`))
+    .where(and(eq(knowledge.tenantId, tenantId), sql`(${knowledge.title} like ${VOICE_TITLE_PREFIX + "%"} or ${knowledge.title} like ${OLD_VOICE_TITLE_PREFIX + "%"})`))
     .orderBy(desc(knowledge.updatedAt))
     .limit(1);
   return row ?? null;
@@ -408,16 +410,16 @@ function parseVoice(text: string): Voice | null {
 function renderVoice(v: Voice, meta: { channel: string; videos: number }): string {
   const section = (title: string, items: string[]) => (items.length ? `## ${title}\n${items.map((i) => `- ${i}`).join("\n")}\n` : "");
   return [
-    `_Written automatically from ${meta.videos} uploads on ${meta.channel}, ${new Date().toISOString().slice(0, 10)}. Edit it, or switch it off, in Admin → Knowledge. It is rewritten when the channel is re-synced._`,
+    `_根据「${meta.channel}」的 ${meta.videos} 条作品自动整理，${new Date().toISOString().slice(0, 10)}。可以在后台直接修改或关闭；账号重新同步时会重写。_`,
     "",
-    v.voice ? `## Voice\n${v.voice}\n` : "",
-    section("Formats", v.formats),
-    section("Titles", v.titles),
-    section("How videos open", v.hooks),
-    v.structure ? `## Structure\n${v.structure}\n` : "",
-    section("Subjects", v.topics),
-    section("What the best ones share", v.works),
-    section("Never", v.avoid),
+    v.voice ? `## 说话风格\n${v.voice}\n` : "",
+    section("常做的形式", v.formats),
+    section("标题写法", v.titles),
+    section("开头方式", v.hooks),
+    v.structure ? `## 结构\n${v.structure}\n` : "",
+    section("题材", v.topics),
+    section("做得好的作品的共同点", v.works),
+    section("从不做的事", v.avoid),
   ]
     .filter(Boolean)
     .join("\n")

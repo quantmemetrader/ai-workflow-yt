@@ -6,6 +6,8 @@ export type DocBeat = { visual: string; voiceover: string; subtitle: string; nat
 
 export type DocComment = {
   id: string;
+  /** Set on a reply: the thread's first comment. */
+  parentId: string | null;
   beatOrd: number | null;
   quote: string | null;
   body: string;

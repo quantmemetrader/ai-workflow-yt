@@ -98,6 +98,11 @@ export async function handOffToVideo(approver: Viewer, scriptId: string, version
   ].join("\n");
   await postAsAgent(tenantId, "script", "production", body, { mentions: ["video"], handoff: handoffMeta(handoff), approval });
 
+  /* Clips already in the bin: 剪辑师 starts cutting now, nobody presses
+     anything (owner, 2 Oct). With an empty bin it starts when they land. */
+  const { autoCut } = await import("./autorun");
+  await autoCut(projectId).catch((err) => console.error("[handoff] the cut did not start by itself", err));
+
   /* The Video agent answers the hand-off itself, with the script and the
      project in hand — after the response, because it is a model call and the
      person pressing Approve should not wait for it. Its answer carries the

@@ -23,6 +23,7 @@ export function TrendChart({
   mini = false,
   label,
   format,
+  zh = true,
 }: {
   points: { at: string; v: number }[];
   height?: number;
@@ -31,6 +32,8 @@ export function TrendChart({
   mini?: boolean;
   label?: string;
   format?: (n: number) => string;
+  /** The credit under the big chart is in the page's language. */
+  zh?: boolean;
 }) {
   const ref = React.useRef<HTMLDivElement>(null);
   const key = points.map((p) => `${p.at}:${p.v}`).join("|");
@@ -39,6 +42,11 @@ export function TrendChart({
     if (!el) return;
     const data = byTime(points);
     if (data.length < 2) return;
+    /* Over more than three days, one point a day (the day's last reading, Hong
+       Kong time): the axis then has each date once and no hours between
+       (QA, 2 Oct: 9月28日 twice, 9月29日 three times under a video's chart). */
+    const daily = data[data.length - 1].time - data[0].time > 3 * 86_400 ? byDay(data) : null;
+    if (daily && daily.length < 2) return;
     const chart = createChart(el, {
       autoSize: true,
       layout: { background: { type: ColorType.Solid, color: "transparent" }, textColor: "#8a8a8a", fontSize: 11, fontFamily: "inherit", attributionLogo: false },
@@ -61,7 +69,7 @@ export function TrendChart({
       crosshairMarkerVisible: !mini,
       priceFormat: { type: "price", precision: 0, minMove: 1 },
     });
-    series.setData(data);
+    series.setData(daily ?? data);
     chart.timeScale().fitContent();
     return () => chart.remove();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -73,7 +81,7 @@ export function TrendChart({
       {box}
       <div style={{ fontSize: 10.5, color: "#b0afa9", textAlign: "right", marginTop: 4 }}>
         <a href="https://www.tradingview.com/" target="_blank" rel="noopener noreferrer" style={{ color: "inherit", textDecoration: "none" }}>
-          Charts by TradingView
+          {zh ? "图表由 TradingView 提供" : "Charts by TradingView"}
         </a>
       </div>
     </div>
@@ -90,8 +98,20 @@ function byTime(points: { at: string; v: number }[]): { time: UTCTimestamp; valu
   return [...m.entries()].sort((a, b) => a[0] - b[0]).map(([t, v]) => ({ time: t as UTCTimestamp, value: v }));
 }
 
+/** The last reading of each Hong Kong day, as that day. */
+function byDay(data: { time: UTCTimestamp; value: number }[]): { time: string; value: number }[] {
+  const fmt = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Hong_Kong", year: "numeric", month: "2-digit", day: "2-digit" });
+  const m = new Map<string, number>();
+  for (const p of data) m.set(fmt.format(new Date(p.time * 1000)), p.value);
+  return [...m.entries()].sort((a, b) => (a[0] < b[0] ? -1 : 1)).map(([time, value]) => ({ time, value }));
+}
+
 function day(t: Time): string {
-  const d = typeof t === "number" ? new Date(t * 1000) : typeof t === "string" ? new Date(t) : new Date(t.year, t.month - 1, t.day);
+  if (typeof t === "string") {
+    const [, mo, d] = t.split("-").map(Number);
+    return `${mo}月${d}日`;
+  }
+  const d = typeof t === "number" ? new Date(t * 1000) : new Date(t.year, t.month - 1, t.day);
   return `${d.getMonth() + 1}月${d.getDate()}日`;
 }
 

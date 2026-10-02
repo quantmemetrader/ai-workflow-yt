@@ -19,6 +19,7 @@ import { BudgetStop, assertBudget, recordUsage } from "@/lib/ai/ledger";
 import { dueNow, readAutomation } from "@/lib/automations/service";
 import { studioBrief } from "@/lib/research/studio";
 import { scrubPlanIds } from "@/lib/agents/plan-today";
+import { enqueue } from "@/lib/jobs/queue";
 
 
 /** Today, in Hong Kong: the plan's identity, and the digest's. */
@@ -266,5 +267,8 @@ export async function runPlan(opts: { tenant: string; force?: boolean; dry?: boo
     actions,
   });
   console.log(`[plan] ${date} posted ${id} by ${used.model}, ${used.costMicros}µ$, ${actions.length} buttons`);
+  /* Nobody has to press anything next: 编剧 drafts the topic ahead and each
+     colleague gets its to-do (`lib/agents/autorun.ts`, on the worker). */
+  if (id) await enqueue({ tenantId: TENANT, type: "agent.plan-followup", module: "research", payload: { messageId: id }, dedupeKey: `plan:${id}` }).catch((err) => console.error("[plan] follow-up not queued", err));
   return { posted: id ?? undefined, body };
 }

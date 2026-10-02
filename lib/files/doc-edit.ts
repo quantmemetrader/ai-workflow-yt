@@ -111,6 +111,28 @@ async function held(viewer: Viewer, fileId: string) {
   return { read: Boolean(rel), write: rel === "owner" || rel === "editor" };
 }
 
+/**
+ * A file as HTML for the script page's 导入 (QA, 2 Oct: a Word import came in as
+ * plain lines): Word and other office files through LibreOffice, Markdown and
+ * plain text through the same reading as the editor's. Null when the file is
+ * something else (a PDF, a deck): the caller falls back to its text.
+ */
+export async function importableHtml(viewer: Viewer, fileId: string): Promise<string | null> {
+  const can = await held(viewer, fileId);
+  if (!can.read) return null;
+  const [f] = await db.select().from(files).where(eq(files.id, fileId)).limit(1);
+  if (!f || f.deletedAt || f.tenantId !== viewer.tenantId) return null;
+  const ext = extOf(f.name);
+  if (f.storageKey && OFFICE.has(ext)) return officeToHtml(f.storageKey, f.name);
+  if (f.storageKey && (ext === "html" || ext === "htm")) {
+    const res = await getObject(f.storageKey).catch(() => null);
+    if (!res?.ok) return null;
+    return clean(await res.text());
+  }
+  if (["txt", "md", "markdown"].includes(ext) || (f.mime ?? "").startsWith("text/plain")) return f.text ? textToHtml(f.text) : null;
+  return null;
+}
+
 export async function openDoc(viewer: Viewer, fileId: string): Promise<DocState | null> {
   const can = await held(viewer, fileId);
   if (!can.read) return null;

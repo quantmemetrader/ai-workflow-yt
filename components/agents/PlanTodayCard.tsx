@@ -12,7 +12,7 @@ import { refreshPlanAction } from "@/app/(app)/research/plan-actions";
 import { notify } from "@/lib/client/notify";
 
 /** 策划's plan for the day (posted at 08:05 in #研究日报): the topic it puts forward and each colleague's part. */
-export type PlanToday = { date: string; topic: string | null; items: { owner: string; text: string; why: string | null }[]; href: string | null };
+export type PlanToday = { date: string; topic: string | null; items: { owner: string; text: string; why: string | null }[]; href: string | null; /** 编剧 already wrote the topic's first draft (how many beats). */ prepared?: { beats: number } | null };
 
 const isAgent = (k: string): k is AgentKey => (AGENT_KEYS as readonly string[]).includes(k);
 
@@ -55,7 +55,7 @@ export function PlanTodayCard({
       const res = await startFromTopicAction({ kind: "own", text: plan.topic }, { write: canWrite });
       if ("error" in res && res.error) return notify(res.error);
       if ("existed" in res && res.existed) notify(t("这个选题已经有项目了，为你打开它", "This topic already has a project; opening it"), "info");
-      if ("projectId" in res && res.projectId) router.push(res.writing ? `/projects/${res.projectId}/script` : `/projects/${res.projectId}`);
+      if ("projectId" in res && res.projectId) router.push(res.writing || ("ready" in res && res.ready) ? `/projects/${res.projectId}/script` : `/projects/${res.projectId}`);
     } finally {
       setBusy(false);
     }
@@ -95,12 +95,20 @@ export function PlanTodayCard({
       {plan.topic ? (
         <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", padding: "12px 14px", borderRadius: 12, background: "#f7f7f5" }}>
           <div style={{ minWidth: 0, flexGrow: 1, flexBasis: 280 }}>
-            <div style={{ fontSize: 12, color: MUTED }}>{t("提报的选题", "Proposed topic")}</div>
+            <div style={{ fontSize: 12, color: MUTED, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              {t("提报的选题", "Proposed topic")}
+              {plan.prepared ? (
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11.5, fontWeight: 600, color: "#0b7a63", background: "#e3f4ee", borderRadius: 999, padding: "0 8px", lineHeight: "18px" }}>
+                  <svg viewBox="0 0 24 24" width={11} height={11} aria-hidden fill="none" stroke="currentColor" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round"><path d="m5 12.5 4.5 4.5L19 7.5" /></svg>
+                  {t(`编剧已写好初稿（${plan.prepared.beats} 个分镜）`, `First draft ready (${plan.prepared.beats} beats)`)}
+                </span>
+              ) : null}
+            </div>
             <div style={{ fontSize: 16, fontWeight: 650, color: INK, lineHeight: 1.45, overflowWrap: "anywhere" }}>{plan.topic}</div>
           </div>
           <button type="button" disabled={busy} onClick={() => void make()} style={bigButton("primary", busy)}>
             <Icon name="film" size={15} />
-            {busy ? t("正在开始…", "Starting…") : t("用这个做一条视频", "Make this video")}
+            {busy ? t("正在开始…", "Starting…") : plan.prepared ? t("打开写好的稿子", "Open the draft") : t("用这个做一条视频", "Make this video")}
           </button>
         </div>
       ) : null}

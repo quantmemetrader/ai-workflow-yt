@@ -462,7 +462,7 @@ export async function complete(opts: Omit<StreamOptions, "tools">): Promise<Comp
     if (!(err instanceof AiError) || err.kind === "credit" || opts.signal?.aborted) throw err;
     if (err.kind === "bad_request" && !/model|provider|endpoint/i.test(err.message)) throw err;
     const { modelFor } = await import("./models");
-    const chain = [modelFor.assistant(), modelFor.drafting(), ...modelFor.fallbacks(), "qwen/qwen3-max", "deepseek/deepseek-v4-flash"].filter((m, i, all) => m && m !== opts.model && all.indexOf(m) === i).slice(0, 4);
+    const chain = [modelFor.assistant(), modelFor.drafting(), ...modelFor.fallbacks(), "qwen/qwen-plus", "deepseek/deepseek-v4-flash"].filter((m, i, all) => m && m !== opts.model && all.indexOf(m) === i).slice(0, 4);
     let last: unknown = err;
     for (const model of chain) {
       try {

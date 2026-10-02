@@ -5,7 +5,7 @@ import { fileTextWithin } from "@/lib/files/extract";
 import { toSimplified } from "@/lib/text/simplified";
 import { and, asc, desc, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { approvals, files, scriptBeats, scriptComments, scriptVersions, scripts, users } from "@/lib/db/schema";
+import { approvals, files, notifications, scriptBeats, scriptComments, scriptVersions, scripts, users } from "@/lib/db/schema";
 import type { Viewer } from "@/lib/auth/dal";
 import { complete } from "@/lib/ai/openrouter";
 import { modelFor } from "@/lib/ai/models";
@@ -116,30 +116,89 @@ export async function versionBeats(viewer: Viewer, scriptId: string, versionNo: 
 
 /* ------------------------------------------------------------ comments */
 
-export async function addDocComment(viewer: Viewer, scriptId: string, input: { beatOrd: number | null; quote: string | null; body: string }) {
+export async function addDocComment(viewer: Viewer, scriptId: string, input: { beatOrd: number | null; quote: string | null; body: string; parentId?: string | null; href?: string | null }) {
   input = { ...input, body: toSimplified(input.body), quote: input.quote ? toSimplified(input.quote) : input.quote };
-  const [s] = await db.select({ version: scripts.version }).from(scripts).where(and(eq(scripts.id, scriptId), eq(scripts.tenantId, viewer.tenantId))).limit(1);
+  const [s] = await db.select({ version: scripts.version, title: scripts.title }).from(scripts).where(and(eq(scripts.id, scriptId), eq(scripts.tenantId, viewer.tenantId))).limit(1);
   if (!s) return null;
+  /* A reply hangs under the thread's first comment: a reply to a reply joins
+     the same thread, so threads stay one level deep. */
+  let parent: { id: string; authorId: string | null; resolvedAt: Date | null } | null = null;
+  if (input.parentId) {
+    const [p] = await db
+      .select({ id: scriptComments.id, parentId: scriptComments.parentId, authorId: scriptComments.authorId, resolvedAt: scriptComments.resolvedAt })
+      .from(scriptComments)
+      .where(and(eq(scriptComments.id, input.parentId), eq(scriptComments.scriptId, scriptId)))
+      .limit(1);
+    if (!p) return null;
+    if (p.parentId) {
+      const [root] = await db
+        .select({ id: scriptComments.id, authorId: scriptComments.authorId, resolvedAt: scriptComments.resolvedAt })
+        .from(scriptComments)
+        .where(and(eq(scriptComments.id, p.parentId), eq(scriptComments.scriptId, scriptId)))
+        .limit(1);
+      if (!root) return null;
+      parent = root;
+    } else parent = { id: p.id, authorId: p.authorId, resolvedAt: p.resolvedAt };
+  }
   const id = newId("cmt");
   await db.insert(scriptComments).values({
     id,
     scriptId,
-    beatOrd: input.beatOrd,
+    parentId: parent?.id ?? null,
+    beatOrd: parent ? null : input.beatOrd,
     versionNo: s.version,
     authorId: viewer.id,
     body: input.body.trim().slice(0, 5000),
-    quote: input.quote ? input.quote.slice(0, 500) : null,
+    quote: !parent && input.quote ? input.quote.slice(0, 500) : null,
   });
+  if (parent) {
+    /* Answering a resolved thread opens it again, as in Google Docs. */
+    if (parent.resolvedAt) await resolveDocComment(viewer, scriptId, parent.id, true);
+    if (parent.authorId && parent.authorId !== viewer.id) {
+      const who = viewer.nameLocal || viewer.name;
+      await db
+        .insert(notifications)
+        .values({
+          id: newId("ntf"),
+          userId: parent.authorId,
+          kind: "approval",
+          title: `${who} 回复了你在《${s.title}》里的批注`,
+          body: input.body.trim().slice(0, 140),
+          href: input.href ?? null,
+          module: "script",
+        })
+        .catch((err) => console.error("[script] could not notify the comment's author", err));
+    }
+  }
   return id;
 }
 
+/** Resolving (or reopening) a thread: its first comment and every reply under it. */
 export async function resolveDocComment(viewer: Viewer, scriptId: string, commentId: string, reopen = false) {
   const [s] = await db.select({ id: scripts.id }).from(scripts).where(and(eq(scripts.id, scriptId), eq(scripts.tenantId, viewer.tenantId))).limit(1);
   if (!s) return false;
+  const [c] = await db.select({ id: scriptComments.id, parentId: scriptComments.parentId }).from(scriptComments).where(and(eq(scriptComments.id, commentId), eq(scriptComments.scriptId, scriptId))).limit(1);
+  if (!c) return false;
+  const root = c.parentId ?? c.id;
   await db
     .update(scriptComments)
     .set(reopen ? { resolvedAt: null, resolvedBy: null } : { resolvedAt: new Date(), resolvedBy: viewer.id })
-    .where(and(eq(scriptComments.id, commentId), eq(scriptComments.scriptId, scriptId)));
+    .where(and(eq(scriptComments.scriptId, scriptId), sql`(${scriptComments.id} = ${root} or ${scriptComments.parentId} = ${root})`));
+  return true;
+}
+
+/**
+ * Deleting a comment: its author's, or an owner's or admin's. A thread's
+ * first comment takes its replies with it (the foreign key cascades).
+ */
+export async function deleteDocComment(viewer: Viewer, scriptId: string, commentId: string) {
+  const [s] = await db.select({ id: scripts.id }).from(scripts).where(and(eq(scripts.id, scriptId), eq(scripts.tenantId, viewer.tenantId))).limit(1);
+  if (!s) return false;
+  const [c] = await db.select({ id: scriptComments.id, authorId: scriptComments.authorId }).from(scriptComments).where(and(eq(scriptComments.id, commentId), eq(scriptComments.scriptId, scriptId))).limit(1);
+  if (!c) return false;
+  const admin = viewer.role === "owner" || viewer.role === "admin";
+  if (c.authorId !== viewer.id && !admin) return false;
+  await db.delete(scriptComments).where(eq(scriptComments.id, c.id));
   return true;
 }
 

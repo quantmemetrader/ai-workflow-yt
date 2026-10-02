@@ -56,6 +56,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
        a Traditional-set browser rewrote the page into wrong characters. English is 设置 › 语言. */
     <html lang="zh-Hans-CN" translate="no" className="notranslate">
       <head>
+        <meta name="tg-release" content={process.env.NEXT_DEPLOYMENT_ID ?? ""} />
         <meta httpEquiv="Content-Language" content="zh-Hans-CN" />
         <meta name="google" content="notranslate" />
         {/* Before any bundle: survive Chrome's translate rewriting the page,

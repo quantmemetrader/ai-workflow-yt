@@ -13,7 +13,7 @@ import { STATUS_TONE, type OfficeMember } from "@/components/office/text";
  * roster along the bottom, and 指挥中心 on the right to message any of them.
  * Picking someone on the floor or on a card puts them in the composer.
  */
-export function OfficeView({ members, zh, model, header }: { members: OfficeMember[]; zh: boolean; model: string; header: React.ReactNode }) {
+export function OfficeView({ members, zh, model, header, initialPick = null }: { members: OfficeMember[]; zh: boolean; model: string; header: React.ReactNode; initialPick?: LookKey | null }) {
   const panel = React.useRef<CommandPanelHandle | null>(null);
   const [selected, setSelected] = React.useState<LookKey | null>(null);
   const [speaking, setSpeaking] = React.useState<LookKey | null>(null);
@@ -21,6 +21,12 @@ export function OfficeView({ members, zh, model, header }: { members: OfficeMemb
     setSelected(key);
     panel.current?.pick(key);
   }, []);
+  /* Arrived from a desk on 首页 (?pick=…): that colleague is already in the composer. */
+  React.useEffect(() => {
+    if (!initialPick) return;
+    const id = window.setTimeout(() => pick(initialPick), 300);
+    return () => window.clearTimeout(id);
+  }, [initialPick, pick]);
 
   /* The one answering in the panel is at work, whatever the last refresh said. */
   const shown = React.useMemo(

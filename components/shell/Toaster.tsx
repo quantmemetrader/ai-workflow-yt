@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { NOTIFY_EVENT, notifyRich, type Notice } from "@/lib/client/notify";
+import { zhNotice } from "@/lib/text/zh-errors";
 
 /** Module names for the "no access" notice below. */
 const MODULE_ZH: Record<string, string> = {
@@ -33,7 +34,9 @@ const MODULE_ZH: Record<string, string> = {
 const HOLD = { error: 0, ok: 4000, info: 5000 } as const;
 const HOLD_WITH_ACTIONS = 15_000;
 
-export function Toaster() {
+export function Toaster({ locale = "zh-CN" }: { locale?: string } = {}) {
+  /* A notice that arrives in English (a server action's "Not allowed") is put into Chinese for a Chinese reader (QA, 2 Oct). */
+  const zhReader = !locale.startsWith("en");
   const [notices, setNotices] = useState<Notice[]>([]);
 
   const drop = useCallback((id: number) => {
@@ -44,8 +47,9 @@ export function Toaster() {
     const timers = new Set<ReturnType<typeof setTimeout>>();
 
     function onNotice(event: Event) {
-      const notice = (event as CustomEvent<Notice>).detail;
-      if (!notice?.text && !notice?.title) return;
+      const raw = (event as CustomEvent<Notice>).detail;
+      if (!raw?.text && !raw?.title) return;
+      const notice = zhReader ? { ...raw, text: zhNotice(raw.text), ...(raw.title ? { title: zhNotice(raw.title) } : {}) } : raw;
       setNotices((cur) => [...cur.slice(-3), notice]);
       const hold = notice.hold !== undefined ? notice.hold : notice.actions?.length && notice.kind !== "error" ? HOLD_WITH_ACTIONS : HOLD[notice.kind];
       if (hold) timers.add(setTimeout(() => drop(notice.id), hold));
@@ -56,7 +60,7 @@ export function Toaster() {
       window.removeEventListener(NOTIFY_EVENT, onNotice);
       for (const t of timers) clearTimeout(t);
     };
-  }, [drop]);
+  }, [drop, zhReader]);
 
   /* `requireModule` sends someone without a module to where they can work,
      with `?denied=<module>`; this says why, then tidies the address

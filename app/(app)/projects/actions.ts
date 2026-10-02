@@ -1,4 +1,6 @@
 "use server";
+import { takePreparedDraft } from "@/lib/agents/autorun";
+import { chatMembers } from "@/lib/db/schema";
 
 import { requesterOf } from "@/lib/auth/types";
 import { recordFeedback } from "@/lib/agents/learning";
@@ -257,6 +259,9 @@ export async function startFromTopicAction(rawRef: TopicRef, opts: { write?: boo
   }
 
   const hints = formatHints(resolved.source.format);
+  /* 编剧 may already have written this one (the morning plan's topic, drafted
+     as soon as the plan was out): the project opens on that draft. */
+  const prepared = write ? await takePreparedDraft(viewer, resolved.title).catch(() => null) : null;
   let created: { id: string; channelId: string; scriptId: string };
   try {
     created = await createWorkProject(viewer, {
@@ -264,6 +269,7 @@ export async function startFromTopicAction(rawRef: TopicRef, opts: { write?: boo
       brief: briefText(resolved.source, resolved.title),
       source: resolved.source,
       topicId: resolved.projectTopicId,
+      ...(prepared ? { scriptId: prepared } : {}),
       script: {
         topicId: resolved.scriptTopicId,
         angle: chips.angle ?? resolved.source.angle ?? null,
@@ -286,7 +292,14 @@ export async function startFromTopicAction(rawRef: TopicRef, opts: { write?: boo
     writing = w.writing;
   }
   /* No revalidatePath: the caller navigates, and the sidebar refreshes quietly. */
-  return { projectId: created.id, scriptId: created.scriptId, existed: false, writing, note: denied };
+  if (prepared) {
+    const writer = await agentViewer(viewer.tenantId, "script", requesterOf(viewer)).catch(() => null);
+    if (writer) {
+      await db.insert(chatMembers).values({ channelId: created.channelId, userId: writer.id }).onConflictDoNothing().catch(() => {});
+      await postMessage(writer, created.channelId, `《${resolved.title}》的初稿我早上就写好了，已经在脚本里。看一遍，哪里要改直接说。`, { draft: { scriptId: created.scriptId } }).catch(() => {});
+    }
+  }
+  return { projectId: created.id, scriptId: created.scriptId, existed: false, writing, ready: Boolean(prepared), note: denied };
 }
 
 export async function setProjectStatusAction(id: string, status: "active" | "archived") {

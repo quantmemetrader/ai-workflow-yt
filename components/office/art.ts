@@ -612,14 +612,64 @@ function mug(ctx: CanvasRenderingContext2D, x: number, y: number, c: string, tic
 
 export type Seat = { key: LookKey; cx: number; dy: number; sx: number };
 
-/** Eight desks in two rows of four, left of the meeting area. */
+/**
+ * The desks as the work flows (owner, 2 Oct: room between the desks and an
+ * arrow showing the flow). The top row is the line a video goes down, left
+ * to right: research, plan, script, edit, publish copy. The bottom row is
+ * whoever is called on when needed: legal, finance and the assistant.
+ */
+export const FLOW_KEYS: LookKey[] = ["research", "planning", "script", "video", "article"];
+export const SUPPORT_KEYS: LookKey[] = ["legal", "finance", "host"];
+const ROW1 = 92;
+const ROW2 = 164;
+const STEP = 62;
+const LEFT = 14;
+
 export function seatsFor(keys: LookKey[]): Seat[] {
-  return keys.slice(0, 8).map((key, i) => {
-    const col = i % 4;
-    const row = Math.floor(i / 4);
-    const sx = 8 + col * 44;
-    return { key, sx, cx: sx + 22, dy: row ? 148 : 88 };
-  });
+  const out: Seat[] = [];
+  for (const key of keys) {
+    const f = FLOW_KEYS.indexOf(key);
+    const sp = SUPPORT_KEYS.indexOf(key);
+    if (f >= 0) out.push({ key, sx: LEFT + f * STEP, cx: LEFT + f * STEP + 22, dy: ROW1 });
+    else if (sp >= 0) out.push({ key, sx: LEFT + (sp + 1) * STEP, cx: LEFT + (sp + 1) * STEP + 22, dy: ROW2 });
+  }
+  return out;
+}
+
+/** The support corner, in art pixels: the HTML label sits on its top edge. */
+export const SUPPORT_ZONE = { x: LEFT + STEP - 8, y: ROW2 - 36, w: STEP * 3 - 18 + 16, h: 64 };
+
+/**
+ * The arrows between the desks on the top row. Each runs from one desk to
+ * the next along the floor; while the desk it leaves is at work a sheet of
+ * paper travels down it, so the hand-on is something you can see.
+ */
+export function drawFlow(ctx: CanvasRenderingContext2D, seats: Seat[], statusOf: (k: LookKey) => Status, tick: number, motion: boolean) {
+  const at = new Map(seats.map((s) => [s.key, s]));
+  for (let i = 0; i < FLOW_KEYS.length - 1; i++) {
+    const a = at.get(FLOW_KEYS[i]);
+    const b = at.get(FLOW_KEYS[i + 1]);
+    if (!a || !b) continue;
+    const x0 = a.sx + 43;
+    const x1 = b.sx + 1;
+    const y = a.dy + 11;
+    const live = statusOf(a.key) === "working";
+    const ink = live ? "#1f8f6f" : "#b9ad99";
+    const dim = live ? "#8fd0bb" : "#d8cfbf";
+    // a dotted run, then the head
+    for (let x = x0 + 1; x < x1 - 4; x += 3) r(ctx, x, y, 2, 2, (x - x0) % 6 < 3 ? ink : dim);
+    r(ctx, x1 - 5, y - 2, 1, 6, ink);
+    r(ctx, x1 - 4, y - 1, 1, 4, ink);
+    r(ctx, x1 - 3, y, 1, 2, ink);
+    if (live && motion) {
+      const span = x1 - x0 - 9;
+      const px = x0 + 1 + (tick % span);
+      r(ctx, px, y - 3, 4, 5, C.paper);
+      r(ctx, px, y - 3, 4, 1, "#ffffff");
+      r(ctx, px + 1, y - 1, 2, 1, C.paperLine);
+      r(ctx, px, y + 2, 4, 1, C.shadow);
+    }
+  }
 }
 
 /** The area a seat covers, in art pixels: for hit areas and the bubble. */
@@ -642,17 +692,17 @@ export function drawRoom(ctx: CanvasRenderingContext2D) {
     r(ctx, x + 1, 44, 1, ART_H - 44, C.floorHi);
   }
 
-  // pantry: a checked floor in the corner
-  for (let y = 136; y < ART_H; y += 8)
-    for (let x = 200; x < ART_W; x += 8) r(ctx, x, y, 8, 8, ((x + y) / 8) % 2 ? C.check2 : C.check1);
-  r(ctx, 199, 136, 1, ART_H - 136, C.floorShadow);
-  r(ctx, 200, 135, ART_W - 200, 1, C.floorShadow);
+  // a runner under the line of desks: the way the work goes
+  r(ctx, 8, 100, ART_W - 16, 1, C.rugEdge);
+  r(ctx, 8, 101, ART_W - 16, 6, C.rug);
+  r(ctx, 8, 107, ART_W - 16, 1, C.rugEdge);
 
-  // meeting rug
-  r(ctx, 198, 56, 116, 70, C.rugEdge);
-  r(ctx, 199, 57, 114, 68, C.rug);
-  r(ctx, 202, 60, 108, 62, C.rugIn);
-  r(ctx, 203, 61, 106, 60, C.rug);
+  // the support corner on its own rug
+  const z = SUPPORT_ZONE;
+  r(ctx, z.x, z.y, z.w, z.h, C.rugEdge);
+  r(ctx, z.x + 1, z.y + 1, z.w - 2, z.h - 2, C.rug);
+  r(ctx, z.x + 4, z.y + 4, z.w - 8, z.h - 8, C.rugIn);
+  r(ctx, z.x + 5, z.y + 5, z.w - 10, z.h - 10, C.rug);
 
   // back wall
   r(ctx, 0, 0, ART_W, 4, C.wallCap);
@@ -666,7 +716,7 @@ export function drawRoom(ctx: CanvasRenderingContext2D) {
   r(ctx, 0, 43, ART_W, 1, C.baseDark);
   r(ctx, 0, 44, ART_W, 2, C.floorShadow);
 
-  // windows over the desks
+  // windows along the wall
   for (const wx of [14, 66, 118]) windowAt(ctx, wx, 7, 42, 24);
 
   // a framed print and the door
@@ -676,19 +726,17 @@ export function drawRoom(ctx: CanvasRenderingContext2D) {
   r(ctx, 178, 15, 5, 6, "#7cb6a8");
   doorAt(ctx, 290, 10);
 
-  // whiteboard over the meeting table
+  // the whiteboard: today's plan
   r(ctx, 206, 8, 66, 24, "#b9bec7");
   r(ctx, 207, 9, 64, 21, "#fbfcfd");
   r(ctx, 206, 31, 66, 2, "#a5abb5");
   r(ctx, 212, 13, 18, 1, "#0f5bd5");
   r(ctx, 212, 16, 12, 1, "#7aa7ec");
   r(ctx, 212, 19, 15, 1, "#7aa7ec");
-  // a little chart on the board
   r(ctx, 234, 24, 1, 3, "#0b7a63");
   r(ctx, 237, 21, 1, 6, "#0b7a63");
   r(ctx, 240, 18, 1, 9, "#0b7a63");
   r(ctx, 233, 27, 10, 1, "#9aa3ad");
-  // sticky notes in the team's tints
   const notes = ["#d5e7fb", "#dcd6fb", "#f8dcc6", "#c3e6e0", "#f5d4e6", "#f1e5c0"];
   notes.forEach((n, i) => r(ctx, 248 + (i % 3) * 7, 12 + Math.floor(i / 3) * 8, 6, 6, n));
   r(ctx, 228, 32, 6, 1, C.red);
@@ -697,34 +745,13 @@ export function drawRoom(ctx: CanvasRenderingContext2D) {
   // bookshelf by the door
   shelfAt(ctx, 276, 14);
 
-  // meeting table and chairs
-  for (const x of [220, 242, 264]) chairBack(ctx, x, 66);
-  r(ctx, 212, 76, 82, 2, C.tableEdge);
-  r(ctx, 212, 78, 82, 16, C.table);
-  r(ctx, 212, 94, 82, 5, C.tableFront);
-  r(ctx, 212, 99, 82, 2, C.shadow);
-  r(ctx, 214, 79, 78, 1, "#fbfaf8");
-  // laptop, papers, a jug and cups on the table
-  r(ctx, 224, 82, 14, 1, "#9aa3ad");
-  r(ctx, 225, 83, 12, 6, "#c9ced6");
-  r(ctx, 226, 84, 10, 4, "#dfe3e8");
-  r(ctx, 248, 83, 10, 7, C.paper);
-  r(ctx, 249, 85, 7, 1, C.paperLine);
-  r(ctx, 249, 87, 5, 1, C.paperLine);
-  r(ctx, 264, 81, 4, 8, "#d8ecf7");
-  r(ctx, 264, 81, 4, 1, "#a9c8da");
-  r(ctx, 272, 85, 3, 3, C.white);
-  r(ctx, 279, 84, 3, 3, C.white);
-  r(ctx, 284, 82, 6, 8, "#f1e5c0");
-  for (const x of [220, 242, 264]) chairFromBehind(ctx, x, 102);
+  // plants in the corners
+  plantAt(ctx, 2, 48, false);
+  plantAt(ctx, 304, 48, false);
+  plantAt(ctx, 4, 166, true);
+  plantAt(ctx, 300, 166, true);
 
-  // plants
-  plantAt(ctx, 300, 96, true);
-  plantAt(ctx, 186, 50, false);
-  plantAt(ctx, 2, 170, true);
-  plantAt(ctx, 184, 166, false);
-
-  // printer on a cabinet
+  // printer on a cabinet, bottom left
   r(ctx, 24, 182, 30, 12, "#c9c3b8");
   r(ctx, 24, 180, 30, 2, "#ddd8ce");
   r(ctx, 25, 184, 13, 1, "#b2ab9e");
@@ -735,63 +762,14 @@ export function drawRoom(ctx: CanvasRenderingContext2D) {
   r(ctx, 31, 170, 16, 2, C.paper);
   r(ctx, 44, 175, 3, 1, "#5be3b0");
 
-  // pantry: counter, coffee machine, fridge, water cooler, a round table
-  r(ctx, 226, 150, 72, 2, C.counterEdge);
-  r(ctx, 226, 152, 72, 8, C.counter);
-  r(ctx, 226, 160, 72, 14, C.cabinet);
-  r(ctx, 226, 160, 72, 1, C.cabinetHi);
-  for (let x = 226; x < 298; x += 18) {
-    r(ctx, x, 161, 1, 13, C.cabinetDark);
-    r(ctx, x + 8, 165, 2, 1, "#dfe6ee");
-  }
-  r(ctx, 226, 174, 72, 2, C.shadow);
-  // coffee machine
-  r(ctx, 232, 140, 12, 14, "#3d4250");
-  r(ctx, 232, 140, 12, 2, "#525869");
-  r(ctx, 235, 146, 6, 5, "#272a33");
-  r(ctx, 241, 143, 1, 1, C.red);
-  r(ctx, 236, 150, 4, 3, C.white);
-  // kettle, cups, fruit bowl, sink
-  r(ctx, 252, 146, 6, 7, "#c9ced6");
-  r(ctx, 253, 145, 4, 1, "#9aa3ad");
-  r(ctx, 262, 150, 3, 3, "#f8dcc6");
-  r(ctx, 266, 150, 3, 3, "#c3e6e0");
-  r(ctx, 274, 150, 12, 3, "#e9e4dc");
-  r(ctx, 275, 148, 3, 2, "#f2a33a");
-  r(ctx, 278, 147, 3, 3, "#d9534a");
-  r(ctx, 281, 148, 3, 2, "#7cc47a");
-  r(ctx, 288, 152, 8, 5, "#cfd6de");
-  r(ctx, 289, 153, 6, 3, "#b7c2cd");
-  r(ctx, 293, 149, 1, 3, "#9aa3ad");
-  // fridge
-  r(ctx, 300, 124, 18, 4, "#f6f8fa");
-  r(ctx, 300, 128, 18, 48, C.fridge);
-  r(ctx, 316, 128, 2, 48, C.fridgeShade);
-  r(ctx, 300, 146, 18, 1, C.fridgeShade);
-  r(ctx, 302, 132, 1, 10, "#aeb8c2");
-  r(ctx, 302, 150, 1, 12, "#aeb8c2");
-  r(ctx, 306, 134, 4, 4, "#f5d4e6");
-  r(ctx, 311, 136, 3, 3, "#d5e7fb");
-  r(ctx, 300, 176, 18, 2, C.shadow);
-  // water cooler
-  r(ctx, 208, 140, 10, 9, "#a9d6f5");
-  r(ctx, 209, 141, 3, 6, "#cdeafb");
-  r(ctx, 207, 149, 12, 25, "#eef0f3");
-  r(ctx, 217, 149, 2, 25, "#d3d8de");
-  r(ctx, 210, 156, 2, 2, "#5aa0e6");
-  r(ctx, 214, 156, 2, 2, C.red);
-  r(ctx, 207, 174, 12, 2, C.shadow);
-  // round cafe table and two stools
-  r(ctx, 250, 182, 20, 2, "#e7dfd2");
-  r(ctx, 248, 184, 24, 5, "#f3eee6");
-  r(ctx, 250, 189, 20, 2, "#cfc6b6");
-  r(ctx, 258, 191, 4, 5, "#9b9284");
-  r(ctx, 254, 196, 12, 1, C.shadow);
-  r(ctx, 240, 186, 6, 4, "#d07a52");
-  r(ctx, 241, 190, 4, 5, "#7a6a5a");
-  r(ctx, 274, 186, 6, 4, "#d07a52");
-  r(ctx, 275, 190, 4, 5, "#7a6a5a");
-  r(ctx, 256, 182, 3, 3, C.white);
+  // water cooler, bottom right
+  r(ctx, 274, 160, 10, 9, "#a9d6f5");
+  r(ctx, 275, 161, 3, 6, "#cdeafb");
+  r(ctx, 273, 169, 12, 25, "#eef0f3");
+  r(ctx, 283, 169, 2, 25, "#d3d8de");
+  r(ctx, 276, 176, 2, 2, "#5aa0e6");
+  r(ctx, 280, 176, 2, 2, C.red);
+  r(ctx, 273, 194, 12, 2, C.shadow);
 }
 
 function windowAt(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number) {
@@ -1024,16 +1002,8 @@ export function drawClock(ctx: CanvasRenderingContext2D, now: Date) {
   r(ctx, x + 3, y + 3, 2, 2, C.ink);
 }
 
-/** Steam over the coffee machine. */
-export function drawAmbient(ctx: CanvasRenderingContext2D, tick: number, motion: boolean) {
-  if (!motion) return;
-  const s = tick % 8;
-  ctx.fillStyle = "rgba(255,255,255,0.8)";
-  if (s < 5) {
-    ctx.fillRect(237 + (s % 2), 136 - s, 1, 1);
-    ctx.fillRect(239 - (s % 2), 133 - s, 1, 1);
-  }
-}
+/** Kept for the floor's frame loop; the room has nothing that steams now. */
+export function drawAmbient(_ctx: CanvasRenderingContext2D, _tick: number, _motion: boolean) {}
 
 /* ----------------------------------------------------------- portraits */
 

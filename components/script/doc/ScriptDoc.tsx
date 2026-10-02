@@ -36,6 +36,8 @@ import {
   renameScriptAction,
   requestChangesAction,
   resolveCommentAction,
+  replyCommentAction,
+  deleteCommentAction,
   restoreDocVersionAction,
   saveRichAction,
   settleDocSendBackAction,
@@ -351,7 +353,16 @@ export function ScriptDoc(props: ScriptDocProps) {
   }) ?? EMPTY_DOC_STATE;
 
   /* ---------------- marks: comments, find, tracked changes ---------------- */
-  const openComments = props.comments.filter((c) => !c.resolvedAt);
+  /* Threads: a comment and the replies under it (parentId). Only a thread's
+     first comment is anchored in the text; replies show inside its card. */
+  const openComments = props.comments.filter((c) => !c.resolvedAt && !c.parentId);
+  const threads = props.comments.filter((c) => !c.parentId);
+  const repliesOf = React.useMemo(() => {
+    const m = new Map<string, DocComment[]>();
+    for (const c of props.comments) if (c.parentId) m.set(c.parentId, [...(m.get(c.parentId) ?? []), c]);
+    return m;
+  }, [props.comments]);
+  const repliesKey = props.comments.filter((c) => c.parentId).map((c) => c.id).join("|");
   const [activeComment, setActiveComment] = React.useState<string | null>(null);
   const setMarks = React.useCallback(
     (m: Partial<MarksState>) => {
@@ -418,7 +429,9 @@ export function ScriptDoc(props: ScriptDocProps) {
     for (const x of list) {
       const y = Math.max(x.y - 6, floor);
       tops[x.id] = y;
-      floor = y + (activeComment === x.id ? 150 : 104);
+      /* The card as drawn (replies and an open reply box make it taller), or a guess before it is. */
+      const card = root.parentElement?.querySelector(`.gd-margin [data-card="${x.id}"]`) as HTMLElement | null;
+      floor = y + (card ? card.offsetHeight + 10 : activeComment === x.id ? 150 : 104);
     }
     setCardTops(tops);
     const sel = editor.state.selection;
@@ -431,7 +444,7 @@ export function ScriptDoc(props: ScriptDocProps) {
       }
     } else setSelTop(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editor, commentsKey, z, activeComment]);
+  }, [editor, commentsKey, repliesKey, z, activeComment]);
   React.useEffect(() => {
     if (!editor) return;
     const run = () => window.requestAnimationFrame(layoutCards);
@@ -658,6 +671,8 @@ export function ScriptDoc(props: ScriptDocProps) {
   const imgInput = React.useRef<HTMLInputElement | null>(null);
   const importInput = React.useRef<HTMLInputElement | null>(null);
   const importMode = React.useRef<"replace" | "append">("replace");
+  /* 导入 also puts the file in 参考资料 only when this is ticked (QA, 2 Oct). */
+  const [importAsRef, setImportAsRef] = React.useState(false);
   const [uploading, setUploading] = React.useState<{ name: string; pct: number }[]>([]);
   const access = props.accessMode === "everyone" ? ({ mode: "everyone" } as const) : ({ mode: "private" } as const);
   /* A file just added is read in the background: ask again for a while so
@@ -710,15 +725,14 @@ export function ScriptDoc(props: ScriptDocProps) {
     await uploadFiles([file] as unknown as FileList, {
       access,
       onDone: async (fileId) => {
-        result = (await importDocAction(projectId, fileId, importMode.current)) as typeof result;
+        result = (await importDocAction(projectId, fileId, importMode.current, importAsRef)) as typeof result;
       },
     });
     const r = result as { ok?: true; paragraphs?: number; error?: string } | null;
     if (importInput.current) importInput.current.value = "";
     if (!r) return notify(t("上传没成功", "The upload did not finish"));
     if (r.error) return notify(r.error);
-    /* The file also lands in 参考资料; say so rather than let it appear there unexplained (QA, 2 Oct). */
-    notify(t(`已导入 ${r.paragraphs} 段，原文件也放进了参考资料`, `Imported ${r.paragraphs} paragraphs; the file is also in References`), "ok");
+    notify(importAsRef ? t(`已导入 ${r.paragraphs} 段，原文件也放进了参考资料`, `Imported ${r.paragraphs} paragraphs; the file is also in References`) : t(`已导入 ${r.paragraphs} 段`, `Imported ${r.paragraphs} paragraphs`), "ok");
     window.location.reload();
   }
 
@@ -1201,6 +1215,10 @@ export function ScriptDoc(props: ScriptDocProps) {
               <>
                 <button type="button" className="gd-menu-item" onClick={() => { close(); importMode.current = "replace"; importInput.current?.click(); }}>{t("用文件替换现在的稿子", "Replace with a file")}</button>
                 <button type="button" className="gd-menu-item" onClick={() => { close(); importMode.current = "append"; importInput.current?.click(); }}>{t("把文件内容接在后面", "Add a file's text at the end")}</button>
+                <label className="gd-menu-item" style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", borderTop: "1px solid #eceef1", color: "#5f6368", fontSize: 13 }}>
+                  <input type="checkbox" checked={importAsRef} onChange={(e) => setImportAsRef(e.target.checked)} style={{ margin: 0 }} />
+                  {t("同时把原文件放进参考资料", "Also keep the file in References")}
+                </label>
               </>
             )}
           </BigDrop>
@@ -1482,8 +1500,8 @@ export function ScriptDoc(props: ScriptDocProps) {
               {!noScript && !viewing
                 ? openComments.map((c) =>
                     cardTops[c.id] !== undefined ? (
-                      <div key={c.id} className="gd-card" data-on={activeComment === c.id ? "1" : undefined} style={{ top: cardTops[c.id] }} onClick={() => setActiveComment(c.id)}>
-                        <CommentBody c={c} zh={zh} now={now} onResolve={() => start(async () => { await resolveCommentAction(projectId, c.id); router.refresh(); })} />
+                      <div key={c.id} className="gd-card" data-card={c.id} data-on={activeComment === c.id ? "1" : undefined} style={{ top: cardTops[c.id] }} onClick={() => setActiveComment(c.id)}>
+                        <CommentThread c={c} replies={repliesOf.get(c.id) ?? []} projectId={projectId} me={me} zh={zh} now={now} onResize={() => window.requestAnimationFrame(layoutCards)} onResolve={() => start(async () => { await resolveCommentAction(projectId, c.id); router.refresh(); })} />
                       </div>
                     ) : null,
                   )
@@ -1601,7 +1619,7 @@ export function ScriptDoc(props: ScriptDocProps) {
                         onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); runCopilot(); } }}
                         placeholder={thinking ? t("编剧正在改…", "The writer is on it…") : proposal ? t("先处理文档里的修改建议", "Deal with the suggested edits first") : t("想怎么改？例如：开头更抓人，第二段加一个真实数据", "How should it change?")}
                       />
-                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <div className="gd-ai-row">
                         <AttachButton zh={zh} onFiles={refAtt.add} size={28} title={t("附参考文件：范例、资料、截图，只用于这次修改", "Attach a sample or notes for this edit")} />
                         <ModelChip value={pickModel} onChange={setPickModel} zh={zh} placement="up" align="left" />
                         <span style={{ flexGrow: 1 }} />
@@ -1707,10 +1725,10 @@ export function ScriptDoc(props: ScriptDocProps) {
             {panel === "comments" ? (
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 {draft && !marginOn ? <div className="gd-card static on">{composer}</div> : null}
-                {props.comments.length ? (
-                  props.comments.map((c) => (
+                {threads.length ? (
+                  threads.map((c) => (
                     <div key={c.id} className="gd-card static" data-on={activeComment === c.id ? "1" : undefined} style={{ opacity: c.resolvedAt ? 0.6 : 1 }} onClick={() => jumpTo(c)}>
-                      <CommentBody c={c} zh={zh} now={now} resolved={Boolean(c.resolvedAt)} onResolve={() => start(async () => { await resolveCommentAction(projectId, c.id, Boolean(c.resolvedAt)); router.refresh(); })} />
+                      <CommentThread c={c} replies={repliesOf.get(c.id) ?? []} projectId={projectId} me={me} zh={zh} now={now} resolved={Boolean(c.resolvedAt)} onResolve={() => start(async () => { await resolveCommentAction(projectId, c.id, Boolean(c.resolvedAt)); router.refresh(); })} />
                     </div>
                   ))
                 ) : (
@@ -1851,6 +1869,131 @@ function Status({ tone, text, children }: { tone: "run" | "ok" | "you" | "wait" 
   );
 }
 
+/**
+ * A comment with its replies and a 回复 box (QA round 2: comments could not be
+ * answered, so a question in the margin got its answer in WeChat). Replies sit
+ * indented under the first comment; Ctrl/Cmd+Enter sends, Esc closes the box.
+ * The author, or an owner or admin, may delete; deleting the first comment
+ * takes the replies with it.
+ */
+function CommentThread({
+  c,
+  replies,
+  projectId,
+  me,
+  zh,
+  now,
+  resolved = false,
+  onResolve,
+  onResize,
+}: {
+  c: DocComment;
+  replies: DocComment[];
+  projectId: string;
+  me: { id: string; name: string; avatarUrl: string | null; isAdmin: boolean };
+  zh: boolean;
+  now: number | null;
+  resolved?: boolean;
+  onResolve: () => void;
+  onResize?: () => void;
+}) {
+  const t = (a: string, b: string) => (zh ? a : b);
+  const router = useRouter();
+  const [pending, start] = React.useTransition();
+  const [open, setOpen] = React.useState(false);
+  const [text, setText] = React.useState("");
+  React.useEffect(() => {
+    onResize?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, replies.length]);
+  const canDelete = (x: DocComment) => x.authorId === me.id || me.isAdmin;
+  function send() {
+    const body = text.trim();
+    if (!body || pending) return;
+    start(async () => {
+      const r = await replyCommentAction(projectId, c.id, body);
+      if ("error" in r && r.error) return notify(r.error);
+      setText("");
+      setOpen(false);
+      router.refresh();
+    });
+  }
+  function remove(x: DocComment) {
+    const first = x.id === c.id;
+    if (!window.confirm(first && replies.length ? t(`删除这条批注和下面的 ${replies.length} 条回复？`, `Delete this comment and its ${replies.length} replies?`) : t("删除这条批注？", "Delete this comment?"))) return;
+    start(async () => {
+      const r = await deleteCommentAction(projectId, x.id);
+      if ("error" in r && r.error) return notify(r.error);
+      router.refresh();
+    });
+  }
+  const linkBtn: React.CSSProperties = { border: 0, background: "transparent", padding: 0, font: "inherit", fontSize: 12.5, color: "#0b57d0", cursor: "pointer" };
+  return (
+    <div onClick={(e) => (open ? e.stopPropagation() : undefined)}>
+      <CommentBody c={c} zh={zh} now={now} resolved={resolved} onResolve={onResolve} />
+      {replies.length ? (
+        <div className="gd-replies">
+          {replies.map((r) => (
+            <div key={r.id} className="gd-reply">
+              <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                <PersonAvatar id={r.authorId} url={r.authorAvatar} name={r.authorName} size={22} />
+                <div style={{ minWidth: 0, flexGrow: 1, display: "flex", alignItems: "baseline", gap: 6 }}>
+                  <span style={{ fontSize: 13, fontWeight: 500, color: "#1f1f1f", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.authorName}</span>
+                  <span style={{ fontSize: 11.5, color: "#5f6368", whiteSpace: "nowrap" }}>{ago(r.createdAt, zh, now)}</span>
+                </div>
+                {canDelete(r) ? (
+                  <button type="button" style={{ ...linkBtn, color: "#5f6368", fontSize: 12 }} disabled={pending} onClick={(e) => { e.stopPropagation(); remove(r); }}>
+                    {t("删除", "Delete")}
+                  </button>
+                ) : null}
+              </div>
+              <div style={{ fontSize: 13.5, color: "#1f1f1f", lineHeight: 1.5, marginTop: 4, whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{r.body}</div>
+            </div>
+          ))}
+        </div>
+      ) : null}
+      {open ? (
+        <div style={{ marginTop: 8 }} onClick={(e) => e.stopPropagation()}>
+          <textarea
+            autoFocus
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            rows={2}
+            className="gd-comment-box"
+            placeholder={t("回复…", "Reply…")}
+            aria-label={t("回复这条批注", "Reply to this comment")}
+            onKeyDown={(e) => {
+              if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+                e.preventDefault();
+                send();
+              }
+              if (e.key === "Escape") {
+                e.preventDefault();
+                setOpen(false);
+              }
+            }}
+          />
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 6 }}>
+            <button type="button" className="gd-status-btn" onClick={() => setOpen(false)}>{t("取消", "Cancel")}</button>
+            <button type="button" className="gd-status-btn blue" disabled={pending || !text.trim()} onClick={send}>{pending ? t("正在发送…", "Sending…") : t("回复", "Reply")}</button>
+          </div>
+        </div>
+      ) : (
+        <div style={{ display: "flex", gap: 14, marginTop: 8 }}>
+          <button type="button" style={linkBtn} onClick={(e) => { e.stopPropagation(); setOpen(true); }}>
+            {replies.length ? t(`回复（${replies.length}）`, `Reply (${replies.length})`) : t("回复", "Reply")}
+          </button>
+          {canDelete(c) ? (
+            <button type="button" style={{ ...linkBtn, color: "#5f6368" }} disabled={pending} onClick={(e) => { e.stopPropagation(); remove(c); }}>
+              {t("删除", "Delete")}
+            </button>
+          ) : null}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function CommentBody({ c, zh, now, resolved = false, onResolve }: { c: DocComment; zh: boolean; now: number | null; resolved?: boolean; onResolve: () => void }) {
   return (
     <>
@@ -1971,6 +2114,9 @@ export const GD_CSS = `
 .gd-ai-compose textarea { border: 0; outline: none; resize: none; font: inherit; font-size: 14px; line-height: 1.5; background: transparent; }
 .gd-ai-go { display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px; border: 0; border-radius: 10px; background: #171717; color: #fff; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap; flex-shrink: 0; }
 .gd-ai-go:disabled { opacity: .4; cursor: default; }
+/* The side panel's row under the box: wraps in a narrow panel (1024 wide, QA round 2), the button staying at the right. */
+.gd-ai-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.gd-ai-row .gd-ai-go { margin-left: auto; }
 .gd-ai-refs { display: flex; flex-direction: column; gap: 8px; padding: 12px; border: 1px solid #e3e3e3; border-radius: 12px; background: #fbfbfa; }
 .gd-ai-up { display: inline-flex; align-items: center; gap: 5px; height: 30px; padding: 0 10px; border: 1px solid #d3d3d0; border-radius: 8px; background: #fff; font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; }
 .gd-ai-drop { border: 1.5px dashed #d3d3d0; border-radius: 10px; padding: 14px 10px; text-align: center; font-size: 12.5px; color: #80868b; }
@@ -2012,6 +2158,8 @@ export const GD_CSS = `
 .gd-card:not([data-on]):not(.on) { box-shadow: 0 1px 2px rgba(60,64,67,.3), 0 1px 3px 1px rgba(60,64,67,.15); background: #f8fafd; }
 .gd-card[data-on], .gd-card.on { left: -12px; background: #fff; }
 .gd-card.static { position: static; width: auto; left: auto; }
+.gd-replies { margin-top: 10px; padding-left: 12px; border-left: 2px solid #e3e3e3; display: flex; flex-direction: column; gap: 10px; }
+.gd-reply { min-width: 0; }
 .gd-quote { margin-top: 8px; padding-left: 8px; border-left: 3px solid #fbbc04; font-size: 12.5px; color: #444746; line-height: 1.45; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .gd-comment-box { width: 100%; box-sizing: border-box; border: 1px solid #c7c7c7; border-radius: 6px; padding: 8px 10px; font: inherit; font-size: 13.5px; resize: vertical; margin-top: 8px; }
 .gd-add-comment { position: absolute; left: 0; width: 40px; height: 40px; border: 0; border-radius: 999px; background: #fff; color: #444746; box-shadow: 0 1px 3px rgba(60,64,67,.3); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }

@@ -4,9 +4,8 @@ import { answeringModel } from "@/lib/ai/models";
 import { HomeToday } from "@/components/home/HomeToday";
 import { readToday } from "@/lib/home/today";
 import { readHome } from "@/lib/home/service";
-import { AGENT_KEYS } from "@/lib/agents/catalog";
-import { Card } from "@/components/projects/kit";
-import { TeamBoard, type TeamMember } from "@/components/agents/TeamBoard";
+import { officeMembers } from "@/lib/home/office";
+import { HomeOffice } from "@/components/office/HomeOffice";
 import { PlanTodayCard } from "@/components/agents/PlanTodayCard";
 import { planToday } from "@/lib/agents/plan-today";
 
@@ -22,12 +21,8 @@ export default async function HomePage() {
   const viewer = await requireModule("chat");
   const zh = (viewer.locale ?? "zh-CN").startsWith("zh");
   const [today, home, plan] = await Promise.all([readToday(viewer, zh), readHome(viewer, zh), planToday(viewer.tenantId)]);
-  /* The AI colleagues, in plain sight: faces, what each is doing, 派任务. */
-  const byKey = new Map(home.agents.map((a) => [a.key, a]));
-  const team: TeamMember[] = AGENT_KEYS.map((key) => {
-    const a = byKey.get(key);
-    return { key, status: a?.status ?? "idle", line: a?.line ?? null, at: a?.at ? a.at.toISOString() : null };
-  });
+  /* The AI colleagues as the office: who is at work, the line the work goes down. */
+  const members = officeMembers(home, zh);
   return (
     <div style={{ flexGrow: 1, minWidth: 0, minHeight: 0, display: "flex", background: "#f6f5f2" }}>
       <HomeToday
@@ -36,11 +31,7 @@ export default async function HomePage() {
         greeting={greeting(zh)}
         today={today}
         plan={plan ? <PlanTodayCard plan={plan} zh={zh} canWrite={viewer.modules.includes("script")} canRedo={viewer.role === "owner" || viewer.role === "admin"} /> : null}
-        team={
-          <Card icon="spark" title={zh ? "AI 同事" : "AI team"} right={<a href="/team" style={{ fontSize: 12.5, color: "#525252", textDecoration: "none" }}>{zh ? "全部同事 →" : "The whole team →"}</a>}>
-            <TeamBoard team={team} zh={zh} />
-          </Card>
-        }
+        team={<HomeOffice members={members} zh={zh} />}
       />
       <HomeAgent zh={zh} model={answeringModel()} />
     </div>
