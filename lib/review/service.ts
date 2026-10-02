@@ -6,10 +6,10 @@ import type { Viewer } from "@/lib/auth/types";
 import { ulid } from "@/lib/ids";
 import { OWN_ACCOUNTS as ALL_ACCOUNTS, type OwnAccount } from "@/lib/social/own-accounts";
 
-/* 视频号 is left out: its numbers cannot be read (TikHub's lookup matched
-   somebody else's account), and the owner said to drop it rather than show
-   an empty tile to fill in by hand (28 Sep). Posting there is unaffected. */
-const OWN_ACCOUNTS = ALL_ACCOUNTS.filter((a) => a.platform !== "wechat_channels");
+/* 视频号 (谢亚芳-创变派) is listed with the rest (Ryan, 2 Oct: "feature their
+   WeChat video in analytics"). TikHub's lookup cannot read it yet, so its tile
+   takes numbers by hand (手动填写) and a video by its share link. */
+const OWN_ACCOUNTS = ALL_ACCOUNTS;
 import { projectsVisibleTo } from "@/lib/projects/visible";
 import { readPublication, publishPlatformName } from "@/lib/projects/publication";
 import { addOwnPick } from "@/lib/research/own-picks";

@@ -13,7 +13,7 @@ import { notify } from "@/lib/client/notify";
  * signal itself, resolved on the server by the brief's date and the
  * signal's place in it, so the brief shown here is the brief the project
  * gets (it used to be shown and then thrown away). "Start and write" lands
- * on the script while 编剧 writes it.
+ * on the script while 文案 writes it.
  *
  * From any other link: the title, the brief and the first message as given.
  */

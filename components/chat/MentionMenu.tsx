@@ -39,7 +39,7 @@ export type MentionTarget = {
    *
    * Searching only the written tag meant that on a Chinese keyboard layout the
    * picker was useless to anyone typing Latin: `@r` matched none of 研究员,
-   * 策划, 编剧, 剪辑师, 撰稿人, because none of them contains an "r". An
+   * 策划, 文案, 剪辑师, 撰稿人, because none of them contains an "r". An
    * employee's aliases come from the catalog — the same list that routes a
    * tag — and a person's are their name, each word of it, and the local part
    * of their email.

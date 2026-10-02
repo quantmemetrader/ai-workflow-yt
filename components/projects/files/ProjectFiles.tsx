@@ -41,7 +41,7 @@ const HINT: Record<ProjectFileRole, { zh: string; en: string }> = {
   final: { zh: "团队在自己电脑上改好、准备发布的视频", en: "Videos the team finished on their own machine, ready to post" },
   render: { zh: "剪辑师渲染出来的成片，下载后可以自己再修改", en: "What the editor rendered; download it to fix it up yourself" },
   clip: { zh: "主持人拍好的口播和空镜，剪辑师从这里取素材", en: "What the host filmed; the editor cuts from these" },
-  reference: { zh: "范例、笔记、资料，编剧写脚本时会参考", en: "Examples, notes and research the writer reads" },
+  reference: { zh: "范例、笔记、资料，文案写脚本时会参考", en: "Examples, notes and research the writer reads" },
   cover: { zh: "剪辑师做的封面，发布时选一张", en: "Covers the editor made; pick one when posting" },
   other: { zh: "其他放进这个项目的文件", en: "Anything else put in this project" },
 };
@@ -50,7 +50,7 @@ const EMPTY: Record<ProjectFileRole, { zh: string; en: string }> = {
   final: { zh: "还没有最终版。下载 AI 成片改好后，传到这里再去发布。", en: "No final video yet. Download the AI render, fix it up, and upload it here to post." },
   render: { zh: "还没有成片。素材到了，剪辑师剪完渲染后会出现在这里。", en: "No render yet. It appears here once the editor has cut and rendered." },
   clip: { zh: "主持人拍好的口播和空镜传到这里，剪辑师会自动拿到。", en: "Upload the host's takes and b-roll here; the editor picks them up." },
-  reference: { zh: "把范例脚本、笔记、PDF 传到这里，编剧写的时候会看。", en: "Upload example scripts, notes and PDFs; the writer reads them." },
+  reference: { zh: "把范例脚本、笔记、PDF 传到这里，文案写的时候会看。", en: "Upload example scripts, notes and PDFs; the writer reads them." },
   cover: { zh: "成片出来后，剪辑师会自动做三张封面。", en: "Covers are made when the render lands." },
   other: { zh: "暂时没有其他文件。", en: "Nothing else yet." },
 };
@@ -267,7 +267,7 @@ export function ProjectFiles({
             {t("可以一次传多个，视频、图片、文档都行。", "Several at once; videos, pictures and documents all work.")}
             {target === "auto" ? t(" 视频放进「素材」，其他放进「参考资料」。", " Videos go to Footage, the rest to References.") : null}
             {(target === "clip" || target === "auto") && hasCut ? t(" 素材会自动进剪辑台。", " Footage goes straight to the editor.") : null}
-            {target === "reference" && hasScript ? t(" 参考资料编剧写脚本时会读。", " The writer reads references.") : null}
+            {target === "reference" && hasScript ? t(" 参考资料文案写脚本时会读。", " The writer reads references.") : null}
           </div>
         </div>
         <div onClick={(e) => e.stopPropagation()} style={{ display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap", justifyContent: "flex-end" }}>

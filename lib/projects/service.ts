@@ -606,7 +606,7 @@ export function buildSteps(f: StepFacts, zh: boolean): ProjectStep[] {
     direct === "video" ? key === "script" || key === "clips" : direct === "article" ? key !== "deliver" && key !== "topic" : false;
 
   /* A draft on its way (started from a plan or an idea, written in the
-     background) is the writer at work, not "等编剧开写". */
+     background) is the writer at work, not "等文案开写". */
   const draftWriting = isWriting(f.source as ProjectSource | null, Date.now()) && script?.status !== "locked" && script?.status !== "awaiting_approval";
   const scriptState: StepState = draftWriting
     ? "running"
@@ -638,7 +638,7 @@ export function buildSteps(f: StepFacts, zh: boolean): ProjectStep[] {
   const cutReady = !rendered && !rendering && !directing && items.n > 0;
   const graphics = f.graphics ?? 0;
   /* Cut straight from the host's talk with no script ever written: the
-     script step was passed over, not waiting — 「等编剧开写」 sat grey above
+     script step was passed over, not waiting — 「等文案开写」 sat grey above
      a finished film. */
   const talkCut = scriptState === "todo" && (Boolean(rendered) || items.n > 0);
   /* Published: every step before it is behind it. A project already out
@@ -687,12 +687,12 @@ export function buildSteps(f: StepFacts, zh: boolean): ProjectStep[] {
           : scriptState === "you"
             ? t("写好了 · 分享给同事审阅批准", "Written · share it for approval")
             : draftWriting
-              ? t("编剧正在写初稿…", "The writer is drafting…")
+              ? t("文案正在写初稿…", "The writer is drafting…")
               : scriptState === "running"
               ? beats.n > 0
                 ? t(`草稿 · ${beats.n} 个分镜`, `Draft · ${beats.n} beats`)
                 : t("草稿 · 还没有内容", "Draft · empty so far")
-              : t("等编剧开写", "Waiting for the writer"),
+              : t("等文案开写", "Waiting for the writer"),
     },
     {
       key: "clips",

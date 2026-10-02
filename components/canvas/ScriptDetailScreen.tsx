@@ -50,7 +50,7 @@ import { PersonAvatar } from "@/components/ui/PersonAvatar";
  *
  * What this file draws and the artboards do not: a folding "选题" strip above
  * the Draft's beats (why, the evidence count, "rewrite from the topic"), and
- * the writing state while 编剧 drafts the script after a topic was chosen
+ * the writing state while 文案 drafts the script after a topic was chosen
  * elsewhere. The client's ask was that choosing a topic lands on the script
  * with the topic in sight; the Draft tab is where that person lands.
  *
@@ -108,7 +108,7 @@ export type ScriptDetailScreenProps = {
   shareSheet?: React.ReactNode;
   /** The topic it is written from (`detail.topic` unless overridden). */
   topic?: ScriptTopic | null;
-  /** 编剧 is writing a draft into it right now. */
+  /** 文案 is writing a draft into it right now. */
   writing?: boolean;
   /** Write (or rewrite) the draft from the topic. Absent when that cannot be done here. */
   onRewriteFromTopic?: () => void;
@@ -457,8 +457,8 @@ const ZH: Record<string, string> = {
   "pieces of evidence": "条证据",
   "Rewrite from the topic": "按选题重写",
   "Write from the topic": "按选题写初稿",
-  "The writer is writing the first draft…": "编剧正在写初稿…",
-  "The writer is rewriting from the topic…": "编剧正在按选题重写…",
+  "The writer is writing the first draft…": "文案正在写初稿…",
+  "The writer is rewriting from the topic…": "文案正在按选题重写…",
   "It appears here when it lands, usually within a minute. You can leave this page.": "写好会自动出现在这里，一般一分钟内。可以先离开这个页面。",
   "Signal strength": "信号强度",
   "Open the project": "打开项目",
@@ -1963,7 +1963,7 @@ export function ScriptDetailScreen(props: ScriptDetailScreenProps): React.JSX.El
     </div>
   );
 
-  /* 编剧 at work on this script, after a topic was chosen somewhere else. */
+  /* 文案 at work on this script, after a topic was chosen somewhere else. */
   const writingBanner = !writing ? null : (
     <div
       role="status"

@@ -5,7 +5,7 @@ import { workProjects } from "@/lib/db/schema";
 import { isWriting, type ProjectSource } from "@/lib/projects/topic";
 
 /**
- * Whether 编剧 is writing a draft into a script right now.
+ * Whether 文案 is writing a draft into a script right now.
  *
  * The mark lives on the project (`work_projects.source.writing`), set by
  * `draftInBackground` when a draft starts and cleared when it lands or fails.
@@ -17,7 +17,7 @@ import { isWriting, type ProjectSource } from "@/lib/projects/topic";
  * script is meant to belong to one project, but a pair made before
  * `chooseScriptAction` refused to share one still does (测试 and the digest
  * project it copied), and reading only the oldest said "not writing" while
- * 编剧 was writing from the newer one: the project page stopped waiting and
+ * 文案 was writing from the newer one: the project page stopped waiting and
  * refreshed onto the old beats, and a second draft could be started into the
  * same script from the other project.
  *

@@ -60,7 +60,7 @@ export type JobType =
    * footage landing started, so the studio hears about a tape without anybody
    * asking. */
   | "agent.footage"
-  /** After 策划's plan: 编剧 drafts the proposed topic ahead and the other
+  /** After 策划's plan: 文案 drafts the proposed topic ahead and the other
    * to-dos go to their owners (`lib/agents/autorun.ts`). */
   | "agent.plan-followup"
   /** After a render: 撰稿人 writes the post and puts it in 发布. */

@@ -8,7 +8,7 @@ import type { AgentKey } from "@/lib/agents/catalog";
  *
  *   研究员  blue    a magnifying glass with a face, beside a rising chart
  *   策划    lime    a lit lightbulb head over a ticked clipboard
- *   编剧    orange  a typewriter, the page standing out of the roller
+ *   文案    orange  a typewriter, the page standing out of the roller
  *   剪辑师  teal    a film camera: two reels, one big lens eye, a tripod
  *   撰稿人  pink    a newspaper page with a face, a fountain pen across it
  *   法务    navy    a brass balance with a head on its post, a sealed
@@ -36,7 +36,7 @@ const BG: Record<BotKey, string> = {
   video: "#11c4a6",
   article: "#ff2e7e",
   /* The one dark circle, so the brass reads; and amber, which sits between
-     编剧's orange and 策划's lime without being either. */
+     文案's orange and 策划's lime without being either. */
   legal: "#1e2d52",
   finance: "#ffb81c",
   host: "#6d5dfc",

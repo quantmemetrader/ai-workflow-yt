@@ -106,7 +106,7 @@ export function ProjectScreen({
   const src = (p.source as ProjectSource | null) ?? null;
 
   /*
-   * 编剧 writing the draft that was started with the project (from Home,
+   * 文案 writing the draft that was started with the project (from Home,
    * Research, the backlog or the Script queue), or from the button below.
    * The mark lives on the project, so arriving from anywhere shows it; the
    * script's pulse says when it is done, and the page refreshes once instead
@@ -114,7 +114,7 @@ export function ProjectScreen({
    *
    * It starts from `writing`, the server's reading of the mark with its
    * ten-minute limit applied (`scriptWriting`), not from the raw mark: a
-   * mark a restart left behind used to show "编剧正在写初稿…" and a full
+   * mark a restart left behind used to show "文案正在写初稿…" and a full
    * page refresh three seconds later on every visit. Worked out on the
    * server, so the first render and hydration agree.
    */
@@ -254,7 +254,7 @@ export function ProjectScreen({
                   if (p.script?.status === "locked" && canApprove) await unlockAction(p.script.id);
                   const r = await applySendBackAction(p.id);
                   if (r && "error" in r && r.error) notify(r.error);
-                  else notify(t("已交给编剧按建议改写", "Handed to the writer to make the edits"), "ok");
+                  else notify(t("已交给文案按建议改写", "Handed to the writer to make the edits"), "ok");
                   router.refresh();
                 })
             : undefined
@@ -337,7 +337,7 @@ export function ProjectScreen({
           {view === "topic" ? (
             <>
               {stepDone("topic") ? (
-                <NextStep state="done" zh={zh} text={t("选题定了。下一步：让编剧写脚本。", "The topic is set. Next: the script.")}>
+                <NextStep state="done" zh={zh} text={t("选题定了。下一步：让文案写脚本。", "The topic is set. Next: the script.")}>
                   <GoButton href={tabHref(p.id, "script")}>{t("去写脚本 →", "Go to the script →")}</GoButton>
                 </NextStep>
               ) : null}
@@ -702,6 +702,7 @@ function AskBox({ people, zh, placeholder, onSend, disabled }: { people: Mention
         }}
         placeholder={placeholder}
         onPaste={att.onPaste}
+        onDragOver={(e) => { if (e.dataTransfer.types.includes("Files")) { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; } }} onDrop={(e) => { if (!e.dataTransfer.files.length) return; e.preventDefault(); att.add(e.dataTransfer.files); }}
         style={{ flexGrow: 1, minWidth: 0, minHeight: 34, border: "1px solid #e2e2e2", borderRadius: 10, padding: "8px 11px", outline: "none", resize: "none", fontFamily: "inherit", fontSize: 12.5, lineHeight: 1.45, background: "#fcfcfc", boxSizing: "border-box" }}
       />
       <span style={{ display: "inline-flex", alignItems: "center", height: 34 }}>
@@ -1054,7 +1055,7 @@ const STEP_ANCHOR: Record<ProjectStep["key"], string> = { topic: "step-topic", s
 
 /**
  * A note a step was sent back with, on that step's card: who sent it and
- * what they said, and for a script 编剧's edits beat by beat — the old line
+ * what they said, and for a script 文案's edits beat by beat — the old line
  * struck through, the new one under it — with the press that has them made.
  * "Make the revise suggestions better highlighted to the person in charge."
  */
@@ -1066,7 +1067,7 @@ function SentBackPanel({ back, zh, pending, onApply, onDone }: { back: SentBack;
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
         <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12, fontWeight: 700, color: "#c2410c" }}>
           <Icon name="undo" size={12} />
-          {applied ? t("已按退回意见交给编剧修改", "Handed back for the edits") : t("退回修改", "Sent back")}
+          {applied ? t("已按退回意见交给文案修改", "Handed back for the edits") : t("退回修改", "Sent back")}
         </span>
         <span style={{ fontSize: 11.5, color: "#9a6b4f" }}>
           {back.byName} · {new Date(back.at).toLocaleString(zh ? "zh-CN" : "en-US", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}
@@ -1075,7 +1076,7 @@ function SentBackPanel({ back, zh, pending, onApply, onDone }: { back: SentBack;
       <div style={{ fontSize: 14, fontWeight: 600, color: "#171717", lineHeight: 1.55 }}>「{back.note}」</div>
       {back.suggestions?.length ? (
         <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-          <span style={{ fontSize: 11.5, fontWeight: 600, color: "#9a6b4f" }}>{t("编剧的具体改法", "The writer's edits")}</span>
+          <span style={{ fontSize: 11.5, fontWeight: 600, color: "#9a6b4f" }}>{t("文案的具体改法", "The writer's edits")}</span>
           {back.suggestions.map((x, i) => (
             <div key={i} style={{ display: "grid", gridTemplateColumns: "52px minmax(0,1fr)", gap: 8, padding: "8px 10px", borderRadius: 8, background: "#fff", border: "1px solid #f6dcc8" }}>
               <span style={{ fontSize: 11.5, fontWeight: 700, color: "#c2410c", whiteSpace: "nowrap" }}>{t(`第 ${x.ord} 镜`, `Beat ${x.ord}`)}</span>
@@ -1092,7 +1093,7 @@ function SentBackPanel({ back, zh, pending, onApply, onDone }: { back: SentBack;
         {onApply ? (
           <button type="button" className="pj-flow-next" disabled={pending} onClick={onApply} style={{ background: "#c2410c" }}>
             <Icon name="pen" size={13} />
-            {back.suggestions?.length ? t("按建议改写", "Make these edits") : t("让编剧按意见改", "Have the writer revise")}
+            {back.suggestions?.length ? t("按建议改写", "Make these edits") : t("让文案按意见改", "Have the writer revise")}
           </button>
         ) : null}
         <button type="button" className="pj-flow-back" disabled={pending} onClick={onDone}>

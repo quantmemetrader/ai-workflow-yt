@@ -95,7 +95,7 @@ async function run(ctx: ToolContext, name: string, args: Record<string, unknown>
      * The length, only when it was asked for.
      *
      * The model leaves `seconds` out more often than not, and it used to
-     * become 180 whatever the script was: "@编剧 开头再抓人一点" in a project
+     * become 180 whatever the script was: "@文案 开头再抓人一点" in a project
      * whose topic had made it an eight-minute video (480 s) wrote 180 onto
      * the script and drafted three minutes. Writing into a script, no length
      * means "keep its own" (`writeScript` leaves `targetSeconds` alone on
@@ -107,9 +107,9 @@ async function run(ctx: ToolContext, name: string, args: Record<string, unknown>
        mark is what the topic's background draft sets (`lib/script/background.ts`). */
     let projects: string[] = [];
     /*
-     * Asked outside any project — a plan's hand-off in #研究日报, "@编剧 写个
+     * Asked outside any project — a plan's hand-off in #研究日报, "@文案 写个
      * 脚本" in #制作, a person's own assistant — the script still lives in a
-     * project. It used to land loose in the library, owned by 编剧, with no
+     * project. It used to land loose in the library, owned by 文案, with no
      * video project: 剪辑师, handed it next, had nowhere to cut. Now the
      * studio's project for this subject is filled if one is waiting for its
      * first draft (`emptyProjectTitled`: same title, empty script), else a
@@ -124,7 +124,7 @@ async function run(ctx: ToolContext, name: string, args: Record<string, unknown>
     /*
      * The conversation's own script is approved (locked) or gone, and the ask
      * is a different video: that is a new project, not a refusal. 29 Sep:
-     * "帮我做一条新视频：比特币…" in 编剧's chat, last about an approved
+     * "帮我做一条新视频：比特币…" in 文案's chat, last about an approved
      * script, was refused twice as "locked" — and the reply then said a
      * project had been made. The same subject still gets the refusal, so an
      * approved script is never quietly replaced.
@@ -141,7 +141,7 @@ async function run(ctx: ToolContext, name: string, args: Record<string, unknown>
     const starter = person ?? ctx.viewer;
     /*
      * A rewrite, asked outside the project: "把最新的脚本开头改得更抓人" on
-     * 编剧's own page, "@编剧 再短一点" in #研究日报. Without the id every
+     * 文案's own page, "@文案 再短一点" in #研究日报. Without the id every
      * such request started one more project titled like the first, with a
      * new script beside the old. With it, the draft goes into that script,
      * inside its project (one is started around a loose older script), for
@@ -180,7 +180,7 @@ async function run(ctx: ToolContext, name: string, args: Record<string, unknown>
           title,
           brief: str(args.angle, 300) || subject,
           mode: "full",
-          source: { kind: "agent", label: "编剧写的脚本" },
+          source: { kind: "agent", label: "文案写的脚本" },
           topicId: topic?.id ?? null,
           script: {
             topicId: topic?.id ?? null,

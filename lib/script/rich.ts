@@ -17,7 +17,7 @@
  *     `shot` attribute and becomes the beat's `visual`; a paragraph with only
  *     a shot note is natural sound (no narration).
  *
- * When something else rewrites the beats (编剧's draft, an import, a restored
+ * When something else rewrites the beats (文案's draft, an import, a restored
  * version), the stored document no longer matches them; the page then builds
  * the document afresh from the beats (`docForBeats`) — the words win.
  */

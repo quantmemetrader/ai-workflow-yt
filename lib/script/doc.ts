@@ -290,7 +290,7 @@ export async function withdrawOthers(viewer: Viewer, scriptId: string, exceptId:
 export type DocChange = { i: number; text: string; why: string };
 export type DocInsert = { after: number; text: string; why: string };
 
-const COPILOT_PROMPT = `你是短视频工作室的编剧，正在和同事一起改一份口播脚本。脚本按段落编号，每段是一句或几句要说的话。
+const COPILOT_PROMPT = `你是短视频工作室的文案，正在和同事一起改一份口播脚本。脚本按段落编号，每段是一句或几句要说的话。
 按同事的指令改写。只回答一个 JSON 对象，不要 markdown，不要解释：
 {"changes":[{"i":段落编号,"text":"改后的整段","why":"十五字以内说明"}],"inserts":[{"after":插在哪一段之后（-1 表示最前面）,"text":"新段落","why":"说明"}],"summary":"一句话总结改了什么"}
 规则：
@@ -317,7 +317,7 @@ async function referenceText(viewer: Viewer, scriptId: string): Promise<string> 
 }
 
 /**
- * 编剧 rewrites the document to an instruction: the paragraphs it would
+ * 文案 rewrites the document to an instruction: the paragraphs it would
  * change, delete or add, for the page to show as tracked changes. Nothing is
  * saved here — the person accepts what they want.
  */
@@ -325,7 +325,7 @@ export async function copilotRewrite(viewer: Viewer, scriptId: string, paragraph
   await assertBudget(viewer);
   const [script] = await db.select({ title: scripts.title, targetSeconds: scripts.targetSeconds }).from(scripts).where(and(eq(scripts.id, scriptId), eq(scripts.tenantId, viewer.tenantId))).limit(1);
   if (!script) return { error: "Not allowed" };
-  /* The house style and 编剧's training (AI 训练) come in one piece from `houseStyle`. */
+  /* The house style and 文案's training (AI 训练) come in one piece from `houseStyle`. */
   const [style, refs] = await Promise.all([houseStyle(viewer, "script").catch(() => ({ text: "" })), referenceText(viewer, scriptId).catch(() => "")]);
   /* Files attached to this one instruction (a sample to follow, notes, a screenshot): read now, not kept. */
   const attached: string[] = [];
@@ -335,7 +335,7 @@ export async function copilotRewrite(viewer: Viewer, scriptId: string, paragraph
     if (f?.text?.trim()) attached.push(`### ${f.name}\n${f.text}`);
   }
   const attachedText = attached.length ? `这次指令附的参考文件（指令说“照范例/照附件”时，学它的结构、语气、节奏和开头方式，但不要照抄它的内容）：\n${attached.join("\n\n").slice(0, 40000)}` : "";
-  const system = [COPILOT_PROMPT, HUMAN_STYLE_ZH, style.text ? `工作室的写作规范与编剧的训练：\n${style.text.slice(0, 12000)}` : "", refs, attachedText].filter(Boolean).join("\n\n");
+  const system = [COPILOT_PROMPT, HUMAN_STYLE_ZH, style.text ? `工作室的写作规范与文案的训练：\n${style.text.slice(0, 12000)}` : "", refs, attachedText].filter(Boolean).join("\n\n");
   const total = paragraphs.reduce((n, p) => n + spokenSeconds(p), 0);
   const user = [
     `标题：${script.title}`,
@@ -375,7 +375,7 @@ export async function copilotRewrite(viewer: Viewer, scriptId: string, paragraph
       raw = null;
     }
   }
-  if (!raw) return { error: "编剧这次没有给出可用的改法，再试一次。" };
+  if (!raw) return { error: "文案这次没有给出可用的改法，再试一次。" };
   const s = (v: unknown, max: number) => (typeof v === "string" ? v.trim().slice(0, max) : "");
   const changes: DocChange[] = (Array.isArray(raw.changes) ? raw.changes : [])
     .map((c) => c as Record<string, unknown>)
@@ -388,7 +388,7 @@ export async function copilotRewrite(viewer: Viewer, scriptId: string, paragraph
     .map((c) => ({ after: Number(c.after), text: humanize(s(c.text, 4000)), why: humanize(s(c.why, 80)) }))
     .filter((c) => Number.isInteger(c.after) && c.after >= -1 && c.after < paragraphs.length && c.text)
     .slice(0, 8);
-  if (!unique.length && !inserts.length) return { error: "编剧觉得按这个指令不需要改动。换个说法试试。" };
+  if (!unique.length && !inserts.length) return { error: "文案觉得按这个指令不需要改动。换个说法试试。" };
   return { ok: true as const, changes: unique, inserts, summary: s(raw.summary, 200), model };
 }
 
@@ -402,10 +402,10 @@ export async function copilotRedo(viewer: Viewer, scriptId: string, input: { bef
   if (!script) return { error: "Not allowed" };
   const style = await houseStyle(viewer, "script").catch(() => ({ text: "" }));
   const system = [
-    "你是短视频工作室的编剧，正在和同事一起改一份口播脚本里的一段话。",
+    "你是短视频工作室的文案，正在和同事一起改一份口播脚本里的一段话。",
     "按同事的新要求，重写你之前给出的这一段改法。只输出改好的这一段正文，不要引号、不要解释、不要编号。",
     "中文一律用简体字。保持原来的人设和口吻，不要编造事实、数字、人名。",
-    style.text ? `工作室的写作规范与编剧的训练：\n${style.text.slice(0, 6000)}` : "",
+    style.text ? `工作室的写作规范与文案的训练：\n${style.text.slice(0, 6000)}` : "",
   ].filter(Boolean).join("\n");
   const user = [
     `标题：${script.title}`,
@@ -425,7 +425,7 @@ export async function copilotRedo(viewer: Viewer, scriptId: string, input: { bef
   });
   await recordUsage({ viewer, module: "script", provider: out.provider ?? "openrouter", model: out.model, promptTokens: out.promptTokens, completionTokens: out.completionTokens, costMicros: out.costMicros, requestId: out.requestId });
   const text = out.text.replace(/<think(?:ing)?>[\s\S]*?<\/think(?:ing)?>/gi, "").replace(/^["“「]|["”」]$/g, "").trim().slice(0, 4000);
-  if (!text) return { error: "编剧这次没有给出改法，再试一次。" };
+  if (!text) return { error: "文案这次没有给出改法，再试一次。" };
   return { ok: true as const, text: humanize(text) };
 }
 

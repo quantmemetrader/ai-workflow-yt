@@ -13,7 +13,7 @@ import { useMentions } from "@/components/chat/useMentions";
  *
  * "Should be able to comment here directly or work directly here." It posts
  * to #制作 as the person, tagging the step's owner and naming the step, the
- * same door as typing `@编剧 …` in the channel (`startProposalAction`).
+ * same door as typing `@文案 …` in the channel (`startProposalAction`).
  */
 export function SayToAgent({
   agent,

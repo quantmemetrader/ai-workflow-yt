@@ -13,7 +13,7 @@ const OLD_ERRORS: [RegExp, string][] = [
 /**
  * What a person reads of an AI employee's message: no internal ids
  * (「（scr_01m3…）」), no tool names (「assign_task 已调用」), no doubled name
- * prefix (「编剧 — 编剧 — 」). QA, 2 Oct: all three were showing on 首页,
+ * prefix (「文案 — 文案 — 」). QA, 2 Oct: all three were showing on 首页,
  * 选题 and in the channels.
  */
 const ID = "(?:scr|wp|fil|prj|rnd|cnv|msg|top|job|vp|req|idea|use|am|tc|ch|chn|cmt|sug|sv|apr|inv|usr|tup|ver)_[0-9a-z]{10,}";
@@ -28,7 +28,7 @@ export function readerMarkdown(text: string): string {
       .replace(new RegExp(`\\s*[（(]\\s*(?:id|ID|编号)?[:：]?\\s*\`?${ID}\`?\\s*[）)]`, "g"), "")
       // an id standing alone in prose (not inside a link target)
       .replace(new RegExp(`(^|[^/\\w(])\`?${ID}\`?`, "g"), "$1")
-      // 「编剧 — 编剧 — 写…」, 「编剧：编剧 —」
+      // 「文案 — 文案 — 写…」, 「文案：文案 —」
       .replace(/(^|\n)(\s*(?:[-*•]\s+)?)([一-鿿]{1,4})\s*[—\-–:：]\s*\3\s*[—\-–:：]\s*/g, "$1$2$3：")
       // a list of ids stripped away leaves 「（如等）」 or 「如等」
       .replace(/[（(]\s*如?\s*等?\s*[）)]/g, "")

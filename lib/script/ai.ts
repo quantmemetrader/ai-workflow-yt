@@ -30,7 +30,7 @@ import { measure, replaceSuggestions, saveBeats, spokenSeconds } from "./service
 /**
  * The active house-style guide, assembled from the knowledge table, with
  * what the team taught the writer on AI 训练 (`lib/agents/training.ts`)
- * after it — 编剧's for scripts, 撰稿人's when the article writer asks. So
+ * after it — 文案's for scripts, 撰稿人's when the article writer asks. So
  * every draft, rewrite and check here follows the same instructions and
  * learns from the same examples.
  */
@@ -70,7 +70,7 @@ async function examples(viewer: Viewer, query: string): Promise<string> {
   return found.hits.map((f) => `### ${f.name}\n${f.snippet.slice(0, 1200)}`).join("\n\n");
 }
 
-const DRAFT_PROMPT = `你是一名顶级的中文短视频编剧，给一家香港视频工作室写口播脚本（抖音、小红书、视频号、YouTube Shorts）。你写的稿子要像真人在镜头前说话，观众听完第一句就想看下去。
+const DRAFT_PROMPT = `你是一名顶级的中文短视频文案，给一家香港视频工作室写口播脚本（抖音、小红书、视频号、YouTube Shorts）。你写的稿子要像真人在镜头前说话，观众听完第一句就想看下去。
 
 一律用简体中文，不用繁体字（简报或资料是繁体的，也改成简体）。
 

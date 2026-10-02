@@ -43,7 +43,7 @@ export const ROLE_LABELS: Record<HomeRole, { zh: string; en: string }> = {
   overview: { zh: "全部", en: "Everything" },
   research: { zh: "研究", en: "Research" },
   planning: { zh: "策划", en: "Planning" },
-  script: { zh: "编剧", en: "Script" },
+  script: { zh: "文案", en: "Script" },
   video: { zh: "剪辑", en: "Video" },
   article: { zh: "撰稿/发布", en: "Writing & publishing" },
 };

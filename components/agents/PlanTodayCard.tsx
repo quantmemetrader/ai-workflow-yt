@@ -12,7 +12,7 @@ import { refreshPlanAction } from "@/app/(app)/research/plan-actions";
 import { notify } from "@/lib/client/notify";
 
 /** 策划's plan for the day (posted at 08:05 in #研究日报): the topic it puts forward and each colleague's part. */
-export type PlanToday = { date: string; topic: string | null; items: { owner: string; text: string; why: string | null }[]; href: string | null; /** 编剧 already wrote the topic's first draft (how many beats). */ prepared?: { beats: number } | null };
+export type PlanToday = { date: string; topic: string | null; items: { owner: string; text: string; why: string | null }[]; href: string | null; /** 文案 already wrote the topic's first draft (how many beats). */ prepared?: { beats: number } | null };
 
 const isAgent = (k: string): k is AgentKey => (AGENT_KEYS as readonly string[]).includes(k);
 
@@ -100,7 +100,7 @@ export function PlanTodayCard({
               {plan.prepared ? (
                 <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11.5, fontWeight: 600, color: "#0b7a63", background: "#e3f4ee", borderRadius: 999, padding: "0 8px", lineHeight: "18px" }}>
                   <svg viewBox="0 0 24 24" width={11} height={11} aria-hidden fill="none" stroke="currentColor" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round"><path d="m5 12.5 4.5 4.5L19 7.5" /></svg>
-                  {t(`编剧已写好初稿（${plan.prepared.beats} 个分镜）`, `First draft ready (${plan.prepared.beats} beats)`)}
+                  {t(`文案已写好初稿（${plan.prepared.beats} 个分镜）`, `First draft ready (${plan.prepared.beats} beats)`)}
                 </span>
               ) : null}
             </div>

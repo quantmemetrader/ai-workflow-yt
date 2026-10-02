@@ -19,10 +19,10 @@ export async function ProjectScreenPage({ id, view }: { id: string; view: "overv
   const [project, people] = await Promise.all([projectForPage(viewer, id, zh), listPeople(viewer)]);
   if (!project) notFound();
   onlyTheSharedPage(project);
-  /* Whether 编剧 is writing into its script now, with the mark's time limit
+  /* Whether 文案 is writing into its script now, with the mark's time limit
      applied here rather than in the browser, whose clock may differ. */
   const writing = project.script ? (await scriptWriting(viewer.tenantId, project.script.id)).writing : false;
-  /* Your own private chats that worked on this project (编剧 wrote its script
+  /* Your own private chats that worked on this project (文案 wrote its script
      there, 剪辑师 made its video there): linked from the page, which used to
      say "对话 0" while the whole conversation had happened in private. */
   const refs = [project.id, project.script?.id, project.video?.id].filter((x): x is string => Boolean(x));

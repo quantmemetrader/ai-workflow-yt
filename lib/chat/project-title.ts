@@ -5,7 +5,7 @@ import { splitMentions } from "@/lib/agents/catalog";
  * ask, cleaned. Pure, so the chat bar (client) and the route that creates
  * the project (server) suggest the same words.
  *
- * "Real" is a message with something in it besides tags: "@编剧 " alone is
+ * "Real" is a message with something in it besides tags: "@文案 " alone is
  * the box's own pre-fill, not an ask. Home's "问研究员" puts the idea's own
  * title first ("关于首页上研究员给的这个选题《X》…"), and a quoted title is
  * the project's name whatever else the message says.

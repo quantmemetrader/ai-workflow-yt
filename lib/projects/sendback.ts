@@ -13,7 +13,7 @@ import { trainingFor } from "@/lib/agents/training";
  * with it — so the note is in front of whoever holds that step, on that
  * step's card, not three screens up a chat.
  *
- * A script sent back gets more than the note: 编剧 reads it against the
+ * A script sent back gets more than the note: 文案 reads it against the
  * beats and answers with the edits it means, beat by beat (「文字再精简一些」
  * becomes "第 2 镜：原句 → 改后"), which the card shows with one press to have
  * them made. "The suggestion is make text more concise; the AI already gives
@@ -30,7 +30,7 @@ export type SentBack = {
   by: string;
   byName: string;
   at: string;
-  /** 编剧's edits, for a script; null for any other step, or when it could not say. */
+  /** 文案's edits, for a script; null for any other step, or when it could not say. */
   suggestions: EditSuggestion[] | null;
   /** open until someone has the edits made (applied) or marks it dealt with (done). */
   state: "open" | "applied" | "done";
@@ -60,7 +60,7 @@ async function write(projectId: string, step: StepKey, value: SentBack) {
     .where(eq(workProjects.id, projectId));
 }
 
-const SUGGEST_PROMPT = `你是短视频工作室的编剧。有人把脚本退回，附了一句修改意见。请把这句意见落实成具体的逐镜修改建议。
+const SUGGEST_PROMPT = `你是短视频工作室的文案。有人把脚本退回，附了一句修改意见。请把这句意见落实成具体的逐镜修改建议。
 只回答 JSON：{"suggestions":[{"ord":镜号,"before":"原句，一字不改地从脚本里复制","after":"改后的句子","why":"一句话说明，十五字以内"}]}
 - 只改口播（voiceover）。只列真的需要改的镜，最多 6 条；意见只涉及一处就只写一处。
 - before 必须是那一镜口播的原文（可以是其中一句），after 是完整的改写。
@@ -102,7 +102,7 @@ async function suggestEdits(viewer: Viewer, scriptId: string, note: string): Pro
   }
 }
 
-/** Keep a step's note (and, for a script, 编剧's edits). */
+/** Keep a step's note (and, for a script, 文案's edits). */
 export async function recordSendBack(viewer: Viewer, project: { id: string; scriptId: string | null }, step: StepKey, note: string): Promise<SentBack> {
   const value: SentBack = {
     step,
@@ -117,7 +117,7 @@ export async function recordSendBack(viewer: Viewer, project: { id: string; scri
   return value;
 }
 
-/** Applied (the edits handed to 编剧) or done (dealt with): off the card's red list. */
+/** Applied (the edits handed to 文案) or done (dealt with): off the card's red list. */
 export async function settleSendBack(projectId: string, step: StepKey, state: "applied" | "done"): Promise<SentBack | null> {
   const [row] = await db.select({ source: workProjects.source }).from(workProjects).where(and(eq(workProjects.id, projectId), isNull(workProjects.deletedAt))).limit(1);
   const current = readSentBack(row?.source)[step];

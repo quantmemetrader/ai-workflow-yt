@@ -56,7 +56,7 @@ export function FlowScreen({ pipeline, automations, zh, canEdit }: { pipeline: P
   const [pending, start] = React.useTransition();
   const [talk, setTalk] = React.useState<string | null>(null);
   /* The board is drawn at 1254 wide. On a 1024 or 1280 screen the right
-     column (编剧写脚本, 批准脚本, the legend) fell off the edge (QA, 2 Oct):
+     column (文案写脚本, 批准脚本, the legend) fell off the edge (QA, 2 Oct):
      it now scales down to the room there is, to 60% at most (72% still
      cut the right column at 1024, QA round 2), and scrolls sideways below
      that so the type stays readable. */
@@ -94,7 +94,7 @@ export function FlowScreen({ pipeline, automations, zh, canEdit }: { pipeline: P
   const nodes: Node[] = [
     { id: "digest", x: 40, y: 96, owner: "research", when: `${t("每天", "Daily")} ${hhmm(auto.get("digest"))}`, name: t("研究员发晨报", "Researcher's brief"), what: t("频道数据、各平台热榜、对标账号", "Channel data, hot lists, rivals"), state: topic.state, href: topic.href, chip: topic.state === "done" ? t("研究日报 · 今天", "Brief · today") : t("研究日报", "Brief"), automation: "digest" },
     { id: "plan", x: 356, y: 96, owner: "planning", when: plan.state === "done" ? plan.line : `${t("晨报之后", "After the brief")} ${hhmm(auto.get("plan"))}`, name: t("策划派今天的活", "Planner assigns the day"), what: t("每条待办一位负责人，一个按钮开工", "One owner per to-do, one button to start"), state: plan.state, href: plan.href, chip: t("今日计划", "Today's plan"), automation: "plan" },
-    { id: "script", x: 672, y: 96, owner: "script", when: script.line, name: t("编剧写脚本", "Writer writes the script"), what: t("按频道点赞率最高的结构", "To the channel's best-performing structure"), state: script.state, href: scriptHref, chip: pipeline.title ? `${t("脚本", "Script")} · ${pipeline.title}` : t("脚本", "Script") },
+    { id: "script", x: 672, y: 96, owner: "script", when: script.line, name: t("文案写脚本", "Writer writes the script"), what: t("按频道点赞率最高的结构", "To the channel's best-performing structure"), state: script.state, href: scriptHref, chip: pipeline.title ? `${t("脚本", "Script")} · ${pipeline.title}` : t("脚本", "Script") },
     { id: "approve", x: 988, y: 96, owner: "you", when: approve.state === "done" ? approve.line : approve.state === "you" ? t("需要你", "Needs you") : t("脚本写完后", "After the script"), name: t("批准脚本", "Approve the script"), what: t("批准后自动交给剪辑师", "Approval hands it to the Editor"), state: approve.state, href: approve.href, buttons: approve.state === "you" ? [{ label: t("批准", "Approve"), href: `${scriptHref}?tab=approval`, primary: true }, { label: t("让它改", "Ask for changes"), href: scriptHref }] : undefined },
     { id: "cut", x: 988, y: 356, owner: "video", when: cut.state === "todo" && !pipeline.projectId ? t("素材上传后", "On upload") : cut.line, name: t("转写 + 粗剪", "Transcribe + rough cut"), what: t("按简报时长剪，开头结尾保留", "Cut to the brief's length, opening and ending kept"), state: cut.state, href: cut.href, chip: cut.state === "done" ? `${t("粗剪", "Rough cut")} · ${cut.line}` : null, automation: "footage" },
     { id: "export", x: 672, y: 356, owner: "video", when: exp.state === "running" ? exp.line : exp.state === "done" ? exp.line : t("粗剪确认后", "After the rough cut"), name: t("图形 + 渲染", "Graphics + render"), what: t("字幕、图形、成片", "Captions, graphics, the master"), state: exp.state, href: exp.href },

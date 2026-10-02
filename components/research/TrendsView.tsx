@@ -346,7 +346,7 @@ export function TrendsView({
             try {
               /* A project around it, like every other start: the topic's
                  snapshot (summary, angles, headlines) goes with it, the
-                 chips shape the script, and 编剧 writes after the response
+                 chips shape the script, and 文案 writes after the response
                  while the person watches it land on the script. The topic
                  names the script; the angle is the angle. */
               const res = await startFromTopicAction(

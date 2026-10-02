@@ -19,7 +19,7 @@ import { notify } from "@/lib/client/notify";
  *
  * So each opens on this: the employee for the page, and three or four things
  * it thinks the studio should make, with where the idea came from and one
- * button. The button does what typing `@编剧 …` in #制作 does, and goes
+ * button. The button does what typing `@文案 …` in #制作 does, and goes
  * through the same server action, so a page can start work but cannot do
  * anything a person could not do by typing.
  */
@@ -57,7 +57,7 @@ export function ProposalsStrip({
   function go(index: number, text: string, source: Proposal["source"]) {
     if (busy !== null) return;
     setBusy(index);
-    /* 编剧's suggestions become work the way every other topic does: a
+    /* 文案's suggestions become work the way every other topic does: a
        project, its script started from the suggestion, and the person on the
        script while it is written. They used to post into #制作 and make no
        project at all. The other pages' employees still take theirs there. */
@@ -145,7 +145,7 @@ export function ProposalsStrip({
             minWidth: 0,
           }}
         >
-          {owner === "script" ? t("按一下就开项目，编剧接着写初稿", "One press starts a project; the writer drafts it") : t("按一下就开工，它会在 #制作 里回复", "One press starts it; it answers in #制作")}
+          {owner === "script" ? t("按一下就开项目，文案接着写初稿", "One press starts a project; the writer drafts it") : t("按一下就开工，它会在 #制作 里回复", "One press starts it; it answers in #制作")}
         </span>
         <span style={{ flexGrow: 1 }} />
         <Link

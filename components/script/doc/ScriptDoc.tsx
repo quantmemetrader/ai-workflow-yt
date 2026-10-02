@@ -172,7 +172,7 @@ export function ScriptDoc(props: ScriptDocProps) {
   /* The side panel is always open, on the AI assistant unless 批注 or 版本
      is picked (the owner, 29 Sep: "have the AI assistant always on"). */
   const [panelPick, setPanelPick] = React.useState<Exclude<Panel, null>>("ai");
-  /* What was asked of 编剧 on this page, newest last, with what came back. */
+  /* What was asked of 文案 on this page, newest last, with what came back. */
   const [aiLog, setAiLog] = React.useState<{ q: string; a: string | null }[]>([]);
   const [accessOpen, setAccessOpen] = React.useState(false);
   /* 所有脚本: every script, in its project's folder, to switch to (Ryan, 29 Sep). */
@@ -313,7 +313,7 @@ export function ScriptDoc(props: ScriptDocProps) {
     return () => window.removeEventListener("beforeunload", warn);
   }, [saveState]);
 
-  /* New text from the server (编剧's draft, an import, a restore, another
+  /* New text from the server (文案's draft, an import, a restore, another
      person's save) replaces the page — unless there is typing not saved yet. */
   const propDoc = JSON.stringify(props.doc);
   React.useEffect(() => {
@@ -324,7 +324,7 @@ export function ScriptDoc(props: ScriptDocProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editor, propDoc]);
 
-  /* While 编剧 writes, the page keeps asking for the draft. */
+  /* While 文案 writes, the page keeps asking for the draft. */
   React.useEffect(() => {
     if (!props.writing) return;
     const h = window.setInterval(() => router.refresh(), 4000);
@@ -506,7 +506,7 @@ export function ScriptDoc(props: ScriptDocProps) {
 
   function openProposal(items: Tracked[], summary: string, source: "ai" | "sendback") {
     if (source === "ai") setAiLog((l) => (l.length ? [...l.slice(0, -1), { ...l[l.length - 1], a: summary || t(`改了 ${items.length} 处，已在文档里标出`, `${items.length} edits, marked in the document`) }] : l));
-    if (!items.length) return notify(t("编剧觉得不用改", "The writer found nothing to change"), "ok");
+    if (!items.length) return notify(t("文案觉得不用改", "The writer found nothing to change"), "ok");
     setMarks({ tracked: items });
     setProposal({ summary, source, total: items.length });
   }
@@ -519,7 +519,7 @@ export function ScriptDoc(props: ScriptDocProps) {
     if (!q) return notify(t("写下要怎么改，或点一个快捷指令", "Say what to change, or press a quick instruction"));
     if (locked) {
       setLockPrompt(true);
-      return notify(t("脚本已批准。先点「继续编辑」，再让编剧改", "Approved. Press Continue editing first"));
+      return notify(t("脚本已批准。先点「继续编辑」，再让文案改", "Approved. Press Continue editing first"));
     }
     const units = spokenUnits(editor.state.doc);
     if (!units.length) {
@@ -531,7 +531,7 @@ export function ScriptDoc(props: ScriptDocProps) {
         if ("error" in r && r.error) return notify(r.error);
         refAtt.clear();
         setAsk("");
-        notify(t("编剧开始按你的要求写初稿了，写好会出现在文档里", "The writer is drafting from your instruction"), "ok");
+        notify(t("文案开始按你的要求写初稿了，写好会出现在文档里", "The writer is drafting from your instruction"), "ok");
         router.refresh();
       });
       return;
@@ -636,7 +636,7 @@ export function ScriptDoc(props: ScriptDocProps) {
     window.addEventListener("gd-tracked", on);
     return () => window.removeEventListener("gd-tracked", on);
   }, [proposal, applyTracked, rejectTracked, endProposalIfDone]);
-  /* 「再改改」 on one suggested change: 编剧 redoes just that paragraph to the new instruction. */
+  /* 「再改改」 on one suggested change: 文案 redoes just that paragraph to the new instruction. */
   React.useEffect(() => {
     const on = (e: Event) => {
       const d = (e as CustomEvent<{ id: string; instruction: string }>).detail;
@@ -829,7 +829,7 @@ export function ScriptDoc(props: ScriptDocProps) {
       setModeRaw("edit");
       setPanel("ai");
       window.setTimeout(() => askBox.current?.focus(), 60);
-      notify(t("建议模式：在下面写要怎么改，编剧的改法会以修订显示，接受了才生效", "Suggesting: say what to change below; the writer's edits show as tracked changes"), "info");
+      notify(t("建议模式：在下面写要怎么改，文案的改法会以修订显示，接受了才生效", "Suggesting: say what to change below; the writer's edits show as tracked changes"), "info");
       return;
     }
     setModeRaw(m);
@@ -1052,7 +1052,7 @@ export function ScriptDoc(props: ScriptDocProps) {
       items: [
         { label: t("字数统计", "Word count"), icon: "count", shortcut: isMac ? "⌘⇧C" : "Ctrl+Shift+C", onClick: () => setDialog("count") },
         { label: t("AI 改写", "AI rewrite"), icon: "sparkle", disabled: !me.canEdit, onClick: () => { setPanel("ai"); window.setTimeout(() => askBox.current?.focus(), 60); } },
-        { label: t("训练编剧", "Train the writer"), icon: "pencil", href: "/train/script" },
+        { label: t("训练文案", "Train the writer"), icon: "pencil", href: "/train/script" },
       ],
     },
     {
@@ -1064,12 +1064,12 @@ export function ScriptDoc(props: ScriptDocProps) {
 
   /* ---------------- status line (the approval flow) ---------------- */
   function statusLine(): React.ReactNode {
-    if (props.writing) return <Status tone="run" text={t("编剧正在写初稿，写好会自动出现在文档里。", "The writer is drafting; it appears in the document when done.")} />;
+    if (props.writing) return <Status tone="run" text={t("文案正在写初稿，写好会自动出现在文档里。", "The writer is drafting; it appears in the document when done.")} />;
     if (props.draftFailed && !docState?.words)
       return (
         <Status tone="wait" text={<><b>{t("初稿没写成：", "The draft did not land: ")}</b>{props.draftFailed.note}</>}>
           {me.canEdit ? (
-            <button type="button" className="gd-status-btn primary" disabled={pending} onClick={() => start(async () => { const r = await startFromTopicAction({ kind: "project", id: projectId }, { write: true, rewrite: false }); if ("error" in r && r.error) return notify(r.error); notify(t("编剧重新开始写初稿了", "Drafting again"), "ok"); router.refresh(); })}>
+            <button type="button" className="gd-status-btn primary" disabled={pending} onClick={() => start(async () => { const r = await startFromTopicAction({ kind: "project", id: projectId }, { write: true, rewrite: false }); if ("error" in r && r.error) return notify(r.error); notify(t("文案重新开始写初稿了", "Drafting again"), "ok"); router.refresh(); })}>
               {t("重试", "Retry")}
             </button>
           ) : null}
@@ -1105,7 +1105,7 @@ export function ScriptDoc(props: ScriptDocProps) {
     }
     if (sentBack) {
       return (
-        <Status tone="you" text={<>{t("退回修改：", "Sent back: ")}<b>「{sentBack.note}」</b>{sentBack.byName ? <span className="gd-status-dim"> — {sentBack.byName}</span> : null}{sentBack.suggestions?.length ? t(`　编剧给出了 ${sentBack.suggestions.length} 处改法。`, ` ${sentBack.suggestions.length} suggested edits.`) : ""}</>}>
+        <Status tone="you" text={<>{t("退回修改：", "Sent back: ")}<b>「{sentBack.note}」</b>{sentBack.byName ? <span className="gd-status-dim"> — {sentBack.byName}</span> : null}{sentBack.suggestions?.length ? t(`　文案给出了 ${sentBack.suggestions.length} 处改法。`, ` ${sentBack.suggestions.length} suggested edits.`) : ""}</>}>
           {sentBack.suggestions?.length && me.canEdit ? <button type="button" className="gd-status-btn primary" onClick={loadSentBack}>{t("在文档里看改法", "See the edits")}</button> : null}
           <button type="button" className="gd-status-btn" onClick={() => setSharing(true)}>{t("改好了，重新发审", "Done — send for review")}</button>
           {me.isAdmin ? <button type="button" className="gd-status-btn" disabled={pending} onClick={approve}>{t("直接批准", "Approve now")}</button> : null}
@@ -1275,7 +1275,7 @@ export function ScriptDoc(props: ScriptDocProps) {
             </select>
             {me.canEdit && Math.abs(docState.seconds - (script.targetSeconds ?? 180)) > (script.targetSeconds ?? 180) * 0.15 ? (
               <button type="button" className="gd-length-fit" disabled={thinking || Boolean(proposal)} onClick={() => fitToLength(script.targetSeconds ?? 180)}>
-                <span key={docState.seconds < (script.targetSeconds ?? 180) ? "more" : "less"}>{docState.seconds < (script.targetSeconds ?? 180) ? t("让编剧扩写到目标", "Expand to target") : t("让编剧精简到目标", "Trim to target")}</span>
+                <span key={docState.seconds < (script.targetSeconds ?? 180) ? "more" : "less"}>{docState.seconds < (script.targetSeconds ?? 180) ? t("让文案扩写到目标", "Expand to target") : t("让文案精简到目标", "Trim to target")}</span>
               </button>
             ) : null}
           </span>
@@ -1289,7 +1289,7 @@ export function ScriptDoc(props: ScriptDocProps) {
       {statusLine()}
       {noteOpen ? (
         <div className="gd-strip">
-          <textarea autoFocus value={note} onChange={(e) => setNote(e.target.value)} rows={2} placeholder={t("要改什么？例如：开头太慢，第二段数字要写出处。编剧会据此给出逐段改法。", "What should change? The writer turns it into concrete edits.")} className="gd-note" />
+          <textarea autoFocus value={note} onChange={(e) => setNote(e.target.value)} rows={2} placeholder={t("要改什么？例如：开头太慢，第二段数字要写出处。文案会据此给出逐段改法。", "What should change? The writer turns it into concrete edits.")} className="gd-note" />
           <button type="button" className="gd-status-btn primary" disabled={pending} onClick={sendNote}>{t("发送意见", "Send")}</button>
           <button type="button" className="gd-status-btn" onClick={() => setNoteOpen(false)}>{t("取消", "Cancel")}</button>
         </div>
@@ -1305,7 +1305,7 @@ export function ScriptDoc(props: ScriptDocProps) {
         <div className="gd-strip ai">
           <GI name="sparkle" size={16} />
           <span style={{ flexGrow: 1, minWidth: 160 }}>
-            <b>{proposal.source === "sendback" ? t("按退回意见的改法", "Edits for the note") : t("编剧的修改建议", "The writer's edits")}</b>
+            <b>{proposal.source === "sendback" ? t("按退回意见的改法", "Edits for the note") : t("文案的修改建议", "The writer's edits")}</b>
             {t(` · 还剩 ${trackedLeft} 处`, ` · ${trackedLeft} left`)}
             <span className="gd-status-dim">{t(" · 点文中的修改可以逐处接受或拒绝，处理完就能直接改字", " · click a change to take or drop it; then type freely")}</span>
             {proposal.summary ? <span className="gd-status-dim"> — {proposal.summary}</span> : null}
@@ -1475,11 +1475,11 @@ export function ScriptDoc(props: ScriptDocProps) {
               {noScript ? (
                 <div className="gd-empty">
                   <div style={{ fontSize: 22, fontWeight: 500, color: "#1f1f1f" }}>{t("这份脚本还没开始", "No script yet")}</div>
-                  <div style={{ fontSize: 14, color: "#5f6368" }}>{t("让编剧按选题写一版初稿，或者自己动手写。", "Have the writer draft it from the topic, or write it yourself.")}</div>
+                  <div style={{ fontSize: 14, color: "#5f6368" }}>{t("让文案按选题写一版初稿，或者自己动手写。", "Have the writer draft it from the topic, or write it yourself.")}</div>
                   {me.canEdit ? (
                     <div style={{ display: "flex", gap: 10, justifyContent: "center", marginTop: 8 }}>
                       <button type="button" className="gd-status-btn primary big" disabled={pending} onClick={() => start(async () => { const r = await startFromTopicAction({ kind: "project", id: projectId }, { write: true, rewrite: false }); if ("error" in r && r.error) return notify(r.error); if ("note" in r && r.note) notify(r.note); router.refresh(); })}>
-                        {t("让编剧写初稿", "Have the writer draft it")}
+                        {t("让文案写初稿", "Have the writer draft it")}
                       </button>
                       <button type="button" className="gd-status-btn big" disabled={pending} onClick={() => start(async () => { const r = await startBlankAction(projectId); if ("error" in r && r.error) return notify(r.error); router.refresh(); })}>
                         {t("自己写", "Write it myself")}
@@ -1552,7 +1552,7 @@ export function ScriptDoc(props: ScriptDocProps) {
                   onBlur={() => window.setTimeout(() => setAskFocus(false), 120)}
                   onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) runCopilot(); }}
                   onPaste={refAtt.onPaste}
-                  placeholder={thinking ? t("编剧正在改…", "The writer is on it…") : proposal ? t("先处理上面的修改建议", "Deal with the suggested edits first") : t("描述你想怎么改这份稿子…（可以附范例文件）", "Describe how to change this script… (attach a sample)")}
+                  placeholder={thinking ? t("文案正在改…", "The writer is on it…") : proposal ? t("先处理上面的修改建议", "Deal with the suggested edits first") : t("描述你想怎么改这份稿子…（可以附范例文件）", "Describe how to change this script… (attach a sample)")}
                 />
                 <AttachButton zh={zh} onFiles={refAtt.add} size={30} title={t("附参考文件：范例、资料、截图，只用于这次修改", "Attach a sample or notes for this edit")} />
                 <ModelChip value={pickModel} onChange={setPickModel} zh={zh} placement="up" align="right" />
@@ -1580,7 +1580,7 @@ export function ScriptDoc(props: ScriptDocProps) {
                 <div className="gd-ai-who">
                   <AgentIcon agent="script" size={36} radius={10} />
                   <div style={{ minWidth: 0, flexGrow: 1 }}>
-                    <div style={{ fontSize: 15, fontWeight: 600 }}>{t("编剧", "The writer")}</div>
+                    <div style={{ fontSize: 15, fontWeight: 600 }}>{t("文案", "The writer")}</div>
                     <div style={{ fontSize: 12.5, color: thinking ? "#1a73e8" : "#5f6368" }}>{thinking ? t("正在改稿…", "Rewriting…") : t("告诉我怎么改，改法会标在文档里", "Say how to change it")}</div>
                   </div>
                 </div>
@@ -1624,7 +1624,7 @@ export function ScriptDoc(props: ScriptDocProps) {
                         disabled={thinking || Boolean(proposal)}
                         onChange={(e) => setAsk(e.target.value)}
                         onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); runCopilot(); } }}
-                        placeholder={thinking ? t("编剧正在改…", "The writer is on it…") : proposal ? t("先处理文档里的修改建议", "Deal with the suggested edits first") : t("想怎么改？例如：开头更抓人，第二段加一个真实数据", "How should it change?")}
+                        placeholder={thinking ? t("文案正在改…", "The writer is on it…") : proposal ? t("先处理文档里的修改建议", "Deal with the suggested edits first") : t("想怎么改？例如：开头更抓人，第二段加一个真实数据", "How should it change?")}
                       />
                       <div className="gd-ai-row">
                         <AttachButton zh={zh} onFiles={refAtt.add} size={28} title={t("附参考文件：范例、资料、截图，只用于这次修改", "Attach a sample or notes for this edit")} />
@@ -1632,7 +1632,7 @@ export function ScriptDoc(props: ScriptDocProps) {
                         <span style={{ flexGrow: 1 }} />
                         <button type="button" className="gd-ai-go" disabled={thinking || !ask.trim() || Boolean(proposal)} onClick={() => runCopilot()}>
                           {thinking ? <span className="gd-spin" /> : <GI name="send" size={16} />}
-                          {t("让编剧改", "Rewrite")}
+                          {t("让文案改", "Rewrite")}
                         </button>
                       </div>
                     </div>
@@ -1660,9 +1660,9 @@ export function ScriptDoc(props: ScriptDocProps) {
                       <span style={{ fontSize: 11 }}>{u.pct}%</span>
                     </div>
                   ))}
-                  {!props.references.length && !uploading.length ? <div className="gd-ai-drop">{t("把范例、采访稿、数据拖到这里，编剧改稿时会读", "Drop examples, notes or data here")}</div> : null}
+                  {!props.references.length && !uploading.length ? <div className="gd-ai-drop">{t("把范例、采访稿、数据拖到这里，文案改稿时会读", "Drop examples, notes or data here")}</div> : null}
                 </div>
-                <Link href="/train/script" prefetch={false} className="gd-link" style={{ fontSize: 13 }}>{t("训练编剧：写长期说明、上传范例 →", "Train the writer →")}</Link>
+                <Link href="/train/script" prefetch={false} className="gd-link" style={{ fontSize: 13 }}>{t("训练文案：写长期说明、上传范例 →", "Train the writer →")}</Link>
               </div>
             ) : null}
             {panel === "versions" ? (

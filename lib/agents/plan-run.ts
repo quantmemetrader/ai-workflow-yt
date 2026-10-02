@@ -113,7 +113,7 @@ function readPlan(text: string): Plan | null {
 /**
  * One button per colleague, not per to-do.
  *
- * Two items for the same person produced two buttons reading 交给编剧 side by
+ * Two items for the same person produced two buttons reading 交给文案 side by
  * side, which is a choice nobody can make. A colleague's button carries
  * everything the plan asked of them today, numbered, so one press is the whole
  * hand-over and the card stays four buttons wide at most.
@@ -267,7 +267,7 @@ export async function runPlan(opts: { tenant: string; force?: boolean; dry?: boo
     actions,
   });
   console.log(`[plan] ${date} posted ${id} by ${used.model}, ${used.costMicros}µ$, ${actions.length} buttons`);
-  /* Nobody has to press anything next: 编剧 drafts the topic ahead and each
+  /* Nobody has to press anything next: 文案 drafts the topic ahead and each
      colleague gets its to-do (`lib/agents/autorun.ts`, on the worker). */
   if (id) await enqueue({ tenantId: TENANT, type: "agent.plan-followup", module: "research", payload: { messageId: id }, dedupeKey: `plan:${id}` }).catch((err) => console.error("[plan] follow-up not queued", err));
   return { posted: id ?? undefined, body };

@@ -6,13 +6,15 @@ import { revalidatePath } from "next/cache";
 import { requireViewer } from "@/lib/auth/dal";
 import { MODELS } from "@/lib/ai/models";
 import { modelChoice, setModelChoice } from "@/lib/ai/choice";
+import { agentNamesNow, setAgentNames } from "@/lib/agents/names-store";
+import { AGENT_KEYS, type AgentKey } from "@/lib/agents/catalog";
 import { isTrainKey, TRAIN_BUDGET } from "@/lib/agents/train-keys";
 import { mayTrain, saveTrainingText, trainingRows } from "@/lib/agents/training";
 import { audit } from "@/lib/audit";
 
 /**
  * One AI employee's own model (AI 同事 › 训练), or back to the studio's
- * default with `null`. 编剧 on the writing model while 研究员 stays on the
+ * default with `null`. 文案 on the writing model while 研究员 stays on the
  * standard one — a choice for one task that does not change it everywhere
  * (29 Sep: "why can't we choose the model for a specific task without
  * changing it in the whole place"). A message can still pick its own.
@@ -52,5 +54,23 @@ export async function teachRuleAction(agent: string, rule: string): Promise<{ er
   await saveTrainingText(viewer, agent, "instructions", next, "从对话里教的");
   await recordFeedback(viewer, agent, { kind: "taught", text: line }).catch(() => false);
   revalidatePath(`/train/${agent}`);
+  return {};
+}
+
+/**
+ * What the studio calls one AI employee, and its one-line role (Ryan, 2 Oct:
+ * "can we rename our AI employees ourselves?"). `null` goes back to the
+ * built-in name. The name reaches every screen, @mention and prompt.
+ */
+export async function setAgentNameAction(agent: string, value: { zh?: string; en?: string; hint?: string; hintEn?: string } | null): Promise<{ error?: string }> {
+  const viewer = await requireViewer();
+  if (viewer.role !== "owner" && viewer.role !== "admin") return { error: "只有管理员可以改名字" };
+  if (!(AGENT_KEYS as readonly string[]).includes(agent)) return { error: "没有这个 AI 同事" };
+  const next = { ...(await agentNamesNow()) };
+  if (value) next[agent as AgentKey] = { zh: value.zh, en: value.en, hint: value.hint, hintEn: value.hintEn };
+  else delete next[agent as AgentKey];
+  await setAgentNames(next, viewer.id);
+  await audit(viewer, "admin.agent.rename", { module: "admin", meta: { agent, ...(value ?? { reset: true }) } });
+  revalidatePath("/", "layout");
   return {};
 }

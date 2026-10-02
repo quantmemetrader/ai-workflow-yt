@@ -88,7 +88,7 @@ export function DetailView({
   const tab: Tab = TABS.includes(raw as Tab) ? (raw as Tab) : detail.locked ? "approval" : "draft";
 
   /*
-   * 编剧 writing a draft into this script, after a topic was chosen on Home,
+   * 文案 writing a draft into this script, after a topic was chosen on Home,
    * in Research or in the backlog. The server knows (`detail.writing`); a
    * page opened with `?writing=1` straight after the press trusts the
    * button until the first answer from the pulse. It asks
@@ -122,7 +122,7 @@ export function DetailView({
           q.delete("writing");
           router.replace(q.toString() ? `/script/${scriptId}?${q.toString()}` : `/script/${scriptId}`, { scroll: false });
         }
-        /* Once, for the beats (or 编剧's note on why there are none). */
+        /* Once, for the beats (or 文案's note on why there are none). */
         router.refresh();
       }
     }, 3000);
@@ -262,7 +262,7 @@ export function DetailView({
             zh={zh}
             /* The live answer (the pulse flips it the moment the draft
                lands), so the flow step and the banner above the beats
-               never disagree about whether 编剧 is still writing. */
+               never disagree about whether 文案 is still writing. */
             writing={writing}
             onApprove={() => {
               const q = new URLSearchParams(params.toString());

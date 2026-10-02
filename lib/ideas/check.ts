@@ -24,7 +24,7 @@ import { evidencePool, ideaById, withoutPoolIds } from "@/lib/ideas/service";
  * The client: "it is off that without research on the title it just goes
  * straight to script generation". The ideas panel covers the ideas 研究员
  * finds; this covers the ones people bring. Home's task box sends a typed
- * topic here instead of to 编剧, and the answer is a short verdict (hot,
+ * topic here instead of to 文案, and the answer is a short verdict (hot,
  * warm, cold or crowded, with numbers), three titles, the angle, the opening
  * line, the rows it stands on, the videos on the same subject that did well
  * and a risk, if any.
@@ -56,7 +56,7 @@ import { evidencePool, ideaById, withoutPoolIds } from "@/lib/ideas/service";
  *
  * The answer is stored as an idea (seed = what was typed) in the studio's
  * latest ideas batch, so it can be started with `startFromTopicAction({ kind:
- * "idea", id })`, 编剧 then writing from its title, angle and evidence, and
+ * "idea", id })`, 文案 then writing from its title, angle and evidence, and
  * it shows in the ideas panel beside the rest instead of replacing them. A
  * follow-up ("换个角度") rewrites the same row, unless it has been started.
  */
@@ -69,7 +69,7 @@ const DAYS = 14;
 /**
  * The topic as typed, without the employees' tags.
  *
- * "@研究员 AI 会不会…" and "@编剧帮我看看…" (a Chinese tag runs straight into
+ * "@研究员 AI 会不会…" and "@文案帮我看看…" (a Chinese tag runs straight into
  * the words after it, `agentFromTag` reads it as a prefix) both leave only
  * what the person wants made. A tag must start a word, as in the chat, so
  * an e-mail address is left alone.
@@ -649,7 +649,7 @@ export async function checkTitle(
 
   const pillars = pillarsOf(voice);
   const prompt = [
-    "你是一家香港财经科技自媒体工作室的研究员。主持人在首页写下一个想做的选题，想先听你的判断，再决定要不要让编剧写脚本。",
+    "你是一家香港财经科技自媒体工作室的研究员。主持人在首页写下一个想做的选题，想先听你的判断，再决定要不要让文案写脚本。",
     `主持人写的是：「${text}」`,
     prevRow
       ? [
@@ -730,7 +730,7 @@ export async function checkTitle(
      when it has one of them too. With nothing on the topic the model padded
      the evidence with the day's biggest rows on anything ("捡快递" behind a
      question about SaaS security), which the card would show as proof and
-     编剧 would be handed as facts. None left: the card says there is no
+     文案 would be handed as facts. None left: the card says there is no
      direct evidence, which is the honest answer. */
   const ownIds = new Set([...tm, ...tv, ...ts, ...tk].map((f) => f.id));
   const onTopic = (id: string) => ownIds.has(id) || matchOf(byId.get(id)!.title, groups).hits.some(Boolean);
@@ -787,7 +787,7 @@ export async function checkTitle(
 
   /* The row: the verdict leads its "why" (the ideas panel's grey line), the
      risk closes it (the writer is handed it as a fact), and the similar
-     videos follow the evidence, labelled, so 编剧 sees them too. */
+     videos follow the evidence, labelled, so 文案 sees them too. */
   const values = {
     seed: text,
     title: options[0].title,
@@ -850,7 +850,7 @@ export async function checkTitle(
 /**
  * The title the person picked becomes the idea's title, before it is
  * started: `startFromTopicAction` reads the title from the row, so the
- * project, its script and 编剧's draft get the one chosen. Only one of the
+ * project, its script and 文案's draft get the one chosen. Only one of the
  * idea's own titles, and not once it has been started.
  */
 export async function chooseCheckTitle(viewer: Viewer, id: string, title: string): Promise<Idea | null> {

@@ -339,7 +339,7 @@ const WRITES = new Set<string>([
  *
  * 法务 and 财务 need no line here. Their modules are Legal and Finance alone,
  * so no video or script pack is ever offered to them, and no other employee
- * holds either module, so neither pack reaches 剪辑师 or 编剧: the
+ * holds either module, so neither pack reaches 剪辑师 or 文案: the
  * entitlement does the scoping that a module like the planner's could not.
  */
 const DENIED: Partial<Record<AgentKey, ReadonlySet<string>>> = {

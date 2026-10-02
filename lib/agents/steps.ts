@@ -3,7 +3,7 @@ import type { IconName } from "@/components/ui/Icon";
 /**
  * What an AI employee is doing right now, as the chat says it.
  *
- * Between a person pressing "交给编剧" and 编剧's answer landing there used
+ * Between a person pressing "交给文案" and 文案's answer landing there used
  * to be a minute of nothing: the channel looked exactly as it did before the
  * press, and the studio could not tell a colleague at work from a tag that
  * went nowhere. Now the turn keeps a row in the channel (`lib/chat/pending.ts`)

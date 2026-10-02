@@ -7,7 +7,7 @@ import type { AgentKey } from "@/lib/agents/catalog";
 import { postMessage } from "@/lib/chat/service";
 
 /**
- * Work done for a project from somewhere else — a private chat with 编剧 or
+ * Work done for a project from somewhere else — a private chat with 文案 or
  * 剪辑师 — said in the project's own chat too, so the project shows what
  * happened to it. It used to read "项目对话 0" while the script had been
  * written and the video started in a private chat.

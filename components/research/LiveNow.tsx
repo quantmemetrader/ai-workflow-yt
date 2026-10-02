@@ -430,7 +430,7 @@ export function LiveNow({
 
   /* A row becomes a project, its script is started from the row (resolved
      on the server from the stored list: the phrase, the numbers, 研究员's
-     mark) and the person lands on the script while 编剧 writes. */
+     mark) and the person lands on the script while 文案 writes. */
   function writeScript(phrase: string, id: string) {
     if (sending) return;
     setSending(id);
@@ -853,7 +853,7 @@ export function LiveNow({
                 <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: "auto" }}>
                   {canWriteScripts && tab !== "crypto" ? (
                     <button type="button" disabled={sending !== null} onClick={() => writeScript(picked.phrase, "picked")} style={{ ...smallBtn(true), height: 30, justifyContent: "center" }}>
-                      {t("Have the Writer script it", "让编剧写脚本")}
+                      {t("Have the Writer script it", "让文案写脚本")}
                     </button>
                   ) : null}
                   <div style={{ display: "flex", gap: 6 }}>

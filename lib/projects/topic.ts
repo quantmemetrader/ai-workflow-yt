@@ -3,7 +3,7 @@
  *
  * Every way into a project used to lose the topic on the way: the title made
  * it, the reason, the hook, the angle and the evidence mostly did not, and
- * the brief was stored as the chat command a button typed ("@编剧 按这个选题写
+ * the brief was stored as the chat command a button typed ("@文案 按这个选题写
  * 脚本初稿《…》"). One snapshot now travels instead. It is resolved on the
  * server from the thing that was picked (a morning-brief signal by its date
  * and place, a backlog topic, a hot-list row, an idea, a person's own pick),

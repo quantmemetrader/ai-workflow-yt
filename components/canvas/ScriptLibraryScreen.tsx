@@ -29,7 +29,7 @@ import { PersonAvatar } from "@/components/ui/PersonAvatar";
 export type ScriptLibraryScreenProps = {
   locale: string;
   scripts: ScriptListItem[];
-  /** What 编剧 suggests writing next (kept for the page contract; not drawn). */
+  /** What 文案 suggests writing next (kept for the page contract; not drawn). */
   proposals?: Proposals;
   folders: { id: string; name: string; count: number }[];
   /** Counts in the folder that is open, before the filter row is applied. */

@@ -28,7 +28,7 @@ export { TRAIN_BUDGET, TRAIN_KEYS, isTrainKey, type TrainKey } from "@/lib/agent
  *   example       many rows, 范例: each can be switched off
  *
  * `trainingFor` is the one reader: every place an employee writes (its chat
- * prompt, the script writer, 编剧's send-back edits, the article writer, the
+ * prompt, the script writer, 文案's send-back edits, the article writer, the
  * video director) asks it for the same text, trimmed to a budget so a long
  * example cannot push the real task out of the prompt.
  */

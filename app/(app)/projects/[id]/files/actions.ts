@@ -36,7 +36,7 @@ function refresh(projectId: string) {
   revalidatePath(`/projects/${projectId}`, "layout");
 }
 
-/** Put a reference in the script's sources (so 编剧 reads it), or take it out. */
+/** Put a reference in the script's sources (so 文案 reads it), or take it out. */
 async function setScriptSource(viewer: Viewer, scriptId: string | null, fileId: string, on: boolean) {
   if (!scriptId) return;
   await db

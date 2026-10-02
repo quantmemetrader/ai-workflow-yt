@@ -63,15 +63,15 @@ export const SECTIONS: Section[] = [
       ul(
         [
           "等你做的事：需要你审批、确认或补素材的事，点一下直接到对应页面。不想再看到的一条，点「不再提醒」。",
-          "策划今日提报：策划每天早上 8 点根据研究员的晨报提一个选题，并排好每个 AI 同事今天的活。点「用这个做一条视频」，项目马上建好。计划一发出来，编剧就已经提前把这个选题的初稿写好了，卡片上会显示「编剧已写好初稿」，点「打开写好的稿子」就能看。管理员可以点「换一份」让策划换一个选题。",
-          "做一条新视频：一句话写主题，选视频多长，点「开始」。想让编剧照某个范例的写法来写，先点回形针附上范例稿或资料。",
+          "策划今日提报：策划每天早上 8 点根据研究员的晨报提一个选题，并排好每个 AI 同事今天的活。点「用这个做一条视频」，项目马上建好。计划一发出来，文案（原「文案」）就已经提前把这个选题的初稿写好了，卡片上会显示「文案已写好初稿」，点「打开写好的稿子」就能看。管理员可以点「换一份」让策划换一个选题。",
+          "做一条新视频：一句话写主题，选视频多长，点「开始」。想让文案照某个范例的写法来写，先点回形针附上范例稿或资料。",
           "AI 同事：办公室里每个 AI 同事现在在忙什么，点一位同事可以直接交代。",
           "进行中的视频：每条视频到了哪一步，点「继续」接着做。",
           "右边的助理：随时问问题、派活，也可以附文件让它读。",
         ],
         [
           "Waiting on you: things that need your approval, confirmation or footage; one click opens the right page. Press 不再提醒 to stop seeing one.",
-          "The planner's report: at 8 every morning the planner proposes a topic from the researcher's morning brief and lines up each AI colleague's work. Press 用这个做一条视频 and the project is created at once. As soon as the plan is out, the scriptwriter has already drafted that topic; the card says 编剧已写好初稿 and 打开写好的稿子 opens it. Admins can press 换一份 to ask for a different topic.",
+          "The planner's report: at 8 every morning the planner proposes a topic from the researcher's morning brief and lines up each AI colleague's work. Press 用这个做一条视频 and the project is created at once. As soon as the plan is out, the scriptwriter has already drafted that topic; the card says 文案已写好初稿 and 打开写好的稿子 opens it. Admins can press 换一份 to ask for a different topic.",
           "New video: write the topic in one sentence, pick a length, press 开始. To have the writer follow a sample, attach it with the paperclip first.",
           "AI colleagues: what each one is doing in the office right now; click one to give them work.",
           "Videos under way: where each video is, with 继续 to carry on.",
@@ -92,7 +92,7 @@ export const SECTIONS: Section[] = [
           ["AI 同事", "负责什么"],
           ["研究员", "找热点、查数据、每天早上发晨报"],
           ["策划", "每天提选题、给同事排活"],
-          ["编剧", "写脚本、改脚本、审批前的检查"],
+          ["文案", "写脚本、改脚本、审批前的检查"],
           ["剪辑师", "转写素材、粗剪、出成片、做封面"],
           ["撰稿人", "写文章、发布文案、小红书文案"],
           ["法务", "合同起草和审阅、合规"],
@@ -137,7 +137,7 @@ export const SECTIONS: Section[] = [
       ol(
         [
           "选题：这条视频讲什么，研究员找来的证据和数据。",
-          "脚本：编剧自动写初稿，你来改、来批。",
+          "脚本：文案自动写初稿，你来改、来批。",
           "剪辑：上传素材。脚本一批准、素材一到，剪辑师就自动开始剪、加字幕、出成片，不用再派活。",
           "发布：成片一出来，撰稿人会自动写好发布文案，剪辑师做好封面，都放在这一步里。你看一眼、选渠道、发出去，或者标记为已发布。",
           "复盘：发出后各平台的播放和互动，AI 写复盘结论。",
@@ -180,17 +180,17 @@ export const SECTIONS: Section[] = [
       p("初稿怎么来", "Where the first draft comes from"),
       ul(
         [
-          "从选题、策划提报或「做一条新视频」开始的项目，编剧会自动写初稿，一般一两分钟。页面上显示「编剧正在写初稿」，写好会自己出现。",
+          "从选题、策划提报或「做一条新视频」开始的项目，文案会自动写初稿，一般一两分钟。页面上显示「文案正在写初稿」，写好会自己出现。",
           "某个 AI 模型暂时不可用时，会自动换另一个模型重写，你不用管。",
-          "页面是空的？直接在底部 AI 栏写下你想要的稿子（可以附范例），按发送，编剧就按你的要求写初稿。",
+          "页面是空的？直接在底部 AI 栏写下你想要的稿子（可以附范例），按发送，文案就按你的要求写初稿。",
         ],
         [
-          "A project started from a topic, the planner's report or 新视频 gets its draft written by the scriptwriter, usually within a minute or two. The page shows 编剧正在写初稿 and the draft appears by itself.",
+          "A project started from a topic, the planner's report or 新视频 gets its draft written by the scriptwriter, usually within a minute or two. The page shows 文案正在写初稿 and the draft appears by itself.",
           "If one AI model is temporarily unavailable, another takes over; nothing to do on your side.",
           "Empty page? Type what you want in the AI bar at the bottom (attach a sample if you like) and send; the writer drafts to your brief.",
         ],
       ),
-      p("让编剧改稿", "Having the writer revise"),
+      p("让文案改稿", "Having the writer revise"),
       ul(
         [
           "底部的 AI 栏或右边「AI 助手」：写下怎么改，比如「开头更抓人」。也可以点「一键改」，或「换个风格」：照范例风格重写、故事型、新闻快讯、干货清单、对比测评、情绪共鸣、反常识开头。",
@@ -241,7 +241,7 @@ export const SECTIONS: Section[] = [
       p("左边栏「消息」里可以和任何一位 AI 同事单独聊，每个页面右边也有一个随时可用的助理。", "Under 消息 you can talk to any AI colleague on their own, and every page has an assistant on the right."),
       ul(
         [
-          "选谁回答：在某个同事的页面里，就是这位同事回答。想问别人，在消息里 @ 他，比如「@编剧」。",
+          "选谁回答：在某个同事的页面里，就是这位同事回答。想问别人，在消息里 @ 他，比如「@文案」。",
           "选模型：输入框下方的「模型」。一般用「自动」；也可以选 Claude、通义千问、Kimi、智谱、DeepSeek 等，只对这次提问生效。选的模型临时不可用时会自动换一个。",
           "附文件：点回形针、把文件拖进来，或直接粘贴截图。AI 会读完整个文件再回答；文件只你自己看得到，不会拿去训练。",
           "有用 / 不好：每条回答下面点一下。「不好」可以写下哪里不好，AI 会从这些反馈里总结改进建议。",
@@ -249,7 +249,7 @@ export const SECTIONS: Section[] = [
           "管理对话：左边「最近」里指到一条对话上，点「…」可以重命名或删除；「新对话」开始新的一轮。",
         ],
         [
-          "Who answers: on a colleague's page, that colleague. To ask someone else, @ them in the message, such as @编剧.",
+          "Who answers: on a colleague's page, that colleague. To ask someone else, @ them in the message, such as @文案.",
           "Model: the 模型 control under the box. 自动 is the usual choice; you can also pick Claude, Qwen, Kimi, GLM, DeepSeek and others for that one message. If the picked model is briefly unavailable, another answers.",
           "Attachments: the paperclip, drag a file in, or paste a screenshot. The AI reads the whole file before answering; the file is private to you and never used for training.",
           "有用 / 不好 under each answer. 不好 lets you say what was wrong; the AI turns this feedback into improvement suggestions.",
@@ -267,7 +267,7 @@ export const SECTIONS: Section[] = [
       p("频道是大家一起讨论的地方，私信是两个人之间的对话。", "Channels are where everyone talks; a direct message is between two people."),
       ul(
         [
-          "系统频道：#研究日报 每天早上发晨报和策划的工作计划；#制作 是编剧和剪辑师交接的地方；#公告 只有管理员能发。",
+          "系统频道：#研究日报 每天早上发晨报和策划的工作计划；#制作 是文案和剪辑师交接的地方；#公告 只有管理员能发。",
           "新建频道：可以选公开或「私密」。名字和已有频道重复时会提醒你换个名字。",
           "@AI 同事：在频道里 @ 一位 AI 同事，它会看上下文后回答；消息里附的文件它也会读。",
           "编辑和删除：自己发的消息可以改和删；私密频道可以退出；建频道的人或管理员可以归档频道。私信和系统频道不能归档。",
@@ -292,7 +292,7 @@ export const SECTIONS: Section[] = [
       img("hot.png", "热点榜", "The trending list"),
       img("backlog.png", "我的储备", "Saved topics and watched keywords"),
       img("inbox.png", "评论收件箱", "The comment inbox"),
-      p("选题页帮你决定下一条拍什么。任何一个选题点「做成视频」就会建项目，编剧自动写初稿。", "The topics page helps you decide what to shoot next. 做成视频 on any topic starts a project, and the writer drafts it."),
+      p("选题页帮你决定下一条拍什么。任何一个选题点「做成视频」就会建项目，文案自动写初稿。", "The topics page helps you decide what to shoot next. 做成视频 on any topic starts a project, and the writer drafts it."),
       table(
         [
           ["页面", "用来做什么"],
@@ -399,7 +399,7 @@ export const SECTIONS: Section[] = [
     zh: "AI 训练",
     en: "Training the AI",
     blocks: [
-      img("train.png", "AI 训练：编剧的模型、工作说明、它在学习", "Training: the scriptwriter's model, instructions, what it is learning"),
+      img("train.png", "AI 训练：文案的模型、工作说明、它在学习", "Training: the scriptwriter's model, instructions, what it is learning"),
       p("在「AI 同事 › 训练」里，可以把每位 AI 同事教成工作室想要的样子。每位同事一页：", "Under AI 同事 › 训练 you shape each AI colleague the way the studio wants. One page per colleague:"),
       ul(
         [
@@ -460,7 +460,7 @@ export const SECTIONS: Section[] = [
         [
           ["遇到的情况", "怎么办"],
           ["页面上出现繁体字或怪字", "网站会自动转回简体。如果还是有，关掉浏览器的「翻译」和繁简转换插件（Chrome 右上角拼图图标 › 管理扩展程序），然后刷新"],
-          ["初稿一直没出来", "编剧会自动换模型重试几轮，一般几分钟内会到。如果出现红色的「初稿没写成」，点「重试」，或者在底部 AI 栏写下要求直接让它写"],
+          ["初稿一直没出来", "文案会自动换模型重试几轮，一般几分钟内会到。如果出现红色的「初稿没写成」，点「重试」，或者在底部 AI 栏写下要求直接让它写"],
           ["AI 回答说服务出错", "稍等一下再试，或者在「模型」里换一个。财务页的「AI 服务余额」可以看是不是余额用完了"],
           ["点进某个模块提示「没有权限」", "请管理员在「员工管理」里给你开通"],
           ["页面说「系统刚更新了一个新版本」", "刷新一下就好。网站更新后，开着的旧页面会提示你刷新；已经保存的内容都在"],

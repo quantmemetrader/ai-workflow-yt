@@ -72,7 +72,7 @@ const ACCENT = "#007be0";
  *
  * The four lanes were four identical grey columns, told apart only by their
  * headings. They are four stages of one hand-off between the studio's
- * employees — 研究员 adopts, 策划 briefs, 编剧 scripts, 剪辑 takes it to
+ * employees — 研究员 adopts, 策划 briefs, 文案 scripts, 剪辑 takes it to
  * video — so each lane wears that employee's face and tint (AGENT_TINTS, the
  * same colours the rest of the studio uses for them): on the lane's header,
  * on its count, on the drop highlight, and on the stage badge of every card

@@ -119,7 +119,7 @@ export function ResearchAgentPanel({
   const answering: AgentKey | null = taggedNow ?? home;
   const name = (k: AgentKey) => (zh ? AGENT_LABELS[k].nameLocal : AGENT_LABELS[k].name);
 
-  /* "@编剧 " from a face button is who to ask, not a question: nothing to
+  /* "@文案 " from a face button is who to ask, not a question: nothing to
      send until something follows it. */
   const att = useAttachments(zh);
   const ready = (asksSomething(ask) || att.ids.length > 0) && !att.uploading;
@@ -234,6 +234,7 @@ export function ResearchAgentPanel({
           {attach ? <AttachChips zh={zh} attached={att.attached} onRemove={att.remove} /> : null}
           <textarea
             onPaste={attach ? att.onPaste : undefined}
+            onDragOver={(e) => { if (e.dataTransfer.types.includes("Files")) { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; } }} onDrop={(e) => { if (!e.dataTransfer.files.length) return; e.preventDefault(); if (attach) att.add(e.dataTransfer.files); }}
             ref={box}
             rows={1}
             value={ask}

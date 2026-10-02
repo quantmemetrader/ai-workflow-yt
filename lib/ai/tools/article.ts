@@ -43,6 +43,22 @@ const defs: ToolDef[] = [
   {
     type: "function",
     function: {
+      name: "revise_article",
+      description:
+        "Change an existing article the way the person asks: a correction, a cut, a different opening, a fact to fix. The instruction is applied as an edit and the rest of the text stays; the instruction's words are never pasted into the article. A version is kept first. Use this, not write_article, whenever an article already exists and the person wants it changed.",
+      parameters: {
+        type: "object",
+        properties: {
+          id: { type: "string", description: "The article's id (from list_articles or the screen). Optional: the newest article when left out." },
+          instruction: { type: "string", description: "What to change, in the person's words." },
+        },
+        required: ["instruction"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "list_articles",
       description: "The articles in the library, newest first, with their state: draft, in review, or published.",
       parameters: {
@@ -109,6 +125,23 @@ async function run(ctx: ToolContext, name: string, args: Record<string, unknown>
         `Open it at /article?id=${id} (id: ${id}).`,
         "It is a draft. Somebody other than the writer has to approve it before it can be published.",
       ].join("\n"),
+      changed: true,
+    };
+  }
+
+  if (name === "revise_article") {
+    const instruction = str(args.instruction, 1500);
+    if (!instruction) return { text: "Say what should change." };
+    const id = str(args.id, 64) || (await latestArticleId(ctx.viewer)) || "";
+    const [row] = id ? await db.select({ id: articles.id, title: articles.title }).from(articles).where(and(eq(articles.id, id), eq(articles.tenantId, ctx.viewer.tenantId), isNull(articles.deletedAt))).limit(1) : [];
+    if (!row) return { text: "No such article. Use an id from list_articles." };
+    await cutVersion(ctx.viewer, row.id, { note: "改稿前" });
+    const res = await draftArticle(ctx.viewer, row.id, { instruction });
+    if ("error" in res) return { text: res.error, changed: true };
+    await audit(ctx.viewer, "article.generate", { objectType: "article", objectId: row.id, module: "script", meta: { model: res.model, words: res.words, revise: true } });
+    return {
+      artifacts: [{ kind: "article", id: row.id, title: row.title, action: "updated" }],
+      text: `Revised "${row.title}" as asked (${res.words} words, by ${res.model}); the previous text is kept as a version. Open it at /article?id=${row.id}. Say in one sentence what changed; do not repeat the instruction.`,
       changed: true,
     };
   }

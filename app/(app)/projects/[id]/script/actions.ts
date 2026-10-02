@@ -100,7 +100,7 @@ export async function startBlankAction(projectId: unknown) {
   return { ok: true as const };
 }
 
-/** The AI copilot: 编剧's tracked changes for an instruction. Nothing is saved. */
+/** The AI copilot: 文案's tracked changes for an instruction. Nothing is saved. */
 export async function copilotAction(projectId: unknown, paragraphs: unknown, instruction: unknown, model?: unknown, fileIds?: unknown) {
   const c = await ctx(projectId, true);
   if ("error" in c) return c;
@@ -133,7 +133,7 @@ export async function copilotRedoAction(projectId: unknown, input: unknown, mode
 }
 
 /**
- * An instruction typed into the AI bar while the page is empty: 编剧 writes the
+ * An instruction typed into the AI bar while the page is empty: 文案 writes the
  * first draft from it, with any attached files as the script's 参考资料
  * (谢总, 1 Oct: pressed send on an empty page and nothing happened).
  */
@@ -369,7 +369,7 @@ export async function approveDocAction(projectId: unknown) {
   return { ok: true as const, versionNo: res.versionNo };
 }
 
-/** 提修改意见: send it back with a note — kept on the project (with 编剧's concrete edits), said in its chat, and as a comment. */
+/** 提修改意见: send it back with a note — kept on the project (with 文案's concrete edits), said in its chat, and as a comment. */
 export async function requestChangesAction(projectId: unknown, note: unknown) {
   const c = await ctx(projectId);
   if ("error" in c) return c;

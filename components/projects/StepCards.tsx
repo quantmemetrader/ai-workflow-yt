@@ -23,7 +23,7 @@ export function StepCards({ p, zh, me }: { p: ProjectDetail; zh: boolean; me: St
   const step = (k: string) => p.steps.find((s) => s.key === k) ?? null;
   const agentName = (a: AgentKey) => (zh ? AGENT_LABELS[a].nameLocal : AGENT_LABELS[a].nameEn);
 
-  /* The script block says what the step says (QA, 2 Oct): 「编剧正在写初稿」
+  /* The script block says what the step says (QA, 2 Oct): 「文案正在写初稿」
      while the draft is being written, not 「待写」; and once the step is done
      (cut from it, or published) no 「还没审批」 beside its 「已完成」. */
   const scriptLine = (() => {
@@ -90,7 +90,7 @@ export function StepCards({ p, zh, me }: { p: ProjectDetail; zh: boolean; me: St
     script:
       p.script && p.script.beats > 0
         ? t("看一遍脚本，改好后点「分享」请同事审阅批准", "read the script, edit it, then press Share to get it approved")
-        : t("让编剧写初稿，或者自己写", "have the writer draft it, or write it yourself"),
+        : t("让文案写初稿，或者自己写", "have the writer draft it, or write it yourself"),
     edit:
       (p.video?.clips ?? 0) === 0
         ? t("主持人拍好口播后上传素材，剪辑师会按脚本粗剪", "upload the host's footage; the editor cuts it to the script")

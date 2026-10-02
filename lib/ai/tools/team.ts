@@ -1,4 +1,5 @@
 import "server-only";
+import { rememberHandoffOrigin } from "@/lib/agents/handoff-origin";
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { chatChannels, scripts, videoProjects, workProjects } from "@/lib/db/schema";
@@ -34,7 +35,7 @@ import { id as asId, num, str, type ToolContext, type ToolPack, type ToolResult 
  *   - `assign_task` is how anyone asks a colleague to do something. It posts
  *     the request in the channel as a checked hand-off and starts the
  *     colleague on it, with the project's script and video project in hand.
- *     "@策划 让编剧写个脚本" becomes 策划 calling this, and 编剧 writing it.
+ *     "@策划 让文案写个脚本" becomes 策划 calling this, and 文案 writing it.
  */
 const defs: ToolDef[] = [
   {
@@ -67,7 +68,7 @@ const defs: ToolDef[] = [
     function: {
       name: "assign_task",
       description:
-        "Hand a piece of work to a colleague: research 研究员, planning 策划, script 编剧, video 剪辑师, article 撰稿人. Posts the request in this channel (or in the project's own chat when project_id is given) tagging them, and they start on it straight away with the project's script and video project in hand. Use it whenever someone asks you to get a colleague to do something, or when the work is theirs and not yours. Returns a receipt; afterwards say in one sentence whom you handed it to, without @-ing them again.",
+        "Hand a piece of work to a colleague: research 研究员, planning 策划, script 文案, video 剪辑师, article 撰稿人. Posts the request in this channel (or in the project's own chat when project_id is given) tagging them, and they start on it straight away with the project's script and video project in hand. Use it whenever someone asks you to get a colleague to do something, or when the work is theirs and not yours. Returns a receipt; afterwards say in one sentence whom you handed it to, without @-ing them again.",
       parameters: {
         type: "object",
         properties: {
@@ -101,7 +102,7 @@ const ownerName = (owner: string) =>
  * employee runs as itself and setProjectAccess makes it a member of every
  * private project's chat and an editor of its script, so "can the employee
  * reach it" is the wrong test: by it a guest could list the studio's
- * projects through 策划, and anyone could hand 编剧 a private project's
+ * projects through 策划, and anyone could hand 文案 a private project's
  * script to rewrite. And the employee's own rule was too narrow for the
  * people inside: it never sees a private project, so its owner asking from
  * #制作 heard "no such project". (What a channel answer may *list* is
@@ -153,7 +154,7 @@ async function projectInChannel(tenantId: string, channelId: string) {
  * assign_task still takes such a project's id from the person.
  *
  * With nobody behind the turn, the employee's own, plus the project whose
- * chat it is answering in: it was made a member there, and "@策划 让编剧写"
+ * chat it is answering in: it was made a member there, and "@策划 让文案写"
  * inside a private project has to find the project it is in. Never every
  * private project it happens to be a member of, for the same reason.
  */
@@ -294,7 +295,7 @@ async function run(ctx: ToolContext, name: string, args: Record<string, unknown>
     /* Where: the named project's own chat; else the channel this is being
        asked in; else #制作, where the studio hands work over.
 
-       Handing 编剧 a project is handing it that project's script to write
+       Handing 文案 a project is handing it that project's script to write
        into, so the project — named by id, or found from the channel — has
        to be one the person this is done for may see, by the rule the
        project list itself uses (`personOf`). Being in the tenant is not
@@ -386,6 +387,8 @@ async function run(ctx: ToolContext, name: string, args: Record<string, unknown>
       assignment: { task },
     });
     if (!messageId) return { text: "Nothing was posted, so nothing was handed on." };
+    /* Asked from somebody's own assistant chat: the colleague's reply is copied back into it. */
+    if (ctx.conversationId) await rememberHandoffOrigin(messageId, ctx.conversationId).catch(() => {});
 
     /* 剪辑师 asked to make a project's video: the cut starts in code, the
        way the chat's own @剪辑师 does (`asksForVideoCut`), and the finished
@@ -416,6 +419,7 @@ async function run(ctx: ToolContext, name: string, args: Record<string, unknown>
         body,
         handoff,
         hop,
+        ...(ctx.conversationId ? { originMessageId: messageId } : {}),
         spoken: team ? [...team.spoken, ...(from !== "human" ? [from] : [])] : from !== "human" ? [from] : [],
         ...(team ? { budget: team.budget, origin: team.origin } : {}),
         /* The colleague's turn works for the same person, and checks what
@@ -439,7 +443,7 @@ async function run(ctx: ToolContext, name: string, args: Record<string, unknown>
     });
 
     return {
-      text: `Handed to ${AGENT_LABELS[to].nameLocal} in #${channel.name} (message ${messageId}): "${task}". They start as soon as you have answered. Say in one sentence whom you handed it to; do not @ them again.`,
+      text: `Handed to ${AGENT_LABELS[to].nameLocal} in #${channel.name} (message ${messageId}): "${task}". They start as soon as you have answered, and their reply is posted in #${channel.name}${ctx.conversationId ? " and copied into this chat" : ""}. Tell the person that in one sentence, naming the channel. Say in one sentence whom you handed it to; do not @ them again.`,
       changed: true,
       artifacts: [{ kind: "assignment", id: messageId, title: `${AGENT_LABELS[to].nameLocal}：${task.slice(0, 80)}`, action: "assigned" }],
     };

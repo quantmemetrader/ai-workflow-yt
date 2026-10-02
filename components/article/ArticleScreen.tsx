@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { notify } from "@/lib/client/notify";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ModuleSidebar, type ScreenItem } from "@/components/shell/ModuleSidebar";
 import { ResearchAgentPanel } from "@/components/canvas/ResearchAgentPanel";
@@ -17,6 +18,7 @@ import {
   decideApprovalAction,
   deleteArticleAction,
   draftArticleAction,
+  checkArticleFactsAction,
   publishArticleAction,
   requestApprovalAction,
   restoreVersionAction,
@@ -476,6 +478,20 @@ function Editor({
 
   const save = (after?: () => void) =>
     run(() => saveArticleAction(article.id, { title, summary, body }), after, zh ? "正在保存" : "Saving");
+  /* 核对事实: the article's claims, each looked up live, each with a verdict (Ryan, 2 Oct). */
+  const [facts, setFacts] = useState<{ claim: string; verdict: "confirmed" | "unconfirmed" | "contradicted"; note: string; source: string | null }[] | null>(null);
+  const [checking, setChecking] = useState(false);
+  const checkFacts = async () => {
+    if (checking) return;
+    setChecking(true);
+    try {
+      const r = await checkArticleFactsAction(article.id);
+      if ("error" in r && r.error) return notify(r.error);
+      if ("results" in r && r.results) setFacts(r.results);
+    } finally {
+      setChecking(false);
+    }
+  };
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 4, maxWidth: 860 }}>
@@ -586,6 +602,31 @@ function Editor({
           "助理会参考工作室的文风、频道自身的语气，以及这篇文章所依据的脚本（如果有）。它不会编造数字或引语。",
         )}
       </p>
+
+      {/* ---- fact check ---- */}
+      <div style={{ marginTop: 14, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+        <button type="button" disabled={checking || !body.trim()} onClick={() => void checkFacts()} style={ghost}>
+          {checking ? t("Checking the facts…", "正在核对事实…（约一分钟）") : t("Check the facts", "核对事实")}
+        </button>
+        <span style={{ fontSize: 11.5, color: "#999999" }}>{t("Every number, date, name and quote is looked up live and given a verdict. Nothing is changed.", "把文中的数字、日期、人名、引语逐条搜一遍，给出结论。不会改动文章。")}</span>
+      </div>
+      {facts ? (
+        <div style={{ marginTop: 8, border: "1px solid #ededed", borderRadius: 10, overflow: "hidden" }}>
+          {!facts.length ? <div style={{ padding: "10px 12px", fontSize: 12.5, color: "#7c7c7c" }}>{t("No checkable claims found.", "没有找到可以核对的说法。")}</div> : null}
+          {facts.map((f, i) => {
+            const tone = f.verdict === "confirmed" ? { bg: "#e7f6ee", ink: "#1e7a4f", word: zh ? "属实" : "Confirmed" } : f.verdict === "contradicted" ? { bg: "#fdecec", ink: "#b42318", word: zh ? "有出入" : "Contradicted" } : { bg: "#fff4df", ink: "#95590a", word: zh ? "无法证实" : "Unconfirmed" };
+            return (
+              <div key={i} style={{ display: "flex", gap: 10, padding: "9px 12px", borderTop: i ? "1px solid #f0f0f0" : 0, alignItems: "flex-start" }}>
+                <span style={{ flexShrink: 0, fontSize: 11, fontWeight: 600, color: tone.ink, background: tone.bg, borderRadius: 999, padding: "1px 8px", lineHeight: "18px" }}>{tone.word}</span>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: 13, color: "#1f1f1f", lineHeight: 1.5 }}>{f.claim}</div>
+                  {f.note ? <div style={{ fontSize: 12, color: "#6b6b6b", lineHeight: 1.5, marginTop: 2 }}>{f.note}{f.source ? ` · ${f.source}` : ""}</div> : null}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ) : null}
 
       {/* ---- approval ---- */}
       <Label>{t("Approval", "审批")}</Label>
@@ -706,13 +747,18 @@ function Editor({
 
       {/* ---- versions ---- */}
       <Label>{t("Versions", "版本")}</Label>
+      {locked ? (
+        <p style={{ fontSize: 11.5, color: "#95590a", margin: "0 0 6px" }}>
+          {t("Approved and locked: the versions are kept below. To go back to one, retract the publication first (发布日志), then restore.", "已批准并锁定：历史版本都在下面。要恢复某一版，先在「发布日志」里撤回，再点「恢复」。")}
+        </p>
+      ) : null}
       {!versions.length ? (
         <p style={{ fontSize: 11.5, color: "#999999", margin: 0 }}>
           {t("No version has been kept yet.", "还没有保存过版本。")}
         </p>
       ) : (
-        <div style={{ display: "flex", flexDirection: "column" }}>
-          {versions.slice(0, 12).map((v) => (
+        <div style={{ display: "flex", flexDirection: "column", maxHeight: 360, overflowY: "auto" }}>
+          {versions.map((v) => (
             <Row key={v.id} style={{ alignItems: "center" }}>
               <span style={{ width: 44, fontSize: 12, fontWeight: 500 }}>v{v.versionNo}</span>
               <span style={{ width: 120, fontSize: 11.5, color: "#7c7c7c" }}>{stamp(v.createdAt)}</span>

@@ -31,7 +31,7 @@ import { readWorkRefs } from "@/lib/chat/handoff";
  *   1. It was turned into one here (`createFromConversation`), which leaves
  *      a link: a `settings` row keyed by the conversation (no migration),
  *      and the project's `source.conversationId`.
- *   2. An employee did project work in it: 编剧's `write_script` starts or
+ *   2. An employee did project work in it: 文案's `write_script` starts or
  *      writes into a project, 剪辑师's edits act on one, and `assign_task`
  *      hands work on inside one. Those are the turn's receipts; the ids are
  *      read back from the tool rows of this conversation, newest first.
@@ -194,7 +194,7 @@ async function screenProject(viewer: Viewer, hints: BridgeHints) {
 }
 
 /**
- * A script 编剧 wrote in this conversation that belongs to no live project.
+ * A script 文案 wrote in this conversation that belongs to no live project.
  *
  * Since the project-first change `write_script` always writes into a
  * project, so this is only ever an older draft; one the person holds some
@@ -415,7 +415,7 @@ export type CreateResult = { ok: true; id: string; title: string; existed: boole
  * The project is started as every other (`createWorkProject`: its chat, its
  * script, its video project, shared with who can see it), with the brief
  * the person confirmed and `source = { kind: "chat", conversationId }`; a
- * script 编剧 wrote here outside any project (an older draft) becomes its
+ * script 文案 wrote here outside any project (an older draft) becomes its
  * script instead of a new empty one. A short note is posted in the
  * project's chat as the person — who it came from, the brief, and the way
  * back to the conversation — and the link is recorded so the bar says
@@ -483,7 +483,7 @@ export async function createFromConversation(viewer: Viewer, conversationId: str
     const withWhom = staffNames.length ? staffNames.join(zh ? "、" : ", ") : t("助理", "the assistant");
     const person = (zh && viewer.nameLocal) || viewer.name;
 
-    /* An older draft 编剧 wrote here, in no project: the project takes it,
+    /* An older draft 文案 wrote here, in no project: the project takes it,
        and the video project already made for it, if one is still loose. */
     const loose = await looseScriptOf(viewer, receipts.written);
     let video: { id: string } | undefined;
@@ -552,13 +552,13 @@ export async function createFromConversation(viewer: Viewer, conversationId: str
     const note = [
       t(`从 ${person} 和${withWhom}的对话建立。`, `Started from ${person}'s conversation with ${withWhom}.`),
       brief ? clip(brief, 600) : "",
-      loose ? t(`编剧在对话里写的脚本《${loose.title}》已经放进这个项目。`, `The script the writer wrote there, “${loose.title}”, is now this project's.`) : "",
+      loose ? t(`文案在对话里写的脚本《${loose.title}》已经放进这个项目。`, `The script the writer wrote there, “${loose.title}”, is now this project's.`) : "",
       t(`原对话：[${back}](/chat/t/${conversationId})（只有 ${person} 能打开）`, `The conversation: [${back}](/chat/t/${conversationId}) (only ${person} can open it)`),
     ]
       .filter(Boolean)
       .join("\n\n");
     await postMessage(viewer, made.channelId, note, { fromChat: { conversationId } }).catch((err) => console.error("[chat-project] could not post the note", err));
-    /* No script from the conversation: 编剧 starts the first draft now, like every new project. */
+    /* No script from the conversation: 文案 starts the first draft now, like every new project. */
     if (!loose && made.scriptId && viewer.modules.includes("script")) {
       await draftInBackground(viewer, { projectId: made.id, channelId: made.channelId, scriptId: made.scriptId, req: { topicId: null, subject: title, angle: brief ? clip(brief, 400) : null, channel: null, aspect: null, seconds: null, language: null, subtitleLanguage: null, mandatoryPoints: [] } }).catch((err) => console.error("[chat-project] could not start the draft", err));
     }

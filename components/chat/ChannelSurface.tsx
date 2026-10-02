@@ -1335,6 +1335,17 @@ export function ChannelSurface(props: {
                     e.preventDefault();
                     attach(e.clipboardData.files);
                   }}
+                  onDragOver={(e) => {
+                    if (props.canAttach !== false && e.dataTransfer.types.includes("Files")) {
+                      e.preventDefault();
+                      e.dataTransfer.dropEffect = "copy";
+                    }
+                  }}
+                  onDrop={(e) => {
+                    if (props.canAttach === false || !e.dataTransfer.files.length) return;
+                    e.preventDefault();
+                    attach(e.dataTransfer.files);
+                  }}
                   rows={1}
                   aria-label={composerLabel}
                   placeholder={composerPlaceholder}

@@ -6,6 +6,9 @@ import { isTrainKey, mayTrain, trainingRows } from "@/lib/agents/training";
 import { trainName } from "@/components/train/names";
 import { TrainAgent } from "@/components/train/TrainAgent";
 import { AgentModel } from "@/components/train/AgentModel";
+import { AgentIdentity } from "@/components/train/AgentIdentity";
+import { agentNamesNow } from "@/lib/agents/names-store";
+import { AGENT_DEFAULT_LABELS, type AgentKey } from "@/lib/agents/catalog";
 import { MODELS, modelFor } from "@/lib/ai/models";
 import { modelChoice } from "@/lib/ai/choice";
 
@@ -21,6 +24,8 @@ export default async function TrainAgentPage({ params }: { params: Promise<{ age
   const own = modelChoice().agents?.[agent] ?? null;
   const learning = await learningState(viewer.tenantId, agent);
   const fallback = agent === "script" ? modelFor.drafting() : modelFor.assistant();
+  const names = await agentNamesNow();
+  const base = agent !== "assistant" ? AGENT_DEFAULT_LABELS[agent as AgentKey] : null;
   return (
     <TrainAgent
       key={agent}
@@ -29,6 +34,7 @@ export default async function TrainAgentPage({ params }: { params: Promise<{ age
       rows={rows}
       canEdit={mayTrain(viewer)}
       model={<>
+        {base ? <AgentIdentity agent={agent} zh={zh} current={names[agent as AgentKey] ?? {}} defaults={{ zh: base.nameLocal, en: base.nameEn, hint: base.hint, hintEn: base.hintEn }} canEdit={viewer.role === "owner" || viewer.role === "admin"} /> : null}
         <AgentModel agent={agent} name={trainName(agent, zh)} zh={zh} current={own} fallback={fallback} options={MODELS.filter((m) => m.tier !== "free").map((m) => ({ id: m.id, label: m.label }))} canChoose={viewer.role === "owner" || viewer.role === "admin"} />
         <AgentLearning agent={agent} name={trainName(agent, zh)} zh={zh} state={learning} canTrain={mayTrain(viewer)} />
       </>}

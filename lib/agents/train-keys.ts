@@ -17,7 +17,7 @@ export const TRAIN_USED: Record<TrainKey, { zh: string; en: string }> = {
   assistant: { zh: "你的助理每次回答你、帮你派活时都会先读这些。", en: "Your assistant reads this before every answer." },
   research: { zh: "研究员找选题、写晨报、回答“怎么看”时会照着做。", en: "Used when the researcher finds topics and writes the brief." },
   planning: { zh: "策划排计划、派活、拆素材时会照着做。", en: "Used when the planner plans and hands out work." },
-  script: { zh: "编剧每次写初稿、改写、按退回意见给修改建议时都会照着做。", en: "Used for every draft, rewrite and send-back edit the writer makes." },
+  script: { zh: "文案每次写初稿、改写、按退回意见给修改建议时都会照着做。", en: "Used for every draft, rewrite and send-back edit the writer makes." },
   video: { zh: "剪辑师设计画面、字幕和包装时会照着做。", en: "Used when the editor designs pictures, captions and graphics." },
   article: { zh: "撰稿人写长文、发布文案时会照着做。", en: "Used for articles and post copy." },
   legal: { zh: "法务起草、比对合同时会照着做（只改说法，不改它的底线规则）。", en: "Used when drafting and comparing contracts." },

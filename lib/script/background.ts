@@ -20,7 +20,7 @@ import { cutVersion } from "./service";
  * the page has moved on to the script, which shows the writing state and
  * polls `/api/script/[id]/pulse` until the mark is gone.
  *
- * When it lands, 编剧 says so in the project's chat, in its own name, and
+ * When it lands, 文案 says so in the project's chat, in its own name, and
  * says exactly what `writeScript` returned: how many beats, or why there
  * are none. Nothing is claimed that did not happen, so the rule the
  * employees follow in chat ("only say what a tool actually did") holds for

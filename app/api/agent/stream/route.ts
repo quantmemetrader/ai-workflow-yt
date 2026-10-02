@@ -118,7 +118,7 @@ async function describeAttachments(viewer: Viewer, conversationId: string, raw: 
  * panel on Research), the viewer inside the tool is the employee, and every
  * employee is a member of every private project's chat and an editor of its
  * script. A person outside a private project could send its channel id and
- * have 策划 hand 编剧 that project's script to rewrite. So each id is
+ * have 策划 hand 文案 that project's script to rewrite. So each id is
  * checked here, against the person, before any turn starts, by the rule
  * each screen itself uses:
  *
@@ -300,7 +300,7 @@ export async function POST(request: Request) {
   }
 
   /*
-   * Who answers. "@编剧 …" in the message hands the turn to that employee;
+   * Who answers. "@文案 …" in the message hands the turn to that employee;
    * otherwise the screen's own employee answers (the panel on Research is
    * 研究员's); otherwise the person's own assistant. An employee answers as
    * itself: its own prompt, its own tools and budget, in the same thread.
@@ -354,7 +354,7 @@ export async function POST(request: Request) {
       try {
         const screen = await checkedIds;
         /*
-         * A private chat that already belongs to a project (编剧 wrote its
+         * A private chat that already belongs to a project (文案 wrote its
          * script here, or it was linked) works in that project when the
          * screen names none. Without this 剪辑师 answered "No video project is
          * open. Open one in the Video module" to "@剪辑师 make this video" —
@@ -375,7 +375,7 @@ export async function POST(request: Request) {
         /*
          * The same bound a turn in a channel has. Without it every
          * `assign_task` here started a chain of its own with a fresh budget,
-         * and nothing stopped one message from handing 编剧 the same script
+         * and nothing stopped one message from handing 文案 the same script
          * twice: two drafts, two bills. An employee's hand-off still runs at
          * hop 1 and the person's own assistant's at hop 0, as before; now
          * they share one budget, and a colleague is asked once per turn.

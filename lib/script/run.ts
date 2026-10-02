@@ -33,10 +33,10 @@ import { scriptWriting } from "@/lib/script/writing";
 export type ScriptRun = {
   status: "brief" | "drafting" | "awaiting_approval" | "locked" | "archived";
   updatedAt: string;
-  /** Touched in the last quarter hour: 编剧 is at it, or somebody is. */
+  /** Touched in the last quarter hour: 文案 is at it, or somebody is. */
   recent: boolean;
   /**
-   * 编剧 is writing a draft into it right now: a project's own mark
+   * 文案 is writing a draft into it right now: a project's own mark
    * (`work_projects.source.writing`, younger than ten minutes) on any live
    * project that has the script, the same answer `/api/script/[id]/pulse`
    * gives (both read `scriptWriting`). "Touched recently" is not the same
@@ -92,7 +92,7 @@ export async function scriptRun(viewer: Viewer, scriptId: string, zh: boolean): 
   /* The project it is the script of: the topic links there, where the
      topic's why and evidence are, rather than to the generic backlog. The
      oldest one, as the topic strip picks it, so the two never disagree
-     about which project a script belongs to. (Whether 编剧 is writing is
+     about which project a script belongs to. (Whether 文案 is writing is
      not read from this one project: see `writing` below.) Read here
      rather than through `projectFor`, which returns only ids and the title,
      because the topic lives in the project's `topic_id` and `source`. */

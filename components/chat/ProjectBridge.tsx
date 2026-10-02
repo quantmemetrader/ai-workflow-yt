@@ -18,10 +18,10 @@ import { suggestTitle, withoutTags } from "@/lib/chat/project-title";
  * work could start and stay out of one.
  *
  * Nothing on an empty chat: the bar appears with the person's first real
- * message (a lone "@编剧 " is the box's own pre-fill). What it says comes
+ * message (a lone "@文案 " is the box's own pre-fill). What it says comes
  * from one light GET (`/api/chat/project`), made again each time a reply
  * lands, because an employee's reply is what can put the conversation in a
- * project (编剧's script is always written into one). The server decides —
+ * project (文案's script is always written into one). The server decides —
  * the link recorded when it was made into a project, the receipts of the
  * employees' work in it, the project the screen is about — and checks every
  * project against the person, so a private one never shows here.
@@ -75,7 +75,7 @@ export function ProjectBridge({
   /* Changes each time a reply settles: the moment to ask again. */
   const settled = messages.filter((m) => m.role === "assistant" && m.status !== "streaming").length;
   const hidden = compact && BACK_OFFICE.test(pathname);
-  /* Only once there is something to put in a project: 编剧, 剪辑师 or 撰稿人
+  /* Only once there is something to put in a project: 文案, 剪辑师 or 撰稿人
      answered here. A research question is not a project, and the bar on
      every chat ("把这段对话变成项目…") was noise the owner circled. */
   const employeeMade = messages.some((m) => m.role === "assistant" && (m.speaker === "script" || m.speaker === "video" || m.speaker === "article"));
@@ -134,7 +134,7 @@ export function ProjectBridge({
             <div style={{ fontSize: 12.5, fontWeight: 600, color: "#171717", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
               {done.made.existed ? t(`这段对话已经有项目了：《${done.made.title}》`, `This conversation already has a project: “${done.made.title}”`) : t(`项目已建：《${done.made.title}》`, `Project started: “${done.made.title}”`)}
             </div>
-            <div style={{ fontSize: 12, color: "#525252", marginTop: 1 }}>{t("编剧、剪辑师在项目里接着做；对话要点已发到项目对话。", "The writer and the editor carry on in the project; the summary is in its chat.")}</div>
+            <div style={{ fontSize: 12, color: "#525252", marginTop: 1 }}>{t("文案、剪辑师在项目里接着做；对话要点已发到项目对话。", "The writer and the editor carry on in the project; the summary is in its chat.")}</div>
           </div>
           <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
             <Link prefetch={false} href={`/projects/${done.made.id}`} style={{ ...button(true), textDecoration: "none" }}>
@@ -187,7 +187,7 @@ export function ProjectBridge({
   /* A guest (or someone without Chat) is not offered a project. */
   if (!state.canCreate) return null;
 
-  const hint = t("把这段对话做成一个项目，编剧/剪辑师在项目里接着做", "Turn this conversation into a project; the writer and the editor carry on there");
+  const hint = t("把这段对话做成一个项目，文案/剪辑师在项目里接着做", "Turn this conversation into a project; the writer and the editor carry on there");
   return (
     <Shell compact={compact} boxRef={bar}>
       <span title={hint} style={{ display: "inline-flex", alignItems: "center", gap: 7, minWidth: 0, flex: "1 1 auto", fontSize: compact ? 11.5 : 12, color: "#7c7c7c" }}>
@@ -502,7 +502,7 @@ function CreateForm({
         {looseScript ? (
           <div style={{ fontSize: 12, color: "#525252", display: "flex", alignItems: "center", gap: 6 }}>
             <Icon name="pen" size={12} />
-            {t(`编剧在对话里写的脚本《${looseScript.title}》会放进这个项目`, `The script written here, “${looseScript.title}”, goes into the project`)}
+            {t(`文案在对话里写的脚本《${looseScript.title}》会放进这个项目`, `The script written here, “${looseScript.title}”, goes into the project`)}
           </div>
         ) : null}
         {error ? <div style={{ fontSize: 12, color: "#c42b2b", lineHeight: 1.5 }}>{error}</div> : null}

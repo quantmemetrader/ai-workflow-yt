@@ -307,7 +307,7 @@ export type ScriptDetail = {
   live: Measurement;
   locked: boolean;
   topic: ScriptTopic | null;
-  /** 编剧 is writing a draft into it right now (started from the topic). */
+  /** 文案 is writing a draft into it right now (started from the topic). */
   writing: boolean;
 };
 
@@ -906,7 +906,7 @@ export async function decideApproval(
   if (!version) return { error: "The version this approval names no longer exists." };
 
   /* Any owner or admin may decide, whoever was asked and whoever the version
-     is filed under — 编剧 writes under the asker's name, so "you cannot approve
+     is filed under — 文案 writes under the asker's name, so "you cannot approve
      your own version" stopped the admin who asked for the draft ("any admin
      should be able to do approval, not one specific person"). Others: only
      the person asked, and never their own version. */

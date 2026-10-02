@@ -9,7 +9,7 @@ import { AttachButton, AttachChips, useAttachments } from "@/components/chat/Att
 import { addReferenceAction } from "@/app/(app)/projects/[id]/script/actions";
 
 /**
- * 「做一条新视频」: one sentence, one press. The project starts, 编剧 starts
+ * 「做一条新视频」: one sentence, one press. The project starts, 文案 starts
  * the first draft, and you land on the video's page to watch it happen.
  */
 export function NewVideoBox({ zh }: { zh: boolean }) {
@@ -68,7 +68,7 @@ export function NewVideoBox({ zh }: { zh: boolean }) {
         style={{ flex: "1 1 280px", minWidth: 0, height: 48, padding: "0 16px", fontSize: 15, fontFamily: "inherit", border: "1px solid #d6d5d0", borderRadius: 12, outline: "none", background: "#fff" }}
       />
       <span style={{ display: "inline-flex", alignItems: "center", height: 48 }}>
-        <AttachButton zh={zh} onFiles={att.add} size={40} title={t("附范例或资料：编剧会学范例的风格来写初稿", "Attach a sample or notes for the first draft")} />
+        <AttachButton zh={zh} onFiles={att.add} size={40} title={t("附范例或资料：文案会学范例的风格来写初稿", "Attach a sample or notes for the first draft")} />
       </span>
       <button type="submit" disabled={!text.trim() || pending || att.uploading} style={{ ...bigButton("primary", !text.trim() || pending), height: 48, padding: "0 26px", fontSize: 15 }}>
         {pending ? t("正在开始…", "Starting…") : t("开始", "Start")}
@@ -76,7 +76,7 @@ export function NewVideoBox({ zh }: { zh: boolean }) {
       {att.attached.length ? (
         <div style={{ flexBasis: "100%" }}>
           <AttachChips zh={zh} attached={att.attached} onRemove={att.remove} />
-          <div style={{ fontSize: 12, color: "#7a7a76" }}>{t("编剧写初稿时会照这些范例的结构和语气来写，资料里的事实也会用上。", "The first draft follows these samples and uses their facts.")}</div>
+          <div style={{ fontSize: 12, color: "#7a7a76" }}>{t("文案写初稿时会照这些范例的结构和语气来写，资料里的事实也会用上。", "The first draft follows these samples and uses their facts.")}</div>
         </div>
       ) : null}
       <div style={{ flexBasis: "100%", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>

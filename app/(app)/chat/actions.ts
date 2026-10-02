@@ -320,10 +320,10 @@ export async function pressCardAction(slug: string, messageId: string, actionId:
   const already = readCardDone(message.meta);
   if (already) return { error: "Somebody already answered this" };
 
-  /* The press is claimed before anything is done for it. "交给编剧" on the
+  /* The press is claimed before anything is done for it. "交给文案" on the
      plan can start a project (below), and a double click, two people, or
      Home and the channel pressing at once each used to get past the check
-     above and start one: two projects for one to-do, two 编剧 turns. The
+     above and start one: two projects for one to-do, two 文案 turns. The
      first claim wins; the others are told somebody already answered. */
   const done = { actionId, by: viewer.nameLocal || viewer.name, at: new Date().toISOString() };
   if (!(await markCardDone(channel.id, messageId, done))) return { error: "Somebody already answered this" };
@@ -331,11 +331,11 @@ export async function pressCardAction(slug: string, messageId: string, actionId:
   /* A button that hands checked work on — the approval's "让剪辑师出粗剪" —
      carries it, so the colleague's turn opens inside that script and
      project instead of in a channel that is neither (`pressedHandoff`).
-     The morning plan's "交给编剧" hands 编剧 the project its to-do is
+     The morning plan's "交给文案" hands 文案 the project its to-do is
      written into, found or started now (`planHandoff`): the plan lives in
      #研究日报, which is no project, and the draft used to land loose. */
   let handoff: Awaited<ReturnType<typeof pressedHandoff>> = null;
-  /* Set when the hand-off is the morning plan's "交给编剧" (`planHandoff`). */
+  /* Set when the hand-off is the morning plan's "交给文案" (`planHandoff`). */
   let planned = false;
   try {
     handoff = await pressedHandoff(viewer, message.meta, action.body);
@@ -355,13 +355,13 @@ export async function pressCardAction(slug: string, messageId: string, actionId:
   }
   revalidatePath(`/chat/c/${slug}`);
 
-  /* "交给编剧" on the morning plan: the draft is written by code, into the
-     project the press just found or started — not by a 编剧 model turn in
+  /* "交给文案" on the morning plan: the draft is written by code, into the
+     project the press just found or started — not by a 文案 model turn in
      #研究日报. That turn once went off and watched a trend topic instead
      ("Watching … now", in English), and the owner found an empty project
      and nothing anywhere: "it just disappeared". Now the press starts the
      same background draft as 开项目 on an idea (`startFromTopicAction` with
-     `write`), and 编剧 says in this channel where it is writing, with the
+     `write`), and 文案 says in this channel where it is writing, with the
      project linked; the project's own chat gets the "写好了" line. */
   if (planned && handoff?.to === "script" && handoff.workProjectId && handoff.task) {
     const title = handoff.artifacts.find((a) => a.kind === "work_project")?.title ?? "";

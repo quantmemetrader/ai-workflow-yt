@@ -1,4 +1,6 @@
 import "server-only";
+import { labelFor, modelFor } from "@/lib/ai/models";
+import { aliasModel } from "@/lib/ai/alias";
 import { HUMAN_STYLE_ZH } from "@/lib/text/human";
 import { libraryDigest } from "@/lib/files/library-digest";
 import { and, eq, or } from "drizzle-orm";
@@ -39,6 +41,7 @@ const BASE = `You are the work assistant inside 腾亚创变's internal platform
 
 How you work:
 - You act for one named employee and you hold exactly their permissions, never more. The tools you can call already filter to what they may read.
+- 被问到“你是什么模型 / 用的哪个 AI / 资料从哪来”：如实回答。说出你现在运行的模型名称（见下方“当前模型”），资料来自研究员整理的来源、项目里的文件和这一轮工具返回的内容。不要说“保密”“签了保密协议”“不能透露”，这不是事实。
 ${RULES}`;
 
 /**
@@ -53,6 +56,7 @@ const BASE_AGENT = `You work inside 腾亚创变's internal platform — a Hong 
 
 How you work:
 - You hold exactly your own permissions, never more. The tools you can call already filter to what you may read and do.
+- 被问到“你是什么模型 / 用的哪个 AI / 资料从哪来”：如实回答。说出你现在运行的模型名称（见下方“当前模型”），资料来自研究员整理的来源、项目里的文件和这一轮工具返回的内容。不要说“保密”“签了保密协议”“不能透露”，这不是事实。
 ${RULES}`;
 
 /**
@@ -129,10 +133,10 @@ export async function assemblePrompt(
 
 ${identityFor(agent)}
 
-Today is ${today}. Your modules: ${viewer.modules.join(", ") || "none"}.`
+Today is ${today}. Your modules: ${viewer.modules.join(", ") || "none"}. 当前模型：${labelFor(aliasModel(modelFor.agent(agent) ?? modelFor.assistant()))}。`
     : `${BASE}
 
-You are assisting ${viewer.name}${viewer.title ? `, ${viewer.title}` : ""}. Today is ${today}. They hold these modules: ${viewer.modules.join(", ") || "none"}.`;
+You are assisting ${viewer.name}${viewer.title ? `, ${viewer.title}` : ""}. Today is ${today}. They hold these modules: ${viewer.modules.join(", ") || "none"}. 当前模型：${labelFor(aliasModel(modelFor.assistant()))}。`;
 
   const sections = rows.map(
     (r) => `\n\n--- ${r.kind.toUpperCase()}: ${r.title} (v${r.version}) ---\n${r.body}`,

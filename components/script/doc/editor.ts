@@ -11,7 +11,7 @@ import { Decoration, DecorationSet } from "@tiptap/pm/view";
  *                 paragraph line spacing (`lineHeight`)
  *   Highlights    decorations for the page's own marks, all computed, none
  *                 stored in the document: comment quotes (yellow), find
- *                 matches (orange, the current one darker), and 编剧's tracked
+ *                 matches (orange, the current one darker), and 文案's tracked
  *                 changes (old text struck through in red, the new text as a
  *                 green widget with 接受 / 拒绝)
  *
@@ -86,7 +86,7 @@ export function findMatches(doc: PMNode, term: string): { from: number; to: numb
   return out;
 }
 
-export type Tracked = { id: string; kind: "change" | "delete" | "insert"; from: number; to: number; text: string; why: string; /** Bumped each time 编剧 redoes this one change (「再改改」). */ rev?: number; busy?: boolean };
+export type Tracked = { id: string; kind: "change" | "delete" | "insert"; from: number; to: number; text: string; why: string; /** Bumped each time 文案 redoes this one change (「再改改」). */ rev?: number; busy?: boolean };
 
 export type MarksState = {
   comments: { id: string; quote: string; unit: number | null }[];
@@ -159,7 +159,7 @@ function trackedWidget(t: Tracked, zh: boolean): HTMLElement {
   const again = document.createElement("button");
   again.type = "button";
   again.className = "gd-new-no gd-new-again";
-  again.textContent = t.busy ? (zh ? "编剧在改…" : "Rewriting…") : zh ? "再改改" : "Redo";
+  again.textContent = t.busy ? (zh ? "文案在改…" : "Rewriting…") : zh ? "再改改" : "Redo";
   again.disabled = Boolean(t.busy);
   again.onmousedown = (e) => e.preventDefault();
   const ask = document.createElement("form");

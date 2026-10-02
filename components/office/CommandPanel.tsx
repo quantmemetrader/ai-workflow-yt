@@ -8,7 +8,7 @@ import { agentTag, type AgentKey } from "@/lib/agents/catalog";
 import type { LookKey } from "@/components/office/art";
 
 export type CommandPanelHandle = {
-  /** Put this colleague in the composer ("@编剧 "), or the assistant for "host". */
+  /** Put this colleague in the composer ("@文案 "), or the assistant for "host". */
   pick: (key: LookKey) => void;
   /** Send these words to this colleague now (the desk popover's 派任务). */
   say: (key: LookKey, text: string) => void;

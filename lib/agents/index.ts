@@ -99,7 +99,7 @@ export const AGENT_CHANNELS = {
   },
   production: {
     name: "制作",
-    topic: "脚本通过审批后，编剧在这里把它交给剪辑师。新素材上传后，策划也在这里说可以拿它做什么。",
+    topic: "脚本通过审批后，文案在这里把它交给剪辑师。新素材上传后，策划也在这里说可以拿它做什么。",
     owner: "script",
   },
 } as const satisfies Record<string, { name: string; topic: string; owner: AgentKey }>;

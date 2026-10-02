@@ -10,7 +10,7 @@ import { scriptWriting } from "@/lib/script/writing";
  * One script's state in a few fields, for a page waiting on a draft.
  *
  * After "start and write the script" the person lands on the script (or the
- * project) while 编剧 is still writing. The page asks this every few
+ * project) while 文案 is still writing. The page asks this every few
  * seconds and refreshes once, when `writing` goes false or the beats
  * arrive, instead of re-rendering itself on a timer.
  *

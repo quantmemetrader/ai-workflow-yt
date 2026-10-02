@@ -199,7 +199,7 @@ const agentName = (key: unknown): string =>
 /**
  * What a message's `meta` says that its text does not, as lines under it.
  *
- * Two readings went wrong without these. The morning plan reads "编剧 —
+ * Two readings went wrong without these. The morning plan reads "文案 —
  * 完成脚本《AI模型蒸馏》初稿", which a model took for a report that the
  * script was done; it is an assignment. And a hand-off the system checked
  * looks exactly like a colleague's unchecked "@剪辑师" in plain text, so

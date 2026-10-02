@@ -89,6 +89,22 @@ function report(kind,msg,stack,digest){
   }catch(e){}
 }
 window.__aura={report:report,stale:stale,reloadOnce:reloadOnce};
+/* Every text node's words, recorded the moment the browser inserts them and
+   before any extension can rewrite them (2 Oct: a 繁简 converter turned the
+   script page's labels into 「導入文檔」「艸藁」「棠訪藁」). SimplifiedGuard
+   (components/zh) puts these exact words back when a node is rewritten, and
+   takes this watch over once React is up. */
+try{
+  if(typeof WeakMap==="function"&&typeof MutationObserver==="function"){
+    var orig=window.__zhOrig||new WeakMap();window.__zhOrig=orig;
+    var SKIPT={SCRIPT:1,STYLE:1,TEXTAREA:1,INPUT:1,CODE:1,PRE:1,NOSCRIPT:1};
+    var keep=function(t){var p=t.parentNode;if(!p||p.nodeType!==1||SKIPT[p.nodeName]||p.isContentEditable)return;if(!orig.has(t)&&t.nodeValue)orig.set(t,t.nodeValue);};
+    var walk=function(n){if(n.nodeType===3){keep(n);return;}if(n.nodeType!==1||SKIPT[n.nodeName])return;var w=document.createTreeWalker(n,NodeFilter.SHOW_TEXT),t;while((t=w.nextNode()))keep(t);};
+    var mo=new MutationObserver(function(rs){for(var i=0;i<rs.length;i++){var a=rs[i].addedNodes;for(var j=0;j<a.length;j++)walk(a[j]);}});
+    mo.observe(document.documentElement,{childList:true,subtree:true});
+    window.__zhOrigStop=function(){try{mo.disconnect();}catch(e){}};
+  }
+}catch(e){}
 /* A tab left open across a deploy (2 Oct): every few minutes, and when the tab
    comes back to the front, the page asks which release is answering. A newer
    one: the page reloads itself if nobody is typing in it, else a bar offers to. */

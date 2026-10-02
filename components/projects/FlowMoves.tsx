@@ -17,7 +17,7 @@ import { Card, bigButton } from "@/components/projects/kit";
  * The step the project is on, with the two presses Ryan asked for (27 Sep):
  * 「确认，交给下一位」 — confirm and hand on to the next person in the flow —
  * and 「写意见，退回给上一位」 — comments sent back to the previous person
- * (a script comes back with 编剧's edit suggestions, `sendBackAction`).
+ * (a script comes back with 文案's edit suggestions, `sendBackAction`).
  * Only presses that can be pressed; where the work is done on the step's own
  * page, the press goes there.
  */
@@ -101,7 +101,7 @@ export function FlowMoves({ p, zh, canApprove }: { p: ProjectDetail; zh: boolean
               prev.key === "edit"
                 ? await sendChannelMessage(slug, `${agentTag("video")} 成片退回，按以下意见重新剪一版视频：${text}`)
                 : prev.key === "topic"
-                  ? await sendChannelMessage(slug, `${agentTag("research")} 选题退回：${text}\n请按这个意见换个方向，再交给编剧。`)
+                  ? await sendChannelMessage(slug, `${agentTag("research")} 选题退回：${text}\n请按这个意见换个方向，再交给文案。`)
                   : null;
             if (failed(r)) return;
             notify(t(`已退回给 ${nameOf(prev)}`, `Sent back to ${nameOf(prev)}`), "ok");

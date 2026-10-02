@@ -13,7 +13,7 @@ import { JOB_OWNER, jobName } from "@/lib/home/service";
  * "make sure it just look automated and interconnected everywhere." The home
  * screen showed the team at work; every other page showed a table. This is
  * the same fact, small enough to sit beside the breadcrumb: a render at 62%,
- * 研究员's brief from this morning, 编剧 answering in #制作 three minutes ago.
+ * 研究员's brief from this morning, 文案 answering in #制作 three minutes ago.
  * Read from what already exists — the queue and the agents' own messages —
  * never invented.
  */

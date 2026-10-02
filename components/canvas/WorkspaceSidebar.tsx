@@ -95,7 +95,7 @@ export type SidebarConversation = { id: string; title: string; updatedAt: string
  * The person's own assistant, then the AI employees, one row each: face,
  * name, and the one line on what to ask them for. An employee's row opens the
  * assistant chat with that employee already tagged (`/chat?agent=…`), which is
- * the same as typing "@编剧" — the shortest way in for anybody who did not
+ * the same as typing "@文案" — the shortest way in for anybody who did not
  * know the @ was there.
  *
  * Which row is selected is read from the query string. `useSearchParams`

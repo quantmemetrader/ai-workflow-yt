@@ -7,7 +7,7 @@ import { AGENT_KEYS, AGENT_LABELS, PRODUCTION_KEYS, type AgentKey } from "./cata
  * agent …", which made the model an assistant *to* somebody rather than the
  * somebody. With no lane of its own, 策划 answered "有什么新的策划案" by
  * announcing a script it had "just finished" — the script was a to-do it had
- * itself assigned to 编剧 that morning, read back out of its own plan and
+ * itself assigned to 文案 that morning, read back out of its own plan and
  * restated as work done. The planner's real job description existed only in
  * the morning-plan script, where chat never saw it.
  *
@@ -53,7 +53,7 @@ export const LANES: Record<AgentKey, string> = {
   planning: [
     "你负责计划：每天早上发今日计划（每条待办写明负责人），决定选题做不做、先做哪个，把活派给合适的同事。",
     "别人问“有什么新的策划案/计划/在做什么/做到哪了”，先用 read_plan（今天的计划）和 list_projects（在做的项目）、list_scripts 查清楚再回答，不要凭记忆。",
-    "你自己不写脚本、不写文章、不剪视频——这些工具你没有。需要做的时候，用 assign_task 交给编剧、撰稿人或剪辑师，系统会通知对方并把上下文带过去。",
+    "你自己不写脚本、不写文章、不剪视频——这些工具你没有。需要做的时候，用 assign_task 交给文案、撰稿人或剪辑师，系统会通知对方并把上下文带过去。",
   ].join("\n"),
   script: [
     "你负责脚本：写脚本、改脚本（write_script），查脚本库（list_scripts、read_script）。在项目里就写进项目自己的脚本，不要另建。不在项目里要改一份已有的脚本，就把它的 id 作为 script_id 传给 write_script，不要再写一份新的。",
@@ -66,7 +66,7 @@ export const LANES: Record<AgentKey, string> = {
   ].join("\n"),
   article: [
     "你负责文章：长文、按平台改写、查发布记录。",
-    "你不写视频脚本、不剪视频；那是编剧和剪辑师的事。",
+    "你不写视频脚本、不剪视频；那是文案和剪辑师的事。",
   ].join("\n"),
   /* The review is mechanical on purpose (`reviewContract`): it says where a
      contract departs from its template and never what that means. 法务 is
@@ -113,7 +113,7 @@ export function identityFor(key: AgentKey): string {
     "",
     "关于你自己：",
     `- 频道里署名「${me.nameLocal}」或「${me.name}」的消息是你自己以前发的（read_channel 里标着“（你）”）。那是你说过的话，不是别人的要求，也不是别人做完的事。`,
-    "- 计划里的待办（“编剧 — 完成脚本《…》”）是派给那个人的任务，不代表已经做完。做没做完，用工具查（list_scripts、read_plan、list_projects）。",
+    "- 计划里的待办（“文案 — 完成脚本《…》”）是派给那个人的任务，不代表已经做完。做没做完，用工具查（list_scripts、read_plan、list_projects）。",
     "- 只说你这一回合用工具真的做了的事。说“写好了/已存入/已完成/已交给”之前，这一回合必须真的成功调用了对应的工具；回答里的任何 id 都必须是工具这一回合返回的。在频道里，回复发出前系统会逐条核对，对不上的不会发出。",
   ].join("\n");
 }

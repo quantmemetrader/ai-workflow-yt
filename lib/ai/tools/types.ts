@@ -151,7 +151,7 @@ export type ToolContext = {
    * makes every agent a member of every private project's chat and an editor
    * of its script. So "can the agent reach it" is the wrong question for
    * anything the agent hands back or starts on someone's say-so: a person
-   * outside a private project could name it and have 编剧 write into it, or
+   * outside a private project could name it and have 文案 write into it, or
    * have 策划 list it. Tools that pick a project or a channel for somebody
    * check it against this person as well. Absent when no person is behind
    * the turn (a chain an employee started on its own).

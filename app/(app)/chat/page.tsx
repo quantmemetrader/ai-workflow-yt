@@ -21,7 +21,7 @@ export default async function NewChatPage({
   const { q, agent, fresh } = await searchParams;
   const zh = (viewer.locale ?? "zh-CN").startsWith("zh");
   /* `/chat?agent=script` — the sidebar's "AI 同事" list. The employee is
-     tagged in the composer, which is exactly what typing "@编剧" would do, so
+     tagged in the composer, which is exactly what typing "@文案" would do, so
      the stream route routes it the same way and it can be deleted to ask the
      assistant instead. Anything that is not an employee is ignored. */
   const picked = typeof agent === "string" && (AGENT_KEYS as readonly string[]).includes(agent) ? (agent as AgentKey) : null;

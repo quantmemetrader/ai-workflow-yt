@@ -52,7 +52,7 @@ export function TopicQueue({ items, zh, canStart }: { items: TopicQueueItem[]; z
         <div style={{ minWidth: 0 }}>
           <div style={{ fontSize: 14, fontWeight: 600 }}>{t("等着写的选题", "Topics waiting for a script")}</div>
           <div style={{ fontSize: 12, color: "#999999", marginTop: 1 }}>
-            {t("从首页、研究页、选题储备和今天的计划来的。按一下，编剧就开始写，写好出现在脚本里。", "From Home, Research, the backlog and today's plan. One press and the writer starts; the draft lands in the script.")}
+            {t("从首页、研究页、选题储备和今天的计划来的。按一下，文案就开始写，写好出现在脚本里。", "From Home, Research, the backlog and today's plan. One press and the writer starts; the draft lands in the script.")}
           </div>
         </div>
       </div>
@@ -77,7 +77,7 @@ export function TopicQueue({ items, zh, canStart }: { items: TopicQueueItem[]; z
           <div key={it.key} style={{ border: "1px solid #ececec", borderRadius: 12, background: "#fff", padding: "13px 16px 14px", display: "flex", flexDirection: "column", gap: 6 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
               {/* Tinted by whose it is (AGENT_TINTS): a project waiting on
-                  编剧 in the script peach, a to-do from today's plan in
+                  文案 in the script peach, a to-do from today's plan in
                   策划's violet, anything 研究员 found in the research blue. */}
               <span style={{ fontSize: 11, color: "#525252", background: it.kind === "project" ? "#f8dcc6" : it.kind === "plan" ? "#dcd6fb" : "#d5e7fb", borderRadius: 999, padding: "1px 8px", flexShrink: 0, maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                 {it.kind === "project" ? t("项目 · 等初稿", "Project · needs a draft") : it.label}
@@ -92,7 +92,7 @@ export function TopicQueue({ items, zh, canStart }: { items: TopicQueueItem[]; z
               {it.writing ? (
                 <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11.5, color: "#b3420e", flexShrink: 0 }}>
                   <span style={{ width: 7, height: 7, borderRadius: 4, background: "#b3420e", animation: "auraPulse 1.6s ease-in-out infinite" }} />
-                  {t("编剧正在写", "The writer is writing")}
+                  {t("文案正在写", "The writer is writing")}
                 </span>
               ) : null}
             </div>
@@ -118,11 +118,11 @@ export function TopicQueue({ items, zh, canStart }: { items: TopicQueueItem[]; z
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4, flexWrap: "wrap" }}>
               {it.writing && it.scriptId ? (
                 <Link prefetch={false} href={`/script/${it.scriptId}?writing=1`} style={{ ...btn(true), textDecoration: "none" }}>
-                  <Icon name="pen" size={13} /> {t("看编剧写", "Watch it being written")}
+                  <Icon name="pen" size={13} /> {t("看文案写", "Watch it being written")}
                 </Link>
               ) : canStart ? (
                 <button type="button" disabled={busy !== null} onClick={() => write(it)} style={{ ...btn(true), opacity: busy === it.key ? 0.6 : 1 }}>
-                  <Icon name="pen" size={13} /> {it.kind === "project" ? t("让编剧写初稿", "Have the writer draft it") : t("开项目并写脚本", "Start it and write the script")}
+                  <Icon name="pen" size={13} /> {it.kind === "project" ? t("让文案写初稿", "Have the writer draft it") : t("开项目并写脚本", "Start it and write the script")}
                 </button>
               ) : null}
               {it.scriptId && !it.writing ? (

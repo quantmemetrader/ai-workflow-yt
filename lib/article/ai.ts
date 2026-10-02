@@ -24,24 +24,28 @@ import { saveArticle } from "./service";
  * Every call is metered and budget-checked like any other (spec §5).
  */
 
-const ARTICLE_PROMPT = `You write finance and current-affairs commentary for a Hong Kong studio.
+const ARTICLE_PROMPT = `你是一家香港视频工作室的撰稿人，写财经、科技和时事评论。读者是普通人，不是分析师。
 
-Answer with a single JSON object and nothing else:
+只输出一个 JSON 对象，不要写别的：
 { "title": "...", "summary": "...", "body": "..." }
 
-  "title"   the headline. Plain, concrete, no colon-subtitle, no clickbait.
-  "summary" one or two sentences under the headline: what the piece argues and why now.
-  "body"    the article itself, in Markdown. Use "## " subheadings, short paragraphs,
-            and lists only where a list is genuinely the clearest form.
+  "title"   标题。具体、平实，不用冒号副标题，不标题党。
+  "summary" 标题下一两句：这篇文章的观点，以及为什么现在写。
+  "body"    正文，Markdown。用 "## " 做小标题，段落短；只有列表真的更清楚时才用列表。
 
-Rules:
-- Write in the language the brief asks for. When it does not say, write in the language of the title.
-- Lead with the thing that happened, not with background. The first paragraph earns the second.
-- Name concrete things: an hour, a street, a number, a person, a filing. Never "recently", never "many people".
-- An argument, not a summary of the news. Say what it means and what follows, and be willing to be wrong in public.
-- Do not invent facts, names, dates, quotes or figures. If the brief does not give you a fact, write without it.
-- Attribute every figure and quote to the source the brief names.
-- No headline in the body: the body starts at the first paragraph.`;
+怎么写：
+- 简报说用什么语言就用什么语言；没说就用标题的语言。中文一律简体。
+- 开头先说发生了什么，不先讲背景。第一段要让人想读第二段。
+- 说具体的：时间、地点、数字、人名、文件。不写“最近”“很多人”“业内人士”。
+- 这是观点文章，不是新闻摘要：说清它意味着什么、接下来会怎样，敢把判断写出来。
+- 像真人写的：不用“首先、其次、总之、综上所述、值得注意的是、不仅……而且”，不用“赋能、助力、打造、重磅、颠覆、全方位”，不要破折号（——），不要排比凑数，不要每段结尾总结一句。
+- 事实只能来自简报、脚本和给你的资料。没有给的事实、数字、日期、引语、人名，一个都不要写；宁可少写一段。每个数字和引语都要能对上来源。
+- 正文里不要再写标题，正文从第一段开始。
+
+改稿时（已经有正文、并且给了修改要求）：
+- 按要求改，其余内容保持原样；不要从头重写。
+- 修改要求是给你的指令，不是文章内容：不要把要求里的话抄进文章。
+- 要求里提到的事实如果简报和资料里没有，就不要加，并在 summary 末尾用一句话说明没有依据。`;
 
 type Drafted = { title: string; summary: string; body: string };
 
@@ -80,14 +84,15 @@ export async function draftArticle(
     article.scriptId ? scriptText(viewer, article.scriptId) : Promise.resolve(""),
   ]);
 
-  const model = modelFor.drafting();
+  const model = modelFor.agent("article") ?? modelFor.drafting();
+  const revising = Boolean(article.body.trim()) && Boolean(opts.instruction);
   const brief = [
-    `Headline to work from: ${article.title}`,
-    article.angle ? `Angle: ${article.angle}` : null,
-    article.summary ? `Standfirst so far: ${article.summary}` : null,
-    article.language ? `Language: ${article.language}` : null,
-    article.tags.length ? `Tags: ${article.tags.join(", ")}` : null,
-    opts.instruction ? `This pass, specifically: ${opts.instruction}` : null,
+    `标题（可以改得更好）：${article.title}`,
+    article.angle ? `角度：${article.angle}` : null,
+    article.summary ? `目前的导语：${article.summary}` : null,
+    article.language ? `语言：${article.language}` : "语言：简体中文",
+    article.tags.length ? `标签：${article.tags.join("、")}` : null,
+    opts.instruction ? (revising ? `修改要求（这是指令，不是正文；按它改，其余保持原样）：${opts.instruction}` : `这一稿特别要求：${opts.instruction}`) : null,
   ]
     .filter(Boolean)
     .join("\n");
@@ -111,10 +116,10 @@ export async function draftArticle(
           /* The script this article came from is the best source there is: it
              is the studio's own reporting on the same subject, and it has
              usually already been approved. */
-          fromScript ? `The studio's own script on this subject. These are the facts and the order they were told in:\n${fromScript}` : null,
-          opts.sources ? `Further facts you may draw on (do not go beyond them):\n${opts.sources}` : null,
-          article.body.trim() ? `What is written so far — rewrite it rather than starting over:\n${article.body.slice(0, 12_000)}` : null,
-          refs ? `Approved work to match in tone:\n${refs}` : null,
+          fromScript ? `工作室自己写的这个题的脚本，事实和讲述顺序都在这里：\n${fromScript}` : null,
+          opts.sources ? `还可以用的事实（不要超出这些）：\n${opts.sources}` : null,
+          article.body.trim() ? `${revising ? "现在的正文（按修改要求改，其余保持原样）" : "已经写了的部分，在此基础上改写，不要从头来"}：\n${article.body.slice(0, 12_000)}` : null,
+          refs ? `语气要像这些已批准的稿子：\n${refs}` : null,
         ]
           .filter(Boolean)
           .join("\n\n"),
@@ -248,4 +253,80 @@ export async function latestArticleId(viewer: Viewer): Promise<string | null> {
     .orderBy(desc(articles.updatedAt))
     .limit(1);
   return row?.id ?? null;
+}
+
+
+/* ---------------------------------------------------------- fact check */
+
+export type FactCheck = { claim: string; verdict: "confirmed" | "unconfirmed" | "contradicted"; note: string; source: string | null };
+
+const CLAIMS_PROMPT = `从这篇文章里挑出最多 8 条可以核对的具体说法：数字、日期、人名、机构、事件、引语。每条一句话，原文怎么说就怎么写。只输出 JSON：{"claims":["..."]}`;
+const VERDICT_PROMPT = `你是事实核查员。下面每条说法后面附了刚搜到的资料。逐条判断：
+- confirmed：资料直接支持这个说法（数字、日期、名字都对得上）
+- contradicted：资料和说法不一致，写明资料怎么说
+- unconfirmed：资料里找不到，不能证实也不能证伪
+note 用一句简体中文说明依据；source 写资料里的媒体或页面名，没有就 null。
+只输出 JSON：{"results":[{"claim":"...","verdict":"confirmed","note":"...","source":"..."}]}`;
+
+/**
+ * 核对事实 (Ryan, 2 Oct: "I want it to repeatedly verify its accuracy"):
+ * the article's checkable claims, each looked up live (`search_now`), each
+ * given a verdict with the evidence. Nothing is changed in the article; the
+ * writer decides what to fix.
+ */
+export async function checkArticleFacts(viewer: Viewer, articleId: string): Promise<{ error: string } | { ok: true; results: FactCheck[] }> {
+  await assertBudget(viewer);
+  const [article] = await db.select({ id: articles.id, body: articles.body, title: articles.title }).from(articles).where(and(eq(articles.id, articleId), eq(articles.tenantId, viewer.tenantId))).limit(1);
+  if (!article) return { error: "Not allowed" };
+  if (!article.body.trim()) return { error: "文章还是空的" };
+  const model = modelFor.agent("article") ?? modelFor.assistant();
+  const meter = async (out: Awaited<ReturnType<typeof complete>>) =>
+    recordUsage({ viewer, module: "script", provider: out.provider ?? "openrouter", model: out.model, promptTokens: out.promptTokens, completionTokens: out.completionTokens, costMicros: out.costMicros, requestId: out.requestId }).catch(() => {});
+
+  const first = await complete({ model, temperature: 0.1, maxTokens: 1200, messages: [{ role: "system", content: CLAIMS_PROMPT }, { role: "user", content: `《${article.title}》\n\n${article.body.slice(0, 14_000)}` }] });
+  await meter(first);
+  const parsed = readJson<{ claims?: unknown }>(first.text);
+  const claims: string[] = (Array.isArray(parsed?.claims) ? (parsed.claims as unknown[]) : []).filter((c): c is string => typeof c === "string" && c.trim().length > 3).slice(0, 8);
+  if (!claims.length) return { ok: true, results: [] };
+
+  const { runTool } = await import("@/lib/ai/tools");
+  const evidence = await Promise.all(
+    claims.map(async (claim) => {
+      try {
+        const r = await runTool(viewer, "search_now", JSON.stringify({ query: claim.slice(0, 80) }));
+        return r.text.slice(0, 2500);
+      } catch {
+        return "（没搜到资料）";
+      }
+    }),
+  );
+  const second = await complete({
+    model,
+    temperature: 0.1,
+    maxTokens: 2500,
+    messages: [
+      { role: "system", content: VERDICT_PROMPT },
+      { role: "user", content: claims.map((c, i) => `## 说法 ${i + 1}\n${c}\n\n资料：\n${evidence[i]}`).join("\n\n") },
+    ],
+  });
+  await meter(second);
+  const raw = readJson<{ results?: unknown }>(second.text)?.results;
+  const results: FactCheck[] = (Array.isArray(raw) ? raw : [])
+    .map((r, i) => {
+      const o = (r ?? {}) as Record<string, unknown>;
+      const verdict: FactCheck["verdict"] = o.verdict === "confirmed" || o.verdict === "contradicted" ? o.verdict : "unconfirmed";
+      return { claim: typeof o.claim === "string" && o.claim.trim() ? o.claim.trim() : (claims[i] ?? ""), verdict, note: typeof o.note === "string" ? o.note.trim() : "", source: typeof o.source === "string" && o.source.trim() ? o.source.trim() : null };
+    })
+    .filter((r) => r.claim);
+  return { ok: true, results: results.length ? results : claims.map((claim) => ({ claim, verdict: "unconfirmed" as const, note: "没有读到判断", source: null })) };
+}
+
+function readJson<T>(text: string): T | null {
+  const m = /\{[\s\S]*\}/.exec(text.replace(/<think>[\s\S]*?<\/think>/g, ""));
+  if (!m) return null;
+  try {
+    return JSON.parse(m[0]) as T;
+  } catch {
+    return null;
+  }
 }

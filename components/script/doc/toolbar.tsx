@@ -272,7 +272,7 @@ export function Toolbar({
       >
         {(close) =>
           /* No 建议 here: it only focused the AI box while the label stayed
-             编辑 (QA, 2 Oct). 编剧's edits already arrive as tracked changes. */
+             编辑 (QA, 2 Oct). 文案's edits already arrive as tracked changes. */
           (
             [
               ["edit", "pencil", t("编辑", "Editing"), t("直接修改文档", "Edit the document directly")],

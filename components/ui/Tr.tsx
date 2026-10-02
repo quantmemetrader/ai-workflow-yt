@@ -63,7 +63,7 @@ export const TR_EN: Record<string, string> = {
   全部: "All",
   研究: "Research",
   策划: "Planning",
-  编剧: "Script",
+  文案: "Script",
   剪辑: "Editing",
   "撰稿/发布": "Writing & publishing",
   我的默认: "My default",
@@ -82,7 +82,7 @@ export const TR_EN: Record<string, string> = {
 
 /**
  * An AI employee's name as a name: 研究员 / Researcher, 策划 / Planner,
- * 编剧 / Scriptwriter, 剪辑师 / Editor, 撰稿人 / Writer — never the
+ * 文案 / Scriptwriter, 剪辑师 / Editor, 撰稿人 / Writer — never the
  * translation's "plan" or "Contributor".
  */
 export function AgentName({ agent, zh }: { agent: AgentKey; zh: boolean }) {

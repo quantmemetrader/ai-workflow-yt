@@ -20,7 +20,7 @@ import type { ProductionKey } from "@/lib/agents/catalog";
  * Where today's video is, step by step.
  *
  * The client's picture of the product is one line of work: 研究员 finds the
- * topic, 策划 plans it, 编剧 writes it, a person approves it, 剪辑师 cuts it,
+ * topic, 策划 plans it, 文案 writes it, a person approves it, 剪辑师 cuts it,
  * 撰稿人 posts it, and the numbers come back to 研究员. Every one of those
  * steps already leaves a record — a message with a date in its meta, a script
  * row, an approval, a project, a job, a post, a comment. This reads them back

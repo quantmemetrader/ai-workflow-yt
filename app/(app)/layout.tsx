@@ -1,5 +1,6 @@
 import { after } from "next/server";
 import { requireViewer } from "@/lib/auth/dal";
+import { agentNamesNow } from "@/lib/agents/names-store";
 import { readSessionToken, touchSession } from "@/lib/auth/session";
 import { Rail } from "@/components/canvas/Rail";
 import { TopBar } from "@/components/shell/TopBar";
@@ -22,6 +23,8 @@ import { Warmup } from "@/components/shell/Warmup";
  */
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const viewer = await requireViewer();
+  /* What the studio calls its AI employees, for every client component (`lib/agents/names.ts`). */
+  const agentNames = await agentNamesNow();
 
   // "Last active" drives the presence dots and the Admin list. It is worth a
   // write at most once an hour, and never one the reader waits for — `after`
@@ -41,6 +44,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <div
+      data-agent-names=""
       className="scr"
       style={{
         width: "100%",
@@ -54,6 +58,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         letterSpacing: "0.02em",
       }}
     >
+      <script dangerouslySetInnerHTML={{ __html: `window.__agentNames=${JSON.stringify(agentNames).replace(/</g, "\\u003c")};` }} />
       <Rail
         modules={viewer.modules}
         locale={viewer.locale ?? "zh-CN"}

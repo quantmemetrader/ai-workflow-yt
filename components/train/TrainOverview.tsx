@@ -7,7 +7,7 @@ import { ago, trainHint, trainName } from "@/components/train/names";
 
 /**
  * AI 训练's first page: what it is for in one sentence and three steps,
- * then one row per employee — 编剧 first, the one the client asked about —
+ * then one row per employee — 文案 first, the one the client asked about —
  * with how much it has been taught and a 训练 button.
  */
 export function TrainOverview({ zh, summaries }: { zh: boolean; summaries: TrainSummary[] }) {

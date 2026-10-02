@@ -451,7 +451,7 @@ type Completion = {
 /**
  * One answer, with a way out when the chosen model is down.
  *
- * 2026-10-01: 编剧's own model (Claude Sonnet 5) briefly had "No provider is
+ * 2026-10-01: 文案's own model (Claude Sonnet 5) briefly had "No provider is
  * currently serving this model" on the gateway, and 谢总's first draft failed
  * twice with nothing written. Chat already walks down the fallbacks; the
  * one-shot calls (drafts, rewrites, plans) now do too: the studio default,

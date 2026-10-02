@@ -20,7 +20,7 @@ import {
   retractPublication,
   saveArticle,
 } from "@/lib/article/service";
-import { draftArticle } from "@/lib/article/ai";
+import { checkArticleFacts, draftArticle } from "@/lib/article/ai";
 
 /**
  * Everything the Article screen can do.
@@ -331,4 +331,20 @@ export async function retractPublicationAction(publicationId: unknown, reason?: 
   });
   refresh();
   return { ok: true, articleId: res.articleId };
+}
+
+/** 核对事实: every checkable claim in the article, looked up live, with a verdict. Changes nothing. */
+export async function checkArticleFactsAction(articleId: unknown) {
+  const viewer = await writer();
+  if (!viewer) return { error: "Not allowed" };
+  const id = await ownArticle(viewer, articleId);
+  if (!id) return { error: "Not allowed" };
+  try {
+    const res = await checkArticleFacts(viewer, id);
+    if ("error" in res) return { error: res.error };
+    await audit(viewer, "article.factcheck", { objectType: "article", objectId: id, module: "script", meta: { claims: res.results.length, contradicted: res.results.filter((r) => r.verdict === "contradicted").length } });
+    return { ok: true as const, results: res.results };
+  } catch (err) {
+    return { error: asMessage(err) };
+  }
 }

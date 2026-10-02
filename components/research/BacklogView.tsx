@@ -80,7 +80,7 @@ export function BacklogView({
        * The hand-off to Script.
        *
        * The topic becomes a project (its chat, its script, its video), the
-       * script starts with the topic's name, angles and headlines, and 编剧
+       * script starts with the topic's name, angles and headlines, and 文案
        * writes the first draft while the producer lands on it. A second press
        * opens the project already started from the topic. Without Chat there
        * is no project to make, so the old hand-off (a brief in Script) is

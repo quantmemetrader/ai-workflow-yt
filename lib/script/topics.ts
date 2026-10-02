@@ -22,7 +22,7 @@ import { backlogQueryOf, cleanCodes, fromSignal, isWriting, titleCore, type Proj
  *   2. This morning's signals and today's own picks with no project yet.
  *   3. Saved ideas from Home, and adopted or saved backlog topics, with no
  *      project and no script yet.
- *   4. Today's plan to-dos addressed to 编剧.
+ *   4. Today's plan to-dos addressed to 文案.
  *
  * Each item carries the pointer (`ref`) its button hands to
  * `startFromTopicAction`, so writing one goes through the same door as
@@ -275,7 +275,7 @@ export async function scriptTopicQueue(viewer: Viewer, opts: { proposals?: Propo
     });
   }
 
-  /* 4. Today's plan: the to-dos 策划 addressed to 编剧. */
+  /* 4. Today's plan: the to-dos 策划 addressed to 文案. */
   for (const p of proposals.items) {
     if (p.source !== "plan" || takenKeys.has(`proposal:plan:${p.text.slice(0, 120)}`)) continue;
     out.push({

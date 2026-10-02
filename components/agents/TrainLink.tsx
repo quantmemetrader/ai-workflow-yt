@@ -3,7 +3,7 @@ import type { AgentKey } from "@/lib/agents/catalog";
 import { AGENT_LABELS } from "@/lib/agents/catalog";
 
 /**
- * A quiet 「训练编剧 →」 link to that employee's AI 训练 page (`/train/[agent]`),
+ * A quiet 「训练文案 →」 link to that employee's AI 训练 page (`/train/[agent]`),
  * for any page where the person might think "it should write this differently
  * every time" — the script page's AI panel first. Server-safe.
  */

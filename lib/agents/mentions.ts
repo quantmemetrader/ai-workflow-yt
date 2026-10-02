@@ -1,4 +1,6 @@
 import "server-only";
+import { agentOverride } from "./names";
+import { toSimplified } from "@/lib/text/simplified";
 import { humanize } from "@/lib/text/human";
 import { share } from "@/lib/authz/rebac";
 import { requesterOf } from "@/lib/auth/types";
@@ -71,7 +73,7 @@ import { agentViewer, ensureAgent } from "./index";
  */
 
 /** How far a tag may travel: the message, its answer, and one hand-off
- *  from that answer (编剧 finishing and tagging 剪辑师). Not further: the
+ *  from that answer (文案 finishing and tagging 剪辑师). Not further: the
  *  third level was 剪辑师 and 策划 answering each other about work nobody
  *  asked for. */
 export const MAX_HOPS = 1;
@@ -168,6 +170,8 @@ export type MentionDispatch = {
   /** Agents that have already spoken in this branch. */
   spoken?: AgentKey[];
   hop?: number;
+  /** The hand-off message a private chat posted through assign_task: the colleague's reply is copied back there (`handoff-origin.ts`). */
+  originMessageId?: string;
   /** Answers left to the whole chain, shared by every branch of it. Internal:
    * a caller starts a chain, it does not budget one. */
   budget?: { left: number };
@@ -499,7 +503,7 @@ const KIND_WORDS: [RegExp, ArtifactKind[]][] = [
 
 /** Every name an employee goes by, including the ones the studio retired —
  * they are in old messages, and "视频助理已剪好" is about somebody else. */
-const EMPLOYEE_NAMES: Record<AgentKey, string[]> = {
+const STATIC_NAMES: Record<AgentKey, string[]> = {
   research: [AGENT_LABELS.research.nameLocal, AGENT_LABELS.research.name, "研究助理", "调研助理"],
   planning: [AGENT_LABELS.planning.nameLocal, AGENT_LABELS.planning.name, "策划助理"],
   script: [AGENT_LABELS.script.nameLocal, AGENT_LABELS.script.name, "脚本助理"],
@@ -508,6 +512,12 @@ const EMPLOYEE_NAMES: Record<AgentKey, string[]> = {
   legal: [AGENT_LABELS.legal.nameLocal, AGENT_LABELS.legal.name, "法务助理"],
   finance: [AGENT_LABELS.finance.nameLocal, AGENT_LABELS.finance.name, "财务助理"],
 };
+
+/** Every name an employee answers to right now: the built-in ones and what the studio renamed it (`agentOverride`). */
+function employeeNames(k: AgentKey): string[] {
+  const o = agentOverride(k);
+  return [...new Set([AGENT_LABELS[k].nameLocal, ...(o.zh ? [o.zh] : []), ...(o.en ? [o.en] : []), ...STATIC_NAMES[k]])];
+}
 
 const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
@@ -545,14 +555,14 @@ export type Claim = {
  * The places a reply says something was done, and by whom.
  *
  * Not every "写好" is a claim: "脚本还没写好" is its opposite, "写好后交给剪辑师"
- * and "等编剧写好" are plans, "写好了吗？" is a question, and "研究员今早发布了晨报"
+ * and "等文案写好" are plans, "写好了吗？" is a question, and "研究员今早发布了晨报"
  * is about somebody else. What is left is a statement of finished work, and
  * whether it is the speaker's — the only kind this turn's receipts can back —
  * or a colleague's, which has to rest on something this turn looked at.
  */
 export function findClaims(text: string, self: AgentKey): Claim[] {
-  const others = AGENT_KEYS.filter((k) => k !== self).flatMap((k) => EMPLOYEE_NAMES[k]);
-  const allNames = AGENT_KEYS.flatMap((k) => EMPLOYEE_NAMES[k]);
+  const others = AGENT_KEYS.filter((k) => k !== self).flatMap((k) => employeeNames(k));
+  const allNames = AGENT_KEYS.flatMap((k) => employeeNames(k));
   /* "他" but not the "他" of "其他": "其他分镜已经写好了" is not about a colleague. */
   const otherAll = new RegExp(`${others.map(escape).join("|")}|他们|她们|(?<!其)他|(?<!其)她|大家|有人|同事|\\b(?:he|she|they)\\b`, "gi");
   const namesRe = new RegExp(allNames.map(escape).join("|"), "gi");
@@ -585,7 +595,7 @@ export function findClaims(text: string, self: AgentKey): Claim[] {
     // the promise "写好会在这里说" — said after handing the work on, it is
     // a plan about the colleague's work, not a report of it.
     if (/^(?:后|之后|以后|再|就|的话|吗|么|没|了吗|了没|了么|会|才|时|前|之前)/.test(after)) continue;
-    // Describing a thing, not claiming the work: "编剧写好的脚本",
+    // Describing a thing, not claiming the work: "文案写好的脚本",
     // "已经写好的初稿在脚本页". Unless the speaker is at the verb: "我刚写好的
     // 脚本", "我写好的初稿" and "我帮你写好的脚本" still say who did it —
     // only "我看了写好的脚本", with a verb of its own between, is a reader.
@@ -634,10 +644,10 @@ export function findClaims(text: string, self: AgentKey): Claim[] {
      * Whose work it is, from the words nearest the verb.
      *
      * A first person anywhere earlier in the sentence used to make it the
-     * speaker's: "收到，我看了编剧写好的脚本" read as 剪辑师 claiming 编剧's
+     * speaker's: "收到，我看了文案写好的脚本" read as 剪辑师 claiming 文案's
      * script. The last one named before the verb decides — a colleague after
-     * the last "我" is theirs ("我看到编剧已经写好了"), unless the two are
-     * named together ("我和编剧已经写好了" is still the speaker's too).
+     * the last "我" is theirs ("我看到文案已经写好了"), unless the two are
+     * named together ("我和文案已经写好了" is still the speaker's too).
      */
     const lastOf = (re: RegExp) => {
       let hit: RegExpMatchArray | null = null;
@@ -722,7 +732,7 @@ const START = new RegExp(
  * colleague ("剪辑师开始粗剪了" said by somebody else).
  */
 export function findStartClaims(text: string, self: AgentKey): string[] {
-  const others = AGENT_KEYS.filter((k) => k !== self).flatMap((k) => EMPLOYEE_NAMES[k]);
+  const others = AGENT_KEYS.filter((k) => k !== self).flatMap((k) => employeeNames(k));
   const otherRe = new RegExp(others.map(escape).join("|"), "i");
   const bounds = text.replace(/《[^《》\n]*》/g, (t) => t.replace(/[。！？!?，,；;：:]/g, "·"));
   const out: string[] = [];
@@ -782,7 +792,7 @@ export function judgeReply(text: string, facts: ReplyFacts, exists: ReadonlySet<
      a real thing's state, not a claim to have made it. Only without an "I"
      or a "just" — "刚完成《…》（scr_…）" is a claim whatever it points at. */
   /* And "《X》的初稿已经写好了：13 个分镜" with no id, in the project whose
-     script the background writer drafted and announced in 编剧's name: which
+     script the background writer drafted and announced in 文案's name: which
      script is meant is not in doubt, and the report is true when that script
      has beats. Only a state — "改好了", "重写好了" is a change, which a
      script that already had beats cannot back — and only about the script:
@@ -946,19 +956,23 @@ export function publicProblems(v: ReplyVerdict, zh: boolean): string[] {
 /**
  * The colleague a person's message asks this employee to hand the work to.
  *
- * "@策划 让编剧写个《AI模型蒸馏》脚本" is 策划 being asked to get 编剧 on it,
+ * "@策划 让文案写个《AI模型蒸馏》脚本" is 策划 being asked to get 文案 on it,
  * and the whole of that is one `assign_task`. A model used to the old way
- * answers "好的，@编剧 请写…", which reaches nobody. Only a name straight
+ * answers "好的，@文案 请写…", which reaches nobody. Only a name straight
  * after a word that asks for it — 让, 叫, 请, 交给, 安排, 派, 通知 — so
- * "编剧昨天写的那个" is not a hand-off, and never a colleague the person
+ * "文案昨天写的那个" is not a hand-off, and never a colleague the person
  * tagged themselves: that one is already on its way.
  */
 export function delegatedTo(body: string, self: AgentKey): AgentKey | null {
-  const tagged = parseAgentMentions(body);
+  /* Read in Simplified: 「幫我請策劃落實」 typed in Traditional asked for 策划
+     too, and used to match nothing (Avon, 2 Oct: the assistant promised and
+     nobody was asked). */
+  const text = toSimplified(body);
+  const tagged = parseAgentMentions(text);
   for (const k of AGENT_KEYS) {
     if (k === self || tagged.includes(k)) continue;
-    const names = EMPLOYEE_NAMES[k].map(escape).join("|");
-    if (new RegExp(`(?:让|叫|请|交给|安排|派给?|通知)\\s*(?:${names})`, "i").test(body)) return k;
+    const names = employeeNames(k).map(escape).join("|");
+    if (new RegExp(`(?:让|叫|请|帮我请|交给|安排|派给?|通知|找)\\s*(?:${names})`, "i").test(text)) return k;
   }
   return null;
 }
@@ -966,13 +980,13 @@ export function delegatedTo(body: string, self: AgentKey): AgentKey | null {
 /**
  * Whether the nudge's reply is posted instead of the first answer: when the
  * nudge handed the work on, or when the first answer was only the promise
- * the nudge exists to replace — it names the colleague ("好的，@编剧 请写…",
- * "编剧会写的") or says it is arranging it ("马上安排"). A first answer that
+ * the nudge exists to replace — it names the colleague ("好的，@文案 请写…",
+ * "文案会写的") or says it is arranging it ("马上安排"). A first answer that
  * is an answer ("已有《…》脚本，不用重写") stands.
  */
 export function nudgeWins(first: string, wanted: AgentKey, handedOn: boolean): boolean {
   if (handedOn) return true;
-  if (new RegExp(EMPLOYEE_NAMES[wanted].map(escape).join("|"), "i").test(first)) return true;
+  if (new RegExp(employeeNames(wanted).map(escape).join("|"), "i").test(first)) return true;
   return /安排|交给|转给|转交|通知|马上|立刻|这就|稍等|稍后|\b(?:I will|I'll|right away|on it)\b/i.test(first);
 }
 
@@ -989,7 +1003,7 @@ export const WORKS_IN: Record<AgentKey, Module> = {
   finance: "finance",
 };
 
-type Chain = Required<Pick<MentionDispatch, "viewer" | "channelId" | "body" | "spoken" | "hop" | "budget">> &
+type Chain = Required<Pick<MentionDispatch, "viewer" | "channelId" | "body" | "spoken" | "hop" | "budget">> & Pick<MentionDispatch, "originMessageId"> &
   Pick<MentionDispatch, "handoff" | "replyMeta" | "holdCut" | "model" | "files"> & { origin: string | null; asker: Viewer | null };
 
 /** The block a colleague's turn opens with when work was handed to it.
@@ -1056,7 +1070,7 @@ async function answerOne(input: Chain, key: AgentKey, channel: Channel) {
    * Everything lives under a project: the one a hand-off names, the one
    * whose chat this is, or the one the handed script or video belongs to.
    * 剪辑师 handed a script that is in no project at all — an older draft,
-   * the one 编剧 wrote loose in #研究日报 — gets one started around it
+   * the one 文案 wrote loose in #研究日报 — gets one started around it
    * (`ensureScriptProject`): cutting needs a video project, and a video
    * project with no project around it is one nobody can find.
    */
@@ -1110,7 +1124,7 @@ async function answerOne(input: Chain, key: AgentKey, channel: Channel) {
           ? "- 交接里列出的东西系统已经核实存在，直接基于它做你的那一步。"
           : null,
         "- 同事提到的东西如果你找不到：先用工具查（list_scripts 带关键词、read_script、list_projects、read_plan），找到就用，并说清楚用的是哪一个（标题和 id）。",
-        `- 真的没有：说清楚现在实际有什么，然后直接问${origin ?? "提出需求的人"}接下来怎么办（比如缺脚本，要不要让编剧来写）。不要回头让同事“请确认”“提供正确 ID”——同事改不了这件事，人才能拍板。`,
+        `- 真的没有：说清楚现在实际有什么，然后直接问${origin ?? "提出需求的人"}接下来怎么办（比如缺脚本，要不要让文案来写）。不要回头让同事“请确认”“提供正确 ID”——同事改不了这件事，人才能拍板。`,
         "- 不要 @ 任何同事，也不要再往下派活。",
       ]
     : [
@@ -1377,8 +1391,8 @@ async function answerOne(input: Chain, key: AgentKey, channel: Channel) {
     /*
      * Asked to hand it on, and did not.
      *
-     * "@策划 让编剧写个脚本" is answered with one `assign_task`. A reply that
-     * only says "好的，@编剧 请写…" — or "编剧会写的" — reaches nobody: the
+     * "@策划 让文案写个脚本" is answered with one `assign_task`. A reply that
+     * only says "好的，@文案 请写…" — or "文案会写的" — reaches nobody: the
      * `@` is written back as a plain name below, and nothing starts. One more
      * turn, told exactly that. Its reply is posted when it handed the work
      * on, or when the first answer was that empty promise (it names the
@@ -1418,7 +1432,7 @@ async function answerOne(input: Chain, key: AgentKey, channel: Channel) {
      * chain has a hop and an answer left. Every other `@colleague` is written
      * back as a plain name, so the text says who without starting anybody.
      */
-    /* The project a new script was written into, when 编剧 started one
+    /* The project a new script was written into, when 文案 started one
        with this turn's write (`write_script` outside any project), so the
        reply and whatever it hands on carry it. */
     if (!wp) {
@@ -1526,6 +1540,14 @@ async function answerOne(input: Chain, key: AgentKey, channel: Channel) {
       ...(withheld ? { withheld: true } : {}),
       ...(text ? {} : { failed: true }),
     });
+
+    /* The person who handed this on from their own assistant chat reads the
+       answer there too (Avon, 2 Oct: "一直收不到回应"). */
+    if (input.originMessageId && text) {
+      const { answerHandoffOrigin } = await import("./handoff-origin");
+      const where = (channel as { name?: string | null }).name;
+      await answerHandoffOrigin(input.originMessageId, key, body, where ? `#${where}` : null).catch(() => {});
+    }
 
     /*
      * The thread says what the channel says.

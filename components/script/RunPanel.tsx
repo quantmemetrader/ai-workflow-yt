@@ -12,7 +12,7 @@ import type { ScriptRun } from "@/lib/script/run";
  *
  * Six steps, top to bottom, each the employee that does it and what the
  * tables say it did: the topic 研究员 found, the to-do 策划 wrote, every
- * version 编剧 wrote and who wrote it, the approval, the project 剪辑师 is
+ * version 文案 wrote and who wrote it, the approval, the project 剪辑师 is
  * cutting and how far, and what 撰稿人 sent out. Every step opens the thing
  * itself. Nothing here writes.
  */

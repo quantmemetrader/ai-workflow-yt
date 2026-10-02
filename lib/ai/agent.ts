@@ -83,10 +83,10 @@ const HISTORY = 20;
 /**
  * One earlier message of a thread, as the model is shown it.
  *
- * On /chat one thread can have several speakers: "@编剧 写个脚本", then
+ * On /chat one thread can have several speakers: "@文案 写个脚本", then
  * "@策划 这个排进今天计划吗" in the same conversation. Every answer used to be
  * replayed in the assistant role, which a model reads as its own earlier
- * turns, so 策划 was handed 编剧's "《X》初稿写好了（scr_…）" as something it had
+ * turns, so 策划 was handed 文案's "《X》初稿写好了（scr_…）" as something it had
  * said, and could go on to report having written it. Only the speaker's own
  * answers are replayed as its own; anybody else's go in as what they are, a
  * colleague's (or the person's assistant's) words quoted in the thread.
@@ -363,7 +363,7 @@ export async function* runAgent(opts: {
 
       if (!pendingCalls.length) {
         /*
-         * Said it did something no tool did. 29 Sep: 编剧 answered "脚本已存入
+         * Said it did something no tool did. 29 Sep: 文案 answered "脚本已存入
          * 新项目《…》" after its write tool had refused twice, and in the next
          * turn said it again with no tool call at all — nothing was made. A
          * first-person claim of writing, saving or starting something, with

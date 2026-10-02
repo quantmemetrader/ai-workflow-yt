@@ -14,7 +14,7 @@ import { notify } from "@/lib/client/notify";
  * The Trends page is where that thing would be watched, written and argued
  * about — and it opened on a chart, as if the brief had never been posted.
  * This is the brief's first line, here, with the two presses that follow from
- * it: watch the topic, or hand it to 编剧.
+ * it: watch the topic, or hand it to 文案.
  */
 export function ResearcherNote({
   topic,
@@ -83,13 +83,13 @@ export function ResearcherNote({
                 return;
               }
               setSent(true);
-              notify(t("已交给编剧，它在 #制作 里回复", "Handed to the script agent; it answers in #制作"), "ok");
+              notify(t("已交给文案，它在 #制作 里回复", "Handed to the script agent; it answers in #制作"), "ok");
               router.refresh();
             })
           }
           style={btn(!sent)}
         >
-          {sent ? t("已交给编剧", "Sent") : t("让编剧写脚本", "Ask 编剧 to write it")}
+          {sent ? t("已交给文案", "Sent") : t("让文案写脚本", "Ask 文案 to write it")}
         </button>
       </div>
     </div>

@@ -255,19 +255,19 @@ function planItems(meta: unknown): { text: string; owner: AgentKey }[] {
 }
 
 /**
- * The project a plan card's "交给编剧" press puts the draft in.
+ * The project a plan card's "交给文案" press puts the draft in.
  *
  * The morning plan lives in #研究日报, which is no project's chat, and its
- * button only posted "@编剧 <the to-do>". 编剧 then wrote the script loose
+ * button only posted "@文案 <the to-do>". 文案 then wrote the script loose
  * in the library — no project, no video project — and 剪辑师, handed that,
  * had nowhere to cut and said it was cutting anyway. Now the press finds
  * the project that to-do already has (started from the same plan item on
  * the Script page or Home: the same `proposal:plan:` key) or starts one —
  * titled by the to-do's 《…》, the studio's to see, its script empty — and
- * hands 编剧 that project, so the draft is written into its script.
+ * hands 文案 that project, so the draft is written into its script.
  *
- * Only when the plan gives 编剧 exactly one to-do: a button that carries
- * two or three is several projects, and each `write_script` 编剧 makes
+ * Only when the plan gives 文案 exactly one to-do: a button that carries
+ * two or three is several projects, and each `write_script` 文案 makes
  * then starts its own (`lib/ai/tools/script.ts`). And "交给剪辑师" on the
  * same plan hands 剪辑师 the project the script to-do went into, if one was
  * started: the plan's footage to-do is for that video.

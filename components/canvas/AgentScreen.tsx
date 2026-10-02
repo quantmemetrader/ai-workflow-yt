@@ -217,7 +217,7 @@ export function AgentScreen({
   initialPrompt?: string;
   /** An employee picked in the sidebar (`/chat?agent=…`), or the one who
    *  answered last in a reopened thread: the draft starts tagged to them,
-   *  exactly as if "@编剧 " had been typed. */
+   *  exactly as if "@文案 " had been typed. */
   initialAgent?: AgentKey | null;
   /** The server render's clock, so the day pill hydrates to the same words. */
   now?: string;
@@ -252,7 +252,7 @@ export function AgentScreen({
   const abort = useRef<AbortController | null>(null);
   const scroller = useRef<HTMLDivElement>(null);
   const box = useRef<HTMLTextAreaElement>(null);
-  /* 「就在这里改」 under a written script: the next message, to 编剧, about that script. */
+  /* 「就在这里改」 under a written script: the next message, to 文案, about that script. */
   useEffect(() => {
     const on = (e: Event) => {
       const title = (e as CustomEvent<string>).detail;
@@ -275,7 +275,7 @@ export function AgentScreen({
      the label under the box is never a guess. */
   const answering: AgentKey | null = parseAgentMentions(input)[0] ?? null;
   const name = (k: AgentKey) => (zh ? AGENT_LABELS[k].nameLocal : AGENT_LABELS[k].name);
-  /* A draft that is only "@编剧 " — the tag this screen puts there itself —
+  /* A draft that is only "@文案 " — the tag this screen puts there itself —
      has nothing to send yet. A file on it is something to send. */
   const [attached, setAttached] = useState<Attaching[]>([]);
   const picker = useRef<HTMLInputElement>(null);
@@ -416,7 +416,7 @@ export function AgentScreen({
     setBusy(true);
     setNotice(null);
     /* The next draft starts addressed to whoever this one was: a question to
-       编剧 is usually followed by another to 编剧, the same way an untagged
+       文案 is usually followed by another to 文案, the same way an untagged
        reply in a channel goes to the employee who just spoke. It is only a
        tag in the box — visible, and one × away from the assistant. */
     const to = parseAgentMentions(text)[0] ?? null;
@@ -1757,7 +1757,7 @@ function MadeActions({ made, zh }: { made: MadeScript; zh: boolean }) {
           </button>
         ) : null}
         <button type="button" onClick={() => window.dispatchEvent(new CustomEvent("tg-edit-script", { detail: made.title }))} style={btn(!made.projectId)}>
-          {t("让编剧改", "Ask the writer")}
+          {t("让文案改", "Ask the writer")}
         </button>
         <Link href={made.projectId ? `/projects/${made.projectId}/script?share=review` : `/script/${made.scriptId}?share=review`} prefetch={false} style={btn()}>
           {t("发给同事审阅", "Send for approval")}

@@ -50,7 +50,7 @@ export async function planToday(tenantId: string): Promise<PlanToday | null> {
     }));
   if (!items.length) return null;
   const topic = list.map((x) => (typeof x.text === "string" ? /《([^》]{4,80})》/.exec(x.text)?.[1] : null)).find(Boolean) ?? null;
-  /* 编剧 wrote the topic's first draft as soon as the plan was out (lib/agents/autorun.ts); it is still waiting to be taken. */
+  /* 文案 wrote the topic's first draft as soon as the plan was out (lib/agents/autorun.ts); it is still waiting to be taken. */
   const prepared = typeof raw?.prepared?.scriptId === "string" && !raw.prepared.takenBy ? { beats: typeof raw.prepared.beats === "number" ? raw.prepared.beats : 0 } : null;
   return { date: typeof raw?.date === "string" ? raw.date : row.createdAt.toISOString().slice(0, 10), topic, items, href: `/chat/c/${row.slug}`, prepared };
 }

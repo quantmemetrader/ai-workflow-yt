@@ -59,7 +59,7 @@ function titleFrom(text: string): string {
  *
  * The brief is what the project is about, never the chat command: an
  * explicit `brief`, the topic snapshot's own words, or the sentence the
- * person typed with its tags taken out. It used to store "@编剧 按这个选题写
+ * person typed with its tags taken out. It used to store "@文案 按这个选题写
  * 脚本初稿《…》" and then copy that into the script's angle.
  *
  * Quick on purpose: the model calls run after the response.
@@ -99,7 +99,7 @@ export async function startProjectAction(input: { message?: string; title?: stri
       });
     }
   }
-  /* Every new project starts with 编剧's first draft (the owner, 29 Sep: "when
+  /* Every new project starts with 文案's first draft (the owner, 29 Sep: "when
      any topic creates a project, why don't you draft the first script
      automatically"), unless the first message already handed the work to
      someone (an @ in it) or the project skips the script. */
@@ -207,7 +207,7 @@ async function writeFromTopic(
  *
  * With `write`, the draft is started after the response
  * (`lib/script/background.ts`): the caller goes straight to
- * `/script/{scriptId}?writing=1`, which shows 编剧 writing and refreshes
+ * `/script/{scriptId}?writing=1`, which shows 文案 writing and refreshes
  * when the draft lands. Starting a project needs Chat; writing needs Script,
  * and someone without it gets the project and no draft.
  */
@@ -259,7 +259,7 @@ export async function startFromTopicAction(rawRef: TopicRef, opts: { write?: boo
   }
 
   const hints = formatHints(resolved.source.format);
-  /* 编剧 may already have written this one (the morning plan's topic, drafted
+  /* 文案 may already have written this one (the morning plan's topic, drafted
      as soon as the plan was out): the project opens on that draft. */
   const prepared = write ? await takePreparedDraft(viewer, resolved.title).catch(() => null) : null;
   let created: { id: string; channelId: string; scriptId: string };
@@ -467,7 +467,7 @@ export async function chooseScriptAction(projectId: string, scriptId: string) {
  * Not the mark read before resolving the topic: that read is a few
  * round trips old by the time of the write, and a background draft that
  * finished in between (`setProjectWriting(null)`) had its "done" written
- * over with the stale "writing". For ten minutes the project then said 编剧
+ * over with the stale "writing". For ten minutes the project then said 文案
  * was writing when nothing was, and every 写初稿 press did nothing. The
  * right-hand side of an UPDATE reads the row as it is under the row lock,
  * so a mark set or cleared meanwhile survives.
@@ -643,8 +643,8 @@ export async function flowNoteAction(projectId: string, body: string) {
 /**
  * 退回 with a note: kept on the project for the step's card
  * (`lib/projects/sendback.ts`) and said in the project's chat. A script
- * sent back comes with 编剧's edits, beat by beat, posted under the note
- * as 编剧's reply; nothing is rewritten until someone presses 按建议改写.
+ * sent back comes with 文案's edits, beat by beat, posted under the note
+ * as 文案's reply; nothing is rewritten until someone presses 按建议改写.
  * The other steps keep their own follow-up (the researcher asked again, the
  * editor re-cutting), which the page starts as before.
  */
@@ -661,7 +661,7 @@ export async function sendBackAction(projectId: string, step: string, note: stri
     const learner = step === "script" ? "script" : step === "topic" ? "research" : step === "edit" ? "video" : null;
     if (learner) await recordFeedback(viewer, learner, { kind: "sendback", text }).catch(() => false);
   }
-  const who = step === "script" ? "编剧" : step === "topic" ? "研究员" : step === "edit" ? "剪辑师" : null;
+  const who = step === "script" ? "文案" : step === "topic" ? "研究员" : step === "edit" ? "剪辑师" : null;
   if (step === "script" || step === "clips") {
     await postMessage(viewer, project.channelId, `退回给${who ?? "上一步"}：${text}`, { flow: true, sentBack: step });
   }
@@ -676,7 +676,7 @@ export async function sendBackAction(projectId: string, step: string, note: stri
   return { ok: true, suggestions: kept.suggestions?.length ?? 0 };
 }
 
-/** 按建议改写: 编剧 is asked to make the edits it suggested (or to act on the note), in the project's chat. */
+/** 按建议改写: 文案 is asked to make the edits it suggested (or to act on the note), in the project's chat. */
 export async function applySendBackAction(projectId: string) {
   const viewer = await getViewer();
   if (!viewer || !viewer.modules.includes("chat")) return { error: "没有权限" };
@@ -686,7 +686,7 @@ export async function applySendBackAction(projectId: string) {
   const back = readSentBack(row?.source).script;
   if (!back) return { error: "这一步没有退回意见" };
   const body = [
-    `@编剧 按退回意见改好项目里的脚本：${back.note}`,
+    `@文案 按退回意见改好项目里的脚本：${back.note}`,
     ...(back.suggestions ?? []).map((x) => `- 第 ${x.ord} 镜：「${x.before}」改成「${x.after}」`),
   ].join("\n");
   await postMessage(viewer, project.channelId, body, {});
@@ -694,7 +694,7 @@ export async function applySendBackAction(projectId: string) {
     try {
       await dispatchAgentMentions({ viewer, channelId: project.channelId, body });
     } catch (err) {
-      console.error("[projects] 编剧 could not be reached for the edits", err);
+      console.error("[projects] 文案 could not be reached for the edits", err);
     }
   });
   await settleSendBack(project.id, "script", "applied");

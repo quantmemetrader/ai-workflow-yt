@@ -77,10 +77,10 @@ export function tidyMarkdown(body: string): string {
  *
  * The composers that talk to the assistant start a draft with an employee's
  * tag already in it — picked in the sidebar ("/chat?agent=script"), carried
- * over from the last turn, or put there by a face button. "@编剧 " alone is
+ * over from the last turn, or put there by a face button. "@文案 " alone is
  * not a question, but it is not empty either, so the send button lit up and
  * Enter started a billed turn with nothing in it. An employee's tag is set
- * aside — read the way routing reads it (`splitMentions`), so "@编剧写个开头"
+ * aside — read the way routing reads it (`splitMentions`), so "@文案写个开头"
  * with no space is a tag and a question — and anything else counts, a
  * person's name or a stray "@" included.
  */

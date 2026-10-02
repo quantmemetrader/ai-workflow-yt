@@ -48,7 +48,7 @@ export function LibraryView({
   tree?: ScriptTree;
   /** The project folder open ("none" for 未归入项目). */
   projectId?: string | null;
-  /** What 编剧 suggests writing next, drawn above the library. */
+  /** What 文案 suggests writing next, drawn above the library. */
   proposals: Proposals;
   /** Topics waiting for a script, for the 选题 scope. */
   queue?: TopicQueueItem[];

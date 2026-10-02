@@ -80,7 +80,7 @@ const MAX_LENGTH = 80;
 
 /* The employees' own tags, which carry no meaning here ("@剪辑师传好了"
    has no space after the tag, so the names go first, then any @word). */
-const TAGS = /@(剪辑师|编剧|研究员|策划|撰稿人|助理)|@\S+/g;
+const TAGS = /@(剪辑师|文案|研究员|策划|撰稿人|助理)|@\S+/g;
 const HAS_CJK = /[㐀-鿿]/;
 
 /**

@@ -24,7 +24,7 @@ const PRODUCTION_SLUG = "制作";
  *
  * One press on a maker's page — Script, Articles, Video — and the employee
  * for that page is told, in #制作, as the person who pressed. Exactly what
- * typing `@编剧 …` in the channel does, and through the same door: the same
+ * typing `@文案 …` in the channel does, and through the same door: the same
  * `postMessage`, the same mention dispatch, the same permission checks. The
  * page is a shortcut for typing, and deliberately nothing more.
  */

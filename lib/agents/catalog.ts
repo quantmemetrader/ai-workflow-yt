@@ -1,3 +1,4 @@
+import { agentOverride } from "./names";
 /**
  * Who the AI employees are, in a form the browser is allowed to hold.
  *
@@ -60,7 +61,8 @@ export type AgentLabel = {
   hintEn: string;
 };
 
-export const AGENT_LABELS: Record<AgentKey, AgentLabel> = {
+/** The built-in names and lines; what the studio renamed reads through `AGENT_LABELS` below. */
+export const AGENT_DEFAULT_LABELS: Record<AgentKey, AgentLabel> = {
   research: {
     name: "Research agent",
     nameLocal: "研究员",
@@ -81,7 +83,7 @@ export const AGENT_LABELS: Record<AgentKey, AgentLabel> = {
   },
   script: {
     name: "Script agent",
-    nameLocal: "编剧",
+    nameLocal: "文案",
     nameEn: "Scriptwriter",
     title: "AI 员工 · 脚本",
     titleEn: "AI employee · Script",
@@ -125,6 +127,35 @@ export const AGENT_LABELS: Record<AgentKey, AgentLabel> = {
     hintEn: "Budget against actuals, spend requests, the monthly report",
   },
 };
+
+/**
+ * The labels every screen, prompt and @mention use. Each name and hint reads
+ * the studio's own choice first (`lib/agents/names.ts`, set on AI 同事 › 训练),
+ * then the built-in one, so a rename lands everywhere at once.
+ */
+export const AGENT_LABELS: Record<AgentKey, AgentLabel> = Object.fromEntries(
+  AGENT_KEYS.map((key) => {
+    const base = AGENT_DEFAULT_LABELS[key];
+    const label: AgentLabel = {
+      name: base.name,
+      get nameLocal() {
+        return agentOverride(key).zh ?? base.nameLocal;
+      },
+      get nameEn() {
+        return agentOverride(key).en ?? base.nameEn;
+      },
+      title: base.title,
+      titleEn: base.titleEn,
+      get hint() {
+        return agentOverride(key).hint ?? base.hint;
+      },
+      get hintEn() {
+        return agentOverride(key).hintEn ?? base.hintEn;
+      },
+    };
+    return [key, label];
+  }),
+) as Record<AgentKey, AgentLabel>;
 
 /**
  * The colour that follows each employee around: its icon, its stage on the
@@ -183,7 +214,7 @@ const ALIASES: Record<AgentKey, string[]> = {
      routing is a colleague who stopped answering. */
   research: ["研究员", "研究助理", "调研助理", "研究", "调研", "researchagent", "research"],
   planning: ["策划", "策划助理", "企划", "planningagent", "planning", "planner"],
-  script: ["编剧", "脚本助理", "脚本", "scriptagent", "script", "writer"],
+  script: ["文案", "编剧", "脚本助理", "脚本", "scriptagent", "script", "writer"],
   video: ["剪辑师", "视频助理", "剪辑", "视频", "videoagent", "video", "editor"],
   article: ["撰稿人", "文章助理", "撰稿", "文章", "articleagent", "article"],
   /* No bare "法律" or "合同", and no "lawyer": a Chinese alias matches as a
@@ -230,6 +261,13 @@ export const isTagStart = (body: string, at: number): boolean =>
 
 /** The agent one `@…` token addresses, or null if it names a person. */
 export function agentFromTag(token: string): AgentKey | null {
+  /* The studio's own names first (AI 同事 › 训练): "@小文" reaches whoever was renamed 小文. */
+  const flatTok = token.toLowerCase().replace(/[-_]/g, "");
+  for (const key of AGENT_KEYS) {
+    const o = agentOverride(key);
+    if (o.zh && token.startsWith(o.zh)) return key;
+    if (o.en && flatTok === o.en.toLowerCase().replace(/[-_\s]/g, "")) return key;
+  }
   const han = HAN.find((a) => token.startsWith(a.alias));
   if (han) return han.key;
 

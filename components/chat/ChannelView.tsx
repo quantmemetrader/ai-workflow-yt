@@ -272,7 +272,7 @@ export function ChannelView({
     setPressing(actionId);
     start(async () => {
       const res = await pressCardAction(slug, messageId, actionId);
-      /* "交给编剧" on the plan: open the project it started, where 编剧 is writing. */
+      /* "交给文案" on the plan: open the project it started, where 文案 is writing. */
       if (res && "projectId" in res && res.projectId) {
         router.push(`/projects/${res.projectId}`);
         return;

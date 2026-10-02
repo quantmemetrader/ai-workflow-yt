@@ -19,7 +19,7 @@ import type { TopicRef } from "@/lib/projects/topic";
  * The researcher's picks for today (the morning brief's signals, then its
  * ideas, strongest first, then what colleagues added), each with why now,
  * one or two numbers that prove it, and one press: 用这个做一条视频, which
- * starts a project from it — 编剧 writes the first draft while you land on
+ * starts a project from it — 文案 writes the first draft while you land on
  * the script — exactly as Home's 开项目 does. Under them, one box to look up
  * a topic of your own or start straight from it.
  *

@@ -48,7 +48,7 @@ export function AgentTyping({
   /** A job's progress, 0–100, shown as a short bar and a number. */
   percent?: number | null;
   face?: boolean;
-  /** Put the employee's name in front of the step: "编剧 正在写脚本". */
+  /** Put the employee's name in front of the step: "文案 正在写脚本". */
   name?: boolean;
   size?: "sm" | "md";
   style?: React.CSSProperties;
@@ -112,7 +112,7 @@ export function streamStep(tools: { name: string; status: string }[], agent: Age
     if (tools[i].status === "running") return stepForTool(tools[i].name);
   }
   /* Between tools, each employee is doing its own job, not "typing": 剪辑师
-     edits, 编剧 writes, 研究员 looks things up ("editor should not show
+     edits, 文案 writes, 研究员 looks things up ("editor should not show
      typing but editing"). The assistant types. */
   return agent ? AGENT_DEFAULT_STEP[agent] : "typing";
 }

@@ -26,7 +26,7 @@ import { toSimplified } from "@/lib/text/simplified";
  * needs a clip from the creator, it all should run itself once one thing is
  * done"). Each step starts the next without anybody pressing a button:
  *
- *   策划's plan posted  → 编剧 writes the proposed topic's first draft ahead
+ *   策划's plan posted  → 文案 writes the proposed topic's first draft ahead
  *                          of time, and every other to-do goes to its owner;
  *   clips in + script approved → 剪辑师 cuts, designs and renders;
  *   render done          → 撰稿人 writes the post and puts it in 发布.
@@ -73,7 +73,7 @@ export async function afterPlan(tenantId: string, messageId: string): Promise<{ 
 
 /**
  * Each AI colleague gets its part of today's plan, as if somebody had pressed
- * 交给… on the card: 策划 tags them in #研究日报 and they answer there. 编剧's
+ * 交给… on the card: 策划 tags them in #研究日报 and they answer there. 文案's
  * part is the draft below; 剪辑师 waits for the clips, so neither is sent.
  */
 async function handOnTodos(tenantId: string, messageId: string, channelId: string, list: PlanItem[]): Promise<string[]> {
@@ -104,7 +104,7 @@ async function handOnTodos(tenantId: string, messageId: string, channelId: strin
 }
 
 /**
- * 编剧 writes the proposed topic's first draft as soon as the plan is out
+ * 文案 writes the proposed topic's first draft as soon as the plan is out
  * (owner, 2 Oct: "once the idea of the day is confirmed its script should
  * already be ready"). The draft waits, out of every list, until somebody
  * presses 用这个做一条视频; that project then opens on it (`takePreparedDraft`).
@@ -165,7 +165,7 @@ async function digestOf(channelId: string): Promise<string | null> {
 const norm = (s: string) => toSimplified(s).replace(/[\s《》「」『』"“”'‘’,，。.!！?？:：、（）()·\-—]/g, "").toLowerCase();
 
 /**
- * The draft 编剧 wrote ahead for this topic, handed to the person starting
+ * The draft 文案 wrote ahead for this topic, handed to the person starting
  * the project: it becomes theirs and the project's script. Taken once.
  */
 export async function takePreparedDraft(viewer: Viewer, title: string): Promise<string | null> {
