@@ -131,6 +131,7 @@ try{
     }).catch(function(){});
   }
   document.addEventListener("visibilitychange",function(){if(document.visibilityState==="hidden")hiddenAt=Date.now();else if(hiddenAt&&Date.now()-hiddenAt>60000)check(true);});
+  window.__aura.checkRelease=check;
   setInterval(function(){check(false);},300000);
 })();
 window.addEventListener("error",function(e){
