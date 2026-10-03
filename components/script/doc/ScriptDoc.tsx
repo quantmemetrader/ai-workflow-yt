@@ -308,6 +308,21 @@ export function ScriptDoc(props: ScriptDocProps) {
     const h = window.setTimeout(() => void save(), 8000);
     return () => window.clearTimeout(h);
   }, [saveState, save]);
+  /* The timer above tries once; offline that one try fails too and nothing
+     tried again when the network came back (QA, 3 Oct). Back online, or back
+     on this tab, a save still owed is sent. */
+  React.useEffect(() => {
+    if (saveState !== "error" && saveState !== "dirty") return;
+    const retry = () => {
+      if (document.visibilityState === "visible" && navigator.onLine !== false) void saveRef.current();
+    };
+    window.addEventListener("online", retry);
+    document.addEventListener("visibilitychange", retry);
+    return () => {
+      window.removeEventListener("online", retry);
+      document.removeEventListener("visibilitychange", retry);
+    };
+  }, [saveState]);
   React.useEffect(() => {
     const warn = (e: BeforeUnloadEvent) => {
       if (saveState !== "saved" || editSeq.current !== savedSeq.current) e.preventDefault();
