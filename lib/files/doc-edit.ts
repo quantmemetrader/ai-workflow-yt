@@ -18,6 +18,7 @@ import { pendingVersionKey } from "@/lib/files/move-paths";
 import { newId } from "@/lib/ids";
 import { audit } from "@/lib/audit";
 import { toSimplified } from "@/lib/text/simplified";
+import { htmlToMarkdown, markdownToHtml } from "@/lib/files/markdown";
 
 /**
  * Documents edited in the browser (Ryan, 1 Oct: legal, finance and accounting
@@ -28,6 +29,7 @@ import { toSimplified } from "@/lib/text/simplified";
  */
 const run = promisify(execFile);
 const OFFICE = new Set(["doc", "docx", "odt", "rtf", "wps", "pages"]);
+const MD = new Set(["md", "markdown"]);
 const extOf = (name: string) => (name.toLowerCase().split(".").pop() ?? "");
 
 export type DocState = { id: string; name: string; html: string; canEdit: boolean; version: number; updatedAt: string; fromOriginal: boolean };
@@ -147,20 +149,11 @@ export async function openDoc(viewer: Viewer, fileId: string): Promise<DocState 
     fromOriginal = Boolean(html);
   }
   if (!html) {
-    html = textToHtml(f.text ?? "");
+    /* Markdown by its blocks, so a save writes back the same paragraphs, lists, tables and code. */
+    html = MD.has(extOf(f.name)) ? markdownToHtml(f.text ?? "") : textToHtml(f.text ?? "");
     fromOriginal = true;
   }
   return { id: f.id, name: f.name, html: toSimplified(html), canEdit: can.write, version: f.version, updatedAt: f.updatedAt.toISOString(), fromOriginal };
-}
-
-/** Markdown back out of the editor's HTML: headings and list items keep their marks, the rest is text. */
-function htmlToMarkdown(html: string): string {
-  return htmlToText(
-    html
-      .replace(/<h([1-3])[^>]*>/gi, (_m, n: string) => `${"#".repeat(Number(n))} `)
-      .replace(/<li[^>]*>\s*(<p[^>]*>)?/gi, "- ")
-      .replace(/<\/li>/gi, "\n"),
-  );
 }
 
 /** Plain-text files whose stored object is the text itself: their edits are saved as real versions. */
