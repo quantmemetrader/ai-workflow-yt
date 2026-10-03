@@ -260,7 +260,7 @@ export function LegalScreen({
               contracts={contracts}
               zh={zh}
               busy={busy}
-              onUpdate={(id, input) => run(() => updateContractAction(id, input))}
+              onUpdate={(id, input) => run(() => updateContractAction(id, input), () => notify(zh ? "已更新合同。" : "Contract updated.", "ok"))}
               onOpen={(c) => setViewingId(c.id)}
               onReview={(c) => {
                 setSelected(c);

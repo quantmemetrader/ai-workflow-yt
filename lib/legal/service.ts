@@ -158,16 +158,28 @@ async function ensureBuiltinTemplates(viewer: Viewer, existing: { id: string; bu
   }
 
   for (const row of existing) {
-    const current = row.builtinKey ? CURRENT_BUILTINS[row.builtinKey] : undefined;
-    if (!current || !row.builtinKey || sameText(row.body, current.body)) continue;
-    if (!(BUILTIN_HISTORY[row.builtinKey] ?? []).some((old) => sameText(old, row.body))) continue;
+    /* A starter seeded before built-ins carried a key has none, but its text
+       is still word for word one we shipped: adopt it under that key (only
+       when no other row already holds the key), so it upgrades like the rest.
+       A template somebody edited matches nothing and is left alone. */
+    const adopted = row.builtinKey
+      ? null
+      : Object.keys(BUILTIN_HISTORY).find(
+          (key) =>
+            !existing.some((other) => other.builtinKey === key) &&
+            (BUILTIN_HISTORY[key] ?? []).some((old) => sameText(old, row.body)),
+        ) ?? null;
+    const key = row.builtinKey ?? adopted;
+    const current = key ? CURRENT_BUILTINS[key] : undefined;
+    if (!current || !key || sameText(row.body, current.body)) continue;
+    if (!(BUILTIN_HISTORY[key] ?? []).some((old) => sameText(old, row.body))) continue;
     const upgraded = await db
       .update(templates)
-      .set({ body: current.body, fields: current.fields, updatedAt: new Date() })
+      .set({ body: current.body, fields: current.fields, updatedAt: new Date(), ...(adopted ? { builtinKey: adopted } : {}) })
       .where(and(eq(templates.id, row.id), eq(templates.tenantId, viewer.tenantId), eq(templates.body, row.body)))
       .returning({ id: templates.id });
     if (upgraded.length) {
-      await audit(viewer, "legal.template.builtin.upgrade", { module: "legal", objectId: row.id, meta: { builtinKey: row.builtinKey } });
+      await audit(viewer, "legal.template.builtin.upgrade", { module: "legal", objectId: row.id, meta: { builtinKey: key, adopted: Boolean(adopted) } });
       changed = true;
     }
   }

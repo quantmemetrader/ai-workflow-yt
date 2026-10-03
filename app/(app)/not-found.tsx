@@ -13,7 +13,7 @@ export default function NotFound() {
             回首页
           </Link>
           <Link href="/projects" style={{ height: 36, padding: "0 16px", borderRadius: 9, border: "1px solid #dcdbd6", color: "#262626", fontSize: 13.5, fontWeight: 600, textDecoration: "none", display: "inline-flex", alignItems: "center" }}>
-            看全部视频
+            看全部项目
           </Link>
         </div>
       </div>

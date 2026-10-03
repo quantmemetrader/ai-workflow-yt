@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-/** Any address that leads nowhere: said in Chinese, with a way back (QA, 2 Oct: it was Next's English 404). */
+/** Any address that leads nowhere: said in Chinese, with a way back (a file or folder link that leads nowhere). */
 export default function NotFound() {
   return (
     <div style={{ minHeight: "60vh", flexGrow: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: 24, fontFamily: "inherit" }}>
@@ -12,8 +12,8 @@ export default function NotFound() {
           <Link href="/home" style={{ height: 36, padding: "0 16px", borderRadius: 9, background: "#171717", color: "#fff", fontSize: 13.5, fontWeight: 600, textDecoration: "none", display: "inline-flex", alignItems: "center" }}>
             回首页
           </Link>
-          <Link href="/projects" style={{ height: 36, padding: "0 16px", borderRadius: 9, border: "1px solid #dcdbd6", color: "#262626", fontSize: 13.5, fontWeight: 600, textDecoration: "none", display: "inline-flex", alignItems: "center" }}>
-            看全部项目
+          <Link href="/files" style={{ height: 36, padding: "0 16px", borderRadius: 9, border: "1px solid #dcdbd6", color: "#262626", fontSize: 13.5, fontWeight: 600, textDecoration: "none", display: "inline-flex", alignItems: "center" }}>
+            回到文件
           </Link>
         </div>
       </div>
