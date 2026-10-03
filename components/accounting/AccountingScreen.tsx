@@ -2,15 +2,18 @@
 
 import { useSearchParams } from "next/navigation";
 import { useState } from "react";
-import type { AccountRow, DocumentRow, EntryRow } from "@/lib/accounting/service";
+import type { AccountRow, DocumentRow, EntryRow, PeriodCloseView, PeriodStatus } from "@/lib/accounting/service";
 import {
   addDocumentAction,
   archiveAccountAction,
+  closePeriodAction,
   createAccountAction,
   deleteDraftAction,
   exportPeriodAction,
+  periodCloseViewAction,
   postEntryAction,
   removeDocumentAction,
+  reopenPeriodAction,
   saveEntryAction,
   seedAccountsAction,
   voidEntryAction,
@@ -18,6 +21,7 @@ import {
 import { InlineAgentThread, useInlineAgent } from "@/components/shell/InlineAgent";
 import { ResearchAgentPanel } from "@/components/canvas/ResearchAgentPanel";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { useAsk } from "@/components/ui/useAsk";
 import { notify } from "@/lib/client/notify";
 import { Badge, Empty, Label, ModuleHeader, Row, clip, field, ghost, money, solid, useAction } from "@/components/ui/kit";
 import { ModuleSidebar, type ScreenItem } from "@/components/shell/ModuleSidebar";
@@ -51,6 +55,9 @@ export function AccountingScreen({
   documents,
   entries,
   summary,
+  months,
+  close,
+  canClose,
   locale,
   model,
   library,
@@ -64,6 +71,12 @@ export function AccountingScreen({
     draftCount: number;
     unenteredDocuments: number;
   };
+  /** 月结: every month with entries or a close record, newest first. */
+  months: PeriodStatus[];
+  /** 月结: this month's checklist and summary, as the page loaded it. */
+  close: PeriodCloseView;
+  /** Owner or admin: may 结账 / 反结账. The server checks again. */
+  canClose: boolean;
   locale: string;
   model: string;
   /** The 账务资料库 (1 Oct), drawn by the page. */
@@ -79,6 +92,7 @@ export function AccountingScreen({
   const [voiding, setVoiding] = useState<EntryRow | null>(null);
 
   const pending = documents.filter((d) => !d.enteredAt);
+  const closedMonths = new Set(months.filter((m) => m.closed).map((m) => m.period));
 
   function newEntry(fromDocument?: DocumentRow) {
     setDraft({
@@ -143,6 +157,7 @@ export function AccountingScreen({
           {tab === "entries" && (
             <Entries
               entries={entries}
+              closedMonths={closedMonths}
               accounts={accounts}
               documents={pending}
               draft={draft}
@@ -185,19 +200,12 @@ export function AccountingScreen({
 
           {tab === "period" && (
             <Period
-              period={period}
-              summary={summary}
+              initial={close}
+              months={months}
+              canClose={canClose}
               zh={zh}
               busy={busy}
-              onExport={() =>
-                run(async () => {
-                  const res = await exportPeriodAction(period);
-                  if ("error" in res) return res;
-                  download(res.filename, res.csv);
-                  notify(t("Exported.", "已导出。"), "ok");
-                  return {};
-                })
-              }
+              run={run}
             />
           )}
 
@@ -341,6 +349,7 @@ function Inbox({
 
 function Entries({
   entries,
+  closedMonths,
   accounts,
   documents,
   draft,
@@ -355,6 +364,7 @@ function Entries({
   onDelete,
 }: {
   entries: EntryRow[];
+  closedMonths: Set<string>;
   accounts: AccountRow[];
   documents: DocumentRow[];
   draft: Draft | null;
@@ -483,7 +493,10 @@ function Entries({
           body={t("New entry starts one, or write one straight off a document in the inbox.", "点「记一笔账」，或在「单据」里从一张单据直接记账。")}
         />
       ) : (
-        entries.map((e) => (
+        entries.map((e) => {
+          /* 月结: the server refuses any change to an entry in a closed month; the buttons go too. */
+          const locked = closedMonths.has(e.period) || closedMonths.has(e.entryDate.slice(0, 7));
+          return (
           <div key={e.id} style={{ borderTop: "1px solid #f3f3f3", padding: "11px 0" }}>
             <div style={{ display: "flex", gap: 10, alignItems: "baseline", flexWrap: "wrap" }}>
               <span style={{ fontSize: 11.5, color: "#7c7c7c", width: 86 }}>{e.entryDate}</span>
@@ -491,6 +504,7 @@ function Entries({
               <Badge tone={e.state === "posted" ? "good" : e.state === "void" ? "bad" : "warn"}>
                 {e.state === "posted" ? t("posted", "已入账") : e.state === "void" ? t("void", "已作废") : t("draft", "草稿")}
               </Badge>
+              {locked && <Badge tone="quiet">{t("period closed", "已结账")}</Badge>}
               {e.balanceMicros !== 0 && <Badge tone="bad">{t(`out by ${money(e.balanceMicros)}`, `差额 ${money(e.balanceMicros)}`)}</Badge>}
               <span style={{ marginLeft: "auto", fontSize: 11, color: "#999999" }}>
                 {e.state === "posted"
@@ -515,7 +529,7 @@ function Entries({
             </div>
 
             <div style={{ display: "flex", gap: 7, marginTop: 8, paddingLeft: 86 }}>
-              {e.state === "draft" && (
+              {!locked && e.state === "draft" && (
                 <>
                   <button type="button" disabled={busy} onClick={() => onEdit(e)} style={{ ...ghost, height: 24, fontSize: 11 }}>
                     {t("edit", "编辑")}
@@ -534,14 +548,15 @@ function Entries({
                   </button>
                 </>
               )}
-              {e.state === "posted" && (
+              {!locked && e.state === "posted" && (
                 <button type="button" disabled={busy} onClick={() => onVoid(e)} style={{ ...ghost, height: 24, fontSize: 11 }}>
                   {t("void", "作废")}
                 </button>
               )}
             </div>
           </div>
-        ))
+          );
+        })
       )}
     </>
   );
@@ -549,50 +564,223 @@ function Entries({
 
 /* ---------------------------------------------------------------- period */
 
+/**
+ * 月结. Pick a month; see what stands between it and closing; close it (owner
+ * or admin). A closed month says when and by whom, and only reopens with a
+ * reason. Every rule here is enforced again by the service: the screen only
+ * saves somebody a refusal.
+ */
 function Period({
-  period,
-  summary,
+  initial,
+  months,
+  canClose,
   zh,
   busy,
-  onExport,
+  run,
 }: {
-  period: string;
-  summary: {
-    balances: { code: string; name: string; kind: string; totalMicros: number }[];
-    draftCount: number;
-    unenteredDocuments: number;
-  };
+  initial: PeriodCloseView;
+  months: PeriodStatus[];
+  canClose: boolean;
   zh: boolean;
   busy: boolean;
-  onExport: () => void;
+  run: ReturnType<typeof useAction>["run"];
 }) {
   const t = (en: string, cn: string) => (zh ? cn : en);
-  const blockers = summary.draftCount + summary.unenteredDocuments;
+  const ask = useAsk(zh);
+  const [view, setView] = useState<PeriodCloseView>(initial);
+  const [loading, setLoading] = useState(false);
+  const period = view.period;
+  const c = view.checklist;
+  const closed = view.status.closed;
+  const day = (d: Date | string | null) => (d ? new Date(d).toLocaleDateString(zh ? "zh-CN" : "en-GB") : "");
+  const total = view.balances.reduce((n, b) => n + b.totalMicros, 0);
+
+  async function load(p: string) {
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(p)) return;
+    setLoading(true);
+    try {
+      const res = await periodCloseViewAction(p);
+      if ("error" in res) notify(res.error ?? t("Could not load.", "没能读取。"));
+      else setView(res.view);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function onClose() {
+    const ok = await ask.confirm({
+      title: t(`Close ${period}?`, `结账 ${period}？`),
+      body: t(
+        "Once closed, no entry booked into or dated in this month can be written, posted, voided or deleted. An owner or admin can reopen it, with a reason.",
+        "结账后，记入或日期在本月的分录都不能再新增、修改、过账、作废或删除。如需更正，管理员或所有者可以写明原因后反结账。",
+      ),
+      confirm: t("Close the month", "结账"),
+    });
+    if (!ok) return;
+    run(async () => {
+      const res = await closePeriodAction(period);
+      if (res.error) return res;
+      await load(period);
+      notify(t(`${period} closed.`, `${period} 已结账。`), "ok");
+      return {};
+    });
+  }
+
+  async function onReopen() {
+    const reason = await ask.prompt({
+      title: t(`Reopen ${period}? Say why.`, `反结账 ${period}，请写明原因`),
+      placeholder: t("e.g. a supplier invoice dated in this month arrived late", "例如：本月的一张供应商发票迟到，需要补记"),
+      confirm: t("Reopen", "反结账"),
+    });
+    if (!reason) return;
+    run(async () => {
+      const res = await reopenPeriodAction(period, reason);
+      if (res.error) return res;
+      await load(period);
+      notify(t(`${period} reopened.`, `${period} 已反结账。`), "ok");
+      return {};
+    });
+  }
+
+  const checks: { ok: boolean; warn?: boolean; text: string }[] = [
+    {
+      ok: c.drafts === 0,
+      text:
+        c.drafts === 0
+          ? t("No draft entries in this month", "本月没有草稿分录")
+          : t(
+              `${c.drafts} draft entr${c.drafts === 1 ? "y" : "ies"} to post or delete${c.unbalanced ? `, ${c.unbalanced} not balancing` : ""}`,
+              `${c.drafts} 条草稿分录待过账或删除${c.unbalanced ? `，其中 ${c.unbalanced} 条借贷不平` : ""}`,
+            ),
+    },
+    {
+      ok: c.trialBalanceMicros === 0,
+      text:
+        c.trialBalanceMicros === 0
+          ? t("Trial balance balances", "试算平衡：借贷相等")
+          : t(`Trial balance out by ${money(c.trialBalanceMicros)}`, `试算不平衡：借贷相差 ${money(c.trialBalanceMicros)}`),
+    },
+    {
+      ok: c.earlierOpen.length === 0,
+      text:
+        c.earlierOpen.length === 0
+          ? t("Every earlier month with entries is closed", "更早有分录的月份都已结账")
+          : t(`Close earlier months first: ${c.earlierOpen.join(", ")}`, `请先结更早的月份：${c.earlierOpen.join("、")}`),
+    },
+    {
+      ok: c.unenteredDocuments === 0,
+      warn: c.unenteredDocuments > 0,
+      text:
+        c.unenteredDocuments === 0
+          ? t("Every document from this month has an entry", "本月的单据都已记账")
+          : t(
+              `${c.unenteredDocuments} document${c.unenteredDocuments === 1 ? "" : "s"} from this month without an entry (does not block; book it into an open month later)`,
+              `本月有 ${c.unenteredDocuments} 份单据还没记账（不影响结账，之后可记入未结账的月份）`,
+            ),
+    },
+  ];
 
   return (
     <>
-      <div style={{ display: "flex", alignItems: "baseline", gap: 12, marginBottom: 14 }}>
-        <span style={{ fontSize: 15, fontWeight: 500 }}>{period}</span>
-        <span style={{ fontSize: 11.5, color: "#999999" }}>
-          {t("posted entries only", "只算已入账的")}
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14, flexWrap: "wrap" }}>
+        <select
+          value={months.some((m) => m.period === period) ? period : ""}
+          disabled={loading}
+          onChange={(e) => e.target.value && void load(e.target.value)}
+          style={{ ...field, width: 210, height: 32 }}
+          aria-label={t("Month", "月份")}
+        >
+          {!months.some((m) => m.period === period) && <option value="">{period}</option>}
+          {months.map((m) => (
+            <option key={m.period} value={m.period}>
+              {m.period} · {m.closed ? t("closed", "已结账") : t("open", "未结账")}
+            </option>
+          ))}
+        </select>
+        <input
+          type="month"
+          value={period}
+          disabled={loading}
+          onChange={(e) => void load(e.target.value)}
+          style={{ ...field, width: 150, height: 32 }}
+          aria-label={t("Any month", "其他月份")}
+        />
+        <Badge tone={closed ? "good" : "warn"}>{closed ? t("closed", "已结账") : t("open", "未结账")}</Badge>
+        <span style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() =>
+              run(async () => {
+                const res = await exportPeriodAction(period);
+                if ("error" in res) return res;
+                download(res.filename, res.csv);
+                notify(t("Exported.", "已导出。"), "ok");
+                return {};
+              })
+            }
+            style={ghost}
+          >
+            {t("Export CSV", "导出 CSV")}
+          </button>
+          {canClose &&
+            (closed ? (
+              <button type="button" disabled={busy || loading} onClick={() => void onReopen()} style={ghost}>
+                {t("Reopen", "反结账")}
+              </button>
+            ) : (
+              <button
+                type="button"
+                disabled={busy || loading || view.blockers.length > 0}
+                title={view.blockers.length ? view.blockers.join("；") : undefined}
+                onClick={() => void onClose()}
+                style={{ ...solid, opacity: view.blockers.length ? 0.45 : 1 }}
+              >
+                {t("Close the month", "结账")}
+              </button>
+            ))}
         </span>
-        <button type="button" disabled={busy} onClick={onExport} style={{ ...solid, marginLeft: "auto" }}>
-          {busy ? t("Exporting…", "导出中…") : t("Export CSV", "导出 CSV")}
-        </button>
       </div>
 
-      {blockers > 0 && (
-        <div style={{ border: "1px solid #ffe2bd", background: "#fffaf3", borderRadius: 10, padding: "11px 13px", marginBottom: 16 }}>
-          <p style={{ fontSize: 12, color: "#5c4420", margin: 0, lineHeight: 1.6 }}>
+      {closed ? (
+        <div style={{ border: "1px solid #d7eee2", background: "#f5fbf8", borderRadius: 10, padding: "11px 13px", marginBottom: 16 }}>
+          <p style={{ fontSize: 12, color: "#1f5e40", margin: 0, lineHeight: 1.6 }}>
             {t(
-              `Before this period closes: ${summary.draftCount} entry to post, ${summary.unenteredDocuments} document not entered.`,
-              `结账前还需处理：${summary.draftCount} 条分录待过账，${summary.unenteredDocuments} 份单据未录入。`,
+              `Closed ${day(view.status.closedAt)} by ${view.status.closedByName ?? "—"}. Entries in ${period} can no longer be changed.`,
+              `已结账 · ${day(view.status.closedAt)} · ${view.status.closedByName ?? "—"}。${period} 的分录不能再改动。`,
             )}
           </p>
         </div>
+      ) : (
+        <>
+          <Label style={{ margin: "0 0 8px" }}>{t("Before closing", "结账前检查")}</Label>
+          <div style={{ marginBottom: 14 }}>
+            {checks.map((k) => (
+              <div key={k.text} style={{ display: "flex", gap: 8, alignItems: "flex-start", fontSize: 12.5, padding: "4px 0", color: k.ok ? "#525252" : k.warn ? "#5c4420" : "#b42323" }}>
+                <CheckMark state={k.ok ? "ok" : k.warn ? "warn" : "bad"} />
+                <span style={{ lineHeight: 1.55 }}>{k.text}</span>
+              </div>
+            ))}
+          </div>
+          {!canClose && (
+            <p style={{ fontSize: 11.5, color: "#999999", margin: "0 0 14px" }}>
+              {t("Only an owner or admin can close a month.", "只有管理员或所有者可以结账。")}
+            </p>
+          )}
+        </>
       )}
 
-      {summary.balances.length === 0 ? (
+      {view.status.reopenedAt && (
+        <p style={{ fontSize: 11.5, color: "#999999", margin: "0 0 14px", lineHeight: 1.6 }}>
+          {t(
+            `Reopened ${day(view.status.reopenedAt)} by ${view.status.reopenedByName ?? "—"}: ${view.status.reopenReason ?? ""}`,
+            `曾于 ${day(view.status.reopenedAt)} 由 ${view.status.reopenedByName ?? "—"} 反结账，原因：${view.status.reopenReason ?? ""}`,
+          )}
+        </p>
+      )}
+
+      <Label style={{ margin: "6px 0 8px" }}>{t(`${period} summary (posted entries only)`, `${period} 结账汇总（只算已入账的）`)}</Label>
+      {view.balances.length === 0 ? (
         <Empty title={t("Nothing posted in this period", "本期还没有入账的记录")} />
       ) : (
         <>
@@ -600,21 +788,74 @@ function Period({
             <span style={{ width: 80 }}>{t("Code", "科目号")}</span>
             <span style={{ flexGrow: 1 }}>{t("Account", "科目")}</span>
             <span style={{ width: 90 }}>{t("Kind", "类型")}</span>
-            <span style={{ width: 130, textAlign: "right" }}>{t("Movement", "本期发生额")}</span>
+            <span style={{ width: 120, textAlign: "right" }}>{t("Debit", "借方")}</span>
+            <span style={{ width: 120, textAlign: "right" }}>{t("Credit", "贷方")}</span>
           </Row>
-          {summary.balances.map((b) => (
+          {view.balances.map((b) => (
             <Row key={b.code} style={{ alignItems: "center" }}>
               <span style={{ width: 80, color: "#7c7c7c" }}>{b.code}</span>
               <span style={{ flexGrow: 1, ...clip }} title={b.name}>{b.name}</span>
               <span style={{ width: 90, color: "#999999", fontSize: 11 }}>{kindLabel(b.kind, zh)}</span>
-              <span style={{ width: 130, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
-                {money(b.totalMicros)}
-              </span>
+              <span style={{ width: 120, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{b.totalMicros > 0 ? money(b.totalMicros) : ""}</span>
+              <span style={{ width: 120, textAlign: "right", fontVariantNumeric: "tabular-nums", color: "#0060b0" }}>{b.totalMicros < 0 ? money(-b.totalMicros) : ""}</span>
             </Row>
           ))}
+          <Row style={{ alignItems: "center", fontWeight: 500 }}>
+            <span style={{ width: 80 }} />
+            <span style={{ flexGrow: 1 }}>
+              {t("Total", "合计")}{" "}
+              <Badge tone={total === 0 ? "good" : "bad"}>{total === 0 ? t("balances", "借贷平衡") : t(`out by ${money(total)}`, `相差 ${money(total)}`)}</Badge>
+            </span>
+            <span style={{ width: 90 }} />
+            <span style={{ width: 120, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
+              {money(view.balances.reduce((n, b) => n + Math.max(b.totalMicros, 0), 0))}
+            </span>
+            <span style={{ width: 120, textAlign: "right", fontVariantNumeric: "tabular-nums", color: "#0060b0" }}>
+              {money(view.balances.reduce((n, b) => n + Math.max(-b.totalMicros, 0), 0))}
+            </span>
+          </Row>
         </>
       )}
+
+      <Label style={{ margin: "22px 0 8px" }}>{t("Months", "各月状态")}</Label>
+      <Row head>
+        <span style={{ width: 90 }}>{t("Month", "月份")}</span>
+        <span style={{ width: 80, textAlign: "right" }}>{t("Entries", "分录")}</span>
+        <span style={{ flexGrow: 1, paddingLeft: 18 }}>{t("Status", "状态")}</span>
+      </Row>
+      {months.map((m) => (
+        <Row key={m.period} style={{ alignItems: "center", cursor: "pointer", background: m.period === period ? "#f7f7f7" : undefined }}>
+          <button
+            type="button"
+            onClick={() => void load(m.period)}
+            style={{ width: 90, textAlign: "left", border: 0, background: "none", padding: 0, font: "inherit", cursor: "pointer", color: "#171717" }}
+          >
+            {m.period}
+          </button>
+          <span style={{ width: 80, textAlign: "right", color: "#7c7c7c", fontVariantNumeric: "tabular-nums" }}>{m.entries}</span>
+          <span style={{ flexGrow: 1, paddingLeft: 18, color: m.closed ? "#278f5e" : "#7c7c7c", ...clip }}>
+            {m.closed
+              ? t(`Closed · ${day(m.closedAt)} · ${m.closedByName ?? "—"}`, `已结账 · ${day(m.closedAt)} · ${m.closedByName ?? "—"}`)
+              : t("Open", "未结账")}
+          </span>
+        </Row>
+      ))}
+
+      {ask.dialog}
     </>
+  );
+}
+
+/** A line icon for a checklist item: tick, warning dot, or cross. No emoji. */
+function CheckMark({ state }: { state: "ok" | "warn" | "bad" }) {
+  const color = state === "ok" ? "#278f5e" : state === "warn" ? "#c27a12" : "#e03636";
+  return (
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true" style={{ flexShrink: 0, marginTop: 2 }}>
+      <circle cx="7" cy="7" r="6.25" stroke={color} strokeWidth="1.2" />
+      {state === "ok" && <path d="M4.3 7.2l1.8 1.8 3.6-3.8" stroke={color} strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />}
+      {state === "warn" && <path d="M7 4v3.6M7 9.6v.1" stroke={color} strokeWidth="1.3" strokeLinecap="round" />}
+      {state === "bad" && <path d="M5 5l4 4M9 5l-4 4" stroke={color} strokeWidth="1.3" strokeLinecap="round" />}
+    </svg>
   );
 }
 

@@ -42,7 +42,7 @@ export type IdPrefix =
   | "art" | "arv" | "apb"
   | "prj" | "beat" | "shot" | "rnd" | "gfx" | "cv"
   | "pch" | "post" | "tgt" | "trx" | "apr"
-  | "doc" | "acct" | "bank" | "exp"
+  | "doc" | "acct" | "bank" | "exp" | "per"
   | "bl" | "cf" | "req"
   | "tpl" | "con" | "rev" | "dep" | "comp"
   | "emp" | "lv" | "lvt" | "rq" | "app" | "cand" | "int"

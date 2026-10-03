@@ -1,10 +1,11 @@
 import "server-only";
-import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, lt, or, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { accounts, documents, journalEntries, journalLines, users } from "@/lib/db/schema";
+import { accountingPeriods, accounts, documents, journalEntries, journalLines, users } from "@/lib/db/schema";
 import type { Viewer } from "@/lib/auth/dal";
 import { audit } from "@/lib/audit";
 import { newId } from "@/lib/ids";
+import { closeBlockers, isPeriod, lockedReason, reopenBlocker, type CloseChecklist } from "@/lib/accounting/close";
 
 /** (QA, 2 Oct) A person's name the way the reader reads it: the Chinese name on a Chinese screen. */
 function personName(viewer: Viewer) {
@@ -271,6 +272,11 @@ export async function saveEntry(
   const clean = input.lines.filter((l) => l.accountId && Number.isFinite(l.amountMicros) && l.amountMicros !== 0);
   if (clean.length < 2) throw new Error("一笔分录至少要有两行");
 
+  /* 月结: nothing may be written into, or dated into, a closed month. */
+  const closed = await closedPeriodSet(viewer.tenantId);
+  const intoClosed = lockedReason(closed, input, "录入或修改");
+  if (intoClosed) throw new Error(intoClosed);
+
   if (input.id) {
     const [current] = await db
       .select()
@@ -280,6 +286,8 @@ export async function saveEntry(
     if (!current) throw new Error("这笔分录不存在");
     // A posted entry is immutable. A correction is another entry.
     if (current.state === "posted") throw new Error("已过账的分录不能修改，请另写一笔更正分录。");
+    const fromClosed = lockedReason(closed, current, "修改");
+    if (fromClosed) throw new Error(fromClosed);
 
     await db
       .update(journalEntries)
@@ -354,6 +362,8 @@ export async function postEntry(viewer: Viewer, entryId: string) {
     .limit(1);
   if (!entry) throw new Error("这笔分录不存在");
   if (entry.state === "posted") throw new Error("这笔分录已经过账");
+  const locked = lockedReason(await closedPeriodSet(viewer.tenantId), entry, "过账");
+  if (locked) throw new Error(locked);
 
   const [sum] = await db
     .select({ total: sql<number>`coalesce(sum(${journalLines.amountMicros}), 0)::bigint` })
@@ -368,9 +378,9 @@ export async function postEntry(viewer: Viewer, entryId: string) {
   const claimed = await db
     .update(journalEntries)
     .set({ state: "posted", postedBy: viewer.id, postedAt: new Date(), updatedAt: new Date() })
-    .where(and(eq(journalEntries.id, entryId), eq(journalEntries.state, "draft")))
+    .where(and(eq(journalEntries.id, entryId), eq(journalEntries.state, "draft"), inOpenPeriod(viewer.tenantId)))
     .returning({ id: journalEntries.id });
-  if (!claimed.length) throw new Error("这笔分录已经不是草稿");
+  if (!claimed.length) throw new Error("这笔分录已经不是草稿，或所在月份刚刚结账");
 
   if (entry.documentId) {
     await db
@@ -389,6 +399,7 @@ export async function postEntry(viewer: Viewer, entryId: string) {
 /** Voiding is how a posted entry is undone: the row stays, and the reason is
  * on the record. Nothing is deleted. */
 export async function voidEntry(viewer: Viewer, entryId: string) {
+  await assertEntryOpen(viewer, entryId, "作废");
   const claimed = await db
     .update(journalEntries)
     .set({ state: "void", updatedAt: new Date() })
@@ -397,6 +408,7 @@ export async function voidEntry(viewer: Viewer, entryId: string) {
         eq(journalEntries.id, entryId),
         eq(journalEntries.tenantId, viewer.tenantId),
         eq(journalEntries.state, "posted"),
+        inOpenPeriod(viewer.tenantId),
       ),
     )
     .returning({ id: journalEntries.id });
@@ -410,6 +422,7 @@ export async function voidEntry(viewer: Viewer, entryId: string) {
 }
 
 export async function deleteDraft(viewer: Viewer, entryId: string) {
+  await assertEntryOpen(viewer, entryId, "删除");
   const deleted = await db
     .delete(journalEntries)
     .where(
@@ -417,6 +430,7 @@ export async function deleteDraft(viewer: Viewer, entryId: string) {
         eq(journalEntries.id, entryId),
         eq(journalEntries.tenantId, viewer.tenantId),
         eq(journalEntries.state, "draft"),
+        inOpenPeriod(viewer.tenantId),
       ),
     )
     .returning({ id: journalEntries.id });
@@ -524,4 +538,242 @@ export async function exportPeriodCsv(viewer: Viewer, period: string): Promise<s
 
   await audit(viewer, "accounting.export", { module: "accounting", meta: { period, lines: rows.length } });
   return [header, ...body].join("\n");
+}
+
+/* ------------------------------------------------------- month-end close */
+
+/** The months this tenant has closed (and not reopened). */
+export async function closedPeriodSet(tenantId: string): Promise<Set<string>> {
+  const rows = await db
+    .select({ period: accountingPeriods.period })
+    .from(accountingPeriods)
+    .where(and(eq(accountingPeriods.tenantId, tenantId), eq(accountingPeriods.closed, true)));
+  return new Set(rows.map((r) => r.period));
+}
+
+/** In the statement that claims the row, so a month closed between the check
+ * and the write still wins: the entry's period and the month of its date are
+ * both open. */
+function inOpenPeriod(tenantId: string) {
+  return sql`not exists (select 1 from ${accountingPeriods} ap where ap.tenant_id = ${tenantId} and ap.closed and (ap.period = ${journalEntries.period} or ap.period = substr(${journalEntries.entryDate}, 1, 7)))`;
+}
+
+async function assertEntryOpen(viewer: Viewer, entryId: string, verb: string) {
+  const [entry] = await db
+    .select({ period: journalEntries.period, entryDate: journalEntries.entryDate })
+    .from(journalEntries)
+    .where(and(eq(journalEntries.id, entryId), eq(journalEntries.tenantId, viewer.tenantId)))
+    .limit(1);
+  if (!entry) throw new Error("这笔分录不存在");
+  const locked = lockedReason(await closedPeriodSet(viewer.tenantId), entry, verb);
+  if (locked) throw new Error(locked);
+}
+
+export type PeriodStatus = {
+  period: string;
+  entries: number;
+  closed: boolean;
+  closedAt: Date | null;
+  closedByName: string | null;
+  note: string | null;
+  reopenedAt: Date | null;
+  reopenedByName: string | null;
+  reopenReason: string | null;
+};
+
+async function periodRows(viewer: Viewer, only?: string) {
+  const rows = await db
+    .select({
+      p: accountingPeriods,
+      closedByName: sql<string | null>`closer.name`,
+      closedByLocal: sql<string | null>`closer.name_local`,
+      reopenedByName: sql<string | null>`reopener.name`,
+      reopenedByLocal: sql<string | null>`reopener.name_local`,
+    })
+    .from(accountingPeriods)
+    .leftJoin(sql`${users} as closer`, sql`closer.id = ${accountingPeriods.closedBy}`)
+    .leftJoin(sql`${users} as reopener`, sql`reopener.id = ${accountingPeriods.reopenedBy}`)
+    .where(and(eq(accountingPeriods.tenantId, viewer.tenantId), only ? eq(accountingPeriods.period, only) : undefined));
+  const zh = (viewer.locale ?? "zh-CN").startsWith("zh");
+  const pick = (name: string | null, local: string | null) => (zh && local ? local : name);
+  return new Map(
+    rows.map((r) => [
+      r.p.period,
+      {
+        closed: r.p.closed,
+        closedAt: r.p.closedAt,
+        closedByName: pick(r.closedByName, r.closedByLocal),
+        note: r.p.note,
+        reopenedAt: r.p.reopenedAt,
+        reopenedByName: pick(r.reopenedByName, r.reopenedByLocal),
+        reopenReason: r.p.reopenReason,
+      },
+    ]),
+  );
+}
+
+const EMPTY_STATUS = {
+  closed: false,
+  closedAt: null,
+  closedByName: null,
+  note: null,
+  reopenedAt: null,
+  reopenedByName: null,
+  reopenReason: null,
+};
+
+/** Every month with entries or a close record, plus this month, newest first. */
+export async function listPeriodStatuses(viewer: Viewer): Promise<PeriodStatus[]> {
+  const counts = await db
+    .select({ period: journalEntries.period, n: sql<number>`count(*)::int` })
+    .from(journalEntries)
+    .where(eq(journalEntries.tenantId, viewer.tenantId))
+    .groupBy(journalEntries.period);
+  const byPeriod = new Map(counts.map((c) => [c.period, c.n]));
+  const status = await periodRows(viewer);
+  const months = new Set<string>([new Date().toISOString().slice(0, 7), ...byPeriod.keys(), ...status.keys()]);
+  return [...months]
+    .filter(isPeriod)
+    .sort()
+    .reverse()
+    .slice(0, 36)
+    .map((period) => ({ period, entries: byPeriod.get(period) ?? 0, ...(status.get(period) ?? EMPTY_STATUS) }));
+}
+
+/** An entry belongs to the month it is booked into, or the month it is dated in. */
+const inMonth = (period: string) =>
+  or(eq(journalEntries.period, period), sql`substr(${journalEntries.entryDate}, 1, 7) = ${period}`);
+
+async function closeChecklist(viewer: Viewer, period: string): Promise<CloseChecklist> {
+  const [drafts] = await db
+    .select({
+      n: sql<number>`count(*)::int`,
+      unbalanced: sql<number>`(count(*) filter (where coalesce((select sum(jl.amount_micros) from ${journalLines} jl where jl.entry_id = ${journalEntries.id}), 0) <> 0))::int`,
+    })
+    .from(journalEntries)
+    .where(and(eq(journalEntries.tenantId, viewer.tenantId), eq(journalEntries.state, "draft"), inMonth(period)));
+
+  const [docs] = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(documents)
+    .where(
+      and(
+        eq(documents.tenantId, viewer.tenantId),
+        isNull(documents.enteredAt),
+        or(
+          sql`substr(${documents.documentDate}, 1, 7) = ${period}`,
+          and(isNull(documents.documentDate), sql`to_char(${documents.createdAt}, 'YYYY-MM') = ${period}`),
+        ),
+      ),
+    );
+
+  const [trial] = await db
+    .select({ total: sql<number>`coalesce(sum(${journalLines.amountMicros}), 0)::bigint` })
+    .from(journalLines)
+    .innerJoin(journalEntries, eq(journalEntries.id, journalLines.entryId))
+    .where(and(eq(journalEntries.tenantId, viewer.tenantId), eq(journalEntries.period, period), eq(journalEntries.state, "posted")));
+
+  const earlier = await db
+    .selectDistinct({ period: journalEntries.period })
+    .from(journalEntries)
+    .where(and(eq(journalEntries.tenantId, viewer.tenantId), lt(journalEntries.period, period)));
+  const closed = await closedPeriodSet(viewer.tenantId);
+
+  return {
+    drafts: drafts?.n ?? 0,
+    unbalanced: drafts?.unbalanced ?? 0,
+    unenteredDocuments: docs?.n ?? 0,
+    trialBalanceMicros: Number(trial?.total ?? 0),
+    earlierOpen: earlier.map((e) => e.period).filter((p) => isPeriod(p) && !closed.has(p)).sort(),
+  };
+}
+
+export type PeriodCloseView = {
+  period: string;
+  status: Omit<PeriodStatus, "period" | "entries">;
+  checklist: CloseChecklist;
+  blockers: string[];
+  balances: { code: string; name: string; kind: string; totalMicros: number }[];
+};
+
+/** Everything the 月结 tab shows for one month. */
+export async function periodCloseView(viewer: Viewer, period: string): Promise<PeriodCloseView> {
+  const [checklist, summary, status] = await Promise.all([
+    closeChecklist(viewer, period),
+    periodSummary(viewer, period),
+    periodRows(viewer, period),
+  ]);
+  return {
+    period,
+    status: status.get(period) ?? EMPTY_STATUS,
+    checklist,
+    blockers: closeBlockers(period, checklist),
+    balances: summary.balances,
+  };
+}
+
+/** 结账. Owner or admin only; refused with every reason at once while anything blocks it. */
+export async function closePeriod(viewer: Viewer, period: string, note?: string | null) {
+  if (!viewer.isAdmin) throw new Error("只有管理员或所有者可以结账");
+  if (!isPeriod(period)) throw new Error("月份格式不对");
+
+  const checklist = await closeChecklist(viewer, period);
+  const blockers = closeBlockers(period, checklist);
+  if (blockers.length) throw new Error(`${period} 还不能结账：${blockers.join("；")}`);
+
+  const now = new Date();
+  const cleanNote = note?.trim().slice(0, 500) || null;
+  const done = await db
+    .insert(accountingPeriods)
+    .values({
+      id: newId("per"),
+      tenantId: viewer.tenantId,
+      period,
+      closed: true,
+      closedAt: now,
+      closedBy: viewer.id,
+      note: cleanNote,
+    })
+    .onConflictDoUpdate({
+      target: [accountingPeriods.tenantId, accountingPeriods.period],
+      set: { closed: true, closedAt: now, closedBy: viewer.id, note: cleanNote, updatedAt: now },
+      setWhere: eq(accountingPeriods.closed, false),
+    })
+    .returning({ id: accountingPeriods.id });
+  if (!done.length) throw new Error(`${period} 已经结账了`);
+
+  await audit(viewer, "accounting.period.close", {
+    module: "accounting",
+    objectType: "accounting_period",
+    objectId: done[0].id,
+    meta: { period, note: cleanNote, unenteredDocuments: checklist.unenteredDocuments },
+  });
+}
+
+/** 反结账. Owner or admin only, with a reason, latest closed month first. */
+export async function reopenPeriod(viewer: Viewer, period: string, reason: string) {
+  if (!viewer.isAdmin) throw new Error("只有管理员或所有者可以反结账");
+  const blocker = reopenBlocker(period, await closedPeriodSet(viewer.tenantId), reason ?? "");
+  if (blocker) throw new Error(blocker);
+
+  const why = reason.trim().slice(0, 500);
+  const done = await db
+    .update(accountingPeriods)
+    .set({ closed: false, reopenedAt: new Date(), reopenedBy: viewer.id, reopenReason: why, updatedAt: new Date() })
+    .where(
+      and(
+        eq(accountingPeriods.tenantId, viewer.tenantId),
+        eq(accountingPeriods.period, period),
+        eq(accountingPeriods.closed, true),
+      ),
+    )
+    .returning({ id: accountingPeriods.id });
+  if (!done.length) throw new Error(`${period} 没有结账，无需反结账`);
+
+  await audit(viewer, "accounting.period.reopen", {
+    module: "accounting",
+    objectType: "accounting_period",
+    objectId: done[0].id,
+    meta: { period, reason: why },
+  });
 }

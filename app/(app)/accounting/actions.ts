@@ -5,11 +5,14 @@ import { getViewer } from "@/lib/auth/dal";
 import {
   addDocument,
   archiveAccount,
+  closePeriod,
   createAccount,
   deleteDraft,
   exportPeriodCsv,
+  periodCloseView,
   postEntry,
   removeDocument,
+  reopenPeriod,
   saveEntry,
   seedAccounts,
   voidEntry,
@@ -201,4 +204,49 @@ export async function exportPeriodAction(p: string) {
   if (!valid) return { error: "期间格式不对" as const };
   const csv = await exportPeriodCsv(viewer, valid);
   return { csv, filename: `journal-${valid}.csv` };
+}
+
+/* ---------------------------------------------------- month-end close (月结) */
+
+/** One month's checklist, status and summary, for the 月结 tab's month picker. */
+export async function periodCloseViewAction(p: string) {
+  const viewer = await bookkeeper();
+  if (!viewer) return { error: "你没有权限这样做" as const };
+  const valid = period(p);
+  if (!valid) return { error: "月份格式不对" as const };
+  try {
+    return { view: await periodCloseView(viewer, valid) };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "没能读取，请再试一次" };
+  }
+}
+
+/** 结账. The service refuses anyone but an owner or admin; checked here too so
+ * the refusal is the same words as every other action's. */
+export async function closePeriodAction(p: string, note?: string) {
+  const viewer = await bookkeeper();
+  if (!viewer || !viewer.isAdmin) return { error: "只有管理员或所有者可以结账" };
+  const valid = period(p);
+  if (!valid) return { error: "月份格式不对" };
+  try {
+    await closePeriod(viewer, valid, typeof note === "string" ? note.slice(0, 500) : null);
+    refresh();
+    return {};
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "没能结账，请再试一次" };
+  }
+}
+
+export async function reopenPeriodAction(p: string, reason: string) {
+  const viewer = await bookkeeper();
+  if (!viewer || !viewer.isAdmin) return { error: "只有管理员或所有者可以反结账" };
+  const valid = period(p);
+  if (!valid) return { error: "月份格式不对" };
+  try {
+    await reopenPeriod(viewer, valid, String(reason ?? "").slice(0, 500));
+    refresh();
+    return {};
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "没能反结账，请再试一次" };
+  }
 }
