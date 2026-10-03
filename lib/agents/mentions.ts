@@ -889,6 +889,12 @@ const KIND_ZH: Record<ArtifactKind, string> = {
   spend_request: "用款申请",
   finance_report: "财务报表",
   publish_post: "发布稿",
+  actual: "实际支出",
+  budget_line: "预算",
+  checklist_run: "合规检查",
+  leave_request: "请假申请",
+  candidate: "候选人",
+  journal_entry: "会计分录",
 };
 
 const ACTION_ZH: Record<Artifact["action"], string> = {

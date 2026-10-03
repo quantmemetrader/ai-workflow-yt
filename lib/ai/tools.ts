@@ -11,6 +11,11 @@ import { budgetState, formatUsd } from "./ledger";
 import { readFileText, searchFiles } from "./retrieval";
 import type { ToolDef } from "./openrouter";
 import { agentKeyFromEmail, type AgentKey } from "@/lib/agents/catalog";
+import { publishPack } from "./tools/publish";
+import { filesPack } from "./tools/files";
+import { projectsPack } from "./tools/projects";
+import { hrPack } from "./tools/hr";
+import { accountingPack } from "./tools/accounting";
 import { holdsPack, type ToolPack } from "./tools/types";
 import { chatPack } from "./tools/chat";
 import { researchPack } from "./tools/research";
@@ -42,7 +47,7 @@ import type { ToolContext, ToolResult } from "./tools/types";
  * the packs they hold, and `runTool` re-checks — a model is perfectly capable
  * of calling something it was never shown.
  */
-const PACKS: ToolPack[] = [chatPack, teamPack, researchPack, scriptPack, articlePack, videoPack, creatorPack, financePack, legalPack];
+const PACKS: ToolPack[] = [chatPack, teamPack, projectsPack, filesPack, researchPack, scriptPack, articlePack, publishPack, videoPack, creatorPack, financePack, legalPack, hrPack, accountingPack];
 
 export const TOOL_DEFS: ToolDef[] = [
   {
@@ -321,6 +326,17 @@ const WRITES = new Set<string>([
   "draft_contract",
   "review_contract",
   "raise_spend_request",
+  /* 4 Oct: the side assistant does what its screen does. */
+  "revise_article",
+  "create_post", "request_post_approval", "decide_post",
+  "revise_script", "request_script_approval", "decide_script_approval",
+  "request_article_approval", "decide_article_approval", "publish_article", "retract_publication",
+  "create_folder", "rename_file", "move_files", "delete_files", "restore_files", "share_file", "set_file_access",
+  "move_topic_stage", "plan_topic", "start_project_from_topic",
+  "decide_spend_request", "mark_spend_paid", "add_actual", "set_budget_line",
+  "update_contract", "acknowledge_finding", "save_checklist_run",
+  "request_leave", "decide_leave", "add_candidate", "set_candidate_stage",
+  "save_entry", "post_entry", "export_period",
   /* Not finance_report: it reads the latest report and, asked to, writes a
      new one, and it refuses the writing itself on a read-only turn. */
   ...VIDEO_WRITES,
@@ -343,7 +359,7 @@ const WRITES = new Set<string>([
  * entitlement does the scoping that a module like the planner's could not.
  */
 const DENIED: Partial<Record<AgentKey, ReadonlySet<string>>> = {
-  planning: new Set(["write_script", "write_article", "create_document", ...VIDEO_WRITES]),
+  planning: new Set(["write_script", "write_article", "revise_script", "revise_article", "create_document", ...VIDEO_WRITES]),
 };
 
 /**
