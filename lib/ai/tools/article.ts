@@ -108,7 +108,7 @@ async function run(ctx: ToolContext, name: string, args: Record<string, unknown>
 
     // The first draft is a version straight away, so the thing an approver is
     // later asked about exists as a snapshot and not only as a live row.
-    await cutVersion(ctx.viewer, id, { note: "first draft", model: res.model });
+    await cutVersion(ctx.viewer, id, { note: "初稿", model: res.model });
     await audit(ctx.viewer, "article.generate", {
       objectType: "article",
       objectId: id,

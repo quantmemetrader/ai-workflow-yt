@@ -73,9 +73,19 @@ const statusLabel = (status: ArticleStatus, zh: boolean) =>
 
 /** "2026-09-23 14:02" — the same stamp the publish log uses. Written from the
  * ISO string rather than the reader's locale, because a table that renders one
- * way on the server and another in the browser is a hydration error. */
-const stamp = (d: Date) => new Date(d).toISOString().slice(0, 16).replace("T", " ");
-const day = (d: Date) => new Date(d).toISOString().slice(0, 10);
+ * way on the server and another in the browser is a hydration error. Shifted
+ * to Hong Kong time by hand (UTC+8, no daylight saving) for the same reason. */
+const hk = (d: Date) => new Date(new Date(d).getTime() + 8 * 3600_000).toISOString();
+const stamp = (d: Date) => hk(d).slice(0, 16).replace("T", " ");
+const day = (d: Date) => hk(d).slice(0, 10);
+
+/** Version notes the app wrote in English before they were Chinese. */
+const NOTE_ZH: Record<string, string> = {
+  "first draft": "初稿",
+  "before the assistant rewrote it": "助理重写前的稿子",
+  "before restoring an earlier version": "恢复旧版本前的稿子",
+};
+const noteText = (note: string, zh: boolean) => (zh ? NOTE_ZH[note] ?? note : note);
 
 export function ArticleScreen({
   proposals,
@@ -112,7 +122,7 @@ export function ArticleScreen({
   const { busy, run } = useAction();
   /* The writer, with the article open on screen in hand: "把标题改成问句" is about this one (Ryan, 2 Oct). */
   const openArticleId = useSearchParams()?.get("id") ?? undefined;
-  const agent = useInlineAgent({ module: "script", articleId: openArticleId }, { key: openArticleId ? `article:${openArticleId}` : "article", agent: "article" });
+  const agent = useInlineAgent({ module: "script", articleId: openArticleId }, { key: openArticleId ? `article:${openArticleId}` : "article", fallbackKey: "article", agent: "article" });
 
   const [composing, setComposing] = useState(false);
   const [deleting, setDeleting] = useState<ArticleListItem | null>(null);
@@ -772,7 +782,7 @@ function Editor({
               <span style={{ width: 44, fontSize: 12, fontWeight: 500 }}>v{v.versionNo}</span>
               <span style={{ width: 120, fontSize: 11.5, color: "#7c7c7c" }}>{stamp(v.createdAt)}</span>
               <span style={{ flexGrow: 1, ...clip, fontSize: 11.5, color: "#7c7c7c" }}>
-                {v.note ?? (v.model ? t("written by the assistant", "由助理撰写") : "—")}
+                {v.note ? noteText(v.note, zh) : v.model ? t("written by the assistant", "由助理撰写") : "—"}
                 {v.model ? <span style={{ color: "#c7c7c7" }}> · {v.model}</span> : null}
               </span>
               <span style={{ width: 80, fontSize: 11.5, color: "#7c7c7c" }}>

@@ -486,8 +486,8 @@ function driftLabel(seconds: number): string {
 function stamp(value: Date | string, locale: string): string {
   const d = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(d.getTime())) return "";
-  const day = new Intl.DateTimeFormat(locale, { day: "numeric", month: "short" }).format(d);
-  const time = new Intl.DateTimeFormat(locale, { hour: "2-digit", minute: "2-digit", hour12: false }).format(d);
+  const day = new Intl.DateTimeFormat(locale, { day: "numeric", month: "short", timeZone: "Asia/Hong_Kong" }).format(d);
+  const time = new Intl.DateTimeFormat(locale, { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "Asia/Hong_Kong" }).format(d);
   return `${day} ${time}`;
 }
 
@@ -495,7 +495,7 @@ function stamp(value: Date | string, locale: string): string {
 function day(value: Date | string, locale: string): string {
   const d = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(d.getTime())) return "";
-  return new Intl.DateTimeFormat(locale, { day: "numeric", month: "short" }).format(d);
+  return new Intl.DateTimeFormat(locale, { day: "numeric", month: "short", timeZone: "Asia/Hong_Kong" }).format(d);
 }
 
 /** "2 minutes ago" — carried on the tab strip's "Saved" line. */

@@ -26,6 +26,7 @@ import { and, eq, isNull, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { chatChannels, workProjects } from "@/lib/db/schema";
 import { conversationDetail } from "@/lib/chat/service";
+import { linksOf } from "@/lib/chat/thread";
 import { startFromTopicAction } from "@/app/(app)/projects/actions";
 import {
   addChannelMembers,
@@ -674,6 +675,8 @@ export async function conversationMessagesAction(conversationId: string): Promis
     error?: string;
     /** The employee who answered this turn; null is the person's own assistant. */
     speaker: AgentKey | null;
+    /** What the turn's tools made (the article it wrote), for the links under it. */
+    made: { kind: string; id: string; title?: string }[];
   }[];
   error?: string;
 }> {
@@ -697,6 +700,8 @@ export async function conversationMessagesAction(conversationId: string): Promis
           m.role === "assistant" && m.speaker && (AGENT_KEYS as readonly string[]).includes(m.speaker)
             ? (m.speaker as AgentKey)
             : null,
+        /* The 打开文章 link survives a reload, as on the chat screen. */
+        made: m.role === "assistant" ? linksOf(detail.toolCalls.filter((c) => c.messageId === m.id)) : [],
       })),
   };
 }

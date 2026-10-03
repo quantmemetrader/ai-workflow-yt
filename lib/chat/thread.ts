@@ -129,7 +129,7 @@ function madeScript(calls: { name: string; status: string; result?: unknown }[])
  * events; this keeps them when the thread is read back (an article written
  * from chat used to be named and not linked, 2 Oct).
  */
-function linksOf(calls: { name: string; status: string; result?: unknown }[]): { kind: string; id: string; title?: string }[] {
+export function linksOf(calls: { name: string; status: string; result?: unknown }[]): { kind: string; id: string; title?: string }[] {
   const out: { kind: string; id: string; title?: string }[] = [];
   for (const c of calls) {
     if (c.status !== "ok" || typeof c.result !== "string") continue;

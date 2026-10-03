@@ -2,6 +2,9 @@ import { requireModule } from "@/lib/auth/dal";
 import { proposalsFor } from "@/lib/agents/proposals";
 import { answeringModel } from "@/lib/ai/models";
 import { possibleApprovers } from "@/lib/script/service";
+import { and, eq } from "drizzle-orm";
+import { db } from "@/lib/db/client";
+import { users } from "@/lib/db/schema";
 import {
   articleDetail,
   libraryCounts,
@@ -46,16 +49,21 @@ export default async function ArticlePage({
   const status = isStatus(rawStatus) ? rawStatus : null;
   const query = one("q") ?? "";
 
-  const [items, counts, log, approvers, scripts, detail] = await Promise.all([
+  const [items, counts, log, people, agents, scripts, detail] = await Promise.all([
     listArticles(viewer, { status: status ?? undefined, query }),
     libraryCounts(viewer),
     publicationsFor(viewer),
     possibleApprovers(viewer),
+    db.select({ id: users.id }).from(users).where(and(eq(users.tenantId, viewer.tenantId), eq(users.isAgent, true))),
     scriptsToDrawOn(viewer),
     openId ? articleDetail(viewer, openId) : Promise.resolve(null),
   ]);
 
   const zh = (viewer.locale ?? "zh-CN").startsWith("zh");
+  /* An approval is a person's: the AI employees are users too, and picking
+     one only earned 这个人不在工作室里 (QA, 3 Oct). */
+  const agentIds = new Set(agents.map((a) => a.id));
+  const approvers = people.filter((p) => !agentIds.has(p.id));
 
   /* What the page's own employee thinks should be made next, read from
      what already exists — this morning's plan, the backlog, the audience. */

@@ -80,10 +80,10 @@ const ARTIFACT_WORD: Record<string, [string, string]> = {
   spend_request: ["打开财务", "Open finance"],
   finance_report: ["打开财务", "Open finance"],
 };
-function artifactLinks(tools: InlineTool[]): { href: string; label: string }[] {
+function artifactLinks(tools: InlineTool[], made: InlineArtifact[] = []): { href: string; label: string }[] {
   const out: { href: string; label: string }[] = [];
   const seen = new Set<string>();
-  for (const t of tools) {
+  for (const t of [...tools, { artifacts: made }]) {
     for (const a of t.artifacts ?? []) {
       const to = ARTIFACT_HREF[a.kind]?.(a.id);
       if (!to || seen.has(a.kind + a.id)) continue;
@@ -107,6 +107,9 @@ export type InlineMessage = {
   error?: string;
   /** Which employee answered; null or absent is the personal assistant. */
   speaker?: AgentKey | null;
+  /** What a reloaded turn made, read back from its stored tool calls (the
+   *  live `tools` are not kept); drawn as the same links. */
+  made?: InlineArtifact[];
 };
 
 /**
@@ -155,6 +158,11 @@ export function useInlineAgent(
      * kept in the browser, the messages on the server.
      */
     key?: string;
+    /** Where to look when `key` has no thread yet: the article screen keys
+     *  its thread by the open article, and the article 撰稿人 has just
+     *  written opens under a new key — the thread that wrote it carries on
+     *  instead of vanishing (QA, 3 Oct). */
+    fallbackKey?: string;
     /** Who answers by default. Unset: the screen's own employee (see
      *  SCREEN_AGENT); null: the personal assistant. */
     agent?: AgentKey | null;
@@ -395,7 +403,7 @@ export function useInlineAgent(
     restoredFor.current = opts.key;
     let saved: string | null = null;
     try {
-      saved = localStorage.getItem(`aura:agent:${opts.key}`);
+      saved = localStorage.getItem(`aura:agent:${opts.key}`) ?? (opts.fallbackKey ? localStorage.getItem(`aura:agent:${opts.fallbackKey}`) : null);
     } catch {
       saved = null;
     }
@@ -404,6 +412,7 @@ export function useInlineAgent(
       setConversationId(null);
       setMessages([]);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [opts.key, load]);
 
   useEffect(() => {
@@ -537,9 +546,9 @@ export function InlineAgentThread({
             )}
             {m.content ? <Markdown text={tidyMarkdown(m.content)} /> : null}
             {/* What this turn made, as links: the article it wrote, the project it started. */}
-            {m.status !== "streaming" && artifactLinks(m.tools).length ? (
+            {m.status !== "streaming" && artifactLinks(m.tools, m.made).length ? (
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
-                {artifactLinks(m.tools).map((a) => {
+                {artifactLinks(m.tools, m.made).map((a) => {
                   const kind = a.label.split(" · ").pop() ?? "";
                   const word = ARTIFACT_WORD[kind] ? (zh ? ARTIFACT_WORD[kind][0] : ARTIFACT_WORD[kind][1]) : kind;
                   const title = a.label.includes(" · ") ? a.label.split(" · ")[0] : "";
