@@ -17,6 +17,7 @@ import {
 import { InlineAgentThread, useInlineAgent } from "@/components/shell/InlineAgent";
 import { ResearchAgentPanel } from "@/components/canvas/ResearchAgentPanel";
 import { notify } from "@/lib/client/notify";
+import { useAsk } from "@/components/ui/useAsk";
 import { Badge, Empty, Label, ModuleHeader, Row, clip, field, ghost, solid, useAction } from "@/components/ui/kit";
 import { ModuleSidebar, type ScreenItem } from "@/components/shell/ModuleSidebar";
 
@@ -38,6 +39,15 @@ const FIELD_ZH: Record<string, { label: string; hint?: string }> = {
   production: { label: "节目或哪一集" },
   recorded_on: { label: "拍摄日期" },
   territory: { label: "授权地区", hint: "默认全球，除非对方另有要求" },
+  consideration: { label: "对价", hint: "默认：参与拍摄的机会及象征性对价港币1元" },
+  contributor_id: { label: "出镜人身份证或护照号码", hint: "选填，留空则留出横线手写" },
+  contributor_address: { label: "出镜人地址", hint: "选填，留空则留出横线手写" },
+  guardian: { label: "监护人姓名", hint: "出镜人未满18岁时填写，否则留空" },
+  studio_legal_name: { label: "制作方法定名称", hint: "中文默认用工作室名称；英文请填英文名称" },
+  studio_registration_no: { label: "制作方商业登记号码", hint: "选填，留空则留出横线手写" },
+  studio_signatory: { label: "制作方签署人姓名", hint: "选填，留空则留出横线手写" },
+  studio_signatory_title: { label: "制作方签署人职位", hint: "选填，留空则留出横线手写" },
+  data_contact: { label: "个人资料查阅及更正的联络人", hint: "默认被授权方" },
   contractor: { label: "合作方姓名" },
   role: { label: "负责什么", hint: "剪辑、摄影、调色……" },
   services: { label: "具体工作内容" },
@@ -87,6 +97,21 @@ const EXPLAIN_ZH: Record<string, string> = {
 };
 const label = (map: Record<string, string>, key: string, zh: boolean) => (zh ? (map[key] ?? key) : key.replace(/_/g, " "));
 
+/* (4 Oct) Clause review also compares the text before the first clause and
+   the signing block after the last one; they are named, not numbered. */
+const clauseName = (clause: string, zh: boolean) =>
+  clause === "preamble"
+    ? zh ? "开头（双方信息及前言）" : "Opening (parties and recitals)"
+    : clause === "closing"
+      ? zh ? "结尾（签署部分）" : "Signing block"
+      : `${zh ? "条款" : "Clause"} ${clause}`;
+
+/* Mirrors READ_ONLY_STATES in the service, which refuses the edit regardless. */
+const READ_ONLY = new Set(["signed", "expired", "terminated"]);
+
+/** A day the way the studio reads it: on Hong Kong's clock, not the server's UTC. */
+const hkDay = (d: Date | string) => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Hong_Kong" }).format(new Date(d));
+
 /**
  * Legal (spec §4.10), transcribed from the four `Legal-*` artboards.
  *
@@ -133,6 +158,10 @@ export function LegalScreen({
   const [tab, setTab] = useState<Tab>(sp?.get("tab") === "draft" ? "draft" : sp?.get("tab") === "templates" ? "templates" : ("library" as Tab));
   const [selected, setSelected] = useState<ContractRow | null>(contracts[0] ?? null);
   const [findings, setFindings] = useState<Finding[]>([]);
+  /* (4 Oct) The contract open in the reading / editing view, by id, so it
+     follows the list as it refreshes. */
+  const [viewingId, setViewingId] = useState<string | null>(null);
+  const viewing = viewingId ? (contracts.find((c) => c.id === viewingId) ?? null) : null;
 
   const current = contracts.find((c) => c.id === selected?.id) ?? contracts[0] ?? null;
   const openFindings = contracts.reduce((n, c) => n + c.unacknowledged, 0);
@@ -182,6 +211,8 @@ export function LegalScreen({
                   const res = await draftContractAction(input);
                   if ("id" in res && res.id) {
                     setTab("repository");
+                    setViewingId(res.id);
+                    notify(t("Drafted. It is open below to read, edit or download.", "已生成草稿，可以查看、修改或下载。"), "ok");
                   }
                   return res;
                 })
@@ -214,6 +245,7 @@ export function LegalScreen({
                   return res;
                 })
               }
+              onOpen={(c) => setViewingId(c.id)}
               onAcknowledge={(f) =>
                 run(
                   () => acknowledgeFindingAction(f.id),
@@ -229,6 +261,7 @@ export function LegalScreen({
               zh={zh}
               busy={busy}
               onUpdate={(id, input) => run(() => updateContractAction(id, input))}
+              onOpen={(c) => setViewingId(c.id)}
               onReview={(c) => {
                 setSelected(c);
                 setTab("review");
@@ -282,6 +315,206 @@ export function LegalScreen({
         />
       </div>
       </div>
+
+      {viewing && (
+        <ContractView
+          key={viewing.id}
+          contract={viewing}
+          template={templates.find((x) => x.id === viewing.templateId) ?? null}
+          zh={zh}
+          busy={busy}
+          onClose={() => setViewingId(null)}
+          onSave={(body, after) =>
+            run(
+              () => updateContractAction(viewing.id, { body }),
+              () => {
+                after();
+                notify(t("Saved.", "已保存。"), "ok");
+              },
+            )
+          }
+        />
+      )}
+    </div>
+  );
+}
+
+/* --------------------------------------------------------- contract view */
+
+/**
+ * One contract, in full (4 Oct: a drafted contract could not be opened, read,
+ * edited or downloaded anywhere). Its details and the values it was drafted
+ * with, its text — editable in place while it is a draft, in review or sent,
+ * read-only once signed, expired or terminated — and a download in Word, PDF
+ * or plain text. Saving goes through `updateContractAction`, which checks the
+ * module and the state again.
+ */
+function ContractView({
+  contract,
+  template,
+  zh,
+  busy,
+  onClose,
+  onSave,
+}: {
+  contract: ContractRow;
+  template: TemplateRow | null;
+  zh: boolean;
+  busy: boolean;
+  onClose: () => void;
+  onSave: (body: string, after: () => void) => void;
+}) {
+  const t = (en: string, cn: string) => (zh ? cn : en);
+  const ask = useAsk(zh);
+  const readOnly = READ_ONLY.has(contract.state);
+  const [text, setText] = useState(contract.body);
+  const [saved, setSaved] = useState(contract.body);
+  const [downloading, setDownloading] = useState<string | null>(null);
+  const dirty = !readOnly && text !== saved;
+
+  async function close() {
+    if (dirty && !(await ask.confirm({ title: t("Discard your changes?", "放弃未保存的修改？"), confirm: t("Discard", "放弃"), danger: true }))) return;
+    onClose();
+  }
+
+  async function download(format: "docx" | "pdf" | "txt") {
+    setDownloading(format);
+    try {
+      const res = await fetch(`/api/legal/contracts/${encodeURIComponent(contract.id)}/export?format=${format}`);
+      if (!res.ok) {
+        notify(t("Could not make the file. Try again.", "没能生成文件，请再试一次。"));
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${(contract.title || t("contract", "合同")).replace(/[\\/:*?"<>|]+/g, " ").slice(0, 80)}.${format}`;
+      a.click();
+      URL.revokeObjectURL(url);
+      notify(t("Downloaded.", "已下载。"), "ok");
+    } catch {
+      notify(t("Could not download. Check the connection and try again.", "没能下载，请检查网络后再试。"));
+    } finally {
+      setDownloading(null);
+    }
+  }
+
+  const fieldLabel = (key: string) =>
+    (zh && FIELD_ZH[key]?.label) || template?.fields.find((f) => f.key === key)?.label || key.replace(/_/g, " ");
+  const values = Object.entries(contract.values ?? {}).filter(([, v]) => v && v.trim());
+  const meta: [string, string][] = [
+    [t("With", "对方"), contract.counterparty ?? "—"],
+    [t("State", "状态"), label(STATE_ZH, contract.state, zh)],
+    [t("Signed", "签署日"), contract.signedOn ?? "—"],
+    [t("Expires", "到期日"), contract.expiresOn ?? "—"],
+    [t("Template", "模板"), contract.templateName ? nameZh(contract.templateName, zh) : t("none", "无")],
+    [t("Owner", "负责人"), contract.ownerName ?? "—"],
+    [t("Last changed", "最近修改"), hkDay(contract.updatedAt)],
+  ];
+
+  return (
+    <div
+      onMouseDown={() => void close()}
+      style={{ position: "fixed", inset: 0, zIndex: 210, background: "rgba(23,23,23,0.2)", display: "flex", justifyContent: "center", alignItems: "flex-start", padding: "5vh 18px 18px" }}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={contract.title}
+        onMouseDown={(e) => e.stopPropagation()}
+        onKeyDown={(e) => e.key === "Escape" && void close()}
+        style={{
+          width: "min(860px, 100%)",
+          maxHeight: "90vh",
+          display: "flex",
+          flexDirection: "column",
+          background: "#fff",
+          borderRadius: 14,
+          border: "1px solid #e2e2e2",
+          boxShadow: "0 24px 64px rgba(23,23,23,0.22)",
+          overflow: "hidden",
+          animation: "fadeUp .16s cubic-bezier(.32,.72,0,1) both",
+        }}
+      >
+        <div style={{ padding: "16px 18px 12px", borderBottom: "1px solid #f3f3f3", flexShrink: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <span style={{ fontSize: 15, fontWeight: 600, ...clip }} title={contract.title}>{contract.title}</span>
+            <Badge tone={readOnly ? "good" : contract.state === "draft" ? "quiet" : "warn"}>{label(STATE_ZH, contract.state, zh)}</Badge>
+            <span style={{ marginLeft: "auto", display: "flex", gap: 6, flexShrink: 0 }}>
+              {(["docx", "pdf", "txt"] as const).map((f) => (
+                <button key={f} type="button" disabled={downloading !== null} onClick={() => void download(f)} style={{ ...ghost, height: 28, fontSize: 11.5 }}>
+                  {downloading === f ? t("Preparing…", "生成中…") : f === "docx" ? t("Download Word", "下载 Word") : f === "pdf" ? t("Download PDF", "下载 PDF") : t("Download text", "下载纯文本")}
+                </button>
+              ))}
+            </span>
+          </div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 16px", marginTop: 9, fontSize: 11.5, color: "#7c7c7c" }}>
+            {meta.map(([k, v]) => (
+              <span key={k}>
+                <span style={{ color: "#b0b0b0" }}>{k}</span> {v}
+              </span>
+            ))}
+          </div>
+        </div>
+
+        <div style={{ padding: "12px 18px 0", overflowY: "auto", minHeight: 0, flexGrow: 1 }}>
+          {values.length > 0 && (
+            <details style={{ marginBottom: 10 }}>
+              <summary style={{ cursor: "pointer", fontSize: 12, color: "#525252" }}>{t("Filled in when drafted", "起草时填写的内容")}</summary>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: "4px 14px", marginTop: 8, fontSize: 11.5 }}>
+                {values.map(([k, v]) => (
+                  <div key={k} style={{ display: "flex", gap: 6, minWidth: 0 }}>
+                    <span style={{ color: "#999999", flexShrink: 0 }}>{fieldLabel(k)}</span>
+                    <span style={{ color: "#383838", ...clip }} title={v}>{v}</span>
+                  </div>
+                ))}
+              </div>
+            </details>
+          )}
+          {readOnly ? (
+            <>
+              <p style={{ fontSize: 11.5, color: "#999999", margin: "0 0 8px" }}>
+                {t("Signed, expired and terminated contracts can be read and downloaded but not changed.", "已签署、已到期或已终止的合同只能查看和下载，不能修改。")}
+              </p>
+              <pre style={{ margin: "0 0 16px", padding: 14, border: "1px solid #ededed", borderRadius: 10, background: "#fcfcfc", fontSize: 12.5, lineHeight: 1.8, color: "#262626", whiteSpace: "pre-wrap", fontFamily: "inherit" }}>
+                {contract.body}
+              </pre>
+            </>
+          ) : (
+            <textarea
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              aria-label={t("Contract text", "合同正文")}
+              style={{ ...field, minHeight: "52vh", resize: "vertical", lineHeight: 1.8, padding: "11px 13px", fontSize: 12.5, marginBottom: 14 }}
+            />
+          )}
+        </div>
+
+        <div style={{ flexShrink: 0, display: "flex", gap: 8, alignItems: "center", padding: "12px 18px 14px", borderTop: "1px solid #f3f3f3" }}>
+          {!readOnly && (
+            <span style={{ fontSize: 11, color: "#b0b0b0" }}>
+              {dirty ? t("Unsaved changes", "有未保存的修改") : t("Edit the text above and save.", "可直接修改上面的正文后保存。")}
+            </span>
+          )}
+          <span style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
+            <button type="button" onClick={() => void close()} style={ghost}>
+              {t("Close", "关闭")}
+            </button>
+            {!readOnly && (
+              <button
+                type="button"
+                disabled={busy || !dirty || !text.trim()}
+                onClick={() => onSave(text, () => setSaved(text))}
+                style={{ ...solid, opacity: busy || !dirty || !text.trim() ? 0.45 : 1 }}
+              >
+                {busy ? t("Saving…", "保存中…") : t("Save", "保存")}
+              </button>
+            )}
+          </span>
+        </div>
+      </div>
+      {ask.dialog}
     </div>
   );
 }
@@ -406,6 +639,7 @@ function Review({
   busy,
   onSelect,
   onCompare,
+  onOpen,
   onAcknowledge,
 }: {
   contracts: ContractRow[];
@@ -415,6 +649,7 @@ function Review({
   busy: boolean;
   onSelect: (c: ContractRow) => void;
   onCompare: (c: ContractRow) => void;
+  onOpen: (c: ContractRow) => void;
   onAcknowledge: (f: Finding) => void;
 }) {
   const t = (en: string, cn: string) => (zh ? cn : en);
@@ -456,8 +691,19 @@ function Review({
       {current && (
         <div style={{ flexGrow: 1, minWidth: 0 }}>
           <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 12 }}>
-            <span style={{ fontSize: 15, fontWeight: 500 }}>{current.title}</span>
-            <button type="button" disabled={busy} onClick={() => onCompare(current)} style={{ ...solid, marginLeft: "auto" }}>
+            <button
+              type="button"
+              onClick={() => onOpen(current)}
+              title={t("Open the full text", "查看全文")}
+              style={{ border: 0, background: "none", padding: 0, font: "inherit", fontSize: 15, fontWeight: 500, color: "#171717", cursor: "pointer", textAlign: "left" }}
+            >
+              {current.title}
+            </button>
+            <Badge tone="quiet">{label(STATE_ZH, current.state, zh)}</Badge>
+            <button type="button" onClick={() => onOpen(current)} style={{ ...ghost, marginLeft: "auto" }}>
+              {t("Open the full text", "查看全文")}
+            </button>
+            <button type="button" disabled={busy} onClick={() => onCompare(current)} style={solid}>
               {busy ? t("Comparing…", "比对中…") : t("Compare with the template", "与模板比对")}
             </button>
           </div>
@@ -473,9 +719,7 @@ function Review({
             findings.map((f) => (
               <div key={f.id} style={{ border: "1px solid #ededed", borderRadius: 11, padding: 13, marginBottom: 10 }}>
                 <div style={{ display: "flex", gap: 9, alignItems: "baseline" }}>
-                  <span style={{ fontSize: 12.5, fontWeight: 500 }}>
-                    {t("Clause", "条款")} {f.clause}
-                  </span>
+                  <span style={{ fontSize: 12.5, fontWeight: 500 }}>{clauseName(f.clause, zh)}</span>
                   <Badge tone={f.departure === "missing" ? "bad" : f.departure === "reworded" ? "quiet" : "warn"}>
                     {label(DEPARTURE_ZH, f.departure, zh)}
                   </Badge>
@@ -541,12 +785,14 @@ function Repository({
   busy,
   onUpdate,
   onReview,
+  onOpen,
 }: {
   contracts: ContractRow[];
   zh: boolean;
   busy: boolean;
   onUpdate: (id: string, input: { state?: string; signedOn?: string; expiresOn?: string }) => void;
   onReview: (c: ContractRow) => void;
+  onOpen: (c: ContractRow) => void;
 }) {
   const t = (en: string, cn: string) => (zh ? cn : en);
 
@@ -560,12 +806,18 @@ function Repository({
         <span style={{ width: 120 }}>{t("State", "状态")}</span>
         <span style={{ width: 120 }}>{t("Signed", "签署日")}</span>
         <span style={{ width: 120 }}>{t("Expires", "到期日")}</span>
-        <span style={{ width: 70 }} />
+        <span style={{ width: 110 }} />
       </Row>
       {contracts.map((c) => (
         <Row key={c.id} style={{ alignItems: "center" }}>
           <span style={{ flexGrow: 1, ...clip }} title={c.title}>
-            {c.title}
+            <button
+              type="button"
+              onClick={() => onOpen(c)}
+              style={{ border: 0, background: "none", padding: 0, font: "inherit", color: "#171717", cursor: "pointer", textDecoration: "underline", textDecorationColor: "#e2e2e2", textUnderlineOffset: 3 }}
+            >
+              {c.title}
+            </button>
             {c.unacknowledged > 0 && (
               <span style={{ marginLeft: 7 }}>
                 <Badge tone="warn">{t(`${c.unacknowledged} to read`, `${c.unacknowledged} 待查看`)}</Badge>
@@ -603,8 +855,11 @@ function Repository({
               style={{ ...field, height: 26, width: 112, fontSize: 11.5 }}
             />
           </span>
-          <span style={{ width: 70, textAlign: "right" }}>
-            <button type="button" onClick={() => onReview(c)} style={{ ...ghost, height: 24, fontSize: 11 }}>
+          <span style={{ width: 110, textAlign: "right", display: "flex", gap: 5, justifyContent: "flex-end" }}>
+            <button type="button" onClick={() => onOpen(c)} style={{ ...ghost, height: 24, fontSize: 11, padding: "0 9px" }}>
+              {t("open", "查看")}
+            </button>
+            <button type="button" onClick={() => onReview(c)} style={{ ...ghost, height: 24, fontSize: 11, padding: "0 9px" }}>
               {t("review", "审阅")}
             </button>
           </span>
@@ -728,7 +983,7 @@ function Compliance({
           return (
             <Row key={r.id} style={{ alignItems: "center" }}>
               <span style={{ width: 110, color: "#7c7c7c", fontSize: 11.5 }}>
-                {r.createdAt.toISOString().slice(0, 10)}
+                {hkDay(r.createdAt)}
               </span>
               <span style={{ flexGrow: 1, minWidth: 0 }}>
                 {r.subject || nameZh(r.checklistName, zh)}
