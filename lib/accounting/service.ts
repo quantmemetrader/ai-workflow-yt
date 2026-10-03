@@ -1,11 +1,11 @@
 import "server-only";
-import { and, asc, desc, eq, inArray, isNull, lt, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNotNull, isNull, lt, or, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { accountingPeriods, accounts, documents, journalEntries, journalLines, users } from "@/lib/db/schema";
 import type { Viewer } from "@/lib/auth/dal";
 import { audit } from "@/lib/audit";
 import { newId } from "@/lib/ids";
-import { closeBlockers, isPeriod, lockedReason, reopenBlocker, type CloseChecklist } from "@/lib/accounting/close";
+import { closeBlockers, hkMonth, isPeriod, lockedReason, periodOfDate, reopenBlocker, type CloseChecklist } from "@/lib/accounting/close";
 
 /** (QA, 2 Oct) A person's name the way the reader reads it: the Chinese name on a Chinese screen. */
 function personName(viewer: Viewer) {
@@ -74,17 +74,60 @@ export async function seedAccounts(viewer: Viewer) {
   await audit(viewer, "accounting.accounts.seed", { module: "accounting" });
 }
 
+/** Accounts somebody hid, so they can be shown again. */
+export async function listHiddenAccounts(viewer: Viewer): Promise<AccountRow[]> {
+  const rows = await db
+    .select()
+    .from(accounts)
+    .where(and(eq(accounts.tenantId, viewer.tenantId), isNotNull(accounts.archivedAt)))
+    .orderBy(asc(accounts.code));
+  return rows.map((a) => ({ id: a.id, code: a.code, name: a.name, kind: a.kind }));
+}
+
+/** Why an account could not be added because its code is taken, with the
+ * hidden account it collides with when there is one, so the screen can offer
+ * to show it again. */
+export class DuplicateAccountCode extends Error {
+  constructor(public hidden: AccountRow | null) {
+    super("科目代码已存在，如已隐藏可在列表里重新显示");
+  }
+}
+
+/** (QA, 4 Oct: a code that already existed was silently dropped by
+ * `onConflictDoNothing`, and the screen said nothing.) */
 export async function createAccount(viewer: Viewer, input: { code: string; name: string; kind: string }) {
   const code = input.code.trim();
   const name = input.name.trim();
   if (!code || !name) throw new Error("科目需要编号和名称");
   const id = newId("acct");
-  await db
+  const added = await db
     .insert(accounts)
     .values({ id, tenantId: viewer.tenantId, code, name, kind: input.kind })
-    .onConflictDoNothing();
-  await audit(viewer, "accounting.account.create", { module: "accounting", meta: { code, name } });
+    .onConflictDoNothing()
+    .returning({ id: accounts.id });
+  if (!added.length) {
+    const [taken] = await db
+      .select()
+      .from(accounts)
+      .where(and(eq(accounts.tenantId, viewer.tenantId), eq(accounts.code, code)))
+      .limit(1);
+    throw new DuplicateAccountCode(
+      taken?.archivedAt ? { id: taken.id, code: taken.code, name: taken.name, kind: taken.kind } : null,
+    );
+  }
+  await audit(viewer, "accounting.account.create", { module: "accounting", objectId: id, meta: { code, name } });
   return id;
+}
+
+/** Show a hidden account again. */
+export async function unarchiveAccount(viewer: Viewer, accountId: string) {
+  const done = await db
+    .update(accounts)
+    .set({ archivedAt: null })
+    .where(and(eq(accounts.id, accountId), eq(accounts.tenantId, viewer.tenantId), isNotNull(accounts.archivedAt)))
+    .returning({ id: accounts.id });
+  if (!done.length) throw new Error("这个科目没有隐藏，或者已经不存在");
+  await audit(viewer, "accounting.account.unarchive", { module: "accounting", objectId: accountId });
 }
 
 export async function archiveAccount(viewer: Viewer, accountId: string) {
@@ -199,20 +242,30 @@ export type EntryRow = {
   balanceMicros: number;
 };
 
+/**
+ * One month's entries: booked into it or dated in it, so an entry booked into
+ * the wrong month before 4 Oct is still found under the month of its date.
+ * Names are the reader's: the Chinese name on a Chinese screen (QA, 4 Oct).
+ */
 export async function listEntries(viewer: Viewer, period?: string): Promise<EntryRow[]> {
+  const zh = (viewer.locale ?? "zh-CN").startsWith("zh");
   const rows = await db
     .select({
       e: journalEntries,
       documentTitle: documents.title,
-      postedByName: sql<string | null>`poster.name`,
-      createdByName: sql<string | null>`creator.name`,
+      postedByName: zh
+        ? sql<string | null>`coalesce(nullif(poster.name_local, ''), poster.name)`
+        : sql<string | null>`poster.name`,
+      createdByName: zh
+        ? sql<string | null>`coalesce(nullif(creator.name_local, ''), creator.name)`
+        : sql<string | null>`creator.name`,
     })
     .from(journalEntries)
     .leftJoin(documents, eq(documents.id, journalEntries.documentId))
     .leftJoin(sql`${users} as poster`, sql`poster.id = ${journalEntries.postedBy}`)
     .leftJoin(sql`${users} as creator`, sql`creator.id = ${journalEntries.createdBy}`)
     .where(
-      and(eq(journalEntries.tenantId, viewer.tenantId), period ? eq(journalEntries.period, period) : undefined),
+      and(eq(journalEntries.tenantId, viewer.tenantId), period ? inMonth(period) : undefined),
     )
     .orderBy(desc(journalEntries.entryDate), desc(journalEntries.createdAt))
     .limit(200);
@@ -262,7 +315,6 @@ export async function saveEntry(
   viewer: Viewer,
   input: {
     id?: string | null;
-    period: string;
     entryDate: string;
     memo: string;
     documentId?: string | null;
@@ -272,9 +324,14 @@ export async function saveEntry(
   const clean = input.lines.filter((l) => l.accountId && Number.isFinite(l.amountMicros) && l.amountMicros !== 0);
   if (clean.length < 2) throw new Error("一笔分录至少要有两行");
 
+  /* (4 Oct) The period is the month of the entry's date, never the month it
+     was typed in; see `periodOfDate`. */
+  const period = periodOfDate(input.entryDate);
+  if (!period || !isPeriod(period)) throw new Error("日期格式不对");
+
   /* 月结: nothing may be written into, or dated into, a closed month. */
   const closed = await closedPeriodSet(viewer.tenantId);
-  const intoClosed = lockedReason(closed, input, "录入或修改");
+  const intoClosed = lockedReason(closed, { period, entryDate: input.entryDate }, "录入或修改");
   if (intoClosed) throw new Error(intoClosed);
 
   if (input.id) {
@@ -292,7 +349,7 @@ export async function saveEntry(
     await db
       .update(journalEntries)
       .set({
-        period: input.period,
+        period,
         entryDate: input.entryDate,
         memo: input.memo.slice(0, 1000),
         documentId: input.documentId ?? null,
@@ -323,7 +380,7 @@ export async function saveEntry(
   await db.insert(journalEntries).values({
     id,
     tenantId: viewer.tenantId,
-    period: input.period,
+    period,
     entryDate: input.entryDate,
     memo: input.memo.slice(0, 1000),
     documentId: input.documentId ?? null,
@@ -631,7 +688,7 @@ export async function listPeriodStatuses(viewer: Viewer): Promise<PeriodStatus[]
     .groupBy(journalEntries.period);
   const byPeriod = new Map(counts.map((c) => [c.period, c.n]));
   const status = await periodRows(viewer);
-  const months = new Set<string>([new Date().toISOString().slice(0, 7), ...byPeriod.keys(), ...status.keys()]);
+  const months = new Set<string>([hkMonth(), ...byPeriod.keys(), ...status.keys()]);
   return [...months]
     .filter(isPeriod)
     .sort()
@@ -662,7 +719,7 @@ async function closeChecklist(viewer: Viewer, period: string): Promise<CloseChec
         isNull(documents.enteredAt),
         or(
           sql`substr(${documents.documentDate}, 1, 7) = ${period}`,
-          and(isNull(documents.documentDate), sql`to_char(${documents.createdAt}, 'YYYY-MM') = ${period}`),
+          and(isNull(documents.documentDate), sql`to_char(${documents.createdAt} at time zone 'Asia/Hong_Kong', 'YYYY-MM') = ${period}`),
         ),
       ),
     );

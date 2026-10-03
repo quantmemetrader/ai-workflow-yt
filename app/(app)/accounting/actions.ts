@@ -8,6 +8,7 @@ import {
   closePeriod,
   createAccount,
   deleteDraft,
+  DuplicateAccountCode,
   exportPeriodCsv,
   periodCloseView,
   postEntry,
@@ -15,8 +16,10 @@ import {
   reopenPeriod,
   saveEntry,
   seedAccounts,
+  unarchiveAccount,
   voidEntry,
 } from "@/lib/accounting/service";
+import { periodOfDate } from "@/lib/accounting/close";
 
 async function bookkeeper() {
   const viewer = await getViewer();
@@ -61,7 +64,23 @@ export async function createAccountAction(code: string, name: string, kind: stri
     refresh();
     return {};
   } catch (err) {
+    /* (4 Oct) A code already in use says so; a hidden one comes back with the
+       account, so the screen can offer to show it again. */
+    if (err instanceof DuplicateAccountCode) return { error: err.message, hidden: err.hidden };
     return { error: err instanceof Error ? err.message : "没能添加，请再试一次" };
+  }
+}
+
+export async function unarchiveAccountAction(accountId: string) {
+  const viewer = await bookkeeper();
+  if (!viewer) return { error: "你没有权限这样做" };
+  if (!id(accountId)) return { error: "找不到这一项" };
+  try {
+    await unarchiveAccount(viewer, accountId);
+    refresh();
+    return {};
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "没能完成，请再试一次" };
   }
 }
 
@@ -119,7 +138,8 @@ export async function removeDocumentAction(documentId: string) {
 
 export async function saveEntryAction(input: {
   id?: string | null;
-  period: string;
+  /** Ignored since 4 Oct: the period is the month of `entryDate` (in the service too). */
+  period?: string;
   entryDate: string;
   memo: string;
   documentId?: string | null;
@@ -128,9 +148,9 @@ export async function saveEntryAction(input: {
   const viewer = await bookkeeper();
   if (!viewer) return { error: "你没有权限这样做" };
 
-  const p = period(input.period);
   const d = day(input.entryDate);
-  if (!p || !d) return { error: "日期和期间都要填" };
+  const p = d ? periodOfDate(d) : null;
+  if (!d || !p) return { error: "请填写日期" };
 
   const lines = (Array.isArray(input.lines) ? input.lines : [])
     .map((l) => ({
@@ -143,14 +163,13 @@ export async function saveEntryAction(input: {
   try {
     const entryId = await saveEntry(viewer, {
       id: id(input.id),
-      period: p,
       entryDate: d,
       memo: String(input.memo ?? "").slice(0, 1000),
       documentId: id(input.documentId),
       lines,
     });
     refresh();
-    return { id: entryId };
+    return { id: entryId, period: p };
   } catch (err) {
     return { error: err instanceof Error ? err.message : "没能保存，请再试一次" };
   }

@@ -24,6 +24,55 @@ export function monthOf(date: string | null | undefined): string | null {
   return m ? m[1] : null;
 }
 
+/* ------------------------------------------------ the studio's clock (4 Oct) */
+
+const HK = "Asia/Hong_Kong";
+
+/** Today as 'YYYY-MM-DD' in Hong Kong. The server runs in UTC, so until 08:00
+ * HKT `new Date().toISOString()` still said yesterday (and on the 1st, last month). */
+export function hkToday(now = new Date()): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: HK, year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
+}
+
+/** This month as 'YYYY-MM' in Hong Kong. */
+export const hkMonth = (now = new Date()) => hkToday(now).slice(0, 7);
+
+/**
+ * The period an entry is booked into: the month of its date. An entry dated
+ * 30 September is September's, whenever it is typed in (QA, 4 Oct: every
+ * entry went into the month it was typed in, by UTC, so a late September
+ * receipt could not be booked into a reopened September).
+ */
+export const periodOfDate = (entryDate: string): string | null => monthOf(entryDate);
+
+/** A moment as the studio reads it — 2026-10-04 14:05, Hong Kong time — the
+ * same on the server's render and in the browser. */
+export function hkDateTime(d: Date | string | null | undefined): string {
+  if (!d) return "";
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: HK,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(new Date(d));
+  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "";
+  return `${get("year")}-${get("month")}-${get("day")} ${get("hour")}:${get("minute")}`;
+}
+
+/* --------------------------------------------------------------- currency */
+
+/** The module's currency. Documents carry their own (default HKD, the same);
+ * entries are in this one. */
+export const ACCOUNTING_CURRENCY = "HKD";
+
+const SYMBOL: Record<string, string> = { HKD: "HK$", USD: "US$", CNY: "¥", RMB: "¥", EUR: "€", GBP: "£" };
+
+/** The label an amount is shown with: HK$ for HKD, never a bare "$". */
+export const currencySymbol = (code: string | null | undefined) => SYMBOL[(code ?? ACCOUNTING_CURRENCY).toUpperCase()] ?? `${(code ?? "").toUpperCase()} `;
+
 /** The months an entry with this `period` and `entry_date` touches. */
 export function monthsOfEntry(entry: { period: string; entryDate: string | null | undefined }): string[] {
   const out = new Set<string>([entry.period]);
@@ -67,7 +116,7 @@ export type CloseChecklist = {
 /** What stops a month closing, in Chinese, in the order to fix them. Empty means it can close. */
 export function closeBlockers(period: string, c: CloseChecklist, now = new Date()): string[] {
   const out: string[] = [];
-  const thisMonth = now.toISOString().slice(0, 7);
+  const thisMonth = hkMonth(now);
   if (!isPeriod(period)) out.push("月份格式不对");
   else if (period > thisMonth) out.push(`${period} 还没到，不能提前结账`);
   if (c.earlierOpen.length) {

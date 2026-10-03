@@ -1,7 +1,7 @@
 "use client";
 
-import { useSearchParams } from "next/navigation";
-import { useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useState, useTransition } from "react";
 import type { AccountRow, DocumentRow, EntryRow, PeriodCloseView, PeriodStatus } from "@/lib/accounting/service";
 import {
   addDocumentAction,
@@ -16,8 +16,10 @@ import {
   reopenPeriodAction,
   saveEntryAction,
   seedAccountsAction,
+  unarchiveAccountAction,
   voidEntryAction,
 } from "@/app/(app)/accounting/actions";
+import { currencySymbol, hkDateTime, hkToday, periodOfDate } from "@/lib/accounting/close";
 import { InlineAgentThread, useInlineAgent } from "@/components/shell/InlineAgent";
 import { ResearchAgentPanel } from "@/components/canvas/ResearchAgentPanel";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
@@ -51,7 +53,10 @@ type Draft = {
 
 export function AccountingScreen({
   period,
+  thisMonth,
+  currency,
   accounts,
+  hiddenAccounts,
   documents,
   entries,
   summary,
@@ -62,8 +67,15 @@ export function AccountingScreen({
   model,
   library,
 }: {
+  /** The month 账目 shows (?month=, default this month in Hong Kong). */
   period: string;
+  /** This month on Hong Kong's clock. */
+  thisMonth: string;
+  /** The module's currency code (HKD): every amount is labelled with it. */
+  currency: string;
   accounts: AccountRow[];
+  /** Accounts somebody hid, to show again. */
+  hiddenAccounts: AccountRow[];
   documents: DocumentRow[];
   entries: EntryRow[];
   summary: {
@@ -87,9 +99,21 @@ export function AccountingScreen({
   const { busy, run } = useAction();
   const agent = useInlineAgent({ module: "accounting" });
   const sp = useSearchParams();
-  const [tab, setTab] = useState<Tab>(sp?.get("tab") === "inbox" || !library ? "inbox" : "library");
+  const router = useRouter();
+  const pathname = usePathname();
+  const [tab, setTab] = useState<Tab>(sp?.get("tab") === "entries" ? "entries" : sp?.get("tab") === "inbox" || !library ? "inbox" : "library");
   const [draft, setDraft] = useState<Draft | null>(null);
   const [voiding, setVoiding] = useState<EntryRow | null>(null);
+  const [deleting, setDeleting] = useState<EntryRow | null>(null);
+  const [switching, startSwitch] = useTransition();
+  const sym = currencySymbol(currency);
+
+  /* (4 Oct) Another month's entries: the page reads ?month=, so a refresh
+     after any action keeps showing the same month. A soft navigation, not a reload. */
+  function showMonth(m: string) {
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(m) || m === period) return;
+    startSwitch(() => router.replace(`${pathname}?tab=entries&month=${m}`, { scroll: false }));
+  }
 
   const pending = documents.filter((d) => !d.enteredAt);
   const closedMonths = new Set(months.filter((m) => m.closed).map((m) => m.period));
@@ -97,7 +121,8 @@ export function AccountingScreen({
   function newEntry(fromDocument?: DocumentRow) {
     setDraft({
       id: null,
-      entryDate: new Date().toISOString().slice(0, 10),
+      /* The document's own date when it has one, else today in Hong Kong. */
+      entryDate: fromDocument?.documentDate || hkToday(),
       memo: fromDocument ? fromDocument.title : "",
       documentId: fromDocument?.id ?? null,
       lines: [
@@ -150,6 +175,7 @@ export function AccountingScreen({
               busy={busy}
               onAdd={(input) => run(() => addDocumentAction(input))}
               onRemove={(id) => run(() => removeDocumentAction(id))}
+              currency={currency}
               onEnter={(d) => newEntry(d)}
             />
           )}
@@ -162,23 +188,36 @@ export function AccountingScreen({
               documents={pending}
               draft={draft}
               period={period}
+              thisMonth={thisMonth}
+              months={months}
+              sym={sym}
+              switching={switching}
+              onMonth={showMonth}
               zh={zh}
               busy={busy}
               onDraft={setDraft}
-              onSave={(d) =>
+              onSave={(d) => {
+                let savedInto = "";
                 run(
-                  () =>
-                    saveEntryAction({
+                  async () => {
+                    const res = await saveEntryAction({
                       id: d.id,
-                      period,
                       entryDate: d.entryDate,
                       memo: d.memo,
                       documentId: d.documentId,
                       lines: d.lines,
-                    }),
-                  () => setDraft(null),
-                )
-              }
+                    });
+                    if ("period" in res && res.period) savedInto = res.period;
+                    return res;
+                  },
+                  () => {
+                    setDraft(null);
+                    notify(t(`Saved as a draft in ${savedInto}.`, `已保存为草稿，记入 ${savedInto}。`), "ok");
+                    /* Dated in another month: show that month, where it now is. */
+                    if (savedInto && savedInto !== period) showMonth(savedInto);
+                  },
+                );
+              }}
               onEdit={(e) =>
                 setDraft({
                   id: e.id,
@@ -192,9 +231,9 @@ export function AccountingScreen({
                   })),
                 })
               }
-              onPost={(id) => run(() => postEntryAction(id))}
+              onPost={(id) => run(() => postEntryAction(id), () => notify(t("Posted.", "已确认入账。"), "ok"))}
               onVoid={(e) => setVoiding(e)}
-              onDelete={(id) => run(() => deleteDraftAction(id))}
+              onDelete={(e) => setDeleting(e)}
             />
           )}
 
@@ -202,6 +241,7 @@ export function AccountingScreen({
             <Period
               initial={close}
               months={months}
+              sym={sym}
               canClose={canClose}
               zh={zh}
               busy={busy}
@@ -212,11 +252,12 @@ export function AccountingScreen({
           {tab === "accounts" && (
             <Accounts
               accounts={accounts}
+              hidden={hiddenAccounts}
               zh={zh}
               busy={busy}
+              run={run}
               onSeed={() => run(() => seedAccountsAction())}
-              onCreate={(code, name, kind) => run(() => createAccountAction(code, name, kind))}
-              onArchive={(id) => run(() => archiveAccountAction(id))}
+              onArchive={(id) => run(() => archiveAccountAction(id), () => notify(t("Hidden. It can be shown again below.", "已隐藏，可在下方重新显示。"), "ok"))}
             />
           )}
         </div>
@@ -256,7 +297,22 @@ export function AccountingScreen({
           confirm={t("Void", "作废")}
           cancel={t("Cancel", "取消")}
           onClose={() => setVoiding(null)}
-          onConfirm={() => run(() => voidEntryAction(voiding.id))}
+          onConfirm={() => run(() => voidEntryAction(voiding.id), () => notify(t("Voided.", "已作废。"), "ok"))}
+        />
+      )}
+
+      {deleting && (
+        <ConfirmDialog
+          danger
+          title={t("Delete this draft?", "删除这条草稿分录？")}
+          body={t(
+            `"${deleting.memo || "(no memo)"}", dated ${deleting.entryDate}. A draft has not been posted, so the books do not change; the draft itself cannot be brought back.`,
+            `「${deleting.memo || "无摘要"}」，日期 ${deleting.entryDate}。草稿尚未入账，删除不影响账目余额，但删除后无法恢复。`,
+          )}
+          confirm={t("Delete", "删除")}
+          cancel={t("Cancel", "取消")}
+          onClose={() => setDeleting(null)}
+          onConfirm={() => run(() => deleteDraftAction(deleting.id), () => notify(t("Draft deleted.", "草稿已删除。"), "ok"))}
         />
       )}
     </div>
@@ -272,8 +328,10 @@ function Inbox({
   onAdd,
   onRemove,
   onEnter,
+  currency,
 }: {
   documents: DocumentRow[];
+  currency: string;
   zh: boolean;
   busy: boolean;
   onAdd: (input: { title: string; supplier: string; documentDate: string; amount: string; note: string; fileId: null }) => void;
@@ -297,7 +355,7 @@ function Inbox({
         <input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder={t("What is it?", "单据名称")} style={{ ...field, width: 220, height: 32 }} />
         <input value={form.supplier} onChange={(e) => setForm({ ...form, supplier: e.target.value })} placeholder={t("Supplier", "供应商")} style={{ ...field, width: 160, height: 32 }} />
         <label style={{ display: "flex", flexDirection: "column", gap: 3 }}><span style={{ fontSize: 11.5, color: "#8a8a8a" }}>{t("Date", "日期")}</span><input type="date" value={form.documentDate} onChange={(e) => setForm({ ...form, documentDate: e.target.value })} style={{ ...field, width: 150, height: 32 }} /></label>
-        <input value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value.replace(/[^\d.-]/g, "") })} placeholder={t("Amount", "金额")} inputMode="decimal" style={{ ...field, width: 120, height: 32, textAlign: "right" }} />
+        <input value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value.replace(/[^\d.-]/g, "") })} placeholder={t(`Amount (${currencySymbol(currency)})`, `金额（${currencySymbol(currency)}）`)} inputMode="decimal" style={{ ...field, width: 120, height: 32, textAlign: "right" }} />
         <button
           type="button"
           disabled={busy || !form.title.trim()}
@@ -322,7 +380,7 @@ function Inbox({
             </span>
             <span style={{ width: 110, color: "#7c7c7c" }}>{d.documentDate ?? ""}</span>
             <span style={{ width: 110, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
-              {d.amountMicros === null ? "" : money(d.amountMicros)}
+              {d.amountMicros === null ? "" : money(d.amountMicros, currencySymbol(d.currency || currency))}
             </span>
             <span style={{ width: 170, textAlign: "right", display: "flex", gap: 6, justifyContent: "flex-end" }}>
               {d.enteredAt ? (
@@ -354,6 +412,11 @@ function Entries({
   documents,
   draft,
   period,
+  thisMonth,
+  months,
+  sym,
+  switching,
+  onMonth,
   zh,
   busy,
   onDraft,
@@ -369,6 +432,11 @@ function Entries({
   documents: DocumentRow[];
   draft: Draft | null;
   period: string;
+  thisMonth: string;
+  months: PeriodStatus[];
+  sym: string;
+  switching: boolean;
+  onMonth: (m: string) => void;
   zh: boolean;
   busy: boolean;
   onDraft: (d: Draft | null) => void;
@@ -376,9 +444,11 @@ function Entries({
   onEdit: (e: EntryRow) => void;
   onPost: (id: string) => void;
   onVoid: (e: EntryRow) => void;
-  onDelete: (id: string) => void;
+  onDelete: (e: EntryRow) => void;
 }) {
   const t = (en: string, cn: string) => (zh ? cn : en);
+  const m = (micros: number) => money(micros, sym);
+  const draftPeriod = draft ? periodOfDate(draft.entryDate) : null;
   const balance = draft
     ? draft.lines.reduce((n, l) => n + (Number(l.amount) || 0), 0)
     : 0;
@@ -435,7 +505,7 @@ function Entries({
                   lines[i] = { ...l, amount: e.target.value.replace(/[^\d.-]/g, "") };
                   onDraft({ ...draft, lines });
                 }}
-                placeholder={t("Debit +, credit -", "借 +，贷 -")}
+                placeholder={t(`${sym} debit +, credit -`, `${sym} 借 +，贷 -`)}
                 inputMode="decimal"
                 style={{ ...field, width: 140, height: 30, textAlign: "right", fontVariantNumeric: "tabular-nums" }}
               />
@@ -467,7 +537,7 @@ function Entries({
             >
               {Math.abs(balance) < 0.005
                 ? t("balances", "已平衡")
-                : t(`out by ${balance.toFixed(2)}`, `差额 ${balance.toFixed(2)}`)}
+                : t(`out by ${sym}${balance.toFixed(2)}`, `差额 ${sym}${balance.toFixed(2)}`)}
             </span>
             <span style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
               <button type="button" onClick={() => onDraft(null)} style={ghost}>
@@ -478,18 +548,59 @@ function Entries({
               </button>
             </span>
           </div>
-          <p style={{ fontSize: 11, color: "#c7c7c7", margin: "9px 0 0" }}>
-            {t(
-              `Saved into ${period}. It stays a draft until somebody posts it, and posting refuses an entry that does not balance.`,
-              `保存到 ${period}。在有人过账前始终是草稿，未平衡的分录无法过账。`,
-            )}
+          <p style={{ fontSize: 11, color: draftPeriod && closedMonths.has(draftPeriod) ? "#b42323" : "#c7c7c7", margin: "9px 0 0" }}>
+            {draftPeriod && closedMonths.has(draftPeriod)
+              ? t(
+                  `${draftPeriod} is closed: an entry dated in it cannot be saved until an owner or admin reopens it.`,
+                  `${draftPeriod} 已结账：日期在该月的分录不能保存，需管理员先反结账。`,
+                )
+              : t(
+                  `Saved into ${draftPeriod ?? "the month of its date"}, the month of its date. It stays a draft until somebody posts it, and posting refuses an entry that does not balance.`,
+                  `按日期记入 ${draftPeriod ?? "日期所在月份"}。在有人过账前始终是草稿，未平衡的分录无法过账。`,
+                )}
           </p>
         </div>
       )}
 
+      {/* (4 Oct) Any month, not only the current one: after 反结账 an earlier month's entries can be found and corrected. */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
+        <select
+          value={months.some((x) => x.period === period) ? period : ""}
+          disabled={switching}
+          onChange={(e) => e.target.value && onMonth(e.target.value)}
+          style={{ ...field, width: 190, height: 30 }}
+          aria-label={t("Month", "月份")}
+        >
+          {!months.some((x) => x.period === period) && <option value="">{period}</option>}
+          {months.map((x) => (
+            <option key={x.period} value={x.period}>
+              {x.period}
+              {x.period === thisMonth ? t(" (this month)", "（本月）") : ""} · {x.closed ? t("closed", "已结账") : t("open", "未结账")}
+            </option>
+          ))}
+        </select>
+        <input
+          type="month"
+          value={period}
+          disabled={switching}
+          onChange={(e) => onMonth(e.target.value)}
+          style={{ ...field, width: 150, height: 30 }}
+          aria-label={t("Any month", "其他月份")}
+        />
+        {period !== thisMonth && (
+          <button type="button" disabled={switching} onClick={() => onMonth(thisMonth)} style={{ ...ghost, height: 28, fontSize: 11.5 }}>
+            {t("This month", "回到本月")}
+          </button>
+        )}
+        {closedMonths.has(period) && <Badge tone="quiet">{t("closed", "已结账")}</Badge>}
+        <span style={{ fontSize: 11, color: "#b0b0b0", marginLeft: "auto" }}>
+          {switching ? t("Loading…", "读取中…") : t(`Entries booked into or dated in ${period}. Amounts in ${sym}.`, `显示记入或日期在 ${period} 的分录，金额单位 ${sym}`)}
+        </span>
+      </div>
+
       {entries.length === 0 ? (
         <Empty
-          title={t("No entries yet", "还没有账目")}
+          title={t(`No entries in ${period}`, `${period} 还没有账目`)}
           body={t("New entry starts one, or write one straight off a document in the inbox.", "点「记一笔账」，或在「单据」里从一张单据直接记账。")}
         />
       ) : (
@@ -505,7 +616,7 @@ function Entries({
                 {e.state === "posted" ? t("posted", "已入账") : e.state === "void" ? t("void", "已作废") : t("draft", "草稿")}
               </Badge>
               {locked && <Badge tone="quiet">{t("period closed", "已结账")}</Badge>}
-              {e.balanceMicros !== 0 && <Badge tone="bad">{t(`out by ${money(e.balanceMicros)}`, `差额 ${money(e.balanceMicros)}`)}</Badge>}
+              {e.balanceMicros !== 0 && <Badge tone="bad">{t(`out by ${m(e.balanceMicros)}`, `差额 ${m(e.balanceMicros)}`)}</Badge>}
               <span style={{ marginLeft: "auto", fontSize: 11, color: "#999999" }}>
                 {e.state === "posted"
                   ? `${t("posted by", "确认人")} ${e.postedByName ?? "—"}`
@@ -522,7 +633,7 @@ function Entries({
                   </span>
                   <span style={{ flexGrow: 1, minWidth: 0 }}>{l.description ?? ""}</span>
                   <span style={{ width: 120, textAlign: "right", fontVariantNumeric: "tabular-nums", color: l.amountMicros < 0 ? "#0060b0" : "#171717" }}>
-                    {money(l.amountMicros)}
+                    {m(l.amountMicros)}
                   </span>
                 </div>
               ))}
@@ -543,7 +654,7 @@ function Entries({
                   >
                     {t("post", "确认入账")}
                   </button>
-                  <button type="button" disabled={busy} onClick={() => onDelete(e.id)} style={{ ...ghost, height: 24, fontSize: 11 }}>
+                  <button type="button" disabled={busy} onClick={() => onDelete(e)} style={{ ...ghost, height: 24, fontSize: 11 }}>
                     {t("delete", "删除")}
                   </button>
                 </>
@@ -573,6 +684,7 @@ function Entries({
 function Period({
   initial,
   months,
+  sym,
   canClose,
   zh,
   busy,
@@ -580,6 +692,7 @@ function Period({
 }: {
   initial: PeriodCloseView;
   months: PeriodStatus[];
+  sym: string;
   canClose: boolean;
   zh: boolean;
   busy: boolean;
@@ -592,7 +705,10 @@ function Period({
   const period = view.period;
   const c = view.checklist;
   const closed = view.status.closed;
-  const day = (d: Date | string | null) => (d ? new Date(d).toLocaleDateString(zh ? "zh-CN" : "en-GB") : "");
+  /* (4 Oct) On Hong Kong's clock, explicitly: the server renders in UTC and
+     the browser in its own zone, and they disagreed around midnight. */
+  const day = (d: Date | string | null) => hkDateTime(d);
+  const money = (micros: number) => moneyIn(micros, sym);
   const total = view.balances.reduce((n, b) => n + b.totalMicros, 0);
 
   async function load(p: string) {
@@ -846,6 +962,8 @@ function Period({
   );
 }
 
+const moneyIn = (micros: number, sym: string) => money(micros, sym);
+
 /** A line icon for a checklist item: tick, warning dot, or cross. No emoji. */
 function CheckMark({ state }: { state: "ok" | "warn" | "bad" }) {
   const color = state === "ok" ? "#278f5e" : state === "warn" ? "#c27a12" : "#e03636";
@@ -867,21 +985,67 @@ const kindLabel = (k: string, zh: boolean) => (zh ? (KIND_ZH[k] ?? k) : k);
 
 function Accounts({
   accounts,
+  hidden,
   zh,
   busy,
+  run,
   onSeed,
-  onCreate,
   onArchive,
 }: {
   accounts: AccountRow[];
+  hidden: AccountRow[];
   zh: boolean;
   busy: boolean;
+  run: ReturnType<typeof useAction>["run"];
   onSeed: () => void;
-  onCreate: (code: string, name: string, kind: string) => void;
   onArchive: (id: string) => void;
 }) {
   const t = (en: string, cn: string) => (zh ? cn : en);
+  const ask = useAsk(zh);
   const [form, setForm] = useState({ code: "", name: "", kind: "expense" });
+
+  const unhide = (a: AccountRow) =>
+    run(() => unarchiveAccountAction(a.id), () => notify(t(`${a.code} ${a.name} is shown again.`, `已重新显示科目 ${a.code} ${a.name}。`), "ok"));
+
+  /* (QA, 4 Oct) A code already in use used to vanish without a word. Now it
+     says so; when the code belongs to a hidden account, it offers to show
+     that one again instead. The form keeps what was typed until it saves. */
+  function onCreate(code: string, name: string, kind: string) {
+    let hiddenMatch: AccountRow | null = null;
+    run(
+      async () => {
+        const res = await createAccountAction(code, name, kind);
+        if ("hidden" in res && res.hidden) {
+          hiddenMatch = res.hidden;
+          return {};
+        }
+        return res;
+      },
+      () => {
+        const match = hiddenMatch as AccountRow | null;
+        if (!match) {
+          setForm({ code: "", name: "", kind: "expense" });
+          notify(t("Account added.", "科目已添加。"), "ok");
+          return;
+        }
+        void ask
+          .confirm({
+            title: t(`Code ${match.code} belongs to a hidden account`, `科目代码 ${match.code} 已存在（已隐藏）`),
+            body: t(
+              `"${match.code} ${match.name}" was hidden. Show it again instead of adding a new one?`,
+              `「${match.code} ${match.name}」之前被隐藏了。要重新显示它吗？`,
+            ),
+            confirm: t("Show it again", "重新显示"),
+          })
+          .then((ok) => {
+            if (ok) {
+              setForm({ code: "", name: "", kind: "expense" });
+              unhide(match);
+            }
+          });
+      },
+    );
+  }
   const addForm = (
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
         <input value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} placeholder={t("Code", "科目号")} style={{ ...field, width: 110, height: 32 }} />
@@ -896,15 +1060,36 @@ function Accounts({
         <button
           type="button"
           disabled={busy || !form.code.trim() || !form.name.trim()}
-          onClick={() => {
-            onCreate(form.code, form.name, form.kind);
-            setForm({ code: "", name: "", kind: "expense" });
-          }}
+          onClick={() => onCreate(form.code, form.name, form.kind)}
           style={{ ...solid, opacity: busy || !form.code.trim() ? 0.45 : 1 }}
         >
           {t("Add", "添加")}
         </button>
       </div>
+  );
+
+  const hiddenList = (
+    hidden.length > 0 && (
+        <details style={{ marginTop: 22 }}>
+          <summary style={{ cursor: "pointer", fontSize: 12, color: "#7c7c7c" }}>
+            {t(`Hidden accounts (${hidden.length})`, `已隐藏的科目（${hidden.length}）`)}
+          </summary>
+          <div style={{ marginTop: 6 }}>
+            {hidden.map((a) => (
+              <Row key={a.id} style={{ alignItems: "center", color: "#7c7c7c" }}>
+                <span style={{ width: 90 }}>{a.code}</span>
+                <span style={{ flexGrow: 1, ...clip }} title={a.name}>{a.name}</span>
+                <span style={{ width: 110, fontSize: 11, color: "#999999" }}>{kindLabel(a.kind, zh)}</span>
+                <span style={{ width: 80, textAlign: "right" }}>
+                  <button type="button" disabled={busy} onClick={() => unhide(a)} style={{ ...ghost, height: 22, fontSize: 10.5 }}>
+                    {t("show again", "重新显示")}
+                  </button>
+                </span>
+              </Row>
+            ))}
+          </div>
+        </details>
+      )
   );
 
   if (!accounts.length) {
@@ -923,6 +1108,8 @@ function Accounts({
         {/* (QA, 2 Oct: the hint said "add them one at a time below" and there was nothing below.) */}
         <Label>{t("Or add an account", "或者逐个添加科目")}</Label>
         {addForm}
+        {hiddenList}
+        {ask.dialog}
       </>
     );
   }
@@ -950,6 +1137,9 @@ function Accounts({
 
       <Label>{t("Add an account", "添加科目")}</Label>
       {addForm}
+
+      {hiddenList}
+      {ask.dialog}
     </>
   );
 }
