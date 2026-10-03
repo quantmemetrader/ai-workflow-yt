@@ -6,7 +6,8 @@ import { Icon } from "@/components/ui/Icon";
 import { PlatformMark } from "@/components/ui/PlatformMark";
 import { PageBody, smallButton, INK, MUTED, LINE } from "@/components/projects/kit";
 import { BEAT_FEEDS, type HotRow } from "@/lib/research/platform-catalog";
-import { acrossPlatforms, tabRows, type BeatRow, type Lists } from "@/lib/research/beat-view";
+import { acrossPlatforms, beatCounts, tabRows, type BeatRow, type Lists } from "@/lib/research/beat-view";
+import { BeatsEditor } from "@/components/research/BeatsEditor";
 import { DEFAULT_BEATS, type BeatConfig } from "@/lib/research/beats";
 import { startFromTopicAction } from "@/app/(app)/projects/actions";
 import { notify } from "@/lib/client/notify";
@@ -87,6 +88,17 @@ export function HotBoard({ zh, canWrite, canHide = false, initial = null, hidden
       });
     }
   };
+  /* 管理赛道: the studio's beats, read fresh when the sheet opens (the page
+     itself is built on the server from them). The owner's and admins' press,
+     like 不再显示, since it changes the board for everybody. */
+  const [editing, setEditing] = React.useState<BeatConfig[] | null>(null);
+  const openEditor = async () => {
+    const res = (await fetch("/api/research/beats", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .catch(() => null)) as { beats?: BeatConfig[] } | null;
+    if (!res?.beats?.length) return notify(t("没读到赛道，再试一次", "Could not read the beats. Try again."));
+    setEditing(res.beats);
+  };
   const restore = async () => {
     const res = await restoreHotAction();
     if (res.error) return notify(res.error);
@@ -149,8 +161,28 @@ export function HotBoard({ zh, canWrite, canHide = false, initial = null, hidden
     <PageBody width={1040}>
       <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12, marginTop: 4 }}>
         <h2 style={{ margin: 0, fontSize: 20, fontWeight: 650, color: INK }}>{t("各平台现在最热的", "Hottest on each platform now")}</h2>
-        <span style={{ fontSize: 12.5, color: MUTED }}>{t("每几个小时自动更新", "Refreshed every few hours")}</span>
+        <span style={{ display: "inline-flex", alignItems: "baseline", gap: 10 }}>
+          <span style={{ fontSize: 12.5, color: MUTED }}>{t("每几个小时自动更新", "Refreshed every few hours")}</span>
+          {canHide ? (
+            <button type="button" onClick={() => void openEditor()} style={{ border: 0, background: "none", padding: 0, font: "inherit", fontSize: 12.5, color: "#1f5fbf", cursor: "pointer", whiteSpace: "nowrap" }}>
+              {t("管理赛道", "Manage beats")}
+            </button>
+          ) : null}
+        </span>
       </div>
+      {editing ? (
+        <BeatsEditor
+          zh={zh}
+          beats={editing}
+          counts={beatCounts(initial?.all ?? (lists ? acrossPlatforms(lists, { limit: 999, beats: editing.map((b) => b.key) as never }) : []), editing.map((b) => b.key) as never)}
+          onClose={() => setEditing(null)}
+          onSaved={() => {
+            setEditing(null);
+            notify(t("赛道已保存，新的关键词从下一轮收集开始搜。", "Beats saved. New words are searched from the next collection."), "ok");
+            router.refresh();
+          }}
+        />
+      ) : null}
 
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
         {(["all", ...CHIPS.map((c) => c.tab)] as Chip[]).map((c) => {

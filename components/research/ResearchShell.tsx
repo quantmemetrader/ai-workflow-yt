@@ -3,6 +3,7 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { topics } from "@/lib/db/schema";
 import { ResearchTabs } from "@/components/research/ResearchTabs";
+import { WheelToPage } from "@/components/research/WheelToPage";
 
 /**
  * A 选题 page: the tabs across the top (`ResearchTabs`), the page under
@@ -24,9 +25,9 @@ export async function ResearchShell({ zh, savedCount, tenantId, children }: { zh
     count = row?.n ?? 0;
   }
   return (
-    <div style={{ flexGrow: 1, minWidth: 0, minHeight: 0, display: "flex", flexDirection: "column", background: "#f6f5f2" }}>
+    <WheelToPage style={{ flexGrow: 1, minWidth: 0, minHeight: 0, display: "flex", flexDirection: "column", background: "#f6f5f2" }}>
       <ResearchTabs zh={zh} savedCount={count} />
       <div style={{ flexGrow: 1, minHeight: 0, minWidth: 0, display: "flex" }}>{children}</div>
-    </div>
+    </WheelToPage>
   );
 }

@@ -523,7 +523,11 @@ export function BacklogScreen(props: {
                 flexGrow: 1,
                 minHeight: 0,
                 display: "grid",
-                gridTemplateColumns: "repeat(4, minmax(0,1fr))",
+                /* A lane never narrower than a readable card: at 1024 beside
+                   the 研究员 panel the four lanes were ~110px and titles broke
+                   one character a line (QA, 3 Oct). The board scrolls
+                   sideways instead. */
+                gridTemplateColumns: "repeat(4, minmax(210px,1fr))",
                 gap: 12,
                 padding: "16px 20px",
                 /* It was `overflow: hidden`, so a lane longer than the window
@@ -531,6 +535,7 @@ export function BacklogScreen(props: {
                    scrolls as one; the lanes still stretch to the full height,
                    so an empty lane is still somewhere to drop a card. */
                 overflowY: "auto",
+                overflowX: "auto",
               }}
             >
               {shown.length === 0 ? (

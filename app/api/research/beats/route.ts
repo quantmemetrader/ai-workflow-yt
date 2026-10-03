@@ -52,6 +52,9 @@ export async function GET() {
 export async function PUT(request: NextRequest) {
   const viewer = await getViewer();
   if (!viewer || !allowed(viewer)) return Response.json({ error: "Not allowed" }, { status: 403 });
+  /* The beats change the board for the whole studio, so changing them is the
+     owner's and admins' (as hiding a 热点榜 row is); everyone may read them. */
+  if (!viewer.isAdmin) return Response.json({ error: "只有工作室负责人或管理员可以修改赛道", errorEn: "Only the owner or an admin can change the beats" }, { status: 403 });
   const body = (await request.json().catch(() => null)) as { beats?: unknown } | null;
   const res = await saveBeats(viewer, body?.beats);
   if ("error" in res) return Response.json(res, { status: 400 });

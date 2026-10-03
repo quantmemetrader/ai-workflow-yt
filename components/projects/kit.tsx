@@ -26,7 +26,7 @@ export const ACCENT = "#1f6feb";
 
 export function PageBody({ children, width = 1440 }: { children: React.ReactNode; width?: number }) {
   return (
-    <div style={{ flexGrow: 1, minWidth: 0, minHeight: 0, overflowY: "auto" }}>
+    <div data-page-scroll="" style={{ flexGrow: 1, minWidth: 0, minHeight: 0, overflowY: "auto" }}>
       <div style={{ maxWidth: width, padding: "18px 32px 64px", display: "flex", flexDirection: "column", gap: 14 }}>{children}</div>
     </div>
   );

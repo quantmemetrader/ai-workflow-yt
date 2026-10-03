@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { useAsk } from "@/components/ui/useAsk";
 import { BEAT_COLORS, BEAT_LIMITS, DEFAULT_BEATS, beatColor, isDefaultBeat, makeBeatKey, normalizeBeats, type BeatColor, type BeatConfig } from "@/lib/research/beats";
 
 /**
@@ -59,17 +60,28 @@ export function BeatsEditor({
 
   const dirty = JSON.stringify(draft.map(strip)) !== JSON.stringify(beats);
   const discard = t("Discard the changes you have not saved?", "有改动还没保存，放弃这些改动？");
-  const close = React.useCallback(() => {
-    if (dirty && !window.confirm(discard)) return;
+  const ask = useAsk(zh);
+  /* While the 放弃改动？ box is up, Escape is its own and must not ask again. */
+  const asking = React.useRef(false);
+  const confirm = ask.confirm;
+  const close = React.useCallback(async () => {
+    if (asking.current) return;
+    if (dirty) {
+      asking.current = true;
+      const ok = await confirm({ title: discard, confirm: t("Discard", "放弃"), cancel: t("Keep editing", "继续编辑"), danger: true });
+      asking.current = false;
+      if (!ok) return;
+    }
     onClose();
-  }, [dirty, discard, onClose]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dirty, discard, onClose, confirm]);
 
   /* Escape closes, as any sheet does; the sheet takes focus when it opens so
      the keyboard is inside it. */
   React.useEffect(() => {
     sheetRef.current?.focus();
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") close();
+      if (e.key === "Escape") void close();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -142,7 +154,9 @@ export function BeatsEditor({
   const on = draft.filter((d) => d.enabled).length;
 
   return (
-    <div role="presentation" onClick={close} style={{ position: "fixed", inset: 0, zIndex: 60, background: "rgba(23,23,23,.18)", display: "flex", justifyContent: "flex-end" }}>
+    <>
+    {ask.dialog}
+    <div role="presentation" onClick={() => void close()} style={{ position: "fixed", inset: 0, zIndex: 60, background: "rgba(23,23,23,.18)", display: "flex", justifyContent: "flex-end" }}>
       <div
         ref={sheetRef}
         role="dialog"
@@ -305,7 +319,7 @@ export function BeatsEditor({
               {t("Restore defaults", "恢复默认")}
             </button>
             <span style={{ flexGrow: 1, fontSize: 11, color: "#a3a3a3", textAlign: "right" }}>{t(`${on} on`, `开着 ${on} 个`)}</span>
-            <button type="button" onClick={close} style={btn(false)}>
+            <button type="button" onClick={() => void close()} style={btn(false)}>
               {t("Cancel", "取消")}
             </button>
             <button type="button" onClick={() => void save()} disabled={saving || !dirty} style={{ ...btn(true), opacity: saving || !dirty ? 0.45 : 1, cursor: saving || !dirty ? "default" : "pointer" }}>
@@ -315,6 +329,7 @@ export function BeatsEditor({
         </div>
       </div>
     </div>
+    </>
   );
 }
 
