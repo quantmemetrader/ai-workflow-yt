@@ -49,7 +49,6 @@ export function CommandPalette({ modules, locale }: { modules: Module[]; locale:
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [hits, setHits] = useState<PaletteHit[]>([]);
-  const [withheld, setWithheld] = useState(0);
   const [busy, setBusy] = useState(false);
   const [cursor, setCursor] = useState(0);
   const input = useRef<HTMLInputElement>(null);
@@ -59,7 +58,6 @@ export function CommandPalette({ modules, locale }: { modules: Module[]; locale:
     setOpen(false);
     setQuery("");
     setHits([]);
-    setWithheld(0);
     setCursor(0);
   }, []);
 
@@ -120,7 +118,6 @@ export function CommandPalette({ modules, locale }: { modules: Module[]; locale:
   if (lastQuery !== query) {
     setLastQuery(query);
     setHits([]);
-    setWithheld(0);
     setBusy(false);
     setCursor(0);
   }
@@ -141,9 +138,8 @@ export function CommandPalette({ modules, locale }: { modules: Module[]; locale:
           cache: "no-store",
         });
         if (!res.ok) return;
-        const data = (await res.json()) as { hits: PaletteHit[]; withheld: number };
+        const data = (await res.json()) as { hits: PaletteHit[] };
         setHits(data.hits);
-        setWithheld(data.withheld);
       } catch {
         // An aborted or dropped lookup is not worth reporting: the next
         // keystroke runs another one.
@@ -410,13 +406,8 @@ export function CommandPalette({ modules, locale }: { modules: Module[]; locale:
             </p>
           )}
 
-          {withheld > 0 && (
-            <p style={{ fontSize: 11.5, color: "#c7c7c7", padding: "4px 17px 10px", margin: 0 }}>
-              {zh
-                ? `另有 ${withheld} 条结果你无权查看，已隐藏。`
-                : `${withheld} more matches are not shown, because you may not read them.`}
-            </p>
-          )}
+          {/* No count of what this person may not read: how many hidden
+              matches exist is itself something they may not know (QA, 3 Oct). */}
         </div>
       </div>
     </div>

@@ -38,7 +38,7 @@ export async function GET(request: Request) {
 
   const q = (new URL(request.url).searchParams.get("q") ?? "").trim().slice(0, 120);
   if (!q) {
-    return Response.json({ hits: [], withheld: 0 }, { headers: { "Cache-Control": "no-store" } });
+    return Response.json({ hits: [] }, { headers: { "Cache-Control": "no-store" } });
   }
 
   const like = `%${q}%`;
@@ -210,7 +210,9 @@ export async function GET(request: Request) {
   }
 
   return Response.json(
-    { hits, withheld: fileSearch.withheld },
+    /* Not `withheld`: the number of matches somebody may not read is not
+       theirs to know either (QA, 3 Oct). */
+    { hits },
     { headers: { "Cache-Control": "no-store" } },
   );
 }
