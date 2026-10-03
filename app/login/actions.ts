@@ -1,4 +1,5 @@
 "use server";
+import { clientIp } from "@/lib/auth/client-ip";
 
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
@@ -30,7 +31,7 @@ export async function signIn(_prev: LoginState, formData: FormData): Promise<Log
   }
 
   const h = await headers();
-  const ip = h.get("x-forwarded-for")?.split(",")[0]?.trim();
+  const ip = clientIp(h);
 
   // Checked before the lookup and before scrypt: a throttle that runs after
   // the expensive part still lets an attacker spend the server's CPU.
@@ -139,7 +140,7 @@ export async function verifySecondFactor(_prev: VerifyState, formData: FormData)
   if (!typed || typed.length > 64) return { error: "That code is not right." };
 
   const h = await headers();
-  const ip = h.get("x-forwarded-for")?.split(",")[0]?.trim();
+  const ip = clientIp(h);
 
   const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
   if (!user || user.deletedAt || user.status !== "active" || user.isAgent || !user.totpConfirmedAt) {

@@ -1,3 +1,5 @@
+import { clientIp } from "@/lib/auth/client-ip";
+
 /**
  * Where the browser reports what broke on its side.
  *
@@ -29,7 +31,7 @@ function allowed(ip: string): boolean {
 }
 
 export async function POST(request: Request) {
-  if (!allowed(request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "?")) return new Response(null, { status: 204 });
+  if (!allowed(clientIp(request.headers) || "?")) return new Response(null, { status: 204 });
   let text = "";
   try {
     text = (await request.text()).slice(0, 4000);

@@ -1,4 +1,5 @@
 "use server";
+import { clientIp } from "@/lib/auth/client-ip";
 
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
@@ -23,7 +24,7 @@ export async function acceptInviteAction(_prev: AcceptState, formData: FormData)
 
   const h = await headers();
   await createSession(result.userId, {
-    ip: h.get("x-forwarded-for")?.split(",")[0]?.trim(),
+    ip: clientIp(h),
     userAgent: h.get("user-agent") ?? undefined,
   });
 

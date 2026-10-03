@@ -1,4 +1,5 @@
 import "server-only";
+import { clientIp } from "@/lib/auth/client-ip";
 import { headers } from "next/headers";
 import { db } from "@/lib/db/client";
 import { auditLog, type Module } from "@/lib/db/schema";
@@ -24,7 +25,7 @@ export async function audit(
   let ip: string | undefined;
   try {
     const h = await headers();
-    ip = h.get("x-forwarded-for")?.split(",")[0]?.trim() ?? undefined;
+    ip = clientIp(h);
   } catch {
     // Outside a request (cron, worker) there are no headers; that is fine.
   }
