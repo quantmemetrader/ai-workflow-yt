@@ -81,7 +81,9 @@ export function LoginChrome({
       {/* left panel */}
       <div
         style={{
-          width: 660,
+          /* 660 on a wide screen; at 1024 it gives the form room instead of
+             pushing it off the edge (QA, 3 Oct: 660 + 380 + padding = 1128). */
+          width: "min(660px, 46vw)",
           flexShrink: 0,
           background: "#f8f8f8",
           borderRight: "1px solid #ededed",
@@ -177,7 +179,7 @@ export function LoginChrome({
       </div>
 
       {/* right column */}
-      <div style={{ flexGrow: 1, display: "flex", flexDirection: "column", padding: "32px 44px" }}>
+      <div style={{ flexGrow: 1, minWidth: 0, display: "flex", flexDirection: "column", padding: "32px 44px" }}>
         <div style={{ display: "flex", justifyContent: "flex-end" }}>
           <div
             style={{
@@ -224,7 +226,7 @@ export function LoginChrome({
           {children({ locale, zh, t })}
         </div>
 
-        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11.5, color: "#999999" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 16, fontSize: 11.5, color: "#999999" }}>
           <span>{footerLeft ? footerLeft(zh) : zh ? "30 天无操作后自动退出登录" : "Sessions expire after 30 days of inactivity"}</span>
           <span>{zh ? "每次读取都按你的权限过滤" : "Every read is filtered to your own permissions"}</span>
         </div>

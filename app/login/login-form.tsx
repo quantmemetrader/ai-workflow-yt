@@ -28,7 +28,7 @@ export function LoginForm({ locale, next }: { locale?: Locale | null; next?: str
   return (
     <LoginChrome locale={locale}>
       {({ zh, t }) => (
-        <form action={action} style={{ width: 380 }}>
+        <form action={action} style={{ width: "min(380px, 100%)" }}>
           {next ? <input type="hidden" name="next" value={next} /> : null}
           <div style={{ fontSize: 26, fontWeight: 500, letterSpacing: "-0.02em" }}>{t("Sign in")}</div>
           <p style={{ fontSize: 14, color: "#7c7c7c", marginTop: 7 }}>

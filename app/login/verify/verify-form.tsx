@@ -62,7 +62,7 @@ export function VerifyForm({ email, recoveryLeft, next }: { email: string; recov
   return (
     <LoginChrome footerLeft={(zh) => (zh ? "30 天无操作后自动退出登录" : "Sessions expire after 30 days of inactivity")}>
       {({ zh, t }) => (
-        <form ref={form} action={action} style={{ width: 380 }}>
+        <form ref={form} action={action} style={{ width: "min(380px, 100%)" }}>
           {next ? <input type="hidden" name="next" value={next} /> : null}
           <button
             type="button"

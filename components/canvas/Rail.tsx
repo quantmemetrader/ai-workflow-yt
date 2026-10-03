@@ -55,6 +55,10 @@ export function Rail({ modules, locale, account, isAdmin = false }: { modules: M
 
   const holds = (i: RailItem) => !i.module || modules.includes(i.module);
   const items = RAIL_MAIN.filter(holds);
+  /* The brand goes home, and home is a Chat surface: somebody without Chat
+     was bounced to "你还没有「聊天」的权限" on every press (QA, 3 Oct). Their
+     first module instead. */
+  const homeHref = modules.includes("chat") ? "/home" : (items[0]?.href ?? "/settings");
   const back = isAdmin ? RAIL_BACK.filter(holds) : [];
   /* 后台 is folded until opened, and opens by itself on one of its pages. */
   const [backPref, setBackPref] = useLocalPreference("aura:rail-back", ["closed", "open"] as const, "closed");
@@ -131,7 +135,7 @@ export function Rail({ modules, locale, account, isAdmin = false }: { modules: M
         }}
       >
       <Link
-        href="/home"
+        href={homeHref}
         aria-label="腾亚创变"
         style={{
           display: "flex",
