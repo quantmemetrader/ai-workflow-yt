@@ -148,6 +148,9 @@ export function CompareView({
         />
       }
       onAddSeries={(query) => {
+        /* Already a series: a second chip would only eat one of the five. */
+        const key = query.trim().toLowerCase();
+        if (!key || queries.some((q) => q.trim().toLowerCase() === key)) return;
         const next = [...queries, query].slice(0, 5);
         startAdd(async () => {
           await addSeriesAction(query, window);

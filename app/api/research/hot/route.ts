@@ -38,6 +38,17 @@ export async function GET(request: NextRequest) {
     return Response.json({ lists: all }, { headers: { "Cache-Control": "private, max-age=60" } });
   }
   const platform = request.nextUrl.searchParams.get("platform");
+  /* The feeds' cross-platform top, alone: storage only, its marks are the
+     collector's studio's. */
+  if (platform === "beat_all") {
+    const feed = await latestStored("beat_all");
+    if (request.nextUrl.searchParams.get("judge") === "1") return Response.json({ judged: (own ? feed?.judged : null) ?? {} }, { headers: { "Cache-Control": "private, no-store" } });
+    if (!feed) return Response.json({ rows: [], note: null, fetchedAt: null, summary: null, relevance: null }, { headers: { "Cache-Control": "private, no-store" } });
+    return Response.json(
+      { rows: feed.rows, note: feed.note, fetchedAt: feed.fetchedAt, summary: feed.summary ?? null, relevance: feed.relevance ?? null },
+      { headers: { "Cache-Control": "private, no-store" } },
+    );
+  }
   if (isBeatFeedKey(platform)) {
     const feed = await latestStored(platform);
     if (!feed) return Response.json({ rows: [], note: null, fetchedAt: null, summary: null, relevance: null }, { headers: { "Cache-Control": "private, no-store" } });

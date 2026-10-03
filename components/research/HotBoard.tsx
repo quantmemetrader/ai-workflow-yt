@@ -70,9 +70,14 @@ export function HotBoard({ zh, canWrite, canHide = false, initial = null, hidden
   const [shown, setShown] = React.useState(STEP);
   const [busy, setBusy] = React.useState<string | null>(null);
   const [gone, setGone] = React.useState<Set<string>>(() => new Set());
+  /* Hides on their way to the server. The action revalidates this page, so
+     once it answers `hiddenCount` already counts the row: adding `gone` to it
+     counted every hide twice (QA, 3 Oct). */
+  const [pendingHides, setPendingHides] = React.useState(0);
   const hide = async (r: ShownRow) => {
     setGone((s) => new Set(s).add(r.phrase));
-    const res = await hideHotAction(r.phrase);
+    setPendingHides((n) => n + 1);
+    const res = await hideHotAction(r.phrase).finally(() => setPendingHides((n) => Math.max(0, n - 1)));
     if (res.error) {
       notify(res.error);
       setGone((s) => {
@@ -213,9 +218,9 @@ export function HotBoard({ zh, canWrite, canHide = false, initial = null, hidden
           })
         )}
       </section>
-      {canHide && hiddenCount + gone.size > 0 ? (
+      {canHide && hiddenCount + pendingHides > 0 ? (
         <div style={{ alignSelf: "center", fontSize: 12.5, color: MUTED }}>
-          {t(`已隐藏 ${hiddenCount + gone.size} 条`, `${hiddenCount + gone.size} hidden`)} ·{" "}
+          {t(`已隐藏 ${hiddenCount + pendingHides} 条`, `${hiddenCount + pendingHides} hidden`)} ·{" "}
           <button type="button" onClick={() => void restore()} style={{ border: 0, background: "none", padding: 0, font: "inherit", color: "#1f5fbf", cursor: "pointer" }}>
             {t("全部恢复", "Show them again")}
           </button>

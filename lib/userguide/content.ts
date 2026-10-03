@@ -85,7 +85,7 @@ export const SECTIONS: Section[] = [
     zh: "AI 同事办公室",
     en: "The AI colleagues' office",
     blocks: [
-      img("team.png", "AI 同事办公室：上排是一条视频走的路，下排是随叫随到的同事", "The office: the top row is the path a video takes; the bottom row is on call"),
+      img("team.png", "AI 同事办公室：上排是一条视频走的路，下排是撰稿人、法务、财务和你的助理", "The office: the top row is the path a video takes; the bottom row is the writer, legal, finance and your assistant"),
       p("左边栏「AI 同事」是一间像素风的办公室，一眼看清每个 AI 同事在干什么。", "AI 同事 in the left bar is a pixel-art office that shows at a glance what every AI colleague is doing."),
       table(
         [

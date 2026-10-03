@@ -29,9 +29,10 @@ import type { CreatorMemoryState } from "@/lib/creator/service";
 export type SavedTopic = { id: string; name: string; summary: string | null; heat: number; change: number; projectId: string | null; scriptId: string | null };
 export type WatchedTopic = { id: string; name: string; heat: number; change: number; rising: boolean; collecting: boolean; projectId?: string | null };
 
+/** `change` is a fraction (13.28 is +1328%), as on 趋势 and the backlog. */
 function pct(n: number): string {
   if (!Number.isFinite(n) || n === 0) return "0%";
-  return `${n > 0 ? "+" : ""}${Math.round(n)}%`;
+  return `${n > 0 ? "+" : ""}${Math.round(n * 100)}%`;
 }
 
 export function SavedBoard({
@@ -177,7 +178,7 @@ export function SavedBoard({
                   {w.collecting ? t("正在收集…", "Collecting…") : (
                     <>
                       {t("热度", "heat")} {Math.round(w.heat)} ·{" "}
-                      <span style={{ color: Math.round(w.change) > 0 ? "#1e7a4f" : Math.round(w.change) < 0 ? "#b42318" : MUTED }}>{t("两周", "2 wks")} {pct(w.change)}</span>
+                      <span style={{ color: Math.round(w.change * 100) > 0 ? "#1e7a4f" : Math.round(w.change * 100) < 0 ? "#b42318" : MUTED }}>{t("两周", "2 wks")} {pct(w.change)}</span>
                     </>
                   )}
                 </span>
