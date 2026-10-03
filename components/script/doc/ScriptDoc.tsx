@@ -1073,7 +1073,7 @@ export function ScriptDoc(props: ScriptDocProps) {
 
   /* ---------------- status line (the approval flow) ---------------- */
   function statusLine(): React.ReactNode {
-    if (props.writing) return <Status tone="run" text={t("文案正在写初稿，通常一两分钟，写好会自动出现在文档里。", "The writer is drafting; it appears in the document when done.")} />;
+    if (props.writing) return <Status tone="run" text={t("文案正在写初稿，通常两三分钟（先写、再补足时长、最后润色），写好会自动出现在文档里。", "The writer is drafting; it appears in the document when done.")} />;
     if (props.draftFailed && !docState?.words)
       return (
         <Status tone="wait" text={<><b>{t("初稿没写成：", "The draft did not land: ")}</b>{props.draftFailed.note}</>}>
