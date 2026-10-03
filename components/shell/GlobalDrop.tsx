@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { dropTarget, handOver } from "@/lib/client/dropped";
+import { DropArea } from "@/components/chat/DropVeil";
 import { startProjectAction } from "@/app/(app)/projects/actions";
 
 /**
@@ -73,13 +74,5 @@ export function GlobalDrop({ zh }: { zh: boolean }) {
       window.removeEventListener("drop", drop);
     };
   }, [router, zh]);
-  if (!label) return null;
-  return (
-    <div aria-hidden style={{ position: "fixed", inset: 0, zIndex: 90, background: "rgba(15,15,15,.32)", display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none" }}>
-      <div style={{ padding: "26px 38px", borderRadius: 18, background: "var(--surface-cards)", border: "2px dashed var(--ink-gray-9)", textAlign: "center", boxShadow: "0 12px 40px rgba(0,0,0,.25)" }}>
-        <div style={{ fontSize: 17, fontWeight: 600, color: "var(--ink-gray-9)" }}>{label}</div>
-        <div style={{ fontSize: 13, color: "var(--ink-gray-5)", marginTop: 6 }}>{zh ? "任何格式都行：Word、PDF、表格、图片、音频、视频" : "Any format: documents, PDFs, sheets, pictures, audio, video"}</div>
-      </div>
-    </div>
-  );
+  return <DropArea on={Boolean(label)} title={label ?? ""} sub={zh ? "任何格式都行：Word、PDF、表格、图片、音频、视频" : "Any format: documents, PDFs, sheets, pictures, audio, video"} />;
 }

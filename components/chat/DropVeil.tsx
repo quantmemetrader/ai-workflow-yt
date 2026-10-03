@@ -63,14 +63,12 @@ export function useFileDrop(enabled: boolean, onFiles: (files: FileList) => void
 
 /** The veil over the screen while files are held over it. */
 export function DropVeil({ on, zh, title, sub }: { on: boolean; zh: boolean; title?: string; sub?: string }) {
-  if (!on) return null;
   return (
-    <div aria-hidden style={{ position: "fixed", inset: 0, zIndex: 80, background: "rgba(23,23,23,.28)", display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none" }}>
-      <div style={{ padding: "28px 40px", borderRadius: 18, background: "#fff", border: "2px dashed #171717", textAlign: "center", boxShadow: "0 12px 40px rgba(0,0,0,.18)" }}>
-        <div style={{ fontSize: 17, fontWeight: 600, color: "#171717" }}>{title ?? (zh ? "松开，把文件放进这条消息" : "Drop to add the files to this message")}</div>
-        <div style={{ fontSize: 13, color: "#6b6b6b", marginTop: 6 }}>{sub ?? (zh ? "任何格式都行：PPT、Word、Excel、PDF、图片、音频、视频、压缩包" : "Any format: slides, documents, spreadsheets, PDFs, pictures, audio, video, zip")}</div>
-      </div>
-    </div>
+    <DropArea
+      on={on}
+      title={title ?? (zh ? "松开，把文件放进这条消息" : "Drop to add the files to this message")}
+      sub={sub ?? (zh ? "任何格式都行：PPT、Word、Excel、PDF、图片、音频、视频、压缩包" : "Any format: slides, documents, spreadsheets, PDFs, pictures, audio, video, zip")}
+    />
   );
 }
 
@@ -95,4 +93,42 @@ export function dropFilesProps(onFiles: (files: FileList) => void, enabled = tru
       onFiles(e.dataTransfer.files);
     },
   };
+}
+
+/**
+ * Where a drop highlight belongs (Rahul, 4 Oct): over the page's main area
+ * only, never over the side assistant, which lights up by itself; and nothing
+ * at all while the files are over the assistant.
+ */
+export function useDropArea(active: boolean): { rect: { left: number; top: number; width: number; height: number } | null; overPanel: boolean } {
+  const [state, setState] = React.useState<{ rect: { left: number; top: number; width: number; height: number } | null; overPanel: boolean }>({ rect: null, overPanel: false });
+  React.useEffect(() => {
+    if (!active) return;
+    const measure = (e?: DragEvent) => {
+      const target = e?.target instanceof Element ? e.target : null;
+      const overPanel = Boolean(target?.closest("[data-agent-panel]"));
+      const main = document.querySelector("main")?.getBoundingClientRect() ?? new DOMRect(0, 0, window.innerWidth, window.innerHeight);
+      const panel = document.querySelector("[data-agent-panel]")?.getBoundingClientRect();
+      let right = main.right;
+      if (panel && panel.width > 0 && panel.left > main.left + 200 && panel.left < main.right) right = panel.left;
+      setState({ rect: { left: main.left, top: main.top, width: right - main.left, height: main.height }, overPanel });
+    };
+    measure();
+    const over = (e: DragEvent) => measure(e);
+    window.addEventListener("dragover", over, true);
+    return () => window.removeEventListener("dragover", over, true);
+  }, [active]);
+  return active ? state : { rect: null, overPanel: false };
+}
+
+/** The highlight itself: the main area, dashed and light, the destination in words. */
+export function DropArea({ on, title, sub }: { on: boolean; title: string; sub: string }) {
+  const { rect, overPanel } = useDropArea(on);
+  if (!on || !rect || overPanel) return null;
+  return (
+    <div aria-hidden style={{ position: "fixed", left: rect.left + 8, top: rect.top + 8, width: Math.max(0, rect.width - 16), height: Math.max(0, rect.height - 16), zIndex: 80, borderRadius: 14, border: "2px dashed #171717", background: "rgba(255,255,255,.9)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 6, pointerEvents: "none", textAlign: "center", padding: 16 }}>
+      <span style={{ fontSize: 16, fontWeight: 600, color: "#171717" }}>{title}</span>
+      <span style={{ fontSize: 12.5, color: "#7c7c7c" }}>{sub}</span>
+    </div>
+  );
 }
