@@ -18,6 +18,22 @@ declare global {
   var __pgWarmed: boolean | undefined;
 }
 
+/*
+ * Whether pm2 is keeping this process alive: the web server (cluster mode),
+ * the worker (fork mode), and the scheduled scripts while they run.
+ *
+ * pm2 gives every child a `pm_id` — in fork mode through the spawn
+ * environment, in cluster mode by copying its `pm2_env` blob into process.env
+ * before the script loads (pm2/lib/ProcessContainer.js). It is "0" for the
+ * first process, so this tests presence, not truth. `next build`, `next dev`,
+ * a script run by hand from a shell and a serverless function all come up
+ * without it.
+ *
+ * Two things below depend on it: the heartbeat, and whether an idle
+ * connection may hold the process open.
+ */
+const underPm2 = process.env.pm_id !== undefined;
+
 const pool =
   global.__pgPool ??
   new Pool({
@@ -59,29 +75,44 @@ const pool =
     // Neon terminates idle TLS sessions; keepalive stops us from handing a
     // dead socket to the first request after a quiet period.
     keepAlive: true,
+    /*
+     * Every connection starts with a known search path, set before the pool
+     * lets anyone use it.
+     *
+     * This is a bug we have already had, not belt and braces. `DATABASE_URL`
+     * points at Neon's pooler, which is pgbouncer, and pgbouncer hands the
+     * same server connection to one client after another, so session state
+     * leaks: one `pg_dump` through the pooler (it opens with
+     * `set_config('search_path', '', false)`) left a pooled connection with an
+     * empty search path, and sign-in failed with `relation "users" does not
+     * exist` while the health check, which only runs `select 1`, stayed
+     * green. The backup now uses the direct endpoint; this makes the app
+     * immune to the class rather than to the instance.
+     *
+     * `onConnect`, not the pool's "connect" event. pg-pool emits that event as
+     * it hands the new client to the request that was waiting for it, so a SET
+     * issued from the handler ran alongside that request's first statement —
+     * pg warned about it on every cron run ("Calling client.query() when the
+     * client is already executing a query is deprecated"), and pg 9 will
+     * refuse the second query outright. This hook is awaited before the client
+     * is released to anyone, and if the SET fails the connection is closed and
+     * the request fails, rather than running on whatever path the pooler left
+     * behind.
+     */
+    onConnect: async (client) => {
+      await client.query("set search_path to public");
+    },
+    /*
+     * Outside pm2, let the process exit when the pool is all that is left.
+     *
+     * An idle connection is an open socket with a five-minute timer on it, and
+     * both hold the event loop open: a script that did not call `pool.end()`
+     * sat for five minutes after its last query — or for ever, while the
+     * heartbeat still ran everywhere. Under pm2 nothing changes; the web
+     * server and the worker have their own reasons to stay up.
+     */
+    allowExitOnIdle: !underPm2,
   });
-
-/*
- * Every connection starts with a known search path.
- *
- * This is not belt and braces, it is a bug we have already had. `DATABASE_URL`
- * points at Neon's *pooler*, which is pgbouncer, and pgbouncer hands the same
- * server connection to one client after another. Anything that changes session
- * state therefore leaks — and `pg_dump` opens with
- * `SELECT pg_catalog.set_config('search_path', '', false)`.
- *
- * One backup run through the pooler left `search_path` empty on a pooled
- * server connection, and from then on unqualified table names resolved to
- * nothing: sign-in failed with `relation "users" does not exist` while the
- * health check, which only runs `select 1`, stayed green. The backup script
- * now uses the direct endpoint, and this makes the app immune to the class
- * rather than to the instance.
- */
-pool.on("connect", (client) => {
-  void client.query("set search_path to public").catch((err) => {
-    console.error("[db] could not set search_path", err instanceof Error ? err.message : err);
-  });
-});
 
 if (!env.isProd) global.__pgPool = pool;
 
@@ -100,16 +131,19 @@ if (!global.__pgWarmed) {
   });
 
   /*
-   * And keep one alive.
+   * And keep one alive — in the processes pm2 runs, and only there.
    *
-   * Only in a long-lived process. On a serverless function the instance is
-   * frozen between requests and a timer is either ignored or billed, and the
-   * handshake there is a local one anyway: the function runs in Singapore,
-   * beside the database, and answers in 2ms. This is for the box, which is in
-   * Amsterdam and pays 1.9 seconds for a connection it let go.
+   * The box is in Amsterdam and pays 1.9 seconds for a connection it let go,
+   * so the web server and the worker ping every twenty seconds. Nothing else
+   * should. A serverless function is frozen between requests, and its
+   * handshake is local anyway. A build, `next dev` and a one-off script have
+   * nothing to keep warm — and the timer, though unref'd, put a connection to
+   * work every twenty seconds, and a connection at work is a socket that
+   * holds the event loop open: sixteen lab scripts from September were found
+   * still running in October for exactly this reason. The scheduled pm2
+   * scripts get the heartbeat too, and end themselves as they always have.
    */
-  const longLived = !process.env.VERCEL && !process.env.AWS_LAMBDA_FUNCTION_NAME;
-  if (longLived) {
+  if (underPm2) {
     const beat = setInterval(() => {
       void pool.query("select 1").catch(() => {
         // A failed heartbeat is not news: the retry wrapper and the next real
