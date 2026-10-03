@@ -34,7 +34,13 @@ export type IconName =
   | "download"
   | "paperclip"
   | "image"
-  | "doc";
+  | "doc"
+  | "skipBack"
+  | "prev"
+  | "next"
+  | "redo"
+  | "arrowLeft"
+  | "arrowRight";
 
 const PATHS: Record<IconName, React.ReactNode> = {
   chat: <path d="M20.5 11.6a7.9 7.9 0 0 1-8.5 7.8 8.9 8.9 0 0 1-2.6-.4L4.5 20.4l1.3-3.8a7.7 7.7 0 0 1-1.8-5A7.9 7.9 0 0 1 12 3.8a7.9 7.9 0 0 1 8.5 7.8z" />,
@@ -156,6 +162,24 @@ const PATHS: Record<IconName, React.ReactNode> = {
       <path d="M14 3.5v5h2.5M10 12.5h4M10 15.5h4" />
     </>
   ),
+  /* The transport: back to the start, a step back, a step on. */
+  skipBack: (
+    <>
+      <path d="M6.5 5.5v13" />
+      <path d="M18 5.8v12.4L9.5 12z" />
+    </>
+  ),
+  prev: <path d="M14.5 6 8.5 12l6 6" />,
+  next: <path d="m9.5 6 6 6-6 6" />,
+  /* Put a change back (重做): `undo`, mirrored. */
+  redo: (
+    <>
+      <path d="m15.5 5.5 4 4-4 4" />
+      <path d="M19.5 9.5H9.7a5 5 0 0 0 0 10H14" />
+    </>
+  ),
+  arrowLeft: <path d="M19 12H5M10.5 6.5 5 12l5.5 5.5" />,
+  arrowRight: <path d="M5 12h14M13.5 6.5 19 12l-5.5 5.5" />,
 };
 
 export function Icon({ name, size = 14, color, strokeWidth = 1.8, fill = false, style }: { name: IconName; size?: number; color?: string; strokeWidth?: number; fill?: boolean; style?: React.CSSProperties }) {

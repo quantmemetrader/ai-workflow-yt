@@ -4,6 +4,7 @@ import type { CaptionRow, ClipRow, GraphicRow, ItemRow } from "@/lib/video/servi
 import { ENTRANCES, ENTRANCE_LABELS, GRAPHIC_KINDS, TRANSITIONS, TRANSITION_LABELS, type TransitionKind } from "@/lib/video/presets";
 import { PLACEMENTS } from "@/lib/video/icons";
 import type { Selection } from "@/components/video/Editor";
+import { Icon } from "@/components/ui/Icon";
 
 /**
  * Everything about whatever is selected, and nothing about anything else.
@@ -255,7 +256,7 @@ export function Inspector({
 
         <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
           <button type="button" disabled={busy || n <= 0} onClick={() => onMove(item.id, "up")} style={button}>
-            ← {t("Earlier", "前移")}
+            <Icon name="arrowLeft" size={12} /> {t("Earlier", "前移")}
           </button>
           <button
             type="button"
@@ -263,7 +264,7 @@ export function Inspector({
             onClick={() => onMove(item.id, "down")}
             style={button}
           >
-            {t("Later", "后移")} →
+            {t("Later", "后移")} <Icon name="arrowRight" size={12} />
           </button>
         </div>
         <button

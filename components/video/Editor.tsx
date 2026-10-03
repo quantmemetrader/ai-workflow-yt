@@ -771,16 +771,16 @@ export function Editor(props: EditorProps) {
             }}
           >
             <Key onClick={() => seek(0)} label={t("Start", "回到开头")}>
-              ⏮
+              <Icon name="skipBack" size={14} />
             </Key>
             <Key onClick={() => seek(atMs - 100)} label={t("Back", "后退")}>
-              ◀
+              <Icon name="prev" size={14} strokeWidth={2.2} />
             </Key>
             <Key onClick={toggle} label={playing ? t("Pause", "暂停") : t("Play", "播放")} wide>
               {playing ? <Icon name="pause" size={14} strokeWidth={2.4} /> : <Icon name="play" size={14} fill />}
             </Key>
             <Key onClick={() => seek(atMs + 100)} label={t("Forward", "前进")}>
-              ▶
+              <Icon name="next" size={14} strokeWidth={2.2} />
             </Key>
 
             {/* Cut the clip under the playhead in two. `atMs` is a timeline
@@ -804,14 +804,14 @@ export function Editor(props: EditorProps) {
               label={t("Undo (⌘Z)", "撤销（⌘Z）")}
               disabled={!props.onUndo}
             >
-              ↶
+              <Icon name="undo" size={14} />
             </Key>
             <Key
               onClick={() => props.onRedo?.()}
               label={t("Redo (⇧⌘Z)", "重做（⇧⌘Z）")}
               disabled={!props.onRedo}
             >
-              ↷
+              <Icon name="redo" size={14} />
             </Key>
             <span
               style={{

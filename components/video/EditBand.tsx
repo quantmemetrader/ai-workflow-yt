@@ -125,7 +125,7 @@ export function EditBand({
         </a>
         <Link prefetch={false} href={`/projects/${projectId}/publish`} style={btn("primary")}>
           {t("去发布", "Go to Publish")}
-          <span aria-hidden>→</span>
+          <Icon name="arrowRight" size={14} />
         </Link>
       </>
     );
