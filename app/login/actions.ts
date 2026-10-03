@@ -1,5 +1,6 @@
 "use server";
 import { clientIp } from "@/lib/auth/client-ip";
+import { safeNext } from "@/lib/auth/next-path";
 
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
@@ -24,6 +25,8 @@ export type LoginState = { error?: string };
 export async function signIn(_prev: LoginState, formData: FormData): Promise<LoginState> {
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
   const password = String(formData.get("password") ?? "");
+  /* The page they were sent here from (`?next=`), when it is one of ours. */
+  const next = safeNext(formData.get("next"));
   // Bound both before they reach scrypt: an unbounded password field is a way
   // to make the server spend a lot of CPU for the price of one request.
   if (!email || !password || email.length > 320 || password.length > 1024) {
@@ -89,7 +92,7 @@ export async function signIn(_prev: LoginState, formData: FormData): Promise<Log
        budget (security review, 3 Oct). */
     await startChallenge(user.id);
     await audit({ id: user.id, tenantId: user.tenantId }, "auth.2fa.challenge");
-    redirect("/login/verify");
+    redirect(next ? `/login/verify?next=${encodeURIComponent(next)}` : "/login/verify");
   }
 
   // Whatever session this browser arrived holding is finished with. The cookie
@@ -116,7 +119,7 @@ export async function signIn(_prev: LoginState, formData: FormData): Promise<Log
   await clearLoginThrottle(email);
   await audit({ id: user.id, tenantId: user.tenantId }, "auth.login");
 
-  redirect("/home");
+  redirect(next ?? "/home");
 }
 
 /* ------------------------------------------------------- the second step */
@@ -137,6 +140,7 @@ export async function verifySecondFactor(_prev: VerifyState, formData: FormData)
 
   const typed = String(formData.get("code") ?? "").trim();
   const trust = formData.get("trust") === "on";
+  const next = safeNext(formData.get("next"));
   if (!typed || typed.length > 64) return { error: "That code is not right." };
 
   const h = await headers();
@@ -200,7 +204,7 @@ export async function verifySecondFactor(_prev: VerifyState, formData: FormData)
     meta: { secondFactor: usedRecovery ? "recovery" : "totp", trusted: trust && !usedRecovery },
   });
 
-  redirect("/home");
+  redirect(next ?? "/home");
 }
 
 /** "Back" on the code screen: the half-finished sign-in is dropped. */

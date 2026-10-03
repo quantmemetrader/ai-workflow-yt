@@ -15,7 +15,7 @@ import { signIn, type LoginState } from "./actions";
  * after the password — is real now: anyone who has enrolled an authenticator
  * in Settings is sent to /login/verify from here.
  */
-export function LoginForm({ locale }: { locale?: Locale | null }) {
+export function LoginForm({ locale, next }: { locale?: Locale | null; next?: string | null }) {
   const [focused, setFocused] = useState<"email" | "password" | null>("email");
   const [reveal, setReveal] = useState(false);
   /* Kept across a refused attempt. React resets a form once its action
@@ -29,6 +29,7 @@ export function LoginForm({ locale }: { locale?: Locale | null }) {
     <LoginChrome locale={locale}>
       {({ zh, t }) => (
         <form action={action} style={{ width: 380 }}>
+          {next ? <input type="hidden" name="next" value={next} /> : null}
           <div style={{ fontSize: 26, fontWeight: 500, letterSpacing: "-0.02em" }}>{t("Sign in")}</div>
           <p style={{ fontSize: 14, color: "#7c7c7c", marginTop: 7 }}>
             {zh ? "使用你的腾亚创变工作账号。" : "Use your 腾亚创变 work account."}

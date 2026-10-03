@@ -22,7 +22,7 @@ const NOTHING_YET = {} as const;
  * has just turned over to wait for the next one rather than retype the same
  * digits.
  */
-export function VerifyForm({ email, recoveryLeft }: { email: string; recoveryLeft: number }) {
+export function VerifyForm({ email, recoveryLeft, next }: { email: string; recoveryLeft: number; next?: string | null }) {
   const [state, action, pending] = useActionState<VerifyState, FormData>(verifySecondFactor, NOTHING_YET);
   const [code, setCode] = useState("");
   const [recovery, setRecovery] = useState(false);
@@ -63,6 +63,7 @@ export function VerifyForm({ email, recoveryLeft }: { email: string; recoveryLef
     <LoginChrome footerLeft={(zh) => (zh ? "30 天无操作后自动退出登录" : "Sessions expire after 30 days of inactivity")}>
       {({ zh, t }) => (
         <form ref={form} action={action} style={{ width: 380 }}>
+          {next ? <input type="hidden" name="next" value={next} /> : null}
           <button
             type="button"
             onClick={() => void cancelSecondFactor()}

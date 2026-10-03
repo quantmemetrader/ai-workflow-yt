@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { users } from "@/lib/db/schema";
 import { readChallenge } from "@/lib/auth/second-factor";
+import { safeNext } from "@/lib/auth/next-path";
 import { VerifyForm } from "./verify-form";
 
 export const metadata = { title: "两步验证" };
@@ -14,7 +15,7 @@ export const metadata = { title: "两步验证" };
  * nothing to verify *against*, so it sends you back to the password screen
  * rather than showing a code box that can never be right.
  */
-export default async function VerifyPage() {
+export default async function VerifyPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const userId = await readChallenge();
   if (!userId) redirect("/login");
 
@@ -25,5 +26,5 @@ export default async function VerifyPage() {
     .limit(1);
   if (!user) redirect("/login");
 
-  return <VerifyForm email={user.email} recoveryLeft={(user.recovery ?? []).length} />;
+  return <VerifyForm email={user.email} recoveryLeft={(user.recovery ?? []).length} next={safeNext((await searchParams).next)} />;
 }

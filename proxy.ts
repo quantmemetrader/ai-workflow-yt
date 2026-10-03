@@ -52,8 +52,9 @@ export function proxy(request: NextRequest) {
   const login = new URL("/login", request.url);
   // A single leading slash only. `//evil.example` is a valid pathname and a
   // protocol-relative URL, so anything that later reads `next` and redirects to
-  // it would send people off this host. Nothing reads it yet; this is so that
-  // whatever does cannot inherit an open redirect.
+  // it would send people off this host. The login actions honour it after
+  // sign-in, re-checked there (`lib/auth/next-path.ts`), since the query
+  // string can be typed by anyone.
   if (pathname !== "/" && /^\/[^/\\]/.test(pathname)) {
     login.searchParams.set("next", pathname);
   }
