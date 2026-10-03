@@ -141,6 +141,8 @@ export function hrefFor(kind: ArtifactKind, id: string): string | undefined {
     case "spend_request":
     case "finance_report":
       return "/finance";
+    case "publish_post":
+      return "/publish";
     default:
       return undefined;
   }
@@ -424,6 +426,7 @@ const KIND_OF_PREFIX: Record<string, ArtifactKind[]> = {
   /* Not `req_` or `rep_`: a spend decision shares the first and a research
      report the second, so neither prefix says which thing it is. */
   con: ["contract"],
+  post: ["publish_post"],
 };
 
 /**
@@ -885,6 +888,7 @@ const KIND_ZH: Record<ArtifactKind, string> = {
   contract: "合同",
   spend_request: "用款申请",
   finance_report: "财务报表",
+  publish_post: "发布稿",
 };
 
 const ACTION_ZH: Record<Artifact["action"], string> = {

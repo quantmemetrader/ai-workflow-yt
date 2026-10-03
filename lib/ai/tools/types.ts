@@ -68,7 +68,9 @@ export type ArtifactKind =
   | "assignment"
   | "contract"
   | "spend_request"
-  | "finance_report";
+  | "finance_report"
+  /** A draft post on Publish, made or moved along by the publish tools. */
+  | "publish_post";
 
 /** `started` is work handed to the worker that finishes later (making a
  * whole video), so "started" can be claimed and "finished" cannot yet. */

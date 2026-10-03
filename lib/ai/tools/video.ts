@@ -3,7 +3,7 @@ import { visibleProject } from "@/lib/projects/service";
 import "server-only";
 import { and, asc, desc, eq, isNull } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { captions, files, timelineItems, videoClips, videoGraphics, videoProjects } from "@/lib/db/schema";
+import { captions, files, timelineItems, videoClips, videoExports, videoGraphics, videoProjects } from "@/lib/db/schema";
 import { audit } from "@/lib/audit";
 import { newId } from "@/lib/ids";
 import type { ToolDef } from "@/lib/ai/openrouter";
@@ -17,14 +17,17 @@ import {
 } from "@/lib/video/presets";
 import { ICON_NAMES, isIconName } from "@/lib/video/icons";
 import { canReadFiles } from "@/lib/authz/rebac";
-import { addClip, addGraphic, requestDirector, directorRunning } from "@/lib/video/service";
+import { addClip, addGraphic, requestDirector, directorRunning, requestExport } from "@/lib/video/service";
+import { canEditProject } from "@/lib/video/access";
+import { createPost } from "@/lib/publish/service";
+import { finishedRender, latestRenderId, personOf } from "./publish";
 import type { DirectorState } from "@/lib/video/director";
 import { importPicture } from "@/lib/files/service";
 import { attributionFor, clipAttribution, needsCredit, searchAnyPicture, searchStockClips, stockById, stockClipById, stockConfigured } from "@/lib/video/stock";
 import { importVideo } from "@/lib/files/service";
 import { mapTime, mergeRanges, speechRanges, type Range } from "@/lib/video/ranges";
 import { autoEdit } from "@/lib/video/autoedit";
-import { clock, id as asId, num, str, type ToolContext, type ToolPack, type ToolResult } from "./types";
+import { clock, id as asId, num, str, type Artifact, type ToolContext, type ToolPack, type ToolResult } from "./types";
 
 /**
  * Editing the video by asking.
@@ -404,6 +407,58 @@ const defs: ToolDef[] = [
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "render_current_cut",
+      description:
+        "Render the timeline as it is now into a video file (no re-editing). Use when the person asks to render or export the current cut. Runs on the worker for a few minutes; it is started, not finished, when this returns.",
+      parameters: {
+        type: "object",
+        properties: {
+          project_id: { type: "string", description: "The project (wp_…, from list_projects) when none is open here." },
+          aspect: { type: "string", enum: ["16:9", "9:16", "1:1"], description: "Default: the last render's, else 16:9." },
+          burn_captions: { type: "boolean", description: "Burn the captions into the picture. Default: the last render's choice, else true when there are captions." },
+          caption_language: { type: "string", description: "Which captions, e.g. zh-CN or en. Default: the project's captions." },
+        },
+        required: [],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "add_clip_from_files",
+      description:
+        "Put a file from the studio's files (a video the person attached or uploaded, fil_…) into this project's bin, so it can be cut. Use the file id from the attachment line. It goes in the bin, not onto the timeline.",
+      parameters: {
+        type: "object",
+        properties: {
+          file_id: { type: "string", description: "The file (fil_…). Default: the file open on screen. If neither, ask the person which file." },
+          project_id: { type: "string", description: "The project (wp_…, from list_projects) when none is open here." },
+        },
+        required: [],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "send_render_to_publish",
+      description:
+        "Make a draft Publish post from a finished render of this project (the newest one unless export_id is given). It publishes nothing: channels and approval are chosen on /publish or with the publish tools.",
+      parameters: {
+        type: "object",
+        properties: {
+          export_id: { type: "string", description: "The render (rnd_…). Default: the newest finished render." },
+          project_id: { type: "string", description: "The project (wp_…, from list_projects) when none is open here." },
+          title: { type: "string", description: "The post title. Default: the project's title." },
+          body: { type: "string", description: "The caption text. Optional." },
+        },
+        required: [],
+      },
+    },
+  },
 ];
 
 /* ------------------------------------------------------------ the running */
@@ -562,8 +617,8 @@ async function retime(ctx: ToolContext & { projectId: string; language: string }
  * success is wrapped in this instead, and only a wrapped answer earns a
  * receipt: an employee may then say it cut something only when it did.
  */
-type Done = { text: string; done: true };
-const done = (text: string): Done => ({ text, done: true });
+type Done = { text: string; done: true; artifacts?: Artifact[] };
+const done = (text: string, artifacts?: Artifact[]): Done => ({ text, done: true, ...(artifacts ? { artifacts } : {}) });
 
 /** The tools that only look. Everything else changes the project, but only
  * when it answers with `done`. */
@@ -1080,6 +1135,77 @@ async function dispatch(ctx: ToolContext & { projectId: string; language: string
     return done(line);
   }
 
+  if (name === "render_current_cut" || name === "add_clip_from_files" || name === "send_render_to_publish") {
+    /* The person behind the turn must be able to edit this project too: the
+       employee is an editor of every project, the person may not be. */
+    const person = personOf(ctx);
+    if (person && !(await canEditProject(person, ctx.projectId))) {
+      return "This project is not open to the person asking, or they may only view it. Nothing was changed.";
+    }
+  }
+
+  if (name === "render_current_cut") {
+    const [last] = await db
+      .select({ aspect: videoExports.aspect, burn: videoExports.burnCaptions, language: videoExports.captionLanguage })
+      .from(videoExports)
+      .where(eq(videoExports.projectId, ctx.projectId))
+      .orderBy(desc(videoExports.createdAt))
+      .limit(1);
+    const wantedAspect = str(args.aspect, 5);
+    const aspect = (["16:9", "9:16", "1:1"].includes(wantedAspect) ? wantedAspect : ["16:9", "9:16", "1:1"].includes(last?.aspect ?? "") ? last!.aspect : "16:9") as "16:9" | "9:16" | "1:1";
+    const captionLanguage = str(args.caption_language, 16) || ctx.language;
+    const [anyCue] = await db.select({ id: captions.id }).from(captions).where(and(eq(captions.projectId, ctx.projectId), eq(captions.language, captionLanguage))).limit(1);
+    const burnCaptions = typeof args.burn_captions === "boolean" ? args.burn_captions : last ? last.burn === "burn" : Boolean(anyCue);
+    let renderId: string;
+    try {
+      renderId = await requestExport(ctx.viewer, ctx.projectId, { aspect, burnCaptions, captionLanguage });
+    } catch (err) {
+      return err instanceof Error ? `Not started: ${err.message}.` : "The render could not be started.";
+    }
+    return done(
+      `Render started, not finished (id: ${renderId}): ${aspect}, captions ${burnCaptions ? `burned in (${captionLanguage})` : "as a separate file"}. It takes a few minutes on the worker; the file appears under the project's renders when done. Do not say it is finished.`,
+      [{ kind: "render", id: renderId, action: "started" }],
+    );
+  }
+
+  if (name === "add_clip_from_files") {
+    const fileId = asId(args.file_id) ?? ctx.fileId ?? null;
+    if (!fileId) return "Which file? Ask the person to attach the video or name it; then call this again with its file id (fil_…). Nothing was added.";
+    let clipId: string;
+    try {
+      clipId = await addClip(ctx.viewer, ctx.projectId, fileId);
+    } catch (err) {
+      return err instanceof Error ? `Not added: ${err.message}.` : "That file could not be added.";
+    }
+    const [c] = await db.select({ label: videoClips.label, durationMs: videoClips.durationMs }).from(videoClips).where(eq(videoClips.id, clipId)).limit(1);
+    return done(`Added to the bin: ${c?.label ?? fileId} (clip ${clipId}${c?.durationMs ? `, ${clock(c.durationMs)}` : ", length still being measured"}). It is in the bin, not on the timeline yet.`);
+  }
+
+  if (name === "send_render_to_publish") {
+    /* A post is made for the person, as on the Video screen: they must hold
+       Publish, and the draft is theirs. No person, no post. */
+    const person = personOf(ctx);
+    if (!person) return "A post is made for a person, and no person is behind this turn. Nothing was made.";
+    if (!person.modules.includes("publish")) return `${person.nameLocal ?? person.name} does not hold the Publish module. Nothing was made.`;
+    const exportId = asId(args.export_id) ?? (await latestRenderId(ctx.viewer.tenantId, ctx.projectId));
+    if (!exportId) return "This project has no finished render yet. Render it first (render_current_cut) and wait for it to finish.";
+    const r = await finishedRender(person, exportId);
+    if ("error" in r) return r.error;
+    if (r.projectId !== ctx.projectId) return "That render belongs to another project. Nothing was made.";
+    const title = str(args.title, 300) || r.title;
+    let postId: string;
+    try {
+      /* No channels on purpose, as on the screen: where it goes is the person's decision. */
+      postId = await createPost(person, { title, body: str(args.body, 20_000), fileId: r.fileId, channelIds: [] });
+    } catch (err) {
+      return err instanceof Error ? `No post was made: ${err.message}.` : "No post was made.";
+    }
+    return done(
+      `Draft post made from render ${exportId}: "${title}" (id: ${postId}), open it at /publish. It has no channels yet and nothing is published; channels and approval come next.`,
+      [{ kind: "publish_post", id: postId, title, action: "created" }],
+    );
+  }
+
   return `Unknown tool ${name}.`;
 }
 
@@ -1136,6 +1262,7 @@ async function run(ctx: ToolContext, name: string, args: Record<string, unknown>
   const out = await dispatch(scoped, name, JSON.stringify(args));
   const text = typeof out === "string" ? out : out.text;
   const worked = typeof out !== "string";
+  const extra = typeof out === "string" ? undefined : out.artifacts;
 
   /* Everything here but the read-only tools changes the timeline, and the
      screen refreshes on that — but only when the tool said it worked. A
@@ -1159,7 +1286,7 @@ async function run(ctx: ToolContext, name: string, args: Record<string, unknown>
     changed,
     ...(changed
       ? {
-          artifacts: [
+          artifacts: extra ?? [
             {
               kind: "video_project" as const,
               id: project.id,
