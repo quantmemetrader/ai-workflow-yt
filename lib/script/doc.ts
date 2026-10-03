@@ -359,7 +359,7 @@ export async function copilotRewrite(viewer: Viewer, scriptId: string, paragraph
       /* The 「模型」 picked beside the copilot, else the studio default. */
       model: pick ?? modelFor.agent("script") ?? modelFor.assistant(),
       temperature: attempt ? 0.2 : 0.5,
-      maxTokens: 6000,
+      maxTokens: 14000,
       messages: [
         { role: "system", content: system },
         { role: "user", content: user },
@@ -420,7 +420,7 @@ export async function copilotRedo(viewer: Viewer, scriptId: string, input: { bef
   const out = await complete({
     model: pick ?? modelFor.agent("script") ?? modelFor.assistant(),
     temperature: 0.5,
-    maxTokens: 2000,
+    maxTokens: 6000,
     messages: [
       { role: "system", content: system },
       { role: "user", content: user },

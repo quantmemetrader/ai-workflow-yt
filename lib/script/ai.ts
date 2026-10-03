@@ -191,7 +191,9 @@ export async function draftFromBrief(
   const out = await complete({
     model,
     temperature: 0.7,
-    maxTokens: 4000,
+    /* Room to think and still write: the drafting model reasons first, and at
+       4,000 it spent the lot thinking and wrote nothing (4 Oct, a 3-minute wait). */
+    maxTokens: 14000,
     messages: [
       {
         role: "system",
@@ -244,7 +246,7 @@ export async function draftFromBrief(
     const more = await complete({
       model,
       temperature: 0.7,
-      maxTokens: 6000,
+      maxTokens: 14000,
       messages: [
         {
           role: "system",
@@ -296,7 +298,7 @@ async function polishBeats(viewer: Viewer, beats: DraftBeat[], language: string 
     const out = await complete({
       model: modelFor.drafting(),
       temperature: 0.4,
-      maxTokens: 6000,
+      maxTokens: 14000,
       messages: [
         { role: "system", content: POLISH_PROMPT },
         { role: "user", content: lines.map((x) => `[${x.i}] ${x.v}`).join("\n") },
@@ -393,7 +395,7 @@ export async function checkConformance(viewer: Viewer, scriptId: string) {
   const out = await complete({
     model,
     temperature: 0.2,
-    maxTokens: 2500,
+    maxTokens: 8000,
     messages: [
       { role: "system", content: CONFORM_PROMPT + (style.text ? `\n\nThe house style:\n${style.text}` : "") },
       { role: "user", content: [context, body].filter(Boolean).join("\n\n") },

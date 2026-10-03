@@ -101,7 +101,7 @@ export async function draftArticle(
   const out = await complete({
     model,
     temperature: 0.7,
-    maxTokens: 4000,
+    maxTokens: 14000,
     messages: [
       {
         role: "system",
