@@ -1,5 +1,6 @@
 "use client";
 
+import { Ago } from "@/components/ui/Ago";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { MODULES, type Module } from "@/lib/db/schema";
@@ -617,7 +618,7 @@ function People({
                 </Badge>
               </span>
 
-              <span style={{ fontSize: 11.5, color: "#999999" }}>{ago(p.lastActiveAt, zh)}</span>
+              <span style={{ fontSize: 11.5, color: "#999999" }}><Ago iso={p.lastActiveAt} zh={zh} /></span>
 
               <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
                 <span style={{ fontSize: 11.5, color: "#7c7c7c" }}>{p.modules.length}</span>
@@ -1167,15 +1168,6 @@ function Teams({
 }
 
 /** "2 min ago", "4 d ago" — the design's own wording. */
-function ago(at: Date | null, zh: boolean): string {
-  if (!at) return zh ? "从未" : "never";
-  const mins = Math.round((Date.now() - at.getTime()) / 60_000);
-  if (mins < 2) return zh ? "刚刚" : "just now";
-  if (mins < 60) return zh ? `${mins} 分钟前` : `${mins} min ago`;
-  const hours = Math.round(mins / 60);
-  if (hours < 24) return zh ? `${hours} 小时前` : `${hours} h ago`;
-  return zh ? `${Math.round(hours / 24)} 天前` : `${Math.round(hours / 24)} d ago`;
-}
 
 function Entitlements({
   people,

@@ -1,5 +1,6 @@
 "use client";
 
+import { Ago } from "@/components/ui/Ago";
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -10,7 +11,7 @@ import { publishPlatformName, publishedDay } from "@/lib/projects/publication";
 import { refreshReviewAction } from "@/app/(app)/review/actions";
 import { STAT_KEYS, STAT_LABEL, fmtNum, type AccountView, type VideoRow } from "@/lib/review/types";
 import type { PublishedRow } from "@/lib/review/service";
-import { AccountTiles, PlatformMark, ago } from "@/components/review/ReviewParts";
+import { AccountTiles, PlatformMark } from "@/components/review/ReviewParts";
 import { VideoTable } from "@/components/review/VideoTable";
 
 export function StudioReview({ zh, accounts, rows, videos, canWork, stale, hasChannels }: { zh: boolean; accounts: AccountView[]; rows: PublishedRow[]; videos: VideoRow[]; canWork: boolean; stale: boolean; hasChannels: boolean }) {
@@ -81,7 +82,7 @@ export function StudioReview({ zh, accounts, rows, videos, canWork, stale, hasCh
                         </Link>
                         <div style={{ fontSize: 11.5, color: MUTED }}>
                           {r.publishedAt ? t(`发布于 ${publishedDay(r.publishedAt, true)}`, `Published ${publishedDay(r.publishedAt, false)}`) : t("已完成", "Done")}
-                          {r.lastReadAt ? ` · ${t("数据", "numbers")} ${ago(r.lastReadAt, zh)}` : ""}
+                          {r.lastReadAt ? <>{` · ${t("数据", "numbers")} `}<Ago iso={r.lastReadAt} zh={zh} /></> : ""}
                         </div>
                       </td>
                       <td style={td}>

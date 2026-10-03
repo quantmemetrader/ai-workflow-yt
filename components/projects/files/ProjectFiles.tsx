@@ -8,6 +8,7 @@ import { Poster } from "@/components/files/Poster";
 import { Card, Empty, PageBody, INK, LINE, MUTED, smallButton } from "@/components/projects/kit";
 import { uploadFiles, type UploadProgress } from "@/lib/client/upload";
 import { notify } from "@/lib/client/notify";
+import { Ago } from "@/components/ui/Ago";
 import type { ProjectFile, ProjectFileRole } from "@/lib/projects/files";
 import type { UploadAccess } from "@/components/chat/upload";
 import {
@@ -457,7 +458,7 @@ function Meta({ f, zh }: { f: FileItem; zh: boolean }) {
         <PersonAvatar id={f.ownerId} url={f.ownerAvatar} name={f.ownerName} size={16} />
         {f.ownerName}
       </span>
-      <span suppressHydrationWarning>{ago(f.createdAt, zh)}</span>
+      <Ago iso={f.createdAt} zh={zh} />
       {f.role === "clip" && f.inBin ? <span style={{ color: "#1e7a4f", background: "#e7f6ee", borderRadius: 99, padding: "0 7px", lineHeight: "17px" }}>{zh ? "已在剪辑台" : "In the editor"}</span> : null}
     </div>
   );
@@ -824,17 +825,6 @@ function bytes(n: number): string {
 function clock(ms: number): string {
   const s = Math.round(ms / 1000);
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
-}
-function ago(iso: string, zh: boolean): string {
-  const m = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
-  if (m < 1) return zh ? "刚刚" : "just now";
-  if (m < 60) return zh ? `${m} 分钟前` : `${m} min ago`;
-  const h = Math.round(m / 60);
-  if (h < 24) return zh ? `${h} 小时前` : `${h} h ago`;
-  const d = Math.round(h / 24);
-  if (d < 30) return zh ? `${d} 天前` : `${d} d ago`;
-  const date = new Date(iso);
-  return zh ? `${date.getMonth() + 1}月${date.getDate()}日` : date.toLocaleDateString("en", { month: "short", day: "numeric" });
 }
 
 const CSS = `

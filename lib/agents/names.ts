@@ -7,6 +7,17 @@
  * Shared by the server and the browser: the server fills it from the
  * settings row (`lib/agents/names-store.ts`), the browser from the
  * `window.__agentNames` the app layout prints.
+ *
+ * The value lives on `globalThis`, not in a module variable, and that is the
+ * whole point. On the server Next keeps two copies of this module — one in
+ * the server-component graph, where the layout and the names store run, and
+ * one in the graph that renders client components to HTML — and a variable
+ * set in the first is never seen by the second. The HTML then carried the
+ * built-in names while the browser, reading `window.__agentNames`, hydrated
+ * with the studio's own: a React #418 text mismatch on every page that showed
+ * a renamed employee (3 Oct, the production beacons). One process has one
+ * `globalThis`, so both copies now read the same names, and in the browser
+ * `globalThis` is `window`, where the layout's script already put them.
  */
 import type { AgentKey } from "./catalog";
 
@@ -28,7 +39,8 @@ declare global {
   }
 }
 
-let overrides: AgentNameOverrides = {};
+/* The one place the names are kept, on whichever side is running. */
+const shared = globalThis as unknown as { __agentNames?: AgentNameOverrides };
 
 /** A name is one to twelve characters with nothing an @ could not carry. */
 export function cleanAgentName(raw: unknown, max = 12): string | undefined {
@@ -55,12 +67,11 @@ export function cleanOverrides(raw: unknown, keys: readonly string[]): AgentName
 }
 
 export function setAgentNameOverrides(next: AgentNameOverrides): void {
-  overrides = next ?? {};
+  shared.__agentNames = next ?? {};
 }
 
 export function agentNameOverrides(): AgentNameOverrides {
-  if (typeof window !== "undefined" && window.__agentNames) return window.__agentNames;
-  return overrides;
+  return shared.__agentNames ?? {};
 }
 
 export function agentOverride(key: AgentKey): AgentNameOverride {

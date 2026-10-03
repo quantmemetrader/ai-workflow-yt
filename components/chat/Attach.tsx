@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { notify } from "@/lib/client/notify";
 import { ATTACH_ACCEPT, bytes, kindOf, uploadToStudio, type Attaching } from "@/components/chat/upload";
 
 /**
@@ -16,7 +17,14 @@ export function useAttachments(zh: boolean, max = 10) {
   const ids = attached.filter((a) => a.fileId).map((a) => a.fileId!) as string[];
   const add = React.useCallback(
     (list: FileList | File[] | null) => {
-      const files = Array.from(list ?? []).slice(0, Math.max(0, max - attached.length));
+      const offered = Array.from(list ?? []);
+      /* An empty file has nothing an employee could read. It is refused here,
+         before a chip or an upload exists — a 0-byte file used to be uploaded,
+         sent and listed as a source (QA, 3 Oct). */
+      for (const file of offered) {
+        if (file.size === 0) notify(zh ? `文件「${file.name}」是空的，无法上传` : `"${file.name}" is empty and cannot be uploaded`);
+      }
+      const files = offered.filter((file) => file.size > 0).slice(0, Math.max(0, max - attached.length));
       for (const file of files) {
         const key = `${file.name}-${file.size}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
         const controller = new AbortController();

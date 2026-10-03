@@ -108,6 +108,11 @@ export async function uploadToStudio(
   signal?: AbortSignal,
   hooks: Hooks = {},
 ): Promise<{ id: string; name: string }> {
+  /* Nothing to store and nothing an employee could read. Refused before a
+     row exists, for every caller — the paperclips, the project page and the
+     employee screens all come through here (QA, 3 Oct: a 0-byte file was
+     uploaded, sent and listed as a source). */
+  if (file.size === 0) throw new Error(`文件「${file.name}」是空的，无法上传`);
   return file.size > MULTIPART_FLOOR
     ? inParts(file, onProgress, signal, hooks)
     : allAtOnce(file, onProgress, signal, hooks);

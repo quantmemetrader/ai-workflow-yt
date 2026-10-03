@@ -1,9 +1,10 @@
 import Link from "next/link";
 import { AgentIcon } from "@/components/agents/AgentIcon";
 import { Card, MUTED, PageBody, smallButton } from "@/components/projects/kit";
+import { Ago } from "@/components/ui/Ago";
 import type { TrainSummary } from "@/lib/agents/training";
 import type { TrainKey } from "@/lib/agents/train-keys";
-import { ago, trainHint, trainName } from "@/components/train/names";
+import { trainHint, trainName } from "@/components/train/names";
 
 /**
  * AI 训练's first page: what it is for in one sentence and three steps,
@@ -68,7 +69,7 @@ export function TrainOverview({ zh, summaries }: { zh: boolean; summaries: Train
                   </span>
                   {s.updatedAt ? (
                     <span style={{ color: MUTED }}>
-                      {t("上次更新", "Updated")} <span suppressHydrationWarning>{ago(s.updatedAt, zh)}</span>
+                      {t("上次更新", "Updated")} <Ago iso={s.updatedAt} zh={zh} />
                       {s.updatedByName ? ` · ${s.updatedByName}` : ""}
                     </span>
                   ) : null}

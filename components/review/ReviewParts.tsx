@@ -9,6 +9,7 @@ import { LINE, MUTED, INK, smallButton } from "@/components/projects/kit";
 import { notify } from "@/lib/client/notify";
 import { saveManualAccountAction } from "@/app/(app)/review/actions";
 import { fmtNum, STAT_LABEL, type AccountView, type StatKey } from "@/lib/review/types";
+import { Ago } from "@/components/ui/Ago";
 
 /** How long ago, in words ("3 小时前"). */
 export function ago(iso: string | null, zh: boolean): string {
@@ -145,7 +146,7 @@ export function AccountTiles({ accounts, zh, canWork }: { accounts: AccountView[
               <span>
                 {a.connected ? (zh ? "已连接 · " : "Connected · ") : a.source === "manual" ? (zh ? "手动 · " : "Typed · ") : ""}
                 {zh ? "更新于 " : "Updated "}
-                {ago(a.at, zh)}
+                {a.at ? <Ago iso={a.at} zh={zh} /> : ago(null, zh)}
               </span>
               {canWork && !a.connected ? (
                 <button type="button" onClick={() => setTyping(typing === a.platform ? null : a.platform)} style={{ border: 0, background: "none", padding: 0, color: "#1f5fbf", cursor: "pointer", fontSize: 11.5, fontFamily: "inherit" }}>

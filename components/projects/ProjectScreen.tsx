@@ -32,6 +32,7 @@ import { JobChip } from "@/components/chat/Working";
 import type { StepKey } from "@/lib/agents/steps";
 import { AgentTyping } from "@/components/agents/AgentTyping";
 import { AgentName, Tr } from "@/components/ui/Tr";
+import { Ago } from "@/components/ui/Ago";
 import { artifactHref } from "@/lib/chat/handoff";
 import { LinkedText } from "@/components/chat/LinkedText";
 import { PersonAvatar } from "@/components/ui/PersonAvatar";
@@ -307,7 +308,7 @@ export function ProjectScreen({
                   <button key={i} type="button" onClick={() => setChatOpen(true)} style={{ display: "flex", alignItems: "baseline", gap: 8, padding: "7px 0", border: 0, borderTop: i ? "1px solid #f0efeb" : 0, background: "none", font: "inherit", textAlign: "left", cursor: "pointer", minWidth: 0 }}>
                     <span style={{ fontSize: 12.5, fontWeight: 600, color: "#171717", flexShrink: 0 }}>{m.agent ? <AgentName agent={m.agent} zh={zh} /> : m.author}</span>
                     <span style={{ fontSize: 12.5, color: "#5f5f5f", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flexGrow: 1 }}>{oneLine(m.body).replace(/\s*(?:在脚本页看、改：)?\/(?:script|video|projects|chat)\/\S+/g, "")}</span>
-                    <span style={{ fontSize: 11.5, color: "#a3a3a3", flexShrink: 0 }}><span suppressHydrationWarning>{ago(m.at, zh)}</span></span>
+                    <span style={{ fontSize: 11.5, color: "#a3a3a3", flexShrink: 0 }}><Ago iso={m.at} zh={zh} /></span>
                   </button>
                 ))}
               </div>
@@ -738,7 +739,7 @@ function AgentOutput({ agent, msg, working, zh, onOpen, copyable = false, compac
       <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11.5, color: msg.agent ? AGENT_COLORS[msg.agent] : "#525252", fontWeight: 600 }}>
         {msg.agent ? <AgentIcon agent={msg.agent} size={16} radius={4} /> : <PersonAvatar id={msg.authorId} url={msg.authorAvatar} name={msg.author} size={16} radius={4} />}
         {msg.agent ? <AgentName agent={msg.agent} zh={zh} /> : msg.author}
-        <span style={{ fontWeight: 400, color: "#b3b3b3" }}><span suppressHydrationWarning>{ago(msg.at, zh)}</span></span>
+        <span style={{ fontWeight: 400, color: "#b3b3b3" }}><Ago iso={msg.at} zh={zh} /></span>
         <span style={{ flexGrow: 1 }} />
         {copyable ? (
           <button type="button" onClick={() => { void navigator.clipboard.writeText(text); notify(t("已复制", "Copied"), "ok"); }} style={{ border: 0, background: "transparent", cursor: "pointer", fontSize: 11.5, color: "#525252", fontFamily: "inherit" }}>
@@ -904,7 +905,7 @@ function ChatDrawer({ project: p, zh, people, onClose }: { project: ProjectDetai
       {/* Room between messages (14, was 10), the time beside each name, and
           the employee's bubble edged in its own tint, so a long answer reads
           as one message rather than running into the next. The drawer only
-          renders after a press, so `ago` here never meets the server's HTML. */}
+          renders after a press, so `Ago` here never meets the server's HTML. */}
       <div ref={scroller} style={{ flexGrow: 1, minHeight: 0, overflowY: "auto", padding: "14px 16px", display: "flex", flexDirection: "column", gap: 14 }}>
         {p.messages.map((m) =>
           m.agent ? (
@@ -913,7 +914,7 @@ function ChatDrawer({ project: p, zh, people, onClose }: { project: ProjectDetai
               <div style={{ minWidth: 0 }}>
                 <div style={{ display: "flex", alignItems: "baseline", gap: 6, fontSize: 11.5, fontWeight: 600, color: AGENT_COLORS[m.agent] }}>
                   <AgentName agent={m.agent} zh={zh} />
-                  <span style={{ fontWeight: 400, color: "#b3b3b3" }}><span suppressHydrationWarning>{ago(m.at, zh)}</span></span>
+                  <span style={{ fontWeight: 400, color: "#b3b3b3" }}><Ago iso={m.at} zh={zh} /></span>
                 </div>
                 <div style={{ marginTop: 3, background: "#f7f8fb", border: `1px solid ${AGENT_TINTS[m.agent]}`, borderRadius: "4px 12px 12px 12px", padding: "9px 12px", fontSize: 12.5, lineHeight: 1.65, color: "#2b343d", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
                   {/* Bare app paths (「在脚本页看、改：/script/scr_…」) as short
@@ -988,7 +989,7 @@ function ChatDrawer({ project: p, zh, people, onClose }: { project: ProjectDetai
                   employees" rather than as themselves. */}
               <div style={{ fontSize: 11, color: "#b3b3b3", display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 5 }}>
                 <span>
-                  {m.author} · <span suppressHydrationWarning>{ago(m.at, zh)}</span>
+                  {m.author} · <Ago iso={m.at} zh={zh} />
                 </span>
                 <PersonAvatar id={m.authorId} url={m.authorAvatar} name={m.author} size={18} radius={5} />
               </div>
@@ -1070,7 +1071,7 @@ function SentBackPanel({ back, zh, pending, onApply, onDone }: { back: SentBack;
           {applied ? t("已按退回意见交给文案修改", "Handed back for the edits") : t("退回修改", "Sent back")}
         </span>
         <span style={{ fontSize: 11.5, color: "#9a6b4f" }}>
-          {back.byName} · {new Date(back.at).toLocaleString(zh ? "zh-CN" : "en-US", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+          {back.byName} · {new Date(back.at).toLocaleString(zh ? "zh-CN" : "en-US", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Hong_Kong" })}
         </span>
       </div>
       <div style={{ fontSize: 14, fontWeight: 600, color: "#171717", lineHeight: 1.55 }}>「{back.note}」</div>
@@ -1163,15 +1164,6 @@ function oneLine(body: string): string {
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, 140);
-}
-
-
-function ago(iso: string, zh: boolean): string {
-  const mins = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
-  if (mins < 1) return zh ? "刚刚" : "now";
-  if (mins < 60) return zh ? `${mins} 分钟前` : `${mins}m ago`;
-  const h = Math.round(mins / 60);
-  return h < 24 ? (zh ? `${h} 小时前` : `${h}h ago`) : zh ? `${Math.round(h / 24)} 天前` : `${Math.round(h / 24)}d ago`;
 }
 
 function btn(primary: boolean): React.CSSProperties {

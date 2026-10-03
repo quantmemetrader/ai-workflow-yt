@@ -160,6 +160,10 @@ ${threadCss("[data-chat-surface]")}
 [data-chat-surface] .edited { font-size: 11px; color: #a3a3a3; margin-left: 4px; }
 [data-chat-surface] .edit-box { margin-top: 4px; max-width: 72ch; border: 1px solid #d4d4d4; border-radius: 10px; background: #fff; padding: 6px 8px 8px; }
 [data-chat-surface] .edit-box textarea { display: block; width: 100%; border: 0; outline: none; resize: vertical; font: inherit; font-size: 13.5px; line-height: 1.6; color: #171717; background: transparent; min-height: 44px; }
+[data-chat-surface] .long { position: relative; max-width: 72ch; }
+[data-chat-surface] .long.folded .txt { max-height: 420px; overflow: hidden; -webkit-mask-image: linear-gradient(#000 calc(100% - 72px), transparent); mask-image: linear-gradient(#000 calc(100% - 72px), transparent); }
+[data-chat-surface] .long .more { display: inline-flex; align-items: center; height: 26px; margin-top: 6px; padding: 0 10px; border: 1px solid #e2e2e2; border-radius: 7px; background: #fff; font: inherit; font-size: 12px; color: #525252; cursor: pointer; }
+[data-chat-surface] .long .more:hover { background: #f4f4f5; color: #171717; }
 `;
 
 /**
@@ -186,6 +190,25 @@ const ARTIFACT: Record<string, { zh: string; en: string; icon: IconName }> = {
 };
 const OTHER_ARTIFACT = { zh: "内容", en: "Item", icon: "external" as IconName };
 
+/* Past this many characters a message is folded to its first screen, with
+   展开全文 under it: a 10,000-character answer stood 5,700 px tall and buried
+   the thread around it (QA, 3 Oct). The Markdown is drawn whole and clipped
+   by height, never cut, so nothing in it breaks; 收起 folds it back. */
+const LONG_BODY = 1500;
+
+function Body({ body, zh }: { body: string; zh: boolean }) {
+  const [open, setOpen] = React.useState(false);
+  if (body.length <= LONG_BODY) return <BodyText body={body} />;
+  return (
+    <div className={open ? "long" : "long folded"}>
+      <BodyText body={body} />
+      <button type="button" className="more" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
+        {open ? (zh ? "收起" : "Show less") : zh ? "展开全文" : "Show all"}
+      </button>
+    </div>
+  );
+}
+
 /**
  * @mentions carry the artboard's .ment pill — and an agent's tag carries that
  * employee's own colour, because "I asked a colleague" and "I asked the video
@@ -195,7 +218,7 @@ const OTHER_ARTIFACT = { zh: "内容", en: "Item", icon: "external" as IconName 
  * buttons write Markdown — is drawn as formatted. The tags in it are still
  * named underneath, by `Handoff`, so a hand-off reads as a hand-off either way.
  */
-function Body({ body }: { body: string }) {
+function BodyText({ body }: { body: string }) {
   if (HAS_MARKUP.test(body)) {
     return (
       <div className="txt">
@@ -1160,10 +1183,10 @@ export function ChannelSurface(props: {
                             border: `1px solid ${agentTint ? soft(agentTint, 0.95) : "#ececec"}`,
                           }}
                         >
-                          <Body body={body} />
+                          <Body body={body} zh={zh} />
                         </div>
                       ) : (
-                        <Body body={body} />
+                        <Body body={body} zh={zh} />
                       )}
                       {m.editedAt && editing?.id !== m.id ? <span className="edited">{zh ? "（已编辑）" : "(edited)"}</span> : null}
                       {/* A render or a video it names, or a video attached to

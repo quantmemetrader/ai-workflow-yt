@@ -1,5 +1,6 @@
 "use client";
 
+import { Ago } from "@/components/ui/Ago";
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -116,7 +117,7 @@ export function ReviewScreen({
         icon="play"
         title={t("本片数据", "This video")}
         sub={t("各平台的最新数据。读不到的数字可以手动填。", "Each platform's latest numbers. Type in what can't be read.")}
-        right={posts.length ? <span style={{ fontSize: 12, color: MUTED }}>{t("更新于 ", "Updated ")}{ago(posts.map((p) => p.at).filter((x): x is string => Boolean(x)).sort().pop() ?? null, zh)}</span> : null}
+        right={posts.length ? <span style={{ fontSize: 12, color: MUTED }}>{t("更新于 ", "Updated ")}<Ago iso={posts.map((p) => p.at).filter((x): x is string => Boolean(x)).sort().pop() ?? null} zh={zh} /></span> : null}
         pad={false}
       >
         {posts.length ? (
@@ -282,7 +283,7 @@ function PostRow({ p, zh, projectId, canWork, cols, showCompletion, showTrend }:
               </div>
               <div style={{ fontSize: 11.5, color: MUTED, maxWidth: 260, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                 {p.error ? <span style={{ color: "#b45309" }}>{p.error}</span> : p.title ?? (p.url ? p.url : t("没有链接", "No link"))}
-                {p.at ? ` · ${p.source === "manual" ? t("手动 ", "typed ") : ""}${ago(p.at, zh)}` : ""}
+                {p.at ? <>{` · ${p.source === "manual" ? t("手动 ", "typed ") : ""}`}<Ago iso={p.at} zh={zh} /></> : ""}
               </div>
             </div>
           </div>

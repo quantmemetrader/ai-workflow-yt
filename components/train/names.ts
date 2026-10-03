@@ -12,11 +12,6 @@ export function trainHint(key: TrainKey, zh: boolean): string {
   return zh ? AGENT_LABELS[key].hint : AGENT_LABELS[key].hintEn;
 }
 
-export function ago(iso: string, zh: boolean): string {
-  const s = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
-  if (s < 60) return zh ? "刚刚" : "just now";
-  if (s < 3600) return zh ? `${Math.round(s / 60)} 分钟前` : `${Math.round(s / 60)} min ago`;
-  if (s < 86400) return zh ? `${Math.round(s / 3600)} 小时前` : `${Math.round(s / 3600)} h ago`;
-  if (s < 86400 * 30) return zh ? `${Math.round(s / 86400)} 天前` : `${Math.round(s / 86400)} days ago`;
-  return new Date(iso).toLocaleDateString(zh ? "zh-CN" : "en");
-}
+/* "3 分钟前" and the like are drawn by `components/ui/Ago.tsx`, which keeps
+   the server's and the browser's renders from disagreeing; there is no
+   `ago()` string helper here any more. */

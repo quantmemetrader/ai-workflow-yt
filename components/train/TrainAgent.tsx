@@ -9,7 +9,8 @@ import { Card, Empty, INK, LINE, MUTED, NextStep, PageBody, bigButton, smallButt
 import { notify } from "@/lib/client/notify";
 import { TRAIN_BUDGET, TRAIN_PLACEHOLDER, TRAIN_USED, type TrainKey } from "@/lib/agents/train-keys";
 import type { TrainRow } from "@/lib/agents/training";
-import { ago, trainHint, trainName } from "@/components/train/names";
+import { trainHint, trainName } from "@/components/train/names";
+import { Ago } from "@/components/ui/Ago";
 import {
   addExampleAction,
   addExampleFilesAction,
@@ -64,7 +65,8 @@ export function TrainAgent({ agent, zh, rows, canEdit, model }: { agent: TrainKe
       </div>
       <NextStep state={trained ? "done" : "you"} zh={zh} text={<>{trained ? t("已经训练过，可以继续补充。", "Trained — you can keep adding.") : t("写几条工作说明、上传一两篇范例，它就会照着做。", "Write a few instructions and upload an example or two.")} <span style={{ color: MUTED }}>{zh ? TRAIN_USED[agent].zh : TRAIN_USED[agent].en}</span></>} />
       {model}
-      {!canEdit ? <div style={{ fontSize: 13, color: "#95590a" }}>{t("访客只能查看，不能修改。", "Guests can look but not change anything.")}</div> : null}
+      {/* Training is admin-only (release 42c70aa); `canEdit` is `mayTrain(viewer)`, so a false here is a non-admin reading. */}
+      {!canEdit ? <div style={{ fontSize: 13, color: "#95590a" }}>{t("只有管理员可以修改训练内容，其他人只能查看。", "Only admins can change the training; everyone else can look.")}</div> : null}
 
       <TextBlock
         key={`i-${instructionsRow?.id ?? "new"}-${instructionsRow?.version ?? 0}`}
@@ -159,7 +161,7 @@ function TextBlock({
       right={
         row ? (
           <span style={{ fontSize: 12, color: MUTED }}>
-            {t(`第 ${row.version} 版`, `v${row.version}`)} · <span suppressHydrationWarning>{ago(row.updatedAt, zh)}</span>
+            {t(`第 ${row.version} 版`, `v${row.version}`)} · <Ago iso={row.updatedAt} zh={zh} />
             {row.updatedByName ? ` · ${row.updatedByName}` : ""}
           </span>
         ) : null
@@ -207,7 +209,7 @@ function TextBlock({
               <div key={v.version} style={{ border: `1px solid ${LINE}`, borderRadius: 10, padding: "10px 12px", background: "#fafaf8" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: MUTED, marginBottom: 6 }}>
                   <b style={{ color: INK }}>{t(`第 ${v.version} 版`, `v${v.version}`)}</b>
-                  <span><span suppressHydrationWarning>{ago(v.at, zh)}</span></span>
+                  <span><Ago iso={v.at} zh={zh} /></span>
                   {v.byName ? <span>· {v.byName}</span> : null}
                   {v.note ? <span>· {v.note}</span> : null}
                   <span style={{ flexGrow: 1 }} />
@@ -414,7 +416,7 @@ function Examples({ agent, zh, examples, activeChars, canEdit, onChanged }: { ag
                   <button type="button" onClick={() => setOpen(open === e.id ? null : e.id)} style={{ flexGrow: 1, minWidth: 0, border: 0, background: "none", padding: 0, textAlign: "left", cursor: "pointer", fontFamily: "inherit" }}>
                     <div style={{ fontSize: 14, fontWeight: 600, color: e.active ? INK : MUTED, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.title}</div>
                     <div style={{ fontSize: 12, color: MUTED, marginTop: 1 }}>
-                      {e.body.trim().length.toLocaleString()} {t("字", "chars")} · <span suppressHydrationWarning>{ago(e.updatedAt, zh)}</span>
+                      {e.body.trim().length.toLocaleString()} {t("字", "chars")} · <Ago iso={e.updatedAt} zh={zh} />
                       {e.updatedByName ? ` · ${e.updatedByName}` : ""}
                       {!e.active ? ` · ${t("已停用", "off")}` : ""}
                     </div>
