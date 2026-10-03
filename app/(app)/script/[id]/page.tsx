@@ -1,10 +1,10 @@
-import { projectFor } from "@/lib/projects/service";
+import { projectFor, reachableThroughProjects } from "@/lib/projects/service";
 import { ProjectBar } from "@/components/projects/ProjectBar";
 import { notFound } from "next/navigation";
 import { ScriptDocPage } from "@/components/script/doc/ScriptDocPage";
 import { requireModule } from "@/lib/auth/dal";
 import { modelFor } from "@/lib/ai/models";
-import { shareCeiling } from "@/lib/authz/rebac";
+import { relationOn, shareCeiling } from "@/lib/authz/rebac";
 import { sharesWithNames } from "@/lib/files/service";
 import { DetailView } from "@/components/script/DetailView";
 import { ShareSheet } from "@/components/files/ShareSheet";
@@ -24,6 +24,11 @@ export default async function ScriptPage({ params }: { params: Promise<{ id: str
 
   const detail = await scriptDetail(viewer, id);
   if (!detail) notFound();
+  /* A private project's script is for that project's members (or someone it
+     is shared with); to anyone else it does not exist. One in no project
+     keeps the module's rule. The chat's script card asks the same. */
+  const may = viewer.isAdmin || (await reachableThroughProjects(viewer, { scriptId: id })) || (await relationOn(viewer, "script", id).catch(() => null)) !== null;
+  if (!may) notFound();
   /* A project's script opens on its own page — the full document, with a
      slim bar back to 所有脚本 and to its project (Ryan, 29 Sep: "open a
      separate page for that script so it's better to view"). */

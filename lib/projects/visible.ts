@@ -1,6 +1,6 @@
 import "server-only";
 import { sql } from "drizzle-orm";
-import { workProjects } from "@/lib/db/schema";
+import { relationTuples, scripts, workProjects } from "@/lib/db/schema";
 import type { Viewer } from "@/lib/auth/types";
 
 /**
@@ -33,4 +33,24 @@ export function projectsVisibleTo(viewer: Viewer) {
 export function projectOpenableBy(viewer: Viewer) {
   if (viewer.isAdmin) return sql`true`;
   return sql`(${projectsVisibleTo(viewer)} or (${workProjects.access} ->> 'link' in ('view', 'edit') and ${viewer.role} <> 'guest'))`;
+}
+
+/**
+ * Scripts this person may list or open, as a condition on `scripts`. One that
+ * no live project holds is the studio's (the Script module's own check
+ * applies). One a project holds is that project's: only through a project of
+ * those they may see, or a share on the script itself — the rule
+ * `reachableThroughProjects` and the chat's script card use for one script,
+ * for lists and search. A private project's script, outside it, is not there.
+ */
+export function scriptsVisibleTo(viewer: Viewer) {
+  if (viewer.isAdmin) return sql`true`;
+  const shared = viewer.subjects.length
+    ? sql`exists (select 1 from ${relationTuples} where ${relationTuples.objectType} = 'script' and ${relationTuples.objectId} = ${scripts.id}
+        and ${relationTuples.subjectId} in (${sql.join(viewer.subjects.map((x) => sql`${x}`), sql`, `)})
+        and (${relationTuples.expiresAt} is null or ${relationTuples.expiresAt} > now()))`
+    : sql`false`;
+  return sql`(not exists (select 1 from ${workProjects} where ${workProjects.scriptId} = ${scripts.id} and ${workProjects.deletedAt} is null)
+    or exists (select 1 from ${workProjects} where ${workProjects.scriptId} = ${scripts.id} and ${workProjects.deletedAt} is null and ${projectsVisibleTo(viewer)})
+    or ${shared})`;
 }

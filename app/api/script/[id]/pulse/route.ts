@@ -3,7 +3,8 @@ import { and, count, eq, isNull } from "drizzle-orm";
 import { getViewer } from "@/lib/auth/dal";
 import { db } from "@/lib/db/client";
 import { scriptBeats, scripts } from "@/lib/db/schema";
-import { projectsVisibleTo } from "@/lib/projects/service";
+import { projectsVisibleTo, reachableThroughProjects } from "@/lib/projects/service";
+import { relationOn } from "@/lib/authz/rebac";
 import { scriptWriting } from "@/lib/script/writing";
 
 /**
@@ -19,8 +20,8 @@ import { scriptWriting } from "@/lib/script/writing";
  * failed; true while any live project that has this script carries a fresh
  * one, and one older than ten minutes counts as gone (`scriptWriting`).
  *
- * Who may ask: someone with Script reads any of the studio's scripts, as the
- * script page lets them. Someone with only Chat waits on a script from a
+ * Who may ask: someone with Script reads the studio's scripts as the script
+ * page lets them (a private project's only for its members). Someone with only Chat waits on a script from a
  * project page, so they get an answer only for a script whose project they
  * can see. `projectId` is only ever a project the asker can see.
  */
@@ -34,6 +35,9 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     .where(and(eq(scripts.id, id), eq(scripts.tenantId, viewer.tenantId), isNull(scripts.deletedAt)))
     .limit(1);
   if (!row) return Response.json({ error: "Not found" }, { status: 404 });
+  /* A private project's script answers only to its members (or a share). */
+  const may = viewer.isAdmin || (await reachableThroughProjects(viewer, { scriptId: id })) || (await relationOn(viewer, "script", id).catch(() => null)) !== null;
+  if (!may) return Response.json({ error: "Not found" }, { status: 404 });
   const [[beats], about] = await Promise.all([
     db.select({ n: count() }).from(scriptBeats).where(eq(scriptBeats.scriptId, id)),
     scriptWriting(viewer.tenantId, id, projectsVisibleTo(viewer)),

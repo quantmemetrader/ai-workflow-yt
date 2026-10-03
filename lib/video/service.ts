@@ -1,4 +1,5 @@
 import "server-only";
+import { scriptsVisibleTo } from "@/lib/projects/visible";
 import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { db, tx } from "@/lib/db/client";
@@ -1391,7 +1392,8 @@ export async function scriptsForPicker(viewer: Viewer) {
   return db
     .select({ id: scripts.id, title: scripts.title, status: scripts.status })
     .from(scripts)
-    .where(and(eq(scripts.tenantId, viewer.tenantId), isNull(scripts.deletedAt)))
+    /* Not a private project's script, outside that project. */
+    .where(and(eq(scripts.tenantId, viewer.tenantId), isNull(scripts.deletedAt), scriptsVisibleTo(viewer)))
     .orderBy(desc(scripts.updatedAt))
     .limit(60);
 }

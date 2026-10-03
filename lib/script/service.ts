@@ -115,6 +115,10 @@ export async function listScripts(
      one (`createScript`), and a cycle between the two is what
      `lib/script/writing.ts` also steers clear of. */
   const { projectsVisibleTo } = await import("@/lib/projects/service");
+  const { scriptsVisibleTo } = await import("@/lib/projects/visible");
+  /* A private project's script is its members' (and whoever it is shared
+     with): outside the project it is not listed or found by search. */
+  where.push(scriptsVisibleTo(viewer));
   const rows = await db
     .select({
       id: scripts.id,
