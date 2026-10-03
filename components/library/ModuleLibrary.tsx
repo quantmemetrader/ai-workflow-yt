@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { notify } from "@/lib/client/notify";
 import { useAsk } from "@/components/ui/useAsk";
 import { uploadFiles } from "@/lib/client/upload";
+import { useDroppedFiles } from "@/lib/client/dropped";
 import { deleteFilesAction } from "@/app/(app)/files/actions";
 import { trainWithFileAction } from "@/app/(app)/library/actions";
 import { newDocAction } from "@/app/(app)/docs/actions";
@@ -56,6 +57,9 @@ export function ModuleLibrary({ module, title, agentName, zh, folderId, files, c
     notify(res.failed ? t(`上传了 ${res.uploaded} 个，${res.failed} 个没传上`, `${res.uploaded} uploaded, ${res.failed} failed`) : t(`上传了 ${res.uploaded} 个文件，AI 正在读`, `${res.uploaded} uploaded; AI is reading them`), res.failed ? "info" : "ok");
     router.refresh();
   }
+
+  /* Files dropped anywhere on this module's pages land here (GlobalDrop). */
+  useDroppedFiles(`library:${module}`, (list) => void add(list));
 
   const needle = q.trim().toLowerCase();
   const shown = files.filter((f) => !needle || f.name.toLowerCase().includes(needle) || f.ownerName.toLowerCase().includes(needle));

@@ -53,7 +53,9 @@ export const viewport: Viewport = {
  * string shipped is Simplified, which hands a screen reader the wrong
  * pronunciation and the browser the wrong font stack. */
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
-  const theme = themeOf((await cookies()).get(THEME_COOKIE)?.value);
+  /* Dark mode is switched off for now (4 Oct): everyone gets the light theme. */
+  const theme = "light" as const;
+  void themeOf; void THEME_COOKIE; void cookies;
   return (
     /* Never translated by the browser (the owner, 30 Sep: "we want all in simplified chinese"):
        a Traditional-set browser rewrote the page into wrong characters. English is 设置 › 语言. */

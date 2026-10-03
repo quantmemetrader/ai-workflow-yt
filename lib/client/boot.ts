@@ -94,8 +94,8 @@ window.__aura={report:report,stale:stale,reloadOnce:reloadOnce};
    file. A box that takes files handles the event first, and a screen that
    takes drops anywhere counts itself in window.__fileDropZones; otherwise the
    drop is swallowed here and a notice says where files go. */
-window.addEventListener("dragover",function(e){try{var t=e.dataTransfer;if(!t||!t.types||Array.prototype.indexOf.call(t.types,"Files")<0)return;if(e.defaultPrevented||window.__fileDropZones)return;e.preventDefault();t.dropEffect="none";}catch(x){}});
-window.addEventListener("drop",function(e){try{var t=e.dataTransfer;if(!t||!t.files||!t.files.length)return;if(e.defaultPrevented||window.__fileDropZones)return;e.preventDefault();window.dispatchEvent(new CustomEvent("aura:notify",{detail:{id:Date.now(),kind:"info",text:"\u628a\u6587\u4ef6\u62d6\u5230\u5bf9\u8bdd\u6846\u3001\u53c2\u8003\u8d44\u6599\u6216\u6587\u4ef6\u533a\u91cc\uff0c\u677e\u624b\u5c31\u4f1a\u4e0a\u4f20\u3002"}}));}catch(x){}});
+window.addEventListener("dragover",function(e){try{var t=e.dataTransfer;if(!t||!t.types||Array.prototype.indexOf.call(t.types,"Files")<0)return;if(e.defaultPrevented||window.__fileDropZones||window.__globalDrop)return;e.preventDefault();t.dropEffect="none";}catch(x){}});
+window.addEventListener("drop",function(e){try{var t=e.dataTransfer;if(!t||!t.files||!t.files.length)return;if(e.defaultPrevented||window.__fileDropZones||window.__globalDrop)return;e.preventDefault();window.dispatchEvent(new CustomEvent("aura:notify",{detail:{id:Date.now(),kind:"info",text:"\u628a\u6587\u4ef6\u62d6\u5230\u5bf9\u8bdd\u6846\u3001\u53c2\u8003\u8d44\u6599\u6216\u6587\u4ef6\u533a\u91cc\uff0c\u677e\u624b\u5c31\u4f1a\u4e0a\u4f20\u3002"}}));}catch(x){}});
 /* Every text node's words, recorded the moment the browser inserts them and
    before any extension can rewrite them (2 Oct: a 繁简 converter turned the
    script page's labels into 「導入文檔」「艸藁」「棠訪藁」). SimplifiedGuard (zh-ok)

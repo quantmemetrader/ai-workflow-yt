@@ -1,4 +1,5 @@
 import { after } from "next/server";
+import { GlobalDrop } from "@/components/shell/GlobalDrop";
 import { requireViewer } from "@/lib/auth/dal";
 import { AgentNamesSync } from "@/components/shell/AgentNamesSync";
 import { agentNamesNow } from "@/lib/agents/names-store";
@@ -90,6 +91,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           locale={viewer.locale ?? "zh-CN"}
         />
         <main id="main" style={{ flexGrow: 1, minHeight: 0, display: "flex" }}>{children}</main>
+        <GlobalDrop zh={(viewer.locale ?? "zh-CN").startsWith("zh")} />
       </div>
 
       {/* Above the page, not inside it: ⌘K has to work on every module, and

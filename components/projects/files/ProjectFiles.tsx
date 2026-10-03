@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useDroppedFiles } from "@/lib/client/dropped";
 import { useAsk } from "@/components/ui/useAsk";
 import { useRouter } from "next/navigation";
 import { Icon, type IconName } from "@/components/ui/Icon";
@@ -154,6 +155,8 @@ export function ProjectFiles({
     router.refresh();
     window.setTimeout(() => setUploads(null), 2500);
   }
+  /* Files dropped anywhere on this project's pages (GlobalDrop). */
+  useDroppedFiles(`project-files:${projectId}`, (list) => void upload(list));
 
   const toggle = (id: string) =>
     setSelected((s) => {

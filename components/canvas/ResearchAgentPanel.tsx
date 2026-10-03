@@ -15,6 +15,7 @@ import { AGENT_LABELS, agentTag, parseAgentMentions, screenAgentForPath, type Ag
 import { useResizable } from "@/components/ui/Resizer";
 import { AgentName } from "@/components/ui/Tr";
 import { AttachButton, AttachChips, useAttachments } from "@/components/chat/Attach";
+import { useDroppedFiles } from "@/lib/client/dropped";
 
 /**
  * The 312px Agent panel every Market Research artboard draws down its right
@@ -125,6 +126,8 @@ export function ResearchAgentPanel({
      send until something follows it. */
   const att = useAttachments(zh);
   const ready = (asksSomething(ask) || att.ids.length > 0) && !att.uploading;
+  /* Files dropped anywhere on the page, when the page sends them to the assistant (GlobalDrop). */
+  useDroppedFiles(attach ? "panel" : null, (list) => { att.add(list); requestAnimationFrame(() => box.current?.focus()); });
   const send = () => {
     if (!ready) return;
     onAsk(ask.trim(), att.ids.length ? att.ids : undefined);

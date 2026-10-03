@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useSyncExternalStore, useTransition } from "react";
+import { useDroppedFiles } from "@/lib/client/dropped";
 import { useRouter } from "next/navigation";
 import { AccessPicker, type AccessChoice } from "@/components/files/AccessPicker";
 import { FilesScreen, type FileRow, type FilesLens, type FolderRow } from "@/components/canvas/FilesScreen";
@@ -136,6 +137,8 @@ export function FilesView({
      Listened for on the document: the drop target is the whole screen, and a
      file dragged over the browser must not open in a new tab instead. */
   const canUpload = canEdit && view === "folder";
+  /* Files dropped on a Files page that cannot take them here (recent, shared) arrive at the folder. */
+  useDroppedFiles(canUpload ? "files" : null, (list) => upload(list));
   const openFile = (id: string) => router.push(`/files/${id}`);
   const rename = canEdit ? (kind: "file" | "folder", id: string, name: string) => setRenaming({ kind, id, name }) : undefined;
   const remove = canEdit && view !== "trash" ? (kind: "file" | "folder", id: string, name: string) => setDeleting({ kind, id, name }) : undefined;
