@@ -218,7 +218,7 @@ async function readWechat(a: OwnAccount): Promise<AccountReading> {
     stats: { plays: zeroIsUnknown(num(v.read_count)), likes: num(v.like_count), comments: num(v.comment_count), shares: num(v.forward_count), collects: num(v.fav_count) },
   }));
   return {
-    stats: { followers: zeroIsUnknown(num(prof.fans_count)), likes: num(prof.like_count), works: num(prof.feeds_count), views: null },
+    stats: { followers: zeroIsUnknown(num(prof.fans_count)), likes: zeroIsUnknown(num(prof.like_count)), works: num(prof.feeds_count), views: null },
     posts: list.slice(0, 10),
   };
 }
