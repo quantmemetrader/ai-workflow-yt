@@ -66,10 +66,18 @@ const STATUS_TONE: Record<ArticleStatus, "quiet" | "warn" | "good" | "info"> = {
   archived: "info",
 };
 
-const statusLabel = (status: ArticleStatus, zh: boolean) =>
-  zh
-    ? { draft: "草稿", in_review: "审核中", published: "已发布", archived: "已归档" }[status]
-    : { draft: "draft", in_review: "in review", published: "published", archived: "archived" }[status];
+/** `approved`: in review with the approval granted, waiting to be published.
+ * The status stays in_review until somebody publishes it, and showing 审核中
+ * after the approver said yes read as if the approval had not counted. */
+const statusLabel = (status: ArticleStatus, zh: boolean, approved = false) =>
+  status === "in_review" && approved
+    ? zh
+      ? "已通过 · 待发布"
+      : "approved"
+    : zh
+      ? { draft: "草稿", in_review: "审核中", published: "已发布", archived: "已归档" }[status]
+      : { draft: "draft", in_review: "in review", published: "published", archived: "archived" }[status];
+const statusTone = (status: ArticleStatus, approved = false) => (status === "in_review" && approved ? "good" : STATUS_TONE[status]);
 
 /** "2026-09-23 14:02" — the same stamp the publish log uses. Written from the
  * ISO string rather than the reader's locale, because a table that renders one
@@ -402,8 +410,8 @@ function Library({
                 ) : null}
               </button>
               <span style={{ width: 96 }}>
-                <Badge tone={STATUS_TONE[a.status]}>
-                  {statusLabel(a.status, zh)}
+                <Badge tone={statusTone(a.status, a.approved)}>
+                  {statusLabel(a.status, zh, a.approved)}
                   {a.publications > 1 ? ` ·${a.publications}` : ""}
                 </Badge>
               </span>
@@ -511,7 +519,7 @@ function Editor({
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 4, maxWidth: 860 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 9, flexWrap: "wrap" }}>
-        <Badge tone={STATUS_TONE[article.status]}>{statusLabel(article.status, zh)}</Badge>
+        <Badge tone={statusTone(article.status, approvedNow !== null)}>{statusLabel(article.status, zh, approvedNow !== null)}</Badge>
         <span style={{ fontSize: 11.5, color: "#999999" }}>
           {zh ? `${article.wordCount} 字` : `${article.wordCount} words`}
           {article.version ? ` · v${article.version}` : ""}

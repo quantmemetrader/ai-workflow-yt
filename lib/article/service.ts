@@ -61,6 +61,11 @@ export type ArticleListItem = {
   updatedAt: Date;
   /** How many live publications it has. The list says "published · 2 places". */
   publications: number;
+  /** In review, and its latest approval was granted for the version it is
+   * on: approved and waiting to be published. The status column has no
+   * value for that (approved still waits for a person to publish), so the
+   * list showed 审核中 after the approver approved (QA, 3 Oct). */
+  approved: boolean;
 };
 
 export async function listArticles(
@@ -94,6 +99,13 @@ export async function listArticles(
         select count(*)::int from article_publications p
          where p.article_id = ${articles.id} and p.retracted_at is null
       )`,
+      approved: sql<boolean>`coalesce((
+        select ap.state = 'approved' and ap.version_no = ${articles.version}
+          from ${approvals} ap
+         where ap.object_type = 'article' and ap.object_id = ${articles.id} and ap.state <> 'withdrawn'
+         order by ap.requested_at desc
+         limit 1
+      ), false)`,
     })
     .from(articles)
     .leftJoin(users, eq(users.id, articles.ownerId))
@@ -116,6 +128,7 @@ export async function listArticles(
     publishedAt: r.publishedAt,
     updatedAt: r.updatedAt,
     publications: Number(r.publications ?? 0),
+    approved: r.approved === true,
   }));
 }
 
