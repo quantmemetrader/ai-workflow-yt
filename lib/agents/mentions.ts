@@ -885,6 +885,12 @@ const KIND_ZH: Record<ArtifactKind, string> = {
   contract: "合同",
   spend_request: "用款申请",
   finance_report: "财务报表",
+  actual: "实际支出",
+  budget_line: "预算",
+  checklist_run: "合规检查",
+  leave_request: "请假申请",
+  candidate: "候选人",
+  journal_entry: "会计分录",
 };
 
 const ACTION_ZH: Record<Artifact["action"], string> = {

@@ -54,8 +54,10 @@ export type ToolResult = {
 
 /** The things a receipt can be about. `assignment` is a colleague being
  * handed a task through `assign_task`; its id is the message that did it.
- * The last three are 法务's and 财务's: a drafted or reviewed contract, a
- * spend request raised, a management report written. */
+ * Then 法务's and 财务's: a drafted or reviewed contract, a spend request
+ * raised or decided, a management report written, an actual or a budget line
+ * entered, a checklist run saved; and the person's own HR and Accounting
+ * work: a leave request, a candidate, a journal entry. */
 export type ArtifactKind =
   | "script"
   | "video_project"
@@ -68,7 +70,13 @@ export type ArtifactKind =
   | "assignment"
   | "contract"
   | "spend_request"
-  | "finance_report";
+  | "finance_report"
+  | "actual"
+  | "budget_line"
+  | "checklist_run"
+  | "leave_request"
+  | "candidate"
+  | "journal_entry";
 
 /** `started` is work handed to the worker that finishes later (making a
  * whole video), so "started" can be claimed and "finished" cannot yet. */
