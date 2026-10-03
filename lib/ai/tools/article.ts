@@ -4,7 +4,8 @@ import { db } from "@/lib/db/client";
 import { articles } from "@/lib/db/schema";
 import type { ToolDef } from "@/lib/ai/openrouter";
 import { audit } from "@/lib/audit";
-import { createArticle, cutVersion, listArticles, publicationsFor } from "@/lib/article/service";
+import { createArticle, cutVersion, listArticles, ownArticle, publicationsFor } from "@/lib/article/service";
+import { agentKeyFromEmail } from "@/lib/agents/catalog";
 import { draftArticle, latestArticleId } from "@/lib/article/ai";
 import { num, str, type ToolContext, type ToolPack, type ToolResult } from "./types";
 
@@ -135,6 +136,12 @@ async function run(ctx: ToolContext, name: string, args: Record<string, unknown>
     const id = str(args.id, 64) || ctx.articleId || (await latestArticleId(ctx.viewer)) || "";
     const [row] = id ? await db.select({ id: articles.id, title: articles.title }).from(articles).where(and(eq(articles.id, id), eq(articles.tenantId, ctx.viewer.tenantId), isNull(articles.deletedAt))).limit(1) : [];
     if (!row) return { text: "No such article. Use an id from list_articles." };
+    /* The person behind the turn must be one who may change it (its writer,
+       its approver, an admin); the employee itself writes for them. */
+    const person = ctx.asker ?? (agentKeyFromEmail(ctx.viewer.email) ? null : ctx.viewer);
+    if (person && !(await ownArticle(person, row.id))) {
+      return { text: "Only the article's writer, the person asked to approve it, or an admin may change it. Nothing was changed." };
+    }
     await cutVersion(ctx.viewer, row.id, { note: "改稿前" });
     const res = await draftArticle(ctx.viewer, row.id, { instruction });
     if ("error" in res) return { text: res.error, changed: true };

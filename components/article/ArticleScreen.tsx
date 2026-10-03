@@ -439,7 +439,10 @@ function Editor({
   run: Run;
 }) {
   const t = (en: string, cn: string) => (zh ? cn : en);
-  const { article, versions, approvals, publications, liveChecksum, locked } = detail;
+  const { article, versions, approvals, publications, liveChecksum, locked: frozen, canEdit } = detail;
+  /* Read-only when published, or when it is not this person's to change
+     (its writer, its approver and admins may). */
+  const locked = frozen || !canEdit;
 
   const [title, setTitle] = useState(article.title);
   const [summary, setSummary] = useState(article.summary ?? "");
@@ -504,12 +507,16 @@ function Editor({
           {article.version ? ` · v${article.version}` : ""}
           {dirty ? t(" · unsaved", " · 未保存") : ""}
         </span>
-        {locked ? (
+        {frozen ? (
           <span style={{ fontSize: 11.5, color: "#a35f00" }}>
             {t(
               "Published, so the words are frozen. Retract it in the log to edit.",
               "已发布，内容已锁定。如需修改，请在发布日志中撤回。",
             )}
+          </span>
+        ) : !canEdit ? (
+          <span style={{ fontSize: 11.5, color: "#7c7c7c" }}>
+            {t("Read only: its writer, its approver or an admin can change it.", "只读：作者、审批人或管理员可以修改。")}
           </span>
         ) : null}
         <span style={{ marginLeft: "auto", display: "flex", gap: 7 }}>
@@ -749,7 +756,7 @@ function Editor({
 
       {/* ---- versions ---- */}
       <Label>{t("Versions", "版本")}</Label>
-      {locked ? (
+      {frozen ? (
         <p style={{ fontSize: 11.5, color: "#95590a", margin: "0 0 6px" }}>
           {t("Approved and locked: the versions are kept below. To go back to one, retract the publication first (发布日志), then restore.", "已批准并锁定：历史版本都在下面。要恢复某一版，先在「发布日志」里撤回，再点「恢复」。")}
         </p>

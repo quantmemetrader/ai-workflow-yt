@@ -33,8 +33,10 @@ import type { Viewer } from "@/lib/auth/dal";
  *      never overwrites one. Retracting adds a timestamp; the row stays.
  *
  * Visibility is the module entitlement, checked by the caller, exactly as the
- * Script library was before per-script sharing existed: the studio writes
- * together. Articles deliberately do not carry `relation_tuples` yet — half a
+ * Script library was before per-script sharing existed: the studio reads
+ * together. Changing one (save, rewrite, versions, approval, publish,
+ * delete) is for whoever wrote it, anyone asked to approve it, and the
+ * studio's owners and admins (`ownArticle`). Articles deliberately do not carry `relation_tuples` yet — half a
  * sharing model is worse than none, and adding it later is the same work
  * whether or not this file guesses at it now.
  */
@@ -191,6 +193,8 @@ export type ArticleDetail = {
    * approval on file still covers what is on screen. */
   liveChecksum: string;
   locked: boolean;
+  /** Whether this viewer may change it (`ownArticle`): the screen is read-only otherwise. */
+  canEdit: boolean;
 };
 
 export async function articleDetail(viewer: Viewer, articleId: string): Promise<ArticleDetail | null> {
@@ -274,6 +278,7 @@ export async function articleDetail(viewer: Viewer, articleId: string): Promise<
     ownerName: owner[0] ? ((zh && owner[0].nameLocal) || owner[0].name) : null,
     liveChecksum: checksumOf(row.title, row.summary, row.body),
     locked: row.lockedVersion !== null,
+    canEdit: (await ownArticle(viewer, row.id)) !== null,
   };
 }
 
@@ -438,6 +443,14 @@ async function assertUnlocked(viewer: Viewer, articleId: string): Promise<Articl
   return row;
 }
 
+/** Who may change an article: whoever wrote it, anyone asked to approve it,
+ * and the studio's owners and admins. A colleague may read it, not rewrite,
+ * publish or delete it. */
+function editableBy(viewer: Viewer) {
+  if (viewer.isAdmin) return undefined;
+  return sql`(${articles.ownerId} = ${viewer.id} or exists (select 1 from ${approvals} where ${approvals.objectType} = 'article' and ${approvals.objectId} = ${articles.id} and ${approvals.approverId} = ${viewer.id}))`;
+}
+
 /** The article this viewer may write to, or null. The id is never trusted:
  * a server action is a public endpoint. */
 export async function ownArticle(viewer: Viewer, articleId: unknown): Promise<string | null> {
@@ -445,9 +458,31 @@ export async function ownArticle(viewer: Viewer, articleId: unknown): Promise<st
   const [row] = await db
     .select({ id: articles.id })
     .from(articles)
+    .where(and(eq(articles.id, articleId), eq(articles.tenantId, viewer.tenantId), isNull(articles.deletedAt), editableBy(viewer)))
+    .limit(1);
+  return row?.id ?? null;
+}
+
+/** An article of this studio this viewer may read (any, today), or null. */
+export async function studioArticle(viewer: Viewer, articleId: unknown): Promise<string | null> {
+  if (typeof articleId !== "string" || !articleId || articleId.length > 64) return null;
+  const [row] = await db
+    .select({ id: articles.id })
+    .from(articles)
     .where(and(eq(articles.id, articleId), eq(articles.tenantId, viewer.tenantId), isNull(articles.deletedAt)))
     .limit(1);
   return row?.id ?? null;
+}
+
+/** The article a publication belongs to, when this viewer may change that article. */
+export async function ownPublication(viewer: Viewer, publicationId: unknown): Promise<string | null> {
+  if (typeof publicationId !== "string" || !publicationId || publicationId.length > 64) return null;
+  const [row] = await db
+    .select({ articleId: articlePublications.articleId })
+    .from(articlePublications)
+    .where(and(eq(articlePublications.id, publicationId), eq(articlePublications.tenantId, viewer.tenantId)))
+    .limit(1);
+  return row && (await ownArticle(viewer, row.articleId)) ? publicationId : null;
 }
 
 export async function saveArticle(

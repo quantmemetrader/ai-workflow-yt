@@ -13,12 +13,14 @@ import {
   cutVersion,
   decideApproval,
   ownArticle,
+  ownPublication,
   publishArticle,
   removeArticle,
   requestApproval,
   restoreVersion,
   retractPublication,
   saveArticle,
+  studioArticle,
 } from "@/lib/article/service";
 import { checkArticleFacts, draftArticle } from "@/lib/article/ai";
 
@@ -29,7 +31,9 @@ import { checkArticleFacts, draftArticle } from "@/lib/article/ai";
  *
  *   — **A server action is a public endpoint.** Every one of these re-reads
  *     the viewer, re-checks the module, and resolves the id it was handed to a
- *     row in the caller's own studio before touching anything.
+ *     row in the caller's own studio before touching anything — and, for a
+ *     change, to one they wrote, were asked to approve, or run the studio
+ *     (`ownArticle`).
  *   — **A published article is read-only.** The check lives in
  *     `lib/article/service.ts` so it cannot be forgotten here, and the actions
  *     that would edit one simply fail.
@@ -319,6 +323,8 @@ export async function retractPublicationAction(publicationId: unknown, reason?: 
   const viewer = await writer();
   if (!viewer) return { error: "Not allowed" };
   if (typeof publicationId !== "string" || !publicationId) return { error: "Not allowed" };
+  /* Taking one down unlocks the article for editing: the same people only. */
+  if (!(await ownPublication(viewer, publicationId))) return { error: "Not allowed" };
 
   const res = await retractPublication(viewer, publicationId, str(reason, 500) || undefined);
   if ("error" in res) return { error: res.error };
@@ -337,7 +343,8 @@ export async function retractPublicationAction(publicationId: unknown, reason?: 
 export async function checkArticleFactsAction(articleId: unknown) {
   const viewer = await writer();
   if (!viewer) return { error: "Not allowed" };
-  const id = await ownArticle(viewer, articleId);
+  /* A read: anyone in the studio who may open the article may check it. */
+  const id = await studioArticle(viewer, articleId);
   if (!id) return { error: "Not allowed" };
   try {
     const res = await checkArticleFacts(viewer, id);
