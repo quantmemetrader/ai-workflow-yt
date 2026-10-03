@@ -43,10 +43,10 @@ export function ThemeToggle({ zh, wide, initial }: { zh: boolean; wide: boolean;
     >
       <svg viewBox="0 0 24 24" aria-hidden fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
         {theme === "dark" ? (
-          <path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z" />
+          <path fill="none" d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z" />
         ) : (
           <>
-            <circle cx="12" cy="12" r="4" />
+            <circle cx="12" cy="12" r="4" fill="none" />
             <path d="M12 2.5v2M12 19.5v2M4.6 4.6 6 6M18 18l1.4 1.4M2.5 12h2M19.5 12h2M4.6 19.4 6 18M18 6l1.4-1.4" />
           </>
         )}
@@ -76,8 +76,8 @@ export function LangToggle({ zh, wide }: { zh: boolean; wide: boolean }) {
       style={{ border: 0, background: "transparent", cursor: "pointer", fontFamily: "inherit", letterSpacing: "inherit", opacity: pending ? 0.5 : 1 }}
     >
       <svg viewBox="0 0 24 24" aria-hidden fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-        <circle cx="12" cy="12" r="8.5" />
-        <path d="M3.5 12h17M12 3.5c2.4 2.3 3.6 5.1 3.6 8.5s-1.2 6.2-3.6 8.5c-2.4-2.3-3.6-5.1-3.6-8.5S9.6 5.8 12 3.5Z" />
+        <circle cx="12" cy="12" r="8.5" fill="none" />
+        <path fill="none" d="M3.5 12h17M12 3.5c2.4 2.3 3.6 5.1 3.6 8.5s-1.2 6.2-3.6 8.5c-2.4-2.3-3.6-5.1-3.6-8.5S9.6 5.8 12 3.5Z" />
       </svg>
       {wide ? <span>{zh ? "语言 · 中文" : "Language · English"}</span> : null}
     </button>
