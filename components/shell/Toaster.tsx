@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { NOTIFY_EVENT, notifyRich, type Notice } from "@/lib/client/notify";
+import { CLEAR_ERRORS_EVENT, NOTIFY_EVENT, notifyRich, type Notice } from "@/lib/client/notify";
 import { zhNotice } from "@/lib/text/zh-errors";
 
 /** Module names for the "no access" notice below. */
@@ -55,9 +55,15 @@ export function Toaster({ locale = "zh-CN" }: { locale?: string } = {}) {
       if (hold) timers.add(setTimeout(() => drop(notice.id), hold));
     }
 
+    function onClearErrors() {
+      setNotices((cur) => cur.filter((n) => n.kind !== "error"));
+    }
+
     window.addEventListener(NOTIFY_EVENT, onNotice);
+    window.addEventListener(CLEAR_ERRORS_EVENT, onClearErrors);
     return () => {
       window.removeEventListener(NOTIFY_EVENT, onNotice);
+      window.removeEventListener(CLEAR_ERRORS_EVENT, onClearErrors);
       for (const t of timers) clearTimeout(t);
     };
   }, [drop, zhReader]);

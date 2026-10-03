@@ -23,6 +23,7 @@ import { ResearchAgentPanel } from "@/components/canvas/ResearchAgentPanel";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Badge, Empty, Label, ModuleHeader, Row, clip, field, ghost, solid, useAction } from "@/components/ui/kit";
 import { ModuleSidebar, type ScreenItem } from "@/components/shell/ModuleSidebar";
+import { clearErrorNotices } from "@/lib/client/notify";
 
 /**
  * Human Resources (spec §4.11), transcribed from the five `Hr-*` artboards.
@@ -122,7 +123,17 @@ export function HrScreen({
               viewerId={viewerId}
               zh={zh}
               busy={busy}
-              onRequest={(input) => run(() => requestLeaveAction(input))}
+              onRequest={(input, sent) =>
+                run(
+                  () => requestLeaveAction(input),
+                  /* Sent: the refusal from the try before (余额不足, say) is no
+                     longer true, so it does not stay on screen (QA, 3 Oct). */
+                  () => {
+                    clearErrorNotices();
+                    sent();
+                  },
+                )
+              }
               onDecide={(id, decision, note) => run(() => decideLeaveAction(id, decision, note))}
               onCancel={(id) => run(() => cancelLeaveAction(id))}
               onSeed={() => run(() => seedBalancesAction(year))}
@@ -232,7 +243,8 @@ function Leave({
   viewerId: string;
   zh: boolean;
   busy: boolean;
-  onRequest: (input: { kind: string; startOn: string; endOn: string; days: number; reason: string }) => void;
+  /** `sent` runs only once the request is accepted, so a refused one keeps what was typed. */
+  onRequest: (input: { kind: string; startOn: string; endOn: string; days: number; reason: string }, sent: () => void) => void;
   onDecide: (id: string, decision: string, note: string) => void;
   onCancel: (id: string) => void;
   onSeed: () => void;
@@ -259,8 +271,9 @@ function Leave({
           type="button"
           disabled={busy || !form.startOn || !form.endOn || !Number(form.days)}
           onClick={() => {
-            onRequest({ ...form, days: Number(form.days) });
-            setForm({ kind: "annual", startOn: "", endOn: "", days: "1", reason: "" });
+            onRequest({ ...form, days: Number(form.days) }, () =>
+              setForm({ kind: "annual", startOn: "", endOn: "", days: "1", reason: "" }),
+            );
           }}
           style={{ ...solid, opacity: busy || !form.startOn ? 0.45 : 1 }}
         >

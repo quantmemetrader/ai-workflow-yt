@@ -721,7 +721,9 @@ function Accounts({
  * that produced this has already made.
  */
 function download(filename: string, text: string) {
-  const url = URL.createObjectURL(new Blob([text], { type: "text/csv;charset=utf-8" }));
+  /* A byte-order mark first: without it Excel opens UTF-8 as the local code
+     page and every Chinese header and memo is mojibake (QA, 3 Oct). */
+  const url = URL.createObjectURL(new Blob(["\uFEFF", text], { type: "text/csv;charset=utf-8" }));
   const a = document.createElement("a");
   a.href = url;
   a.download = filename;

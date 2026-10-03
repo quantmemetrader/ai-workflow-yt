@@ -14,6 +14,7 @@ import {
 import type { Viewer } from "@/lib/auth/dal";
 import { audit } from "@/lib/audit";
 import { newId } from "@/lib/ids";
+import { checkLeaveBalance, checkLeaveDays } from "@/lib/hr/leave-rules";
 
 /**
  * Human Resources (spec §4.11).
@@ -229,8 +230,51 @@ export async function requestLeave(
   viewer: Viewer,
   input: { kind: string; startOn: string; endOn: string; days: number; reason: string | null },
 ) {
-  if (!(input.days > 0)) throw new Error("请填写天数");
-  if (input.endOn < input.startOn) throw new Error("结束日期早于开始日期");
+  const bad = checkLeaveDays(input.startOn, input.endOn, input.days);
+  if (bad) throw new Error(bad);
+
+  /* Not more than is left. Only where a balance is kept for this kind and
+     year: sick and unpaid leave usually have none, and are not capped here. */
+  const year = Number(input.startOn.slice(0, 4));
+  const [balance] = await db
+    .select({ entitlementDays: leaveBalances.entitlementDays, carriedDays: leaveBalances.carriedDays })
+    .from(leaveBalances)
+    .where(
+      and(
+        eq(leaveBalances.tenantId, viewer.tenantId),
+        eq(leaveBalances.userId, viewer.id),
+        eq(leaveBalances.year, year),
+        eq(leaveBalances.kind, input.kind),
+      ),
+    )
+    .limit(1);
+  if (balance) {
+    const used = await db
+      .select({
+        state: leaveRequests.state,
+        days: sql<number>`coalesce(sum(${leaveRequests.days}), 0)::float8`,
+      })
+      .from(leaveRequests)
+      .where(
+        and(
+          eq(leaveRequests.tenantId, viewer.tenantId),
+          eq(leaveRequests.userId, viewer.id),
+          eq(leaveRequests.kind, input.kind),
+          inArray(leaveRequests.state, ["approved", "requested"]),
+          sql`substring(${leaveRequests.startOn} from 1 for 4) = ${String(year)}`,
+        ),
+      )
+      .groupBy(leaveRequests.state);
+    const short = checkLeaveBalance({
+      kind: input.kind,
+      days: input.days,
+      entitlementDays: Number(balance.entitlementDays),
+      carriedDays: Number(balance.carriedDays),
+      approvedDays: Number(used.find((u) => u.state === "approved")?.days ?? 0),
+      pendingDays: Number(used.find((u) => u.state === "requested")?.days ?? 0),
+    });
+    if (short) throw new Error(short);
+  }
 
   const id = newId("lv");
   await db.insert(leaveRequests).values({

@@ -7,11 +7,13 @@ import {
   clauseFindings,
   contracts,
   templates,
+  tenants,
   users,
 } from "@/lib/db/schema";
 import type { Viewer } from "@/lib/auth/dal";
 import { audit } from "@/lib/audit";
 import { newId } from "@/lib/ids";
+import { fillTemplate, resolveDraft } from "@/lib/legal/fill";
 
 /** (QA, 2 Oct) A person's name the way the reader reads it: the Chinese name on a Chinese screen. */
 function personName(viewer: Viewer) {
@@ -263,16 +265,8 @@ export async function listContracts(viewer: Viewer): Promise<ContractRow[]> {
   }));
 }
 
-/** `{{ key }}` filled from the values the drafting screen collected. A field
- * nobody filled stays visible as its own placeholder rather than becoming an
- * empty space nobody notices. */
-export function fillTemplate(body: string, values: Record<string, string>, studio: string): string {
-  return body.replace(/\{\{\s*([\w.]+)\s*\}\}/g, (whole, key: string) => {
-    if (key === "studio") return studio;
-    const v = values[key];
-    return v && v.trim() ? v : whole;
-  });
-}
+/* `{{ key }}` filling lives in ./fill, where it can be checked without a database. */
+export { fillTemplate };
 
 export async function draftContract(
   viewer: Viewer,
@@ -285,6 +279,11 @@ export async function draftContract(
     .limit(1);
   if (!template) throw new Error("这个模板不存在");
 
+  /* Blank optional fields take their default (授权地区 → 全球); anything else
+     blank is refused by name. A draft never carries a {{ placeholder }}. */
+  const draft = resolveDraft(template.body, template.fields, input.values, input.studio);
+  if ("error" in draft) throw new Error(draft.error);
+
   const id = newId("con");
   await db.insert(contracts).values({
     id,
@@ -292,8 +291,9 @@ export async function draftContract(
     templateId: template.id,
     title: input.title.trim() || template.name,
     counterparty: input.counterparty?.trim() || null,
-    body: fillTemplate(template.body, input.values, input.studio),
-    values: input.values,
+    body: draft.text,
+    /* The values as used, defaults included, so a review rebuilds the same text. */
+    values: draft.values,
     ownerId: viewer.id,
   });
 
@@ -397,7 +397,12 @@ export async function reviewContract(viewer: Viewer, contractId: string) {
   if (!row) throw new Error("这份合同不存在");
   if (!row.template) throw new Error("这份合同不是用模板生成的，没有可以对照的版本");
 
-  const templateClauses = splitClauses(row.template.body);
+  /* Against the template *as this contract filled it*: its own values and the
+     studio's name put in, so a filled draft nobody edited has no findings.
+     Compared with the raw placeholders, every filled clause read as changed
+     (QA, 3 Oct). The name is the one drafting used (`draftContractAction`). */
+  const [studio] = await db.select({ name: tenants.name }).from(tenants).where(eq(tenants.id, viewer.tenantId)).limit(1);
+  const templateClauses = splitClauses(fillTemplate(row.template.body, row.c.values ?? {}, studio?.name ?? "the Studio"));
   const contractClauses = splitClauses(row.c.body);
 
   const keys = new Set([...templateClauses.keys(), ...contractClauses.keys()]);

@@ -5,6 +5,31 @@ import { agentKeyFromEmail } from "@/lib/agents/catalog";
 import { trainName } from "@/components/train/names";
 
 /**
+ * A member's own AI 支出: this month's spend and the cap that applies to them,
+ * read-only. The studio-wide card below is for admins; without this a member
+ * had no way to see the number their assistant stops at (QA, 3 Oct).
+ */
+export function OwnSpendCard({ zh, usedMicros, capMicros, scope, stopped }: { zh: boolean; usedMicros: number; capMicros: number | null; scope: "user" | "team" | "tenant" | null; stopped: boolean }) {
+  const month = new Date().toLocaleString("en-CA", { timeZone: "Asia/Hong_Kong", year: "numeric", month: "2-digit" }).slice(0, 7);
+  const whose = scope === "team" ? (zh ? "团队上限" : "team cap") : scope === "tenant" ? (zh ? "全工作室上限" : "studio cap") : zh ? "你的上限" : "your cap";
+  return (
+    <section className="rounded-xl border border-outline-gray-1" style={{ padding: "18px 18px 16px" }}>
+      <h2 style={{ margin: 0, fontSize: 15, fontWeight: 650, color: "#171717" }}>{zh ? "AI 支出" : "AI spend"}</h2>
+      <p style={{ margin: "4px 0 14px", fontSize: 12.5, color: "#7a7a76" }}>{zh ? `${month} 本月，你自己的用量。上限由管理员设置。` : `${month}, your own use. Caps are set by an admin.`}</p>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 14, flexWrap: "wrap" }}>
+        <span style={{ fontSize: 28, fontWeight: 650, color: "#171717", fontVariantNumeric: "tabular-nums", letterSpacing: "-0.01em" }}>{formatUsd(usedMicros)}</span>
+        <span style={{ fontSize: 12.5, color: "#7a7a76" }}>
+          {capMicros === null ? (zh ? "没有设上限" : "no cap") : `${whose} ${formatUsd(capMicros)}`}
+        </span>
+      </div>
+      {stopped ? (
+        <p style={{ margin: "12px 0 0", padding: "8px 12px", borderRadius: 8, border: "1px solid #f3c7c0", background: "#fdf3f1", fontSize: 12.5, color: "#a4331f" }}>{zh ? "预算用完了，助理已暂停。请联系管理员。" : "Budget reached. The assistant has stopped; ask an admin."}</p>
+      ) : null}
+    </section>
+  );
+}
+
+/**
  * AI 支出 for admins: the whole studio this month, who spent it (people and
  * AI employees), and the viewer's own share. It showed only the viewer's own
  * number under 「团队」, which read as the studio's (the owner, 30 Sep:

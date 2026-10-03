@@ -43,6 +43,19 @@ export function notify(text: string, kind: NoticeKind = "error") {
   );
 }
 
+/** Fired by `clearErrorNotices`; the toaster drops its error notices. */
+export const CLEAR_ERRORS_EVENT = "aura:notify-clear-errors";
+
+/**
+ * Take down the error notices still on screen. Errors stay until dismissed,
+ * so once the same thing has been tried again and has worked, the refusal
+ * from the attempt before is no longer true and should not sit there.
+ */
+export function clearErrorNotices() {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new Event(CLEAR_ERRORS_EVENT));
+}
+
 export function notifyRich(notice: Omit<Notice, "id">) {
   if (typeof window === "undefined" || (!notice.text && !notice.title)) return;
   window.dispatchEvent(new CustomEvent<Notice>(NOTIFY_EVENT, { detail: { ...notice, id: ++seq } }));

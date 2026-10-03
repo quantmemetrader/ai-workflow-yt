@@ -507,7 +507,8 @@ export async function exportPeriodCsv(viewer: Viewer, period: string): Promise<s
     .orderBy(asc(journalEntries.entryDate), asc(accounts.code));
 
   const esc = (v: string | null) => `"${String(v ?? "").replace(/"/g, '""')}"`;
-  const header = "Date,Memo,Account code,Account,Debit,Credit,Line description";
+  /* Chinese column names: the studio's bookkeeping is read in Chinese (QA, 3 Oct). */
+  const header = "日期,摘要,科目代码,科目,借方,贷方,分录说明";
   const body = rows.map((r) => {
     const amount = r.amountMicros / 1_000_000;
     return [

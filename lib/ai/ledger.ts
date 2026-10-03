@@ -201,9 +201,11 @@ export async function notifyBudgetStop(viewer: Viewer, state: BudgetState) {
       id: once(viewer.id),
       userId: viewer.id,
       kind: "budget" as const,
-      title: "AI budget reached",
-      body: `Your assistant has stopped: this period's cap of US$${dollars} is used up.`,
-      href: "/admin/tokens",
+      title: "AI 预算已用完",
+      body: `你的助理已暂停：本期 US$${dollars} 的上限已经用完。`,
+      /* The budgets tab for someone who can open it; anyone else sees their
+         own spend and cap in Settings. (The old /admin/tokens was a 404, QA 3 Oct.) */
+      href: viewer.role === "owner" || viewer.role === "admin" ? "/admin?tab=budgets" : "/settings",
     },
     ...admins
       .filter((a) => a.id !== viewer.id)
@@ -211,9 +213,9 @@ export async function notifyBudgetStop(viewer: Viewer, state: BudgetState) {
         id: once(a.id),
         userId: a.id,
         kind: "budget" as const,
-        title: `${viewer.name} has hit their AI cap`,
-        body: `Consumption stopped at US$${dollars} for this period.`,
-        href: "/admin/budgets",
+        title: `${viewer.nameLocal || viewer.name} 的 AI 用量已达上限`,
+        body: `本期已在 US$${dollars} 处停止。`,
+        href: "/admin?tab=budgets",
       })),
   ];
 

@@ -12,8 +12,12 @@ import {
 } from "@/lib/admin/service";
 import { listInvites } from "@/lib/invites/service";
 import { listTeams } from "@/lib/teams/service";
-import { AdminScreen } from "@/components/admin/AdminScreen";
+import { AdminScreen, type AdminTab } from "@/components/admin/AdminScreen";
 import { answeringModel } from "@/lib/ai/models";
+
+/** `/admin?tab=budgets` opens on that tab — where the AI-budget notice links (QA, 3 Oct). */
+const TABS: readonly AdminTab[] = ["people", "ent", "tokens", "budgets", "credentials", "audit", "knowledge", "prompt"];
+const isAdminTab = (v: unknown): v is AdminTab => typeof v === "string" && (TABS as readonly string[]).includes(v);
 
 /* Chinese only in the tab (QA, 2 Oct). */
 export const metadata = { title: "后台" };
@@ -26,8 +30,11 @@ export const metadata = { title: "后台" };
  * rather than the studio's audit log, and every service function re-checks the
  * role anyway.
  */
-export default async function AdminPage() {
+export default async function AdminPage({ searchParams }: { searchParams: Promise<{ tab?: string | string[] }> }) {
   const viewer = await requireModule("admin");
+  /* `?tab=budgets` and the like: what the AI-budget notice links to. */
+  const asked = (await searchParams).tab;
+  const initialTab = isAdminTab(asked) ? asked : undefined;
   const zh = (viewer.locale ?? "zh-CN").startsWith("zh");
 
   /*
@@ -92,6 +99,7 @@ export default async function AdminPage() {
       viewerId={viewer.id}
       viewerRole={viewer.role}
       locale={viewer.locale ?? "zh-CN"}
+      initialTab={initialTab}
     />
   );
 }

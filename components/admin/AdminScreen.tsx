@@ -64,6 +64,7 @@ import { PersonAvatar } from "@/components/ui/PersonAvatar";
  * that reaches this component is booleans.
  */
 type Tab = "people" | "ent" | "tokens" | "budgets" | "credentials" | "audit" | "knowledge" | "prompt";
+export type AdminTab = Tab;
 
 export type PendingInvite = { id: string; email: string; role: string; modules: string[]; expiresAt: string };
 
@@ -82,6 +83,7 @@ export function AdminScreen({
   viewerRole,
   locale,
   model,
+  initialTab,
 }: {
   people: PersonRow[];
   teams: TeamRow[];
@@ -116,13 +118,15 @@ export function AdminScreen({
   locale: string;
   /** Which model answers in the panel down the right edge. */
   model: string;
+  /** The tab to open on, from `?tab=`. */
+  initialTab?: Tab;
 }) {
   const zh = locale.startsWith("zh");
   const t = (en: string, cn: string) => (zh ? cn : en);
   const agent = useInlineAgent({ module: "admin" });
   const router = useRouter();
   const [busy, start] = useTransition();
-  const [tab, setTab] = useState<Tab>("people");
+  const [tab, setTab] = useState<Tab>(initialTab ?? "people");
 
   const run = (fn: () => Promise<{ error?: string } | void>, after?: () => void) =>
     start(async () => {
@@ -1517,7 +1521,8 @@ function Budgets({
               <span style={{ fontWeight: 500 }}>{b.scope === "tenant" ? t("The whole studio", "整个工作室") : b.label}</span>
               <span style={{ fontSize: 11, color: "#999999" }}>
                 {({ tenant: t("Studio", "工作室"), user: t("Person", "个人"), team: t("Team", "团队") } as Record<string, string>)[b.scope] ?? b.scope}
-                {b.period ? ` · ${b.period}` : ` · ${t("all time", "累计")}`}
+                {/* No period is every month (`budgetState`); a period is that month only. */}
+                {b.period ? ` · ${t(`${b.period} only`, `仅 ${b.period}`)}` : ` · ${t("every month", "每月")}`}
               </span>
               <span style={{ marginLeft: "auto", fontVariantNumeric: "tabular-nums", color: "#7c7c7c" }}>
                 {usd(b.usedMicros)} / {usd(b.capMicros)}
@@ -1576,7 +1581,9 @@ function Budgets({
               scope,
               scopeId: scope === "user" ? scopeId : "",
               dollars: Number(dollars),
-              period: new Date().toISOString().slice(0, 7),
+              /* 每月 means every month: no period. Stamping this month made
+                 the cap lapse on the 1st (QA, 3 Oct). */
+              period: null,
             })
           }
           style={{ ...solid, opacity: busy || !dollars ? 0.45 : 1 }}
@@ -1673,7 +1680,11 @@ function Audit({ rows, actions, zh }: { rows: AuditRow[]; actions: string[]; zh:
   /* A grid of posters writes one `file.thumbnail` per picture, and forty of
      them buried everything a person actually did. Hidden unless asked for. */
   const [thumbs, setThumbs] = useState(false);
-  const shown = rows.filter((r) => (filter ? r.action === filter : thumbs || r.action !== "file.thumbnail"));
+  /* The filter is by what the person reads, not by the stored key: several
+     keys read the same (后台操作 was listed twice, QA 3 Oct), so one entry
+     stands for all of them. */
+  const labels = [...new Set(actions.map((a) => auditPhrase(a, zh)))];
+  const shown = rows.filter((r) => (filter ? auditPhrase(r.action, zh) === filter : thumbs || r.action !== "file.thumbnail"));
 
   /* One group per person, closed: the admin opens the one they came for
      instead of reading everybody's activity interleaved. */
@@ -1690,9 +1701,9 @@ function Audit({ rows, actions, zh }: { rows: AuditRow[]; actions: string[]; zh:
       <div style={{ display: "flex", gap: 12, alignItems: "center", marginBottom: 12, flexWrap: "wrap" }}>
         <select value={filter} onChange={(e) => setFilter(e.target.value)} aria-label={t("Action", "操作")} style={{ ...field, width: 240, height: 30 }}>
           <option value="">{t("Every action", "全部操作")}</option>
-          {actions.map((a) => (
-            <option key={a} value={a}>
-              {auditPhrase(a, zh)}
+          {labels.map((label) => (
+            <option key={label} value={label}>
+              {label}
             </option>
           ))}
         </select>

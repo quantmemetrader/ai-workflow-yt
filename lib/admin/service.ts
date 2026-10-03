@@ -378,10 +378,13 @@ export async function listBudgets(viewer: Viewer): Promise<BudgetRow[]> {
   if (!rows.length) return [];
 
   const people = await db
-    .select({ id: users.id, name: users.name })
+    .select({ id: users.id, name: users.name, nameLocal: users.nameLocal })
     .from(users)
     .where(eq(users.tenantId, viewer.tenantId));
-  const nameById = new Map(people.map((p) => [p.id, p.name]));
+  /* The name the rest of the screen shows: the Chinese one for a Chinese
+     reader when there is one (QA, 3 Oct: budgets showed the English name). */
+  const zh = (viewer.locale ?? "zh-CN").startsWith("zh");
+  const nameById = new Map(people.map((p) => [p.id, (zh ? p.nameLocal || p.name : p.name || p.nameLocal) ?? p.name]));
 
   // Spend against each cap, in one pass over the month rather than a query per
   // budget row.
@@ -433,6 +436,32 @@ export async function setBudget(
 ) {
   assertAdmin(viewer);
   if (!Number.isFinite(input.capMicros) || input.capMicros < 0) throw new Error("上限必须是正数");
+
+  /* A cap with no period applies every month (`budgetState` reads
+     `!period || period === this month`). The unique index cannot catch a
+     second one — Postgres treats every null as different — so it is found
+     and changed here rather than inserted again beside the first. */
+  if (input.period === null) {
+    const changed = await db
+      .update(budgets)
+      .set({ capMicros: Math.round(input.capMicros), updatedBy: viewer.id, updatedAt: new Date() })
+      .where(
+        and(
+          eq(budgets.tenantId, viewer.tenantId),
+          eq(budgets.scope, input.scope),
+          eq(budgets.scopeId, input.scopeId),
+          isNull(budgets.period),
+        ),
+      )
+      .returning({ id: budgets.id });
+    if (changed.length) {
+      await audit(viewer, "admin.budget.set", {
+        module: "admin",
+        meta: { scope: input.scope, scopeId: input.scopeId, capMicros: input.capMicros, period: "monthly" },
+      });
+      return;
+    }
+  }
 
   await db
     .insert(budgets)

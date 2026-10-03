@@ -20,7 +20,7 @@ import { answeringModel, modelFor } from "@/lib/ai/models";
 import { freshModelChoice } from "@/lib/ai/choice";
 import { modelOptionsAction } from "./model-actions";
 import { ModelCard } from "./model-card";
-import { SpendCard } from "./spend-card";
+import { OwnSpendCard, SpendCard } from "./spend-card";
 
 /* Chinese only in the tab (QA, 2 Oct). */
 export const metadata = { title: "设置" };
@@ -92,6 +92,10 @@ export default async function SettingsPage() {
           />
 
           <LocaleSwitch current={locale} />
+
+          {/* Everyone else sees their own spend and cap, read-only; an admin
+              sees it inside the studio-wide card below. */}
+          {admin ? null : <OwnSpendCard zh={zh} usedMicros={budget.usedMicros} capMicros={budget.capMicros} scope={budget.scope} stopped={budget.stopped} />}
 
           {admin || canInvite(viewer) ? group(zh ? "团队（管理员）" : "Team (admins)") : null}
           {admin ? <ModelCard zh={zh} options={models} current={currentModel} /> : null}
