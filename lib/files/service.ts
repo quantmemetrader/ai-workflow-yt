@@ -19,6 +19,7 @@ import { toSimplified } from "@/lib/text/simplified";
 import { deleteObject, headObject, putObjectConfirmed, storageKey } from "@/lib/storage/r2";
 import { enqueue } from "@/lib/jobs/queue";
 import { uploadConfirmed } from "@/lib/files/abandon";
+import { folderPurgeBlock } from "@/lib/files/purge-rule";
 
 /** The shared media and document store (spec §3). Every read here is
  * permission-filtered in SQL; every write records who did it. */
@@ -926,21 +927,31 @@ async function folderPurgePlan(viewer: Viewer, folderId: string) {
     .limit(1);
   if (!folder) throw new Error("找不到这个文件夹");
   if (!folder.deletedAt) throw new Error("请先把文件夹移到回收站");
-  /* The same rule as a file's 永久删除: whoever made it, or an admin. */
+  /* Not even its creator can purge it without being an admin; the files rule
+     (`folderPurgeBlock`) decides below, once what is inside is known. */
   if (!viewer.isAdmin && folder.ownerId !== viewer.id) throw new Error("只有创建者或管理员可以永久删除");
 
   const inside = sql`${folders.path} @> array[${folderId}]::text[]`;
   const filesInside = sql`${files.folderPath} @> array[${folderId}]::text[]`;
   const [subfolders, doomed, [live], [liveFolders]] = await Promise.all([
-    db.select({ id: folders.id }).from(folders).where(and(inside, eq(folders.tenantId, viewer.tenantId))),
+    db.select({ id: folders.id, ownerId: folders.ownerId }).from(folders).where(and(inside, eq(folders.tenantId, viewer.tenantId))),
     db
-      .select({ id: files.id, storageKey: files.storageKey, proxyFileId: files.proxyFileId, tags: files.tags })
+      .select({ id: files.id, storageKey: files.storageKey, proxyFileId: files.proxyFileId, tags: files.tags, ownerId: files.ownerId })
       .from(files)
       .where(and(filesInside, eq(files.tenantId, viewer.tenantId), sql`${files.deletedAt} is not null`)),
     db.select({ n: sql<number>`count(*)::int` }).from(files).where(and(filesInside, isNull(files.deletedAt))),
     db.select({ n: sql<number>`count(*)::int` }).from(folders).where(and(inside, isNull(folders.deletedAt))),
   ]);
-  return { folder, subfolders: subfolders.map((f) => f.id), doomed, live: live.n + liveFolders.n };
+  /* A member who made a folder shared as 可编辑 must not wipe what other people
+     put in it (QA, 4 Oct): only an admin purges someone else's files. */
+  const proxyIds = new Set(doomed.map((f) => f.proxyFileId).filter(Boolean));
+  const block = folderPurgeBlock(
+    viewer,
+    folder,
+    doomed.map((f) => ({ ownerId: f.ownerId, proxy: proxyIds.has(f.id) || f.tags.includes("proxy") })),
+    subfolders,
+  );
+  return { folder, subfolders: subfolders.map((f) => f.id), doomed, live: live.n + liveFolders.n, block };
 }
 
 /** How many files 永久删除 on this folder would remove, for its confirm dialog. */
@@ -952,6 +963,8 @@ export async function folderPurgeCount(viewer: Viewer, folderId: string) {
     files: plan.doomed.filter((f) => !proxies.has(f.id) && !f.tags.includes("proxy")).length,
     folders: plan.subfolders.length,
     live: plan.live,
+    others: plan.block.others,
+    blocked: plan.block.message,
   };
 }
 
@@ -967,6 +980,7 @@ export async function folderPurgeCount(viewer: Viewer, folderId: string) {
  */
 export async function purgeFolder(viewer: Viewer, folderId: string) {
   const plan = await folderPurgePlan(viewer, folderId);
+  if (plan.block.message) throw new Error(plan.block.message);
   if (plan.live > 0) throw new Error(`文件夹里还有 ${plan.live} 项没有删除，请先把它们移出这个文件夹`);
 
   /* A master's preview goes with it even when it sits somewhere else. */

@@ -156,6 +156,11 @@ export function FilesView({
     const n = "files" in count ? count.files : 0;
     const sub = "folders" in count ? Math.max(0, count.folders - 1) : 0;
     const live = "live" in count ? count.live : 0;
+    /* Said before the click: other people's files in it are an admin's call. */
+    if ("blocked" in count && count.blocked) {
+      notify(zh ? `“${name}”：${count.blocked}` : `${count.others} items in “${name}” belong to other people; only an admin can delete them forever`);
+      return;
+    }
     if (live > 0) {
       notify(zh ? `“${name}”里还有 ${live} 项没有删除，请先把它们移出这个文件夹` : `“${name}” still holds ${live} items that are not in the trash; move them out first`);
       return;
