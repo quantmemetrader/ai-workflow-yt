@@ -50,6 +50,7 @@ export function dropTarget(pathname: string, hasPanel: boolean, search = ""): { 
   if (lib) return { kind: `library:${lib[1]}`, href: `/${lib[1]}?tab=library`, zh: `松开，上传到${{ legal: "法务", finance: "财务", accounting: "账务" }[lib[1]]}资料库`, en: `Drop to upload to the ${lib[1]} library` };
   const proj = pathname.match(/^\/projects\/(wp_[a-z0-9]+)/);
   if (proj) return { kind: `project-files:${proj[1]}`, href: `/projects/${proj[1]}/files`, zh: "松开，加到这个项目的文件里", en: "Drop to add to this project's files" };
+  if (/^\/projects\/?$/.test(pathname)) return { kind: "new-project", href: null, zh: "松开，新建一个项目并放进这些文件", en: "Drop to start a new project with these files" };
   if (/^\/video\/?$/.test(pathname) && !/[?&]project=/.test(search)) return { kind: "new-project", href: null, zh: "松开，新建一个剪辑项目并放进这些素材", en: "Drop to start a new edit with these files" };
   if (hasPanel) return { kind: "panel", href: null, zh: "松开，附到右边助理的这条消息里", en: "Drop to attach to the assistant's message" };
   return { kind: "files", href: "/files", zh: "松开，上传到文件", en: "Drop to upload to Files" };
