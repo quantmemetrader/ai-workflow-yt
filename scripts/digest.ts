@@ -249,7 +249,7 @@ async function main() {
         ] as CardAction[])
       : [])];
 
-  const id = await postAsAgent(TENANT, setting.agent, "digest", `☀️ **研究日报 · ${date}**\n\n${body}`, {
+  const id = await postAsAgent(TENANT, setting.agent, "digest", `**研究日报 · ${date}**\n\n${body}`, {
     digest: {
       date,
       model: out!.model,
