@@ -127,13 +127,14 @@ export const seriesCache = pgTable(
 );
 
 /**
- * Every hot list as it was fetched, kept.
+ * Every hot list as it was fetched, kept for two weeks.
  *
  * Reading a platform takes seconds and TikHub bills per request, so pages
  * never call out: `scripts/collect-hot.ts` reads each list on the hour and
  * stores it here, and the Research page and the morning brief read the
  * newest row. Kept rows are also the history a rising topic is measured
- * against.
+ * against — fourteen days of it (`lib/ideas/check.ts`); the nightly sweep
+ * removes older rows (`lib/research/retention.ts`).
  */
 export const hotSnapshots = pgTable(
   "hot_snapshots",
