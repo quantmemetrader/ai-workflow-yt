@@ -33,11 +33,14 @@ import { audit } from "@/lib/audit";
  *
  * `alias` is for raw SQL that names the files table `f`.
  */
+/* A text document written in the app has no object and no checksum, and is
+   complete as written; only a row that was waiting for an object can be an
+   unfinished upload. */
 export function uploadConfirmed(alias?: "f"): SQL {
   if (alias) {
-    return sql`(${sql.raw(alias)}.checksum is not null or exists (select 1 from file_versions v where v.file_id = ${sql.raw(alias)}.id))`;
+    return sql`(${sql.raw(alias)}.checksum is not null or ${sql.raw(alias)}.storage_key is null or exists (select 1 from file_versions v where v.file_id = ${sql.raw(alias)}.id))`;
   }
-  return sql`(${files.checksum} is not null or exists (select 1 from file_versions v where v.file_id = ${files.id}))`;
+  return sql`(${files.checksum} is not null or ${files.storageKey} is null or exists (select 1 from file_versions v where v.file_id = ${files.id}))`;
 }
 
 /** Only ever a row whose object never arrived. A confirmed file has a
