@@ -187,6 +187,8 @@ export type StreamOptions = {
   signal?: AbortSignal;
   /** Stable per-user string; OpenRouter uses it for abuse tracking only. */
   user?: string;
+  /** How much the model may think before it answers (OpenRouter's unified `reasoning`); providers without it ignore it. */
+  reasoning?: { effort?: "low" | "medium" | "high"; max_tokens?: number; exclude?: boolean };
 };
 
 /**
@@ -211,6 +213,7 @@ export async function* streamChat(opts: StreamOptions): AsyncGenerator<StreamEve
     ...(opts.temperature !== undefined ? { temperature: opts.temperature } : {}),
     ...(opts.maxTokens ? { max_tokens: opts.maxTokens } : {}),
     ...(opts.user ? { user: opts.user } : {}),
+    ...(opts.reasoning ? { reasoning: opts.reasoning } : {}),
     ...(provider ? { provider } : {}),
   };
 
@@ -486,11 +489,14 @@ export async function complete(opts: Omit<StreamOptions, "tools">): Promise<Comp
  * timed out long non-streaming answers — a full first draft — while the same
  * models streamed chat answers fine.
  */
-async function completeOnce(opts: Omit<StreamOptions, "tools">): Promise<Completion> {
+async function completeOnce(opts: Omit<StreamOptions, "tools">, attempt = 0): Promise<Completion> {
+  const startedAt = Date.now();
   let text = "";
+  let reasoned = 0;
   const out: Omit<Completion, "text"> = { promptTokens: 0, completionTokens: 0, costMicros: 0, model: opts.model };
   for await (const ev of streamChat({ ...opts })) {
     if (ev.type === "text") text += ev.text;
+    else if (ev.type === "reasoning") reasoned += ev.text.length;
     else if (ev.type === "usage") {
       out.promptTokens += ev.promptTokens;
       out.completionTokens += ev.completionTokens;
@@ -500,7 +506,26 @@ async function completeOnce(opts: Omit<StreamOptions, "tools">): Promise<Complet
       if (ev.requestId) out.requestId = ev.requestId;
     } else if (ev.type === "error") throw new AiError(ev.kind, ev.message, ev.status);
   }
-  if (!text.trim()) throw new AiError("provider", `${opts.model} returned an empty answer`);
+  if (!text.trim()) {
+    /*
+     * The model thought and then had no room left to answer (DeepSeek V4 and
+     * Kimi K2.6: two hundred empty answers in two days, each a long wait and
+     * then a weaker model's draft). Once more at once, with twice the room
+     * and the thinking kept short; only after that is it another model's
+     * turn. The empty attempt's tokens are carried into the ledger entry.
+     */
+    const left = ATTEMPT_TIMEOUT_MS - (Date.now() - startedAt);
+    /* Both attempts together stay inside one attempt's budget: a model that
+       thought for two minutes and said nothing is not given two more. */
+    if (reasoned > 0 && attempt === 0 && left >= 45_000) {
+      const room = Math.min(16_000, (opts.maxTokens ?? 4_000) * 2);
+      console.warn(`[ai] ${opts.model} reasoned ${reasoned} chars and answered nothing (${out.completionTokens} tokens); once more with ${room} tokens, short thinking, ${Math.round(left / 1000)}s left`);
+      const signal = opts.signal ? AbortSignal.any([opts.signal, AbortSignal.timeout(left)]) : AbortSignal.timeout(left);
+      const again = await completeOnce({ ...opts, signal, maxTokens: room, reasoning: { effort: "low", ...(opts.reasoning ?? {}) } }, 1);
+      return { ...again, promptTokens: again.promptTokens + out.promptTokens, completionTokens: again.completionTokens + out.completionTokens, costMicros: again.costMicros + out.costMicros };
+    }
+    throw new AiError("provider", `${opts.model} returned an empty answer${reasoned ? ` after reasoning ${reasoned} chars` : ""} (${out.completionTokens} completion tokens)`);
+  }
   return { text, ...out };
 }
 
