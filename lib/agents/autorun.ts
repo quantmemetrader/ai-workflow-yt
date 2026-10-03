@@ -107,7 +107,8 @@ async function handOnTodos(tenantId: string, messageId: string, channelId: strin
  * 文案 writes the proposed topic's first draft as soon as the plan is out
  * (owner, 2 Oct: "once the idea of the day is confirmed its script should
  * already be ready"). The draft waits, out of every list, until somebody
- * presses 用这个做一条视频; that project then opens on it (`takePreparedDraft`).
+ * presses 打开写好的稿子 on the plan card (home, 选题); that project then
+ * opens on it (`takePreparedDraft`).
  */
 async function prewrite(tenantId: string, messageId: string, channelId: string, topic: string, list: PlanItem[]): Promise<string | null> {
   /* Already a project about it: nothing to write ahead. */
@@ -149,7 +150,7 @@ async function prewrite(tenantId: string, messageId: string, channelId: string, 
        set meta = jsonb_set(meta, '{plan,prepared}', ${JSON.stringify({ topic, scriptId: id, beats, at: new Date().toISOString() })}::jsonb)
      where id = ${messageId}
   `);
-  await postAsAgent(tenantId, "script", "digest", `《${topic}》的初稿我已经提前写好了，${beats} 个分镜。点「用这个做一条视频」，打开就是写好的稿子，直接看、直接改。`).catch(() => null);
+  await postAsAgent(tenantId, "script", "digest", `《${topic}》的初稿我已经提前写好了，${beats} 个分镜。在首页「策划今日提报」卡片上点「打开写好的稿子」，就能直接看、直接改。`).catch(() => null);
   return id;
 }
 
