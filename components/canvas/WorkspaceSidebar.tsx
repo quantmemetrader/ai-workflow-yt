@@ -372,8 +372,8 @@ export function WorkspaceSidebar({
           <button
             type="button"
             onClick={() => setComposing(true)}
-            aria-label={zh ? "新建群聊" : "New group chat"}
-            title={zh ? "新建群聊" : "New group chat"}
+            aria-label={zh ? "新建频道" : "New channel"}
+            title={zh ? "新建频道" : "New channel"}
             style={plusButton}
           >
             <PlusGlyph />

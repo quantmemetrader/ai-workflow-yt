@@ -44,6 +44,9 @@ const CSS = `
 .ug th { font-weight: 650; background: var(--bg); }
 .ug td:first-child { white-space: nowrap; font-weight: 600; }
 .ug .foot { border-top: 1px solid var(--line); padding-top: 18px; font-size: 13px; color: var(--muted); }
+/* The guide is read from a phone (a link in WhatsApp or WeChat): the app's desktop-only gate does not apply here. */
+.desktop-only-gate { display: none !important; }
+body { overflow: auto !important; }
 @media (max-width: 640px) { .ug { padding: 24px 16px 60px; font-size: 15px; } .ug h1 { font-size: 24px; } .ug nav.toc ol { columns: 1; } .ug td:first-child { white-space: normal; } }
 @media print { .ug .lang, .ug nav.toc { display: none; } .ug section { break-inside: avoid; } }
 `;
@@ -113,7 +116,7 @@ export default async function UserGuidePage({ searchParams }: { searchParams: Pr
   const { lang } = await searchParams;
   const en = lang === "en";
   return (
-    <main className="ug" lang={en ? "en" : "zh-CN"}>
+    <main id="main" className="ug" lang={en ? "en" : "zh-CN"}>
       <style dangerouslySetInnerHTML={{ __html: CSS }} />
       <div className="top">
         <a className="brand" href="/">

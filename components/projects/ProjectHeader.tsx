@@ -8,6 +8,7 @@ import { AccessPicker } from "@/components/files/AccessPicker";
 import { PublishedPill } from "@/components/projects/Published";
 import { deleteProjectAction, renameProjectAction, setProjectAccessAction, setProjectStatusAction } from "@/app/(app)/projects/actions";
 import { notify } from "@/lib/client/notify";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { PROJECT_TABS, tabOfPath, type ProjectTab, type TabState } from "@/lib/projects/tabs";
 import type { PublishedPlace } from "@/lib/projects/publication";
 
@@ -39,6 +40,7 @@ export function ProjectHeader({ p, zh }: { p: HeaderProject; zh: boolean }) {
   const [pending, start] = React.useTransition();
   const [naming, setNaming] = React.useState(false);
   const [name, setName] = React.useState(p.title);
+  const [confirmDelete, setConfirmDelete] = React.useState(false);
   const [sharing, setSharing] = React.useState(false);
   React.useEffect(() => setName(p.title), [p.title]);
   /* A rename that would leave it nameless says so and keeps the old name
@@ -178,20 +180,31 @@ export function ProjectHeader({ p, zh }: { p: HeaderProject; zh: boolean }) {
                 className="ph-quiet ph-danger"
                 disabled={pending}
                 style={quiet("#c42b2b")}
-                onClick={() => {
-                  if (!window.confirm(t("删除这个项目？对话、脚本和视频会从列表里消失。", "Delete this project? Its chat, script and video leave every list."))) return;
-                  start(async () => {
-                    const r = await deleteProjectAction(p.id);
-                    if (r?.error) notify(r.error);
-                    else {
-                      notify(t("项目已删除", "Project deleted"), "ok");
-                      router.push("/projects");
-                    }
-                  });
-                }}
+                onClick={() => setConfirmDelete(true)}
               >
                 {t("删除", "Delete")}
               </button>
+              {confirmDelete ? (
+                <ConfirmDialog
+                  title={t("删除这个项目？", "Delete this project?")}
+                  body={t("对话、脚本和视频会从列表里消失。", "Its chat, script and video leave every list.")}
+                  confirm={t("删除", "Delete")}
+                  cancel={t("取消", "Cancel")}
+                  danger
+                  onClose={() => setConfirmDelete(false)}
+                  onConfirm={() => {
+                    setConfirmDelete(false);
+                    start(async () => {
+                      const r = await deleteProjectAction(p.id);
+                      if (r?.error) notify(r.error);
+                      else {
+                        notify(t("项目已删除", "Project deleted"), "ok");
+                        router.push("/projects");
+                      }
+                    });
+                  }}
+                />
+              ) : null}
             </>
           ) : null}
         </div>

@@ -86,7 +86,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           avatarUrl={viewer.avatarUrl}
           locale={viewer.locale ?? "zh-CN"}
         />
-        <div style={{ flexGrow: 1, minHeight: 0, display: "flex" }}>{children}</div>
+        <main id="main" style={{ flexGrow: 1, minHeight: 0, display: "flex" }}>{children}</main>
       </div>
 
       {/* Above the page, not inside it: ⌘K has to work on every module, and

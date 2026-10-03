@@ -177,6 +177,9 @@ export function useInlineAgent(
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const abort = useRef<AbortController | null>(null);
+  /* A message sent mid-answer waits and goes when the answer ends (QA, 3 Oct). */
+  const queued = useRef<{ text: string; attachments?: string[] } | null>(null);
+  const sendRef = useRef<((text: string, attachments?: string[]) => Promise<void>) | null>(null);
   /* A colleague whose answer is on its way (the last line is a hand-off receipt
      and nothing from them has arrived yet), for up to four minutes. */
   const [clock, setClock] = useState(0);
@@ -209,7 +212,12 @@ export function useInlineAgent(
     async (text: string, attachments?: string[]) => {
       const files = (attachments ?? []).filter((x) => typeof x === "string" && x).slice(0, 10);
       const content = text.trim() || (files.length ? "请看附件" : "");
-      if (!content || abort.current) return;
+      if (!content) return;
+      if (abort.current) {
+        queued.current = { text, attachments };
+        setNotice("这条会在助理答完后自动发送。");
+        return;
+      }
 
       setBusy(true);
       setNotice(null);
@@ -340,10 +348,17 @@ export function useInlineAgent(
       } finally {
         setBusy(false);
         abort.current = null;
+        const next = queued.current;
+        if (next) {
+          queued.current = null;
+          setNotice(null);
+          setTimeout(() => void sendRef.current?.(next.text, next.attachments), 0);
+        }
       }
     },
     [conversationId, patchLast, defaultAgent],
   );
+  sendRef.current = send;
 
   const stop = useCallback(() => abort.current?.abort(), []);
 

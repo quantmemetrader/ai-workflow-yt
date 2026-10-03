@@ -14,7 +14,7 @@ export function AcceptForm({ token, suggestedName }: { token: string; suggestedN
         defaultValue={suggestedName}
         required
         maxLength={120}
-        placeholder="The name you want to be known by"
+        placeholder="你的名字（同事怎么称呼你）"
         style={field}
       />
       <input
@@ -23,7 +23,7 @@ export function AcceptForm({ token, suggestedName }: { token: string; suggestedN
         required
         minLength={10}
         maxLength={1024}
-        placeholder="A password, at least 10 characters"
+        placeholder="密码，至少 10 位"
         style={field}
       />
       {state.error && (
@@ -47,7 +47,7 @@ export function AcceptForm({ token, suggestedName }: { token: string; suggestedN
           opacity: pending ? 0.5 : 1,
         }}
       >
-        {pending ? "Creating the account…" : "Join the studio"}
+        {pending ? "正在创建账号…" : "加入工作室"}
       </button>
     </form>
   );

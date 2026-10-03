@@ -25,12 +25,12 @@ export default async function InvitePage({ params }: { params: Promise<{ token: 
   if (!invite) {
     return (
       <Shell>
-        <h1 style={{ fontSize: 19, fontWeight: 600, margin: 0 }}>This invitation is no longer open</h1>
+        <h1 style={{ fontSize: 19, fontWeight: 600, margin: 0 }}>这个邀请已失效</h1>
         <p style={{ fontSize: 13.5, color: "#7c7c7c", lineHeight: 1.65, margin: "10px 0 0" }}>
-          It has been used already, or it has expired. Ask whoever sent it for a fresh link.
+          链接已经用过，或者已过期，请发邀请的同事重新发一个。This invitation has been used or has expired; ask whoever sent it for a fresh link.
         </p>
         <a href="/login" style={{ fontSize: 13, color: "#007be0", display: "inline-block", marginTop: 18 }}>
-          Go to sign in
+          去登录 · Sign in
         </a>
       </Shell>
     );
@@ -45,11 +45,11 @@ export default async function InvitePage({ params }: { params: Promise<{ token: 
   return (
     <Shell>
       <h1 style={{ fontSize: 19, fontWeight: 600, margin: 0 }}>
-        Join {studio?.name ?? "the studio"}
+        加入 {studio?.name ?? "工作室"}
       </h1>
       <p style={{ fontSize: 13.5, color: "#7c7c7c", lineHeight: 1.65, margin: "10px 0 0" }}>
-        You were invited as <b style={{ color: "#383838", fontWeight: 500 }}>{invite.email}</b>. Choose a
-        password and the account is yours.
+        邀请发给了 <b style={{ color: "#383838", fontWeight: 500 }}>{invite.email}</b>。设一个密码，账号就是你的了。
+        <span style={{ display: "block", marginTop: 4 }}>You were invited as {invite.email}. Choose a password and the account is yours.</span>
       </p>
 
       <div style={{ margin: "16px 0 0", display: "flex", flexWrap: "wrap", gap: 5 }}>

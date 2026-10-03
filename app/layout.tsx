@@ -64,6 +64,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <script dangerouslySetInnerHTML={{ __html: BOOT_SCRIPT }} />
       </head>
       <body translate="no" className="notranslate">
+        <a href="#main" className="skip-link">跳到主要内容</a>
         {children}
         {/* Anything that still rewrites our text gets turned back into Simplified (2 Oct). */}
         <SimplifiedGuard />
@@ -84,6 +85,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         </div>
         <style dangerouslySetInnerHTML={{ __html: `
           .desktop-only-gate { display: none; }
+          .skip-link { position: absolute; left: -9999px; top: 8px; z-index: 2147483646; background: #171717; color: #fff; padding: 8px 14px; border-radius: 8px; font-size: 13px; text-decoration: none; }
+          .skip-link:focus { left: 8px; }
           @media (max-width: 820px) {
             .desktop-only-gate {
               display: flex; position: fixed; inset: 0; z-index: 2147483647;

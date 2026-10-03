@@ -246,6 +246,19 @@ export function AgentScreen({
   const [input, setInput] = useState(initialAgent ? `${agentTag(initialAgent)} ` : "");
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  /* A message typed while the assistant is still answering waits here and
+     goes the moment the answer ends: Enter mid-answer used to do nothing, and
+     in a new chat the draft was lost (QA, 3 Oct). */
+  const [queued, setQueued] = useState<string | null>(null);
+  const queuedRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (busy || !queuedRef.current) return;
+    const text = queuedRef.current;
+    queuedRef.current = null;
+    setQueued(null);
+    void send(text);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [busy]);
   /* Which model answers what is sent from this box (「模型」 in the composer):
      this chat's choice, not the studio's. */
   const [pickModel, setPickModel] = useChatModel(initialId ?? "new");
@@ -831,6 +844,25 @@ export function AgentScreen({
 
               {/* The formatting buttons write Markdown; this is what it will
                   look like once sent. */}
+              {queued ? (
+                <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 14px 0", fontSize: 12.5, color: "#5f6368" }}>
+                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>
+                    {zh ? "助理答完就发：" : "Sends when the answer ends: "}
+                    {queued.length > 60 ? `${queued.slice(0, 60)}…` : queued}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      queuedRef.current = null;
+                      setQueued(null);
+                      setInput(queued);
+                    }}
+                    style={{ border: 0, background: "transparent", color: "#1a73e8", cursor: "pointer", font: "inherit", padding: 0, flexShrink: 0 }}
+                  >
+                    {zh ? "改一下" : "Edit"}
+                  </button>
+                </div>
+              ) : null}
               <FormattedPreview text={input} zh={zh} />
 
               <textarea
@@ -846,6 +878,14 @@ export function AgentScreen({
                   if (mentions.onKeyDown(e)) return;
                   if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
                     e.preventDefault();
+                    if (busy) {
+                      if (asksSomething(input)) {
+                        queuedRef.current = input;
+                        setQueued(input);
+                        setInput("");
+                      }
+                      return;
+                    }
                     void send(input);
                   }
                 }}

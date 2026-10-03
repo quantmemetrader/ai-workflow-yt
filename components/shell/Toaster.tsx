@@ -88,7 +88,7 @@ export function Toaster({ locale = "zh-CN" }: { locale?: string } = {}) {
     <div
       style={{
         position: "fixed",
-        left: 18,
+        right: 18,
         bottom: 18,
         zIndex: 220,
         display: "flex",
