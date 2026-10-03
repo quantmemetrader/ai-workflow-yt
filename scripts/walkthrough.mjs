@@ -19,6 +19,7 @@ import { readFileSync, mkdirSync, renameSync, existsSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import path from "node:path";
 import pg from "pg";
+import { ownerCred } from "./owner-cred.mjs";
 
 const argv = process.argv.slice(2);
 const arg = (name, fallback) => {
@@ -26,8 +27,7 @@ const arg = (name, fallback) => {
   return i >= 0 ? argv[i + 1] : fallback;
 };
 const BASE = process.env.BASE || "http://127.0.0.1:3300";
-const EMAIL = process.env.OWNER_EMAIL || "rahulsinghhh2312@gmail.com";
-const PASSWORD = process.env.OWNER_PASSWORD || "mB30peA98EFf";
+const { email: EMAIL, password: PASSWORD } = ownerCred();
 const CLIP = path.resolve(arg("clip", "scripts/.tmp/raw-chinese.mp4"));
 /* A second take (a side angle) goes in with the first; the director cuts to it. */
 const CLIP2 = arg("clip2", "") ? path.resolve(arg("clip2", "")) : null;

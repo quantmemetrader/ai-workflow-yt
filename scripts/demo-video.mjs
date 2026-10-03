@@ -27,8 +27,13 @@ const arg = (name, fallback) => {
 };
 
 const BASE = process.env.BASE || "http://127.0.0.1:3300";
-const EMAIL = arg("email", "catherine@tengya.media");
-const PASSWORD = arg("password", "CJHz8k76Avix");
+const EMAIL = arg("email", process.env.DEMO_EMAIL || "catherine@tengya.media");
+// No default: the repository is public. --password or DEMO_PASSWORD.
+const PASSWORD = arg("password", process.env.DEMO_PASSWORD);
+if (!PASSWORD) {
+  console.error(`Pass --password … or set DEMO_PASSWORD for ${EMAIL}.`);
+  process.exit(1);
+}
 const OUT = path.resolve(arg("out", "docs/demo"));
 const REC = path.join(OUT, "rec");
 

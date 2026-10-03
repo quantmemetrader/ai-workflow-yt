@@ -10,6 +10,7 @@
 import { chromium } from "playwright";
 import { Client } from "pg";
 import fs from "node:fs";
+import { ownerCred } from "./owner-cred.mjs";
 const BASE = process.env.BASE || "http://127.0.0.1:3300";
 const url = fs.readFileSync("/home/ubuntu/aiVideoFreeLance/.env.local","utf8").split("\n").find(l=>l.startsWith("DATABASE_URL=")).slice(13).trim().replace(/^"|"$/g,"");
 const db = new Client({connectionString:url}); await db.connect();
@@ -20,8 +21,9 @@ const page = await (await browser.newContext({viewport:{width:1440,height:900}})
 const errors=[]; page.on("pageerror",e=>errors.push(String(e)));
 try {
   await page.goto(`${BASE}/login`,{waitUntil:"domcontentloaded"});
-  await page.fill("#email","rahulsinghhh2312@gmail.com");
-  await page.fill("#password", process.env.OWNER_PASSWORD || "mB30peA98EFf");
+  const { email: EMAIL, password: PASSWORD } = ownerCred();
+  await page.fill("#email", EMAIL);
+  await page.fill("#password", PASSWORD);
   await page.click("button[type=submit]");
   await page.waitForURL(/\/chat/,{timeout:30000});
 
@@ -39,7 +41,7 @@ try {
   const fileId = "fil_test_" + Date.now().toString(36);
   await q(`insert into files (id, tenant_id, folder_id, folder_path, name, kind, mime, size_bytes, owner_id)
            select $1, u.tenant_id, $2, array[$2]::text[], 'inside.txt', 'doc', 'text/plain', 12, u.id
-           from users u where u.email='rahulsinghhh2312@gmail.com'`,[fileId, folder.id]);
+           from users u where u.email=$3`,[fileId, folder.id, EMAIL]);
 
   await page.reload({waitUntil:"domcontentloaded"});
   await page.waitForTimeout(2000);

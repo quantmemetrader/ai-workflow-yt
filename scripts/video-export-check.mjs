@@ -12,6 +12,7 @@ import { chromium } from "playwright";
 import { Client } from "pg";
 import fs from "node:fs";
 import { execFileSync } from "node:child_process";
+import { ownerCred } from "./owner-cred.mjs";
 
 const BASE = "http://127.0.0.1:3300";
 const url = fs.readFileSync("/home/ubuntu/aiVideoFreeLance/.env.local","utf8").split("\n").find(l=>l.startsWith("DATABASE_URL=")).slice(13).trim().replace(/^"|"$/g,"");
@@ -27,7 +28,8 @@ console.log("graphics:", (await q("select kind,text from video_graphics where pr
 const browser = await chromium.launch();
 const page = await (await browser.newContext({viewport:{width:1600,height:950}})).newPage();
 await page.goto(`${BASE}/login`,{waitUntil:"domcontentloaded"});
-await page.fill("#email","rahulsinghhh2312@gmail.com"); await page.fill("#password", process.env.OWNER_PASSWORD || "mB30peA98EFf");
+const cred = ownerCred();
+await page.fill("#email", cred.email); await page.fill("#password", cred.password);
 await page.click("button[type=submit]"); await page.waitForURL(/\/chat/,{timeout:60000});
 await page.goto(`${BASE}/video?project=${project.id}`,{waitUntil:"domcontentloaded"});
 await page.waitForTimeout(3000);

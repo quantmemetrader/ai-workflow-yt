@@ -8,10 +8,10 @@
 import { chromium } from "playwright";
 import { Client } from "pg";
 import fs from "node:fs";
+import { ownerCred } from "./owner-cred.mjs";
 
 const BASE = process.env.BASE || "http://127.0.0.1:3300";
-const EMAIL = "rahulsinghhh2312@gmail.com";
-const PASSWORD = process.env.OWNER_PASSWORD || "mB30peA98EFf";
+const { email: EMAIL, password: PASSWORD } = ownerCred();
 
 const url = fs
   .readFileSync("/home/ubuntu/aiVideoFreeLance/.env.local", "utf8")

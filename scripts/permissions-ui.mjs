@@ -15,9 +15,11 @@ import { chromium } from "playwright";
 import { execFileSync } from "node:child_process";
 import { Client } from "pg";
 import fs from "node:fs";
+import { randomBytes } from "node:crypto";
 
 const BASE = process.env.BASE || "http://127.0.0.1:3300";
-const PASSWORD = "scratch-permissions-ui-2026";
+// Throwaway accounts, deleted at the end; a fresh password each run.
+const PASSWORD = randomBytes(12).toString("base64url");
 const stamp = Date.now().toString().slice(-6);
 
 const MEMBER = `ui-member-${stamp}@example.invalid`;

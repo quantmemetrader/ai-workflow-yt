@@ -4,7 +4,7 @@
  *   node scripts/twofa-e2e.mjs            (against http://127.0.0.1:3300)
  *   BASE=https://yt.okbro.xyz node scripts/twofa-e2e.mjs
  *
- * It enrols the owner's real account, signs in with real codes, and turns it
+ * It enrols the signed-in account (QA admin by default, see owner-cred.mjs), signs in with real codes, and turns it
  * off again — so it leaves the account exactly as it found it, with 2FA off.
  * Run it after anything that touches sign-in: enrol in Settings, sign out, sign in
  * with a real TOTP code, and prove a wrong code, a replayed code and a
@@ -14,10 +14,10 @@ import { chromium } from "playwright";
 import { Client } from "pg";
 import fs from "node:fs";
 import { createHmac } from "node:crypto";
+import { ownerCred } from "./owner-cred.mjs";
 
 const BASE = process.env.BASE || "http://127.0.0.1:3300";
-const EMAIL = "rahulsinghhh2312@gmail.com";
-const PASSWORD = process.env.OWNER_PASSWORD || "mB30peA98EFf";
+const { email: EMAIL, password: PASSWORD } = ownerCred();
 
 const url = fs.readFileSync("/home/ubuntu/aiVideoFreeLance/.env.local", "utf8")
   .split("\n").find((l) => l.startsWith("DATABASE_URL=")).slice(13).trim().replace(/^"|"$/g, "");
