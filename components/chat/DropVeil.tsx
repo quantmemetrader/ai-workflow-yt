@@ -100,12 +100,20 @@ export function dropFilesProps(onFiles: (files: FileList) => void, enabled = tru
  * only, never over the side assistant, which lights up by itself; and nothing
  * at all while the files are over the assistant.
  */
+/* Where the files are being held, kept from the first event, so the highlight is right before any re-render. */
+let lastDragTarget: Element | null = null;
+if (typeof window !== "undefined") {
+  const keep = (e: DragEvent) => { if (e.target instanceof Element) lastDragTarget = e.target; };
+  window.addEventListener("dragenter", keep, true);
+  window.addEventListener("dragover", keep, true);
+}
+
 export function useDropArea(active: boolean): { rect: { left: number; top: number; width: number; height: number } | null; overPanel: boolean } {
   const [state, setState] = React.useState<{ rect: { left: number; top: number; width: number; height: number } | null; overPanel: boolean }>({ rect: null, overPanel: false });
   React.useEffect(() => {
     if (!active) return;
     const measure = (e?: DragEvent) => {
-      const target = e?.target instanceof Element ? e.target : null;
+      const target = e?.target instanceof Element ? e.target : lastDragTarget;
       const overPanel = Boolean(target?.closest("[data-agent-panel]"));
       const main = document.querySelector("main")?.getBoundingClientRect() ?? new DOMRect(0, 0, window.innerWidth, window.innerHeight);
       const panel = document.querySelector("[data-agent-panel]")?.getBoundingClientRect();
