@@ -227,6 +227,8 @@ export function AgentScreen({
   const zh = locale.startsWith("zh");
   const router = useRouter();
   const [conversationId, setConversationId] = useState(initialId);
+  const conversationIdRef = useRef(initialId);
+  conversationIdRef.current = conversationId;
   const [messages, setMessages] = useState<ThreadMessage[]>(initialMessages);
   /* Back on a chat whose answer is still being written (the person left
      mid-turn; the server carried on): show what is saved and look again
@@ -234,7 +236,16 @@ export function AgentScreen({
      there is one, is left alone. */
   const streamingSaved = initialMessages.some((m) => m.role === "assistant" && m.status === "streaming");
   useEffect(() => {
-    if (!abort.current) setMessages(initialMessages);
+    if (abort.current) return;
+    /* A refresh right after a new chat's first answer (the title landing)
+       rendered the page for the old address, with no messages, and wiped the
+       conversation off the screen (4 Oct). While this page still shows that
+       conversation, an empty list from the server is not the truth. */
+    setMessages((cur) => {
+      const here = conversationIdRef.current;
+      const stillHere = here && typeof window !== "undefined" && window.location.pathname.includes(here);
+      return initialMessages.length === 0 && cur.length > 0 && stillHere ? cur : initialMessages;
+    });
   }, [initialMessages]);
   useEffect(() => {
     if (!streamingSaved) return;
