@@ -349,9 +349,9 @@ export async function unpublishAction(id: string) {
 }
 
 /**
- * Rename a project. Only one this person may see, and not a deleted one:
- * the action is reachable with any id, and a private project's name is
- * its members' to change.
+ * Rename a project. Only one this person may see and manage — an admin or
+ * whoever started it, as for 归档 and 删除 (`setProjectStatus`) — and not a
+ * deleted one: the action is reachable with any id.
  */
 export async function renameProjectAction(id: string, title: string) {
   const viewer = await getViewer();
@@ -361,7 +361,7 @@ export async function renameProjectAction(id: string, title: string) {
   const renamed = await db
     .update(workProjects)
     .set({ title: t, updatedAt: new Date() })
-    .where(and(eq(workProjects.id, String(id ?? "")), eq(workProjects.tenantId, viewer.tenantId), isNull(workProjects.deletedAt), projectsVisibleTo(viewer)))
+    .where(and(eq(workProjects.id, String(id ?? "")), eq(workProjects.tenantId, viewer.tenantId), isNull(workProjects.deletedAt), projectsVisibleTo(viewer), viewer.isAdmin ? undefined : eq(workProjects.createdBy, viewer.id)))
     .returning({ id: workProjects.id, scriptId: workProjects.scriptId });
   if (!renamed.length) return { error: (viewer.locale ?? "zh-CN").startsWith("zh") ? "没有这个项目" : "No such project" };
   /* The script carries the project's name (QA, 2 Oct: renamed project, old
@@ -720,7 +720,8 @@ export async function setScriptLengthAction(projectId: unknown, seconds: unknown
   if (!viewer || !viewer.modules.includes("chat")) return { error: "没有权限" };
   const secs = typeof seconds === "number" && Number.isFinite(seconds) ? Math.round(seconds) : NaN;
   if (typeof projectId !== "string" || !(secs >= 15 && secs <= 1800)) return { error: "没有权限" };
-  const [p] = await db.select({ scriptId: workProjects.scriptId }).from(workProjects).where(and(eq(workProjects.id, projectId), eq(workProjects.tenantId, viewer.tenantId), isNull(workProjects.deletedAt))).limit(1);
+  /* Only a project this person may see: the action takes any id. */
+  const p = await visibleProject(viewer, projectId);
   if (!p?.scriptId) return { error: "没有权限" };
   await db.update(scripts).set({ targetSeconds: secs, updatedAt: new Date() }).where(eq(scripts.id, p.scriptId));
   return { ok: true as const };
