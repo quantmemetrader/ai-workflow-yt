@@ -13,6 +13,7 @@ import { checkLoginThrottle, clearLoginThrottle } from "@/lib/auth/throttle";
 import { browserIsTrusted, endChallenge, readChallenge, startChallenge, trustThisBrowser } from "@/lib/auth/second-factor";
 import { matchRecovery, open as openSecret, verifyCode } from "@/lib/auth/totp";
 import { audit } from "@/lib/audit";
+import { env } from "@/lib/env";
 import { LANG_COOKIE, LANG_COOKIE_MAX_AGE } from "@/lib/i18n";
 
 export type LoginState = { error?: string };
@@ -109,6 +110,8 @@ export async function signIn(_prev: LoginState, formData: FormData): Promise<Log
      httpOnly: the login screen is a client component and reads it there. */
   (await cookies()).set(LANG_COOKIE, user.locale ?? "zh-CN", {
     maxAge: LANG_COOKIE_MAX_AGE,
+    /* Secure exactly when the session cookie is. */
+    secure: env.cookieSecure,
     sameSite: "lax",
     path: "/",
   });

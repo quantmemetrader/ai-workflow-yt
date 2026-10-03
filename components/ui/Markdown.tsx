@@ -235,7 +235,10 @@ function inline(src: string, zh = true): React.ReactNode[] {
     } else if (token.startsWith("[")) {
       const link = /\[([^\]]+)\]\(([^)]+)\)/.exec(token)!;
       const href = link[2];
-      const safe = /^(https?:|\/)/i.test(href) ? href : "#";
+      /* Only a single-slash path is an in-app link: "//host" and "/\host"
+         are read by browsers as another site (protocol-relative), so they
+         go nowhere rather than open in this tab. */
+      const safe = /^https?:/i.test(href) || /^\/(?![\/\\])/.test(href) ? href : "#";
       nodes.push(
         <a
           key={key++}

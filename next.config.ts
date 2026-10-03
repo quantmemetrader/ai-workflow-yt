@@ -20,6 +20,9 @@ import type { NextConfig } from "next";
 const ALL_MODULES = "login|chat|files|research|script|video|publish|accounting|finance|legal|hr|admin";
 
 const nextConfig: NextConfig = {
+  /* No `x-powered-by: Next.js` on every response (security review, 3 Oct). */
+  poweredByHeader: false,
+
   /*
    * Standalone output: `next build` emits a self-contained server under
    * .next/standalone that runs as a plain Node process. That is what pm2

@@ -28,5 +28,11 @@ export async function GET(request: Request) {
       jobIds: [],
     },
   ]);
-  return Response.json({ videos: cards.get("ask") ?? [] }, { headers: { "Cache-Control": "no-store" } });
+  const videos = cards.get("ask") ?? [];
+  /* Nothing this reader may see among what was asked: the same 404 the
+     sibling routes give for an object outside their access, rather than an
+     empty 200 that tells a guesser the ids were taken in (QA, 3 Oct). The
+     callers treat any non-OK answer as "no card yet". */
+  if (!videos.length) return Response.json({ error: "Not found" }, { status: 404, headers: { "Cache-Control": "no-store" } });
+  return Response.json({ videos }, { headers: { "Cache-Control": "no-store" } });
 }
