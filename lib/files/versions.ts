@@ -31,9 +31,9 @@ import { UNREADABLE_TAG } from "@/lib/video/decodable";
 
 const MIME = /^[\w.+-]+\/[\w.+-]+$/;
 
-async function mayEdit(viewer: Viewer, fileId: string) {
+async function mayEdit(viewer: Viewer, fileId: string, what = "上传新版本") {
   const held = await relationOn(viewer, "file", fileId);
-  if (held !== "owner" && held !== "editor") throw new Error("只有所有者或可编辑的人能上传新版本");
+  if (held !== "owner" && held !== "editor") throw new Error(`只有所有者或可编辑的人能${what}`);
 }
 
 async function liveFile(viewer: Viewer, fileId: string): Promise<FileRow> {
@@ -209,7 +209,7 @@ export async function completeVersion(
 
 /** 恢复为当前版本: an earlier version becomes the newest one, as a copy; nothing in between is lost. */
 export async function restoreVersion(viewer: Viewer, fileId: string, versionNo: number) {
-  await mayEdit(viewer, fileId);
+  await mayEdit(viewer, fileId, "恢复版本");
   const file = await liveFile(viewer, fileId);
 
   const [version] = await db
