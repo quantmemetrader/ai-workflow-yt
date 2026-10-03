@@ -19,6 +19,7 @@ import { AUTO_MODEL } from "@/lib/ai/chat-models";
 import { PersonAvatar } from "@/components/ui/PersonAvatar";
 import { ShareDialog } from "@/components/share/ShareDialog";
 import { notify } from "@/lib/client/notify";
+import { useAsk } from "@/components/ui/useAsk";
 import { uploadFiles } from "@/lib/client/upload";
 import { renameProjectAction, setProjectAccessAction, setProjectLinkAction, setScriptLengthAction, startFromTopicAction } from "@/app/(app)/projects/actions";
 import { AccessPicker } from "@/components/files/AccessPicker";
@@ -163,6 +164,7 @@ export function ScriptDoc(props: ScriptDocProps) {
   const router = useRouter();
   const [pending, start] = React.useTransition();
   const now = useNow();
+  const dlg = useAsk(zh);
 
   /* ---------------- view state ---------------- */
   const [mode, setModeRaw] = React.useState<Mode>(me.canEdit ? "edit" : "view");
@@ -718,7 +720,13 @@ export function ScriptDoc(props: ScriptDocProps) {
   async function importFile(list: FileList | null) {
     const file = list?.[0];
     if (!file) return;
-    if (importMode.current === "replace" && !window.confirm(t("用这个文件的内容替换现在的稿子？（旧的内容可以在「版本记录」里找回）", "Replace the script with this file's text? (The old text stays in Version history.)"))) return;
+    if (
+      importMode.current === "replace" &&
+      !(await dlg.confirm({ title: t("用这个文件的内容替换现在的稿子？", "Replace the script with this file's text?"), body: t("旧的内容可以在「版本记录」里找回。", "The old text stays in Version history."), confirm: t("替换", "Replace") }))
+    ) {
+      if (importInput.current) importInput.current.value = "";
+      return;
+    }
     /* What is typed but not saved yet goes first: the import builds on the saved document and the page reloads after. */
     await save();
     notify(t(`正在导入 ${file.name}…`, `Importing ${file.name}…`), "info");
@@ -1100,7 +1108,7 @@ export function ScriptDoc(props: ScriptDocProps) {
         <Status tone="wait" text={t(`已分享给 ${names} 审阅（第 ${open[0].versionNo ?? "?"} 版），等他们批准。`, `With ${names} for review (v${open[0].versionNo ?? "?"}).`)}>
           <button type="button" className="gd-status-btn" onClick={() => setSharing(true)}>{t("再发给别人", "Send to someone else")}</button>
           {me.canEdit ? <button type="button" className="gd-status-btn" disabled={pending} onClick={() => start(async () => { await withdrawReviewAction(projectId); router.refresh(); })}>{t("撤回审阅", "Withdraw")}</button> : null}
-          {me.canEdit ? <button type="button" className="gd-status-btn" disabled={pending} onClick={approve}>{t("我自己审阅通过", "I approve it myself")}</button> : null}
+          {me.canEdit && me.isAdmin ? <button type="button" className="gd-status-btn" disabled={pending} onClick={approve}>{t("我自己审阅通过", "I approve it myself")}</button> : null}
         </Status>
       );
     }
@@ -1116,7 +1124,7 @@ export function ScriptDoc(props: ScriptDocProps) {
     return (
       <Status tone="draft" text={<><b>{t("写好了？选一个往下走：", "Done? Pick the way forward:")}</b><span className="gd-status-dim">{t(`　草稿 · 第 ${(script.version ?? 0) + 1} 版`, `  Draft · v${(script.version ?? 0) + 1}`)}</span></>}>
         {me.canEdit ? <button type="button" className="gd-status-btn primary" onClick={() => setSharing(true)}>{t("发给同事审阅", "Send for review")}</button> : null}
-        {me.canEdit ? <button type="button" className="gd-status-btn" disabled={pending} onClick={approve}>{t("我自己审阅通过", "I approve it myself")}</button> : null}
+        {me.canEdit && me.isAdmin ? <button type="button" className="gd-status-btn" disabled={pending} onClick={approve}>{t("我自己审阅通过", "I approve it myself")}</button> : null}
         <Link href={`/projects/${projectId}/edit`} prefetch={false} className="gd-status-btn">{t("先去剪辑 →", "Skip to the edit →")}</Link>
       </Status>
     );
@@ -1260,9 +1268,14 @@ export function ScriptDoc(props: ScriptDocProps) {
               disabled={!me.canEdit || pending}
               onChange={(e) => {
                 if (e.target.value === "custom") {
-                  const v = window.prompt(t("目标时长（分钟，可以写小数，如 2.5）", "Target length in minutes (e.g. 2.5)"), String(Math.round(((script.targetSeconds ?? 180) / 60) * 10) / 10));
-                  const n = Math.round(Number(v) * 60);
-                  if (v !== null && n >= 10 && n <= 3600) setLength(n);
+                  void dlg
+                    .prompt({ title: t("目标时长（分钟，可以写小数，如 2.5）", "Target length in minutes (e.g. 2.5)"), placeholder: "2.5", initial: String(Math.round(((script.targetSeconds ?? 180) / 60) * 10) / 10) })
+                    .then((v) => {
+                      if (v === null) return;
+                      const n = Math.round(Number(v) * 60);
+                      if (Number.isFinite(n) && n >= 10 && n <= 3600) setLength(n);
+                      else notify(t("时长要在 10 秒到 60 分钟之间", "Pick between 10 seconds and 60 minutes"));
+                    });
                   return;
                 }
                 setLength(Number(e.target.value));
@@ -1361,8 +1374,8 @@ export function ScriptDoc(props: ScriptDocProps) {
               type="button"
               className="gd-status-btn primary"
               disabled={pending}
-              onClick={() => {
-                if (!window.confirm(t(`用第 ${viewing.versionNo} 版替换现在的稿子？现在的稿子会先存成一个版本。`, `Replace the draft with v${viewing.versionNo}? The current draft is kept as a version first.`))) return;
+              onClick={async () => {
+                if (!(await dlg.confirm({ title: t(`用第 ${viewing.versionNo} 版替换现在的稿子？`, `Replace the draft with v${viewing.versionNo}?`), body: t("现在的稿子会先存成一个版本。", "The current draft is kept as a version first."), confirm: t("恢复此版本", "Restore") }))) return;
                 start(async () => {
                   /* Typing not saved yet goes in first: it becomes the 「恢复旧版本前的稿子」 version. */
                   await save();
@@ -1792,6 +1805,7 @@ export function ScriptDoc(props: ScriptDocProps) {
           </table>
         </Modal>
       ) : null}
+      {dlg.dialog}
       {dialog === "rename" ? (
         <PromptModal title={t("重命名", "Rename")} label={t("标题", "Title")} initial={title} zh={zh} onClose={() => setDialog(null)} onOk={(v) => { setTitle(v); renameTo(v); }} />
       ) : null}
@@ -1910,6 +1924,7 @@ function CommentThread({
   const [pending, start] = React.useTransition();
   const [open, setOpen] = React.useState(false);
   const [text, setText] = React.useState("");
+  const dlg = useAsk(zh);
   React.useEffect(() => {
     onResize?.();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1926,9 +1941,9 @@ function CommentThread({
       router.refresh();
     });
   }
-  function remove(x: DocComment) {
+  async function remove(x: DocComment) {
     const first = x.id === c.id;
-    if (!window.confirm(first && replies.length ? t(`删除这条批注和下面的 ${replies.length} 条回复？`, `Delete this comment and its ${replies.length} replies?`) : t("删除这条批注？", "Delete this comment?"))) return;
+    if (!(await dlg.confirm({ title: first && replies.length ? t(`删除这条批注和下面的 ${replies.length} 条回复？`, `Delete this comment and its ${replies.length} replies?`) : t("删除这条批注？", "Delete this comment?"), confirm: t("删除", "Delete"), danger: true }))) return;
     start(async () => {
       const r = await deleteCommentAction(projectId, x.id);
       if ("error" in r && r.error) return notify(r.error);
@@ -1938,6 +1953,7 @@ function CommentThread({
   const linkBtn: React.CSSProperties = { border: 0, background: "transparent", padding: 0, font: "inherit", fontSize: 12.5, color: "#0b57d0", cursor: "pointer" };
   return (
     <div onClick={(e) => (open ? e.stopPropagation() : undefined)}>
+      {dlg.dialog ? <span onClick={(e) => e.stopPropagation()}>{dlg.dialog}</span> : null}
       <CommentBody c={c} zh={zh} now={now} resolved={resolved} onResolve={onResolve} />
       {replies.length ? (
         <div className="gd-replies">

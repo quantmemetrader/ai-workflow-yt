@@ -9,6 +9,7 @@ import { Card, Empty, Fact, GoButton, NextStep, PageBody, bigButton, smallButton
 import { uploadFiles, type UploadProgress } from "@/lib/client/upload";
 import { beginWork } from "@/lib/client/busy";
 import { notify } from "@/lib/client/notify";
+import { useAsk } from "@/components/ui/useAsk";
 import { OWN_ACCOUNTS } from "@/lib/social/own-accounts";
 import { OWN_TO_PLACE, PUBLISH_ROWS, captionLimits, type PublishDraft } from "@/lib/projects/publish-rows";
 import { platformsLine, publishPlatformName, type Publication, type PublishPlatform } from "@/lib/projects/publication";
@@ -114,6 +115,7 @@ export function PublishStep({
   const t = (a: string, b: string) => (zh ? a : b);
   const router = useRouter();
   const [pending, start] = React.useTransition();
+  const ask = useAsk(zh);
   const fileInput = React.useRef<HTMLInputElement | null>(null);
   const [uploads, setUploads] = React.useState<UploadProgress[]>([]);
   const [dragging, setDragging] = React.useState(false);
@@ -270,6 +272,7 @@ export function PublishStep({
   return (
     <PageBody>
       <style>{CSS}</style>
+      {ask.dialog}
       <input
         ref={fileInput}
         type="file"
@@ -460,15 +463,15 @@ export function PublishStep({
                 playing={playing === f.id}
                 onPlay={() => setPlaying((p) => (p === f.id ? null : f.id))}
                 onPick={() => setDraft((d) => ({ ...d, fileId: f.id }))}
-                onRename={() => {
-                  const name = window.prompt(t("新名字", "New name"), f.name);
+                onRename={async () => {
+                  const name = await ask.prompt({ title: t("重命名", "Rename"), placeholder: t("新名字", "New name"), initial: f.name, confirm: t("改名", "Rename") });
                   if (!name || name === f.name) return;
                   start(async () => {
                     if (!failed(await renameFileAction(f.id, name))) router.refresh();
                   });
                 }}
-                onRemove={() => {
-                  if (!window.confirm(t("从这个项目的最终版里移出？文件本身还在「文件」里。", "Take it out of this project's final videos? The file stays in Files."))) return;
+                onRemove={async () => {
+                  if (!(await ask.confirm({ title: t("从这个项目的最终版里移出？", "Take it out of this project's final videos?"), body: t("文件本身还在「文件」里。", "The file stays in Files."), confirm: t("移出", "Take it out") }))) return;
                   start(async () => {
                     if (!failed(await unmarkFinalAction(projectId, f.id))) router.refresh();
                   });
@@ -536,12 +539,12 @@ export function PublishStep({
                     }
                   })
                 }
-                onUndo={() =>
+                onUndo={async () => {
+                  if (!(await ask.confirm({ title: t(`撤回「${r.label} 已发布」的记录？`, `Undo "posted on ${r.label}"?`), confirm: t("撤回", "Undo") }))) return;
                   start(async () => {
-                    if (!window.confirm(t(`撤回「${r.label} 已发布」的记录？`, `Undo "posted on ${r.label}"?`))) return;
                     if (!failed(await unmarkPlaceAction(projectId, r.place!))) router.refresh();
-                  })
-                }
+                  });
+                }}
               />
             ))}
 
@@ -599,9 +602,9 @@ export function PublishStep({
                       }
                     })
                   }
-                  onSelf={() =>
+                  onSelf={async () => {
+                    if (!(await ask.confirm({ title: t("自己批准并发布？", "Approve and publish it yourself?"), body: t("你的名字会记录在批准记录上。", "Your name goes on the approval."), confirm: t("批准并发布", "Approve and publish") }))) return;
                     start(async () => {
-                      if (!window.confirm(t("自己批准并发布？你的名字会记录在批准记录上。", "Approve and publish it yourself? Your name goes on the approval."))) return;
                       const on = channelRows.filter((r) => rowOf(r.key).on);
                       const res = await sendChannelsForApprovalAction(projectId, {
                         fileId: chosen?.id ?? null,
@@ -614,17 +617,17 @@ export function PublishStep({
                         notify(t("已批准，后台正在发出", "Approved; it is going out"), "ok");
                         router.refresh();
                       }
-                    })
-                  }
-                  onApprove={(postId) =>
+                    });
+                  }}
+                  onApprove={async (postId) => {
+                    if (!(await ask.confirm({ title: t("批准并发布？", "Approve and publish?"), body: t("你的名字会记录在批准记录上。", "Your name goes on the approval."), confirm: t("批准并发布", "Approve and publish") }))) return;
                     start(async () => {
-                      if (!window.confirm(t("批准并发布？你的名字会记录在批准记录上。", "Approve and publish? Your name goes on the approval."))) return;
                       if (!failed(await approveAction(postId, ""))) {
                         notify(t("已批准，后台正在发出", "Approved; it is going out"), "ok");
                         router.refresh();
                       }
-                    })
-                  }
+                    });
+                  }}
                 />
               ) : null}
             </>

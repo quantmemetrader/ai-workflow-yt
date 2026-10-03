@@ -353,6 +353,11 @@ export async function approveDocAction(projectId: unknown) {
        may approve without asking someone else (the owner, 29 Sep: "or do
        review yourself"). The record still names who approved it. */
     if (!admin && !c.viewer.modules.includes("script")) return { error: c.zh ? "没有请你审阅这份脚本" : "You were not asked to review this" };
+    /* The version would be cut under this person's name, and only an owner
+       or admin may approve their own version (`decideApproval`). Refused
+       here, before a version and a self-addressed request are left behind
+       (QA, 3 Oct). */
+    if (!admin) return { error: c.zh ? "自己写的版本不能自己审批，请发给同事或管理员审阅" : "You cannot approve your own version. Send it to a colleague or an admin." };
     const r = await requestApproval(c.viewer, scriptId, c.viewer.id);
     if (!r) return { error: c.zh ? "脚本还是空的，或者已经批准了" : "Nothing to approve" };
     req = { id: r.approvalId, approverId: c.viewer.id, requestedBy: c.viewer.id };
