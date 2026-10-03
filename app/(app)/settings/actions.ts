@@ -27,6 +27,7 @@ import {
 import { audit } from "@/lib/audit";
 import { isCatalogAvatar } from "@/lib/avatars/catalog";
 import { deleteObject } from "@/lib/storage/r2";
+import { env } from "@/lib/env";
 import { LANG_COOKIE, LANG_COOKIE_MAX_AGE, type Locale } from "@/lib/i18n";
 import { cookies } from "next/headers";
 
@@ -43,33 +44,41 @@ const ALLOWED: Locale[] = ["zh-CN", "en"];
  */
 export async function setAutomationAction(key: AutomationKey, patch: Partial<Automation>) {
   const viewer = await getViewer();
-  if (!viewer) return { error: "Not signed in" };
-  if (viewer.role !== "owner" && viewer.role !== "admin") return { error: "Not allowed" };
-  if (!AUTOMATION_KEYS.includes(key)) return { error: "No such automation" };
+  if (!viewer) return { error: "请先登录" };
+  if (viewer.role !== "owner" && viewer.role !== "admin") return { error: say(viewer, "你没有权限做这件事", "Not allowed") };
+  if (!AUTOMATION_KEYS.includes(key)) return { error: say(viewer, "没有这项自动任务", "No such automation") };
 
   try {
     const saved = await setAutomation(viewer, key, patch ?? {});
     revalidatePath("/settings");
     return { automation: saved };
   } catch (err) {
-    return { error: err instanceof Error ? err.message : "Could not save that" };
+    return { error: err instanceof Error ? err.message : say(viewer, "没能保存，请再试一次", "Could not save that") };
   }
 }
 
 export async function setLocaleAction(locale: Locale) {
   const viewer = await getViewer();
-  if (!viewer) return { error: "Not signed in" };
-  if (!ALLOWED.includes(locale)) return { error: "Unknown language" };
+  if (!viewer) return { error: "请先登录" };
+  if (!ALLOWED.includes(locale)) return { error: say(viewer, "不支持这种语言", "Unknown language") };
 
   await db.update(users).set({ locale }).where(eq(users.id, viewer.id));
   /* And on the sign-in screen, which has no session to read it from. */
   (await cookies()).set(LANG_COOKIE, locale, {
     maxAge: LANG_COOKIE_MAX_AGE,
+    /* Secure exactly when the session cookie is. */
+    secure: env.cookieSecure,
     sameSite: "lax",
     path: "/",
   });
   revalidatePath("/", "layout");
   return {};
+}
+
+/** A refusal in the person's own language: Simplified Chinese unless they
+ * chose English (QA, 3 Oct: these reached the Chinese screen in English). */
+function say(viewer: { locale?: string | null }, zh: string, en: string): string {
+  return (viewer.locale ?? "zh-CN").startsWith("zh") ? zh : en;
 }
 
 /* ------------------------------------------------------------- your own */
@@ -91,15 +100,15 @@ export async function updateProfileAction(
   formData: FormData,
 ): Promise<ProfileState> {
   const viewer = await getViewer();
-  if (!viewer) return { error: "Not signed in" };
+  if (!viewer) return { error: "请先登录" };
 
   const name = String(formData.get("name") ?? "").trim();
   const nameLocal = String(formData.get("nameLocal") ?? "").trim();
   const title = String(formData.get("title") ?? "").trim();
 
-  if (!name) return { error: "You need a name people can see." };
+  if (!name) return { error: say(viewer, "请填写同事能看到的名字。", "You need a name people can see.") };
   if (name.length > 120 || nameLocal.length > 120 || title.length > 120) {
-    return { error: "That is longer than a name needs to be." };
+    return { error: say(viewer, "名字太长了。", "That is longer than a name needs to be.") };
   }
 
   await db
@@ -132,9 +141,9 @@ export type AvatarResult = { avatarUrl: string | null; error?: undefined } | { e
  */
 export async function setAvatarAction(choice: string | null): Promise<AvatarResult> {
   const viewer = await getViewer();
-  if (!viewer) return { error: "Not signed in" };
+  if (!viewer) return { error: "请先登录" };
   if (choice !== null && !isCatalogAvatar(choice)) {
-    return { error: "That is not one of the pictures on offer." };
+    return { error: say(viewer, "只能从提供的头像里选。", "That is not one of the pictures on offer.") };
   }
 
   const [before] = await db
@@ -169,14 +178,14 @@ export async function changePasswordAction(
   formData: FormData,
 ): Promise<PasswordState> {
   const viewer = await getViewer();
-  if (!viewer) return { error: "Not signed in" };
+  if (!viewer) return { error: "请先登录" };
 
   const current = String(formData.get("current") ?? "");
   const next = String(formData.get("next") ?? "");
 
-  if (next.length < 12) return { error: "Use at least 12 characters." };
-  if (next.length > 1024) return { error: "That password is too long." };
-  if (next === current) return { error: "That is the password you already have." };
+  if (next.length < 12) return { error: say(viewer, "新密码至少要 12 个字符。", "Use at least 12 characters.") };
+  if (next.length > 1024) return { error: say(viewer, "密码太长了。", "That password is too long.") };
+  if (next === current) return { error: say(viewer, "新密码不能和当前密码相同。", "That is the password you already have.") };
 
   const [row] = await db
     .select({ passwordHash: users.passwordHash })
@@ -185,7 +194,7 @@ export async function changePasswordAction(
     .limit(1);
 
   if (!(await verifyPassword(current, row?.passwordHash ?? null))) {
-    return { error: "That is not your current password." };
+    return { error: say(viewer, "当前密码不正确。", "That is not your current password.") };
   }
 
   await db
@@ -228,7 +237,7 @@ export type TotpBeginState = {
 
 export async function beginTotpAction(): Promise<TotpBeginState> {
   const viewer = await getViewer();
-  if (!viewer) return { error: "Not signed in" };
+  if (!viewer) return { error: "请先登录" };
 
   const secret = newSecret();
   await db
@@ -252,10 +261,10 @@ export async function confirmTotpAction(
   formData: FormData,
 ): Promise<TotpConfirmState> {
   const viewer = await getViewer();
-  if (!viewer) return { error: "Not signed in" };
+  if (!viewer) return { error: "请先登录" };
 
   const typed = String(formData.get("code") ?? "").replace(/\D/g, "");
-  if (typed.length !== 6) return { error: "Enter the 6-digit code from the app." };
+  if (typed.length !== 6) return { error: say(viewer, "请输入验证器应用里的 6 位验证码。", "Enter the 6-digit code from the app.") };
 
   const [row] = await db
     .select({ secret: users.totpSecret, confirmedAt: users.totpConfirmedAt })
@@ -264,11 +273,11 @@ export async function confirmTotpAction(
     .limit(1);
 
   const secret = openSecret(row?.secret ?? null);
-  if (!secret) return { error: "Start again — that setup has expired." };
-  if (row?.confirmedAt) return { error: "Two-step verification is already on." };
+  if (!secret) return { error: say(viewer, "这次设置已过期，请重新开始。", "Start again — that setup has expired.") };
+  if (row?.confirmedAt) return { error: say(viewer, "两步验证已经开启。", "Two-step verification is already on.") };
 
   const step = verifyCode(secret, typed);
-  if (step === null) return { error: "That code is not right. Check the clock on your phone." };
+  if (step === null) return { error: say(viewer, "验证码不正确，请检查手机的时间是否准确。", "That code is not right. Check the clock on your phone.") };
 
   const codes = newRecoveryCodes();
   await db
@@ -292,7 +301,7 @@ export type TotpOffState = { error?: string; ok?: boolean };
 
 export async function disableTotpAction(_prev: TotpOffState, formData: FormData): Promise<TotpOffState> {
   const viewer = await getViewer();
-  if (!viewer) return { error: "Not signed in" };
+  if (!viewer) return { error: "请先登录" };
 
   const password = String(formData.get("password") ?? "");
   const [row] = await db
@@ -301,7 +310,7 @@ export async function disableTotpAction(_prev: TotpOffState, formData: FormData)
     .where(eq(users.id, viewer.id))
     .limit(1);
   if (!(await verifyPassword(password, row?.passwordHash ?? null))) {
-    return { error: "That is not your password." };
+    return { error: say(viewer, "密码不正确。", "That is not your password.") };
   }
 
   await db
@@ -318,14 +327,14 @@ export async function disableTotpAction(_prev: TotpOffState, formData: FormData)
 /** A fresh set. The old ones stop working the moment these are shown. */
 export async function newRecoveryCodesAction(): Promise<{ error?: string; codes?: string[] }> {
   const viewer = await getViewer();
-  if (!viewer) return { error: "Not signed in" };
+  if (!viewer) return { error: "请先登录" };
 
   const [row] = await db
     .select({ confirmedAt: users.totpConfirmedAt })
     .from(users)
     .where(eq(users.id, viewer.id))
     .limit(1);
-  if (!row?.confirmedAt) return { error: "Two-step verification is not on." };
+  if (!row?.confirmedAt) return { error: say(viewer, "两步验证还没有开启。", "Two-step verification is not on.") };
 
   const codes = newRecoveryCodes();
   await db.update(users).set({ totpRecovery: codes.map(hashRecovery) }).where(eq(users.id, viewer.id));
@@ -336,8 +345,8 @@ export async function newRecoveryCodesAction(): Promise<{ error?: string; codes?
 
 export async function forgetDeviceAction(id: string) {
   const viewer = await getViewer();
-  if (!viewer) return { error: "Not signed in" };
-  if (typeof id !== "string" || id.length > 128) return { error: "Not allowed" };
+  if (!viewer) return { error: "请先登录" };
+  if (typeof id !== "string" || id.length > 128) return { error: say(viewer, "你没有权限做这件事", "Not allowed") };
   await forgetTrustedDevice(viewer.id, id);
   await audit(viewer, "auth.2fa.device.forget", { meta: { id: id.slice(0, 12) } });
   revalidatePath("/settings");
@@ -346,7 +355,7 @@ export async function forgetDeviceAction(id: string) {
 
 export async function forgetAllDevicesAction() {
   const viewer = await getViewer();
-  if (!viewer) return { error: "Not signed in" };
+  if (!viewer) return { error: "请先登录" };
   await forgetTrustedDevices(viewer.id);
   await audit(viewer, "auth.2fa.device.forget-all");
   revalidatePath("/settings");

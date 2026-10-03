@@ -48,6 +48,13 @@ const ZH_CN: Record<string, string> = {
   "Work email": "工作邮箱",
   "That email and password do not match.": "邮箱或密码不正确。",
   "Your account is not active. Ask an admin.": "账号未启用，请联系管理员。",
+  /* The sign-in and code screens' refusals, all of them (QA, 3 Oct). `{n}`
+     stands for the number in the message — see `makeT`. */
+  "Too many attempts. Try again in {n} minutes.": "尝试次数太多，请 {n} 分钟后再试。",
+  "Sign-in is unavailable right now. Try again in a moment.": "暂时无法登录，请稍后再试。",
+  "That took too long. Sign in again.": "等待时间过长，请重新登录。",
+  "That code is not right.": "验证码不正确。",
+  "Sign in again.": "请重新登录。",
   "腾亚创变 工作台": "腾亚创变 工作台",
   "One agent per person. Everything you can see, and nothing you cannot.":
     "每人一个助理。只看你有权看的内容。",
@@ -110,7 +117,18 @@ export type T = (s: string) => string;
 export function makeT(locale: Locale | null | undefined): T {
   const dict = DICTS[locale ?? DEFAULT_LOCALE];
   if (!dict) return (s) => s;
-  return (s) => dict[s] ?? s;
+  return (s) => {
+    const exact = dict[s];
+    if (exact !== undefined) return exact;
+    /* A message that carries a number ("Try again in 15 minutes.") is keyed
+       with `{n}` in its place, and the number put back in the translation. */
+    const nums = s.match(/\d+/g);
+    if (!nums) return s;
+    const shaped = dict[s.replace(/\d+/g, "{n}")];
+    if (shaped === undefined) return s;
+    let i = 0;
+    return shaped.replace(/\{n\}/g, () => nums[i++] ?? "");
+  };
 }
 
 /** Dates the way each locale writes them, on the studio's clock: the server
