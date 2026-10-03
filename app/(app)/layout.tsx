@@ -1,5 +1,6 @@
 import { after } from "next/server";
 import { requireViewer } from "@/lib/auth/dal";
+import { AgentNamesSync } from "@/components/shell/AgentNamesSync";
 import { agentNamesNow } from "@/lib/agents/names-store";
 import { readSessionToken, touchSession } from "@/lib/auth/session";
 import { Rail } from "@/components/canvas/Rail";
@@ -59,6 +60,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       }}
     >
       <script dangerouslySetInnerHTML={{ __html: `window.__agentNames=${JSON.stringify(agentNames).replace(/</g, "\\u003c")};` }} />
+      <AgentNamesSync names={agentNames} />
       <Rail
         modules={viewer.modules}
         locale={viewer.locale ?? "zh-CN"}

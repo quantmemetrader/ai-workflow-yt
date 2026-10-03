@@ -1862,7 +1862,7 @@ function TeachLine({ agent, zh, reply, messageId }: { agent: string; zh: boolean
       } catch {
         /* fine */
       }
-    const r = await feedbackAction(agent, kind, text, reply.slice(0, 300));
+    const r = await feedbackAction(agent, kind, text, reply.slice(0, 300), /^(a-|u-)/.test(messageId) ? undefined : messageId);
     if (r.error) notify(r.error);
     else notify(kind === "good" ? t("收到，会多这样做", "Thanks — noted") : t("收到，会从这次反馈里改进", "Noted — it will learn from this"), "ok");
   };

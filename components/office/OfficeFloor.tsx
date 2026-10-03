@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { ART_H, ART_W, FLOW_KEYS, drawAmbient, drawClock, drawFlow, drawRoom, drawStation, seatBox, seatsFor, type LookKey } from "@/components/office/art";
 import { LOOKS } from "@/components/office/looks";
 import { STATUS_TONE, jobOf, nameOf, statusWord, taskLine, type OfficeMember } from "@/components/office/text";
@@ -239,9 +240,18 @@ export function OfficeFloor({
                   style={{ left: b.headX * scale, top: b.headY * scale - 3, color: tone.ink, background: status === "idle" ? "#fbfaf8" : tone.bg, borderColor: tone.edge, ["--edge" as string]: tone.edge }}
                 >
                   {status === "waiting" ? <span className="bang">!</span> : status === "working" ? <span className="dot" /> : null}
-                  {compact ? null : <span style={{ color: "#3a2f3d" }}>{name}</span>}
-                  {compact ? null : <span style={{ opacity: 0.5 }}>·</span>}
-                  <span>{statusWord(status, zh)}</span>
+                  {/* Narrow floors keep the name and drop the status word: the
+                      colour, dot and "!" already carry the status, and eight
+                      chips all reading 空闲 told nobody who sat where (QA, 3 Oct). */}
+                  {compact ? (
+                    <span style={{ color: "#3a2f3d", maxWidth: "6em", overflow: "hidden", textOverflow: "ellipsis" }}>{name}</span>
+                  ) : (
+                    <>
+                      <span style={{ color: "#3a2f3d" }}>{name}</span>
+                      <span style={{ opacity: 0.5 }}>·</span>
+                      <span>{statusWord(status, zh)}</span>
+                    </>
+                  )}
                 </span>
               )}
               <button
@@ -266,7 +276,7 @@ export function OfficeFloor({
           .filter((s) => FLOW_KEYS.includes(s.key))
           .map((s) => {
             const i = FLOW_KEYS.indexOf(s.key);
-            return compact && scale < 1.6 ? null : (
+            return scale < 1.25 ? null : (
               <span key={`step-${s.key}`} className="of-step" aria-hidden style={{ left: s.cx * scale, top: (s.dy + 19) * scale + 2 }}>
                 <b>{i + 1}</b>
                 {stepWord(s.key, zh)}
@@ -359,8 +369,8 @@ function Tip({ member, zh, x, top, bottom, areaW, areaH, pinned, onAssign, onClo
                 {zh ? "派任务" : "Assign"}
               </button>
             ) : null}
-            <a className="of-act" href={chatHref}>{zh ? "聊天" : "Chat"}</a>
-            {member.key === "host" ? null : <a className="of-act" href={`/train/${member.key}`}>{zh ? "训练" : "Train"}</a>}
+            <Link className="of-act" href={chatHref} prefetch={false}>{zh ? "聊天" : "Chat"}</Link>
+            {member.key === "host" ? null : <Link className="of-act" href={`/train/${member.key}`} prefetch={false}>{zh ? "训练" : "Train"}</Link>}
           </div>
           {say ? (
             <div className="of-say">
