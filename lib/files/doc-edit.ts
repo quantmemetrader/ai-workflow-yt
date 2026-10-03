@@ -7,12 +7,14 @@ import path from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { promisify } from "node:util";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
+import { randomBytes } from "node:crypto";
 import { db } from "@/lib/db/client";
 import { files, fileVersions } from "@/lib/db/schema";
 import type { Viewer } from "@/lib/auth/types";
 import { relationOn } from "@/lib/authz/rebac";
-import { getObject } from "@/lib/storage/r2";
+import { getObject, putObjectConfirmed, storageKey } from "@/lib/storage/r2";
+import { pendingVersionKey } from "@/lib/files/move-paths";
 import { newId } from "@/lib/ids";
 import { audit } from "@/lib/audit";
 import { toSimplified } from "@/lib/text/simplified";
@@ -151,18 +153,65 @@ export async function openDoc(viewer: Viewer, fileId: string): Promise<DocState 
   return { id: f.id, name: f.name, html: toSimplified(html), canEdit: can.write, version: f.version, updatedAt: f.updatedAt.toISOString(), fromOriginal };
 }
 
+/** Markdown back out of the editor's HTML: headings and list items keep their marks, the rest is text. */
+function htmlToMarkdown(html: string): string {
+  return htmlToText(
+    html
+      .replace(/<h([1-3])[^>]*>/gi, (_m, n: string) => `${"#".repeat(Number(n))} `)
+      .replace(/<li[^>]*>\s*(<p[^>]*>)?/gi, "- ")
+      .replace(/<\/li>/gi, "\n"),
+  );
+}
+
+/** Plain-text files whose stored object is the text itself: their edits are saved as real versions. */
+const TEXTY = new Set(["md", "markdown", "txt"]);
+
 export async function saveDoc(viewer: Viewer, fileId: string, rawHtml: string): Promise<{ ok: true; version: number; at: string } | { error: string }> {
   const can = await held(viewer, fileId);
   if (!can.write) return { error: "你没有编辑这个文件的权限" };
   const html = toSimplified(clean(rawHtml));
   const text = htmlToText(html);
-  const [f] = await db.select({ version: files.version, tenantId: files.tenantId, deletedAt: files.deletedAt, updatedAt: files.updatedAt, updatedBy: files.updatedBy, storageKey: files.storageKey }).from(files).where(eq(files.id, fileId)).limit(1);
+  const [f] = await db.select({ version: files.version, tenantId: files.tenantId, deletedAt: files.deletedAt, updatedAt: files.updatedAt, updatedBy: files.updatedBy, storageKey: files.storageKey, name: files.name, mime: files.mime }).from(files).where(eq(files.id, fileId)).limit(1);
   if (!f || f.deletedAt || f.tenantId !== viewer.tenantId) return { error: "文件不存在" };
   /* One version per sitting, not per keystroke: a new number when someone else
      edited last, or the last save is more than ten minutes old. */
-  const fresh = f.updatedBy !== viewer.id || Date.now() - f.updatedAt.getTime() > 10 * 60_000;
-  const version = fresh ? f.version + 1 : f.version;
+  let fresh = f.updatedBy !== viewer.id || Date.now() - f.updatedAt.getTime() > 10 * 60_000;
   const now = new Date();
+
+  /*
+   * A .md or .txt that was uploaded is its text, so an edit is written back as
+   * a new object and a new version row that points at it: the 版本 list can
+   * download or restore what it said before, and 下载 gives what it says now.
+   * Saves within one sitting rewrite that sitting's own object, never one an
+   * earlier version (or a restore) still points at.
+   */
+  if (f.storageKey && TEXTY.has(extOf(f.name))) {
+    const [cur] = await db.select().from(fileVersions).where(and(eq(fileVersions.fileId, fileId), eq(fileVersions.versionNo, f.version))).limit(1);
+    const shared = cur?.storageKey
+      ? (await db.select({ id: fileVersions.id }).from(fileVersions).where(and(eq(fileVersions.fileId, fileId), eq(fileVersions.storageKey, cur.storageKey))).limit(2)).length > 1
+      : true;
+    const reusable = Boolean(cur && cur.note === "在线编辑" && cur.storageKey && cur.storageKey === f.storageKey && !shared);
+    if (!reusable) fresh = true;
+    const version = fresh ? f.version + 1 : f.version;
+    const md = extOf(f.name) !== "txt";
+    const body = new TextEncoder().encode(md ? htmlToMarkdown(html) : text);
+    const mime = (f.mime ?? (md ? "text/markdown" : "text/plain")).split(";")[0];
+    const key = fresh ? pendingVersionKey(storageKey(viewer.tenantId, fileId, f.name), randomBytes(8).readBigUInt64BE().toString(36).padStart(10, "0").slice(-10)) : (cur?.storageKey as string);
+    const stored = await putObjectConfirmed(key, body, `${mime}; charset=utf-8`);
+    if (fresh) {
+      await db.insert(fileVersions).values({ id: newId("ver"), fileId, versionNo: version, storageKey: key, sizeBytes: body.byteLength, checksum: stored.etag, note: "在线编辑", authorId: viewer.id }).onConflictDoNothing();
+      await audit(viewer, "file.edit", { objectType: "file", objectId: fileId, module: "files", meta: { version } });
+    } else {
+      await db.update(fileVersions).set({ sizeBytes: body.byteLength, checksum: stored.etag }).where(eq(fileVersions.id, (cur as { id: string }).id));
+    }
+    await db
+      .update(files)
+      .set({ text, storageKey: key, sizeBytes: body.byteLength, checksum: stored.etag, version, updatedAt: now, updatedBy: viewer.id, docHtml: html })
+      .where(eq(files.id, fileId));
+    return { ok: true, version, at: now.toISOString() };
+  }
+
+  const version = fresh ? f.version + 1 : f.version;
   await db
     .update(files)
     /* An uploaded file keeps the size of its original; only a document born in

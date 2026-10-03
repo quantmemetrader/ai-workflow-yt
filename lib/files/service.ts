@@ -557,6 +557,20 @@ export async function completeUpload(viewer: Viewer, fileId: string, checksum?: 
     meta: { name: row.name, bytes: row.sizeBytes },
   });
 
+  await queueFileJobs(viewer, row);
+
+  return row;
+}
+
+/**
+ * The work every newly stored object gets: its text read, a still and its
+ * length measured, a small copy to play. Shared by a fresh upload and by a
+ * new version of an existing file (`lib/files/versions.ts`), which is the
+ * same object as far as these jobs are concerned. `round` keeps a new
+ * version's jobs from being folded into an unfinished job for the old bytes.
+ */
+export async function queueFileJobs(viewer: Viewer, row: FileRow, round = "") {
+  const tag = round ? `${row.id}:${round}` : row.id;
   /*
    * Its text, read once for the AI employees and for search — any document,
    * slide deck, spreadsheet, PDF, picture or archive (`lib/files/extract.ts`).
@@ -568,13 +582,13 @@ export async function completeUpload(viewer: Viewer, fileId: string, checksum?: 
       tenantId: viewer.tenantId,
       type: "files.text",
       module: "files",
-      payload: { fileId },
+      payload: { fileId: row.id },
       objectType: "file",
-      objectId: fileId,
+      objectId: row.id,
       createdBy: viewer.id,
-      dedupeKey: `text:${fileId}`,
+      dedupeKey: `text:${tag}`,
       priority: 4,
-    }).catch((err) => console.warn(`[files] no text read queued for ${fileId}:`, err instanceof Error ? err.message : err));
+    }).catch((err) => console.warn(`[files] no text read queued for ${row.id}:`, err instanceof Error ? err.message : err));
   }
 
   /*
@@ -589,11 +603,11 @@ export async function completeUpload(viewer: Viewer, fileId: string, checksum?: 
       tenantId: viewer.tenantId,
       type: "files.poster",
       module: "files",
-      payload: { fileId },
+      payload: { fileId: row.id },
       objectType: "file",
-      objectId: fileId,
+      objectId: row.id,
       createdBy: viewer.id,
-      dedupeKey: `poster:${fileId}`,
+      dedupeKey: `poster:${tag}`,
       priority: 6,
     });
   }
@@ -617,18 +631,17 @@ export async function completeUpload(viewer: Viewer, fileId: string, checksum?: 
       tenantId: viewer.tenantId,
       type: "files.proxy",
       module: "files",
-      payload: { fileId },
+      payload: { fileId: row.id },
       objectType: "file",
-      objectId: fileId,
+      objectId: row.id,
       createdBy: viewer.id,
-      dedupeKey: `proxy:${fileId}`,
+      dedupeKey: `proxy:${tag}`,
       priority: 5,
     }).catch((err) =>
-      console.warn(`[files] no preview proxy queued for ${fileId}:`, err instanceof Error ? err.message : err),
+      console.warn(`[files] no preview proxy queued for ${row.id}:`, err instanceof Error ? err.message : err),
     );
   }
 
-  return row;
 }
 
 /** Text documents the agent (or a person) writes straight into the store. */
@@ -900,8 +913,93 @@ export async function purgeFile(viewer: Viewer, fileId: string) {
   await audit(viewer, "file.purge", { objectType: "file", objectId: fileId, module: "files", meta: { name: row.name } });
 }
 
+/**
+ * What 永久删除 on a folder in the trash would take: the folder, every folder
+ * under it, and every file under it that is in the trash. The confirm dialog
+ * says the file count before anything goes.
+ */
+async function folderPurgePlan(viewer: Viewer, folderId: string) {
+  const [folder] = await db
+    .select()
+    .from(folders)
+    .where(and(eq(folders.id, folderId), eq(folders.tenantId, viewer.tenantId)))
+    .limit(1);
+  if (!folder) throw new Error("找不到这个文件夹");
+  if (!folder.deletedAt) throw new Error("请先把文件夹移到回收站");
+  /* The same rule as a file's 永久删除: whoever made it, or an admin. */
+  if (!viewer.isAdmin && folder.ownerId !== viewer.id) throw new Error("只有创建者或管理员可以永久删除");
+
+  const inside = sql`${folders.path} @> array[${folderId}]::text[]`;
+  const filesInside = sql`${files.folderPath} @> array[${folderId}]::text[]`;
+  const [subfolders, doomed, [live], [liveFolders]] = await Promise.all([
+    db.select({ id: folders.id }).from(folders).where(and(inside, eq(folders.tenantId, viewer.tenantId))),
+    db
+      .select({ id: files.id, storageKey: files.storageKey, proxyFileId: files.proxyFileId, tags: files.tags })
+      .from(files)
+      .where(and(filesInside, eq(files.tenantId, viewer.tenantId), sql`${files.deletedAt} is not null`)),
+    db.select({ n: sql<number>`count(*)::int` }).from(files).where(and(filesInside, isNull(files.deletedAt))),
+    db.select({ n: sql<number>`count(*)::int` }).from(folders).where(and(inside, isNull(folders.deletedAt))),
+  ]);
+  return { folder, subfolders: subfolders.map((f) => f.id), doomed, live: live.n + liveFolders.n };
+}
+
+/** How many files 永久删除 on this folder would remove, for its confirm dialog. */
+export async function folderPurgeCount(viewer: Viewer, folderId: string) {
+  const plan = await folderPurgePlan(viewer, folderId);
+  /* Previews are not files anybody uploaded; the count is the files a person would recognise. */
+  const proxies = new Set(plan.doomed.map((f) => f.proxyFileId).filter(Boolean));
+  return {
+    files: plan.doomed.filter((f) => !proxies.has(f.id) && !f.tags.includes("proxy")).length,
+    folders: plan.subfolders.length,
+    live: plan.live,
+  };
+}
+
+/**
+ * 永久删除 on a folder in the trash: the folder, every folder under it, and
+ * every file under it that went to the trash, through the same purge a file
+ * takes (R2 objects of every version, previews, grants, rows).
+ *
+ * Something under it that was restored by itself while the folder stayed in
+ * the trash is still a live file in a dead folder; purging around it would
+ * leave it pointing at a folder that no longer exists, so the purge stops and
+ * says so.
+ */
+export async function purgeFolder(viewer: Viewer, folderId: string) {
+  const plan = await folderPurgePlan(viewer, folderId);
+  if (plan.live > 0) throw new Error(`文件夹里还有 ${plan.live} 项没有删除，请先把它们移出这个文件夹`);
+
+  /* A master's preview goes with it even when it sits somewhere else. */
+  const have = new Set(plan.doomed.map((f) => f.id));
+  const strays = plan.doomed.map((f) => f.proxyFileId).filter((id): id is string => Boolean(id) && !have.has(id as string));
+  const proxies = strays.length
+    ? await db
+        .select({ id: files.id, storageKey: files.storageKey })
+        .from(files)
+        .where(and(inArray(files.id, strays), eq(files.tenantId, viewer.tenantId), sql`${files.deletedAt} is not null`))
+    : [];
+
+  const all = [...plan.doomed, ...proxies];
+  if (all.length) await purgeFiles(all);
+
+  await db.transaction(async (trx) => {
+    await trx
+      .delete(relationTuples)
+      .where(and(eq(relationTuples.objectType, "folder"), inArray(relationTuples.objectId, plan.subfolders)));
+    await trx.delete(folders).where(inArray(folders.id, plan.subfolders));
+  });
+
+  await audit(viewer, "folder.purge", {
+    objectType: "folder",
+    objectId: folderId,
+    module: "files",
+    meta: { name: plan.folder.name, files: all.length, folders: plan.subfolders.length },
+  });
+  return { files: plan.doomed.length, folders: plan.subfolders.length };
+}
+
 /** The bytes, every version's bytes, the grants and the rows of these files. */
-async function purgeFiles(doomed: { id: string; storageKey: string | null }[]) {
+export async function purgeFiles(doomed: { id: string; storageKey: string | null }[]) {
   const ids = doomed.map((f) => f.id);
   // Every version has its own object in R2, and `saveVersion` never overwrites
   // one. Deleting only the current key left every earlier version's bytes in
