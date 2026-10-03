@@ -116,6 +116,8 @@ export default async function UserGuidePage({ searchParams }: { searchParams: Pr
   const { lang } = await searchParams;
   const en = lang === "en";
   return (
+    <>
+    <a href="#main" className="skip-link">{en ? "Skip to main content" : "跳到主要内容"}</a>
     <main id="main" className="ug" lang={en ? "en" : "zh-CN"}>
       <style dangerouslySetInnerHTML={{ __html: CSS }} />
       <div className="top">
@@ -158,5 +160,6 @@ export default async function UserGuidePage({ searchParams }: { searchParams: Pr
         )}
       </div>
     </main>
+    </>
   );
 }
