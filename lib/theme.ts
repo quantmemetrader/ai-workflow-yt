@@ -1,9 +1,9 @@
 /** The person's appearance choice, kept in a cookie so the server can draw the page in it. */
 export const THEME_COOKIE = "tg-theme";
-export const THEMES = ["light", "dark", "system"] as const;
+export const THEMES = ["light", "dark"] as const;
 export type Theme = (typeof THEMES)[number];
 export function themeOf(v: string | undefined | null): Theme {
-  return v === "dark" || v === "system" ? v : "light";
+  return v === "dark" ? "dark" : "light";
 }
 
 /**
@@ -20,8 +20,4 @@ const FLIP = "filter: invert(1) hue-rotate(180deg);";
 export const THEME_CSS = `
 html[data-theme="dark"] { ${DARK} }
 html[data-theme="dark"] :is(${KEEP}) { ${FLIP} }
-@media (prefers-color-scheme: dark) {
-  html[data-theme="system"] { ${DARK} }
-  html[data-theme="system"] :is(${KEEP}) { ${FLIP} }
-}
 `;
