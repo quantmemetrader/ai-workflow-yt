@@ -1,11 +1,11 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { files, users } from "@/lib/db/schema";
+import { files, folders, users } from "@/lib/db/schema";
 import { requireModule } from "@/lib/auth/dal";
-import { relationOn, shareCeiling } from "@/lib/authz/rebac";
-import { listVersions, sharesWithNames } from "@/lib/files/service";
+import { canReadFolders, relationOn, shareCeiling } from "@/lib/authz/rebac";
+import { folderLabel, listVersions, sharesWithNames } from "@/lib/files/service";
 import { uploadConfirmed } from "@/lib/files/abandon";
 import { audit } from "@/lib/audit";
 import { formatBytes, formatDate, makeT } from "@/lib/i18n";
@@ -58,13 +58,27 @@ export default async function FilePage({ params }: { params: Promise<{ id: strin
 
   await audit(viewer, "file.view", { objectType: "file", objectId: id, module: "files" });
 
-  const [versions, shares, ceiling, vis, manage] = await Promise.all([
+  const [versions, shares, ceiling, vis, manage, trail] = await Promise.all([
     listVersions(viewer, id),
     sharesWithNames("file", id),
     shareCeiling(viewer, "file", id),
     visibilityForFiles([id]),
     manageableFiles(viewer, [row.file]),
+    /* The folders it sits in, for the breadcrumb: only ones this person can
+       open, so a file shared out of a private folder does not name it. */
+    row.file.folderPath.length
+      ? db
+          .select({ id: folders.id, name: folders.name })
+          .from(folders)
+          .where(and(inArray(folders.id, row.file.folderPath), eq(folders.tenantId, viewer.tenantId), isNull(folders.deletedAt), canReadFolders(viewer)))
+      : Promise.resolve([]),
   ]);
+  /* 文件 › A › B › name, as the folder page shows it (QA, 4 Oct); the personal
+     home folder is 文件 itself. */
+  const breadcrumbs = row.file.folderPath
+    .map((fid) => trail.find((f) => f.id === fid))
+    .filter((f): f is { id: string; name: string } => Boolean(f) && f?.name !== "__home")
+    .map((f) => ({ id: f.id, name: folderLabel(f.name) }));
   const seen = vis.get(id) ?? { visibility: "private" as const, groups: [], userIds: [] };
   /* (QA, 2 Oct: people shares of every level are listed, viewers included, so
      each can be removed; everyone/group grants stay in 谁可以看.) */
@@ -91,10 +105,18 @@ export default async function FilePage({ params }: { params: Promise<{ id: strin
           padding: "0 18px 0 22px",
         }}
       >
-        <Link href="/files" style={{ fontSize: 13, color: "#7c7c7c" }}>
+        <Link href="/files" style={{ fontSize: 13, color: "#7c7c7c", flexShrink: 0 }}>
           {t("Files")}
         </Link>
-        <span style={{ color: "#c7c7c7" }}>/</span>
+        <Chevron />
+        {breadcrumbs.map((b) => (
+          <span key={b.id} style={{ display: "contents" }}>
+            <Link href={`/files/f/${b.id}`} style={{ display: "inline-block", fontSize: 13, color: "#7c7c7c", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 160 }}>
+              {b.name}
+            </Link>
+            <Chevron />
+          </span>
+        ))}
         <span
           style={{
             fontSize: 15,
@@ -289,5 +311,14 @@ function Row({ label, value }: { label: string; value: string }) {
         {value}
       </span>
     </p>
+  );
+}
+
+/* The separator the folder page's breadcrumb uses. */
+function Chevron() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden style={{ width: 12, height: 12, flexShrink: 0, stroke: "#c7c7c7", fill: "none", strokeWidth: 2, strokeLinecap: "round" }}>
+      <path d="m9.5 5.5 6 6.5-6 6.5" />
+    </svg>
   );
 }
