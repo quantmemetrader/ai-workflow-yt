@@ -4,7 +4,7 @@ import { isProviderModel } from "@/lib/ai/catalog";
 import { revalidatePath } from "next/cache";
 import { getViewer } from "@/lib/auth/dal";
 import { MODELS, answeringModel, modelFor } from "@/lib/ai/models";
-import { modelChoice, setModelChoice } from "@/lib/ai/choice";
+import { freshModelChoice, setModelChoice } from "@/lib/ai/choice";
 import { env } from "@/lib/env";
 import { audit } from "@/lib/audit";
 
@@ -41,9 +41,9 @@ export async function modelOptionsAction(): Promise<{
   const viewer = await getViewer();
   if (!viewer) return { error: "Not signed in" };
 
+  const preferDeepseek = (await freshModelChoice()).preferDeepseek === true;
   const chosen = modelFor.assistant();
   const answering = answeringModel();
-  const preferDeepseek = modelChoice().preferDeepseek === true;
 
   const options: ModelOption[] = MODELS.map((m) => ({
     id: m.id,
@@ -89,7 +89,7 @@ export async function chooseModelAction(id: string) {
   }
   if (typeof id !== "string" || id.length > 120) return { error: "That is not a model" };
 
-  const current = modelChoice();
+  const current = await freshModelChoice();
 
   if (id === "deepseek:direct") {
     if (!env.deepseek.configured) return { error: "There is no DeepSeek key on this deployment." };

@@ -18,7 +18,7 @@ import { postMessage } from "@/lib/chat/service";
 import { endPending, startPending, stepPending } from "@/lib/chat/pending";
 import { clipCount, ensureScriptProject, projectFor, type ProjectHandle } from "@/lib/projects/service";
 import { readCardActions, type CardAction } from "./cards";
-import { stepForTool, type StepKey } from "./steps";
+import { stepForTool, stripToolMarkup, type StepKey } from "./steps";
 import {
   AGENT_KEYS,
   AGENT_LABELS,
@@ -1304,6 +1304,10 @@ async function answerOne(input: Chain, key: AgentKey, channel: Channel) {
         setStep("thinking");
       }
     }
+    /* A call written out as text is not a reply (PROJ-CHAT-1): with it gone
+       an answer that was only markup counts as silent, and the turn asks
+       again for what its tools found. */
+    answer = stripToolMarkup(answer);
     const record: Attempt = { id, answer };
     turns.push(record);
     return { answer, failure, tools, record };

@@ -17,7 +17,7 @@ import { users } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { AgentDock } from "@/components/shell/AgentDock";
 import { answeringModel, modelFor } from "@/lib/ai/models";
-import { modelChoice } from "@/lib/ai/choice";
+import { freshModelChoice } from "@/lib/ai/choice";
 import { modelOptionsAction } from "./model-actions";
 import { ModelCard } from "./model-card";
 import { SpendCard } from "./spend-card";
@@ -54,7 +54,7 @@ export default async function SettingsPage() {
   /* The studio's model as chosen, even when it is not in the short catalogue
      the options come from: the card marked nothing and the chip said 选一个
      (QA, 2 Oct). */
-  const currentModel = admin ? (modelChoice().preferDeepseek === true ? "deepseek:direct" : modelFor.assistant()) : null;
+  const currentModel = admin ? ((await freshModelChoice()).preferDeepseek === true ? "deepseek:direct" : modelFor.assistant()) : null;
   const models = admin ? ((await modelOptionsAction().catch(() => ({}))) as { options?: import("./model-actions").ModelOption[] }).options ?? [] : [];
   /* A heading over each group, so the page reads as three short sections
      (me, the team, security) rather than one long column of cards. */

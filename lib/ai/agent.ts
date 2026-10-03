@@ -13,11 +13,12 @@ import { newId } from "@/lib/ids";
 import { AiError, streamChat, type ChatMessage, type StreamEvent } from "./openrouter";
 import { BudgetStop, assertBudget, budgetState, notifyBudgetStop, recordUsage, type BudgetState } from "./ledger";
 import { labelFor, modelFor } from "./models";
+import { freshModelChoice } from "./choice";
 import { assemblePrompt } from "./prompt";
 import { runTool, toolsFor } from "./tools";
 import { idsIn, type Artifact, type ToolContext } from "./tools/types";
 import { AGENT_KEYS, AGENT_LABELS, agentKeyFromEmail, type AgentKey } from "@/lib/agents/catalog";
-import { scrubToolNames } from "@/lib/agents/steps";
+import { scrubToolNames, stripToolMarkup } from "@/lib/agents/steps";
 
 /**
  * One turn of the employee's agent (spec §4.2, §5).
@@ -230,6 +231,9 @@ export async function* runAgent(opts: {
     zh: (viewer.locale ?? "zh-CN").startsWith("zh"),
   };
 
+  /* The model this employee answers with is read fresh for the turn: another
+     worker may have just saved a new choice (TRAIN-2). */
+  await freshModelChoice();
   const { text: system } = await assemblePrompt(viewer, opts.module);
   const messages: ChatMessage[] = [
     { role: "system", content: system },
@@ -567,6 +571,8 @@ export async function* runAgent(opts: {
      * short completion, and the alternative is an AI employee that answers a
      * tag with "I could not answer just now".
      */
+    /* A tool call written out as text is not an answer (PROJ-CHAT-1). */
+    answer = stripToolMarkup(answer);
     if (!answer.trim() && !changes.length && !budgetStopped && !signal?.aborted && !outOfAllowance()) {
       try {
         for await (const ev of streamChat({ model, messages, signal, user: viewer.id })) {
@@ -610,7 +616,7 @@ export async function* runAgent(opts: {
       yield { type: "delta", text: answer };
     }
 
-    answer = humanize(scrubToolNames(answer));
+    answer = humanize(scrubToolNames(stripToolMarkup(answer)));
 
     if (!answer.trim() && !signal?.aborted) {
       yield {

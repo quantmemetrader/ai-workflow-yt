@@ -212,6 +212,32 @@ const TOOL_WORDS: Record<string, { zh: string; en: string }> = {
 };
 
 /**
+ * A tool call the model wrote out as text instead of making it.
+ *
+ * DeepSeek sometimes answers with its own call envelope as plain text
+ * (`<｜DSML｜tool_calls><｜DSML｜invoke name="take_picture">…`), and Qwen with
+ * `<tool_call>{…}</tool_call>`; the provider does not parse it, so it arrived
+ * as the reply and was posted to a project chat (QA, 3 Oct). None of it is
+ * meant for a reader: the envelope goes, closed or cut off, and what the
+ * model said around it stays.
+ */
+const TOOL_MARKUP: RegExp[] = [
+  /<[｜|]DSML[｜|]tool_calls>[\s\S]*?(?:<\/[｜|]DSML[｜|]tool_calls>|$)/g,
+  /<[｜|]DSML[｜|][\s\S]*$/g,
+  /<[｜|]tool[▁_ ]calls?[▁_ ]begin[｜|]>[\s\S]*?(?:<[｜|]tool[▁_ ]calls?[▁_ ]end[｜|]>|$)/g,
+  /<tool_call>[\s\S]*?(?:<\/tool_call>|$)/g,
+  /<function_calls>[\s\S]*?(?:<\/function_calls>|$)/g,
+  /<[｜|][^<>\n]{1,40}[｜|]>/g,
+];
+
+export function stripToolMarkup(text: string): string {
+  if (!/<[｜|]|<tool_call>|<function_calls>/.test(text)) return text;
+  let out = text;
+  for (const re of TOOL_MARKUP) out = out.replace(re, "");
+  return out.replace(/\n{3,}/g, "\n\n").trim();
+}
+
+/**
  * A reply with a tool's own name in it (「以上均来自 trending_now（AI beat）」)
  * gets the plain words for it instead. The prompt says never to write them;
  * this is for when the model does anyway.

@@ -17,7 +17,10 @@ import { settings } from "@/lib/db/schema";
  * places that are not async and should not become async for a lookup that
  * changes once a month. The row is cached in the process and refreshed in the
  * background; a change therefore reaches every worker within `TTL_MS` rather
- * than instantly, and the screen says so rather than pretending otherwise.
+ * than instantly. There are four workers, so a 30 s cache made a choice flip
+ * back and forth between them for half a minute (QA, 3 Oct): the screens that
+ * show or change the choice, and the start of every agent turn, read it fresh
+ * with `freshModelChoice()`, and the cache under the rest is a few seconds.
  */
 export type ModelChoice = {
   assistant?: string;
@@ -35,15 +38,14 @@ export type ModelChoice = {
 
 export const CHOICE_KEY = "ai.models";
 
-const TTL_MS = 30_000;
+const TTL_MS = 5_000;
 
 let cached: ModelChoice = {};
 let readAt = 0;
 let refreshing: Promise<void> | null = null;
 
-function refresh(): Promise<void> {
-  if (refreshing) return refreshing;
-  refreshing = db
+function load(): Promise<void> {
+  return db
     .select({ value: settings.value })
     .from(settings)
     .where(eq(settings.key, CHOICE_KEY))
@@ -57,11 +59,22 @@ function refresh(): Promise<void> {
       /* A database that cannot be reached must not take the assistant down:
          the last known choice stands, and the env defaults stand under it. */
       readAt = Date.now();
-    })
-    .finally(() => {
-      refreshing = null;
     });
+}
+
+function refresh(): Promise<void> {
+  if (refreshing) return refreshing;
+  refreshing = load().finally(() => {
+    refreshing = null;
+  });
   return refreshing;
+}
+
+/** The choice as it is in the database now (and this process's cache with
+ * it): one indexed read, for a screen that shows it or a turn about to use it. */
+export async function freshModelChoice(): Promise<ModelChoice> {
+  await load();
+  return cached;
 }
 
 /** The choice as this process last saw it. Never blocks. */

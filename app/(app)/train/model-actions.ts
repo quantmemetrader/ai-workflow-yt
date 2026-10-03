@@ -5,7 +5,7 @@ import { isProviderModel } from "@/lib/ai/catalog";
 import { revalidatePath } from "next/cache";
 import { requireViewer } from "@/lib/auth/dal";
 import { MODELS } from "@/lib/ai/models";
-import { modelChoice, setModelChoice } from "@/lib/ai/choice";
+import { freshModelChoice, setModelChoice } from "@/lib/ai/choice";
 import { agentNamesNow, setAgentNames } from "@/lib/agents/names-store";
 import { AGENT_KEYS, type AgentKey } from "@/lib/agents/catalog";
 import { isTrainKey, TRAIN_BUDGET } from "@/lib/agents/train-keys";
@@ -24,7 +24,7 @@ export async function setAgentModelAction(agent: string, id: string | null): Pro
   if (viewer.role !== "owner" && viewer.role !== "admin") return { error: "只有管理员可以更换模型" };
   if (!isTrainKey(agent)) return { error: "没有这个 AI 同事" };
   if (id !== null && !MODELS.some((m) => m.id === id) && !(await isProviderModel(id))) return { error: "没有这个模型" };
-  const current = modelChoice();
+  const current = await freshModelChoice();
   const agents = { ...(current.agents ?? {}) };
   if (id) agents[agent] = id;
   else delete agents[agent];

@@ -10,7 +10,7 @@ import { AgentIdentity } from "@/components/train/AgentIdentity";
 import { agentNamesNow } from "@/lib/agents/names-store";
 import { AGENT_DEFAULT_LABELS, type AgentKey } from "@/lib/agents/catalog";
 import { MODELS, modelFor } from "@/lib/ai/models";
-import { modelChoice } from "@/lib/ai/choice";
+import { freshModelChoice } from "@/lib/ai/choice";
 
 export const metadata = { title: "AI 训练" };
 
@@ -21,7 +21,7 @@ export default async function TrainAgentPage({ params }: { params: Promise<{ age
   if (!isTrainKey(agent)) notFound();
   const zh = (viewer.locale ?? "zh-CN").startsWith("zh");
   const rows = await trainingRows(viewer.tenantId, agent);
-  const own = modelChoice().agents?.[agent] ?? null;
+  const own = (await freshModelChoice()).agents?.[agent] ?? null;
   const learning = await learningState(viewer.tenantId, agent);
   const fallback = agent === "script" ? modelFor.drafting() : modelFor.assistant();
   const names = await agentNamesNow();
