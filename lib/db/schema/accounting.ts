@@ -1,4 +1,4 @@
-import { bigint, index, pgEnum, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import { bigint, boolean, index, pgEnum, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 import { users } from "./core";
 
 /**
@@ -101,4 +101,35 @@ export const journalLines = pgTable(
     description: text(),
   },
   (t) => [index("journal_lines_idx").on(t.entryId)],
+);
+
+/**
+ * Month-end close (月结). One row per month somebody has closed, kept when it
+ * is reopened so the screen can say who closed and who reopened it and why;
+ * the audit log has the full history.
+ *
+ * While `closed` is true nothing dated in the month (by `journal_entries.period`
+ * or by the month of `entry_date`) can be written, posted, voided or deleted.
+ * The rule is enforced in the service functions, not on the screen.
+ */
+export const accountingPeriods = pgTable(
+  "accounting_periods",
+  {
+    id: text().primaryKey(),
+    tenantId: text().notNull(),
+    /** 'YYYY-MM', the same shape as `journal_entries.period`. */
+    period: text().notNull(),
+    closed: boolean().notNull().default(true),
+    closedAt: timestamp({ withTimezone: true }),
+    closedBy: text().references(() => users.id),
+    /** What the person closing it wrote, if anything. */
+    note: text(),
+    reopenedAt: timestamp({ withTimezone: true }),
+    reopenedBy: text().references(() => users.id),
+    /** Required to reopen. */
+    reopenReason: text(),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("accounting_periods_period_idx").on(t.tenantId, t.period)],
 );

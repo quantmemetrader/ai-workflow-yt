@@ -1,4 +1,4 @@
-import { index, jsonb, pgEnum, pgTable, text, timestamp, boolean } from "drizzle-orm/pg-core";
+import { index, jsonb, pgEnum, pgTable, text, timestamp, boolean, uniqueIndex } from "drizzle-orm/pg-core";
 import { users } from "./core";
 
 /**
@@ -36,11 +36,18 @@ export const templates = pgTable(
     /** `{{ field }}` names the drafting screen asks for, in order. */
     fields: jsonb().$type<{ key: string; label: string; hint?: string }[]>().notNull().default([]),
     active: boolean().notNull().default(true),
+    /** Set on a template the app itself adds (e.g. 'release.zh'), so adding it
+     * again is a no-op. Null on everything a person wrote, and on the two
+     * English starters from before this column existed. */
+    builtinKey: text(),
     updatedBy: text().references(() => users.id),
     updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
     createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index("templates_idx").on(t.tenantId, t.active)],
+  (t) => [
+    index("templates_idx").on(t.tenantId, t.active),
+    uniqueIndex("templates_builtin_idx").on(t.tenantId, t.builtinKey),
+  ],
 );
 
 export const contracts = pgTable(
