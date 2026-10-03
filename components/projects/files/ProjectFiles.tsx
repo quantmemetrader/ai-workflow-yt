@@ -122,13 +122,14 @@ export function ProjectFiles({
 
   const pickView = storeView;
 
-  /* A selection only ever counts files still on the page (one deleted
-     elsewhere drops out of it on the next refresh). */
-  const liveIds = new Set(files.map((f) => f.id));
-  const selected = new Set([...picked].filter((id) => liveIds.has(id)));
-
   const needle = query.trim().toLowerCase();
   const shown = needle ? files.filter((f) => f.name.toLowerCase().includes(needle) || f.ownerName.toLowerCase().includes(needle)) : files;
+
+  /* A selection only ever counts files still on the page and left showing by
+     the filter box (one deleted elsewhere drops out on the next refresh; one
+     the filter hides is never moved or deleted unseen, QA 3 Oct). */
+  const liveIds = new Set(shown.map((f) => f.id));
+  const selected = new Set([...picked].filter((id) => liveIds.has(id)));
   const byRole = (r: ProjectFileRole) => shown.filter((f) => f.role === r);
 
   const guess = (f: File): ProjectFileRole => (f.type.startsWith("video/") ? "clip" : f.type.startsWith("audio/") ? "other" : "reference");

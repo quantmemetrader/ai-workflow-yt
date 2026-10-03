@@ -59,6 +59,8 @@ export function ModuleLibrary({ module, title, agentName, zh, folderId, files, c
 
   const needle = q.trim().toLowerCase();
   const shown = files.filter((f) => !needle || f.name.toLowerCase().includes(needle) || f.ownerName.toLowerCase().includes(needle));
+  /* Only what the filter leaves showing is ever deleted (QA, 3 Oct). */
+  const chosen = shown.filter((f) => picked.has(f.id)).map((f) => f.id);
   const trainedCount = files.filter((f) => f.training).length;
   const btn = (primary = false, danger = false): React.CSSProperties => ({ height: 32, padding: "0 13px", borderRadius: 8, border: `1px solid ${danger ? "#e5484d" : primary ? "#171717" : "#dcdbd6"}`, background: primary ? "#171717" : "#fff", color: danger ? "#c62a2f" : primary ? "#fff" : "#262626", fontFamily: "inherit", fontSize: 13, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" });
 
@@ -112,16 +114,16 @@ export function ModuleLibrary({ module, title, agentName, zh, folderId, files, c
         ) : null}
         {picking ? (
           <>
-            <span style={{ fontSize: 13, fontWeight: 600 }}>{t(`已选 ${picked.size} 个`, `${picked.size} selected`)}</span>
+            <span style={{ fontSize: 13, fontWeight: 600 }}>{t(`已选 ${chosen.length} 个`, `${chosen.length} selected`)}</span>
             <button type="button" style={btn()} onClick={() => setPicked(new Set(shown.map((f) => f.id)))}>{t("全选", "All")}</button>
             <button
               type="button"
               style={btn(false, true)}
-              disabled={!picked.size || pending}
+              disabled={!chosen.length || pending}
               onClick={async () => {
-                if (!picked.size || !(await ask.confirm({ title: t(`把 ${picked.size} 个文件移到回收站？`, `Move ${picked.size} files to the trash?`), body: t("30 天内可以恢复。", "They can be restored for 30 days."), confirm: t("移到回收站", "Move to trash"), danger: true }))) return;
+                if (!chosen.length || !(await ask.confirm({ title: t(`把 ${chosen.length} 个文件移到回收站？`, `Move ${chosen.length} files to the trash?`), body: t("30 天内可以恢复。", "They can be restored for 30 days."), confirm: t("移到回收站", "Move to trash"), danger: true }))) return;
                 start(async () => {
-                  const res = await deleteFilesAction([...picked]);
+                  const res = await deleteFilesAction(chosen);
                   if (res.error) notify(res.error);
                   else notify(t(`已删除 ${res.deleted} 个`, `Deleted ${res.deleted}`), "ok");
                   setPicking(false);

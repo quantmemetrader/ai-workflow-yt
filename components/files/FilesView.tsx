@@ -218,21 +218,28 @@ export function FilesView({
         onOpenFolder={(id) => router.push(id ? `/files/f/${id}` : "/files")}
         onOpenFile={picking ? togglePick : openFile}
         selected={picking ? picked : undefined}
-        banner={
-          canEdit && view !== "trash" && rows.length ? (
+        /* Batch select acts only on the files the filter box leaves showing:
+           全选 used to tick every row in the folder, and with a filter showing
+           12 it trashed 89 (QA, 3 Oct). The 按项目 lens draws its own shelves
+           with no ticks, so it has no batch bar at all. */
+        banner={(visibleIds: string[]) => {
+          if (!(canEdit && view !== "trash" && lens !== "projects" && rows.length)) return null;
+          const visible = new Set(visibleIds);
+          const chosen = [...picked].filter((id) => visible.has(id));
+          return (
             <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", margin: "0 0 12px" }}>
               {picking ? (
                 <>
-                  <span style={{ fontSize: 13, fontWeight: 600, color: "#171717" }}>{zh ? `已选 ${picked.size} 个文件` : `${picked.size} selected`}</span>
-                  <button type="button" className="fv-btn" onClick={() => setPicked(new Set(rows.map((r) => r.id)))}>{zh ? "全选" : "Select all"}</button>
+                  <span style={{ fontSize: 13, fontWeight: 600, color: "#171717" }}>{zh ? `已选 ${chosen.length} 个文件` : `${chosen.length} selected`}</span>
+                  <button type="button" className="fv-btn" disabled={!visibleIds.length} onClick={() => setPicked(new Set(visibleIds))}>{zh ? "全选" : "Select all"}</button>
                   <button
                     type="button"
                     className="fv-btn danger"
-                    disabled={!picked.size}
+                    disabled={!chosen.length}
                     onClick={async () => {
-                      if (!picked.size || !(await ask.confirm({ title: zh ? `把 ${picked.size} 个文件移到回收站？` : `Move ${picked.size} files to the trash?`, body: zh ? "30 天内可以恢复。" : "They can be restored for 30 days.", confirm: zh ? "移到回收站" : "Move to trash", danger: true }))) return;
+                      if (!chosen.length || !(await ask.confirm({ title: zh ? `把 ${chosen.length} 个文件移到回收站？` : `Move ${chosen.length} files to the trash?`, body: zh ? "30 天内可以恢复。" : "They can be restored for 30 days.", confirm: zh ? "移到回收站" : "Move to trash", danger: true }))) return;
                       start(async () => {
-                        const res = await deleteFilesAction([...picked]);
+                        const res = await deleteFilesAction(chosen);
                         if (res.error) notify(res.error);
                         else notify(zh ? `已删除 ${res.deleted} 个${res.failed ? `，${res.failed} 个没有权限` : ""}` : `Deleted ${res.deleted}${res.failed ? `, ${res.failed} not allowed` : ""}`, res.failed ? "info" : "ok");
                         stopPicking();
@@ -249,8 +256,8 @@ export function FilesView({
               )}
               <style>{`.fv-btn{height:30px;padding:0 12px;border:1px solid #dcdbd6;border-radius:8px;background:#fff;color:#262626;font:inherit;font-size:12.5px;cursor:pointer}.fv-btn:hover{background:#f7f7f5}.fv-btn.danger{border-color:#e5484d;color:#c62a2f}.fv-btn:disabled{opacity:.45;cursor:default}`}</style>
             </div>
-          ) : null
-        }
+          );
+        }}
         onUploadClick={() => input.current?.click()}
         onNewFolder={() => setNamingFolder(true)}
         onSetAccess={(f) => setChanging(f)}

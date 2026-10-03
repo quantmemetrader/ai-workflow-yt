@@ -350,7 +350,10 @@ export function FilesScreen(props: {
   renderBody?: (needle: string) => React.ReactNode;
   /** Batch select (30 Sep): the files ticked, drawn with a check; `banner` sits above the list (the 选择 / 删除 bar). */
   selected?: Set<string>;
-  banner?: React.ReactNode;
+  /** Given the ids of the files the filter box leaves showing, so 全选 and
+   * 删除所选 act on what is on screen rather than on every row (QA, 3 Oct:
+   * 全选 under a filter showing 12 trashed 89). */
+  banner?: React.ReactNode | ((visibleIds: string[]) => React.ReactNode);
 }): React.JSX.Element {
   const [filter, setFilter] = React.useState("");
   const {
@@ -722,7 +725,7 @@ export function FilesScreen(props: {
                 </div>
               ) : null}
 
-              {banner}
+              {typeof banner === "function" ? banner(files.map((f) => f.id)) : banner}
               {renderBody ? (
                 renderBody(needle)
               ) : empty ? (
