@@ -114,6 +114,20 @@ const pool =
     allowExitOnIdle: !underPm2,
   });
 
+/*
+ * An idle connection that dies is logged, not fatal.
+ *
+ * Neon closes idle TLS sessions, and when the socket of a client sitting
+ * unused in the pool goes, pg-pool removes the client and emits "error" on
+ * the pool (pg-pool/index.js, makeIdleListener). An EventEmitter "error" with
+ * no listener is an uncaught exception, so without this the whole process —
+ * a web instance, a worker — would exit over a connection nobody was using.
+ * The client is already gone when this fires; the next query opens a new one.
+ */
+pool.on("error", (err) => {
+  console.error("[db] idle client error", err instanceof Error ? err.message : err);
+});
+
 if (!env.isProd) global.__pgPool = pool;
 
 /**
