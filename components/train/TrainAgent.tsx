@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useAsk } from "@/components/ui/useAsk";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AgentIcon } from "@/components/agents/AgentIcon";
@@ -262,6 +263,7 @@ function Toggle({ on, onChange, disabled, label }: { on: boolean; onChange: (v: 
 function Examples({ agent, zh, examples, activeChars, canEdit, onChanged }: { agent: TrainKey; zh: boolean; examples: TrainRow[]; activeChars: number; canEdit: boolean; onChanged: () => void }) {
   const t = (a: string, b: string) => (zh ? a : b);
   const [pending, start] = React.useTransition();
+  const ask = useAsk(zh);
   const [adding, setAdding] = React.useState(false);
   const [title, setTitle] = React.useState("");
   const [body, setBody] = React.useState("");
@@ -304,6 +306,8 @@ function Examples({ agent, zh, examples, activeChars, canEdit, onChanged }: { ag
     });
 
   return (
+    <>
+      {ask.dialog}
     <Card
       icon="paperclip"
       title={t("范例", "Examples")}
@@ -434,8 +438,8 @@ function Examples({ agent, zh, examples, activeChars, canEdit, onChanged }: { ag
                       <button
                         type="button"
                         style={{ ...smallButton(), color: "#c42b2b", borderColor: "#f0c7c7" }}
-                        onClick={() => {
-                          if (!window.confirm(t(`删除范例「${e.title}」？删除后不能恢复。`, `Delete the example "${e.title}"? This cannot be undone.`))) return;
+                        onClick={async () => {
+                          if (!(await ask.confirm({ title: t(`删除范例「${e.title}」？`, `Delete the example "${e.title}"?`), body: t("删除后不能恢复。", "This cannot be undone."), danger: true }))) return;
                           act(() => deleteExampleAction(agent, e.id), t("已删除", "Deleted"));
                         }}
                       >
@@ -451,6 +455,7 @@ function Examples({ agent, zh, examples, activeChars, canEdit, onChanged }: { ag
         </div>
       )}
     </Card>
+    </>
   );
 }
 

@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useAsk } from "@/components/ui/useAsk";
 import { useRouter } from "next/navigation";
 import { Icon, type IconName } from "@/components/ui/Icon";
 import { PersonAvatar } from "@/components/ui/PersonAvatar";
@@ -108,6 +109,7 @@ export function ProjectFiles({
   const t = (a: string, b: string) => (zh ? a : b);
   const router = useRouter();
   const [pending, start] = React.useTransition();
+  const ask = useAsk(zh);
   const [query, setQuery] = React.useState("");
   const view = React.useSyncExternalStore(subscribeView, readView, () => "list" as View);
   const [target, setTarget] = React.useState<"auto" | ProjectFileRole>("auto");
@@ -174,18 +176,18 @@ export function ProjectFiles({
         setSelected(new Set());
         router.refresh();
       }),
-    unlink: (f: FileItem) => {
+    unlink: async (f: FileItem) => {
       const stays = f.inBin ? t("\n\n它还在剪辑台的素材箱里，所以仍会出现在「素材」。要彻底拿掉，请在剪辑台移除。", "\n\nIt is still in the editor's bin, so it stays under Footage. Remove it in the editor to take it out.") : "";
-      if (!window.confirm(t(`把「${f.name}」移出这个项目？文件还在「文件」里，不会删除。`, `Take "${f.name}" out of this project? It stays in Files.`) + stays)) return;
+      if (!(await ask.confirm({ title: t(`把「${f.name}」移出这个项目？`, `Take "${f.name}" out of this project?`), body: t("文件还在「文件」里，不会删除。", "It stays in Files.") + stays }))) return;
       start(async () => {
         if (!failed(await unlinkProjectFileAction(projectId, f.id))) notify(t("已移出项目", "Taken out of the project"), "ok");
         router.refresh();
       });
     },
-    remove: (ids: string[]) => {
+    remove: async (ids: string[]) => {
       const one = files.find((f) => f.id === ids[0]);
       const msg = ids.length === 1 && one ? t(`删除「${one.name}」？30 天内可以在回收站恢复。`, `Delete "${one.name}"? It can be restored from the trash for 30 days.`) : t(`删除选中的 ${ids.length} 个文件？30 天内可以在回收站恢复。`, `Delete ${ids.length} files? They can be restored from the trash for 30 days.`);
-      if (!window.confirm(msg)) return;
+      if (!(await ask.confirm({ title: msg, danger: true }))) return;
       start(async () => {
         const r = await deleteProjectFilesAction(projectId, ids);
         if (!failed(r) && "deleted" in r) {
@@ -207,7 +209,7 @@ export function ProjectFiles({
         await navigator.clipboard.writeText(url);
         notify(t("链接已复制，同事登录后可以打开", "Link copied; colleagues open it once signed in"), "ok");
       } catch {
-        window.prompt(t("复制这个链接", "Copy this link"), url);
+        await ask.prompt({ title: t("复制这个链接", "Copy this link"), initial: url, confirm: t("好", "Done") });
       }
     },
     download: (ids: string[]) => {
@@ -227,6 +229,8 @@ export function ProjectFiles({
   const selIds = [...selected];
 
   return (
+    <>
+      {ask.dialog}
     <PageBody>
       <style>{CSS}</style>
       {/* ---- the drop zone ---- */}
@@ -415,6 +419,7 @@ export function ProjectFiles({
 
       {preview ? <PreviewModal key={preview.id} f={preview} zh={zh} projectId={projectId} onClose={() => setPreview(null)} onDownload={() => act.download([preview.id])} /> : null}
     </PageBody>
+    </>
   );
 }
 

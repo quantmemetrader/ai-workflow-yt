@@ -1,6 +1,7 @@
 "use client";
 
 import { TextSelection } from "@tiptap/pm/state";
+import { useAsk } from "@/components/ui/useAsk";
 import * as React from "react";
 import Link from "next/link";
 import { EditorContent, useEditor } from "@tiptap/react";
@@ -47,6 +48,7 @@ export function DocEditor({
   openShare?: boolean;
 }) {
   const t = (a: string, b: string) => (zh ? a : b);
+  const ask = useAsk(zh);
   const [mode, setMode] = React.useState<Mode>(canEdit ? "edit" : "view");
   const [zoom, setZoom] = React.useState(1);
   const [state, setState] = React.useState<"saved" | "dirty" | "saving" | "error">("saved");
@@ -195,10 +197,10 @@ export function DocEditor({
     return () => window.removeEventListener("keydown", key);
   }, [save]);
 
-  const link = () => {
+  const link = async () => {
     if (!editor) return;
     const prev = editor.getAttributes("link").href as string | undefined;
-    const url = window.prompt(t("链接地址", "Link address"), prev ?? "https://");
+    const url = await ask.prompt({ title: t("链接地址（留空则去掉链接）", "Link address (empty removes the link)"), initial: prev ?? "https://" });
     if (url === null) return;
     if (!url.trim()) editor.chain().focus().extendMarkRange("link").unsetLink().run();
     else editor.chain().focus().extendMarkRange("link").setLink({ href: url.trim() }).run();
@@ -207,6 +209,8 @@ export function DocEditor({
   const stateLabel = state === "saving" ? t("正在保存…", "Saving…") : state === "dirty" ? t("有改动，稍后自动保存", "Unsaved changes") : state === "error" ? t("没保存上，点这里重试", "Not saved, click to retry") : t("已保存", "Saved");
 
   return (
+    <>
+      {ask.dialog}
     <div className="gd-root doc-root" data-gd-root="" style={{ minHeight: "100%" }}>
       <style>{GD_CSS}</style>
       <style>{DOC_CSS}</style>
@@ -311,6 +315,7 @@ export function DocEditor({
         ) : null}
       </div>
     </div>
+    </>
   );
 }
 

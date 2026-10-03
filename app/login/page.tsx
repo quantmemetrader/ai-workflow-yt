@@ -11,7 +11,7 @@ const LOCALES: Locale[] = ["zh-CN", "en"];
 
 export default async function LoginPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const next = safeNext((await searchParams).next);
-  if (await getViewer()) redirect(next ?? "/home");
+  if (await getViewer()) redirect(next ?? "/");
 
   /* Whatever this browser's last signed-in person reads in. Without it the
      screen opened in Chinese for everybody, every time. */

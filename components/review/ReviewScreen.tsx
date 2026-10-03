@@ -1,6 +1,7 @@
 "use client";
 
 import { Ago } from "@/components/ui/Ago";
+import { useAsk } from "@/components/ui/useAsk";
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -260,6 +261,7 @@ function Points({ title, items, color }: { title: string; items: string[]; color
 }
 
 function PostRow({ p, zh, projectId, canWork, cols, showCompletion, showTrend }: { p: PostView; zh: boolean; projectId: string; canWork: boolean; cols: readonly (typeof STAT_KEYS)[number][]; showCompletion: boolean; showTrend: boolean }) {
+  const ask = useAsk(zh);
   const t = (a: string, b: string) => (zh ? a : b);
   const router = useRouter();
   const [typing, setTyping] = React.useState(false);
@@ -299,6 +301,7 @@ function PostRow({ p, zh, projectId, canWork, cols, showCompletion, showTrend }:
         ) : null}
         <td style={{ ...td, paddingRight: 18, textAlign: "right", whiteSpace: "nowrap" }}>
           <span style={{ display: "inline-flex", gap: 6 }}>
+            {ask.dialog}
             {p.url ? (
               <a href={p.url} target="_blank" rel="noreferrer" style={smallButton(false)} title={t("打开作品", "Open the post")}>
                 <Icon name="external" size={12} />
@@ -314,8 +317,8 @@ function PostRow({ p, zh, projectId, canWork, cols, showCompletion, showTrend }:
                 type="button"
                 disabled={pending}
                 title={t("不再跟踪这条（已发布记录里的链接不受影响）", "Stop tracking (the published record keeps its link)")}
-                onClick={() => {
-                  if (!window.confirm(t("不再跟踪这条作品的数据？", "Stop tracking this post?"))) return;
+                onClick={async () => {
+                  if (!(await ask.confirm({ title: t("不再跟踪这条作品的数据？", "Stop tracking this post?") }))) return;
                   start(async () => {
                     await removePostAction(projectId, p.platform, p.url);
                     router.refresh();

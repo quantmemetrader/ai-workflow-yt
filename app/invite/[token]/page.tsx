@@ -5,6 +5,7 @@ import { tenants } from "@/lib/db/schema";
 import { getViewer } from "@/lib/auth/dal";
 import { inviteByToken } from "@/lib/invites/service";
 import { AcceptForm } from "./accept-form";
+import { NAV_BY_MODULE } from "@/lib/nav";
 
 export const metadata = { title: "加入工作台" };
 
@@ -17,7 +18,7 @@ export const metadata = { title: "加入工作台" };
  * find out which addresses have been invited.
  */
 export default async function InvitePage({ params }: { params: Promise<{ token: string }> }) {
-  if (await getViewer()) redirect("/chat");
+  if (await getViewer()) redirect("/");
 
   const { token } = await params;
   const invite = await inviteByToken(token);
@@ -67,7 +68,7 @@ export default async function InvitePage({ params }: { params: Promise<{ token: 
               fontSize: 11,
             }}
           >
-            {m}
+            {NAV_BY_MODULE.get(m)?.labelZh ?? m}
           </span>
         ))}
       </div>

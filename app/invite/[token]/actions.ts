@@ -28,5 +28,5 @@ export async function acceptInviteAction(_prev: AcceptState, formData: FormData)
     userAgent: h.get("user-agent") ?? undefined,
   });
 
-  redirect("/chat");
+  redirect("/");
 }
