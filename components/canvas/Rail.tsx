@@ -4,6 +4,7 @@ import Link, { useLinkStatus } from "next/link";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { RailAccount, type RailAccountInfo } from "@/components/shell/RailAccount";
+import { ThemeToggle } from "@/components/shell/ThemeToggle";
 import { BrandMark } from "@/components/brand/BrandMark";
 import { useLocalPreference } from "@/lib/client/preference";
 import { useResizable } from "@/components/ui/Resizer";
@@ -188,6 +189,8 @@ export function Rail({ modules, locale, account, isAdmin = false }: { modules: M
       ) : null}
 
       </div>
+
+      <ThemeToggle zh={zh} wide={open} initial="light" />
 
       <button
         type="button"

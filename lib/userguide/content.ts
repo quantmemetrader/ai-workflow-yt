@@ -246,6 +246,7 @@ export const SECTIONS: Section[] = [
           "附文件：点回形针、把文件拖进来，或直接粘贴截图。AI 会读完整个文件再回答；文件只你自己看得到，不会拿去训练。",
           "有用 / 不好：每条回答下面点一下。「不好」可以写下哪里不好，AI 会从这些反馈里总结改进建议。",
           "教它：「教 XX：以后都这样做」写一条规则。管理员教的直接生效；其他同事教的会交给管理员确认。",
+          "外观：左下角「外观」一键切换浅色、深色或跟随系统，只影响你自己的浏览器。",
           "管理对话：左边「最近」里指到一条对话上，点「…」可以重命名或删除；「新对话」开始新的一轮。",
         ],
         [
@@ -254,6 +255,7 @@ export const SECTIONS: Section[] = [
           "Attachments: the paperclip, drag a file in, or paste a screenshot. The AI reads the whole file before answering; the file is private to you and never used for training.",
           "Helpful / Not good (有用 / 不好) under each answer. Not good (不好) lets you say what was wrong; the AI turns this feedback into improvement suggestions.",
           "Teach it: write a rule that starts with Teach (教), such as 教 XX：以后都这样做 (from now on, always do it this way). An admin's rule takes effect at once; another colleague's goes to an admin to confirm.",
+          "Appearance: 外观 at the bottom left switches Light, Dark or System; it only changes your own browser.",
           "Managing conversations: hover one under Recent (最近) and press … to rename or delete; New chat (新对话) starts a new one.",
         ],
       ),

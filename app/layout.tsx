@@ -2,6 +2,8 @@ import type { Metadata, Viewport } from "next";
 import { SimplifiedGuard } from "@/components/zh/SimplifiedGuard";
 import "./globals.css";
 import { BOOT_SCRIPT } from "@/lib/client/boot";
+import { cookies } from "next/headers";
+import { THEME_COOKIE, THEME_CSS, themeOf } from "@/lib/theme";
 
 /**
  * What the site says about itself to a browser tab, a bookmark, a shared
@@ -50,12 +52,14 @@ export const viewport: Viewport = {
 /** `lang` matches DEFAULT_LOCALE in lib/i18n.ts. It was zh-Hant-HK while every
  * string shipped is Simplified, which hands a screen reader the wrong
  * pronunciation and the browser the wrong font stack. */
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const theme = themeOf((await cookies()).get(THEME_COOKIE)?.value);
   return (
     /* Never translated by the browser (the owner, 30 Sep: "we want all in simplified chinese"):
        a Traditional-set browser rewrote the page into wrong characters. English is 设置 › 语言. */
-    <html lang="zh-Hans-CN" translate="no" className="notranslate">
+    <html lang="zh-Hans-CN" translate="no" className="notranslate" data-theme={theme} suppressHydrationWarning>
       <head>
+        <style dangerouslySetInnerHTML={{ __html: THEME_CSS }} />
         <meta name="tg-release" content={process.env.NEXT_DEPLOYMENT_ID ?? ""} />
         <meta httpEquiv="Content-Language" content="zh-Hans-CN" />
         <meta name="google" content="notranslate" />

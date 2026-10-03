@@ -498,6 +498,11 @@ export async function saveRichAction(projectId: unknown, doc: unknown, html: unk
   if (!res) return { error: c.zh ? "脚本已批准锁定，先点「继续编辑」" : "The script is locked" };
   const cleanHtml = typeof html === "string" ? html.slice(0, 3_000_000).replace(/<script[\s\S]*?<\/script>/gi, "").replace(/\son\w+="[^"]*"/gi, "") : null;
   await db.update(scripts).set({ doc: clean as unknown as Record<string, unknown>, docHtml: cleanHtml }).where(eq(scripts.id, scriptId));
+  /* Typing is kept as a version on its own every twenty minutes, so a morning
+     of edits can always be stepped back through in 版本, not only the points
+     someone remembered to save (4 Oct). Unchanged drafts are not repeated. */
+  const [lastCut] = await db.select({ at: scriptVersions.createdAt }).from(scriptVersions).where(eq(scriptVersions.scriptId, scriptId)).orderBy(desc(scriptVersions.versionNo)).limit(1);
+  if (!lastCut || Date.now() - lastCut.at.getTime() > 20 * 60_000) await keepDraft(c, scriptId, c.zh ? "自动保存" : "Autosaved").catch(() => null);
   return { ok: true as const, at: new Date().toISOString() };
 }
 
