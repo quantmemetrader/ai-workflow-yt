@@ -1,5 +1,7 @@
 "use client";
 
+import * as React from "react";
+
 
 import { ModelChip, usePanelModel } from "@/components/chat/ModelChip";
 import { useRef, useState } from "react";
@@ -130,9 +132,33 @@ export function ResearchAgentPanel({
     att.clear();
   };
 
+  /* Files dropped anywhere on the panel, not only on the box (Rahul, 4 Oct:
+     drag-and-drop must work everywhere the client can talk to the AI). The
+     panel lights up while something is held over it. */
+  const [dragOver, setDragOver] = React.useState(false);
+  const dragDepth = React.useRef(0);
+  const hasFiles = (e: React.DragEvent) => Array.from(e.dataTransfer.types).includes("Files");
+  const dropZone = attach
+    ? {
+        onDragEnter: (e: React.DragEvent) => { if (!hasFiles(e)) return; dragDepth.current += 1; setDragOver(true); },
+        onDragOver: (e: React.DragEvent) => { if (!hasFiles(e)) return; e.preventDefault(); e.dataTransfer.dropEffect = "copy"; },
+        onDragLeave: (e: React.DragEvent) => { if (!hasFiles(e)) return; dragDepth.current = Math.max(0, dragDepth.current - 1); if (!dragDepth.current) setDragOver(false); },
+        onDrop: (e: React.DragEvent) => {
+          dragDepth.current = 0;
+          setDragOver(false);
+          if (!e.dataTransfer.files.length) return;
+          e.preventDefault();
+          e.stopPropagation();
+          att.add(e.dataTransfer.files);
+          requestAnimationFrame(() => box.current?.focus());
+        },
+      }
+    : {};
+
   return (
     <div
       data-agent-panel=""
+      {...dropZone}
       style={{
         position: "relative",
         background: "#fcfcfc",
@@ -143,6 +169,12 @@ export function ResearchAgentPanel({
     >
       {dock ? null : handle}
       <style dangerouslySetInnerHTML={{ __html: CSS }} />
+      {dragOver ? (
+        <div aria-hidden style={{ position: "absolute", inset: 6, zIndex: 30, borderRadius: 12, border: "2px dashed #171717", background: "rgba(255,255,255,.92)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 6, pointerEvents: "none", textAlign: "center", padding: 16 }}>
+          <span style={{ fontSize: 14, fontWeight: 600, color: "#171717" }}>{zh ? "松开，把文件附到这条消息" : "Drop to attach to this message"}</span>
+          <span style={{ fontSize: 12, color: "#7c7c7c" }}>{zh ? "任何格式都行：Word、PDF、图片、表格、视频" : "Any format: documents, PDFs, pictures, sheets, video"}</span>
+        </div>
+      ) : null}
       <div
         style={{
           height: 42,

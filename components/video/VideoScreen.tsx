@@ -1,5 +1,7 @@
 "use client";
 
+import { DropVeil, useFileDrop } from "@/components/chat/DropVeil";
+
 import { Icon } from "@/components/ui/Icon";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { VideoFolders } from "@/components/video/VideoFolders";
@@ -328,6 +330,8 @@ export function VideoScreen({
     const files = Array.from(list);
     if (files.length) setAskingUpload(files);
   };
+  /* Footage dragged anywhere onto the page goes into this project (Rahul, 4 Oct: drag-and-drop everywhere). */
+  const draggingFootage = useFileDrop(Boolean(project), (list) => uploadIntoProject(list));
   const sendIntoProject = async (files: File[], access: AccessChoice) => {
     const done = beginWork(zh ? `上传 ${files.length} 个文件` : `Uploading ${files.length} file(s)`);
     const told = new Set<string>();
@@ -440,6 +444,7 @@ export function VideoScreen({
 
   return (
     <div style={{ flexGrow: 1, minWidth: 0, minHeight: 0, display: "flex", flexDirection: "column" }}>
+      <DropVeil on={draggingFootage} zh={zh} title={zh ? "松开，把文件加到这个项目的素材里" : "Drop to add the files to this project's footage"} sub={zh ? "视频、音频、图片都可以，上传后放进素材箱" : "Video, audio or pictures; they go into the footage bin"} />
       {embedded && project ? (
         <EditBand
           projectId={embedded.projectId}

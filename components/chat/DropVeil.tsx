@@ -62,13 +62,13 @@ export function useFileDrop(enabled: boolean, onFiles: (files: FileList) => void
 }
 
 /** The veil over the screen while files are held over it. */
-export function DropVeil({ on, zh }: { on: boolean; zh: boolean }) {
+export function DropVeil({ on, zh, title, sub }: { on: boolean; zh: boolean; title?: string; sub?: string }) {
   if (!on) return null;
   return (
     <div aria-hidden style={{ position: "fixed", inset: 0, zIndex: 80, background: "rgba(23,23,23,.28)", display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none" }}>
       <div style={{ padding: "28px 40px", borderRadius: 18, background: "#fff", border: "2px dashed #171717", textAlign: "center", boxShadow: "0 12px 40px rgba(0,0,0,.18)" }}>
-        <div style={{ fontSize: 17, fontWeight: 600, color: "#171717" }}>{zh ? "松开，把文件放进这条消息" : "Drop to add the files to this message"}</div>
-        <div style={{ fontSize: 13, color: "#6b6b6b", marginTop: 6 }}>{zh ? "任何格式都行：PPT、Word、Excel、PDF、图片、音频、视频、压缩包" : "Any format: slides, documents, spreadsheets, PDFs, pictures, audio, video, zip"}</div>
+        <div style={{ fontSize: 17, fontWeight: 600, color: "#171717" }}>{title ?? (zh ? "松开，把文件放进这条消息" : "Drop to add the files to this message")}</div>
+        <div style={{ fontSize: 13, color: "#6b6b6b", marginTop: 6 }}>{sub ?? (zh ? "任何格式都行：PPT、Word、Excel、PDF、图片、音频、视频、压缩包" : "Any format: slides, documents, spreadsheets, PDFs, pictures, audio, video, zip")}</div>
       </div>
     </div>
   );

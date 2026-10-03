@@ -5,6 +5,7 @@ import { Ago } from "@/components/ui/Ago";
 import type { TrainSummary } from "@/lib/agents/training";
 import type { TrainKey } from "@/lib/agents/train-keys";
 import { trainHint, trainName } from "@/components/train/names";
+import { ExampleDrop } from "@/components/train/ExampleDrop";
 
 /**
  * AI 训练's first page: what it is for in one sentence and three steps,
@@ -26,7 +27,7 @@ export function TrainOverview({ zh, summaries, canTrain = true }: { zh: boolean;
         icon="spark"
         tone="accent"
         title={t("AI 训练", "Train the AI")}
-        sub={t("给每位 AI 员工写长期说明、上传范例，它以后每次干活都会照着做。", "Give each AI employee standing instructions and examples; it follows them in every job from now on.")}
+        sub={t("给每位 AI 员工写长期说明、上传范例，它以后每次干活都会照着做。范例文件可以直接拖到下面对应员工的卡片上。", "Give each AI employee standing instructions and examples; it follows them in every job from now on. Drop example files straight onto an employee\u2019s card below.")}
       >
         <ol style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", gap: 10, flexWrap: "wrap" }}>
           {steps.map((s, i) => (
@@ -44,8 +45,8 @@ export function TrainOverview({ zh, summaries, canTrain = true }: { zh: boolean;
         const s = byKey.get(key);
         const trained = Boolean(s && (s.instructionChars || s.styleChars || s.examples));
         return (
+          <ExampleDrop key={key} agent={key} name={trainName(key, zh)} zh={zh} enabled={canTrain}>
           <Card
-            key={key}
             title={
               <Link href={`/train/${key}`} prefetch={false} style={{ display: "inline-flex", alignItems: "center", gap: 10, color: "inherit", textDecoration: "none" }}>
                 <AgentIcon agent={key === "assistant" ? null : key} size={30} />
@@ -82,6 +83,7 @@ export function TrainOverview({ zh, summaries, canTrain = true }: { zh: boolean;
               )}
             </div>
           </Card>
+          </ExampleDrop>
         );
       })}
     </PageBody>

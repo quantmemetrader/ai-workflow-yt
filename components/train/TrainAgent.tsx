@@ -1,5 +1,7 @@
 "use client";
 
+import { DropVeil, useFileDrop } from "@/components/chat/DropVeil";
+
 import * as React from "react";
 import { useAsk } from "@/components/ui/useAsk";
 import Link from "next/link";
@@ -297,6 +299,9 @@ function Examples({ agent, zh, examples, activeChars, canEdit, onChanged }: { ag
     }
   };
 
+  /* A file dragged anywhere onto this page becomes one of its examples (Rahul, 4 Oct). */
+  const draggingExample = useFileDrop(canEdit, (list) => void upload(list));
+
   const act = (fn: () => Promise<{ ok: true } | { error: string }>, ok?: string) =>
     start(async () => {
       const r = await fn();
@@ -310,6 +315,7 @@ function Examples({ agent, zh, examples, activeChars, canEdit, onChanged }: { ag
   return (
     <>
       {ask.dialog}
+      <DropVeil on={draggingExample} zh={zh} title={zh ? "松开，加为范例" : "Drop to add as examples"} sub={zh ? "Word、PDF、文本都行，它会学结构和口吻" : "Word, PDF or text; it learns the structure and tone"} />
     <Card
       icon="paperclip"
       title={t("范例", "Examples")}
@@ -325,6 +331,7 @@ function Examples({ agent, zh, examples, activeChars, canEdit, onChanged }: { ag
           onDragLeave={() => setDrag(false)}
           onDrop={(e) => {
             e.preventDefault();
+            e.stopPropagation();
             setDrag(false);
             void upload(e.dataTransfer.files);
           }}
