@@ -158,6 +158,23 @@ export const AGENT_LABELS: Record<AgentKey, AgentLabel> = Object.fromEntries(
 ) as Record<AgentKey, AgentLabel>;
 
 /**
+ * Names an employee went by before, still written into stored messages and
+ * card buttons (#研究日报 plan cards read 「交给编剧」 after 编剧 became 文案,
+ * QA 3 Oct). Swapped for the current name — which honours a studio rename —
+ * when the text is drawn; what is stored is left as it was.
+ */
+const LEGACY_NAMES: readonly (readonly [string, AgentKey])[] = [["编剧", "script"]];
+
+export function withCurrentAgentNames(text: string): string {
+  let out = text;
+  for (const [old, key] of LEGACY_NAMES) {
+    const now = AGENT_LABELS[key].nameLocal;
+    if (now && now !== old && out.includes(old)) out = out.split(old).join(now);
+  }
+  return out;
+}
+
+/**
  * The colour that follows each employee around: its icon, its stage on the
  * strip, its node in the flow, the dot beside its name. Hues far enough
  * apart to be told at a glance, none of them the blue the product uses for

@@ -8,7 +8,7 @@ import { formatTextarea, type Format } from "@/components/canvas/composer-format
 import { FormattedPreview, HAS_MARKUP } from "@/components/ui/FormattedPreview";
 import { Markdown } from "@/components/ui/Markdown";
 import { JUMP_EVENT } from "@/components/shell/CommandPalette";
-import { AGENT_COLORS, AGENT_LABELS, AGENT_TINTS, isTagStart, parseAgentMentions, splitMentions, type AgentKey } from "@/lib/agents/catalog";
+import { AGENT_COLORS, AGENT_LABELS, AGENT_TINTS, isTagStart, parseAgentMentions, splitMentions, withCurrentAgentNames, type AgentKey } from "@/lib/agents/catalog";
 import {
   AgentMark,
   MentionMenu,
@@ -431,20 +431,30 @@ function HandoffArrow() {
  * looks live but is not is worse than no button.
  */
 function Card({
-  actions,
+  actions: stored,
   done,
   zh,
   busy,
   onPress,
+  topic,
 }: {
   actions: CardAction[];
   done: CardDone | null | undefined;
   zh: boolean;
   busy: string | null;
   onPress: (id: string) => void;
+  /** The 《…》 the message is about, for a card answered without a button
+   * (策划 answers its own plan card, `actionId: "auto"`). */
+  topic?: string | null;
 }) {
-  if (!actions.length) return null;
+  if (!stored.length) return null;
+  /* Buttons written under an old name (「交给编剧」) read with the current one. */
+  const actions = stored.map((a) => ({ ...a, label: withCurrentAgentNames(a.label) }));
   const chosen = actions.find((a) => a.id === done?.actionId);
+  /* What was chosen: the button pressed, else the topic the card is about.
+     策划 answering its own plan used to read 「策划 选了「…」」 (QA, 3 Oct). */
+  const chosenZh = chosen ? chosen.label : topic ? `《${topic}》` : null;
+  const chosenEn = chosen ? chosen.labelEn : topic ? `《${topic}》` : null;
 
   if (done) {
     /* Answered. The buttons that were not pressed are gone, not greyed: a
@@ -469,7 +479,13 @@ function Card({
           <svg viewBox="0 0 24 24" style={{ width: 11, height: 11, stroke: "currentColor", fill: "none", strokeWidth: 2.4, strokeLinecap: "round", strokeLinejoin: "round" }}>
             <path d="m5 12.5 4.5 4.5L19 7.5" />
           </svg>
-          {zh ? `${done.by} 选了「${chosen ? chosen.label : "…"}」` : `${done.by} chose “${chosen ? chosen.labelEn : "…"}”`}
+          {zh
+            ? chosenZh
+              ? `${done.by} 选了「${chosenZh}」`
+              : `${done.by} 已处理`
+            : chosenEn
+              ? `${done.by} chose “${chosenEn}”`
+              : `${done.by} handled it`}
         </span>
         {opens.map((a) => (
           <Link key={a.id} href={a.href ?? "#"} prefetch={false} style={{ fontSize: 12, color: "#525252", textDecoration: "none" }}>
@@ -1081,7 +1097,9 @@ export function ChannelSurface(props: {
               const agentTint = m.agentKey ? AGENT_TINTS[m.agentKey] : null;
               /* An employee's brief or plan opens with a picture character
                  as its title decoration; the product draws none. */
-              const body = m.isAgent === true ? withoutLeadingPictures(m.body) : m.body;
+              /* …and may still call 文案 by an old name (编剧), drawn as the
+                 current one; the stored text is untouched. */
+              const body = m.isAgent === true ? withCurrentAgentNames(withoutLeadingPictures(m.body)) : m.body;
 
               return (
                 <React.Fragment key={m.id}>
@@ -1198,6 +1216,7 @@ export function ChannelSurface(props: {
                       <Card
                         actions={m.actions ?? []}
                         done={m.done}
+                        topic={/《([^》]{2,80})》/.exec(body)?.[1] ?? null}
                         zh={zh}
                         busy={props.pressing ?? null}
                         onPress={(id) => props.onPress?.(m.id, id)}

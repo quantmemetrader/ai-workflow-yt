@@ -12,7 +12,7 @@ import { AgentIcon } from "@/components/agents/AgentIcon";
 import { Icon, type IconName } from "@/components/ui/Icon";
 import { MentionMenu, type MentionPerson } from "@/components/chat/MentionMenu";
 import { useMentions } from "@/components/chat/useMentions";
-import { AGENT_COLORS, AGENT_TINTS, agentTag, parseAgentMentions, type AgentKey } from "@/lib/agents/catalog";
+import { AGENT_COLORS, AGENT_TINTS, agentTag, parseAgentMentions, withCurrentAgentNames, type AgentKey } from "@/lib/agents/catalog";
 import { pressCardAction, sendChannelMessage } from "@/app/(app)/chat/actions";
 import { applySendBackAction, settleSendBackAction, chooseScriptAction, chooseTopicAction } from "@/app/(app)/projects/actions";
 import { addClipAction, addItemAction } from "@/app/(app)/video/actions";
@@ -920,7 +920,7 @@ function ChatDrawer({ project: p, zh, people, onClose }: { project: ProjectDetai
                   {/* Bare app paths (「在脚本页看、改：/script/scr_…」) as short
                       links, not a raw address that breaks across lines
                       (QA, 2 Oct). */}
-                  <LinkedText text={linkPaths(m.body, p.id, zh)} />
+                  <LinkedText text={linkPaths(withCurrentAgentNames(m.body), p.id, zh)} />
                   {/* What it handed over, as links (this project itself is
                       already on screen), another project it names, and the
                       live chip of an edit it started. */}
@@ -962,18 +962,18 @@ function ChatDrawer({ project: p, zh, people, onClose }: { project: ProjectDetai
                       {m.actions.map((a, i) =>
                         a.kind === "open" ? (
                           <Link key={a.id} href={a.href ?? "#"} style={{ ...btn(false), height: 26, fontSize: 11.5, textDecoration: "none" }}>
-                            {zh ? a.label : a.labelEn}
+                            {zh ? withCurrentAgentNames(a.label) : a.labelEn}
                           </Link>
                         ) : a.kind === "run" && a.op === "stock-cut" ? (
                           /* On its own project's page the stock one-go is the
                              video card's own button; the press here is the
                              same thing, through the chat so it is recorded. */
                           <button key={a.id} type="button" disabled={pending} onClick={() => { setPressing(m.id + a.id); start(async () => { const r = await pressCardAction(p.channel.slug, m.id, a.id); if (r?.error) notify(r.error); setPressing(null); router.refresh(); }); }} style={{ ...btn(false), height: 26, fontSize: 11.5, opacity: pressing === m.id + a.id ? 0.55 : 1 }}>
-                            {zh ? a.label : a.labelEn}
+                            {zh ? withCurrentAgentNames(a.label) : a.labelEn}
                           </button>
                         ) : (
                           <button key={a.id} type="button" disabled={pending} onClick={() => { setPressing(m.id + a.id); start(async () => { await pressCardAction(p.channel.slug, m.id, a.id); setPressing(null); router.refresh(); }); }} style={{ ...btn(i === 0), height: 26, fontSize: 11.5, opacity: pressing === m.id + a.id ? 0.55 : 1 }}>
-                            {zh ? a.label : a.labelEn}
+                            {zh ? withCurrentAgentNames(a.label) : a.labelEn}
                           </button>
                         ),
                       )}

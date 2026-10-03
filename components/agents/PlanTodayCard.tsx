@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { Icon } from "@/components/ui/Icon";
 import { AgentIcon } from "@/components/agents/AgentIcon";
 import { INK, LINE, MUTED, bigButton } from "@/components/projects/kit";
-import { AGENT_KEYS, AGENT_LABELS, type AgentKey } from "@/lib/agents/catalog";
+import { AGENT_KEYS, AGENT_LABELS, withCurrentAgentNames, type AgentKey } from "@/lib/agents/catalog";
 import { startFromTopicAction } from "@/app/(app)/projects/actions";
 import { refreshPlanAction } from "@/app/(app)/research/plan-actions";
 import { notify } from "@/lib/client/notify";
@@ -100,7 +100,7 @@ export function PlanTodayCard({
               {plan.prepared ? (
                 <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11.5, fontWeight: 600, color: "#0b7a63", background: "#e3f4ee", borderRadius: 999, padding: "0 8px", lineHeight: "18px" }}>
                   <svg viewBox="0 0 24 24" width={11} height={11} aria-hidden fill="none" stroke="currentColor" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round"><path d="m5 12.5 4.5 4.5L19 7.5" /></svg>
-                  {t(`文案已写好初稿（${plan.prepared.beats} 个分镜）`, `First draft ready (${plan.prepared.beats} beats)`)}
+                  {t(`${AGENT_LABELS.script.nameLocal}已写好初稿（${plan.prepared.beats} 个分镜）`, `First draft ready (${plan.prepared.beats} beats)`)}
                 </span>
               ) : null}
             </div>
@@ -119,9 +119,9 @@ export function PlanTodayCard({
             <div style={{ minWidth: 0 }}>
               <div style={{ fontSize: 13.5, color: INK, lineHeight: 1.55, overflowWrap: "anywhere" }}>
                 {isAgent(it.owner) ? <b style={{ fontWeight: 600 }}>{zh ? AGENT_LABELS[it.owner].nameLocal : AGENT_LABELS[it.owner].nameEn}：</b> : null}
-                {it.text}
+                {withCurrentAgentNames(it.text)}
               </div>
-              {it.why ? <div style={{ fontSize: 12, color: MUTED, lineHeight: 1.5, marginTop: 1 }}>{it.why}</div> : null}
+              {it.why ? <div style={{ fontSize: 12, color: MUTED, lineHeight: 1.5, marginTop: 1 }}>{withCurrentAgentNames(it.why)}</div> : null}
             </div>
           </div>
         ))}
