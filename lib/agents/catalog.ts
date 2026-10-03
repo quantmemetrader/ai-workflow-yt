@@ -88,7 +88,7 @@ export const AGENT_DEFAULT_LABELS: Record<AgentKey, AgentLabel> = {
     title: "AI 员工 · 脚本",
     titleEn: "AI employee · Script",
     hint: "写脚本、改脚本、审批前的检查",
-    hintEn: "Writing, rewriting and checking a 脚本",
+    hintEn: "Writing and rewriting scripts, checking them before approval",
   },
   video: {
     name: "Video agent",

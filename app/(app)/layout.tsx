@@ -61,6 +61,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     >
       <script dangerouslySetInnerHTML={{ __html: `window.__agentNames=${JSON.stringify(agentNames).replace(/</g, "\\u003c")};` }} />
       <AgentNamesSync names={agentNames} />
+      <a href="#main" className="skip-link">{(viewer.locale ?? "zh-CN").startsWith("zh") ? "跳到主要内容" : "Skip to main content"}</a>
       <Rail
         modules={viewer.modules}
         locale={viewer.locale ?? "zh-CN"}

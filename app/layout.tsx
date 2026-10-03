@@ -64,7 +64,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <script dangerouslySetInnerHTML={{ __html: BOOT_SCRIPT }} />
       </head>
       <body translate="no" className="notranslate">
-        <a href="#main" className="skip-link">跳到主要内容</a>
+        {/* The skip link is drawn by the pages that have a #main, in their
+            reader's language (QA, 3 Oct: Chinese on the English pages). */}
         {children}
         {/* Anything that still rewrites our text gets turned back into Simplified (2 Oct). */}
         <SimplifiedGuard />
