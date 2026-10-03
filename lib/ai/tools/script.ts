@@ -2,13 +2,18 @@ import { mirrorToProject } from "@/lib/agents/project-mirror";
 import "server-only";
 import { and, asc, desc, eq, ilike, isNull, or } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { scriptBeats, scripts, topics, workProjects } from "@/lib/db/schema";
+import { approvals, scriptBeats, scripts, topics, workProjects } from "@/lib/db/schema";
 import type { ToolDef } from "@/lib/ai/openrouter";
 import { isWriting, type ProjectSource } from "@/lib/projects/topic";
 import { createWorkProject, emptyProjectTitled, ensureScriptProject, reachableThroughProjects, setProjectWriting } from "@/lib/projects/service";
 import { agentKeyFromEmail } from "@/lib/agents/catalog";
 import { writeScript } from "@/lib/script/from-research";
-import { listScripts } from "@/lib/script/service";
+import { cutVersion, decideApproval, listScripts, ownScript, pendingApprovals, requestApproval, saveBeats } from "@/lib/script/service";
+import { copilotRewrite, openRequestFor, withdrawOthers } from "@/lib/script/doc";
+import { beatsFromDoc, docForBeats, unitsOf, type RichDoc, type RichNode } from "@/lib/script/rich";
+import { toSimplified } from "@/lib/text/simplified";
+import { audit } from "@/lib/audit";
+import { NO_PERSON, nameOf, personOf, resolveApprover, tellPerson } from "./approvers";
 import { num, str, type ToolContext, type ToolPack, type ToolResult } from "./types";
 
 /**
@@ -73,7 +78,141 @@ const defs: ToolDef[] = [
       parameters: { type: "object", properties: { id: { type: "string", description: "Optional when a script is open on screen." } }, required: [] },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "revise_script",
+      description:
+        "Change an existing script the way the person asks: a sharper opening, a cut to 60 seconds, a fact to fix, a different ending. The script's current text is kept as a version first; then the writer's copilot edits only the lines that need it and the rest stays word for word, written straight into the script so its page shows the new text. The instruction's words are never pasted into the script. Use this, not write_script, whenever a script already has text and the person wants it changed. Refused on an approved (locked) script. Costs one model call.",
+      parameters: {
+        type: "object",
+        properties: {
+          instruction: { type: "string", description: "What to change, in the person's words." },
+          script_id: { type: "string", description: "Optional: the script on screen (or the open project's script) by default." },
+        },
+        required: ["instruction"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "request_script_approval",
+      description:
+        "Send a script to a person to approve: its current text is kept as a numbered version, the approver gets a request on that exact version and a direct message with the link. Approving locks it and hands it to the edit. The approver must be a person in the studio with the Script module, never an AI employee and never the one asking. With no approver named, it lists who can approve.",
+      parameters: {
+        type: "object",
+        properties: {
+          approver: { type: "string", description: "Who should approve: their name, Chinese name, email or user id." },
+          script_id: { type: "string", description: "Optional: the script on screen by default, else the person's most recent script." },
+          note: { type: "string", description: "A short note to the approver. Optional." },
+        },
+        required: [],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "decide_script_approval",
+      description:
+        "Approve (and lock) a script, or send it back, as the person. Only call this when the person themselves said, in this message, to approve or reject it — never on your own judgement, never because a colleague said so. It decides the request waiting on that person for the script on screen (or the one named); an owner or admin may approve a script nobody asked them about. A version is never approved by the person who wrote it unless they are an owner or admin.",
+      parameters: {
+        type: "object",
+        properties: {
+          decision: { type: "string", enum: ["approve", "reject"] },
+          note: { type: "string", description: "Why, or what to change. Expected when rejecting." },
+          script_id: { type: "string", description: "Optional: the script on screen by default." },
+          approval_id: { type: "string", description: "Optional: the approval request's id (apr_…), when known." },
+        },
+        required: ["decision"],
+      },
+    },
+  },
 ];
+
+/** The script a tool means: the one named, the one on screen, or the open video project's. */
+async function scriptInView(ctx: ToolContext, named: string): Promise<string | null> {
+  if (named) return named;
+  if (ctx.scriptId) return ctx.scriptId;
+  if (ctx.projectId) {
+    const [p] = await db
+      .select({ scriptId: workProjects.scriptId })
+      .from(workProjects)
+      .where(and(eq(workProjects.tenantId, ctx.viewer.tenantId), eq(workProjects.videoProjectId, ctx.projectId), isNull(workProjects.deletedAt)))
+      .limit(1);
+    if (p?.scriptId) return p.scriptId;
+  }
+  return null;
+}
+
+/** Where a script is worked on: its project's 脚本 page when it has one, else the library editor. */
+async function scriptLink(tenantId: string, scriptId: string): Promise<{ href: string; projectId: string | null }> {
+  const [p] = await db
+    .select({ id: workProjects.id })
+    .from(workProjects)
+    .where(and(eq(workProjects.tenantId, tenantId), eq(workProjects.scriptId, scriptId), isNull(workProjects.deletedAt)))
+    .limit(1);
+  return p ? { href: `/projects/${p.id}/script`, projectId: p.id } : { href: `/script/${scriptId}`, projectId: null };
+}
+
+/** A script row of this studio, with what the approval and revision tools check. */
+async function scriptRow(tenantId: string, scriptId: string) {
+  const [row] = await db
+    .select({ id: scripts.id, title: scripts.title, lockedVersion: scripts.lockedVersion, status: scripts.status, doc: scripts.doc })
+    .from(scripts)
+    .where(and(eq(scripts.id, scriptId), eq(scripts.tenantId, tenantId), isNull(scripts.deletedAt)))
+    .limit(1);
+  return row ?? null;
+}
+
+function plainText(n: RichNode): string {
+  if (n.type === "text") return n.text ?? "";
+  if (n.type === "hardBreak") return "\n";
+  return (n.content ?? []).map(plainText).join("");
+}
+
+/**
+ * The copilot's tracked changes, accepted all at once on the server: what the
+ * script page does when somebody presses "accept all", over the same spoken
+ * lines (`unitsOf` order). A changed line keeps its shot note; a line emptied
+ * with no shot note goes; new lines go in after the line they name (-1:
+ * before the first). Headings and untouched lines stay as they were, and a
+ * list item or quote left with nothing in it goes too.
+ */
+function applyCopilot(doc: RichDoc, changes: Map<number, string>, inserts: Map<number, string[]>): RichDoc {
+  let i = 0;
+  const para = (text: string): RichNode => ({ type: "paragraph", content: [{ type: "text", text }] });
+  const walk = (nodes: RichNode[]): RichNode[] => {
+    const out: RichNode[] = [];
+    for (const n of nodes) {
+      if (n.type === "paragraph") {
+        const text = plainText(n).replace(/\s+$/g, "");
+        const shot = typeof n.attrs?.shot === "string" ? (n.attrs.shot as string).trim() : "";
+        if (!text.trim() && !shot) {
+          out.push(n);
+          continue;
+        }
+        const k = i++;
+        if (k === 0) out.push(...(inserts.get(-1) ?? []).map(para));
+        const next = changes.get(k);
+        if (next === undefined) out.push(n);
+        else if (next.trim() || shot) out.push({ ...n, content: next.trim() ? [{ type: "text", text: next }] : undefined });
+        out.push(...(inserts.get(k) ?? []).map(para));
+        continue;
+      }
+      if (n.type === "heading" || !n.content) {
+        out.push(n);
+        continue;
+      }
+      const inner = walk(n.content);
+      if (inner.length || !n.content.length) out.push({ ...n, content: inner });
+    }
+    return out;
+  };
+  const content = walk(doc.content ?? []);
+  return { ...doc, type: "doc", content: content.length ? content : [{ type: "paragraph" }] };
+}
 
 async function run(ctx: ToolContext, name: string, args: Record<string, unknown>): Promise<ToolResult> {
   if (name === "write_script") {
@@ -349,7 +488,239 @@ async function run(ctx: ToolContext, name: string, args: Record<string, unknown>
     };
   }
 
+  if (name === "revise_script") return reviseScript(ctx, args);
+  if (name === "request_script_approval") return requestScriptApproval(ctx, args);
+  if (name === "decide_script_approval") return decideScriptApproval(ctx, args);
+
   return { text: `Unknown tool ${name}.` };
+}
+
+/**
+ * "开头再抓人一点" on a script that has words: the copilot the script page
+ * uses (`copilotRewrite`), its changes accepted on the server and saved the
+ * way the page saves (`saveBeats` plus the rich document), so the page opens
+ * on the new text and the untouched lines are exactly as they were. The
+ * draft before it is a version first, as "Generate from brief" does.
+ */
+async function reviseScript(ctx: ToolContext, args: Record<string, unknown>): Promise<ToolResult> {
+  const instruction = str(args.instruction, 1000);
+  if (!instruction) return { text: "Say what should change." };
+  const id = await scriptInView(ctx, str(args.script_id, 64));
+  if (!id) return { text: "Which script? Open it, or give its id (find it with list_scripts). Nothing was changed." };
+  const own = await ownScript(ctx.viewer, id);
+  const row = own ? await scriptRow(ctx.viewer.tenantId, own) : null;
+  if (!row) return { text: `There is no script ${id} in the library. Find its id with list_scripts; nothing was changed.` };
+  const person = personOf(ctx);
+  if (person && !(await reachableThroughProjects(person, { scriptId: row.id }))) {
+    return { text: "That script is in a project the person asking may not see. Nothing was changed." };
+  }
+  if (row.lockedVersion !== null) {
+    return { text: `"${row.title}" is approved and locked (version ${row.lockedVersion}). It has to be unlocked on its page ("继续编辑") before it can be changed; it will then need approving again. Nothing was changed.` };
+  }
+  const live = await db
+    .select({ source: workProjects.source })
+    .from(workProjects)
+    .where(and(eq(workProjects.tenantId, ctx.viewer.tenantId), eq(workProjects.scriptId, row.id), isNull(workProjects.deletedAt)));
+  if (live.some((p) => isWriting(p.source as ProjectSource | null, Date.now()))) {
+    return { text: "A draft of this script is being written right now; it lands within a few minutes. Nothing was changed: offer to make the change once it has landed." };
+  }
+
+  const readBeats = () =>
+    db
+      .select({ voiceover: scriptBeats.voiceover, visual: scriptBeats.visual, subtitle: scriptBeats.subtitle })
+      .from(scriptBeats)
+      .where(eq(scriptBeats.scriptId, row.id))
+      .orderBy(asc(scriptBeats.ord));
+  const beats = await readBeats();
+  const base = docForBeats((row.doc ?? null) as RichNode | null, beats);
+  const units = unitsOf(base);
+  if (!units.length) return { text: `"${row.title}" has no text yet, so there is nothing to revise. Use write_script to write its first draft. Nothing was changed.` };
+
+  await cutVersion(ctx.viewer, row.id, { note: "改稿前" });
+  let res: Awaited<ReturnType<typeof copilotRewrite>>;
+  try {
+    res = await copilotRewrite(ctx.viewer, row.id, units.map((u) => u.text), instruction);
+  } catch (err) {
+    return { text: `The change could not be made: ${err instanceof Error ? err.message : "the model call failed"}. The script is as it was.` };
+  }
+  if ("error" in res) return { text: `${res.error} The script is as it was.` };
+
+  /* Somebody typing in the page while the copilot worked: its line numbers
+     no longer point at the same words, so nothing is applied over them. */
+  const [after] = await db.select({ doc: scripts.doc, lockedVersion: scripts.lockedVersion }).from(scripts).where(eq(scripts.id, row.id)).limit(1);
+  const nowUnits = unitsOf(docForBeats((after?.doc ?? null) as RichNode | null, await readBeats()));
+  if (after?.lockedVersion !== null || nowUnits.map((u) => u.text).join("\u0001") !== units.map((u) => u.text).join("\u0001")) {
+    return { text: "The script changed (or was approved) while the revision was being written, so it was not applied over the new text. Nothing was changed; it can be asked again." };
+  }
+
+  const changes = new Map(res.changes.map((c) => [c.i, c.text]));
+  const inserts = new Map<number, string[]>();
+  for (const x of res.inserts) inserts.set(x.after, [...(inserts.get(x.after) ?? []), x.text]);
+  const next = JSON.parse(toSimplified(JSON.stringify(applyCopilot(base, changes, inserts)))) as RichDoc;
+  /* A subtitle typed separately for a line that did not change is kept, as the page's save keeps it. */
+  const subtitleOf = new Map(beats.filter((b) => b.subtitle && b.subtitle !== b.voiceover).map((b) => [b.voiceover, b.subtitle]));
+  const nextBeats = beatsFromDoc(next)
+    .slice(0, 400)
+    .map((b) => ({ ...b, subtitle: subtitleOf.get(b.voiceover) ?? b.subtitle }));
+  const saved = await saveBeats(ctx.viewer, row.id, nextBeats.length ? nextBeats : [{ visual: "", voiceover: "", subtitle: "", naturalSound: false }]);
+  if (!saved) return { text: "The script was locked before the revision could be saved. Nothing was changed." };
+  await db.update(scripts).set({ doc: next as unknown as Record<string, unknown>, docHtml: null }).where(eq(scripts.id, row.id));
+  await audit(ctx.viewer, "script.revise", {
+    objectType: "script",
+    objectId: row.id,
+    module: "script",
+    meta: { model: res.model, changed: res.changes.length, inserted: res.inserts.length, for: person?.id ?? null },
+  });
+  const link = await scriptLink(ctx.viewer.tenantId, row.id);
+  const removed = res.changes.filter((c) => !c.text.trim()).length;
+  return {
+    artifacts: [{ kind: "script", id: row.id, title: row.title, action: "updated" }],
+    text: [
+      `Revised "${row.title}": ${res.changes.length - removed} line(s) rewritten${removed ? `, ${removed} removed` : ""}${res.inserts.length ? `, ${res.inserts.length} added` : ""}; ${saved.beats} line(s) now. The text before is kept as a version.`,
+      res.summary ? `What changed: ${res.summary}` : "",
+      `Open it at ${link.href} (id: ${row.id}).`,
+      "Say in one sentence what changed; do not repeat the instruction.",
+    ]
+      .filter(Boolean)
+      .join("\n"),
+    changed: true,
+  };
+}
+
+/** The person's most recent script, for "send it to 谢总 to approve" with nothing open. */
+async function latestScriptOf(ctx: ToolContext): Promise<string | null> {
+  const owner = personOf(ctx)?.id ?? ctx.viewer.id;
+  const [row] = await db
+    .select({ id: scripts.id })
+    .from(scripts)
+    .where(and(eq(scripts.tenantId, ctx.viewer.tenantId), eq(scripts.ownerId, owner), isNull(scripts.deletedAt)))
+    .orderBy(desc(scripts.updatedAt))
+    .limit(1);
+  return row?.id ?? null;
+}
+
+async function requestScriptApproval(ctx: ToolContext, args: Record<string, unknown>): Promise<ToolResult> {
+  const id = (await scriptInView(ctx, str(args.script_id, 64))) ?? (await latestScriptOf(ctx));
+  if (!id) return { text: "Which script? Open it, or give its id (find it with list_scripts). Nothing was sent." };
+  const row = await scriptRow(ctx.viewer.tenantId, id);
+  if (!row || !(await ownScript(ctx.viewer, row.id))) return { text: `There is no script ${id} in the library. Nothing was sent.` };
+  const person = personOf(ctx);
+  if (person && !(await reachableThroughProjects(person, { scriptId: row.id }))) {
+    return { text: "That script is in a project the person asking may not see. Nothing was sent." };
+  }
+  if (row.lockedVersion !== null) return { text: `"${row.title}" is already approved (version ${row.lockedVersion}). Nothing was sent.` };
+
+  const who = await resolveApprover(ctx.viewer, str(args.approver, 120), [ctx.viewer.id]);
+  if ("error" in who) return { text: who.error };
+  const note = str(args.note, 500) || undefined;
+  const res = await requestApproval(ctx.viewer, row.id, who.ok.id, note);
+  if (!res) return { text: `"${row.title}" has no text to approve yet, or it is locked. Nothing was sent.` };
+  await audit(ctx.viewer, "script.approval.request", {
+    objectType: "script",
+    objectId: row.id,
+    module: "script",
+    meta: { approverId: who.ok.id, versionNo: res.versionNo, for: person?.id ?? null },
+  });
+  const link = await scriptLink(ctx.viewer.tenantId, row.id);
+  const forWhom = person && person.id !== ctx.viewer.id ? `（应 ${nameOf(person)} 的要求）` : "";
+  const told = await tellPerson(
+    ctx.viewer,
+    who.ok.id,
+    [note ? `${note}\n` : "", `${nameOf(ctx.viewer)}${forWhom}请你审阅并批准脚本《${row.title}》第 ${res.versionNo} 版。看完按「批准」或「提修改意见」。`, "", `[打开脚本 →](${link.href})`].join("\n").trim(),
+    { share: { kind: "script", projectId: link.projectId, scriptId: row.id, ask: "review", versionNo: res.versionNo } },
+  );
+  return {
+    artifacts: [{ kind: "script", id: row.id, title: row.title, action: "updated" }],
+    text: `Sent "${row.title}" (version ${res.versionNo}) to ${who.ok.name} to approve${told ? "; they have a direct message with the link" : ""}. Request id: ${res.approvalId}. It is not approved until ${who.ok.name} approves it.`,
+    changed: true,
+  };
+}
+
+async function decideScriptApproval(ctx: ToolContext, args: Record<string, unknown>): Promise<ToolResult> {
+  const person = personOf(ctx);
+  if (!person) return { text: NO_PERSON };
+  if (!person.modules.includes("script")) return { text: `${nameOf(person)} does not hold the Script module, so cannot decide script approvals. Nothing was done.` };
+  const decision = args.decision === "approve" || args.decision === "approved" ? "approved" : args.decision === "reject" || args.decision === "rejected" ? "rejected" : null;
+  if (!decision) return { text: "Say whether to approve or reject it." };
+  const note = str(args.note, 500) || undefined;
+
+  /* The request: the one named (in this studio, on a script), else the one waiting on this person for the script in view. */
+  let approvalId: string | null = null;
+  let scriptId: string | null = null;
+  let requestedBy: string | null = null;
+  const named = str(args.approval_id, 64);
+  if (named) {
+    const [a] = await db
+      .select({ id: approvals.id, objectId: approvals.objectId, requestedBy: approvals.requestedBy })
+      .from(approvals)
+      .where(and(eq(approvals.id, named), eq(approvals.tenantId, person.tenantId), eq(approvals.objectType, "script"), eq(approvals.state, "requested")))
+      .limit(1);
+    if (!a) return { text: `There is no script approval ${named} waiting. Nothing was done.` };
+    approvalId = a.id;
+    scriptId = a.objectId;
+    requestedBy = a.requestedBy;
+  } else {
+    scriptId = await scriptInView(ctx, str(args.script_id, 64));
+    if (!scriptId) {
+      const waiting = await pendingApprovals(person);
+      return {
+        text: waiting.length
+          ? `Which script? Waiting on ${nameOf(person)}:\n${waiting.map((w) => `- ${w.title} (script id: ${w.objectId}, version ${w.versionNo ?? "?"}, request id: ${w.id})`).join("\n")}`
+          : `No script approval is waiting on ${nameOf(person)}. Open the script, or give its id.`,
+      };
+    }
+  }
+  const row = await scriptRow(person.tenantId, scriptId);
+  if (!row) return { text: `There is no script ${scriptId} in the library. Nothing was done.` };
+  if (!(await reachableThroughProjects(person, { scriptId: row.id }))) return { text: `${nameOf(person)} may not see the project this script is in. Nothing was done.` };
+
+  if (!approvalId) {
+    const req = await openRequestFor(person, row.id);
+    if (req) {
+      approvalId = req.id;
+      requestedBy = req.requestedBy;
+    } else {
+      if (row.lockedVersion !== null) return { text: `"${row.title}" is already approved (version ${row.lockedVersion}). Nothing was done.` };
+      const admin = person.role === "owner" || person.role === "admin";
+      /* An owner or admin may approve a script as it stands without being asked (the page's 批准); anyone else needs a request addressed to them. */
+      if (decision === "rejected" || !admin) {
+        return { text: `Nobody has asked ${nameOf(person)} to approve "${row.title}", so there is nothing to ${decision === "approved" ? "approve" : "reject"}. Send it for approval first (request_script_approval). Nothing was done.` };
+      }
+      const r = await requestApproval(person, row.id, person.id);
+      if (!r) return { text: `"${row.title}" has no text to approve yet. Nothing was done.` };
+      approvalId = r.approvalId;
+      requestedBy = person.id;
+    }
+  }
+
+  const res = await decideApproval(person, approvalId, decision, note);
+  if ("error" in res) return { text: `${res.error} Nothing was decided.` };
+  await withdrawOthers(person, row.id, approvalId);
+  await audit(person, `script.approval.${decision}`, {
+    objectType: "approval",
+    objectId: approvalId,
+    module: "script",
+    meta: { versionNo: res.versionNo, by: "assistant", speaker: ctx.viewer.id },
+  });
+  const link = await scriptLink(person.tenantId, row.id);
+  if (requestedBy) {
+    await tellPerson(
+      person,
+      requestedBy,
+      decision === "approved"
+        ? `${nameOf(person)} 批准了脚本《${row.title}》第 ${res.versionNo} 版，可以开拍、剪辑了。\n\n[打开脚本 →](${link.href})`
+        : `${nameOf(person)} 退回了脚本《${row.title}》第 ${res.versionNo} 版${note ? `：${note}` : ""}\n\n[打开脚本 →](${link.href})`,
+      { share: { kind: "script", projectId: link.projectId } },
+    );
+  }
+  return {
+    artifacts: [{ kind: "script", id: row.id, title: row.title, action: "updated" }],
+    text:
+      decision === "approved"
+        ? `${nameOf(person)} approved "${row.title}" (version ${res.versionNo}); it is locked and handed to the edit. Open it at ${link.href}.`
+        : `${nameOf(person)} sent "${row.title}" (version ${res.versionNo}) back${note ? ` with the note: ${note}` : ""}. It is a draft again. Open it at ${link.href}.`,
+    changed: true,
+  };
 }
 
 /**
