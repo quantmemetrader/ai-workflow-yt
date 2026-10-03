@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { getViewer } from "@/lib/auth/dal";
 
 /**
  * Pictures from Google's own CDNs, served from this origin.
@@ -19,8 +20,10 @@ import { NextResponse, type NextRequest } from "next/server";
  *      CDNs.
  *   2. **Only what looks like a picture comes back.** A response that is not
  *      an image is refused rather than passed through.
- *   3. **Signed-in only.** `proxy.ts` already bounces an anonymous request;
- *      this route is for the app's own screens, not for the internet.
+ *   3. **Signed-in only.** `proxy.ts` only sees that a session cookie is
+ *      there; the session itself is checked here (`getViewer`), so a stale or
+ *      made-up cookie gets a 403. This route is for the app's own screens,
+ *      not for the internet.
  */
 const ALLOWED = new Set(["i.ytimg.com", "img.youtube.com", "yt3.ggpht.com", "yt3.googleusercontent.com"]);
 
@@ -51,11 +54,13 @@ const ALLOWED_SUFFIXES = [
 
 const allowed = (host: string) => ALLOWED.has(host) || ALLOWED_SUFFIXES.some((s) => host === s || host.endsWith(s));
 
-/** A day in the browser, a week at the edge: a thumbnail for a given video id
- * never changes. */
-const CACHE = "public, max-age=86400, s-maxage=604800, immutable";
+/** A day in the browser: a thumbnail for a given video id never changes.
+ * Private, not edge-cached: a shared cache would hand the picture to a
+ * request that never passed the session check. */
+const CACHE = "private, max-age=86400, immutable";
 
 export async function GET(request: NextRequest) {
+  if (!(await getViewer())) return new NextResponse("not allowed", { status: 403 });
   const raw = request.nextUrl.searchParams.get("u");
   if (!raw) return new NextResponse("missing url", { status: 400 });
 
