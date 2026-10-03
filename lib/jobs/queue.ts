@@ -252,10 +252,16 @@ export async function succeed(job: JobRow, result: unknown) {
  * Fails a job. Retries with exponential backoff until `maxAttempts`, then
  * stops and keeps the provider's own message — the brief requires the error be
  * surfaced intact rather than replaced with "something went wrong".
+ *
+ * An error that says `permanent: true` (footage that cannot be decoded,
+ * `lib/video/decodable.ts`) fails at once: the same bytes fail the same way,
+ * and three render attempts of a broken file were three failed exports and
+ * seven minutes of encoder for nothing.
  */
 export async function fail(job: JobRow, error: unknown) {
   const message = error instanceof Error ? error.message : String(error);
-  const exhausted = job.attempts >= job.maxAttempts;
+  const permanent = typeof error === "object" && error !== null && (error as { permanent?: unknown }).permanent === true;
+  const exhausted = permanent || job.attempts >= job.maxAttempts;
   const backoffMs = Math.min(60 * 60_000, 30_000 * 2 ** (job.attempts - 1));
 
   await db

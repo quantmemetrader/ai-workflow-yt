@@ -18,6 +18,9 @@ import type { Viewer } from "@/lib/auth/dal";
 import { audit } from "@/lib/audit";
 import { newId } from "@/lib/ids";
 import { downloadObject, isInterrupted, renderExport } from "@/lib/video/render";
+import { markUnreadable } from "@/lib/files/poster";
+import { presignDownload } from "@/lib/storage/r2";
+import { probeReadable, UNREADABLE_TAG, UnreadableMedia } from "./decodable";
 import { canReadFiles } from "@/lib/authz/rebac";
 import { complete } from "@/lib/ai/openrouter";
 import { modelFor } from "@/lib/ai/models";
@@ -306,13 +309,36 @@ export async function direct(viewer: Viewer, projectId: string, jobId?: string):
     await say("footage", "先看看素材箱里有什么");
 
     const bin = await db
-      .select({ c: videoClips, name: files.name, kind: files.kind })
+      .select({ c: videoClips, name: files.name, kind: files.kind, storageKey: files.storageKey, tags: files.tags })
       .from(videoClips)
       .leftJoin(files, eq(files.id, videoClips.fileId))
       .where(eq(videoClips.projectId, projectId))
       .orderBy(asc(videoClips.addedAt));
-    const footage = bin.filter((b) => b.kind === "video");
-    if (!footage.length) throw new Error("There is no footage in the bin. Drop a clip on the editor first.");
+    const inBin = bin.filter((b) => b.kind === "video");
+    if (!inBin.length) throw new Error("There is no footage in the bin. Drop a clip on the editor first.");
+
+    /* Every clip is asked whether it decodes at all before anything is
+       narrated, cut or designed on it: a text file named .mp4 used to be
+       narrated, placed 25 times and designed, and only the render found out.
+       Clips that cannot be read are left out and said; when none can, the
+       run stops here and names them. A probe that fails for some other
+       reason (the network) keeps the clip, as before. */
+    const bad = new Set<string>();
+    await Promise.all(
+      inBin.map(async (f) => {
+        if (f.tags?.includes(UNREADABLE_TAG)) return void bad.add(f.c.id);
+        if (!f.storageKey) return;
+        const r = await probeReadable(await presignDownload(f.storageKey, { expiresIn: 3600 }));
+        if (r.ok || !r.certain) return;
+        console.log(`[director ${projectId}] ${f.name ?? f.c.fileId} cannot be decoded: ${r.why}`);
+        bad.add(f.c.id);
+        await markUnreadable(f.c.fileId);
+      }),
+    );
+    const footage = inBin.filter((f) => !bad.has(f.c.id));
+    const unreadable = inBin.filter((f) => bad.has(f.c.id)).map((f) => f.name || f.c.label || "素材");
+    if (!footage.length) throw new UnreadableMedia(unreadable);
+    if (unreadable.length) await say("footage", `${unreadable.map((n) => `「${n}」`).join("、")}无法读取，不是能解码的视频，这次先不用`);
 
     /* The script, read now rather than at the design: its 旁白 decides whether
        this video is cut on what was filmed or on a narration made from it. */

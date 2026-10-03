@@ -1,6 +1,6 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, gt } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { files } from "@/lib/db/schema";
+import { files, jobs } from "@/lib/db/schema";
 import { getViewer } from "@/lib/auth/dal";
 import { relationOn } from "@/lib/authz/rebac";
 import { audit } from "@/lib/audit";
@@ -8,6 +8,7 @@ import { presignDownload } from "@/lib/storage/r2";
 import { posterExists, posterKeyFor } from "@/lib/files/poster";
 import { enqueue } from "@/lib/jobs/queue";
 import { fileInVisibleProject } from "@/lib/video/access";
+import { UNREADABLE_TAG } from "@/lib/video/decodable";
 
 /**
  * The picture a file list shows.
@@ -79,11 +80,36 @@ export async function GET(request: Request, ctx: { params: Promise<{ id: string 
     return Response.redirect(await presignDownload(file.storageKey, { expiresIn: 300 }), 302);
   }
 
+  /* Bytes the worker found cannot be decoded (`lib/video/decodable.ts`):
+     a picture that says so, rather than a spinner over 处理中 for ever, and
+     never another poster job. */
+  if (file.tags.includes(UNREADABLE_TAG)) return unreadable();
+
   if (await posterExists(file.storageKey)) {
     return Response.redirect(await presignDownload(posterKeyFor(file.storageKey), { expiresIn: 300 }), 302);
   }
 
   if (file.deletedAt) return new Response("Not found", { status: 404 });
+
+  /* A poster job that already failed for this file today is not asked for
+     again on every look: each thumbnail request used to queue a fresh one
+     after a failure (sixteen in half an hour for one file). The upload's
+     own job, or tomorrow's look, tries again. */
+  const [failedLately] = await db
+    .select({ id: jobs.id })
+    .from(jobs)
+    .where(
+      and(
+        eq(jobs.tenantId, viewer.tenantId),
+        eq(jobs.objectType, "file"),
+        eq(jobs.objectId, id),
+        eq(jobs.type, "files.poster"),
+        eq(jobs.status, "failed"),
+        gt(jobs.finishedAt, new Date(Date.now() - 24 * 3600_000)),
+      ),
+    )
+    .limit(1);
+  if (failedLately) return notYet();
 
   /*
    * No poster yet — an older upload, or one whose job has not run. Ask for it
@@ -105,6 +131,26 @@ export async function GET(request: Request, ctx: { params: Promise<{ id: string 
   });
 
   return notYet();
+}
+
+/**
+ * The thumbnail of a file that is not a decodable video: a quiet grey card
+ * with a crossed-out film and 无法读取的视频, drawn as the picture itself so
+ * every list that shows posters (Files, the bin, the project's files) says
+ * it without knowing why. Centred, so a cover-fitted tile keeps the words.
+ */
+function unreadable() {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="480" height="270" viewBox="0 0 480 270">
+<rect width="480" height="270" fill="#f3f3f3"/>
+<g transform="translate(222 92)" fill="none" stroke="#9a9a9a" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+<rect x="3" y="5" width="30" height="26" rx="4"/><path d="M10 5v26M26 5v26M3 13h7M3 23h7M26 13h7M26 23h7"/><path d="M1 1 35 35" stroke="#c42b2b"/>
+</g>
+<text x="240" y="168" text-anchor="middle" font-family="PingFang SC, Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="22" font-weight="600" fill="#7a7a7a">无法读取的视频</text>
+</svg>`;
+  return new Response(svg, {
+    status: 200,
+    headers: { "Content-Type": "image/svg+xml; charset=utf-8", "Cache-Control": "private, max-age=300", "X-Content-Type-Options": "nosniff" },
+  });
 }
 
 /** "No picture yet": never cached, so the list's next ask is really asked. */

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import type { DirectorState } from "@/lib/video/director";
 import { field, ghost, solid } from "@/components/ui/kit";
+import { readableRenderError } from "@/lib/video/render-error";
 
 /**
  * "Make the video."
@@ -128,9 +129,9 @@ export function Director({
             </span>
           </span>
         ) : director.state === "failed" ? (
-          <span style={{ fontSize: 11.5, color: "#e03636", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0, flexGrow: 1 }} title={director.error}>
+          <span style={{ fontSize: 11.5, color: "#e03636", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0, flexGrow: 1 }} title={readableRenderError(director.error)}>
             {t("It stopped: ", "中断：")}
-            {director.error}
+            {readableRenderError(director.error)}
           </span>
         ) : (
           <span style={{ fontSize: 11.5, color: "#999999" }}>

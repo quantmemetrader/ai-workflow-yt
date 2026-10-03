@@ -12,7 +12,8 @@ import { files, relationTuples } from "@/lib/db/schema";
 import { getObject, putObjectConfirmed, storageKey } from "@/lib/storage/r2";
 import { grantOwner } from "@/lib/authz/rebac";
 import { newId } from "@/lib/ids";
-import { posterFromLocal, rememberPoster } from "@/lib/files/poster";
+import { markUnreadable, posterFromLocal, rememberPoster } from "@/lib/files/poster";
+import { probeReadable, UNREADABLE_TAG } from "@/lib/video/decodable";
 
 /**
  * A small copy to watch, beside the thing itself.
@@ -229,6 +230,7 @@ export async function makeSourceProxy(
   // A proxy of a proxy is bytes nobody will ever play. The tag is how a proxy
   // knows itself; the column below is how a master knows its proxy.
   if (file.tags.includes("proxy")) return { made: false, reason: "this is a proxy" };
+  if (file.tags.includes(UNREADABLE_TAG)) return { made: false, reason: "unreadable" };
 
   if (file.proxyFileId) {
     /* Unless the proxy row itself is gone — trashed by hand, or purged. The
@@ -252,6 +254,13 @@ export async function makeSourceProxy(
        directory goes in the `finally` — this box is also the web server. */
     const master = path.join(dir, "master");
     await download(file.storageKey, master);
+
+    /* Not a video at all: remembered on the file, and nothing to retry. */
+    const readable = await probeReadable(master);
+    if (!readable.ok && readable.certain) {
+      await markUnreadable(file.id);
+      return { made: false, reason: "unreadable" };
+    }
 
     const proxyFileId = await makeProxyFile({
       source: master,

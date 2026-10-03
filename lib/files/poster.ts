@@ -3,10 +3,11 @@ import { spawn } from "node:child_process";
 import { readFile, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { files } from "@/lib/db/schema";
 import { headObject, presignDownload, putObject } from "@/lib/storage/r2";
+import { probeReadable, UNREADABLE_TAG } from "@/lib/video/decodable";
 
 /**
  * A still out of a video, so the file lists have something to show.
@@ -58,6 +59,19 @@ export async function posterFromLocal(local: string, storageKey: string): Promis
   }
 }
 
+/**
+ * The file's bytes cannot be decoded. A tag, like `proxy` and `stock`: the
+ * thumbnail answers with a 无法读取的视频 picture, the footage picker leaves
+ * it out, and no poster job is queued for it again. Not an edit, so
+ * `updatedAt` stays as it was.
+ */
+export async function markUnreadable(fileId: string) {
+  await db
+    .update(files)
+    .set({ tags: sql`array_append(${files.tags}, ${UNREADABLE_TAG})` })
+    .where(and(eq(files.id, fileId), sql`not (${UNREADABLE_TAG} = any(${files.tags}))`));
+}
+
 /** The row remembers its poster, so a list can tell at once what has one. */
 export async function rememberPoster(fileId: string, posterKey: string) {
   await db.update(files).set({ posterKey }).where(eq(files.id, fileId));
@@ -67,6 +81,7 @@ export async function makePoster(fileId: string): Promise<{ made: boolean; reaso
   const [file] = await db.select().from(files).where(eq(files.id, fileId)).limit(1);
   if (!file) return { made: false, reason: "no such file" };
   if (!file.storageKey) return { made: false, reason: "nothing stored" };
+  if (file.tags.includes(UNREADABLE_TAG)) return { made: false, reason: "unreadable" };
 
   /* Audio has no frame to grab, but it does have a duration, and a track with
      no duration draws as a zero-length block on the timeline. So the measuring
@@ -87,6 +102,18 @@ export async function makePoster(fileId: string): Promise<{ made: boolean; reaso
    * limit and left the file with no thumbnail. Now nothing is downloaded.
    */
   const url = await presignDownload(file.storageKey, { expiresIn: 6 * 3600 });
+
+  /* Bytes that are not a video at all (a text file named .mp4) are said once
+     and remembered: the file is tagged, the thumbnail says 无法读取的视频
+     instead of 处理中 for ever, and the job succeeds rather than retrying a
+     decode that cannot work. A failure that might be the network is not
+     remembered; it fails below as it always did. */
+  const readable = await probeReadable(url);
+  if (!readable.ok && readable.certain) {
+    await markUnreadable(file.id);
+    console.warn(`[poster] ${file.id} cannot be decoded: ${readable.why}`);
+    return { made: false, reason: "unreadable" };
+  }
 
   if (wantsMeasure) {
     const probed = await probe(url).catch(() => null);

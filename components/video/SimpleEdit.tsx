@@ -15,6 +15,7 @@ import { beginWork } from "@/lib/client/busy";
 import { notify } from "@/lib/client/notify";
 import { writeRendering } from "@/lib/client/rendering";
 import { bumpLive } from "@/lib/client/live";
+import { readableRenderError } from "@/lib/video/render-error";
 
 /**
  * The project's 剪辑 page in simple mode: three steps, one below the other,
@@ -735,7 +736,7 @@ function clock(ms: number): string {
 
 /** The first plain sentence of an error, without codes and stack noise. */
 function shortError(e: string): string {
-  return e.replace(/\s+/g, " ").replace(/^Error:\s*/i, "").slice(0, 120);
+  return readableRenderError(e).replace(/\s+/g, " ").replace(/^Error:\s*/i, "").slice(0, 120);
 }
 
 const SIMPLE_CSS = `

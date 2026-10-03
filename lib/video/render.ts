@@ -21,7 +21,9 @@ import {
 import { getObject, putFileConfirmed, putObjectConfirmed, storageKey } from "@/lib/storage/r2";
 import { grantOwner } from "@/lib/authz/rebac";
 import { newId } from "@/lib/ids";
-import { posterFromLocal, rememberPoster } from "@/lib/files/poster";
+import { markUnreadable, posterFromLocal, rememberPoster } from "@/lib/files/poster";
+import { probeReadable, UnreadableMedia } from "@/lib/video/decodable";
+import { readableRenderError, UNDECODABLE_STDERR, UNREADABLE_ZH } from "@/lib/video/render-error";
 import { makeProxyFile } from "@/lib/video/proxy";
 import { toSrt } from "@/lib/video/service";
 import { canKaraoke, toAss } from "@/lib/video/ass";
@@ -427,6 +429,13 @@ export async function renderExport(exportId: string): Promise<{ fileId: string; 
     return { fileId, durationMs: totalMs };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
+    /* The row is what the editor shows, so it says what happened in Chinese;
+       FFmpeg's own words go to the log (and stay in the job's error). Input
+       FFmpeg cannot decode fails for good: another attempt reads the same
+       bytes. */
+    const shown = readableRenderError(message);
+    if (shown !== message) console.error(`[render ${exportId}] ${message.slice(0, 2000)}`);
+    const undecodable = !(err instanceof UnreadableMedia) && UNDECODABLE_STDERR.test(message);
     // A worker restarted under the encoder is not a failed export: the job
     // goes back in the queue and the row says so, rather than showing red
     // for the minute until the next worker takes it.
@@ -435,9 +444,10 @@ export async function renderExport(exportId: string): Promise<{ fileId: string; 
       .set(
         isInterrupted(err)
           ? { state: "queued", progress: 0, error: null, startedAt: null }
-          : { state: "failed", error: message.slice(0, 4000), finishedAt: new Date() },
+          : { state: "failed", error: shown.slice(0, 4000), finishedAt: new Date() },
       )
       .where(eq(videoExports.id, exportId));
+    if (undecodable) throw Object.assign(new Error(UNREADABLE_ZH, { cause: err }), { permanent: true });
     throw err;
   } finally {
     // A failed render must not leave a master behind: this box is also the
@@ -504,6 +514,15 @@ export async function loadRenderInput(input: {
       local = path.join(dir, `src-${sourcePath.size}${path.extname(entry.file.name) || ".mp4"}`);
       await download(entry.file.storageKey, local);
       sourcePath.set(entry.file.storageKey, local);
+      /* Bytes that are not a video (a text file named .mp4) are named here,
+         before the encode, and the file is remembered as unreadable; the
+         error is permanent, so the queue does not try the same file again. */
+      const readable = await probeReadable(local);
+      if (!readable.ok && readable.certain) {
+        console.warn(`[render ${e.id}] ${entry.file.name} cannot be decoded: ${readable.why}`);
+        await markUnreadable(entry.file.id);
+        throw new UnreadableMedia([entry.file.name]);
+      }
     }
 
     /*
