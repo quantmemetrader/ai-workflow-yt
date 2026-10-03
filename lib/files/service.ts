@@ -927,8 +927,8 @@ async function folderPurgePlan(viewer: Viewer, folderId: string) {
     .limit(1);
   if (!folder) throw new Error("找不到这个文件夹");
   if (!folder.deletedAt) throw new Error("请先把文件夹移到回收站");
-  /* Not even its creator can purge it without being an admin; the files rule
-     (`folderPurgeBlock`) decides below, once what is inside is known. */
+  /* Whoever made it, or an admin; for a member, `folderPurgeBlock` below also
+     needs everything inside to be theirs. */
   if (!viewer.isAdmin && folder.ownerId !== viewer.id) throw new Error("只有创建者或管理员可以永久删除");
 
   const inside = sql`${folders.path} @> array[${folderId}]::text[]`;
