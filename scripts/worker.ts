@@ -20,6 +20,7 @@ import {
 } from "../lib/social/ingest";
 import type { Window } from "../lib/research/service";
 import { sendPost } from "../lib/publish/dispatch";
+import { runDraft } from "../lib/script/background";
 import { isInterrupted, renderExport } from "../lib/video/render";
 import { transcribeProject } from "../lib/video/transcribe";
 import { speakTrack } from "../lib/video/voiceover";
@@ -63,6 +64,7 @@ const JOB_TIMEOUT_MS = Number(process.env.WORKER_JOB_TIMEOUT_MS ?? 10 * 60_000);
  * only has to be longer than that.
  */
 const TIMEOUT_BY_TYPE: Record<string, number> = {
+  "script.draft": 8 * 60_000,
   "video.export": 70 * 60_000,
   // A first draft with retries, plus each colleague answering its to-do.
   "agent.plan-followup": 25 * 60_000,
@@ -250,6 +252,13 @@ const HANDLERS: Record<string, Handler> = {
   },
 
   /* A render is done: 撰稿人 writes the post. */
+  "script.draft": async (job) => {
+    const { viewerId, input } = job.payload as { viewerId: string; input: Parameters<typeof runDraft>[1] };
+    const viewer = await viewerById(viewerId);
+    if (!viewer) return { skipped: "no viewer" };
+    await runDraft(viewer, input);
+    return { ok: true };
+  },
   "agent.publish-copy": (job) => {
     const { exportId } = job.payload as { exportId: string };
     return autoPublishCopy(exportId);

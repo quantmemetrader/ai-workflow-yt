@@ -37,8 +37,24 @@ export async function draftInBackground(
     rewrite?: boolean;
   },
 ): Promise<void> {
-  await setProjectWriting(input.projectId, new Date().toISOString());
-  after(async () => {
+  await setProjectWriting(input.projectId, new Date().toISOString(), "queued");
+  /* On the queue, so a deploy or a restart cannot leave it half done: the
+     worker picks it up again (4 Oct). In this process only if queuing fails. */
+  try {
+    const { enqueue } = await import("@/lib/jobs/queue");
+    await enqueue({ tenantId: viewer.tenantId, type: "script.draft", module: "script", objectType: "script", objectId: input.scriptId, createdBy: viewer.id, payload: { viewerId: viewer.id, input }, dedupeKey: `draft:${input.scriptId}:${Date.now()}` });
+    return;
+  } catch (err) {
+    console.error("[script] could not queue the draft; writing it here", err);
+  }
+  after(() => runDraft(viewer, input));
+}
+
+/** The draft itself: written, announced in the project chat, the mark cleared. Run by the worker (`script.draft`). */
+export async function runDraft(viewer: Viewer, input: { projectId: string; channelId: string; scriptId: string; req: ScriptRequest; rewrite?: boolean }): Promise<void> {
+  const stage = (s: "draft" | "extend" | "polish") => void setProjectWriting(input.projectId, new Date().toISOString(), s).catch(() => {});
+  input = { ...input, req: { ...input.req, onStage: stage } };
+  await (async () => {
     let text: string;
     let failed: string | null = null;
     try {
@@ -84,5 +100,5 @@ export async function draftInBackground(
     } catch (err) {
       console.error("[script] could not tell the project the draft landed", err);
     }
-  });
+  })();
 }

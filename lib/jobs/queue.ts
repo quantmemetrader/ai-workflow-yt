@@ -66,7 +66,9 @@ export type JobType =
   /** After a render: 撰稿人 writes the post and puts it in 发布. */
   | "agent.publish-copy"
   /** After a render: three covers with titles, filed with the project (`lib/video/cover.ts`). */
-  | "video.cover";
+  | "video.cover"
+  /** A project's first draft, on the queue so a deploy cannot kill it (`lib/script/background.ts`). */
+  | "script.draft";
 
 export type JobRow = typeof jobs.$inferSelect;
 

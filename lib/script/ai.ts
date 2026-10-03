@@ -114,6 +114,11 @@ const DRAFT_PROMPT = `你是一名顶级的中文短视频文案，给一家香�
  * Chinese reads like a translation). Facts, numbers, order and length stay;
  * only the wording changes. A failure leaves the draft as it was.
  */
+/** Writes the draft when the writer's own model is slow (fast, strong Chinese, reliable). */
+const DRAFT_BACKUP = process.env.AI_MODEL_DRAFT_BACKUP || "anthropic/claude-sonnet-5.5";
+/** Edits a fresh draft line by line: fast and does not reason first. */
+const POLISH_MODEL = process.env.AI_MODEL_POLISH || "qwen/qwen3-max";
+
 const POLISH_PROMPT = `你是中文短视频行业最贵的文案编辑。下面是一份口播稿，已经按分镜编好号。请逐条润色口播，让它听起来像一个会说话的真人在镜头前讲，而不是 AI 写的、也不是翻译过来的。
 
 改什么：
@@ -157,7 +162,7 @@ export async function draftFromBrief(
    * research topic collected, a note somebody pasted. Facts the model may
    * use, listed so it does not have to invent any.
    */
-  opts: { sources?: string; instruction?: string; /** A model to use instead of the writer's own (a retry after an empty answer). */ model?: string } = {},
+  opts: { sources?: string; instruction?: string; /** A model to use instead of the writer's own (a retry after an empty answer). */ model?: string; /** The step being worked on, for the page (写初稿 / 补足时长 / 润色). */ onStage?: (stage: "draft" | "extend" | "polish") => void } = {},
 ) {
   await assertBudget(viewer);
 
@@ -188,8 +193,19 @@ export async function draftFromBrief(
     .filter(Boolean)
     .join("\n");
 
-  const out = await complete({
-    model,
+  /*
+   * The first draft has a time budget (4 Oct: a draft took five minutes and the
+   * page looked dead). The writer's own model starts; if it has not answered in
+   * 45 seconds a fast backup writes the same brief alongside it, and the first
+   * readable draft wins. Lengthening and polishing only run while there is time.
+   */
+  const started = Date.now();
+  const elapsed = () => Date.now() - started;
+  opts.onStage?.("draft");
+  const draftOnce = (m: string, signal: AbortSignal) =>
+    complete({
+    model: m,
+    signal,
     temperature: 0.7,
     /* Room to think and still write: the drafting model reasons first, and at
        4,000 it spent the lot thinking and wrote nothing (4 Oct, a 3-minute wait). */
@@ -216,18 +232,35 @@ export async function draftFromBrief(
           .join("\n\n"),
       },
     ],
+    });
+  const out = await new Promise<Awaited<ReturnType<typeof complete>>>((resolve, reject) => {
+    const ctl = [new AbortController(), new AbortController()];
+    let settled = false;
+    let failures = 0;
+    let backupStarted = false;
+    const finish = (r: Awaited<ReturnType<typeof complete>>, i: number) => {
+      void recordUsage({ viewer, module: "script", provider: r.provider ?? "openrouter", model: r.model, promptTokens: r.promptTokens, completionTokens: r.completionTokens, costMicros: r.costMicros, requestId: r.requestId });
+      if (settled) return;
+      if (!parseBeats(r.text).length) return fail(new Error("unreadable draft"));
+      settled = true;
+      ctl[1 - i].abort();
+      resolve(r);
+    };
+    const fail = (err: unknown) => {
+      failures += 1;
+      if (!backupStarted) startBackup();
+      else if (failures >= 2 && !settled) { settled = true; reject(err); }
+    };
+    const startBackup = () => {
+      if (backupStarted || settled) return;
+      backupStarted = true;
+      const backup = model === DRAFT_BACKUP ? modelFor.assistant() : DRAFT_BACKUP;
+      draftOnce(backup, ctl[1].signal).then((r) => finish(r, 1), fail);
+    };
+    draftOnce(model, ctl[0].signal).then((r) => finish(r, 0), fail);
+    setTimeout(startBackup, 45_000);
   });
 
-  await recordUsage({
-    viewer,
-    module: "script",
-    provider: out.provider ?? "openrouter",
-    model: out.model,
-    promptTokens: out.promptTokens,
-    completionTokens: out.completionTokens,
-    costMicros: out.costMicros,
-    requestId: out.requestId,
-  });
 
   let beats = parseBeats(out.text);
   if (!beats.length) return { error: "The model did not return a script we could read." };
@@ -241,10 +274,12 @@ export async function draftFromBrief(
    */
   const target = script.targetSeconds ?? DEFAULT_TARGET_SECONDS;
   const spoken = (list: DraftBeat[]) => list.reduce((sum, b) => sum + (b.naturalSound ? 0 : spokenSeconds(b.voiceover)), 0);
-  if (target && target >= 45 && spoken(beats) < target * 0.6) {
+  if (target && target >= 45 && spoken(beats) < target * 0.6 && elapsed() < 75_000) {
+    opts.onStage?.("extend");
     const have = Math.round(spoken(beats));
     const more = await complete({
-      model,
+      model: out.model,
+      signal: AbortSignal.timeout(Math.max(20_000, 115_000 - elapsed())),
       temperature: 0.7,
       maxTokens: 14000,
       messages: [
@@ -267,7 +302,8 @@ export async function draftFromBrief(
             .join("\n\n"),
         },
       ],
-    });
+    }).catch(() => null);
+    if (more) {
     await recordUsage({
       viewer,
       module: "script",
@@ -282,21 +318,28 @@ export async function draftFromBrief(
     // Only a genuinely longer draft replaces the first; a refusal or a
     // truncated answer leaves the short one, which is at least complete.
     if (longer.length && spoken(longer) > spoken(beats) * 1.2) beats = longer;
+    }
   }
 
-  beats = await polishBeats(viewer, beats, script.language ?? null);
+  if (elapsed() < 100_000) {
+    opts.onStage?.("polish");
+    beats = await polishBeats(viewer, beats, script.language ?? null, AbortSignal.timeout(Math.max(15_000, 135_000 - elapsed())));
+  }
   await saveBeats(viewer, scriptId, beats);
   return { ok: true, beats: beats.length, model: out.model };
 }
 
 /** Every spoken line of a fresh draft, edited for native, human Chinese (`POLISH_PROMPT`). */
-async function polishBeats(viewer: Viewer, beats: DraftBeat[], language: string | null): Promise<DraftBeat[]> {
+async function polishBeats(viewer: Viewer, beats: DraftBeat[], language: string | null, signal?: AbortSignal): Promise<DraftBeat[]> {
   if (language && !/zh|中文|普通话|国语|粤语|mandarin|chinese|cantonese/i.test(language)) return beats;
   const lines = beats.map((b, i) => ({ i, v: b.voiceover })).filter((x) => x.v.trim());
   if (!lines.length) return beats;
   try {
     const out = await complete({
-      model: modelFor.drafting(),
+      /* A fast editor that does not think first: the drafting model spent
+         9,500 tokens reasoning over a polish (4 Oct). */
+      model: POLISH_MODEL,
+      signal,
       temperature: 0.4,
       maxTokens: 14000,
       messages: [

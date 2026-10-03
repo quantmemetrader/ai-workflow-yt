@@ -40,6 +40,8 @@ export type ScriptRequest = {
   folderId?: string | null;
   /** Write into this script instead of making a new one (a project's own). */
   intoScriptId?: string | null;
+  /** The step being worked on, for the page waiting on it. */
+  onStage?: (stage: "draft" | "extend" | "polish") => void;
   /**
    * The facts the writer may use, already written out. When absent and the
    * draft goes into an existing script, they are read from the script's
@@ -245,7 +247,7 @@ export async function writeScript(viewer: Viewer, req: ScriptRequest): Promise<S
          answered empty or unreadable a moment ago usually does it again, and
          that cost a client three minutes (stress run, 2 Oct). */
       const retryModel = attempt ? (modelFor.assistant() !== (modelFor.agent("script") ?? modelFor.drafting()) ? modelFor.assistant() : "deepseek/deepseek-v4-flash") : undefined;
-      const draft = await draftFromBrief(viewer, id, { sources, instruction: req.instruction ?? undefined, ...(retryModel ? { model: retryModel } : {}) });
+      const draft = await draftFromBrief(viewer, id, { sources, instruction: req.instruction ?? undefined, onStage: req.onStage, ...(retryModel ? { model: retryModel } : {}) });
       if ("error" in draft) note = draft.error ?? "The draft could not be written.";
       else {
         beats = draft.beats;

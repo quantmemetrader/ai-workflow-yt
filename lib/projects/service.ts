@@ -1372,11 +1372,24 @@ export async function projectForTopic(viewer: Viewer, by: { topicId?: string | n
  * Mark a project's draft as being written (an ISO time) or no longer (null).
  * A jsonb merge, so nothing else in the snapshot is touched.
  */
-export async function setProjectWriting(projectId: string, at: string | null): Promise<void> {
-  const patch = JSON.stringify({ writing: at ? { at } : null });
+export async function setProjectWriting(projectId: string, at: string | null, stage?: string): Promise<void> {
+  if (!at) {
+    await db
+      .update(workProjects)
+      .set({ source: sql`coalesce(${workProjects.source}, '{}'::jsonb) || '{"writing":null}'::jsonb` })
+      .where(eq(workProjects.id, projectId));
+    return;
+  }
+  /* The step the page shows (写初稿 / 补足时长 / 润色) and when this draft began,
+     kept across heartbeats, so the person sees it moving (4 Oct). */
   await db
     .update(workProjects)
-    .set({ source: sql`coalesce(${workProjects.source}, '{}'::jsonb) || ${patch}::jsonb` })
+    .set({
+      source: sql`coalesce(${workProjects.source}, '{}'::jsonb) || jsonb_build_object('writing', jsonb_build_object(
+        'at', ${at}::text,
+        'stage', coalesce(${stage ?? null}::text, ${workProjects.source} -> 'writing' ->> 'stage'),
+        'since', coalesce(${workProjects.source} -> 'writing' ->> 'since', ${at}::text)))`,
+    })
     .where(eq(workProjects.id, projectId));
 }
 
