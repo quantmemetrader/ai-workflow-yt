@@ -188,8 +188,20 @@ export type StreamOptions = {
   /** Stable per-user string; OpenRouter uses it for abuse tracking only. */
   user?: string;
   /** How much the model may think before it answers (OpenRouter's unified `reasoning`); providers without it ignore it. */
-  reasoning?: { effort?: "low" | "medium" | "high"; max_tokens?: number; exclude?: boolean };
+  reasoning?: { enabled?: boolean; effort?: "low" | "medium" | "high"; max_tokens?: number; exclude?: boolean };
 };
+
+/**
+ * A short answer (a title, a search phrase, a verdict) is not worth thinking
+ * about: a hybrid reasoning model given 160 tokens spent them all thinking and
+ * said nothing, which was most of DeepSeek V4 Flash's 184 empty answers in two
+ * days (3 Oct). Only models that can switch thinking off are told to; the rest
+ * never see the field.
+ */
+const HYBRID = /deepseek|moonshotai|qwen3|zhipu|glm|minimax/i;
+function noThinking(model: string, maxTokens?: number): boolean {
+  return Boolean(maxTokens && maxTokens < 1500 && HYBRID.test(model));
+}
 
 /**
  * Streams one completion. Yields text as it arrives, then any tool calls the
@@ -213,7 +225,7 @@ export async function* streamChat(opts: StreamOptions): AsyncGenerator<StreamEve
     ...(opts.temperature !== undefined ? { temperature: opts.temperature } : {}),
     ...(opts.maxTokens ? { max_tokens: opts.maxTokens } : {}),
     ...(opts.user ? { user: opts.user } : {}),
-    ...(opts.reasoning ? { reasoning: opts.reasoning } : {}),
+    ...(opts.reasoning ? { reasoning: opts.reasoning } : noThinking(backend.model, opts.maxTokens) ? { reasoning: { enabled: false } } : {}),
     ...(provider ? { provider } : {}),
   };
 
@@ -519,9 +531,10 @@ async function completeOnce(opts: Omit<StreamOptions, "tools">, attempt = 0): Pr
        thought for two minutes and said nothing is not given two more. */
     if (reasoned > 0 && attempt === 0 && left >= 45_000) {
       const room = Math.min(16_000, (opts.maxTokens ?? 4_000) * 2);
-      console.warn(`[ai] ${opts.model} reasoned ${reasoned} chars and answered nothing (${out.completionTokens} tokens); once more with ${room} tokens, short thinking, ${Math.round(left / 1000)}s left`);
+      console.warn(`[ai] ${opts.model} reasoned ${reasoned} chars and answered nothing (${out.completionTokens} tokens); once more with ${room} tokens and no thinking, ${Math.round(left / 1000)}s left`);
       const signal = opts.signal ? AbortSignal.any([opts.signal, AbortSignal.timeout(left)]) : AbortSignal.timeout(left);
-      const again = await completeOnce({ ...opts, signal, maxTokens: room, reasoning: { effort: "low", ...(opts.reasoning ?? {}) } }, 1);
+      /* Without thinking this time: it thought and then said nothing. */
+      const again = await completeOnce({ ...opts, signal, maxTokens: room, reasoning: opts.reasoning ?? { enabled: false } }, 1);
       return { ...again, promptTokens: again.promptTokens + out.promptTokens, completionTokens: again.completionTokens + out.completionTokens, costMicros: again.costMicros + out.costMicros };
     }
     throw new AiError("provider", `${opts.model} returned an empty answer${reasoned ? ` after reasoning ${reasoned} chars` : ""} (${out.completionTokens} completion tokens)`);
