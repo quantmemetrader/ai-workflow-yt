@@ -531,7 +531,19 @@ export function ScriptDoc(props: ScriptDocProps) {
   }
 
   const refAtt = useAttachments(zh, 5);
-  function runCopilot(text?: string) {
+  /* 深度重写 (Rahul, 4 Oct): the strongest model goes over the whole draft once
+     more; its edits come back as tracked changes to accept or reject. */
+  const DEEP_MODEL = "anthropic/claude-opus-5.5";
+  const deepRewrite = () =>
+    runCopilot(
+      t(
+        "深度重写全文：事实、数字、人名和整体结构都不变，逐段打磨。开头三秒更抓人；每段只讲一件事；口语更自然，像真人对着镜头说话；删掉空话、套话和 AI 腔；节奏更紧凑；结尾留一个让人想回答的问题。总时长保持在目标时长左右。",
+        "Deep rewrite of the whole script: keep every fact, number, name and the structure; polish each paragraph. A sharper first three seconds, one point per paragraph, natural spoken lines, no filler or AI phrasing, tighter rhythm, and an ending question people want to answer. Keep to the target length.",
+      ),
+      DEEP_MODEL,
+    );
+
+  function runCopilot(text?: string, modelOverride?: string) {
     const q = (text ?? ask).trim();
     if (q && editor && !locked) setAiLog((l) => [...l.slice(-5), { q, a: null }]);
     if (!editor) return;
@@ -558,7 +570,7 @@ export function ScriptDoc(props: ScriptDocProps) {
     setThinking(true);
     start(async () => {
       await save();
-      const r = await copilotAction(projectId, units.map((u) => u.text), q, pickModel === AUTO_MODEL ? undefined : pickModel, refAtt.ids);
+      const r = await copilotAction(projectId, units.map((u) => u.text), q, modelOverride ?? (pickModel === AUTO_MODEL ? undefined : pickModel), refAtt.ids);
       setThinking(false);
       if ("error" in r && r.error) return notify(r.error);
       refAtt.clear();
@@ -1141,6 +1153,11 @@ export function ScriptDoc(props: ScriptDocProps) {
       <Status tone="draft" text={<><b>{t("写好了？选一个往下走：", "Done? Pick the way forward:")}</b><span className="gd-status-dim">{t(`　草稿 · 第 ${(script.version ?? 0) + 1} 版`, `  Draft · v${(script.version ?? 0) + 1}`)}</span></>}>
         {me.canEdit ? <button type="button" className="gd-status-btn primary" onClick={() => setSharing(true)}>{t("发给同事审阅", "Send for review")}</button> : null}
         {me.canEdit && me.isAdmin ? <button type="button" className="gd-status-btn" disabled={pending} onClick={approve}>{t("我自己审阅通过", "I approve it myself")}</button> : null}
+        {me.canEdit ? (
+          <button type="button" className="gd-status-btn" disabled={thinking || Boolean(proposal)} onClick={deepRewrite} title={t("用最强的模型（Claude Opus 5.5）把整篇再打磨一遍，约一分钟；改动会标在文档里，逐条接受或拒绝", "The strongest model (Claude Opus 5.5) polishes the whole script, about a minute; its edits are marked for you to accept or reject")}>
+            {thinking ? t("深度重写中…", "Rewriting…") : t("深度重写", "Deep rewrite")}
+          </button>
+        ) : null}
         <Link href={`/projects/${projectId}/edit`} prefetch={false} className="gd-status-btn">{t("先去剪辑 →", "Skip to the edit →")}</Link>
       </Status>
     );
@@ -1628,6 +1645,10 @@ export function ScriptDoc(props: ScriptDocProps) {
 
                 {me.canEdit && !viewing && mode !== "view" ? (
                   <>
+                    <button type="button" className="gd-ai-go" style={{ width: "100%", justifyContent: "center", marginBottom: 12 }} disabled={thinking || Boolean(proposal)} onClick={deepRewrite} title={t("用最强的模型（Claude Opus 5.5）把整篇再打磨一遍", "The strongest model polishes the whole script")}>
+                      <GI name="sparkle" size={16} />
+                      {thinking ? t("深度重写中…", "Rewriting…") : t("深度重写（更强的模型）", "Deep rewrite (stronger model)")}
+                    </button>
                     <div className="gd-ai-label">{t("一键改", "One-press edits")}</div>
                     <div className="gd-ai-grid">
                       {CHIPS.map((c) => (
