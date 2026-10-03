@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { files } from "@/lib/db/schema";
 import { completeUpload } from "@/lib/files/service";
+import { completeVersion } from "@/lib/files/versions";
 import { abortMultipartUpload, completeMultipartUpload, headObject, MAX_PARTS } from "@/lib/storage/r2";
 import { openSession, readJson } from "../session";
 
@@ -20,7 +21,7 @@ export async function POST(request: Request) {
 
   const opened = await openSession(parsed.body);
   if ("refusal" in opened) return opened.refusal;
-  const { viewer, fileId, storageKey, uploadId } = opened.session;
+  const { viewer, fileId, storageKey, uploadId, version } = opened.session;
 
   const parts = readParts(parsed.body.parts);
   if (!parts) return new Response("Bad request", { status: 400 });
@@ -38,6 +39,16 @@ export async function POST(request: Request) {
 
   const head = await headObject(storageKey);
   if (!head) return new Response("The upload did not arrive", { status: 409 });
+
+  if (version) {
+    try {
+      const given = typeof parsed.body.checksum === "string" ? parsed.body.checksum.slice(0, 128) : null;
+      await completeVersion(viewer, fileId, storageKey, { name: parsed.body.name, mime: parsed.body.mime, checksum: given });
+    } catch (err) {
+      return new Response(err instanceof Error ? err.message : "新版本没有保存成功", { status: 409 });
+    }
+    return Response.json({ ok: true, size: head.size });
+  }
 
   await db.update(files).set({ sizeBytes: head.size }).where(eq(files.id, fileId));
   /* The client's own hash if it computed one, otherwise the object's etag —

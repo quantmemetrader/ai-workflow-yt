@@ -23,12 +23,14 @@ export async function POST(request: Request) {
   const opened = await openSession(parsed.body);
   if ("refusal" in opened) return opened.refusal;
 
-  const { viewer, fileId, storageKey, uploadId } = opened.session;
+  const { viewer, fileId, storageKey, uploadId, version } = opened.session;
   try {
     await abortMultipartUpload(storageKey, uploadId);
   } catch (err) {
     return new Response(err instanceof Error ? err.message : "The upload could not be abandoned", { status: 502 });
   }
+  /* A cancelled new version leaves the file as it was: only the parts go. */
+  if (version) return Response.json({ ok: true, removed: false });
   const outcome = await abandonUpload(viewer, fileId);
   return Response.json({ ok: true, removed: outcome === "gone" });
 }

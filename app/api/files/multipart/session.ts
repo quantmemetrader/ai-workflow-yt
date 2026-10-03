@@ -4,6 +4,7 @@ import { files } from "@/lib/db/schema";
 import { getViewer } from "@/lib/auth/dal";
 import { relationOn } from "@/lib/authz/rebac";
 import type { Viewer } from "@/lib/auth/dal";
+import { isVersionKeyFor } from "@/lib/files/move-paths";
 
 /**
  * The checks every step of a multipart upload after `start` has to repeat.
@@ -16,10 +17,13 @@ import type { Viewer } from "@/lib/auth/dal";
  * anywhere in the bucket.
  */
 
-export type Session = { viewer: Viewer; fileId: string; storageKey: string; uploadId: string };
+/** `version` when the upload is a new version of an existing file: the key is
+ * then the pending version key the browser was given at start, accepted only
+ * if it is one of this file's own (`isVersionKeyFor`). */
+export type Session = { viewer: Viewer; fileId: string; storageKey: string; uploadId: string; version: boolean };
 
 export async function openSession(
-  body: { fileId?: unknown; uploadId?: unknown },
+  body: { fileId?: unknown; uploadId?: unknown; versionKey?: unknown },
 ): Promise<{ session: Session } | { refusal: Response }> {
   const viewer = await getViewer();
   if (!viewer) return { refusal: new Response("Unauthorized", { status: 401 }) };
@@ -44,9 +48,17 @@ export async function openSession(
     .from(files)
     .where(and(eq(files.id, fileId), eq(files.tenantId, viewer.tenantId)))
     .limit(1);
-  if (!row?.storageKey) return { refusal: new Response("Not found", { status: 404 }) };
+  if (!row) return { refusal: new Response("Not found", { status: 404 }) };
 
-  return { session: { viewer, fileId, storageKey: row.storageKey, uploadId } };
+  if (body.versionKey !== undefined) {
+    const key = typeof body.versionKey === "string" ? body.versionKey : "";
+    if (!isVersionKeyFor(key, viewer.tenantId, fileId) || row.deletedAt) return { refusal: new Response("Not found", { status: 404 }) };
+    return { session: { viewer, fileId, storageKey: key, uploadId, version: true } };
+  }
+
+  if (!row.storageKey) return { refusal: new Response("Not found", { status: 404 }) };
+
+  return { session: { viewer, fileId, storageKey: row.storageKey, uploadId, version: false } };
 }
 
 /** The body, or the 400 to send instead. */

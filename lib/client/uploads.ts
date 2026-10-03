@@ -117,6 +117,8 @@ export async function startUploads(
   opts: UploadTarget & {
     /** Called per file as it lands, with the id the store gave it. */
     onDone?: (fileId: string, file: File) => void | Promise<void>;
+    /** 上传新版本: the (single) file becomes the next version of this one. */
+    versionOf?: string;
     /** This batch's own rows, on every change — for a page that also wants
      * to draw them. The tray draws them regardless. */
     onProgress?: (batch: UploadJob[]) => void;
@@ -151,7 +153,7 @@ export async function startUploads(
           file,
           (fraction) => update(key, { pct: fraction }),
           controller.signal,
-          { folderId: opts.folderId, access: opts.access, onRow: (fileId) => update(key, { fileId }) },
+          { folderId: opts.folderId, access: opts.access, versionOf: opts.versionOf, onRow: (fileId) => update(key, { fileId }) },
         );
         update(key, { pct: 1, status: "done", fileId: id });
         uploaded++;

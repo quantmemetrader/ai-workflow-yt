@@ -1,5 +1,6 @@
 import { getViewer } from "@/lib/auth/dal";
 import { beginUpload } from "@/lib/files/service";
+import { beginVersion } from "@/lib/files/versions";
 import { createMultipartUpload, MAX_PARTS, partSizeFor } from "@/lib/storage/r2";
 import { readUploadInput } from "../../upload-input";
 import { readJson } from "../session";
@@ -36,7 +37,15 @@ export async function POST(request: Request) {
     return new Response("文件太大，无法分段上传", { status: 413 });
   }
 
+  /* 上传新版本 of a big file: a fresh key of the existing file (`lib/files/versions.ts`). */
+  const versionOf = typeof parsed.body.versionOf === "string" && parsed.body.versionOf.length <= 64 ? parsed.body.versionOf : null;
+
   try {
+    if (versionOf) {
+      const { file, storageKey } = await beginVersion(viewer, versionOf, read.input);
+      const uploadId = await createMultipartUpload(storageKey, read.input.mime);
+      return Response.json({ fileId: file.id, uploadId, partSize, versionKey: storageKey });
+    }
     const { file, storageKey } = await beginUpload(viewer, read.input);
     const uploadId = await createMultipartUpload(storageKey, read.input.mime);
     return Response.json({ fileId: file.id, uploadId, partSize });

@@ -36,6 +36,9 @@ export type UploadTarget = {
 };
 
 type Hooks = UploadTarget & {
+  /** 上传新版本: the bytes become the next version of this existing file
+   * instead of a new file. Same routes, same checks, a key of its own. */
+  versionOf?: string;
   /** The row exists before the bytes finish; a caller drawing a list can
    * point at it early. */
   onRow?: (fileId: string) => void;
@@ -141,6 +144,7 @@ function describe(file: File, hooks: Hooks) {
     size: file.size,
     folderId: hooks.folderId ?? null,
     access: hooks.access ?? { mode: "private" },
+    ...(hooks.versionOf ? { versionOf: hooks.versionOf } : {}),
   });
 }
 
@@ -160,9 +164,10 @@ async function allAtOnce(
   });
   if (!presigned.ok) throw new Error(await refusal(presigned, "上传被拒绝"));
 
-  const { fileId, upload } = (await presigned.json()) as {
+  const { fileId, upload, versionKey } = (await presigned.json()) as {
     fileId: string;
     upload: { url: string; method: "PUT"; headers: Record<string, string> };
+    versionKey?: string;
   };
 
   hooks.onRow?.(fileId);
@@ -172,9 +177,16 @@ async function allAtOnce(
 
     // Until this lands the row has no version and no poster job: an object in
     // the bucket that the studio does not yet consider a file.
-    const done = await fetch(`/api/files/${fileId}/complete`, { method: "POST", signal });
+    const done = await fetch(
+      `/api/files/${fileId}/complete`,
+      versionKey
+        ? { method: "POST", signal, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ versionKey, name: file.name, mime: typeOf(file) }) }
+        : { method: "POST", signal },
+    );
     if (!done.ok) throw new Error(await refusal(done, "文件没有传到，请重试"));
   } catch (err) {
+    /* A new version that failed leaves the file as it was; there is no row to take back. */
+    if (versionKey) throw err;
     /* The row was made before the bytes moved. Left behind, it is a file in
        the list that opens to nothing — which is exactly what the studio saw
        after a failed 590 MB upload. `keepalive` so a closing tab still
@@ -234,11 +246,14 @@ async function inParts(
 
   // The server chooses the part size: R2 requires every part but the last to
   // be the same length, so this is not something the two ends can each decide.
-  const { fileId, uploadId, partSize } = (await started.json()) as {
+  const { fileId, uploadId, partSize, versionKey } = (await started.json()) as {
     fileId: string;
     uploadId: string;
     partSize: number;
+    versionKey?: string;
   };
+  /* Every later step names the pending version key, which the server checks belongs to this file. */
+  const versioned = versionKey ? { versionKey } : {};
   const count = Math.ceil(file.size / partSize);
   hooks.onRow?.(fileId);
 
@@ -288,7 +303,7 @@ async function inParts(
            whole point: a signature only ever has to outlive the one part it
            is for, so a link slow enough to spend an hour on the file never
            meets an expired URL — which is what killed the 590 MB upload. */
-        const url = await signPart(fileId, uploadId, index + 1, signal);
+        const url = await signPart(fileId, uploadId, index + 1, signal, versionKey);
         const etag = await putPart(url, blob, live, (loaded) => {
           sent[index] = loaded;
           report();
@@ -336,6 +351,8 @@ async function inParts(
         fileId,
         uploadId,
         parts: etags.map((etag, i) => ({ partNumber: i + 1, etag })),
+        ...versioned,
+        ...(versionKey ? { name: file.name, mime: typeOf(file) } : {}),
       }),
     });
     if (!done.ok) throw new Error(await refusal(done, "文件没有传到，请重试"));
@@ -352,7 +369,7 @@ async function inParts(
     await fetch("/api/files/multipart/abort", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ fileId, uploadId }),
+      body: JSON.stringify({ fileId, uploadId, ...versioned }),
       keepalive: true,
     }).catch(() => {});
     throw stopped ?? err;
@@ -366,11 +383,12 @@ async function signPart(
   uploadId: string,
   partNumber: number,
   signal?: AbortSignal,
+  versionKey?: string,
 ): Promise<string> {
   const res = await fetch("/api/files/multipart/sign-part", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ fileId, uploadId, partNumber }),
+    body: JSON.stringify({ fileId, uploadId, partNumber, ...(versionKey ? { versionKey } : {}) }),
     signal,
   });
   if (!res.ok) throw new Error(await refusal(res, "上传签名失败，请重试"));

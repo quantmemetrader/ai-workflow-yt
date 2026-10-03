@@ -6,6 +6,7 @@ import { relationOn } from "@/lib/authz/rebac";
 import { audit } from "@/lib/audit";
 import { presignDownload } from "@/lib/storage/r2";
 import { fileInVisibleProject } from "@/lib/video/access";
+import { versionObject } from "@/lib/files/versions";
 
 /**
  * Opens a file. Permission is checked here, then a short-lived signed URL is
@@ -53,12 +54,29 @@ export async function GET(request: Request, ctx: { params: Promise<{ id: string 
   // An admin may break glass; it is recorded as exactly that.
   if (!granted && !viewer.isAdmin) return new Response("Not found", { status: 404 });
 
+  /* `?v=3`: one earlier version, from the 版本 list. Same check as the file
+     itself; only a version that kept its own object can be fetched. */
+  const params = new URL(request.url).searchParams;
+  const wanted = params.get("v");
+  const versionNo = wanted && /^\d{1,6}$/.test(wanted) ? Number(wanted) : null;
+  if (wanted && versionNo === null) return new Response("Not found", { status: 404 });
+
   await audit(viewer, granted ? "file.open" : "file.open.admin_override", {
     objectType: "file",
     objectId: id,
     module: "files",
-    meta: { name: file.name, relation: held ?? (inProject ? "video_project" : null) },
+    meta: { name: file.name, relation: held ?? (inProject ? "video_project" : null), ...(versionNo ? { version: versionNo } : {}) },
   });
+
+  if (versionNo !== null) {
+    const key = await versionObject(id, versionNo);
+    if (!key) return new Response("Not found", { status: 404 });
+    const dot = file.name.lastIndexOf(".");
+    const keyExt = /\.[^./]{1,10}$/.exec(key)?.[0] ?? (dot > 0 ? file.name.slice(dot) : "");
+    const base = dot > 0 ? file.name.slice(0, dot) : file.name;
+    const url = await presignDownload(key, { expiresIn: 300, filename: `${base} (v${versionNo})${keyExt}` });
+    return Response.redirect(url, 302);
+  }
 
   if (!file.storageKey) {
     // A text document lives in the database, not in object storage — and this
@@ -79,7 +97,7 @@ export async function GET(request: Request, ctx: { params: Promise<{ id: string 
     });
   }
 
-  const download = new URL(request.url).searchParams.get("download") === "1";
+  const download = params.get("download") === "1";
   // A <video> keeps asking the same signed URL for byte ranges for as long as
   // the page is open; five minutes was enough for a download and not for a
   // player somebody paused and came back to (the next seek hit an expired

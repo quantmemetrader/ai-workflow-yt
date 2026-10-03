@@ -1,5 +1,6 @@
 import { getViewer } from "@/lib/auth/dal";
 import { beginUpload } from "@/lib/files/service";
+import { beginVersion } from "@/lib/files/versions";
 import { presignUpload } from "@/lib/storage/r2";
 import { readUploadInput } from "../upload-input";
 
@@ -31,7 +32,16 @@ export async function POST(request: Request) {
   const read = readUploadInput(body);
   if ("refusal" in read) return read.refusal;
 
+  /* 上传新版本: the same checks and the same signed PUT, at a fresh key of
+     the existing file rather than a new row (`lib/files/versions.ts`). */
+  const versionOf = typeof body.versionOf === "string" && body.versionOf.length <= 64 ? body.versionOf : null;
+
   try {
+    if (versionOf) {
+      const { file, storageKey } = await beginVersion(viewer, versionOf, read.input);
+      const upload = await presignUpload(storageKey, read.input.mime);
+      return Response.json({ fileId: file.id, upload, versionKey: storageKey });
+    }
     const { file, storageKey } = await beginUpload(viewer, read.input);
     const upload = await presignUpload(storageKey, read.input.mime);
     return Response.json({ fileId: file.id, upload });

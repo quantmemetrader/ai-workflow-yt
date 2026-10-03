@@ -4,12 +4,13 @@ import { files } from "@/lib/db/schema";
 import { getViewer } from "@/lib/auth/dal";
 import { relationOn } from "@/lib/authz/rebac";
 import { completeUpload } from "@/lib/files/service";
+import { completeVersion } from "@/lib/files/versions";
 import { headObject } from "@/lib/storage/r2";
 
 /** Confirms an upload: checks the object really landed, records its true size
  * and etag, and writes version 1. A row whose object never arrived stays
  * unconfirmed rather than pretending to be a file. */
-export async function POST(_request: Request, ctx: { params: Promise<{ id: string }> }) {
+export async function POST(request: Request, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
   const viewer = await getViewer();
   if (!viewer) return new Response("Unauthorized", { status: 401 });
@@ -27,6 +28,18 @@ export async function POST(_request: Request, ctx: { params: Promise<{ id: strin
     .from(files)
     .where(and(eq(files.id, id), eq(files.tenantId, viewer.tenantId)))
     .limit(1);
+  /* 上传新版本: the body names the pending version key the presign handed out. */
+  const body = (await request.json().catch(() => null)) as { versionKey?: unknown; name?: unknown; mime?: unknown } | null;
+  if (body && body.versionKey !== undefined) {
+    if (!row) return new Response("Not found", { status: 404 });
+    try {
+      const done = await completeVersion(viewer, id, String(body.versionKey), { name: body.name, mime: body.mime });
+      return Response.json({ ok: true, size: done.sizeBytes, version: done.version });
+    } catch (err) {
+      return new Response(err instanceof Error ? err.message : "新版本没有保存成功", { status: 409 });
+    }
+  }
+
   if (!row?.storageKey) return new Response("Not found", { status: 404 });
 
   const head = await headObject(row.storageKey);
