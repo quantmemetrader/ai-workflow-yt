@@ -71,6 +71,9 @@ const nextConfig: NextConfig = {
   async rewrites() {
     return {
       beforeFiles: [
+        // Browsers ask for /favicon.ico whatever the page links; it is the
+        // drawn icon (app/icon.tsx), not a 404 (QA, 3 Oct).
+        { source: "/favicon.ico", destination: "/icon" },
         // The design canvas, in full, for review.
         { source: "/demo", destination: "/app/login.html" },
         { source: `/demo/:mod(${ALL_MODULES})`, destination: "/app/:mod.html" },

@@ -34,6 +34,9 @@ const PUBLIC = [
      them — and a signed-out visitor, the login page included, got a redirect
      where the icon should be. */
   /^\/(icon|apple-icon|opengraph-image)$/,
+  /* The web app manifest names those icons; signed out it was a 307 to the
+     login page (QA, 3 Oct). */
+  /^\/manifest\.webmanifest$/,
   /*
    * A platform calling back has no session and never will. The route does its
    * own checking — an HMAC over the raw body when a secret is configured, and
