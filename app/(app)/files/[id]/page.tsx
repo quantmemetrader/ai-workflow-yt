@@ -16,6 +16,7 @@ import { manageableFiles, visibilityForFiles } from "@/lib/files/access";
 import { RenameFile } from "@/components/files/RenameFile";
 import { editable } from "@/lib/files/doc-edit";
 import { FileVersions } from "@/components/files/FileVersions";
+import { sameContent } from "@/lib/files/versions";
 import { MoveFileButton } from "@/components/files/MoveDialog";
 
 /**
@@ -276,6 +277,7 @@ export default async function FilePage({ params }: { params: Promise<{ id: strin
               date: formatDate(v.version.createdAt, locale),
               note: v.version.note ? versionNote(v.version.note, zh) : null,
               stored: Boolean(v.version.storageKey),
+              current: sameContent(v.version, file),
             }))}
           />
         </aside>

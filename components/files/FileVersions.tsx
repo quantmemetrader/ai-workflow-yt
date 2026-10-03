@@ -53,6 +53,8 @@ export type VersionItem = {
   note: string | null;
   /** Whether this version kept its own stored object (and so can be downloaded or restored). */
   stored: boolean;
+  /** Its content is what the file is now (same object or checksum): nothing to restore. */
+  current?: boolean;
 };
 
 /** The 版本 section of a file's page: every version, each downloadable, any earlier one restorable. */
@@ -133,7 +135,7 @@ export function FileVersions({
                   <Icon name="download" size={11} />
                   {t("下载", "Download")}
                 </a>
-                {canEdit && v.versionNo !== newest ? (
+                {canEdit && v.versionNo !== newest && !v.current ? (
                   <button
                     type="button"
                     disabled={busy !== null}

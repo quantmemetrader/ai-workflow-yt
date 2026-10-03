@@ -207,6 +207,19 @@ export async function completeVersion(
   return row;
 }
 
+/**
+ * A version whose bytes are what the file is now: the same stored object, or
+ * the same checksum (QA, 4 Oct: 恢复为当前版本 was offered on a version a
+ * restore had already made current). Restoring it would only add a copy.
+ */
+export function sameContent(
+  version: { storageKey: string | null; checksum: string | null },
+  file: { storageKey: string | null; checksum: string | null },
+): boolean {
+  if (version.storageKey && version.storageKey === file.storageKey) return true;
+  return Boolean(version.checksum && version.checksum === file.checksum);
+}
+
 /** 恢复为当前版本: an earlier version becomes the newest one, as a copy; nothing in between is lost. */
 export async function restoreVersion(viewer: Viewer, fileId: string, versionNo: number) {
   await mayEdit(viewer, fileId, "恢复版本");
@@ -219,7 +232,7 @@ export async function restoreVersion(viewer: Viewer, fileId: string, versionNo: 
     .limit(1);
   if (!version) throw new Error("找不到这个版本");
   if (!version.storageKey) throw new Error("这个版本没有单独保存的文件，无法恢复");
-  if (version.storageKey === file.storageKey) throw new Error("这已经是当前版本");
+  if (sameContent(version, file)) throw new Error("这已经是当前版本");
 
   const head = await headObject(version.storageKey);
   if (!head) throw new Error("这个版本的文件已经不在了");
