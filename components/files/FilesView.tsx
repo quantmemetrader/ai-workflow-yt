@@ -9,6 +9,7 @@ import { InlineAgentThread, useInlineAgent } from "@/components/shell/InlineAgen
 import { useLocalPreference } from "@/lib/client/preference";
 import { NameDialog } from "@/components/ui/NameDialog";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { useAsk } from "@/components/ui/useAsk";
 
 const LAYOUTS = ["list", "grid", "gallery"] as const;
 import {
@@ -72,6 +73,7 @@ export function FilesView({
   const [, start] = useTransition();
   const input = useRef<HTMLInputElement>(null);
   const zh = locale.startsWith("zh");
+  const ask = useAsk(zh);
   /* The agent answers in this module. It used to be a link to /chat, which is
    * why a question about a folder cost you the folder. */
   const agent = useInlineAgent({ module: "files", fileId: undefined });
@@ -150,6 +152,7 @@ export function FilesView({
 
   return (
     <>
+      {ask.dialog}
       <FilesScreen
         breadcrumbs={breadcrumbs}
         folders={folders}
@@ -226,8 +229,8 @@ export function FilesView({
                     type="button"
                     className="fv-btn danger"
                     disabled={!picked.size}
-                    onClick={() => {
-                      if (!picked.size || !window.confirm(zh ? `把 ${picked.size} 个文件移到回收站？30 天内可以恢复。` : `Move ${picked.size} files to the trash? They can be restored for 30 days.`)) return;
+                    onClick={async () => {
+                      if (!picked.size || !(await ask.confirm({ title: zh ? `把 ${picked.size} 个文件移到回收站？` : `Move ${picked.size} files to the trash?`, body: zh ? "30 天内可以恢复。" : "They can be restored for 30 days.", confirm: zh ? "移到回收站" : "Move to trash", danger: true }))) return;
                       start(async () => {
                         const res = await deleteFilesAction([...picked]);
                         if (res.error) notify(res.error);

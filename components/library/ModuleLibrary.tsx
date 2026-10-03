@@ -4,6 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { notify } from "@/lib/client/notify";
+import { useAsk } from "@/components/ui/useAsk";
 import { uploadFiles } from "@/lib/client/upload";
 import { deleteFilesAction } from "@/app/(app)/files/actions";
 import { trainWithFileAction } from "@/app/(app)/library/actions";
@@ -36,6 +37,7 @@ export function ModuleLibrary({ module, title, agentName, zh, folderId, files, c
   const [picking, setPicking] = React.useState(false);
   const [picked, setPicked] = React.useState<Set<string>>(new Set());
   const [pending, start] = React.useTransition();
+  const ask = useAsk(zh);
 
   /* Files still being read by AI: look again in a little while. */
   const unread = files.some((f) => !f.read);
@@ -62,6 +64,7 @@ export function ModuleLibrary({ module, title, agentName, zh, folderId, files, c
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14, maxWidth: 1080 }}>
+      {ask.dialog}
       <div>
         <div style={{ fontSize: 17, fontWeight: 650, color: "#171717" }}>{title}</div>
         <div style={{ fontSize: 13, color: "#6b6b6b", marginTop: 4, lineHeight: 1.6 }}>
@@ -115,8 +118,8 @@ export function ModuleLibrary({ module, title, agentName, zh, folderId, files, c
               type="button"
               style={btn(false, true)}
               disabled={!picked.size || pending}
-              onClick={() => {
-                if (!picked.size || !window.confirm(t(`把 ${picked.size} 个文件移到回收站？30 天内可以恢复。`, `Move ${picked.size} files to the trash?`))) return;
+              onClick={async () => {
+                if (!picked.size || !(await ask.confirm({ title: t(`把 ${picked.size} 个文件移到回收站？`, `Move ${picked.size} files to the trash?`), body: t("30 天内可以恢复。", "They can be restored for 30 days."), confirm: t("移到回收站", "Move to trash"), danger: true }))) return;
                 start(async () => {
                   const res = await deleteFilesAction([...picked]);
                   if (res.error) notify(res.error);

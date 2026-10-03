@@ -1120,9 +1120,12 @@ export async function setProjectAccess(viewer: Viewer, id: string, access: Acces
 
 /** Remove a project from every list (kept in the database, recoverable). */
 export async function deleteProject(viewer: Viewer, id: string): Promise<void> {
-  const [p] = await db.select({ createdBy: workProjects.createdBy }).from(workProjects).where(and(eq(workProjects.id, id), eq(workProjects.tenantId, viewer.tenantId))).limit(1);
-  if (!p) throw new Error("No such project");
-  if (!viewer.isAdmin && p.createdBy !== viewer.id) throw new Error("Only the person who started it, or an admin, can delete it");
+  /* Already deleted is "no such project", as for archive and rename after a
+     delete; it used to succeed again and re-run the cascade. */
+  const zh = (viewer.locale ?? "zh-CN").startsWith("zh");
+  const [p] = await db.select({ createdBy: workProjects.createdBy }).from(workProjects).where(and(eq(workProjects.id, id), eq(workProjects.tenantId, viewer.tenantId), isNull(workProjects.deletedAt))).limit(1);
+  if (!p) throw new Error(zh ? "没有这个项目" : "No such project");
+  if (!viewer.isAdmin && p.createdBy !== viewer.id) throw new Error(zh ? "只有发起人或管理员可以删除这个项目" : "Only the person who started it, or an admin, can delete it");
   await db.update(workProjects).set({ deletedAt: new Date() }).where(eq(workProjects.id, id));
   /* Its script goes with it (2 Oct: deleted projects' scripts stayed in 脚本 as 「待写」
      and opened in the old editor), unless another live project still uses it. */
