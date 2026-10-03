@@ -12,7 +12,7 @@ import type { CardAction } from "@/lib/agents/cards";
    never heard of. */
 import { PLAN_COLLEAGUES } from "@/lib/agents/lanes";
 import { runTool } from "@/lib/ai/tools";
-import { assemblePrompt } from "@/lib/ai/prompt";
+import { assemblePrompt, withModelLine } from "@/lib/ai/prompt";
 import { AiError, complete } from "@/lib/ai/openrouter";
 import { modelFor } from "@/lib/ai/models";
 import { BudgetStop, assertBudget, recordUsage } from "@/lib/ai/ledger";
@@ -223,7 +223,7 @@ export async function runPlan(opts: { tenant: string; force?: boolean; dry?: boo
         maxTokens: 2500,
         user: viewer.id,
         messages: [
-          { role: "system", content: `${base}\n\n${INSTRUCTIONS}` },
+          { role: "system", content: `${withModelLine(base, model)}\n\n${INSTRUCTIONS}` },
           { role: "user", content: material },
         ],
       });

@@ -98,9 +98,26 @@ const FINANCE_CRAFT = `- 每个金额、百分比、日期都必须是这一回�
 
 export type PromptPart = { id: string; title: string; kind: string; scope: string };
 
+/**
+ * The 当前模型 line, for the model that actually answers this turn. A model
+ * picked for one message (the composer's 模型 chip) or a fallback taking over
+ * mid-turn is not the employee's default, and Kimi K2.6 introduced itself as
+ * "DeepSeek V4 Flash" because the line named the default (QA, 3 Oct).
+ */
+export function modelLine(model: string): string {
+  return `当前模型：${labelFor(aliasModel(model))}。`;
+}
+
+/** `system` with its 当前模型 line naming `model` instead. */
+export function withModelLine(system: string, model: string): string {
+  return system.replace(/当前模型：[^。\n]*。/, () => modelLine(model));
+}
+
 export async function assemblePrompt(
   viewer: Viewer,
   module?: Module,
+  /** The model this turn runs on; absent, the employee's own (else the studio's). */
+  model?: string,
 ): Promise<{ text: string; parts: PromptPart[] }> {
   // The module is a caller's parameter, and tuning for a module is written for
   // the people who hold it. An employee without `legal` asking for the legal
@@ -135,10 +152,10 @@ export async function assemblePrompt(
 
 ${identityFor(agent)}
 
-Today is ${today}. Your modules: ${viewer.modules.join(", ") || "none"}. 当前模型：${labelFor(aliasModel(modelFor.agent(agent) ?? modelFor.assistant()))}。`
+Today is ${today}. Your modules: ${viewer.modules.join(", ") || "none"}. ${modelLine(model ?? modelFor.agent(agent) ?? modelFor.assistant())}`
     : `${BASE}
 
-You are assisting ${viewer.name}${viewer.title ? `, ${viewer.title}` : ""}. Today is ${today}. They hold these modules: ${viewer.modules.join(", ") || "none"}. 当前模型：${labelFor(aliasModel(modelFor.assistant()))}。`;
+You are assisting ${viewer.name}${viewer.title ? `, ${viewer.title}` : ""}. Today is ${today}. They hold these modules: ${viewer.modules.join(", ") || "none"}. ${modelLine(model ?? modelFor.agent("assistant") ?? modelFor.assistant())}`;
 
   const sections = rows.map(
     (r) => `\n\n--- ${r.kind.toUpperCase()}: ${r.title} (v${r.version}) ---\n${r.body}`,

@@ -27,7 +27,7 @@ import { sql } from "drizzle-orm";
 import { db, pool } from "../lib/db/client";
 import { agentViewer, ensureAgentChannel, postAsAgent } from "../lib/agents";
 import { runTool } from "../lib/ai/tools";
-import { assemblePrompt } from "../lib/ai/prompt";
+import { assemblePrompt, withModelLine } from "../lib/ai/prompt";
 import { AiError, complete } from "../lib/ai/openrouter";
 import { modelFor } from "../lib/ai/models";
 import { BudgetStop, assertBudget, recordUsage } from "../lib/ai/ledger";
@@ -178,7 +178,7 @@ async function main() {
         maxTokens: 4000,
         user: viewer.id,
         messages: [
-          { role: "system", content: `${base}\n\n${instructions(pillars)}` },
+          { role: "system", content: `${withModelLine(base, model)}\n\n${instructions(pillars)}` },
           { role: "user", content: material },
         ],
       });

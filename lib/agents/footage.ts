@@ -6,7 +6,7 @@ import { postMessage } from "@/lib/chat/service";
 import { agentViewer, postAsAgent } from "@/lib/agents";
 import { AGENT_LABELS, agentTag, type AgentKey } from "@/lib/agents/catalog";
 import type { CardAction } from "@/lib/agents/cards";
-import { assemblePrompt } from "@/lib/ai/prompt";
+import { assemblePrompt, withModelLine } from "@/lib/ai/prompt";
 import { AiError, complete } from "@/lib/ai/openrouter";
 import { modelFor } from "@/lib/ai/models";
 import { BudgetStop, assertBudget, recordUsage } from "@/lib/ai/ledger";
@@ -131,7 +131,7 @@ export async function proposeFromFootage(projectId: string): Promise<{ posted: s
         maxTokens: 2000,
         user: viewer.id,
         messages: [
-          { role: "system", content: `${base}\n\n${INSTRUCTIONS}` },
+          { role: "system", content: `${withModelLine(base, model)}\n\n${INSTRUCTIONS}` },
           { role: "user", content: `项目：《${project.title}》\n\n转写：\n${transcript}` },
         ],
       });

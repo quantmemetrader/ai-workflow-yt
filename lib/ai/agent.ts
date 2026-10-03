@@ -14,7 +14,7 @@ import { AiError, streamChat, type ChatMessage, type StreamEvent } from "./openr
 import { BudgetStop, assertBudget, budgetState, notifyBudgetStop, recordUsage, type BudgetState } from "./ledger";
 import { labelFor, modelFor } from "./models";
 import { freshModelChoice } from "./choice";
-import { assemblePrompt } from "./prompt";
+import { assemblePrompt, withModelLine } from "./prompt";
 import { runTool, toolsFor } from "./tools";
 import { idsIn, type Artifact, type ToolContext } from "./tools/types";
 import { AGENT_KEYS, AGENT_LABELS, agentKeyFromEmail, type AgentKey } from "@/lib/agents/catalog";
@@ -234,7 +234,11 @@ export async function* runAgent(opts: {
   /* The model this employee answers with is read fresh for the turn: another
      worker may have just saved a new choice (TRAIN-2). */
   await freshModelChoice();
-  const { text: system } = await assemblePrompt(viewer, opts.module);
+  /* A message's own pick, else this employee's own model, else the studio's.
+     Decided before the prompt is built, so its 当前模型 line names the model
+     that actually answers (QA, 3 Oct: Kimi said it was DeepSeek). */
+  let model = opts.model ?? modelFor.agent(agentKeyFromEmail(viewer.email) ?? "assistant") ?? modelFor.assistant();
+  const { text: system } = await assemblePrompt(viewer, opts.module, model);
   const messages: ChatMessage[] = [
     { role: "system", content: system },
     ...history
@@ -256,8 +260,6 @@ export async function* runAgent(opts: {
   const citedFileIds = new Set<string>();
   let answer = "";
   let withheldAny = false;
-  /* A message's own pick, else this employee's own model, else the studio's. */
-  let model = opts.model ?? modelFor.agent(agentKeyFromEmail(viewer.email) ?? "assistant") ?? modelFor.assistant();
   /** Models still untried if the current one refuses. */
   const fallbacks = modelFor.fallbacks().filter((m) => m !== model);
   let toldAboutFallback = false;
@@ -347,6 +349,7 @@ export async function* runAgent(opts: {
           const next = fallbacks.shift()!;
           const reason = aiErr.kind === "credit" ? "is out of credit" : "is being rate-limited";
           model = next;
+          messages[0].content = withModelLine(String(messages[0].content), model);
           if (!toldAboutFallback) {
             toldAboutFallback = true;
             yield {
@@ -487,6 +490,7 @@ export async function* runAgent(opts: {
             const retryable = aiErr !== null && (aiErr.kind === "credit" || aiErr.kind === "rate_limit");
             if (!retryable || !fallbacks.length || closingText) throw creditError ?? err;
             model = fallbacks.shift()!;
+            messages[0].content = withModelLine(String(messages[0].content), model);
           }
         }
       }
