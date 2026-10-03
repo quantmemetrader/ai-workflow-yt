@@ -28,7 +28,8 @@ import { ModuleSidebar, type ScreenItem } from "@/components/shell/ModuleSidebar
  * name". A template the studio writes itself shows the name it was given.
  */
 const TEMPLATE_ZH: Record<string, string> = {
-  "Contributor and likeness release": "出镜同意与肖像授权书",
+  /* (3 Oct) The Chinese release is its own template, named 出镜同意与肖像授权书（中文）; this is the English one. */
+  "Contributor and likeness release": "出镜同意与肖像授权书（English）",
   "Freelance production services agreement": "自由职业制作服务协议",
   "Before a video goes out": "视频发布前检查",
 };
@@ -301,7 +302,8 @@ function Drafting({
   onDraft: (input: { templateId: string; title: string; counterparty: string; values: Record<string, string> }) => void;
 }) {
   const t = (en: string, cn: string) => (zh ? cn : en);
-  const [templateId, setTemplateId] = useState(templates[0]?.id ?? "");
+  /* New drafts start from the Chinese release (the service lists it first too). */
+  const [templateId, setTemplateId] = useState((templates.find((x) => x.builtinKey === "release.zh") ?? templates[0])?.id ?? "");
   const [title, setTitle] = useState("");
   const [counterparty, setCounterparty] = useState("");
   const [values, setValues] = useState<Record<string, string>>({});
@@ -314,12 +316,12 @@ function Drafting({
         <Empty
           title={t("No templates yet", "还没有模板")}
           body={t(
-            "Start with the two a channel like this signs: a contributor and likeness release, and a freelance production services agreement. Both are editable in full.",
-            "可以先用这类频道最常签的两份：出镜同意与肖像使用授权书，以及自由职业制作服务协议。两份都可以完全修改。",
+            "Start with the two a channel like this signs: a contributor and likeness release (in Chinese and in English), and a freelance production services agreement. All editable in full.",
+            "可以先用这类频道最常签的两种：出镜同意与肖像授权书（中文、English 各一份），以及自由职业制作服务协议。都可以完全修改。",
           )}
         />
         <button type="button" disabled={busy} onClick={onSeed} style={solid}>
-          {t("Add the two starting templates", "添加这两份初始模板")}
+          {t("Add the starting templates", "添加初始模板")}
         </button>
       </>
     );
@@ -790,7 +792,7 @@ function Templates({
         </p>
         {templates.length === 0 && (
           <button type="button" disabled={busy} onClick={onSeed} style={ghost}>
-            {t("Add the two starters", "添加两份初始模板")}
+            {t("Add the starting templates", "添加初始模板")}
           </button>
         )}
         <button type="button" onClick={() => open("new")} style={solid}>
@@ -855,8 +857,8 @@ function Templates({
               />
               <p style={{ fontSize: 11, color: "#c7c7c7", margin: "8px 0 0", lineHeight: 1.55 }}>
                 {t(
-                  "Clause review compares numbered clauses (1., 2., 3.) between a contract and the template it came from.",
-                  "条款审阅会按编号（1.、2.、3.）比对合同与其来源模板。",
+                  "Clause review compares numbered clauses (1., 2., 3. or 第一条, 第二条) between a contract and the template it came from.",
+                  "条款审阅会按编号（1.、2.、3. 或 第一条、第二条）比对合同与其来源模板。",
                 )}
               </p>
             </div>

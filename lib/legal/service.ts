@@ -14,6 +14,8 @@ import type { Viewer } from "@/lib/auth/dal";
 import { audit } from "@/lib/audit";
 import { newId } from "@/lib/ids";
 import { fillTemplate, resolveDraft } from "@/lib/legal/fill";
+import { compareClauses } from "@/lib/legal/compare";
+import { RELEASE_ZH } from "@/lib/legal/release-zh";
 
 /** (QA, 2 Oct) A person's name the way the reader reads it: the Chinese name on a Chinese screen. */
 function personName(viewer: Viewer) {
@@ -49,6 +51,7 @@ function personName(viewer: Viewer) {
  */
 const STARTER_TEMPLATES = [
   {
+    builtinKey: "release.en",
     name: "Contributor and likeness release",
     kind: "release",
     fields: [
@@ -84,6 +87,7 @@ Signed: ____________________   Date: ____________
 for {{ studio }}`,
   },
   {
+    builtinKey: "agreement.en",
     name: "Freelance production services agreement",
     kind: "agreement",
     fields: [
@@ -128,6 +132,8 @@ for {{ studio }}`,
 
 export type TemplateRow = {
   id: string;
+  /** 'release.zh' and so on for a template the app added; null for one a person wrote. */
+  builtinKey: string | null;
   name: string;
   kind: string;
   body: string;
@@ -136,14 +142,51 @@ export type TemplateRow = {
   updatedAt: Date;
 };
 
+/** The template new drafts start from: the Chinese release. */
+export const DEFAULT_TEMPLATE_KEY = RELEASE_ZH.builtinKey;
+
+/**
+ * Templates the app adds to a studio that already has its starters, on read,
+ * so they appear without anybody running a script. Only for a studio that has
+ * templates: an empty one is still offered the starters on request and never
+ * silently (`seedTemplates`, which includes these). Idempotent through the
+ * (tenant_id, builtin_key) index; a template somebody hid stays hidden.
+ */
+async function ensureBuiltinTemplates(viewer: Viewer, existing: { builtinKey: string | null }[]) {
+  if (!existing.length || existing.some((r) => r.builtinKey === RELEASE_ZH.builtinKey)) return false;
+  const added = await db
+    .insert(templates)
+    .values({
+      id: newId("tpl"),
+      tenantId: viewer.tenantId,
+      builtinKey: RELEASE_ZH.builtinKey,
+      name: RELEASE_ZH.name,
+      kind: RELEASE_ZH.kind,
+      body: RELEASE_ZH.body,
+      fields: RELEASE_ZH.fields,
+    })
+    .onConflictDoNothing({ target: [templates.tenantId, templates.builtinKey] })
+    .returning({ id: templates.id });
+  if (added.length) {
+    await audit(viewer, "legal.template.builtin", { module: "legal", objectId: added[0].id, meta: { builtinKey: RELEASE_ZH.builtinKey } });
+  }
+  return added.length > 0;
+}
+
 export async function listTemplates(viewer: Viewer): Promise<TemplateRow[]> {
-  const rows = await db
-    .select()
-    .from(templates)
-    .where(eq(templates.tenantId, viewer.tenantId))
-    .orderBy(templates.name);
+  const read = () =>
+    db
+      .select()
+      .from(templates)
+      .where(eq(templates.tenantId, viewer.tenantId))
+      .orderBy(templates.name);
+  let rows = await read();
+  if (await ensureBuiltinTemplates(viewer, rows)) rows = await read();
+  /* The default (the Chinese release) first, so every list opens on it. */
+  rows.sort((a, b) => Number(b.builtinKey === DEFAULT_TEMPLATE_KEY) - Number(a.builtinKey === DEFAULT_TEMPLATE_KEY));
   return rows.map((r) => ({
     id: r.id,
+    builtinKey: r.builtinKey,
     name: r.name,
     kind: r.kind,
     body: r.body,
@@ -161,9 +204,10 @@ export async function seedTemplates(viewer: Viewer) {
   if ((existing[0]?.n ?? 0) > 0) return;
 
   await db.insert(templates).values(
-    STARTER_TEMPLATES.map((t) => ({
+    [RELEASE_ZH, ...STARTER_TEMPLATES].map((t) => ({
       id: newId("tpl"),
       tenantId: viewer.tenantId,
+      builtinKey: t.builtinKey,
       name: t.name,
       kind: t.kind,
       body: t.body,
@@ -402,48 +446,11 @@ export async function reviewContract(viewer: Viewer, contractId: string) {
      Compared with the raw placeholders, every filled clause read as changed
      (QA, 3 Oct). The name is the one drafting used (`draftContractAction`). */
   const [studio] = await db.select({ name: tenants.name }).from(tenants).where(eq(tenants.id, viewer.tenantId)).limit(1);
-  const templateClauses = splitClauses(fillTemplate(row.template.body, row.c.values ?? {}, studio?.name ?? "the Studio"));
-  const contractClauses = splitClauses(row.c.body);
-
-  const keys = new Set([...templateClauses.keys(), ...contractClauses.keys()]);
-  const findings: (typeof clauseFindings.$inferInsert)[] = [];
-
-  for (const key of [...keys].sort(byClauseNumber)) {
-    const a = templateClauses.get(key) ?? null;
-    const b = contractClauses.get(key) ?? null;
-
-    let departure = "same";
-    let explanation = "";
-
-    if (a && !b) {
-      departure = "missing";
-      explanation = "The template has this clause and the contract does not.";
-    } else if (!a && b) {
-      departure = "added";
-      explanation = "The contract has a clause the template does not.";
-    } else if (a && b) {
-      const na = normalise(a);
-      const nb = normalise(b);
-      if (na === nb) continue;
-      departure = na.replace(/\W/g, "") === nb.replace(/\W/g, "") ? "reworded" : "changed";
-      explanation =
-        departure === "reworded"
-          ? "The same words, punctuated or spaced differently."
-          : "The wording differs from the template.";
-    } else {
-      continue;
-    }
-
-    findings.push({
-      id: newId("rev"),
-      contractId,
-      clause: key,
-      templateText: a,
-      contractText: b,
-      explanation,
-      departure,
-    });
-  }
+  /* Numbered clauses in either language ("3." or 第三条); see ./compare. */
+  const findings: (typeof clauseFindings.$inferInsert)[] = compareClauses(
+    fillTemplate(row.template.body, row.c.values ?? {}, studio?.name ?? "the Studio"),
+    row.c.body,
+  ).map((d) => ({ id: newId("rev"), contractId, ...d }));
 
   // A review replaces the last one: a finding that is no longer true should
   // not sit on the screen next to one that is.
@@ -474,35 +481,6 @@ export async function acknowledgeFinding(viewer: Viewer, findingId: string) {
     .where(eq(clauseFindings.id, findingId));
   await audit(viewer, "legal.finding.acknowledge", { module: "legal", objectId: findingId });
 }
-
-/** Numbered clauses, as both texts write them: "3. Fee." and so on. */
-function splitClauses(body: string): Map<string, string> {
-  const out = new Map<string, string>();
-  const lines = body.split("\n");
-  let key: string | null = null;
-  let buffer: string[] = [];
-
-  const flush = () => {
-    if (key) out.set(key, buffer.join("\n").trim());
-    buffer = [];
-  };
-
-  for (const line of lines) {
-    const m = line.match(/^\s*(\d{1,2})[.)]\s+(.*)$/);
-    if (m) {
-      flush();
-      key = m[1];
-      buffer = [m[2]];
-    } else if (key) {
-      buffer.push(line);
-    }
-  }
-  flush();
-  return out;
-}
-
-const normalise = (s: string) => s.replace(/\s+/g, " ").trim().toLowerCase();
-const byClauseNumber = (a: string, b: string) => Number(a) - Number(b);
 
 /* ------------------------------------------------------------ compliance */
 
