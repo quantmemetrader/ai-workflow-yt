@@ -177,10 +177,19 @@ export type DirectorState = {
 /** What `transcribeProject` and the transcribers say when nobody speaks. */
 const NO_SPEECH = /no audible|any sound|produced any audio|nothing was said|could not be made out|made out no words|no words/i;
 
+/**
+ * The director's own bookkeeping — its step, its log, its result — written to
+ * the project. Not an edit of the cut, so `updatedAt` is left alone: the
+ * editor reads it against the last render to say "改过之后还没重新渲染", and
+ * the "渲染完成" line and `finish()` land seconds after the render's row was
+ * made, which made the director's own render report itself out of date.
+ * Every step that does change the cut (the timeline, the captions, the
+ * design, the look) moves `updatedAt` itself.
+ */
 async function patch(projectId: string, fn: (d: DirectorState) => DirectorState) {
   const [row] = await db.select({ director: videoProjects.director }).from(videoProjects).where(eq(videoProjects.id, projectId)).limit(1);
   const next = fn((row?.director ?? {}) as DirectorState);
-  await db.update(videoProjects).set({ director: next, updatedAt: new Date() }).where(eq(videoProjects.id, projectId));
+  await db.update(videoProjects).set({ director: next }).where(eq(videoProjects.id, projectId));
   return next;
 }
 
