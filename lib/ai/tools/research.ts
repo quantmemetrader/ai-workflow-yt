@@ -6,7 +6,7 @@ import { audit } from "@/lib/audit";
 import { enqueue } from "@/lib/jobs/queue";
 import { env } from "@/lib/env";
 import type { ToolDef } from "@/lib/ai/openrouter";
-import { createTopic, decide, rankedTopics } from "@/lib/research/service";
+import { createTopic, decide, moveTopicStage, planTopic, rankedTopics } from "@/lib/research/service";
 import { suggestAngles } from "@/lib/research/angles";
 import { trendingSearches } from "@/lib/research/trending";
 import { channelsForPhrase, trendingVideos } from "@/lib/research/youtube";
@@ -17,6 +17,7 @@ import { googleNewsSearch } from "@/lib/research/beat-sources";
 import { searchPlatform } from "@/lib/research/platform-search";
 import { BEAT_TABS, acrossPlatforms, feedOfTab, tabRows, type BeatRow, type Lists } from "@/lib/research/beat-view";
 import { addCompetitor, listCompetitors } from "@/lib/social/service";
+import { colleagueRefusal, findColleague, personOf } from "./people";
 import { num, str, type ToolContext, type ToolPack, type ToolResult } from "./types";
 
 /**
@@ -209,6 +210,7 @@ async function findTopic(ctx: ToolContext, phrase: string) {
 const pct = (v: number) => `${v >= 0 ? "+" : ""}${(v * 100).toFixed(1)}%`;
 
 async function run(ctx: ToolContext, name: string, args: Record<string, unknown>): Promise<ToolResult> {
+  if (name === "move_topic_stage" || name === "plan_topic") return runPlanning(ctx, name, args);
   if (name === "list_topics") {
     const limit = Math.min(Math.max(num(args.limit, 20), 1), 60);
     const rows = await rankedTopics(ctx.viewer, { limit });
@@ -538,4 +540,129 @@ async function run(ctx: ToolContext, name: string, args: Record<string, unknown>
   return { text: `Unknown tool ${name}.` };
 }
 
-export const researchPack: ToolPack = { module: "research", defs, run };
+/* ------------------------------------------------------------ the backlog */
+
+/**
+ * The backlog board, by conversation: a card moved along its lanes, and the
+ * fields an adopted topic needs before Script picks it up (who owns it, the
+ * channel it is for, when it is due).
+ *
+ * Done as the person when there is one, through the same checks the board's
+ * own actions make: the topic must be this studio's (`ownTopic`), the owner
+ * a colleague in this studio, the stage one of the board's four lanes.
+ */
+const STAGES = ["adopted", "briefing", "scripting", "handed"] as const;
+type Stage = (typeof STAGES)[number];
+
+const planningDefs: ToolDef[] = [
+  {
+    type: "function",
+    function: {
+      name: "move_topic_stage",
+      description:
+        "Move a backlog topic to another lane of the backlog board. The lanes, in order: adopted (已采用, just taken into the backlog), briefing (写简报, the brief is being written), scripting (写脚本, the script is being written), handed (已交接, handed to production). Use list_topics or read_topic to find the topic.",
+      parameters: {
+        type: "object",
+        properties: {
+          topic: { type: "string", description: "The topic's id, or its words. Optional: the topic open on screen." },
+          stage: { type: "string", enum: [...STAGES] },
+        },
+        required: ["stage"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "plan_topic",
+      description:
+        "Set a backlog topic's plan: who owns it (a colleague, by name or email), the channel it is meant for, and the due date. Only the fields given are changed.",
+      parameters: {
+        type: "object",
+        properties: {
+          topic: { type: "string", description: "The topic's id, or its words. Optional: the topic open on screen." },
+          owner: { type: "string", description: "The colleague who owns it: name or email. Optional." },
+          target_channel: { type: "string", description: "The channel or platform it is for, e.g. 视频号 or YouTube. Optional." },
+          due_date: { type: "string", description: "YYYY-MM-DD. Optional." },
+        },
+        required: [],
+      },
+    },
+  },
+];
+
+/** A topic of this studio, by id, by words, or the one on screen (ownTopic's test, then findTopic's). */
+async function topicFor(ctx: ToolContext, raw: string) {
+  const ref = raw || ctx.topicId || "";
+  if (!ref) return null;
+  if (/^top_[0-9a-z]{20,32}$/i.test(ref)) {
+    const [row] = await db
+      .select()
+      .from(topics)
+      .where(and(eq(topics.id, ref.toLowerCase()), eq(topics.tenantId, ctx.viewer.tenantId)))
+      .limit(1);
+    return row ?? null;
+  }
+  return findTopic(ctx, ref);
+}
+
+async function runPlanning(ctx: ToolContext, name: string, args: Record<string, unknown>): Promise<ToolResult> {
+  if (ctx.readOnly) return { text: "This turn may only look things up; nothing was changed." };
+  /* As the person when there is one, and only if they hold Research (the
+     board's actions refuse anybody else); otherwise as the speaker. */
+  const person = personOf(ctx);
+  if (person && !person.modules.includes("research")) {
+    return { text: "The person asking does not have the Research module, so the backlog cannot be changed for them. Nothing was changed." };
+  }
+  const actor = person ?? ctx.viewer;
+  const topic = await topicFor(ctx, str(args.topic ?? args.phrase, 200));
+  if (!topic || topic.tenantId !== actor.tenantId) return { text: "No such topic in this studio. Use list_topics to find it; nothing was changed." };
+
+  if (name === "move_topic_stage") {
+    const stage = str(args.stage, 20) as Stage;
+    if (!STAGES.includes(stage)) return { text: `The stage has to be one of: ${STAGES.join(", ")}. Nothing was changed.` };
+    if (topic.stage === stage) return { text: `"${topic.name}" is already in ${stage}.` };
+    await moveTopicStage(actor, topic.id, stage);
+    return {
+      text: `Moved "${topic.name}" from ${topic.stage} to ${stage}.${topic.status !== "adopted" ? " (It is not adopted into the backlog yet, so the board does not show it until it is.)" : ""}`,
+      changed: true,
+      artifacts: [{ kind: "topic", id: topic.id, title: topic.name, action: "updated" }],
+    };
+  }
+
+  if (name === "plan_topic") {
+    const input: { ownerId?: string | null; targetChannel?: string | null; dueDate?: string | null } = {};
+    const said: string[] = [];
+    const ownerRaw = str(args.owner, 320);
+    if (ownerRaw) {
+      /* planAction's test: a colleague in this studio, never an account elsewhere. */
+      const who = await findColleague(actor, ownerRaw);
+      if (!("one" in who)) return { text: colleagueRefusal(ownerRaw, who) };
+      input.ownerId = who.one.id;
+      said.push(`owner ${who.one.name}`);
+    }
+    const channel = typeof args.target_channel === "string" ? args.target_channel.trim() : "";
+    if (channel) {
+      if (channel.length > 120) return { text: "That channel name is too long. Nothing was changed." };
+      input.targetChannel = channel;
+      said.push(`channel ${channel}`);
+    }
+    const due = str(args.due_date, 20);
+    if (due) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(due) || Number.isNaN(Date.parse(due))) return { text: "A due date looks like 2026-10-30. Nothing was changed." };
+      input.dueDate = due;
+      said.push(`due ${due}`);
+    }
+    if (!said.length) return { text: "Say what to set: the owner, the channel or the due date." };
+    await planTopic(actor, topic.id, input);
+    return {
+      text: `Planned "${topic.name}": ${said.join(", ")}.`,
+      changed: true,
+      artifacts: [{ kind: "topic", id: topic.id, title: topic.name, action: "updated" }],
+    };
+  }
+
+  return { text: `Unknown tool ${name}.` };
+}
+
+export const researchPack: ToolPack = { module: "research", defs: [...defs, ...planningDefs], run };
