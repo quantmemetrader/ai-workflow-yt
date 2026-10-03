@@ -118,6 +118,21 @@ export async function uploadToStudio(
     : allAtOnce(file, onProgress, signal, hooks);
 }
 
+/**
+ * What to tell the person when a step is refused. The server's own words
+ * when they are Chinese (`readUploadInput`, the store's permission check);
+ * otherwise — a bare "Unauthorized", a storage error in English — a
+ * Chinese line for the status, so nobody sees English mid-upload (QA, 3 Oct).
+ */
+async function refusal(res: Response, fallback: string): Promise<string> {
+  const text = (await res.text().catch(() => "")).trim();
+  if (/[\u4e00-\u9fff]/.test(text) && text.length <= 200) return text;
+  if (res.status === 401) return "登录已过期，请重新登录后再上传";
+  if (res.status === 403 || res.status === 404) return "你没有权限上传到这里";
+  if (res.status === 413) return "文件太大，无法上传";
+  return fallback;
+}
+
 /** The body both `presign` and `multipart/start` read (`readUploadInput`). */
 function describe(file: File, hooks: Hooks) {
   return JSON.stringify({
@@ -143,7 +158,7 @@ async function allAtOnce(
     body: describe(file, hooks),
     signal,
   });
-  if (!presigned.ok) throw new Error((await presigned.text()) || "Upload refused");
+  if (!presigned.ok) throw new Error(await refusal(presigned, "上传被拒绝"));
 
   const { fileId, upload } = (await presigned.json()) as {
     fileId: string;
@@ -158,7 +173,7 @@ async function allAtOnce(
     // Until this lands the row has no version and no poster job: an object in
     // the bucket that the studio does not yet consider a file.
     const done = await fetch(`/api/files/${fileId}/complete`, { method: "POST", signal });
-    if (!done.ok) throw new Error((await done.text()) || "The upload did not arrive");
+    if (!done.ok) throw new Error(await refusal(done, "文件没有传到，请重试"));
   } catch (err) {
     /* The row was made before the bytes moved. Left behind, it is a file in
        the list that opens to nothing — which is exactly what the studio saw
@@ -192,9 +207,9 @@ function put(
     xhr.onload = () =>
       xhr.status >= 200 && xhr.status < 300
         ? resolve()
-        : reject(new Error(`The storage service refused the file (${xhr.status})`));
-    xhr.onerror = () => reject(new Error("The upload was interrupted"));
-    xhr.onabort = () => reject(new Error("The upload was cancelled"));
+        : reject(new Error(`存储服务拒收了这个文件（${xhr.status}）`));
+    xhr.onerror = () => reject(new Error("上传中断了，请重试"));
+    xhr.onabort = () => reject(new Error("上传已取消"));
 
     signal?.addEventListener("abort", () => xhr.abort(), { once: true });
     xhr.send(file);
@@ -215,7 +230,7 @@ async function inParts(
     body: describe(file, hooks),
     signal,
   });
-  if (!started.ok) throw new Error((await started.text()) || "Upload refused");
+  if (!started.ok) throw new Error(await refusal(started, "上传被拒绝"));
 
   // The server chooses the part size: R2 requires every part but the last to
   // be the same length, so this is not something the two ends can each decide.
@@ -250,7 +265,7 @@ async function inParts(
     stopped ??= reason;
     for (const xhr of live) xhr.abort();
   };
-  const onAbort = () => halt(new Error("The upload was cancelled"));
+  const onAbort = () => halt(new Error("上传已取消"));
   signal?.addEventListener("abort", onAbort, { once: true });
   if (signal?.aborted) onAbort();
 
@@ -286,7 +301,7 @@ async function inParts(
         if (stopped) throw stopped;
       }
     }
-    throw last instanceof Error ? last : new Error("A part of the upload could not be sent");
+    throw last instanceof Error ? last : new Error("有一段文件没能传出去，请重试");
   };
 
   /* Four workers off one counter, rather than four fixed slices: a part that
@@ -301,7 +316,7 @@ async function inParts(
       try {
         etags[index] = await onePart(index);
       } catch (err) {
-        halt(err instanceof Error ? err : new Error("The upload failed"));
+        halt(err instanceof Error ? err : new Error("上传失败，请重试"));
         return;
       }
     }
@@ -323,12 +338,12 @@ async function inParts(
         parts: etags.map((etag, i) => ({ partNumber: i + 1, etag })),
       }),
     });
-    if (!done.ok) throw new Error((await done.text()) || "The upload did not arrive");
+    if (!done.ok) throw new Error(await refusal(done, "文件没有传到，请重试"));
 
     onProgress(1);
     return { id: fileId, name: file.name };
   } catch (err) {
-    halt(err instanceof Error ? err : new Error("The upload failed"));
+    halt(err instanceof Error ? err : new Error("上传失败，请重试"));
     /* Parts already in the bucket are billed until the upload is abandoned,
        and nothing else will ever clean them up — there is no object at the key
        to notice. The same request removes the row, so the list is not left
@@ -358,7 +373,7 @@ async function signPart(
     body: JSON.stringify({ fileId, uploadId, partNumber }),
     signal,
   });
-  if (!res.ok) throw new Error((await res.text()) || "The upload could not be signed");
+  if (!res.ok) throw new Error(await refusal(res, "上传签名失败，请重试"));
   return ((await res.json()) as { url: string }).url;
 }
 
@@ -389,7 +404,7 @@ function putPart(
     xhr.onload = () =>
       settle(() => {
         if (xhr.status < 200 || xhr.status >= 300) {
-          reject(new Error(`The storage service refused a part (${xhr.status})`));
+          reject(new Error(`存储服务拒收了一段文件（${xhr.status}）`));
           return;
         }
         const etag = xhr.getResponseHeader("ETag");
@@ -399,14 +414,14 @@ function putPart(
            bucket and unusable, which is worth saying plainly rather than
            failing later with a malformed part list. */
         if (!etag) {
-          reject(new Error("The storage service did not return a part tag"));
+          reject(new Error("存储服务没有确认这一段，请重试"));
           return;
         }
         resolve(etag.replaceAll('"', ""));
       });
-    xhr.onerror = () => settle(() => reject(new Error("A part of the upload was interrupted")));
-    xhr.ontimeout = () => settle(() => reject(new Error("A part of the upload timed out")));
-    xhr.onabort = () => settle(() => reject(new Error("The upload was cancelled")));
+    xhr.onerror = () => settle(() => reject(new Error("有一段上传中断了，请重试")));
+    xhr.ontimeout = () => settle(() => reject(new Error("有一段上传超时了，请重试")));
+    xhr.onabort = () => settle(() => reject(new Error("上传已取消")));
 
     xhr.send(blob);
   });

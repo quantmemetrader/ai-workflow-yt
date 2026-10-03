@@ -205,7 +205,8 @@ export async function shareAction(
     { type: objectType, id: objectId },
     relation,
     { type: "user", id: target.id },
-    expiresAt ? { expiresAt } : {},
+    /* The sheet sets this person's one relation; it never stacks a second. */
+    expiresAt ? { expiresAt, replace: true } : { replace: true },
   );
 
   if (!result.ok) {
@@ -213,7 +214,9 @@ export async function shareAction(
       error:
         result.reason === "above-ceiling"
           ? `你的权限是「${result.ceiling ? REL_ZH[result.ceiling] : ""}」，最多只能共享到这一级`
-          : "你没有共享这个文件的权限",
+          : result.reason === "protected-owner"
+            ? "所有者的权限不能更改"
+            : "你没有共享这个文件的权限",
     };
   }
 

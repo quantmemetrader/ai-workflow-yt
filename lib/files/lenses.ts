@@ -6,6 +6,7 @@ import type { Viewer } from "@/lib/auth/dal";
 import { canReadFiles } from "@/lib/authz/rebac";
 import { projectsVisibleTo } from "@/lib/projects/visible";
 import { notProxy } from "@/lib/files/service";
+import { uploadConfirmed } from "@/lib/files/abandon";
 
 /**
  * The other ways to look at the top of Files: by project, and by what a file
@@ -51,7 +52,7 @@ export async function listByType(viewer: Viewer, lens: "images" | "videos" | "do
     .select(rowFields)
     .from(files)
     .innerJoin(users, eq(users.id, files.ownerId))
-    .where(and(isNull(files.deletedAt), canReadFiles(viewer), notProxy(), which))
+    .where(and(isNull(files.deletedAt), canReadFiles(viewer), notProxy(), uploadConfirmed(), which))
     .orderBy(desc(files.updatedAt))
     .limit(limit);
 }
@@ -186,7 +187,7 @@ export async function listByProject(
         .select(rowFields)
         .from(files)
         .innerJoin(users, eq(users.id, files.ownerId))
-        .where(and(inArray(files.id, linkedIds), isNull(files.deletedAt), canReadFiles(viewer), notProxy()))
+        .where(and(inArray(files.id, linkedIds), isNull(files.deletedAt), canReadFiles(viewer), notProxy(), uploadConfirmed()))
     : [];
   const byId = new Map(readable.map((r) => [r.file.id, r]));
 
@@ -199,7 +200,7 @@ export async function listByProject(
           await db
             .select({ id: files.id })
             .from(files)
-            .where(and(inArray(files.id, unreadable), isNull(files.deletedAt), notProxy()))
+            .where(and(inArray(files.id, unreadable), isNull(files.deletedAt), notProxy(), uploadConfirmed()))
         ).map((r) => r.id),
       )
     : new Set<string>();
@@ -243,7 +244,7 @@ export async function listByProject(
     and not exists (select 1 from video_projects v where v.master_file_id = ${files.id})
     and not exists (select 1 from unnest(${files.tags}) t where t like 'wp:%')
     and not exists (select 1 from scripts s where ${files.id} = any(s.source_file_ids) and s.deleted_at is null)`;
-  const looseWhere = and(isNull(files.deletedAt), canReadFiles(viewer), notProxy(), sql`not ('stock' = any(${files.tags}))`, unused);
+  const looseWhere = and(isNull(files.deletedAt), canReadFiles(viewer), notProxy(), uploadConfirmed(), sql`not ('stock' = any(${files.tags}))`, unused);
   const [loose, [{ n }]] = await Promise.all([
     db.select(rowFields).from(files).innerJoin(users, eq(users.id, files.ownerId)).where(looseWhere).orderBy(desc(files.updatedAt)).limit(looseLimit),
     db.select({ n: sql<number>`count(*)::int` }).from(files).where(looseWhere),

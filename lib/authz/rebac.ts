@@ -94,6 +94,44 @@ export function canReadFiles(viewer: Viewer): SQL {
     : shared;
 }
 
+/**
+ * Files this viewer may change — owner or editor, through the file or a
+ * folder above it — or, for whoever runs the studio, anything in it. The
+ * list-side twin of `atLeast(relationOn(…), "editor")`, for screens whose
+ * only action needs that (the trash: restore and 永久删除).
+ */
+export function canEditFiles(viewer: Viewer): SQL {
+  const subjects = subjectList(viewer);
+  const shared = sql`exists (
+    select 1 from ${relationTuples} t
+    where (t.subject_type || ':' || t.subject_id) in (${subjects})
+      and (t.expires_at is null or t.expires_at > now())
+      and t.relation in ('owner', 'editor')
+      and (
+        (t.object_type = 'file' and t.object_id = ${files.id})
+        or (t.object_type = 'folder' and t.object_id = any(${files.folderPath}))
+      )
+  )`;
+  return runsTheStudio(viewer)
+    ? sql`(${files.tenantId} = ${viewer.tenantId} or ${shared})`
+    : shared;
+}
+
+/** The same for folders. */
+export function canEditFolders(viewer: Viewer): SQL {
+  const subjects = subjectList(viewer);
+  const shared = sql`exists (
+    select 1 from ${relationTuples} t
+    where (t.subject_type || ':' || t.subject_id) in (${subjects})
+      and (t.expires_at is null or t.expires_at > now())
+      and t.relation in ('owner', 'editor')
+      and t.object_type = 'folder' and t.object_id = any(${folders.path})
+  )`;
+  return runsTheStudio(viewer)
+    ? sql`(${folders.tenantId} = ${viewer.tenantId} or ${shared})`
+    : shared;
+}
+
 /** Same idea for folder lists. */
 export function canReadFolders(viewer: Viewer): SQL {
   const subjects = subjectList(viewer);
@@ -195,7 +233,7 @@ export async function share(
   object: { type: SharedObject; id: string },
   relation: Relation,
   subject: { type: "user" | "team" | "tenant"; id: string },
-  opts: { expiresAt?: Date } = {},
+  opts: { expiresAt?: Date; replace?: boolean } = {},
 ): Promise<{ ok: true } | { ok: false; reason: string; ceiling: Relation | null }> {
   if (!isRelation(relation)) return { ok: false, reason: "unknown-relation", ceiling: null };
   if (subject.type !== "user" && subject.type !== "team" && subject.type !== "tenant") {
@@ -207,21 +245,94 @@ export async function share(
     return { ok: false, reason: "above-ceiling", ceiling: held };
   }
 
-  await db
-    .insert(relationTuples)
-    .values({
-      id: newId("tup"),
-      objectType: object.type,
-      objectId: object.id,
-      relation,
-      subjectType: subject.type,
-      subjectId: subject.id,
-      grantedBy: viewer.id,
-      expiresAt: opts.expiresAt,
-    })
-    .onConflictDoNothing();
+  const row = {
+    id: newId("tup"),
+    objectType: object.type,
+    objectId: object.id,
+    relation,
+    subjectType: subject.type,
+    subjectId: subject.id,
+    grantedBy: viewer.id,
+    expiresAt: opts.expiresAt,
+  };
+
+  if (!opts.replace) {
+    await db.insert(relationTuples).values(row).onConflictDoNothing();
+    return { ok: true };
+  }
+
+  /* The share sheet's choice is *the* relation this person has here, not one
+     more beside it: sharing as 可编辑 to somebody already at 可查看 used to
+     leave two rows, and taking access away then took two clicks (QA, 3 Oct).
+     What they held is replaced — but only what the sharer could have granted,
+     and never the owner's own grant or the last owner grant. */
+  const existing = await subjectRelationsOn(object, subject);
+  const ownerLocked = existing.includes("owner") && (await isProtectedOwner(object, subject, "owner"));
+  const plan = replacePlan(held, existing, relation, ownerLocked);
+  if (!plan.ok) return { ok: false, reason: plan.reason, ceiling: held };
+  await db.transaction(async (trx) => {
+    await trx.delete(relationTuples).where(subjectOn(object, subject));
+    await trx.insert(relationTuples).values(row).onConflictDoNothing();
+  });
 
   return { ok: true };
+}
+
+/**
+ * Whether the share sheet may make `next` this subject's one relation, given
+ * what they hold now. Refused when a relation they hold is above the
+ * sharer's own (an editor cannot demote an owner), or when it would take
+ * away a protected owner grant (`isProtectedOwner`). Pure, so it can be
+ * checked without a database.
+ */
+export function replacePlan(
+  held: Relation | null,
+  existing: Relation[],
+  next: Relation,
+  ownerLocked: boolean,
+): { ok: true } | { ok: false; reason: "above-ceiling" | "protected-owner" } {
+  for (const r of existing) {
+    if (r === next) continue;
+    if (!atLeast(held, r)) return { ok: false, reason: "above-ceiling" };
+    if (r === "owner" && ownerLocked) return { ok: false, reason: "protected-owner" };
+  }
+  return { ok: true };
+}
+
+/**
+ * The relations `revoke` removes when asked to remove `asked`: every one the
+ * subject holds directly, so a doubled grant goes in one click — less a
+ * protected owner grant — or null when one of them is above the remover.
+ * Pure, like `replacePlan`.
+ */
+export function revokePlan(held: Relation | null, all: Relation[], asked: Relation, ownerLocked: boolean): Relation[] | null {
+  const gone: Relation[] = [];
+  for (const r of all) {
+    if (!atLeast(held, r)) return null;
+    if (r !== asked && r === "owner" && ownerLocked) continue;
+    if (!gone.includes(r)) gone.push(r);
+  }
+  if (!gone.includes(asked)) gone.push(asked);
+  return gone;
+}
+
+/** Every tuple naming this subject on this object, whatever the relation. */
+function subjectOn(object: { type: SharedObject; id: string }, subject: { type: string; id: string }) {
+  return and(
+    eq(relationTuples.objectType, object.type),
+    eq(relationTuples.objectId, object.id),
+    eq(relationTuples.subjectType, subject.type),
+    eq(relationTuples.subjectId, subject.id),
+  );
+}
+
+/** The relations one subject holds directly on one object (not through a folder). */
+async function subjectRelationsOn(
+  object: { type: SharedObject; id: string },
+  subject: { type: string; id: string },
+): Promise<Relation[]> {
+  const rows = await db.select({ relation: relationTuples.relation }).from(relationTuples).where(subjectOn(object, subject));
+  return rows.map((r) => r.relation);
 }
 
 /** The highest relation a person could possibly grant on this object — what
@@ -272,17 +383,15 @@ export async function revoke(
   if (!atLeast(held, "editor")) return false;
   if (!atLeast(held, relation)) return false;
   if (await isProtectedOwner(object, subject, relation)) return false;
-  await db
-    .delete(relationTuples)
-    .where(
-      and(
-        eq(relationTuples.objectType, object.type),
-        eq(relationTuples.objectId, object.id),
-        eq(relationTuples.subjectType, subject.type),
-        eq(relationTuples.subjectId, subject.id),
-        eq(relationTuples.relation, relation),
-      ),
-    );
+  /* Removing a person removes them: every relation they hold directly on
+     this object goes, so a doubled grant left by older shares does not need
+     a second click (QA, 3 Oct). Each one is still bounded by the remover,
+     and a protected owner grant is never among them. */
+  const all = await subjectRelationsOn(object, subject);
+  const ownerLocked = all.includes("owner") && (await isProtectedOwner(object, subject, "owner"));
+  const gone = revokePlan(held, all, relation, ownerLocked);
+  if (!gone) return false;
+  await db.delete(relationTuples).where(and(subjectOn(object, subject), inArray(relationTuples.relation, gone)));
   return true;
 }
 

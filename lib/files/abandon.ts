@@ -1,9 +1,9 @@
-import { and, eq, inArray, isNull, lt, notExists, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, lt, not, sql, type SQL } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { fileVersions, files, relationTuples } from "@/lib/db/schema";
 import type { Viewer } from "@/lib/auth/dal";
 import { relationOn } from "@/lib/authz/rebac";
-import { deleteObject, headObject } from "@/lib/storage/r2";
+import { abortMultipartUpload, deleteObject, headObject, openMultipartUploads } from "@/lib/storage/r2";
 import { audit } from "@/lib/audit";
 
 /**
@@ -19,6 +19,26 @@ import { audit } from "@/lib/audit";
  * Both are hard deletes, not trash. A file that never existed has nothing to
  * recover, and a row in the trash is one more thing that says "file".
  */
+
+/**
+ * The rows that are files, as opposed to uploads that have not finished.
+ *
+ * A browser upload is confirmed by `completeUpload`, which writes version 1
+ * and the checksum; everything the server writes itself (renders, proxies,
+ * voice-overs, covers) stores its object first and carries its etag as the
+ * checksum. A row with neither is an upload still moving — or one whose tab
+ * was closed mid-transfer, which until the sweep below looked like a normal
+ * file that downloaded as a 404 (QA, 3 Oct). Every list, search, trash and
+ * file page shows only rows that pass this.
+ *
+ * `alias` is for raw SQL that names the files table `f`.
+ */
+export function uploadConfirmed(alias?: "f"): SQL {
+  if (alias) {
+    return sql`(${sql.raw(alias)}.checksum is not null or exists (select 1 from file_versions v where v.file_id = ${sql.raw(alias)}.id))`;
+  }
+  return sql`(${files.checksum} is not null or exists (select 1 from file_versions v where v.file_id = ${files.id}))`;
+}
 
 /** Only ever a row whose object never arrived. A confirmed file has a
  * version; that one is kept whatever the browser says. */
@@ -61,7 +81,7 @@ export async function purgeUnfinished(olderThanHours = 24): Promise<number> {
         isNull(files.deletedAt),
         lt(files.createdAt, cutoff),
         sql`not ('stock' = any(${files.tags}))`,
-        notExists(db.select({ one: sql`1` }).from(fileVersions).where(eq(fileVersions.fileId, files.id))),
+        not(uploadConfirmed()),
       ),
     )
     .limit(200);
@@ -82,6 +102,15 @@ export async function purgeUnfinished(olderThanHours = 24): Promise<number> {
 
 async function remove(rows: { id: string; storageKey: string | null }[]) {
   const ids = rows.map((r) => r.id);
+  /* Parts already sent sit in the bucket, unseen and billed, until their
+     upload is aborted. The browser aborts on cancel; a closed tab never
+     does, so whatever is still open at the key is aborted here. A failure
+     to ask is not a reason to keep the row. */
+  for (const r of rows) {
+    if (!r.storageKey) continue;
+    const open = await openMultipartUploads(r.storageKey).catch(() => [] as string[]);
+    for (const uploadId of open) await abortMultipartUpload(r.storageKey, uploadId).catch(() => {});
+  }
   // Nothing should be at the key — a multipart upload has no object until it
   // is completed and a single PUT is all or nothing — but a key nobody will
   // ever reference again is worth one cheap DELETE each to be certain.

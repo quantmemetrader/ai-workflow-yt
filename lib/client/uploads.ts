@@ -54,6 +54,32 @@ function patch(key: string, change: Partial<UploadJob>) {
   publish();
 }
 
+/**
+ * The tab is going away with uploads still moving (the tray asked first).
+ * Each one's row already exists, and its parts are already in the bucket;
+ * left alone they sat in Files as a file that downloaded as a 404 until the
+ * day-old sweep (QA, 3 Oct). A beacon survives the page: the abandon route
+ * removes a row that never finished and aborts its multipart upload. A page
+ * kept in the back-forward cache (`persisted`) has not gone, so it says
+ * nothing.
+ */
+let leaving = false;
+function watchLeaving() {
+  if (leaving || typeof window === "undefined") return;
+  leaving = true;
+  window.addEventListener("pagehide", (event) => {
+    if (event.persisted) return;
+    for (const j of jobs) {
+      if (j.status !== "uploading" || !j.fileId) continue;
+      try {
+        navigator.sendBeacon(`/api/files/${encodeURIComponent(j.fileId)}/abandon`);
+      } catch {
+        // Nothing more can be done from a closing tab; the sweep remains.
+      }
+    }
+  });
+}
+
 export function readUploads(): UploadJob[] {
   return jobs;
 }
@@ -96,6 +122,7 @@ export async function startUploads(
     onProgress?: (batch: UploadJob[]) => void;
   } = {},
 ): Promise<{ uploaded: number; failed: number }> {
+  watchLeaving();
   const mine = new Set<string>();
   const report = () => opts.onProgress?.(jobs.filter((j) => mine.has(j.key)));
   const update = (key: string, change: Partial<UploadJob>) => {
@@ -134,7 +161,7 @@ export async function startUploads(
         const cancelled = controller.signal.aborted;
         update(key, {
           status: cancelled ? "cancelled" : "failed",
-          error: cancelled ? undefined : err instanceof Error ? err.message : "Upload failed",
+          error: cancelled ? undefined : err instanceof Error ? err.message : "上传失败，请重试",
         });
         if (cancelled) setTimeout(() => dismissUpload(key), CLEAR_DONE_AFTER);
         failed++;

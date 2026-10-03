@@ -3,6 +3,7 @@ import { sql } from "drizzle-orm";
 import { db, toDate } from "@/lib/db/client";
 import type { Viewer } from "@/lib/auth/dal";
 import { subjectList } from "@/lib/authz/rebac";
+import { uploadConfirmed } from "@/lib/files/abandon";
 
 /**
  * Retrieval for the agent, and the search box in the shell.
@@ -78,7 +79,7 @@ export async function searchFiles(
            left(coalesce(substring(f.text from greatest(1, (case when position(${q} in f.text) > 0 then position(${q} in f.text) else position(${lead} in f.text) end) - 120)), f.text, ''), 320) as snippet,
            similarity(f.name, ${q}) + ${termScore} as score
     from files f
-    where f.tenant_id = ${viewer.tenantId} and f.deleted_at is null and ${matches} and ${permitted}
+    where f.tenant_id = ${viewer.tenantId} and f.deleted_at is null and ${uploadConfirmed("f")} and ${matches} and ${permitted}
     order by score desc, f.updated_at desc
     limit ${limit}
   `);
@@ -93,7 +94,7 @@ export async function searchFiles(
   const [{ total = 0 } = { total: 0 }] = (
     await db.execute<{ total: number }>(sql`
       select count(*)::int as total from files f
-      where f.tenant_id = ${viewer.tenantId} and f.deleted_at is null
+      where f.tenant_id = ${viewer.tenantId} and f.deleted_at is null and ${uploadConfirmed("f")}
         and ${matches} and not ${permitted}
     `)
   ).rows;

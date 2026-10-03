@@ -1,11 +1,12 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { files, users } from "@/lib/db/schema";
 import { requireModule } from "@/lib/auth/dal";
 import { relationOn, shareCeiling } from "@/lib/authz/rebac";
 import { listVersions, sharesWithNames } from "@/lib/files/service";
+import { uploadConfirmed } from "@/lib/files/abandon";
 import { audit } from "@/lib/audit";
 import { formatBytes, formatDate, makeT } from "@/lib/i18n";
 import { Markdown } from "@/components/ui/Markdown";
@@ -48,7 +49,8 @@ export default async function FilePage({ params }: { params: Promise<{ id: strin
     .select({ file: files, ownerName: users.name, ownerNameLocal: users.nameLocal })
     .from(files)
     .innerJoin(users, eq(users.id, files.ownerId))
-    .where(eq(files.id, id))
+    /* An upload that never finished is not a file yet (`uploadConfirmed`). */
+    .where(and(eq(files.id, id), uploadConfirmed()))
     .limit(1);
   if (!row || row.file.deletedAt) notFound();
 

@@ -175,6 +175,40 @@ export async function abortMultipartUpload(key: string, uploadId: string): Promi
   }
 }
 
+/**
+ * The multipart uploads still open at exactly `key`.
+ *
+ * The upload id lives only in the browser that started it, so when that tab
+ * is closed mid-transfer nothing on the server knows which upload to abort.
+ * The key does: every upload's key is its file's own (`storageKey`), so
+ * asking the bucket for open uploads under it finds the one that was left.
+ */
+export async function openMultipartUploads(key: string): Promise<string[]> {
+  const url = new URL(base);
+  url.searchParams.set("uploads", "");
+  url.searchParams.set("prefix", key);
+  const res = await client.fetch(url.toString());
+  if (!res.ok) throw new Error(`R2 multipart list ${key} failed: ${res.status}`);
+  const xml = await res.text();
+  const ids: string[] = [];
+  for (const block of xml.matchAll(/<Upload>([\s\S]*?)<\/Upload>/g)) {
+    const k = /<Key>([\s\S]*?)<\/Key>/.exec(block[1])?.[1];
+    const id = /<UploadId>([\s\S]*?)<\/UploadId>/.exec(block[1])?.[1];
+    /* A prefix match is not the same key: …/a.mp4 is a prefix of …/a.mp4.bak. */
+    if (id && k !== undefined && unescapeXml(k) === key) ids.push(unescapeXml(id));
+  }
+  return ids;
+}
+
+function unescapeXml(value: string): string {
+  return value
+    .replaceAll("&lt;", "<")
+    .replaceAll("&gt;", ">")
+    .replaceAll("&quot;", '"')
+    .replaceAll("&apos;", "'")
+    .replaceAll("&amp;", "&");
+}
+
 /** Etags come back quoted and are put straight into XML we generate. */
 function escapeXml(value: string): string {
   return value.replace(/[<>&'"]/g, (c) =>

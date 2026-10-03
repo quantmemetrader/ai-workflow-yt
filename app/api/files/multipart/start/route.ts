@@ -33,7 +33,7 @@ export async function POST(request: Request) {
   // cannot be cut into 10,000 parts is one R2 would refuse halfway through,
   // and finding that out after 9,999 parts is the expensive way to learn it.
   if (Math.ceil(read.input.sizeBytes / partSize) > MAX_PARTS) {
-    return new Response("That file is too large to upload in parts", { status: 413 });
+    return new Response("文件太大，无法分段上传", { status: 413 });
   }
 
   try {

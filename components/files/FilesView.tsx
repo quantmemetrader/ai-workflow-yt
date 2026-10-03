@@ -310,6 +310,8 @@ export function FilesView({
               if ("error" in res && res.error) notify(res.error);
               else if ("files" in res && res.files)
                 notify(zh ? `已移到回收站 · ${res.files} 个文件` : `Moved to trash · ${res.files} files`);
+              /* A single file, or an empty folder, said nothing (QA, 3 Oct). */
+              else notify(zh ? "已移到回收站" : "Moved to trash", "ok");
               router.refresh();
             })
           }

@@ -12,12 +12,13 @@ import {
   users,
 } from "@/lib/db/schema";
 import type { Viewer } from "@/lib/auth/dal";
-import { canReadFiles, canReadFolders, grantOwner, relationOn, type SharedObject } from "@/lib/authz/rebac";
+import { canEditFiles, canEditFolders, canReadFiles, canReadFolders, grantOwner, relationOn, type SharedObject } from "@/lib/authz/rebac";
 import { audit } from "@/lib/audit";
 import { newId } from "@/lib/ids";
 import { toSimplified } from "@/lib/text/simplified";
 import { deleteObject, headObject, putObjectConfirmed, storageKey } from "@/lib/storage/r2";
 import { enqueue } from "@/lib/jobs/queue";
+import { uploadConfirmed } from "@/lib/files/abandon";
 
 /** The shared media and document store (spec §3). Every read here is
  * permission-filtered in SQL; every write records who did it. */
@@ -151,8 +152,8 @@ export async function listFolder(viewer: Viewer, folderId: string | null) {
      opening Files came for. It is all in its own folder, one click away. */
   /* Proxies are never listed — see `notProxy`. */
   const where = folderId
-    ? and(eq(files.folderId, folderId), isNull(files.deletedAt), canReadFiles(viewer), notProxy())
-    : and(isNull(files.deletedAt), canReadFiles(viewer), sql`not ('stock' = any(${files.tags}))`, notProxy());
+    ? and(eq(files.folderId, folderId), isNull(files.deletedAt), canReadFiles(viewer), notProxy(), uploadConfirmed())
+    : and(isNull(files.deletedAt), canReadFiles(viewer), sql`not ('stock' = any(${files.tags}))`, notProxy(), uploadConfirmed());
 
   const [rows, subfolders] = await Promise.all([
     db
@@ -697,14 +698,40 @@ export async function listVersions(viewer: Viewer, fileId: string) {
 export async function softDelete(viewer: Viewer, fileId: string) {
   const held = await relationOn(viewer, "file", fileId);
   if (held !== "owner" && held !== "editor") throw new Error("你没有这个文件的编辑权限，不能删除");
-  await db.update(files).set({ deletedAt: new Date(), deletedBy: viewer.id }).where(eq(files.id, fileId));
+  const now = new Date();
+  await db.transaction(async (trx) => {
+    const [row] = await trx
+      .update(files)
+      .set({ deletedAt: now, deletedBy: viewer.id })
+      .where(eq(files.id, fileId))
+      .returning({ proxyFileId: files.proxyFileId });
+    /* Its 480p preview goes with it, on the same stamp, so restoring and the
+       30-day purge treat the two as one; left behind it was an orphan copy
+       of a deleted video (QA, 3 Oct). */
+    if (row?.proxyFileId) {
+      await trx
+        .update(files)
+        .set({ deletedAt: now, deletedBy: viewer.id })
+        .where(and(eq(files.id, row.proxyFileId), isNull(files.deletedAt)));
+    }
+  });
   await audit(viewer, "file.delete", { objectType: "file", objectId: fileId, module: "files" });
 }
 
 export async function restore(viewer: Viewer, fileId: string) {
   const held = await relationOn(viewer, "file", fileId);
   if (held !== "owner" && held !== "editor") throw new Error("你没有这个文件的编辑权限，不能恢复");
-  await db.update(files).set({ deletedAt: null, deletedBy: null }).where(eq(files.id, fileId));
+  await db.transaction(async (trx) => {
+    const [row] = await trx
+      .update(files)
+      .set({ deletedAt: null, deletedBy: null })
+      .where(eq(files.id, fileId))
+      .returning({ proxyFileId: files.proxyFileId });
+    /* And the preview that went to the bin with it (`softDelete`). */
+    if (row?.proxyFileId) {
+      await trx.update(files).set({ deletedAt: null, deletedBy: null }).where(eq(files.id, row.proxyFileId));
+    }
+  });
   await audit(viewer, "file.restore", { objectType: "file", objectId: fileId, module: "files" });
 }
 
@@ -809,7 +836,8 @@ export async function listTrashedFolders(viewer: Viewer, limit = 100) {
   return db
     .select()
     .from(folders)
-    .where(and(sql`${folders.deletedAt} is not null`, canReadFolders(viewer)))
+    /* Restorable by the same people `restoreFolder` lets restore it. */
+    .where(and(sql`${folders.deletedAt} is not null`, canEditFolders(viewer)))
     .orderBy(desc(folders.deletedAt))
     .limit(limit);
 }
@@ -853,14 +881,22 @@ export async function purgeDeleted(olderThanDays = 30) {
  */
 export async function purgeFile(viewer: Viewer, fileId: string) {
   const [row] = await db
-    .select({ id: files.id, storageKey: files.storageKey, ownerId: files.ownerId, deletedAt: files.deletedAt, name: files.name })
+    .select({ id: files.id, storageKey: files.storageKey, ownerId: files.ownerId, deletedAt: files.deletedAt, name: files.name, proxyFileId: files.proxyFileId })
     .from(files)
     .where(and(eq(files.id, fileId), eq(files.tenantId, viewer.tenantId)))
     .limit(1);
   if (!row) throw new Error("找不到这个文件");
   if (!row.deletedAt) throw new Error("请先把文件移到回收站");
   if (!viewer.isAdmin && row.ownerId !== viewer.id) throw new Error("只有上传者或管理员可以永久删除");
-  await purgeFiles([row]);
+  /* The master's 480p preview is gone for good with it — nothing else
+     points at it, and nothing would ever remove it (QA, 3 Oct). */
+  const proxies = row.proxyFileId
+    ? await db
+        .select({ id: files.id, storageKey: files.storageKey })
+        .from(files)
+        .where(and(eq(files.id, row.proxyFileId), eq(files.tenantId, viewer.tenantId)))
+    : [];
+  await purgeFiles([row, ...proxies]);
   await audit(viewer, "file.purge", { objectType: "file", objectId: fileId, module: "files", meta: { name: row.name } });
 }
 
@@ -929,7 +965,8 @@ export async function listRecent(viewer: Viewer, limit = 100) {
     // The stock stays in its own folder here too: forty licensed pictures the
     // director fetched would otherwise be the whole of "recent".
     // Nor the playback proxies — see `notProxy`.
-    .where(and(isNull(files.deletedAt), canReadFiles(viewer), sql`not ('stock' = any(${files.tags}))`, notProxy()))
+    // Nor an upload that has not finished — see `uploadConfirmed`.
+    .where(and(isNull(files.deletedAt), canReadFiles(viewer), sql`not ('stock' = any(${files.tags}))`, notProxy(), uploadConfirmed()))
     .orderBy(desc(files.updatedAt))
     .limit(limit);
 }
@@ -947,6 +984,7 @@ export async function listSharedWithMe(viewer: Viewer, limit = 100) {
       and(
         isNull(files.deletedAt),
         notProxy(),
+        uploadConfirmed(),
         sql`${files.ownerId} <> ${viewer.id}`,
         sql`exists (
           select 1 from relation_tuples t
@@ -966,7 +1004,10 @@ export async function listSharedWithMe(viewer: Viewer, limit = 100) {
 }
 
 /** Inside the 30-day window, deleted files are still here and still restorable
- * — by anyone who could have deleted them. */
+ * — by anyone who could have deleted them, and shown only to them: a file a
+ * member can only read is not theirs to restore, and listing it offered a
+ * 恢复 that then refused (QA, 3 Oct). Same test as `restore`: owner or editor,
+ * or whoever runs the studio. */
 export async function listTrash(viewer: Viewer, limit = 100) {
   return db
     .select({ file: files, ownerName: users.name, ownerAvatar: users.avatarUrl })
@@ -974,7 +1015,7 @@ export async function listTrash(viewer: Viewer, limit = 100) {
     .innerJoin(users, eq(users.id, files.ownerId))
     /* A master's proxy goes to the bin with it; it is still not something
        to restore by hand — the player falls back to the master without it. */
-    .where(and(sql`${files.deletedAt} is not null`, canReadFiles(viewer), notProxy()))
+    .where(and(sql`${files.deletedAt} is not null`, canEditFiles(viewer), notProxy(), uploadConfirmed()))
     .orderBy(desc(files.deletedAt))
     .limit(limit);
 }
