@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 
 /**
  * Ask for one name.
@@ -29,6 +29,7 @@ export function NameDialog({
   onClose: () => void;
 }) {
   const [value, setValue] = useState(initial);
+  const id = useId();
 
   function submit() {
     const name = value.trim();
@@ -54,7 +55,7 @@ export function NameDialog({
       <div
         role="dialog"
         aria-modal="true"
-        aria-label={title}
+        aria-labelledby={`${id}-title`}
         onMouseDown={(e) => e.stopPropagation()}
         onKeyDown={(e) => {
           if (e.key === "Escape") onClose();
@@ -70,9 +71,10 @@ export function NameDialog({
           animation: "fadeUp .16s cubic-bezier(.32,.72,0,1) both",
         }}
       >
-        <div style={{ fontSize: 14.5, fontWeight: 600 }}>{title}</div>
+        <div id={`${id}-title`} style={{ fontSize: 14.5, fontWeight: 600 }}>{title}</div>
         <input
           autoFocus
+          aria-labelledby={`${id}-title`}
           value={value}
           onChange={(e) => setValue(e.target.value)}
           placeholder={placeholder}

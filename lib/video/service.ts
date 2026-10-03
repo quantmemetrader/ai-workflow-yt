@@ -26,6 +26,8 @@ import { enqueue } from "@/lib/jobs/queue";
 import { asEntrance, asTransition, CAPTION_PRESETS, isGraphicKind } from "@/lib/video/presets";
 import { presignDownload } from "@/lib/storage/r2";
 import { probe } from "@/lib/files/poster";
+import { notProxy } from "@/lib/files/service";
+import { UNREADABLE_TAG } from "@/lib/video/decodable";
 import { isIconName, isPlacement } from "@/lib/video/icons";
 import type { DirectorState } from "@/lib/video/director";
 import { providerFor } from "@/lib/video/tts";
@@ -319,6 +321,11 @@ export async function availableFootage(viewer: Viewer) {
         inArray(files.kind, ["video", "audio"]),
         // Confirmed uploads only: a row whose bytes never arrived is not footage.
         sql`${files.checksum} is not null`,
+        /* Not the 480p copies the editor plays (the filter /files uses), and
+           not files the worker found cannot be decoded: neither is footage
+           anybody meant to cut. */
+        notProxy(),
+        sql`not (${UNREADABLE_TAG} = any(${files.tags}))`,
         canReadFiles(viewer),
       ),
     )

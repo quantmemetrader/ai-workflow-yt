@@ -1,5 +1,7 @@
 "use client";
 
+import { useId } from "react";
+
 /**
  * "Are you sure?", without the browser's own box.
  *
@@ -25,6 +27,7 @@ export function ConfirmDialog({
   onConfirm: () => void;
   onClose: () => void;
 }) {
+  const id = useId();
   return (
     <div
       onMouseDown={onClose}
@@ -42,7 +45,8 @@ export function ConfirmDialog({
       <div
         role="alertdialog"
         aria-modal="true"
-        aria-label={title}
+        aria-labelledby={`${id}-title`}
+        aria-describedby={body ? `${id}-body` : undefined}
         onMouseDown={(e) => e.stopPropagation()}
         onKeyDown={(e) => {
           if (e.key === "Escape") onClose();
@@ -66,9 +70,9 @@ export function ConfirmDialog({
           animation: "fadeUp .16s cubic-bezier(.32,.72,0,1) both",
         }}
       >
-        <div style={{ fontSize: 14.5, fontWeight: 600 }}>{title}</div>
+        <div id={`${id}-title`} style={{ fontSize: 14.5, fontWeight: 600 }}>{title}</div>
         {body && (
-          <p style={{ fontSize: 12.5, color: "#7c7c7c", lineHeight: 1.6, margin: "8px 0 0" }}>{body}</p>
+          <p id={`${id}-body`} style={{ fontSize: 12.5, color: "#7c7c7c", lineHeight: 1.6, margin: "8px 0 0" }}>{body}</p>
         )}
         <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 16 }}>
           <button type="button" onClick={onClose} style={ghost}>

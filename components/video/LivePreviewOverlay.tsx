@@ -1095,7 +1095,9 @@ function Still({ graphic: g, accent, r, type, w }: StillProps) {
         >
           <div style={{ fontFamily: CJK, fontWeight: 700, fontSize: type(0.014), color: accent, whiteSpace: "nowrap" }}>{kindZh}</div>
           <div style={{ fontFamily: face(g.text), fontWeight: 700, fontSize: type(chip ? 0.016 : 0.03), lineHeight: 1.2, whiteSpace: chip ? "nowrap" : "normal" }}>
-            {g.text}
+            {/* "|" is a line break in these rows, as the composition splits it
+                (`remotion/src/text.tsx` splitLines), not a character to show. */}
+            {chip ? lines(g.text, 4).join(" ") : lines(g.text, 4).map((l, i) => <div key={i}>{l}</div>)}
           </div>
           {!chip && g.sub ? <div style={{ fontFamily: face(g.sub), fontSize: type(0.016), color: QUIET }}>{g.sub}</div> : null}
         </div>

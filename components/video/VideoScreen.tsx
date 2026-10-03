@@ -75,6 +75,7 @@ import { languagesInOrder, primaryLanguage } from "@/lib/video/languages";
 import { timeAgo } from "@/lib/time";
 import type { Locale } from "@/lib/i18n";
 import { Poster } from "@/components/files/Poster";
+import { readableRenderError } from "@/lib/video/render-error";
 import { Badge, Empty, Label, ModuleHeader, Row, Tabs, clip, field, ghost, solid, useAction } from "@/components/ui/kit";
 import { Tr } from "@/components/ui/Tr";
 import { PUBLISHED_TONE, PublishedCheck, PublishedMarks } from "@/components/projects/Published";
@@ -1295,7 +1296,7 @@ function Bin({
             </span>
             <span style={{ width: 80, textAlign: "right" }}>
               <button type="button" disabled={busy} onClick={() => onAdd(f.id)} style={{ ...ghost, height: 24, fontSize: 11 }}>
-                {t("add", "关注")}
+                {t("add", "添加")}
               </button>
             </span>
           </Row>
@@ -1922,7 +1923,7 @@ function Exports({
                 <span style={{ fontSize: 11.5, color: "#7c7c7c", fontVariantNumeric: "tabular-nums" }}>{clock(r.durationMs)}</span>
               )}
               {r.sizeBytes && (
-                <span style={{ fontSize: 11.5, color: "#999999" }}>{(r.sizeBytes / 1_048_576).toFixed(0)} MB</span>
+                <span style={{ fontSize: 11.5, color: "#999999" }}>{fileSize(r.sizeBytes)}</span>
               )}
               <span style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center" }}>
                 <span style={{ fontSize: 11, color: "#c7c7c7" }}>{r.requestedByName ?? ""}</span>
@@ -1956,7 +1957,7 @@ function Exports({
             )}
             {r.error && (
               <p style={{ fontSize: 11.5, color: "#e03636", margin: "7px 0 0", lineHeight: 1.5, overflowWrap: "anywhere" }}>
-                {r.error}
+                {readableRenderError(r.error)}
               </p>
             )}
           </div>
@@ -1967,6 +1968,14 @@ function Exports({
 }
 
 /* ------------------------------------------------------------- fragments */
+
+/** A file's size as the publish page says it: KB under a megabyte, so a
+ * short render is not "0 MB". */
+function fileSize(n: number): string {
+  if (n >= 1024 ** 3) return `${(n / 1024 ** 3).toFixed(1)} GB`;
+  if (n >= 1024 ** 2) return `${(n / 1024 ** 2).toFixed(1)} MB`;
+  return `${Math.max(1, Math.round(n / 1024))} KB`;
+}
 
 /** mm:ss, or h:mm:ss past an hour. What an editor types. */
 function clock(ms: number): string {
@@ -2528,8 +2537,8 @@ function AudioTracks({
         <>
           <p style={{ fontSize: 11.5, color: "#8a8a8a", margin: "0 0 8px", lineHeight: 1.6 }}>
             {t(
-              "Spoken on this server from the text below. Press Listen to hear a voice before choosing it.",
-              "由本服务器按下方文字合成。选之前可以先点“试听”。",
+              "Spoken on this server from the text below.",
+              "由本服务器按下方文字合成。",
             )}
           </p>
           <VoicePicker voices={voices} value={voiceId} onChange={setVoiceId} zh={zh} />
