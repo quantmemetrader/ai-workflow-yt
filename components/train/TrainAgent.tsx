@@ -64,7 +64,9 @@ export function TrainAgent({ agent, zh, rows, canEdit, model }: { agent: TrainKe
           <div style={{ fontSize: 13, color: MUTED, marginTop: 2 }}>{trainHint(agent, zh)}</div>
         </div>
       </div>
-      <NextStep state={trained ? "done" : "you"} zh={zh} text={<>{trained ? t("已经训练过，可以继续补充。", "Trained — you can keep adding.") : t("写几条工作说明、上传一两篇范例，它就会照着做。", "Write a few instructions and upload an example or two.")} <span style={{ color: MUTED }}>{zh ? TRAIN_USED[agent].zh : TRAIN_USED[agent].en}</span></>} />
+      {/* Training is admin-only: a member is not told to 现在做这一步 a step
+          they cannot take (QA, 3 Oct); they get the read-only note below. */}
+      {canEdit ? <NextStep state={trained ? "done" : "you"} zh={zh} text={<>{trained ? t("已经训练过，可以继续补充。", "Trained — you can keep adding.") : t("写几条工作说明、上传一两篇范例，它就会照着做。", "Write a few instructions and upload an example or two.")} <span style={{ color: MUTED }}>{zh ? TRAIN_USED[agent].zh : TRAIN_USED[agent].en}</span></>} /> : null}
       {model}
       {/* Training is admin-only (release 42c70aa); `canEdit` is `mayTrain(viewer)`, so a false here is a non-admin reading. */}
       {!canEdit ? <div style={{ fontSize: 13, color: "#95590a" }}>{t("只有管理员可以修改训练内容，其他人只能查看。", "Only admins can change the training; everyone else can look.")}</div> : null}

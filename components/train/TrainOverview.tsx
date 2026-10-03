@@ -11,7 +11,7 @@ import { trainHint, trainName } from "@/components/train/names";
  * then one row per employee — 文案 first, the one the client asked about —
  * with how much it has been taught and a 训练 button.
  */
-export function TrainOverview({ zh, summaries }: { zh: boolean; summaries: TrainSummary[] }) {
+export function TrainOverview({ zh, summaries, canTrain = true }: { zh: boolean; summaries: TrainSummary[]; /** `mayTrain(viewer)`: training is admin-only, so a member reads. */ canTrain?: boolean }) {
   const t = (a: string, b: string) => (zh ? a : b);
   const order: TrainKey[] = ["script", "assistant", "research", "planning", "video", "article", "legal", "finance"];
   const byKey = new Map(summaries.map((s) => [s.key, s]));
@@ -36,6 +36,9 @@ export function TrainOverview({ zh, summaries }: { zh: boolean; summaries: Train
             </li>
           ))}
         </ol>
+        {!canTrain ? (
+          <div style={{ marginTop: 10, fontSize: 13, color: "#95590a" }}>{t("只有管理员可以修改训练内容，你可以点进去查看。", "Only admins can change the training; you can open each one to look.")}</div>
+        ) : null}
       </Card>
       {order.map((key) => {
         const s = byKey.get(key);
@@ -52,8 +55,8 @@ export function TrainOverview({ zh, summaries }: { zh: boolean; summaries: Train
             }
             sub={trainHint(key, zh)}
             right={
-              <Link href={`/train/${key}`} prefetch={false} style={smallButton(!trained)}>
-                {trained ? t("继续训练", "Keep training") : t("开始训练", "Start training")}
+              <Link href={`/train/${key}`} prefetch={false} style={smallButton(canTrain && !trained)}>
+                {!canTrain ? t("查看", "View") : trained ? t("继续训练", "Keep training") : t("开始训练", "Start training")}
                 <span aria-hidden>→</span>
               </Link>
             }
