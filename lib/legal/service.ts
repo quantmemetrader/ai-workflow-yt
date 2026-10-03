@@ -1,5 +1,5 @@
 import "server-only";
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, notInArray, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import {
   checklistRuns,
@@ -13,9 +13,11 @@ import {
 import type { Viewer } from "@/lib/auth/dal";
 import { audit } from "@/lib/audit";
 import { newId } from "@/lib/ids";
-import { fillTemplate, resolveDraft } from "@/lib/legal/fill";
-import { compareClauses } from "@/lib/legal/compare";
+import { fillTemplate, resolveDraft, templateLanguage } from "@/lib/legal/fill";
+import { clauseOrder, compareClauses } from "@/lib/legal/compare";
 import { RELEASE_ZH } from "@/lib/legal/release-zh";
+import { RELEASE_EN } from "@/lib/legal/release-en";
+import { BUILTIN_HISTORY } from "@/lib/legal/builtin-history";
 
 /** (QA, 2 Oct) A person's name the way the reader reads it: the Chinese name on a Chinese screen. */
 function personName(viewer: Viewer) {
@@ -50,42 +52,8 @@ function personName(viewer: Viewer) {
  * services agreement for the freelancers who make the thing.
  */
 const STARTER_TEMPLATES = [
-  {
-    builtinKey: "release.en",
-    name: "Contributor and likeness release",
-    kind: "release",
-    fields: [
-      { key: "contributor", label: "Contributor's full name" },
-      { key: "production", label: "Production or episode" },
-      { key: "recorded_on", label: "Date of recording" },
-      { key: "territory", label: "Territory", hint: "Worldwide, unless the contributor asks otherwise" },
-    ],
-    body: `CONTRIBUTOR AND LIKENESS RELEASE
-
-Between {{ studio }} ("the Studio") and {{ contributor }} ("the Contributor").
-
-1. Recording. The Contributor agrees to take part in {{ production }}, recorded on {{ recorded_on }}.
-
-2. Grant. The Contributor grants the Studio the right to record, edit, reproduce and publish their name, voice, likeness and contribution as part of {{ production }} and its promotion, in {{ territory }}.
-
-3. Editing. The Contributor understands the recording will be edited, and that the Studio decides the final cut.
-
-4. Warranty. The Contributor confirms that what they say is their own, and that they are free to give this permission.
-
-5. Withdrawal. The Contributor may withdraw before publication by writing to the Studio. After publication the Studio is not required to remove material already published, but will not use the contribution in a new production without asking again.
-
-6. No fee. No payment is due for this permission unless a separate agreement says otherwise.
-
-7. Data. The Studio keeps the Contributor's contact details only while needed for this production and for records, and handles them under the Personal Data (Privacy) Ordinance.
-
-8. Governing law. Hong Kong.
-
-Signed: ____________________   Date: ____________
-{{ contributor }}
-
-Signed: ____________________   Date: ____________
-for {{ studio }}`,
-  },
+  /* (4 Oct) Its own module, revised with the Chinese one; see ./release-en. */
+  RELEASE_EN,
   {
     builtinKey: "agreement.en",
     name: "Freelance production services agreement",
@@ -145,32 +113,65 @@ export type TemplateRow = {
 /** The template new drafts start from: the Chinese release. */
 export const DEFAULT_TEMPLATE_KEY = RELEASE_ZH.builtinKey;
 
+/** The current text of every built-in that has been revised, by key. */
+const CURRENT_BUILTINS: Record<string, { body: string; fields: { key: string; label: string; hint?: string }[] }> = {
+  [RELEASE_ZH.builtinKey]: RELEASE_ZH,
+  [RELEASE_EN.builtinKey]: RELEASE_EN,
+};
+
+const sameText = (a: string, b: string) => a.replace(/\r\n/g, "\n").trim() === b.replace(/\r\n/g, "\n").trim();
+
 /**
  * Templates the app adds to a studio that already has its starters, on read,
  * so they appear without anybody running a script. Only for a studio that has
  * templates: an empty one is still offered the starters on request and never
  * silently (`seedTemplates`, which includes these). Idempotent through the
  * (tenant_id, builtin_key) index; a template somebody hid stays hidden.
+ *
+ * (4 Oct) Also brings a built-in up to its revised text — but only while its
+ * stored body is still exactly an earlier built-in text (./builtin-history).
+ * A template somebody edited is theirs and is never overwritten. The update
+ * repeats the old body in its WHERE, so an edit saved in between wins.
  */
-async function ensureBuiltinTemplates(viewer: Viewer, existing: { builtinKey: string | null }[]) {
-  if (!existing.length || existing.some((r) => r.builtinKey === RELEASE_ZH.builtinKey)) return false;
-  const added = await db
-    .insert(templates)
-    .values({
-      id: newId("tpl"),
-      tenantId: viewer.tenantId,
-      builtinKey: RELEASE_ZH.builtinKey,
-      name: RELEASE_ZH.name,
-      kind: RELEASE_ZH.kind,
-      body: RELEASE_ZH.body,
-      fields: RELEASE_ZH.fields,
-    })
-    .onConflictDoNothing({ target: [templates.tenantId, templates.builtinKey] })
-    .returning({ id: templates.id });
-  if (added.length) {
-    await audit(viewer, "legal.template.builtin", { module: "legal", objectId: added[0].id, meta: { builtinKey: RELEASE_ZH.builtinKey } });
+async function ensureBuiltinTemplates(viewer: Viewer, existing: { id: string; builtinKey: string | null; body: string }[]) {
+  if (!existing.length) return false;
+  let changed = false;
+
+  if (!existing.some((r) => r.builtinKey === RELEASE_ZH.builtinKey)) {
+    const added = await db
+      .insert(templates)
+      .values({
+        id: newId("tpl"),
+        tenantId: viewer.tenantId,
+        builtinKey: RELEASE_ZH.builtinKey,
+        name: RELEASE_ZH.name,
+        kind: RELEASE_ZH.kind,
+        body: RELEASE_ZH.body,
+        fields: RELEASE_ZH.fields,
+      })
+      .onConflictDoNothing({ target: [templates.tenantId, templates.builtinKey] })
+      .returning({ id: templates.id });
+    if (added.length) {
+      await audit(viewer, "legal.template.builtin", { module: "legal", objectId: added[0].id, meta: { builtinKey: RELEASE_ZH.builtinKey } });
+      changed = true;
+    }
   }
-  return added.length > 0;
+
+  for (const row of existing) {
+    const current = row.builtinKey ? CURRENT_BUILTINS[row.builtinKey] : undefined;
+    if (!current || !row.builtinKey || sameText(row.body, current.body)) continue;
+    if (!(BUILTIN_HISTORY[row.builtinKey] ?? []).some((old) => sameText(old, row.body))) continue;
+    const upgraded = await db
+      .update(templates)
+      .set({ body: current.body, fields: current.fields, updatedAt: new Date() })
+      .where(and(eq(templates.id, row.id), eq(templates.tenantId, viewer.tenantId), eq(templates.body, row.body)))
+      .returning({ id: templates.id });
+    if (upgraded.length) {
+      await audit(viewer, "legal.template.builtin.upgrade", { module: "legal", objectId: row.id, meta: { builtinKey: row.builtinKey } });
+      changed = true;
+    }
+  }
+  return changed;
 }
 
 export async function listTemplates(viewer: Viewer): Promise<TemplateRow[]> {
@@ -323,9 +324,11 @@ export async function draftContract(
     .limit(1);
   if (!template) throw new Error("这个模板不存在");
 
-  /* Blank optional fields take their default (授权地区 → 全球); anything else
-     blank is refused by name. A draft never carries a {{ placeholder }}. */
-  const draft = resolveDraft(template.body, template.fields, input.values, input.studio);
+  /* Blank optional fields take their default, in the template's language
+     (授权地区 → 全球 in Chinese, worldwide in English; a party detail → a
+     line to write on); anything else blank is refused by name. A draft never
+     carries a {{ placeholder }}. */
+  const draft = resolveDraft(template.body, template.fields, input.values, input.studio, templateLanguage(template));
   if ("error" in draft) throw new Error(draft.error);
 
   const id = newId("con");
@@ -352,6 +355,24 @@ export function isContractState(v: unknown): v is ContractState {
   return typeof v === "string" && (CONTRACT_STATES as readonly string[]).includes(v);
 }
 
+/** (4 Oct) A signed, expired or terminated contract is a record: its text
+ * and title can be read and downloaded but not changed. Its state and dates
+ * still can (a signed contract is terminated, an expiry date corrected). */
+export const READ_ONLY_STATES: readonly ContractState[] = ["signed", "expired", "terminated"];
+export const isReadOnlyState = (state: string) => (READ_ONLY_STATES as readonly string[]).includes(state);
+
+/** One contract with its template's name and fields, for the contract view and its download. */
+export async function getContract(viewer: Viewer, contractId: string) {
+  const [row] = await db
+    .select({ c: contracts, templateName: templates.name, templateFields: templates.fields, ownerName: personName(viewer) })
+    .from(contracts)
+    .leftJoin(templates, eq(templates.id, contracts.templateId))
+    .leftJoin(users, eq(users.id, contracts.ownerId))
+    .where(and(eq(contracts.id, contractId), eq(contracts.tenantId, viewer.tenantId)))
+    .limit(1);
+  return row ?? null;
+}
+
 export async function updateContract(
   viewer: Viewer,
   contractId: string,
@@ -364,6 +385,17 @@ export async function updateContract(
     expiresOn?: string | null;
   },
 ) {
+  const [current] = await db
+    .select({ state: contracts.state })
+    .from(contracts)
+    .where(and(eq(contracts.id, contractId), eq(contracts.tenantId, viewer.tenantId)))
+    .limit(1);
+  if (!current) throw new Error("这份合同不存在");
+  const editsText = input.body !== undefined || input.title !== undefined;
+  if (editsText && isReadOnlyState(current.state)) {
+    throw new Error("已签署、已到期或已终止的合同不能修改正文或标题，只能查看和下载");
+  }
+
   await db
     .update(contracts)
     .set({
@@ -375,8 +407,20 @@ export async function updateContract(
       ...(input.expiresOn !== undefined ? { expiresOn: input.expiresOn } : {}),
       updatedAt: new Date(),
     })
-    .where(and(eq(contracts.id, contractId), eq(contracts.tenantId, viewer.tenantId)));
-  await audit(viewer, "legal.contract.update", { module: "legal", objectType: "contract", objectId: contractId });
+    .where(
+      and(
+        eq(contracts.id, contractId),
+        eq(contracts.tenantId, viewer.tenantId),
+        /* Signed between the read and the write: the text stays as signed. */
+        editsText ? notInArray(contracts.state, [...READ_ONLY_STATES]) : undefined,
+      ),
+    );
+  await audit(viewer, "legal.contract.update", {
+    module: "legal",
+    objectType: "contract",
+    objectId: contractId,
+    meta: { fields: Object.keys(input).filter((k) => input[k as keyof typeof input] !== undefined) },
+  });
 }
 
 /* --------------------------------------------------------- clause review */
@@ -404,8 +448,9 @@ export async function listFindings(viewer: Viewer, contractId: string): Promise<
     .select({ f: clauseFindings, byName: personName(viewer) })
     .from(clauseFindings)
     .leftJoin(users, eq(users.id, clauseFindings.acknowledgedBy))
-    .where(eq(clauseFindings.contractId, contractId))
-    .orderBy(clauseFindings.clause);
+    .where(eq(clauseFindings.contractId, contractId));
+  /* Preamble, then clauses in number order (as text, "10" sorted before "2"), then the signing block. */
+  rows.sort((a, b) => clauseOrder(a.f.clause, b.f.clause));
 
   return rows.map((r) => ({
     id: r.f.id,
@@ -446,21 +491,29 @@ export async function reviewContract(viewer: Viewer, contractId: string) {
      Compared with the raw placeholders, every filled clause read as changed
      (QA, 3 Oct). The name is the one drafting used (`draftContractAction`). */
   const [studio] = await db.select({ name: tenants.name }).from(tenants).where(eq(tenants.id, viewer.tenantId)).limit(1);
-  /* Numbered clauses in either language ("3." or 第三条); see ./compare. */
-  const findings: (typeof clauseFindings.$inferInsert)[] = compareClauses(
-    fillTemplate(row.template.body, row.c.values ?? {}, studio?.name ?? "the Studio"),
-    row.c.body,
-  ).map((d) => ({ id: newId("rev"), contractId, ...d }));
+  /* (4 Oct) A built-in template may have been revised since this contract was
+     drafted from it. Compare with whichever version of the text it came from:
+     the current one and every earlier built-in text, keeping the comparison
+     with the fewest departures. A contract nobody edited still shows none. */
+  const versions = [row.template.body, ...(row.template.builtinKey ? (BUILTIN_HISTORY[row.template.builtinKey] ?? []) : [])];
+  /* Numbered clauses in either language ("3." or 第三条), the preamble and the signing block; see ./compare. */
+  const diffs = versions
+    .map((body) => compareClauses(fillTemplate(body, row.c.values ?? {}, studio?.name ?? "the Studio"), row.c.body))
+    .reduce((best, d) => (d.length < best.length ? d : best));
+  const findings: (typeof clauseFindings.$inferInsert)[] = diffs.map((d) => ({ id: newId("rev"), contractId, ...d }));
 
   // A review replaces the last one: a finding that is no longer true should
   // not sit on the screen next to one that is.
   await db.delete(clauseFindings).where(eq(clauseFindings.contractId, contractId));
   if (findings.length) await db.insert(clauseFindings).values(findings);
 
+  /* Only a draft moves to 审阅中. Comparing a contract that was already sent,
+     signed or terminated is reading it, and must not change where it stands
+     (QA, 4 Oct: comparing a signed contract set it back to 审阅中). */
   await db
     .update(contracts)
     .set({ state: "in_review", updatedAt: new Date() })
-    .where(eq(contracts.id, contractId));
+    .where(and(eq(contracts.id, contractId), eq(contracts.tenantId, viewer.tenantId), eq(contracts.state, "draft")));
 
   await audit(viewer, "legal.contract.review", {
     module: "legal",
@@ -478,7 +531,12 @@ export async function acknowledgeFinding(viewer: Viewer, findingId: string) {
   await db
     .update(clauseFindings)
     .set({ acknowledgedBy: viewer.id, acknowledgedAt: new Date() })
-    .where(eq(clauseFindings.id, findingId));
+    .where(
+      and(
+        eq(clauseFindings.id, findingId),
+        inArray(clauseFindings.contractId, db.select({ id: contracts.id }).from(contracts).where(eq(contracts.tenantId, viewer.tenantId))),
+      ),
+    );
   await audit(viewer, "legal.finding.acknowledge", { module: "legal", objectId: findingId });
 }
 
