@@ -21,6 +21,9 @@ import { settings } from "@/lib/db/schema";
  * back and forth between them for half a minute (QA, 3 Oct): the screens that
  * show or change the choice, and the start of every agent turn, read it fresh
  * with `freshModelChoice()`, and the cache under the rest is a few seconds.
+ * The fresh read also covers a worker's first turn, when the cache is still
+ * empty and every role would fall back to the env default (qwen3-max answered
+ * turns nobody had chosen it for, QA 3 Oct).
  */
 export type ModelChoice = {
   assistant?: string;
