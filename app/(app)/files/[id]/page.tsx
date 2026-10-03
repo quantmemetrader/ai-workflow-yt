@@ -15,6 +15,8 @@ import { FileAccessControl } from "@/components/files/FileAccessControl";
 import { manageableFiles, visibilityForFiles } from "@/lib/files/access";
 import { RenameFile } from "@/components/files/RenameFile";
 import { editable } from "@/lib/files/doc-edit";
+import { FileVersions } from "@/components/files/FileVersions";
+import { MoveFileButton } from "@/components/files/MoveDialog";
 
 /**
  * One file: the thing itself, who can open it, and every version of it.
@@ -72,6 +74,8 @@ export default async function FilePage({ params }: { params: Promise<{ id: strin
   ).size;
 
   const file = row.file;
+  /* Uploading a new version, restoring one and moving the file: owner or editor, as the server checks. */
+  const canEdit = held === "owner" || held === "editor";
   const isMedia = ["image", "video", "audio"].includes(file.kind);
 
   return (
@@ -110,6 +114,7 @@ export default async function FilePage({ params }: { params: Promise<{ id: strin
           <RenameFile id={file.id} name={file.name} zh={zh} />
         ) : null}
         <div style={{ flexGrow: 1 }} />
+        {canEdit && !file.tags.includes("proxy") ? <MoveFileButton id={file.id} name={file.name} folderId={file.folderId} zh={zh} /> : null}
         {editable(file.name, file.kind, file.mime) ? (
           <Link href={`/docs/${file.id}`} className="btn s" style={{ height: 30, textDecoration: "none", color: "#171717", marginRight: 6 }}>
             {held === "owner" || held === "editor" ? (zh ? "在线编辑" : "Edit") : zh ? "打开" : "Open"}
@@ -237,22 +242,20 @@ export default async function FilePage({ params }: { params: Promise<{ id: strin
             }))}
           />
 
-          <section
-            style={{ border: "1px solid #ededed", borderRadius: 10, background: "#fff", padding: "10px 12px" }}
-          >
-            <div className="lbl" style={{ padding: 0, marginBottom: 8 }}>
-              {t("Versions")}
-            </div>
-            <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: 7 }}>
-              {versions.map((v) => (
-                <li key={v.version.id} style={{ fontSize: 11.5, color: "#7c7c7c" }}>
-                  <span style={{ fontWeight: 500, color: "#171717" }}>v{v.version.versionNo}</span> ·{" "}
-                  {(zh && v.authorNameLocal) || v.authorName} · {formatDate(v.version.createdAt, locale)}
-                  {v.version.note ? ` · ${versionNote(v.version.note, zh)}` : ""}
-                </li>
-              ))}
-            </ul>
-          </section>
+          <FileVersions
+            fileId={file.id}
+            fileName={file.name}
+            current={file.version}
+            canEdit={canEdit && !file.tags.includes("proxy")}
+            zh={zh}
+            versions={versions.map((v) => ({
+              versionNo: v.version.versionNo,
+              author: (zh && v.authorNameLocal) || v.authorName,
+              date: formatDate(v.version.createdAt, locale),
+              note: v.version.note ? versionNote(v.version.note, zh) : null,
+              stored: Boolean(v.version.storageKey),
+            }))}
+          />
         </aside>
       </div>
     </div>
@@ -263,7 +266,9 @@ export default async function FilePage({ params }: { params: Promise<{ id: strin
  * language (QA, 2 Oct: the line read "— Uploaded"). */
 function versionNote(note: string, zh: boolean) {
   if (!zh) return note;
-  const known: Record<string, string> = { Uploaded: "上传", Created: "新建", "Edited online": "在线编辑" };
+  const known: Record<string, string> = { Uploaded: "上传", Created: "新建", "Edited online": "在线编辑", "New version": "上传新版本" };
+  const restored = /^Restored from v(\d+)$/.exec(note);
+  if (restored) return `恢复自 v${restored[1]}`;
   return known[note] ?? note;
 }
 

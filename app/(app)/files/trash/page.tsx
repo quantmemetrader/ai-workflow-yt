@@ -26,7 +26,8 @@ export default async function TrashPage() {
       canEdit={false}
       canCreate={viewer.role !== "guest"}
       sidebarFolders={await sidebarFolders(viewer)}
-      folders={trashedFolders.map((f) => ({ id: f.id, name: f.name }))}
+      /* 永久删除 on a folder: its creator or an admin, the rule `purgeFolder` checks. */
+      folders={trashedFolders.map((f) => ({ id: f.id, name: f.name, canPurge: viewer.isAdmin || f.ownerId === viewer.id }))}
       files={toRows(rows, undefined, await visibilityForFiles(rows.map((r) => r.file.id)), viewer)}
     />
   );

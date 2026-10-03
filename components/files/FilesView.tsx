@@ -10,12 +10,16 @@ import { useLocalPreference } from "@/lib/client/preference";
 import { NameDialog } from "@/components/ui/NameDialog";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { useAsk } from "@/components/ui/useAsk";
+import { MoveDialog, type MoveItems } from "@/components/files/MoveDialog";
+import { useNewVersion } from "@/components/files/FileVersions";
 
 const LAYOUTS = ["list", "grid", "gallery"] as const;
 import {
   deleteFileAction,
   deleteFilesAction,
   deleteFolderAction,
+  folderPurgeCountAction,
+  purgeFolderAction,
   newFolderAction,
   purgeFileAction,
   renameFileAction,
@@ -84,6 +88,9 @@ export function FilesView({
   const [deleting, setDeleting] = useState<{ kind: "file" | "folder"; id: string; name: string } | null>(null);
   /* 永久删除 from the trash, confirmed by name (QA, 2 Oct). */
   const [purging, setPurging] = useState<{ id: string; name: string } | null>(null);
+  /* 移动到… for a row, a tile, or the files ticked in 选择多个文件. */
+  const [moving, setMoving] = useState<MoveItems | null>(null);
+  const newVersion = useNewVersion(zh);
 
   // Which view of a folder this person likes, remembered in their browser.
   const [layout, setLayout] = useLocalPreference("aura:files-layout", LAYOUTS, "grid");
@@ -132,6 +139,43 @@ export function FilesView({
   const openFile = (id: string) => router.push(`/files/${id}`);
   const rename = canEdit ? (kind: "file" | "folder", id: string, name: string) => setRenaming({ kind, id, name }) : undefined;
   const remove = canEdit && view !== "trash" ? (kind: "file" | "folder", id: string, name: string) => setDeleting({ kind, id, name }) : undefined;
+  const move =
+    canEdit && view !== "trash"
+      ? (kind: "file" | "folder", id: string, name: string) => setMoving(kind === "file" ? { files: [id], folders: [], label: name } : { files: [], folders: [id], label: name })
+      : undefined;
+  const uploadVersion = canEdit && view !== "trash" ? (id: string, name: string) => newVersion.pick(id, name) : undefined;
+
+  /* 永久删除 on a folder in the trash: the count is read first, so the
+     dialog can say how many files go with it. */
+  async function purgeFolder(id: string, name: string) {
+    const count = await folderPurgeCountAction(id);
+    if ("error" in count && count.error) {
+      notify(count.error);
+      return;
+    }
+    const n = "files" in count ? count.files : 0;
+    const sub = "folders" in count ? Math.max(0, count.folders - 1) : 0;
+    const live = "live" in count ? count.live : 0;
+    if (live > 0) {
+      notify(zh ? `“${name}”里还有 ${live} 项没有删除，请先把它们移出这个文件夹` : `“${name}” still holds ${live} items that are not in the trash; move them out first`);
+      return;
+    }
+    const ok = await ask.confirm({
+      title: zh ? `永久删除文件夹“${name}”？` : `Delete “${name}” forever?`,
+      body: zh
+        ? `会彻底删除这个文件夹${sub ? `、其中 ${sub} 个子文件夹` : ""}和 ${n} 个文件（包括它们的所有版本），之后无法恢复。`
+        : `This removes the folder${sub ? `, ${sub} subfolders` : ""} and ${n} ${n === 1 ? "file" : "files"} (every version of each) for good. It cannot be undone.`,
+      confirm: zh ? "永久删除" : "Delete forever",
+      danger: true,
+    });
+    if (!ok) return;
+    start(async () => {
+      const res = await purgeFolderAction(id);
+      if ("error" in res && res.error) notify(res.error);
+      else notify(zh ? `已永久删除“${name}”和 ${n} 个文件` : `Deleted “${name}” and ${n} files for good`, "ok");
+      router.refresh();
+    });
+  }
   useEffect(() => {
     if (!canUpload) return;
     const over = (e: DragEvent) => {
@@ -153,6 +197,7 @@ export function FilesView({
   return (
     <>
       {ask.dialog}
+      {newVersion.picker}
       <FilesScreen
         breadcrumbs={breadcrumbs}
         folders={folders}
@@ -182,6 +227,9 @@ export function FilesView({
             : undefined
         }
         onPurge={view === "trash" ? (id, name) => setPurging({ id, name }) : undefined}
+        onPurgeFolder={view === "trash" ? (id, name) => void purgeFolder(id, name) : undefined}
+        onMove={move}
+        onNewVersion={uploadVersion}
         layout={layout}
         onLayoutChange={setLayout}
         lens={lens}
@@ -248,6 +296,14 @@ export function FilesView({
                     }}
                   >
                     {zh ? "删除所选" : "Delete selected"}
+                  </button>
+                  <button
+                    type="button"
+                    className="fv-btn"
+                    disabled={!chosen.length}
+                    onClick={() => setMoving({ files: chosen, folders: [], label: zh ? `${chosen.length} 个文件` : `${chosen.length} files` })}
+                  >
+                    {zh ? "移动所选" : "Move selected"}
                   </button>
                   <button type="button" className="fv-btn" onClick={stopPicking}>{zh ? "取消" : "Cancel"}</button>
                 </>
@@ -344,6 +400,18 @@ export function FilesView({
               router.refresh();
             })
           }
+        />
+      )}
+
+      {moving && (
+        <MoveDialog
+          zh={zh}
+          items={moving}
+          currentFolderId={moving.folders.length ? undefined : folderId}
+          onClose={() => setMoving(null)}
+          onMoved={() => {
+            if (moving.files.length > 1) stopPicking();
+          }}
         />
       )}
 

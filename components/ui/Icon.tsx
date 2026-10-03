@@ -40,7 +40,9 @@ export type IconName =
   | "next"
   | "redo"
   | "arrowLeft"
-  | "arrowRight";
+  | "arrowRight"
+  | "more"
+  | "move";
 
 const PATHS: Record<IconName, React.ReactNode> = {
   chat: <path d="M20.5 11.6a7.9 7.9 0 0 1-8.5 7.8 8.9 8.9 0 0 1-2.6-.4L4.5 20.4l1.3-3.8a7.7 7.7 0 0 1-1.8-5A7.9 7.9 0 0 1 12 3.8a7.9 7.9 0 0 1 8.5 7.8z" />,
@@ -180,6 +182,21 @@ const PATHS: Record<IconName, React.ReactNode> = {
   ),
   arrowLeft: <path d="M19 12H5M10.5 6.5 5 12l5.5 5.5" />,
   arrowRight: <path d="M5 12h14M13.5 6.5 19 12l-5.5 5.5" />,
+  /* More actions on a row (⋯ as three filled dots). */
+  more: (
+    <>
+      <circle cx="6" cy="12" r="1.3" fill="currentColor" stroke="none" />
+      <circle cx="12" cy="12" r="1.3" fill="currentColor" stroke="none" />
+      <circle cx="18" cy="12" r="1.3" fill="currentColor" stroke="none" />
+    </>
+  ),
+  /* 移动到: a folder with an arrow going in. */
+  move: (
+    <>
+      <path d="M3.5 7.2a2 2 0 0 1 2-2h3.4a2 2 0 0 1 1.52.7l1.18 1.4h6.9a2 2 0 0 1 2 2v7.5a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z" />
+      <path d="M8.5 13.5h7M13 11l2.5 2.5L13 16" />
+    </>
+  ),
 };
 
 export function Icon({ name, size = 14, color, strokeWidth = 1.8, fill = false, style }: { name: IconName; size?: number; color?: string; strokeWidth?: number; fill?: boolean; style?: React.CSSProperties }) {

@@ -10,6 +10,7 @@ import { EyeOffGlyph, GlobeGlyph, PeopleGlyph, PersonGlyph, visibilityLabel } fr
 import { AgentIcon } from "@/components/agents/AgentIcon";
 import { PersonAvatar } from "@/components/ui/PersonAvatar";
 import { Tr } from "@/components/ui/Tr";
+import { Icon } from "@/components/ui/Icon";
 /**
  * FilesScreen — a transcription of design/canvas/FilesDesktop.dc.html.
  *
@@ -66,7 +67,8 @@ export type FileRow = {
   canManage?: boolean;
 };
 
-export type FolderRow = { id: string; name: string; count?: number };
+/** `canPurge`: in the trash, whether this person may delete it for good (its creator or an admin). */
+export type FolderRow = { id: string; name: string; count?: number; canPurge?: boolean };
 
 /** The artboard's `accent` prop, at its default. Kept for the soft things
  * (the upload track, the Restore chip); not for buttons. */
@@ -102,6 +104,10 @@ const FILES_CSS = `
 [data-files-screen] [data-files-agent]:has([data-agent-empty]:empty) .fs-note { display: block; }
 [data-files-screen] [data-files-agent]:has([data-agent-empty]:empty) [data-agent-empty] { display: none; }
 @media (prefers-reduced-motion: reduce) { [data-files-screen] .fs-tile, [data-files-screen] .fs-acts { transition: none; } }
+/* The last column holds the badge, rename, delete and the ⋯ menu; at 78px they ran past the row's edge. */
+[data-files-screen] .vg { grid-template-columns: 34px minmax(0, 2.8fr) 84px 78px 62px 134px 86px 124px; }
+.fs-menu button { display: flex; align-items: center; gap: 8px; width: 100%; height: 32px; padding: 0 10px; border: 0; border-radius: 7px; background: transparent; color: #262626; font: inherit; font-size: 13px; cursor: pointer; text-align: left; white-space: nowrap; }
+.fs-menu button:hover, .fs-menu button:focus-visible { background: #f3f3f3; outline: none; }
 `;
 
 /** zh-CN is the default locale (spec §4.1); English is the toggle. */
@@ -330,6 +336,12 @@ export function FilesScreen(props: {
   onDelete?: (kind: "file" | "folder", id: string, currentName: string) => void;
   /** Change who sees a file (the eye chip on a row). Owners and admins only. */
   onSetAccess?: (file: FileRow) => void;
+  /** 移动到… on a file or folder (the ⋯ menu). Absent when this person cannot edit here. */
+  onMove?: (kind: "file" | "folder", id: string, currentName: string) => void;
+  /** 上传新版本 on a file (the ⋯ menu). */
+  onNewVersion?: (id: string, currentName: string) => void;
+  /** Trash only: delete a folder and everything in it for good (its creator or an admin). */
+  onPurgeFolder?: (id: string, name: string) => void;
   /** Hands a question to the employee's agent. The answer comes back into
    * `thread`, on this screen: asking about a folder used to navigate to Chat
    * and take the folder, the selection and the scroll with it. */
@@ -375,6 +387,9 @@ export function FilesScreen(props: {
     onRename,
     onDelete,
     onSetAccess,
+    onMove,
+    onNewVersion,
+    onPurgeFolder,
     thread,
     layout = "grid",
     onLayoutChange,
@@ -813,6 +828,9 @@ export function FilesScreen(props: {
                     onRestore={view === "trash" ? onRestore : undefined}
                     onPurge={view === "trash" ? onPurge : undefined}
                     onSetAccess={view === "trash" ? undefined : onSetAccess}
+                    onMove={view === "trash" ? undefined : onMove}
+                    onNewVersion={view === "trash" ? undefined : onNewVersion}
+                    onPurgeFolder={view === "trash" ? onPurgeFolder : undefined}
                     showDate={lens != null && lens !== "all"}
                     zh={zh}
                     t={t}
@@ -913,17 +931,40 @@ export function FilesScreen(props: {
                         {/* Folders were the one thing on this screen with no
                             way to rename or remove them: made, then permanent. */}
                         {view === "trash" && onRestore ? (
-                          <span
-                            role="button"
-                            tabIndex={0}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onRestore(f.id);
-                            }}
-                            className="bdg"
-                            style={{ background: "#e6f4ff", color: ACCENT, cursor: "pointer" }}
-                          >
-                            {zh ? "恢复" : "Restore"}
+                          <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            <span
+                              role="button"
+                              tabIndex={0}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onRestore(f.id);
+                              }}
+                              className="bdg"
+                              style={{ background: "#e6f4ff", color: ACCENT, cursor: "pointer" }}
+                            >
+                              {zh ? "恢复" : "Restore"}
+                            </span>
+                            {onPurgeFolder && f.canPurge ? (
+                              <span
+                                role="button"
+                                tabIndex={0}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onPurgeFolder(f.id, f.name);
+                                }}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter" || e.key === " ") {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    onPurgeFolder(f.id, f.name);
+                                  }
+                                }}
+                                className="bdg"
+                                style={{ background: "#fdecec", color: "#c62a2f", cursor: "pointer" }}
+                              >
+                                {zh ? "永久删除" : "Delete forever"}
+                              </span>
+                            ) : null}
                           </span>
                         ) : (
                           <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -955,6 +996,7 @@ export function FilesScreen(props: {
                                 <TrashGlyph />
                               </button>
                             )}
+                            {onMove && <RowMenu zh={zh} label={f.name} items={[{ key: "move", icon: "move", label: zh ? "移动到…" : "Move to…", run: () => onMove("folder", f.id, f.name) }]} />}
                           </span>
                         )}
                       </div>
@@ -1129,6 +1171,7 @@ export function FilesScreen(props: {
                                 <TrashGlyph />
                               </button>
                             )}
+                            {writable(f) && f.uploading == null && fileMenu(f, zh, onMove, onNewVersion) ? <RowMenu zh={zh} label={f.name} items={fileMenu(f, zh, onMove, onNewVersion) ?? []} /> : null}
                           </span>
                         ) : (
                           <AccessBadge access={f.access} canEdit={canEdit} t={t} />
@@ -1299,6 +1342,9 @@ export function Tiles({
   onRestore,
   onPurge,
   onSetAccess,
+  onMove,
+  onNewVersion,
+  onPurgeFolder,
   showDate,
   tag,
   zh,
@@ -1322,6 +1368,9 @@ export function Tiles({
   onRestore?: (id: string) => void;
   onPurge?: (id: string, name: string) => void;
   onSetAccess?: (file: FileRow) => void;
+  onMove?: (kind: "file" | "folder", id: string, currentName: string) => void;
+  onNewVersion?: (id: string, currentName: string) => void;
+  onPurgeFolder?: (id: string, name: string) => void;
   /* The date on the second line, where tiles from many places are mixed (a
      project's files, all the pictures) and "when" is how one is told apart. */
   showDate?: boolean;
@@ -1374,7 +1423,18 @@ export function Tiles({
             color: "#171717",
           }}
         >
-          <TileActions kind="folder" id={f.id} name={f.name} onRename={onRename} onDelete={onDelete} onRestore={onRestore} t={t} />
+          <TileActions
+            kind="folder"
+            id={f.id}
+            name={f.name}
+            onRename={onRename}
+            onDelete={onDelete}
+            onRestore={onRestore}
+            onPurge={f.canPurge ? onPurgeFolder : undefined}
+            menu={onMove ? [{ key: "move", icon: "move", label: zh ? "移动到…" : "Move to…", run: () => onMove("folder", f.id, f.name) }] : undefined}
+            zh={zh}
+            t={t}
+          />
           <div
             style={{
               height: thumbHeight,
@@ -1451,7 +1511,18 @@ export function Tiles({
             minWidth: 0,
           }}
         >
-          <TileActions kind="file" id={f.id} name={f.name} onRename={writable(f) ? onRename : undefined} onDelete={writable(f) ? onDelete : undefined} onRestore={onRestore} onPurge={f.canSetAccess ? onPurge : undefined} t={t} />
+          <TileActions
+            kind="file"
+            id={f.id}
+            name={f.name}
+            onRename={writable(f) ? onRename : undefined}
+            onDelete={writable(f) ? onDelete : undefined}
+            onRestore={onRestore}
+            onPurge={f.canSetAccess ? onPurge : undefined}
+            menu={writable(f) && f.uploading == null ? fileMenu(f, zh, onMove, onNewVersion) : undefined}
+            zh={zh}
+            t={t}
+          />
           <div
             style={{
               height: thumbHeight,
@@ -1531,6 +1602,8 @@ function TileActions({
   onDelete,
   onRestore,
   onPurge,
+  menu,
+  zh,
   t,
 }: {
   kind: "file" | "folder";
@@ -1542,9 +1615,11 @@ function TileActions({
      layout is the grid — so the trash had no way out of it for most people. */
   onRestore?: (id: string) => void;
   onPurge?: (id: string, name: string) => void;
+  menu?: MenuItem[];
+  zh: boolean;
   t: (key: string) => string;
 }) {
-  if (!onRename && !onDelete && !onRestore) return null;
+  if (!onRename && !onDelete && !onRestore && !menu?.length) return null;
   /* Rename and delete wait for the pointer (FILES_CSS), so a board of clips
      is a board of pictures rather than of pencils and bins; Restore, the
      only way out of the trash, always shows. A touch screen has no hover and
@@ -1611,7 +1686,117 @@ function TileActions({
           <TrashGlyph />
         </button>
       )}
+      {menu?.length ? <RowMenu zh={zh} label={name} items={menu} /> : null}
     </span>
+  );
+}
+
+type MenuItem = { key: string; icon: "move" | "upload"; label: string; run: () => void };
+
+/** The ⋯ menu's entries for a file this person may edit. */
+function fileMenu(
+  f: FileRow,
+  zh: boolean,
+  onMove?: (kind: "file" | "folder", id: string, currentName: string) => void,
+  onNewVersion?: (id: string, currentName: string) => void,
+): MenuItem[] | undefined {
+  const items: MenuItem[] = [];
+  if (onMove) items.push({ key: "move", icon: "move", label: zh ? "移动到…" : "Move to…", run: () => onMove("file", f.id, f.name) });
+  if (onNewVersion) items.push({ key: "version", icon: "upload", label: zh ? "上传新版本" : "Upload new version", run: () => onNewVersion(f.id, f.name) });
+  return items.length ? items : undefined;
+}
+
+/**
+ * ⋯ on a row or tile: the actions that do not earn a button of their own
+ * (移动到…, 上传新版本). Drawn in a portal so a tile's rounded clip or the
+ * list's scroll pane cannot cut it off.
+ */
+function RowMenu({ zh, label, items }: { zh: boolean; label: string; items: MenuItem[] }) {
+  const ref = React.useRef<HTMLButtonElement>(null);
+  const [at, setAt] = React.useState<{ x: number; y: number } | null>(null);
+
+  React.useEffect(() => {
+    if (!at) return;
+    const close = () => setAt(null);
+    const key = (e: KeyboardEvent) => {
+      if (e.key === "Escape") close();
+    };
+    window.addEventListener("mousedown", close);
+    window.addEventListener("scroll", close, true);
+    window.addEventListener("resize", close);
+    window.addEventListener("keydown", key);
+    return () => {
+      window.removeEventListener("mousedown", close);
+      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("resize", close);
+      window.removeEventListener("keydown", key);
+    };
+  }, [at]);
+
+  return (
+    <>
+      <button
+        ref={ref}
+        type="button"
+        title={zh ? "更多" : "More"}
+        aria-label={zh ? `更多操作：${label}` : `More actions: ${label}`}
+        aria-haspopup="menu"
+        aria-expanded={Boolean(at)}
+        onClick={(e) => {
+          e.stopPropagation();
+          if (at) {
+            setAt(null);
+            return;
+          }
+          const r = ref.current?.getBoundingClientRect();
+          if (!r) return;
+          const width = 168;
+          const height = items.length * 32 + 10;
+          const below = r.bottom + 4 + height < window.innerHeight;
+          setAt({ x: Math.max(8, Math.min(r.right - width, window.innerWidth - width - 8)), y: below ? r.bottom + 4 : r.top - 4 - height });
+        }}
+        onKeyDown={(e) => e.stopPropagation()}
+        style={renameButton}
+      >
+        <Icon name="more" size={12} />
+      </button>
+      {at && typeof document !== "undefined"
+        ? createPortal(
+            <div
+              role="menu"
+              className="fs-menu"
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={(e) => e.stopPropagation()}
+              /* The row behind opens its file on Enter; a key pressed in here is the menu's. */
+              onKeyDown={(e) => {
+                e.stopPropagation();
+                if (e.key === "Escape") {
+                  setAt(null);
+                  ref.current?.focus();
+                }
+              }}
+              style={{ position: "fixed", left: at.x, top: at.y, width: 168, zIndex: 210, background: "#fff", border: "1px solid #e2e2e2", borderRadius: 10, boxShadow: "0 12px 32px rgba(23,23,23,0.16)", padding: 5 }}
+            >
+              {items.map((item, i) => (
+                <button
+                  key={item.key}
+                  type="button"
+                  role="menuitem"
+                  autoFocus={i === 0}
+                  onClick={() => {
+                    setAt(null);
+                    item.run();
+                  }}
+                >
+                  <Icon name={item.icon} size={14} color="#7c7c7c" />
+                  {item.label}
+                </button>
+              ))}
+            </div>,
+            document.body,
+          )
+        : null}
+    </>
   );
 }
 

@@ -9,6 +9,8 @@ import { atLeast, canWrite, isProtectedOwner, isRelation, relationOn, revoke, sh
 import {
   createFolder,
   deleteFolder,
+  folderPurgeCount,
+  purgeFolder,
   renameFile,
   renameFolder,
   purgeFile,
@@ -17,6 +19,8 @@ import {
   softDelete,
 } from "@/lib/files/service";
 import { audit } from "@/lib/audit";
+import { listMoveTargets, moveFile, moveFiles, moveFolder } from "@/lib/files/move";
+import { restoreVersion } from "@/lib/files/versions";
 import { parseChoice, setFileAccess, studioPeople } from "@/lib/files/access";
 
 /** Server actions are public endpoints. Each one re-reads the viewer and
@@ -319,4 +323,102 @@ export async function studioPeopleAction() {
   // A guest is not handed the studio's staff list.
   if (viewer.role === "guest") return { people: [] };
   return { people: await studioPeople(viewer) };
+}
+
+const isId = (x: unknown): x is string => typeof x === "string" && x.length > 0 && x.length < 64;
+
+/** The folders the 移动到 dialog offers: every one this person may put things into. */
+export async function moveTargetsAction() {
+  const viewer = await getViewer();
+  if (!viewer?.modules.includes("files")) return { error: "你没有权限做这件事", folders: [] };
+  return { folders: await listMoveTargets(viewer) };
+}
+
+/**
+ * 移动到… for one file, one folder, or the files ticked in 选择多个文件.
+ * `targetId` null is 根目录. Every item is re-checked in the service: the
+ * mover must be able to edit it and the destination both.
+ */
+export async function moveItemsAction(items: unknown, targetId: unknown) {
+  const viewer = await getViewer();
+  if (!viewer?.modules.includes("files")) return { error: "你没有权限做这件事" };
+  if (targetId !== null && !isId(targetId)) return { error: "请选择要移到的位置" };
+  const given = (items ?? {}) as { files?: unknown; folders?: unknown };
+  const fileIds = Array.isArray(given.files) ? given.files.filter(isId).slice(0, 500) : [];
+  const folderIds = Array.isArray(given.folders) ? given.folders.filter(isId).slice(0, 50) : [];
+  if (!fileIds.length && !folderIds.length) return { error: "还没选要移动的内容" };
+
+  try {
+    let name = "";
+    let moved = 0;
+    let failed = 0;
+    let firstError = "";
+    for (const id of folderIds) {
+      try {
+        const res = await moveFolder(viewer, id, targetId);
+        name = res.name;
+        if (res.moved) moved++;
+      } catch (err) {
+        failed++;
+        firstError ||= err instanceof Error ? err.message : "";
+      }
+    }
+    if (fileIds.length === 1 && !folderIds.length) {
+      const res = await moveFile(viewer, fileIds[0], targetId);
+      name = res.name;
+      if (res.moved) moved++;
+    } else if (fileIds.length) {
+      const res = await moveFiles(viewer, fileIds, targetId);
+      name ||= res.name;
+      moved += res.moved;
+      failed += res.failed;
+      firstError ||= res.error ?? "";
+    }
+    revalidatePath("/files", "layout");
+    if (!moved && failed) return { error: firstError || "没移动成功，请再试一次" };
+    return { moved, failed, name };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "没移动成功，请再试一次" };
+  }
+}
+
+/** 恢复为当前版本: an earlier version becomes the newest one. */
+export async function restoreVersionAction(fileId: unknown, versionNo: unknown) {
+  const viewer = await getViewer();
+  if (!viewer?.modules.includes("files")) return { error: "你没有权限做这件事" };
+  if (!isId(fileId) || !Number.isInteger(versionNo)) return { error: "找不到这个版本" };
+  try {
+    const row = await restoreVersion(viewer, fileId, versionNo as number);
+    revalidatePath(`/files/${fileId}`);
+    revalidatePath("/files", "layout");
+    return { version: row.version };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "没恢复成功，请再试一次" };
+  }
+}
+
+/** For 永久删除 on a folder in the trash: how many files would go, said in the confirm dialog first. */
+export async function folderPurgeCountAction(folderId: unknown) {
+  const viewer = await getViewer();
+  if (!viewer?.modules.includes("files")) return { error: "你没有权限做这件事" };
+  if (!isId(folderId)) return { error: "找不到这个文件夹" };
+  try {
+    return await folderPurgeCount(viewer, folderId);
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "没能读取这个文件夹" };
+  }
+}
+
+/** 永久删除 on a folder in the trash: the folder's creator or an admin. */
+export async function purgeFolderAction(folderId: unknown) {
+  const viewer = await getViewer();
+  if (!viewer?.modules.includes("files")) return { error: "你没有权限做这件事" };
+  if (!isId(folderId)) return { error: "找不到这个文件夹" };
+  try {
+    const res = await purgeFolder(viewer, folderId);
+    revalidatePath("/files/trash");
+    return res;
+  } catch (err) {
+    return { error: err instanceof Error && /[\u4e00-\u9fff]/.test(err.message) ? err.message : "没能永久删除，里面的文件可能还在别处用着" };
+  }
 }
