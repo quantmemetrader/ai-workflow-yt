@@ -24,7 +24,11 @@ body {
   background: var(--surface-white);
   color: var(--ink-gray-8);
   font-family: var(--font-sans);
-  font-feature-settings: "cv10" 1, "ss03" 1;
+  /* No stylistic sets here (4 Oct): "ss03"/"cv10" were meant for Inter, but on a
+     Mac they also reached the system Chinese font, which then drew 告诉 as 告愬
+     and 改法 as 改浛 on screen while the text itself stayed right. */
+  font-feature-settings: normal;
+  font-variant-east-asian: normal;
   -webkit-font-smoothing: antialiased;
 }
 

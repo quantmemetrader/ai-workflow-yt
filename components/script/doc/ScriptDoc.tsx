@@ -2096,7 +2096,7 @@ export const GD_CSS = `
 [data-project-frame]:has([data-gd-root]) { overflow-y: auto !important; }
 [data-project-frame]:has([data-gd-root]) > [data-project-body] { flex-shrink: 0; min-height: auto !important; }
 [data-script-page] { min-height: auto !important; }
-.gd-root { flex-grow: 1; min-width: 0; display: flex; flex-direction: column; background: #f9fbfd; color: #1f1f1f; font-family: "Google Sans", Roboto, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; }
+.gd-root { flex-grow: 1; min-width: 0; display: flex; flex-direction: column; background: #f9fbfd; color: #1f1f1f; font-family: "Google Sans", Roboto, "Noto Sans SC", "PingFang SC", "Microsoft YaHei", -apple-system, sans-serif; font-feature-settings: normal; font-variant-east-asian: normal; }
 .gd-root:fullscreen { background: #f9fbfd; overflow-y: auto; }
 .gd-head { display: flex; align-items: center; gap: 8px; min-height: 30px; padding: 4px 16px 0 22px; flex-shrink: 0; position: relative; z-index: 30; }
 .gd-title { font: inherit; font-size: 18px; color: #1f1f1f; border: 1px solid transparent; border-radius: 4px; padding: 1px 6px; margin-left: -6px; background: transparent; min-width: 6ch; max-width: 52ch; text-overflow: ellipsis; }
@@ -2262,7 +2262,7 @@ export const GD_CSS = `
 .gd-count td:last-child { text-align: right; color: #1f1f1f; font-weight: 500; }
 
 /* the page's type, like Docs */
-.gd-prose { outline: none; font-family: Arial, "PingFang SC", "Microsoft YaHei", sans-serif; font-size: 11pt; line-height: 1.5; color: #000; min-height: 780px; word-break: break-word; }
+.gd-prose { outline: none; font-family: Arial, "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif; font-size: 11pt; line-height: 1.5; color: #000; min-height: 780px; word-break: break-word; }
 .gd-prose p { margin: 0 0 8pt; }
 .gd-prose h1 { font-size: 20pt; font-weight: 400; margin: 20pt 0 6pt; line-height: 1.25; }
 .gd-prose h2 { font-size: 16pt; font-weight: 400; margin: 18pt 0 6pt; line-height: 1.3; }
@@ -2297,14 +2297,14 @@ export const GD_CSS = `
 .gd-new.del { border-left-color: #b3261e; background: #fce8e6; }
 .gd-new-text { color: #0d652d; line-height: 1.5; white-space: pre-wrap; }
 .gd-new.del .gd-new-text { color: #b3261e; font-size: 10pt; }
-.gd-new-bar { display: flex; align-items: center; gap: 6px; margin-top: 6px; font-family: "Google Sans", -apple-system, "PingFang SC", sans-serif; }
+.gd-new-bar { display: flex; align-items: center; gap: 6px; margin-top: 6px; font-family: "Google Sans", "Noto Sans SC", "PingFang SC", -apple-system, sans-serif; }
 .gd-new-why { flex-grow: 1; font-size: 11.5px; color: #0b57d0; }
 .gd-new-ok, .gd-new-no { height: 26px; padding: 0 12px; border-radius: 999px; font-size: 12px; font-weight: 500; cursor: pointer; font-family: inherit; }
 .gd-new-ok { border: 0; background: #1e8e3e; color: #fff; }
 .gd-new-no { border: 1px solid #747775; background: #fff; color: #1f1f1f; }
 .gd-new-again { border-color: #0b57d0; color: #0b57d0; }
 .gd-new-again:disabled { opacity: .6; cursor: default; }
-.gd-new-ask { display: flex; gap: 6px; margin-top: 8px; font-family: "Google Sans", -apple-system, "PingFang SC", sans-serif; }
+.gd-new-ask { display: flex; gap: 6px; margin-top: 8px; font-family: "Google Sans", "Noto Sans SC", "PingFang SC", -apple-system, sans-serif; }
 .gd-new-ask input { flex-grow: 1; min-width: 0; height: 30px; border: 1px solid #c7c7c7; border-radius: 999px; padding: 0 12px; font: inherit; font-size: 13px; background: #fff; outline: none; }
 .gd-new-ask input:focus { border-color: #0b57d0; box-shadow: 0 0 0 1px #0b57d0; }
 .gd-shots .gd-prose p[data-shot]::after, .gd-shots .gd-readonly p[data-shot]::after { content: "画面：" attr(data-shot); display: block; margin-top: 4px; padding: 3px 8px; border-radius: 6px; background: #f1f3f4; color: #5f6368; font-size: 9.5pt; line-height: 1.45; }
