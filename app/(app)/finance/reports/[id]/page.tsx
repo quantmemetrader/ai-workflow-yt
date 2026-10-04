@@ -48,6 +48,8 @@ export default async function ReportPage({ params }: { params: Promise<{ id: str
         openShare
         panelLabel={zh ? "报告信息" : "Report details"}
         textMode="markdown"
+        aiKind="report"
+        agentName={zh ? "财务" : "Finance"}
         save={saveReportDocAction.bind(null, r.id)}
         fixedName
         downloads={[

@@ -46,6 +46,8 @@ export default async function SpendPage({ params }: { params: Promise<{ id: stri
         openShare
         panelLabel={zh ? "申请和审批" : "Request and approvals"}
         textMode="markdown"
+        aiKind="spend"
+        agentName={zh ? "财务" : "Finance"}
         save={saveSpendDocAction.bind(null, s.id)}
         rename={renameSpendAction.bind(null, s.id)}
         placeholder={zh ? "写下用途、供应商、报价和为什么现在要买，审批人会看这一页…" : "What it is for, the supplier, the quote and why now: approvers read this page…"}

@@ -41,6 +41,8 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
         openShare
         panelLabel={zh ? "合同信息" : "Contract details"}
         textMode="plain"
+        aiKind="contract"
+        agentName={zh ? "法务" : "Legal"}
         save={saveContractDocAction.bind(null, c.id)}
         rename={renameContractAction.bind(null, c.id)}
         placeholder={zh ? "合同正文从这里开始…" : "The contract text starts here…"}

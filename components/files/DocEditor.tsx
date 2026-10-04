@@ -18,6 +18,7 @@ import { GI } from "@/components/script/doc/icons";
 import { notify } from "@/lib/client/notify";
 import { renameDocAction, saveDocAction } from "@/app/(app)/docs/actions";
 import { docToText } from "@/lib/docs/convert";
+import { DOC_AI_CSS, DocAiBar, DocAiPanel, useDocAssistant, type DocKind } from "@/components/files/DocAssistant";
 
 /**
  * A document edited in the browser, on the same paper and toolbar as the
@@ -50,6 +51,8 @@ export function DocEditor({
   subtitle,
   placeholder,
   fixedName = false,
+  aiKind = "file",
+  agentName,
 }: {
   id: string;
   name: string;
@@ -70,13 +73,17 @@ export function DocEditor({
   placeholder?: string;
   /** The title is the record's, not typed (a report is titled by its period). */
   fixedName?: boolean;
+  /** What the AI bar and panel are changing, and who answers (5 Oct). */
+  aiKind?: DocKind;
+  agentName?: string;
 }) {
   const t = (a: string, b: string) => (zh ? a : b);
   const ask = useAsk(zh);
   const [mode, setMode] = React.useState<Mode>(canEdit ? "edit" : "view");
   const [zoom, setZoom] = React.useState(1);
   const [state, setState] = React.useState<"saved" | "dirty" | "saving" | "error">("saved");
-  const [panel, setPanel] = React.useState(openShare);
+  /* The side panel: the AI assistant by default for anyone who can edit, sharing or the record's details on request. */
+  const [tab, setTab] = React.useState<"ai" | "info" | null>(openShare && !canEdit ? "info" : canEdit ? "ai" : openShare ? "info" : null);
   const [title, setTitle] = React.useState(name);
   const [, setTick] = React.useState(0);
   const dl = React.useRef<HTMLDetailsElement | null>(null);
@@ -128,6 +135,9 @@ export function DocEditor({
       timer.current = window.setTimeout(() => void save(), 1200);
     },
   });
+
+  const ai = useDocAssistant(editor, { kind: aiKind, id, title, zh });
+  const who = agentName ?? t("助理", "Assistant");
 
   /* (QA, 2 Oct: after 查看 → 编辑 every toolbar button stayed grey until a key
      was pressed. setEditable alone does not reach the toolbar's state hook, so
@@ -239,6 +249,7 @@ export function DocEditor({
     <div className="gd-root doc-root" data-gd-root="" style={{ minHeight: "100%" }}>
       <style>{GD_CSS}</style>
       <style>{DOC_CSS}</style>
+      <style>{DOC_AI_CSS}</style>
       <div className="gd-head" style={{ paddingBottom: 8 }}>
         <Link href={back.href} className="gd-icon" title={back.label} aria-label={back.label}>
           <GI name="left" size={20} />
@@ -303,7 +314,13 @@ export function DocEditor({
               )}
             </div>
           </details>
-          <button type="button" className="gd-share" onClick={() => setPanel((v) => !v)} aria-expanded={panel}>
+          {canEdit ? (
+            <button type="button" className="doc-btn" data-on={tab === "ai" ? "" : undefined} onClick={() => setTab((v) => (v === "ai" ? null : "ai"))} aria-expanded={tab === "ai"}>
+              <GI name="sparkle" size={16} />
+              {t("AI 助手", "AI assistant")}
+            </button>
+          ) : null}
+          <button type="button" className="gd-share" onClick={() => setTab((v) => (v === "info" ? null : "info"))} aria-expanded={tab === "info"}>
             <GI name={panelLabel ? "outline" : "lock"} size={18} />
             {panelLabel ?? t("分享", "Share")}
           </button>
@@ -336,12 +353,24 @@ export function DocEditor({
               <EditorContent editor={editor} />
             </div>
           </div>
+          {canEdit && mode === "edit" ? <DocAiBar ai={ai} zh={zh} /> : null}
         </div>
-        {panel ? (
+        {tab === "ai" && canEdit ? (
+          <aside className="doc-panel">
+            <div style={{ display: "flex", alignItems: "center", marginBottom: 4 }}>
+              <span style={{ fontSize: 15, fontWeight: 600, flexGrow: 1 }}>{t("AI 助手", "AI assistant")}</span>
+              <button type="button" className="gd-icon" onClick={() => setTab(null)} aria-label={t("关闭", "Close")}>
+                <GI name="x" size={18} />
+              </button>
+            </div>
+            <DocAiPanel ai={ai} zh={zh} kind={aiKind} agentName={who} />
+          </aside>
+        ) : null}
+        {tab === "info" ? (
           <aside className="doc-panel">
             <div style={{ display: "flex", alignItems: "center", marginBottom: 10 }}>
               <span style={{ fontSize: 15, fontWeight: 600, flexGrow: 1 }}>{panelLabel ?? t("分享和权限", "Sharing")}</span>
-              <button type="button" className="gd-icon" onClick={() => setPanel(false)} aria-label={t("关闭", "Close")}>
+              <button type="button" className="gd-icon" onClick={() => setTab(null)} aria-label={t("关闭", "Close")}>
                 <GI name="x" size={18} />
               </button>
             </div>
@@ -357,6 +386,7 @@ export function DocEditor({
 const DOC_CSS = `
 .doc-btn { display: inline-flex; align-items: center; gap: 6px; height: 36px; padding: 0 14px; border-radius: 999px; border: 1px solid #c7c7c7; background: #fff; color: #1f1f1f; font: inherit; font-size: 14px; cursor: pointer; list-style: none; }
 .doc-btn::-webkit-details-marker { display: none; }
+.doc-btn[data-on] { background: #c2e7ff; border-color: #c2e7ff; }
 .doc-dl { position: relative; }
 .doc-menu { position: absolute; right: 0; top: calc(100% + 6px); z-index: 60; min-width: 220px; background: #fff; border-radius: 8px; padding: 6px 0; box-shadow: 0 2px 6px 2px rgba(60,64,67,.15), 0 1px 2px rgba(60,64,67,.3); display: flex; flex-direction: column; }
 .doc-menu a { padding: 8px 16px; font-size: 14px; color: #1f1f1f; text-decoration: none; }
@@ -368,5 +398,5 @@ const DOC_CSS = `
 .doc-root .gd-toolbar .gd-tb[aria-label="插入图片"], .doc-root .gd-toolbar .gd-tb[aria-label="Insert image"] { display: none; }
 .doc-note { margin: 0 16px 8px; padding: 8px 12px; border-radius: 8px; background: #fef7e0; color: #5c4400; font-size: 12.5px; }
 .doc-panel { width: 340px; flex-shrink: 0; align-self: stretch; border-left: 1px solid #e3e3e3; background: #fff; padding: 14px; box-sizing: border-box; display: flex; flex-direction: column; gap: 12px; position: sticky; top: 0; max-height: 100vh; overflow-y: auto; }
-@media print { .gd-head, .gd-toolbar, .doc-note, .doc-panel { display: none !important; } .gd-sheet { box-shadow: none !important; } }
+@media print { .gd-head, .gd-toolbar, .doc-note, .doc-panel, .dai-bar { display: none !important; } .gd-sheet { box-shadow: none !important; } }
 `;

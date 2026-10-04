@@ -47,6 +47,7 @@ export default async function DocPage({ params, searchParams }: { params: Promis
         fromOriginal={doc.fromOriginal && Boolean(row?.storageKey)}
         hasOriginal={Boolean(row?.storageKey)}
         openShare={openShare === "1"}
+        agentName={lib?.[0] === "legal" ? (zh ? "法务" : "Legal") : lib?.[0] === "finance" || lib?.[0] === "accounting" ? (zh ? "财务" : "Finance") : zh ? "助理" : "Assistant"}
         share={
           <>
             <FileAccessControl fileId={doc.id} fileName={doc.name} visibility={seen.visibility} groups={seen.groups} userIds={seen.userIds} canChange={viewer.isAdmin || row?.ownerId === viewer.id} zh={zh} sharedPeople={sharedPeople} />
