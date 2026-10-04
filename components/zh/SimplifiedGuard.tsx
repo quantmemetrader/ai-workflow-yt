@@ -147,6 +147,8 @@ export function SimplifiedGuard() {
         warn("每次改回去，它又改回来");
       }
       n.nodeValue = next;
+      /* Remembered as this node's words, so the next rewrite is undone at once. */
+      if (!looksOff(next)) orig.set(n, next);
       report(v, next);
     };
     const fixAttrs = (el: Element) => {
