@@ -194,9 +194,48 @@ export function SimplifiedGuard() {
       }
       void ensure().then(() => batch.forEach((n) => (n.isConnected ? (n.nodeType === 3 ? fixNode(n as Text) : sweep(n)) : null)));
     };
+    /*
+     * Put a rewritten node back in the same frame, before the browser paints
+     * it (4 Oct: a converter that re-converts within 50 ms kept the side panel
+     * converted, because the guard waited 120 ms and then backed off). A node
+     * is put back at once up to 40 times in two seconds; past that the slower
+     * path below takes over, so two watchers can never lock the page up.
+     */
+    const quick = new WeakMap<Node, { at: number; n: number }>();
+    const restoreNow = (n: Text): boolean => {
+      const v = n.nodeValue;
+      const kept = orig.get(n);
+      if (!v || !kept || kept === v || looksOff(kept) || !looksOff(v) || skip(n.parentElement)) return false;
+      const now = Date.now();
+      const q = quick.get(n);
+      const cur = q && now - q.at < 2000 ? q : { at: now, n: 0 };
+      if (cur.n >= 40) return false;
+      cur.n += 1;
+      quick.set(n, cur);
+      n.nodeValue = kept;
+      if (cur.n === 6) warn("每次改回去，它又改回来");
+      report(v, kept);
+      return true;
+    };
+    /* The clean value of each hint text (placeholder, title, aria-label), to put back. */
+    const attrOrig = new WeakMap<Element, Record<string, string>>();
+    const restoreAttr = (el: Element, a: string) => {
+      const v = el.getAttribute(a);
+      if (!v) return;
+      const rec = attrOrig.get(el) ?? {};
+      if (!looksOff(v)) {
+        rec[a] = v;
+        attrOrig.set(el, rec);
+        return;
+      }
+      const next = rec[a] && !looksOff(rec[a]) ? rec[a] : convert ? fixVariants(convert(v)) : fixVariants(v);
+      if (next !== v) el.setAttribute(a, next);
+    };
     const obs = new MutationObserver((records) => {
       for (const r of records) {
-        if (r.type === "characterData") pending.push(r.target);
+        if (r.type === "characterData") {
+          if (!restoreNow(r.target as Text)) pending.push(r.target);
+        } else if (r.type === "attributes" && r.attributeName) restoreAttr(r.target as Element, r.attributeName);
         else r.addedNodes.forEach((n) => pending.push(n));
       }
       if (pending.length && timer === null) timer = window.setTimeout(flush, 120);
@@ -206,7 +245,8 @@ export function SimplifiedGuard() {
       window.__zhOrigStop?.();
       if (looksConverted(document.body)) void ensure().then(() => sweep(document.body));
       else sweep(document.body);
-      obs.observe(document.body, { subtree: true, childList: true, characterData: true });
+      document.querySelectorAll("[placeholder],[title],[aria-label]").forEach((el) => ["placeholder", "title", "aria-label"].forEach((a) => restoreAttr(el, a)));
+      obs.observe(document.body, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ["placeholder", "title", "aria-label"] });
     }, 600);
     /* Some converters run late and only once: look again a few times. */
     const again = [2500, 6000, 15000, 40000].map((ms) => window.setTimeout(() => (looksConverted(document.body) ? void ensure().then(() => sweep(document.body)) : null), ms));
