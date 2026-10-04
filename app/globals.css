@@ -4,6 +4,20 @@
 @import "./canvas.css";
 
 /*
+ * Inter, if the computer has it, for Latin letters, digits and punctuation only
+ * (4 Oct). Listed by its bare name it drew anything it had a glyph for, so a
+ * locally installed font of that name (Google Sans on the script page) with
+ * converted Chinese drew 告诉 as 告愬 on screen. Chinese now always comes from
+ * our own Noto Sans SC files.
+ */
+@font-face {
+  font-family: "TG Latin";
+  src: local("InterVar"), local("Inter Variable"), local("Inter"), local("Inter-Regular");
+  font-weight: 100 900;
+  unicode-range: U+0000-024F, U+0300-036F, U+1E00-1EFF, U+2000-206F, U+20A0-20CF, U+2100-214F, U+2190-21FF, U+2212;
+}
+
+/*
  * Noto Sans SC sits ahead of every installed family, because that is the
  * whole point of shipping it: the Simplified cut of a character has to be the
  * one everybody sees. Left to the machine, a Hong Kong Mac answered with
@@ -12,7 +26,7 @@
  * after it as a fallback for the seconds before the webfont lands.
  */
 @theme inline {
-  --font-sans: "InterVar", "Inter", 'Noto Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Source Han Sans SC', system-ui, sans-serif;
+  --font-sans: "TG Latin", 'Noto Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Source Han Sans SC', system-ui, sans-serif;
 }
 
 html,
