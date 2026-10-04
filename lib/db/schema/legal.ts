@@ -59,6 +59,8 @@ export const contracts = pgTable(
     title: text().notNull(),
     counterparty: text(),
     body: text().notNull().default(""),
+    /** The text as formatted in the document editor; null when the text was last written elsewhere (drafting, an assistant). */
+    bodyHtml: text(),
     values: jsonb().$type<Record<string, string>>().notNull().default({}),
     state: contractStateEnum().notNull().default("draft"),
     /** Dates the repository screen sorts and warns on. */

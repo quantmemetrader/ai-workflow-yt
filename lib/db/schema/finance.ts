@@ -98,6 +98,8 @@ export const spendRequests = pgTable(
     tenantId: text().notNull(),
     title: text().notNull(),
     description: text().notNull().default(""),
+    /** The description as formatted in the document editor. */
+    descriptionHtml: text(),
     amountMicros: bigint({ mode: "number" }).notNull(),
     centreId: text().references(() => costCentres.id, { onDelete: "set null" }),
     state: spendStateEnum().notNull().default("draft"),
@@ -151,6 +153,8 @@ export const financeReports = pgTable(
     title: text().notNull(),
     /** Markdown, written by the agent and edited by a person. */
     body: text().notNull().default(""),
+    /** The body as formatted in the document editor; null when it was last written elsewhere. */
+    bodyHtml: text(),
     /** draft · shared. Nothing is ever deleted; a report is a record. */
     state: text().notNull().default("draft"),
     /** The figures it was written from, kept so a reader can check it. */

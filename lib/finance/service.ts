@@ -275,6 +275,7 @@ export type SpendRow = {
   id: string;
   title: string;
   description: string;
+  descriptionHtml?: string | null;
   amountMicros: number;
   centreName: string | null;
   state: string;
@@ -319,6 +320,7 @@ export async function listSpend(viewer: Viewer): Promise<SpendRow[]> {
     id: r.r.id,
     title: r.r.title,
     description: r.r.description,
+    descriptionHtml: r.r.descriptionHtml,
     amountMicros: r.r.amountMicros,
     centreName: r.centreName,
     state: r.r.state,
@@ -329,6 +331,46 @@ export async function listSpend(viewer: Viewer): Promise<SpendRow[]> {
     createdAt: r.r.createdAt,
     decisions: byRequest.get(r.r.id) ?? [],
   }));
+}
+
+/**
+ * The request's description, written on its document page (5 Oct). The person
+ * who raised it, or an owner or admin, while nobody has decided it yet: once
+ * approved, rejected or paid, the description is what was decided on.
+ */
+export async function writeSpendDescription(viewer: Viewer, requestId: string, description: string, html: string | null) {
+  const [row] = await db
+    .select({ state: spendRequests.state, requestedBy: spendRequests.requestedBy })
+    .from(spendRequests)
+    .where(and(eq(spendRequests.id, requestId), eq(spendRequests.tenantId, viewer.tenantId)))
+    .limit(1);
+  if (!row) throw new Error("这条申请不存在");
+  if (!spendEditable(row, viewer)) throw new Error("已有人决定的申请不能再改说明");
+  await db
+    .update(spendRequests)
+    .set({ description: description.slice(0, 20_000), descriptionHtml: html, updatedAt: new Date() })
+    .where(and(eq(spendRequests.id, requestId), eq(spendRequests.tenantId, viewer.tenantId)));
+}
+
+/** The request's purpose, renamed on its page, under the same rule as its description. */
+export async function renameSpend(viewer: Viewer, requestId: string, title: string) {
+  const [row] = await db
+    .select({ state: spendRequests.state, requestedBy: spendRequests.requestedBy })
+    .from(spendRequests)
+    .where(and(eq(spendRequests.id, requestId), eq(spendRequests.tenantId, viewer.tenantId)))
+    .limit(1);
+  if (!row) throw new Error("这条申请不存在");
+  if (!spendEditable(row, viewer)) throw new Error("已有人决定的申请不能再改");
+  await db
+    .update(spendRequests)
+    .set({ title: title.slice(0, 200), updatedAt: new Date() })
+    .where(and(eq(spendRequests.id, requestId), eq(spendRequests.tenantId, viewer.tenantId)));
+}
+
+/** Whether this person may still change the request's description. */
+export function spendEditable(row: { state: string; requestedBy: string }, viewer: Viewer): boolean {
+  const open = row.state === "draft" || row.state === "awaiting_approval";
+  return open && (row.requestedBy === viewer.id || viewer.role === "owner" || viewer.role === "admin");
 }
 
 export async function raiseSpend(

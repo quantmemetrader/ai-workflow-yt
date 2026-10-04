@@ -43,7 +43,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   const esc = (x: string) => x.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   const lines = row.c.body.split(/\r?\n/);
   const first = lines.findIndex((l) => l.trim());
-  const paragraphs = lines
+  /* Edited on its document page: the page as formatted there (5 Oct). */
+  const paragraphs = row.c.bodyHtml ?? lines
     .map((l, i) => (i === first ? `<h1>${esc(l.trim())}</h1>` : l.trim() ? `<p>${esc(l)}</p>` : `<p class="gap">&nbsp;</p>`))
     .join("\n");
   const html = `<!doctype html><html><head><meta charset="utf-8"><title>${esc(title)}</title><style>body{font-family:"Noto Sans CJK SC","PingFang SC","Microsoft YaHei",sans-serif;font-size:11pt;line-height:1.6;color:#171717}h1{font-size:16pt;text-align:center;margin:0 0 12pt}p{margin:0 0 4pt}p.gap{margin:0;line-height:0.8}</style></head><body>${paragraphs}</body></html>`;

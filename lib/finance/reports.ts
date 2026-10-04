@@ -90,6 +90,7 @@ export function reportTitle(period: string, zh: boolean): string {
 
 export type ReportRow = {
   id: string;
+  bodyHtml?: string | null;
   period: string;
   title: string;
   body: string;
@@ -121,10 +122,22 @@ export async function listReports(viewer: Viewer): Promise<ReportRow[]> {
     period: r.period,
     title: r.title,
     body: r.body,
+    bodyHtml: r.bodyHtml,
     state: r.state,
     sharedAt: r.sharedAt,
     updatedAt: r.updatedAt,
   }));
+}
+
+/** One report, for its document page and its download. */
+export async function getReport(viewer: Viewer, reportId: string): Promise<ReportRow | null> {
+  const [r] = await db
+    .select()
+    .from(financeReports)
+    .where(and(eq(financeReports.id, reportId), eq(financeReports.tenantId, viewer.tenantId)))
+    .limit(1);
+  if (!r) return null;
+  return { id: r.id, period: r.period, title: r.title, body: r.body, bodyHtml: r.bodyHtml, state: r.state, sharedAt: r.sharedAt, updatedAt: r.updatedAt };
 }
 
 /**
@@ -254,7 +267,7 @@ export async function generateReport(viewer: Viewer, period: string): Promise<Re
   if (existing) {
     await db
       .update(financeReports)
-      .set({ title, body, figures, generatedBy: viewer.id, updatedAt: new Date() })
+      .set({ title, body, bodyHtml: null, figures, generatedBy: viewer.id, updatedAt: new Date() })
       .where(eq(financeReports.id, id));
   } else {
     await db.insert(financeReports).values({
@@ -294,7 +307,7 @@ export async function generateReport(viewer: Viewer, period: string): Promise<Re
  * A shared report is not edited in place — it is copied to a new draft, and
  * the shared one stays exactly as whoever read it read it.
  */
-export async function saveReport(viewer: Viewer, reportId: string, body: string): Promise<string> {
+export async function saveReport(viewer: Viewer, reportId: string, body: string, html: string | null = null): Promise<string> {
   const [row] = await db
     .select()
     .from(financeReports)
@@ -312,6 +325,7 @@ export async function saveReport(viewer: Viewer, reportId: string, body: string)
       period: row.period,
       title: row.title,
       body: text,
+      bodyHtml: html,
       state: "draft",
       figures: row.figures,
       generatedBy: viewer.id,
@@ -327,7 +341,7 @@ export async function saveReport(viewer: Viewer, reportId: string, body: string)
 
   await db
     .update(financeReports)
-    .set({ body: text, updatedAt: new Date() })
+    .set({ body: text, bodyHtml: html, updatedAt: new Date() })
     .where(eq(financeReports.id, reportId));
   return reportId;
 }

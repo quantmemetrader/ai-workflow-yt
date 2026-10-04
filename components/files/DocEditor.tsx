@@ -17,12 +17,19 @@ import { GD_CSS } from "@/components/script/doc/ScriptDoc";
 import { GI } from "@/components/script/doc/icons";
 import { notify } from "@/lib/client/notify";
 import { renameDocAction, saveDocAction } from "@/app/(app)/docs/actions";
+import { docToText } from "@/lib/docs/convert";
 
 /**
  * A document edited in the browser, on the same paper and toolbar as the
  * script page: contracts, invoices, notes in 法务 / 财务 / 账务 / 人事
  * (Ryan, 1 Oct). Saved as you type; downloads as Word or PDF; the side panel
  * holds who can see it and who it is shared with.
+ *
+ * The same paper serves records that are not files (5 Oct: contracts, monthly
+ * reports and spend requests): those pass their own `save` and `rename`
+ * (server actions bound to the record), their downloads, and a side panel of
+ * their own details instead of sharing. `textMode` says how the record keeps
+ * its text, so each save sends the formatted page and the text together.
  */
 export function DocEditor({
   id,
@@ -35,6 +42,14 @@ export function DocEditor({
   hasOriginal,
   share,
   openShare = false,
+  save: saveRecord,
+  rename: renameRecord,
+  textMode,
+  downloads,
+  panelLabel,
+  subtitle,
+  placeholder,
+  fixedName = false,
 }: {
   id: string;
   name: string;
@@ -46,6 +61,15 @@ export function DocEditor({
   hasOriginal: boolean;
   share: React.ReactNode;
   openShare?: boolean;
+  save?: (html: string, text: string) => Promise<{ error?: string } | Record<string, unknown>>;
+  rename?: (name: string) => Promise<{ error?: string; name?: string } | Record<string, unknown>>;
+  textMode?: "markdown" | "plain";
+  downloads?: { label: string; href: string }[];
+  panelLabel?: string;
+  subtitle?: string;
+  placeholder?: string;
+  /** The title is the record's, not typed (a report is titled by its period). */
+  fixedName?: boolean;
 }) {
   const t = (a: string, b: string) => (zh ? a : b);
   const ask = useAsk(zh);
@@ -73,7 +97,7 @@ export function DocEditor({
       TextAlign.configure({ types: ["heading", "paragraph"] }),
       TaskList,
       TaskItem.configure({ nested: true }),
-      Placeholder.configure({ placeholder: () => (zh ? "从这里开始写…" : "Start writing…"), showOnlyCurrent: true }),
+      Placeholder.configure({ placeholder: () => placeholder ?? (zh ? "从这里开始写…" : "Start writing…"), showOnlyCurrent: true }),
       BlockExtras,
     ],
     editorProps: {
@@ -140,7 +164,7 @@ export function DocEditor({
       setTitle(savedName);
       return;
     }
-    const r = await renameDocAction(id, next);
+    const r = (renameRecord ? await renameRecord(next) : await renameDocAction(id, next)) as { error?: string; name?: string };
     if ("error" in r && r.error) {
       notify(r.error);
       setTitle(savedName);
@@ -158,7 +182,8 @@ export function DocEditor({
     const at = seq.current;
     setState("saving");
     try {
-      const r = await saveDocAction(id, editor.getHTML());
+      const html = editor.getHTML();
+      const r = (saveRecord ? await saveRecord(html, docToText(editor.getJSON(), textMode ?? "markdown")) : await saveDocAction(id, html)) as { error?: string };
       if ("error" in r && r.error) {
         setState("error");
         notify(r.error);
@@ -171,7 +196,7 @@ export function DocEditor({
       saving.current = false;
       if (seq.current !== at) timer.current = window.setTimeout(() => void save(), 600);
     }
-  }, [editor, canEdit, id]);
+  }, [editor, canEdit, id, saveRecord, textMode]);
 
   /* Leaving with words not yet saved asks first. */
   React.useEffect(() => {
@@ -220,7 +245,7 @@ export function DocEditor({
         </Link>
         <GI name="doc" size={24} />
         <div style={{ minWidth: 0, display: "flex", flexDirection: "column" }}>
-          {canEdit ? (
+          {canEdit && !fixedName ? (
             <input
               className="doc-title"
               value={title}
@@ -244,7 +269,7 @@ export function DocEditor({
             </span>
           )}
           <span style={{ fontSize: 12, color: "#5f6368" }}>
-            {back.label}
+            {subtitle ?? back.label}
             {canEdit ? "" : t(" · 只读", " · read only")}
           </span>
         </div>
@@ -263,14 +288,24 @@ export function DocEditor({
             </summary>
             {/* Picking a format closes the menu (QA, 2 Oct: it stayed open). */}
             <div className="doc-menu" onClick={() => dl.current?.removeAttribute("open")}>
-              <a href={`/api/docs/${id}/export?format=docx`} download>{t("Word 文档 (.docx)", "Word (.docx)")}</a>
-              <a href={`/api/docs/${id}/export?format=pdf`} download>PDF (.pdf)</a>
-              {hasOriginal ? <a href={`/api/files/${id}/download?download=1`}>{t("上传时的原文件", "The original upload")}</a> : null}
+              {downloads ? (
+                downloads.map((d) => (
+                  <a key={d.href} href={d.href} download>
+                    {d.label}
+                  </a>
+                ))
+              ) : (
+                <>
+                  <a href={`/api/docs/${id}/export?format=docx`} download>{t("Word 文档 (.docx)", "Word (.docx)")}</a>
+                  <a href={`/api/docs/${id}/export?format=pdf`} download>PDF (.pdf)</a>
+                  {hasOriginal ? <a href={`/api/files/${id}/download?download=1`}>{t("上传时的原文件", "The original upload")}</a> : null}
+                </>
+              )}
             </div>
           </details>
           <button type="button" className="gd-share" onClick={() => setPanel((v) => !v)} aria-expanded={panel}>
-            <GI name="lock" size={18} />
-            {t("分享", "Share")}
+            <GI name={panelLabel ? "outline" : "lock"} size={18} />
+            {panelLabel ?? t("分享", "Share")}
           </button>
         </div>
       </div>
@@ -305,7 +340,7 @@ export function DocEditor({
         {panel ? (
           <aside className="doc-panel">
             <div style={{ display: "flex", alignItems: "center", marginBottom: 10 }}>
-              <span style={{ fontSize: 15, fontWeight: 600, flexGrow: 1 }}>{t("分享和权限", "Sharing")}</span>
+              <span style={{ fontSize: 15, fontWeight: 600, flexGrow: 1 }}>{panelLabel ?? t("分享和权限", "Sharing")}</span>
               <button type="button" className="gd-icon" onClick={() => setPanel(false)} aria-label={t("关闭", "Close")}>
                 <GI name="x" size={18} />
               </button>

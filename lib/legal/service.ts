@@ -391,6 +391,8 @@ export async function updateContract(
   input: {
     title?: string;
     body?: string;
+    /** The page as formatted in the document editor; text written without it clears the old formatting. */
+    bodyHtml?: string | null;
     counterparty?: string | null;
     state?: ContractState;
     signedOn?: string | null;
@@ -412,7 +414,7 @@ export async function updateContract(
     .update(contracts)
     .set({
       ...(input.title !== undefined ? { title: input.title.trim().slice(0, 300) } : {}),
-      ...(input.body !== undefined ? { body: input.body.slice(0, 200_000) } : {}),
+      ...(input.body !== undefined ? { body: input.body.slice(0, 200_000), bodyHtml: input.bodyHtml ?? null } : {}),
       ...(input.counterparty !== undefined ? { counterparty: input.counterparty } : {}),
       ...(input.state !== undefined ? { state: input.state } : {}),
       ...(input.signedOn !== undefined ? { signedOn: input.signedOn } : {}),

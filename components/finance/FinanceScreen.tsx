@@ -3,6 +3,7 @@
 import { useSearchParams } from "next/navigation";
 import type * as React from "react";
 import { useState } from "react";
+import Link from "next/link";
 import type { ActualRow, BudgetCell, CentreRow, SpendRow, Thresholds } from "@/lib/finance/service";
 import {
   addActualAction,
@@ -110,7 +111,11 @@ export function FinanceScreen({
   const [generating, setGenerating] = useState(false);
   const agent = useInlineAgent({ module: "finance" });
   const sp = useSearchParams();
-  const [tab, setTab] = useState<Tab>(sp?.get("tab") === "budget" || !library ? "budget" : "library");
+  const [tab, setTab] = useState<Tab>(() => {
+    const want = sp?.get("tab");
+    if ((["budget", "cash", "cost", "spend", "reports"] as string[]).includes(want ?? "")) return want as Tab;
+    return !library ? "budget" : "library";
+  });
 
   const waiting = spend.filter((s) => s.state === "awaiting_approval");
   const budgeted = budget.cells.reduce((n, c) => n + c.budgetMicros, 0);
@@ -694,7 +699,10 @@ function Spend({
           return (
             <div key={s.id} style={{ border: "1px solid #ededed", borderRadius: 11, padding: 13, marginBottom: 10 }}>
               <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
-                <span style={{ fontSize: 13.5, fontWeight: 500 }}>{s.title}</span>
+                {/* Its own page: the request written out, approvals beside it (Ryan, 5 Oct). */}
+                <Link href={`/finance/spend/${s.id}`} style={{ fontSize: 13.5, fontWeight: 500, color: "inherit", textDecorationColor: "#e2e2e2", textUnderlineOffset: 3 }}>
+                  {s.title}
+                </Link>
                 <span style={{ fontVariantNumeric: "tabular-nums", fontSize: 13 }}>{usd(s.amountMicros)}</span>
                 {s.centreName && <span style={{ fontSize: 11, color: "#999999" }}>{s.centreName}</span>}
                 <Badge
@@ -743,6 +751,13 @@ function Spend({
                   </button>
                 </div>
               )}
+
+              {s.description ? (
+                <p style={{ fontSize: 12, color: "#525252", margin: "7px 0 0", lineHeight: 1.55, overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>{s.description.replace(/[#*>`-]+\s?/g, "")}</p>
+              ) : null}
+              <Link href={`/finance/spend/${s.id}`} style={{ display: "inline-block", marginTop: 8, fontSize: 12, color: "#0b57d0", textDecoration: "none" }}>
+                {s.description ? t("Open the request", "打开申请单") : t("Write it out: supplier, quote, why", "写申请单：用途、供应商、报价")} →
+              </Link>
 
               {s.state === "awaiting_approval" && mine && (
                 <p style={{ fontSize: 11.5, color: "#999999", margin: "9px 0 0" }}>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import type { ReportRow } from "@/lib/finance/reports";
 import { Badge, Empty, field, ghost, solid } from "@/components/ui/kit";
 import { Markdown } from "@/components/ui/Markdown";
@@ -132,7 +133,9 @@ export function Reports({
         ) : (
           <>
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4, flexWrap: "wrap" }}>
-              <span style={{ fontSize: 15, fontWeight: 600 }}>{titleFor(open, zh)}</span>
+              <Link href={`/finance/reports/${open.id}`} style={{ fontSize: 15, fontWeight: 600, color: "inherit", textDecoration: "none" }}>
+                {titleFor(open, zh)}
+              </Link>
               <Badge tone={open.state === "shared" ? "good" : "quiet"}>
                 {open.state === "shared" ? t("shared", "已分享") : t("draft", "草稿")}
               </Badge>
@@ -171,17 +174,10 @@ export function Reports({
                     >
                       {t("Regenerate", "重新生成")}
                     </button>
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={() => {
-                        setDraft(open.body);
-                        setEditing(true);
-                      }}
-                      style={ghost}
-                    >
-                      {t("Edit", "编辑")}
-                    </button>
+                    {/* Edited on its own page, on the script page's paper (Ryan, 5 Oct). */}
+                    <Link href={`/finance/reports/${open.id}`} style={{ ...ghost, display: "inline-flex", alignItems: "center", textDecoration: "none", color: "inherit" }}>
+                      {open.state === "shared" ? t("Open", "打开文档") : t("Edit", "编辑")}
+                    </Link>
                     {open.state !== "shared" ? (
                       <button type="button" disabled={busy} onClick={() => onShare(open.id)} style={solid}>
                         {t("Share", "分享")}
