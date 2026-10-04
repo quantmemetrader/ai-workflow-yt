@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { hasTraditional, toSimplified } from \"@/lib/text/simplified\";
 import { fixVariantChars, hasVariantChars } from "@/lib/text/variants";
 
 /**
@@ -46,7 +47,8 @@ declare global {
 
 export function SimplifiedGuard() {
   React.useEffect(() => {
-    let convert: ((s: string) => string) | null = null;
+    /* Loaded with the page (4 Oct): the quick list of tell-tale characters missed 縮. */
+    let convert: ((s: string) => string) | null = toSimplified;
     let loading: Promise<void> | null = null;
     let reported = false;
     let warned = false;
@@ -60,7 +62,7 @@ export function SimplifiedGuard() {
 
     /* The hand list first (it knows 妳 is 你 here), then every variant Unicode lists (4 Oct). */
     const fixVariants = (s: string) => fixVariantChars(s.replace(VARIANT_RE, (c) => VARIANTS[c] ?? c));
-    const looksOff = (s: string) => TELLS.test(s) || VARIANT_RE.test(s) || hasVariantChars(s);
+    const looksOff = (s: string) => TELLS.test(s) || VARIANT_RE.test(s) || hasVariantChars(s) || hasTraditional(s);
     const skip = (el: Element | null): boolean => {
       for (let e = el; e; e = e.parentElement) {
         if (SKIP.has(e.tagName) || (e as HTMLElement).isContentEditable || e.hasAttribute("data-keep-traditional")) return true;
