@@ -242,7 +242,7 @@ export function Rail({ modules, locale, account, isAdmin = false }: { modules: M
             padding: "4px 8px",
             background: "#171717",
             color: "#fff",
-            font: "500 12px/16px Inter, 'Noto Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Source Han Sans SC', system-ui, sans-serif",
+            font: "500 12px/16px 'TG Latin', 'Noto Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Source Han Sans SC', system-ui, sans-serif",
             boxShadow: "0 2px 6px rgba(0,0,0,.14)",
             pointerEvents: "none",
             whiteSpace: "nowrap",

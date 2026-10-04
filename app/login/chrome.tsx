@@ -73,7 +73,7 @@ export function LoginChrome({
         display: "flex",
         background: "#ffffff",
         color: "#171717",
-        fontFamily: "Inter, 'Noto Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Source Han Sans SC', system-ui, sans-serif",
+        fontFamily: "'TG Latin', 'Noto Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Source Han Sans SC', system-ui, sans-serif",
         fontWeight: 420,
         letterSpacing: "0.02em",
       }}

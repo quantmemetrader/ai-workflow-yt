@@ -133,7 +133,7 @@ const INK = "#171717";
  * the app, which defines its own .n / .lbl / .btn.
  */
 const CSS = `
-[data-script-screen] { font-family: Inter, 'Noto Sans SC', 'PingFang SC', system-ui, sans-serif; font-weight: 420; letter-spacing: 0.02em; -webkit-font-smoothing: antialiased; color: #171717; }
+[data-script-screen] { font-family: "TG Latin", 'Noto Sans SC', 'PingFang SC', system-ui, sans-serif; font-weight: 420; letter-spacing: 0.02em; -webkit-font-smoothing: antialiased; color: #171717; }
 [data-script-screen] * { box-sizing: border-box; }
 [data-script-screen] a { color: #007be0; text-decoration: none; }
 [data-script-screen] img { display: block; }

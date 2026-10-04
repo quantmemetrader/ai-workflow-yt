@@ -25,7 +25,7 @@ export default function GlobalError({ error }: { error: Error & { digest?: strin
 
   return (
     <html lang="zh-Hans-CN">
-      <body style={{ margin: 0, fontFamily: "Inter, 'Noto Sans SC', 'PingFang SC', system-ui, sans-serif", background: "#fafaf9", color: "#171717" }}>
+      <body style={{ margin: 0, fontFamily: "'TG Latin', 'Noto Sans SC', 'PingFang SC', system-ui, sans-serif", background: "#fafaf9", color: "#171717" }}>
         <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
           <div style={{ maxWidth: 420, background: "#fff", border: "1px solid #ececec", borderRadius: 14, padding: "22px 24px" }}>
             <div style={{ fontSize: 15, fontWeight: 600 }}>页面需要重新加载</div>

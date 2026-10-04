@@ -55,7 +55,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         background: "#ffffff",
         color: "#171717",
         overflow: "hidden",
-        fontFamily: "Inter, 'Noto Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Source Han Sans SC', system-ui, sans-serif",
+        fontFamily: "'TG Latin', 'Noto Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Source Han Sans SC', system-ui, sans-serif",
         fontWeight: 420,
         letterSpacing: "0.02em",
       }}

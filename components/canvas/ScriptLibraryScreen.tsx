@@ -82,7 +82,7 @@ function daysSince(d: Date): number {
 /* --------------------------------------------------------------------- css */
 
 const CSS = `
-[data-script-library-screen] { font-family: Inter, 'Noto Sans SC', 'PingFang SC', system-ui, sans-serif; font-weight: 420; letter-spacing: 0.02em; -webkit-font-smoothing: antialiased; color: #171717; }
+[data-script-library-screen] { font-family: "TG Latin", 'Noto Sans SC', 'PingFang SC', system-ui, sans-serif; font-weight: 420; letter-spacing: 0.02em; -webkit-font-smoothing: antialiased; color: #171717; }
 [data-script-library-screen] * { box-sizing: border-box; }
 [data-script-library-screen] button { font-family: inherit; letter-spacing: inherit; }
 [data-script-library-screen] .folder-rail { width: 220px !important; }
@@ -164,7 +164,7 @@ const CSS = `
 /* 新建 and its menu, and the right-click menu */
 [data-script-library-screen] .sl-new { display: inline-flex; align-items: center; gap: 10px; height: 46px; padding: 0 20px 0 16px; border: 0; border-radius: 16px; background: #fff; color: #171717; font-size: 14.5px; font-weight: 600; cursor: pointer; box-shadow: 0 1px 2px rgba(0,0,0,.12), 0 2px 8px rgba(0,0,0,.08); transition: box-shadow .15s ease, background .15s ease; }
 [data-script-library-screen] .sl-new:hover { background: #f7f9fc; box-shadow: 0 1px 3px rgba(0,0,0,.16), 0 4px 12px rgba(0,0,0,.1); }
-.sl-menu { position: fixed; z-index: 120; min-width: 188px; max-width: 260px; padding: 6px; background: #fff; border: 1px solid #e6e6e3; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,.14); font-family: Inter, 'Noto Sans SC', 'PingFang SC', system-ui, sans-serif; }
+.sl-menu { position: fixed; z-index: 120; min-width: 188px; max-width: 260px; padding: 6px; background: #fff; border: 1px solid #e6e6e3; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,.14); font-family: "TG Latin", 'Noto Sans SC', 'PingFang SC', system-ui, sans-serif; }
 .sl-menu button { display: flex; align-items: center; gap: 10px; width: 100%; height: 36px; padding: 0 10px; border: 0; border-radius: 8px; background: transparent; font-family: inherit; font-size: 13.5px; color: #262626; cursor: pointer; text-align: left; white-space: nowrap; }
 .sl-menu button:hover, .sl-menu button:focus-visible { background: #f3f5f8; outline: none; }
 .sl-menu button.danger { color: #d12c2c; }

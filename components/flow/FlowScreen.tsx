@@ -185,7 +185,7 @@ export function FlowScreen({ pipeline, automations, zh, canEdit }: { pipeline: P
               <React.Fragment key={`${e.from}-${e.to}`}>
                 <path d={e.d} fill="none" stroke={stroke} strokeWidth="1.5" strokeDasharray={dash} markerEnd={live ? "url(#fl-head-run)" : "url(#fl-head)"} />
                 {mid && e.label ? (
-                  <text x={mid.x} y={mid.y} fontSize="10" fill="#8f8c86" textAnchor="middle" fontFamily="Inter, Noto Sans SC, sans-serif">
+                  <text x={mid.x} y={mid.y} fontSize="10" fill="#8f8c86" textAnchor="middle" fontFamily="TG Latin, Noto Sans SC, sans-serif">
                     {e.label}
                   </text>
                 ) : null}
