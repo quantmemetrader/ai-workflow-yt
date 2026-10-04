@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { hasTraditional, toSimplified } from \"@/lib/text/simplified\";
+import { hasTraditional, toSimplified } from "@/lib/text/simplified";
 import { fixVariantChars, hasVariantChars } from "@/lib/text/variants";
 
 /**
