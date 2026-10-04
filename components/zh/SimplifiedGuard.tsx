@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { fixVariantChars, hasVariantChars } from "@/lib/text/variants";
 
 /**
  * Everything on screen stays Simplified (the owner, 2 Oct: 谢总 kept seeing
@@ -29,7 +30,7 @@ import * as React from "react";
  */
 
 /* Odd forms some converters produce that a Traditional→Simplified table does not cover. */
-const VARIANTS: Record<string, string> = { 峕: "时", 旹: "时", 藁: "稿", 稾: "稿", 攷: "考", 乹: "干", 仝: "同", 艸: "草", 妳: "你", 衹: "只", 焒: "照", 爲: "为", 裏: "里", 囬: "回", 衆: "众", 淸: "清", 靑: "青", 眞: "真", 敎: "教", 旣: "既", 卽: "即", 㑹: "会", 㸃: "点", 呌: "叫", 呑: "吞", 絶: "绝", 説: "说", 閲: "阅", 鍾: "钟", 産: "产", 戸: "户", 竒: "奇", 冐: "冒", 黄: "黄", 徳: "德", 兎: "兔", 鷄: "鸡", 彔: "录", 讀: "读", 寫: "写", 體: "体", 聼: "听" };
+const VARIANTS: Record<string, string> = { 坿: "附", 槀: "稿", 愬: "诉", 寔: "实", 峕: "时", 旹: "时", 藁: "稿", 稾: "稿", 攷: "考", 乹: "干", 仝: "同", 艸: "草", 妳: "你", 衹: "只", 焒: "照", 爲: "为", 裏: "里", 囬: "回", 衆: "众", 淸: "清", 靑: "青", 眞: "真", 敎: "教", 旣: "既", 卽: "即", 㑹: "会", 㸃: "点", 呌: "叫", 呑: "吞", 絶: "绝", 説: "说", 閲: "阅", 鍾: "钟", 産: "产", 戸: "户", 竒: "奇", 冐: "冒", 黄: "黄", 徳: "德", 兎: "兔", 鷄: "鸡", 彔: "录", 讀: "读", 寫: "写", 體: "体", 聼: "听" };
 const VARIANT_RE = new RegExp(`[${Object.keys(VARIANTS).join("")}]`, "g");
 /* A cheap first look: common characters that only appear once something converted the page. */
 const TELLS = /[們這個為會說時對來過與還國後點開關發現寫參資讓審閱檔裡選題視頻編劇頁級從個麼們應該態識號務設計員項腳標記錄還沒導鏈誰擴畫鍾刪絶説閲長風條試驗業產戶際裝備範圍預備歷歸類總結經濟網絡電話間題釋將際見聽講讀書買賣車馬鳥島飛龍歡慶禮議訓練辦險權變於幾動術節權義紀録學習較較語單幾個級隊師獨門驚峕旹藁稾攷乹仝艸妳衹焒爲裏囬衆淸靑眞敎旣卽㑹㸃呌呑産戸竒冐徳兎鷄彔體聼]/;
@@ -57,8 +58,9 @@ export function SimplifiedGuard() {
     const orig: Orig = window.__zhOrig ?? new WeakMap<Node, string>();
     window.__zhOrig = orig;
 
-    const fixVariants = (s: string) => s.replace(VARIANT_RE, (c) => VARIANTS[c] ?? c);
-    const looksOff = (s: string) => TELLS.test(s) || VARIANT_RE.test(s);
+    /* The hand list first (it knows 妳 is 你 here), then every variant Unicode lists (4 Oct). */
+    const fixVariants = (s: string) => fixVariantChars(s.replace(VARIANT_RE, (c) => VARIANTS[c] ?? c));
+    const looksOff = (s: string) => TELLS.test(s) || VARIANT_RE.test(s) || hasVariantChars(s);
     const skip = (el: Element | null): boolean => {
       for (let e = el; e; e = e.parentElement) {
         if (SKIP.has(e.tagName) || (e as HTMLElement).isContentEditable || e.hasAttribute("data-keep-traditional")) return true;
@@ -69,9 +71,11 @@ export function SimplifiedGuard() {
     const warn = (how: string) => {
       if (warned) return;
       warned = true;
+      /* Once a page, not once a session: while the converter is on, the person
+         should know why labels flicker (4 Oct). Dismissed for a day with 知道了. */
       try {
-        if (sessionStorage.getItem("tg:zh-warned")) return;
-        sessionStorage.setItem("tg:zh-warned", "1");
+        const until = Number(localStorage.getItem("tg:zh-warned-until") || 0);
+        if (until > Date.now()) return;
       } catch {
         /* a private window: warn anyway */
       }
@@ -87,7 +91,7 @@ export function SimplifiedGuard() {
       x.type = "button";
       x.textContent = "知道了";
       x.style.cssText = "flex:0 0 auto;border:1px solid #d9b25c;background:#fff;color:#6b4a07;border-radius:8px;padding:4px 10px;font:inherit;cursor:pointer";
-      x.onclick = () => d.remove();
+      x.onclick = () => { d.remove(); try { localStorage.setItem("tg:zh-warned-until", String(Date.now() + 86400000)); } catch { /* fine */ } };
       d.appendChild(s);
       d.appendChild(x);
       (document.body || document.documentElement).appendChild(d);
@@ -139,7 +143,7 @@ export function SimplifiedGuard() {
       /* Something keeps rewriting this node: still put it back, just not more
          than every few seconds, and say so once. */
       if (round > 3) {
-        nextAt.set(n, now + Math.min(4000, 500 * 2 ** (round - 3)));
+        nextAt.set(n, now + Math.min(1000, 250 * 2 ** (round - 3)));
         warn("每次改回去，它又改回来");
       }
       n.nodeValue = next;

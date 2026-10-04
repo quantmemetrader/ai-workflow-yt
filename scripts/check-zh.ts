@@ -24,7 +24,7 @@ import { nonStandardChinese } from "@/lib/text/standard-chars";
 
 const ROOTS = ["app", "components", "lib"];
 /* Tables of characters (the conversion tables, a pinyin dictionary, the Traditional detector) and the one file that lists the garbage to undo. */
-const SKIP = new Set(["lib/text/simplified.ts", "lib/text/vocab.ts", "lib/text/standard-chars.ts", "components/zh/SimplifiedGuard.tsx", "lib/video/pinyin.ts", "lib/research/traditional.ts", "lib/research/beats.ts", "lib/research/beat-sources.ts"]);
+const SKIP = new Set(["lib/text/simplified.ts", "lib/text/vocab.ts", "lib/text/standard-chars.ts", "components/zh/SimplifiedGuard.tsx", "lib/video/pinyin.ts", "lib/research/traditional.ts", "lib/research/beats.ts", "lib/research/beat-sources.ts", "lib/text/variants.ts"]);
 /* The ends of the CJK block, used as regex bounds (/[\u3400-\u9fff]/ written out). */
 const SENTINELS = /[\u3400\u4dbf\u9fff]/g;
 const CJK = /[\u3400-\u4dbf\u4e00-\u9fff]+/g;
