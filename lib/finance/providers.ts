@@ -1,4 +1,5 @@
 import "server-only";
+import "@/lib/keys/boot";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { aiUsage, files } from "@/lib/db/schema";

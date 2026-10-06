@@ -1,4 +1,5 @@
 import "server-only";
+import "@/lib/keys/boot";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { env } from "@/lib/env";

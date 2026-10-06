@@ -39,6 +39,8 @@ import {
 } from "@/app/(app)/admin/actions";
 import { inviteAction, revokeInviteAction } from "@/app/(app)/chat/invite-actions";
 import { isTrainKey } from "@/lib/agents/train-keys";
+import { ApiKeys } from "@/components/admin/ApiKeys";
+import type { KeyStatus } from "@/lib/keys/store";
 import { trainName } from "@/components/train/names";
 import { notify } from "@/lib/client/notify";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
@@ -75,6 +77,7 @@ export function AdminScreen({
   usage,
   budgets,
   keys,
+  apiKeys,
   connections,
   audit,
   auditActions,
@@ -98,6 +101,7 @@ export function AdminScreen({
   };
   budgets: BudgetRow[];
   keys: KeyRow[];
+  apiKeys: KeyStatus[];
   connections: {
     id: string;
     platform: string;
@@ -259,7 +263,7 @@ export function AdminScreen({
             onRemove={(budgetId) => run(() => removeBudgetAction(budgetId))}
           />
         )}
-        {tab === "credentials" && <Credentials keys={keys} connections={connections} zh={zh} />}
+        {tab === "credentials" && <Credentials keys={keys} apiKeys={apiKeys} connections={connections} zh={zh} />}
         {tab === "audit" && <Audit rows={audit} actions={auditActions} zh={zh} />}
         {tab === "knowledge" && (
           <Knowledge
@@ -1599,10 +1603,12 @@ function Budgets({
 
 function Credentials({
   keys,
+  apiKeys,
   connections,
   zh,
 }: {
   keys: KeyRow[];
+  apiKeys: KeyStatus[];
   connections: {
     id: string;
     platform: string;
@@ -1619,8 +1625,19 @@ function Credentials({
   const t = (en: string, cn: string) => (zh ? cn : en);
   return (
     <>
+      {/* The keys the studio changes itself (6 Oct), then the ones only the server holds. */}
       <div className="lbl" style={{ padding: 0, marginBottom: 6 }}>
-        {t("Keys this deployment holds", "本部署已配置的密钥")}
+        {t("API keys", "API 密钥")}
+      </div>
+      <p style={{ fontSize: 11.5, color: "#999999", margin: "0 0 6px", lineHeight: 1.6 }}>
+        {t(
+          "Replace a key here when it runs out or is changed at the provider. The new key is checked first, then every part of the site uses it within 30 seconds. Saved keys are never shown again.",
+          "密钥用完或在服务商那边换了，就在这里更换。新密钥会先验证，通过后 30 秒内全站都会用上。保存后不会再显示密钥内容。",
+        )}
+      </p>
+      <ApiKeys keys={apiKeys} zh={zh} />
+      <div className="lbl" style={{ padding: 0, margin: "26px 0 6px" }}>
+        {t("Set on the server", "服务器上的配置（不能在网页里改）")}
       </div>
       <p style={{ fontSize: 11.5, color: "#999999", margin: "0 0 12px", lineHeight: 1.6 }}>
         {t(
@@ -1628,7 +1645,7 @@ function Credentials({
           "只显示是否配置，绝不展示内容：不显示值，不显示前缀，也不显示末四位。",
         )}
       </p>
-      {keys.map((k) => (
+      {keys.filter((k) => !apiKeys.some((a) => a.name === k.name)).map((k) => (
         <div key={k.name} style={{ display: "flex", gap: 10, alignItems: "baseline", borderTop: "1px solid #f3f3f3", padding: "9px 0" }}>
           <code style={{ fontSize: 11.5, color: "#383838", minWidth: 190 }}>{k.name}</code>
           <span style={{ fontSize: 11.5, color: "#999999", flexGrow: 1 }}>{zh ? k.unlocksZh : k.unlocks}</span>

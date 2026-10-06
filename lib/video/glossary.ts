@@ -1,3 +1,4 @@
+import "@/lib/keys/boot";
 import type { TranscriptWord } from "@/lib/video/elevenlabs";
 import { soundsAlike } from "@/lib/video/pinyin";
 

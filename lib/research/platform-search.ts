@@ -1,4 +1,5 @@
 import "server-only";
+import "@/lib/keys/boot";
 import { and, desc, eq, gte } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { hotSnapshots } from "@/lib/db/schema";

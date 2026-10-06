@@ -1,4 +1,5 @@
 import "server-only";
+import "@/lib/keys/boot";
 import { env } from "@/lib/env";
 
 /**

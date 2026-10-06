@@ -1,5 +1,6 @@
 import { aliasModel } from "@/lib/ai/alias";
 import "server-only";
+import { ensureKeys } from "@/lib/keys/store";
 import { env } from "@/lib/env";
 import { backendFor, estimateCostMicros } from "@/lib/ai/backend";
 import { toSimplified } from "@/lib/text/simplified";
@@ -208,6 +209,7 @@ function noThinking(model: string, maxTokens?: number): boolean {
  * model asked for, then exactly one usage event with OpenRouter's own costing.
  */
 export async function* streamChat(opts: StreamOptions): AsyncGenerator<StreamEvent> {
+  await ensureKeys();
   opts = { ...opts, model: aliasModel(opts.model) };
   // Which service answers. See `ai/backend.ts`: DeepSeek while OpenRouter has
   // no credit, OpenRouter the moment it does.
@@ -475,6 +477,7 @@ type Completion = {
  * then the configured fallbacks, two more tries at most.
  */
 export async function complete(opts: Omit<StreamOptions, "tools">): Promise<Completion> {
+  await ensureKeys();
   try {
     return await completeOnce(opts);
   } catch (err) {
@@ -544,6 +547,7 @@ async function completeOnce(opts: Omit<StreamOptions, "tools">, attempt = 0): Pr
 
 /** The same call without streaming: one JSON body back. Kept for callers that need it. */
 export async function completeJson(opts: Omit<StreamOptions, "tools">): Promise<Completion> {
+  await ensureKeys();
   /*
    * Which service answers. OpenRouter normally; DeepSeek while the OpenRouter
    * account has no credit and every call would otherwise fall to a free

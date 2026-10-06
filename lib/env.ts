@@ -34,9 +34,14 @@ export const env = {
   },
 
   openrouter: {
-    apiKey: req("OPENROUTER_API_KEY"),
+    /* Read when used: a key saved on 渠道与凭据 replaces it while running (lib/keys). */
+    get apiKey(): string {
+      return req("OPENROUTER_API_KEY");
+    },
     /** Used only if the primary key is rate-limited or out of credit. */
-    backupKey: opt("OPENROUTER_API_KEY_BACKUP"),
+    get backupKey(): string {
+      return opt("OPENROUTER_API_KEY_BACKUP");
+    },
     baseUrl: opt("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"),
   },
 
@@ -94,7 +99,9 @@ export const env = {
    * two-hour master.
    */
   elevenlabs: {
-    apiKey: opt("ELEVENLABS_API_KEY"),
+    get apiKey(): string {
+      return opt("ELEVENLABS_API_KEY");
+    },
     baseUrl: opt("ELEVENLABS_BASE_URL", "https://api.elevenlabs.io/v1"),
     get configured() {
       return Boolean(process.env.ELEVENLABS_API_KEY);
@@ -102,7 +109,9 @@ export const env = {
   },
 
   zernio: {
-    apiKey: opt("ZERNIO_API_KEY"),
+    get apiKey(): string {
+      return opt("ZERNIO_API_KEY");
+    },
     baseUrl: opt("ZERNIO_BASE_URL", "https://api.zernio.com/v1"),
     get configured() {
       return Boolean(process.env.ZERNIO_API_KEY);
@@ -121,7 +130,9 @@ export const env = {
     /** `TICKHUB_TOKEN` is how the client's credentials document spelled it;
      * both spellings are accepted so neither a corrected nor an uncorrected
      * environment silently turns the feature off. */
-    token: opt("TIKHUB_TOKEN") || opt("TICKHUB_TOKEN"),
+    get token(): string {
+      return opt("TIKHUB_TOKEN") || opt("TICKHUB_TOKEN");
+    },
     baseUrl: opt("TIKHUB_BASE_URL", "https://api.tikhub.io"),
     get configured() {
       return Boolean(process.env.TIKHUB_TOKEN || process.env.TICKHUB_TOKEN);
@@ -141,7 +152,9 @@ export const env = {
    * this goes quiet on its own.
    */
   deepseek: {
-    apiKey: opt("DEEPSEEK_API_KEY"),
+    get apiKey(): string {
+      return opt("DEEPSEEK_API_KEY");
+    },
     baseUrl: opt("DEEPSEEK_BASE_URL", "https://api.deepseek.com"),
     get configured() {
       return Boolean(process.env.DEEPSEEK_API_KEY);
@@ -159,7 +172,9 @@ export const env = {
    * everything built on this caches.
    */
   youtube: {
-    apiKey: opt("YOUTUBE_API_KEY"),
+    get apiKey(): string {
+      return opt("YOUTUBE_API_KEY");
+    },
     get configured() {
       return Boolean(process.env.YOUTUBE_API_KEY);
     },
@@ -175,7 +190,9 @@ export const env = {
    * chart the studio never shot.
    */
   pexels: {
-    apiKey: opt("PEXELS_API_KEY"),
+    get apiKey(): string {
+      return opt("PEXELS_API_KEY");
+    },
     get configured() {
       return Boolean(process.env.PEXELS_API_KEY);
     },

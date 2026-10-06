@@ -13,6 +13,7 @@ import {
 import { listInvites } from "@/lib/invites/service";
 import { listTeams } from "@/lib/teams/service";
 import { AdminScreen, type AdminTab } from "@/components/admin/AdminScreen";
+import { keyStatus } from "@/lib/keys/store";
 import { answeringModel } from "@/lib/ai/models";
 
 /** `/admin?tab=budgets` opens on that tab — where the AI-budget notice links (QA, 3 Oct). */
@@ -92,6 +93,7 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
       usage={tokens}
       budgets={budgets}
       keys={keyInventory()}
+      apiKeys={await keyStatus(zh)}
       connections={connections}
       audit={audit}
       auditActions={actions}

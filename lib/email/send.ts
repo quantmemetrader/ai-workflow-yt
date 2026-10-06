@@ -1,4 +1,5 @@
 import "server-only";
+import "@/lib/keys/boot";
 
 /**
  * Email out of the studio: invitations for now.

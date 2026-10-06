@@ -61,6 +61,10 @@ export function ApiBalances({ balances, zh }: { balances: Balances; zh: boolean 
             {t(`${low.length} need topping up`, `${low.length} 个需要充值`)}
           </span>
         ) : null}
+        {/* Where a key that ran out is replaced (6 Oct). */}
+        <a href="/admin?tab=credentials" style={{ marginLeft: "auto", fontSize: 12, color: "#1a73e8", textDecoration: "none" }}>
+          {t("Change API keys", "更换 API 密钥")}
+        </a>
         <button
           type="button"
           disabled={pending}
@@ -70,7 +74,7 @@ export function ApiBalances({ balances, zh }: { balances: Balances; zh: boolean 
               router.refresh();
             })
           }
-          style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 5, height: 26, padding: "0 10px", border: "1px solid #e2e2e2", borderRadius: 7, background: "#fff", color: "#525252", fontFamily: "inherit", fontSize: 12, cursor: pending ? "default" : "pointer" }}
+          style={{ display: "inline-flex", alignItems: "center", gap: 5, height: 26, padding: "0 10px", border: "1px solid #e2e2e2", borderRadius: 7, background: "#fff", color: "#525252", fontFamily: "inherit", fontSize: 12, cursor: pending ? "default" : "pointer" }}
         >
           <Icon name="undo" size={11} />
           {pending ? t("Reading…", "正在刷新…") : t("Refresh", "刷新")}
