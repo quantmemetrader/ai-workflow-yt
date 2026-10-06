@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { notify } from "@/lib/client/notify";
 import { archiveConversationAction, renameConversationAction } from "@/app/(app)/chat/actions";
@@ -11,6 +12,36 @@ import { archiveConversationAction, renameConversationAction } from "@/app/(app)
  * taken back). An item that destroys something asks once more in place
  * (`confirm`): the first press arms it, the second does it.
  */
+/**
+ * Where a popup opened from `anchor` goes: fixed on the page, below the
+ * button, its right edge on the button's, and kept inside the window. (Catherine,
+ * 6 Oct: the rename box opened leftward inside the narrow chat list and slid
+ * under the main menu; a popup drawn in place is also cut off by any list
+ * that scrolls.) Drawn into <body>, so no column can cover or clip it.
+ */
+function useFloat(anchor: React.RefObject<HTMLElement | null>, open: boolean, width: number) {
+  const [pos, setPos] = React.useState<React.CSSProperties | null>(null);
+  React.useLayoutEffect(() => {
+    if (!open) return setPos(null);
+    const place = () => {
+      const r = anchor.current?.getBoundingClientRect();
+      if (!r) return;
+      const left = Math.max(8, Math.min(r.right - width, window.innerWidth - width - 8));
+      const below = r.bottom + 4;
+      const top = below + 180 > window.innerHeight ? Math.max(8, r.top - 4 - 180) : below;
+      setPos({ position: "fixed", top, left, right: "auto", zIndex: 1000 });
+    };
+    place();
+    window.addEventListener("resize", place);
+    window.addEventListener("scroll", place, true);
+    return () => {
+      window.removeEventListener("resize", place);
+      window.removeEventListener("scroll", place, true);
+    };
+  }, [anchor, open, width]);
+  return pos;
+}
+
 export type RowMenuItem = { key: string; label: string; danger?: boolean; confirm?: string; onSelect: () => void };
 
 export function RowMenu({
@@ -30,10 +61,12 @@ export function RowMenu({
   const [open, setOpen] = React.useState(false);
   const [armed, setArmed] = React.useState<string | null>(null);
   const box = React.useRef<HTMLSpanElement | null>(null);
+  const pop = React.useRef<HTMLDivElement | null>(null);
+  const at = useFloat(box, open, 148);
   React.useEffect(() => {
     if (!open) return;
     const away = (e: Event) => {
-      if (!box.current?.contains(e.target as Node)) setOpen(false);
+      if (!box.current?.contains(e.target as Node) && !pop.current?.contains(e.target as Node)) setOpen(false);
     };
     const esc = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
     document.addEventListener("pointerdown", away);
@@ -67,8 +100,8 @@ export function RowMenu({
           <circle cx="18" cy="12" r="1.6" />
         </svg>
       </button>
-      {open ? (
-        <div role="menu" className="rm-pop" onClick={(e) => e.stopPropagation()}>
+      {open && at ? createPortal(
+        <div ref={pop} role="menu" className="rm-pop" style={{ ...at, minWidth: 148 }} onClick={(e) => e.stopPropagation()}>
           {items.map((it) => (
             <button
               key={it.key}
@@ -88,7 +121,9 @@ export function RowMenu({
               {armed === it.key && it.confirm ? it.confirm : it.label}
             </button>
           ))}
-        </div>
+          <style>{RM_CSS}</style>
+        </div>,
+        document.body,
       ) : null}
       <style>{RM_CSS}</style>
     </span>
@@ -133,6 +168,8 @@ export function ConversationMenu({
   const [renaming, setRenaming] = React.useState(false);
   const [name, setName] = React.useState(title);
   const [busy, setBusy] = React.useState(false);
+  const anchor = React.useRef<HTMLSpanElement | null>(null);
+  const at = useFloat(anchor, renaming, 260);
   const save = async () => {
     const next = name.trim();
     if (!next || busy) return;
@@ -152,7 +189,7 @@ export function ConversationMenu({
     router.refresh();
   };
   return (
-    <span style={{ position: "relative", display: "inline-flex", flexShrink: 0, ...style }} className={className}>
+    <span ref={anchor} style={{ position: "relative", display: "inline-flex", flexShrink: 0, ...style }} className={className}>
       <RowMenu
         size={size}
         label={t("对话操作", "Chat actions")}
@@ -161,14 +198,14 @@ export function ConversationMenu({
           { key: "delete", label: t("删除", "Delete"), danger: true, confirm: t("确认删除", "Really delete"), onSelect: () => void remove() },
         ]}
       />
-      {renaming ? (
+      {renaming && at ? createPortal(
         <form
           onSubmit={(e) => {
             e.preventDefault();
             void save();
           }}
           onClick={(e) => e.stopPropagation()}
-          style={{ position: "absolute", top: "calc(100% + 4px)", right: 0, zIndex: 61, width: 260, padding: 10, background: "#fff", border: "1px solid #e6e5e0", borderRadius: 10, boxShadow: "0 12px 32px -6px rgba(17,17,17,.18)", display: "flex", flexDirection: "column", gap: 8 }}
+          style={{ ...at, width: 260, padding: 10, background: "#fff", border: "1px solid #e6e5e0", borderRadius: 10, boxShadow: "0 12px 32px -6px rgba(17,17,17,.18)", display: "flex", flexDirection: "column", gap: 8 }}
         >
           <input
             autoFocus
@@ -187,7 +224,8 @@ export function ConversationMenu({
               {busy ? t("保存中…", "Saving…") : t("保存", "Save")}
             </button>
           </span>
-        </form>
+        </form>,
+        document.body,
       ) : null}
     </span>
   );

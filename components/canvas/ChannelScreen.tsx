@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useComposerGrip } from "@/components/chat/ComposerGrip";
 import { formatTextarea, type Format } from "./composer-format";
 import { FormattedPreview, HAS_MARKUP } from "@/components/ui/FormattedPreview";
 import { Markdown } from "@/components/ui/Markdown";
@@ -101,6 +102,7 @@ export function ChannelScreen(props: {
   const zh = props.locale.startsWith("zh");
   const [draft, setDraft] = React.useState("");
   const box = React.useRef<HTMLTextAreaElement>(null);
+  const grip = useComposerGrip(box, draft, zh);
   const format = (f: Format) => formatTextarea(box.current, f, setDraft);
 
   function send() {
@@ -428,6 +430,7 @@ export function ChannelScreen(props: {
             ) : null}
             <div
               style={{
+                position: "relative",
                 border: "1px solid #d9d9d9",
                 borderRadius: "12px",
                 background: "#fff",
@@ -472,6 +475,7 @@ export function ChannelScreen(props: {
               {/* Pressing B inserts `**`, which a textarea can only show as
                   two asterisks. This is what it will actually look like. */}
               <FormattedPreview text={draft} zh={zh} />
+              {grip}
               <textarea
                 ref={box}
                 className="dc-composer"

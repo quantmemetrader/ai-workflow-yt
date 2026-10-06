@@ -1,6 +1,7 @@
 "use client";
 
 import { ModelChip, usePanelModel } from "@/components/chat/ModelChip";
+import { useComposerGrip } from "@/components/chat/ComposerGrip";
 import { DropVeil, useFileDrop } from "@/components/chat/DropVeil";
 import * as React from "react";
 import Link from "next/link";
@@ -656,6 +657,7 @@ export function ChannelSurface(props: {
   const [draft, setDraft] = React.useState("");
   const [attached, setAttached] = React.useState<Attaching[]>([]);
   const box = React.useRef<HTMLTextAreaElement>(null);
+  const grip = useComposerGrip(box, draft, zh);
   const picker = React.useRef<HTMLInputElement>(null);
   const list = React.useRef<HTMLDivElement>(null);
 
@@ -1353,6 +1355,7 @@ export function ChannelSurface(props: {
               ) : null}
               <div
                 className="composer"
+                style={{ position: "relative" }}
               >
                 <MentionMenu
                   matches={matches}
@@ -1365,6 +1368,7 @@ export function ChannelSurface(props: {
                 {/* Pressing B inserts `**`, which a textarea can only show as
                     two asterisks. This is what it will actually look like. */}
                 <FormattedPreview text={draft} zh={zh} />
+                {grip}
                 <textarea
                   ref={box}
                   className="dc-composer"

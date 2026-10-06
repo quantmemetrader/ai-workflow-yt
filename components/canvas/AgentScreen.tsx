@@ -1,6 +1,8 @@
 "use client";
 
 import { DropVeil, useFileDrop } from "@/components/chat/DropVeil";
+import { ForwardButton } from "@/components/chat/ForwardButton";
+import { useComposerGrip } from "@/components/chat/ComposerGrip";
 import { STEP_LABELS, stepForTool } from "@/lib/agents/steps";
 import { ChatLiveWork } from "@/components/chat/ChatLiveWork";
 import { ModelChip, useChatModel } from "@/components/chat/ModelChip";
@@ -278,6 +280,7 @@ export function AgentScreen({
   const abort = useRef<AbortController | null>(null);
   const scroller = useRef<HTMLDivElement>(null);
   const box = useRef<HTMLTextAreaElement>(null);
+  const grip = useComposerGrip(box, input, zh);
   /* 「就在这里改」 under a written script: the next message, to 文案, about that script. */
   useEffect(() => {
     const on = (e: Event) => {
@@ -850,7 +853,7 @@ export function AgentScreen({
 
           {/* composer */}
           <div style={{ flexShrink: 0, padding: "6px 24px 18px" }}>
-            <div className="composer">
+            <div className="composer" style={{ position: "relative" }}>
               <MentionMenu matches={mentions.matches} active={mentions.active} zh={zh} onPick={mentions.pick} onHover={mentions.setActive} placement="up" />
 
               {/* The formatting buttons write Markdown; this is what it will
@@ -876,6 +879,7 @@ export function AgentScreen({
               ) : null}
               <FormattedPreview text={input} zh={zh} />
 
+              {grip}
               <textarea
                 ref={box}
                 className="dc-composer"
@@ -928,7 +932,6 @@ export function AgentScreen({
                   fontFamily: "inherit",
                   letterSpacing: "inherit",
                   color: "#171717",
-                  maxHeight: 160,
                   background: "transparent",
                 }}
               />
@@ -1308,6 +1311,8 @@ function AgentRow({ message, zh, locale }: { message: ThreadMessage; zh: boolean
             </span>
           )}
           <span className="when">{time(message.createdAt, locale)}</span>
+          {/* Share part of an answer with a colleague (Catherine, 6 Oct). */}
+          {message.status !== "streaming" && message.content.trim() ? <ForwardButton text={message.content} zh={zh} /> : null}
         </div>
 
         <div className="txt">
