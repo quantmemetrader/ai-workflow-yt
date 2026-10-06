@@ -204,22 +204,83 @@ async function wechatUsername(a: OwnAccount): Promise<string> {
   return username;
 }
 
+/*
+ * 视频号 (7 Oct: "the WeChat numbers on top are not accurate"). WeChat hides an
+ * account's followers, total likes and every play count from outside readers
+ * (TikHub returns 0 for them), so the account's 获赞 is the sum of what each
+ * video shows: ❤ like_count plus 👍 fav_count (fav_count is the thumbs-up,
+ * not saves: the raw payload's favInfo.fingerlikeFavCount matches it). That
+ * needs every video, 15 a page through `last_buffer` (`up_continue` is always
+ * 0), so the whole list is read once a day and the 6-hourly refresh reads the
+ * newest page only, keeping the day's totals. WeChat also answers a failed
+ * list with HTTP 200 and a `message`: retried, and never stored as "no posts".
+ */
+type WxVideo = { id: string; title: string; at: string | null; like: number; fav: number; shares: number; comments: number };
+type WxFull = { at: string; likes: number; shares: number; comments: number; videos: WxVideo[] };
+
+async function wxCall(path: string, body: Record<string, unknown>, ok: (r: J) => boolean): Promise<J> {
+  for (let i = 0; i < 3; i++) {
+    const r = await tikhubRequest<J>(path, {}, body).catch(() => null);
+    if (r && ok(r)) return r;
+    await new Promise((res) => setTimeout(res, 1200 * (i + 1)));
+  }
+  throw new Error("视频号这次没读到，稍后会自动再读");
+}
+
+const wxVideo = (v: J): WxVideo => ({
+  id: String(v.id ?? ""),
+  title: clip(v.title) || clip(v.description) || String(v.id ?? ""),
+  at: iso(v.create_time),
+  like: num(v.like_count) ?? 0,
+  fav: num(v.fav_count) ?? 0,
+  shares: num(v.forward_count) ?? 0,
+  comments: num(v.comment_count) ?? 0,
+});
+
+async function wxPage(username: string, buffer: string | null) {
+  const r = await wxCall("/api/v1/wechat_channels/v2/fetch_user_videos", { username, raw: false, ...(buffer ? { last_buffer: buffer } : {}) }, (x) => Array.isArray(x.videos));
+  return { videos: (r.videos as J[]).map(wxVideo).filter((v) => v.id), next: typeof r.last_buffer === "string" && r.last_buffer ? r.last_buffer : null };
+}
+
 async function readWechat(a: OwnAccount): Promise<AccountReading> {
   const username = await wechatUsername(a);
-  const [prof, vids] = await Promise.all([
-    tikhubRequest<J>("/api/v1/wechat_channels/v2/fetch_user_profile", {}, { username, raw: false }),
-    tikhubRequest<J>("/api/v1/wechat_channels/v2/fetch_user_videos", {}, { username, raw: false }).catch(() => ({}) as J),
-  ]);
-  const list = (Array.isArray(vids.videos) ? (vids.videos as J[]) : []).map((v) => ({
-    id: String(v.id ?? ""),
-    title: clip(v.title) || String(v.id ?? ""),
-    url: null,
-    at: iso(v.create_time),
-    stats: { plays: zeroIsUnknown(num(v.read_count)), likes: num(v.like_count), comments: num(v.comment_count), shares: num(v.forward_count), collects: num(v.fav_count) },
-  }));
+  const prof = await wxCall("/api/v1/wechat_channels/v2/fetch_user_profile", { username, raw: false }, (x) => typeof x.feeds_count === "number" || typeof x.nickname === "string");
+  const key = `review:wx-full:${a.id}`;
+  let full = await remember<WxFull>(key);
+  if (!full || Date.now() - Date.parse(full.at) > 20 * 3600_000) {
+    const seen = new Map<string, WxVideo>();
+    let buffer: string | null = null;
+    for (let page = 0; page < 12; page++) {
+      const { videos, next } = await wxPage(username, buffer);
+      for (const v of videos) seen.set(v.id, v);
+      if (!videos.length || !next || next === buffer) break;
+      buffer = next;
+    }
+    const all = [...seen.values()];
+    full = {
+      at: new Date().toISOString(),
+      likes: all.reduce((n, v) => n + v.like + v.fav, 0),
+      shares: all.reduce((n, v) => n + v.shares, 0),
+      comments: all.reduce((n, v) => n + v.comments, 0),
+      videos: all.sort((x, y) => (y.at ?? "").localeCompare(x.at ?? "")).slice(0, 40),
+    };
+    await keep(key, full);
+  } else {
+    /* Between full reads: the newest page for fresh numbers on recent videos. */
+    const { videos } = await wxPage(username, null);
+    const byId = new Map(full.videos.map((v) => [v.id, v]));
+    for (const v of videos) byId.set(v.id, v);
+    full = { ...full, videos: [...byId.values()].sort((x, y) => (y.at ?? "").localeCompare(x.at ?? "")).slice(0, 40) };
+  }
   return {
-    stats: { followers: zeroIsUnknown(num(prof.fans_count)), likes: zeroIsUnknown(num(prof.like_count)), works: num(prof.feeds_count), views: null },
-    posts: list.slice(0, 10),
+    stats: { followers: zeroIsUnknown(num(prof.fans_count)), likes: full.likes || null, works: num(prof.feeds_count), views: null },
+    posts: full.videos.slice(0, 30).map((v) => ({
+      id: v.id,
+      title: v.title,
+      url: null,
+      at: v.at,
+      stats: { plays: null, likes: v.like + v.fav, comments: v.comments, shares: v.shares, collects: null },
+    })),
   };
 }
 
@@ -297,7 +358,7 @@ export async function readPost(platform: string, url: string): Promise<PostReadi
     }
     return {
       title: clip(d.title) || null,
-      stats: { plays: zeroIsUnknown(num(d.read_count)), likes: num(d.like_count), comments: num(d.comment_count), shares: num(d.forward_count), collects: num(d.fav_count) },
+      stats: { plays: zeroIsUnknown(num(d.read_count)), likes: (num(d.like_count) ?? 0) + (num(d.fav_count) ?? 0), comments: num(d.comment_count), shares: num(d.forward_count), collects: null },
     };
   }
   throw new ManualOnly("这个平台读不到数据，请手动填写");

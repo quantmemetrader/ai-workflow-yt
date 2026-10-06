@@ -171,7 +171,8 @@ function viewOf(a: OwnAccount, rows: SnapRow[]): AccountView {
     url: a.url,
     /* Each number from the newest reading that has it: a refresh that got the
        followers but not the likes (B站, 29 Sep) no longer blanks the likes. */
-    stats: latest ? mergedStats(good) : null,
+    /* 视频号: the newest reading only. An older one stored 获赞 0 for "hidden", and borrowing it put a false 0 on the tile (7 Oct). */
+    stats: latest ? (a.platform === "wechat_channels" ? mergedStats([latest]) : mergedStats(good)) : null,
     source: latest ? (latest.source as "tikhub" | "manual") : null,
     at: latest ? latest.fetchedAt.toISOString() : null,
     prevFollowers: prev ? followers(prev) : null,

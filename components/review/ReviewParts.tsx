@@ -121,11 +121,15 @@ export function AccountTiles({ accounts, zh, canWork }: { accounts: AccountView[
               ) : null}
             </div>
             <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 8 }}>
-              <Stat label={followLabel} value={fmtNum(s?.followers ?? null, zh)} sub={<Delta now={s?.followers ?? null} before={a.prevFollowers} zh={zh} />} />
+              <Stat
+                label={followLabel}
+                value={fmtNum(s?.followers ?? null, zh)}
+                sub={a.platform === "wechat_channels" && s?.followers == null ? <span style={{ fontSize: 11, color: MUTED }}>{zh ? "视频号不公开，可手动填写" : "Hidden by WeChat; type it in"}</span> : <Delta now={s?.followers ?? null} before={a.prevFollowers} zh={zh} />}
+              />
               <Sparkline points={a.followersSeries} label={zh ? "粉丝变化" : "Followers over time"} />
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-              {s?.likes != null ? <Stat label={a.platform === "xiaohongshu" ? (zh ? "赞与收藏" : "Likes & saves") : zh ? "获赞" : "Likes"} value={<span style={{ fontSize: 15 }}>{fmtNum(s.likes, zh)}</span>} /> : null}
+              {s?.likes != null ? <Stat label={a.platform === "xiaohongshu" ? (zh ? "赞与收藏" : "Likes & saves") : a.platform === "wechat_channels" ? (zh ? "获赞（喜欢+点赞）" : "Likes (hearts + thumbs)") : zh ? "获赞" : "Likes"} value={<span style={{ fontSize: 15 }}>{fmtNum(s.likes, zh)}</span>} /> : null}
               {(viewsFirst ? s?.views : s?.works) != null ? <Stat label={viewsFirst ? (zh ? "总播放" : "Plays") : zh ? "作品" : "Posts"} value={<span style={{ fontSize: 15 }}>{fmtNum(viewsFirst ? (s?.views ?? null) : (s?.works ?? null), zh)}</span>} /> : null}
             </div>
             {a.posts.length ? (
