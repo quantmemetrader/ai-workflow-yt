@@ -115,7 +115,8 @@ const DRAFT_PROMPT = `你是一名顶级的中文短视频文案，给一家香�
  * only the wording changes. A failure leaves the draft as it was.
  */
 /** Writes the draft when the writer's own model is slow (fast, strong Chinese, reliable). */
-const DRAFT_BACKUP = process.env.AI_MODEL_DRAFT_BACKUP || "anthropic/claude-sonnet-5.5";
+/* Not Claude: Anthropic refuses the studio's OpenRouter account (7 Oct). */
+const DRAFT_BACKUP = process.env.AI_MODEL_DRAFT_BACKUP || "qwen/qwen3.7-max";
 /** Edits a fresh draft line by line: fast and does not reason first. */
 const POLISH_MODEL = process.env.AI_MODEL_POLISH || "qwen/qwen3-max";
 

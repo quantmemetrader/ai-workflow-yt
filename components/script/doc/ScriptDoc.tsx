@@ -533,7 +533,8 @@ export function ScriptDoc(props: ScriptDocProps) {
   const refAtt = useAttachments(zh, 5);
   /* 深度重写 (Rahul, 4 Oct): the strongest model goes over the whole draft once
      more; its edits come back as tracked changes to accept or reject. */
-  const DEEP_MODEL = "anthropic/claude-opus-5.5";
+  /* The strongest model the studio's account can use (Claude is refused on it, 7 Oct). */
+  const DEEP_MODEL = "qwen/qwen3.7-max";
   const deepRewrite = () =>
     runCopilot(
       t(

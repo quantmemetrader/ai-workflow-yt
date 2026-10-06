@@ -344,10 +344,13 @@ export async function* runAgent(opts: {
         // already in `messages`, so the next model continues from them, while
         // re-running a round that had begun speaking restarts the sentence and
         // saves a message spliced together from two different attempts.
-        const retryable = aiErr !== null && (aiErr.kind === "credit" || aiErr.kind === "rate_limit");
+        /* A provider refusing the account outright (403 "violation of provider Terms Of Service": Anthropic and OpenAI on the studio's
+           new OpenRouter account, 7 Oct) is also a model to step past, not a dead end. */
+        const refused = aiErr !== null && aiErr.kind === "provider" && aiErr.status === 403;
+        const retryable = aiErr !== null && (aiErr.kind === "credit" || aiErr.kind === "rate_limit" || refused);
         if (retryable && fallbacks.length && !roundText) {
           const next = fallbacks.shift()!;
-          const reason = aiErr.kind === "credit" ? "is out of credit" : "is being rate-limited";
+          const reason = aiErr.kind === "credit" ? "is out of credit" : refused ? "cannot use the chosen model" : "is being rate-limited";
           model = next;
           messages[0].content = withModelLine(String(messages[0].content), model);
           if (!toldAboutFallback) {
