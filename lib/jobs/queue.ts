@@ -68,7 +68,11 @@ export type JobType =
   /** After a render: three covers with titles, filed with the project (`lib/video/cover.ts`). */
   | "video.cover"
   /** A project's first draft, on the queue so a deploy cannot kill it (`lib/script/background.ts`). */
-  | "script.draft";
+  | "script.draft"
+  /** The cut as a 剪映 / CapCut draft folder with its media, zipped
+   * (`lib/video/capcut/export.ts`). Pulls the footage out of the store, so
+   * never a request. */
+  | "video.capcut";
 
 export type JobRow = typeof jobs.$inferSelect;
 

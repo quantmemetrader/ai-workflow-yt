@@ -82,6 +82,7 @@ import { Badge, Empty, Label, ModuleHeader, Row, Tabs, clip, field, ghost, solid
 import { Tr } from "@/components/ui/Tr";
 import { PUBLISHED_TONE, PublishedCheck, PublishedMarks } from "@/components/projects/Published";
 import { EditBand } from "@/components/video/EditBand";
+import { CapcutExport } from "@/components/video/CapcutExport";
 import type { PublishedPlace } from "@/lib/projects/publication";
 
 /** A cut whose project is marked 已发布: where it went, when (ISO and as the day, formatted on the server). */
@@ -976,6 +977,7 @@ export function VideoScreen({
           {tab === "exports" && (
             <Exports
               key={`exports-${project.id}`}
+              projectId={project.id}
               renders={renders}
               captionLanguages={languagesInOrder(captions, project.director?.language ?? null)}
               hasCaptions={captions.length > 0}
@@ -1810,6 +1812,7 @@ function AddCaption({
 /* --------------------------------------------------------------- exports */
 
 function Exports({
+  projectId,
   renders,
   captionLanguages,
   hasCaptions,
@@ -1820,6 +1823,8 @@ function Exports({
   onExport,
   onPublish,
 }: {
+  /** For 导出到剪映, which reads the project's rows itself. */
+  projectId: string;
   renders: ExportRow[];
   /** The languages this cut has captions in, first one first. */
   captionLanguages: string[];
@@ -1899,6 +1904,8 @@ function Exports({
         >
           {t("Render", "开始渲染")}
         </button>
+        {/* Not a render: the cut itself, as a draft to keep editing in 剪映 / CapCut. */}
+        <CapcutExport projectId={projectId} zh={zh} disabled={!canRender} />
       </div>
       <p style={{ fontSize: 11.5, color: "#999999", margin: "0 0 20px", lineHeight: 1.6, maxWidth: 560 }}>
         {t(

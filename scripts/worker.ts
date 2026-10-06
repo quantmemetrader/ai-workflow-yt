@@ -8,7 +8,7 @@
  *   pm2 logs aura-worker
  */
 import { ensureFileText } from "@/lib/files/extract";
-import { claim, enqueue, fail, heartbeat, requeue, requeueStalled, succeed, type JobRow } from "../lib/jobs/queue";
+import { claim, enqueue, fail, heartbeat, progress as jobProgress, requeue, requeueStalled, succeed, type JobRow } from "../lib/jobs/queue";
 import { refreshFeeds, refreshSeries, refreshTopic, syncSourceRegistry } from "../lib/research/ingest";
 import {
   classifyComments,
@@ -31,6 +31,7 @@ import { autoEdit } from "../lib/video/autoedit";
 import { proposeFromFootage } from "../lib/agents/footage";
 import { afterPlan, autoCut, autoPublishCopy, exportOfJob } from "../lib/agents/autorun";
 import { makeCovers } from "../lib/video/cover";
+import { exportCapcut, type CapcutOptions } from "../lib/video/capcut/export";
 import { narrateDone, narrateFailed, narrateStart } from "../lib/agents/narrate";
 import { direct } from "../lib/video/director";
 import { refreshCreatorMemory } from "../lib/creator/service";
@@ -69,6 +70,8 @@ const TIMEOUT_BY_TYPE: Record<string, number> = {
   // A first draft with retries, plus each colleague answering its to-do.
   "agent.plan-followup": 25 * 60_000,
   "video.cover": 15 * 60_000,
+  // Pulling a long take out of the store and writing the used stretches out.
+  "video.capcut": 40 * 60_000,
   // Transcribe, cut, design and render, end to end.
   "video.direct": 120 * 60_000,
   "video.transcribe": 45 * 60_000,
@@ -249,6 +252,22 @@ const HANDLERS: Record<string, Handler> = {
   "video.cover": (job) => {
     const { exportId, again } = job.payload as { exportId: string; again?: boolean };
     return makeCovers(exportId, { again: Boolean(again) });
+  },
+
+  /* The cut as a 剪映 draft, zipped with its media into the requester's Files. */
+  "video.capcut": (job) => {
+    const { projectId, options } = job.payload as { projectId: string; options: CapcutOptions };
+    let last = 0;
+    return exportCapcut({
+      projectId,
+      requestedBy: job.createdBy,
+      options,
+      onProgress: async (f) => {
+        if (f - last < 0.02 && f < 1) return;
+        last = f;
+        await jobProgress(job.id, f).catch(() => {});
+      },
+    });
   },
 
   /* A render is done: 撰稿人 writes the post. */
