@@ -72,7 +72,8 @@ export type JobType =
   /** The cut as a 剪映 / CapCut draft folder with its media, zipped
    * (`lib/video/capcut/export.ts`). Pulls the footage out of the store, so
    * never a request. */
-  | "video.capcut";
+  | "video.capcut"
+  | "media.importLink";
 
 export type JobRow = typeof jobs.$inferSelect;
 

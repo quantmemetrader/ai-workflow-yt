@@ -1,5 +1,6 @@
 "use client";
 
+import { LinkImport } from "@/components/video/LinkImport";
 import * as React from "react";
 import { useDroppedFiles } from "@/lib/client/dropped";
 import { useAsk } from "@/components/ui/useAsk";
@@ -315,6 +316,9 @@ export function ProjectFiles({
           ))}
         </div>
       ) : null}
+
+      {/* A video posted online, into this project as the original file (7 Oct). */}
+      <LinkImport projectId={projectId} zh={zh} />
 
       {/* ---- search, view, selection ---- */}
       <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>

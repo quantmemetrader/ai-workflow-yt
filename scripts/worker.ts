@@ -32,6 +32,7 @@ import { proposeFromFootage } from "../lib/agents/footage";
 import { afterPlan, autoCut, autoPublishCopy, exportOfJob } from "../lib/agents/autorun";
 import { makeCovers } from "../lib/video/cover";
 import { exportCapcut, type CapcutOptions } from "../lib/video/capcut/export";
+import { importLink } from "../lib/media/link-import";
 import { narrateDone, narrateFailed, narrateStart } from "../lib/agents/narrate";
 import { direct } from "../lib/video/director";
 import { refreshCreatorMemory } from "../lib/creator/service";
@@ -72,6 +73,7 @@ const TIMEOUT_BY_TYPE: Record<string, number> = {
   "video.cover": 15 * 60_000,
   // Pulling a long take out of the store and writing the used stretches out.
   "video.capcut": 40 * 60_000,
+  "media.importLink": 20 * 60_000,
   // Transcribe, cut, design and render, end to end.
   "video.direct": 120 * 60_000,
   "video.transcribe": 45 * 60_000,
@@ -266,6 +268,21 @@ const HANDLERS: Record<string, Handler> = {
         if (f - last < 0.02 && f < 1) return;
         last = f;
         await jobProgress(job.id, f).catch(() => {});
+      },
+    });
+  },
+
+  /* A video someone linked (Instagram, 抖音, 小红书…), as the original file, into the project (7 Oct). */
+  "media.importLink": async (job) => {
+    const { url, workProjectId, videoProjectId } = job.payload as { url: string; workProjectId: string | null; videoProjectId: string | null };
+    const viewer = job.createdBy ? await viewerById(job.createdBy) : null;
+    if (!viewer) return { skipped: "no viewer" };
+    let last = 0;
+    return importLink(viewer, url, { workProjectId, videoProjectId }, {
+      onProgress: (f) => {
+        if (f - last < 0.03 && f < 1) return;
+        last = f;
+        void jobProgress(job.id, f).catch(() => {});
       },
     });
   },

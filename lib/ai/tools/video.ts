@@ -28,6 +28,7 @@ import { importVideo } from "@/lib/files/service";
 import { mapTime, mergeRanges, speechRanges, type Range } from "@/lib/video/ranges";
 import { autoEdit } from "@/lib/video/autoedit";
 import { clock, id as asId, num, str, type Artifact, type ToolContext, type ToolPack, type ToolResult } from "./types";
+import { linkTarget, queueLinkImports } from "@/lib/media/link-jobs";
 
 /**
  * Editing the video by asking.
@@ -422,6 +423,22 @@ const defs: ToolDef[] = [
           caption_language: { type: "string", description: "Which captions, e.g. zh-CN or en. Default: the project's captions." },
         },
         required: [],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "import_video_from_link",
+      description:
+        "Download a video someone linked (Instagram reel, 抖音, 小红书, TikTok, YouTube, 微博, 视频号, B站) as the original file into this project's files and bin, ready to cut. Pass every link the person gave. Downloads run in the background (usually under a minute); tell the person they will appear in the project's 素材 and the bin. Only for videos the studio may use.",
+      parameters: {
+        type: "object",
+        properties: {
+          links: { type: "string", description: "The link or links, as the person wrote them." },
+          project_id: { type: "string", description: "The project (wp_…, from list_projects) when none is open here." },
+        },
+        required: ["links"],
       },
     },
   },
@@ -1135,7 +1152,7 @@ async function dispatch(ctx: ToolContext & { projectId: string; language: string
     return done(line);
   }
 
-  if (name === "render_current_cut" || name === "add_clip_from_files" || name === "send_render_to_publish") {
+  if (name === "render_current_cut" || name === "add_clip_from_files" || name === "send_render_to_publish" || name === "import_video_from_link") {
     /* The person behind the turn must be able to edit this project too: the
        employee is an editor of every project, the person may not be. */
     const person = personOf(ctx);
@@ -1166,6 +1183,16 @@ async function dispatch(ctx: ToolContext & { projectId: string; language: string
       `Render started, not finished (id: ${renderId}): ${aspect}, captions ${burnCaptions ? `burned in (${captionLanguage})` : "as a separate file"}. It takes a few minutes on the worker; the file appears under the project's renders when done. Do not say it is finished.`,
       [{ kind: "render", id: renderId, action: "started" }],
     );
+  }
+
+  if (name === "import_video_from_link") {
+    const text = str(args.links, 4000);
+    const person = personOf(ctx) ?? ctx.viewer;
+    const target = await linkTarget(person, ctx.projectId);
+    if (!target) return "This project is not open to the person asking. Nothing was downloaded.";
+    const queued = await queueLinkImports(person, text, target, ctx.asker ? ctx.viewer.id : null);
+    if (!queued.length) return "No video link found in that. Ask the person for the link (Instagram, 抖音, 小红书, TikTok, YouTube, 微博, 视频号 or B站).";
+    return done(`Downloading ${queued.length} video${queued.length > 1 ? "s" : ""} in the background: ${queued.map((q) => `${q.label} ${q.url}`).join("; ")}. Each lands in the project's files and the bin when done, usually within a minute; a link the platform refuses comes back with a reason on the project's 文件 tab.`);
   }
 
   if (name === "add_clip_from_files") {

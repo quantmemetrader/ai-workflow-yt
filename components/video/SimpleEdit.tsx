@@ -1,5 +1,6 @@
 "use client";
 
+import { LinkImport } from "@/components/video/LinkImport";
 import * as React from "react";
 import { CapcutExport } from "@/components/video/CapcutExport";
 import Link from "next/link";
@@ -279,6 +280,10 @@ export function SimpleEdit({ f, zh, modeSwitch }: { f: SimpleFacts; zh: boolean;
               {t("好了，下一步", "Done, next step")}
             </button>
           ) : null}
+        </div>
+        {/* Or the video someone posted online (7 Oct). */}
+        <div style={{ marginTop: 12 }}>
+          <LinkImport projectId={f.projectId} zh={zh} />
         </div>
       </Step>
 

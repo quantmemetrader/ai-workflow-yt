@@ -154,7 +154,7 @@ async function sweep(): Promise<void> {
 
 /* ---------------------------------------------------------------- probing */
 
-type Probe = {
+export type Probe = {
   durationMs: number;
   width?: number;
   height?: number;
@@ -165,7 +165,8 @@ type Probe = {
   container: string;
 };
 
-async function probe(file: string): Promise<Probe> {
+/* Exported for the link importer (`lib/media/link-import.ts`), which measures what it took the same way. */
+export async function probe(file: string): Promise<Probe> {
   const { stdout } = await run(
     "ffprobe",
     ["-v", "error", "-show_entries", "format=duration,format_name:stream=codec_type,codec_name,width,height:stream_side_data=rotation:stream_tags=rotate", "-of", "json", file],
