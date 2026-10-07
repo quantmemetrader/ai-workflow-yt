@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { CapcutExport } from "@/components/video/CapcutExport";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/ui/Icon";
@@ -428,6 +429,8 @@ export function SimpleEdit({ f, zh, modeSwitch }: { f: SimpleFacts; zh: boolean;
                 <Icon name="download" size={14} />
                 {t("下载", "Download")}
               </a>
+              {/* The client's first ask (7 Oct): the cut as a CapCut / 剪映 draft they can keep editing. */}
+              <CapcutExport projectId={f.videoId} zh={zh} />
             </div>
           </div>
         ) : (
