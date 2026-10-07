@@ -33,6 +33,7 @@ import { afterPlan, autoCut, autoPublishCopy, exportOfJob } from "../lib/agents/
 import { makeCovers } from "../lib/video/cover";
 import { exportCapcut, type CapcutOptions } from "../lib/video/capcut/export";
 import { importLink } from "../lib/media/link-import";
+import { generateVideo } from "../lib/studio/service";
 import { narrateDone, narrateFailed, narrateStart } from "../lib/agents/narrate";
 import { direct } from "../lib/video/director";
 import { refreshCreatorMemory } from "../lib/creator/service";
@@ -74,6 +75,7 @@ const TIMEOUT_BY_TYPE: Record<string, number> = {
   // Pulling a long take out of the store and writing the used stretches out.
   "video.capcut": 40 * 60_000,
   "media.importLink": 20 * 60_000,
+  "media.generateVideo": 20 * 60_000,
   // Transcribe, cut, design and render, end to end.
   "video.direct": 120 * 60_000,
   "video.transcribe": 45 * 60_000,
@@ -285,6 +287,14 @@ const HANDLERS: Record<string, Handler> = {
         void jobProgress(job.id, f).catch(() => {});
       },
     });
+  },
+
+  /* 配音和生成: a shot described in words, made by fal.ai, kept in Files (7 Oct). */
+  "media.generateVideo": async (job) => {
+    const p = job.payload as { prompt: string; model: string; aspect: "16:9" | "9:16" | "1:1"; seconds: number; imageFileId?: string | null };
+    const viewer = job.createdBy ? await viewerById(job.createdBy) : null;
+    if (!viewer) return { skipped: "no viewer" };
+    return generateVideo(viewer, p, (f) => void jobProgress(job.id, f).catch(() => {}));
   },
 
   /* A render is done: 撰稿人 writes the post. */

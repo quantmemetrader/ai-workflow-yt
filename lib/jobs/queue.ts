@@ -73,7 +73,8 @@ export type JobType =
    * (`lib/video/capcut/export.ts`). Pulls the footage out of the store, so
    * never a request. */
   | "video.capcut"
-  | "media.importLink";
+  | "media.importLink"
+  | "media.generateVideo";
 
 export type JobRow = typeof jobs.$inferSelect;
 

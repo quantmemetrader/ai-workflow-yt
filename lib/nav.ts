@@ -223,6 +223,8 @@ export const RAIL_MAIN: RailItem[] = [
   { href: "/research", label: "Topics", labelZh: "选题", icon: iconOf("/research"), module: "research" },
   { href: "/script", label: "Scripts", labelZh: "脚本", icon: iconOf("/script"), module: "script" },
   { href: "/video", label: "Videos", labelZh: "视频", icon: iconOf("/video"), module: "video" },
+  /* Voice-over, a cloned voice, an AI-made shot (7 Oct): right after the cut they feed. */
+  { href: "/studio", label: "Voice & video", labelZh: "配音和生成", icon: '<path d="M12 3.5a3 3 0 0 0-3 3v5a3 3 0 0 0 6 0v-5a3 3 0 0 0-3-3z" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M6 11.5a6 6 0 0 0 12 0M12 17.5v3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>', module: "video" },
   { href: "/publish", label: "Publishing", labelZh: "发布", icon: iconOf("/publish"), module: "publish" },
   { href: "/review", label: "Account data", labelZh: "账号数据", icon: iconOf("/review") },
   { href: "/files", label: "Files", labelZh: "文件", icon: iconOf("/files"), module: "files" },

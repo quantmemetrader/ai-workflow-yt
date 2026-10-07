@@ -25,7 +25,8 @@ export type KeyName =
   | "RESEND_API_KEY"
   | "YOUTUBE_API_KEY"
   | "PEXELS_API_KEY"
-  | "UNSPLASH_ACCESS_KEY";
+  | "UNSPLASH_ACCESS_KEY"
+  | "FAL_KEY";
 
 export const KEYS: { name: KeyName; zh: string; en: string; usesZh: string; uses: string; link: string }[] = [
   { name: "OPENROUTER_API_KEY", zh: "OpenRouter（AI 模型）", en: "OpenRouter (AI models)", usesZh: "所有 AI 同事、助理、写稿和改稿", uses: "Every AI colleague, the assistant, drafting and edits", link: "https://openrouter.ai/settings/keys" },
@@ -37,6 +38,7 @@ export const KEYS: { name: KeyName; zh: string; en: string; usesZh: string; uses
   { name: "RESEND_API_KEY", zh: "Resend（邮件）", en: "Resend (email)", usesZh: "邀请邮件、登录验证邮件", uses: "Invitation and sign-in emails", link: "https://resend.com/api-keys" },
   { name: "YOUTUBE_API_KEY", zh: "YouTube 数据", en: "YouTube data", usesZh: "读取 YouTube 频道和视频数据", uses: "Reading YouTube channels and videos", link: "https://console.cloud.google.com/apis/credentials" },
   { name: "PEXELS_API_KEY", zh: "Pexels（素材）", en: "Pexels (stock)", usesZh: "剪辑时自动找的免费视频和图片素材", uses: "Free stock footage found while editing", link: "https://www.pexels.com/api/" },
+  { name: "FAL_KEY", zh: "fal.ai（AI 生成视频）", en: "fal.ai (AI video)", usesZh: "「配音和生成」里的 AI 生成视频：可灵、海螺、即梦", uses: "AI video in Voice & video: Kling, Hailuo, Seedance", link: "https://fal.ai/dashboard/keys" },
   { name: "UNSPLASH_ACCESS_KEY", zh: "Unsplash（图片素材）", en: "Unsplash (photos)", usesZh: "剪辑时自动找的图片素材", uses: "Stock photos found while editing", link: "https://unsplash.com/oauth/applications" },
 ];
 
@@ -197,6 +199,11 @@ export async function testKey(name: KeyName, value: string): Promise<{ ok: boole
       case "UNSPLASH_ACCESS_KEY": {
         const r = await get("https://api.unsplash.com/photos?per_page=1", { authorization: `Client-ID ${value}` });
         return r.status === 200 ? { ok: true, note: "有效" } : { ok: false, note: "Unsplash 不认这个密钥" };
+      }
+      case "FAL_KEY": {
+        /* A status read of a request that does not exist: 401/403 for a bad key, 404 for a good one. */
+        const r = await fetch("https://queue.fal.run/fal-ai/kling-video/requests/00000000-0000-0000-0000-000000000000/status", { headers: { authorization: `Key ${value}` }, signal: AbortSignal.timeout(15_000) });
+        return r.status === 401 || r.status === 403 ? { ok: false, note: "fal.ai 不认这个密钥" } : { ok: true, note: "有效" };
       }
       case "ELEVENLABS_API_KEY":
         /* ElevenLabs refuses this server's region, so its calls go through a tunnel and cannot be checked from here. */
