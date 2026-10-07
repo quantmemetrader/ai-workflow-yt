@@ -245,9 +245,13 @@ export async function* streamChat(opts: StreamOptions): AsyncGenerator<StreamEve
    * cheaper than stepping down to a weaker model. DeepSeek has one key and no
    * such limit, so there is nothing to retry with.
    */
+  /* Claude, GPT and Gemini go through the studio's Claude key when there is one: they refuse the main account (7 Oct). */
+  const western = /^(anthropic|openai|google)\//.test(backend.model);
   const keys =
     backend.key === "openrouter"
-      ? [env.openrouter.apiKey, env.openrouter.backupKey].filter(Boolean)
+      ? western && env.openrouter.claudeKey
+        ? [env.openrouter.claudeKey]
+        : [env.openrouter.apiKey, env.openrouter.backupKey].filter(Boolean)
       : [backend.apiKey];
 
   const send = (key: string) =>

@@ -42,6 +42,10 @@ export const env = {
     get backupKey(): string {
       return opt("OPENROUTER_API_KEY_BACKUP");
     },
+    /** A second OpenRouter account for Claude, GPT and Gemini, which refuse the studio's Hong Kong account (7 Oct). Optional. */
+    get claudeKey(): string {
+      return opt("OPENROUTER_API_KEY_CLAUDE");
+    },
     baseUrl: opt("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"),
   },
 

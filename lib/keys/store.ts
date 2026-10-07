@@ -17,6 +17,7 @@ import { settings, users } from "@/lib/db/schema";
 
 export type KeyName =
   | "OPENROUTER_API_KEY"
+  | "OPENROUTER_API_KEY_CLAUDE"
   | "DEEPSEEK_API_KEY"
   | "TIKHUB_TOKEN"
   | "ZERNIO_API_KEY"
@@ -28,6 +29,7 @@ export type KeyName =
 
 export const KEYS: { name: KeyName; zh: string; en: string; usesZh: string; uses: string; link: string }[] = [
   { name: "OPENROUTER_API_KEY", zh: "OpenRouter（AI 模型）", en: "OpenRouter (AI models)", usesZh: "所有 AI 同事、助理、写稿和改稿", uses: "Every AI colleague, the assistant, drafting and edits", link: "https://openrouter.ai/settings/keys" },
+  { name: "OPENROUTER_API_KEY_CLAUDE", zh: "OpenRouter（Claude 专用，选填）", en: "OpenRouter for Claude (optional)", usesZh: "Claude、GPT、Gemini 只走这个密钥。它们不接受香港注册的 OpenRouter 账号，所以要用另一个（非香港注册）账号的密钥", uses: "Claude, GPT and Gemini only; they refuse Hong Kong-registered OpenRouter accounts, so this must come from another account", link: "https://openrouter.ai/settings/keys" },
   { name: "DEEPSEEK_API_KEY", zh: "DeepSeek（备用模型）", en: "DeepSeek (backup models)", usesZh: "直接调用 DeepSeek 的模型", uses: "Calling DeepSeek directly", link: "https://platform.deepseek.com/api_keys" },
   { name: "TIKHUB_TOKEN", zh: "TikHub（抖音、小红书等数据）", en: "TikHub (Douyin, Xiaohongshu data)", usesZh: "选题调研、别人的频道数据、视频号作品", uses: "Topic research and other channels' data", link: "https://user.tikhub.io/dashboard/api" },
   { name: "ZERNIO_API_KEY", zh: "Zernio（发布和自有频道）", en: "Zernio (publishing)", usesZh: "发布到各平台、评论收件箱、自有频道数据", uses: "Publishing, the comment inbox, own channel numbers", link: "https://zernio.com" },
@@ -146,6 +148,21 @@ export async function testKey(name: KeyName, value: string): Promise<{ ok: boole
         const cap = (k.body as { data?: { limit_remaining?: number | null } } | null)?.data?.limit_remaining;
         if (left !== null && left <= 0.05) return { ok: false, note: `密钥有效，但账户余额只剩 US$ ${left.toFixed(2)}，先去 OpenRouter 充值` };
         return { ok: true, note: `有效 · 账户余额 US$ ${left !== null ? left.toFixed(2) : "—"}${typeof cap === "number" ? ` · 这个密钥还能用 US$ ${cap.toFixed(2)}` : ""}` };
+      }
+      case "OPENROUTER_API_KEY_CLAUDE": {
+        const base = process.env.OPENROUTER_BASE_URL || "https://openrouter.ai/api/v1";
+        const r = await fetch(`${base}/chat/completions`, {
+          method: "POST",
+          headers: { authorization: `Bearer ${value}`, "content-type": "application/json", "user-agent": "Tengya/1.0" },
+          body: JSON.stringify({ model: "anthropic/claude-sonnet-5.5", max_tokens: 16, messages: [{ role: "user", content: "ok" }] }),
+          signal: AbortSignal.timeout(30_000),
+        });
+        if (r.ok) return { ok: true, note: "有效 · Claude 可以用" };
+        const t = await r.text().catch(() => "");
+        if (r.status === 401) return { ok: false, note: "OpenRouter 不认这个密钥" };
+        if (r.status === 402) return { ok: false, note: "这个账号余额不足，先充值" };
+        if (r.status === 403) return { ok: false, note: "这个账号也被 Claude 拒绝（多半也是香港注册的），需要换一个账号的密钥" };
+        return { ok: false, note: `没通过：${t.slice(0, 80)}` };
       }
       case "DEEPSEEK_API_KEY": {
         const r = await get("https://api.deepseek.com/user/balance", { authorization: `Bearer ${value}` });

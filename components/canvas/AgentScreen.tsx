@@ -1447,6 +1447,10 @@ function isFilesNotice(text: string): boolean {
 
 /** A notice in plain words: the agent's own are written for an admin. */
 function plainNotice(text: string, zh: boolean): string {
+  if (/cannot use the chosen model/i.test(text))
+    return zh
+      ? "选的模型（如 Claude）不接受现在的 OpenRouter 账号，这次由备用模型回答。管理员可以在「员工管理 › 渠道与凭据」加一个 Claude 专用密钥。"
+      : "The chosen model (e.g. Claude) refuses the current OpenRouter account, so a backup model answered. An admin can add a Claude key under People › Channels & credentials.";
   if (/free fallback/i.test(text)) return zh ? "AI 账户余额不足，这次用的是备用模型，回答可能差一些。请管理员充值。" : "The AI account is low, so a backup model answered. Ask an admin to top it up.";
   if (/budget/i.test(text)) return zh ? "这个月的 AI 额度用完了，回答停在了一半。请管理员提高额度。" : "This month's AI allowance is used up, so the answer stopped. Ask an admin to raise it.";
   if (text.startsWith("正在处理附件")) return zh ? "正在读文件…可以先去别的页面，回答会留在这里。" : "Reading the files… you can leave; the answer stays here.";

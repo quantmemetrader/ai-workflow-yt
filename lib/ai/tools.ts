@@ -1,3 +1,5 @@
+import { markdownToHtml } from "@/lib/files/markdown";
+import { toSimplified } from "@/lib/text/simplified";
 import "server-only";
 import { fileTextWithin } from "@/lib/files/extract";
 import { desc, eq, isNull, and } from "drizzle-orm";
@@ -95,7 +97,7 @@ export const TOOL_DEFS: ToolDef[] = [
     function: {
       name: "create_document",
       description:
-        "Write a Markdown document into the employee's own file space — a summary, a brief, a research note. Returns the id so you can tell them where it is. Use it when the employee asks for something written down, not for every answer.",
+        "Write a document into the employee's own files — a summary, a brief, a weekly report, a research note. Write the body in Markdown; it is saved as a formatted document that opens in the browser's document editor and downloads as Word (.docx) or PDF. Use it whenever they ask for a document, a Word file or something written down. Afterwards give them the two links from the result. Never tell them to convert Markdown themselves.",
       parameters: {
         type: "object",
         properties: {
@@ -241,13 +243,12 @@ export async function runTool(
       const title = String(args.title ?? "Untitled").slice(0, 200);
       const body = String(args.body ?? "");
       if (!body.trim()) return { text: "Nothing to write — the body was empty." };
-      const doc = await createDocument(viewer, {
-        name: title.endsWith(".md") ? title : `${title}.md`,
-        text: body,
-        tags: ["agent"],
-      });
+      /* A formatted document, not a .md file (Avon, 7 Oct: "I can't create or download a Word doc"). */
+      const name = title.replace(/\.(md|markdown|docx?|txt)$/i, "");
+      const doc = await createDocument(viewer, { name, text: body, tags: ["agent"] });
+      await db.update(files).set({ docHtml: toSimplified(markdownToHtml(body)) }).where(eq(files.id, doc.id));
       return {
-        text: `Saved as "${doc.name}" (id: ${doc.id}) in their files.`,
+        text: `Saved as the document "${doc.name}" in their files. Give them both links exactly: [打开文档](/docs/${doc.id}) and [下载 Word](/api/docs/${doc.id}/export?format=docx).`,
         citations: [doc.id],
         changed: true,
         artifacts: [{ kind: "file", id: doc.id, title: doc.name, action: "created" }],
