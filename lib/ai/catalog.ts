@@ -31,7 +31,14 @@ const perM = (v: unknown) => {
   return Number.isFinite(n) && n >= 0 ? Math.round(n * 1e6 * 1000) / 1000 : null;
 };
 
+/* Claude, GPT and Gemini refuse the studio's OpenRouter account (7 Oct): listed only once a Claude key is saved, so nobody picks a model that cannot answer. */
+const usable = (list: ProviderModel[]) => (env.openrouter.claudeKey ? list : list.filter((m) => !/^(anthropic|openai|google)$/.test(m.vendor)));
+
 export async function providerModels(): Promise<ProviderModel[]> {
+  return usable(await allProviderModels());
+}
+
+async function allProviderModels(): Promise<ProviderModel[]> {
   if (cache && Date.now() - cache.at < 3_600_000) return cache.list;
   try {
     const res = await fetch(`${env.openrouter.baseUrl}/models`, { headers: { Authorization: `Bearer ${env.openrouter.apiKey}` }, cache: "no-store", signal: AbortSignal.timeout(15_000) });

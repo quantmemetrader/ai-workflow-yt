@@ -19,8 +19,6 @@ export const AUTO_MODEL = "auto";
 
 export const CHAT_MODELS: ChatModel[] = [
   { id: AUTO_MODEL, zh: "自动", en: "Auto", lineZh: "工作室默认，一般选这个", lineEn: "The studio's default — usually right", real: "" },
-  { id: "anthropic/claude-sonnet-5.5", zh: "Claude", en: "Claude", lineZh: "需要配 Claude 专用密钥（渠道与凭据）", lineEn: "Needs the Claude key (Channels & credentials)", real: "Claude Sonnet 5.5" },
-  { id: "anthropic/claude-opus-5.5", zh: "Claude 最强", en: "Claude Opus", lineZh: "需要配 Claude 专用密钥，贵一些", lineEn: "Needs the Claude key; costs more", real: "Claude Opus 5.5" },
   { id: "qwen/qwen3-max", zh: "标准", en: "Standard", lineZh: "中文好，最稳", lineEn: "Strong Chinese, the steady one", real: "Qwen3 Max" },
   { id: "qwen/qwen3.7-max", zh: "最强", en: "Strongest", lineZh: "难的问题、很长的文件", lineEn: "Hard questions, long files", real: "Qwen3.7 Max" },
   { id: "moonshotai/kimi-k2.6", zh: "写稿", en: "Writer", lineZh: "中文文字最自然，改稿用", lineEn: "The most natural Chinese prose", real: "Kimi K2.6" },

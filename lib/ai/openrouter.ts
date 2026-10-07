@@ -247,6 +247,10 @@ export async function* streamChat(opts: StreamOptions): AsyncGenerator<StreamEve
    */
   /* Claude, GPT and Gemini go through the studio's Claude key when there is one: they refuse the main account (7 Oct). */
   const western = /^(anthropic|openai|google)\//.test(backend.model);
+  if (western && backend.key === "openrouter" && !env.openrouter.claudeKey) {
+    /* Refused before it is sent: the caller steps down its fallback chain as for any refusal. */
+    throw new AiError("provider", "prohibited: Claude, GPT and Gemini need the studio's Claude key (Channels & credentials)", 403);
+  }
   const keys =
     backend.key === "openrouter"
       ? western && env.openrouter.claudeKey
