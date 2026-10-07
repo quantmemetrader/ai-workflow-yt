@@ -1,5 +1,6 @@
 "use client";
 
+import { CapcutExport } from "@/components/video/CapcutExport";
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/ui/Icon";
@@ -75,6 +76,7 @@ type Row = { key: string; platform: string; label: string; account: string; acco
 export function PublishStep({
   zh,
   projectId,
+  videoId,
   title,
   status,
   canPublish,
@@ -94,6 +96,8 @@ export function PublishStep({
 }: {
   zh: boolean;
   projectId: string;
+  /** The project's cut (prj_…), for the CapCut export. */
+  videoId?: string | null;
   title: string;
   status: string;
   canPublish: boolean;
@@ -367,6 +371,8 @@ export function PublishStep({
                     {t("下载字幕 SRT", "Download SRT")}
                   </a>
                 ) : null}
+                {/* The same cut as a CapCut / 剪映 draft, for finishing it by hand (7 Oct). */}
+                {videoId ? <CapcutExport projectId={videoId} zh={zh} /> : null}
               </div>
               {renders.length > 1 ? (
                 <div style={{ marginTop: 14 }}>

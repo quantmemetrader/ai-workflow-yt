@@ -69,6 +69,7 @@ export default async function PublishPage({ params }: { params: Promise<{ id: st
     <PublishStep
       zh={zh}
       projectId={p.id}
+      videoId={p.video?.id ?? null}
       title={p.title}
       status={p.status}
       canPublish={p.canPublish}

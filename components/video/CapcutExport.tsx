@@ -1,5 +1,6 @@
 "use client";
 
+import { bigButton } from "@/components/projects/kit";
 import { useCallback, useEffect, useId, useState } from "react";
 import { Icon } from "@/components/ui/Icon";
 import { Badge, field, ghost, solid } from "@/components/ui/kit";
@@ -55,10 +56,12 @@ export function CapcutExport({ projectId, zh, disabled }: { projectId: string; z
         type="button"
         disabled={disabled}
         onClick={() => setOpen(true)}
-        style={{ ...ghost, display: "inline-flex", alignItems: "center", gap: 6, opacity: disabled ? 0.45 : 1 }}
+        style={{ ...bigButton("secondary", disabled), height: 44, padding: "0 18px 0 12px", gap: 10, fontSize: 14.5, fontWeight: 600 }}
         title={t("Export an editable draft for CapCut / JianYing", "导出可继续编辑的剪映 / CapCut 草稿")}
       >
-        <Icon name="scissors" size={14} />
+        {/* CapCut's own mark, so the button is recognised at a glance (7 Oct). */}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/brand/capcut.png" alt="" width={26} height={26} style={{ borderRadius: 6, border: "1px solid #e6e5e0", flexShrink: 0 }} />
         {t("Export to CapCut (editable)", "导出到剪映 / CapCut（可编辑）")}
         {live && latest ? <span style={{ fontSize: 11, color: "#007be0", fontVariantNumeric: "tabular-nums" }}>{Math.round(latest.progress * 100)}%</span> : null}
       </button>
