@@ -32,7 +32,10 @@ const perM = (v: unknown) => {
 };
 
 /* Claude, GPT and Gemini refuse the studio's OpenRouter account (7 Oct): listed only once a Claude key is saved, so nobody picks a model that cannot answer. */
-const usable = (list: ProviderModel[]) => (env.openrouter.claudeKey ? list : list.filter((m) => !/^(anthropic|openai|google)$/.test(m.vendor)));
+const usable = (list: ProviderModel[]) =>
+  env.openrouter.claudeKey
+    ? list
+    : list.filter((m) => (m.vendor === "anthropic" ? Boolean(process.env.ANTHROPIC_API_KEY) : !/^(openai|google)$/.test(m.vendor)));
 
 export async function providerModels(): Promise<ProviderModel[]> {
   return usable(await allProviderModels());

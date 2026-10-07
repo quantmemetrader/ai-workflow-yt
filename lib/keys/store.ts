@@ -16,6 +16,7 @@ import { settings, users } from "@/lib/db/schema";
  */
 
 export type KeyName =
+  | "ANTHROPIC_API_KEY"
   | "OPENROUTER_API_KEY"
   | "OPENROUTER_API_KEY_CLAUDE"
   | "DEEPSEEK_API_KEY"
@@ -30,6 +31,7 @@ export type KeyName =
 
 export const KEYS: { name: KeyName; zh: string; en: string; usesZh: string; uses: string; link: string }[] = [
   { name: "OPENROUTER_API_KEY", zh: "OpenRouter（AI 模型）", en: "OpenRouter (AI models)", usesZh: "所有 AI 同事、助理、写稿和改稿", uses: "Every AI colleague, the assistant, drafting and edits", link: "https://openrouter.ai/settings/keys" },
+  { name: "ANTHROPIC_API_KEY", zh: "Anthropic（Claude 直连，推荐）", en: "Anthropic (Claude direct, recommended)", usesZh: "Claude 直接向 Anthropic 调用，不经过任何中间平台。有这个密钥时，Claude 模型都走这里", uses: "Claude straight from Anthropic, no gateway. With this key, every Claude model goes here", link: "https://platform.claude.com/settings/keys" },
   { name: "OPENROUTER_API_KEY_CLAUDE", zh: "OpenRouter（Claude 专用，选填）", en: "OpenRouter for Claude (optional)", usesZh: "Claude、GPT、Gemini 只走这个密钥。它们不接受香港注册的 OpenRouter 账号，所以要用另一个（非香港注册）账号的密钥", uses: "Claude, GPT and Gemini only; they refuse Hong Kong-registered OpenRouter accounts, so this must come from another account", link: "https://openrouter.ai/settings/keys" },
   { name: "DEEPSEEK_API_KEY", zh: "DeepSeek（备用模型）", en: "DeepSeek (backup models)", usesZh: "直接调用 DeepSeek 的模型", uses: "Calling DeepSeek directly", link: "https://platform.deepseek.com/api_keys" },
   { name: "TIKHUB_TOKEN", zh: "TikHub（抖音、小红书等数据）", en: "TikHub (Douyin, Xiaohongshu data)", usesZh: "选题调研、别人的频道数据、视频号作品", uses: "Topic research and other channels' data", link: "https://user.tikhub.io/dashboard/api" },
@@ -150,6 +152,10 @@ export async function testKey(name: KeyName, value: string): Promise<{ ok: boole
         const cap = (k.body as { data?: { limit_remaining?: number | null } } | null)?.data?.limit_remaining;
         if (left !== null && left <= 0.05) return { ok: false, note: `密钥有效，但账户余额只剩 US$ ${left.toFixed(2)}，先去 OpenRouter 充值` };
         return { ok: true, note: `有效 · 账户余额 US$ ${left !== null ? left.toFixed(2) : "—"}${typeof cap === "number" ? ` · 这个密钥还能用 US$ ${cap.toFixed(2)}` : ""}` };
+      }
+      case "ANTHROPIC_API_KEY": {
+        const { testAnthropicKey } = await import("@/lib/ai/anthropic");
+        return testAnthropicKey(value);
       }
       case "OPENROUTER_API_KEY_CLAUDE": {
         const base = process.env.OPENROUTER_BASE_URL || "https://openrouter.ai/api/v1";

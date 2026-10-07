@@ -27,6 +27,7 @@
     "check:zh": "node --dns-result-order=ipv4first --conditions=react-server --import tsx scripts/check-zh.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "0.131.0",
     "@tiptap/extension-highlight": "^3.31.3",
     "@tiptap/extension-image": "^3.31.3",
     "@tiptap/extension-list": "^3.31.3",

@@ -3,6 +3,7 @@ import "server-only";
 import { ensureKeys } from "@/lib/keys/store";
 import { env } from "@/lib/env";
 import { backendFor, estimateCostMicros } from "@/lib/ai/backend";
+import { isAnthropicDirect, streamAnthropic } from "@/lib/ai/anthropic";
 import { toSimplified } from "@/lib/text/simplified";
 
 /**
@@ -211,6 +212,11 @@ function noThinking(model: string, maxTokens?: number): boolean {
 export async function* streamChat(opts: StreamOptions): AsyncGenerator<StreamEvent> {
   await ensureKeys();
   opts = { ...opts, model: aliasModel(opts.model) };
+  /* Claude straight from Anthropic when the studio has its own Anthropic key (7 Oct): no gateway in between. */
+  if (isAnthropicDirect(opts.model)) {
+    yield* streamAnthropic(opts);
+    return;
+  }
   // Which service answers. See `ai/backend.ts`: DeepSeek while OpenRouter has
   // no credit, OpenRouter the moment it does.
   const backend = backendFor(opts.model);
@@ -556,6 +562,8 @@ async function completeOnce(opts: Omit<StreamOptions, "tools">, attempt = 0): Pr
 /** The same call without streaming: one JSON body back. Kept for callers that need it. */
 export async function completeJson(opts: Omit<StreamOptions, "tools">): Promise<Completion> {
   await ensureKeys();
+  /* Anthropic has no JSON switch of this shape; the prompts already ask for JSON, and callers parse leniently. */
+  if (isAnthropicDirect(aliasModel(opts.model))) return complete(opts);
   /*
    * Which service answers. OpenRouter normally; DeepSeek while the OpenRouter
    * account has no credit and every call would otherwise fall to a free
