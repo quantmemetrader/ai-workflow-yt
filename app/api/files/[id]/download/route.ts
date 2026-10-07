@@ -87,10 +87,14 @@ export async function GET(request: Request, ctx: { params: Promise<{ id: string 
       file.mime === "text/markdown" || file.mime === "text/plain" || file.mime === "application/json"
         ? file.mime
         : "text/plain";
+    /* 下载 means a file on disk (Catherine, 7 Oct: a report from the assistant opened as text in the tab and "the download fails"). */
+    const asFile = params.get("download") === "1";
+    const fname = file.name || "document.md";
+    const ext = /\.[a-z0-9]{1,6}$/i.exec(fname)?.[0] ?? ".md";
     return new Response(file.text ?? "", {
       headers: {
         "Content-Type": `${safeMime}; charset=utf-8`,
-        "Content-Disposition": "inline",
+        "Content-Disposition": asFile ? `attachment; filename="document${ext}"; filename*=UTF-8''${encodeURIComponent(fname)}` : "inline",
         "X-Content-Type-Options": "nosniff",
         "Cache-Control": "private, no-store",
       },
