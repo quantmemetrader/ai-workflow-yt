@@ -9,7 +9,7 @@ import { beginUpload, completeUpload, importVideoBytes } from "@/lib/files/servi
 import { getObject, presignDownload, putObjectConfirmed } from "@/lib/storage/r2";
 import { narrate } from "@/lib/video/tts";
 import { LOCAL_VOICES, voiceLanguage } from "@/lib/video/tts/voices";
-import { voices as elevenVoices } from "@/lib/video/elevenlabs";
+import { relayHeaders, voices as elevenVoices } from "@/lib/video/elevenlabs";
 
 /**
  * 配音和生成 (7 Oct: "a UI for voice generation and video generation, with
@@ -75,7 +75,7 @@ export async function cloneVoice(viewer: Viewer, input: { name: string; fileIds:
     n++;
   }
   if (!n) throw new Error("没找到可用的声音样本，请上传一段 1 分钟以上的清晰录音（mp3、wav 或 m4a）");
-  const res = await fetch(`${env.elevenlabs.baseUrl}/v1/voices/add`, { method: "POST", headers: { "xi-api-key": env.elevenlabs.apiKey }, body: form, signal: AbortSignal.timeout(180_000) });
+  const res = await fetch(`${env.elevenlabs.baseUrl}/voices/add`, { method: "POST", headers: { "xi-api-key": env.elevenlabs.apiKey, ...relayHeaders() }, body: form, signal: AbortSignal.timeout(180_000) });
   if (new URL(res.url).origin !== new URL(env.elevenlabs.baseUrl).origin) throw new Error("ElevenLabs 拒绝了服务器所在的网络，需要先接通（见页面上的说明）");
   const text = await res.text();
   if (!res.ok) {

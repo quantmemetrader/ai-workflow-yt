@@ -35,6 +35,16 @@ export class ElevenLabsUnconfigured extends Error {
 
 const TIMEOUT_MS = Number(process.env.ELEVENLABS_TIMEOUT_MS ?? 15 * 60_000);
 
+/**
+ * ElevenLabs refuses this server's network, so its calls go through a small
+ * relay (ELEVENLABS_BASE_URL) that only answers requests carrying this
+ * secret (7 Oct). Empty when calling ElevenLabs directly.
+ */
+export function relayHeaders(): Record<string, string> {
+  const s = process.env.ELEVENLABS_PROXY_SECRET;
+  return s ? { "x-tg-proxy": s } : {};
+}
+
 function key(): string {
   const k = env.elevenlabs.apiKey;
   if (!k) throw new ElevenLabsUnconfigured();
@@ -73,6 +83,7 @@ async function call<T>(
     method,
     headers: {
       "xi-api-key": key(),
+      ...relayHeaders(),
       ...(init.json ? { "Content-Type": "application/json" } : {}),
     },
     body: init.json ? JSON.stringify(init.json) : init.body,
@@ -222,7 +233,7 @@ export async function speak(
     `${env.elevenlabs.baseUrl}/text-to-speech/${encodeURIComponent(voiceId)}?output_format=mp3_44100_128`,
     {
       method: "POST",
-      headers: { "xi-api-key": key(), "Content-Type": "application/json" },
+      headers: { "xi-api-key": key(), "Content-Type": "application/json", ...relayHeaders() },
       body: JSON.stringify({ text, model_id: modelId }),
       signal: AbortSignal.timeout(TIMEOUT_MS),
     },
