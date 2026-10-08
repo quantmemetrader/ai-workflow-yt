@@ -22,6 +22,8 @@ type Option = {
   what: Record<L, string>;
   you: Record<L, string[]>;
   pay: Record<L, string>;
+  /** How likely it is to work for a Hong Kong studio, and why we think so. */
+  chance: Record<L, string>;
   risk: Record<L, string>;
   link?: { href: string; label: string };
 };
@@ -38,32 +40,12 @@ const STATUS: Record<Status, { zh: string; en: string; tone: string }> = {
 const OPTIONS: Option[] = [
   {
     key: "a",
-    name: { zh: "由我们提供 Claude", en: "We provide Claude" },
-    tag: { zh: "推荐", en: "Recommended" },
-    claude: true,
-    status: "live",
-    what: {
-      zh: "Claude 走我们团队的账号，已经接进平台。你们照常在模型里选 Claude 就行。",
-      en: "Claude runs through our team's account, already connected to the platform. You simply pick Claude in the model list.",
-    },
-    you: { zh: ["不需要做任何事"], en: ["Nothing"] },
-    pay: {
-      zh: "按实际用量结算，用量在平台「员工管理 › 用量看板」里随时可查。结算方式由 Ryan 与你们确认。",
-      en: "Billed on actual usage, visible any time under People › Token dashboard. Ryan confirms how it is settled.",
-    },
-    risk: {
-      zh: "Anthropic 不向香港提供服务，如果它收紧政策，这条通道可能受影响。届时平台会自动改用其他模型回答，不会中断。",
-      en: "Anthropic does not serve Hong Kong; if it tightens enforcement this route can be affected. The platform then answers with another model automatically, so nothing stops.",
-    },
-  },
-  {
-    key: "b",
     name: { zh: "Orbio", en: "Orbio" },
     claude: true,
     status: "ran",
     what: {
-      zh: "一个买 AI 额度的平台：一个密钥就能用 Claude、GPT、Gemini，额度有折扣。它声明只转发请求、不保存对话内容。",
-      en: "A marketplace for AI credits: one key for Claude, GPT and Gemini, sold at a discount. It states it only relays requests and keeps no prompts or answers.",
+      zh: "一个买 AI 额度的平台：一个密钥就能用 Claude、GPT、Gemini，额度有折扣。它建在 OpenRouter 之上，把请求转给 OpenRouter。它声明只转发请求、不保存对话内容。",
+      en: "A marketplace for AI credits: one key for Claude, GPT and Gemini, sold at a discount. It is built on top of OpenRouter and relays requests to it. It states it only relays requests and keeps no prompts or answers.",
     },
     you: {
       zh: ["打开 orbio.so，填金额，点 Buy", "登录并付款", "把生成的密钥发给 Ryan，我们接入并测试"],
@@ -73,78 +55,42 @@ const OPTIONS: Option[] = [
       zh: "网页上直接付款。香港的卡能不能付，需要实际付一次小额才知道。",
       en: "Paid on the site. Whether a Hong Kong card is accepted needs one small payment to find out.",
     },
+    chance: {
+      zh: "我们的平台用它运行过，技术上接得上。香港的卡能否付款还没验证。",
+      en: "Our platform has run on it, so it connects. Whether a Hong Kong card can pay is not verified.",
+    },
     risk: {
-      zh: "平台较新；额度来自其他卖家，折扣和可买数量随时变化。",
-      en: "A young platform; credits come from other sellers, so the discount and the amount on offer change.",
+      zh: "这是一家新公司，建在 OpenRouter 之上。它能运营多久我们不确定，无法保证它一直存在；建议每次只充小额，用多少充多少。",
+      en: "It is a new company, built on top of OpenRouter. We do not know how long it will exist and cannot guarantee that it will; top up small amounts and only what you will use.",
     },
     link: { href: "https://www.orbio.so/", label: "orbio.so" },
   },
   {
-    key: "c",
+    key: "b",
     name: { zh: "B.AI", en: "B.AI" },
     claude: true,
     status: "untested",
     what: {
-      zh: "一个模型转售平台，有 Claude、GPT、Gemini 等。支持支付宝、微信支付、银联和信用卡。",
-      en: "A model reseller offering Claude, GPT, Gemini and more. Accepts Alipay, WeChat Pay, UnionPay and cards.",
+      zh: "一个模型平台。它的文档列出了 Claude Sonnet 5.5、Opus 5.5 等十多个 Claude 模型，以及 GPT、Gemini、Qwen、Kimi 等，标价与官方相同（Sonnet 5.5 每百万字输入 2 美元、输出 10 美元）。",
+      en: "A model platform. Its documentation lists Claude Sonnet 5.5, Opus 5.5 and a dozen more Claude models, plus GPT, Gemini, Qwen and Kimi, at the official list prices (Sonnet 5.5: US$2 in, US$10 out per million tokens).",
     },
     you: {
-      zh: ["打开 b.ai，用 Google 账号登录", "充值，然后创建 API 密钥", "把密钥发给 Ryan，我们接入并测试（约半天）"],
-      en: ["Open b.ai and sign in with Google", "Top up, then create an API key", "Send the key to Ryan; we connect and test it (about half a day)"],
+      zh: ["打开 b.ai，用 Google 账号登录", "充值，然后创建 API 密钥", "把密钥发给 Ryan，我们接入并测试"],
+      en: ["Open b.ai and sign in with Google", "Top up, then create an API key", "Send the key to Ryan; we connect and test it"],
     },
-    pay: { zh: "支付宝、微信支付、银联或信用卡。", en: "Alipay, WeChat Pay, UnionPay or card." },
+    pay: {
+      zh: "文档写明支持信用卡、微信支付、支付宝、银联，也支持加密货币；具体可选的方式以充值页面显示为准，因地区而异。",
+      en: "Its documentation names cards, WeChat Pay, Alipay and UnionPay, and also crypto; the methods actually offered are those shown on the top-up page and vary by region.",
+    },
+    chance: {
+      zh: "它的文档没有列出任何不支持的国家或地区，没有提到香港，反而专门写了中国内地用户如何访问。所以没有迹象显示它会拒绝香港，但我们还没有用真实密钥测过 Claude，测过才能确认。",
+      en: "Its documentation lists no unsupported countries or regions and does not mention Hong Kong; it even explains how users in mainland China can reach it. Nothing suggests it refuses Hong Kong, but we have not yet tested Claude with a real key, and only that confirms it.",
+    },
     risk: {
-      zh: "你们的脚本、合同等内容会经过这家第三方；它的隐私条款写得不具体；公司较新。我们无法确认它提供的 Claude 与官方完全一致，接入后会先测。",
-      en: "Your scripts and contracts pass through this third party; its privacy terms are not specific; the company is young. We cannot confirm its Claude matches the official one until we test it.",
+      zh: "你们的脚本、合同等内容会经过这家第三方。我们在它的网站上没有找到服务条款和隐私政策，也没有写明它的 Claude 来自哪里。公司较新，与加密货币项目有关联。",
+      en: "Your scripts and contracts pass through this third party. We found no terms of service or privacy policy on its site, and it does not say where its Claude capacity comes from. The company is young and tied to a crypto project.",
     },
     link: { href: "https://b.ai/", label: "b.ai" },
-  },
-  {
-    key: "d",
-    name: { zh: "自己的 OpenRouter 账号，用非香港的付款方式", en: "Your own OpenRouter account, paid outside Hong Kong" },
-    claude: true,
-    status: "unsure",
-    what: {
-      zh: "OpenRouter 按账单地址和付款卡判断地区，所以用香港信用卡的账号会被 Claude 和 GPT 拒绝（你们现在的账号就是这样，和 VPN 无关）。换成非香港的卡和账单地址，理论上可以。",
-      en: "OpenRouter decides region from the billing address and card, which is why an account paid with a Hong Kong card is refused by Claude and GPT (as yours is now; a VPN does not change it). A non-Hong Kong card and billing address should work in principle.",
-    },
-    you: {
-      zh: ["准备一张非香港的卡和账单地址", "新开 OpenRouter 账号并充值", "把密钥填进平台「渠道与凭据 › OpenRouter（Claude 专用）」，点「测试」，当场就知道 Claude 认不认"],
-      en: ["A non-Hong Kong card and billing address", "A new OpenRouter account with credit", "Paste the key under Channels & credentials › OpenRouter (Claude) and press Test: it says at once whether Claude accepts it"],
-    },
-    pay: { zh: "非香港发行的信用卡。", en: "A card issued outside Hong Kong." },
-    risk: { zh: "OpenRouter 没有公开它的判断标准，可能再次被拒。", en: "OpenRouter does not publish what it checks; it may be refused again." },
-    link: { href: "https://openrouter.ai/", label: "openrouter.ai" },
-  },
-  {
-    key: "e",
-    name: { zh: "Microsoft Azure OpenAI", en: "Microsoft Azure OpenAI" },
-    claude: false,
-    status: "official",
-    what: {
-      zh: "微软表示继续向香港的合资格企业客户提供 OpenAI 的 GPT 模型（部署在新加坡、日本等邻近地区）。这是香港企业用顶级海外模型的正规途径，但只有 GPT，没有 Claude。",
-      en: "Microsoft has said it continues to offer OpenAI's GPT models to eligible Hong Kong business customers (deployed in nearby regions such as Singapore or Japan). It is the official way for a Hong Kong company to use a top overseas model, but it is GPT only, not Claude.",
-    },
-    you: {
-      zh: ["用公司名义开通 Azure 订阅", "在 Azure 里开通 OpenAI 服务并部署模型", "把密钥发给 Ryan，我们接入（约半天）"],
-      en: ["Open an Azure subscription in the company's name", "Enable the OpenAI service and deploy a model", "Send the key to Ryan; we connect it (about half a day)"],
-    },
-    pay: { zh: "你们自己的 Azure 账单，可用香港信用卡。", en: "Your own Azure bill; a Hong Kong card is fine." },
-    risk: { zh: "开通步骤比较多；没有 Claude。", en: "More setup steps; no Claude." },
-    link: { href: "https://azure.microsoft.com/products/ai-services/openai-service", label: "Azure OpenAI" },
-  },
-  {
-    key: "f",
-    name: { zh: "维持现状，不用 Claude", en: "Stay as you are, without Claude" },
-    claude: false,
-    status: "now",
-    what: {
-      zh: "平台现在用你们自己的 OpenRouter 账号运行 Qwen、Kimi、DeepSeek 和 GLM。中文写作质量好，不受地区限制。",
-      en: "The platform already runs Qwen, Kimi, DeepSeek and GLM on your own OpenRouter account. Strong Chinese writing, and no regional limits.",
-    },
-    you: { zh: ["不需要做任何事"], en: ["Nothing"] },
-    pay: { zh: "你们现有的 OpenRouter 账号。", en: "Your existing OpenRouter account." },
-    risk: { zh: "没有 Claude。", en: "No Claude." },
   },
 ];
 
@@ -163,23 +109,7 @@ export function ClaudeOptions() {
       </header>
 
       <main className="co-main">
-        <h1>{t("怎么用上 Claude：全部方案", "Getting Claude: every option")}</h1>
-        <p className="co-lede">
-          {t(
-            "Anthropic（Claude 的公司）不向香港提供服务：它自己的 API、AWS 和微软的渠道都不接受香港的账单账号，OpenRouter 也按账单地址和付款卡拦截。所以你们新开的 OpenRouter 账号能用 Qwen、Kimi 等模型，但会被 Claude 和 GPT 拒绝。这不是设置问题，和 VPN 也无关。",
-            "Anthropic, the company behind Claude, does not serve Hong Kong: its own API and the AWS and Microsoft channels all refuse Hong Kong billing accounts, and OpenRouter blocks by billing address and card. That is why your new OpenRouter account works for Qwen, Kimi and others but is refused by Claude and GPT. Nothing was set up wrong, and a VPN does not change it.",
-          )}
-        </p>
-        <p className="co-lede">{t("下面是所有可行的路。选一个告诉 Ryan，接入和测试由我们来做。", "Below is every route that exists. Pick one and tell Ryan; we do the connecting and testing.")}</p>
-
-        <section className="co-now">
-          <div className="co-now-title">{t("现在的状态", "Where things stand today")}</div>
-          <ul>
-            <li>{t("平台正常运行：Qwen、Kimi、DeepSeek、GLM 用的是你们自己的账号。", "The platform is running: Qwen, Kimi, DeepSeek and GLM use your own account.")}</li>
-            <li>{t("Claude 已经可以选用，走的是方案 A。", "Claude can already be selected; it runs on option A.")}</li>
-          </ul>
-        </section>
-
+        <h1>{t("怎么用上 Claude：可选方案", "Getting Claude: the options")}</h1>
         <div className="co-table-wrap">
           <table className="co-table">
             <thead>
@@ -238,6 +168,10 @@ export function ClaudeOptions() {
                 <dd>{o.pay[lang]}</dd>
               </div>
               <div>
+                <dt>{t("在香港能用的把握", "Will it work from Hong Kong")}</dt>
+                <dd>{o.chance[lang]}</dd>
+              </div>
+              <div>
                 <dt>{t("要知道的风险", "What to know")}</dt>
                 <dd>{o.risk[lang]}</dd>
               </div>
@@ -251,13 +185,12 @@ export function ClaudeOptions() {
         ))}
 
         <section className="co-advice">
-          <h2>{t("我们的建议", "What we suggest")}</h2>
+          <h2>{t("怎么选", "How to choose")}</h2>
           <ul>
-            <li>{t("想马上用、不想操心：选 A。今天就能用，你们什么都不用做。", "To use it now with no effort: A. It works today and asks nothing of you.")}</li>
-            <li>{t("想用自己的账号付款：B（Orbio）或 C（B.AI）。告诉我们选哪个，我们先接入测试，确认好用再给你们用。", "To pay through your own account: B (Orbio) or C (B.AI). Tell us which; we connect and test it first, and hand it over once it is confirmed.")}</li>
-            <li>{t("想要一条官方认可、不会被切断的海外模型：E（Azure 的 GPT），可以和上面任何一个同时用。", "For an officially permitted overseas model that will not be cut off: E (GPT on Azure), alongside any of the above.")}</li>
+            <li>{t("两个都需要先充一小笔，把密钥发给 Ryan。我们用真实请求测 Claude，确认能用再正式接入。", "Either way, top up a small amount first and send the key to Ryan. We test Claude with real requests and connect it only once it works.")}</li>
+            <li>{t("先充小额。两家都是新平台，不要一次充很多。", "Start small. Both are new services; do not top up a large amount at once.")}</li>
           </ul>
-          <p>{t("无论选哪个，平台都会保留自动切换：一个模型用不了，就换另一个回答，工作不会停。", "Whichever you choose, the platform keeps its automatic fallback: if one model is unavailable another answers, so work does not stop.")}</p>
+          <p>{t("无论选哪个，平台都会保留自动切换：Claude 用不了时，换另一个模型回答，工作不会停。", "Whichever you choose, the platform keeps its automatic fallback: when Claude is unavailable another model answers, so work does not stop.")}</p>
         </section>
 
         <footer className="co-foot">{t("最后更新：2026 年 10 月 9 日 · 有问题找 Ryan", "Last updated 9 Oct 2026 · Questions to Ryan")}</footer>
