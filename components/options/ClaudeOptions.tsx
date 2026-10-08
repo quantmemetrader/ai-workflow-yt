@@ -302,7 +302,8 @@ body { overflow: auto !important; }
 .co-card dl > div { display: grid; grid-template-columns: 120px 1fr; gap: 12px; padding-top: 10px; border-top: 1px solid #f0eee7; }
 .co-card dt { font-size: 12.5px; font-weight: 600; color: #6b675f; padding-top: 2px; }
 .co-card dd { margin: 0; }
-.co-card ol { margin: 0; padding-left: 20px; }
+.co-card ol { margin: 0; padding-left: 20px; list-style: decimal; }
+.co-now ul, .co-advice ul { list-style: disc; }
 .co-link { display: inline-block; margin-top: 14px; font-size: 13.5px; font-weight: 500; color: #1f448f; text-decoration: none; }
 .co-link:hover { text-decoration: underline; }
 .co-advice { margin-top: 26px; padding: 20px; border-radius: 14px; background: #1c1b19; color: #f3f1ea; }
