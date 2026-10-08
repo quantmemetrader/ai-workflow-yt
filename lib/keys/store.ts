@@ -3,6 +3,7 @@ import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:
 import { eq, like } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { settings, users } from "@/lib/db/schema";
+import { claudeGatewayBase, gatewayModel, GATEWAYS } from "@/lib/ai/claude-gateway";
 
 /**
  * API keys the studio changes itself, from 员工管理 › 渠道与凭据 (6 Oct: the
@@ -19,6 +20,7 @@ export type KeyName =
   | "ANTHROPIC_API_KEY"
   | "OPENROUTER_API_KEY"
   | "OPENROUTER_API_KEY_CLAUDE"
+  | "CLAUDE_GATEWAY_URL"
   | "DEEPSEEK_API_KEY"
   | "TIKHUB_TOKEN"
   | "ZERNIO_API_KEY"
@@ -29,10 +31,11 @@ export type KeyName =
   | "UNSPLASH_ACCESS_KEY"
   | "FAL_KEY";
 
-export const KEYS: { name: KeyName; zh: string; en: string; usesZh: string; uses: string; link: string }[] = [
+export const KEYS: { name: KeyName; zh: string; en: string; usesZh: string; uses: string; link: string; choices?: { label: string; value: string }[] }[] = [
   { name: "OPENROUTER_API_KEY", zh: "OpenRouter（AI 模型）", en: "OpenRouter (AI models)", usesZh: "所有 AI 同事、助理、写稿和改稿", uses: "Every AI colleague, the assistant, drafting and edits", link: "https://openrouter.ai/settings/keys" },
   { name: "ANTHROPIC_API_KEY", zh: "Anthropic（Claude 直连，推荐）", en: "Anthropic (Claude direct, recommended)", usesZh: "Claude 直接向 Anthropic 调用，不经过任何中间平台。有这个密钥时，Claude 模型都走这里", uses: "Claude straight from Anthropic, no gateway. With this key, every Claude model goes here", link: "https://platform.claude.com/settings/keys" },
-  { name: "OPENROUTER_API_KEY_CLAUDE", zh: "OpenRouter（Claude 专用，选填）", en: "OpenRouter for Claude (optional)", usesZh: "Claude、GPT、Gemini 只走这个密钥。它们不接受香港注册的 OpenRouter 账号，所以要用另一个（非香港注册）账号的密钥", uses: "Claude, GPT and Gemini only; they refuse Hong Kong-registered OpenRouter accounts, so this must come from another account", link: "https://openrouter.ai/settings/keys" },
+  { name: "CLAUDE_GATEWAY_URL", zh: "Claude 通道：用哪家平台", en: "Claude gateway: which service", usesZh: "下面这把「Claude 通道密钥」是哪家平台的。不选就是 OpenRouter", uses: "Which service the Claude gateway key below belongs to. Unset means OpenRouter", link: "/claude-options", choices: GATEWAYS.map((g) => ({ label: g.name, value: g.base })) },
+  { name: "OPENROUTER_API_KEY_CLAUDE", zh: "Claude 通道密钥（OpenRouter、Orbio、B.AI 等）", en: "Claude gateway key (OpenRouter, Orbio, B.AI…)", usesZh: "Claude、GPT、Gemini 只走这个密钥。它们不接受香港注册的 OpenRouter 账号，所以要用另一个（非香港注册）账号的密钥", uses: "Claude, GPT and Gemini only; they refuse Hong Kong-registered OpenRouter accounts, so this must come from another account", link: "https://openrouter.ai/settings/keys" },
   { name: "DEEPSEEK_API_KEY", zh: "DeepSeek（备用模型）", en: "DeepSeek (backup models)", usesZh: "直接调用 DeepSeek 的模型", uses: "Calling DeepSeek directly", link: "https://platform.deepseek.com/api_keys" },
   { name: "TIKHUB_TOKEN", zh: "TikHub（抖音、小红书等数据）", en: "TikHub (Douyin, Xiaohongshu data)", usesZh: "选题调研、别人的频道数据、视频号作品", uses: "Topic research and other channels' data", link: "https://user.tikhub.io/dashboard/api" },
   { name: "ZERNIO_API_KEY", zh: "Zernio（发布和自有频道）", en: "Zernio (publishing)", usesZh: "发布到各平台、评论收件箱、自有频道数据", uses: "Publishing, the comment inbox, own channel numbers", link: "https://zernio.com" },
@@ -157,15 +160,22 @@ export async function testKey(name: KeyName, value: string): Promise<{ ok: boole
         const { testAnthropicKey } = await import("@/lib/ai/anthropic");
         return testAnthropicKey(value);
       }
+      case "CLAUDE_GATEWAY_URL": {
+        if (!/^https:\/\/[a-z0-9.-]+(\/[A-Za-z0-9._/-]*)?$/.test(value)) return { ok: false, note: "这不是一个 https 地址" };
+        const r = await fetch(`${value.replace(/\/+$/, "")}/models`, { headers: { "user-agent": "Tengya/1.0" }, signal: AbortSignal.timeout(15_000) });
+        return r.status < 500 ? { ok: true, note: "连得上。接着在下面填这家平台的密钥并测试" } : { ok: false, note: "这个地址现在连不上" };
+      }
       case "OPENROUTER_API_KEY_CLAUDE": {
-        const base = process.env.OPENROUTER_BASE_URL || "https://openrouter.ai/api/v1";
+        /* A real, tiny Claude call on whichever gateway is chosen: the only test that proves the key gets Claude. */
+        const base = claudeGatewayBase();
+        const model = await gatewayModel(base, value, "anthropic/claude-sonnet-5.5");
         const r = await fetch(`${base}/chat/completions`, {
           method: "POST",
           headers: { authorization: `Bearer ${value}`, "content-type": "application/json", "user-agent": "Tengya/1.0" },
-          body: JSON.stringify({ model: "anthropic/claude-sonnet-5.5", max_tokens: 16, messages: [{ role: "user", content: "ok" }] }),
+          body: JSON.stringify({ model, max_tokens: 64, messages: [{ role: "user", content: "ok" }] }),
           signal: AbortSignal.timeout(30_000),
         });
-        if (r.ok) return { ok: true, note: "有效 · Claude 可以用" };
+        if (r.ok) return { ok: true, note: `有效 · Claude 可以用（${model}）` };
         const t = await r.text().catch(() => "");
         if (r.status === 401) return { ok: false, note: "OpenRouter 不认这个密钥" };
         if (r.status === 402) return { ok: false, note: "这个账号余额不足，先充值" };
@@ -237,7 +247,7 @@ export async function removeKey(name: KeyName) {
   last = Date.now();
 }
 
-export type KeyStatus = { name: KeyName; zh: string; en: string; usesZh: string; uses: string; link: string; source: "site" | "server" | "none"; savedAt: string | null; savedBy: string | null };
+export type KeyStatus = { name: KeyName; zh: string; en: string; usesZh: string; uses: string; link: string; choices?: { label: string; value: string }[]; source: "site" | "server" | "none"; savedAt: string | null; savedBy: string | null };
 
 /** For the screen: which keys are set and where from. Never a value. */
 export async function keyStatus(zh: boolean): Promise<KeyStatus[]> {

@@ -4,6 +4,7 @@ import { ensureKeys } from "@/lib/keys/store";
 import { env } from "@/lib/env";
 import { backendFor, estimateCostMicros } from "@/lib/ai/backend";
 import { isAnthropicDirect, streamAnthropic } from "@/lib/ai/anthropic";
+import { gatewayModel } from "@/lib/ai/claude-gateway";
 import { toSimplified } from "@/lib/text/simplified";
 
 /**
@@ -220,7 +221,11 @@ export async function* streamChat(opts: StreamOptions): AsyncGenerator<StreamEve
   // Which service answers. See `ai/backend.ts`: DeepSeek while OpenRouter has
   // no credit, OpenRouter the moment it does.
   const backend = backendFor(opts.model);
+  /* Another gateway spells the model its own way: looked up in its list, not guessed. */
+  if (backend.key === "gateway") backend.model = await gatewayModel(backend.baseUrl, backend.apiKey, backend.model);
   const provider = backend.key === "openrouter" ? providerPolicy(Boolean(opts.tools?.length)) : undefined;
+  /* Sonnet 5.5 and Opus 5.5 reject a sampling setting; OpenRouter filters it for us, a plain gateway passes it on. */
+  const plainClaude = backend.key === "gateway" && /claude/i.test(backend.model);
   const body = {
     model: backend.model,
     messages: opts.messages,
@@ -229,11 +234,12 @@ export async function* streamChat(opts: StreamOptions): AsyncGenerator<StreamEve
     // number the token ledger records, not an estimate of ours. DeepSeek has
     // no such option and ignores it; its cost is estimated from tokens.
     ...(backend.reportsCost ? { usage: { include: true } } : {}),
+    ...(backend.key === "gateway" ? { stream_options: { include_usage: true } } : {}),
     ...(opts.tools?.length ? { tools: opts.tools, tool_choice: "auto" } : {}),
-    ...(opts.temperature !== undefined ? { temperature: opts.temperature } : {}),
+    ...(opts.temperature !== undefined && !plainClaude ? { temperature: opts.temperature } : {}),
     ...(opts.maxTokens ? { max_tokens: opts.maxTokens } : {}),
     ...(opts.user ? { user: opts.user } : {}),
-    ...(opts.reasoning ? { reasoning: opts.reasoning } : noThinking(backend.model, opts.maxTokens) ? { reasoning: { enabled: false } } : {}),
+    ...(backend.key === "gateway" ? {} : opts.reasoning ? { reasoning: opts.reasoning } : noThinking(backend.model, opts.maxTokens) ? { reasoning: { enabled: false } } : {}),
     ...(provider ? { provider } : {}),
   };
 
@@ -394,7 +400,10 @@ export async function* streamChat(opts: StreamOptions): AsyncGenerator<StreamEve
         const promptTokens = Number(chunk.usage.prompt_tokens ?? 0);
         const completionTokens = Number(chunk.usage.completion_tokens ?? 0);
         // OpenRouter reports cost in dollars; micros keeps the arithmetic exact.
-        const costMicros = usdToMicros(chunk.usage.cost);
+        const costMicros =
+          chunk.usage.cost === undefined && backend.rates
+            ? Math.round(promptTokens * backend.rates.inPerM + completionTokens * backend.rates.outPerM)
+            : usdToMicros(chunk.usage.cost);
         const step = {
           promptTokens: promptTokens - sent.promptTokens,
           completionTokens: completionTokens - sent.completionTokens,

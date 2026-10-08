@@ -2,6 +2,7 @@ import "server-only";
 import "@/lib/keys/boot";
 import { env } from "@/lib/env";
 import { modelChoice } from "@/lib/ai/choice";
+import { claudeGatewayBase, listRates, speaksOpenRouter } from "@/lib/ai/claude-gateway";
 
 /**
  * Which service actually answers, and on what terms.
@@ -25,7 +26,8 @@ import { modelChoice } from "@/lib/ai/choice";
  * change.
  */
 export type Backend = {
-  key: "openrouter" | "deepseek";
+  /** `gateway`: another service that speaks chat-completions, used for Claude, GPT and Gemini (lib/ai/claude-gateway). */
+  key: "openrouter" | "deepseek" | "gateway";
   baseUrl: string;
   apiKey: string;
   /** The id this backend knows the model by. */
@@ -38,6 +40,8 @@ export type Backend = {
    * Admin screens say which is which.
    */
   reportsCost: boolean;
+  /** List prices to estimate from when the response carries tokens but no cost. */
+  rates?: { inPerM: number; outPerM: number };
 };
 
 /**
@@ -119,9 +123,17 @@ export function backendFor(model: string): Backend {
     };
   }
 
+  /* Claude, GPT and Gemini on a gateway that is not OpenRouter (or its relay): its address, its key, and no OpenRouter-only extras. */
+  const western = /^(anthropic|openai|google)\//.test(model);
+  const gateway = claudeGatewayBase();
+  if (western && env.openrouter.claudeKey && !speaksOpenRouter(gateway)) {
+    return { key: "gateway", baseUrl: gateway, apiKey: env.openrouter.claudeKey, model, headers: {}, reportsCost: false, rates: listRates(model) };
+  }
+
   return {
     key: "openrouter",
-    baseUrl: env.openrouter.baseUrl,
+    /* The Claude key may be an OpenRouter relay's (Orbio): same format, its own address. */
+    baseUrl: western && env.openrouter.claudeKey ? gateway : env.openrouter.baseUrl,
     apiKey: env.openrouter.apiKey,
     /* Only ever an id OpenRouter can resolve. A bare one reaching here with
        no DeepSeek key to catch it would come back 400 with the whole turn

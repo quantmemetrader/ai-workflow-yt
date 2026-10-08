@@ -92,7 +92,18 @@ export function ApiKeys({ keys, zh }: { keys: KeyStatus[]; zh: boolean }) {
               {n ? <div className={n.ok ? "ak-ok" : "ak-bad"}>{n.note}</div> : null}
               {open === k.name ? (
                 <div className="ak-edit">
+                  {k.choices ? (
+                    <select value={value} onChange={(e) => setValue(e.target.value)} aria-label={zh ? k.zh : k.en} style={{ flex: 1, minWidth: 220, height: 32, border: "1px solid #dadce0", borderRadius: 8, padding: "0 8px", font: "inherit", fontSize: 13 }}>
+                      <option value="">{t("选一家平台", "Choose a service")}</option>
+                      {k.choices.map((c) => (
+                        <option key={c.value} value={c.value}>
+                          {c.label}
+                        </option>
+                      ))}
+                    </select>
+                  ) : null}
                   <input
+                    hidden={Boolean(k.choices)}
                     type="password"
                     autoComplete="off"
                     spellCheck={false}
