@@ -28,6 +28,8 @@ const PUBLIC = [
   /^\/invite\/[^/]+$/,
   /* The user guide is for anyone with the link (the owner, 2 Oct): no sign-in. */
   /^\/userguide$/,
+  /* Every route to Claude, for the studio to choose from: anyone with the link (Ryan, 9 Oct). */
+  /^\/claude-options$/,
   /^\/api\/health$/,
   /* The favicon, the home-screen icon and the link preview. Drawn by routes
      rather than served as files, so the asset exclusion in `matcher` misses
