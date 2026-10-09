@@ -21,6 +21,10 @@ export const GATEWAYS: { id: string; name: string; base: string }[] = [
   { id: "aimlapi", name: "AIMLAPI", base: "https://api.aimlapi.com/v1" },
   { id: "vercel", name: "Vercel AI Gateway", base: "https://ai-gateway.vercel.sh/v1" },
   { id: "poe", name: "Poe", base: "https://api.poe.com/v1" },
+  { id: "aihubmix", name: "AiHubMix", base: "https://aihubmix.com/v1" },
+  { id: "ohmygpt", name: "OhMyGPT", base: "https://api.ohmygpt.com/v1" },
+  { id: "cometapi", name: "CometAPI", base: "https://api.cometapi.com/v1" },
+  { id: "helicone", name: "Helicone", base: "https://ai-gateway.helicone.ai/v1" },
 ];
 
 const OPENROUTER = GATEWAYS[0].base;
