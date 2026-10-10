@@ -6,6 +6,7 @@ import { jobs } from "@/lib/db/schema";
 import { getViewer } from "@/lib/auth/dal";
 import { enqueue } from "@/lib/jobs/queue";
 import { cloneVoice, HOST_ENGINES, speakToFile, studioVoices, VIDEO_MODELS } from "@/lib/studio/service";
+import { localGeneratorUp } from "@/lib/video/stock";
 
 async function maker() {
   const viewer = await getViewer();
@@ -78,6 +79,19 @@ export async function talkingHostAction(input: { hostFileId: unknown; text?: unk
   if (text.length > 1500) return { error: "一次最多 1500 字（约 5 分钟），长稿分几段生成" };
   const engine = HOST_ENGINES.some((e) => e.id === input.engine) ? (input.engine as string) : null;
   const job = await enqueue({ tenantId: viewer.tenantId, type: "media.talkingHost", module: "video", payload: { hostFileId, text, voiceId, audioFileId, engine }, createdBy: viewer.id, priority: 6 });
+  return { jobId: job.id };
+}
+
+/** AI 生成图片: a cutaway still, made in the background and kept in Files. */
+export async function generatePictureAction(input: { prompt: unknown; aspect: unknown; engine: unknown }) {
+  const viewer = await maker();
+  if (!viewer) return { error: "你没有视频模块的权限" };
+  const prompt = typeof input.prompt === "string" ? input.prompt.trim() : "";
+  if (prompt.length < 4) return { error: "描述画面：谁、在哪、什么光线、什么镜头" };
+  const aspect = input.aspect === "landscape" || input.aspect === "square" ? input.aspect : "portrait";
+  const engine = input.engine === "pollinations" ? "pollinations" : "local";
+  if (engine === "local" && !(await localGeneratorUp()).up) return { error: "本机生成器没在运行，先选 Pollinations，或请管理员重启它" };
+  const job = await enqueue({ tenantId: viewer.tenantId, type: "media.generatePicture", module: "video", payload: { prompt, aspect, engine }, createdBy: viewer.id, priority: 7 });
   return { jobId: job.id };
 }
 

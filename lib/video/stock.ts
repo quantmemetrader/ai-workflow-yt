@@ -456,16 +456,48 @@ async function poolById(id: string): Promise<StockImage | null> {
 
 /* ------------------------------------------------------------ a picture that does not exist yet */
 
-export type MadePicture = { bytes: Uint8Array; mime: string; width: number; height: number; prompt: string; source: string };
+export type MadePicture = { bytes: Uint8Array; mime: string; width: number; height: number; prompt: string; source: string; engine: "local" | "pollinations" };
+
+const LOCAL_GEN = "http://127.0.0.1:7861";
+
+/** Whether the server's own generator (Z-Image-Turbo under pm2) is up. */
+export async function localGeneratorUp(): Promise<{ up: boolean; busy: boolean }> {
+  try {
+    const r = await fetch(`${LOCAL_GEN}/health`, { signal: AbortSignal.timeout(2_500), cache: "no-store" });
+    const j = r.ok ? ((await r.json()) as { ok?: boolean; busy?: boolean }) : null;
+    return { up: Boolean(j?.ok), busy: Boolean(j?.busy) };
+  } catch {
+    return { up: false, busy: false };
+  }
+}
 
 /**
  * A picture made from words, free, through Pollinations (FLUX): the cinematic
  * still a reel cuts to when no photograph of the idea exists (10 Oct: "the
  * high-end images on Varun Mayya's reels, without paying for them").
  */
-export async function generatePicture(prompt: string, aspect: "portrait" | "landscape" | "square" = "portrait"): Promise<MadePicture> {
+export async function generatePicture(
+  prompt: string,
+  aspect: "portrait" | "landscape" | "square" = "portrait",
+  opts: { engine?: "local" | "pollinations"; onProgress?: (f: number) => void } = {},
+): Promise<MadePicture> {
   const words = prompt.trim().slice(0, 600);
   if (!words) throw new Error("先描述画面");
+  if (opts.engine === "local") {
+    /* Z-Image-Turbo on this machine: the best picture, free, about five minutes; progress is time against that. */
+    const [w, h] = aspect === "portrait" ? [768, 1344] : aspect === "square" ? [1024, 1024] : [1344, 768];
+    const started = Date.now();
+    const tick = setInterval(() => opts.onProgress?.(Math.min(0.95, 0.05 + ((Date.now() - started) / 340_000) * 0.9)), 5000);
+    try {
+      const res = await fetch(`${LOCAL_GEN}/generate`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ prompt: words, width: w, height: h, steps: 8 }), signal: AbortSignal.timeout(20 * 60_000) }).catch(() => null);
+      if (!res?.ok) throw new Error(`本机生成器没有出图${res ? `（${res.status}）` : "（没在运行）"}`);
+      const bytes = new Uint8Array(await res.arrayBuffer());
+      if (bytes.byteLength < 10_000) throw new Error("本机生成器出的图是空的，再试一次");
+      return { bytes, mime: "image/jpeg", width: w, height: h, prompt: words, source: "local://z-image-turbo", engine: "local" };
+    } finally {
+      clearInterval(tick);
+    }
+  }
   const [width, height] = aspect === "portrait" ? [1080, 1920] : aspect === "square" ? [1080, 1080] : [1920, 1080];
   const seed = Math.floor(Math.random() * 1_000_000);
   const source = `https://image.pollinations.ai/prompt/${encodeURIComponent(words)}?width=${width}&height=${height}&model=flux&nologo=true&enhance=true&seed=${seed}`;
@@ -474,7 +506,7 @@ export async function generatePicture(prompt: string, aspect: "portrait" | "land
   const mime = (res.headers.get("content-type") ?? "image/jpeg").split(";")[0].trim();
   const bytes = new Uint8Array(await res.arrayBuffer());
   if (!mime.startsWith("image/") || bytes.byteLength < 10_000) throw new Error("图片没生成出来，再试一次");
-  return { bytes, mime, width, height, prompt: words, source };
+  return { bytes, mime, width, height, prompt: words, source, engine: "pollinations" };
 }
 
 /**

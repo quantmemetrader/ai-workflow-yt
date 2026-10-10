@@ -34,6 +34,8 @@ import { makeCovers } from "../lib/video/cover";
 import { exportCapcut, type CapcutOptions } from "../lib/video/capcut/export";
 import { importLink } from "../lib/media/link-import";
 import { generateVideo, talkingHost } from "../lib/studio/service";
+import { generatePicture } from "../lib/video/stock";
+import { importPictureBytes } from "../lib/files/service";
 import { narrateDone, narrateFailed, narrateStart } from "../lib/agents/narrate";
 import { direct } from "../lib/video/director";
 import { refreshCreatorMemory } from "../lib/creator/service";
@@ -77,6 +79,7 @@ const TIMEOUT_BY_TYPE: Record<string, number> = {
   "media.importLink": 20 * 60_000,
   "media.generateVideo": 20 * 60_000,
   "media.talkingHost": 30 * 60_000,
+  "media.generatePicture": 30 * 60_000,
   // Transcribe, cut, design and render, end to end.
   "video.direct": 120 * 60_000,
   "video.transcribe": 45 * 60_000,
@@ -296,6 +299,26 @@ const HANDLERS: Record<string, Handler> = {
     const viewer = job.createdBy ? await viewerById(job.createdBy) : null;
     if (!viewer) return { skipped: "no viewer" };
     return generateVideo(viewer, p, (f) => void jobProgress(job.id, f).catch(() => {}));
+  },
+
+  /* AI 生成图片: a cutaway still made on this machine or on Pollinations, kept in Files (10 Oct). */
+  "media.generatePicture": async (job) => {
+    const p = job.payload as { prompt: string; aspect: "portrait" | "landscape" | "square"; engine: "local" | "pollinations" };
+    const viewer = job.createdBy ? await viewerById(job.createdBy) : null;
+    if (!viewer) return { skipped: "no viewer" };
+    void jobProgress(job.id, 0.03).catch(() => {});
+    const made = await generatePicture(p.prompt, p.aspect, { engine: p.engine, onProgress: (f) => void jobProgress(job.id, f).catch(() => {}) });
+    const brought = await importPictureBytes(viewer, {
+      bytes: made.bytes,
+      mime: made.mime,
+      name: `AI 画面 · ${p.prompt.replace(/\s+/g, " ").slice(0, 40)}`,
+      attribution: made.engine === "local" ? "AI 生成（Z-Image-Turbo，本机）" : "AI 生成（Pollinations · FLUX）",
+      source: made.source,
+      width: made.width,
+      height: made.height,
+      tags: ["ai-generated"],
+    });
+    return { fileId: brought.id, name: brought.name };
   },
 
   /* 主持人口播: the host's photo or clip made to say the words (10 Oct). */

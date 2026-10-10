@@ -4,11 +4,11 @@ import * as React from "react";
 import Link from "next/link";
 import { notify } from "@/lib/client/notify";
 import { uploadFiles } from "@/lib/client/upload";
-import { cloneVoiceAction, generateVideoAction, speakAction, studioJobsAction, studioVoicesAction, talkingHostAction } from "@/app/(app)/studio/actions";
+import { cloneVoiceAction, generatePictureAction, generateVideoAction, speakAction, studioJobsAction, studioVoicesAction, talkingHostAction } from "@/app/(app)/studio/actions";
 
 type Voice = { id: string; name: string; lang: "zh" | "en" | null; gender: string | null; source: "local" | "elevenlabs" };
 type Model = { id: string; zh: string; en: string; noteZh: string; image: string | null };
-type Tab = "host" | "voice" | "clone" | "video";
+type Tab = "host" | "voice" | "clone" | "image" | "video";
 type Engine = { id: string; for: "image" | "video"; zh: string; en: string; noteZh: string };
 
 /**
@@ -16,7 +16,7 @@ type Engine = { id: string; for: "image" | "video"; zh: string; en: string; note
  * and a short video from a description. Each says plainly what it needs
  * when something is not set up, and everything made goes to Files.
  */
-export function StudioScreen({ zh, models, engines, falReady, isAdmin }: { zh: boolean; models: Model[]; engines: Engine[]; falReady: boolean; isAdmin: boolean }) {
+export function StudioScreen({ zh, models, engines, imageLocal, falReady, isAdmin }: { zh: boolean; models: Model[]; engines: Engine[]; imageLocal: boolean; falReady: boolean; isAdmin: boolean }) {
   const t = (a: string, b: string) => (zh ? a : b);
   const [tab, setTab] = React.useState<Tab>("host");
   const [voices, setVoices] = React.useState<Voice[] | null>(null);
@@ -36,10 +36,10 @@ export function StudioScreen({ zh, models, engines, falReady, isAdmin }: { zh: b
       <style>{CSS}</style>
       <div className="st-head">
         <h1>{t("配音和生成", "Voice & video")}</h1>
-        <p>{t("让主持人照着稿子说话、把文字变成配音、克隆一个声音、用一句话生成一段视频。做好的都放在「文件」里，可以直接拖进剪辑。", "Text to voice-over, clone a voice, or make a short video from a sentence. Everything goes to Files, ready to edit.")}</p>
+        <p>{t("让主持人照着稿子说话、把文字变成配音、克隆一个声音、生成剪辑用的画面、用一句话生成一段视频。做好的都放在「文件」里，可以直接拖进剪辑。", "Text to voice-over, clone a voice, or make a short video from a sentence. Everything goes to Files, ready to edit.")}</p>
       </div>
       <div className="st-tabs" role="tablist">
-        {([["host", t("主持人口播", "Host talking")], ["voice", t("配音", "Voice-over")], ["clone", t("克隆声音", "Clone a voice")], ["video", t("AI 生成视频", "AI video")]] as [Tab, string][]).map(([k, label]) => (
+        {([["host", t("主持人口播", "Host talking")], ["voice", t("配音", "Voice-over")], ["clone", t("克隆声音", "Clone a voice")], ["image", t("AI 生成图片", "AI pictures")], ["video", t("AI 生成视频", "AI video")]] as [Tab, string][]).map(([k, label]) => (
           <button key={k} role="tab" aria-selected={tab === k} className="st-tab" data-on={tab === k ? "" : undefined} onClick={() => setTab(k)}>
             {label}
           </button>
@@ -48,6 +48,7 @@ export function StudioScreen({ zh, models, engines, falReady, isAdmin }: { zh: b
       {tab === "host" ? <HostPanel zh={zh} voices={voices} eleven={eleven} engines={engines} ready={falReady} isAdmin={isAdmin} onClone={() => setTab("clone")} /> : null}
       {tab === "voice" ? <VoicePanel zh={zh} voices={voices} eleven={eleven} isAdmin={isAdmin} /> : null}
       {tab === "clone" ? <ClonePanel zh={zh} eleven={eleven} isAdmin={isAdmin} onCloned={() => { loadVoices(); setTab("voice"); }} /> : null}
+      {tab === "image" ? <ImagePanel zh={zh} local={imageLocal} /> : null}
       {tab === "video" ? <VideoPanel zh={zh} models={models} ready={falReady} isAdmin={isAdmin} /> : null}
     </div>
   );
@@ -321,6 +322,79 @@ function ClonePanel({ zh, eleven, isAdmin, onCloned }: { zh: boolean; eleven: st
       <button type="button" className="st-solid" disabled={busy || !name.trim() || !samples.length || eleven !== "ok"} onClick={() => void go()}>
         {busy ? t("克隆中…", "Cloning…") : t("克隆这个声音", "Clone this voice")}
       </button>
+    </div>
+  );
+}
+
+/** AI 生成图片: the cinematic still a reel cuts to; made on this machine (free, about five minutes) or on Pollinations (seconds). */
+function ImagePanel({ zh, local }: { zh: boolean; local: boolean }) {
+  const t = (a: string, b: string) => (zh ? a : b);
+  const [prompt, setPrompt] = React.useState("");
+  const [aspect, setAspect] = React.useState<"portrait" | "landscape" | "square">("portrait");
+  const [engine, setEngine] = React.useState<"local" | "pollinations">(local ? "local" : "pollinations");
+  const [rows, setRows] = React.useState<{ jobId: string; prompt: string; status: string; progress: number; error: string | null; fileId?: string }[]>([]);
+  const [busy, setBusy] = React.useState(false);
+  const live = rows.some((r) => r.status === "queued" || r.status === "running");
+  React.useEffect(() => {
+    if (!live) return;
+    const tick = window.setInterval(async () => {
+      const r = (await studioJobsAction(rows.map((x) => x.jobId))) as { jobs?: { id: string; status: string; progress: number; error: string | null; result: { fileId?: string } | null }[] };
+      setRows((cur) => cur.map((x) => {
+        const j = r.jobs?.find((y) => y.id === x.jobId);
+        return j ? { ...x, status: j.status, progress: j.progress, error: j.error, fileId: j.result?.fileId } : x;
+      }));
+    }, 4000);
+    return () => window.clearInterval(tick);
+  }, [live, rows]);
+  const go = async () => {
+    setBusy(true);
+    try {
+      const r = (await generatePictureAction({ prompt, aspect, engine })) as { error?: string; jobId?: string };
+      if (r.error) return notify(r.error);
+      setRows((cur) => [{ jobId: r.jobId!, prompt, status: "queued", progress: 0, error: null }, ...cur]);
+      notify(engine === "local" ? t("开始生成了，本机大约 5 分钟一张，可以先做别的", "Started; about 5 minutes per picture on our server") : t("开始生成了，几十秒就好", "Started; ready in under a minute"), "ok");
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="st-card">
+      <p className="st-help">{t("用一句话生成一张电影感的画面，剪辑时切过去用。写清楚：主体、场景、光线、镜头、氛围，英文效果最好；画面里不要文字。做好的图在「文件」里，可以直接拖进剪辑。", "One sentence becomes a cinematic still to cut to. Say the subject, setting, light, lens and mood; English works best; no text in the picture. Finished pictures are in Files, ready to drag into the edit.")}</p>
+      <label className="st-label">{t("画面描述", "Describe the picture")}</label>
+      <textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} rows={4} placeholder={t("例如：a trading floor at dusk, every screen glowing red, one trader standing still, cinematic, 35mm, shallow depth of field", "e.g. a trading floor at dusk, every screen glowing red, one trader standing still, cinematic, 35mm")} />
+      <div className="st-row">
+        <select value={engine} onChange={(e) => setEngine(e.target.value as typeof engine)} aria-label={t("生成方式", "Engine")}>
+          {local ? <option value="local">{t("本机 Z-Image（免费，画质最好，约 5 分钟）", "Our server, Z-Image (free, best quality, ~5 min)")}</option> : null}
+          <option value="pollinations">{t("Pollinations FLUX（免费，几十秒）", "Pollinations FLUX (free, under a minute)")}</option>
+        </select>
+        <select value={aspect} onChange={(e) => setAspect(e.target.value as typeof aspect)} aria-label={t("画幅", "Aspect")}>
+          <option value="portrait">{t("竖屏 9:16", "Portrait 9:16")}</option>
+          <option value="landscape">{t("横屏 16:9", "Landscape 16:9")}</option>
+          <option value="square">{t("方形 1:1", "Square 1:1")}</option>
+        </select>
+        <span style={{ flex: 1 }} />
+        <button type="button" className="st-solid" disabled={busy || prompt.trim().length < 4} onClick={() => void go()}>
+          {busy ? t("提交中…", "Sending…") : t("生成图片", "Generate")}
+        </button>
+      </div>
+      {rows.map((r) => (
+        <div key={r.jobId} className="st-out">
+          <div className="st-out-name">{r.prompt.slice(0, 80)}</div>
+          {r.status === "succeeded" && r.fileId ? (
+            <>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={`/api/files/${r.fileId}/download`} alt="" style={{ maxHeight: 360, maxWidth: "100%", borderRadius: 8, objectFit: "contain" }} />
+              <a href={`/api/files/${r.fileId}/download?download=1`}>{t("下载", "Download")}</a>
+              <Link href={`/files/${r.fileId}`}>{t("在文件里打开（可以拖进剪辑）", "Open in Files")}</Link>
+            </>
+          ) : r.status === "failed" || r.status === "cancelled" ? (
+            <span className="st-err">{r.error ?? t("没生成成功", "Failed")}</span>
+          ) : (
+            <span className="st-bar"><span style={{ width: `${Math.max(4, Math.round(r.progress * 100))}%` }} /></span>
+          )}
+        </div>
+      ))}
+      <p className="st-help">{t("两种都免费。本机的那一种画质更好，但一次只能做一张，排队按先后。", "Both are free. Our server's pictures are the better ones, made one at a time in the order asked.")}</p>
     </div>
   );
 }
