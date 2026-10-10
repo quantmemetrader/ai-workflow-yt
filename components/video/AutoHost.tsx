@@ -52,7 +52,9 @@ export function AutoHost({ projectId, zh, hasScript, onStarted }: { projectId: s
       const r = (await studioJobsAction([job.id])) as { jobs?: { id: string; status: string; progress: number; error: string | null; result: { stage?: string } | null }[] };
       const j = r.jobs?.[0];
       if (!j) return;
-      setJob((cur) => (cur ? { ...cur, status: j.status, progress: j.progress, error: j.error, stage: j.result?.stage ?? cur.stage } : cur));
+      /* The job reports progress, not words: the stage is read off where the progress is (the job's own ranges). */
+      const stage = j.progress < 0.03 ? (zh ? "等文案写稿" : "waiting for the draft") : j.progress < 0.1 ? (zh ? "配音" : "voice") : j.progress < 0.68 ? (zh ? "对口型" : "lip-sync") : j.progress < 0.8 ? (zh ? "放进素材箱、交给剪辑师" : "handing to the editor") : (zh ? "剪辑和渲染" : "cutting and rendering");
+      setJob((cur) => (cur ? { ...cur, status: j.status, progress: j.progress, error: j.error, stage } : cur));
       if (j.status === "succeeded") {
         notify(zh ? "她的口播片段做好了，剪辑师正在剪" : "Her take is in; the editor is cutting", "ok");
         onStarted();
