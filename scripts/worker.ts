@@ -303,11 +303,11 @@ const HANDLERS: Record<string, Handler> = {
 
   /* AI 生成图片: a cutaway still made on this machine or on Pollinations, kept in Files (10 Oct). */
   "media.generatePicture": async (job) => {
-    const p = job.payload as { prompt: string; aspect: "portrait" | "landscape" | "square"; engine: "local" | "pollinations" };
+    const p = job.payload as { prompt: string; aspect: "portrait" | "landscape" | "square"; engine: "local" | "pollinations"; quality?: "quick" | "fine" };
     const viewer = job.createdBy ? await viewerById(job.createdBy) : null;
     if (!viewer) return { skipped: "no viewer" };
     void jobProgress(job.id, 0.03).catch(() => {});
-    const made = await generatePicture(p.prompt, p.aspect, { engine: p.engine, onProgress: (f) => void jobProgress(job.id, f).catch(() => {}) });
+    const made = await generatePicture(p.prompt, p.aspect, { engine: p.engine, quality: p.quality, onProgress: (f) => void jobProgress(job.id, f).catch(() => {}) });
     const brought = await importPictureBytes(viewer, {
       bytes: made.bytes,
       mime: made.mime,

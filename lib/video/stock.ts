@@ -479,17 +479,20 @@ export async function localGeneratorUp(): Promise<{ up: boolean; busy: boolean }
 export async function generatePicture(
   prompt: string,
   aspect: "portrait" | "landscape" | "square" = "portrait",
-  opts: { engine?: "local" | "pollinations"; onProgress?: (f: number) => void } = {},
+  opts: { engine?: "local" | "pollinations"; quality?: "quick" | "fine"; onProgress?: (f: number) => void } = {},
 ): Promise<MadePicture> {
   const words = prompt.trim().slice(0, 600);
   if (!words) throw new Error("先描述画面");
-  if (opts.engine === "local") {
+  /* Our own generator unless Pollinations is asked for by name: its free tier watermarks every picture (10 Oct). */
+  if (opts.engine !== "pollinations") {
+    const quick = opts.quality !== "fine";
     /* Z-Image-Turbo on this machine: the best picture, free, about five minutes. Asked for, then polled,
        because a single request that waits five minutes for its first byte is cut off by Node's fetch. */
-    const [w, h] = aspect === "portrait" ? [768, 1344] : aspect === "square" ? [1024, 1024] : [1344, 768];
-    const asked = await fetch(`${LOCAL_GEN}/generate`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ prompt: words, width: w, height: h, steps: 8 }), signal: AbortSignal.timeout(10_000) }).catch(() => null);
+    /* Quick: 4 steps at 640 tall-side, about two minutes, good enough for a cutaway; fine: 8 steps at 768, about five and a half. */
+    const [w, h] = quick ? (aspect === "portrait" ? [640, 1136] : aspect === "square" ? [832, 832] : [1136, 640]) : aspect === "portrait" ? [768, 1344] : aspect === "square" ? [1024, 1024] : [1344, 768];
+    const asked = await fetch(`${LOCAL_GEN}/generate`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ prompt: words, width: w, height: h, steps: quick ? 4 : 8 }), signal: AbortSignal.timeout(10_000) }).catch(() => null);
     const id = asked?.ok ? ((await asked.json().catch(() => null)) as { id?: string } | null)?.id : null;
-    if (!id) throw new Error("本机生成器没在运行，先选 Pollinations，或请管理员重启它");
+    if (!id) throw new Error("本机的图片生成器没在运行，请管理员重启它（pm2 restart imagegen）");
     const started = Date.now();
     for (;;) {
       await new Promise((r) => setTimeout(r, 5000));

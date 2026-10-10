@@ -276,7 +276,7 @@ const defs: ToolDef[] = [
     function: {
       name: "generate_picture",
       description:
-        "Make a picture that exists nowhere as a photograph and put it on the video for a few seconds as a cutaway: the cinematic still a reel cuts to for an idea (a trading floor going red, a lone factory robot at dawn, a crowded Hong Kong street at night). Free, about 10 to 20 seconds. Describe the shot in English as a film still: subject, setting, light, lens, mood; no text in the image. For a real thing (a product, a person, a place) use find_a_picture first; use this for a mood or a concept, or when find_a_picture found nothing good.",
+        "Make a picture that exists nowhere as a photograph and put it on the video for a few seconds as a cutaway: the cinematic still a reel cuts to for an idea (a trading floor going red, a lone factory robot at dawn, a crowded Hong Kong street at night). Made on the studio's own server, free, about two minutes; say so before calling it. Describe the shot in English as a film still: subject, setting, light, lens, mood; no text in the image. For a real thing (a product, a person, a place) use find_a_picture first; use this for a mood or a concept, or when find_a_picture found nothing good.",
       parameters: {
         type: "object",
         properties: {
@@ -1056,13 +1056,13 @@ async function dispatch(ctx: ToolContext & { projectId: string; language: string
     const seconds = Math.max(0.5, Math.min(30, num(args.seconds, 3)));
     let made: Awaited<ReturnType<typeof generatePicture>>;
     try {
-      made = await generatePicture(prompt, aspect);
+      made = await generatePicture(prompt, aspect, { engine: "local", quality: "quick" });
     } catch (err) {
       return err instanceof Error ? err.message : "The picture could not be made.";
     }
     let brought: { id: string; name: string };
     try {
-      brought = await importPictureBytes(ctx.viewer, { bytes: made.bytes, mime: made.mime, name: `AI 画面 · ${prompt.slice(0, 40)}`, attribution: "AI 生成（Pollinations · FLUX）", source: made.source, width: made.width, height: made.height, tags: ["ai-generated"] });
+      brought = await importPictureBytes(ctx.viewer, { bytes: made.bytes, mime: made.mime, name: `AI 画面 · ${prompt.slice(0, 40)}`, attribution: made.engine === "local" ? "AI 生成（Z-Image-Turbo，本机）" : "AI 生成（Pollinations · FLUX）", source: made.source, width: made.width, height: made.height, tags: ["ai-generated"] });
     } catch (err) {
       return err instanceof Error ? err.message : "The picture could not be kept.";
     }

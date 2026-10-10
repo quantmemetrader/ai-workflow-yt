@@ -83,15 +83,16 @@ export async function talkingHostAction(input: { hostFileId: unknown; text?: unk
 }
 
 /** AI 生成图片: a cutaway still, made in the background and kept in Files. */
-export async function generatePictureAction(input: { prompt: unknown; aspect: unknown; engine: unknown }) {
+export async function generatePictureAction(input: { prompt: unknown; aspect: unknown; engine: unknown; quality?: unknown }) {
   const viewer = await maker();
   if (!viewer) return { error: "你没有视频模块的权限" };
   const prompt = typeof input.prompt === "string" ? input.prompt.trim() : "";
   if (prompt.length < 4) return { error: "描述画面：谁、在哪、什么光线、什么镜头" };
   const aspect = input.aspect === "landscape" || input.aspect === "square" ? input.aspect : "portrait";
   const engine = input.engine === "pollinations" ? "pollinations" : "local";
-  if (engine === "local" && !(await localGeneratorUp()).up) return { error: "本机生成器没在运行，先选 Pollinations，或请管理员重启它" };
-  const job = await enqueue({ tenantId: viewer.tenantId, type: "media.generatePicture", module: "video", payload: { prompt, aspect, engine }, createdBy: viewer.id, priority: 7 });
+  const quality = input.quality === "fine" ? "fine" : "quick";
+  if (engine === "local" && !(await localGeneratorUp()).up) return { error: "图片生成器没在运行，请管理员重启它（pm2 restart imagegen）" };
+  const job = await enqueue({ tenantId: viewer.tenantId, type: "media.generatePicture", module: "video", payload: { prompt, aspect, engine, quality }, createdBy: viewer.id, priority: 7 });
   return { jobId: job.id };
 }
 

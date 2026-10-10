@@ -331,7 +331,7 @@ function ImagePanel({ zh, local }: { zh: boolean; local: boolean }) {
   const t = (a: string, b: string) => (zh ? a : b);
   const [prompt, setPrompt] = React.useState("");
   const [aspect, setAspect] = React.useState<"portrait" | "landscape" | "square">("portrait");
-  const [engine, setEngine] = React.useState<"local" | "pollinations">(local ? "local" : "pollinations");
+  const [quality, setQuality] = React.useState<"quick" | "fine">("quick");
   const [rows, setRows] = React.useState<{ jobId: string; prompt: string; status: string; progress: number; error: string | null; fileId?: string }[]>([]);
   const [busy, setBusy] = React.useState(false);
   const live = rows.some((r) => r.status === "queued" || r.status === "running");
@@ -349,23 +349,24 @@ function ImagePanel({ zh, local }: { zh: boolean; local: boolean }) {
   const go = async () => {
     setBusy(true);
     try {
-      const r = (await generatePictureAction({ prompt, aspect, engine })) as { error?: string; jobId?: string };
+      const r = (await generatePictureAction({ prompt, aspect, engine: "local", quality })) as { error?: string; jobId?: string };
       if (r.error) return notify(r.error);
       setRows((cur) => [{ jobId: r.jobId!, prompt, status: "queued", progress: 0, error: null }, ...cur]);
-      notify(engine === "local" ? t("开始生成了，本机大约 5 分钟一张，可以先做别的", "Started; about 5 minutes per picture on our server") : t("开始生成了，几十秒就好", "Started; ready in under a minute"), "ok");
+      notify(quality === "fine" ? t("开始生成了，精细模式大约 5 分钟一张，可以先做别的", "Started; the fine mode takes about 5 minutes a picture") : t("开始生成了，大约 2 分钟，可以先做别的", "Started; about 2 minutes"), "ok");
     } finally {
       setBusy(false);
     }
   };
   return (
     <div className="st-card">
+      {!local ? <div className="st-note">{t("图片生成器现在没在运行，请管理员重启它。", "The picture generator is not running; ask an admin to restart it.")}</div> : null}
       <p className="st-help">{t("用一句话生成一张电影感的画面，剪辑时切过去用。写清楚：主体、场景、光线、镜头、氛围，英文效果最好；画面里不要文字。做好的图在「文件」里，可以直接拖进剪辑。", "One sentence becomes a cinematic still to cut to. Say the subject, setting, light, lens and mood; English works best; no text in the picture. Finished pictures are in Files, ready to drag into the edit.")}</p>
       <label className="st-label">{t("画面描述", "Describe the picture")}</label>
       <textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} rows={4} placeholder={t("例如：a trading floor at dusk, every screen glowing red, one trader standing still, cinematic, 35mm, shallow depth of field", "e.g. a trading floor at dusk, every screen glowing red, one trader standing still, cinematic, 35mm")} />
       <div className="st-row">
-        <select value={engine} onChange={(e) => setEngine(e.target.value as typeof engine)} aria-label={t("生成方式", "Engine")}>
-          {local ? <option value="local">{t("本机 Z-Image（免费，画质最好，约 5 分钟）", "Our server, Z-Image (free, best quality, ~5 min)")}</option> : null}
-          <option value="pollinations">{t("Pollinations FLUX（免费，几十秒）", "Pollinations FLUX (free, under a minute)")}</option>
+        <select value={quality} onChange={(e) => setQuality(e.target.value as typeof quality)} aria-label={t("画质", "Quality")}>
+          <option value="quick">{t("快速（约 2 分钟）", "Quick (about 2 minutes)")}</option>
+          <option value="fine">{t("精细（约 5 分钟，更大更清晰）", "Fine (about 5 minutes, larger and sharper)")}</option>
         </select>
         <select value={aspect} onChange={(e) => setAspect(e.target.value as typeof aspect)} aria-label={t("画幅", "Aspect")}>
           <option value="portrait">{t("竖屏 9:16", "Portrait 9:16")}</option>
@@ -373,7 +374,7 @@ function ImagePanel({ zh, local }: { zh: boolean; local: boolean }) {
           <option value="square">{t("方形 1:1", "Square 1:1")}</option>
         </select>
         <span style={{ flex: 1 }} />
-        <button type="button" className="st-solid" disabled={busy || prompt.trim().length < 4} onClick={() => void go()}>
+        <button type="button" className="st-solid" disabled={busy || !local || prompt.trim().length < 4} onClick={() => void go()}>
           {busy ? t("提交中…", "Sending…") : t("生成图片", "Generate")}
         </button>
       </div>
@@ -394,7 +395,7 @@ function ImagePanel({ zh, local }: { zh: boolean; local: boolean }) {
           )}
         </div>
       ))}
-      <p className="st-help">{t("两种都免费。本机的那一种画质更好，但一次只能做一张，排队按先后。", "Both are free. Our server's pictures are the better ones, made one at a time in the order asked.")}</p>
+      <p className="st-help">{t("在我们自己的服务器上生成，免费，不限张数；一次做一张，排队按先后。", "Made on our own server, free, no limit; one at a time, in the order asked.")}</p>
     </div>
   );
 }
