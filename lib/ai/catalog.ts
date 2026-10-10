@@ -2,6 +2,9 @@ import "server-only";
 import "@/lib/keys/boot";
 import { env } from "@/lib/env";
 import type { ProviderModel } from "@/lib/ai/chat-models";
+import { backendFor } from "@/lib/ai/backend";
+import { anthropicKey, testAnthropicKey } from "@/lib/ai/anthropic";
+import { gatewayModel } from "@/lib/ai/claude-gateway";
 
 /**
  * Every model the studio's key can call, read live from the provider
@@ -31,14 +34,73 @@ const perM = (v: unknown) => {
   return Number.isFinite(n) && n >= 0 ? Math.round(n * 1e6 * 1000) / 1000 : null;
 };
 
-/* Claude, GPT and Gemini refuse the studio's OpenRouter account (7 Oct): listed only once a Claude key is saved, so nobody picks a model that cannot answer. */
-const usable = (list: ProviderModel[]) =>
-  env.openrouter.claudeKey || !/(^|\.)openrouter\.ai$/.test(new URL(env.openrouter.baseUrl).hostname)
-    ? list
-    : list.filter((m) => (m.vendor === "anthropic" ? Boolean(process.env.ANTHROPIC_API_KEY) : !/^(openai|google)$/.test(m.vendor)));
+/**
+ * Claude, GPT and Gemini are offered only when a key the studio holds
+ * actually answers for them (10 Oct: they were listed as soon as a key was
+ * saved, and the key's account had run dry, so every pick failed). Once an
+ * hour per key and vendor, one request for one token; a replaced key is
+ * probed again at once. Claude on the studio's own Anthropic key is checked
+ * with the free model lookup instead.
+ */
+const WESTERN = new Set(["anthropic", "openai", "google"]);
+const probes = new Map<string, { at: number; ok: boolean }>();
+
+async function vendorServed(vendor: string, sample: string): Promise<boolean> {
+  const direct = vendor === "anthropic" && anthropicKey();
+  const b = backendFor(sample);
+  const apiKey = b.key === "openrouter" && env.openrouter.claudeKey ? env.openrouter.claudeKey : b.apiKey;
+  const id = direct ? `anthropic:${anthropicKey().slice(-6)}` : `${vendor}:${b.baseUrl}:${(apiKey ?? "").slice(-6)}`;
+  const hit = probes.get(id);
+  if (hit && Date.now() - hit.at < 3_600_000) return hit.ok;
+  let ok = false;
+  try {
+    if (direct) ok = (await testAnthropicKey(anthropicKey())).ok;
+    else if (b.key === "deepseek" || !apiKey) ok = false;
+    else {
+      const model = b.key === "gateway" ? await gatewayModel(b.baseUrl, apiKey, sample) : b.model;
+      const r = await fetch(`${b.baseUrl}/chat/completions`, {
+        method: "POST",
+        headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json", ...b.headers },
+        body: JSON.stringify({ model, max_tokens: 1, messages: [{ role: "user", content: "hi" }] }),
+        signal: AbortSignal.timeout(20_000),
+      });
+      ok = r.ok;
+      if (!ok) console.warn(`[ai] ${vendor} not served on ${new URL(b.baseUrl).hostname}: ${r.status} ${(await r.text().catch(() => "")).slice(0, 120)}`);
+    }
+  } catch (err) {
+    console.warn(`[ai] ${vendor} probe failed`, err instanceof Error ? err.message : err);
+  }
+  probes.set(id, { at: Date.now(), ok });
+  return ok;
+}
+
+/** The cheapest-looking model of a vendor, for the probe. */
+function sampleOf(list: ProviderModel[], vendor: string): string | null {
+  const mine = list.filter((m) => m.vendor === vendor);
+  const pick = mine.find((m) => /haiku|mini|nano|flash-lite|flash/i.test(m.id)) ?? mine[0];
+  return pick?.id ?? null;
+}
+
+async function usable(list: ProviderModel[]): Promise<ProviderModel[]> {
+  const vendors = [...new Set(list.map((m) => m.vendor))].filter((v) => WESTERN.has(v));
+  const served = new Set<string>();
+  await Promise.all(
+    vendors.map(async (v) => {
+      const sample = sampleOf(list, v);
+      if (sample && (await vendorServed(v, sample))) served.add(v);
+    }),
+  );
+  return list.filter((m) => !WESTERN.has(m.vendor) || served.has(m.vendor));
+}
 
 export async function providerModels(): Promise<ProviderModel[]> {
   return usable(await allProviderModels());
+}
+
+/** For the keys screen and tests: which of Claude, GPT and Gemini a key answers for right now. */
+export async function servedVendors(): Promise<string[]> {
+  const list = await providerModels();
+  return [...new Set(list.map((m) => m.vendor))].filter((v) => WESTERN.has(v));
 }
 
 async function allProviderModels(): Promise<ProviderModel[]> {
