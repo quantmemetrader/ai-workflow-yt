@@ -61,7 +61,8 @@ async function vendorServed(vendor: string, sample: string): Promise<boolean> {
       const r = await fetch(`${b.baseUrl}/chat/completions`, {
         method: "POST",
         headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json", ...b.headers },
-        body: JSON.stringify({ model, max_tokens: 1, messages: [{ role: "user", content: "hi" }] }),
+        /* The ceiling a real answer asks for: OpenRouter checks the balance against it, and an account that is nearly dry passes a one-token ask and fails every real one. The reply itself is one word. */
+        body: JSON.stringify({ model, max_tokens: 4000, messages: [{ role: "user", content: "只回答一个字：好" }] }),
         signal: AbortSignal.timeout(20_000),
       });
       ok = r.ok;
@@ -76,8 +77,8 @@ async function vendorServed(vendor: string, sample: string): Promise<boolean> {
 
 /** The cheapest-looking model of a vendor, for the probe. */
 function sampleOf(list: ProviderModel[], vendor: string): string | null {
-  const mine = list.filter((m) => m.vendor === vendor);
-  const pick = mine.find((m) => /haiku|mini|nano|flash-lite|flash/i.test(m.id)) ?? mine[0];
+  const mine = list.filter((m) => m.vendor === vendor && !/image|video|audio|tts|realtime|search|preview/i.test(m.id));
+  const pick = mine.find((m) => /haiku|mini|nano|flash-lite/i.test(m.id)) ?? mine.find((m) => /flash/i.test(m.id)) ?? mine[0];
   return pick?.id ?? null;
 }
 
