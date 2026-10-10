@@ -201,10 +201,10 @@ export async function transcribe(
   };
 }
 
-export type VoiceRow = { id: string; name: string; description: string | null };
+export type VoiceRow = { id: string; name: string; description: string | null; category: string | null };
 
 export async function voices(): Promise<VoiceRow[]> {
-  const raw = await call<{ voices?: { voice_id?: string; name?: string; labels?: Record<string, string> }[] }>(
+  const raw = await call<{ voices?: { voice_id?: string; name?: string; labels?: Record<string, string>; category?: string }[] }>(
     "GET",
     "/voices",
   );
@@ -214,6 +214,7 @@ export async function voices(): Promise<VoiceRow[]> {
       id: v.voice_id!,
       name: v.name ?? v.voice_id!,
       description: v.labels ? Object.values(v.labels).filter(Boolean).join(" · ") : null,
+      category: typeof v.category === "string" ? v.category : null,
     }));
 }
 

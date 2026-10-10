@@ -46,7 +46,11 @@ export async function studioVoices(): Promise<{ voices: StudioVoice[]; eleven: A
   const eleven = await elevenStatus();
   let remote: StudioVoice[] = [];
   if (eleven === "ok") {
-    remote = (await elevenVoices().catch(() => [])).map((v) => ({ id: `elevenlabs:${v.id}`, name: v.name, lang: null, gender: null, source: "elevenlabs" as const }));
+    /* The studio's own clones (Avon's voice) before ElevenLabs' stock library (10 Oct). */
+    const rank = (c: string | null) => (c === "cloned" || c === "professional" ? 0 : c === "generated" ? 1 : 2);
+    remote = (await elevenVoices().catch(() => []))
+      .sort((a, b) => rank(a.category) - rank(b.category) || a.name.localeCompare(b.name))
+      .map((v) => ({ id: `elevenlabs:${v.id}`, name: rank(v.category) === 0 ? `${v.name}（克隆）` : v.name, lang: null, gender: null, source: "elevenlabs" as const }));
   }
   return { voices: [...remote, ...local], eleven };
 }

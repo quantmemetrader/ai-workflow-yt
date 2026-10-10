@@ -217,8 +217,10 @@ export type StreamOptions = {
  * never see the field.
  */
 const HYBRID = /deepseek|moonshotai|qwen3|zhipu|glm|minimax/i;
+/* Qwen3.8 Max answers "Reasoning is mandatory for this endpoint" to the switch (10 Oct). */
+const ALWAYS_THINKS = /qwen3\.8-max/i;
 function noThinking(model: string, maxTokens?: number): boolean {
-  return Boolean(maxTokens && maxTokens < 1500 && HYBRID.test(model));
+  return Boolean(maxTokens && maxTokens < 1500 && HYBRID.test(model) && !ALWAYS_THINKS.test(model));
 }
 
 /**
@@ -306,6 +308,14 @@ export async function* streamChat(opts: StreamOptions): AsyncGenerator<StreamEve
     if ((res.status === 429 || res.status === 402) && keys.length > 1) {
       attempt = 1;
       res = await send(keys[attempt]);
+    }
+    /* A model that will not have its thinking switched off: the same request without the switch. */
+    if (res.status === 400 && (body as { reasoning?: unknown }).reasoning) {
+      const said = await res.clone().text().catch(() => "");
+      if (/reasoning is mandatory|cannot be disabled/i.test(said)) {
+        delete (body as { reasoning?: unknown }).reasoning;
+        res = await send(keys[attempt]);
+      }
     }
     /* A balance that covers a shorter answer (10 Oct: "can only afford 2152" against 14000 asked): ask for what it covers. */
     const fits = res.status === 402 && body.max_tokens ? affordable(await res.clone().text().catch(() => ""), body.max_tokens) : null;
