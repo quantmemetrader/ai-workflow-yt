@@ -84,6 +84,32 @@ function rPr(p: string): string {
   const run = one(p, /<w:r(?:\s[^>]*)?>(?:(?!<\/w:r>)[\s\S])*?<w:t[\s>]/);
   return one(run, /<w:rPr>[\s\S]*?<\/w:rPr>/);
 }
+/** The paragraph's main font: the run that carries the most text (a lead word or an emoji often has its own). */
+function bodyRPr(p: string): string {
+  let best = "";
+  let most = -1;
+  for (const m of p.matchAll(/<w:r(?:\s[^>]*)?>((?:(?!<\/w:r>)[\s\S])*?)<\/w:r>/g)) {
+    const len = textOf(m[1]).length;
+    if (len > most) {
+      most = len;
+      best = one(m[1], /<w:rPr>[\s\S]*?<\/w:rPr>/);
+    }
+  }
+  return most > 0 ? best : rPr(p);
+}
+
+/**
+ * A line in the sample's dress: a 【lead】 or "lead：" at the start takes the
+ * sample's lead font (often bold, coloured) when it has one, the rest its
+ * main font (Avon's reports: only the bracketed headline is bold).
+ */
+function dressed(text: string, sample: string): string {
+  const lead = rPr(sample);
+  const body = bodyRPr(sample);
+  const m = lead !== body ? /^(【[^】\n]{1,60}】|[^：:\n]{1,24}[：:])/.exec(text) : null;
+  return m ? runs(m[1], lead) + runs(text.slice(m[1].length), body) : runs(text, body);
+}
+
 function styleName(p: string, names: Map<string, string>): string {
   const id = /<w:pStyle w:val="([^"]+)"/.exec(p)?.[1];
   return id ? (names.get(id) ?? id) : "Normal";
@@ -184,10 +210,10 @@ export async function describeTemplate(viewer: Viewer, fileId: string): Promise<
 }
 
 /** A sample cell's paragraphs, each with its own look, so line k of new text dresses like line k of the sample. */
-function cellLooks(tc: string): { pPr: string; rPr: string }[] {
+function cellLooks(tc: string): { pPr: string; rPr: string; xml: string }[] {
   const ps = [...tc.matchAll(/<w:p\b[\s\S]*?<\/w:p>|<w:p\b[^>]*\/>/g)].map((m) => m[0]);
-  const looks = ps.map((p) => ({ pPr: pPr(p), rPr: rPr(p) }));
-  return looks.length ? looks : [{ pPr: "", rPr: "" }];
+  const looks = ps.map((p) => ({ pPr: pPr(p), rPr: rPr(p), xml: p }));
+  return looks.length ? looks : [{ pPr: "", rPr: "", xml: "" }];
 }
 
 function tableXml(sample: string, rows: string[][]): string {
@@ -211,7 +237,7 @@ function tableXml(sample: string, rows: string[][]): string {
       const lines = String(r[c] ?? "").split("\n");
       const paras = lines.map((line, k) => {
         const look = looks[Math.min(k, looks.length - 1)];
-        return `<w:p>${look.pPr}${runs(line, look.rPr)}</w:p>`;
+        return `<w:p>${look.pPr}${look.xml ? dressed(line, look.xml) : runs(line, look.rPr)}</w:p>`;
       });
       return `<w:tc>${tcPr}${paras.join("")}</w:tc>`;
     }).join("");
@@ -277,7 +303,7 @@ export async function fillTemplate(
           words = `• ${text.replace(/^[-*•]\s+/, "")}`;
         }
       }
-      body.push(`<w:p>${look}${runs(words, sample ? rPr(sample) : "")}</w:p>`);
+      body.push(`<w:p>${look}${sample ? dressed(words, sample) : runs(words, "")}</w:p>`);
       np++;
     }
     if (!body.length) throw new Error("新文件没有内容");
