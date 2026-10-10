@@ -274,7 +274,8 @@ export async function* streamChat(opts: StreamOptions): AsyncGenerator<StreamEve
    */
   /* Claude, GPT and Gemini go through the studio's Claude key when there is one: they refuse the main account (7 Oct). */
   const western = /^(anthropic|openai|google)\//.test(backend.model);
-  if (western && backend.key === "openrouter" && !env.openrouter.claudeKey) {
+  /* Only OpenRouter itself refuses the studio's account; a main key on Orbio or B.AI serves Claude by itself. */
+  if (western && backend.key === "openrouter" && !env.openrouter.claudeKey && /(^|\.)openrouter\.ai$/.test(new URL(backend.baseUrl).hostname)) {
     /* Refused before it is sent: the caller steps down its fallback chain as for any refusal. */
     throw new AiError("provider", "prohibited: Claude, GPT and Gemini need the studio's Claude key (Channels & credentials)", 403);
   }

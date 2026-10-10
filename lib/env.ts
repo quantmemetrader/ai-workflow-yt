@@ -46,7 +46,10 @@ export const env = {
     get claudeKey(): string {
       return opt("OPENROUTER_API_KEY_CLAUDE");
     },
-    baseUrl: opt("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"),
+    /* Which service the main key belongs to: OpenRouter, or Orbio, B.AI… chosen on 渠道与凭据 (10 Oct). Read when used. */
+    get baseUrl(): string {
+      return (opt("OPENROUTER_BASE_URL") || "https://openrouter.ai/api/v1").replace(/\/+$/, "");
+    },
   },
 
   /** Signs one-time links. Deliberately has no fallback: it used to fall back

@@ -20,6 +20,7 @@ export type KeyName =
   | "ANTHROPIC_API_KEY"
   | "ANTHROPIC_WORKSPACE_ID"
   | "OPENROUTER_API_KEY"
+  | "OPENROUTER_BASE_URL"
   | "OPENROUTER_API_KEY_CLAUDE"
   | "CLAUDE_GATEWAY_URL"
   | "DEEPSEEK_API_KEY"
@@ -33,7 +34,8 @@ export type KeyName =
   | "FAL_KEY";
 
 export const KEYS: { name: KeyName; zh: string; en: string; usesZh: string; uses: string; link: string; choices?: { label: string; value: string }[] }[] = [
-  { name: "OPENROUTER_API_KEY", zh: "OpenRouter（AI 模型）", en: "OpenRouter (AI models)", usesZh: "所有 AI 同事、助理、写稿和改稿", uses: "Every AI colleague, the assistant, drafting and edits", link: "https://openrouter.ai/settings/keys" },
+  { name: "OPENROUTER_API_KEY", zh: "主密钥（OpenRouter、Orbio、B.AI 等）", en: "Main key (OpenRouter, Orbio, B.AI…)", usesZh: "所有 AI 同事、助理、写稿和改稿都用这把密钥。它是哪家平台的，在下一行选", uses: "Every AI colleague, the assistant, drafting and edits. Say which service it belongs to on the next row", link: "https://openrouter.ai/settings/keys" },
+  { name: "OPENROUTER_BASE_URL", zh: "主密钥：用哪家平台", en: "Main key: which service", usesZh: "上面那把主密钥是 OpenRouter、Orbio 还是 B.AI 等哪家的。不选就是 OpenRouter。选了 Orbio 或 B.AI，整个平台（包括 Claude）都走那家", uses: "Which service the main key above belongs to. Unset means OpenRouter. With Orbio or B.AI chosen, the whole platform (Claude included) runs through it", link: "/claude-options", choices: GATEWAYS.map((g) => ({ label: g.name, value: g.base })) },
   { name: "ANTHROPIC_API_KEY", zh: "Anthropic（Claude 直连，推荐）", en: "Anthropic (Claude direct, recommended)", usesZh: "Claude 直接向 Anthropic 调用，不经过任何中间平台。有这个密钥时，Claude 模型都走这里", uses: "Claude straight from Anthropic, no gateway. With this key, every Claude model goes here", link: "https://platform.claude.com/settings/keys" },
   { name: "ANTHROPIC_WORKSPACE_ID", zh: "Anthropic 工作区 ID（用户级密钥才需要）", en: "Anthropic workspace ID (user-level keys only)", usesZh: "上面填的是 sk-ant-usr- 开头的用户级密钥时，在这里填它要用的工作区 ID（wrkspc_ 开头，在 Anthropic 控制台「设置 › 工作区」里）。sk-ant-api03- 开头的密钥不用填", uses: "Only for a user-level key (sk-ant-usr-…): the workspace ID it should use (wrkspc_…, in the Anthropic Console under Settings › Workspaces)", link: "https://platform.claude.com/settings/workspaces" },
   { name: "CLAUDE_GATEWAY_URL", zh: "Claude 通道：用哪家平台", en: "Claude gateway: which service", usesZh: "下面这把「Claude 通道密钥」是哪家平台的。不选就是 OpenRouter", uses: "Which service the Claude gateway key below belongs to. Unset means OpenRouter", link: "/claude-options", choices: GATEWAYS.map((g) => ({ label: g.name, value: g.base })) },
@@ -147,8 +149,27 @@ export async function testKey(name: KeyName, value: string): Promise<{ ok: boole
   };
   try {
     switch (name) {
+      case "OPENROUTER_BASE_URL": {
+        if (!/^https:\/\/[a-z0-9.-]+(\/[A-Za-z0-9._/-]*)?$/.test(value)) return { ok: false, note: "这不是一个 https 地址" };
+        const r = await fetch(`${value.replace(/\/+$/, "")}/models`, { headers: { "user-agent": "Tengya/1.0" }, signal: AbortSignal.timeout(15_000) });
+        return r.status < 500 ? { ok: true, note: "连得上。主密钥那一行记得换成这家平台的密钥并测试" } : { ok: false, note: "这个地址现在连不上" };
+      }
       case "OPENROUTER_API_KEY": {
-        const base = process.env.OPENROUTER_BASE_URL || "https://openrouter.ai/api/v1";
+        const base = (process.env.OPENROUTER_BASE_URL || "https://openrouter.ai/api/v1").replace(/\/+$/, "");
+        /* Not OpenRouter itself: the only test that proves the key is one real, tiny answer. */
+        if (!/(^|\.)openrouter\.ai$/.test(new URL(base).hostname)) {
+          const host = new URL(base).hostname;
+          const model = await gatewayModel(base, value, "qwen/qwen3.8-flash");
+          const r = await fetch(`${base}/chat/completions`, {
+            method: "POST",
+            headers: { authorization: `Bearer ${value}`, "content-type": "application/json", "user-agent": "Tengya/1.0" },
+            body: JSON.stringify({ model, max_tokens: 8, messages: [{ role: "user", content: "ok" }] }),
+            signal: AbortSignal.timeout(30_000),
+          });
+          if (r.ok) return { ok: true, note: `有效 · ${host} 回答了一次测试请求` };
+          const t = (await r.text().catch(() => "")).slice(0, 160);
+          return { ok: false, note: r.status === 401 || r.status === 403 ? `${host} 不认这个密钥` : r.status === 402 ? `密钥有效，但这个账户余额不足，先去充值` : `${host} 没通过：${t}` };
+        }
         const k = await get(`${base}/key`, { authorization: `Bearer ${value}` });
         if (k.status !== 200) return { ok: false, note: "OpenRouter 不认这个密钥（可能抄错了，或已被删除）" };
         const c = await get(`${base}/credits`, { authorization: `Bearer ${value}` });

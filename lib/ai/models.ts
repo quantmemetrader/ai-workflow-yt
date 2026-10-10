@@ -37,7 +37,7 @@ export type ModelSpec = {
  */
 export const MODELS: ModelSpec[] = [
   {
-    id: "qwen/qwen3-max",
+    id: "qwen/qwen3.8-max-0902",
     label: "Qwen3 Max",
     use: "The assistant. Strong Simplified and Traditional Chinese, reliable tool use, and the one this studio has been running on.",
     inPerM: 0.78,
@@ -141,7 +141,7 @@ function usable(id: string | null | undefined): string | null {
 
 export const modelFor = {
   assistant: () =>
-    usable(modelChoice().assistant) ?? usable(process.env.AI_MODEL_ASSISTANT) ?? "qwen/qwen3-max",
+    usable(modelChoice().assistant) ?? usable(process.env.AI_MODEL_ASSISTANT) ?? "qwen/qwen3.8-max-0902",
   drafting: () =>
     usable(modelChoice().drafting) ?? usable(process.env.AI_MODEL_DRAFTING) ?? "moonshotai/kimi-k2.6",
   /** One AI employee's own model, if the studio gave it one (AI 同事 › 训练); else null. */

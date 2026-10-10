@@ -118,7 +118,7 @@ const DRAFT_PROMPT = `你是一名顶级的中文短视频文案，给一家香�
 /* Not Claude: Anthropic refuses the studio's OpenRouter account (7 Oct). */
 const DRAFT_BACKUP = process.env.AI_MODEL_DRAFT_BACKUP || "qwen/qwen3.7-max";
 /** Edits a fresh draft line by line: fast and does not reason first. */
-const POLISH_MODEL = process.env.AI_MODEL_POLISH || "qwen/qwen3-max";
+const POLISH_MODEL = process.env.AI_MODEL_POLISH || "qwen/qwen3.8-max-0902";
 
 const POLISH_PROMPT = `你是中文短视频行业最贵的文案编辑。下面是一份口播稿，已经按分镜编好号。请逐条润色口播，让它听起来像一个会说话的真人在镜头前讲，而不是 AI 写的、也不是翻译过来的。
 

@@ -130,6 +130,12 @@ export function backendFor(model: string): Backend {
     return { key: "gateway", baseUrl: gateway, apiKey: env.openrouter.claudeKey, model, headers: {}, reportsCost: false, rates: listRates(model) };
   }
 
+  /* The main key on a service that does not speak OpenRouter's format (B.AI…): plain OpenAI format, the service's own model ids (10 Oct). */
+  const main = env.openrouter.baseUrl;
+  if (!speaksOpenRouter(main) && !(western && env.openrouter.claudeKey)) {
+    return { key: "gateway", baseUrl: main, apiKey: env.openrouter.apiKey, model, headers: {}, reportsCost: false, ...(western ? { rates: listRates(model) } : {}) };
+  }
+
   return {
     key: "openrouter",
     /* The Claude key may be an OpenRouter relay's (Orbio): same format, its own address. */
@@ -138,7 +144,7 @@ export function backendFor(model: string): Backend {
     /* Only ever an id OpenRouter can resolve. A bare one reaching here with
        no DeepSeek key to catch it would come back 400 with the whole turn
        lost; the catalogue's own assistant is a better answer than none. */
-    model: isRoutedId(model) ? model : "qwen/qwen3-max",
+    model: isRoutedId(model) ? model : "qwen/qwen3.8-max-0902",
     headers: {
       "HTTP-Referer": env.appUrl,
       "X-Title": "Tengya Workspace",

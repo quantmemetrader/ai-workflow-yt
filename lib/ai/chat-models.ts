@@ -19,7 +19,7 @@ export const AUTO_MODEL = "auto";
 
 export const CHAT_MODELS: ChatModel[] = [
   { id: AUTO_MODEL, zh: "自动", en: "Auto", lineZh: "工作室默认，一般选这个", lineEn: "The studio's default — usually right", real: "" },
-  { id: "qwen/qwen3-max", zh: "标准", en: "Standard", lineZh: "中文好，最稳", lineEn: "Strong Chinese, the steady one", real: "Qwen3 Max" },
+  { id: "qwen/qwen3.8-max-0902", zh: "标准", en: "Standard", lineZh: "中文好，最稳", lineEn: "Strong Chinese, the steady one", real: "Qwen3.8 Max" },
   { id: "qwen/qwen3.7-max", zh: "最强", en: "Strongest", lineZh: "难的问题、很长的文件", lineEn: "Hard questions, long files", real: "Qwen3.7 Max" },
   { id: "moonshotai/kimi-k2.6", zh: "写稿", en: "Writer", lineZh: "中文文字最自然，改稿用", lineEn: "The most natural Chinese prose", real: "Kimi K2.6" },
   { id: "qwen/qwen3.7-plus", zh: "省钱", en: "Thrifty", lineZh: "日常问题，便宜", lineEn: "Everyday questions, cheaper", real: "Qwen3.7 Plus" },

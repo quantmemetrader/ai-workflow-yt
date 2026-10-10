@@ -224,17 +224,25 @@ export async function voices(): Promise<VoiceRow[]> {
  * it belongs, and in this codebase that is always the file store with a real
  * owner and a real relation on it.
  */
+/**
+ * Voice settings for a cloned voice (10 Oct): similarity high so the clone
+ * stays close to the person it was made from, stability middling so the read
+ * still has life, no style exaggeration (it drifts away from the real voice).
+ */
+export const LIKENESS = { stability: 0.45, similarity_boost: 0.9, style: 0, use_speaker_boost: true } as const;
+
 export async function speak(
   voiceId: string,
   text: string,
   modelId = "eleven_multilingual_v2",
+  settings: { stability: number; similarity_boost: number; style: number; use_speaker_boost: boolean } = LIKENESS,
 ): Promise<ArrayBuffer> {
   const res = await fetch(
     `${env.elevenlabs.baseUrl}/text-to-speech/${encodeURIComponent(voiceId)}?output_format=mp3_44100_128`,
     {
       method: "POST",
       headers: { "xi-api-key": key(), "Content-Type": "application/json", ...relayHeaders() },
-      body: JSON.stringify({ text, model_id: modelId }),
+      body: JSON.stringify({ text, model_id: modelId, voice_settings: settings }),
       signal: AbortSignal.timeout(TIMEOUT_MS),
     },
   );
