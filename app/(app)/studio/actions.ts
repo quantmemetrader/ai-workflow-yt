@@ -66,7 +66,8 @@ export async function generateVideoAction(input: { prompt: unknown; model: unkno
 export async function talkingHostAction(input: { hostFileId: unknown; text?: unknown; voiceId?: unknown; audioFileId?: unknown; engine?: unknown }) {
   const viewer = await maker();
   if (!viewer) return { error: "你没有视频模块的权限" };
-  if (!process.env.FAL_KEY) return { error: "还没有设置 fal.ai 密钥。管理员在「员工管理 › 渠道与凭据」里填上后就能生成。" };
+  const local = input.engine === "local/wav2lip";
+  if (!local && !process.env.FAL_KEY) return { error: "还没有设置 fal.ai 密钥。管理员在「员工管理 › 渠道与凭据」里填上后就能生成；或者选「本机对口型（免费）」。" };
   const id = (x: unknown) => (typeof x === "string" && /^fil_[0-9a-z]+$/i.test(x) ? x : null);
   const hostFileId = id(input.hostFileId);
   if (!hostFileId) return { error: "先上传主持人的照片或视频" };

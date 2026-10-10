@@ -141,7 +141,7 @@ function HostPanel({ zh, voices, eleven, engines, ready, isAdmin, onClone }: { z
       const r = (await talkingHostAction({ hostFileId: host.id, text, voiceId: voice, engine })) as { error?: string; jobId?: string };
       if (r.error) return notify(r.error);
       setRows((cur) => [{ jobId: r.jobId!, text, status: "queued", progress: 0, error: null }, ...cur]);
-      notify(t("开始生成了，通常要 2 到 6 分钟，可以先做别的", "Started; it usually takes 2–6 minutes"), "ok");
+      notify(engine.startsWith("local/") ? t("开始生成了：本机对口型大约每分钟视频等 7 分钟，可以先做别的", "Started; the on-server lip-sync takes about 7 minutes per minute of video") : t("开始生成了，通常要 2 到 6 分钟，可以先做别的", "Started; it usually takes 2–6 minutes"), "ok");
     } finally {
       setBusy(false);
     }
@@ -149,9 +149,9 @@ function HostPanel({ zh, voices, eleven, engines, ready, isAdmin, onClone }: { z
   const cloned = voices?.filter((v) => v.source === "elevenlabs") ?? [];
   return (
     <div className="st-card">
-      {!ready ? (
+      {!ready && !engine.startsWith("local/") ? (
         <div className="st-note">
-          {t("主持人口播需要 fal.ai 密钥（和「AI 生成视频」用同一个）。", "Host talking needs a fal.ai key (the same one as AI video).")}
+          {t("这种生成方式需要 fal.ai 密钥（和「AI 生成视频」用同一个）；「本机对口型（免费）」不需要密钥。", "This engine needs a fal.ai key (the same one as AI video); the free on-server lip-sync needs none.")}
           {isAdmin ? <> <Link href="/admin?tab=credentials">{t("去设置密钥", "Set the key")}</Link></> : t("请管理员设置。", " Ask an admin to set it.")}
         </div>
       ) : null}
@@ -189,7 +189,7 @@ function HostPanel({ zh, voices, eleven, engines, ready, isAdmin, onClone }: { z
           {fits.map((e) => <option key={e.id} value={e.id}>{zh ? e.zh : e.en} · {e.noteZh}</option>)}
         </select>
         <span style={{ flex: 1 }} />
-        <button type="button" className="st-solid" disabled={busy || !ready || !host || !text.trim() || !voice} onClick={() => void go()}>
+        <button type="button" className="st-solid" disabled={busy || (!ready && !engine.startsWith("local/")) || !host || !text.trim() || !voice} onClick={() => void go()}>
           {busy ? t("提交中…", "Sending…") : t("生成口播视频", "Make the video")}
         </button>
       </div>

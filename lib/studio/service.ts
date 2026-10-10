@@ -167,6 +167,52 @@ async function runFal(model: string, body: Record<string, unknown>, onProgress: 
   return url;
 }
 
+/* ------------------------------------------------------------ lip-sync on this machine */
+
+/**
+ * Wav2Lip on the server's own CPU (10 Oct): free, her real footage, the
+ * mouth re-timed to the new audio. About seven times real time at 480p, so
+ * a minute of video is seven minutes of waiting; the worker runs it at low
+ * priority so the site stays quick. Installed under ~/lipsync (setup.sh).
+ */
+async function localLipSync(hostKey: string, audioKey: string, onProgress: (f: number) => void): Promise<Uint8Array> {
+  const { execFile } = await import("node:child_process");
+  const { mkdtemp, readFile, rm, writeFile, stat } = await import("node:fs/promises");
+  const path = await import("node:path");
+  const os = await import("node:os");
+  const home = process.env.HOME || os.homedir();
+  const runner = path.join(home, "lipsync", "run.sh");
+  if (!(await stat(runner).catch(() => null))) throw new Error("这台服务器还没装本机对口型（lipsync/run.sh）");
+  const dir = await mkdtemp(path.join(os.tmpdir(), "tg-lip-"));
+  try {
+    const [face, audio] = await Promise.all([getObject(hostKey), getObject(audioKey)]);
+    if (!face.ok || !audio.ok) throw new Error("主持人素材或声音读不出来");
+    const facePath = path.join(dir, "face.bin");
+    const audioPath = path.join(dir, "audio.bin");
+    const outPath = path.join(dir, "out.mp4");
+    await writeFile(facePath, new Uint8Array(await face.arrayBuffer()));
+    await writeFile(audioPath, new Uint8Array(await audio.arrayBuffer()));
+    onProgress(0.05);
+    /* The runner says nothing useful while it works, so progress is time against a seven-to-one estimate. */
+    const seconds = await new Promise<number>((resolve) => execFile("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", audioPath], (e, out) => resolve(e ? 30 : Number(out) || 30)));
+    const started = Date.now();
+    const tick = setInterval(() => onProgress(Math.min(0.95, 0.05 + ((Date.now() - started) / 1000 / (seconds * 7.5)) * 0.9)), 5000);
+    try {
+      await new Promise<void>((resolve, reject) => {
+        execFile("bash", [runner, facePath, audioPath, outPath], { timeout: 40 * 60_000, maxBuffer: 16 * 1024 * 1024 }, (err, _stdout, stderr) => {
+          if (err) reject(new Error(`对口型没成功：${String(stderr).split("\n").filter(Boolean).slice(-2).join(" ").slice(0, 200) || err.message}`));
+          else resolve();
+        });
+      });
+    } finally {
+      clearInterval(tick);
+    }
+    return new Uint8Array(await readFile(outPath));
+  } finally {
+    await rm(dir, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
 /* ------------------------------------------------------------ the host, talking */
 
 /**
@@ -177,6 +223,7 @@ async function runFal(model: string, body: Record<string, unknown>, onProgress: 
  * clip keeps her real footage and only re-times the mouth.
  */
 export const HOST_ENGINES: { id: string; for: "image" | "video"; zh: string; en: string; noteZh: string }[] = [
+  { id: "local/wav2lip", for: "video", zh: "本机对口型（免费）", en: "Lip-sync on our server (free)", noteZh: "不花钱，用她的真实视频，嘴型清晰度一般；一分钟约等 7 分钟" },
   { id: "fal-ai/kling-video/ai-avatar/v2/standard", for: "image", zh: "可灵数字人（照片）", en: "Kling avatar (photo)", noteZh: "一张正脸照片就能说话，表情自然" },
   { id: "veed/fabric-1.0", for: "image", zh: "Fabric（照片，便宜）", en: "Fabric (photo, cheaper)", noteZh: "720p，比可灵贵一些" },
   { id: "fal-ai/sync-lipsync/v2", for: "video", zh: "对口型（视频）", en: "Lip-sync (clip)", noteZh: "用她真实的视频，只改嘴型，最像本人" },
@@ -219,9 +266,14 @@ export async function talkingHost(
       : engine.id === "veed/fabric-1.0"
         ? { image_url: hostUrl, audio_url: audioUrl, resolution: "720p" }
         : { image_url: hostUrl, audio_url: audioUrl, prompt: "一位主持人面对镜头自然地讲话，表情生动，头部有轻微自然的动作。" };
-  const url = await runFal(engine.id, body, (f) => onProgress(0.1 + f * 0.8), "换一张更清晰的正脸素材再试一次");
-  onProgress(0.92);
-  const bytes = new Uint8Array(await (await fetch(url, { signal: AbortSignal.timeout(300_000) })).arrayBuffer());
+  let bytes: Uint8Array;
+  if (engine.id === "local/wav2lip") {
+    bytes = await localLipSync(host.key, audioKey, (f) => onProgress(0.1 + f * 0.82));
+  } else {
+    const url = await runFal(engine.id, body, (f) => onProgress(0.1 + f * 0.8), "换一张更清晰的正脸素材再试一次");
+    onProgress(0.92);
+    bytes = new Uint8Array(await (await fetch(url, { signal: AbortSignal.timeout(300_000) })).arrayBuffer());
+  }
   const head = (input.text ?? "").replace(/\s+/g, " ").trim().slice(0, 24) || "口播";
   const made = await importVideoBytes(viewer, {
     bytes,
