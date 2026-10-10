@@ -484,19 +484,26 @@ export async function generatePicture(
   const words = prompt.trim().slice(0, 600);
   if (!words) throw new Error("先描述画面");
   if (opts.engine === "local") {
-    /* Z-Image-Turbo on this machine: the best picture, free, about five minutes; progress is time against that. */
+    /* Z-Image-Turbo on this machine: the best picture, free, about five minutes. Asked for, then polled,
+       because a single request that waits five minutes for its first byte is cut off by Node's fetch. */
     const [w, h] = aspect === "portrait" ? [768, 1344] : aspect === "square" ? [1024, 1024] : [1344, 768];
+    const asked = await fetch(`${LOCAL_GEN}/generate`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ prompt: words, width: w, height: h, steps: 8 }), signal: AbortSignal.timeout(10_000) }).catch(() => null);
+    const id = asked?.ok ? ((await asked.json().catch(() => null)) as { id?: string } | null)?.id : null;
+    if (!id) throw new Error("本机生成器没在运行，先选 Pollinations，或请管理员重启它");
     const started = Date.now();
-    const tick = setInterval(() => opts.onProgress?.(Math.min(0.95, 0.05 + ((Date.now() - started) / 340_000) * 0.9)), 5000);
-    try {
-      const res = await fetch(`${LOCAL_GEN}/generate`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ prompt: words, width: w, height: h, steps: 8 }), signal: AbortSignal.timeout(20 * 60_000) }).catch(() => null);
-      if (!res?.ok) throw new Error(`本机生成器没有出图${res ? `（${res.status}）` : "（没在运行）"}`);
-      const bytes = new Uint8Array(await res.arrayBuffer());
-      if (bytes.byteLength < 10_000) throw new Error("本机生成器出的图是空的，再试一次");
-      return { bytes, mime: "image/jpeg", width: w, height: h, prompt: words, source: "local://z-image-turbo", engine: "local" };
-    } finally {
-      clearInterval(tick);
+    for (;;) {
+      await new Promise((r) => setTimeout(r, 5000));
+      const st = await fetch(`${LOCAL_GEN}/status/${id}`, { signal: AbortSignal.timeout(10_000), cache: "no-store" }).then((r) => (r.ok ? (r.json() as Promise<{ state: string; progress: number; ahead: number; error?: string | null }>) : null)).catch(() => null);
+      if (st) opts.onProgress?.(st.state === "queued" ? 0.02 : Math.max(0.05, st.progress * 0.95));
+      if (st?.state === "done") break;
+      if (st?.state === "failed") throw new Error(`本机生成器出错：${st.error ?? "未知"}`);
+      if (Date.now() - started > 25 * 60_000) throw new Error("本机生成超过 25 分钟还没好，已放弃");
     }
+    const res = await fetch(`${LOCAL_GEN}/image/${id}`, { signal: AbortSignal.timeout(60_000) }).catch(() => null);
+    if (!res?.ok) throw new Error("本机生成器的图取不回来，再试一次");
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    if (bytes.byteLength < 10_000) throw new Error("本机生成器出的图是空的，再试一次");
+    return { bytes, mime: "image/jpeg", width: w, height: h, prompt: words, source: "local://z-image-turbo", engine: "local" };
   }
   const [width, height] = aspect === "portrait" ? [1080, 1920] : aspect === "square" ? [1080, 1080] : [1920, 1080];
   const seed = Math.floor(Math.random() * 1_000_000);
