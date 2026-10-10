@@ -178,7 +178,7 @@ async function runFal(model: string, body: Record<string, unknown>, onProgress: 
  */
 export const HOST_ENGINES: { id: string; for: "image" | "video"; zh: string; en: string; noteZh: string }[] = [
   { id: "fal-ai/kling-video/ai-avatar/v2/standard", for: "image", zh: "可灵数字人（照片）", en: "Kling avatar (photo)", noteZh: "一张正脸照片就能说话，表情自然" },
-  { id: "veed/fabric-1.0", for: "image", zh: "Fabric（照片，便宜）", en: "Fabric (photo, cheaper)", noteZh: "便宜、出片快，720p" },
+  { id: "veed/fabric-1.0", for: "image", zh: "Fabric（照片，便宜）", en: "Fabric (photo, cheaper)", noteZh: "720p，比可灵贵一些" },
   { id: "fal-ai/sync-lipsync/v2", for: "video", zh: "对口型（视频）", en: "Lip-sync (clip)", noteZh: "用她真实的视频，只改嘴型，最像本人" },
 ];
 

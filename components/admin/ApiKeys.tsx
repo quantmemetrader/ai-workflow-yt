@@ -5,7 +5,45 @@ import { useRouter } from "next/navigation";
 import { notify } from "@/lib/client/notify";
 import { useAsk } from "@/components/ui/useAsk";
 import { removeKeyAction, saveKeyAction, testCurrentKeyAction } from "@/app/(app)/admin/key-actions";
-import type { KeyStatus } from "@/lib/keys/store";
+import type { KeyName, KeyStatus } from "@/lib/keys/store";
+
+/* Each service's own icon beside its key (10 Oct: "logos of all products so it is easy to understand"). */
+const LOGO: Partial<Record<KeyName, string>> = {
+  OPENROUTER_API_KEY: "openrouter.ai",
+  ANTHROPIC_API_KEY: "anthropic.com",
+  ANTHROPIC_WORKSPACE_ID: "anthropic.com",
+  OPENROUTER_API_KEY_CLAUDE: "openrouter.ai",
+  DEEPSEEK_API_KEY: "deepseek.com",
+  TIKHUB_TOKEN: "tikhub.io",
+  ZERNIO_API_KEY: "zernio.com",
+  ELEVENLABS_API_KEY: "elevenlabs.io",
+  RESEND_API_KEY: "resend.com",
+  YOUTUBE_API_KEY: "youtube.com",
+  PEXELS_API_KEY: "pexels.com",
+  FAL_KEY: "fal.ai",
+  UNSPLASH_ACCESS_KEY: "unsplash.com",
+};
+/* The rows in the order a person thinks about them, under a heading that says what the group is for. */
+const GROUPS: { zh: string; en: string; noteZh: string; noteEn: string; keys: KeyName[] }[] = [
+  { zh: "AI 模型", en: "AI models", noteZh: "所有 AI 同事和助理的回答都从这里来", noteEn: "Where every AI colleague's and assistant's answers come from", keys: ["OPENROUTER_API_KEY", "OPENROUTER_BASE_URL", "DEEPSEEK_API_KEY"] },
+  { zh: "Claude", en: "Claude", noteZh: "Claude、GPT、Gemini 的专用通道；没有也能正常工作", noteEn: "A separate channel for Claude, GPT and Gemini; everything works without it", keys: ["ANTHROPIC_API_KEY", "ANTHROPIC_WORKSPACE_ID", "CLAUDE_GATEWAY_URL", "OPENROUTER_API_KEY_CLAUDE"] },
+  { zh: "数据和发布", en: "Data and publishing", noteZh: "选题调研、账号数据、发布到各平台", noteEn: "Topic research, account numbers, publishing", keys: ["TIKHUB_TOKEN", "ZERNIO_API_KEY", "YOUTUBE_API_KEY"] },
+  { zh: "配音和生成", en: "Voice and video", noteZh: "配音、克隆声音、AI 生成视频、主持人口播", noteEn: "Voice-over, cloning, AI video, the host talking", keys: ["ELEVENLABS_API_KEY", "FAL_KEY"] },
+  { zh: "素材", en: "Stock media", noteZh: "剪辑时自动找的免费图片和视频", noteEn: "Free pictures and clips found while editing", keys: ["PEXELS_API_KEY", "UNSPLASH_ACCESS_KEY"] },
+  { zh: "邮件", en: "Email", noteZh: "邀请和登录验证邮件", noteEn: "Invitation and sign-in emails", keys: ["RESEND_API_KEY"] },
+];
+
+function Logo({ k }: { k: KeyStatus }) {
+  const file = LOGO[k.name] ?? (k.choices ? "switch" : null);
+  if (file === "switch") {
+    return (
+      <span className="ak-logo ak-logo-sw" aria-hidden>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 3h5v5M21 3l-7 7M8 21H3v-5M3 21l7-7M16 21h5v-5M21 21l-7-7M8 3H3v5M3 3l7 7" /></svg>
+      </span>
+    );
+  }
+  return <span className="ak-logo"><img src={`/brand/keys/${file}.png`} alt="" width={28} height={28} loading="lazy" /></span>;
+}
 
 /**
  * The studio's API keys, changed here rather than on the server (6 Oct). A
@@ -73,11 +111,30 @@ export function ApiKeys({ keys, zh }: { keys: KeyStatus[]; zh: boolean }) {
     <div className="ak">
       {ask.dialog}
       <style>{CSS}</style>
-      {keys.map((k) => {
+      {GROUPS.map((g) => {
+        const rows = g.keys.map((name) => keys.find((k) => k.name === name)).filter((k): k is KeyStatus => Boolean(k));
+        if (!rows.length) return null;
+        return (
+          <section key={g.zh} className="ak-group">
+            <div className="ak-group-head">
+              <div className="ak-group-name">{zh ? g.zh : g.en}</div>
+              <div className="ak-group-note">{zh ? g.noteZh : g.noteEn}</div>
+            </div>
+            {rows.map((k) => renderRow(k))}
+          </section>
+        );
+      })}
+      {keys.filter((k) => !GROUPS.some((g) => g.keys.includes(k.name))).map((k) => renderRow(k))}
+    </div>
+  );
+
+  function renderRow(k: KeyStatus) {
+    {
         const n = notes[k.name];
         const when = k.savedAt ? new Intl.DateTimeFormat(zh ? "zh-CN" : "en-GB", { timeZone: "Asia/Hong_Kong", dateStyle: "medium", timeStyle: "short" }).format(new Date(k.savedAt)) : null;
         return (
           <div key={k.name} className="ak-row">
+            <Logo k={k} />
             <div className="ak-main">
               <div className="ak-name">
                 {zh ? k.zh : k.en}
@@ -145,13 +202,20 @@ export function ApiKeys({ keys, zh }: { keys: KeyStatus[]; zh: boolean }) {
             ) : null}
           </div>
         );
-      })}
-    </div>
-  );
+    }
+  }
 }
 
 const CSS = `
 .ak { display: flex; flex-direction: column; }
+.ak-group { margin-top: 18px; }
+.ak-group:first-child { margin-top: 0; }
+.ak-group-head { padding: 0 0 6px; }
+.ak-group-name { font-size: 13.5px; font-weight: 650; color: #171717; }
+.ak-group-note { font-size: 12px; color: #8a8a8a; }
+.ak-logo { flex-shrink: 0; width: 36px; height: 36px; border-radius: 10px; border: 1px solid #ececea; background: #fff; display: inline-flex; align-items: center; justify-content: center; overflow: hidden; margin-top: 2px; }
+.ak-logo img { width: 28px; height: 28px; object-fit: contain; display: block; }
+.ak-logo-sw { color: #6b6b6b; background: #f5f5f3; }
 .ak-row { display: flex; gap: 14px; align-items: flex-start; border-top: 1px solid #f0f0f0; padding: 12px 0; }
 .ak-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
 .ak-name { font-size: 13px; font-weight: 500; color: #171717; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
