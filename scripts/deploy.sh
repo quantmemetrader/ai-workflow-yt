@@ -73,7 +73,8 @@ if pm2 describe aura >/dev/null 2>&1; then
   # By name, not through the ecosystem file: that re-created every cron app
   # and ran each one at once (31 hot-list pulls on 2 Oct instead of 24).
   pm2 reload aura --update-env
-  pm2 reload aura-worker --update-env
+  # By the ecosystem file, so a changed setting (kill_timeout) is applied, not only the code.
+  pm2 reload ecosystem.config.cjs --only aura-worker --update-env
   # A scheduled app that is new in the ecosystem file is started once, so it
   # exists; the ones already there are left alone.
   for app in $(node -e "console.log(require(\"./ecosystem.config.cjs\").apps.map(a=>a.name).join(\" \"))"); do

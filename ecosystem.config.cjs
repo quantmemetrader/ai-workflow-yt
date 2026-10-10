@@ -87,7 +87,9 @@ module.exports = {
       // was the ceiling pm2 killed a worker at, mid-render, with no cleanup.
       max_memory_restart: "3G",
       exp_backoff_restart_delay: 500,
-      kill_timeout: 30_000,
+      /* A lip-sync or a render in hand takes ten minutes and more; the worker finishes it on SIGINT and
+         pm2 must wait that long before the hard kill, or every deploy restarts the job from zero (11 Oct). */
+      kill_timeout: 30 * 60_000,
       out_file: path.join(root, "logs/worker.log"),
       error_file: path.join(root, "logs/worker.log"),
       merge_logs: true,
