@@ -49,14 +49,18 @@ export function attributionFor(image: StockImage): string {
       ? "Pexels License"
       : image.license === "unsplash"
         ? "Unsplash License"
-        : `CC ${image.license.toUpperCase()}${image.licenseVersion ? ` ${image.licenseVersion}` : ""}`;
+        : image.license === "pixabay"
+          ? "Pixabay Content License"
+          : image.provider === "nasa"
+            ? "Public domain (NASA)"
+            : `CC ${image.license.toUpperCase()}${image.licenseVersion ? ` ${image.licenseVersion}` : ""}`;
   const who = image.creator ? ` by ${image.creator}` : "";
   return `“${image.title}”${who} — ${licence} — ${image.source}`;
 }
 
 /** Licences that need a credit on screen or in the description. */
 export function needsCredit(image: StockImage): boolean {
-  return image.license !== "cc0" && image.license !== "pdm" && image.license !== "pexels";
+  return image.license !== "cc0" && image.license !== "pdm" && image.license !== "pexels" && image.license !== "pixabay";
 }
 
 export async function searchStock(query: string, limit = 8): Promise<StockImage[]> {
@@ -124,6 +128,7 @@ export async function stockById(id: string): Promise<StockImage | null> {
     const hit = (await searchStockPhotos(id.split(":")[1] ?? "", 1).catch(() => [])).find((p) => p.id === id);
     return hit ?? null;
   }
+  if (/^(pixabay|nasa|wikimedia):/.test(id)) return poolById(id);
   if (!/^[0-9a-f-]{16,64}$/i.test(id)) return null;
   const res = await fetch(`${ENDPOINT}${id}/`, {
     headers: { accept: "application/json", "user-agent": "Tengya/1.0 (studio video tool)" },
@@ -332,13 +337,162 @@ export async function searchStockPhotos(query: string, limit = 6): Promise<Stock
   return out.slice(0, limit);
 }
 
-/** A picture of something specific first from the studio's usual index, then the stock libraries. */
+/* ------------------------------------------------------------ the other free pools (10 Oct) */
+
+const UA = { accept: "application/json", "user-agent": "Tengya/1.0 (studio video tool)" };
+const strip = (html: string) => html.replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim();
+
+/** "CC BY-SA 4.0" → by-sa 4.0; "Public domain" → pdm; NC, ND or unknown → null (not usable here). */
+function licenseCode(short: string): { license: string; version: string | null } | null {
+  const s = short.toLowerCase().trim();
+  if (!s) return null;
+  if (/cc0/.test(s)) return { license: "cc0", version: null };
+  if (/public domain|^pd\b|pdm/.test(s)) return { license: "pdm", version: null };
+  if (/-nc|-nd|non-?commercial|no ?deriv/.test(s)) return null;
+  const m = /cc[ -]?by(-sa)?\s*([0-9.]+)?/.exec(s);
+  return m ? { license: m[1] ? "by-sa" : "by", version: m[2] ?? null } : null;
+}
+
+type CommonsPage = { pageid: number; title: string; imageinfo?: { url: string; thumburl?: string; descriptionurl?: string; width?: number; height?: number; extmetadata?: Record<string, { value?: string }> }[] };
+
+function fromCommons(p: CommonsPage): StockImage | null {
+  const ii = p.imageinfo?.[0];
+  if (!ii?.url) return null;
+  const code = licenseCode(ii.extmetadata?.LicenseShortName?.value ?? "");
+  if (!code) return null;
+  const artist = ii.extmetadata?.Artist?.value ? strip(ii.extmetadata.Artist.value).slice(0, 80) : null;
+  return {
+    id: `wikimedia:${p.pageid}`,
+    title: p.title.replace(/^File:/, "").replace(/\.[a-z0-9]+$/i, ""),
+    creator: artist || null,
+    license: code.license,
+    licenseVersion: code.version,
+    url: ii.thumburl ?? ii.url,
+    thumbnail: ii.thumburl ?? null,
+    source: ii.descriptionurl ?? ii.url,
+    provider: "wikimedia",
+    width: ii.width ?? null,
+    height: ii.height ?? null,
+  };
+}
+
+async function commons(params: Record<string, string>): Promise<CommonsPage[]> {
+  const url = new URL("https://commons.wikimedia.org/w/api.php");
+  for (const [k, v] of Object.entries({ action: "query", format: "json", prop: "imageinfo", iiprop: "url|size|extmetadata", iiurlwidth: "1600", iiextmetadatafilter: "LicenseShortName|Artist", origin: "*", ...params })) url.searchParams.set(k, v);
+  const res = await fetch(url, { headers: UA, signal: AbortSignal.timeout(12_000), cache: "no-store" }).catch(() => null);
+  if (!res?.ok) return [];
+  const body = (await res.json().catch(() => null)) as { query?: { pages?: Record<string, CommonsPage> } } | null;
+  return Object.values(body?.query?.pages ?? {});
+}
+
+/** Wikimedia Commons: the named thing (a person, a company, a building, a chart). No key, CC or public domain only. */
+export async function searchWikimedia(query: string, limit = 6): Promise<StockImage[]> {
+  const text = query.trim();
+  if (!text) return [];
+  const pages = await commons({ generator: "search", gsrsearch: `filetype:bitmap ${text.slice(0, 120)}`, gsrnamespace: "6", gsrlimit: String(Math.min(20, limit * 2)) });
+  return pages.map(fromCommons).filter((x): x is StockImage => x !== null).slice(0, limit);
+}
+
+/** Pixabay: a second big library of free-to-use photographs, when its (free) key is set. */
+export async function searchPixabay(query: string, limit = 6): Promise<StockImage[]> {
+  const text = query.trim();
+  if (!text || !env.pixabay.configured) return [];
+  const url = new URL("https://pixabay.com/api/");
+  for (const [k, v] of Object.entries({ key: env.pixabay.apiKey, q: text.slice(0, 100), image_type: "photo", per_page: String(Math.max(3, Math.min(20, limit))), safesearch: "true", min_width: "1280" })) url.searchParams.set(k, v);
+  const res = await fetch(url, { headers: UA, signal: AbortSignal.timeout(12_000), cache: "no-store" }).catch(() => null);
+  if (!res?.ok) return [];
+  const body = (await res.json().catch(() => null)) as { hits?: { id: number; pageURL: string; tags?: string; user?: string; largeImageURL?: string; webformatURL?: string; imageWidth?: number; imageHeight?: number }[] } | null;
+  return (body?.hits ?? [])
+    .filter((h) => h.largeImageURL)
+    .map((h) => ({ id: `pixabay:${h.id}`, title: h.tags?.trim() || text, creator: h.user ?? null, license: "pixabay", licenseVersion: null, url: h.largeImageURL!, thumbnail: h.webformatURL ?? null, source: h.pageURL, provider: "pixabay", width: h.imageWidth ?? null, height: h.imageHeight ?? null }));
+}
+
+const SPACE = /space|nasa|planet|earth|moon|mars|rocket|satellite|galaxy|star|astronaut|orbit|solar|太空|航天|火箭|地球|月球|火星|卫星|星球|银河|宇航/i;
+
+/** NASA's image library: public domain, and the only place for the real thing when the subject is space. */
+export async function searchNasa(query: string, limit = 4): Promise<StockImage[]> {
+  const text = query.trim();
+  if (!text || !SPACE.test(text)) return [];
+  const url = new URL("https://images-api.nasa.gov/search");
+  url.searchParams.set("q", text.slice(0, 100));
+  url.searchParams.set("media_type", "image");
+  url.searchParams.set("page_size", String(Math.min(20, limit)));
+  const res = await fetch(url, { headers: UA, signal: AbortSignal.timeout(12_000), cache: "no-store" }).catch(() => null);
+  if (!res?.ok) return [];
+  const body = (await res.json().catch(() => null)) as { collection?: { items?: { data?: { nasa_id?: string; title?: string; photographer?: string; secondary_creator?: string }[]; links?: { href?: string; rel?: string }[] }[] } } | null;
+  const out: StockImage[] = [];
+  for (const it of body?.collection?.items ?? []) {
+    const d = it.data?.[0];
+    const thumb = it.links?.find((l) => l.rel === "preview")?.href ?? it.links?.[0]?.href;
+    if (!d?.nasa_id || !thumb) continue;
+    out.push({ id: `nasa:${d.nasa_id}`, title: d.title?.trim() || text, creator: d.photographer ?? d.secondary_creator ?? "NASA", license: "pdm", licenseVersion: null, url: thumb.replace(/~(thumb|small|medium)\./, "~large."), thumbnail: thumb, source: `https://images.nasa.gov/details/${encodeURIComponent(d.nasa_id)}`, provider: "nasa", width: null, height: null });
+  }
+  return out.slice(0, limit);
+}
+
+/** One picture of the newer pools by its id, for the moment it is taken. */
+async function poolById(id: string): Promise<StockImage | null> {
+  const [pool, ...rest] = id.split(":");
+  const native = rest.join(":");
+  if (pool === "wikimedia" && /^\d+$/.test(native)) return commons({ pageids: native }).then((p) => (p[0] ? fromCommons(p[0]) : null));
+  if (pool === "pixabay" && /^\d+$/.test(native) && env.pixabay.configured) {
+    const res = await fetch(`https://pixabay.com/api/?key=${encodeURIComponent(env.pixabay.apiKey)}&id=${native}`, { headers: UA, signal: AbortSignal.timeout(12_000) }).catch(() => null);
+    const body = res?.ok ? ((await res.json().catch(() => null)) as { hits?: { id: number; pageURL: string; tags?: string; user?: string; largeImageURL?: string; webformatURL?: string; imageWidth?: number; imageHeight?: number }[] } | null) : null;
+    const h = body?.hits?.[0];
+    return h?.largeImageURL ? { id, title: h.tags?.trim() || "pixabay", creator: h.user ?? null, license: "pixabay", licenseVersion: null, url: h.largeImageURL, thumbnail: h.webformatURL ?? null, source: h.pageURL, provider: "pixabay", width: h.imageWidth ?? null, height: h.imageHeight ?? null } : null;
+  }
+  if (pool === "nasa" && /^[A-Za-z0-9._-]+$/.test(native)) {
+    const res = await fetch(`https://images-api.nasa.gov/asset/${encodeURIComponent(native)}`, { headers: UA, signal: AbortSignal.timeout(12_000) }).catch(() => null);
+    const body = res?.ok ? ((await res.json().catch(() => null)) as { collection?: { items?: { href?: string }[] } } | null) : null;
+    const hrefs = (body?.collection?.items ?? []).map((i) => i.href ?? "").filter((h) => /\.(jpe?g|png)$/i.test(h));
+    const best = hrefs.find((h) => /~large\./.test(h)) ?? hrefs.find((h) => /~medium\./.test(h)) ?? hrefs[0];
+    if (!best) return null;
+    const meta = await fetch(`https://images-api.nasa.gov/search?nasa_id=${encodeURIComponent(native)}`, { headers: UA, signal: AbortSignal.timeout(12_000) }).then((r) => (r.ok ? r.json() : null)).catch(() => null) as { collection?: { items?: { data?: { title?: string; photographer?: string; secondary_creator?: string }[] }[] } } | null;
+    const d = meta?.collection?.items?.[0]?.data?.[0];
+    return { id, title: d?.title?.trim() || native, creator: d?.photographer ?? d?.secondary_creator ?? "NASA", license: "pdm", licenseVersion: null, url: best.replace(/^http:/, "https:"), thumbnail: hrefs.find((h) => /~thumb\./.test(h)) ?? null, source: `https://images.nasa.gov/details/${encodeURIComponent(native)}`, provider: "nasa", width: null, height: null };
+  }
+  return null;
+}
+
+/* ------------------------------------------------------------ a picture that does not exist yet */
+
+export type MadePicture = { bytes: Uint8Array; mime: string; width: number; height: number; prompt: string; source: string };
+
+/**
+ * A picture made from words, free, through Pollinations (FLUX): the cinematic
+ * still a reel cuts to when no photograph of the idea exists (10 Oct: "the
+ * high-end images on Varun Mayya's reels, without paying for them").
+ */
+export async function generatePicture(prompt: string, aspect: "portrait" | "landscape" | "square" = "portrait"): Promise<MadePicture> {
+  const words = prompt.trim().slice(0, 600);
+  if (!words) throw new Error("先描述画面");
+  const [width, height] = aspect === "portrait" ? [1080, 1920] : aspect === "square" ? [1080, 1080] : [1920, 1080];
+  const seed = Math.floor(Math.random() * 1_000_000);
+  const source = `https://image.pollinations.ai/prompt/${encodeURIComponent(words)}?width=${width}&height=${height}&model=flux&nologo=true&enhance=true&seed=${seed}`;
+  const res = await fetch(source, { headers: { accept: "image/*", "user-agent": "Tengya/1.0 (studio video tool)" }, signal: AbortSignal.timeout(120_000) }).catch(() => null);
+  if (!res?.ok) throw new Error(`图片没生成出来${res ? `（${res.status}）` : ""}，换个描述再试一次`);
+  const mime = (res.headers.get("content-type") ?? "image/jpeg").split(";")[0].trim();
+  const bytes = new Uint8Array(await res.arrayBuffer());
+  if (!mime.startsWith("image/") || bytes.byteLength < 10_000) throw new Error("图片没生成出来，再试一次");
+  return { bytes, mime, width, height, prompt: words, source };
+}
+
+/**
+ * A picture of something, from every free pool at once: Wikimedia Commons
+ * and the Openverse index for a named thing (a product, a company, a place,
+ * a person in the news), the libraries (Pexels, Pixabay, Unsplash) for the
+ * generic scene, NASA when the subject is space. Named-thing sources first.
+ */
 export async function searchAnyPicture(query: string, limit = 6): Promise<StockImage[]> {
-  const [cc, stock] = await Promise.all([searchStock(query, limit).catch(() => []), searchStockPhotos(query, limit).catch(() => [])]);
-  // The CC index is the better source for a *named* thing (a product, a
-  // company, a place); the libraries for the generic scene. Both are offered,
-  // the named-thing source first.
-  return [...cc, ...stock].slice(0, limit * 2);
+  const [wiki, cc, stock, pix, nasa] = await Promise.all([
+    searchWikimedia(query, Math.ceil(limit / 2)).catch(() => []),
+    searchStock(query, limit).catch(() => []),
+    searchStockPhotos(query, limit).catch(() => []),
+    searchPixabay(query, limit).catch(() => []),
+    searchNasa(query, 3).catch(() => []),
+  ]);
+  const seen = new Set<string>();
+  return [...nasa, ...wiki, ...cc, ...stock, ...pix].filter((p) => (seen.has(p.url) ? false : (seen.add(p.url), true))).slice(0, limit * 3);
 }
 
 /** One stock clip by its id, for the moment it is taken. */

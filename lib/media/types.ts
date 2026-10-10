@@ -15,7 +15,7 @@
 
 export type MediaKind = "video" | "image";
 
-export type Platform = "douyin" | "tiktok" | "bilibili" | "youtube" | "pinterest" | "bing" | "wikimedia" | "pexels" | "unsplash" | "openverse";
+export type Platform = "douyin" | "tiktok" | "bilibili" | "youtube" | "pinterest" | "bing" | "wikimedia" | "pexels" | "unsplash" | "openverse" | "pixabay" | "nasa";
 
 export type Orientation = "portrait" | "landscape" | "square";
 

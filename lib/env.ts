@@ -204,6 +204,14 @@ export const env = {
       return Boolean(process.env.PEXELS_API_KEY);
     },
   },
+  pixabay: {
+    get apiKey(): string {
+      return opt("PIXABAY_API_KEY");
+    },
+    get configured() {
+      return Boolean(process.env.PIXABAY_API_KEY);
+    },
+  },
   unsplash: {
     accessKey: opt("UNSPLASH_ACCESS_KEY"),
     get configured() {

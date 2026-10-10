@@ -25,7 +25,7 @@ const GROUPS: { zh: string; en: string; noteZh: string; noteEn: string; rows: Ro
   { zh: "Claude", en: "Claude", noteZh: "二选一即可；都没有时其他模型照常工作", noteEn: "Either one is enough; without both, the other models carry on", rows: [{ key: "ANTHROPIC_API_KEY", workspace: "ANTHROPIC_WORKSPACE_ID" }, { key: "OPENROUTER_API_KEY_CLAUDE", picker: "CLAUDE_GATEWAY_URL" }] },
   { zh: "数据和发布", en: "Data and publishing", noteZh: "选题调研、账号数据、发布到各平台", noteEn: "Topic research, account numbers, publishing", rows: [{ key: "TIKHUB_TOKEN" }, { key: "ZERNIO_API_KEY" }, { key: "YOUTUBE_API_KEY" }] },
   { zh: "配音和生成", en: "Voice and video", noteZh: "配音、克隆声音、AI 生成视频、主持人口播", noteEn: "Voice-over, cloning, AI video, the host talking", rows: [{ key: "ELEVENLABS_API_KEY" }, { key: "FAL_KEY" }] },
-  { zh: "素材", en: "Stock media", noteZh: "剪辑时自动找的免费图片和视频", noteEn: "Free pictures and clips found while editing", rows: [{ key: "PEXELS_API_KEY" }, { key: "UNSPLASH_ACCESS_KEY" }] },
+  { zh: "素材", en: "Stock media", noteZh: "剪辑时自动找的免费图片和视频", noteEn: "Free pictures and clips found while editing", rows: [{ key: "PEXELS_API_KEY" }, { key: "PIXABAY_API_KEY" }, { key: "UNSPLASH_ACCESS_KEY" }] },
   { zh: "邮件", en: "Email", noteZh: "邀请和登录验证邮件", noteEn: "Invitation and sign-in emails", rows: [{ key: "RESEND_API_KEY" }] },
 ];
 
@@ -51,6 +51,7 @@ const LOGO: Partial<Record<KeyName, string>> = {
   RESEND_API_KEY: "resend.com",
   YOUTUBE_API_KEY: "youtube.com",
   PEXELS_API_KEY: "pexels.com",
+  PIXABAY_API_KEY: "pixabay.com",
   FAL_KEY: "fal.ai",
   UNSPLASH_ACCESS_KEY: "unsplash.com",
 };

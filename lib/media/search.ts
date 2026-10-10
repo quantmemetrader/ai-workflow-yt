@@ -73,6 +73,8 @@ const PROVIDERS: Record<ProviderKey, { video?: SearchProvider; image?: SearchPro
   pexels: { video: searchStockVideo, image: searchStockImages, lang: "en" },
   unsplash: { image: searchStockImages, lang: "en" },
   openverse: { image: searchStockImages, lang: "en" },
+  pixabay: { image: searchStockImages, lang: "en" },
+  nasa: { image: searchStockImages, lang: "en" },
 };
 
 export function planFor(kind: MediaKind, orientation: Orientation | "any" | undefined): ProviderKey[] {

@@ -1,5 +1,5 @@
 import "server-only";
-import { searchStock, searchStockClips, searchStockPhotos, type StockImage } from "@/lib/video/stock";
+import { searchAnyPicture, searchStockClips, type StockImage } from "@/lib/video/stock";
 import { orientationOf, type Candidate, type SearchOpts } from "@/lib/media/types";
 import { withTimeout } from "@/lib/media/tools";
 
@@ -26,15 +26,17 @@ function slugTitle(pageUrl: string): string | null {
 function licenceOf(image: StockImage): string {
   if (image.license === "pexels") return "Pexels License";
   if (image.license === "unsplash") return "Unsplash License";
+  if (image.license === "pixabay") return "Pixabay Content License";
+  if (image.provider === "nasa") return "Public domain (NASA)";
   return `CC ${image.license.toUpperCase()}${image.licenseVersion ? ` ${image.licenseVersion}` : ""}`;
 }
 
 function fromImage(image: StockImage): Candidate | null {
-  const platform = image.provider === "pexels" ? "pexels" : image.provider === "unsplash" ? "unsplash" : "openverse";
-  const nativeId = image.id.replace(/^(pexels|unsplash):/, "");
+  const platform = (["pexels", "unsplash", "pixabay", "nasa", "wikimedia"].includes(image.provider ?? "") ? image.provider : "openverse") as "pexels" | "unsplash" | "pixabay" | "nasa" | "wikimedia" | "openverse";
+  const nativeId = image.id.replace(/^(pexels|unsplash|pixabay|nasa|wikimedia):/, "");
   const who = image.creator?.trim() || null;
   const licence = licenceOf(image);
-  const label = platform === "pexels" ? "Pexels" : platform === "unsplash" ? "Unsplash" : "Openverse";
+  const label = { pexels: "Pexels", unsplash: "Unsplash", pixabay: "Pixabay", nasa: "NASA", wikimedia: "Wikimedia Commons", openverse: "Openverse" }[platform];
   return {
     id: `${platform}:${nativeId}`,
     kind: "image",
@@ -48,7 +50,7 @@ function fromImage(image: StockImage): Candidate | null {
     orientation: orientationOf(image.width, image.height),
     handle: { via: "image", url: image.url },
     licence,
-    credit: platform === "openverse" ? `Openverse · ${who ?? image.provider ?? "unknown"} (${licence})` : `${label} · ${who ?? label}`,
+    credit: platform === "openverse" || platform === "wikimedia" ? `${label} · ${who ?? image.provider ?? "unknown"} (${licence})` : `${label} · ${who ?? label}`,
   };
 }
 
@@ -56,12 +58,9 @@ export async function searchStockImages(query: string, opts: SearchOpts): Promis
   if (opts.kind !== "image") return [];
   const q = query.trim();
   if (!q) return [];
-  const [cc, libs] = await Promise.all([
-    withTimeout(searchStock(q, opts.limit).catch(() => []), TIMEOUT_MS, []),
-    withTimeout(searchStockPhotos(q, opts.limit).catch(() => []), TIMEOUT_MS, []),
-  ]);
+  const found = await withTimeout(searchAnyPicture(q, opts.limit).catch(() => []), TIMEOUT_MS, []);
   const out: Candidate[] = [];
-  for (const image of [...libs, ...cc]) {
+  for (const image of found) {
     const c = fromImage(image);
     if (!c) continue;
     if (opts.orientation && opts.orientation !== "any" && c.orientation && c.orientation !== opts.orientation) continue;

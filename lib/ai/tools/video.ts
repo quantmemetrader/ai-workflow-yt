@@ -22,8 +22,8 @@ import { canEditProject } from "@/lib/video/access";
 import { createPost } from "@/lib/publish/service";
 import { finishedRender, latestRenderId, personOf } from "./publish";
 import type { DirectorState } from "@/lib/video/director";
-import { importPicture } from "@/lib/files/service";
-import { attributionFor, clipAttribution, needsCredit, searchAnyPicture, searchStockClips, stockById, stockClipById, stockConfigured } from "@/lib/video/stock";
+import { importPicture, importPictureBytes } from "@/lib/files/service";
+import { attributionFor, clipAttribution, generatePicture, needsCredit, searchAnyPicture, searchStockClips, stockById, stockClipById, stockConfigured } from "@/lib/video/stock";
 import { importVideo } from "@/lib/files/service";
 import { mapTime, mergeRanges, speechRanges, type Range } from "@/lib/video/ranges";
 import { autoEdit } from "@/lib/video/autoedit";
@@ -268,6 +268,27 @@ const defs: ToolDef[] = [
           seconds: { type: "number", description: "3 to 8. Default 4." },
         },
         required: ["id", "startMs"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "generate_picture",
+      description:
+        "Make a picture that exists nowhere as a photograph and put it on the video for a few seconds as a cutaway: the cinematic still a reel cuts to for an idea (a trading floor going red, a lone factory robot at dawn, a crowded Hong Kong street at night). Free, about 10 to 20 seconds. Describe the shot in English as a film still: subject, setting, light, lens, mood; no text in the image. For a real thing (a product, a person, a place) use find_a_picture first; use this for a mood or a concept, or when find_a_picture found nothing good.",
+      parameters: {
+        type: "object",
+        properties: {
+          prompt: { type: "string", description: "The shot, in English, as a film still." },
+          caption: { type: "string", description: "Optional words shown on it." },
+          startMs: { type: "number" },
+          seconds: { type: "number", description: "How long it stays. 3 by default." },
+          placement: { type: "string", description: "center, top, bottom. center by default." },
+          scale: { type: "number", description: "Percent of the frame. 100 for full-frame; 40 by default." },
+          aspect: { type: "string", description: "portrait (default), landscape or square." },
+        },
+        required: ["prompt", "startMs"],
       },
     },
   },
@@ -1025,6 +1046,32 @@ async function dispatch(ctx: ToolContext & { projectId: string; language: string
       return err instanceof Error ? err.message : "That clip could not be brought in.";
     }
     return done(`Cutaway on at ${clock(startMs)} for ${seconds}s: ${clip.title}. Credit: ${clipAttribution(clip)}.`);
+  }
+
+  if (name === "generate_picture") {
+    const prompt = str(args.prompt, 600).trim();
+    if (!prompt) return "Describe the shot.";
+    const aspect = args.aspect === "landscape" || args.aspect === "square" ? args.aspect : "portrait";
+    const startMs = Math.max(0, Math.round(num(args.startMs)));
+    const seconds = Math.max(0.5, Math.min(30, num(args.seconds, 3)));
+    let made: Awaited<ReturnType<typeof generatePicture>>;
+    try {
+      made = await generatePicture(prompt, aspect);
+    } catch (err) {
+      return err instanceof Error ? err.message : "The picture could not be made.";
+    }
+    let brought: { id: string; name: string };
+    try {
+      brought = await importPictureBytes(ctx.viewer, { bytes: made.bytes, mime: made.mime, name: `AI 画面 · ${prompt.slice(0, 40)}`, attribution: "AI 生成（Pollinations · FLUX）", source: made.source, width: made.width, height: made.height, tags: ["ai-generated"] });
+    } catch (err) {
+      return err instanceof Error ? err.message : "The picture could not be kept.";
+    }
+    try {
+      await addGraphic(ctx.viewer, ctx.projectId, { kind: "image", text: str(args.caption).slice(0, 120), startMs, endMs: startMs + Math.round(seconds * 1000), fileId: brought.id, placement: str(args.placement) || "center", scale: num(args.scale, 40) });
+    } catch (err) {
+      return err instanceof Error ? err.message : "It was made, but it could not be placed.";
+    }
+    return done(`Made and on at ${clock(startMs)} for ${seconds}s: ${prompt.slice(0, 80)}. It is in the project's files as an AI-generated picture.`);
   }
 
   if (name === "take_picture") {

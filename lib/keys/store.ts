@@ -30,6 +30,7 @@ export type KeyName =
   | "RESEND_API_KEY"
   | "YOUTUBE_API_KEY"
   | "PEXELS_API_KEY"
+  | "PIXABAY_API_KEY"
   | "UNSPLASH_ACCESS_KEY"
   | "FAL_KEY";
 
@@ -48,6 +49,7 @@ export const KEYS: { name: KeyName; zh: string; en: string; usesZh: string; uses
   { name: "YOUTUBE_API_KEY", zh: "YouTube 数据", en: "YouTube data", usesZh: "读取 YouTube 频道和视频数据", uses: "Reading YouTube channels and videos", link: "https://console.cloud.google.com/apis/credentials" },
   { name: "PEXELS_API_KEY", zh: "Pexels（素材）", en: "Pexels (stock)", usesZh: "剪辑时自动找的免费视频和图片素材", uses: "Free stock footage found while editing", link: "https://www.pexels.com/api/" },
   { name: "FAL_KEY", zh: "fal.ai（AI 生成视频）", en: "fal.ai (AI video)", usesZh: "「配音和生成」里的 AI 生成视频：可灵、海螺、即梦", uses: "AI video in Voice & video: Kling, Hailuo, Seedance", link: "https://fal.ai/dashboard/keys" },
+  { name: "PIXABAY_API_KEY", zh: "Pixabay（素材）", en: "Pixabay (stock)", usesZh: "剪辑时自动找的免费图片；注册即送密钥", uses: "Free pictures found while editing; the key is free on sign-up", link: "https://pixabay.com/api/docs/" },
   { name: "UNSPLASH_ACCESS_KEY", zh: "Unsplash（图片素材）", en: "Unsplash (photos)", usesZh: "剪辑时自动找的图片素材", uses: "Stock photos found while editing", link: "https://unsplash.com/oauth/applications" },
 ];
 
@@ -188,6 +190,10 @@ export async function testKey(name: KeyName, value: string): Promise<{ ok: boole
         if (!process.env.ANTHROPIC_API_KEY) return { ok: true, note: "已记下。先在上一行填 Anthropic 密钥" };
         const { testAnthropicKey } = await import("@/lib/ai/anthropic");
         return testAnthropicKey(process.env.ANTHROPIC_API_KEY, value.trim());
+      }
+      case "PIXABAY_API_KEY": {
+        const r = await get(`https://pixabay.com/api/?key=${encodeURIComponent(value)}&q=city&per_page=3&image_type=photo`, {});
+        return r.status === 200 ? { ok: true, note: "有效 · Pixabay 回答了一次搜索" } : { ok: false, note: "Pixabay 不认这个密钥" };
       }
       case "CLAUDE_GATEWAY_URL": {
         if (!/^https:\/\/[a-z0-9.-]+(\/[A-Za-z0-9._/-]*)?$/.test(value)) return { ok: false, note: "这不是一个 https 地址" };

@@ -37,10 +37,12 @@ export const PLATFORM_LABEL: Record<Platform, string> = {
   pexels: "Pexels",
   unsplash: "Unsplash",
   openverse: "Openverse",
+  pixabay: "Pixabay",
+  nasa: "NASA",
 };
 
 /* The order credits read in: Chinese platforms, then the global ones, then pictures and libraries. */
-const ORDER: Platform[] = ["douyin", "bilibili", "tiktok", "youtube", "pinterest", "bing", "wikimedia", "pexels", "unsplash", "openverse"];
+const ORDER: Platform[] = ["douyin", "bilibili", "tiktok", "youtube", "pinterest", "bing", "wikimedia", "nasa", "pexels", "pixabay", "unsplash", "openverse"];
 
 export const TAKEDOWN_LINE = "平台视频与图片素材仅作评论引用，版权归原作者所有；如有异议请联系我们删除。";
 
