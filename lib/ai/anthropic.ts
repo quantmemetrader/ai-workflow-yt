@@ -28,6 +28,15 @@ export function anthropicKey(): string {
   return process.env.ANTHROPIC_API_KEY || "";
 }
 
+/**
+ * A user-level key (sk-ant-usr-…) is not tied to a workspace, and Anthropic
+ * then wants the workspace named on every request (10 Oct). A workspace key
+ * (sk-ant-api03-…) needs nothing.
+ */
+export function anthropicHeaders(workspace = process.env.ANTHROPIC_WORKSPACE_ID || ""): Record<string, string> {
+  return workspace ? { "anthropic-workspace-id": workspace } : {};
+}
+
 /** Whether this model is answered by Anthropic directly. */
 export function isAnthropicDirect(model: string): boolean {
   return Boolean(anthropicKey()) && model.startsWith("anthropic/");
@@ -133,7 +142,7 @@ function toAiError(err: unknown): AiError {
 
 /** One streamed answer from Anthropic, as the events the rest of the app reads. */
 export async function* streamAnthropic(opts: StreamOptions): AsyncGenerator<StreamEvent> {
-  const client = new Anthropic({ apiKey: anthropicKey(), maxRetries: 1 });
+  const client = new Anthropic({ apiKey: anthropicKey(), maxRetries: 1, defaultHeaders: anthropicHeaders() });
   const model = anthropicModelId(opts.model);
   const { system, messages } = toAnthropic(opts.messages);
   const short = Boolean(opts.maxTokens && opts.maxTokens < 1500);
@@ -182,14 +191,16 @@ export async function* streamAnthropic(opts: StreamOptions): AsyncGenerator<Stre
 }
 
 /** For the keys screen: does this key reach Claude? Free: it reads one model's description. */
-export async function testAnthropicKey(key: string): Promise<{ ok: boolean; note: string }> {
+export async function testAnthropicKey(key: string, workspace?: string): Promise<{ ok: boolean; note: string }> {
   try {
-    const m = await new Anthropic({ apiKey: key, maxRetries: 0, timeout: 20_000 }).models.retrieve("claude-sonnet-5-5");
+    const m = await new Anthropic({ apiKey: key, maxRetries: 0, timeout: 20_000, defaultHeaders: anthropicHeaders(workspace) }).models.retrieve("claude-sonnet-5-5");
     return { ok: true, note: `有效 · 可以直接用 ${m.display_name}` };
   } catch (err) {
     if (err instanceof Anthropic.AuthenticationError) return { ok: false, note: "Anthropic 不认这个密钥" };
     if (err instanceof Anthropic.PermissionDeniedError) return { ok: false, note: "Anthropic 拒绝了这个账号（地区或权限问题）" };
     if (err instanceof Anthropic.APIConnectionError) return { ok: false, note: "连不上 Anthropic，稍后再试" };
+    if (err instanceof Anthropic.BadRequestError && /not scoped to a workspace/i.test(err.message)) return { ok: false, note: "这是用户级密钥（sk-ant-usr-），还需要在下一行填工作区 ID（wrkspc_…）；或者改用工作区里建的密钥（sk-ant-api03-）" };
+    if (err instanceof Anthropic.BadRequestError && /workspace/i.test(err.message)) return { ok: false, note: "工作区 ID 不对：在 Anthropic 控制台「设置 › 工作区」里复制 wrkspc_ 开头的 ID" };
     return { ok: false, note: `没通过：${err instanceof Error ? err.message.slice(0, 100) : "未知错误"}` };
   }
 }

@@ -83,9 +83,13 @@ export function affordable(message: string, asked: number): number | null {
   return n >= 1200 && n < asked ? Math.floor(n * 0.9) : null;
 }
 
-/** DeepSeek's own API, when its key is set: the place to go when the OpenRouter account has run dry. */
+/**
+ * Where to go when the OpenRouter account has run dry: Claude on the
+ * studio's own Anthropic key first (10 Oct), else DeepSeek on its own key.
+ */
 export function creditFallbackModel(model: string): string | null {
-  return env.deepseek.configured && /\//.test(model) ? "deepseek-v4-pro" : null;
+  if (process.env.ANTHROPIC_API_KEY && !model.startsWith("anthropic/")) return "anthropic/claude-sonnet-5.5";
+  return env.deepseek.configured && /\//.test(model) && !model.startsWith("deepseek") ? "deepseek-v4-pro" : null;
 }
 
 export type AiErrorKind = "credit" | "rate_limit" | "provider" | "network" | "bad_request";

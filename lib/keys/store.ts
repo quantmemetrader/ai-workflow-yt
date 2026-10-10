@@ -18,6 +18,7 @@ import { claudeGatewayBase, gatewayModel, GATEWAYS } from "@/lib/ai/claude-gatew
 
 export type KeyName =
   | "ANTHROPIC_API_KEY"
+  | "ANTHROPIC_WORKSPACE_ID"
   | "OPENROUTER_API_KEY"
   | "OPENROUTER_API_KEY_CLAUDE"
   | "CLAUDE_GATEWAY_URL"
@@ -34,6 +35,7 @@ export type KeyName =
 export const KEYS: { name: KeyName; zh: string; en: string; usesZh: string; uses: string; link: string; choices?: { label: string; value: string }[] }[] = [
   { name: "OPENROUTER_API_KEY", zh: "OpenRouter（AI 模型）", en: "OpenRouter (AI models)", usesZh: "所有 AI 同事、助理、写稿和改稿", uses: "Every AI colleague, the assistant, drafting and edits", link: "https://openrouter.ai/settings/keys" },
   { name: "ANTHROPIC_API_KEY", zh: "Anthropic（Claude 直连，推荐）", en: "Anthropic (Claude direct, recommended)", usesZh: "Claude 直接向 Anthropic 调用，不经过任何中间平台。有这个密钥时，Claude 模型都走这里", uses: "Claude straight from Anthropic, no gateway. With this key, every Claude model goes here", link: "https://platform.claude.com/settings/keys" },
+  { name: "ANTHROPIC_WORKSPACE_ID", zh: "Anthropic 工作区 ID（用户级密钥才需要）", en: "Anthropic workspace ID (user-level keys only)", usesZh: "上面填的是 sk-ant-usr- 开头的用户级密钥时，在这里填它要用的工作区 ID（wrkspc_ 开头，在 Anthropic 控制台「设置 › 工作区」里）。sk-ant-api03- 开头的密钥不用填", uses: "Only for a user-level key (sk-ant-usr-…): the workspace ID it should use (wrkspc_…, in the Anthropic Console under Settings › Workspaces)", link: "https://platform.claude.com/settings/workspaces" },
   { name: "CLAUDE_GATEWAY_URL", zh: "Claude 通道：用哪家平台", en: "Claude gateway: which service", usesZh: "下面这把「Claude 通道密钥」是哪家平台的。不选就是 OpenRouter", uses: "Which service the Claude gateway key below belongs to. Unset means OpenRouter", link: "/claude-options", choices: GATEWAYS.map((g) => ({ label: g.name, value: g.base })) },
   { name: "OPENROUTER_API_KEY_CLAUDE", zh: "Claude 通道密钥（OpenRouter、Orbio、B.AI 等）", en: "Claude gateway key (OpenRouter, Orbio, B.AI…)", usesZh: "Claude、GPT、Gemini 只走这个密钥。它们不接受香港注册的 OpenRouter 账号，所以要用另一个（非香港注册）账号的密钥", uses: "Claude, GPT and Gemini only; they refuse Hong Kong-registered OpenRouter accounts, so this must come from another account", link: "https://openrouter.ai/settings/keys" },
   { name: "DEEPSEEK_API_KEY", zh: "DeepSeek（备用模型）", en: "DeepSeek (backup models)", usesZh: "直接调用 DeepSeek 的模型", uses: "Calling DeepSeek directly", link: "https://platform.deepseek.com/api_keys" },
@@ -159,6 +161,12 @@ export async function testKey(name: KeyName, value: string): Promise<{ ok: boole
       case "ANTHROPIC_API_KEY": {
         const { testAnthropicKey } = await import("@/lib/ai/anthropic");
         return testAnthropicKey(value);
+      }
+      case "ANTHROPIC_WORKSPACE_ID": {
+        if (!/^wrkspc_[A-Za-z0-9]+$/.test(value.trim())) return { ok: false, note: "工作区 ID 是 wrkspc_ 开头的一串字符" };
+        if (!process.env.ANTHROPIC_API_KEY) return { ok: true, note: "已记下。先在上一行填 Anthropic 密钥" };
+        const { testAnthropicKey } = await import("@/lib/ai/anthropic");
+        return testAnthropicKey(process.env.ANTHROPIC_API_KEY, value.trim());
       }
       case "CLAUDE_GATEWAY_URL": {
         if (!/^https:\/\/[a-z0-9.-]+(\/[A-Za-z0-9._/-]*)?$/.test(value)) return { ok: false, note: "这不是一个 https 地址" };
