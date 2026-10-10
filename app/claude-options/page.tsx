@@ -7,7 +7,7 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-/** Every route to Claude for the studio, on one page anyone with the link can open (Ryan, 9 Oct). */
+/** Every route to Claude for the studio, on one page anyone with the link can open (9 Oct). */
 export default function ClaudeOptionsPage() {
   return <ClaudeOptions />;
 }

@@ -3,8 +3,8 @@
 import * as React from "react";
 
 /**
- * 「怎么用上 Claude」: every route the studio can take, on one page (Ryan,
- * 9 Oct: "a site featuring all potential solutions that they can choose
+ * 「怎么用上 Claude」: every route the studio can take, on one page (client
+ * request, 9 Oct: "a site featuring all potential solutions that they can choose
  * from"). Anthropic does not serve Hong Kong, so each route is somebody's
  * account or another model; the page says what each asks of the studio, how
  * it is paid, whether we have run it, and what can go wrong, so the choice is
@@ -48,8 +48,8 @@ const OPTIONS: Option[] = [
       en: "A marketplace for AI credits: one key for Claude, GPT and Gemini, sold at a discount. It is built on top of OpenRouter and relays requests to it. It states it only relays requests and keeps no prompts or answers.",
     },
     you: {
-      zh: ["打开 orbio.so，填金额，点 Buy", "登录并付款", "把生成的密钥发给 Ryan，我们接入并测试"],
-      en: ["Open orbio.so, enter an amount, press Buy", "Sign in and pay", "Send the key to Ryan; we connect and test it"],
+      zh: ["打开 orbio.so，填金额，点 Buy", "登录并付款", "在官网创建 API 密钥，在平台里选 Orbio、粘贴密钥、点测试（见下方图文指南）"],
+      en: ["Open orbio.so, enter an amount, press Buy", "Sign in and pay", "Create an API key on the site, then choose Orbio on the platform, paste the key and press Test (picture guide below)"],
     },
     pay: {
       zh: "网页上直接付款。香港的卡能不能付，需要实际付一次小额才知道。",
@@ -75,8 +75,8 @@ const OPTIONS: Option[] = [
       en: "A model platform. Its documentation lists Claude Sonnet 5.5, Opus 5.5 and a dozen more Claude models, plus GPT, Gemini, Qwen and Kimi, at the official list prices (Sonnet 5.5: US$2 in, US$10 out per million tokens).",
     },
     you: {
-      zh: ["打开 b.ai，用 Google 账号登录", "充值，然后创建 API 密钥", "把密钥发给 Ryan，我们接入并测试"],
-      en: ["Open b.ai and sign in with Google", "Top up, then create an API key", "Send the key to Ryan; we connect and test it"],
+      zh: ["打开 b.ai，用 Google 账号登录", "充值，然后创建 API 密钥", "在平台里选 B.AI、粘贴密钥、点测试（见下方图文指南）"],
+      en: ["Open b.ai and sign in with Google", "Top up, then create an API key", "Choose B.AI on the platform, paste the key and press Test (picture guide below)"],
     },
     pay: {
       zh: "文档写明支持信用卡、微信支付、支付宝、银联，也支持加密货币；具体可选的方式以充值页面显示为准，因地区而异。",
@@ -353,6 +353,87 @@ const OTHERS: Other[] = [
   },
 ];
 
+type Step = { img?: string; zh: string; en: string };
+
+/* Screenshots taken 10 Oct 2026 of each service's public pages and of the platform's own keys screen. */
+const G = "/guide/claude/";
+const GUIDES: { id: string; name: string; steps: Step[] }[] = [
+  {
+    id: "orbio",
+    name: "Orbio",
+    steps: [
+      { img: "orbio-1.jpg", zh: "打开 orbio.so，在右边「Buy credits」里填想买的额度（建议先买 20 美元），点 Buy。", en: "Open orbio.so, enter the amount of credit under Buy credits on the right (start with US$20), and press Buy." },
+      { img: "orbio-2.jpg", zh: "页面会显示实际要付的钱（截图当天：20 美元额度付 10.08 美元）。点「Sign in to buy」，登录后付款。", en: "It shows what you actually pay (on the day of this screenshot, US$20 of credit cost US$10.08). Press Sign in to buy, sign in and pay." },
+      { zh: "付款后在 Orbio 的账号页面创建一把 API 密钥并复制下来。这一页要登录后才看得到，所以这里没有截图。", en: "After paying, create an API key on your Orbio account page and copy it. That page is only visible once signed in, so there is no screenshot of it here." },
+    ],
+  },
+  {
+    id: "bai",
+    name: "B.AI",
+    steps: [
+      { img: "bai-1.jpg", zh: "打开 b.ai，点右上角「TRY BAI」。", en: "Open b.ai and press TRY BAI at the top right." },
+      { img: "bai-3b.jpg", zh: "用 Google 账号登录，或者点「其它登录方式」选别的方式。", en: "Sign in with Google, or choose one of the other sign-in methods." },
+      { img: "bai-3.jpg", zh: "登录后点左边的「充值」，先充一小笔。付款方式以页面显示为准。", en: "Once signed in, press 充值 (Top up) on the left and add a small amount. The page shows which payment methods you can use." },
+      { img: "bai-4.jpg", zh: "点左边的「API」，创建一把 API 密钥并复制下来。", en: "Press API on the left, create an API key and copy it." },
+    ],
+  },
+];
+
+const PLATFORM: Step[] = [
+  { img: "tg-1.jpg", zh: "用管理员账号登录平台，点左边「后台 › 员工管理」，再点上面的「渠道与凭据」。", en: "Sign in to the platform as an admin, open 后台 › 员工管理 (People) on the left, then the 渠道与凭据 (Channels & credentials) tab." },
+  { img: "tg-3.jpg", zh: "找到「Claude 通道：用哪家平台」，点「设置」，在下拉框里选你买的那家（Orbio、B.AI 等），点「验证并保存」。", en: "Find Claude 通道：用哪家平台 (Claude gateway: which service), press 设置 (Set), choose the service you bought from (Orbio, B.AI and so on) and press 验证并保存 (Check and save)." },
+  { img: "tg-5.jpg", zh: "在下一行「Claude 通道密钥」点「更换」，粘贴刚才复制的密钥，点「验证并保存」。平台会先用这把密钥真的问 Claude 一句，通过了才保存。", en: "On the next row, Claude 通道密钥 (Claude gateway key), press 更换 (Replace), paste the key you copied and press 验证并保存. The platform first asks Claude a real question with it and saves it only if that works." },
+  { img: "tg-6.jpg", zh: "以后随时可以点「测试」看 Claude 还能不能用。保存后 30 秒内，在模型列表里就能选 Claude 了。", en: "Press 测试 (Test) any time to check Claude still works. Within 30 seconds of saving, Claude can be picked in the model list." },
+];
+
+function Shot({ step, n, lang }: { step: Step; n: number; lang: L }) {
+  return (
+    <li className="co-step">
+      <div className="co-step-text">
+        <span className="co-step-n">{n}</span>
+        <span>{step[lang]}</span>
+      </div>
+      {step.img ? (
+        <a href={G + step.img} target="_blank" rel="noopener noreferrer" className="co-shot">
+          <img src={G + step.img} alt={step[lang]} loading="lazy" width={1600} height={1000} />
+        </a>
+      ) : null}
+    </li>
+  );
+}
+
+function Guide({ lang }: { lang: L }) {
+  const t = (zh: string, en: string) => (lang === "zh" ? zh : en);
+  const [pick, setPick] = React.useState(GUIDES[0].id);
+  const g = GUIDES.find((x) => x.id === pick) ?? GUIDES[0];
+  return (
+    <section className="co-guide" id="guide">
+      <h2>{t("图文指南：从买额度到用上 Claude", "Picture guide: from buying credit to using Claude")}</h2>
+      <p className="co-note">{t("先在所选平台买额度、拿密钥，再把密钥填进我们的平台。点图片可以看大图。", "First buy credit and get a key from the service you chose, then put the key into the platform. Click a picture to see it full size.")}</p>
+      <div className="co-lang co-guide-pick" role="tablist" aria-label={t("选择平台", "Choose a service")}>
+        {GUIDES.map((x) => (
+          <button key={x.id} type="button" role="tab" aria-selected={x.id === pick} data-on={x.id === pick ? "" : undefined} onClick={() => setPick(x.id)}>
+            {x.name}
+          </button>
+        ))}
+      </div>
+      <h3>{t(`第一部分：在 ${g.name} 买额度、拿密钥`, `Part 1: buy credit and get a key from ${g.name}`)}</h3>
+      <ol className="co-steps">
+        {g.steps.map((s, i) => (
+          <Shot key={g.id + i} step={s} n={i + 1} lang={lang} />
+        ))}
+      </ol>
+      <h3>{t("第二部分：把密钥填进平台", "Part 2: put the key into the platform")}</h3>
+      <ol className="co-steps">
+        {PLATFORM.map((s, i) => (
+          <Shot key={"p" + i} step={s} n={g.steps.length + i + 1} lang={lang} />
+        ))}
+      </ol>
+      <p className="co-note">{t("下面「其他查过的平台」里的任何一家，第二部分的做法都一样：在下拉框里选那一家，再粘贴它的密钥。下拉框里有 Orbio、B.AI、Requesty、AIMLAPI、Vercel AI Gateway、Poe、AiHubMix、OhMyGPT、CometAPI、Helicone。", "For any service under Other services below, Part 2 is the same: choose that service in the list, then paste its key. The list has Orbio, B.AI, Requesty, AIMLAPI, Vercel AI Gateway, Poe, AiHubMix, OhMyGPT, CometAPI and Helicone.")}</p>
+    </section>
+  );
+}
+
 export function ClaudeOptions() {
   const [lang, setLang] = React.useState<L>("zh");
   const t = (zh: string, en: string) => (lang === "zh" ? zh : en);
@@ -443,6 +524,8 @@ export function ClaudeOptions() {
           </section>
         ))}
 
+        <Guide lang={lang} />
+
         <section className="co-others">
           <h2>{t("其他查过的平台", "Other services we looked into")}</h2>
           <p className="co-note">
@@ -497,7 +580,7 @@ export function ClaudeOptions() {
         <section className="co-advice">
           <h2>{t("怎么选", "How to choose")}</h2>
           <ul>
-            <li>{t("无论选哪一家，先充一小笔，把密钥发给 Ryan。我们用真实请求测 Claude，确认能用再正式接入。", "Whichever you pick, top up a small amount first and send the key to Ryan. We test Claude with real requests and connect it only once it works.")}</li>
+            <li>{t("无论选哪一家，先充一小笔，按下面的图文指南把密钥填进平台，点「测试」。测试通过，Claude 就能用了；不通过，平台会照常用其他模型，不受影响。", "Whichever you pick, top up a small amount first, put the key into the platform as the picture guide below shows, and press Test. If it passes, Claude is ready; if not, the platform carries on with the other models as before.")}</li>
             <li>{t("想用支付宝或微信支付：先看 B.AI、AiHubMix、OhMyGPT。", "To pay with Alipay or WeChat Pay: look at B.AI, AiHubMix and OhMyGPT first.")}</li>
             <li>{t("想用信用卡、要知名的公司：先看 Vercel AI Gateway、Requesty。", "To pay by card with a better-known company: look at Vercel AI Gateway and Requesty first.")}</li>
             <li>{t("不要一次充很多。这些平台的规则随时会变。", "Do not top up a large amount at once. Any of these can change its rules at any time.")}</li>
@@ -505,7 +588,7 @@ export function ClaudeOptions() {
           <p>{t("无论选哪个，平台都会保留自动切换：Claude 用不了时，换另一个模型回答，工作不会停。", "Whichever you choose, the platform keeps its automatic fallback: when Claude is unavailable another model answers, so work does not stop.")}</p>
         </section>
 
-        <footer className="co-foot">{t("最后更新：2026 年 10 月 9 日 · 有问题找 Ryan", "Last updated 9 Oct 2026 · Questions to Ryan")}</footer>
+        <footer className="co-foot">{t("最后更新：2026 年 10 月 10 日", "Last updated 10 Oct 2026")}</footer>
       </main>
     </div>
   );
@@ -552,6 +635,15 @@ body { overflow: auto !important; }
 .co-other dl > div { display: grid; grid-template-columns: 76px 1fr; gap: 10px; padding-top: 6px; border-top: 1px solid #f0eee7; }
 .co-other dt { font-size: 12.5px; font-weight: 600; color: #6b675f; }
 .co-other dd { margin: 0; }
+.co-guide { margin-top: 30px; padding: 20px; background: #fff; border: 1px solid #e3e0d7; border-radius: 14px; scroll-margin-top: 16px; }
+.co-guide h2 { font-size: 20px; font-weight: 650; margin: 0 0 8px; }
+.co-guide h3 { font-size: 15.5px; font-weight: 650; margin: 22px 0 6px; }
+.co-guide-pick { margin: 8px 0 2px; }
+.co-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 18px; }
+.co-step-text { display: flex; gap: 10px; align-items: flex-start; margin-bottom: 8px; }
+.co-step-n { flex-shrink: 0; width: 24px; height: 24px; border-radius: 999px; background: #1c1b19; color: #fff; display: inline-flex; align-items: center; justify-content: center; font-size: 12.5px; font-weight: 600; margin-top: 2px; }
+.co-shot { display: block; border: 1px solid #e3e0d7; border-radius: 10px; overflow: hidden; background: #f7f6f2; }
+.co-shot img { display: block; width: 100%; height: auto; }
 .co-card { margin-top: 18px; padding: 20px; background: #fff; border: 1px solid #e3e0d7; border-radius: 14px; scroll-margin-top: 16px; }
 .co-card-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
 .co-letter { width: 28px; height: 28px; border-radius: 8px; background: #1c1b19; color: #fff; display: inline-flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 600; flex-shrink: 0; }
