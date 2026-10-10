@@ -7,6 +7,7 @@ import { workProjectDetail } from "@/lib/projects/service";
 import { oneGo } from "@/lib/projects/one-go";
 import { addClip } from "@/lib/video/service";
 import { talkingHost } from "@/lib/studio/service";
+import { scriptWriting } from "@/lib/script/writing";
 
 /**
  * AI 自动生成 (10 Oct): a finished reel from the script alone, nothing filmed
@@ -41,6 +42,13 @@ export async function autoHostVideo(
   const p = await workProjectDetail(viewer, input.projectId, true, 1);
   if (!p?.video) throw new Error("找不到这个项目");
   if (!p.script) throw new Error("这个项目还没有脚本，先写好脚本");
+  /* A project started a moment ago: 文案 is still writing the first draft. Wait for it (up to eight minutes). */
+  const t0 = Date.now();
+  while ((await scriptWriting(viewer.tenantId, p.script.id)).writing) {
+    onProgress(0.01, "等文案写稿");
+    if (Date.now() - t0 > 8 * 60_000) throw new Error("文案的初稿等了 8 分钟还没好，稍后再试");
+    await new Promise((r) => setTimeout(r, 10_000));
+  }
   const beats = await db
     .select({ voiceover: scriptBeats.voiceover, naturalSound: scriptBeats.naturalSound })
     .from(scriptBeats)
