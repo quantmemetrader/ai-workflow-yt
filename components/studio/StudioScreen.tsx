@@ -171,7 +171,7 @@ function HostPanel({ zh, voices, eleven, engines, ready, isAdmin, onClone }: { z
         <select value={voice} onChange={(e) => setVoice(e.target.value)} aria-label={t("声音", "Voice")}>
           {!voices ? <option>{t("正在读取声音…", "Loading voices…")}</option> : null}
           {cloned.length ? (
-            <optgroup label={t("克隆的声音", "Cloned voices")}>
+            <optgroup label={t("克隆和 ElevenLabs 的声音", "Cloned and ElevenLabs voices")}>
               {cloned.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
             </optgroup>
           ) : null}
