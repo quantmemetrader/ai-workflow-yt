@@ -1602,7 +1602,6 @@ function Budgets({
 /* ----------------------------------------------------------- credentials */
 
 function Credentials({
-  keys,
   apiKeys,
   connections,
   zh,
@@ -1636,32 +1635,6 @@ function Credentials({
         )}
       </p>
       <ApiKeys keys={apiKeys} zh={zh} />
-      <div className="lbl" style={{ padding: 0, margin: "26px 0 6px" }}>
-        {t("Set on the server", "服务器上的配置（不能在网页里改）")}
-      </div>
-      <p style={{ fontSize: 11.5, color: "#999999", margin: "0 0 12px", lineHeight: 1.6 }}>
-        {t(
-          "Referenced, never displayed. Not the value, not a prefix, not the last four characters.",
-          "只显示是否配置，绝不展示内容：不显示值，不显示前缀，也不显示末四位。",
-        )}
-      </p>
-      {keys.filter((k) => !apiKeys.some((a) => a.name === k.name)).map((k) => (
-        <div key={k.name} style={{ display: "flex", gap: 10, alignItems: "baseline", borderTop: "1px solid #f3f3f3", padding: "9px 0" }}>
-          <code style={{ fontSize: 11.5, color: "#383838", minWidth: 190 }}>{k.name}</code>
-          <span style={{ fontSize: 11.5, color: "#999999", flexGrow: 1 }}>{zh ? k.unlocksZh : k.unlocks}</span>
-          <span
-            style={{
-              fontSize: 10.5,
-              fontWeight: 500,
-              color: k.set ? "#278f5e" : "#c7c7c7",
-              whiteSpace: "nowrap",
-            }}
-          >
-            {k.set ? t("set", "已配置") : t("not set", "未配置")}
-          </span>
-        </div>
-      ))}
-
       <div className="lbl" style={{ padding: 0, margin: "26px 0 8px" }}>
         {t("Connected channels", "已连接渠道")}
       </div>

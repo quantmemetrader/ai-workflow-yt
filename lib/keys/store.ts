@@ -276,7 +276,7 @@ export async function removeKey(name: KeyName) {
   last = Date.now();
 }
 
-export type KeyStatus = { name: KeyName; zh: string; en: string; usesZh: string; uses: string; link: string; choices?: { label: string; value: string }[]; source: "site" | "server" | "none"; savedAt: string | null; savedBy: string | null };
+export type KeyStatus = { name: KeyName; zh: string; en: string; usesZh: string; uses: string; link: string; choices?: { label: string; value: string }[]; source: "site" | "server" | "none"; savedAt: string | null; savedBy: string | null; /** A picker's chosen value (an address, never a secret). */ choice: string | null };
 
 /** For the screen: which keys are set and where from. Never a value. */
 export async function keyStatus(zh: boolean): Promise<KeyStatus[]> {
@@ -296,6 +296,7 @@ export async function keyStatus(zh: boolean): Promise<KeyStatus[]> {
       source: s ? "site" : file || alias ? "server" : "none",
       savedAt: s ? s.at.toISOString() : null,
       savedBy: s ? ((zh && s.local) || s.name || null) : null,
+      choice: k.choices ? (process.env[k.name] ?? null) : null,
     };
   });
 }
