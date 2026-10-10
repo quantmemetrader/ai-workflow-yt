@@ -127,7 +127,7 @@ export const TOOL_DEFS: ToolDef[] = [
     function: {
       name: "create_word_from_template",
       description:
-        "Write a new Word (.docx) file in exactly the format of a sample Word file and save it in their files: the sample's page setup, header, footer, logo, fonts and styles are kept; only the body is new. Call read_word_template on the sample first. Give the new body as blocks in order: a paragraph is {like: n, text} where n is the number of the sample paragraph whose formatting it should copy (a heading like the sample's heading, body text like its body text); **bold** works inside text. A table is {table_like: n, rows: [[header cells], [cells]…]} copying sample table n. Header/footer text that must change (issue number, date) goes in replace. Afterwards give them the two links from the result.",
+        "Write a new Word (.docx) file in exactly the format of a sample Word file and save it in their files: the sample's page setup, header, footer, logo, fonts and styles are kept; only the body is new. Call read_word_template on the sample first. Give the new body as blocks in order: a paragraph is {like: n, text} where n is the number of the sample paragraph whose formatting it should copy (a heading like the sample's heading, body text like its body text); **bold** works inside text. A table is {table_like: n, rows: [[header cells], [cells]…]} copying sample table n; a line break inside a cell is \\n. A paragraph or table (a masthead, a slogan, a logo box) that stays the same is {keep_paragraph: n} or {keep_table: n}. Header/footer text that must change (issue number, date) goes in replace. Afterwards give them the two links from the result.",
       parameters: {
         type: "object",
         properties: {
@@ -139,6 +139,8 @@ export const TOOL_DEFS: ToolDef[] = [
               type: "object",
               properties: {
                 like: { type: "number", description: "Sample paragraph number to copy the formatting of." },
+                keep_paragraph: { type: "number", description: "Sample paragraph number to copy exactly as it is (an unchanged line)." },
+                keep_table: { type: "number", description: "Sample table number to copy exactly as it is: a masthead, a slogan box, a box with a logo." },
                 text: { type: "string" },
                 table_like: { type: "number", description: "Sample table number, for a table block." },
                 rows: { type: "array", items: { type: "array", items: { type: "string" } }, description: "Table rows, first row the header." },

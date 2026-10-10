@@ -106,7 +106,7 @@ function runs(text: string, base: string): string {
   return out.join("");
 }
 
-export type TemplateBlock = { like?: number | null; table_like?: number | null; text?: string; rows?: string[][] };
+export type TemplateBlock = { like?: number | null; table_like?: number | null; keep_table?: number | null; keep_paragraph?: number | null; text?: string; rows?: string[][] };
 
 type Template = { dir: string; doc: string; names: Map<string, string>; styleIds: Map<string, string>; parsed: ReturnType<typeof bodyParts>; name: string };
 
@@ -157,8 +157,11 @@ export async function describeTemplate(viewer: Viewer, fileId: string): Promise<
         lines.push(`[段落 ${p}]（${look}）${txt ? txt.slice(0, 120) : "（空行）"}`);
         p++;
       } else if (part.kind === "tbl") {
-        const rows = [...part.xml.matchAll(/<w:tr\b[\s\S]*?<\/w:tr>/g)].map((r) => [...r[0].matchAll(/<w:tc\b[\s\S]*?<\/w:tc>/g)].map((c) => textOf(c[0]).trim().slice(0, 30)));
-        lines.push(`[表格 ${tb}]（${rows.length} 行 × ${rows[0]?.length ?? 0} 列）${rows.slice(0, 3).map((r) => r.join(" | ")).join(" / ")}`);
+        /* Each cell's lines, so a layout box (a masthead, a highlighted summary) shows its structure. */
+        const cellText = (tc: string) => [...tc.matchAll(/<w:p\b[\s\S]*?<\/w:p>/g)].map((p) => textOf(p[0]).trim()).filter(Boolean).map((x) => x.slice(0, 80)).join("⏎");
+        const rows = [...part.xml.matchAll(/<w:tr\b[\s\S]*?<\/w:tr>/g)].map((r) => [...r[0].matchAll(/<w:tc\b[\s\S]*?<\/w:tc>/g)].map((c) => cellText(c[0])));
+        const box = rows.length === 1 && rows[0].length === 1;
+        lines.push(`[表格 ${tb}]（${box ? "排版框，1 格" : `${rows.length} 行 × ${rows[0]?.length ?? 0} 列`}${/<w:drawing|<w:pict/.test(part.xml) ? "，含图片" : ""}）${rows.slice(0, 4).map((r) => r.join(" | ")).join(" / ").slice(0, 400)}`);
         tb++;
       }
     }
@@ -173,41 +176,49 @@ export async function describeTemplate(viewer: Viewer, fileId: string): Promise<
       ...lines,
       hf.length ? `\n${hf.join("\n")}` : "（没有页眉页脚文字）",
       "",
-      "写新文件时，每一段用 like 指向格式最接近的范本段落编号，表格用 table_like 指向范本表格编号；页眉页脚里要换的文字（例如期号、日期）放在 replace 里。",
+      "写新文件时：每一段用 like 指向格式最接近的范本段落编号；内容不变的段落用 keep_paragraph 原样保留。表格用 table_like 指向范本表格编号并给出 rows（格子里换行用 \\n，第 k 行沿用范本那一格第 k 行的格式）；内容不变的表格或排版框（报头、标语、含图片的框）用 keep_table 原样保留。⏎ 表示格子里的换行。页眉页脚里要换的文字（例如期号、日期）放在 replace 里。",
     ].join("\n");
   } finally {
     await rm(t.dir, { recursive: true, force: true }).catch(() => {});
   }
 }
 
+/** A sample cell's paragraphs, each with its own look, so line k of new text dresses like line k of the sample. */
+function cellLooks(tc: string): { pPr: string; rPr: string }[] {
+  const ps = [...tc.matchAll(/<w:p\b[\s\S]*?<\/w:p>|<w:p\b[^>]*\/>/g)].map((m) => m[0]);
+  const looks = ps.map((p) => ({ pPr: pPr(p), rPr: rPr(p) }));
+  return looks.length ? looks : [{ pPr: "", rPr: "" }];
+}
+
 function tableXml(sample: string, rows: string[][]): string {
   const tblPr = one(sample, /<w:tblPr>[\s\S]*?<\/w:tblPr>/);
-  const grid = [...one(sample, /<w:tblGrid>[\s\S]*?<\/w:tblGrid>/).matchAll(/w:w="(\d+)"/g)].reduce((n, m) => n + Number(m[1]), 0) || 9000;
+  const gridCols = [...one(sample, /<w:tblGrid>[\s\S]*?<\/w:tblGrid>/).matchAll(/w:w="(\d+)"/g)].map((m) => Number(m[1]));
+  const total = gridCols.reduce((n, w) => n + w, 0) || 9000;
   const trs = [...sample.matchAll(/<w:tr\b[\s\S]*?<\/w:tr>/g)].map((m) => m[0]);
   const cols = Math.max(1, ...rows.map((r) => r.length));
-  const w = Math.floor(grid / cols);
-  const rowLook = (tr: string | undefined) => {
-    const tc = one(tr ?? "", /<w:tc\b[\s\S]*?<\/w:tc>/);
-    const p = one(tc, /<w:p\b[\s\S]*?<\/w:p>/);
-    return {
-      trPr: one(tr ?? "", /<w:trPr>[\s\S]*?<\/w:trPr>/),
-      tcPr: one(tc, /<w:tcPr>[\s\S]*?<\/w:tcPr>/).replace(/<w:tcW [^>]*\/>/, "").replace(/<w:gridSpan [^>]*\/>/, "").replace(/<w:vMerge[^>]*\/>/, ""),
-      pPr: pPr(p),
-      rPr: rPr(p),
-    };
-  };
-  const headLook = rowLook(trs[0]);
-  const bodyLook = rowLook(trs[1] ?? trs[0]);
+  /* The sample's own column widths when the column count matches; else even. */
+  const widths = gridCols.length === cols ? gridCols : Array.from({ length: cols }, () => Math.floor(total / cols));
   const out = rows.map((r, i) => {
-    const look = i === 0 ? headLook : bodyLook;
+    /* Same number of rows as the sample: row i dresses like sample row i; else the first row as the header, the second as the body. */
+    const tr = trs.length === rows.length ? trs[i] : i === 0 ? trs[0] : (trs[1] ?? trs[0]);
+    const tcs = [...(tr ?? "").matchAll(/<w:tc\b[\s\S]*?<\/w:tc>/g)].map((m) => m[0]);
+    const trPr = one(tr ?? "", /<w:trPr>[\s\S]*?<\/w:trPr>/);
     const cells = Array.from({ length: cols }, (_, c) => {
-      const tcPr = look.tcPr ? look.tcPr.replace("<w:tcPr>", `<w:tcPr><w:tcW w:w="${w}" w:type="dxa"/>`) : `<w:tcPr><w:tcW w:w="${w}" w:type="dxa"/></w:tcPr>`;
-      return `<w:tc>${tcPr}<w:p>${look.pPr}${runs(String(r[c] ?? ""), look.rPr)}</w:p></w:tc>`;
+      const tc = tcs[Math.min(c, Math.max(0, tcs.length - 1))] ?? "";
+      const base = one(tc, /<w:tcPr>[\s\S]*?<\/w:tcPr>/).replace(/<w:tcW [^>]*\/>/, "").replace(/<w:gridSpan [^>]*\/>/, "").replace(/<w:vMerge[^>]*\/>/, "");
+      const tcPr = base ? base.replace("<w:tcPr>", `<w:tcPr><w:tcW w:w="${widths[c]}" w:type="dxa"/>`) : `<w:tcPr><w:tcW w:w="${widths[c]}" w:type="dxa"/></w:tcPr>`;
+      const looks = cellLooks(tc);
+      const lines = String(r[c] ?? "").split("\n");
+      const paras = lines.map((line, k) => {
+        const look = looks[Math.min(k, looks.length - 1)];
+        return `<w:p>${look.pPr}${runs(line, look.rPr)}</w:p>`;
+      });
+      return `<w:tc>${tcPr}${paras.join("")}</w:tc>`;
     }).join("");
-    return `<w:tr>${look.trPr}${cells}</w:tr>`;
+    return `<w:tr>${trPr}${cells}</w:tr>`;
   });
   const fallbackPr = '<w:tblPr><w:tblW w:w="0" w:type="auto"/><w:tblBorders><w:top w:val="single" w:sz="4" w:space="0" w:color="999999"/><w:left w:val="single" w:sz="4" w:space="0" w:color="999999"/><w:bottom w:val="single" w:sz="4" w:space="0" w:color="999999"/><w:right w:val="single" w:sz="4" w:space="0" w:color="999999"/><w:insideH w:val="single" w:sz="4" w:space="0" w:color="999999"/><w:insideV w:val="single" w:sz="4" w:space="0" w:color="999999"/></w:tblBorders></w:tblPr>';
-  return `<w:tbl>${tblPr || fallbackPr}<w:tblGrid>${Array.from({ length: cols }, () => `<w:gridCol w:w="${w}"/>`).join("")}</w:tblGrid>${out.join("")}</w:tbl>`;
+  return `<w:tbl>${tblPr || fallbackPr}<w:tblGrid>${widths.map((w) => `<w:gridCol w:w="${w}"/>`).join("")}</w:tblGrid>${out.join("")}</w:tbl>`;
 }
 
 /**
@@ -231,6 +242,19 @@ export async function fillTemplate(
     let np = 0;
     let nt = 0;
     for (const b of input.blocks.slice(0, 800)) {
+      /* A box or a line that stays as it is (a masthead, a slogan, a logo line): copied whole, images and all. */
+      const kt = Number(b.keep_table);
+      if (b.keep_table !== undefined && b.keep_table !== null && Number.isInteger(kt) && tables[kt]) {
+        body.push(tables[kt]);
+        nt++;
+        continue;
+      }
+      const kp = Number(b.keep_paragraph);
+      if (b.keep_paragraph !== undefined && b.keep_paragraph !== null && Number.isInteger(kp) && paras[kp]) {
+        body.push(paras[kp].replace(/<w:sectPr\b[\s\S]*?<\/w:sectPr>/, ""));
+        np++;
+        continue;
+      }
       if (Array.isArray(b.rows) && b.rows.length) {
         const sample = tables[Math.min(Math.max(0, Number(b.table_like ?? 0) || 0), Math.max(0, tables.length - 1))] ?? "";
         body.push(tableXml(sample, b.rows.slice(0, 200).map((r) => (Array.isArray(r) ? r.map((c) => String(c ?? "").slice(0, 2000)).slice(0, 20) : []))));
