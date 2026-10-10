@@ -77,6 +77,17 @@ type ProviderPayload = {
   id?: string;
 };
 
+/** Tokens an almost-empty balance still pays for, when OpenRouter says so and it is worth a smaller try. */
+export function affordable(message: string, asked: number): number | null {
+  const n = Number(/can only afford (\d+)/i.exec(message)?.[1] ?? 0);
+  return n >= 1200 && n < asked ? Math.floor(n * 0.9) : null;
+}
+
+/** DeepSeek's own API, when its key is set: the place to go when the OpenRouter account has run dry. */
+export function creditFallbackModel(model: string): string | null {
+  return env.deepseek.configured && /\//.test(model) ? "deepseek-v4-pro" : null;
+}
+
 export type AiErrorKind = "credit" | "rate_limit" | "provider" | "network" | "bad_request";
 
 export class AiError extends Error {
@@ -289,6 +300,12 @@ export async function* streamChat(opts: StreamOptions): AsyncGenerator<StreamEve
 
     if ((res.status === 429 || res.status === 402) && keys.length > 1) {
       attempt = 1;
+      res = await send(keys[attempt]);
+    }
+    /* A balance that covers a shorter answer (10 Oct: "can only afford 2152" against 14000 asked): ask for what it covers. */
+    const fits = res.status === 402 && body.max_tokens ? affordable(await res.clone().text().catch(() => ""), body.max_tokens) : null;
+    if (fits) {
+      (body as { max_tokens?: number }).max_tokens = fits;
       res = await send(keys[attempt]);
     }
   } catch (err) {
@@ -504,7 +521,14 @@ export async function complete(opts: Omit<StreamOptions, "tools">): Promise<Comp
   try {
     return await completeOnce(opts);
   } catch (err) {
-    if (!(err instanceof AiError) || err.kind === "credit" || opts.signal?.aborted) throw err;
+    if (opts.signal?.aborted || !(err instanceof AiError)) throw err;
+    if (err.kind === "credit") {
+      /* Out of credit on OpenRouter: DeepSeek's own key answers instead, if there is one. */
+      const spare = creditFallbackModel(opts.model);
+      if (!spare) throw err;
+      console.warn(`[ai] OpenRouter out of credit for ${opts.model}; answering with ${spare}`);
+      return await completeOnce({ ...opts, model: spare });
+    }
     if (err.kind === "bad_request" && !/model|provider|endpoint/i.test(err.message)) throw err;
     const { modelFor } = await import("./models");
     const chain = [modelFor.assistant(), modelFor.drafting(), ...modelFor.fallbacks(), "qwen/qwen-plus", "deepseek/deepseek-v4-flash"].filter((m, i, all) => m && m !== opts.model && all.indexOf(m) === i).slice(0, 4);

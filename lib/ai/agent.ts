@@ -10,7 +10,7 @@ import type { Viewer } from "@/lib/auth/dal";
 import { audit } from "@/lib/audit";
 import { canReadFiles, relationOn } from "@/lib/authz/rebac";
 import { newId } from "@/lib/ids";
-import { AiError, streamChat, type ChatMessage, type StreamEvent } from "./openrouter";
+import { AiError, creditFallbackModel, streamChat, type ChatMessage, type StreamEvent } from "./openrouter";
 import { BudgetStop, assertBudget, budgetState, notifyBudgetStop, recordUsage, type BudgetState } from "./ledger";
 import { labelFor, modelFor } from "./models";
 import { freshModelChoice } from "./choice";
@@ -336,7 +336,12 @@ export async function* runAgent(opts: {
         }
       } catch (err) {
         const aiErr = err instanceof AiError ? err : null;
-        if (aiErr?.kind === "credit" && !creditError) creditError = aiErr;
+        if (aiErr?.kind === "credit" && !creditError) {
+          creditError = aiErr;
+          /* The OpenRouter account ran dry: DeepSeek's own key first, before free models on the same empty account. */
+          const spare = creditFallbackModel(model);
+          if (spare && !fallbacks.includes(spare)) fallbacks.unshift(spare);
+        }
 
         // Out of credit, or the provider is refusing: step down the fallback
         // chain rather than leaving the employee with nothing, and say why.
