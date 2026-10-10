@@ -105,7 +105,7 @@ const GUIDES: { id: string; name: string; steps: Step[] }[] = [
     steps: [
       { img: "orbio-1.jpg", zh: "打开 orbio.so，在右边「Buy credits」里填想买的额度（建议先买 20 美元），点 Buy。", en: "Open orbio.so, enter the amount of credit under Buy credits on the right (start with US$20), and press Buy." },
       { img: "orbio-2.jpg", zh: "页面会显示实际要付的钱（截图当天：20 美元额度付 10.08 美元）。点「Sign in to buy」，登录后付款。", en: "It shows what you actually pay (on the day of this screenshot, US$20 of credit cost US$10.08). Press Sign in to buy, sign in and pay." },
-      { zh: "付款后在 Orbio 的账号页面创建一把 API 密钥并复制下来。这一页要登录后才看得到，所以这里没有截图。", en: "After paying, create an API key on your Orbio account page and copy it. That page is only visible once signed in, so there is no screenshot of it here." },
+      { img: "orbio-3.jpg", zh: "付款后回到 Orbio 首页：你的密钥（sk-orbio- 开头）就在左边的卡片里，点旁边的复制按钮。卡片下方显示剩余额度。", en: "After paying, go back to the Orbio home page: your key (starting sk-orbio-) is in the card on the left; press the copy button beside it. The card also shows the credit left." },
     ],
   },
   {

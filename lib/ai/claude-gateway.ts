@@ -15,7 +15,7 @@ import "server-only";
  */
 export const GATEWAYS: { id: string; name: string; base: string }[] = [
   { id: "openrouter", name: "OpenRouter", base: "https://openrouter.ai/api/v1" },
-  { id: "orbio", name: "Orbio", base: "https://www.orbio.so/api/v1" },
+  { id: "orbio", name: "Orbio", base: "https://api.orbio.so/api/v1" },
   { id: "bai", name: "B.AI", base: "https://api.b.ai/v1" },
   { id: "requesty", name: "Requesty", base: "https://router.requesty.ai/v1" },
   { id: "aimlapi", name: "AIMLAPI", base: "https://api.aimlapi.com/v1" },
