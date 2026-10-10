@@ -31,6 +31,7 @@ export type KeyName =
   | "YOUTUBE_API_KEY"
   | "PEXELS_API_KEY"
   | "PIXABAY_API_KEY"
+  | "POLLINATIONS_TOKEN"
   | "UNSPLASH_ACCESS_KEY"
   | "FAL_KEY";
 
@@ -50,6 +51,7 @@ export const KEYS: { name: KeyName; zh: string; en: string; usesZh: string; uses
   { name: "PEXELS_API_KEY", zh: "Pexels（素材）", en: "Pexels (stock)", usesZh: "剪辑时自动找的免费视频和图片素材", uses: "Free stock footage found while editing", link: "https://www.pexels.com/api/" },
   { name: "FAL_KEY", zh: "fal.ai（AI 生成视频）", en: "fal.ai (AI video)", usesZh: "「配音和生成」里的 AI 生成视频：可灵、海螺、即梦", uses: "AI video in Voice & video: Kling, Hailuo, Seedance", link: "https://fal.ai/dashboard/keys" },
   { name: "PIXABAY_API_KEY", zh: "Pixabay（素材）", en: "Pixabay (stock)", usesZh: "剪辑时自动找的免费图片；注册即送密钥", uses: "Free pictures found while editing; the key is free on sign-up", link: "https://pixabay.com/api/docs/" },
+  { name: "POLLINATIONS_TOKEN", zh: "Pollinations（免费生成图片）", en: "Pollinations (free image generation)", usesZh: "剪辑时生成不存在的画面。免费注册拿一个 token，图上就没有水印", uses: "Generated cutaway pictures. A free token removes the watermark", link: "https://auth.pollinations.ai" },
   { name: "UNSPLASH_ACCESS_KEY", zh: "Unsplash（图片素材）", en: "Unsplash (photos)", usesZh: "剪辑时自动找的图片素材", uses: "Stock photos found while editing", link: "https://unsplash.com/oauth/applications" },
 ];
 
@@ -190,6 +192,10 @@ export async function testKey(name: KeyName, value: string): Promise<{ ok: boole
         if (!process.env.ANTHROPIC_API_KEY) return { ok: true, note: "已记下。先在上一行填 Anthropic 密钥" };
         const { testAnthropicKey } = await import("@/lib/ai/anthropic");
         return testAnthropicKey(process.env.ANTHROPIC_API_KEY, value.trim());
+      }
+      case "POLLINATIONS_TOKEN": {
+        const r = await fetch("https://image.pollinations.ai/prompt/a%20red%20square?width=256&height=256&nologo=true&model=flux", { headers: { authorization: `Bearer ${value}`, "user-agent": "Tengya/1.0" }, signal: AbortSignal.timeout(60_000) });
+        return r.ok ? { ok: true, note: "有效 · Pollinations 生成了一张测试图" } : { ok: false, note: `Pollinations 没通过（${r.status}）` };
       }
       case "PIXABAY_API_KEY": {
         const r = await get(`https://pixabay.com/api/?key=${encodeURIComponent(value)}&q=city&per_page=3&image_type=photo`, {});

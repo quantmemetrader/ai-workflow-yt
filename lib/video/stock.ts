@@ -469,7 +469,7 @@ export async function generatePicture(prompt: string, aspect: "portrait" | "land
   const [width, height] = aspect === "portrait" ? [1080, 1920] : aspect === "square" ? [1080, 1080] : [1920, 1080];
   const seed = Math.floor(Math.random() * 1_000_000);
   const source = `https://image.pollinations.ai/prompt/${encodeURIComponent(words)}?width=${width}&height=${height}&model=flux&nologo=true&enhance=true&seed=${seed}`;
-  const res = await fetch(source, { headers: { accept: "image/*", "user-agent": "Tengya/1.0 (studio video tool)" }, signal: AbortSignal.timeout(120_000) }).catch(() => null);
+  const res = await fetch(source, { headers: { accept: "image/*", "user-agent": "Tengya/1.0 (studio video tool)", ...(env.pollinations.token ? { authorization: `Bearer ${env.pollinations.token}` } : {}) }, signal: AbortSignal.timeout(120_000) }).catch(() => null);
   if (!res?.ok) throw new Error(`图片没生成出来${res ? `（${res.status}）` : ""}，换个描述再试一次`);
   const mime = (res.headers.get("content-type") ?? "image/jpeg").split(";")[0].trim();
   const bytes = new Uint8Array(await res.arrayBuffer());

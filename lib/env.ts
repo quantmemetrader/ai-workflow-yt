@@ -204,6 +204,12 @@ export const env = {
       return Boolean(process.env.PEXELS_API_KEY);
     },
   },
+  pollinations: {
+    /** A free "seed" token from auth.pollinations.ai: no watermark, a request every 5 s. */
+    get token(): string {
+      return opt("POLLINATIONS_TOKEN");
+    },
+  },
   pixabay: {
     get apiKey(): string {
       return opt("PIXABAY_API_KEY");
