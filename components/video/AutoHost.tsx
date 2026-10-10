@@ -25,7 +25,7 @@ export function AutoHost({ projectId, zh, hasScript, onStarted }: { projectId: s
   const [d, setD] = React.useState<Defaults | null>(null);
   const [host, setHost] = React.useState<Defaults["host"]>(null);
   const [voice, setVoice] = React.useState("");
-  const [engine, setEngine] = React.useState("");
+  const [engineChoice, setEngine] = React.useState("");
   const [aspect, setAspect] = React.useState<"9:16" | "16:9" | "1:1">("9:16");
   const [uploading, setUploading] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
@@ -43,9 +43,8 @@ export function AutoHost({ projectId, zh, hasScript, onStarted }: { projectId: s
     });
   }, [open, d]);
   const fits = (d?.engines ?? []).filter((e) => (!host || e.for === host.kind) && (d?.falReady || e.id.startsWith("local/")));
-  React.useEffect(() => {
-    if (!fits.some((e) => e.id === engine)) setEngine(fits[0]?.id ?? "");
-  }, [fits, engine]);
+  /* The chosen engine, or the first that fits the host's clip: derived, so a changed clip never needs an effect. */
+  const engine = fits.some((e) => e.id === engineChoice) ? engineChoice : (fits[0]?.id ?? "");
 
   React.useEffect(() => {
     if (!job || job.status === "succeeded" || job.status === "failed" || job.status === "cancelled") return;
@@ -55,13 +54,13 @@ export function AutoHost({ projectId, zh, hasScript, onStarted }: { projectId: s
       if (!j) return;
       setJob((cur) => (cur ? { ...cur, status: j.status, progress: j.progress, error: j.error, stage: j.result?.stage ?? cur.stage } : cur));
       if (j.status === "succeeded") {
-        notify(t("她的口播片段做好了，剪辑师正在剪", "Her take is in; the editor is cutting"), "ok");
+        notify(zh ? "她的口播片段做好了，剪辑师正在剪" : "Her take is in; the editor is cutting", "ok");
         onStarted();
         router.refresh();
       }
     }, 5000);
     return () => window.clearInterval(tick);
-  }, [job, onStarted, router, t]);
+  }, [job, onStarted, router, zh]);
 
   const upload = async (list: FileList | null) => {
     const f = list?.[0];
