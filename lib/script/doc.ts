@@ -292,9 +292,13 @@ export type DocChange = { i: number; text: string; why: string };
 export type DocInsert = { after: number; text: string; why: string };
 
 const COPILOT_PROMPT = `你是短视频工作室的文案，正在和同事一起改一份口播脚本。脚本按段落编号，每段是一句或几句要说的话。
-按同事的指令改写。只回答一个 JSON 对象，不要 markdown，不要解释：
-{"changes":[{"i":段落编号,"text":"改后的整段","why":"十五字以内说明"}],"inserts":[{"after":插在哪一段之后（-1 表示最前面）,"text":"新段落","why":"说明"}],"summary":"一句话总结改了什么"}
-规则：
+先判断同事这句话是在提问、讨论，还是在明确要求修改：
+- 提问或讨论（例如“这稿多长”“开头怎么样”“有什么建议”“为什么这样写”“这段讲的是什么”）：只回答，不改稿。changes 和 inserts 都给空数组 []，把回答写在 "reply" 里。回答要具体，引用段落编号或原文。
+- 意思不确定、像是在征求意见（例如“是不是太长了”“开头要不要改”）：不要动手改。在 "reply" 里说你的判断和打算怎么改，最后问一句“要我这样改吗？”。changes 和 inserts 给空数组。
+- 明确要求修改（例如“缩短到 60 秒”“开头更抓人”“把第三段改口语一点”），或者同事回应你上一轮的提议（例如“好”“可以，改吧”）：按指令改写，在 changes / inserts 里给出改法，"reply" 用一句话说改了什么。
+只回答一个 JSON 对象，不要 markdown，不要 JSON 以外的解释：
+{"reply":"给同事的回答或说明","changes":[{"i":段落编号,"text":"改后的整段","why":"十五字以内说明"}],"inserts":[{"after":插在哪一段之后（-1 表示最前面）,"text":"新段落","why":"说明"}],"summary":"一句话总结改了什么（没改就留空）"}
+改稿时的规则：
 - 只列真的要改的段落；没改的段落不要出现。要删掉一段，text 写空字符串 ""。
 - 中文一律用简体字，不要用繁体字（原文是繁体的也改成简体）。保持原来的人设和口吻，不要编造事实、数字、人名。
 - 口播按每秒约 4.5 个汉字估算时长；"缩短 30 秒"就是删减约 135 个字。
@@ -322,7 +326,7 @@ async function referenceText(viewer: Viewer, scriptId: string): Promise<string> 
  * change, delete or add, for the page to show as tracked changes. Nothing is
  * saved here — the person accepts what they want.
  */
-export async function copilotRewrite(viewer: Viewer, scriptId: string, paragraphs: string[], instruction: string, pick?: string | null, fileIds: string[] = []) {
+export async function copilotRewrite(viewer: Viewer, scriptId: string, paragraphs: string[], instruction: string, pick?: string | null, fileIds: string[] = [], history: { q: string; a: string }[] = []) {
   await assertBudget(viewer);
   const [script] = await db.select({ title: scripts.title, targetSeconds: scripts.targetSeconds }).from(scripts).where(and(eq(scripts.id, scriptId), eq(scripts.tenantId, viewer.tenantId))).limit(1);
   if (!script) return { error: "Not allowed" };
@@ -339,10 +343,14 @@ export async function copilotRewrite(viewer: Viewer, scriptId: string, paragraph
   const model0 = pick ?? modelFor.agent("script") ?? modelFor.assistant();
   const system = [COPILOT_PROMPT, disclosureForWriting(model0), HUMAN_STYLE_ZH, style.text ? `工作室的写作规范与文案的训练：\n${style.text.slice(0, 12000)}` : "", refs, attachedText].filter(Boolean).join("\n\n");
   const total = paragraphs.reduce((n, p) => n + spokenSeconds(p), 0);
+  const chars = paragraphs.reduce((n, p) => n + p.replace(/\s/g, "").length, 0);
+  /* The last few turns in the side panel, so "好，改吧" answers the proposal before it. */
+  const said = history.slice(-4).map((h) => `同事：${h.q.slice(0, 400)}\n文案：${h.a.slice(0, 600)}`).join("\n");
   const user = [
     `标题：${script.title}`,
-    script.targetSeconds ? `目标时长：${script.targetSeconds} 秒；现在约 ${Math.round(total)} 秒` : `现在约 ${Math.round(total)} 秒`,
-    `指令：${instruction.slice(0, 1000)}`,
+    script.targetSeconds ? `目标时长：${script.targetSeconds} 秒；现在约 ${Math.round(total)} 秒，${chars} 个字，${paragraphs.filter((p) => p.trim()).length} 段` : `现在约 ${Math.round(total)} 秒，${chars} 个字，${paragraphs.filter((p) => p.trim()).length} 段`,
+    said ? `之前的对话：\n${said}` : "",
+    `同事这次说：${instruction.slice(0, 1000)}`,
     "",
     "脚本：",
     ...paragraphs.map((p, i) => `[${i}] ${p || "（空，现场声）"}`),
@@ -352,7 +360,7 @@ export async function copilotRewrite(viewer: Viewer, scriptId: string, paragraph
      drafting model reasons first, and on a long prompt ran out of room
      before the JSON) is not a copilot. One retry when the answer is not
      the JSON asked for. */
-  let raw: { changes?: unknown; inserts?: unknown; summary?: unknown } | null = null;
+  let raw: { reply?: unknown; changes?: unknown; inserts?: unknown; summary?: unknown } | null = null;
   let model = "";
   for (let attempt = 0; attempt < 2 && !raw; attempt++) {
     const out = await complete({
@@ -390,8 +398,10 @@ export async function copilotRewrite(viewer: Viewer, scriptId: string, paragraph
     .map((c) => ({ after: Number(c.after), text: humanize(s(c.text, 4000)), why: humanize(s(c.why, 80)) }))
     .filter((c) => Number.isInteger(c.after) && c.after >= -1 && c.after < paragraphs.length && c.text)
     .slice(0, 8);
-  if (!unique.length && !inserts.length) return { error: "文案觉得按这个指令不需要改动。换个说法试试。" };
-  return { ok: true as const, changes: unique, inserts, summary: s(raw.summary, 200), model };
+  const reply = humanize(s(raw.reply, 3000));
+  /* A question answered, or a proposal put to the person: nothing is marked in the document. */
+  if (!unique.length && !inserts.length) return reply ? { ok: true as const, changes: [] as DocChange[], inserts: [] as DocInsert[], summary: "", reply, model } : { error: "文案觉得按这个指令不需要改动。换个说法试试。" };
+  return { ok: true as const, changes: unique, inserts, summary: s(raw.summary, 200) || reply, reply, model };
 }
 
 /**

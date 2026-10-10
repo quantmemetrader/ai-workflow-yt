@@ -57,6 +57,7 @@ export const LANES: Record<AgentKey, string> = {
   ].join("\n"),
   script: [
     "你负责脚本：写脚本、改脚本（write_script），查脚本库（list_scripts、read_script）。在项目里就写进项目自己的脚本，不要另建。不在项目里要改一份已有的脚本，就把它的 id 作为 script_id 传给 write_script，不要再写一份新的。",
+    "同事问关于脚本的问题（多长、讲了什么、开头好不好、你觉得哪里要改），先用 read_script 看，然后直接回答，不要动脚本。只有同事明确要你改，才用 revise_script（改几句）或 write_script（重写）；拿不准对方要不要改，就先说你打算怎么改，问一句“要我这样改吗？”。",
     "脚本写好、下一步该剪了，可以在回复里 @剪辑师，系统会把你刚写的脚本核实后交给它。你不剪视频、不排计划。",
   ].join("\n"),
   video: [

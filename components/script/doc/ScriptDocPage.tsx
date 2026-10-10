@@ -54,6 +54,16 @@ export async function ScriptDocPage({ id, standalone = false }: { id: string; st
   ]);
   const [stored] = scriptId ? await db.select({ doc: scripts.doc }).from(scripts).where(eq(scripts.id, scriptId)).limit(1) : [];
   const [src] = await db.select({ source: workProjects.source }).from(workProjects).where(eq(workProjects.id, p.id)).limit(1);
+  const source = (src?.source as { label?: string | null; why?: string | null; angle?: string | null; hook?: string | null } | null) ?? null;
+  const topic = {
+    title: p.title,
+    label: source?.label ?? null,
+    why: source?.why ?? (p.brief ? p.brief.slice(0, 400) : null),
+    angle: source?.angle ?? detail?.script.angle ?? null,
+    hook: source?.hook ?? null,
+    points: (detail?.script.mandatoryPoints ?? []).filter((x) => typeof x === "string" && x.trim()).slice(0, 8),
+    href: `/projects/${p.id}/topic`,
+  };
   const failedRaw = (src?.source as { draftFailed?: { at?: string; note?: string } | null } | null)?.draftFailed ?? null;
   const draftFailed = failedRaw?.note ? { at: failedRaw.at ?? "", note: failedRaw.note } : null;
   const beats = (detail?.beats ?? []).map((b) => ({ visual: b.visual, voiceover: b.voiceover, subtitle: b.subtitle, naturalSound: b.naturalSound }));
@@ -133,6 +143,7 @@ export async function ScriptDocPage({ id, standalone = false }: { id: string; st
         sentBack={sentBack}
         people={people.map((x) => ({ id: x.id, name: (zh && x.nameLocal) || x.name, avatarUrl: x.avatarUrl, title: x.title }))}
         accessNote={accessNote}
+        topic={topic.why || topic.angle || topic.hook || topic.points.length || topic.label ? topic : null}
         accessMode={p.access.mode}
         access={p.access}
         canManageAccess={p.canManage}

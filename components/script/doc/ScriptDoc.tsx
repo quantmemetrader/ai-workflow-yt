@@ -571,11 +571,22 @@ export function ScriptDoc(props: ScriptDocProps) {
     setThinking(true);
     start(async () => {
       await save();
-      const r = await copilotAction(projectId, units.map((u) => u.text), q, modelOverride ?? (pickModel === AUTO_MODEL ? undefined : pickModel), refAtt.ids);
+      const said = aiLog.filter((m) => m.a).map((m) => ({ q: m.q, a: m.a as string }));
+      const r = await copilotAction(projectId, units.map((u) => u.text), q, modelOverride ?? (pickModel === AUTO_MODEL ? undefined : pickModel), refAtt.ids, said);
       setThinking(false);
-      if ("error" in r && r.error) return notify(r.error);
+      if ("error" in r && r.error) {
+        setAiLog((l) => (l.length ? [...l.slice(0, -1), { ...l[l.length - 1], a: r.error as string }] : l));
+        return notify(r.error);
+      }
       refAtt.clear();
       if (!("ok" in r) || !r.ok) return;
+      /* A question, or a proposal put back to the person (Avon, 7 Oct: asked how long the script was and it started rewriting): the answer goes in the panel and the document is left alone. */
+      if (!r.changes.length && !r.inserts.length) {
+        setAiLog((l) => (l.length ? [...l.slice(0, -1), { ...l[l.length - 1], a: r.reply || t("没有改动", "No changes") }] : l));
+        setAsk("");
+        setPanel("ai");
+        return;
+      }
       const now = spokenUnits(editor.state.doc);
       const items: Tracked[] = [];
       for (const c of r.changes) {
@@ -1600,7 +1611,7 @@ export function ScriptDoc(props: ScriptDocProps) {
                   onBlur={() => window.setTimeout(() => setAskFocus(false), 120)}
                   onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) runCopilot(); }}
                   onPaste={refAtt.onPaste}
-                  placeholder={thinking ? t("文案正在改…", "The writer is on it…") : proposal ? t("先处理上面的修改建议", "Deal with the suggested edits first") : t("描述你想怎么改这份稿子…（可以附范例文件）", "Describe how to change this script… (attach a sample)")}
+                  placeholder={thinking ? t("文案正在想…", "The writer is thinking…") : proposal ? t("先处理上面的修改建议", "Deal with the suggested edits first") : t("问文案，或说想怎么改这份稿子…（可以附范例文件）", "Ask the writer, or say how to change this script… (attach a sample)")}
                 />
                 <AttachButton zh={zh} onFiles={refAtt.add} size={30} title={t("附参考文件：范例、资料、截图，只用于这次修改", "Attach a sample or notes for this edit")} />
                 <ModelChip value={pickModel} onChange={setPickModel} zh={zh} placement="up" align="right" />
@@ -1623,13 +1634,33 @@ export function ScriptDoc(props: ScriptDocProps) {
                 ))}
               </div>
             </div>
+            {panel === "ai" && props.topic ? (
+              <details className="gd-topic" open>
+                <summary>
+                  <span className="gd-topic-k">{t("选题", "Topic")}</span>
+                  <span className="gd-topic-t">{props.topic.title}</span>
+                </summary>
+                {props.topic.label ? <div className="gd-topic-row"><b>{t("来源", "From")}</b>{props.topic.label}</div> : null}
+                {props.topic.why ? <div className="gd-topic-row"><b>{t("为什么做", "Why")}</b>{props.topic.why}</div> : null}
+                {props.topic.angle ? <div className="gd-topic-row"><b>{t("角度", "Angle")}</b>{props.topic.angle}</div> : null}
+                {props.topic.hook ? <div className="gd-topic-row"><b>{t("开头", "Hook")}</b>{props.topic.hook}</div> : null}
+                {props.topic.points.length ? (
+                  <div className="gd-topic-row">
+                    <b>{t("必须讲到", "Must cover")}</b>
+                    <ul>{props.topic.points.map((x) => <li key={x}>{x}</li>)}</ul>
+                  </div>
+                ) : null}
+                {script?.targetSeconds ? <div className="gd-topic-row"><b>{t("目标时长", "Length")}</b>{formatSecs(script.targetSeconds, zh)}</div> : null}
+                <a className="gd-topic-link" href={props.topic.href}>{t("查看选题详情 →", "See the topic →")}</a>
+              </details>
+            ) : null}
             {panel === "ai" ? (
               <div className="gd-ai-panel">
                 <div className="gd-ai-who">
                   <AgentIcon agent="script" size={36} radius={10} />
                   <div style={{ minWidth: 0, flexGrow: 1 }}>
                     <div style={{ fontSize: 15, fontWeight: 600 }}>{t("文案", "The writer")}</div>
-                    <div style={{ fontSize: 12.5, color: thinking ? "#1a73e8" : "#5f6368" }}>{thinking ? t("正在改稿…", "Rewriting…") : t("告诉我怎么改，改法会标在文档里", "Say how to change it")}</div>
+                    <div style={{ fontSize: 12.5, color: thinking ? "#1a73e8" : "#5f6368" }}>{thinking ? t("正在想…", "Thinking…") : t("可以问我问题，也可以让我改稿；改法会标在文档里", "Ask me anything, or tell me what to change")}</div>
                   </div>
                 </div>
 
@@ -1637,8 +1668,8 @@ export function ScriptDoc(props: ScriptDocProps) {
                   <div className="gd-ai-log">
                     {aiLog.map((m, i) => (
                       <div key={i} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                        <div className="gd-ai-q">{m.q.length > 80 ? `${m.q.slice(0, 80)}…` : m.q}</div>
-                        <div className="gd-ai-a">{m.a ?? (thinking && i === aiLog.length - 1 ? t("正在改…", "Working…") : t("没有改动", "No changes"))}</div>
+                        <div className="gd-ai-q">{m.q.length > 200 ? `${m.q.slice(0, 200)}…` : m.q}</div>
+                        <div className="gd-ai-a">{m.a ?? (thinking && i === aiLog.length - 1 ? t("正在想…", "Thinking…") : t("没有改动", "No changes"))}</div>
                       </div>
                     ))}
                   </div>
@@ -1676,7 +1707,7 @@ export function ScriptDoc(props: ScriptDocProps) {
                         disabled={thinking || Boolean(proposal)}
                         onChange={(e) => setAsk(e.target.value)}
                         onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); runCopilot(); } }}
-                        placeholder={thinking ? t("文案正在改…", "The writer is on it…") : proposal ? t("先处理文档里的修改建议", "Deal with the suggested edits first") : t("想怎么改？例如：开头更抓人，第二段加一个真实数据", "How should it change?")}
+                        placeholder={thinking ? t("文案正在想…", "The writer is thinking…") : proposal ? t("先处理文档里的修改建议", "Deal with the suggested edits first") : t("问一句或说怎么改。例如：这稿多长？开头更抓人一点", "Ask, or say what to change")}
                       />
                       <div className="gd-ai-row">
                         <AttachButton zh={zh} onFiles={refAtt.add} size={28} title={t("附参考文件：范例、资料、截图，只用于这次修改", "Attach a sample or notes for this edit")} />
@@ -1684,7 +1715,7 @@ export function ScriptDoc(props: ScriptDocProps) {
                         <span style={{ flexGrow: 1 }} />
                         <button type="button" className="gd-ai-go" disabled={thinking || !ask.trim() || Boolean(proposal)} onClick={() => runCopilot()}>
                           {thinking ? <span className="gd-spin" /> : <GI name="send" size={16} />}
-                          {t("让文案改", "Rewrite")}
+                          {t("发送", "Send")}
                         </button>
                       </div>
                     </div>
@@ -2165,7 +2196,16 @@ export const GD_CSS = `
 .gd-ai-who { display: flex; align-items: center; gap: 10px; }
 .gd-ai-log { display: flex; flex-direction: column; gap: 12px; max-height: 240px; overflow-y: auto; padding: 2px; }
 .gd-ai-q { align-self: flex-end; max-width: 88%; background: #171717; color: #fff; border-radius: 14px 14px 4px 14px; padding: 8px 12px; font-size: 13px; line-height: 1.5; }
-.gd-ai-a { align-self: flex-start; max-width: 92%; background: #f1f3f4; color: #1f1f1f; border-radius: 14px 14px 14px 4px; padding: 8px 12px; font-size: 13px; line-height: 1.5; }
+.gd-topic { margin: 0 0 14px; border: 1px solid #e3e3e0; border-radius: 12px; background: #fbfbfa; padding: 10px 12px; font-size: 13px; line-height: 1.55; color: #3c4043; }
+.gd-topic summary { cursor: pointer; display: flex; gap: 8px; align-items: baseline; list-style: none; }
+.gd-topic summary::-webkit-details-marker { display: none; }
+.gd-topic-k { flex-shrink: 0; font-size: 11.5px; font-weight: 600; color: #b3420e; background: #f8dcc6; border-radius: 999px; padding: 1px 8px; }
+.gd-topic-t { font-weight: 600; color: #1f1f1f; min-width: 0; }
+.gd-topic-row { margin-top: 7px; }
+.gd-topic-row b { display: block; font-size: 11.5px; font-weight: 600; color: #5f6368; margin-bottom: 1px; }
+.gd-topic-row ul { margin: 2px 0 0; padding-left: 18px; }
+.gd-topic-link { display: inline-block; margin-top: 8px; font-size: 12.5px; color: #1a73e8; text-decoration: none; }
+.gd-ai-a { align-self: flex-start; max-width: 92%; background: #f1f3f4; color: #1f1f1f; border-radius: 14px 14px 14px 4px; padding: 8px 12px; font-size: 13px; line-height: 1.5; white-space: pre-wrap; }
 .gd-ai-label { font-size: 12.5px; font-weight: 600; color: #5f6368; margin-bottom: -6px; }
 .gd-ai-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 .gd-ai-action { min-height: 38px; padding: 6px 10px; border: 1px solid #e3e3e3; border-radius: 10px; background: #fff; font: inherit; font-size: 13px; font-weight: 500; color: #1f1f1f; text-align: left; cursor: pointer; line-height: 1.35; }
@@ -2353,4 +2393,12 @@ function BigDrop({ icon, label, children }: { icon: "upload" | "download"; label
       ) : null}
     </div>
   );
+}
+
+/** 90 → 1 分 30 秒 / 1 min 30 s. */
+function formatSecs(n: number, zh: boolean): string {
+  const m = Math.floor(n / 60);
+  const s = Math.round(n % 60);
+  if (zh) return m ? `${m} 分${s ? ` ${s} 秒` : "钟"}` : `${s} 秒`;
+  return m ? `${m} min${s ? ` ${s} s` : ""}` : `${s} s`;
 }

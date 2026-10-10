@@ -83,7 +83,7 @@ const defs: ToolDef[] = [
     function: {
       name: "revise_script",
       description:
-        "Change an existing script the way the person asks: a sharper opening, a cut to 60 seconds, a fact to fix, a different ending. The script's current text is kept as a version first; then the writer's copilot edits only the lines that need it and the rest stays word for word, written straight into the script so its page shows the new text. The instruction's words are never pasted into the script. Use this, not write_script, whenever a script already has text and the person wants it changed. Refused on an approved (locked) script. Costs one model call.",
+        "Only when the person clearly asks for a change. A question about a script (how long it is, what it says, whether the opening works, what you would change) is answered by reading it with read_script, never by revising it; when it is unclear whether they want it changed, say what you would change and ask first (Avon, 7 Oct: asked how long the script was and it was rewritten). Change an existing script the way the person asks: a sharper opening, a cut to 60 seconds, a fact to fix, a different ending. The script's current text is kept as a version first; then the writer's copilot edits only the lines that need it and the rest stays word for word, written straight into the script so its page shows the new text. The instruction's words are never pasted into the script. Use this, not write_script, whenever a script already has text and the person wants it changed. Refused on an approved (locked) script. Costs one model call.",
       parameters: {
         type: "object",
         properties: {
@@ -536,7 +536,6 @@ async function reviseScript(ctx: ToolContext, args: Record<string, unknown>): Pr
   const units = unitsOf(base);
   if (!units.length) return { text: `"${row.title}" has no text yet, so there is nothing to revise. Use write_script to write its first draft. Nothing was changed.` };
 
-  await cutVersion(ctx.viewer, row.id, { note: "改稿前" });
   let res: Awaited<ReturnType<typeof copilotRewrite>>;
   try {
     res = await copilotRewrite(ctx.viewer, row.id, units.map((u) => u.text), instruction);
@@ -544,6 +543,10 @@ async function reviseScript(ctx: ToolContext, args: Record<string, unknown>): Pr
     return { text: `The change could not be made: ${err instanceof Error ? err.message : "the model call failed"}. The script is as it was.` };
   }
   if ("error" in res) return { text: `${res.error} The script is as it was.` };
+  /* The writer read it as a question or put a proposal back: nothing is written. */
+  if (!res.changes.length && !res.inserts.length) {
+    return { text: `Nothing was changed in "${row.title}"; it is as it was. The writer's answer${res.reply ? `: ${res.reply}` : " was that no change is needed."}\nPass this on; if it proposes a change, ask the person whether to make it.` };
+  }
 
   /* Somebody typing in the page while the copilot worked: its line numbers
      no longer point at the same words, so nothing is applied over them. */
@@ -562,6 +565,8 @@ async function reviseScript(ctx: ToolContext, args: Record<string, unknown>): Pr
   const nextBeats = beatsFromDoc(next)
     .slice(0, 400)
     .map((b) => ({ ...b, subtitle: subtitleOf.get(b.voiceover) ?? b.subtitle }));
+  /* The text before is kept as a version only when something is about to change. */
+  await cutVersion(ctx.viewer, row.id, { note: "改稿前" });
   const saved = await saveBeats(ctx.viewer, row.id, nextBeats.length ? nextBeats : [{ visual: "", voiceover: "", subtitle: "", naturalSound: false }]);
   if (!saved) return { text: "The script was locked before the revision could be saved. Nothing was changed." };
   await db.update(scripts).set({ doc: next as unknown as Record<string, unknown>, docHtml: null }).where(eq(scripts.id, row.id));

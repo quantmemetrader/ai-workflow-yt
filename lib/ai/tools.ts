@@ -9,6 +9,7 @@ import type { Viewer } from "@/lib/auth/dal";
 import { canReadFiles } from "@/lib/authz/rebac";
 import { audit } from "@/lib/audit";
 import { createDocument } from "@/lib/files/service";
+import { describeTemplate, fillTemplate, type TemplateBlock } from "@/lib/docs/word-template";
 import { budgetState, formatUsd } from "./ledger";
 import { readFileText, searchFiles } from "./retrieval";
 import type { ToolDef } from "./openrouter";
@@ -97,7 +98,7 @@ export const TOOL_DEFS: ToolDef[] = [
     function: {
       name: "create_document",
       description:
-        "Write a document into the employee's own files — a summary, a brief, a weekly report, a research note. Write the body in Markdown; it is saved as a formatted document that opens in the browser's document editor and downloads as Word (.docx) or PDF. Use it whenever they ask for a document, a Word file or something written down. Afterwards give them the two links from the result. Never tell them to convert Markdown themselves.",
+        "Write a document into the employee's own files — a summary, a brief, a weekly report, a research note. Write the body in Markdown; it is saved as a formatted document that opens in the browser's document editor and downloads as Word (.docx) or PDF. Use it whenever they ask for a document, a Word file or something written down. Afterwards give them the two links from the result. Never tell them to convert Markdown themselves. When they give a sample Word file to follow (\"same format as this weekly report\", a fixed header and footer), use read_word_template and create_word_from_template instead.",
       parameters: {
         type: "object",
         properties: {
@@ -105,6 +106,52 @@ export const TOOL_DEFS: ToolDef[] = [
           body: { type: "string", description: "Markdown." },
         },
         required: ["title", "body"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "read_word_template",
+      description:
+        "Read a sample Word (.docx) file's layout before writing a new file in the same format: every body paragraph and table, numbered, with its style, alignment, size and text, plus the header and footer text. Use it when someone gives or names a Word file to follow (a weekly report, a letter, a form) and asks for a new one like it.",
+      parameters: {
+        type: "object",
+        properties: { file_id: { type: "string", description: "The sample's file id (fil_…), from an attachment, search_files or list_recent_files." } },
+        required: ["file_id"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "create_word_from_template",
+      description:
+        "Write a new Word (.docx) file in exactly the format of a sample Word file and save it in their files: the sample's page setup, header, footer, logo, fonts and styles are kept; only the body is new. Call read_word_template on the sample first. Give the new body as blocks in order: a paragraph is {like: n, text} where n is the number of the sample paragraph whose formatting it should copy (a heading like the sample's heading, body text like its body text); **bold** works inside text. A table is {table_like: n, rows: [[header cells], [cells]…]} copying sample table n. Header/footer text that must change (issue number, date) goes in replace. Afterwards give them the two links from the result.",
+      parameters: {
+        type: "object",
+        properties: {
+          template_file_id: { type: "string" },
+          name: { type: "string", description: "The new file's name, without .docx." },
+          blocks: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                like: { type: "number", description: "Sample paragraph number to copy the formatting of." },
+                text: { type: "string" },
+                table_like: { type: "number", description: "Sample table number, for a table block." },
+                rows: { type: "array", items: { type: "array", items: { type: "string" } }, description: "Table rows, first row the header." },
+              },
+            },
+          },
+          replace: {
+            type: "array",
+            items: { type: "object", properties: { find: { type: "string" }, with: { type: "string" } }, required: ["find", "with"] },
+            description: "Optional. Text to swap in the header and footer.",
+          },
+        },
+        required: ["template_file_id", "name", "blocks"],
       },
     },
   },
@@ -255,6 +302,43 @@ export async function runTool(
       };
     }
 
+    case "read_word_template": {
+      const id = String(args.file_id ?? "");
+      if (!/^fil_[0-9a-z]+$/i.test(id)) return { text: "Give the sample's file id (fil_…)." };
+      try {
+        return { text: await describeTemplate(viewer, id), citations: [id] };
+      } catch (err) {
+        return { text: `Could not read that file as a Word template: ${err instanceof Error ? err.message : String(err)}` };
+      }
+    }
+
+    case "create_word_from_template": {
+      const id = String(args.template_file_id ?? "");
+      if (!/^fil_[0-9a-z]+$/i.test(id)) return { text: "Give the sample's file id (fil_…)." };
+      const blocks = (Array.isArray(args.blocks) ? args.blocks : []).filter((b): b is TemplateBlock => Boolean(b) && typeof b === "object");
+      if (!blocks.length) return { text: "Nothing to write: blocks was empty." };
+      const replace = (Array.isArray(args.replace) ? args.replace : [])
+        .map((r) => (r && typeof r === "object" ? (r as Record<string, unknown>) : {}))
+        .filter((r) => typeof r.find === "string" && typeof r.with === "string")
+        .map((r) => ({ find: String(r.find), with: toSimplified(String(r.with)) }));
+      try {
+        const out = await fillTemplate(viewer, {
+          templateId: id,
+          name: toSimplified(String(args.name ?? "新文件")),
+          blocks: blocks.map((b) => ({ ...b, text: typeof b.text === "string" ? toSimplified(b.text) : b.text, rows: Array.isArray(b.rows) ? b.rows.map((r) => (Array.isArray(r) ? r.map((c) => toSimplified(String(c ?? ""))) : [])) : undefined })),
+          replace,
+        });
+        return {
+          text: `Saved the Word file "${out.name}" in their files, in the sample's format (${out.paragraphs} paragraphs, ${out.tables} tables${replace.length ? `, ${out.replaced} header/footer swaps` : ""}). Give them both links exactly: [打开文件](/files/${out.id}) and [下载 Word](/api/files/${out.id}/download?download=1).`,
+          citations: [out.id, id],
+          changed: true,
+          artifacts: [{ kind: "file", id: out.id, title: out.name, action: "created" }],
+        };
+      } catch (err) {
+        return { text: `Could not write the file: ${err instanceof Error ? err.message : String(err)}` };
+      }
+    }
+
     case "check_ai_spend": {
       const state = await budgetState(viewer);
       if (state.capMicros === null) {
@@ -299,7 +383,7 @@ function allTools(viewer: Viewer): ToolDef[] {
   /* An AI employee always reads files (what a person attached is shared to
      it); a person without the Files module gets none of the file tools. */
   const employee = Boolean(agentKeyFromEmail(viewer.email));
-  const withheld = viewer.modules.includes("files") ? [] : employee ? ["create_document"] : ["search_files", "read_file", "list_recent_files", "create_document"];
+  const withheld = viewer.modules.includes("files") ? [] : employee ? ["create_document", "create_word_from_template"] : ["search_files", "read_file", "list_recent_files", "create_document", "read_word_template", "create_word_from_template"];
   const base = TOOL_DEFS.filter((t) => !withheld.includes(t.function.name));
 
   const packs = PACKS.filter((p) => holdsPack(viewer.modules, p)).flatMap((p) => p.defs);
@@ -316,6 +400,7 @@ const VIDEO_WRITES = videoPack.defs.map((d) => d.function.name).filter((n) => !V
  */
 const WRITES = new Set<string>([
   "create_document",
+  "create_word_from_template",
   "send_message",
   "assign_task",
   "watch_topic",
@@ -360,7 +445,7 @@ const WRITES = new Set<string>([
  * entitlement does the scoping that a module like the planner's could not.
  */
 const DENIED: Partial<Record<AgentKey, ReadonlySet<string>>> = {
-  planning: new Set(["write_script", "write_article", "revise_script", "revise_article", "create_document", ...VIDEO_WRITES]),
+  planning: new Set(["write_script", "write_article", "revise_script", "revise_article", "create_document", "create_word_from_template", ...VIDEO_WRITES]),
 };
 
 /**

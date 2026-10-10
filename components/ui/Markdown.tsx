@@ -20,9 +20,13 @@ export function Markdown({ text }: { text: string }) {
  * A bare app path an employee writes (「在脚本页看、改：/script/scr_…」) as a
  * link with words, not a raw address (QA, 2 Oct).
  */
-const APP_PATH = /^\/(?:script|projects|files|chat|video|videos|topics|trends|publish|article|legal|finance|accounting|research)\/[A-Za-z0-9_\-/?=&#.%]+$/;
+const APP_PATH = /^\/(?:script|projects|files|docs|chat|video|videos|topics|trends|publish|article|legal|finance|accounting|research|studio|review|api\/docs|api\/files)\/[A-Za-z0-9_\-/?=&#.%]+$/;
 function pathLabel(path: string, zh: boolean): string {
   if (/^\/script\/|\/script(?:[/?#]|$)/.test(path)) return zh ? "打开脚本" : "Open the script";
+  if (/^\/api\/docs\/[^?]+\/export\?format=docx/.test(path)) return zh ? "下载 Word" : "Download Word";
+  if (/^\/api\/docs\/[^?]+\/export\?format=pdf/.test(path)) return zh ? "下载 PDF" : "Download PDF";
+  if (path.startsWith("/api/")) return zh ? "下载" : "Download";
+  if (path.startsWith("/docs/")) return zh ? "打开文档" : "Open the document";
   if (path.startsWith("/projects/")) return zh ? "打开项目" : "Open the project";
   if (path.startsWith("/files/")) return zh ? "打开文件" : "Open the file";
   if (path.startsWith("/chat/c/")) return zh ? "打开频道" : "Open the channel";
@@ -193,7 +197,7 @@ function blocks(src: string, zh: boolean): React.ReactNode[] {
  * while its links stay clickable. */
 function inline(src: string, zh = true): React.ReactNode[] {
   const nodes: React.ReactNode[] = [];
-  const pattern = /(\*\*[^*]+\*\*|`[^`]+`|\*[^*]+\*|(?<=^|[\s\u3000-\u303f\uff00-\uffef])_[^_\n]+_(?=$|[\s\u3000-\u303f\uff00-\uffef])|\[[^\]]+\]\([^)]+\)|(?<=^|\s)@[A-Za-z0-9_\u4e00-\u9fff-]+|(?<=^|[\s:(\u3000-\u303f\uff00-\uffef])\/(?:script|projects|files|chat|video|videos|topics|trends|publish|article|legal|finance|accounting|research)\/[A-Za-z0-9_\-/?=&#.%]*[A-Za-z0-9_\-/=&#%])/g;
+  const pattern = /(\*\*[^*]+\*\*|`[^`]+`|\*[^*]+\*|(?<=^|[\s\u3000-\u303f\uff00-\uffef])_[^_\n]+_(?=$|[\s\u3000-\u303f\uff00-\uffef])|\[[^\]]+\]\([^)]+\)|(?<=^|\s)@[A-Za-z0-9_\u4e00-\u9fff-]+|(?<=^|[\s:(\u3000-\u303f\uff00-\uffef])\/(?:script|projects|files|docs|chat|video|videos|topics|trends|publish|article|legal|finance|accounting|research|studio|review|api\/docs|api\/files)\/[A-Za-z0-9_\-/?=&#.%]*[A-Za-z0-9_\-/=&#%])/g;
   let last = 0;
   let match: RegExpExecArray | null;
   let key = 0;

@@ -48,6 +48,8 @@ export type ScriptDocProps = {
   people: { id: string; name: string; avatarUrl: string | null; title: string | null }[];
   /** Who can open the project (and so the link), in one line. */
   accessNote: string;
+  /** The topic the script is written from, shown above the AI panel (Avon, 8 Oct: the topic chosen with 研究员 could not be seen on the script page). */
+  topic?: { title: string; label: string | null; why: string | null; angle: string | null; hook: string | null; points: string[]; href: string } | null;
   /** The project's own access, for who sees an uploaded reference file. */
   accessMode: "private" | "everyone" | "groups" | "people";
   /** The project's whole access setting, and whether this person may change it (谁能看). */

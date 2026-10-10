@@ -137,6 +137,30 @@ export function linksOf(calls: { name: string; status: string; result?: unknown 
       const id = /\/article\?id=(art_[0-9a-z]+)/i.exec(c.result)?.[1];
       if (id && !out.some((l) => l.id === id)) out.push({ kind: "article", id, title: /(?:Written|Revised):? "(.+?)"/.exec(c.result)?.[1] });
     }
+    /* The project a topic started and the script in it (Avon, 8 Oct: "the link the agent gave can't be opened": the links were drawn live, then lost when the thread reloaded under its own address). */
+    const add = (kind: string, id: string | undefined, title?: string) => {
+      if (id && !out.some((l) => l.kind === kind && l.id === id)) out.push({ kind, id, ...(title ? { title } : {}) });
+    };
+    if (c.name === "start_project_from_topic") {
+      const title = /(?:Started the project|already started from this topic:) "(.+?)"/.exec(c.result)?.[1];
+      add("work_project", /\/projects\/([a-z]+_[0-9a-z]+)/i.exec(c.result)?.[1], title);
+    }
+    if (c.name === "revise_script" || c.name === "request_script_approval" || c.name === "decide_script_approval") {
+      add("work_project", /\/projects\/([a-z]+_[0-9a-z]+)/i.exec(c.result)?.[1]);
+      add("script", /\/script\/(scr_[0-9a-z]+)/i.exec(c.result)?.[1]);
+    }
+    if (c.name === "create_document") {
+      const id = /\/docs\/(fil_[0-9a-z]+)/i.exec(c.result)?.[1];
+      const title = /document "(.+?)"/.exec(c.result)?.[1];
+      add("doc", id, title);
+      add("doc_word", id, title);
+    }
+    if (c.name === "create_word_from_template") {
+      const id = /\/files\/(fil_[0-9a-z]+)/i.exec(c.result)?.[1];
+      const title = /Word file "(.+?)"/.exec(c.result)?.[1];
+      add("file", id, title);
+      add("file_download", id, title);
+    }
   }
   return out;
 }

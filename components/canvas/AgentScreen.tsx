@@ -1942,18 +1942,43 @@ function TeachLine({ agent, zh, reply, messageId }: { agent: string; zh: boolean
 
 
 /** Links to what a turn made: the article, the project, the script, the video. */
-const LINK_HREF: Record<string, (id: string) => string> = { article: (id) => `/article?id=${id}`, script: (id) => `/script/${id}`, work_project: (id) => `/projects/${id}`, video_project: (id) => `/video?project=${id}` };
-const LINK_WORD: Record<string, [string, string]> = { article: ["打开文章", "Open the article"], script: ["打开脚本", "Open the script"], work_project: ["打开项目", "Open the project"], video_project: ["打开视频", "Open the video"] };
+const LINK_HREF: Record<string, (id: string) => string> = {
+  article: (id) => `/article?id=${id}`,
+  script: (id) => `/script/${id}`,
+  work_project: (id) => `/projects/${id}/script`,
+  video_project: (id) => `/video?project=${id}`,
+  doc: (id) => `/docs/${id}`,
+  doc_word: (id) => `/api/docs/${id}/export?format=docx`,
+  file: (id) => `/files/${id}`,
+  file_download: (id) => `/api/files/${id}/download?download=1`,
+};
+const LINK_WORD: Record<string, [string, string]> = {
+  article: ["打开文章", "Open the article"],
+  script: ["打开脚本", "Open the script"],
+  work_project: ["打开项目", "Open the project"],
+  video_project: ["打开视频", "Open the video"],
+  doc: ["打开文档", "Open the document"],
+  doc_word: ["下载 Word", "Download Word"],
+  file: ["打开文件", "Open the file"],
+  file_download: ["下载 Word", "Download Word"],
+};
 function ArtifactLinks({ links, zh }: { links: { kind: string; id: string; title?: string }[]; zh: boolean }) {
   const shown = links.filter((l) => LINK_HREF[l.kind]);
   if (!shown.length) return null;
   return (
     <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
       {shown.map((l) => (
-        <Link key={l.kind + l.id} href={LINK_HREF[l.kind](l.id)} prefetch={false} style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12.5, fontWeight: 600, color: "#171717", background: "#f3f3f1", border: "1px solid #e3e1dc", borderRadius: 999, padding: "4px 11px", textDecoration: "none", maxWidth: 300, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-          {zh ? LINK_WORD[l.kind][0] : LINK_WORD[l.kind][1]}
-          {l.title ? <span style={{ fontWeight: 400, color: "#525252" }}>《{l.title.slice(0, 24)}》</span> : null}
-        </Link>
+        /* A download is a plain link: the router would try to open a file as a page. */
+        LINK_HREF[l.kind](l.id).startsWith("/api/") ? (
+          <a key={l.kind + l.id} href={LINK_HREF[l.kind](l.id)} style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12.5, fontWeight: 600, color: "#171717", background: "#f3f3f1", border: "1px solid #e3e1dc", borderRadius: 999, padding: "4px 11px", textDecoration: "none", maxWidth: 300, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {zh ? LINK_WORD[l.kind][0] : LINK_WORD[l.kind][1]}
+          </a>
+        ) : (
+          <Link key={l.kind + l.id} href={LINK_HREF[l.kind](l.id)} prefetch={false} style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12.5, fontWeight: 600, color: "#171717", background: "#f3f3f1", border: "1px solid #e3e1dc", borderRadius: 999, padding: "4px 11px", textDecoration: "none", maxWidth: 300, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {zh ? LINK_WORD[l.kind][0] : LINK_WORD[l.kind][1]}
+            {l.title ? <span style={{ fontWeight: 400, color: "#525252" }}>《{l.title.slice(0, 24)}》</span> : null}
+          </Link>
+        )
       ))}
     </div>
   );

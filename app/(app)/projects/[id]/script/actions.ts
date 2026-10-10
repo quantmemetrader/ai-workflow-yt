@@ -101,7 +101,7 @@ export async function startBlankAction(projectId: unknown) {
 }
 
 /** The AI copilot: 文案's tracked changes for an instruction. Nothing is saved. */
-export async function copilotAction(projectId: unknown, paragraphs: unknown, instruction: unknown, model?: unknown, fileIds?: unknown) {
+export async function copilotAction(projectId: unknown, paragraphs: unknown, instruction: unknown, model?: unknown, fileIds?: unknown, history?: unknown) {
   const c = await ctx(projectId, true);
   if ("error" in c) return c;
   if (!c.project.scriptId) return { error: "Not allowed" };
@@ -110,7 +110,12 @@ export async function copilotAction(projectId: unknown, paragraphs: unknown, ins
   const list = paragraphs.slice(0, 200).map((p) => (typeof p === "string" ? p.slice(0, 4000) : ""));
   try {
     const files = Array.isArray(fileIds) ? fileIds.filter((x): x is string => typeof x === "string" && /^fil_[0-9a-z]+$/i.test(x)).slice(0, 5) : [];
-    return await copilotRewrite(c.viewer, c.project.scriptId, list, instruction, pickedModel(model), files);
+    const said = (Array.isArray(history) ? history : [])
+      .map((h) => (h && typeof h === "object" ? (h as Record<string, unknown>) : {}))
+      .filter((h) => typeof h.q === "string" && typeof h.a === "string")
+      .slice(-4)
+      .map((h) => ({ q: String(h.q).slice(0, 400), a: String(h.a).slice(0, 600) }));
+    return await copilotRewrite(c.viewer, c.project.scriptId, list, instruction, pickedModel(model), files, said);
   } catch (err) {
     return { error: asMessage(err) };
   }

@@ -1,7 +1,7 @@
 import "server-only";
 import { and, desc, eq, gt, isNull, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { chatMembers, hotSnapshots, ideas, topics } from "@/lib/db/schema";
+import { chatMembers, hotSnapshots, ideas, scripts, topics } from "@/lib/db/schema";
 import type { Viewer } from "@/lib/auth/types";
 import { requesterOf } from "@/lib/auth/types";
 import type { ToolDef } from "@/lib/ai/openrouter";
@@ -44,6 +44,7 @@ const defs: ToolDef[] = [
           topic: { type: "string", description: "A topic id or idea id, or the topic's words." },
           write: { type: "boolean", description: "Start writing the first draft too. Default true." },
           instruction: { type: "string", description: "Anything the writer should follow for the draft. Optional." },
+          seconds: { type: "number", description: "Target length in seconds when the person gave one (\"60 秒\" is 60, \"3 分钟\" is 180). Optional." },
         },
         required: ["topic"],
       },
@@ -117,7 +118,7 @@ async function refFor(viewer: Viewer, raw: string): Promise<TopicRef> {
 async function writeFromTopic(
   viewer: Viewer,
   project: { id: string; title: string; scriptId: string | null; channelId: string; source: unknown },
-  opts: { mandatoryPoints?: string[]; topicId?: string | null; instruction?: string | null },
+  opts: { mandatoryPoints?: string[]; topicId?: string | null; instruction?: string | null; seconds?: number | null },
 ): Promise<{ writing: boolean; note?: string }> {
   if (!project.scriptId) return { writing: false, note: "The project has no script." };
   const src = (project.source as ProjectSource | null) ?? null;
@@ -138,7 +139,7 @@ async function writeFromTopic(
       angle: src?.angle ?? null,
       channel: null,
       aspect: hints.aspect,
-      seconds: hints.seconds,
+      seconds: opts.seconds ?? hints.seconds,
       language: null,
       subtitleLanguage: null,
       mandatoryPoints: opts.mandatoryPoints ?? [],
@@ -161,6 +162,17 @@ async function run(ctx: ToolContext, name: string, args: Record<string, unknown>
   const write = wantWrite && person.modules.includes("script");
   const denied = wantWrite && !write ? "Writing the script needs the Script module, which the person does not have, so no draft was started." : null;
   const instruction = str(args.instruction, 1500) || null;
+  /* The length the person asked for (QA, 10 Oct: "60 秒" became a 30-second target and a 2-minute draft). */
+  const secondsOf = (): number | null => {
+    const n = Number(args.seconds);
+    if (Number.isFinite(n) && n >= 10 && n <= 3600) return Math.round(n);
+    const said = `${instruction ?? ""} ${str(args.topic, 300)}`;
+    const m = /(\d+(?:\.\d+)?)\s*(秒|s\b|sec|seconds?|分钟|min(?:ute)?s?)/i.exec(said);
+    if (!m) return null;
+    const v = Number(m[1]) * (/分|min/i.test(m[2]) ? 60 : 1);
+    return v >= 10 && v <= 3600 ? Math.round(v) : null;
+  };
+  const seconds = secondsOf();
 
   const ref = await refFor(person, raw);
   let resolved: ResolvedTopic | null;
@@ -178,7 +190,8 @@ async function run(ctx: ToolContext, name: string, args: Record<string, unknown>
     (resolved.scriptTopicId && resolved.scriptTopicId !== resolved.projectTopicId ? await projectForTopic(person, { topicId: resolved.scriptTopicId }) : null);
   if (existing) {
     if (ref.kind === "idea") await db.update(ideas).set({ status: "started", projectId: existing.id, updatedAt: new Date() }).where(and(eq(ideas.id, ref.id), eq(ideas.tenantId, person.tenantId)));
-    const w = write ? await writeFromTopic(person, existing, { mandatoryPoints: resolved.mandatoryPoints, topicId: resolved.scriptTopicId, instruction }) : { writing: false };
+    if (seconds && existing.scriptId) await db.update(scripts).set({ targetSeconds: seconds }).where(and(eq(scripts.id, existing.scriptId), eq(scripts.tenantId, person.tenantId)));
+    const w = write ? await writeFromTopic(person, existing, { mandatoryPoints: resolved.mandatoryPoints, topicId: resolved.scriptTopicId, instruction, seconds }) : { writing: false };
     const startedNow = w.writing && !w.note;
     return {
       text: [
@@ -209,7 +222,7 @@ async function run(ctx: ToolContext, name: string, args: Record<string, unknown>
         mandatoryPoints: resolved.mandatoryPoints,
         targetChannel: null,
         aspect: hints.aspect,
-        targetSeconds: hints.seconds,
+        targetSeconds: seconds ?? hints.seconds,
         language: null,
         subtitleLanguage: null,
       },
@@ -222,7 +235,7 @@ async function run(ctx: ToolContext, name: string, args: Record<string, unknown>
   let writing = false;
   let note: string | undefined;
   if (write && !prepared) {
-    const w = await writeFromTopic(person, { id: created.id, title: resolved.title, scriptId: created.scriptId, channelId: created.channelId, source: resolved.source }, { mandatoryPoints: resolved.mandatoryPoints, topicId: resolved.scriptTopicId, instruction });
+    const w = await writeFromTopic(person, { id: created.id, title: resolved.title, scriptId: created.scriptId, channelId: created.channelId, source: resolved.source }, { mandatoryPoints: resolved.mandatoryPoints, topicId: resolved.scriptTopicId, instruction, seconds });
     writing = w.writing;
     note = w.note;
   }
