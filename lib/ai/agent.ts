@@ -523,7 +523,8 @@ export async function* runAgent(opts: {
           .select({ id: folders.id, name: folders.name })
           .from(folders)
           .where(eq(folders.tenantId, viewer.tenantId))
-      ).map((f) => [f.id, f.name]),
+      /* A person's own top folder is stored as "__home"; it reads as 我的文件. */
+      ).map((f) => [f.id, f.name === "__home" ? "我的文件" : f.name]),
     );
 
     const cited = citedFileIds.size

@@ -58,7 +58,7 @@ export async function threadMessagesOf(viewer: Viewer, detail: NonNullable<Await
         fileId: c.fileId,
         name: c.name,
         kind: c.kind,
-        folder: c.folder,
+        folder: c.folder === "__home" ? "我的文件" : c.folder,
         relation: c.relation,
       })),
     tools: detail.toolCalls

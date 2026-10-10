@@ -4,20 +4,21 @@ import * as React from "react";
 import Link from "next/link";
 import { notify } from "@/lib/client/notify";
 import { uploadFiles } from "@/lib/client/upload";
-import { cloneVoiceAction, generateVideoAction, speakAction, studioJobsAction, studioVoicesAction } from "@/app/(app)/studio/actions";
+import { cloneVoiceAction, generateVideoAction, speakAction, studioJobsAction, studioVoicesAction, talkingHostAction } from "@/app/(app)/studio/actions";
 
 type Voice = { id: string; name: string; lang: "zh" | "en" | null; gender: string | null; source: "local" | "elevenlabs" };
 type Model = { id: string; zh: string; en: string; noteZh: string; image: string | null };
-type Tab = "voice" | "clone" | "video";
+type Tab = "host" | "voice" | "clone" | "video";
+type Engine = { id: string; for: "image" | "video"; zh: string; en: string; noteZh: string };
 
 /**
  * 配音和生成 (7 Oct): voice-over from text, a cloned voice from a recording,
  * and a short video from a description. Each says plainly what it needs
  * when something is not set up, and everything made goes to Files.
  */
-export function StudioScreen({ zh, models, falReady, isAdmin }: { zh: boolean; models: Model[]; falReady: boolean; isAdmin: boolean }) {
+export function StudioScreen({ zh, models, engines, falReady, isAdmin }: { zh: boolean; models: Model[]; engines: Engine[]; falReady: boolean; isAdmin: boolean }) {
   const t = (a: string, b: string) => (zh ? a : b);
-  const [tab, setTab] = React.useState<Tab>("voice");
+  const [tab, setTab] = React.useState<Tab>("host");
   const [voices, setVoices] = React.useState<Voice[] | null>(null);
   const [eleven, setEleven] = React.useState<string>("");
   const loadVoices = React.useCallback(() => {
@@ -35,15 +36,16 @@ export function StudioScreen({ zh, models, falReady, isAdmin }: { zh: boolean; m
       <style>{CSS}</style>
       <div className="st-head">
         <h1>{t("配音和生成", "Voice & video")}</h1>
-        <p>{t("把文字变成配音、克隆一个声音、用一句话生成一段视频。做好的都放在「文件」里，可以直接拖进剪辑。", "Text to voice-over, clone a voice, or make a short video from a sentence. Everything goes to Files, ready to edit.")}</p>
+        <p>{t("让主持人照着稿子说话、把文字变成配音、克隆一个声音、用一句话生成一段视频。做好的都放在「文件」里，可以直接拖进剪辑。", "Text to voice-over, clone a voice, or make a short video from a sentence. Everything goes to Files, ready to edit.")}</p>
       </div>
       <div className="st-tabs" role="tablist">
-        {([["voice", t("配音", "Voice-over")], ["clone", t("克隆声音", "Clone a voice")], ["video", t("AI 生成视频", "AI video")]] as [Tab, string][]).map(([k, label]) => (
+        {([["host", t("主持人口播", "Host talking")], ["voice", t("配音", "Voice-over")], ["clone", t("克隆声音", "Clone a voice")], ["video", t("AI 生成视频", "AI video")]] as [Tab, string][]).map(([k, label]) => (
           <button key={k} role="tab" aria-selected={tab === k} className="st-tab" data-on={tab === k ? "" : undefined} onClick={() => setTab(k)}>
             {label}
           </button>
         ))}
       </div>
+      {tab === "host" ? <HostPanel zh={zh} voices={voices} eleven={eleven} engines={engines} ready={falReady} isAdmin={isAdmin} onClone={() => setTab("clone")} /> : null}
       {tab === "voice" ? <VoicePanel zh={zh} voices={voices} eleven={eleven} isAdmin={isAdmin} /> : null}
       {tab === "clone" ? <ClonePanel zh={zh} eleven={eleven} isAdmin={isAdmin} onCloned={() => { loadVoices(); setTab("voice"); }} /> : null}
       {tab === "video" ? <VideoPanel zh={zh} models={models} ready={falReady} isAdmin={isAdmin} /> : null}
@@ -67,6 +69,147 @@ function ElevenNote({ zh, eleven, isAdmin }: { zh: boolean; eleven: string; isAd
           <Link href="/admin?tab=credentials">{t("去设置密钥", "Set the key")}</Link>
         </>
       ) : null}
+    </div>
+  );
+}
+
+const HOST_KEY = "tg:studio-host";
+
+/** 主持人口播: her photo or a clip, the words, a voice; the video lands in Files. */
+function HostPanel({ zh, voices, eleven, engines, ready, isAdmin, onClone }: { zh: boolean; voices: Voice[] | null; eleven: string; engines: Engine[]; ready: boolean; isAdmin: boolean; onClone: () => void }) {
+  const t = (a: string, b: string) => (zh ? a : b);
+  const [host, setHost] = React.useState<{ id: string; name: string; kind: "image" | "video" } | null>(null);
+  const [text, setText] = React.useState("");
+  const [voice, setVoice] = React.useState("");
+  const [engine, setEngine] = React.useState("");
+  const [uploading, setUploading] = React.useState(false);
+  const [busy, setBusy] = React.useState(false);
+  const [rows, setRows] = React.useState<{ jobId: string; text: string; status: string; progress: number; error: string | null; fileId?: string }[]>([]);
+  const pick = React.useRef<HTMLInputElement | null>(null);
+  /* The host's photo is chosen once and remembered on this computer. */
+  React.useEffect(() => {
+    try {
+      const v = JSON.parse(localStorage.getItem(HOST_KEY) ?? "null");
+      if (v?.id) setHost(v);
+    } catch {
+      /* nothing remembered */
+    }
+  }, []);
+  React.useEffect(() => {
+    if (!voice && voices?.length) setVoice((voices.find((v) => v.source === "elevenlabs") ?? voices.find((v) => v.lang === "zh" && v.gender === "female") ?? voices[0]).id);
+  }, [voices, voice]);
+  const fits = engines.filter((e) => !host || e.for === host.kind);
+  React.useEffect(() => {
+    if (!fits.some((e) => e.id === engine)) setEngine(fits[0]?.id ?? "");
+  }, [fits, engine]);
+  const live = rows.some((r) => r.status === "queued" || r.status === "running");
+  React.useEffect(() => {
+    if (!live) return;
+    const tick = window.setInterval(async () => {
+      const r = (await studioJobsAction(rows.map((x) => x.jobId))) as { jobs?: { id: string; status: string; progress: number; error: string | null; result: { fileId?: string } | null }[] };
+      setRows((cur) => cur.map((x) => {
+        const j = r.jobs?.find((y) => y.id === x.jobId);
+        return j ? { ...x, status: j.status, progress: j.progress, error: j.error, fileId: j.result?.fileId } : x;
+      }));
+    }, 4000);
+    return () => window.clearInterval(tick);
+  }, [live, rows]);
+  const upload = async (list: FileList | null) => {
+    const f = list?.[0];
+    if (!f) return;
+    setUploading(true);
+    try {
+      await uploadFiles(list, {
+        onDone: (id, file) => {
+          const next = { id, name: file.name, kind: file.type.startsWith("video/") ? ("video" as const) : ("image" as const) };
+          setHost(next);
+          try {
+            localStorage.setItem(HOST_KEY, JSON.stringify(next));
+          } catch {
+            /* not remembered, still chosen */
+          }
+        },
+      });
+    } finally {
+      setUploading(false);
+    }
+  };
+  const go = async () => {
+    if (!host) return;
+    setBusy(true);
+    try {
+      const r = (await talkingHostAction({ hostFileId: host.id, text, voiceId: voice, engine })) as { error?: string; jobId?: string };
+      if (r.error) return notify(r.error);
+      setRows((cur) => [{ jobId: r.jobId!, text, status: "queued", progress: 0, error: null }, ...cur]);
+      notify(t("开始生成了，通常要 2 到 6 分钟，可以先做别的", "Started; it usually takes 2–6 minutes"), "ok");
+    } finally {
+      setBusy(false);
+    }
+  };
+  const cloned = voices?.filter((v) => v.source === "elevenlabs") ?? [];
+  return (
+    <div className="st-card">
+      {!ready ? (
+        <div className="st-note">
+          {t("主持人口播需要 fal.ai 密钥（和「AI 生成视频」用同一个）。", "Host talking needs a fal.ai key (the same one as AI video).")}
+          {isAdmin ? <> <Link href="/admin?tab=credentials">{t("去设置密钥", "Set the key")}</Link></> : t("请管理员设置。", " Ask an admin to set it.")}
+        </div>
+      ) : null}
+      <p className="st-help">{t("上传主持人一张清晰的正脸照片，或一段她面对镜头说话的视频，写下要说的话，选她的声音，就能生成她照稿说话的视频。只用本人同意使用的肖像和声音。", "Upload a clear front-facing photo of the host, or a clip of her talking to camera, write the words and pick her voice: you get a video of her saying them. Only use a likeness and voice the person has agreed to.")}</p>
+      <label className="st-label">{t("1. 主持人的照片或视频", "1. The host's photo or clip")}</label>
+      <div className="st-row">
+        <button type="button" className="st-ghost" disabled={uploading} onClick={() => pick.current?.click()}>
+          {uploading ? t("上传中…", "Uploading…") : host ? t("换一个", "Change") : t("上传照片或视频", "Upload a photo or clip")}
+        </button>
+        <span className="st-count">{host ? `${host.kind === "video" ? t("视频", "Clip") : t("照片", "Photo")}：${host.name}` : t("正脸、光线好、不戴口罩墨镜；视频 10 到 60 秒最好", "Front-facing, well lit; a clip of 10–60 s works best")}</span>
+        <input ref={pick} type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/quicktime" hidden onChange={(e) => void upload(e.target.files).then(() => (e.target.value = ""))} />
+      </div>
+      <label className="st-label">{t("2. 要说的话", "2. What she says")}</label>
+      <textarea value={text} onChange={(e) => setText(e.target.value)} rows={6} placeholder={t("粘贴口播稿。一次最多 1500 字（约 5 分钟），长稿分几段生成。", "Paste the script, up to 1,500 characters (about 5 minutes).")} />
+      <label className="st-label">{t("3. 声音", "3. The voice")}</label>
+      <div className="st-row">
+        <select value={voice} onChange={(e) => setVoice(e.target.value)} aria-label={t("声音", "Voice")}>
+          {!voices ? <option>{t("正在读取声音…", "Loading voices…")}</option> : null}
+          {cloned.length ? (
+            <optgroup label={t("克隆的声音", "Cloned voices")}>
+              {cloned.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
+            </optgroup>
+          ) : null}
+          <optgroup label={t("工作室的声音", "Studio voices")}>
+            {(voices ?? []).filter((v) => v.source === "local").map((v) => (
+              <option key={v.id} value={v.id}>{v.name}{v.gender ? ` · ${v.gender === "female" ? t("女声", "female") : t("男声", "male")}` : ""}</option>
+            ))}
+          </optgroup>
+        </select>
+        {!cloned.length ? <button type="button" className="st-link" onClick={onClone}>{eleven === "ok" ? t("先克隆主持人的声音 →", "Clone her voice first →") : t("想用她本人的声音？先克隆 →", "Want her own voice? Clone it →")}</button> : null}
+      </div>
+      <label className="st-label">{t("4. 生成方式", "4. How it is made")}</label>
+      <div className="st-row">
+        <select value={engine} onChange={(e) => setEngine(e.target.value)} aria-label={t("生成方式", "Engine")}>
+          {fits.map((e) => <option key={e.id} value={e.id}>{zh ? e.zh : e.en} · {e.noteZh}</option>)}
+        </select>
+        <span style={{ flex: 1 }} />
+        <button type="button" className="st-solid" disabled={busy || !ready || !host || !text.trim() || !voice} onClick={() => void go()}>
+          {busy ? t("提交中…", "Sending…") : t("生成口播视频", "Make the video")}
+        </button>
+      </div>
+      {rows.map((r) => (
+        <div key={r.jobId} className="st-out">
+          <div className="st-out-name">{r.text.slice(0, 60)}</div>
+          {r.status === "succeeded" && r.fileId ? (
+            <>
+              <video controls src={`/api/files/${r.fileId}/download`} style={{ maxHeight: 320, borderRadius: 8 }} />
+              <a href={`/api/files/${r.fileId}/download?download=1`}>{t("下载视频", "Download")}</a>
+              <Link href={`/files/${r.fileId}`}>{t("在文件里打开（可以拖进剪辑）", "Open in Files")}</Link>
+            </>
+          ) : r.status === "failed" || r.status === "cancelled" ? (
+            <span className="st-err">{r.error ?? t("没生成成功", "Failed")}</span>
+          ) : (
+            <span className="st-bar"><span style={{ width: `${Math.max(4, Math.round(r.progress * 100))}%` }} /></span>
+          )}
+        </div>
+      ))}
+      <p className="st-help">{t("先读成配音（也会放进「文件」），再让照片或视频里的她照着说。按 fal.ai 的价格计费，约每分钟 1 到 6 美元，视生成方式而定。", "The words are read first (that audio also goes to Files), then her photo or clip is made to say them. Billed by fal.ai, roughly US$1–6 a minute depending on the engine.")}</p>
     </div>
   );
 }

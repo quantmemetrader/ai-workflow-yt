@@ -5,7 +5,7 @@ import { db } from "@/lib/db/client";
 import { jobs } from "@/lib/db/schema";
 import { getViewer } from "@/lib/auth/dal";
 import { enqueue } from "@/lib/jobs/queue";
-import { cloneVoice, speakToFile, studioVoices, VIDEO_MODELS } from "@/lib/studio/service";
+import { cloneVoice, HOST_ENGINES, speakToFile, studioVoices, VIDEO_MODELS } from "@/lib/studio/service";
 
 async function maker() {
   const viewer = await getViewer();
@@ -59,6 +59,24 @@ export async function generateVideoAction(input: { prompt: unknown; model: unkno
   const seconds = input.seconds === 10 || input.seconds === "10" ? 10 : 5;
   const imageFileId = typeof input.imageFileId === "string" && /^fil_[0-9a-z]+$/i.test(input.imageFileId) ? input.imageFileId : null;
   const job = await enqueue({ tenantId: viewer.tenantId, type: "media.generateVideo", module: "video", payload: { prompt, model, aspect, seconds, imageFileId }, createdBy: viewer.id, priority: 6 });
+  return { jobId: job.id };
+}
+
+/** 主持人口播: her photo or clip, and the words in a voice; made on the worker. */
+export async function talkingHostAction(input: { hostFileId: unknown; text?: unknown; voiceId?: unknown; audioFileId?: unknown; engine?: unknown }) {
+  const viewer = await maker();
+  if (!viewer) return { error: "你没有视频模块的权限" };
+  if (!process.env.FAL_KEY) return { error: "还没有设置 fal.ai 密钥。管理员在「员工管理 › 渠道与凭据」里填上后就能生成。" };
+  const id = (x: unknown) => (typeof x === "string" && /^fil_[0-9a-z]+$/i.test(x) ? x : null);
+  const hostFileId = id(input.hostFileId);
+  if (!hostFileId) return { error: "先上传主持人的照片或视频" };
+  const audioFileId = id(input.audioFileId);
+  const text = typeof input.text === "string" ? input.text.trim() : "";
+  const voiceId = typeof input.voiceId === "string" ? input.voiceId : null;
+  if (!audioFileId && (!text || !voiceId)) return { error: "写下要说的话并选一个声音" };
+  if (text.length > 1500) return { error: "一次最多 1500 字（约 5 分钟），长稿分几段生成" };
+  const engine = HOST_ENGINES.some((e) => e.id === input.engine) ? (input.engine as string) : null;
+  const job = await enqueue({ tenantId: viewer.tenantId, type: "media.talkingHost", module: "video", payload: { hostFileId, text, voiceId, audioFileId, engine }, createdBy: viewer.id, priority: 6 });
   return { jobId: job.id };
 }
 

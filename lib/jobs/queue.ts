@@ -74,7 +74,8 @@ export type JobType =
    * never a request. */
   | "video.capcut"
   | "media.importLink"
-  | "media.generateVideo";
+  | "media.generateVideo"
+  | "media.talkingHost";
 
 export type JobRow = typeof jobs.$inferSelect;
 

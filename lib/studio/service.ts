@@ -125,24 +125,7 @@ export async function generateVideo(
       model = spec.image;
     }
   }
-  const q = await fetch(`https://queue.fal.run/${model}`, { method: "POST", headers: falHeaders(), body: JSON.stringify(body), signal: AbortSignal.timeout(60_000) });
-  const queued = (await q.json().catch(() => ({}))) as FalQueued;
-  if (!q.ok || !queued.status_url || !queued.response_url) {
-    throw new Error(q.status === 401 || q.status === 403 ? "fal.ai 不认这个密钥" : q.status === 402 ? "fal.ai 余额不足，请先充值" : `fal.ai 没接这个任务：${JSON.stringify(queued.detail ?? queued).slice(0, 200)}`);
-  }
-  const started = Date.now();
-  for (;;) {
-    await new Promise((r) => setTimeout(r, 5000));
-    const s = (await (await fetch(queued.status_url, { headers: falHeaders() })).json().catch(() => ({}))) as { status?: string };
-    const elapsed = Date.now() - started;
-    onProgress(Math.min(0.85, elapsed / 240_000));
-    if (s.status === "COMPLETED") break;
-    if (s.status === "FAILED" || s.status === "ERROR") throw new Error("fal.ai 生成失败，换个描述再试一次");
-    if (elapsed > 15 * 60_000) throw new Error("生成超过 15 分钟还没好，已放弃，请再试一次");
-  }
-  const out = (await (await fetch(queued.response_url, { headers: falHeaders() })).json().catch(() => ({}))) as { video?: { url?: string }; detail?: unknown };
-  const url = out.video?.url;
-  if (!url) throw new Error(`fal.ai 没有返回视频：${JSON.stringify(out.detail ?? out).slice(0, 160)}`);
+  const url = await runFal(model, body, onProgress, "换个描述再试一次");
   onProgress(0.9);
   const bytes = new Uint8Array(await (await fetch(url, { signal: AbortSignal.timeout(300_000) })).arrayBuffer());
   const made = await importVideoBytes(viewer, {
@@ -155,4 +138,95 @@ export async function generateVideo(
   });
   onProgress(1);
   return { fileId: made.id, name: made.name, durationMs: made.durationMs, model };
+}
+
+/** One fal.ai queue request, waited for: the URL of the video it made. */
+async function runFal(model: string, body: Record<string, unknown>, onProgress: (f: number) => void, retryHint: string): Promise<string> {
+  const q = await fetch(`https://queue.fal.run/${model}`, { method: "POST", headers: falHeaders(), body: JSON.stringify(body), signal: AbortSignal.timeout(60_000) });
+  const queued = (await q.json().catch(() => ({}))) as FalQueued;
+  if (!q.ok || !queued.status_url || !queued.response_url) {
+    throw new Error(q.status === 401 || q.status === 403 ? "fal.ai 不认这个密钥" : q.status === 402 ? "fal.ai 余额不足，请先充值" : `fal.ai 没接这个任务：${JSON.stringify(queued.detail ?? queued).slice(0, 200)}`);
+  }
+  const started = Date.now();
+  for (;;) {
+    await new Promise((r) => setTimeout(r, 5000));
+    const s = (await (await fetch(queued.status_url, { headers: falHeaders() })).json().catch(() => ({}))) as { status?: string };
+    const elapsed = Date.now() - started;
+    onProgress(Math.min(0.85, elapsed / 240_000));
+    if (s.status === "COMPLETED") break;
+    if (s.status === "FAILED" || s.status === "ERROR") throw new Error(`fal.ai 生成失败，${retryHint}`);
+    if (elapsed > 20 * 60_000) throw new Error("生成超过 20 分钟还没好，已放弃，请再试一次");
+  }
+  const out = (await (await fetch(queued.response_url, { headers: falHeaders() })).json().catch(() => ({}))) as { video?: { url?: string }; detail?: unknown };
+  const url = out.video?.url;
+  if (!url) throw new Error(`fal.ai 没有返回视频：${JSON.stringify(out.detail ?? out).slice(0, 160)}`);
+  return url;
+}
+
+/* ------------------------------------------------------------ the host, talking */
+
+/**
+ * 主持人口播 (Ryan, 5 Oct: "they just want their host talking … clone the
+ * host and get her talk"). A photo or a short clip of the host, and the
+ * words: read in her cloned voice (or any voice), then her face is made to
+ * say them. A photo goes to an avatar model that animates the whole head; a
+ * clip keeps her real footage and only re-times the mouth.
+ */
+export const HOST_ENGINES: { id: string; for: "image" | "video"; zh: string; en: string; noteZh: string }[] = [
+  { id: "fal-ai/kling-video/ai-avatar/v2/standard", for: "image", zh: "可灵数字人（照片）", en: "Kling avatar (photo)", noteZh: "一张正脸照片就能说话，表情自然" },
+  { id: "veed/fabric-1.0", for: "image", zh: "Fabric（照片，便宜）", en: "Fabric (photo, cheaper)", noteZh: "便宜、出片快，720p" },
+  { id: "fal-ai/sync-lipsync/v2", for: "video", zh: "对口型（视频）", en: "Lip-sync (clip)", noteZh: "用她真实的视频，只改嘴型，最像本人" },
+];
+
+export async function talkingHost(
+  viewer: Viewer,
+  input: { hostFileId: string; text?: string | null; audioFileId?: string | null; voiceId?: string | null; engine?: string | null },
+  onProgress: (f: number) => void = () => {},
+) {
+  const [host] = await db.select({ key: files.storageKey, mime: files.mime, name: files.name }).from(files).where(and(eq(files.id, input.hostFileId), eq(files.tenantId, viewer.tenantId))).limit(1);
+  if (!host?.key) throw new Error("找不到主持人的照片或视频");
+  const isVideo = (host.mime ?? "").startsWith("video/") || /\.(mp4|mov|m4v|webm)$/i.test(host.name);
+  const isImage = (host.mime ?? "").startsWith("image/") || /\.(jpe?g|png|webp)$/i.test(host.name);
+  if (!isVideo && !isImage) throw new Error("主持人素材要是一张照片（jpg、png）或一段视频（mp4、mov）");
+  const engine = HOST_ENGINES.find((e) => e.id === input.engine && e.for === (isVideo ? "video" : "image")) ?? HOST_ENGINES.find((e) => e.for === (isVideo ? "video" : "image"))!;
+
+  /* The words as audio: an audio file given, or read now and kept in Files. */
+  let audioKey: string | null = null;
+  let audioId: string | null = null;
+  if (input.audioFileId) {
+    const [a] = await db.select({ key: files.storageKey }).from(files).where(and(eq(files.id, input.audioFileId), eq(files.tenantId, viewer.tenantId))).limit(1);
+    audioKey = a?.key ?? null;
+    audioId = input.audioFileId;
+  } else if (input.text?.trim() && input.voiceId) {
+    onProgress(0.03);
+    const spoken = await speakToFile(viewer, { text: input.text.trim(), voiceId: input.voiceId });
+    audioId = spoken.id;
+    const [a] = await db.select({ key: files.storageKey }).from(files).where(eq(files.id, spoken.id)).limit(1);
+    audioKey = a?.key ?? null;
+  }
+  if (!audioKey) throw new Error("没有可用的声音：写下要说的话并选一个声音，或者选一段录音");
+  onProgress(0.1);
+
+  const hostUrl = await presignDownload(host.key, { expiresIn: 3 * 3600 });
+  const audioUrl = await presignDownload(audioKey, { expiresIn: 3 * 3600 });
+  const body: Record<string, unknown> =
+    engine.id === "fal-ai/sync-lipsync/v2"
+      ? { video_url: hostUrl, audio_url: audioUrl, sync_mode: "bounce" }
+      : engine.id === "veed/fabric-1.0"
+        ? { image_url: hostUrl, audio_url: audioUrl, resolution: "720p" }
+        : { image_url: hostUrl, audio_url: audioUrl, prompt: "一位主持人面对镜头自然地讲话，表情生动，头部有轻微自然的动作。" };
+  const url = await runFal(engine.id, body, (f) => onProgress(0.1 + f * 0.8), "换一张更清晰的正脸素材再试一次");
+  onProgress(0.92);
+  const bytes = new Uint8Array(await (await fetch(url, { signal: AbortSignal.timeout(300_000) })).arrayBuffer());
+  const head = (input.text ?? "").replace(/\s+/g, " ").trim().slice(0, 24) || "口播";
+  const made = await importVideoBytes(viewer, {
+    bytes,
+    name: `主持人口播 · ${head}`,
+    attribution: `AI 生成（${engine.zh}）`,
+    source: (input.text ?? "").slice(0, 500),
+    meta: { source: "ai-host", model: engine.id, hostFileId: input.hostFileId, audioFileId: audioId, kind: "video", fetchedAt: new Date().toISOString() } as never,
+    tags: ["ai-generated", "host"],
+  });
+  onProgress(1);
+  return { fileId: made.id, name: made.name, durationMs: made.durationMs, model: engine.id, audioFileId: audioId };
 }
