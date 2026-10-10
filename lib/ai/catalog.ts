@@ -56,6 +56,7 @@ async function vendorServed(vendor: string, sample: string): Promise<boolean> {
   try {
     if (direct) ok = (await testAnthropicKey(anthropicKey())).ok;
     else if (b.key === "deepseek" || !apiKey) ok = false;
+    else if (b.key === "openrouter" && !(await balanceLeft(b.baseUrl, apiKey))) ok = false;
     else {
       const model = b.key === "gateway" ? await gatewayModel(b.baseUrl, apiKey, sample) : b.model;
       const r = await fetch(`${b.baseUrl}/chat/completions`, {
@@ -73,6 +74,34 @@ async function vendorServed(vendor: string, sample: string): Promise<boolean> {
   }
   probes.set(id, { at: Date.now(), ok });
   return ok;
+}
+
+/**
+ * Whether an OpenRouter-format account still has at least a dollar: a nearly
+ * dry one answers a short probe and refuses every real answer. Unknown (no
+ * balance endpoint, as on a relay) counts as yes and the probe decides.
+ */
+async function balanceLeft(base: string, apiKey: string): Promise<boolean> {
+  const headers = { authorization: `Bearer ${apiKey}` };
+  try {
+    const c = await fetch(`${base}/credits`, { headers, signal: AbortSignal.timeout(10_000) });
+    if (c.ok) {
+      const d = ((await c.json()) as { data?: { total_credits?: number; total_usage?: number } }).data;
+      if (d && typeof d.total_credits === "number") {
+        const left = d.total_credits - (d.total_usage ?? 0);
+        if (left < 1) console.warn(`[ai] ${new URL(base).hostname} account has US$${left.toFixed(2)} left: Claude, GPT and Gemini not offered on it`);
+        return left >= 1;
+      }
+    }
+    const a = await fetch(`${base}/auth/key`, { headers, signal: AbortSignal.timeout(10_000) });
+    if (a.ok) {
+      const d = ((await a.json()) as { data?: { limit_remaining?: number | null } }).data;
+      if (d && typeof d.limit_remaining === "number") return d.limit_remaining >= 1;
+    }
+  } catch {
+    /* unknown: the probe decides */
+  }
+  return true;
 }
 
 /** The cheapest-looking model of a vendor, for the probe. */
