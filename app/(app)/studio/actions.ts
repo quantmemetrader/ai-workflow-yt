@@ -7,6 +7,7 @@ import { getViewer } from "@/lib/auth/dal";
 import { enqueue } from "@/lib/jobs/queue";
 import { cloneVoice, HOST_ENGINES, speakToFile, studioVoices, VIDEO_MODELS } from "@/lib/studio/service";
 import { localGeneratorUp } from "@/lib/video/stock";
+import { hostDefault, rememberHost } from "@/lib/studio/autohost";
 
 async function maker() {
   const viewer = await getViewer();
@@ -93,6 +94,32 @@ export async function generatePictureAction(input: { prompt: unknown; aspect: un
   const quality = input.quality === "fine" ? "fine" : "quick";
   if (engine === "local" && !(await localGeneratorUp()).up) return { error: "图片生成器没在运行，请管理员重启它（pm2 restart imagegen）" };
   const job = await enqueue({ tenantId: viewer.tenantId, type: "media.generatePicture", module: "video", payload: { prompt, aspect, engine, quality }, createdBy: viewer.id, priority: 7 });
+  return { jobId: job.id };
+}
+
+/** What the AI 自动生成 panel needs: the remembered host clip, the voices, the engines that can run. */
+export async function autoHostDefaultsAction() {
+  const viewer = await maker();
+  if (!viewer) return { error: "你没有视频模块的权限" };
+  const [host, v] = await Promise.all([hostDefault(), studioVoices()]);
+  return { host, voices: v.voices.map((x) => ({ id: x.id, name: x.name, source: x.source })), engines: HOST_ENGINES, falReady: Boolean(process.env.FAL_KEY) };
+}
+
+/** AI 自动生成 for a project: queued; the job voices, lip-syncs, adds the take and starts the director. */
+export async function autoHostAction(projectId: unknown, input: { hostFileId: unknown; hostName?: unknown; hostKind?: unknown; voiceId: unknown; engine: unknown; aspect: unknown }) {
+  const viewer = await maker();
+  if (!viewer) return { error: "你没有视频模块的权限" };
+  if (typeof projectId !== "string" || !/^[a-z]+_[0-9a-z]+$/i.test(projectId)) return { error: "Not allowed" };
+  const id = (x: unknown) => (typeof x === "string" && /^fil_[0-9a-z]+$/i.test(x) ? x : null);
+  const hostFileId = id(input.hostFileId);
+  if (!hostFileId) return { error: "先上传她的视频或照片" };
+  const voiceId = typeof input.voiceId === "string" ? input.voiceId : null;
+  if (!voiceId) return { error: "选一个声音" };
+  const engine = HOST_ENGINES.some((e) => e.id === input.engine) ? (input.engine as string) : null;
+  if (engine && !engine.startsWith("local/") && !process.env.FAL_KEY) return { error: "这种生成方式需要 fal.ai 密钥；或选「本机对口型（免费）」" };
+  const aspect = input.aspect === "16:9" || input.aspect === "1:1" ? input.aspect : "9:16";
+  await rememberHost(viewer, { fileId: hostFileId, name: typeof input.hostName === "string" ? input.hostName.slice(0, 120) : "", kind: input.hostKind === "image" ? "image" : "video" }).catch(() => {});
+  const job = await enqueue({ tenantId: viewer.tenantId, type: "video.autoHost", module: "video", objectType: "project", objectId: projectId, payload: { projectId, hostFileId, voiceId, engine, aspect }, createdBy: viewer.id, priority: 5 });
   return { jobId: job.id };
 }
 

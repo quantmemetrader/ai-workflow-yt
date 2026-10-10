@@ -46,11 +46,11 @@ export async function studioVoices(): Promise<{ voices: StudioVoice[]; eleven: A
   const eleven = await elevenStatus();
   let remote: StudioVoice[] = [];
   if (eleven === "ok") {
-    /* The studio's own clones (Avon's voice) before ElevenLabs' stock library (10 Oct). */
-    const rank = (c: string | null) => (c === "cloned" || c === "professional" ? 0 : c === "generated" ? 1 : 2);
+    /* The host's own clones first (Avon, 10 Oct), then the studio's other clones, then ElevenLabs' stock library. */
+    const rank = (v: { name: string; category: string | null }) => (/avon|亚芳/i.test(v.name) ? 0 : v.category === "cloned" || v.category === "professional" ? 1 : v.category === "generated" ? 2 : 3);
     remote = (await elevenVoices().catch(() => []))
-      .sort((a, b) => rank(a.category) - rank(b.category) || a.name.localeCompare(b.name))
-      .map((v) => ({ id: `elevenlabs:${v.id}`, name: rank(v.category) === 0 ? `${v.name}（克隆）` : v.name, lang: null, gender: null, source: "elevenlabs" as const }));
+      .sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name))
+      .map((v) => ({ id: `elevenlabs:${v.id}`, name: rank(v) <= 1 ? `${v.name}（克隆）` : v.name, lang: null, gender: null, source: "elevenlabs" as const }));
   }
   return { voices: [...remote, ...local], eleven };
 }

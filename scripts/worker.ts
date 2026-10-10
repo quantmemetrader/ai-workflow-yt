@@ -34,6 +34,7 @@ import { makeCovers } from "../lib/video/cover";
 import { exportCapcut, type CapcutOptions } from "../lib/video/capcut/export";
 import { importLink } from "../lib/media/link-import";
 import { generateVideo, talkingHost } from "../lib/studio/service";
+import { autoHostVideo } from "../lib/studio/autohost";
 import { generatePicture } from "../lib/video/stock";
 import { importPictureBytes } from "../lib/files/service";
 import { narrateDone, narrateFailed, narrateStart } from "../lib/agents/narrate";
@@ -80,6 +81,7 @@ const TIMEOUT_BY_TYPE: Record<string, number> = {
   "media.generateVideo": 20 * 60_000,
   "media.talkingHost": 30 * 60_000,
   "media.generatePicture": 30 * 60_000,
+  "video.autoHost": 90 * 60_000,
   // Transcribe, cut, design and render, end to end.
   "video.direct": 120 * 60_000,
   "video.transcribe": 45 * 60_000,
@@ -319,6 +321,19 @@ const HANDLERS: Record<string, Handler> = {
       tags: ["ai-generated"],
     });
     return { fileId: brought.id, name: brought.name };
+  },
+
+  /* AI 自动生成: the reel from the script alone, her voice and face made, then the director (10 Oct). */
+  "video.autoHost": async (job) => {
+    const p = job.payload as { projectId: string; hostFileId: string; voiceId: string; engine: string | null; aspect: "9:16" | "16:9" | "1:1" };
+    const viewer = job.createdBy ? await viewerById(job.createdBy) : null;
+    if (!viewer) return { skipped: "no viewer" };
+    let stage = "配音";
+    const out = await autoHostVideo(viewer, p, (f, s) => {
+      stage = s;
+      void jobProgress(job.id, f).catch(() => {});
+    });
+    return { ...out, stage };
   },
 
   /* 主持人口播: the host's photo or clip made to say the words (10 Oct). */

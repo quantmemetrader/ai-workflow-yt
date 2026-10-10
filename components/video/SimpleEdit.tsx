@@ -1,6 +1,6 @@
 "use client";
 
-import { LinkImport } from "@/components/video/LinkImport";
+import { AutoHost } from "@/components/video/AutoHost";
 import * as React from "react";
 import { CapcutExport } from "@/components/video/CapcutExport";
 import Link from "next/link";
@@ -281,9 +281,9 @@ export function SimpleEdit({ f, zh, modeSwitch }: { f: SimpleFacts; zh: boolean;
             </button>
           ) : null}
         </div>
-        {/* Or the video someone posted online (7 Oct). */}
-        <div style={{ marginTop: 12 }}>
-          <LinkImport projectId={f.projectId} zh={zh} />
+        {/* Or nothing filmed at all: her voice and face made from the script (10 Oct). */}
+        <div style={{ marginTop: 14 }}>
+          <AutoHost projectId={f.projectId} zh={zh} hasScript={Boolean(f.script)} onStarted={() => setReopen((r) => ({ ...r, upload: false }))} />
         </div>
       </Step>
 

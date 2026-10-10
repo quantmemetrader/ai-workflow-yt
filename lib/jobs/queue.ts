@@ -76,7 +76,8 @@ export type JobType =
   | "media.importLink"
   | "media.generateVideo"
   | "media.talkingHost"
-  | "media.generatePicture";
+  | "media.generatePicture"
+  | "video.autoHost";
 
 export type JobRow = typeof jobs.$inferSelect;
 

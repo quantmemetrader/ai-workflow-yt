@@ -97,9 +97,10 @@ function HostPanel({ zh, voices, eleven, engines, ready, isAdmin, onClone }: { z
     }
   }, []);
   React.useEffect(() => {
-    if (!voice && voices?.length) setVoice((voices.find((v) => v.source === "elevenlabs") ?? voices.find((v) => v.lang === "zh" && v.gender === "female") ?? voices[0]).id);
+    if (!voice && voices?.length) setVoice((voices.find((v) => /avon|亚芳/i.test(v.name)) ?? voices.find((v) => v.source === "elevenlabs") ?? voices.find((v) => v.lang === "zh" && v.gender === "female") ?? voices[0]).id);
   }, [voices, voice]);
-  const fits = engines.filter((e) => !host || e.for === host.kind);
+  /* Only what can run now: the free one always, fal.ai's engines once their key is set (10 Oct: "just show which is available"). */
+  const fits = engines.filter((e) => (!host || e.for === host.kind) && (ready || e.id.startsWith("local/")));
   React.useEffect(() => {
     if (!fits.some((e) => e.id === engine)) setEngine(fits[0]?.id ?? "");
   }, [fits, engine]);
