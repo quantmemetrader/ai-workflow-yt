@@ -8,6 +8,7 @@ import { enqueue } from "@/lib/jobs/queue";
 import { cloneVoice, HOST_ENGINES, speakToFile, studioVoices, VIDEO_MODELS } from "@/lib/studio/service";
 import { localGeneratorUp } from "@/lib/video/stock";
 import { hostDefault, rememberHost } from "@/lib/studio/autohost";
+import { listWorkProjects } from "@/lib/projects/service";
 
 async function maker() {
   const viewer = await getViewer();
@@ -103,6 +104,14 @@ export async function autoHostDefaultsAction() {
   if (!viewer) return { error: "你没有视频模块的权限" };
   const [host, v] = await Promise.all([hostDefault(), studioVoices()]);
   return { host, voices: v.voices.map((x) => ({ id: x.id, name: x.name, source: x.source })), engines: HOST_ENGINES, falReady: Boolean(process.env.FAL_KEY) };
+}
+
+/** The projects this person can see, for the Studio's whole-video picker: which have a script. */
+export async function projectsForAutoAction() {
+  const viewer = await maker();
+  if (!viewer) return { error: "你没有视频模块的权限" };
+  const rows = await listWorkProjects(viewer, 40);
+  return { rows: rows.map((r) => ({ id: r.id, title: r.title, hasScript: Boolean((r as { scriptId?: string | null }).scriptId) })) };
 }
 
 /** AI 自动生成 for a project: queued; the job voices, lip-syncs, adds the take and starts the director. */

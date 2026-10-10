@@ -5,10 +5,11 @@ import Link from "next/link";
 import { notify } from "@/lib/client/notify";
 import { uploadFiles } from "@/lib/client/upload";
 import { cloneVoiceAction, generatePictureAction, generateVideoAction, speakAction, studioJobsAction, studioVoicesAction, talkingHostAction } from "@/app/(app)/studio/actions";
+import { WholeVideoPanel } from "@/components/studio/WholeVideo";
 
 type Voice = { id: string; name: string; lang: "zh" | "en" | null; gender: string | null; source: "local" | "elevenlabs" };
 type Model = { id: string; zh: string; en: string; noteZh: string; image: string | null };
-type Tab = "host" | "voice" | "clone" | "image" | "video";
+type Tab = "whole" | "host" | "voice" | "clone" | "image" | "video";
 type Engine = { id: string; for: "image" | "video"; zh: string; en: string; noteZh: string };
 
 /**
@@ -18,7 +19,7 @@ type Engine = { id: string; for: "image" | "video"; zh: string; en: string; note
  */
 export function StudioScreen({ zh, models, engines, imageLocal, falReady, isAdmin }: { zh: boolean; models: Model[]; engines: Engine[]; imageLocal: boolean; falReady: boolean; isAdmin: boolean }) {
   const t = (a: string, b: string) => (zh ? a : b);
-  const [tab, setTab] = React.useState<Tab>("host");
+  const [tab, setTab] = React.useState<Tab>("whole");
   const [voices, setVoices] = React.useState<Voice[] | null>(null);
   const [eleven, setEleven] = React.useState<string>("");
   const loadVoices = React.useCallback(() => {
@@ -36,15 +37,16 @@ export function StudioScreen({ zh, models, engines, imageLocal, falReady, isAdmi
       <style>{CSS}</style>
       <div className="st-head">
         <h1>{t("配音和生成", "Voice & video")}</h1>
-        <p>{t("让主持人照着稿子说话、把文字变成配音、克隆一个声音、生成剪辑用的画面、用一句话生成一段视频。做好的都放在「文件」里，可以直接拖进剪辑。", "Text to voice-over, clone a voice, or make a short video from a sentence. Everything goes to Files, ready to edit.")}</p>
+        <p>{t("一句话做出整条视频；或者分开用：让主持人照着稿子说话、把文字变成配音、克隆一个声音、生成剪辑用的画面。做好的都放在「文件」里，可以直接拖进剪辑。", "Text to voice-over, clone a voice, or make a short video from a sentence. Everything goes to Files, ready to edit.")}</p>
       </div>
       <div className="st-tabs" role="tablist">
-        {([["host", t("主持人口播", "Host talking")], ["image", t("AI 生成图片", "AI pictures")], ["voice", t("配音", "Voice-over")], ["clone", t("克隆声音", "Clone a voice")], ["video", t("AI 动态镜头（需密钥）", "AI motion clips (needs a key)")]] as [Tab, string][]).map(([k, label]) => (
+        {([["whole", t("整条视频", "Whole video")], ["host", t("主持人口播", "Host talking")], ["image", t("AI 生成图片", "AI pictures")], ["voice", t("配音", "Voice-over")], ["clone", t("克隆声音", "Clone a voice")], ["video", t("AI 动态镜头（需密钥）", "AI motion clips (needs a key)")]] as [Tab, string][]).map(([k, label]) => (
           <button key={k} role="tab" aria-selected={tab === k} className="st-tab" data-on={tab === k ? "" : undefined} onClick={() => setTab(k)}>
             {label}
           </button>
         ))}
       </div>
+      {tab === "whole" ? <WholeVideoPanel zh={zh} /> : null}
       {tab === "host" ? <HostPanel zh={zh} voices={voices} eleven={eleven} engines={engines} ready={falReady} isAdmin={isAdmin} onClone={() => setTab("clone")} /> : null}
       {tab === "voice" ? <VoicePanel zh={zh} voices={voices} eleven={eleven} isAdmin={isAdmin} /> : null}
       {tab === "clone" ? <ClonePanel zh={zh} eleven={eleven} isAdmin={isAdmin} onCloned={() => { loadVoices(); setTab("voice"); }} /> : null}
