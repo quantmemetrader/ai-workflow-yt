@@ -39,7 +39,7 @@ export function StudioScreen({ zh, models, engines, imageLocal, falReady, isAdmi
         <p>{t("让主持人照着稿子说话、把文字变成配音、克隆一个声音、生成剪辑用的画面、用一句话生成一段视频。做好的都放在「文件」里，可以直接拖进剪辑。", "Text to voice-over, clone a voice, or make a short video from a sentence. Everything goes to Files, ready to edit.")}</p>
       </div>
       <div className="st-tabs" role="tablist">
-        {([["host", t("主持人口播", "Host talking")], ["voice", t("配音", "Voice-over")], ["clone", t("克隆声音", "Clone a voice")], ["image", t("AI 生成图片", "AI pictures")], ["video", t("AI 生成视频", "AI video")]] as [Tab, string][]).map(([k, label]) => (
+        {([["host", t("主持人口播", "Host talking")], ["image", t("AI 生成图片", "AI pictures")], ["voice", t("配音", "Voice-over")], ["clone", t("克隆声音", "Clone a voice")], ["video", t("AI 动态镜头（需密钥）", "AI motion clips (needs a key)")]] as [Tab, string][]).map(([k, label]) => (
           <button key={k} role="tab" aria-selected={tab === k} className="st-tab" data-on={tab === k ? "" : undefined} onClick={() => setTab(k)}>
             {label}
           </button>
@@ -435,9 +435,14 @@ function VideoPanel({ zh, models, ready, isAdmin }: { zh: boolean; models: Model
   };
   return (
     <div className="st-card">
+      <p className="st-help">
+        {t("这里是「凭空梦出来」的动态镜头：写一句话，模型生成一段 5 到 10 秒的画面（例如夜晚航拍维港）。它和做整条视频是两回事：整条视频在项目的「剪辑」页点「AI 自动生成」，用她的真实视频、配音、图片和素材，免费。", "These are motion clips dreamed from a sentence (a drone over the harbour at night, 5–10 s). Making a whole video is a different thing: on a project's 剪辑 page, press AI 自动生成; that uses her real footage, voice, pictures and stock, free.")}
+        {" "}
+        <Link href="/projects">{t("去项目", "Go to projects")}</Link>
+      </p>
       {!ready ? (
         <div className="st-note">
-          {t("AI 生成视频需要 fal.ai 密钥（一个密钥就能用可灵、海螺、即梦）。", "AI video needs a fal.ai key (one key covers Kling, Hailuo and Seedance).")}
+          {t("这类模型（可灵、海螺、即梦）只有付费云服务提供，自己的服务器跑不了，所以这一项需要 fal.ai 密钥（一个密钥三家都能用）。", "These models (Kling, Hailuo, Seedance) exist only as paid cloud services and cannot run on our own server, so this one needs a fal.ai key (one key covers all three).")}
           {isAdmin ? <> <Link href="/admin?tab=credentials">{t("去设置密钥", "Set the key")}</Link></> : t("请管理员设置。", " Ask an admin to set it.")}
         </div>
       ) : null}
