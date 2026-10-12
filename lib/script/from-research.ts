@@ -10,6 +10,17 @@ import type { Viewer } from "@/lib/auth/dal";
 import { audit } from "@/lib/audit";
 import { cleanCodes, draftSources, type ProjectSource } from "@/lib/projects/topic";
 import { draftFromBrief } from "./ai";
+import { googleNewsSearch } from "@/lib/research/beat-sources";
+
+/** The latest headlines on a subject, both editions, as lines the writer can cite. */
+async function liveNewsFor(subject: string): Promise<string> {
+  const within = <T,>(p: Promise<T>, ms: number): Promise<T | null> => Promise.race([p.catch(() => null), new Promise<null>((r) => setTimeout(() => r(null), ms))]);
+  const [hk, us] = await Promise.all([within(googleNewsSearch(subject, "HK", 10), 12_000), within(googleNewsSearch(subject, "US", 10), 12_000)]);
+  const rows = [...(hk ?? []), ...(us ?? [])].slice(0, 16);
+  if (!rows.length) return "";
+  const day = (iso: string | null | undefined) => (iso ? iso.slice(0, 10) : "");
+  return ["最新新闻（写稿时可引用其中的事实、数字和日期；注明来源媒体）：", ...rows.map((n) => `- ${day(n.stats?.publishedAt)} · ${n.extra ?? "news"} — ${n.phrase}${n.url ? ` (${n.url})` : ""}`)].join("\n");
+}
 import { createScript } from "./service";
 
 /**
@@ -173,6 +184,12 @@ export async function writeScript(viewer: Viewer, req: ScriptRequest): Promise<S
   if (!sources && req.intoScriptId) sources = await sourcesForScript(viewer, req.intoScriptId, topicId);
 
   if (!title) return { ok: false, error: "Say what the script is about." };
+  /* Thin sources: the news about the subject right now, Chinese and English editions, so the draft
+     has dates, numbers and outlets to lean on rather than the model's memory (13 Oct). */
+  if (sources.length < 1500) {
+    const live = await liveNewsFor(title).catch(() => "");
+    if (live) sources = [sources, live].filter(Boolean).join("\n\n").slice(0, 6000);
+  }
 
   const seconds = req.seconds && Number.isFinite(req.seconds) ? Math.max(15, Math.min(3600, Math.round(req.seconds))) : null;
   const aspect =

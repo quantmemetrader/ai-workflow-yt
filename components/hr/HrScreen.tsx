@@ -3,6 +3,7 @@
 import type * as React from "react";
 import { useState } from "react";
 import type { BalanceRow, CandidateRow, EmployeeRow, LeaveRow, RequisitionRow } from "@/lib/hr/service";
+import { LeaveCalendar } from "@/components/hr/LeaveCalendar";
 import {
   addCandidateAction,
   addTaskAction,
@@ -114,6 +115,7 @@ export function HrScreen({
 
       <div style={{ flexGrow: 1, minHeight: 0, display: "flex" }}>
         <div style={{ flexGrow: 1, minWidth: 0, overflowY: "auto", padding: "18px 22px 40px" }}>
+          {tab === "leave" && <LeaveCalendar leave={leave} zh={zh} />}
           {tab === "leave" && (
             <Leave
               year={year}

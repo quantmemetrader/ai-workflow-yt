@@ -21,6 +21,22 @@ export function HomeToday({ zh, me, greeting, today, team = null, plan = null }:
         <p style={{ margin: "6px 0 0", fontSize: 14, color: "#7a7a7a" }}>{n ? t(`今天有 ${n} 件事等你`, `${n} thing${n === 1 ? "" : "s"} waiting for you`) : t("今天没有等你的事", "Nothing is waiting for you")}</p>
       </header>
 
+      {/* The studio's day in three steps (13 Oct: "minimalist, 抓新闻 → script → editing"). */}
+      <nav className="ht-sop" aria-label={t("工作流程", "Workflow")}>
+        {[
+          { href: "/research", n: "1", zh: "抓新闻", en: "Find news", subZh: "热点、选题、素材", subEn: "trends, topics, sources" },
+          { href: "/projects", n: "2", zh: "写脚本", en: "Write the script", subZh: "文案起稿、修改、审核", subEn: "draft, revise, approve" },
+          { href: "/video", n: "3", zh: "剪辑成片", en: "Edit the video", subZh: "配音、口播、画面、渲染", subEn: "voice, host, pictures, render" },
+        ].map((s, i) => (
+          <Link key={s.href} href={s.href} prefetch={false} className="ht-sop-step">
+            <span className="ht-sop-n">{s.n}</span>
+            <span className="ht-sop-t">{zh ? s.zh : s.en}</span>
+            <span className="ht-sop-s">{zh ? s.subZh : s.subEn}</span>
+            {i < 2 ? <span className="ht-sop-arrow" aria-hidden>→</span> : null}
+          </Link>
+        ))}
+      </nav>
+
       <Card icon="check" title={t("等你做的事", "Waiting for you")}>
         {today.todo.length ? (
           <div style={{ display: "flex", flexDirection: "column" }}>
@@ -105,4 +121,13 @@ const HOME_CSS = `
 .ht-pill[data-state="running"] { background: #e9f2fe; color: #1f5fbf; }
 .ht-live { width: 7px; height: 7px; border-radius: 99px; background: #278f5e; animation: auraPulse 1.6s ease-in-out infinite; flex-shrink: 0; }
 @media (prefers-reduced-motion: reduce) { .ht-live { animation: none; } }
+
+.ht-sop { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 14px 0 16px; }
+.ht-sop-step { position: relative; display: flex; flex-direction: column; gap: 2px; padding: 12px 14px; border: 1px solid #e6e5e1; border-radius: 12px; background: #fff; color: inherit; text-decoration: none; }
+.ht-sop-step:hover { border-color: #171717; }
+.ht-sop-n { font-size: 11.5px; color: #8a8a8a; letter-spacing: .04em; }
+.ht-sop-t { font-size: 15px; font-weight: 600; color: #171717; }
+.ht-sop-s { font-size: 12.5px; color: #7a7a7a; }
+.ht-sop-arrow { position: absolute; right: -12px; top: 50%; transform: translateY(-50%); color: #c2c1bc; font-size: 14px; z-index: 1; }
+@media (max-width: 720px) { .ht-sop { grid-template-columns: 1fr; } .ht-sop-arrow { display: none; } }
 `;

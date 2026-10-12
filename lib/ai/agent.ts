@@ -30,6 +30,8 @@ import { scrubToolNames, stripToolMarkup } from "@/lib/agents/steps";
  * this generator, so what the user watched is exactly what got persisted.
  */
 /** A first-person "I wrote / saved / started it" (see the nudge in the loop). */
+/* "I will / let me / going to…" with no tool called at all this turn: the work was promised, not started (13 Oct). */
+const PROMISED = /(我会|我将|我这就|我马上|马上去|稍后|接下来我|现在就去|让我来|我先去|我来帮你|我去|即将)[^。\n]{0,30}(写|做|生成|处理|开始|执行|查|找|剪|发|创建|安排|整理|准备|搜索|更新|完成)|(I will|I'll|Let me|I am going to|I'm going to) [^.\n]{0,40}(write|do|make|start|run|search|find|cut|create|prepare|update|look|draft)/;
 const CLAIMED_DONE = /(已为你|已经为你|我已|我已经|已帮你)[^。\n]{0,24}(写|存|建|创建|生成|撰写|保存)|已存入(新)?项目|脚本已(存入|写入|保存|生成)|已(新建|创建)(了)?(新)?项目/;
 
 export type AgentEvent =
@@ -56,6 +58,7 @@ export type AgentEvent =
       withheld: boolean;
     }
   | { type: "notice"; text: string }
+  | { type: "reasoning"; text: string }
   | {
       type: "usage";
       model: string;
@@ -282,6 +285,8 @@ export async function* runAgent(opts: {
   let nudged = false;
   /** A tool that acts (not a read) ran and did not say nothing was written. */
   let actedThisTurn = false;
+  /** How many tools ran this turn at all, reads included. */
+  let toolsThisTurn = 0;
 
   /** Every model call goes through here, so none of them can escape the
    * ledger (§5): user, module, model, provider, tokens, cost, request id. */
@@ -328,6 +333,9 @@ export async function* runAgent(opts: {
             roundText += ev.text;
             answer += ev.text;
             yield { type: "delta", text: ev.text };
+          } else if (ev.type === "reasoning") {
+            /* The model's own working, shown as it thinks (13 Oct: "show the agent's thought process, like DeepSeek"). */
+            yield { type: "reasoning", text: ev.text };
           } else if (ev.type === "tool_call") {
             pendingCalls.push({ id: ev.id, name: ev.name, arguments: ev.arguments });
           } else if (ev.type === "usage") {
@@ -395,6 +403,16 @@ export async function* runAgent(opts: {
           messages.push({ role: "user", content: "系统检查：你说已经写好、存入或新建了，但这一轮没有任何工具成功执行。现在调用相应的工具真正去做；如果做不了，就如实说没有写入以及原因。不要重复刚才的说法。" });
           continue;
         }
+        /* Promised to do it and called nothing (13 Oct: "the agent says it will, and when the team follows up it has not started"). */
+        if (!nudged && toolsThisTurn === 0 && tools.length > 0 && PROMISED.test(roundText) && round < MAX_ROUNDS - 1 && !signal?.aborted) {
+          nudged = true;
+          const fix = "\n\n（更正：刚才只是说了要做，现在真正去做。）\n\n";
+          answer += fix;
+          yield { type: "delta", text: fix };
+          messages.push({ role: "assistant", content: roundText });
+          messages.push({ role: "user", content: "系统检查：你说会去做、稍后做或马上做，但这一轮没有调用任何工具，所以什么都没有开始。现在就调用相应的工具去做，一步一步做完；如果这件事你做不了或需要别人，就如实说明并用 assign_task 交给能做的同事，不要承诺以后。" });
+          continue;
+        }
         break;
       }
 
@@ -435,6 +453,7 @@ export async function* runAgent(opts: {
            "nothing was lost, ask again" after a lower third has been added is
            how you end up with two lower thirds. */
         if (result.changed && !failed) changes.push(result.text.trim());
+        toolsThisTurn++;
         if (!failed && (result.changed || (!/^(search|list|read|get|check|find|look|fetch)_/.test(call.name) && !/nothing was written|not written|没有写入|未写入/i.test(result.text)))) actedThisTurn = true;
 
         // The trace is a record of the turn, not part of it: if writing the

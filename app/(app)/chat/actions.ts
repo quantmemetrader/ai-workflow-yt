@@ -1,5 +1,16 @@
 "use server";
 
+import { sidebarData } from "@/lib/chat/sidebar";
+
+/** The sidebar asks for its rows again: every half minute, and when the open conversation says something changed. */
+export async function sidebarAction() {
+  const { getViewer } = await import("@/lib/auth/dal");
+  const viewer = await getViewer();
+  if (!viewer || !viewer.modules.includes("chat")) return { error: "没有权限" };
+  const d = await sidebarData(viewer);
+  return { channels: d.channels, people: d.people, conversations: d.conversations, projects: d.projects };
+}
+
 import { requesterOf } from "@/lib/auth/types";
 import { pickedModel } from "@/lib/ai/chat-models";
 import { after } from "next/server";

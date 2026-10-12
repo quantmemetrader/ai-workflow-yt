@@ -153,8 +153,8 @@ const ALL: NavItem[] = [
   {
     module: "finance",
     href: "/finance",
-    label: "Finance",
-    labelZh: "财务",
+    label: "Model usage",
+    labelZh: "模型用量",
     live: true,
     icon: '<circle cx="12" cy="12" r="8.6"/><path d="M14.8 9.4c-.4-1-1.5-1.6-2.8-1.6-1.6 0-2.8.9-2.8 2.1 0 2.9 5.7 1.4 5.7 4.3 0 1.2-1.2 2.1-2.9 2.1-1.4 0-2.5-.6-2.9-1.6M12 6.4v1.4M12 16.3v1.4" stroke="#f8f8f8" stroke-width="1.5" fill="none"/>',
   },
@@ -177,8 +177,8 @@ const ALL: NavItem[] = [
   {
     module: "admin",
     href: "/admin",
-    label: "Manage employees",
-    labelZh: "员工管理",
+    label: "Users",
+    labelZh: "用户",
     live: true,
     icon: '<path d="M4 7.4h16M4 12h16M4 16.6h16" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linecap="round"/><circle cx="9" cy="7.4" r="2.2"/><circle cx="15" cy="16.6" r="2.2"/>',
   },
@@ -234,8 +234,8 @@ export const RAIL_MAIN: RailItem[] = [
 
 /** The back office: owners and admins only, folded by default. */
 export const RAIL_BACK: RailItem[] = [
-  { href: "/admin", label: "People", labelZh: "员工管理", icon: iconOf("/admin"), module: "admin" },
-  { href: "/finance", label: "Finance", labelZh: "财务", icon: iconOf("/finance"), module: "finance" },
+  { href: "/admin", label: "Users", labelZh: "用户", icon: iconOf("/admin"), module: "admin" },
+  { href: "/finance", label: "Model usage", labelZh: "模型用量", icon: iconOf("/finance"), module: "finance" },
   { href: "/accounting", label: "Accounting", labelZh: "账务", icon: iconOf("/accounting"), module: "accounting" },
   { href: "/legal", label: "Legal", labelZh: "法务", icon: iconOf("/legal"), module: "legal" },
   { href: "/hr", label: "HR", labelZh: "人事", icon: iconOf("/hr"), module: "hr" },

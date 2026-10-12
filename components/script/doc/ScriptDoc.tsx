@@ -87,6 +87,7 @@ import type { DocComment, ScriptDocProps } from "./types";
  */
 
 const CHIPS: { zh: string; en: string; icon?: string }[] = [
+  { zh: "整体建议（不改稿）", en: "Overall advice (no edits)" },
   { zh: "更口语", en: "More conversational" },
   { zh: "扩写到 3 分钟（约 800 字）", en: "Expand to 3 minutes" },
   { zh: "扩写到 5 分钟（约 1350 字）", en: "Expand to 5 minutes" },
@@ -523,11 +524,33 @@ export function ScriptDoc(props: ScriptDocProps) {
     [projectId, router],
   );
 
+  /* Every proposal, with the page as it was the moment it opened, so a decision can be taken back (13 Oct:
+     "once accepted or rejected, the amendment cannot be recalled"). The last five, this page only. */
+  const undoStack = React.useRef<{ json: Record<string, unknown>; items: Tracked[]; summary: string; source: "ai" | "sendback" }[]>([]);
+  const [canUndo, setCanUndo] = React.useState(false);
   function openProposal(items: Tracked[], summary: string, source: "ai" | "sendback") {
     if (source === "ai") setAiLog((l) => (l.length ? [...l.slice(0, -1), { ...l[l.length - 1], a: summary || t(`改了 ${items.length} 处，已在文档里标出`, `${items.length} edits, marked in the document`) }] : l));
     if (!items.length) return notify(t("文案觉得不用改", "The writer found nothing to change"), "ok");
+    if (editor) {
+      undoStack.current = [...undoStack.current.slice(-4), { json: JSON.parse(JSON.stringify(editor.getJSON())) as Record<string, unknown>, items, summary, source }];
+      setCanUndo(true);
+    }
     setMarks({ tracked: items });
     setProposal({ summary, source, total: items.length });
+  }
+  /** The last proposal back on the page, exactly as it was offered, whatever was accepted or rejected since. */
+  function undoProposal() {
+    const snap = undoStack.current.pop();
+    setCanUndo(undoStack.current.length > 0);
+    if (!snap || !editor) return;
+    if (locked) return setLockPrompt(true);
+    editor.commands.setContent(snap.json as never, { emitUpdate: true });
+    window.setTimeout(() => {
+      setMarks({ tracked: snap.items });
+      setProposal({ summary: snap.summary, source: snap.source, total: snap.items.length });
+      setPanel("ai");
+      notify(t("上一次的改法重新标在文档里了，可以重新接受或拒绝", "The last edits are back on the page to accept or reject again"), "ok");
+    }, 60);
   }
 
   const refAtt = useAttachments(zh, 5);
@@ -1664,6 +1687,11 @@ export function ScriptDoc(props: ScriptDocProps) {
                   </div>
                 </div>
 
+                {canUndo && !proposal && me.canEdit ? (
+                  <button type="button" className="gd-ai-action" style={{ marginBottom: 10 }} onClick={undoProposal} title={t("把上一次接受或拒绝的改法重新标出来", "Bring the last accepted or rejected edits back")}>
+                    {t("撤回上次改法", "Take back the last edits")}
+                  </button>
+                ) : null}
                 {aiLog.length ? (
                   <div className="gd-ai-log">
                     {aiLog.map((m, i) => (

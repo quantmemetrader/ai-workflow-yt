@@ -3,7 +3,9 @@
 import { ConversationMenu } from "@/components/chat/RowMenu";
 import Link, { useLinkStatus } from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useState, useTransition } from "react";
+import { onBump } from "@/lib/client/live";
+import { sidebarAction } from "@/app/(app)/chat/actions";
+import { Suspense, useState, useTransition , useEffect } from "react";
 import { NewChannelDialog } from "@/components/chat/NewChannelDialog";
 import { PlusGlyph, plusButton } from "@/components/canvas/FilesScreen";
 import { useResizable } from "@/components/ui/Resizer";
@@ -173,9 +175,10 @@ function NavSpinner() {
 
 export function WorkspaceSidebar({
   studio,
-  channels,
-  people,
-  conversations = [],
+  channels: channelsProp,
+  people: peopleProp,
+  conversations: conversationsProp = [],
+  projects: projectsProp = [],
   me,
   locale,
   now,
@@ -185,6 +188,8 @@ export function WorkspaceSidebar({
   people: SidebarPerson[];
   /** This person's own past conversations with the agent, newest first. */
   conversations?: SidebarConversation[];
+  /** Live projects, newest activity first: each has its own conversation on its page. */
+  projects?: { id: string; title: string; status: string }[];
   me: { id: string; name: string; avatarUrl: string | null; status: string };
   locale: Locale;
   /** The server render's clock, for "today / weekday / date" beside a thread. */
@@ -195,6 +200,28 @@ export function WorkspaceSidebar({
   const [, start] = useTransition();
   const [composing, setComposing] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [groupsOpen, setGroupsOpen] = useState(false);
+  /* The rows refreshed on their own (13 Oct): every half minute while the tab is visible, at once when the
+     page on the right says it changed (bumpLive), and when the tab comes back. A fresh server render resets them. */
+  const [fresh, setFresh] = useState<{ channels: SidebarChannel[]; people: SidebarPerson[]; conversations: SidebarConversation[]; projects: { id: string; title: string; status: string }[] } | null>(null);
+  useEffect(() => setFresh(null), [channelsProp, peopleProp, conversationsProp, projectsProp]);
+  useEffect(() => {
+    let gone = false;
+    const pull = async () => {
+      if (document.visibilityState !== "visible") return;
+      const r = (await sidebarAction().catch(() => null)) as { channels?: SidebarChannel[]; people?: SidebarPerson[]; conversations?: SidebarConversation[]; projects?: { id: string; title: string; status: string }[]; error?: string } | null;
+      if (!gone && r && !r.error && r.channels && r.people && r.conversations) setFresh({ channels: r.channels, people: r.people, conversations: r.conversations, projects: r.projects ?? [] });
+    };
+    const every = window.setInterval(pull, 30_000);
+    const off = onBump(() => void window.setTimeout(pull, 1200));
+    const back = () => { if (document.visibilityState === "visible") void pull(); };
+    document.addEventListener("visibilitychange", back);
+    return () => { gone = true; window.clearInterval(every); off(); document.removeEventListener("visibilitychange", back); };
+  }, []);
+  const channels = fresh?.channels ?? channelsProp;
+  const people = fresh?.people ?? peopleProp;
+  const conversations = fresh?.conversations ?? conversationsProp;
+  const projects = fresh?.projects ?? projectsProp;
   // The artboard's 256 is a good default, not a law. Drag the seam.
   const { width, handle } = useResizable("chat-sidebar", { min: 190, max: 460, initial: 256, edge: "right" });
   const zh = locale.startsWith("zh");
@@ -365,10 +392,28 @@ export function WorkspaceSidebar({
             );
           })}
         </div>
-        {/* The + is on the heading, next to the channels, rather than only on
-            the pencil at the top of the sidebar. */}
-        <div className="sec">
-          <span style={{ flexGrow: 1 }}>{zh ? "群聊" : "Group chats"}</span>
+        {/* Projects: where the work's conversations live (13 Oct: "organise chats by project, like Claude projects"). */}
+        {projects.length > 0 ? (
+          <>
+            <div className="sec">
+              <span style={{ flexGrow: 1 }}>{zh ? "项目" : "Projects"}</span>
+            </div>
+            {projects.map((p) => {
+              const active = pathname.startsWith(`/projects/${p.id}`);
+              return (
+                <Link key={p.id} href={`/projects/${p.id}`} prefetch={false} className={`ws${active ? " on" : ""}`} title={p.title}>
+                  <span className="ic" aria-hidden><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><rect x="3.4" y="4.4" width="17.2" height="15.2" rx="2.4" /><path d="M9.2 4.4v15.2M14.8 4.4v15.2" /></svg></span>
+                  <span className="nm">{p.title}</span>
+                  <NavSpinner />
+                </Link>
+              );
+            })}
+            <Link href="/projects" prefetch={false} className="ws" style={{ color: "#6b6b6b", fontSize: 12.5 }}>{zh ? "所有项目 →" : "All projects →"}</Link>
+          </>
+        ) : null}
+        {/* Group chats, folded by default: the studio works in projects (13 Oct). */}
+        <div className="sec" style={{ cursor: "pointer" }} onClick={() => setGroupsOpen((v) => !v)}>
+          <span style={{ flexGrow: 1 }}>{zh ? "群聊" : "Group chats"}{channels.length ? ` · ${channels.length}` : ""}{groupsOpen ? "" : " ▸"}</span>
           <button
             type="button"
             onClick={() => setComposing(true)}
@@ -380,12 +425,12 @@ export function WorkspaceSidebar({
           </button>
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
-          {channels.length === 0 ? (
+          {!groupsOpen ? null : channels.length === 0 ? (
             <p style={{ fontSize: 12.5, color: "#999999", lineHeight: 1.5, padding: "2px 10px 0" }}>
               {zh ? "还没有群聊。" : "No group chats yet."}
             </p>
           ) : null}
-          {channels.map((c) => {
+          {!groupsOpen ? null : channels.map((c) => {
             const active = pathname === `/chat/c/${c.slug}`;
             return (
               <Link

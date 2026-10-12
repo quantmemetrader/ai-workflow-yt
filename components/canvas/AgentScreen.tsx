@@ -16,6 +16,7 @@ import { teachRuleAction } from "@/app/(app)/train/model-actions";
 import { feedbackAction } from "@/app/(app)/train/learn-actions";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
+import { bumpLive } from "@/lib/client/live";
 import { AgentIcon } from "@/components/agents/AgentIcon";
 import { AnswerPicker } from "@/components/chat/AnswerPicker";
 import { MentionMenu } from "@/components/chat/MentionMenu";
@@ -73,6 +74,8 @@ export type ThreadMessage = {
   createdAt?: string;
   citations: ThreadCitation[];
   tools: ThreadTool[];
+  /** The model's own working, as it streamed (DeepSeek, Qwen); shown folded under 思考过程. */
+  reasoning?: string;
   /** The script this turn wrote, for the presses under it (open, send for review, change it here). */
   made?: MadeScript | null;
   /** The employee who answered, when an @ handed the turn to one. */
@@ -525,6 +528,7 @@ export function AgentScreen({
             case "conversation":
               created = event.id;
               setConversationId(event.id);
+              bumpLive();
               /* The model picked in the new chat stays picked when it is reopened. */
               try {
                 window.sessionStorage.setItem(`tg-model:${event.id}`, pickModel);
@@ -582,6 +586,9 @@ export function AgentScreen({
             case "notice":
               setNotice(plainNotice(event.text, zh));
               break;
+            case "reasoning":
+              patchLast((m) => ({ ...m, reasoning: (m.reasoning ?? "") + event.text }));
+              break;
             case "attachments":
               /* The stream route read the files: their chips get a tick. */
               if (Array.isArray(event.read)) {
@@ -600,11 +607,9 @@ export function AgentScreen({
               const written = videoRefsOf(null, answer);
               for (const id of [...written.exportIds, ...written.fileIds]) named.add(id);
               if (named.size) void cardsFor([...named]).then((videos) => videos.length && patchLast((m) => ({ ...m, videos })));
-              /* A new chat shows up in 最近 now, and again once its title is written (QA round 2). */
-              if (created) {
-                router.refresh();
-                window.setTimeout(() => router.refresh(), 6000);
-              }
+              /* The sidebar's rows follow (a new chat in 最近, its title once written) without redrawing this page. */
+              bumpLive();
+              window.setTimeout(bumpLive, 6000);
               break;
             }
             case "error":
@@ -1316,6 +1321,26 @@ function AgentRow({ message, zh, locale }: { message: ThreadMessage; zh: boolean
         </div>
 
         <div className="txt">
+          {message.reasoning?.trim() ? (
+            <details className="think" open={message.status === "streaming"}>
+              <summary>{message.status === "streaming" ? (zh ? "正在思考…" : "Thinking…") : zh ? "思考过程" : "Thought process"}</summary>
+              <div className="think-body">{message.reasoning.trim()}</div>
+            </details>
+          ) : null}
+          {message.tools.length > 1 || message.tools.some((x) => x.summary) ? (
+            <details className="steps">
+              <summary>{zh ? `过程 · ${message.tools.length} 步` : `Steps · ${message.tools.length}`}</summary>
+              <ol>
+                {message.tools.map((x, i) => (
+                  <li key={x.id + i} className={x.status}>
+                    <span className="step-name">{toolWords(x.name, x.status === "running" ? "running" : "ok", zh)}</span>
+                    <span className="step-state">{x.status === "running" ? (zh ? "进行中" : "running") : x.status === "error" ? (zh ? "失败" : "failed") : zh ? "完成" : "done"}{x.durationMs ? ` · ${(x.durationMs / 1000).toFixed(1)} s` : ""}</span>
+                    {x.summary ? <div className="step-sum">{x.summary}</div> : null}
+                  </li>
+                ))}
+              </ol>
+            </details>
+          ) : null}
           {groupTools(message.tools, zh).map(({ tool, count }) => (
             <div key={tool.id} className="tool">
               {tool.status === "running" ? (
@@ -1859,7 +1884,21 @@ function TeachLine({ agent, zh, reply, messageId }: { agent: string; zh: boolean
   /* 有用 / 不好 is remembered in this browser per reply (QA, 2 Oct: a reload
      offered both again). Only stored ids count: a live row's id ("a-…") is
      replaced by the server's when the reply is saved. */
-  const key = /^(a-|u-)/.test(messageId) ? null : `tg-rated:${messageId}`;
+  const key = /^(a-|u-)/.test(messageId) ? null : `tg-rated:${messageId}
+.think { margin: 0 0 8px; border: 1px solid #ececea; border-radius: 10px; background: #fafaf8; font-size: 12.5px; color: #525252; }
+.think summary { cursor: pointer; padding: 6px 10px; font-weight: 500; color: #6b6b6b; list-style: none; }
+.think summary::-webkit-details-marker { display: none; }
+.think summary::before { content: "▸ "; } .think[open] summary::before { content: "▾ "; }
+.think-body { padding: 0 12px 10px; white-space: pre-wrap; line-height: 1.55; max-height: 320px; overflow: auto; }
+.steps { margin: 0 0 8px; font-size: 12.5px; color: #525252; }
+.steps summary { cursor: pointer; color: #6b6b6b; list-style: none; }
+.steps summary::-webkit-details-marker { display: none; }
+.steps summary::before { content: "▸ "; } .steps[open] summary::before { content: "▾ "; }
+.steps ol { margin: 6px 0 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; }
+.steps .step-state { color: #8a8a8a; margin-left: 6px; }
+.steps li.error .step-state { color: #c42b2b; }
+.steps .step-sum { color: #6b6b6b; font-size: 12px; white-space: pre-wrap; }
+`;
   const stored = useSyncExternalStore(
     subscribeRated,
     () => {
