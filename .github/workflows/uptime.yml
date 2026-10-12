@@ -1,0 +1,39 @@
+name: uptime
+# The outside check (12 Oct 2026): GitHub's runners ask the site for its health every ten minutes. If three tries
+# in a row fail, Rahul gets a mail through Resend. The server's own watchdog cannot send anything once the
+# server itself is gone; this can.
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ask the site
+        id: ask
+        run: |
+          ok=0
+          for i in 1 2 3; do
+            body=$(curl -s -m 20 https://www.tengya.media/api/health || true)
+            echo "try $i: $body"
+            echo "$body" | grep -q '"ok":true' && ok=1 && break
+            sleep 20
+          done
+          echo "ok=$ok" >> "$GITHUB_OUTPUT"
+          echo "body=$body" >> "$GITHUB_OUTPUT"
+      - name: Mail Rahul if it is down
+        if: steps.ask.outputs.ok != '1'
+        env:
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
+          BODY: ${{ steps.ask.outputs.body }}
+        run: |
+          python3 - <<'PY' > /tmp/mail.json
+          import json, os
+          print(json.dumps({"from": os.environ.get("EMAIL_FROM") or "Tengya <noreply@tengya.media>", "to": ["rahulsinghhh2312@gmail.com"],
+            "subject": "[tengya.media] DOWN (seen from outside)",
+            "text": "GitHub's runner could not get a healthy answer from https://www.tengya.media/api/health in three tries.\nLast answer: " + (os.environ.get("BODY") or "(none)") + "\nIf the server's own watchdog did not mail you too, the whole server may be unreachable: check Cherry Servers."}))
+          PY
+          curl -s -m 20 -o /dev/null -w "resend HTTP %{http_code}\n" https://api.resend.com/emails -H "Authorization: Bearer $RESEND_API_KEY" -H "Content-Type: application/json" -d @/tmp/mail.json
+          exit 1
