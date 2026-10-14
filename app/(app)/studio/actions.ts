@@ -102,7 +102,7 @@ export async function generatePictureAction(input: { prompt: unknown; aspect: un
 export async function autoHostDefaultsAction() {
   const viewer = await maker();
   if (!viewer) return { error: "你没有视频模块的权限" };
-  const [host, v] = await Promise.all([hostDefault(), studioVoices()]);
+  const [host, v] = await Promise.all([hostDefault(viewer.tenantId), studioVoices()]);
   return { host, voices: v.voices.map((x) => ({ id: x.id, name: x.name, source: x.source })), engines: HOST_ENGINES, falReady: Boolean(process.env.FAL_KEY) };
 }
 

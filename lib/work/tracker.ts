@@ -199,7 +199,7 @@ export async function listWork(viewer: Viewer, opts: { recentMinutes?: number; l
       label: k.zh,
       labelEn: k.en,
       title,
-      stage: status === "queued" ? (ahead > 0 ? `排队中，前面还有 ${ahead} 个` : "排队中，马上开始") : status === "done" ? "完成" : status === "failed" ? "没做成" : r.stage || k.stage,
+      stage: status === "queued" ? (r.attempts > 0 ? `上次没成功，等着重试（第 ${r.attempts + 1} 次）${r.error ? `：${String(r.error).slice(0, 40)}` : ""}` : ahead > 0 ? `排队中，前面还有 ${ahead} 个` : "排队中，马上开始") : status === "done" ? "完成" : status === "failed" ? "没做成" : r.stage || k.stage,
       status,
       progress,
       estimated,

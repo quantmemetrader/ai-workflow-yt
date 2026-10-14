@@ -1,5 +1,5 @@
 import "server-only";
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { files } from "@/lib/db/schema";
 import type { Viewer } from "@/lib/auth/types";
@@ -234,8 +234,9 @@ export async function talkingHost(
   input: { hostFileId: string; text?: string | null; audioFileId?: string | null; voiceId?: string | null; engine?: string | null },
   onProgress: (f: number) => void = () => {},
 ) {
-  const [host] = await db.select({ key: files.storageKey, mime: files.mime, name: files.name }).from(files).where(and(eq(files.id, input.hostFileId), eq(files.tenantId, viewer.tenantId))).limit(1);
-  if (!host?.key) throw new Error("找不到主持人的照片或视频");
+  const [host] = await db.select({ key: files.storageKey, mime: files.mime, name: files.name }).from(files).where(and(eq(files.id, input.hostFileId), eq(files.tenantId, viewer.tenantId), isNull(files.deletedAt))).limit(1);
+  /* Permanent: a missing file is not there on the second or third try either. */
+  if (!host?.key) throw Object.assign(new Error("找不到主持人的照片或视频，它可能已被删除；请重新上传一段"), { permanent: true });
   const isVideo = (host.mime ?? "").startsWith("video/") || /\.(mp4|mov|m4v|webm)$/i.test(host.name);
   const isImage = (host.mime ?? "").startsWith("image/") || /\.(jpe?g|png|webp)$/i.test(host.name);
   if (!isVideo && !isImage) throw new Error("主持人素材要是一张照片（jpg、png）或一段视频（mp4、mov）");

@@ -36,6 +36,12 @@ import { chatChannels, workProjects } from "@/lib/db/schema";
 const PROMISED = /((我会|我将)(马上|立刻|尽快|稍后|随后|晚点|去|帮你|给你|再去|先去|继续|开始|跟进|第一时间|抓紧|安排|处理|查一下|看一下|整理好|写好|做好)|我这就|我马上|马上(去|就|帮|给|开始|处理|催|写|改|查|做)|稍后|稍等|待会|回头|接下来(我|要|会)|我现在(要|就|去|来)|现在就去|让我(来|先|去|再)|我先(去|来|查|看|写)|我来帮你|我去|即将|正在(处理|为你|帮你)|下一步(我|是)|会第一时间|有结果(我|就|会)|催一下|跟进一下|安排上|(I will|I'll|Let me|I am going to|I'm going to|I'm about to|I'll get) [^.\n]{0,40}(write|do|make|start|run|search|find|cut|create|prepare|update|look|draft|check|fix|send|post))/;
 /* A plan of steps written out with nothing done: "我现在要做的：1. … 2. …" (Kimi, 8 Oct). */
 const PLAN_ONLY = /(要做的|计划如下|步骤如下|我会按|接下来的步骤|我的计划|我打算)[：:]?[\s\S]{0,40}(\n\s*(1[.、)]|一、|- ))/;
+/** A promise of work in at least one sentence that is not an offer waiting on the person ("如果你有想查的，告诉我，我现在就查"). */
+const CONDITIONAL = /(如果|要是|假如|需要的话|的话|告诉我|想让我|你想|你要|随时|可以吗|好吗|吗[？?]?$)/;
+function promisesWork(text: string): boolean {
+  if (PLAN_ONLY.test(text)) return true;
+  return text.split(/(?<=[。！!；;\n])/).some((s) => PROMISED.test(s) && !CONDITIONAL.test(s));
+}
 const CLAIMED_DONE = /(已为你|已经为你|我已|我已经|已帮你|已经帮你|已经把|已把)[^。\n]{0,30}(写|存|建|创建|生成|撰写|保存|更新|改|修改|重写|发|发送|发布|催|安排|通知|提交|加上|删|上传|交给|转给|剪|渲染|导出)|已存入(新)?项目|脚本已(存入|写入|保存|生成|更新|改好)|已(新建|创建)(了)?(新)?项目|(已经|已)(根据|按照?)[^。\n]{0,30}(更新|改|修改|重写)(到|进|好)/;
 
 export type AgentEvent =
@@ -454,7 +460,7 @@ async function* runAgentTurn(opts: {
           continue;
         }
         /* Promised to do it and called nothing (13 Oct: "the agent says it will, and when the team follows up it has not started"). */
-        if (!nudgedPromise && toolsThisTurn === 0 && tools.length > 0 && (PROMISED.test(roundText) || PLAN_ONLY.test(roundText)) && round < MAX_ROUNDS - 1 && !signal?.aborted) {
+        if (!nudgedPromise && toolsThisTurn === 0 && tools.length > 0 && promisesWork(roundText) && round < MAX_ROUNDS - 1 && !signal?.aborted) {
           nudgedPromise = true;
           const fix = "\n\n（更正：刚才只是说了要做，还没有真正开始。）\n\n";
           answer += fix;
@@ -705,7 +711,7 @@ async function* runAgentTurn(opts: {
        instead of finding out when they follow up (15 Oct). */
     /* Judged on the last round alone: a promise already corrected, followed by an honest answer, is not a promise. A question
        back to the person ("你想让我查什么？") is waiting on them, not a broken promise. */
-    if (finalRoundText.trim() && toolsThisTurn === 0 && tools.length > 0 && (PROMISED.test(finalRoundText) || PLAN_ONLY.test(finalRoundText)) && !/[？?]/.test(finalRoundText) && !signal?.aborted) {
+    if (finalRoundText.trim() && toolsThisTurn === 0 && tools.length > 0 && promisesWork(finalRoundText) && !/[？?]/.test(finalRoundText) && !signal?.aborted) {
       const note = "\n\n（提示：这一轮没有执行任何操作，上面说的事还没有开始。直接回复「现在就做」，我会马上动手。）";
       answer += note;
       yield { type: "delta", text: note };

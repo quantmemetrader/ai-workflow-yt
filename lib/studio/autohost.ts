@@ -1,7 +1,7 @@
 import "server-only";
-import { asc, eq } from "drizzle-orm";
+import { and, asc, eq, isNull } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { scriptBeats, settings } from "@/lib/db/schema";
+import { files, scriptBeats, settings } from "@/lib/db/schema";
 import type { Viewer } from "@/lib/auth/types";
 import { workProjectDetail } from "@/lib/projects/service";
 import { oneGo } from "@/lib/projects/one-go";
@@ -21,10 +21,14 @@ const HOST_SETTING = "studio.host";
 
 export type HostDefault = { fileId: string; name: string; kind: "image" | "video" } | null;
 
-export async function hostDefault(): Promise<HostDefault> {
+export async function hostDefault(tenantId: string): Promise<HostDefault> {
   const [row] = await db.select({ value: settings.value }).from(settings).where(eq(settings.key, HOST_SETTING)).limit(1);
   const v = row?.value as { fileId?: string; name?: string; kind?: string } | null;
-  return v?.fileId ? { fileId: v.fileId, name: v.name ?? "", kind: v.kind === "image" ? "image" : "video" } : null;
+  if (!v?.fileId) return null;
+  /* Only a clip that is still there (15 Oct: the remembered clip had been deleted, the panel still offered it,
+     and the job failed three times with "找不到主持人的照片或视频"). Gone: the panel asks for a new one. */
+  const [f] = await db.select({ id: files.id }).from(files).where(and(eq(files.id, v.fileId), eq(files.tenantId, tenantId), isNull(files.deletedAt))).limit(1);
+  return f ? { fileId: v.fileId, name: v.name ?? "", kind: v.kind === "image" ? "image" : "video" } : null;
 }
 
 export async function rememberHost(viewer: Viewer, host: NonNullable<HostDefault>): Promise<void> {
