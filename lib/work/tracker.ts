@@ -84,8 +84,16 @@ function clip(s: unknown, n = 40): string {
 }
 
 /** Time left: the work's own rate when it reports progress, the usual duration otherwise, both when there are both. */
-function estimate(elapsed: number, typical: number | null, reported: number | null): { progress: number; estimated: boolean; etaMs: number | null } {
+function estimate(elapsed: number, typical: number | null, reported: number | null, milestone = false): { progress: number; estimated: boolean; etaMs: number | null } {
   const t = typical && typical > 0 ? typical : null;
+  /* A job that only reports where it is (收集资料 0.05 → 写初稿 0.3 → 润色 0.82) sat at 30% for two minutes and its
+     time left was worked out from the jump to 30% in the first seconds (15 Oct test: "约剩 1 分钟" for a 2 min 17 s draft).
+     Its stages are a floor; between them the bar moves with the usual duration. */
+  if (milestone && t) {
+    const p = Math.min(0.95, Math.max(reported ?? 0, elapsed / t, 0.03));
+    const left = t - elapsed;
+    return { progress: p, estimated: true, etaMs: left > 3_000 ? Math.round(left) : elapsed > t * 1.25 ? null : 3_000 };
+  }
   if (reported != null && reported > 0.02) {
     const byRate = (elapsed * (1 - reported)) / reported;
     const byUsual = t ? t - elapsed : null;
@@ -178,7 +186,7 @@ export async function listWork(viewer: Viewer, opts: { recentMinutes?: number; l
     let estimated = false;
     let etaMs: number | null = null;
     let ahead = 0;
-    if (status === "running" && started) ({ progress, estimated, etaMs } = estimate(now - started, usual, reported));
+    if (status === "running" && started) ({ progress, estimated, etaMs } = estimate(now - started, usual, reported, !ex && Boolean(r.stage)));
     else if (status === "queued") {
       ahead = queued.findIndex((q) => q.id === r.id);
       etaMs = usual * (1 + Math.max(0, ahead));

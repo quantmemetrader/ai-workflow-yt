@@ -5,6 +5,7 @@ import { AgentNamesSync } from "@/components/shell/AgentNamesSync";
 import { agentNamesNow } from "@/lib/agents/names-store";
 import { readSessionToken, touchSession } from "@/lib/auth/session";
 import { Rail } from "@/components/canvas/Rail";
+import { getRailLayout } from "@/lib/rail-layout";
 import { TopBar } from "@/components/shell/TopBar";
 import { CommandPalette } from "@/components/shell/CommandPalette";
 import { BackgroundWork } from "@/components/shell/BackgroundWork";
@@ -27,6 +28,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const viewer = await requireViewer();
   /* What the studio calls its AI employees, for every client component (`lib/agents/names.ts`). */
   const agentNames = await agentNamesNow();
+  /* This person's own order and pins for the rail (15 Oct). */
+  const railLayout = await getRailLayout(viewer.id);
 
   // "Last active" drives the presence dots and the Admin list. It is worth a
   // write at most once an hour, and never one the reader waits for — `after`
@@ -68,6 +71,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         locale={viewer.locale ?? "zh-CN"}
         account={{ id: viewer.id, name: viewer.name, nameLocal: viewer.nameLocal, role: viewer.role, avatarUrl: viewer.avatarUrl }}
         isAdmin={viewer.role === "owner" || viewer.role === "admin"}
+        layout={railLayout}
       />
 
       {/*
