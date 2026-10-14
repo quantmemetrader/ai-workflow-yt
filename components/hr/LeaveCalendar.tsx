@@ -153,7 +153,7 @@ function Calendar({ leave, zh, people = [] }: { leave: Row[]; zh: boolean; peopl
 
       {view === "team" ? (
         <div className="lc-tl-wrap">
-          <div className="lc-tl" style={{ gridTemplateColumns: `minmax(120px, 160px) repeat(${days}, minmax(22px, 1fr))` }}>
+          <div className="lc-tl" style={{ gridTemplateColumns: `minmax(120px, 160px) repeat(${days}, minmax(22px, 1fr))`, gridTemplateRows: "44px" }}>
             <div className="lc-tl-corner">{t("同事", "Person")}</div>
             {Array.from({ length: days }, (_, i) => {
               const d = i + 1;
@@ -191,7 +191,7 @@ function Calendar({ leave, zh, people = [] }: { leave: Row[]; zh: boolean; peopl
                         onClick={() => setPicked(l)}
                         title={`${p.name} · ${zh ? k[0] : k[1]} · ${day(l.startOn)} → ${day(l.endOn)}`}
                       >
-                        <span>{zh ? k[0] : k[1]}{b - a >= 2 ? ` · ${l.days} ${t("天", "d")}` : ""}</span>
+                        {b > a ? <span>{zh ? k[0] : k[1]}{b - a >= 2 ? ` · ${l.days} ${t("天", "d")}` : ""}</span> : null}
                       </button>
                     );
                   })}
@@ -321,6 +321,7 @@ const CSS = `
 .lc-tl-cell { border-bottom: 1px solid #f6f5f2; border-left: 1px solid #f6f5f2; }
 .lc-tl-cell.we { background: #fbfbf9; }
 .lc-tl-cell.now { background: #f4f7ff; box-shadow: inset 1px 0 0 #c9d6f6, inset -1px 0 0 #c9d6f6; }
+.lc-tl-bar:empty { padding: 0; justify-content: center; }
 .lc-tl-bar { position: relative; z-index: 1; align-self: center; height: 24px; margin: 0 2px; border-radius: 7px; border: 0; padding: 0 8px; font: inherit; font-size: 11.5px; font-weight: 600; cursor: pointer; display: flex; align-items: center; overflow: hidden; white-space: nowrap; transition: transform .12s, box-shadow .12s; }
 .lc-tl-bar span { overflow: hidden; text-overflow: ellipsis; }
 .lc-tl-bar.ok { background: var(--ink); color: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.12); }
