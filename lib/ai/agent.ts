@@ -862,10 +862,21 @@ function summarise(name: string, args: string, result: string): string {
       return "看了脚本列表";
     case "read_script":
       return "读了脚本";
-    default:
-      /* Anything that changed something says what it did in its own words:
-         "Cut 0:14–0:19", "Punch in ×1.15 at 1:02", "Written: …". */
-      return result.split("\n")[0].slice(0, 160) || name;
+    case "list_projects":
+      return `看了 ${(result.match(/^- /gm) ?? []).length || "全部"} 个项目`;
+    case "read_plan":
+      return "看了今天的计划";
+    case "read_channel":
+      return "看了频道里的消息";
+    case "assign_task":
+      return /^Not handed|is already on this|not part of your job/.test(result) ? "没有交出去" : "已交给同事，结果会发在项目聊天里";
+    default: {
+      /* Anything that changed something says what it did in its own words ("Cut 0:14–0:19", "Written: …"),
+         but only when those words are for a person: a raw line with ids or a tool heading is left out (15 Oct). */
+      const line = result.split("\n")[0].slice(0, 160);
+      const raw = /\b(id|msg|wp|scr|fil|cnv|vp)_[0-9a-z]{6,}|\(id: |^#|^\{|^\[/i.test(line);
+      return raw ? "" : line;
+    }
   }
 }
 
