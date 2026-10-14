@@ -35,7 +35,14 @@ const pad = (n: number) => String(n).padStart(2, "0");
 const isoOf = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 const day = (s: string) => s.slice(0, 10);
 
-export function LeaveCalendar({ leave, zh, people = [] }: { leave: Row[]; zh: boolean; people?: Person[] }) {
+/* Drawn in the browser only: "today" is the viewer's day, which the server cannot know. */
+export function LeaveCalendar(props: { leave: Row[]; zh: boolean; people?: Person[] }) {
+  const [ready, setReady] = React.useState(false);
+  React.useEffect(() => setReady(true), []);
+  return ready ? <Calendar {...props} /> : <div style={{ minHeight: 440, border: "1px solid #ebeae6", borderRadius: 16, background: "#fafaf8", marginBottom: 18 }} />;
+}
+
+function Calendar({ leave, zh, people = [] }: { leave: Row[]; zh: boolean; people?: Person[] }) {
   const t = (a: string, b: string) => (zh ? a : b);
   const today = new Date();
   const todayIso = isoOf(today);

@@ -81,6 +81,7 @@ const CSS = `
   .mnav-b { height: 30px; min-width: 32px; padding: 0 7px; border: 1px solid #ededed; border-radius: 8px; background: #fff; color: #262626; display: inline-flex; align-items: center; gap: 5px; font: inherit; font-size: 12px; cursor: pointer; }
   .mnav-b.on { background: #171717; color: #fff; border-color: #171717; }
   .mnav-ai { display: inline-flex; position: fixed; right: 14px; bottom: calc(16px + env(safe-area-inset-bottom)); z-index: 1002; height: 46px; min-width: 46px; padding: 0 14px; border-radius: 23px; border: 0; background: #171717; color: #fff; align-items: center; justify-content: center; gap: 6px; font: inherit; font-size: 13px; font-weight: 600; box-shadow: 0 10px 28px -6px rgba(0,0,0,.45); cursor: pointer; }
+  body:has(.gd-side) .mnav-ai:not(.on), body:has(.gd-ai-input) .mnav-ai:not(.on) { bottom: calc(92px + env(safe-area-inset-bottom)); }
   .mnav-ai.on { top: calc(10px + env(safe-area-inset-top)); bottom: auto; right: 10px; height: 38px; min-width: 38px; padding: 0; background: #fff; color: #171717; border: 1px solid #e3e2dd; box-shadow: 0 4px 14px rgba(0,0,0,.12); }
   html[data-m="rail"] .mnav-veil, html[data-m="list"] .mnav-veil { display: block; position: fixed; inset: 0; z-index: 999; background: rgba(17,17,17,.32); animation: mnav-fade .18s ease-out; }
   @keyframes mnav-fade { from { opacity: 0; } to { opacity: 1; } }
