@@ -40,7 +40,9 @@ const PLAN_ONLY = /(要做的|计划如下|步骤如下|我会按|接下来的�
 const CONDITIONAL = /(如果|要是|假如|需要的话|的话|告诉我|想让我|你想|你要|随时|可以吗|好吗|吗[？?]?$)/;
 function promisesWork(text: string): boolean {
   if (PLAN_ONLY.test(text)) return true;
-  return text.split(/(?<=[。！!；;\n])/).some((s) => PROMISED.test(s) && !CONDITIONAL.test(s));
+  /* Words in quotes are talked about, not said: 「不会有"稍后的结果"」 is not a promise. */
+  const plain = text.replace(/[“"「『‘'][^”"」』’'\n]{0,60}[”"」』’']/g, "");
+  return plain.split(/(?<=[。！!；;\n])/).some((s) => PROMISED.test(s) && !CONDITIONAL.test(s));
 }
 const CLAIMED_DONE = /(已为你|已经为你|我已|我已经|已帮你|已经帮你|已经把|已把)[^。\n]{0,30}(写|存|建|创建|生成|撰写|保存|更新|改|修改|重写|发|发送|发布|催|安排|通知|提交|加上|删|上传|交给|转给|剪|渲染|导出)|已存入(新)?项目|脚本已(存入|写入|保存|生成|更新|改好)|已(新建|创建)(了)?(新)?项目|(已经|已)(根据|按照?)[^。\n]{0,30}(更新|改|修改|重写)(到|进|好)/;
 
