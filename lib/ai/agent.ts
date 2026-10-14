@@ -817,6 +817,20 @@ function safeParse(s: string): Record<string, unknown> {
 function summarise(name: string, args: string, result: string): string {
   const a = safeParse(args);
   switch (name) {
+    case "search_now": {
+      const news = (result.match(/^- \d{4}-\d{2}-\d{2}/gm) ?? []).length;
+      const videos = (result.match(/上关于「/g) ?? []).length;
+      const reads = (result.match(/^Article text — /gm) ?? []).length;
+      const wiki = /^Background \(/m.test(result);
+      return [`找到 ${news} 条新闻`, reads ? `读了 ${reads} 篇原文` : "", wiki ? "查了百科" : "", videos ? `看了 ${videos} 个平台的视频` : ""].filter(Boolean).join(" · ") || "没有查到结果";
+    }
+    case "read_url":
+      return result.startsWith("Could not read") ? "这个网页读不了" : `读了《${result.split("\n")[0].slice(0, 40)}》`;
+    case "work_status": {
+      const n = (result.match(/^- /gm) ?? []).length;
+      const run = (result.match(/· running /g) ?? []).length;
+      return n ? `查到 ${n} 项任务${run ? `，${run} 项进行中` : "，没有在进行的"}` : "没有进行中或最近完成的任务";
+    }
     case "search_files":
       return `查找文件「${a.query ?? ""}」 · ${result.startsWith("No documents") ? "没有找到" : `找到 ${result.split("\n- ").length - 1 || 1} 个`}`;
     case "read_file":

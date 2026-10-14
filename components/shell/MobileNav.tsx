@@ -28,7 +28,7 @@ export function MobileNav({ zh }: { zh: boolean }) {
   React.useEffect(() => {
     setMode("");
     setLocal("");
-    const look = () => setHas({ list: Boolean(document.querySelector("[data-ws-sidebar], [data-trends-screen]")), agent: Boolean(document.querySelector("[data-agent-panel]")) });
+    const look = () => setHas({ list: Boolean(document.querySelector("[data-ws-sidebar], [data-trends-screen], .folder-rail")), agent: Boolean(document.querySelector("[data-agent-panel], .gd-side")) });
     look();
     const t1 = window.setTimeout(look, 400);
     const t2 = window.setTimeout(look, 1500);
@@ -90,12 +90,25 @@ const CSS = `
   html[data-m="rail"] nav.app-rail { transform: none; }
 
   /* A page's own list (chat sidebar, script and video lists, research): a drawer too. */
-  [data-ws-sidebar], [data-trends-screen] { position: fixed !important; left: 0; top: 0; bottom: 0; z-index: 1000; width: min(330px, 88vw) !important; transform: translateX(-105%); transition: transform .24s cubic-bezier(.2,.8,.2,1); box-shadow: 0 0 44px rgba(0,0,0,.2); padding-top: calc(10px + env(safe-area-inset-top)) !important; }
-  html[data-m="list"] [data-ws-sidebar], html[data-m="list"] [data-trends-screen] { transform: none; }
+  [data-ws-sidebar], [data-trends-screen], .folder-rail { position: fixed !important; left: 0; top: 0; bottom: 0; z-index: 1000; width: min(330px, 88vw) !important; transform: translateX(-105%); transition: transform .24s cubic-bezier(.2,.8,.2,1); box-shadow: 0 0 44px rgba(0,0,0,.2); padding-top: calc(10px + env(safe-area-inset-top)) !important; }
+  html[data-m="list"] [data-ws-sidebar], html[data-m="list"] [data-trends-screen], html[data-m="list"] .folder-rail { transform: none; }
+  .folder-rail { background: #fbfbfa !important; }
 
   /* The AI panel beside a page: full screen, from the bottom. */
-  [data-agent-panel] { position: fixed !important; inset: 0 !important; z-index: 1001; width: 100% !important; min-width: 0 !important; max-width: none !important; height: 100dvh !important; transform: translateY(105%); transition: transform .26s cubic-bezier(.2,.8,.2,1); padding-top: calc(52px + env(safe-area-inset-top)); }
-  html[data-m="agent"] [data-agent-panel] { transform: none; }
+  [data-agent-panel], .gd-side { position: fixed !important; inset: 0 !important; z-index: 1001; width: 100% !important; min-width: 0 !important; max-width: none !important; height: 100dvh !important; transform: translateY(105%); transition: transform .26s cubic-bezier(.2,.8,.2,1); padding-top: calc(52px + env(safe-area-inset-top)); }
+  html[data-m="agent"] [data-agent-panel], html[data-m="agent"] .gd-side { transform: none; }
+  .gd-side { background: #fff !important; overflow-y: auto !important; max-height: none !important; border-left: 0 !important; padding: calc(56px + env(safe-area-inset-top)) 16px 90px !important; }
+
+  /* The script page: the sheet fills the screen, no ruler, toolbars scroll sideways. */
+  .gd-ruler-wrap { display: none !important; }
+  .gd-sheet-row { zoom: 1 !important; width: 100% !important; padding: 0 0 140px !important; }
+  .gd-sheet { width: 100% !important; min-height: 60vh !important; padding: 22px 18px 100px !important; box-shadow: none !important; }
+  .gd-toolbar { flex-wrap: nowrap !important; overflow-x: auto; margin: 4px 8px 6px !important; scrollbar-width: none; }
+  .gd-menubar { overflow-x: auto; scrollbar-width: none; }
+
+  /* Tab rows scroll sideways instead of breaking words one character per line. */
+  [role="tablist"] { overflow-x: auto; flex-wrap: nowrap !important; scrollbar-width: none; }
+  [role="tablist"] > * { flex-shrink: 0; white-space: nowrap; }
 
   /* Drag handles have nothing to drag on a phone. */
   [role="separator"] { display: none !important; }

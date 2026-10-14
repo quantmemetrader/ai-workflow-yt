@@ -51,7 +51,16 @@ export function TurnProcess({ message, zh }: { message: ProcessMessage; zh: bool
 
   const running = [...tools].reverse().find((t) => t.status === "running");
   const writing = live && !running && message.content.length > 0;
-  const step = running ? (running.detail ?? `正在${stepName(running, zh)}`) : writing ? (zh ? "正在写回答" : "Writing the answer") : thinking ? (zh ? "正在思考" : "Thinking") : zh ? "正在理解你的问题" : "Reading your question";
+  const doneSteps = tools.filter((t) => t.status !== "running").length;
+  const step = running
+    ? (running.detail ?? `正在${stepName(running, zh)}`)
+    : writing
+      ? (zh ? "正在写回答" : "Writing the answer")
+      : doneSteps
+        ? (zh ? "正在整理查到的内容" : "Going through what it found")
+        : thinking
+          ? (zh ? "正在思考" : "Thinking")
+          : zh ? "正在理解你的问题" : "Reading your question";
   const started = message.startedAtMs ?? now;
   const elapsed = Math.max(0, now - started);
   const est = message.estimateMs && message.estimateMs > 2000 ? message.estimateMs : 25_000;
@@ -101,7 +110,18 @@ export function TurnProcess({ message, zh }: { message: ProcessMessage; zh: bool
             <span className="tp-meta">
               {tools.length ? (zh ? `第 ${tools.length} 步 · ` : `step ${tools.length} · `) : ""}
               {secs(elapsed, zh)}
-              {over ? (zh ? " · 比平时久一些，还在做" : " · taking longer than usual") : zh ? ` · 约剩 ${secs(left, zh)}` : ` · ~${secs(left, zh)} left`}
+              {/* Once it is writing, the honest number is how much is written, not a countdown that has run out. */}
+              {writing
+                ? zh
+                  ? ` · 已写 ${message.content.length} 字`
+                  : ` · ${message.content.length} characters so far`
+                : over
+                  ? zh
+                    ? " · 比平时久一些，还在做"
+                    : " · taking longer than usual"
+                  : zh
+                    ? ` · 约剩 ${secs(left, zh)}`
+                    : ` · ~${secs(left, zh)} left`}
             </span>
           </div>
           <div className="tp-bar" role="progressbar" aria-valuenow={Math.round(pct * 100)} aria-valuemin={0} aria-valuemax={100}>
