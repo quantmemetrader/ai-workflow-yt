@@ -133,31 +133,34 @@ export function Rail({ modules, locale, account, isAdmin = false, layout: savedL
   const pin = (href: string, on: boolean) => (on ? move(href, "main", arranged.main.length) : move(href, "more", 0));
 
   const [drag, setDrag] = useState<{ href: string; zone: Zone; x: number; y: number } | null>(null);
-  const [drop, setDrop] = useState<{ zone: Zone; index: number; top: number } | null>(null);
+  const [drop, setDrop] = useState<{ zone: Zone; index: number; top: number; head: boolean } | null>(null);
   const swallowClick = useRef(false);
   const dropAt = useCallback((y: number, zone: Zone) => {
     const nav = navRef.current;
     if (!nav) return null;
     const allowed: Zone[] = zone === "back" ? ["back"] : ["main", "more"];
     const navTop = nav.getBoundingClientRect().top;
-    let best: { zone: Zone; index: number; top: number; d: number } | null = null;
+    let best: { zone: Zone; index: number; top: number; head: boolean; d: number } | null = null;
     for (const el of nav.querySelectorAll<HTMLElement>("[data-rail-zone]")) {
       const z = el.dataset.railZone as Zone;
       if (!allowed.includes(z)) continue;
       const r = el.getBoundingClientRect();
-      const spots =
-        el.dataset.railIndex !== undefined
-          ? [
-              { index: Number(el.dataset.railIndex), top: r.top },
-              { index: Number(el.dataset.railIndex) + 1, top: r.bottom },
-            ]
-          : [{ index: Number(el.dataset.railHead ?? 0), top: r.top + r.height / 2 }];
+      const isItem = el.dataset.railIndex !== undefined;
+      /* Right over a group's heading (the folded 更多 above all): into that group, whatever is nearer. */
+      if (!isItem && y >= r.top && y <= r.bottom) return { zone: z, index: Number(el.dataset.railHead ?? 0), top: r.bottom - navTop, head: true };
+      const spots = isItem
+        ? [
+            { index: Number(el.dataset.railIndex), top: r.top },
+            { index: Number(el.dataset.railIndex) + 1, top: r.bottom },
+          ]
+        : [{ index: Number(el.dataset.railHead ?? 0), top: r.bottom }];
       for (const s of spots) {
         const d = Math.abs(y - s.top);
-        if (!best || d < best.d) best = { zone: z, index: s.index, top: s.top - navTop, d };
+        if (!best || d < best.d) best = { zone: z, index: s.index, top: s.top - navTop, head: !isItem, d };
       }
     }
-    return best;
+    /* Dragged well away from anywhere it may go (a 后台 entry up among the rail's own): nothing moves. */
+    return best && best.d <= 40 ? best : null;
   }, []);
   const grab = (e: React.PointerEvent<HTMLElement>, item: RailItem, zone: Zone) => {
     if (e.button !== 0 || (e.target as HTMLElement).closest("[data-rail-nodrag]")) return;
@@ -174,7 +177,14 @@ export function Rail({ modules, locale, account, isAdmin = false, layout: savedL
       ev.preventDefault();
       setDrag({ href: item.href, zone, x: ev.clientX, y: ev.clientY });
       const d = dropAt(ev.clientY, zone);
-      setDrop(d ? { zone: d.zone, index: d.index, top: d.top } : null);
+      setDrop(d ? { zone: d.zone, index: d.index, top: d.top, head: d.head } : null);
+      /* Near the top or bottom of a rail longer than the screen: it scrolls. */
+      const sc = navRef.current?.querySelector<HTMLElement>(".rail-scroll");
+      if (sc) {
+        const r = sc.getBoundingClientRect();
+        if (ev.clientY < r.top + 28) sc.scrollTop -= 12;
+        else if (ev.clientY > r.bottom - 28) sc.scrollTop += 12;
+      }
     };
     const onUp = (ev: PointerEvent) => {
       window.removeEventListener("pointermove", onMove);
@@ -292,7 +302,7 @@ export function Rail({ modules, locale, account, isAdmin = false, layout: savedL
         minHeight: 0,
       }}
     >
-      <style>{`.rail-edit-row{display:flex;align-items:center;gap:7px;height:32px;padding:0 4px 0 2px;border-radius:8px;background:#fff;border:1px solid #ececec;color:#3a3a3a;font-size:12.5px;cursor:grab;touch-action:none;user-select:none}.rail-edit-row:focus-visible{outline:2px solid #171717;outline-offset:1px}.rail-edit-row.lifted{opacity:.35}.rail-edit-row svg.ico{width:16px;height:16px;fill:currentColor;flex-shrink:0;color:#6b6b6b}.rail-edit-row .lbl{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.rail-grip{color:#b4b4b4;display:flex;flex-shrink:0}.rail-pin{border:0;background:transparent;width:24px;height:24px;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#9a9a9a;cursor:pointer;flex-shrink:0}.rail-pin:hover{background:#f1f1f1;color:#171717}.rail-pin.on{color:#171717}.rail-zone-head{font-size:11px;font-weight:600;color:#8a8a8a;letter-spacing:.04em;padding:8px 4px 3px;display:flex;align-items:center;gap:6px}.rail-zone-empty{border:1px dashed #d8d8d8;border-radius:8px;height:30px;display:flex;align-items:center;justify-content:center;font-size:11.5px;color:#a3a3a3}.rail-drop{position:absolute;left:10px;right:10px;height:2px;border-radius:2px;background:#171717;pointer-events:none;z-index:5;transform:translateY(-1px)}.rail-drop:before{content:"";position:absolute;left:-3px;top:-2px;width:6px;height:6px;border-radius:50%;background:#171717}.rail-btn{border:1px solid #e4e4e4;background:#fff;border-radius:7px;height:26px;padding:0 10px;font:inherit;font-size:12px;cursor:pointer;color:#3a3a3a}.rail-btn.dark{background:#171717;border-color:#171717;color:#fff}.rail-btn:hover{border-color:#cfcfcf}.rail-btn.dark:hover{background:#000}a.r.lifted{opacity:.35}.rail-ghost{position:fixed;z-index:2000;pointer-events:none;display:flex;align-items:center;gap:8px;height:30px;padding:0 12px;border-radius:8px;background:#fff;box-shadow:0 6px 22px rgba(0,0,0,.16),0 0 0 1px rgba(0,0,0,.05);font-size:12.5px;color:#171717;transform:translate(10px,-50%)}.rail-ghost svg{width:15px;height:15px;fill:currentColor}.rail-step{display:inline-flex;align-items:center;justify-content:center;min-width:16px;height:16px;padding:0 4px;border-radius:999px;background:#ecebe7;color:#6b6b6b;font-size:10px;font-weight:700;line-height:1;font-variant-numeric:tabular-nums}.r.on .rail-step{background:#171717;color:#fff}`}</style>
+      <style>{`.rail-edit-row{display:flex;align-items:center;gap:7px;height:32px;margin-bottom:2px;padding:0 4px 0 2px;border-radius:8px;background:#fff;border:1px solid #ececec;color:#3a3a3a;font-size:12.5px;cursor:grab;touch-action:none;user-select:none}.rail-edit-row:focus-visible{outline:2px solid #171717;outline-offset:1px}.rail-edit-row.lifted{opacity:.35}.rail-edit-row svg.ico{width:16px;height:16px;fill:currentColor;flex-shrink:0;color:#6b6b6b}.rail-edit-row .lbl{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.rail-grip{color:#b4b4b4;display:flex;flex-shrink:0}.rail-pin{border:0;background:transparent;width:24px;height:24px;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#9a9a9a;cursor:pointer;flex-shrink:0}.rail-pin:hover{background:#f1f1f1;color:#171717}.rail-pin.on{color:#171717}.rail-zone-head{font-size:11px;font-weight:600;color:#8a8a8a;letter-spacing:.04em;padding:8px 4px 3px;display:flex;align-items:center;gap:6px}.rail-zone-empty{border:1px dashed #d8d8d8;border-radius:8px;height:30px;display:flex;align-items:center;justify-content:center;font-size:11.5px;color:#a3a3a3}.rail-drop{position:absolute;left:10px;right:10px;height:2px;border-radius:2px;background:#171717;pointer-events:none;z-index:5;transform:translateY(-1px)}.rail-drop:before{content:"";position:absolute;left:-3px;top:-2px;width:6px;height:6px;border-radius:50%;background:#171717}.rail-btn{border:1px solid #e4e4e4;background:#fff;border-radius:7px;height:26px;padding:0 10px;font:inherit;font-size:12px;cursor:pointer;color:#3a3a3a}.rail-btn.dark{background:#171717;border-color:#171717;color:#fff}.rail-btn:hover{border-color:#cfcfcf}.rail-btn.dark:hover{background:#000}a.r.lifted{opacity:.35}.rail-ghost{position:fixed;z-index:2000;pointer-events:none;display:flex;align-items:center;gap:8px;height:30px;padding:0 12px;border-radius:8px;background:#fff;box-shadow:0 6px 22px rgba(0,0,0,.16),0 0 0 1px rgba(0,0,0,.05);font-size:12.5px;color:#171717;transform:translate(10px,-50%)}.rail-ghost svg{width:15px;height:15px;fill:currentColor}.rail-step{display:inline-flex;align-items:center;justify-content:center;min-width:16px;height:16px;padding:0 4px;border-radius:999px;background:#ecebe7;color:#6b6b6b;font-size:10px;font-weight:700;line-height:1;font-variant-numeric:tabular-nums}.r.on .rail-step{background:#171717;color:#fff}`}</style>
       {/* Only while it is open: there is nothing to drag a 52px strip to. */}
       {open && !phone ? handle : null}
 
@@ -402,7 +412,7 @@ export function Rail({ modules, locale, account, isAdmin = false, layout: savedL
             onClick={() => setMorePref(moreOpen ? "closed" : "open")}
             aria-expanded={moreOpen}
             title={open ? undefined : zh ? "更多" : "More"}
-            style={{ border: 0, background: "transparent", cursor: "pointer", fontFamily: "inherit", letterSpacing: "inherit", color: "#7c7c7c" }}
+            style={{ border: 0, background: drop?.head && drop.zone === "more" && !moreOpen ? "#ecebe7" : "transparent", boxShadow: drop?.head && drop.zone === "more" && !moreOpen ? "inset 0 0 0 1.5px #171717" : undefined, cursor: "pointer", fontFamily: "inherit", letterSpacing: "inherit", color: "#7c7c7c" }}
           >
             <svg viewBox="0 0 24 24" aria-hidden>
               <circle cx="6" cy="12" r="1.6" fill="currentColor" />
@@ -445,7 +455,7 @@ export function Rail({ modules, locale, account, isAdmin = false, layout: savedL
 
       </div>
 
-      {drop ? <span className="rail-drop" style={{ top: drop.top }} aria-hidden /> : null}
+      {drop && !(drop.head && drop.zone === "more" && !moreOpen) ? <span className="rail-drop" style={{ top: drop.top }} aria-hidden /> : null}
       {drag && dragged ? (
         <span className="rail-ghost" style={{ left: drag.x, top: drag.y }} aria-hidden>
           <svg viewBox="0 0 24 24" dangerouslySetInnerHTML={{ __html: dragged.icon }} />
