@@ -15,6 +15,7 @@ import { PLATFORMS, isPlatformKey, onFocus, relevanceLabel, type Beat, type Beat
 import { readBeats } from "@/lib/research/beat-store";
 import { googleNewsSearch } from "@/lib/research/beat-sources";
 import { searchPlatform } from "@/lib/research/platform-search";
+import { bingNews, hackerNews, readArticle, wikiSummary } from "@/lib/research/web";
 import { BEAT_TABS, acrossPlatforms, feedOfTab, tabRows, type BeatRow, type Lists } from "@/lib/research/beat-view";
 import { addCompetitor, listCompetitors } from "@/lib/social/service";
 import { colleagueRefusal, findColleague, personOf } from "./people";
@@ -44,6 +45,19 @@ function tabOf(from: string): BeatTab {
 }
 
 const defs: ToolDef[] = [
+  {
+    type: "function",
+    function: {
+      name: "read_url",
+      description:
+        "Read a web page's own text (an article, a report, a blog post) from its address — a link from search_now, or one the person pasted. Use it to get the facts, numbers, quotes and dates behind a headline before writing about it. Public pages only.",
+      parameters: {
+        type: "object",
+        properties: { url: { type: "string", description: "The full address, https://…" } },
+        required: ["url"],
+      },
+    },
+  },
   {
     type: "function",
     function: {
@@ -123,7 +137,7 @@ const defs: ToolDef[] = [
     function: {
       name: "search_now",
       description:
-        "Research any subject right now, live: the latest news headlines about it (Chinese and English, with outlet and date) and the top videos about it on YouTube and 抖音 (with views and creators). " +
+        "Research any subject right now, live: the latest news (Google News and Bing News, Chinese and English, with outlet, date and link), background from Wikipedia, what Hacker News is discussing, the top videos on YouTube, 抖音 and B站 (with views and creators), and excerpts from the leading articles' own text. " +
         "Call this FIRST whenever someone asks what you think about, what is happening with, or what the future is of anything — a coin, a company, a technology, a person, an event. " +
         "Takes a few seconds. Search in the language the subject is best known in; you may call it twice (e.g. English name, then Chinese name).",
       parameters: {
@@ -305,18 +319,35 @@ async function run(ctx: ToolContext, name: string, args: Record<string, unknown>
     };
   }
 
+  if (name === "read_url") {
+    const url = str(args.url, 600).trim();
+    if (!/^https?:\/\//i.test(url)) return { text: "Give the page's full address (https://…)." };
+    const a = await readArticle(url, 9000).catch(() => null);
+    if (!a) return { text: `Could not read ${url}: the page refused, needs a login, is not a public web page, or has no article text. Say so, and use what search_now returned instead.` };
+    return { text: `${a.title}\n${a.url}\n\n${a.text}` };
+  }
+
   if (name === "search_now") {
     const q = str(args.query, 120).trim();
     if (!q) return { text: "Say what to search for." };
     /* Each source alone, under its own deadline: one slow or failing source
        never costs the answer the others found. */
     const within = <T,>(p: Promise<T>, ms: number): Promise<T | null> => Promise.race([p.catch(() => null), new Promise<null>((r) => setTimeout(() => r(null), ms))]);
-    const [zhNews, enNews, yt, dy] = await Promise.all([
+    const [zhNews, enNews, yt, dy, bz, bzh, ben, wzh, wen, hn] = await Promise.all([
       within(googleNewsSearch(q, "HK", 12), 15_000),
       within(googleNewsSearch(q, "US", 12), 15_000),
       within(searchPlatform("youtube", q), 20_000),
       within(searchPlatform("douyin", q), 20_000),
+      within(searchPlatform("bilibili", q), 20_000),
+      within(bingNews(q, "zh", 8), 13_000),
+      within(bingNews(q, "en", 8), 13_000),
+      within(wikiSummary(q, "zh"), 11_000),
+      within(wikiSummary(q, "en"), 11_000),
+      within(hackerNews(q, 4), 10_000),
     ]);
+    /* The leading articles' own words, not only their headlines (15 Oct: "文章不够深度"). */
+    const lead = [...(bzh ?? []), ...(ben ?? [])].slice(0, 6);
+    const bodies = (await Promise.all(lead.map((n) => within(readArticle(n.url, 1500), 16_000).then((a) => (a ? { ...a, source: n.source, date: n.date } : null))))).filter((b): b is NonNullable<typeof b> => Boolean(b)).slice(0, 3);
     const day = (iso: string | null | undefined) => (iso ? iso.slice(0, 10) : "");
     const lines: string[] = [];
     const news = [...(enNews ?? []), ...(zhNews ?? [])].slice(0, 14);
@@ -324,7 +355,18 @@ async function run(ctx: ToolContext, name: string, args: Record<string, unknown>
       lines.push(`News about "${q}" (newest first as Google returns them):`);
       for (const n of news) lines.push(`- ${day(n.stats?.publishedAt)} · ${n.extra ?? "news"} — ${n.phrase}${n.url ? ` (${n.url})` : ""}`);
     }
-    for (const [label, res] of [["YouTube", yt], ["抖音", dy]] as const) {
+    const bing = [...(bzh ?? []), ...(ben ?? [])];
+    if (bing.length) {
+      lines.push(`Bing News about "${q}":`);
+      for (const n of bing) lines.push(`- ${n.date ?? ""} · ${n.source} — ${n.title}${n.snippet ? `: ${n.snippet.slice(0, 140)}` : ""} (${n.url})`);
+    }
+    for (const w of [wzh, wen]) if (w) lines.push(`Background (${w.source}) — ${w.title}: ${w.snippet} (${w.url})`);
+    if (hn?.length) {
+      lines.push("Hacker News:");
+      for (const h of hn) lines.push(`- ${h.date ?? ""} · ${h.title} · ${h.source} (${h.url})`);
+    }
+    for (const b of bodies) lines.push(`Article text — ${b.source} ${b.date ?? ""} · ${b.title} (${b.url}):\n${b.text}`);
+    for (const [label, res] of [["YouTube", yt], ["抖音", dy], ["B站", bz]] as const) {
       const rows = res?.rows?.slice(0, 6) ?? [];
       if (!rows.length) continue;
       lines.push(`${label} 上关于「${q}」的视频：`);

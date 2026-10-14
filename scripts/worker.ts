@@ -9,6 +9,7 @@
  */
 import { ensureFileText } from "@/lib/files/extract";
 import { claim, enqueue, fail, heartbeat, progress as jobProgress, requeue, requeueStalled, succeed, type JobRow } from "../lib/jobs/queue";
+import { jobStage, runInJob } from "../lib/jobs/stage";
 import { refreshFeeds, refreshSeries, refreshTopic, syncSourceRegistry } from "../lib/research/ingest";
 import {
   classifyComments,
@@ -331,7 +332,7 @@ const HANDLERS: Record<string, Handler> = {
     let stage = "配音";
     const out = await autoHostVideo(viewer, p, (f, s) => {
       stage = s;
-      void jobProgress(job.id, f).catch(() => {});
+      jobStage(`正在${s.replace(/^正在/, "")}`, f);
     });
     return { ...out, stage };
   },
@@ -389,7 +390,8 @@ async function tick(): Promise<boolean> {
   // the jobs a person is waiting on; the plumbing stays quiet.
   await narrateStart(job).catch(() => {});
   try {
-    const result = await withTimeout(handler(job), job.type);
+    /* Inside the job's own context, so anything under it can say what it is doing (`lib/jobs/stage.ts`). */
+    const result = await withTimeout(runInJob(job.id, () => handler(job)), job.type);
     await succeed(job, result);
     await narrateDone(job, result).catch(() => {});
     await followUp(job, result).catch((err) => console.error("[worker] follow-up not queued", err));

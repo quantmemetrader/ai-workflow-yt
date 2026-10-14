@@ -2,6 +2,16 @@
 
 import { sidebarData } from "@/lib/chat/sidebar";
 
+/** 「移到项目」 on a chat: into a project, or back out (null). */
+export async function moveChatAction(conversationId: string, projectId: string | null) {
+  const { getViewer } = await import("@/lib/auth/dal");
+  const viewer = await getViewer();
+  if (!viewer || !viewer.modules.includes("chat")) return { error: "没有权限" };
+  const { setConversationProject } = await import("@/lib/chat/conversation-project");
+  const ok = await setConversationProject(viewer, conversationId, projectId);
+  return ok ? { ok: true } : { error: "移不了：不是你的对话，或这个项目你看不到" };
+}
+
 /** The sidebar asks for its rows again: every half minute, and when the open conversation says something changed. */
 export async function sidebarAction() {
   const { getViewer } = await import("@/lib/auth/dal");

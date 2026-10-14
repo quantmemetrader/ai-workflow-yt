@@ -47,6 +47,8 @@ export const jobs = pgTable(
     attempts: integer().notNull().default(0),
     maxAttempts: integer().notNull().default(3),
     progress: real().notNull().default(0),
+    /** What the job is doing right now, in a few plain words ("正在润色", "正在对口型"), for the task tracker. */
+    stage: text(),
     costMicros: bigint({ mode: "number" }).notNull().default(0),
     /** What this job is about, so a screen can show "your render is running"
      * without a table per job type. */

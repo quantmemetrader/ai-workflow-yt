@@ -1,4 +1,5 @@
 import "server-only";
+import { jobStage } from "@/lib/jobs/stage";
 import { requesterOf } from "@/lib/auth/types";
 import { after } from "next/server";
 import { db } from "@/lib/db/client";
@@ -52,7 +53,12 @@ export async function draftInBackground(
 
 /** The draft itself: written, announced in the project chat, the mark cleared. Run by the worker (`script.draft`). */
 export async function runDraft(viewer: Viewer, input: { projectId: string; channelId: string; scriptId: string; req: ScriptRequest; rewrite?: boolean }): Promise<void> {
-  const stage = (s: "draft" | "extend" | "polish") => void setProjectWriting(input.projectId, new Date().toISOString(), s).catch(() => {});
+  const stage = (s: "draft" | "extend" | "polish") => {
+    void setProjectWriting(input.projectId, new Date().toISOString(), s).catch(() => {});
+    /* The task tracker's line and bar (15 Oct). */
+    jobStage(s === "draft" ? "正在写初稿" : s === "extend" ? "正在补足时长" : "正在润色", s === "draft" ? 0.3 : s === "extend" ? 0.62 : 0.82);
+  };
+  jobStage("正在收集资料：新闻、百科、原文", 0.05);
   input = { ...input, req: { ...input.req, onStage: stage } };
   await (async () => {
     let text: string;

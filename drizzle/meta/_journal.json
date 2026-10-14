@@ -323,6 +323,13 @@
       "when": 1791144460500,
       "tag": "0045_docs_html",
       "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "7",
+      "when": 1792006665501,
+      "tag": "0046_tracker_projects_proposals",
+      "breakpoints": true
     }
   ]
 }

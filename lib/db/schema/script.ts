@@ -324,3 +324,44 @@ export const scriptComments = pgTable(
   },
   (t) => [index("script_comments_idx").on(t.scriptId, t.createdAt)],
 );
+
+
+/** One suggested change inside a proposal, with what was there before, so a decision can be taken back. */
+export type ProposalItem = {
+  id: string;
+  kind: "change" | "delete" | "insert";
+  /** The suggested text (empty for a delete). */
+  text: string;
+  why: string;
+  /** The paragraph text before the change (empty for an insert). */
+  before: string;
+  /** The paragraph just above, to find the place again for inserts and deletes. */
+  anchor: string;
+  state: "open" | "accepted" | "rejected" | "recalled";
+  decidedAt?: string;
+  decidedBy?: string;
+};
+
+/**
+ * Every set of AI edits offered on a script and what became of each one (15 Oct: "once accepted or rejected
+ * the amendment cannot be recalled"). Kept per script, for everyone who opens it, so a change can be taken
+ * back after a reload, on another computer, by a colleague.
+ */
+export const scriptProposals = pgTable(
+  "script_proposals",
+  {
+    id: text().primaryKey(),
+    tenantId: text().notNull(),
+    scriptId: text().notNull(),
+    createdBy: text(),
+    summary: text().notNull().default(""),
+    /** ai | sendback */
+    source: text().notNull().default("ai"),
+    /** What was asked for ("更口语", "缩短 30 秒"). */
+    ask: text().notNull().default(""),
+    items: jsonb().$type<ProposalItem[]>().notNull().default([]),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("script_proposals_script_idx").on(t.scriptId, t.createdAt)],
+);

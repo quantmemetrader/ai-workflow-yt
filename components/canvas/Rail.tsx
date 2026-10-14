@@ -42,7 +42,16 @@ export function Rail({ modules, locale, account, isAdmin = false }: { modules: M
   const pathname = usePathname();
   const zh = locale.startsWith("zh");
   const [state, setState] = useLocalPreference("aura:rail", ["open", "icons"] as const, "open");
-  const open = state === "open";
+  /* On a phone the rail is a drawer (MobileNav) and always shows its names. */
+  const [phone, setPhone] = useState(false);
+  useEffect(() => {
+    const q = window.matchMedia("(max-width: 760px)");
+    const on = () => setPhone(q.matches);
+    on();
+    q.addEventListener("change", on);
+    return () => q.removeEventListener("change", on);
+  }, []);
+  const open = phone || state === "open";
   const { width, handle } = useResizable(WIDTH_KEY, {
     min: RAIL_MIN,
     max: RAIL_MAX,
@@ -56,6 +65,10 @@ export function Rail({ modules, locale, account, isAdmin = false }: { modules: M
 
   const holds = (i: RailItem) => !i.module || modules.includes(i.module);
   const items = RAIL_MAIN.filter(holds);
+  const main = items.filter((i) => !i.more);
+  const extra = items.filter((i) => i.more);
+  const [morePref, setMorePref] = useLocalPreference("aura:rail-more", ["closed", "open"] as const, "closed");
+  const moreOpen = morePref === "open" || extra.some((i) => railActive(i, pathname));
   /* The brand goes home, and home is a Chat surface: somebody without Chat
      was bounced to "你还没有「聊天」的权限" on every press (QA, 3 Oct). Their
      first module instead. */
@@ -98,6 +111,7 @@ export function Rail({ modules, locale, account, isAdmin = false }: { modules: M
 
   return (
     <nav
+      className="app-rail"
       aria-label={zh ? "模块" : "Modules"}
       style={{
         width: open ? width : COLLAPSED,
@@ -113,8 +127,9 @@ export function Rail({ modules, locale, account, isAdmin = false }: { modules: M
         minHeight: 0,
       }}
     >
+      <style>{`.rail-step{display:inline-flex;align-items:center;justify-content:center;min-width:16px;height:16px;padding:0 4px;border-radius:999px;background:#ecebe7;color:#6b6b6b;font-size:10px;font-weight:700;line-height:1;font-variant-numeric:tabular-nums}.r.on .rail-step{background:#171717;color:#fff}`}</style>
       {/* Only while it is open: there is nothing to drag a 52px strip to. */}
-      {open ? handle : null}
+      {open && !phone ? handle : null}
 
       {/* Everything above the foot scrolls when the studio has more projects
           than the screen has height; 历史记录, 收起 and the account stay put. */}
@@ -165,9 +180,36 @@ export function Rail({ modules, locale, account, isAdmin = false }: { modules: M
         )}
       </Link>
 
-      {items.map((item) => (
+      {main.map((item) => (
         <RailLink key={item.href} item={item} active={railActive(item, pathname)} open={open} zh={zh} show={show} hide={hide} />
       ))}
+      {extra.length ? (
+        <>
+          <button
+            type="button"
+            className={`r${open ? " wide" : ""}`}
+            onClick={() => setMorePref(moreOpen ? "closed" : "open")}
+            aria-expanded={moreOpen}
+            title={open ? undefined : zh ? "更多" : "More"}
+            style={{ border: 0, background: "transparent", cursor: "pointer", fontFamily: "inherit", letterSpacing: "inherit", color: "#7c7c7c" }}
+          >
+            <svg viewBox="0 0 24 24" aria-hidden>
+              <circle cx="6" cy="12" r="1.6" fill="currentColor" />
+              <circle cx="12" cy="12" r="1.6" fill="currentColor" />
+              <circle cx="18" cy="12" r="1.6" fill="currentColor" />
+            </svg>
+            {open ? (
+              <span style={{ display: "flex", alignItems: "center", gap: 6, flexGrow: 1 }}>
+                <Tr zh="更多" en="More" inZh={zh} />
+                <svg viewBox="0 0 24 24" width="11" height="11" style={{ marginLeft: "auto", width: 11, height: 11, transform: moreOpen ? "rotate(180deg)" : undefined, transition: "transform .15s" }} aria-hidden>
+                  <path d="m6.5 9.5 5.5 5.5 5.5-5.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </span>
+            ) : null}
+          </button>
+          {moreOpen ? extra.map((item) => <RailLink key={item.href} item={item} active={railActive(item, pathname)} open={open} zh={zh} show={show} hide={hide} small />) : null}
+        </>
+      ) : null}
 
       {back.length ? (
         <>
@@ -291,6 +333,7 @@ function RailLink({
     >
       <svg viewBox="0 0 24 24" dangerouslySetInnerHTML={{ __html: item.icon }} />
       {open && <span>{zh ? <Tr zh={item.labelZh} en={en} /> : label}</span>}
+      {item.step ? <span className="rail-step" aria-hidden style={open ? { marginLeft: "auto" } : { position: "absolute", right: 3, bottom: 3 }}>{item.step}</span> : null}
       <RailSpinner wide={open} />
     </Link>
   );

@@ -217,6 +217,12 @@ async function looseScriptOf(viewer: Viewer, written: string[]) {
 
 /** The linked project, when the link is this studio's and the project is still one the person may see. */
 async function linkedProject(viewer: Viewer, conversationId: string) {
+  /* The column first (15 Oct): set when the chat was started in a project or filed under one. */
+  const [filed] = await db.select({ projectId: conversations.projectId }).from(conversations).where(eq(conversations.id, conversationId)).limit(1);
+  if (filed?.projectId) {
+    const p = await visibleProject(viewer, filed.projectId);
+    if (p) return { id: p.id, title: p.title };
+  }
   const link = await readLink(conversationId);
   if (link && "projectId" in link && link.tenantId === viewer.tenantId) {
     const p = await visibleProject(viewer, link.projectId);
@@ -426,7 +432,29 @@ export type CreateResult = { ok: true; id: string; title: string; existed: boole
  * two projects for one conversation. A conversation that already has one —
  * linked, or through an employee's work — answers with it.
  */
+/** File a conversation under the project it turned out to be about (made into one, or worked in by the employees). */
+export async function fileUnderProject(viewer: Viewer, conversationId: string): Promise<void> {
+  const [c] = await db.select({ projectId: conversations.projectId }).from(conversations).where(and(eq(conversations.id, conversationId), eq(conversations.userId, viewer.id))).limit(1);
+  if (!c || c.projectId) return;
+  const state = await bridgeState(viewer, conversationId);
+  if (state?.project && state.project.via !== "screen") await db.update(conversations).set({ projectId: state.project.id }).where(eq(conversations.id, conversationId));
+}
+
+/** Move a chat into a project, or out of every project (null). Only the owner's own chat, only a project they can see. */
+export async function setConversationProject(viewer: Viewer, conversationId: string, projectId: string | null): Promise<boolean> {
+  if (!(await ownConversation(viewer, conversationId))) return false;
+  if (projectId && !(await visibleProject(viewer, projectId))) return false;
+  await db.update(conversations).set({ projectId }).where(and(eq(conversations.id, conversationId), eq(conversations.userId, viewer.id)));
+  return true;
+}
+
 export async function createFromConversation(viewer: Viewer, conversationId: string, input: { title?: unknown; brief?: unknown; access?: unknown }): Promise<CreateResult> {
+  const made = await createFromConversationInner(viewer, conversationId, input);
+  if (made.ok) await db.update(conversations).set({ projectId: made.id }).where(and(eq(conversations.id, conversationId), eq(conversations.userId, viewer.id))).catch(() => {});
+  return made;
+}
+
+async function createFromConversationInner(viewer: Viewer, conversationId: string, input: { title?: unknown; brief?: unknown; access?: unknown }): Promise<CreateResult> {
   const zh = (viewer.locale ?? "zh-CN").startsWith("zh");
   const t = (a: string, b: string) => (zh ? a : b);
   if (!mayCreate(viewer)) return { ok: false, error: t("你的账号不能新建项目", "Your account cannot start projects"), status: 403 };

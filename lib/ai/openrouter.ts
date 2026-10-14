@@ -207,6 +207,8 @@ export type StreamOptions = {
   user?: string;
   /** How much the model may think before it answers (OpenRouter's unified `reasoning`); providers without it ignore it. */
   reasoning?: { enabled?: boolean; effort?: "low" | "medium" | "high"; max_tokens?: number; exclude?: boolean };
+  /** Send the model's thinking back as `reasoning` events, to be shown beside the answer (15 Oct). */
+  thinking?: boolean;
 };
 
 /**

@@ -3,38 +3,45 @@ import { eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { tenants } from "@/lib/db/schema";
 import type { Viewer } from "@/lib/auth/types";
-import { listChannels, listConversations, listPeople } from "@/lib/chat/service";
-import { listWorkProjects, projectChannelIds } from "@/lib/projects/service";
+import { listConversations, listPeople } from "@/lib/chat/service";
+import { listWorkProjects, visibleProject } from "@/lib/projects/service";
 import { distinctNames } from "@/lib/chat/people";
 
 /**
- * What the chat sidebar shows, in one place: the layout renders it once and
- * the sidebar asks for it again every half minute and whenever something on
- * the right says it changed (13 Oct: the left list and the open conversation
- * drifted apart until a reload).
+ * What the chat sidebar shows, in one place: the layout renders it once and the sidebar asks for it again
+ * every half minute and whenever the page on the right says something changed.
+ *
+ * Organised the way the studio works (15 Oct: "no need for group chats; projects, like Claude / Codex, to
+ * organise different chats"): projects, each with this person's chats filed under it; then the chats not in
+ * any project; then colleagues for direct messages. Group chats are no longer listed.
  */
 export async function sidebarData(viewer: Viewer) {
   const zh = (viewer.locale ?? "zh-CN").startsWith("zh");
-  const [channels, people, conversations, tenant, projectChannels, projects] = await Promise.all([
-    listChannels(viewer),
+  const [people, conversations, tenant, recentProjects] = await Promise.all([
     listPeople(viewer),
-    listConversations(viewer, 40),
+    listConversations(viewer, 80),
     db.select({ name: tenants.name, nameLocal: tenants.nameLocal }).from(tenants).where(eq(tenants.id, viewer.tenantId)).limit(1),
-    projectChannelIds(viewer.tenantId),
-    listWorkProjects(viewer, 12).catch(() => []),
+    listWorkProjects(viewer, 14).catch(() => []),
   ]);
-  const hidden = new Set(projectChannels);
   const others = people.filter((p) => p.id !== viewer.id);
   const label = distinctNames(others.map((p) => ({ id: p.id, name: zh && p.nameLocal ? p.nameLocal : p.name, email: p.email, title: p.title })));
+
+  /* Projects: the ones this person's chats are filed under, then the studio's most recently active. */
+  const projects = new Map<string, { id: string; title: string; status: string; updatedAt: string }>();
+  const filedIds = [...new Set(conversations.map((c) => c.projectId).filter((x): x is string => Boolean(x)))];
+  const filed = await Promise.all(filedIds.map((id) => visibleProject(viewer, id).catch(() => null)));
+  const lastChat = new Map<string, string>();
+  for (const c of conversations) if (c.projectId && !lastChat.has(c.projectId)) lastChat.set(c.projectId, c.updatedAt.toISOString());
+  for (const p of filed) if (p) projects.set(p.id, { id: p.id, title: p.title, status: "active", updatedAt: lastChat.get(p.id) ?? "" });
+  for (const p of recentProjects) if (p.status !== "archived" && !projects.has(p.id) && projects.size < 16) projects.set(p.id, { id: p.id, title: p.title, status: p.status, updatedAt: p.updatedAt });
+  const visible = new Set(projects.keys());
+
   return {
     studio: (zh && tenant[0]?.nameLocal) || tenant[0]?.name || "腾亚创变",
-    channels: channels
-      .filter((c): c is typeof c & { slug: string } => Boolean(c.slug) && !hidden.has(c.id))
-      .map((c) => ({ id: c.id, slug: c.slug, name: c.name, isPrivate: c.isPrivate, unread: c.unread })),
-    conversations: conversations.map((c) => ({ id: c.id, title: c.title, updatedAt: c.updatedAt.toISOString() })),
+    channels: [] as { id: string; slug: string; name: string; isPrivate: boolean; unread: number }[],
+    conversations: conversations.map((c) => ({ id: c.id, title: c.title, updatedAt: c.updatedAt.toISOString(), projectId: c.projectId && visible.has(c.projectId) ? c.projectId : null })),
     people: others.map((p) => ({ id: p.id, name: label.get(p.id) ?? (zh && p.nameLocal ? p.nameLocal : p.name), avatarUrl: p.avatarUrl, presence: p.presence, isGuest: p.isGuest, unread: p.unread })),
-    /* Projects, newest activity first: the conversations a studio actually works in (13 Oct: "organise chats by project"). */
-    projects: projects.filter((p) => p.status !== "archived").slice(0, 12).map((p) => ({ id: p.id, title: p.title, status: p.status })),
+    projects: [...projects.values()].sort((a, b) => (b.updatedAt || "").localeCompare(a.updatedAt || "")),
   };
 }
 export type SidebarData = Awaited<ReturnType<typeof sidebarData>>;

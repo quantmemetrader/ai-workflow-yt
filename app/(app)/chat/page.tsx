@@ -6,6 +6,7 @@ import { AgentScreen, type ThreadMessage } from "@/components/canvas/AgentScreen
 import { AGENT_KEYS, type AgentKey } from "@/lib/agents/catalog";
 import { conversationDetail, listConversations } from "@/lib/chat/service";
 import { agentHistoryFor, threadMessagesOf } from "@/lib/chat/thread";
+import { visibleProject } from "@/lib/projects/service";
 
 export const metadata = { title: "聊天" };
 
@@ -15,10 +16,12 @@ const NEW_CHAT_COOKIE = "tg_chat_new";
 export default async function NewChatPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; agent?: string; fresh?: string }>;
+  searchParams: Promise<{ q?: string; agent?: string; fresh?: string; project?: string }>;
 }) {
   const viewer = await requireModule("chat");
-  const { q, agent, fresh } = await searchParams;
+  const { q, agent, fresh, project } = await searchParams;
+  /* 「在这个项目里新对话」 from the sidebar: only a project this person may see. */
+  const inProject = typeof project === "string" && /^wp_[0-9a-z]{6,40}$/i.test(project) ? await visibleProject(viewer, project).catch(() => null) : null;
   const zh = (viewer.locale ?? "zh-CN").startsWith("zh");
   /* `/chat?agent=script` — the sidebar's "AI 同事" list. The employee is
      tagged in the composer, which is exactly what typing "@文案" would do, so
@@ -31,7 +34,7 @@ export default async function NewChatPage({
      until I press new chat"). 新对话 sets `tg_chat_new` (AgentScreen), so a
      new chat stays new across visits until its first message is sent, which
      clears it. A question handed over (`q`) always starts fresh. */
-  if (!picked && !fresh && !q && (await cookies()).get(NEW_CHAT_COOKIE)?.value !== "1") {
+  if (!picked && !fresh && !q && !inProject && (await cookies()).get(NEW_CHAT_COOKIE)?.value !== "1") {
     const [latest] = await listConversations(viewer, 1);
     if (latest) redirect(`/chat/t/${latest.id}`);
   }
@@ -57,7 +60,8 @@ export default async function NewChatPage({
       /* A new employee picked from the sidebar is a new screen, not an edit
          of the one on screen: keyed so the composer starts again with that
          tag, and so is the thread it opens. */
-      key={`${picked ?? "host"}:${detail ? openId : fresh ? "fresh" : "new"}`}
+      key={`${picked ?? "host"}:${detail ? openId : fresh ? "fresh" : "new"}:${inProject?.id ?? ""}`}
+      inProject={inProject ? { id: inProject.id, title: inProject.title } : null}
       conversationId={detail ? openId : null}
       initialMessages={messages}
       locale={viewer.locale ?? "zh-CN"}

@@ -218,7 +218,7 @@ export async function markRead(viewer: Viewer, channelId: string) {
 
 export async function listConversations(viewer: Viewer, limit = 20) {
   return db
-    .select({ id: conversations.id, title: conversations.title, updatedAt: conversations.updatedAt })
+    .select({ id: conversations.id, title: conversations.title, updatedAt: conversations.updatedAt, projectId: conversations.projectId })
     .from(conversations)
     .where(and(eq(conversations.userId, viewer.id), isNull(conversations.archivedAt)))
     .orderBy(desc(conversations.updatedAt))

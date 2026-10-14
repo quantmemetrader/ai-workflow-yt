@@ -6,7 +6,8 @@ import { pickedModel } from "@/lib/ai/chat-models";
 import { revalidatePath } from "next/cache";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { approvals, scriptBeats, scriptVersions, scripts, users, workProjects } from "@/lib/db/schema";
+import { approvals, scriptBeats, scriptProposals, scriptVersions, scripts, users, workProjects, type ProposalItem } from "@/lib/db/schema";
+import { newId } from "@/lib/ids";
 import { getViewer, type Viewer } from "@/lib/auth/dal";
 import { audit } from "@/lib/audit";
 import { BudgetStop } from "@/lib/ai/ledger";
@@ -556,4 +557,88 @@ export async function saveVersionAction(projectId: unknown, note?: unknown) {
   await audit(c.viewer, "script.version.saved", { objectType: "script", objectId: c.project.scriptId, module: "script", meta: { versionNo: res.versionNo } });
   refresh(c.project.id);
   return { ok: true as const, versionNo: res.versionNo };
+}
+
+/* ------------------------------------------------ the record of AI edits (15 Oct) */
+
+type ItemIn = { id?: unknown; kind?: unknown; text?: unknown; why?: unknown; before?: unknown; anchor?: unknown };
+const s = (v: unknown, n: number) => (typeof v === "string" ? v.slice(0, n) : "");
+
+/** A set of AI edits as it was offered, with each paragraph's text before it, so any decision can be taken back later. */
+export async function recordProposalAction(projectId: unknown, input: unknown) {
+  const c = await ctx(projectId, true);
+  if ("error" in c) return c;
+  if (!c.project.scriptId) return { error: "Not allowed" };
+  const v = (input && typeof input === "object" ? input : {}) as { summary?: unknown; source?: unknown; ask?: unknown; items?: unknown };
+  const items: ProposalItem[] = (Array.isArray(v.items) ? (v.items as ItemIn[]) : []).slice(0, 80).map((x) => ({
+    id: s(x.id, 40) || newId("pi" as never),
+    kind: x.kind === "delete" || x.kind === "insert" ? x.kind : "change",
+    text: s(x.text, 6000),
+    why: s(x.why, 300),
+    before: s(x.before, 6000),
+    anchor: s(x.anchor, 6000),
+    state: "open",
+  }));
+  if (!items.length) return { error: "Nothing to record" };
+  const id = newId("prp" as never);
+  await db.insert(scriptProposals).values({
+    id,
+    tenantId: c.viewer.tenantId,
+    scriptId: c.project.scriptId,
+    createdBy: c.viewer.id,
+    summary: s(v.summary, 400),
+    source: v.source === "sendback" ? "sendback" : "ai",
+    ask: s(v.ask, 400),
+    items,
+  });
+  return { ok: true as const, id };
+}
+
+/** What became of some of a proposal's changes: accepted, rejected, or taken back. */
+export async function decideProposalAction(projectId: unknown, proposalId: unknown, decisions: unknown) {
+  const c = await ctx(projectId, true);
+  if ("error" in c) return c;
+  if (!c.project.scriptId || typeof proposalId !== "string") return { error: "Not allowed" };
+  const [row] = await db
+    .select()
+    .from(scriptProposals)
+    .where(and(eq(scriptProposals.id, proposalId), eq(scriptProposals.scriptId, c.project.scriptId), eq(scriptProposals.tenantId, c.viewer.tenantId)))
+    .limit(1);
+  if (!row) return { error: "Not found" };
+  const want = new Map<string, ProposalItem["state"]>();
+  for (const d of Array.isArray(decisions) ? decisions : []) {
+    const x = (d ?? {}) as { id?: unknown; state?: unknown };
+    if (typeof x.id === "string" && (x.state === "accepted" || x.state === "rejected" || x.state === "recalled" || x.state === "open")) want.set(x.id, x.state);
+  }
+  const at = new Date().toISOString();
+  const items = row.items.map((it) => (want.has(it.id) ? { ...it, state: want.get(it.id)!, decidedAt: at, decidedBy: c.viewer.id } : it));
+  await db.update(scriptProposals).set({ items, updatedAt: new Date() }).where(eq(scriptProposals.id, row.id));
+  return { ok: true as const };
+}
+
+export type ProposalRow = { id: string; summary: string; ask: string; source: string; createdAt: string; by: string | null; items: ProposalItem[] };
+
+/** The script's AI edits, newest first: what was offered, by whom, and what became of each change. */
+export async function listProposalsAction(projectId: unknown): Promise<{ rows: ProposalRow[] } | { error: string }> {
+  const c = await ctx(projectId);
+  if ("error" in c) return c;
+  if (!c.project.scriptId) return { rows: [] };
+  const rows = await db
+    .select({ p: scriptProposals, name: users.name, nameLocal: users.nameLocal })
+    .from(scriptProposals)
+    .leftJoin(users, eq(users.id, scriptProposals.createdBy))
+    .where(and(eq(scriptProposals.scriptId, c.project.scriptId), eq(scriptProposals.tenantId, c.viewer.tenantId)))
+    .orderBy(desc(scriptProposals.createdAt))
+    .limit(25);
+  return {
+    rows: rows.map((r) => ({
+      id: r.p.id,
+      summary: r.p.summary,
+      ask: r.p.ask,
+      source: r.p.source,
+      createdAt: r.p.createdAt.toISOString(),
+      by: (c.zh && r.nameLocal) || r.name || null,
+      items: r.p.items,
+    })),
+  };
 }

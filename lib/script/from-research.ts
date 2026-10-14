@@ -11,6 +11,7 @@ import { audit } from "@/lib/audit";
 import { cleanCodes, draftSources, type ProjectSource } from "@/lib/projects/topic";
 import { draftFromBrief } from "./ai";
 import { googleNewsSearch } from "@/lib/research/beat-sources";
+import { researchNotes } from "@/lib/research/web";
 
 /** The latest headlines on a subject, both editions, as lines the writer can cite. */
 async function liveNewsFor(subject: string): Promise<string> {
@@ -186,9 +187,12 @@ export async function writeScript(viewer: Viewer, req: ScriptRequest): Promise<S
   if (!title) return { ok: false, error: "Say what the script is about." };
   /* Thin sources: the news about the subject right now, Chinese and English editions, so the draft
      has dates, numbers and outlets to lean on rather than the model's memory (13 Oct). */
-  if (sources.length < 1500) {
-    const live = await liveNewsFor(title).catch(() => "");
-    if (live) sources = [sources, live].filter(Boolean).join("\n\n").slice(0, 6000);
+  if (sources.length < 2500) {
+    /* The reporting itself, not only headlines: Google and Bing News in both languages, Wikipedia for
+       background, and the leading articles' own text (15 Oct: "文章不够深度 … 多用不同的 source"). */
+    const [google, notes] = await Promise.all([liveNewsFor(title).catch(() => ""), researchNotes(title, { articles: 3 }).catch(() => "")]);
+    const live = [notes, google].filter(Boolean).join("\n\n");
+    if (live) sources = [sources, `以下是刚查到的资料。写稿时优先用其中的事实、数字、日期和原话，并注明媒体；资料没有的不要编：\n${live}`].filter(Boolean).join("\n\n").slice(0, 10_000);
   }
 
   const seconds = req.seconds && Number.isFinite(req.seconds) ? Math.max(15, Math.min(3600, Math.round(req.seconds))) : null;

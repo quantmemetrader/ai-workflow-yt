@@ -10,6 +10,8 @@ import { Tr, TR_EN } from "@/components/ui/Tr";
 import { PersonAvatar } from "@/components/ui/PersonAvatar";
 import { AvatarSheet } from "@/components/shell/AvatarSheet";
 import { TOPBAR_LIVE_SLOT } from "@/lib/client/live";
+import { TaskTracker } from "@/components/shell/TaskTracker";
+import { MobileNav } from "@/components/shell/MobileNav";
 
 /**
  * The strip across the top of every module: where you are, and who you are.
@@ -72,6 +74,7 @@ export function TopBar({
         background: "#fdfdfd",
       }}
     >
+      <MobileNav zh={zh} />
       {here.module && (
         <span style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0 }}>
           <span style={{ fontSize: 12.5, fontWeight: 500, color: "#171717", whiteSpace: "nowrap" }}>
@@ -79,7 +82,7 @@ export function TopBar({
             {zh ? <Tr zh={here.module.labelZh} en={TR_EN[here.module.labelZh] ?? here.module.label} /> : here.module.label}
           </span>
           {here.screen && (
-            <>
+            <span data-topbar-crumb-screen="" style={{ display: "contents" }}>
               <span style={{ fontSize: 12, color: "#c7c7c7" }} aria-hidden>
                 ·
               </span>
@@ -94,7 +97,7 @@ export function TopBar({
               >
                 {zh ? here.screen.labelZh : here.screen.label}
               </span>
-            </>
+            </span>
           )}
         </span>
       )}
@@ -107,6 +110,8 @@ export function TopBar({
       <div id={TOPBAR_LIVE_SLOT} style={{ flexGrow: 1, minWidth: 0, display: "flex", justifyContent: "center" }} />
 
       <div style={{ width: 4 }} />
+      {/* Every task in flight, with its bar and time left (15 Oct). */}
+      <TaskTracker zh={zh} />
 
       {/* One pill, two targets. Your face opens the picture chooser — the
         * studio's "default them to good pfps, and have multiple choices" —

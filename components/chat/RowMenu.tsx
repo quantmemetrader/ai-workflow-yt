@@ -4,7 +4,8 @@ import * as React from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { notify } from "@/lib/client/notify";
-import { archiveConversationAction, renameConversationAction } from "@/app/(app)/chat/actions";
+import { archiveConversationAction, moveChatAction, renameConversationAction } from "@/app/(app)/chat/actions";
+import { bumpLive } from "@/lib/client/live";
 
 /**
  * A small 「⋯」 menu for a row or a header (QA, 2 Oct: AI chats could not be
@@ -153,10 +154,16 @@ export function ConversationMenu({
   size = 26,
   className,
   style,
+  projects,
+  projectId = null,
 }: {
   id: string;
   title: string;
   zh: boolean;
+  /** Projects it can be moved into (the sidebar's); none hides 「移到项目」. */
+  projects?: { id: string; title: string }[];
+  /** The project it is filed under now. */
+  projectId?: string | null;
   /** This chat is the one on screen. */
   current?: boolean;
   size?: number;
@@ -166,10 +173,20 @@ export function ConversationMenu({
   const t = (a: string, b: string) => (zh ? a : b);
   const router = useRouter();
   const [renaming, setRenaming] = React.useState(false);
+  const [moving, setMoving] = React.useState(false);
+  const move = async (to: string | null) => {
+    setMoving(false);
+    const r = (await moveChatAction(id, to).catch(() => ({ error: t("没移成，再试一次", "Not moved; try again") }))) as { error?: string };
+    if (r?.error) return notify(r.error);
+    notify(to ? t("已移到项目", "Moved into the project") : t("已移出项目", "Moved out of the project"), "ok");
+    bumpLive();
+    router.refresh();
+  };
   const [name, setName] = React.useState(title);
   const [busy, setBusy] = React.useState(false);
   const anchor = React.useRef<HTMLSpanElement | null>(null);
   const at = useFloat(anchor, renaming, 260);
+  const moveAt = useFloat(anchor, moving, 280);
   const save = async () => {
     const next = name.trim();
     if (!next || busy) return;
@@ -195,9 +212,38 @@ export function ConversationMenu({
         label={t("对话操作", "Chat actions")}
         items={[
           { key: "rename", label: t("重命名", "Rename"), onSelect: () => (setName(title), setRenaming(true)) },
+          ...(projects?.length ? [{ key: "move", label: t("移到项目…", "Move to project…"), onSelect: () => setMoving(true) }] : []),
+          ...(projectId ? [{ key: "out", label: t("移出项目", "Move out of the project"), onSelect: () => void move(null) }] : []),
           { key: "delete", label: t("删除", "Delete"), danger: true, confirm: t("确认删除", "Really delete"), onSelect: () => void remove() },
         ]}
       />
+      {moving && moveAt ? createPortal(
+        <div
+          onClick={(e) => e.stopPropagation()}
+          style={{ ...moveAt, width: 280, maxHeight: 340, overflow: "auto", padding: 6, background: "#fff", border: "1px solid #e6e5e0", borderRadius: 12, boxShadow: "0 14px 36px -8px rgba(17,17,17,.22)", display: "flex", flexDirection: "column", gap: 2 }}
+        >
+          <div style={{ display: "flex", alignItems: "center", padding: "6px 8px 4px" }}>
+            <span style={{ fontSize: 12, fontWeight: 600, color: "#525252", flexGrow: 1 }}>{t("移到哪个项目？", "Move to which project?")}</span>
+            <button type="button" onClick={() => setMoving(false)} aria-label={t("关闭", "Close")} style={{ border: 0, background: "transparent", cursor: "pointer", color: "#8a8a8a", fontSize: 15, lineHeight: 1 }}>×</button>
+          </div>
+          {(projects ?? []).map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              disabled={p.id === projectId}
+              onClick={() => void move(p.id)}
+              style={{ display: "flex", alignItems: "center", gap: 8, textAlign: "left", border: 0, background: p.id === projectId ? "#f4f4f2" : "transparent", borderRadius: 8, padding: "7px 8px", fontFamily: "inherit", fontSize: 12.5, color: "#171717", cursor: p.id === projectId ? "default" : "pointer" }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = "#f4f4f2")}
+              onMouseLeave={(e) => (e.currentTarget.style.background = p.id === projectId ? "#f4f4f2" : "transparent")}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8a8a8a" strokeWidth="1.8" strokeLinejoin="round" aria-hidden><path d="M3.5 7.5a2 2 0 0 1 2-2h4l2 2.2h7a2 2 0 0 1 2 2v7.8a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z" /></svg>
+              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flexGrow: 1 }}>{p.title}</span>
+              {p.id === projectId ? <span style={{ fontSize: 11, color: "#8a8a8a" }}>{t("当前", "Now")}</span> : null}
+            </button>
+          ))}
+        </div>,
+        document.body,
+      ) : null}
       {renaming && at ? createPortal(
         <form
           onSubmit={(e) => {

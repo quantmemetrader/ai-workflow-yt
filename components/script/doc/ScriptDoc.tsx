@@ -50,7 +50,11 @@ import {
   versionBeatsAction,
   withdrawReviewAction,
   draftWithInstructionAction,
+  recordProposalAction,
+  decideProposalAction,
+  listProposalsAction,
 } from "@/app/(app)/projects/[id]/script/actions";
+import { ProposalLedger, type LedgerRow } from "./ProposalLedger";
 import { BlockExtras, Highlights, findMatches, marksKey, spokenUnits, type MarksState, type Tracked } from "./editor";
 import { MenuBar, Modal, type Menu } from "./chrome";
 import { BLOCKS, SPACINGS, Toolbar, changeIndent, setBlock, setLineHeight, type Mode } from "./toolbar";
@@ -528,7 +532,47 @@ export function ScriptDoc(props: ScriptDocProps) {
      "once accepted or rejected, the amendment cannot be recalled"). The last five, this page only. */
   const undoStack = React.useRef<{ json: Record<string, unknown>; items: Tracked[]; summary: string; source: "ai" | "sendback" }[]>([]);
   const [canUndo, setCanUndo] = React.useState(false);
-  function openProposal(items: Tracked[], summary: string, source: "ai" | "sendback") {
+  /* The saved record of AI edits (15 Oct): each proposal with each paragraph's text before it, and each decision. */
+  const [ledger, setLedger] = React.useState<LedgerRow[]>([]);
+  const [ledgerBusy, setLedgerBusy] = React.useState(false);
+  const currentProposal = React.useRef<Promise<string | null> | null>(null);
+  const loadLedger = React.useCallback(() => {
+    void listProposalsAction(projectId)
+      .then((r) => {
+        if (r && "rows" in r) setLedger(r.rows as LedgerRow[]);
+      })
+      .catch(() => {});
+  }, [projectId]);
+  React.useEffect(() => loadLedger(), [loadLedger]);
+  const recordDecision = (ids: string[], state: "accepted" | "rejected") => {
+    if (!ids.length || !currentProposal.current) return;
+    void currentProposal.current
+      .then((pid) => (pid ? decideProposalAction(projectId, pid, ids.map((id) => ({ id, state }))) : null))
+      .then(loadLedger)
+      .catch(() => {});
+  };
+  function openProposal(items: Tracked[], summary: string, source: "ai" | "sendback", opts: { ask?: string; quiet?: boolean } = {}) {
+    if (items.length && editor) {
+      const doc = editor.state.doc;
+      const units = spokenUnits(doc);
+      const rec = items.map((x) => {
+        const node = x.kind === "insert" ? null : doc.nodeAt(x.from);
+        const prev = [...units].reverse().find((u) => u.to <= x.from);
+        return { id: x.id, kind: x.kind, text: x.text, why: x.why, before: node ? node.textContent : "", anchor: prev?.text ?? "" };
+      });
+      const ask = opts.ask ?? (source === "ai" ? (aiLog[aiLog.length - 1]?.q ?? "") : t("同事退回的修改", "A colleague's edits"));
+      currentProposal.current = recordProposalAction(projectId, { summary, source, ask, items: rec })
+        .then((r) => {
+          loadLedger();
+          return r && "id" in r ? (r.id as string) : null;
+        })
+        .catch(() => null);
+    }
+    if (opts.quiet && items.length) {
+      setMarks({ tracked: items });
+      setProposal({ summary, source, total: items.length });
+      return;
+    }
     if (source === "ai") setAiLog((l) => (l.length ? [...l.slice(0, -1), { ...l[l.length - 1], a: summary || t(`改了 ${items.length} 处，已在文档里标出`, `${items.length} edits, marked in the document`) }] : l));
     if (!items.length) return notify(t("文案觉得不用改", "The writer found nothing to change"), "ok");
     if (editor) {
@@ -538,6 +582,58 @@ export function ScriptDoc(props: ScriptDocProps) {
     setMarks({ tracked: items });
     setProposal({ summary, source, total: items.length });
   }
+  /** Take back decisions from the record: an accepted change returns as the original text to accept, a rejected one as the change to accept. */
+  function recallFromLedger(row: LedgerRow, itemIds: string[]) {
+    if (!editor) return;
+    if (locked) return setLockPrompt(true);
+    if (proposal) return notify(t("先处理完正在标出的修改建议", "Finish the edits marked in the page first"));
+    const units = spokenUnits(editor.state.doc);
+    const norm = (x: string) => x.replace(/\s+/g, "");
+    const find = (text: string) => (text ? units.find((u) => norm(u.text) === norm(text)) : undefined);
+    const anchorAt = (anchor: string) => (anchor ? find(anchor)?.to : (units[0]?.from ?? 0));
+    const out: Tracked[] = [];
+    const missed: string[] = [];
+    const used = new Set<number>();
+    for (const it of row.items.filter((i) => itemIds.includes(i.id))) {
+      const id = `r${it.id}${Date.now() % 10000}`;
+      let x: Tracked | null = null;
+      if (it.state === "accepted") {
+        if (it.kind === "delete") {
+          const at = anchorAt(it.anchor);
+          if (at !== undefined) x = { id, kind: "insert", from: at, to: at, text: it.before, why: t("撤回：放回删掉的这段", "Taken back: the deleted paragraph") };
+        } else {
+          const u = find(it.text);
+          if (u) x = it.kind === "insert" ? { id, kind: "delete", from: u.from, to: u.to, text: "", why: t("撤回：去掉新增的这段", "Taken back: remove the added paragraph") } : { id, kind: "change", from: u.from, to: u.to, text: it.before, why: t("撤回：恢复原文", "Taken back: the original text") };
+        }
+      } else if (it.state === "rejected") {
+        if (it.kind === "insert") {
+          const at = anchorAt(it.anchor);
+          if (at !== undefined) x = { id, kind: "insert", from: at, to: at, text: it.text, why: it.why || t("改用：新增这段", "Use it: add this paragraph") };
+        } else {
+          const u = find(it.before);
+          if (u) x = it.kind === "delete" ? { id, kind: "delete", from: u.from, to: u.to, text: "", why: it.why || t("改用：删掉这段", "Use it: delete this paragraph") } : { id, kind: "change", from: u.from, to: u.to, text: it.text, why: it.why || t("改用这条修改", "Use this edit") };
+        }
+      }
+      if (!x || (x.kind !== "insert" && used.has(x.from))) {
+        missed.push(it.id);
+        continue;
+      }
+      if (x.kind !== "insert") used.add(x.from);
+      out.push(x);
+    }
+    if (!out.length) return notify(t("这些段落后来又改过，找不到原来的位置了。可以在「版本」里找回改之前的稿子。", "Those paragraphs changed since; the earlier draft is in Versions."));
+    if (missed.length) notify(t(`有 ${missed.length} 处后来又改过，没能找回；其余的已标在文档里`, `${missed.length} could not be found (changed since); the rest are marked`));
+    setLedgerBusy(true);
+    void decideProposalAction(projectId, row.id, itemIds.filter((i) => !missed.includes(i)).map((i) => ({ id: i, state: "recalled" })))
+      .catch(() => null)
+      .finally(() => {
+        setLedgerBusy(false);
+        loadLedger();
+      });
+    openProposal(out, t(`撤回：${row.ask || row.summary}`, `Taking back: ${row.ask || row.summary}`), "ai", { ask: t(`撤回：${row.ask || row.summary}`, `Take back: ${row.ask || row.summary}`), quiet: true });
+    setPanel("ai");
+  }
+
   /** The last proposal back on the page, exactly as it was offered, whatever was accepted or rejected since. */
   function undoProposal() {
     const snap = undoStack.current.pop();
@@ -697,6 +793,7 @@ export function ScriptDoc(props: ScriptDocProps) {
         if (tr) void feedbackAction("script", "reject", tr.kind === "delete" ? "删一段的改法" : tr.text.slice(0, 200), tr.why);
       }
       const left = d.accept ? applyTracked([d.id]) : rejectTracked([d.id]);
+      recordDecision([d.id], d.accept ? "accepted" : "rejected");
       endProposalIfDone(left, proposal.source);
     };
     window.addEventListener("gd-tracked", on);
@@ -1403,6 +1500,7 @@ export function ScriptDoc(props: ScriptDocProps) {
                 if (!locked) await saveVersionAction(projectId, t("AI 改写前", "Before the AI edits")).catch(() => null);
                 const ids = trackedNow().map((x) => x.id);
                 applyTracked(ids);
+                recordDecision(ids, "accepted");
                 endProposalIfDone([], proposal.source);
                 notify(t("已接受全部修改（改之前的稿子存成了一个版本）", "All changes accepted (the draft before them is kept as a version)"), "ok");
                 router.refresh();
@@ -1420,7 +1518,9 @@ export function ScriptDoc(props: ScriptDocProps) {
               start(async () => {
                 await save();
                 if (!locked) await saveVersionAction(projectId, t("AI 改写前", "Before the AI edits")).catch(() => null);
-                applyTracked(trackedNow().map((x) => x.id));
+                const ids = trackedNow().map((x) => x.id);
+                applyTracked(ids);
+                recordDecision(ids, "accepted");
                 endProposalIfDone([], proposal.source);
                 setModeRaw("edit");
                 notify(t("已接受，现在可以直接改文字", "Accepted; type straight into the page"), "ok");
@@ -1430,7 +1530,7 @@ export function ScriptDoc(props: ScriptDocProps) {
           >
             {t("接受后自己改", "Accept, then edit")}
           </button>
-          <button type="button" className="gd-status-btn" onClick={() => { rejectTracked(trackedNow().map((x) => x.id)); setProposal(null); window.setTimeout(() => editor?.commands.focus("end"), 80); }}>{t("全部拒绝", "Reject all")}</button>
+          <button type="button" className="gd-status-btn" onClick={() => { const ids = trackedNow().map((x) => x.id); rejectTracked(ids); recordDecision(ids, "rejected"); setProposal(null); window.setTimeout(() => editor?.commands.focus("end"), 80); }}>{t("全部拒绝", "Reject all")}</button>
         </div>
       ) : null}
       {viewing ? (
@@ -1687,11 +1787,8 @@ export function ScriptDoc(props: ScriptDocProps) {
                   </div>
                 </div>
 
-                {canUndo && !proposal && me.canEdit ? (
-                  <button type="button" className="gd-ai-action" style={{ marginBottom: 10 }} onClick={undoProposal} title={t("把上一次接受或拒绝的改法重新标出来", "Bring the last accepted or rejected edits back")}>
-                    {t("撤回上次改法", "Take back the last edits")}
-                  </button>
-                ) : null}
+                {/* Every AI edit on this script and what became of it; any decision can be taken back (15 Oct). */}
+                <ProposalLedger rows={ledger} zh={zh} canEdit={me.canEdit && !proposal} busy={ledgerBusy} onRecall={recallFromLedger} />
                 {aiLog.length ? (
                   <div className="gd-ai-log">
                     {aiLog.map((m, i) => (

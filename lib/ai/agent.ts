@@ -18,7 +18,9 @@ import { assemblePrompt, withModelLine } from "./prompt";
 import { runTool, toolsFor } from "./tools";
 import { idsIn, type Artifact, type ToolContext } from "./tools/types";
 import { AGENT_KEYS, AGENT_LABELS, agentKeyFromEmail, type AgentKey } from "@/lib/agents/catalog";
-import { scrubToolNames, stripToolMarkup } from "@/lib/agents/steps";
+import { describeCall, scrubToolNames, stripToolMarkup } from "@/lib/agents/steps";
+import { closeRun, openRun, stageRun, stepRun, typicalRunMs } from "@/lib/work/runs";
+import { chatChannels, workProjects } from "@/lib/db/schema";
 
 /**
  * One turn of the employee's agent (spec §4.2, §5).
@@ -31,8 +33,10 @@ import { scrubToolNames, stripToolMarkup } from "@/lib/agents/steps";
  */
 /** A first-person "I wrote / saved / started it" (see the nudge in the loop). */
 /* "I will / let me / going to…" with no tool called at all this turn: the work was promised, not started (13 Oct). */
-const PROMISED = /(我会|我将|我这就|我马上|马上去|稍后|接下来我|现在就去|让我来|我先去|我来帮你|我去|即将)[^。\n]{0,30}(写|做|生成|处理|开始|执行|查|找|剪|发|创建|安排|整理|准备|搜索|更新|完成)|(I will|I'll|Let me|I am going to|I'm going to) [^.\n]{0,40}(write|do|make|start|run|search|find|cut|create|prepare|update|look|draft)/;
-const CLAIMED_DONE = /(已为你|已经为你|我已|我已经|已帮你)[^。\n]{0,24}(写|存|建|创建|生成|撰写|保存)|已存入(新)?项目|脚本已(存入|写入|保存|生成)|已(新建|创建)(了)?(新)?项目/;
+const PROMISED = /(我会|我将|我这就|我马上|马上(去|就|帮|给|开始|处理|催|写|改|查|做)|稍后|稍等|待会|回头|接下来(我|要|会)|我现在(要|就|去|来)|现在就去|让我(来|先|去|再)|我先(去|来|查|看|写)|我来帮你|我去|即将|正在(处理|为你|帮你)|下一步(我|是)|会第一时间|有结果(我|就|会)|催一下|跟进一下|安排上|(I will|I'll|Let me|I am going to|I'm going to|I'm about to|I'll get) [^.\n]{0,40}(write|do|make|start|run|search|find|cut|create|prepare|update|look|draft|check|fix|send|post))/;
+/* A plan of steps written out with nothing done: "我现在要做的：1. … 2. …" (Kimi, 8 Oct). */
+const PLAN_ONLY = /(要做的|计划如下|步骤如下|我会按|接下来的步骤|我的计划|我打算)[：:]?[\s\S]{0,40}(\n\s*(1[.、)]|一、|- ))/;
+const CLAIMED_DONE = /(已为你|已经为你|我已|我已经|已帮你|已经帮你|已经把|已把)[^。\n]{0,30}(写|存|建|创建|生成|撰写|保存|更新|改|修改|重写|发|发送|发布|催|安排|通知|提交|加上|删|上传|交给|转给|剪|渲染|导出)|已存入(新)?项目|脚本已(存入|写入|保存|生成|更新|改好)|已(新建|创建)(了)?(新)?项目|(已经|已)(根据|按照?)[^。\n]{0,30}(更新|改|修改|重写)(到|进|好)/;
 
 export type AgentEvent =
   | { type: "message"; id: string }
@@ -43,6 +47,8 @@ export type AgentEvent =
       name: string;
       status: "running" | "ok" | "error";
       summary?: string;
+      /** On the running event: what the step is, in plain words ("搜索「香港 AI 融资」"). */
+      detail?: string;
       /** On the finished event: whether the tool changed something. */
       changed?: boolean;
       /** On the finished event: the tool's receipts — what it really made or
@@ -59,6 +65,8 @@ export type AgentEvent =
     }
   | { type: "notice"; text: string }
   | { type: "reasoning"; text: string }
+  /** How long a turn like this usually takes (ms), for the progress bar under the answer. */
+  | { type: "estimate"; ms: number }
   | {
       type: "usage";
       model: string;
@@ -117,7 +125,45 @@ export function replayed(
   };
 }
 
-export async function* runAgent(opts: {
+/**
+ * A turn, recorded for the task tracker (15 Oct): who is working, on what, which step it is on, and how
+ * long turns like it usually take — sent first, so the answer can show a progress bar from the start.
+ */
+export async function* runAgent(opts: Parameters<typeof runAgentTurn>[0]): AsyncGenerator<AgentEvent> {
+  const { viewer } = opts;
+  const who = agentKeyFromEmail(viewer.email) ?? "assistant";
+  const [conv] = await db.select({ title: conversations.title }).from(conversations).where(eq(conversations.id, opts.conversationId)).limit(1).catch(() => []);
+  const asked = toSimplified(opts.content).replace(/\s+/g, " ").trim();
+  const title = conv?.title && conv.title !== "New chat" ? conv.title : asked.slice(0, 60);
+  let href = `/chat/t/${opts.conversationId}`;
+  const channelId = opts.context?.channelId;
+  if (channelId) {
+    const [p] = await db.select({ id: workProjects.id }).from(workProjects).where(and(eq(workProjects.tenantId, viewer.tenantId), eq(workProjects.channelId, channelId))).limit(1).catch(() => []);
+    const [c] = p ? [] : await db.select({ slug: chatChannels.slug }).from(chatChannels).where(eq(chatChannels.id, channelId)).limit(1).catch(() => []);
+    href = p ? `/projects/${p.id}` : c?.slug ? `/chat/c/${c.slug}` : href;
+  }
+  const runId = await openRun({ tenantId: viewer.tenantId, agent: who, userId: viewer.onBehalfOf ?? viewer.id, title, href });
+  yield { type: "estimate", ms: await typicalRunMs(viewer.tenantId, who) };
+  let end: "done" | "failed" | "stopped" = "stopped";
+  let writing = false;
+  try {
+    for await (const ev of runAgentTurn(opts)) {
+      if (ev.type === "tool" && ev.status === "running") {
+        stepRun(runId, ev.detail ?? "正在处理");
+        writing = false;
+      } else if (ev.type === "delta" && !writing) {
+        writing = true;
+        stageRun(runId, "正在写回答");
+      } else if (ev.type === "done") end = "done";
+      else if (ev.type === "error") end = "failed";
+      yield ev;
+    }
+  } finally {
+    await closeRun(runId, end);
+  }
+}
+
+async function* runAgentTurn(opts: {
   viewer: Viewer;
   conversationId: string;
   content: string;
@@ -281,8 +327,9 @@ export async function* runAgent(opts: {
   let lastToolText = "";
   /** What the tools changed this turn, in their own words. */
   const changes: string[] = [];
-  /** Sent back once for saying it did something no tool did (see below). */
+  /** Sent back once for saying it did something no tool did, and once for promising without doing (see below). */
   let nudged = false;
+  let nudgedPromise = false;
   /** A tool that acts (not a read) ran and did not say nothing was written. */
   let actedThisTurn = false;
   /** How many tools ran this turn at all, reads included. */
@@ -325,7 +372,8 @@ export async function* runAgent(opts: {
       const pendingCalls: { id: string; name: string; arguments: string }[] = [];
       let roundText = "";
 
-      const stream = streamChat({ model, messages, tools, signal, user: viewer.id });
+      /* The model's thinking comes back to be shown (Claude's summary, DeepSeek's and Qwen's own) — 15 Oct. */
+      const stream = streamChat({ model, messages, tools, signal, user: viewer.id, thinking: true });
 
       try {
         for await (const ev of stream) {
@@ -404,8 +452,8 @@ export async function* runAgent(opts: {
           continue;
         }
         /* Promised to do it and called nothing (13 Oct: "the agent says it will, and when the team follows up it has not started"). */
-        if (!nudged && toolsThisTurn === 0 && tools.length > 0 && PROMISED.test(roundText) && round < MAX_ROUNDS - 1 && !signal?.aborted) {
-          nudged = true;
+        if (!nudgedPromise && toolsThisTurn === 0 && tools.length > 0 && (PROMISED.test(roundText) || PLAN_ONLY.test(roundText)) && round < MAX_ROUNDS - 1 && !signal?.aborted) {
+          nudgedPromise = true;
           const fix = "\n\n（更正：刚才只是说了要做，现在真正去做。）\n\n";
           answer += fix;
           yield { type: "delta", text: fix };
@@ -430,7 +478,7 @@ export async function* runAgent(opts: {
 
       for (const call of pendingCalls) {
         const rowId = newId("tc");
-        yield { type: "tool", id: rowId, name: call.name, status: "running" };
+        yield { type: "tool", id: rowId, name: call.name, status: "running", detail: describeCall(call.name, call.arguments) };
         const began = Date.now();
 
         let result;
@@ -649,6 +697,14 @@ export async function* runAgent(opts: {
     }
 
     answer = humanize(scrubToolNames(stripToolMarkup(answer)));
+
+    /* Still a promise with nothing done after being sent back: the person is told so, in the answer itself,
+       instead of finding out when they follow up (15 Oct). */
+    if (answer.trim() && toolsThisTurn === 0 && tools.length > 0 && (PROMISED.test(answer) || PLAN_ONLY.test(answer)) && !signal?.aborted) {
+      const note = "\n\n（提示：这一轮没有执行任何操作，上面说的事还没有开始。直接回复「现在就做」，我会马上动手。）";
+      answer += note;
+      yield { type: "delta", text: note };
+    }
 
     if (!answer.trim() && !signal?.aborted) {
       yield {

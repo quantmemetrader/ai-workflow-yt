@@ -15,12 +15,12 @@ import { AGENT_KEYS, AGENT_LABELS, parseAgentMentions, type AgentKey } from "@/l
 import { agentViewer } from "@/lib/agents";
 import { CUT_TOOLS, MAX_REPLIES, WORKS_IN, findStartClaims, later } from "@/lib/agents/mentions";
 import { attachmentsFor, channelById } from "@/lib/chat/service";
-import { bridgeState } from "@/lib/chat/conversation-project";
+import { bridgeState, fileUnderProject } from "@/lib/chat/conversation-project";
 import { binImage, binVideo } from "@/lib/chat/bin";
 import { projectById } from "@/lib/video/service";
 import { canEditProject } from "@/lib/video/access";
 import { relationOn, share } from "@/lib/authz/rebac";
-import { clipCount, projectFor, reachableThroughProjects } from "@/lib/projects/service";
+import { clipCount, projectFor, reachableThroughProjects, visibleProject } from "@/lib/projects/service";
 import { holdsTheCut, looksLikeDone } from "@/lib/projects/done-phrases";
 import { describeOutcome, startCutForProject, type StartCutOutcome } from "@/lib/projects/start-cut";
 import { workProjects } from "@/lib/db/schema";
@@ -211,6 +211,8 @@ export async function POST(request: Request) {
     /** The model picked in the composer for this message (「模型」); anything
      *  not on the list (`pickedModel`) means the studio's default. */
     model?: unknown;
+    /** A new chat started inside a project (wp_…). */
+    projectId?: unknown;
   };
   try {
     body = await request.json();
@@ -279,7 +281,21 @@ export async function POST(request: Request) {
 
   /* Started now and awaited just before the turn, so the checks overlap the
      conversation's own reads rather than delaying the first words. */
-  const checkedIds = screenIds(viewer, raw).catch((err): ScreenIds => {
+  /* A chat started inside a project (the sidebar's 「在这个项目里新对话」), or one already filed under one:
+     its script and video are what the employees work on, as if they were on screen (15 Oct). */
+  const inProject = await (async () => {
+    const wanted = typeof body.projectId === "string" && /^wp_[0-9a-z]{6,40}$/i.test(body.projectId) ? body.projectId : null;
+    const filed =
+      typeof body.conversationId === "string"
+        ? ((await db.select({ projectId: conversations.projectId }).from(conversations).where(and(eq(conversations.id, body.conversationId), eq(conversations.userId, viewer.id))).limit(1))[0]?.projectId ?? null)
+        : null;
+    const pid = filed ?? wanted;
+    return pid ? await visibleProject(viewer, pid).catch(() => null) : null;
+  })();
+  const projectHints: Record<string, unknown> = {};
+  if (inProject?.videoProjectId && !raw.projectId) projectHints.projectId = inProject.videoProjectId;
+  if (inProject?.scriptId && !raw.scriptId) projectHints.scriptId = inProject.scriptId;
+  const checkedIds = screenIds(viewer, { ...raw, ...projectHints }).catch((err): ScreenIds => {
     /* A check that could not run keeps nothing: an unchecked id is exactly
        what this is here to stop. */
     console.error("[agent] could not check what is on screen", err);
@@ -304,7 +320,7 @@ export async function POST(request: Request) {
     if (!row) return new Response("Not found", { status: 404 });
   } else {
     conversationId = newId("cnv");
-    await db.insert(conversations).values({ id: conversationId, userId: viewer.id, module: "chat" });
+    await db.insert(conversations).values({ id: conversationId, userId: viewer.id, module: "chat", projectId: inProject?.id ?? null });
     isFirst = true;
   }
 
@@ -526,6 +542,8 @@ export async function POST(request: Request) {
            * out of the edit) — with the bin's real count
            * when a video project is open.
            */
+          /* A chat whose work landed in a project is filed under it, so the sidebar shows it there. */
+          if (event.type === "done" && !inProject) void fileUnderProject(viewer, conversationId!).catch(() => {});
           if (event.type === "done" && speaker === "video" && !cut && findStartClaims(said, "video").length) {
             const zh = (viewer.locale ?? "zh-CN").startsWith("zh");
             const clips = ids.projectId ? await clipCount(ids.projectId).catch(() => null) : null;

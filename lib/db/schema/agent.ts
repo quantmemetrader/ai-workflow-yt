@@ -25,8 +25,37 @@ export const conversations = pgTable(
     createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
     archivedAt: timestamp({ withTimezone: true }),
+    /** The project this chat is filed under (13 Oct: chats organised by project); null is 「未归入项目」. */
+    projectId: text(),
   },
-  (t) => [index("conversations_user_idx").on(t.userId, t.updatedAt)],
+  (t) => [index("conversations_user_idx").on(t.userId, t.updatedAt), index("conversations_project_idx").on(t.projectId, t.updatedAt)],
+);
+
+/**
+ * One AI employee (or a person's assistant) working on something right now: a turn in a chat, a hand-off
+ * in a project chat. The task tracker reads these beside the worker's jobs, so every agent's work shows
+ * with its live step and an estimate of the time left (15 Oct).
+ */
+export const agentRuns = pgTable(
+  "agent_runs",
+  {
+    id: text().primaryKey(),
+    tenantId: text().notNull(),
+    /** AgentKey, or "assistant" for a person's own assistant. */
+    agent: text().notNull(),
+    /** Whose work it is. */
+    userId: text(),
+    title: text().notNull().default(""),
+    stage: text(),
+    steps: integer().notNull().default(0),
+    /** running | done | failed | stopped */
+    status: text().notNull().default("running"),
+    href: text(),
+    startedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    finishedAt: timestamp({ withTimezone: true }),
+  },
+  (t) => [index("agent_runs_tenant_idx").on(t.tenantId, t.startedAt)],
 );
 
 export const agentRoleEnum = pgEnum("agent_role", ["user", "assistant", "system", "tool"]);

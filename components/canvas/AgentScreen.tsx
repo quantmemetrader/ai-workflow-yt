@@ -34,6 +34,7 @@ import { AgentTyping, streamStep } from "@/components/agents/AgentTyping";
 import { asksSomething, soft, threadCss, tidyMarkdown } from "@/components/chat/look";
 import { PersonAvatar } from "@/components/ui/PersonAvatar";
 import { ProjectBridge } from "@/components/chat/ProjectBridge";
+import { TurnProcess } from "@/components/chat/TurnProcess";
 import { ATTACH_ACCEPT, bytes, kindOf, uploadToStudio, type Attaching } from "@/components/chat/upload";
 import { VideoCards } from "@/components/chat/VideoCard";
 import { RESULT_VIDEOS_MAX, videoRefsOf, type VideoCard } from "@/lib/chat/video-card";
@@ -53,7 +54,7 @@ import { ConversationMenu } from "@/components/chat/RowMenu";
  * elements, not by anything added on top.
  */
 export type MadeScript = { scriptId: string; projectId: string | null; title: string };
-export type ThreadTool = { id: string; name: string; status: string; summary?: string; durationMs?: number | null };
+export type ThreadTool = { id: string; name: string; status: string; summary?: string; durationMs?: number | null; detail?: string; startedAtMs?: number };
 export type ThreadCitation = {
   fileId: string;
   name: string;
@@ -74,8 +75,12 @@ export type ThreadMessage = {
   createdAt?: string;
   citations: ThreadCitation[];
   tools: ThreadTool[];
-  /** The model's own working, as it streamed (DeepSeek, Qwen); shown folded under 思考过程. */
+  /** The model's own working, as it streamed (Claude's summary, DeepSeek, Qwen); shown under 思考过程. */
   reasoning?: string;
+  /** How long turns like this usually take, and when this one began and ended, for the progress bar. */
+  estimateMs?: number;
+  startedAtMs?: number;
+  finishedAtMs?: number;
   /** The script this turn wrote, for the presses under it (open, send for review, change it here). */
   made?: MadeScript | null;
   /** The employee who answered, when an @ handed the turn to one. */
@@ -206,7 +211,10 @@ export function AgentScreen({
   history = null,
   canAttach = true,
   recent = null,
+  inProject = null,
 }: {
+  /** A new chat started inside a project (`/chat?fresh=1&project=…`): filed under it from the first message. */
+  inProject?: { id: string; title: string } | null;
   /** Your own assistant's page: your recent conversations, for the history panel on the right. */
   recent?: { id: string; title: string; updatedAt: string }[] | null;
   /** False for somebody without the Files module: no paperclip rather than
@@ -463,7 +471,7 @@ export function AgentScreen({
        will answer — the first employee tagged, else the assistant: the rule
        the stream route applies, so its `speaker` event only confirms it. */
     setMessages((prev) => {
-      const answer: ThreadMessage = { id: `a-${Date.now()}`, role: "assistant", content: "", status: "streaming", createdAt: now, citations: [], tools: [], speaker: to };
+      const answer: ThreadMessage = { id: `a-${Date.now()}`, role: "assistant", content: "", status: "streaming", createdAt: now, citations: [], tools: [], speaker: to, startedAtMs: Date.now() };
       if (opts.retry) {
         /* The question is already there; answers that stopped before a word go. */
         const kept = [...prev];
@@ -491,6 +499,7 @@ export function AgentScreen({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...(opts.retry ? { conversationId, retry: true } : { conversationId, content: text, ...(files.length ? { attachments: files.map((f) => f.id) } : {}) }),
+          ...(!conversationId && inProject ? { projectId: inProject.id } : {}),
           ...(pickModel !== AUTO_MODEL ? { model: pickModel } : {}),
           /* On an employee page, that employee answers unless the message tags someone else (QA round 2). */
           ...((history?.agent ?? initialAgent) ? { agent: history?.agent ?? initialAgent } : {}),
@@ -555,7 +564,17 @@ export function AgentScreen({
               patchLast((m) => {
                 const tools = [...m.tools];
                 const at = tools.findIndex((x) => x.id === event.id);
-                const entry = { id: event.id, name: event.name, status: event.status, summary: event.summary };
+                const prev = at >= 0 ? tools[at] : null;
+                const began = prev?.startedAtMs ?? Date.now();
+                const entry = {
+                  id: event.id,
+                  name: event.name,
+                  status: event.status,
+                  summary: event.summary,
+                  detail: event.detail ?? prev?.detail,
+                  startedAtMs: began,
+                  durationMs: event.status === "running" ? null : Date.now() - began,
+                };
                 if (at >= 0) tools[at] = entry;
                 else tools.push(entry);
                 return { ...m, tools };
@@ -589,6 +608,9 @@ export function AgentScreen({
             case "reasoning":
               patchLast((m) => ({ ...m, reasoning: (m.reasoning ?? "") + event.text }));
               break;
+            case "estimate":
+              patchLast((m) => ({ ...m, estimateMs: Number(event.ms) || undefined, startedAtMs: m.startedAtMs ?? Date.now() }));
+              break;
             case "attachments":
               /* The stream route read the files: their chips get a tick. */
               if (Array.isArray(event.read)) {
@@ -601,7 +623,7 @@ export function AgentScreen({
               break;
             case "done": {
               setNotice((n) => (n && isFilesNotice(n) ? null : n));
-              patchLast((m) => ({ ...m, status: "complete" }));
+              patchLast((m) => ({ ...m, status: "complete", finishedAtMs: Date.now() }));
               /* The card under the answer, for what the turn named: what the
                  answer itself wrote, and what its tools made or looked up. */
               const written = videoRefsOf(null, answer);
@@ -712,7 +734,11 @@ export function AgentScreen({
               textOverflow: "ellipsis",
             }}
           >
-            {history
+            {inProject && !conversationId
+              ? zh
+                ? `在项目《${inProject.title}》里 · 只有你能看到`
+                : `In the project “${inProject.title}” · only you can see this`
+              : history
               ? zh
                 ? "只有你能看到"
                 : "Only you can see this"
@@ -733,7 +759,7 @@ export function AgentScreen({
             title={zh ? "开一个新对话" : "Start a new conversation"}
             onClick={() => {
               document.cookie = `tg_chat_new=1; path=/; max-age=${60 * 60 * 24 * 30}; samesite=lax`;
-              router.push("/chat?fresh=1");
+              router.push(inProject ? `/chat?fresh=1&project=${inProject.id}` : "/chat?fresh=1");
             }}
           >
             <Icon name="plus" size={12} />
@@ -1321,65 +1347,8 @@ function AgentRow({ message, zh, locale }: { message: ThreadMessage; zh: boolean
         </div>
 
         <div className="txt">
-          {message.reasoning?.trim() ? (
-            <details className="think" open={message.status === "streaming"}>
-              <summary>{message.status === "streaming" ? (zh ? "正在思考…" : "Thinking…") : zh ? "思考过程" : "Thought process"}</summary>
-              <div className="think-body">{message.reasoning.trim()}</div>
-            </details>
-          ) : null}
-          {message.tools.length > 1 || message.tools.some((x) => x.summary) ? (
-            <details className="steps">
-              <summary>{zh ? `过程 · ${message.tools.length} 步` : `Steps · ${message.tools.length}`}</summary>
-              <ol>
-                {message.tools.map((x, i) => (
-                  <li key={x.id + i} className={x.status}>
-                    <span className="step-name">{toolWords(x.name, x.status === "running" ? "running" : "ok", zh)}</span>
-                    <span className="step-state">{x.status === "running" ? (zh ? "进行中" : "running") : x.status === "error" ? (zh ? "失败" : "failed") : zh ? "完成" : "done"}{x.durationMs ? ` · ${(x.durationMs / 1000).toFixed(1)} s` : ""}</span>
-                    {x.summary ? <div className="step-sum">{x.summary}</div> : null}
-                  </li>
-                ))}
-              </ol>
-            </details>
-          ) : null}
-          {groupTools(message.tools, zh).map(({ tool, count }) => (
-            <div key={tool.id} className="tool">
-              {tool.status === "running" ? (
-                <span
-                  style={{
-                    width: 12,
-                    height: 12,
-                    borderRadius: 6,
-                    border: "2px solid #c7c7c7",
-                    borderTopColor: "#525252",
-                    animation: "spin .7s linear infinite",
-                    display: "inline-block",
-                  }}
-                />
-              ) : (
-                <svg
-                  viewBox="0 0 24 24"
-                  style={{
-                    width: 12,
-                    height: 12,
-                    stroke: tool.status === "error" ? "#e03636" : "#278f5e",
-                    fill: "none",
-                    strokeWidth: 2.4,
-                    strokeLinecap: "round",
-                    strokeLinejoin: "round",
-                  }}
-                >
-                  {tool.status === "error" ? <path d="M7 7l10 10M17 7 7 17" /> : <path d="m5 12.5 4.5 4.5L19 7.5" />}
-                </svg>
-              )}
-              {/* What it did, in words — not the tool's raw first line ("Plan for
-                  2026-09-27, posted by 策划 … (message msg_…)"), which stays
-                  on hover. */}
-              <span>
-                {toolWords(tool.name, tool.status, zh)}
-                {count > 1 ? <span style={{ color: "#a3a3a3" }}>{` ×${count}`}</span> : null}
-              </span>
-            </div>
-          ))}
+          {/* What the turn is doing and did: the step in words, time used and left, the thinking, the steps (15 Oct). */}
+          {message.role === "assistant" ? <TurnProcess message={message} zh={zh} /> : null}
 
           {/* While it streams the bubble is not translated: Chrome's translate
               swaps each text node for its own copy, so the words that stream
@@ -1398,11 +1367,6 @@ function AgentRow({ message, zh, locale }: { message: ThreadMessage; zh: boolean
               again while a tool runs — saying which step the tool is
               (正在查资料, 正在写脚本, 正在剪辑…). The row already draws the
               face, so the pill sits where the words will be. */}
-          {typing ? (
-            <div style={{ marginTop: message.content ? 6 : 2 }}>
-              <AgentTyping agent={sp} zh={zh} step={streamStep(message.tools, sp)} face={false} />
-            </div>
-          ) : null}
 
           {/* A render or a video the answer names: the poster that plays,
               下载, 打开项目 — "done" with the film under it. */}

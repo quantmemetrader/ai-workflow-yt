@@ -41,6 +41,15 @@ const defs: ToolDef[] = [
   {
     type: "function",
     function: {
+      name: "work_status",
+      description:
+        "What is actually running, queued, finished or failed right now for the person you are helping: drafts, cuts, renders, voices, pictures, and the AI colleagues' own work — each with how far along it is, the step it is on and the time left. Call it FIRST whenever someone asks about progress (进度, 做好了吗, 开始了吗, 怎么样了) and answer only from it.",
+      parameters: { type: "object", properties: {}, required: [] },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "read_plan",
       description:
         "Today's plan from 策划 (the newest one posted): the focus, every to-do with the colleague it is assigned to, and whether anyone has pressed its hand-off buttons. A to-do is an assignment, not finished work — use list_scripts or list_projects to see what actually exists.",
@@ -264,6 +273,11 @@ async function run(ctx: ToolContext, name: string, args: Record<string, unknown>
         .filter(Boolean)
         .join("\n"),
     };
+  }
+
+  if (name === "work_status") {
+    const { workStatusText } = await import("@/lib/work/tracker");
+    return { text: await workStatusText(ctx.viewer) };
   }
 
   if (name === "assign_task") {

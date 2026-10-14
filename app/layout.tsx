@@ -75,34 +75,10 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         {children}
         {/* Anything that still rewrites our text gets turned back into Simplified (2 Oct). */}
         <SimplifiedGuard />
-        {/* Desktop only until the next release: the editor, timeline and
-            tables are not built for a phone, and half-working is worse than
-            a clear "not yet". CSS alone, so it is there before any script. */}
-        <div className="desktop-only-gate" role="alertdialog" aria-label="请使用电脑访问 · Please use a desktop">
-          <div>
-            <div style={{ fontSize: 17, fontWeight: 600, marginBottom: 10 }}>请使用电脑访问</div>
-            <p style={{ margin: "0 0 18px", color: "#7c7c7c", lineHeight: 1.6 }}>
-              手机版将在下一个版本推出。请在电脑浏览器中打开本站。
-            </p>
-            <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 8 }}>Please use a desktop</div>
-            <p style={{ margin: 0, color: "#7c7c7c", lineHeight: 1.6 }}>
-              The mobile version is coming in the next release. Open this site in a browser on your computer.
-            </p>
-          </div>
-        </div>
         <style dangerouslySetInnerHTML={{ __html: `
           .desktop-only-gate { display: none; }
           .skip-link { position: absolute; left: -9999px; top: 8px; z-index: 2147483646; background: #171717; color: #fff; padding: 8px 14px; border-radius: 8px; font-size: 13px; text-decoration: none; }
           .skip-link:focus { left: 8px; }
-          @media (max-width: 820px) {
-            .desktop-only-gate {
-              display: flex; position: fixed; inset: 0; z-index: 2147483647;
-              align-items: center; justify-content: center; text-align: center;
-              padding: 24px 16px; background: #fff; color: #171717;
-              font-size: 14px;
-            }
-            body { overflow: hidden; }
-          }
         ` }} />
       </body>
     </html>

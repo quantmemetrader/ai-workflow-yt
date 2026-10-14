@@ -115,7 +115,7 @@ export function HrScreen({
 
       <div style={{ flexGrow: 1, minHeight: 0, display: "flex" }}>
         <div style={{ flexGrow: 1, minWidth: 0, overflowY: "auto", padding: "18px 22px 40px" }}>
-          {tab === "leave" && <LeaveCalendar leave={leave} zh={zh} />}
+          {tab === "leave" && <LeaveCalendar leave={leave} zh={zh} people={employees.map((e) => ({ userId: e.userId, name: e.name }))} />}
           {tab === "leave" && (
             <Leave
               year={year}

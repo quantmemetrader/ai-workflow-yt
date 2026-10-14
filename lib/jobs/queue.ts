@@ -101,6 +101,7 @@ type RawJobRow = {
   attempts: number;
   max_attempts: number;
   progress: number;
+  stage?: string | null;
   cost_micros: string | number;
   object_type: string | null;
   object_id: string | null;
@@ -128,6 +129,7 @@ function toJobRow(raw: RawJobRow): JobRow {
     attempts: Number(raw.attempts),
     maxAttempts: Number(raw.max_attempts),
     progress: Number(raw.progress),
+    stage: raw.stage ?? null,
     costMicros: Number(raw.cost_micros),
     objectType: raw.object_type,
     objectId: raw.object_id,

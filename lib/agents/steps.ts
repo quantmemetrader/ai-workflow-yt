@@ -144,6 +144,8 @@ const TOOL_STEPS: Record<string, StepKey> = {
   set_enter: "graphics",
   set_look: "graphics",
   make_video: "making",
+  work_status: "projects",
+  read_url: "research",
   // legal
   list_contracts: "contracts",
   read_contract: "contracts",
@@ -158,6 +160,28 @@ const TOOL_STEPS: Record<string, StepKey> = {
   raise_spend_request: "spend",
   finance_report: "report",
 };
+
+/** A step as the person reads it while it runs: the kind of step, and what it is about when the call names it. */
+export function describeCall(name: string, argsJson: string): string {
+  let a: Record<string, unknown> = {};
+  try {
+    a = JSON.parse(argsJson || "{}") as Record<string, unknown>;
+  } catch {
+    /* half-written arguments: the step alone */
+  }
+  const pick = (...keys: string[]) => {
+    for (const k of keys) if (typeof a[k] === "string" && (a[k] as string).trim()) return (a[k] as string).replace(/\s+/g, " ").trim().slice(0, 36);
+    return "";
+  };
+  const base = STEP_LABELS[stepForTool(name)].zh.replace(/…$/, "");
+  if (name === "search_now") return `正在搜索「${pick("query") || "最新资讯"}」：新闻、视频、百科`;
+  if (name === "read_url") return `正在读网页 ${pick("url").replace(/^https?:\/\//, "").slice(0, 32)}`;
+  if (name === "assign_task") return `正在交给同事：${pick("task").slice(0, 30)}`;
+  if (name === "work_status") return "正在查任务进度";
+  const q = pick("query", "q", "phrase", "keyword");
+  const t = pick("title", "subject", "name", "topic", "angle");
+  return q ? `${base}「${q}」` : t ? `${base}《${t}》` : base;
+}
 
 export function stepForTool(name: string): StepKey {
   return Object.prototype.hasOwnProperty.call(TOOL_STEPS, name) ? TOOL_STEPS[name] : "working";

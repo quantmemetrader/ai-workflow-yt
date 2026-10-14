@@ -39,6 +39,11 @@ export function Tr({ zh, en, inZh = true }: { zh: string; en?: string; inZh?: bo
  * the line.
  */
 export const TR_EN: Record<string, string> = {
+  抓新闻: "Find news",
+  写脚本: "Write scripts",
+  更多: "More",
+  用户: "Users",
+  模型用量: "Model usage",
   // The rail and the top bar
   首页: "Home",
   聊天: "Chat",

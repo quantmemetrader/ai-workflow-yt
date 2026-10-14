@@ -1,6 +1,7 @@
 import "server-only";
 import Anthropic from "@anthropic-ai/sdk";
 import { AiError, type ChatMessage, type StreamEvent, type StreamOptions } from "@/lib/ai/openrouter";
+import { toSimplified } from "@/lib/text/simplified";
 
 /**
  * Claude straight from Anthropic (7 Oct).
@@ -158,6 +159,9 @@ export async function* streamAnthropic(opts: StreamOptions): AsyncGenerator<Stre
           ? { tools: opts.tools.map((t) => ({ name: t.function.name, description: t.function.description, input_schema: t.function.parameters as Anthropic.Tool.InputSchema })) }
           : {}),
         ...(short ? { output_config: { effort: "low" as const } } : {}),
+        /* The thinking summarised and streamed, so the person sees how it got there (15 Oct). Adaptive is the only
+           mode these models take; "summarized" makes the thinking readable instead of omitted. */
+        ...(opts.thinking && !short ? { thinking: { type: "adaptive", display: "summarized" } as unknown as Anthropic.ThinkingConfigParam } : {}),
         ...(opts.user ? { metadata: { user_id: opts.user } } : {}),
       },
       { signal: opts.signal },
@@ -165,6 +169,8 @@ export async function* streamAnthropic(opts: StreamOptions): AsyncGenerator<Stre
     for await (const event of stream) {
       if (event.type === "content_block_delta" && event.delta.type === "text_delta" && event.delta.text) {
         yield { type: "text", text: event.delta.text };
+      } else if (event.type === "content_block_delta" && event.delta.type === "thinking_delta" && event.delta.thinking) {
+        yield { type: "reasoning", text: toSimplified(event.delta.thinking) };
       }
     }
     const final = await stream.finalMessage();
