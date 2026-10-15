@@ -200,6 +200,12 @@ const CSS = `
 [data-compare-screen] .tr:hover { background: #fafafa; }
 /* The series name may take two lines rather than be cut to one letter. */
 [data-compare-screen] .nm { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.35; overflow-wrap: anywhere; }
+/* Phone: the scope chips scroll on one line. */
+@media (max-width: 760px) {
+  [data-compare-screen] div:has(> .chip.st) { overflow-x: auto; scrollbar-width: none; padding: 0 14px !important; }
+  [data-compare-screen] div:has(> .chip.st) > * { flex-shrink: 0; }
+  [data-compare-screen] div:has(> .chip.st) > .cap { display: none; }
+}
 `;
 
 /* ------------------------------------------------------------------ */

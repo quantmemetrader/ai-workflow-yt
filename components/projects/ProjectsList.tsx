@@ -131,7 +131,7 @@ function Row({ row: r, zh, first }: { row: ProjectListRow; zh: boolean; first: b
       </span>
       <span style={{ minWidth: 0, flexGrow: 1, display: "flex", flexDirection: "column", gap: 4 }}>
         <span style={{ fontSize: 14.5, fontWeight: 600, color: "#171717", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.title}</span>
-        <span style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, color: "#7a7a7a", minWidth: 0 }}>
+        <span className="pl-meta" style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, color: "#7a7a7a", minWidth: 0 }}>
           <span className="pl-pill" data-state={state}>
             {pill}
           </span>
@@ -140,7 +140,7 @@ function Row({ row: r, zh, first }: { row: ProjectListRow; zh: boolean; first: b
         </span>
       </span>
       <span className="pl-when">{r.when}</span>
-      <span style={{ fontSize: 13, color: "#525252", flexShrink: 0 }}>{t("打开 →", "Open →")}</span>
+      <span className="pl-open" style={{ fontSize: 13, color: "#525252", flexShrink: 0 }}>{t("打开 →", "Open →")}</span>
     </Link>
   );
 }
@@ -160,5 +160,5 @@ const LIST_CSS = `
 .pl-pill[data-state="running"] { background: #e9f2fe; color: #1f5fbf; }
 .pl-pill[data-state="done"] { background: #e7f6ee; color: #1e7a4f; }
 .pl-when { font-size: 12px; color: #a3a3a3; white-space: nowrap; flex-shrink: 0; }
-@media (max-width: 640px) { .pl-when { display: none; } .pl-thumb { width: 56px; height: 36px; } }
+@media (max-width: 640px) { .pl-when { display: none; } .pl-thumb { width: 56px; height: 36px; } .pl-open { display: none; } .pl-meta { flex-wrap: wrap; row-gap: 4px; } .pl-meta > span { white-space: nowrap; } .pl-row { gap: 12px; padding: 12px 14px; } }
 `;
