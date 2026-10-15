@@ -92,7 +92,7 @@ function estimate(elapsed: number, typical: number | null, reported: number | nu
   if (milestone && t) {
     const p = Math.min(0.95, Math.max(reported ?? 0, elapsed / t, 0.03));
     const left = t - elapsed;
-    return { progress: p, estimated: true, etaMs: left > 3_000 ? Math.round(left) : elapsed > t * 1.25 ? null : 3_000 };
+    return { progress: p, estimated: true, etaMs: left > 3_000 ? Math.round(left) : null };
   }
   if (reported != null && reported > 0.02) {
     const byRate = (elapsed * (1 - reported)) / reported;
@@ -103,7 +103,7 @@ function estimate(elapsed: number, typical: number | null, reported: number | nu
   if (!t) return { progress: 0.05, estimated: true, etaMs: null };
   const p = Math.min(0.95, Math.max(0.03, elapsed / t));
   const left = t - elapsed;
-  return { progress: p, estimated: true, etaMs: left > 3_000 ? Math.round(left) : elapsed > t * 1.25 ? null : 3_000 };
+  return { progress: p, estimated: true, etaMs: left > 3_000 ? Math.round(left) : null };
 }
 
 export async function listWork(viewer: Viewer, opts: { recentMinutes?: number; limit?: number } = {}): Promise<WorkItem[]> {

@@ -80,6 +80,29 @@ export function TaskTracker({ zh }: { zh: boolean }) {
     const off = onBump(() => void window.setTimeout(poll, 800));
     return off;
   }, [poll]);
+  /* Something was just started (a server action, or a POST to our own API): look now instead of on the 15-second tick,
+     so the task is in the panel by the time anyone opens it (15 Oct: 整条视频 started, panel still said 没有正在做的事). */
+  React.useEffect(() => {
+    const orig = window.fetch;
+    let t = 0;
+    const isAction = (h: HeadersInit | undefined) =>
+      !!h && (h instanceof Headers ? h.has("next-action") : Array.isArray(h) ? h.some(([k]) => k.toLowerCase() === "next-action") : Object.keys(h).some((k) => k.toLowerCase() === "next-action"));
+    const wrapped: typeof fetch = async (input, init) => {
+      const res = await orig(input, init);
+      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      const post = (init?.method ?? (input instanceof Request ? input.method : "GET")).toUpperCase() === "POST";
+      if (isAction(init?.headers) || (post && /^(https?:\/\/[^/]+)?\/api\//.test(url) && !url.includes("/api/work"))) {
+        window.clearTimeout(t);
+        t = window.setTimeout(() => void poll(), 700);
+      }
+      return res;
+    };
+    window.fetch = wrapped;
+    return () => {
+      window.clearTimeout(t);
+      if (window.fetch === wrapped) window.fetch = orig;
+    };
+  }, [poll]);
   React.useEffect(() => {
     const t = window.setTimeout(() => {
       if (document.visibilityState === "visible") void poll();
