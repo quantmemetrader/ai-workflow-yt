@@ -9,7 +9,7 @@ import { toSimplified } from "@/lib/text/simplified";
 import { complete } from "@/lib/ai/openrouter";
 import { modelFor } from "@/lib/ai/models";
 import { recordUsage } from "@/lib/ai/ledger";
-import { keptWords, normChars, piecesFromKept, piecesMs, type TimedWord } from "@/lib/video/script-cut";
+import { keptWords, normChars, piecesFromKept, piecesMs, transferPunctuation, type TimedWord } from "@/lib/video/script-cut";
 
 /**
  * The script page as what the host actually says (15 Oct: "if user has uploaded the video then the script section
@@ -131,16 +131,19 @@ async function tidy(words: readonly TimedWord[], viewer: Viewer | null): Promise
   if (cur.length) chunks.push(cur);
   const out: string[] = [];
   for (const chunk of chunks) {
-    const text = chunk.join("\n");
+    /* One run of text, so the model paragraphs it by meaning rather than keeping the plain breaks. */
+    const text = chunk.join("");
     try {
       const r = await complete({ model: modelFor.utility(), temperature: 0, maxTokens: Math.min(6000, text.length * 3 + 400), messages: [{ role: "system", content: PUNCTUATE }, { role: "user", content: text }] });
       if (viewer) await recordUsage({ viewer, module: "script", provider: r.provider ?? "openrouter", model: r.model, promptTokens: r.promptTokens, completionTokens: r.completionTokens, costMicros: r.costMicros, requestId: r.requestId ?? undefined }).catch(() => {});
       const tidied = toSimplified(r.text.trim()).replace(/^```\w*\n?|```$/g, "");
-      if (key(tidied) === key(text)) {
-        out.push(...tidied.split(/\n\s*\n|\n/).map((x) => x.trim()).filter(Boolean));
+      /* Only the model's punctuation, spacing and breaks are taken; every spoken character is hers, as said. */
+      const laid = transferPunctuation(text, tidied);
+      if (laid && key(laid) === key(text)) {
+        out.push(...laid.split(/\n+/).map((x) => x.trim()).filter(Boolean));
         continue;
       }
-      console.log(`[from-footage] tidy changed the words (${key(tidied).length} vs ${key(text).length} chars); plain paragraphs kept`);
+      console.log(`[from-footage] tidy had too little in common with the transcript; plain paragraphs kept`);
     } catch (err) {
       console.log(`[from-footage] tidy failed: ${err instanceof Error ? err.message : err}`);
     }

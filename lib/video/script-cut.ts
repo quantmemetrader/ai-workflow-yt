@@ -183,3 +183,50 @@ export function piecesFromKept(
 }
 
 export const piecesMs = (pieces: readonly Piece[]) => pieces.reduce((n, p) => n + (p.outMs - p.inMs), 0);
+
+/** For each item of `a`, the index of the item of `b` it is matched to in order (-1 when none): the pairs behind `matchedMask`. */
+export function matchPairs(a: readonly string[], b: readonly string[]): number[] {
+  const pairs = new Array<number>(a.length).fill(-1);
+  const mask = matchedMask(a, b);
+  /* The mask marks which of `a` matched; walk both in order to pair them with the same items of `b`. */
+  let j = 0;
+  for (let i = 0; i < a.length; i++) {
+    if (!mask[i]) continue;
+    while (j < b.length && b[j] !== a[i]) j++;
+    if (j < b.length) pairs[i] = j++;
+  }
+  return pairs;
+}
+
+/**
+ * The punctuation, spacing and line breaks of `styled`, laid onto the letters, digits and Han characters of
+ * `original`. The original's own characters always win (a model that "corrected" a character cannot change what
+ * was said); only what sits between them comes from `styled`. Returns null when the two have too little in common.
+ */
+export function transferPunctuation(original: string, styled: string): string | null {
+  const isC = (c: string) => /[\p{L}\p{N}]/u.test(c);
+  const key = (c: string) => c.toLowerCase().normalize("NFKC");
+  const oc = [...original].filter(isC);
+  const sc: string[] = [];
+  const after: string[] = [];
+  let lead = "";
+  for (const c of [...styled]) {
+    if (isC(c)) {
+      sc.push(c);
+      after.push("");
+    } else if (sc.length) after[after.length - 1] += c;
+    else lead += c;
+  }
+  if (!oc.length) return null;
+  const pairs = matchPairs(oc.map(key), sc.map(key));
+  if (pairs.filter((p) => p >= 0).length < oc.length * 0.6) return null;
+  let out = lead.trim();
+  for (let i = 0; i < oc.length; i++) {
+    out += oc[i];
+    const j = pairs[i];
+    /* What the styled text put after this character — unless the next original character is matched to the very
+       next styled character's predecessor (no gap), then nothing. */
+    if (j >= 0) out += after[j];
+  }
+  return out;
+}
