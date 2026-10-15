@@ -513,8 +513,11 @@ function People({
         />
       ) : null}
 
+      {/* Phone: each person is their name, their role and, under them, their actions; the rest is on desktop. */}
+      <style>{`@media (max-width:760px){.roster-row{grid-template-columns:minmax(0,1fr) 112px !important;min-width:0 !important;row-gap:8px !important}.roster-row>:nth-child(n+3):not(:last-child){display:none !important}.roster-row>:last-child{grid-column:1/-1;justify-self:start}.roster-head>:last-child{display:none}}`}</style>
       <div style={{ display: "flex", flexDirection: "column", overflowX: "auto" }}>
         <div
+          className="roster-row roster-head"
           style={{
             display: "grid",
             gridTemplateColumns: COLUMNS,
@@ -557,6 +560,7 @@ function People({
           return (
             <div
               key={p.id}
+              className="roster-row"
               style={{
                 display: "grid",
                 gridTemplateColumns: COLUMNS,
