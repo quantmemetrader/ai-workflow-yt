@@ -4,7 +4,7 @@ import { db } from "@/lib/db/client";
 import { files, scriptBeats, scripts, videoClips, workProjects } from "@/lib/db/schema";
 import type { Viewer } from "@/lib/auth/types";
 import { beatsFromDoc, docForBeats, type RichDoc, type RichNode } from "@/lib/script/rich";
-import { cutVersion, saveBeats } from "@/lib/script/service";
+import { createScript, cutVersion, saveBeats } from "@/lib/script/service";
 import { toSimplified } from "@/lib/text/simplified";
 import { keptWords, normChars, piecesFromKept, piecesMs, type TimedWord } from "@/lib/video/script-cut";
 
@@ -105,10 +105,18 @@ const para = (text: string): RichNode => ({ type: "paragraph", content: [{ type:
  *   approved and locked         left alone (unlock to bring the footage in)
  */
 export async function syncScriptFromFootage(viewer: Viewer, workProjectId: string): Promise<{ changed: boolean; why: string }> {
-  const [p] = await db.select({ scriptId: workProjects.scriptId, videoProjectId: workProjects.videoProjectId }).from(workProjects).where(eq(workProjects.id, workProjectId)).limit(1);
-  if (!p?.scriptId || !p.videoProjectId) return { changed: false, why: "the project has no script or no video" };
+  const [p] = await db.select({ scriptId: workProjects.scriptId, videoProjectId: workProjects.videoProjectId, title: workProjects.title }).from(workProjects).where(eq(workProjects.id, workProjectId)).limit(1);
+  if (!p?.videoProjectId) return { changed: false, why: "the project has no video" };
   const clips = await hostClips(p.videoProjectId);
   if (!clips.length) return { changed: false, why: "no transcribed footage of the host yet" };
+  /* No script, or the one it pointed at was deleted (26.10.06 试剪, 7 Oct): the footage gets a fresh one. */
+  const [live] = p.scriptId ? await db.select({ id: scripts.id }).from(scripts).where(and(eq(scripts.id, p.scriptId), isNull(scripts.deletedAt))).limit(1) : [];
+  if (!live) {
+    const made = await createScript(viewer, { title: p.title, aspect: "9:16" });
+    await db.update(workProjects).set({ scriptId: made }).where(eq(workProjects.id, workProjectId));
+    p.scriptId = made;
+  }
+  if (!p.scriptId) return { changed: false, why: "the project has no script" };
   const [s] = await db.select({ doc: scripts.doc, footage: scripts.footage, lockedVersion: scripts.lockedVersion }).from(scripts).where(eq(scripts.id, p.scriptId)).limit(1);
   if (!s) return { changed: false, why: "the script is gone" };
   if (s.lockedVersion !== null) return { changed: false, why: "the script is approved and locked" };
