@@ -109,6 +109,23 @@ const PUNCTUATE = `你是中文字幕编辑。下面是一段口播的逐字转�
 3. 按意思分段，每段两到四句，段与段之间空一行。
 严禁增加、删除、替换或调换任何一个汉字、字母或数字，错别字也原样保留。只输出整理后的正文，不要解释。`;
 
+/** A paragraph longer than a phone screen is split at sentence ends into pieces of about 120 characters. */
+function splitLong(p: string): string[] {
+  if (p.length <= 160) return [p];
+  const sentences = p.match(/[^。！？!?]+[。！？!?]*/g) ?? [p];
+  const out: string[] = [];
+  let cur = "";
+  for (const x of sentences) {
+    if (cur && cur.length + x.length > 120) {
+      out.push(cur);
+      cur = "";
+    }
+    cur += x;
+  }
+  if (cur) out.push(cur);
+  return out;
+}
+
 /**
  * Punctuation, re-joined English and paragraphs for what she said, by a model — and only if it kept every
  * character: the letters, digits and Han characters of its answer must equal those of the transcript exactly,
@@ -140,7 +157,7 @@ async function tidy(words: readonly TimedWord[], viewer: Viewer | null): Promise
       /* Only the model's punctuation, spacing and breaks are taken; every spoken character is hers, as said. */
       const laid = transferPunctuation(text, tidied);
       if (laid && key(laid) === key(text)) {
-        out.push(...laid.split(/\n+/).map((x) => x.trim()).filter(Boolean));
+        out.push(...laid.split(/\n+/).map((x) => x.trim()).filter(Boolean).flatMap(splitLong));
         continue;
       }
       console.log(`[from-footage] tidy had too little in common with the transcript; plain paragraphs kept`);
