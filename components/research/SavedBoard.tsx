@@ -172,7 +172,7 @@ export function SavedBoard({
         ) : (
           <div style={{ display: "flex", flexDirection: "column" }}>
             {watched.map((w, i) => (
-              <div key={w.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 0", borderTop: i ? "1px solid #f0efeb" : 0 }}>
+              <div key={w.id} className="sb-w" style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 0", borderTop: i ? "1px solid #f0efeb" : 0 }}>
                 <span style={{ minWidth: 0, flexGrow: 1, fontSize: 14, color: INK, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{w.name}</span>
                 <span style={{ fontSize: 12.5, color: MUTED, whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>
                   {w.collecting ? t("正在收集…", "Collecting…") : (
@@ -216,7 +216,7 @@ export function SavedBoard({
           <CreatorMemory state={creator} syncing={creatorSyncing} zh={zh} canAdmin={canAdmin} />
         </div>
       ) : null}
-      <style>{`.sb-quiet{border:0;background:none;padding:0 4px;font:inherit;font-size:12.5px;color:#8a8a8a;cursor:pointer;white-space:nowrap}.sb-quiet:hover{color:#171717}`}</style>
+      <style>{`.sb-quiet{border:0;background:none;padding:0 4px;font:inherit;font-size:12.5px;color:#8a8a8a;cursor:pointer;white-space:nowrap}.sb-quiet:hover{color:#171717}@media (max-width:760px){.sb-w{flex-wrap:wrap;row-gap:6px;gap:10px !important}.sb-w>span:first-child{flex:1 1 100% !important;white-space:normal !important}}`}</style>
     </PageBody>
   );
 }

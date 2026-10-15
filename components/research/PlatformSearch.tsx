@@ -90,7 +90,7 @@ export function PlatformSearch({ phrases, zh }: { phrases: string[]; zh: boolean
               )}
               <span style={{ minWidth: 0 }}>
                 <span style={{ display: "block", fontSize: 12.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{r.phrase}</span>
-                <span style={{ display: "flex", gap: 9, fontSize: 11, color: "#7c7c7c", marginTop: 2, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap", overflow: "hidden" }}>
+                <span style={{ display: "flex", flexWrap: "wrap", columnGap: 9, rowGap: 1, fontSize: 11, color: "#7c7c7c", marginTop: 2, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>
                   {r.extra ? <span style={{ overflow: "hidden", textOverflow: "ellipsis", maxWidth: 140 }}>{r.extra}</span> : null}
                   {r.stats?.views != null ? <span><Icon name="play" size={10} fill /> {compact(r.stats.views)}</span> : null}
                   {r.stats?.likes != null ? <span><Icon name="heart" size={10} /> {compact(r.stats.likes)}{r.stats.likeRate != null ? ` · ${(r.stats.likeRate * 100).toFixed(1)}%` : ""}</span> : null}

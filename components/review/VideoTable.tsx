@@ -136,4 +136,6 @@ const CSS = `
 .vt-proj { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 @media (max-width: 1280px) { .vt-row { grid-template-columns: 64px minmax(0,1fr) 76px 64px 56px 64px 72px; } .vt-h1 { display: none; } }
 @media (max-width: 1080px) { .vt-row { grid-template-columns: 64px minmax(0,1fr) 72px 60px 52px; } .vt-h2 { display: none; } }
+/* Phone: the cover, the title with its platform and date, and the plays; likes and comments are on the video's own page. */
+@media (max-width: 760px) { .vt-row { grid-template-columns: 56px minmax(0,1fr) 54px; gap: 10px; padding: 10px 14px; } .vt-row > :nth-child(4), .vt-row > :nth-child(5) { display: none; } .vt-cover { width: 56px; height: 34px; } .vt-title { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; } }
 `;

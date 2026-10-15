@@ -35,12 +35,12 @@ export function ResearchTabs({ zh, savedCount }: { zh: boolean; savedCount?: num
   return (
     <div style={{ flexShrink: 0, background: "rgba(250,250,248,.92)", borderBottom: "1px solid #e7e6e2" }}>
       <style>{TAB_CSS}</style>
-      <div style={{ padding: "14px 32px 0", maxWidth: 1440 }}>
+      <div className="rt-wrap" style={{ padding: "14px 32px 0", maxWidth: 1440 }}>
         <div style={{ display: "flex", alignItems: "baseline", gap: 12, minWidth: 0 }}>
           <h1 style={{ margin: 0, fontSize: 18, fontWeight: 600, color: "#171717" }}>{zh ? "选题" : "Topics"}</h1>
           <span style={{ fontSize: 13, color: "#8a8a8a" }}>{zh ? "今天拍什么？" : "What should we make today?"}</span>
         </div>
-        <nav aria-label={zh ? "选题页面" : "Topic pages"} style={{ display: "flex", gap: 2, marginTop: 8 }}>
+        <nav className="rt-nav" aria-label={zh ? "选题页面" : "Topic pages"} style={{ display: "flex", gap: 2, marginTop: 8 }}>
           {tabs.map((t) => {
             const on = t.href === "/research" ? pathname === "/research" : pathname.startsWith(t.href);
             return (
@@ -59,6 +59,13 @@ export function ResearchTabs({ zh, savedCount }: { zh: boolean; savedCount?: num
 const TAB_CSS = `
 .rt-tab { display: inline-flex; align-items: center; gap: 6px; height: 40px; padding: 0 14px; font-size: 14px; color: #6b6b6b; text-decoration: none; border-bottom: 2px solid transparent; white-space: nowrap; transition: color .15s ease, border-color .15s ease; }
 .rt-tab:hover { color: #171717; }
+@media (max-width: 760px) {
+  .rt-wrap { padding: 12px 16px 0 !important; }
+  .rt-wrap h1 { font-size: 22px !important; }
+  .rt-nav { overflow-x: auto; scrollbar-width: none; margin: 8px -16px 0; padding: 0 6px; }
+  .rt-nav::-webkit-scrollbar { display: none; }
+  .rt-tab { padding: 0 10px; flex-shrink: 0; }
+}
 .rt-tab[data-on] { color: #171717; font-weight: 600; border-bottom-color: #171717; }
 .rt-n { font-size: 11px; font-weight: 600; color: #525252; background: #ececea; border-radius: 99px; padding: 0 7px; line-height: 18px; }
 `;

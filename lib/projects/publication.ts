@@ -67,7 +67,9 @@ export function isPublishPlatform(v: unknown): v is PublishPlatform {
 
 /** A platform's name as the studio says it (抖音, 小红书, B站 …). */
 export function publishPlatformName(key: string, zh: boolean): string {
-  const p = PUBLISH_PLATFORMS.find((x) => x.key === key);
+  /* The account data calls 视频号 by its API name; the list here by the name the studio uses. */
+  const k = key === "wechat_channels" ? "shipinhao" : key;
+  const p = PUBLISH_PLATFORMS.find((x) => x.key === k);
   return p ? (zh ? p.zh : p.en) : key;
 }
 
