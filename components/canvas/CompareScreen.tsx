@@ -994,6 +994,7 @@ export function CompareScreen(props: {
           </div>
 
           <div
+            data-agent-panel=""
             style={{
               width: agentWidth,
               position: "relative",

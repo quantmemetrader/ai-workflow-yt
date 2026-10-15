@@ -6,6 +6,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { arrangeRail, type RailLayout } from "@/lib/nav-layout";
 import { saveRailLayoutAction } from "@/app/(app)/rail-actions";
 import { notify } from "@/lib/client/notify";
+import { PhoneDock } from "@/components/shell/PhoneDock";
 import { RailAccount, type RailAccountInfo } from "@/components/shell/RailAccount";
 import { LangToggle } from "@/components/shell/ThemeToggle";
 import { BrandMark } from "@/components/brand/BrandMark";
@@ -522,6 +523,8 @@ export function Rail({ modules, locale, account, isAdmin = false, layout: savedL
         * owner asked for it here, beside 历史记录 and 收起. Named and with the
         * role (the old bare avatar said who you were, never what you were). */}
       {account ? <RailAccount account={account} zh={zh} wide={open} /> : null}
+      {/* On a phone the rail is this dock at the foot of the screen, in the person's own order. */}
+      <PhoneDock main={arranged.main} more={arranged.more} back={arranged.back} pathname={pathname} zh={zh} account={account} />
 
       {tip && (
         <span

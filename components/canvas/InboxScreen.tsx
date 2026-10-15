@@ -240,6 +240,23 @@ const CSS = `
   [data-inbox-screen] .ib-sub { display: none; }
   [data-inbox-screen] .ib-steer { flex-basis: 140px; }
 }
+[data-inbox-screen] .ib-back { display: none; }
+/* Phone: one column. The header wraps, the filters scroll sideways, and the list and the open comment take turns. */
+@media (max-width: 760px) {
+  [data-inbox-screen] .bar { flex-wrap: wrap; height: auto; row-gap: 8px; padding: 12px 16px; }
+  [data-inbox-screen] .bar .h1 { font-size: 20px; font-weight: 600; flex: 1 1 auto; }
+  [data-inbox-screen] .bar > div[style*="240px"] { flex: 1 1 100% !important; height: 38px !important; border-radius: 12px !important; }
+  [data-inbox-screen] .ib-sub { display: none; }
+  [data-inbox-screen] .ib-row, [data-inbox-screen] .ib-sum, [data-inbox-screen] .ib-sumitems { overflow-x: auto; flex-wrap: nowrap !important; scrollbar-width: none; }
+  [data-inbox-screen] .ib-row > *, [data-inbox-screen] .ib-sumitems > * { flex-shrink: 0; }
+  [data-inbox-screen] .ib-list { width: 100% !important; max-width: none !important; border-right: 0 !important; }
+  [data-inbox-screen]:not([data-picked]) .ib-detail { display: none !important; }
+  [data-inbox-screen][data-picked] .ib-list { display: none !important; }
+  [data-inbox-screen] .ib-detail { padding: 12px !important; }
+  [data-inbox-screen] .ib-back { display: inline-flex; align-items: center; gap: 4px; height: 34px; padding: 0 12px 0 8px; margin-bottom: 10px; border: 1px solid #e6e6e6; border-radius: 17px; background: #fff; font: inherit; font-size: 13px; color: #262626; cursor: pointer; }
+  [data-inbox-screen] .ib-back svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  [data-inbox-screen] .ib-card { max-width: none; }
+}
 [data-inbox-screen] .ib-ai { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 7px; background: #f5d4e6; color: #8a3a66; flex-shrink: 0; }
 `;
 
@@ -636,6 +653,8 @@ export function InboxScreen(props: InboxScreenProps): React.JSX.Element {
       .find((x) => x !== null);
     return hit ?? null;
   }, [groups, selectedId]);
+  /* On a phone the list and the comment take turns: a tap opens the comment, 返回 goes back to the list. */
+  const [picked, setPicked] = React.useState(false);
 
   const languages = React.useMemo(
     () => Object.entries(summary.language).sort((a, b) => b[1] - a[1]),
@@ -1311,12 +1330,13 @@ export function InboxScreen(props: InboxScreenProps): React.JSX.Element {
                   role="button"
                   tabIndex={0}
                   aria-pressed={on}
-                  onClick={() => onSelect(c.id)}
+                  onClick={() => (onSelect(c.id), setPicked(true))}
                   onKeyDown={(e) => {
                     if (e.target !== e.currentTarget) return;
                     if (e.key === "Enter" || e.key === " ") {
                       e.preventDefault();
                       onSelect(c.id);
+                      setPicked(true);
                     }
                   }}
                 >
@@ -1503,7 +1523,11 @@ export function InboxScreen(props: InboxScreenProps): React.JSX.Element {
     );
 
     detail = (
-      <div style={{ flexGrow: 1, minWidth: 0, overflowY: "auto", background: "#fafafa", padding: 16 }}>
+      <div className="ib-detail" style={{ flexGrow: 1, minWidth: 0, overflowY: "auto", background: "#fafafa", padding: 16 }}>
+        <button type="button" className="ib-back" onClick={() => setPicked(false)}>
+          <svg viewBox="0 0 24 24" aria-hidden><path d="m14.5 5.5-7 6.5 7 6.5" /></svg>
+          {zh ? "返回列表" : "Back to the list"}
+        </button>
         <article className="ib-card" aria-label={`${t("Comment")} · ${name}`}>
           {/* The video the comment was left on: a reply reads differently
               under a different video, so it is the first thing on the card. */}
@@ -1867,6 +1891,7 @@ export function InboxScreen(props: InboxScreenProps): React.JSX.Element {
           Rail and ResearchSidebar. */}
       <div
         data-inbox-screen=""
+        data-picked={picked ? "" : undefined}
         style={{ ...frameStyle, flexGrow: 1, display: "flex", flexDirection: "column", minWidth: 0, minHeight: 0 }}
       >
         {header}

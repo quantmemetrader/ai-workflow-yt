@@ -63,6 +63,7 @@ export function TopBar({
 
   return (
     <header
+      className="tb"
       style={{
         height: 38,
         flexShrink: 0,
@@ -77,7 +78,7 @@ export function TopBar({
       <MobileNav zh={zh} />
       {here.module && (
         <span style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0 }}>
-          <span style={{ fontSize: 12.5, fontWeight: 500, color: "#171717", whiteSpace: "nowrap" }}>
+          <span className="tb-title" style={{ fontSize: 12.5, fontWeight: 500, color: "#171717", whiteSpace: "nowrap" }}>
             {/* Translate-proof, like the rail: 首页 must not become "front page". */}
             {zh ? <Tr zh={here.module.labelZh} en={TR_EN[here.module.labelZh] ?? here.module.label} /> : here.module.label}
           </span>
@@ -120,6 +121,7 @@ export function TopBar({
         * button nested in an <a> is invalid and reads as one control. */}
       <style dangerouslySetInnerHTML={{ __html: "[data-face-button]:hover > *{box-shadow:0 0 0 2px #d4d4d4}[data-face-button]:focus-visible > *{box-shadow:0 0 0 2px #171717}" }} />
       <div
+        className="tb-who"
         style={{
           display: "flex",
           alignItems: "center",
