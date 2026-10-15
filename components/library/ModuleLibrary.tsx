@@ -70,6 +70,8 @@ export function ModuleLibrary({ module, title, agentName, zh, folderId, files, c
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14, maxWidth: 1080 }}>
+      {/* Phone: the name and its details take the whole line, the buttons go under it. */}
+      <style>{`@media (max-width:760px){.ml-row{flex-wrap:wrap;row-gap:8px;gap:8px !important;padding:12px 14px !important}.ml-row>div:first-of-type{flex:1 1 100% !important}.ml-row>div:first-of-type a,.ml-row>div:first-of-type>div:first-child{white-space:normal !important;word-break:break-all}}`}</style>
       {ask.dialog}
       <div>
         <div style={{ fontSize: 17, fontWeight: 650, color: "#171717" }}>{title}</div>
@@ -150,7 +152,7 @@ export function ModuleLibrary({ module, title, agentName, zh, folderId, files, c
           shown.map((f, i) => {
             const on = picked.has(f.id);
             return (
-              <div key={f.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "11px 16px", borderTop: i ? "1px solid #f0efeb" : 0, background: on ? "#eaf2fe" : undefined, cursor: picking ? "pointer" : undefined }} onClick={picking ? () => setPicked((s) => { const n = new Set(s); if (n.has(f.id)) n.delete(f.id); else n.add(f.id); return n; }) : undefined}>
+              <div key={f.id} className="ml-row" style={{ display: "flex", alignItems: "center", gap: 12, padding: "11px 16px", borderTop: i ? "1px solid #f0efeb" : 0, background: on ? "#eaf2fe" : undefined, cursor: picking ? "pointer" : undefined }} onClick={picking ? () => setPicked((s) => { const n = new Set(s); if (n.has(f.id)) n.delete(f.id); else n.add(f.id); return n; }) : undefined}>
                 {picking ? <input type="checkbox" readOnly checked={on} style={{ flexShrink: 0 }} /> : null}
                 <div style={{ minWidth: 0, flexGrow: 1 }}>
                   {picking ? (

@@ -102,8 +102,8 @@ export function ProjectHeader({ p, zh }: { p: HeaderProject; zh: boolean }) {
   return (
     <div style={{ flexShrink: 0, background: "rgba(250,250,248,.92)", borderBottom: "1px solid #e7e6e2" }}>
       <style>{HEADER_CSS}</style>
-      <div style={{ padding: "12px 32px 0" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+      <div className="ph-wrap" style={{ padding: "12px 32px 0" }}>
+        <div className="ph-row" style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
           <Link prefetch={false} href="/projects" className="ph-quiet" style={{ fontSize: 12, color: "#8a8a8a", textDecoration: "none", display: "inline-flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
             <Icon name="folder" size={13} />
             {t("项目", "Projects")}
@@ -137,7 +137,7 @@ export function ProjectHeader({ p, zh }: { p: HeaderProject; zh: boolean }) {
             </form>
           ) : (
             <>
-              <h1 onDoubleClick={() => p.canManage && setNaming(true)} title={p.canManage ? t("双击或点旁边的笔改名", "Double-click or press the pencil to rename") : undefined} style={{ fontSize: 18, fontWeight: 600, margin: 0, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", cursor: p.canManage ? "text" : "default" }}>
+              <h1 className="ph-h1" onDoubleClick={() => p.canManage && setNaming(true)} title={p.canManage ? t("双击或点旁边的笔改名", "Double-click or press the pencil to rename") : undefined} style={{ fontSize: 18, fontWeight: 600, margin: 0, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", cursor: p.canManage ? "text" : "default" }}>
                 {p.title}
               </h1>
               {/* A press you can see: double-click alone was a hidden way in (QA, 2 Oct). */}
@@ -149,7 +149,7 @@ export function ProjectHeader({ p, zh }: { p: HeaderProject; zh: boolean }) {
             </>
           )}
           {statusPill}
-          <span style={{ flexGrow: 1 }} />
+          <span className="ph-gap" style={{ flexGrow: 1 }} />
           <button type="button" className="ph-quiet" onClick={() => p.canManage && setSharing(true)} disabled={!p.canManage} title={p.canManage ? t("更改谁能看到", "Change who can see it") : undefined} style={quiet("#7a7a7a")}>
             <Icon name={p.access.mode === "everyone" ? "eye" : "lock"} size={12} />
             {reachLine}
@@ -264,5 +264,13 @@ const HEADER_CSS = `
 .ph-num { width: 20px; height: 20px; border-radius: 99px; display: inline-flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; border: 1px solid #d4d4d0; color: #6b6b6b; background: #fff; }
 .ph-num[data-state="done"] { background: #22a061; border-color: #22a061; color: #fff; }
 .ph-num[data-state="now"] { background: #f0a53a; border-color: #f0a53a; color: #fff; }
+/* Phone: the name gets its own line, the actions wrap under it. */
+@media (max-width: 760px) {
+  .ph-wrap { padding: 10px 16px 0 !important; }
+  .ph-row { flex-wrap: wrap; row-gap: 4px; gap: 8px !important; }
+  .ph-h1 { flex: 1 1 60%; min-width: 0; font-size: 20px !important; white-space: normal !important; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; line-height: 1.3 !important; }
+  .ph-gap { flex: 1 0 100% !important; height: 0; }
+  .ph-tab { height: 42px; padding: 0 12px; }
+}
 .ph-now { font-size: 10.5px; font-weight: 600; color: #95590a; background: #fff4df; border-radius: 99px; padding: 0 7px; line-height: 18px; }
 `;

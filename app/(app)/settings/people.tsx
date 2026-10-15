@@ -176,10 +176,10 @@ export function PeopleCard({ zh, initialInvites }: { zh: boolean; initialInvites
       {rows.length > 0 && (
         <div className="mt-3 flex flex-col gap-1">
           {rows.map((r) => (
-            <div key={r.id} className="flex items-center gap-3 border-t border-outline-gray-1 py-2 text-xs">
-              <span className="text-ink-gray-8">{r.email}</span>
-              <span className="text-ink-gray-5">{zh ? (ROLE_ZH[r.role as keyof typeof ROLE_ZH] ?? r.role) : r.role}</span>
-              <span className="ml-auto text-ink-gray-5">
+            <div key={r.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-outline-gray-1 py-2 text-xs">
+              <span className="min-w-0 break-all text-ink-gray-8">{r.email}</span>
+              <span className="whitespace-nowrap text-ink-gray-5">{zh ? (ROLE_ZH[r.role as keyof typeof ROLE_ZH] ?? r.role) : r.role}</span>
+              <span className="ml-auto whitespace-nowrap text-ink-gray-5">
                 {r.acceptedAt
                   ? zh
                     ? "已加入"
@@ -205,7 +205,7 @@ export function PeopleCard({ zh, initialInvites }: { zh: boolean; initialInvites
                       setRows((cur) => cur.map((x) => (x.id === r.id ? { ...x, id: res.id, expiresAt: res.expiresAt } : x)));
                     })
                   }
-                  className="text-ink-gray-5 hover:text-ink-gray-9"
+                  className="whitespace-nowrap text-ink-gray-5 hover:text-ink-gray-9"
                 >
                   {zh ? "重发邮件" : "resend"}
                 </button>
@@ -219,7 +219,7 @@ export function PeopleCard({ zh, initialInvites }: { zh: boolean; initialInvites
                       setRows((cur) => cur.filter((x) => x.id !== r.id));
                     })
                   }
-                  className="text-ink-gray-5 hover:text-red-600"
+                  className="whitespace-nowrap text-ink-gray-5 hover:text-red-600"
                 >
                   {zh ? "撤销" : "revoke"}
                 </button>

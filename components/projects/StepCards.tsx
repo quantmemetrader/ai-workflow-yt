@@ -161,7 +161,7 @@ export function StepCards({ p, zh, me }: { p: ProjectDetail; zh: boolean; me: St
           );
         })}
       </div>
-      <style>{`.sc-row{transition:border-color .15s ease, box-shadow .15s ease}.sc-row:hover{border-color:#c9c8c2 !important}.sc-row[data-now]:hover{border-color:#e8b45a !important}`}</style>
+      <style>{`.sc-row{transition:border-color .15s ease, box-shadow .15s ease}.sc-row:hover{border-color:#c9c8c2 !important}.sc-row[data-now]:hover{border-color:#e8b45a !important}@media (max-width:760px){.sc-row{grid-template-columns:34px minmax(0,1fr) !important;gap:10px 12px !important;padding:14px !important;min-height:0 !important}.sc-row>span:last-child{grid-column:2/-1;justify-self:start}}`}</style>
     </>
   );
 }
@@ -192,7 +192,7 @@ function Person({ person, zh, role }: { person: StepPerson | null; zh: boolean; 
     <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12.5, color: "#404040" }}>
       <PersonAvatar id={person?.id ?? "host"} url={person?.avatarUrl ?? null} name={person?.name ?? (zh ? "主持人" : "Host")} size={20} />
       {person?.name ?? (zh ? "主持人" : "Host")}
-      <span style={{ color: "#9a9a9a" }}>· {role}</span>
+      <span style={{ color: "#9a9a9a", whiteSpace: "nowrap" }}>· {role}</span>
     </span>
   );
 }

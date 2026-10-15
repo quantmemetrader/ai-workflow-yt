@@ -280,5 +280,15 @@ a.hb-title:hover { text-decoration: underline; }
 @media (hover: none) { .hb-hide { opacity: 1; } }
 .hb-make:disabled { cursor: default; }
 @media (hover: none) { .hb-make { opacity: 1; } }
-@media (max-width: 760px) { .hb-row { grid-template-columns: 28px minmax(0,1fr) 90px; } .hb-row > :nth-child(3) { display: none; } .hb-make { display: none; } .hb-row { grid-template-columns: 28px minmax(0,1fr) 90px 34px; } }
+/* Phone: two lines per post — the title, then its platform, how hot it is and the actions — instead of five squeezed columns. */
+@media (max-width: 760px) {
+  .hb-head { display: none !important; }
+  .hb-row { grid-template-columns: 22px auto minmax(0,1fr) auto; grid-template-areas: "n t t t" "n p h a"; column-gap: 10px; row-gap: 5px; padding: 12px 14px; align-items: center; }
+  .hb-row > :nth-child(1) { grid-area: n; align-self: start; padding-top: 1px; }
+  .hb-row > :nth-child(2) { grid-area: t; }
+  .hb-row > :nth-child(3) { grid-area: p; font-size: 12.5px !important; color: #7c7c7c !important; }
+  .hb-row > :nth-child(4) { grid-area: h; text-align: left !important; font-size: 12.5px !important; color: #7c7c7c !important; }
+  .hb-row > :nth-child(5) { grid-area: a; }
+  .hb-title { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; line-height: 1.4; }
+}
 `;

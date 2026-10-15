@@ -123,6 +123,12 @@ const CSS = `
   .gd-sheet { width: 100% !important; min-height: 60vh !important; padding: 20px 18px 60px !important; box-shadow: none !important; }
   .gd-toolbar { flex-wrap: nowrap !important; overflow-x: auto; margin: 4px 8px 6px !important; scrollbar-width: none; }
   .gd-menubar { overflow-x: auto; scrollbar-width: none; flex-wrap: nowrap !important; }
+  /* The document's own buttons on one line that scrolls, not five rows; asking the writer happens in the AI sheet. */
+  .gd-actions { flex-wrap: nowrap !important; overflow-x: auto; scrollbar-width: none; padding-left: 12px !important; padding-right: 12px !important; }
+  .gd-actions::-webkit-scrollbar { display: none; }
+  .gd-actions > * { flex-shrink: 0; }
+  .gd-ai-dock { display: none !important; }
+  .gd-actions .gd-menu { position: fixed !important; left: 12px !important; right: 12px !important; top: auto !important; bottom: calc(84px + env(safe-area-inset-bottom)) !important; min-width: 0 !important; max-height: 60dvh; overflow-y: auto; z-index: 1005 !important; border-radius: 16px !important; box-shadow: 0 16px 48px rgba(0,0,0,.22) !important; }
 
   /* Tab rows and chip rows scroll sideways instead of breaking words one character per line. */
   [role="tablist"] { overflow-x: auto; flex-wrap: nowrap !important; scrollbar-width: none; -webkit-overflow-scrolling: touch; }

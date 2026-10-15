@@ -2040,6 +2040,14 @@ const LIBRARY_CSS = `
 .vlib-pub a:hover { transform: translateY(-1px); }
 .vlib-pub a:focus-visible { outline: 2px solid #1e7a4f; outline-offset: 2px; }
 @media (prefers-reduced-motion: reduce) { .vlib-pub a:hover { transform: none; } }
+/* Phone: the heading on its own line, then the filter, the sort and 新建 on the next, all inside the screen. */
+@media (max-width: 760px) {
+  .vlib-bar { flex-wrap: wrap; row-gap: 10px; }
+  .vlib-bar > span:nth-child(2) { display: none; }
+  .vlib-bar > .vlib-pubchip { margin-left: 0 !important; }
+  .vlib-bar select { width: 118px !important; }
+  .vlib-bar > :last-child { margin-left: auto; }
+}
 `;
 
 function Library({
@@ -2115,8 +2123,8 @@ function Library({
       {/* One row, centred: the heading, its note, the sort and the button
           all sit on the same 30px line (the select was 26px beside a 30px
           button, and the heading sat on the text baseline above both). */}
-      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14, minHeight: 30 }}>
-        <span style={{ fontSize: 15, fontWeight: 500 }}>{t("Edits", "剪辑")}</span>
+      <div className="vlib-bar" style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14, minHeight: 30 }}>
+        <span style={{ fontSize: 15, fontWeight: 500, whiteSpace: "nowrap" }}>{t("Edits", "剪辑")}</span>
         <span style={{ fontSize: 12, color: "#999999", ...clip }}>
           {t("yours, and the ones shared with you", "你的项目，以及分享给你的")}
         </span>

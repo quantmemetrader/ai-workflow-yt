@@ -124,14 +124,14 @@ export function PublishScreen({
           padding: "0 22px",
         }}
       >
-        <span style={{ fontSize: 15, fontWeight: 600 }}>{t("Publishing", "发布设置")}</span>
-        <span style={{ fontSize: 11.5, color: "#999999" }}>
+        <span style={{ fontSize: 15, fontWeight: 600, whiteSpace: "nowrap" }}>{t("Publishing", "发布设置")}</span>
+        <span style={{ fontSize: 11.5, color: "#999999", flex: "1 1 auto", minWidth: 0, overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>
           {t("connect the accounts you post to. Videos usually go out from their project; you can also start a post here.", "连接要发布的账号。视频通常在项目里发布，也可以在这里新建。")}
         </span>
         <button
           type="button"
           onClick={() => setComposing(true)}
-          style={{ ...solid, marginLeft: "auto" }}
+          style={{ ...solid, marginLeft: "auto", whiteSpace: "nowrap", flexShrink: 0 }}
         >
           {t("New post", "新建发布")}
         </button>

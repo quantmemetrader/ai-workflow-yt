@@ -262,6 +262,16 @@ const CSS = `
 [data-perf-screen] .btn { border: 0; }
 [data-perf-screen] .btn.s { border: 1px solid #ededed; }
 [data-perf-screen] [aria-disabled="true"] { opacity: .5; pointer-events: none; }
+/* Phone: the header wraps, the filters scroll sideways, nothing is pushed off the edge. */
+@media (max-width: 760px) {
+  [data-perf-screen] .bar { flex-wrap: wrap; height: auto; padding: 12px 16px; row-gap: 4px; }
+  [data-perf-screen] .bar .h1 { font-size: 20px; font-weight: 600; flex: 1 0 100%; }
+  [data-perf-screen] .pf-filt { overflow-x: auto; scrollbar-width: none; padding: 0 16px !important; }
+  [data-perf-screen] .pf-filt::-webkit-scrollbar { display: none; }
+  [data-perf-screen] .pf-filt > * { flex-shrink: 0; }
+  [data-perf-screen] .pf-filt > div[style*="flex-grow"] { flex: 0 0 4px !important; }
+  [data-perf-screen] .tf div { white-space: nowrap; }
+}
 `;
 
 /* ------------------------------------------------------------------ */
@@ -704,6 +714,7 @@ export function PerfScreen(props: PerfScreenProps): React.JSX.Element {
         <div style={{ flexGrow: 1, display: "flex", minHeight: 0, overflow: "hidden" }}>
         <div style={{ flexGrow: 1, display: "flex", flexDirection: "column", minWidth: 0, minHeight: 0, overflow: "hidden" }}>
           <div
+            className="pf-filt"
             style={{
               flexShrink: 0,
               height: 50,
