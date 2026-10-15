@@ -22,9 +22,14 @@ export function normChars(s: string): string[] {
  * with some lines deleted), and bounded so a script that has nothing to do with the footage cannot stall a job.
  */
 export function matchedMask(a: readonly string[], b: readonly string[], maxD = 6000): boolean[] {
+  return pairsOf(a, b, maxD).map((j) => j >= 0);
+}
+
+/** The Myers walk itself: for each item of `a`, the index of the item of `b` it is paired with (-1 when none). */
+function pairsOf(a: readonly string[], b: readonly string[], maxD = 6000): number[] {
   const n = a.length;
   const m = b.length;
-  const mask = new Array<boolean>(n).fill(false);
+  const mask = new Array<number>(n).fill(-1);
   if (!n || !m) return mask;
   const max = Math.min(n + m, maxD);
   const off = max + 1;
@@ -53,7 +58,7 @@ export function matchedMask(a: readonly string[], b: readonly string[], maxD = 6
     v = nv;
     if (found >= 0) break;
   }
-  if (found < 0) return fallbackMask(a, b);
+  if (found < 0) return fallbackPairs(a, b);
   /* Walk back through the trace, marking the diagonal (matched) runs. */
   let x = n;
   let y = m;
@@ -66,7 +71,7 @@ export function matchedMask(a: readonly string[], b: readonly string[], maxD = 6
     while (x > prevX && y > prevY) {
       x--;
       y--;
-      mask[x] = true;
+      mask[x] = y;
     }
     x = prevX;
     y = prevY;
@@ -74,23 +79,23 @@ export function matchedMask(a: readonly string[], b: readonly string[], maxD = 6
   while (x > 0 && y > 0) {
     x--;
     y--;
-    mask[x] = true;
+    mask[x] = y;
   }
   return mask;
 }
 
 /** Too different for an exact diff in the time allowed: a greedy in-order match, still never out of order. */
-function fallbackMask(a: readonly string[], b: readonly string[]): boolean[] {
-  const mask = new Array<boolean>(a.length).fill(false);
+function fallbackPairs(a: readonly string[], b: readonly string[]): number[] {
+  const pairs = new Array<number>(a.length).fill(-1);
   let j = 0;
   for (let i = 0; i < a.length && j < b.length; i++) {
     const at = b.indexOf(a[i], j);
     if (at >= 0 && at - j < 40) {
-      mask[i] = true;
+      pairs[i] = at;
       j = at + 1;
     }
   }
-  return mask;
+  return pairs;
 }
 
 /**
@@ -184,18 +189,9 @@ export function piecesFromKept(
 
 export const piecesMs = (pieces: readonly Piece[]) => pieces.reduce((n, p) => n + (p.outMs - p.inMs), 0);
 
-/** For each item of `a`, the index of the item of `b` it is matched to in order (-1 when none): the pairs behind `matchedMask`. */
+/** For each item of `a`, the index of the item of `b` it is matched to in order (-1 when none), straight from the diff. */
 export function matchPairs(a: readonly string[], b: readonly string[]): number[] {
-  const pairs = new Array<number>(a.length).fill(-1);
-  const mask = matchedMask(a, b);
-  /* The mask marks which of `a` matched; walk both in order to pair them with the same items of `b`. */
-  let j = 0;
-  for (let i = 0; i < a.length; i++) {
-    if (!mask[i]) continue;
-    while (j < b.length && b[j] !== a[i]) j++;
-    if (j < b.length) pairs[i] = j++;
-  }
-  return pairs;
+  return pairsOf(a, b);
 }
 
 /**
