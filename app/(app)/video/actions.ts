@@ -1,5 +1,6 @@
 "use server";
 
+import { queueClipScript } from "@/lib/video/clip-script";
 import { revalidatePath } from "next/cache";
 import { getViewer } from "@/lib/auth/dal";
 import { TRANSITIONS } from "@/lib/video/presets";
@@ -116,6 +117,8 @@ export async function addClipAction(projectId: string, fileId: string) {
   if (!id(projectId) || !id(fileId)) return { error: "Not found" };
   try {
     const clipId = await addClip(viewer, projectId, fileId);
+    /* Filmed by a person: what the host says becomes the script (lib/script/from-footage.ts). */
+    await queueClipScript(viewer, clipId);
     refresh();
     // The id, so footage dropped on the editor can go straight onto the timeline.
     return { id: clipId };

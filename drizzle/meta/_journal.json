@@ -330,6 +330,13 @@
       "when": 1792006665501,
       "tag": "0046_tracker_projects_proposals",
       "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1792056535509,
+      "tag": "0047_clip_transcript_script_footage",
+      "breakpoints": true
     }
   ]
 }

@@ -56,6 +56,7 @@ const KINDS: Record<string, Kind> = {
   "media.importLink": { agent: null, zh: "导入链接素材", en: "Importing a link", stage: "正在下载", typical: 60_000 },
   "video.voiceover": { agent: "video", zh: "配音", en: "Voice-over", stage: "正在配音", typical: 40_000 },
   "video.transcribe": { agent: "video", zh: "转写字幕", en: "Transcribing", stage: "正在听写", typical: 90_000 },
+  "video.clipScript": { agent: "video", zh: "视频转成脚本", en: "Footage to script", stage: "正在听写", typical: 120_000 },
   "video.capcut": { agent: "video", zh: "导出剪映草稿", en: "CapCut export", stage: "正在打包素材", typical: 120_000 },
   "video.cover": { agent: "video", zh: "做封面", en: "Covers", stage: "正在做封面", typical: 90_000 },
   "agent.publish-copy": { agent: "article", zh: "写发布文案", en: "Post copy", stage: "正在写文案", typical: 40_000 },

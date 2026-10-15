@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, isNull } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { captions, files, timelineItems, videoClips, videoProjects } from "@/lib/db/schema";
 import { getObject } from "@/lib/storage/r2";
@@ -365,4 +365,47 @@ async function download(key: string, to: string) {
   const res = await getObject(key);
   if (!res.ok || !res.body) throw new Error(`Storage said ${res.status} for ${key}`);
   await pipeline(Readable.fromWeb(res.body as Parameters<typeof Readable.fromWeb>[0]), createWriteStream(to));
+}
+
+
+/**
+ * Everything said in one clip, on the clip's own clock, kept on the clip (15 Oct).
+ *
+ * Unlike `transcribeProject`, which follows the timeline and whose captions every cut rewrites, this reads the
+ * whole file and the words never change afterwards: the script page is written from them
+ * (`lib/script/from-footage.ts`) and a re-cut starts from them. Done once per file; asking again for the same
+ * file returns what is there.
+ */
+export async function transcribeClip(clipId: string): Promise<{ words: number; language: string; skipped?: string }> {
+  const [row] = await db
+    .select({ c: videoClips, file: files })
+    .from(videoClips)
+    .innerJoin(files, eq(files.id, videoClips.fileId))
+    .where(and(eq(videoClips.id, clipId), isNull(files.deletedAt)))
+    .limit(1);
+  if (!row?.file.storageKey) return { words: 0, language: "", skipped: "the clip's file is gone" };
+  if (row.c.transcript && row.c.transcript.fileId === row.file.id) return { words: row.c.transcript.words.length, language: row.c.transcript.language, skipped: "already transcribed" };
+  const dir = await mkdtemp(path.join(tmpdir(), "aura-clip-"));
+  try {
+    const source = path.join(dir, `src${path.extname(row.file.name) || ".mp4"}`);
+    await download(row.file.storageKey, source);
+    const measured = await probe(source).catch(() => null);
+    if (measured && !measured.hasAudio) return { words: 0, language: "", skipped: "no sound" };
+    const audio = path.join(dir, "clip.mp3");
+    await run("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-i", source, "-vn", "-ac", "1", "-ar", "16000", "-c:a", "libmp3lame", "-b:a", "64k", audio]);
+    await rm(source, { force: true });
+    if ((await stat(audio)).size < 1000) return { words: 0, language: "", skipped: "no audible sound" };
+    const t = simplified(await runTranscription(row.c.projectId, new Blob([await readFile(audio)], { type: "audio/mpeg" }), false));
+    const words = t.words
+      .filter((w) => w.type !== "spacing" && w.type !== "audio_event" && w.text.trim())
+      .map((w) => ({ text: w.text.trim(), startMs: Math.round(w.start * 1000), endMs: Math.round(Math.max(w.end, w.start) * 1000) }));
+    const language = /^en/i.test(t.languageCode) ? "en" : "zh-CN";
+    await db
+      .update(videoClips)
+      .set({ transcript: { language, fileId: row.file.id, at: new Date().toISOString(), words } })
+      .where(eq(videoClips.id, clipId));
+    return { words: words.length, language };
+  } finally {
+    await rm(dir, { recursive: true, force: true }).catch(() => {});
+  }
 }

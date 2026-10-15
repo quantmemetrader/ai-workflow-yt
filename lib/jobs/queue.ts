@@ -37,6 +37,9 @@ export type JobType =
   /** Captions from the cut's own audio, through ElevenLabs Scribe. Minutes of
    * extraction and upload, so never a request (`lib/video/transcribe.ts`). */
   | "video.transcribe"
+  /** One uploaded clip transcribed whole, on its own clock, and its words written into the script page
+   * (`lib/video/transcribe.ts` transcribeClip, `lib/script/from-footage.ts`). */
+  | "video.clipScript"
   /** A voice-over spoken by ElevenLabs and written into the file store. */
   | "video.voiceover"
   /** A still out of a video, for the file lists. FFmpeg is on the box and not

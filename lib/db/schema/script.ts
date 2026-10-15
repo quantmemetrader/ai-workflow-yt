@@ -95,6 +95,9 @@ export const scripts = pgTable(
      * JSON, and its HTML for Word/PDF export. `script_beats` stays what the
      * rest of the product reads; `lib/script/rich.ts` keeps the two agreeing. */
     doc: jsonb().$type<Record<string, unknown>>(),
+    /** This script is what the host says in the project's uploaded footage (`lib/script/from-footage.ts`): the
+     * clips it came from, so deleting a line here cuts it from the video. Null for a script written to be filmed. */
+    footage: jsonb().$type<{ clipIds: string[]; at: string }>(),
     docHtml: text(),
 
     /** The highest version number written so far. The draft in `script_beats`

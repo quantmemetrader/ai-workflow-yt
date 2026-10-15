@@ -86,6 +86,7 @@ const TIMEOUT_BY_TYPE: Record<string, number> = {
   // Transcribe, cut, design and render, end to end.
   "video.direct": 120 * 60_000,
   "video.transcribe": 45 * 60_000,
+  "video.clipScript": 45 * 60_000,
   "video.voiceover": 20 * 60_000,
   // A poster and peaks read over HTTP now, but a slow link on a big file
   // should not be a failure.
@@ -207,6 +208,26 @@ const HANDLERS: Record<string, Handler> = {
 
   /* The creator's own channel, mirrored, and the voice note rewritten. */
   "creator.sync": (job) => refreshCreatorMemory(job.tenantId),
+
+  /* An uploaded clip transcribed whole, and what the host says written into the script page. */
+  "video.clipScript": async (job) => {
+    const { clipId } = job.payload as { clipId: string };
+    const { transcribeClip } = await import("../lib/video/transcribe");
+    const { syncScriptFromFootage } = await import("../lib/script/from-footage");
+    const { db } = await import("../lib/db/client");
+    const { videoClips, workProjects } = await import("../lib/db/schema");
+    const { eq } = await import("drizzle-orm");
+    jobStage("正在听写视频里说的话", 0.1);
+    const t = await transcribeClip(clipId);
+    if (t.skipped && t.skipped !== "already transcribed") return { skipped: t.skipped };
+    const [c] = await db.select({ projectId: videoClips.projectId }).from(videoClips).where(eq(videoClips.id, clipId)).limit(1);
+    const [wp] = c ? await db.select({ id: workProjects.id }).from(workProjects).where(eq(workProjects.videoProjectId, c.projectId)).limit(1) : [];
+    const viewer = job.createdBy ? await viewerById(job.createdBy) : null;
+    if (!wp || !viewer) return { words: t.words, script: "no project or person to write it for" };
+    jobStage("正在把说的话写进脚本", 0.9);
+    const s = await syncScriptFromFootage(viewer, wp.id);
+    return { words: t.words, script: s.why, changed: s.changed };
+  },
 
   "video.transcribe": async (job) => {
     const { projectId, language, diarize, auto } = job.payload as {

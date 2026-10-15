@@ -327,6 +327,8 @@ export async function draftFromBrief(
     beats = await polishBeats(viewer, beats, script.language ?? null, AbortSignal.timeout(Math.max(15_000, 135_000 - elapsed())));
   }
   await saveBeats(viewer, scriptId, beats);
+  /* A fresh written draft is no longer the footage's words: the cut stops following it (lib/script/from-footage.ts). */
+  await db.update(scripts).set({ footage: null }).where(eq(scripts.id, scriptId));
   return { ok: true, beats: beats.length, model: out.model };
 }
 

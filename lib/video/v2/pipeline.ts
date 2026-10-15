@@ -61,7 +61,16 @@ export type Hooks = {
 };
 
 /** One take: the file the whole video is cut from, and what it is about. */
-export type Take = { raw: string; clipId: string; durationMs: number; brief: string; title: string; cacheDir: string };
+export type Take = {
+  raw: string;
+  clipId: string;
+  durationMs: number;
+  brief: string;
+  title: string;
+  cacheDir: string;
+  /** The project's script when it came from this footage (`lib/script/from-footage.ts`): it is the cut. */
+  script?: string | null;
+};
 
 /* -------------------------------------------------------------- helpers */
 
@@ -163,6 +172,41 @@ export async function cutTake(take: Take, tr: Pick<TranscribeOut, "words">, hook
   const filled = await fillHoles(tr.words, silences, holeTranscriber(take.raw, "zh"));
   const words = alignWords(filled.words, fine);
   const all = toSentences(words, [], { clipId, silences });
+
+  /*
+   * The script is the cut (15 Oct). Every word still in the script is kept, every word deleted from it is cut, the
+   * pauses between kept words go; no retake search, no model plan, no length budget overrides what the person left
+   * in the script.
+   */
+  if (take.script != null) {
+    const { keptWords, piecesFromKept, piecesMs } = await import("@/lib/video/script-cut");
+    const kept = keptWords(take.script, words);
+    const pieces = piecesFromKept(words, kept, { durationMs: totalMs }).map((p) => ({ clipId, inMs: p.inMs, outMs: p.outMs }));
+    if (!pieces.length) throw new Error("脚本里留下的话在视频里找不到，没有可以剪的内容。");
+    const inPiece = (w: { startMs: number; endMs: number }) => pieces.some((p) => w.startMs >= p.inMs - 1 && w.endMs <= p.outMs + 1);
+    const sentences = all.map((x) => ({ ...x, words: x.words.filter(inPiece) })).filter((x) => x.words.length).map((x) => ({ ...x, startMs: x.words[0].startMs, endMs: x.words[x.words.length - 1].endMs, text: x.words.map((w) => w.text).join("") }));
+    const dropped = all.filter((x) => !x.words.some(inPiece));
+    const lengthMs = piecesMs(pieces);
+    const removedMs = Math.max(0, totalMs - lengthMs);
+    const noteZh = `按脚本剪：保留 ${sentences.length} 句（共 ${all.length} 句），成片约 ${Math.round(lengthMs / 1000)} 秒；脚本里删掉的 ${dropped.length} 句和长停顿已剪掉`;
+    log(`cut: from the script — ${pieces.length} pieces, ${sec(lengthMs)} s kept of ${sec(totalMs)} s`);
+    return {
+      words,
+      silences,
+      fine,
+      sentences,
+      retakes: [],
+      decisions: [],
+      pieces,
+      report: { removed: dropped.length ? [{ sentenceIds: dropped.map((x) => x.id), ms: dropped.reduce((n, x) => n + (x.endMs - x.startMs), 0), reason: "aside", text: dropped.map((x) => x.text).join(" ").slice(0, 400) }] : [], restored: [], overBudgetMs: 0, noteZh },
+      lengthMs,
+      removedMs,
+      coldOpenId: null,
+      refused: [],
+      refusedRetakes: [],
+      holes: [],
+    };
+  }
   const ask = (what: string, model: string, temperature: number, maxTokens: number) => async (messages: { role: "system" | "user"; content: string }[]) => {
     const out = await complete({ model, temperature, maxTokens, messages });
     await hooks.usage?.(what, { model: out.model, provider: out.provider, promptTokens: out.promptTokens, completionTokens: out.completionTokens, costMicros: out.costMicros, requestId: out.requestId });
@@ -180,7 +224,11 @@ export async function cutTake(take: Take, tr: Pick<TranscribeOut, "words">, hook
   if (targetMs !== null && targetMs <= 90_000 && totalMs > targetMs * 1.8 && all.length > 3) {
     try {
       const picked = await pickHighlights(all, targetMs, brief, ask("highlights", modelFor.assistant(), 0.2, 800));
-      if (picked.length) {
+      const pickedMs = picked.reduce((n, x) => n + (x.endMs - x.startMs), 0);
+      /* 11 Oct: three sentences, seven seconds, for a one-minute brief out of a 5:23 take. A pick under half the
+         asked length is not a short, it is a mistake: cut the whole take instead. */
+      if (picked.length && pickedMs < targetMs * 0.5) log(`cut: the short's pick came to ${sec(pickedMs)} s for ${sec(targetMs)} s asked; cutting the whole take instead`);
+      else if (picked.length) {
         sentences = picked;
         log(`cut: short of ${sec(targetMs)} s — ${picked.length} of ${all.length} sentences picked (${sec(picked.reduce((n, s) => n + (s.endMs - s.startMs), 0))} s)`);
       }

@@ -13,7 +13,10 @@ import {
   videoExports,
   videoGraphics,
   videoProjects,
+  workProjects,
 } from "@/lib/db/schema";
+import { footageCut, scriptText } from "@/lib/script/from-footage";
+import { resetToFullFootage, writeTimelineFromPieces } from "./script-timeline";
 import type { Viewer } from "@/lib/auth/dal";
 import { audit } from "@/lib/audit";
 import { newId } from "@/lib/ids";
@@ -401,11 +404,30 @@ export async function direct(viewer: Viewer, projectId: string, jobId?: string):
         await say("footage", "这次素材里有人声，之前的 AI 配音就不用了");
       }
 
+      /*
+       * The script came from this footage (lib/script/from-footage.ts): whatever is still in it is the cut, and
+       * whatever was deleted from it is cut out (15 Oct). No model chooses sentences, no length budget trims it:
+       * the script's length is the video's length.
+       */
+      const [wpRow] = await db.select({ id: workProjects.id }).from(workProjects).where(eq(workProjects.videoProjectId, projectId)).limit(1);
+      const fromScript = wpRow ? await footageCut(wpRow.id).catch((err) => (console.error(`[director ${projectId}] script cut`, err), null)) : null;
+      if (fromScript && fromScript.keptMs < 1000) {
+        throw new Error("脚本里留下的话在视频里找不到（可能都删掉了），没有可以剪的内容。把视频里说过的话留在脚本里，再剪一次。");
+      }
+      if (fromScript) await say("cut", `按脚本剪：脚本里的话保留，删掉的从视频里剪掉，约 ${Math.floor(fromScript.keptMs / 60000)}:${String(Math.round((fromScript.keptMs % 60000) / 1000)).padStart(2, "0")}`);
+
       /* ---- v2: the lab's pipeline, from the take up ------------------- */
-      if (v2) {
+      if (v2 && !(fromScript && fromScript.clips.length > 1)) {
+        /* One take from the script: that clip, whole, is the take v2 cuts from. */
+        if (fromScript) {
+          const only = fromScript.clips[0];
+          await db.delete(timelineItems).where(eq(timelineItems.projectId, projectId));
+          await db.insert(timelineItems).values({ id: newId("beat"), projectId, kind: "clip", clipId: only.id, ord: 0, inMs: 0, outMs: only.durationMs ?? null });
+        }
         const take = await v2Take(projectId, footage, { aspect, language, brief });
         if ("take" in take) {
-          const result = await directV2(viewer, project, { brief, aspect, language, pace, wantRender, say, take: take.take });
+          const script = fromScript && fromScript.clips[0].id === take.take.clipId ? await scriptText(fromScript.scriptId) : null;
+          const result = await directV2(viewer, project, { brief, aspect, language, pace, wantRender, say, take: take.take, script });
           await finish(viewer, projectId, jobId, result);
           return result;
         }
@@ -423,6 +445,20 @@ export async function direct(viewer: Viewer, projectId: string, jobId?: string):
         await say("footage", joinAll ? `把 ${chosen.length} 段素材按顺序放上时间线` : `把${chosen[0].name ? `「${chosen[0].name}」` : "最长的一条"}放上时间线，其余 ${footage.length - 1} 段留作插画面`);
       }
 
+      /* The script decides the cut (several takes, or a project v2 does not take). Otherwise a fresh cut starts from
+         every frame that was filmed, not from the last cut. */
+      let scriptCut = false;
+      if (fromScript) {
+        const w = await writeTimelineFromPieces(projectId, fromScript.clips, language, aspect);
+        scriptCut = true;
+        await say("cut", `按脚本剪成 ${w.items} 段，共 ${Math.floor(w.ms / 60000)}:${String(Math.round((w.ms % 60000) / 1000)).padStart(2, "0")}，字幕按她说的话`);
+      } else {
+        const reset = await resetToFullFootage(projectId, language, aspect);
+        if (reset === "rebuilt") await say("footage", "从完整素材重新剪，不在上一版的基础上剪");
+        else if (reset === "cleared") await say("footage", "从完整素材重新剪，先把整段重新转写");
+      }
+
+      if (!scriptCut) {
       /* ---- 2. transcribe -------------------------------------------- */
       const [anyCaption] = await db.select({ language: captions.language }).from(captions).where(eq(captions.projectId, projectId)).limit(1);
       language = anyCaption?.language ?? language;
@@ -463,6 +499,7 @@ export async function direct(viewer: Viewer, projectId: string, jobId?: string):
         await say("cut", "去掉空白和口误，挑出要留的");
         const r = await autoEdit(viewer, projectId, { language, brief });
         await say("cut", `剪成 ${r.cuts} 段，去掉 ${(r.removedMs / 1000).toFixed(1)} 秒${r.note ? `（${r.note}）` : ""}`);
+      }
       }
     }
 
@@ -1004,7 +1041,7 @@ async function v2Take(
 async function directV2(
   viewer: Viewer,
   project: typeof videoProjects.$inferSelect,
-  ctx: { brief: string; aspect: string; language: string; pace: Pace; wantRender: boolean; say: Say; take: V2TakeRow },
+  ctx: { brief: string; aspect: string; language: string; pace: Pace; wantRender: boolean; say: Say; take: V2TakeRow; script?: string | null },
 ): Promise<DirectResult> {
   const { brief, language, say, take } = ctx;
   const projectId = project.id;
@@ -1035,7 +1072,7 @@ async function directV2(
     let t0 = Date.now();
     const raw = await localTake({ id: take.fileId, name: take.name, storageKey: take.storageKey, sizeBytes: take.sizeBytes }, downloadObject);
     lap("footageMs", t0);
-    const t = { raw, clipId: take.clipId, durationMs: take.durationMs, brief, title: project.title, cacheDir };
+    const t = { raw, clipId: take.clipId, durationMs: take.durationMs, brief, title: project.title, cacheDir, script: ctx.script ?? null };
     const channel = { accent: project.accent, tenantName: tenant?.name ?? null, training: (await trainingFor(viewer.tenantId, "video")).text || null };
 
     /* ---- transcribe --------------------------------------------------- */
@@ -1047,7 +1084,7 @@ async function directV2(
     await say("transcribe", `转写完成：${tr.words.length} 个词${tr.changes.length ? `，按简报校正 ${tr.changes.length} 处` : ""}`);
 
     /* ---- cut ---------------------------------------------------------- */
-    await say("cut", "找出重说和口误，在停顿处下剪刀");
+    await say("cut", t.script ? "按脚本剪：保留脚本里的每句话，去掉停顿" : "找出重说和口误，在停顿处下剪刀");
     t0 = Date.now();
     const cut = await cutTake(t, tr, hooks);
     lap("cutMs", t0);

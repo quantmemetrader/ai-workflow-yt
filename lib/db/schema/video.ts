@@ -99,6 +99,14 @@ export const videoClips = pgTable(
     peaks: jsonb().$type<number[]>(),
     /** Null until the peaks job has run; a reason when it could not. */
     peaksError: text(),
+    /**
+     * Everything said in this clip, word by word, on the clip's own clock (15 Oct).
+     *
+     * The project's `captions` follow the timeline and are rewritten by every cut, so after one short cut the
+     * rest of what the host said was gone for good (a 5:23 take came back as a 6-second video, every time).
+     * This copy is never touched by a cut: the script page is written from it, and a re-cut starts from it.
+     */
+    transcript: jsonb().$type<{ language: string; fileId: string; at: string; words: { text: string; startMs: number; endMs: number }[] }>(),
     addedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index("video_clips_idx").on(t.projectId)],

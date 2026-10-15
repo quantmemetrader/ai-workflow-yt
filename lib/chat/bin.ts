@@ -1,4 +1,5 @@
 import "server-only";
+import { queueClipScript } from "@/lib/video/clip-script";
 import { execFile } from "node:child_process";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -32,7 +33,10 @@ export async function binVideo(viewer: Viewer, videoProjectId: string, fileId: s
     .where(and(eq(videoClips.projectId, videoProjectId), eq(videoClips.fileId, fileId)))
     .limit(1);
   if (had) return { clipId: had.id, existed: true };
-  return { clipId: await addClip(viewer, videoProjectId, fileId), existed: false };
+  const clipId = await addClip(viewer, videoProjectId, fileId);
+  /* Filmed by a person and dropped into the chat: what the host says becomes the script. */
+  await queueClipScript(viewer, clipId);
+  return { clipId, existed: false };
 }
 
 /**

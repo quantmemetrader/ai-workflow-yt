@@ -11,6 +11,10 @@ import { scriptWriting } from "@/lib/script/writing";
 import { docApprovals, docReferences } from "@/lib/script/doc";
 import { docForBeats, type RichNode } from "@/lib/script/rich";
 import { ScriptDoc } from "@/components/script/doc/ScriptDoc";
+import { FootageBar } from "@/components/script/doc/FootageBar";
+import { footageCut, isHostFootage } from "@/lib/script/from-footage";
+import { files, jobs, videoClips } from "@/lib/db/schema";
+import { inArray, isNull } from "drizzle-orm";
 
 /**
  * A project's script as a document with an AI copilot, comments, versions
@@ -71,6 +75,26 @@ export async function ScriptDocPage({ id, standalone = false }: { id: string; st
   const doc = docForBeats((stored?.doc as RichNode | null) ?? null, beats);
 
   const s = detail?.script ?? null;
+
+  /* The host's footage and this script (lib/script/from-footage.ts): linked, being transcribed, or waiting to be brought in. */
+  const [wv] = await db.select({ videoProjectId: workProjects.videoProjectId }).from(workProjects).where(eq(workProjects.id, p.id)).limit(1);
+  let footage: { state: "linked" | "pending" | "offer"; keptMs: number; totalMs: number; clips: number } | null = null;
+  if (wv?.videoProjectId && scriptId) {
+    const fc = await footageCut(p.id).catch(() => null);
+    const clipRows = await db
+      .select({ id: videoClips.id, fileId: videoClips.fileId, durationMs: videoClips.durationMs, transcript: videoClips.transcript, name: files.name })
+      .from(videoClips)
+      .innerJoin(files, eq(files.id, videoClips.fileId))
+      .where(and(eq(videoClips.projectId, wv.videoProjectId), isNull(files.deletedAt)));
+    const candidates = clipRows.filter((r) => isHostFootage(r.name, r.durationMs, r.transcript?.words ?? [{ text: "x".repeat(20), startMs: 0, endMs: 1 }]));
+    const ids = candidates.map((r) => r.id);
+    const running = ids.length
+      ? await db.select({ id: jobs.id }).from(jobs).where(and(eq(jobs.type, "video.clipScript"), inArray(jobs.objectId, ids), inArray(jobs.status, ["queued", "running"]))).limit(1)
+      : [];
+    if (fc) footage = { state: running.length ? "pending" : "linked", keptMs: fc.keptMs, totalMs: fc.totalMs, clips: fc.clips.length };
+    else if (running.length) footage = { state: "pending", keptMs: 0, totalMs: 0, clips: 0 };
+    else if (candidates.length) footage = { state: "offer", keptMs: 0, totalMs: 0, clips: candidates.length };
+  }
   /* Says why the whole studio can open it when the project is open to everyone, so it does not read as the opposite of the dialog's 「仅限能看到这个项目的人」 (QA, 2 Oct). */
   const accessNote =
     p.access.link === "edit"
@@ -96,6 +120,17 @@ export async function ScriptDocPage({ id, standalone = false }: { id: string; st
             {zh ? "所属项目：" : "Project: "}{p.title} →
           </Link>
         </div>
+      ) : null}
+      {footage ? (
+        <FootageBar
+          projectId={p.id}
+          zh={zh}
+          state={footage.state}
+          keptMs={footage.keptMs}
+          totalMs={footage.totalMs}
+          clips={footage.clips}
+          canCut={viewer.modules.includes("video") && p.linkOnly !== "view" && p.status !== "archived"}
+        />
       ) : null}
       <ScriptDoc
         projectId={p.id}
