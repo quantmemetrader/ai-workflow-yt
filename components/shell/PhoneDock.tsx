@@ -101,7 +101,7 @@ export function PhoneDock({
                   </span>
                 </Link>
                 <span className="pd-lang">
-                  <LangToggle zh={zh} wide={false} />
+                  <LangToggle zh={zh} wide />
                 </span>
               </div>
             ) : null}
@@ -160,6 +160,7 @@ const CSS = `
   .pd-me-l b { display: block; font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .pd-me-l i { display: block; font-style: normal; font-size: 12.5px; color: #999; margin-top: 2px; }
   .pd-lang { flex-shrink: 0; }
+  .pd-lang > * { height: 34px; border-radius: 17px; background: #f3f3f3; padding: 0 12px; }
   .pd-sheet h3 { margin: 16px 2px 8px; font-size: 12px; font-weight: 600; color: #999; letter-spacing: .04em; }
   .pd-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px 4px; }
   .pd-tile { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 8px 2px; border-radius: 14px; color: #262626; min-width: 0; -webkit-tap-highlight-color: transparent; }
