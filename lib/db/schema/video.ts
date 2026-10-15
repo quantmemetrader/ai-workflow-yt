@@ -106,7 +106,7 @@ export const videoClips = pgTable(
      * rest of what the host said was gone for good (a 5:23 take came back as a 6-second video, every time).
      * This copy is never touched by a cut: the script page is written from it, and a re-cut starts from it.
      */
-    transcript: jsonb().$type<{ language: string; fileId: string; at: string; words: { text: string; startMs: number; endMs: number }[] }>(),
+    transcript: jsonb().$type<{ language: string; fileId: string; at: string; words: { text: string; startMs: number; endMs: number; space?: boolean }[] }>(),
     addedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index("video_clips_idx").on(t.projectId)],

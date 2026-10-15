@@ -9,7 +9,7 @@ import { toSimplified } from "@/lib/text/simplified";
 import { complete } from "@/lib/ai/openrouter";
 import { modelFor } from "@/lib/ai/models";
 import { recordUsage } from "@/lib/ai/ledger";
-import { keptWords, normChars, piecesFromKept, piecesMs, transferPunctuation, type TimedWord } from "@/lib/video/script-cut";
+import { joinTimed, keptWords, normChars, piecesFromKept, piecesMs, transferPunctuation, type TimedWord } from "@/lib/video/script-cut";
 
 /**
  * The script page as what the host actually says (15 Oct: "if user has uploaded the video then the script section
@@ -50,12 +50,7 @@ export async function hostClips(videoProjectId: string): Promise<HostClip[]> {
 }
 
 const ENDS = /[。！？!?…]$|[.!?]$/;
-const join = (ws: readonly TimedWord[]) =>
-  ws.reduce((s, w, i) => {
-    const prev = i ? ws[i - 1].text : "";
-    const latin = /[A-Za-z0-9]$/.test(prev) && /^[A-Za-z0-9]/.test(w.text);
-    return s + (latin ? " " : "") + w.text;
-  }, "");
+const join = joinTimed;
 
 /**
  * What she said as paragraphs: a sentence ends at its punctuation or at a pause; a paragraph gathers sentences up
@@ -150,21 +145,23 @@ async function tidy(words: readonly TimedWord[], viewer: Viewer | null): Promise
   for (const chunk of chunks) {
     /* One run of text, so the model paragraphs it by meaning rather than keeping the plain breaks. */
     const text = chunk.join("");
-    try {
-      const r = await complete({ model: modelFor.utility(), temperature: 0, maxTokens: Math.min(6000, text.length * 3 + 400), messages: [{ role: "system", content: PUNCTUATE }, { role: "user", content: text }] });
+    let done: string[] | null = null;
+    /* Twice at most: a model that wandered once usually does not twice. */
+    for (let attempt = 0; attempt < 2; attempt++) try {
+      const r = await complete({ model: attempt ? modelFor.assistant() : modelFor.utility(), temperature: 0, maxTokens: Math.min(6000, text.length * 3 + 400), messages: [{ role: "system", content: PUNCTUATE }, { role: "user", content: text }] });
       if (viewer) await recordUsage({ viewer, module: "script", provider: r.provider ?? "openrouter", model: r.model, promptTokens: r.promptTokens, completionTokens: r.completionTokens, costMicros: r.costMicros, requestId: r.requestId ?? undefined }).catch(() => {});
       const tidied = toSimplified(r.text.trim()).replace(/^```\w*\n?|```$/g, "");
       /* Only the model's punctuation, spacing and breaks are taken; every spoken character is hers, as said. */
       const laid = transferPunctuation(text, tidied);
       if (laid && key(laid) === key(text)) {
-        out.push(...laid.split(/\n+/).map((x) => x.trim()).filter(Boolean).flatMap(splitLong));
-        continue;
+        done = laid.split(/\n+/).map((x) => x.trim()).filter(Boolean).flatMap(splitLong);
+        break;
       }
-      console.log(`[from-footage] tidy had too little in common with the transcript; plain paragraphs kept`);
+      console.log(`[from-footage] tidy attempt ${attempt + 1} had too little in common with the transcript`);
     } catch (err) {
-      console.log(`[from-footage] tidy failed: ${err instanceof Error ? err.message : err}`);
+      console.log(`[from-footage] tidy attempt ${attempt + 1} failed: ${err instanceof Error ? err.message : err}`);
     }
-    out.push(...chunk);
+    out.push(...(done ?? chunk));
   }
   return out;
 }

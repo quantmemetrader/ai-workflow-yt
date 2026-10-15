@@ -8,7 +8,16 @@
  * Pure functions, no database: the director's v2 cut and the plain cut both call these.
  */
 
-export type TimedWord = { text: string; startMs: number; endMs: number };
+export type TimedWord = { text: string; startMs: number; endMs: number; space?: boolean };
+
+/** Words back into text: Han characters run together; an English word gets a space only where it began one. */
+export function joinTimed(ws: readonly { text: string; space?: boolean }[]): string {
+  return ws.reduce((s, w, i) => {
+    const prev = i ? ws[i - 1].text : "";
+    const latin = /[A-Za-z0-9]$/.test(prev) && /^[A-Za-z0-9]/.test(w.text);
+    return s + (latin && w.space !== false ? " " : "") + w.text;
+  }, "");
+}
 export type Piece = { inMs: number; outMs: number };
 
 /** Letters, digits and Han characters only, lower-cased: punctuation, spaces and case never decide a cut. */

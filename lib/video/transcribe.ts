@@ -398,7 +398,8 @@ export async function transcribeClip(clipId: string): Promise<{ words: number; l
     const t = simplified(await runTranscription(row.c.projectId, new Blob([await readFile(audio)], { type: "audio/mpeg" }), false));
     const words = t.words
       .filter((w) => w.type !== "spacing" && w.type !== "audio_event" && w.text.trim())
-      .map((w) => ({ text: w.text.trim(), startMs: Math.round(w.start * 1000), endMs: Math.round(Math.max(w.end, w.start) * 1000) }));
+      /* `space`: whisper starts a new English word with a space; "new" "s.com" without one is one word, news.com. */
+      .map((w) => ({ text: w.text.trim(), startMs: Math.round(w.start * 1000), endMs: Math.round(Math.max(w.end, w.start) * 1000), space: /^\s/.test(w.text) }));
     const language = /^en/i.test(t.languageCode) ? "en" : "zh-CN";
     await db
       .update(videoClips)

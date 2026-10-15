@@ -3,7 +3,7 @@ import { asc, eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { captions, timelineItems, videoClips } from "@/lib/db/schema";
 import { newId } from "@/lib/ids";
-import type { Piece, TimedWord } from "@/lib/video/script-cut";
+import { joinTimed, type Piece, type TimedWord } from "@/lib/video/script-cut";
 
 /**
  * Pieces of the host's clips onto the timeline, in order, with captions on the new timeline's clock made from the
@@ -25,17 +25,17 @@ export async function writeTimelineFromPieces(
     for (const p of c.pieces) {
       items.push({ id: newId("beat"), projectId, kind: "clip", clipId: c.id, ord: ord++ * 10, inMs: Math.round(p.inMs), outMs: Math.round(p.outMs) });
       const inside = c.words.filter((w) => w.startMs >= p.inMs - 1 && w.endMs <= p.outMs + 1);
-      let line: { start: number; end: number; text: string }[] = [];
+      let line: { start: number; end: number; text: string; space?: boolean }[] = [];
       const flush = () => {
         if (!line.length) return;
-        const text = line.reduce((s, w, i) => s + (i && /[A-Za-z0-9]$/.test(line[i - 1].text) && /^[A-Za-z0-9]/.test(w.text) ? " " : "") + w.text, "").replace(/[，。,.]$/, "");
+        const text = joinTimed(line).replace(/[，。,.]$/, "");
         if (text.trim()) lines.push({ id: newId("beat"), projectId, language, ord: lines.length, startMs: Math.round(line[0].start * 1000), endMs: Math.round(line[line.length - 1].end * 1000), text, words: line });
         line = [];
       };
       inside.forEach((w, i) => {
         const prev = inside[i - 1];
         if (prev && w.startMs - prev.endMs > 400) flush();
-        line.push({ start: (at + w.startMs - p.inMs) / 1000, end: (at + w.endMs - p.inMs) / 1000, text: w.text });
+        line.push({ start: (at + w.startMs - p.inMs) / 1000, end: (at + w.endMs - p.inMs) / 1000, text: w.text, space: w.space });
         const chars = line.reduce((n, x) => n + x.text.length, 0);
         if (/[。！？!?，,；;]$/.test(w.text) || chars >= maxChars) flush();
       });
